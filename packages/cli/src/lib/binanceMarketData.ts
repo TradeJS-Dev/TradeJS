@@ -232,6 +232,65 @@ export const aggregateAggTradesToRows = ({
   return [...buckets.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
 };
 
+export const buildKlineTradeFlowRows = ({
+  symbol,
+  interval,
+  candles,
+  source = 'binance_klines',
+}: {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  candles: KlineChartData;
+  source?: string;
+}): MarketTradeFlowRow[] =>
+  candles
+    .map((candle): MarketTradeFlowRow | null => {
+      const buyBaseVolume = candle.takerBuyBaseVolume;
+      const buyQuoteVolume = candle.takerBuyQuoteVolume;
+      if (
+        buyBaseVolume == null ||
+        buyQuoteVolume == null ||
+        !Number.isFinite(buyBaseVolume) ||
+        !Number.isFinite(buyQuoteVolume)
+      ) {
+        return null;
+      }
+
+      const sellBaseVolume =
+        candle.takerSellBaseVolume != null &&
+        Number.isFinite(candle.takerSellBaseVolume)
+          ? candle.takerSellBaseVolume
+          : Math.max(0, candle.volume - buyBaseVolume);
+      const sellQuoteVolume =
+        candle.takerSellQuoteVolume != null &&
+        Number.isFinite(candle.takerSellQuoteVolume)
+          ? candle.takerSellQuoteVolume
+          : Math.max(0, candle.turnover - buyQuoteVolume);
+      const trades =
+        candle.trades != null && Number.isFinite(candle.trades)
+          ? Math.max(0, Math.trunc(candle.trades))
+          : 0;
+
+      return {
+        symbol,
+        interval,
+        ts: new Date(candle.timestamp),
+        trades,
+        buyBaseVolume,
+        sellBaseVolume,
+        buyQuoteVolume,
+        sellQuoteVolume,
+        netBaseDelta: buyBaseVolume - sellBaseVolume,
+        netQuoteDelta: buyQuoteVolume - sellQuoteVolume,
+        buyPressurePct: safeDivide(
+          buyBaseVolume,
+          buyBaseVolume + sellBaseVolume,
+        ),
+        source,
+      };
+    })
+    .filter((row): row is MarketTradeFlowRow => row != null);
+
 export const buildMarketBreadthRows = ({
   universe,
   interval,

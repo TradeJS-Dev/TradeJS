@@ -18,6 +18,7 @@ const progressStats: AggregateBacktestStats = {
   netProfitSum: 0,
   wins: 0,
   losses: 0,
+  ordersSum: 0,
   winRateSum: 0,
   winRateCount: 0,
 };
@@ -37,6 +38,7 @@ export type AggregateBacktestStats = {
   netProfitSum: number;
   wins: number;
   losses: number;
+  ordersSum: number;
   winRateSum: number;
   winRateCount: number;
 };
@@ -62,8 +64,14 @@ const addResultToAggregate = (
   const stat = result.stat as typeof result.stat & {
     wins?: number;
     losses?: number;
+    orders?: number;
     winRate?: number;
   };
+  const orders = Number(stat.orders ?? 0);
+  if (Number.isFinite(orders)) {
+    aggregate.ordersSum += orders;
+  }
+
   const wins = Number(stat.wins ?? 0);
   const losses = Number(stat.losses ?? 0);
   if (Number.isFinite(wins)) {
@@ -153,6 +161,7 @@ export const recordResultAggregates = (result: TestWorkerResult) => {
       netProfitSum: 0,
       wins: 0,
       losses: 0,
+      ordersSum: 0,
       winRateSum: 0,
       winRateCount: 0,
     } satisfies ConfigResultBucket);
@@ -233,6 +242,7 @@ export const resetRunState = () => {
   progressStats.netProfitSum = 0;
   progressStats.wins = 0;
   progressStats.losses = 0;
+  progressStats.ordersSum = 0;
   progressStats.winRateSum = 0;
   progressStats.winRateCount = 0;
   replayResultsByStrategyAndTicker.clear();

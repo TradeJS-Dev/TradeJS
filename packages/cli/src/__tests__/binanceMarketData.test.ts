@@ -1,5 +1,6 @@
 import {
   aggregateAggTradesToRows,
+  buildKlineTradeFlowRows,
   buildMarketBreadthRows,
   classifyBtcAltRegime,
   estimateBinanceMarketDataVolume,
@@ -61,6 +62,47 @@ describe('binanceMarketData helpers', () => {
         netBaseDelta: 1,
         netQuoteDelta: 90,
         buyPressurePct: 2 / 3,
+      }),
+    ]);
+  });
+
+  it('builds trade-flow rows from Binance kline taker volumes', () => {
+    const rows = buildKlineTradeFlowRows({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      candles: [
+        {
+          timestamp: 60_000,
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 105,
+          volume: 10,
+          turnover: 1_050,
+          trades: 42,
+          takerBuyBaseVolume: 6,
+          takerBuyQuoteVolume: 650,
+          takerSellBaseVolume: 4,
+          takerSellQuoteVolume: 400,
+          dt: '',
+        },
+      ],
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        ts: new Date(60_000),
+        trades: 42,
+        buyBaseVolume: 6,
+        sellBaseVolume: 4,
+        buyQuoteVolume: 650,
+        sellQuoteVolume: 400,
+        netBaseDelta: 2,
+        netQuoteDelta: 250,
+        buyPressurePct: 0.6,
+        source: 'binance_klines',
       }),
     ]);
   });

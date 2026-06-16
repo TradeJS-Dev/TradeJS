@@ -210,7 +210,7 @@ Input payload structure:
   • \`baseContext.regime\`: derived trend / volatility / momentum / session regime fields.
   • \`baseContext.structure\`: local range position, breakout freshness/quality, level-touch counts, rejection wick context.
   • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, and Binance aggTrades trade-flow when available.
-  • \`baseContext.relative\`: BTC/ETH relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinMarketCap historical global/listings/exchange context when available.
+  • \`baseContext.relative\`: BTC/ETH relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinMarketCap historical global/exchange context when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
   • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer \`setup\`, \`scores\`, \`confirmations\`, \`conflicts\`, \`risk\`, and \`decisionHints\` for quick gate checks before inspecting raw nested context.
@@ -223,7 +223,6 @@ Input payload structure:
   • \`marketContext.relative.btcAltRegime\`: Binance-derived BTC-vs-alt basket regime, BTC/alt 24h returns, BTC turnover share, and alt dispersion; use it as a broad alt-market risk pocket.
   • \`marketContext.relative.cmcGlobal\`: historical CoinMarketCap global market metrics: total/alt market cap, total/alt volume, BTC/ETH dominance and 24h changes, active markets, \`interval\`, and \`altLiquidityRegime\`.
   • \`marketContext.relative.cmcReferenceAssets\`: historical CoinMarketCap BTC/ETH market-cap and volume context, ETH/BTC market-cap ratio, ETH-vs-BTC volume ratio, \`interval\`, and \`referenceLiquidityRegime\`.
-  • \`marketContext.relative.cmcMarketBreadth\`: historical CoinMarketCap top-N listings breadth: positive 24h/7d share, median/average returns, dispersion, concentration, stablecoin share, and \`breadthRegime\`.
   • \`marketContext.relative.cmcExchangeLiquidity\`: historical CoinMarketCap major-exchange liquidity aggregate: total volume, 24h volume change, Binance share, concentration, and \`liquidityRegime\`.
   • \`marketContext.relative.cmcFearGreed\`: historical daily CoinMarketCap Fear & Greed sentiment index: value, classification, 24h/7d value changes, and \`sentimentRegime\`.
   • \`marketContext.relative.referenceTradeFlow\`: BTC/ETH reference trade-flow summary used for broad market pressure when the target symbol itself is not BTC/ETH.
@@ -260,7 +259,6 @@ Explicit conflict rules:
 - If \`marketContext.relative.btcAltRegime.available=true\` and \`stale=false\`, treat \`alt_lead\`/\`risk_on\` as broad support for alt LONGs and \`btc_lead\`/\`risk_off\` as pressure against alt LONGs or support for cautious alt SHORTs. Do not use it as a standalone entry reason.
 - If \`marketContext.relative.cmcGlobal.available=true\` and \`stale=false\`, use falling alt market cap/volume or rising BTC dominance as broad risk pressure for alt LONGs. Treat missing CMC history as absent context, not a bearish signal.
 - If \`marketContext.relative.cmcReferenceAssets.available=true\` and \`stale=false\`, use \`eth_led\` as broad support for ETH/high-beta alt strength and \`btc_led\`/\`thin\` as broad caution. Do not describe BTC/ETH reference history as target-symbol flow.
-- If \`marketContext.relative.cmcMarketBreadth.available=true\` and \`stale=false\`, use \`risk_on\`/\`alt_broadening\` as broad support for alt LONGs and \`risk_off\`/\`btc_concentrated\` as broad pressure. Do not treat CMC listings breadth as target-symbol confirmation.
 - If \`marketContext.relative.cmcExchangeLiquidity.available=true\` and \`stale=false\`, treat \`contracting\`, \`thin\`, or \`concentrated\` as broad liquidity risk; \`expanding\` or \`balanced\` supports cleaner execution context but is not a standalone entry reason.
 - If \`marketContext.relative.cmcFearGreed.available=true\` and \`stale=false\`, use \`risk_on\` as broad support for LONGs and \`risk_off\`/\`capitulation\` as broad pressure. Treat \`euphoric\` as overheating/chase caution, not as standalone SHORT proof.
 - If \`marketContext.relative.referenceTradeFlow.available=true\`, treat BTC/ETH trade-flow as broad market context only. For alt symbols, do not describe it as the target coin's own flow.

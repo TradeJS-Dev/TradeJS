@@ -99,6 +99,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
         if (!ts) continue;
         const volume = toNum(item[5]);
         const turnover = toNum(item[7]);
+        const trades = toNullableNum(item[8]);
         const takerBuyBaseVolume = toNullableNum(item[9]);
         const takerBuyQuoteVolume = toNullableNum(item[10]);
         rows.push({
@@ -109,6 +110,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
           close: toNum(item[4]),
           volume,
           turnover,
+          trades,
           takerBuyBaseVolume,
           takerBuyQuoteVolume,
           takerSellBaseVolume:

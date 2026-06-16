@@ -11,6 +11,7 @@ export interface Candle {
   volume: number;
   timestamp: number;
   turnover: number;
+  trades?: number | null;
   takerBuyBaseVolume?: number | null;
   takerBuyQuoteVolume?: number | null;
   takerSellBaseVolume?: number | null;
@@ -126,9 +127,7 @@ export type SpreadRow = {
 
 export type MarketFeatureInterval = '1m' | '5m' | '15m' | '1h';
 
-export type MarketGlobalContextSource =
-  | 'coinmarketcap_global'
-  | 'coinmarketcap_global_hourly';
+export type MarketGlobalContextSource = 'coinmarketcap_global';
 
 export type MarketGlobalContextRow = {
   source: MarketGlobalContextSource;
@@ -154,7 +153,7 @@ export type MarketReferenceAssetContextRow = {
   source: 'coinmarketcap_reference_asset';
   symbol: 'BTCUSDT' | 'ETHUSDT' | string;
   cmcId: number;
-  interval: '1d' | '1h';
+  interval: '1d';
   ts: Date;
   openUsd?: number | null;
   highUsd?: number | null;
@@ -162,42 +161,6 @@ export type MarketReferenceAssetContextRow = {
   closeUsd?: number | null;
   volumeUsd?: number | null;
   marketCapUsd?: number | null;
-};
-
-export type CmcMarketBreadthRegime =
-  | 'risk_on'
-  | 'risk_off'
-  | 'alt_broadening'
-  | 'btc_concentrated'
-  | 'mixed'
-  | 'neutral'
-  | 'unknown';
-
-export type MarketCmcBreadthContextRow = {
-  source: 'coinmarketcap_market_breadth';
-  universe: string;
-  interval: '1d';
-  ts: Date;
-  topAssetsCount: number;
-  assetsCount: number;
-  positive24hPct?: number | null;
-  positive7dPct?: number | null;
-  avgReturn24hPct?: number | null;
-  medianReturn24hPct?: number | null;
-  avgReturn7dPct?: number | null;
-  medianReturn7dPct?: number | null;
-  returnDispersion24hPct?: number | null;
-  returnDispersion7dPct?: number | null;
-  top10MarketCapShare?: number | null;
-  top25MarketCapShare?: number | null;
-  btcMarketCapShare?: number | null;
-  ethMarketCapShare?: number | null;
-  btcEthMarketCapShare?: number | null;
-  stablecoinMarketCapShare?: number | null;
-  stablecoinVolumeShare?: number | null;
-  totalMarketCapUsd?: number | null;
-  totalVolumeUsd?: number | null;
-  breadthRegime?: CmcMarketBreadthRegime | null;
 };
 
 export type CmcExchangeLiquidityRegime =

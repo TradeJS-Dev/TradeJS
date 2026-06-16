@@ -553,6 +553,7 @@ export const executeTestSuite = async ({
       const aggregate = getProgressStats();
       return {
         averageProfit: getAggregateAverageProfit(aggregate),
+        tradesCount: aggregate.ordersSum,
         winRate: getAggregateWinRate(aggregate),
       };
     },

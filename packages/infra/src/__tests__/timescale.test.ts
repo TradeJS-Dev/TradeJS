@@ -477,22 +477,6 @@ describe('timescale candle helpers', () => {
   it('stores and reads CoinMarketCap aggregate context rows', async () => {
     const atMs = 10_000;
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('FROM market_cmc_breadth_context')) {
-        return {
-          rows: [
-            {
-              source: 'coinmarketcap_market_breadth',
-              universe: 'cmc_top100',
-              interval: '1d',
-              ts: new Date(8_000),
-              topAssetsCount: 100,
-              assetsCount: 98,
-              positive24hPct: '0.62',
-              breadthRegime: 'risk_on',
-            },
-          ],
-        };
-      }
       if (
         sql.includes('FROM market_cmc_exchange_liquidity_context') &&
         sql.includes("interval '24 hours'")
@@ -567,28 +551,14 @@ describe('timescale candle helpers', () => {
     }));
 
     const {
-      getLatestMarketCmcBreadthContext,
       getLatestMarketCmcExchangeLiquidityContext,
       getLatestMarketCmcFearGreedContext,
       getMarketContextBackfillCoverage,
-      upsertMarketCmcBreadthContextRows,
       upsertMarketCmcExchangeLiquidityContextRows,
       upsertMarketCmcFearGreedContextRows,
       upsertMarketContextBackfillCoverage,
     } = await import('@tradejs/infra/timescale');
 
-    await upsertMarketCmcBreadthContextRows([
-      {
-        source: 'coinmarketcap_market_breadth',
-        universe: 'cmc_top100',
-        interval: '1d',
-        ts: new Date(8_000),
-        topAssetsCount: 100,
-        assetsCount: 98,
-        positive24hPct: 0.62,
-        breadthRegime: 'risk_on',
-      },
-    ]);
     await upsertMarketCmcExchangeLiquidityContextRows([
       {
         source: 'coinmarketcap_exchange_liquidity',
@@ -623,21 +593,6 @@ describe('timescale candle helpers', () => {
       },
     ]);
 
-    await expect(
-      getLatestMarketCmcBreadthContext({
-        source: 'coinmarketcap_market_breadth',
-        universe: 'cmc_top100',
-        interval: '1d',
-        atMs,
-        maxAgeMs: 3_000,
-      }),
-    ).resolves.toMatchObject({
-      source: 'coinmarketcap_market_breadth',
-      universe: 'cmc_top100',
-      ageMs: 2_000,
-      stale: false,
-      breadthRegime: 'risk_on',
-    });
     await expect(
       getLatestMarketCmcExchangeLiquidityContext({
         source: 'coinmarketcap_exchange_liquidity',
@@ -687,15 +642,6 @@ describe('timescale candle helpers', () => {
       },
     ]);
 
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO market_cmc_breadth_context'),
-      expect.arrayContaining([
-        'coinmarketcap_market_breadth',
-        'cmc_top100',
-        '1d',
-        new Date(8_000),
-      ]),
-    );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'INSERT INTO market_cmc_exchange_liquidity_context',
@@ -824,6 +770,9 @@ describe('timescale candle helpers', () => {
                 'market_order_book_depth',
                 'onchain_flow_context',
                 'market_global_context',
+                'market_reference_asset_context',
+                'market_cmc_breadth_context',
+                'market_context_backfill_coverage',
               ].includes(table)
                 ? table
                 : null,
@@ -850,7 +799,58 @@ describe('timescale candle helpers', () => {
         return { rows: [{ rows: 4 }] };
       }
       if (
+        sql.includes('FROM market_global_context') &&
+        sql.includes("source = 'coinmarketcap_global_hourly'")
+      ) {
+        return { rows: [{ rows: 5 }] };
+      }
+      if (
+        sql.includes('FROM market_reference_asset_context') &&
+        sql.includes("interval = '1h'")
+      ) {
+        return { rows: [{ rows: 6 }] };
+      }
+      if (
+        sql.includes('FROM market_cmc_breadth_context') &&
+        sql.includes("source = 'coinmarketcap_market_breadth'")
+      ) {
+        return { rows: [{ rows: 7 }] };
+      }
+      if (
+        sql.includes('FROM market_context_backfill_coverage') &&
+        sql.includes('deprecated_cmc_sources')
+      ) {
+        return { rows: [{ rows: 8 }] };
+      }
+      if (
+        sql.includes('FROM market_context_backfill_coverage') &&
+        sql.includes('coinmarketcap_global_hourly')
+      ) {
+        return { rows: [{ rows: 8 }] };
+      }
+      if (
         sql.includes('SELECT COUNT(*)::int AS rows FROM market_global_context')
+      ) {
+        return { rows: [{ rows: 10 }] };
+      }
+      if (
+        sql.includes(
+          'SELECT COUNT(*)::int AS rows FROM market_reference_asset_context',
+        )
+      ) {
+        return { rows: [{ rows: 10 }] };
+      }
+      if (
+        sql.includes(
+          'SELECT COUNT(*)::int AS rows FROM market_cmc_breadth_context',
+        )
+      ) {
+        return { rows: [{ rows: 10 }] };
+      }
+      if (
+        sql.includes(
+          'SELECT COUNT(*)::int AS rows FROM market_context_backfill_coverage',
+        )
       ) {
         return { rows: [{ rows: 10 }] };
       }
@@ -890,6 +890,34 @@ describe('timescale candle helpers', () => {
         action: 'delete_rows',
         applied: false,
       },
+      {
+        kind: 'rows',
+        name: 'market_global_context/source=coinmarketcap_global_hourly',
+        rows: 5,
+        action: 'delete_rows',
+        applied: false,
+      },
+      {
+        kind: 'rows',
+        name: 'market_reference_asset_context/source=coinmarketcap_reference_asset/interval=1h',
+        rows: 6,
+        action: 'delete_rows',
+        applied: false,
+      },
+      {
+        kind: 'rows',
+        name: 'market_cmc_breadth_context/source=coinmarketcap_market_breadth',
+        rows: 7,
+        action: 'delete_rows',
+        applied: false,
+      },
+      {
+        kind: 'rows',
+        name: 'market_context_backfill_coverage/deprecated_cmc_sources',
+        rows: 8,
+        action: 'delete_rows',
+        applied: false,
+      },
     ]);
     expect(query).not.toHaveBeenCalledWith(
       expect.stringContaining('DROP TABLE IF EXISTS'),
@@ -914,6 +942,26 @@ describe('timescale candle helpers', () => {
         name: 'market_global_context/source=coingecko_global',
         applied: true,
       }),
+      expect.objectContaining({
+        kind: 'rows',
+        name: 'market_global_context/source=coinmarketcap_global_hourly',
+        applied: true,
+      }),
+      expect.objectContaining({
+        kind: 'rows',
+        name: 'market_reference_asset_context/source=coinmarketcap_reference_asset/interval=1h',
+        applied: true,
+      }),
+      expect.objectContaining({
+        kind: 'rows',
+        name: 'market_cmc_breadth_context/source=coinmarketcap_market_breadth',
+        applied: true,
+      }),
+      expect.objectContaining({
+        kind: 'rows',
+        name: 'market_context_backfill_coverage/deprecated_cmc_sources',
+        applied: true,
+      }),
     ]);
     expect(query).toHaveBeenCalledWith(
       'DROP TABLE IF EXISTS market_order_book_depth',
@@ -923,6 +971,15 @@ describe('timescale candle helpers', () => {
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM market_global_context'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM market_reference_asset_context'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM market_cmc_breadth_context'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM market_context_backfill_coverage'),
     );
   });
 });

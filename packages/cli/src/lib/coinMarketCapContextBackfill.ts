@@ -1,13 +1,11 @@
 import chalk from 'chalk';
 import { delay } from '@tradejs/core/async';
 import {
-  getMarketCmcBreadthContextCoverage,
   getMarketCmcExchangeLiquidityContextCoverage,
   getMarketCmcFearGreedContextCoverage,
   getMarketContextBackfillCoverage,
   getMarketGlobalContextCoverage,
   getMarketReferenceAssetContextCoverage,
-  upsertMarketCmcBreadthContextRows,
   upsertMarketCmcExchangeLiquidityContextRows,
   upsertMarketCmcFearGreedContextRows,
   upsertMarketContextBackfillCoverage,
@@ -20,8 +18,6 @@ import type {
   CmcExchangeLiquidityRegime,
   CmcFearGreedClassification,
   CmcFearGreedRegime,
-  CmcMarketBreadthRegime,
-  MarketCmcBreadthContextRow,
   MarketCmcExchangeLiquidityContextRow,
   MarketCmcFearGreedContextRow,
   MarketGlobalContextRow,
@@ -45,12 +41,9 @@ type BackfillResult = {
   cached: boolean;
 };
 
-const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const SOURCE_GLOBAL_DAILY = 'coinmarketcap_global' as const;
-const SOURCE_GLOBAL_HOURLY = 'coinmarketcap_global_hourly' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
-const SOURCE_BREADTH = 'coinmarketcap_market_breadth' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
 const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
 const COVERAGE_SCOPE_ALL = 'all';
@@ -65,18 +58,6 @@ const DEFAULT_EXCHANGE_SLUGS = [
   'bybit',
   'kraken',
 ] as const;
-const STABLECOIN_SYMBOLS = new Set([
-  'USDT',
-  'USDC',
-  'DAI',
-  'FDUSD',
-  'TUSD',
-  'USDE',
-  'USDS',
-  'BUSD',
-  'PYUSD',
-]);
-
 let lastRequestTs = 0;
 
 const asInt = (value: unknown, fallback: number) => {
@@ -106,14 +87,8 @@ const getMaxRetries = () => asInt(process.env.COINMARKETCAP_MAX_RETRIES, 4);
 const getMaxBackfillDays = () =>
   asInt(process.env.COINMARKETCAP_CONTEXT_BACKFILL_MAX_DAYS, 1098);
 
-const getBreadthTopLimit = () =>
-  asInt(process.env.COINMARKETCAP_CONTEXT_BREADTH_TOP_LIMIT, 100);
-
-const isHourlyBackfillEnabled = () =>
-  parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_HOURLY_ENABLED, true);
-
-const isBreadthBackfillEnabled = () =>
-  parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_BREADTH_ENABLED, true);
+const getHistoricalAccessMonths = () =>
+  asInt(process.env.COINMARKETCAP_CONTEXT_HISTORICAL_ACCESS_MONTHS, 36);
 
 const isExchangeLiquidityBackfillEnabled = () =>
   parseEnabledFlag(
@@ -161,34 +136,6 @@ const getNestedRecord = (
   key: string,
 ): Record<string, unknown> => getRecord(value[key]);
 
-const normalizePercentChange = (value: unknown) => {
-  const numeric = toFiniteNumberOrNull(value);
-  return numeric == null ? null : numeric / 100;
-};
-
-const average = (values: number[]) =>
-  values.length
-    ? values.reduce((sum, value) => sum + value, 0) / values.length
-    : null;
-
-const median = (values: number[]) => {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
-};
-
-const standardDeviation = (values: number[]) => {
-  if (values.length < 2) return null;
-  const avg = average(values);
-  if (avg == null) return null;
-  const variance =
-    values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
-};
-
 const safeDivide = (numerator: number | null, denominator: number | null) =>
   numerator != null && denominator != null && denominator > 0
     ? numerator / denominator
@@ -196,39 +143,6 @@ const safeDivide = (numerator: number | null, denominator: number | null) =>
 
 const sumFinite = (values: Array<number | null>) =>
   values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
-
-const toBreadthRegime = ({
-  positive24hPct,
-  avgReturn24hPct,
-  returnDispersion24hPct,
-  btcMarketCapShare,
-  btcEthMarketCapShare,
-}: {
-  positive24hPct: number | null;
-  avgReturn24hPct: number | null;
-  returnDispersion24hPct: number | null;
-  btcMarketCapShare: number | null;
-  btcEthMarketCapShare: number | null;
-}): CmcMarketBreadthRegime => {
-  if (positive24hPct == null && avgReturn24hPct == null) return 'unknown';
-  if ((positive24hPct ?? 0) >= 0.62 && (avgReturn24hPct ?? 0) >= 0.01) {
-    return btcEthMarketCapShare != null && btcEthMarketCapShare <= 0.45
-      ? 'alt_broadening'
-      : 'risk_on';
-  }
-  if ((positive24hPct ?? 1) <= 0.38 && (avgReturn24hPct ?? 0) <= -0.01) {
-    return 'risk_off';
-  }
-  if (
-    btcMarketCapShare != null &&
-    btcMarketCapShare >= 0.45 &&
-    (positive24hPct == null || positive24hPct < 0.55)
-  ) {
-    return 'btc_concentrated';
-  }
-  if ((returnDispersion24hPct ?? 0) >= 0.06) return 'mixed';
-  return 'neutral';
-};
 
 const toExchangeLiquidityRegime = ({
   binanceVolumeShare,
@@ -284,16 +198,46 @@ const dayStartUtc = (ms: number) => {
 
 const toIsoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-const toIso = (ms: number) => new Date(ms).toISOString();
+const subtractUtcMonths = (ms: number, months: number) => {
+  const date = new Date(ms);
+  const targetMonthIndex = date.getUTCMonth() - months;
+  const targetMonthStart = new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      targetMonthIndex,
+      1,
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds(),
+      date.getUTCMilliseconds(),
+    ),
+  );
+  const daysInTargetMonth = new Date(
+    Date.UTC(
+      targetMonthStart.getUTCFullYear(),
+      targetMonthStart.getUTCMonth() + 1,
+      0,
+    ),
+  ).getUTCDate();
+  targetMonthStart.setUTCDate(Math.min(date.getUTCDate(), daysInTargetMonth));
+  return targetMonthStart.getTime();
+};
 
-const resolveWindow = (params: BackfillParams) => {
+const nextUtcDayStart = (ms: number) => dayStartUtc(ms) + DAY_MS;
+
+export const resolveCoinMarketCapBackfillWindow = (
+  params: BackfillParams & { nowMs?: number },
+) => {
   const warmupMs =
     asInt(process.env.COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS, 35) * DAY_MS;
   const maxWindowMs = getMaxBackfillDays() * DAY_MS;
   const requestedStart = params.preloadStartMs ?? params.startMs - warmupMs;
   const cappedStart = Math.max(requestedStart, params.endMs - maxWindowMs);
+  const accessFloorMs = nextUtcDayStart(
+    subtractUtcMonths(params.nowMs ?? Date.now(), getHistoricalAccessMonths()),
+  );
   return {
-    fromMs: dayStartUtc(cappedStart),
+    fromMs: dayStartUtc(Math.max(cappedStart, accessFloorMs)),
     toMs: dayStartUtc(params.endMs),
   };
 };
@@ -324,25 +268,6 @@ const hasDailyCoverage = (
   fromMs: number,
   toMs: number,
 ) => hasIntervalCoverage(coverage, fromMs, toMs, DAY_MS);
-
-const hasHourlyCoverage = (
-  coverage:
-    | { firstMs: number; lastMs: number; rows: number }
-    | null
-    | undefined,
-  fromMs: number,
-  toMs: number,
-) => hasIntervalCoverage(coverage, fromMs, toMs, HOUR_MS);
-
-const buildHourlyChunks = (fromMs: number, toMs: number) => {
-  const chunkMs =
-    asInt(process.env.COINMARKETCAP_CONTEXT_HOURLY_CHUNK_DAYS, 240) * DAY_MS;
-  const chunks: Array<{ fromMs: number; toMs: number }> = [];
-  for (let start = fromMs; start < toMs; start += chunkMs) {
-    chunks.push({ fromMs: start, toMs: Math.min(toMs, start + chunkMs) });
-  }
-  return chunks;
-};
 
 const coverageKey = (params: {
   source: string;
@@ -385,6 +310,56 @@ const hasBackfillCoverage = (
   },
 ) => coverageKeys.has(coverageKey(params));
 
+type DailyCoverage = { firstMs: number; lastMs: number; rows: number };
+type SourceBackfillStatus =
+  | 'cached'
+  | 'backfill_covered'
+  | 'fetch_pending'
+  | 'fetched'
+  | 'disabled';
+
+const formatCoverageRange = (coverage: DailyCoverage | null | undefined) => {
+  if (!coverage) return 'coverage=none';
+  return `coverage=${new Date(coverage.firstMs).toISOString()}..${new Date(
+    coverage.lastMs,
+  ).toISOString()} rows=${coverage.rows}`;
+};
+
+const formatReferenceCoverage = (
+  coverage: Map<string, DailyCoverage>,
+): string =>
+  REFERENCE_ASSETS.map(
+    (asset) =>
+      `${asset.symbol}:${formatCoverageRange(coverage.get(asset.symbol))}`,
+  ).join(' ');
+
+const resolveBackfillStatus = ({
+  enabled = true,
+  cached,
+  covered,
+}: {
+  enabled?: boolean;
+  cached: boolean;
+  covered: boolean;
+}): SourceBackfillStatus => {
+  if (!enabled) return 'disabled';
+  if (cached) return 'cached';
+  if (covered) return 'backfill_covered';
+  return 'fetch_pending';
+};
+
+const formatSourceStatus = ({
+  name,
+  status,
+  rows,
+  coverage,
+}: {
+  name: string;
+  status: SourceBackfillStatus;
+  rows?: number;
+  coverage: string;
+}) => `${name}=${status}${rows == null ? '' : ` rows=${rows}`} ${coverage}`;
+
 const markBackfillCoverage = (
   rows: Array<{
     source: string;
@@ -395,14 +370,6 @@ const markBackfillCoverage = (
     rowsCount: number;
   }>,
 ) => upsertMarketContextBackfillCoverage(rows);
-
-const enumerateDailyTimestamps = (fromMs: number, toMs: number) => {
-  const items: number[] = [];
-  for (let ts = fromMs; ts < toMs; ts += DAY_MS) {
-    items.push(ts);
-  }
-  return items;
-};
 
 const coinMarketCapFetch = async (params: {
   path: string;
@@ -533,51 +500,9 @@ const normalizeAssetDataItems = (payload: unknown) => {
   return [];
 };
 
-export const coinMarketCapOhlcvPayloadToRows = (
-  payload: unknown,
-  interval: MarketReferenceAssetContextRow['interval'] = '1d',
-): MarketReferenceAssetContextRow[] => {
-  return normalizeAssetDataItems(payload).flatMap((asset) => {
-    const cmcId = toIntOrNull(asset.id);
-    const symbolRaw = String(asset.symbol ?? '')
-      .trim()
-      .toUpperCase();
-    const target = REFERENCE_ASSETS.find(
-      (item) =>
-        item.cmcId === cmcId || item.symbol.replace('USDT', '') === symbolRaw,
-    );
-    const quotes = Array.isArray(asset.quotes) ? asset.quotes : [];
-    if (!target || !cmcId || !quotes.length) return [];
-
-    return quotes
-      .map((item): MarketReferenceAssetContextRow | null => {
-        const record = getRecord(item);
-        const quote = getRecord(getRecord(record.quote).USD);
-        const tsRaw = quote.timestamp ?? record.time_close ?? record.timestamp;
-        const ts = typeof tsRaw === 'string' ? new Date(tsRaw) : null;
-        if (!ts || Number.isNaN(ts.getTime())) return null;
-
-        return {
-          source: SOURCE_REFERENCE,
-          symbol: target.symbol,
-          cmcId,
-          interval,
-          ts,
-          openUsd: toFiniteNumberOrNull(quote.open),
-          highUsd: toFiniteNumberOrNull(quote.high),
-          lowUsd: toFiniteNumberOrNull(quote.low),
-          closeUsd: toFiniteNumberOrNull(quote.close),
-          volumeUsd: toFiniteNumberOrNull(quote.volume),
-          marketCapUsd: toFiniteNumberOrNull(quote.market_cap),
-        };
-      })
-      .filter((row): row is MarketReferenceAssetContextRow => row != null);
-  });
-};
-
 export const coinMarketCapHistoricalQuotesPayloadToRows = (
   payload: unknown,
-  interval: MarketReferenceAssetContextRow['interval'] = '1h',
+  interval: MarketReferenceAssetContextRow['interval'] = '1d',
 ): MarketReferenceAssetContextRow[] => {
   return normalizeAssetDataItems(payload).flatMap((asset) => {
     const cmcId = toIntOrNull(asset.id);
@@ -617,122 +542,6 @@ export const coinMarketCapHistoricalQuotesPayloadToRows = (
       })
       .filter((row): row is MarketReferenceAssetContextRow => row != null);
   });
-};
-
-export const coinMarketCapListingsPayloadToBreadthRow = (
-  payload: unknown,
-  params: {
-    ts: Date;
-    topLimit?: number;
-    universe?: string;
-  },
-): MarketCmcBreadthContextRow | null => {
-  const data = getRecord(payload).data;
-  const items = Array.isArray(data) ? data : [];
-  const topLimit = params.topLimit ?? getBreadthTopLimit();
-  const assets = items
-    .map((item) => getRecord(item))
-    .filter((item) => Object.keys(item).length > 0)
-    .slice(0, topLimit);
-  if (!assets.length) return null;
-
-  const rows = assets.map((asset) => {
-    const quote = getNestedRecord(getNestedRecord(asset, 'quote'), 'USD');
-    return {
-      id: toIntOrNull(asset.id),
-      symbol: String(asset.symbol ?? '')
-        .trim()
-        .toUpperCase(),
-      marketCap: toFiniteNumberOrNull(quote.market_cap),
-      volume: toFiniteNumberOrNull(quote.volume_24h),
-      return24h: normalizePercentChange(quote.percent_change_24h),
-      return7d: normalizePercentChange(quote.percent_change_7d),
-    };
-  });
-  const marketCaps = rows.map((row) => row.marketCap);
-  const volumes = rows.map((row) => row.volume);
-  const totalMarketCapUsd = sumFinite(marketCaps);
-  const totalVolumeUsd = sumFinite(volumes);
-  const returns24h = rows
-    .map((row) => row.return24h)
-    .filter((value): value is number => value != null);
-  const returns7d = rows
-    .map((row) => row.return7d)
-    .filter((value): value is number => value != null);
-  const positive24hPct =
-    returns24h.length > 0
-      ? returns24h.filter((value) => value > 0).length / returns24h.length
-      : null;
-  const positive7dPct =
-    returns7d.length > 0
-      ? returns7d.filter((value) => value > 0).length / returns7d.length
-      : null;
-  const top10MarketCapShare = safeDivide(
-    sumFinite(marketCaps.slice(0, 10)),
-    totalMarketCapUsd,
-  );
-  const top25MarketCapShare = safeDivide(
-    sumFinite(marketCaps.slice(0, 25)),
-    totalMarketCapUsd,
-  );
-  const btcMarketCap =
-    rows.find((row) => row.symbol === 'BTC')?.marketCap ?? null;
-  const ethMarketCap =
-    rows.find((row) => row.symbol === 'ETH')?.marketCap ?? null;
-  const stablecoinMarketCap = sumFinite(
-    rows
-      .filter((row) => STABLECOIN_SYMBOLS.has(row.symbol))
-      .map((row) => row.marketCap),
-  );
-  const stablecoinVolume = sumFinite(
-    rows
-      .filter((row) => STABLECOIN_SYMBOLS.has(row.symbol))
-      .map((row) => row.volume),
-  );
-  const avgReturn24hPct = average(returns24h);
-  const returnDispersion24hPct = standardDeviation(returns24h);
-  const btcMarketCapShare = safeDivide(btcMarketCap, totalMarketCapUsd);
-  const ethMarketCapShare = safeDivide(ethMarketCap, totalMarketCapUsd);
-  const btcEthMarketCapShare = safeDivide(
-    sumFinite([btcMarketCap, ethMarketCap]),
-    totalMarketCapUsd,
-  );
-
-  return {
-    source: SOURCE_BREADTH,
-    universe: params.universe ?? `cmc_top${topLimit}`,
-    interval: '1d',
-    ts: params.ts,
-    topAssetsCount: topLimit,
-    assetsCount: rows.length,
-    positive24hPct,
-    positive7dPct,
-    avgReturn24hPct,
-    medianReturn24hPct: median(returns24h),
-    avgReturn7dPct: average(returns7d),
-    medianReturn7dPct: median(returns7d),
-    returnDispersion24hPct,
-    returnDispersion7dPct: standardDeviation(returns7d),
-    top10MarketCapShare,
-    top25MarketCapShare,
-    btcMarketCapShare,
-    ethMarketCapShare,
-    btcEthMarketCapShare,
-    stablecoinMarketCapShare: safeDivide(
-      stablecoinMarketCap,
-      totalMarketCapUsd,
-    ),
-    stablecoinVolumeShare: safeDivide(stablecoinVolume, totalVolumeUsd),
-    totalMarketCapUsd,
-    totalVolumeUsd,
-    breadthRegime: toBreadthRegime({
-      positive24hPct,
-      avgReturn24hPct,
-      returnDispersion24hPct,
-      btcMarketCapShare,
-      btcEthMarketCapShare,
-    }),
-  };
 };
 
 export const coinMarketCapExchangeQuotesPayloadToLiquidityRows = (
@@ -854,19 +663,49 @@ export const coinMarketCapFearGreedPayloadToRows = (
     .filter((row): row is MarketCmcFearGreedContextRow => row != null);
 };
 
-export const shouldBackfillCoinMarketCapContextForBacktest = ({
+const shouldBackfillCoinMarketCapContextForMode = ({
+  mode,
   aiEnabled,
   cacheOnly,
   mlEnabled,
 }: {
+  mode: 'backtest' | 'replay' | 'signals' | 'parity';
+  aiEnabled?: boolean;
+  cacheOnly: boolean;
+  mlEnabled?: boolean;
+}) =>
+  parseEnabledFlag(
+    process.env.COINMARKETCAP_CONTEXT_BACKFILL_ENABLED,
+    mode === 'backtest'
+      ? (Boolean(aiEnabled) || Boolean(mlEnabled)) && !cacheOnly
+      : !cacheOnly,
+  );
+
+export const shouldBackfillCoinMarketCapContextForBacktest = (params: {
   aiEnabled: boolean;
   cacheOnly: boolean;
   mlEnabled: boolean;
 }) =>
-  parseEnabledFlag(
-    process.env.COINMARKETCAP_CONTEXT_BACKFILL_ENABLED,
-    (aiEnabled || mlEnabled) && !cacheOnly,
-  );
+  shouldBackfillCoinMarketCapContextForMode({
+    mode: 'backtest',
+    ...params,
+  });
+
+export const shouldBackfillCoinMarketCapContextForReplay = (params: {
+  cacheOnly: boolean;
+}) =>
+  shouldBackfillCoinMarketCapContextForMode({
+    mode: 'replay',
+    ...params,
+  });
+
+export const shouldBackfillCoinMarketCapContextForSignals = (params: {
+  cacheOnly: boolean;
+}) =>
+  shouldBackfillCoinMarketCapContextForMode({
+    mode: 'signals',
+    ...params,
+  });
 
 const skippedResult = (cached = false): BackfillResult => ({
   skipped: true,
@@ -878,39 +717,27 @@ const skippedResult = (cached = false): BackfillResult => ({
   cached,
 });
 
-export const backfillCoinMarketCapContextForBacktest = async (
+export const backfillCoinMarketCapContext = async (
   params: BackfillParams,
 ): Promise<BackfillResult> => {
   if (params.endMs <= params.startMs) {
     return skippedResult();
   }
 
-  const { fromMs, toMs } = resolveWindow(params);
+  const { fromMs, toMs } = resolveCoinMarketCapBackfillWindow(params);
   if (toMs <= fromMs) return skippedResult();
 
-  const hourlyEnabled = isHourlyBackfillEnabled();
-  const breadthEnabled = isBreadthBackfillEnabled();
   const exchangeLiquidityEnabled = isExchangeLiquidityBackfillEnabled();
   const fearGreedEnabled = isFearGreedBackfillEnabled();
-  const breadthTopLimit = getBreadthTopLimit();
-  const breadthUniverse = `cmc_top${breadthTopLimit}`;
-  const hourlyChunks = buildHourlyChunks(fromMs, toMs);
-  const dailyTimestamps = enumerateDailyTimestamps(fromMs, toMs);
 
   await waitForDbReady();
   const [
     globalDailyCoverage,
     referenceDailyCoverage,
-    globalHourlyCoverage,
-    referenceHourlyCoverage,
-    breadthCoverage,
     exchangeLiquidityCoverage,
     fearGreedCoverage,
     globalDailyBackfillCoverage,
     referenceDailyBackfillCoverage,
-    globalHourlyBackfillCoverage,
-    referenceHourlyBackfillCoverage,
-    breadthBackfillCoverage,
     exchangeLiquidityBackfillCoverage,
     fearGreedBackfillCoverage,
   ] = await Promise.all([
@@ -926,31 +753,6 @@ export const backfillCoinMarketCapContextForBacktest = async (
       startMs: fromMs,
       endMs: toMs,
     }),
-    hourlyEnabled
-      ? getMarketGlobalContextCoverage({
-          source: SOURCE_GLOBAL_HOURLY,
-          startMs: fromMs,
-          endMs: toMs,
-        })
-      : Promise.resolve(null),
-    hourlyEnabled
-      ? getMarketReferenceAssetContextCoverage({
-          source: SOURCE_REFERENCE,
-          symbols: REFERENCE_ASSETS.map((item) => item.symbol),
-          interval: '1h',
-          startMs: fromMs,
-          endMs: toMs,
-        })
-      : Promise.resolve(new Map()),
-    breadthEnabled
-      ? getMarketCmcBreadthContextCoverage({
-          source: SOURCE_BREADTH,
-          universe: breadthUniverse,
-          interval: '1d',
-          startMs: fromMs,
-          endMs: toMs,
-        })
-      : Promise.resolve(null),
     exchangeLiquidityEnabled
       ? getMarketCmcExchangeLiquidityContextCoverage({
           source: SOURCE_EXCHANGE_LIQUIDITY,
@@ -981,33 +783,6 @@ export const backfillCoinMarketCapContextForBacktest = async (
       fromMs,
       toMs,
     }),
-    hourlyEnabled
-      ? getMarketContextBackfillCoverage({
-          source: SOURCE_GLOBAL_HOURLY,
-          scopes: [COVERAGE_SCOPE_ALL],
-          interval: '1h',
-          fromMs,
-          toMs,
-        })
-      : Promise.resolve([]),
-    hourlyEnabled
-      ? getMarketContextBackfillCoverage({
-          source: SOURCE_REFERENCE,
-          scopes: REFERENCE_ASSETS.map((item) => item.symbol),
-          interval: '1h',
-          fromMs,
-          toMs,
-        })
-      : Promise.resolve([]),
-    breadthEnabled
-      ? getMarketContextBackfillCoverage({
-          source: SOURCE_BREADTH,
-          scopes: [breadthUniverse],
-          interval: '1d',
-          fromMs,
-          toMs,
-        })
-      : Promise.resolve([]),
     exchangeLiquidityEnabled
       ? getMarketContextBackfillCoverage({
           source: SOURCE_EXCHANGE_LIQUIDITY,
@@ -1033,13 +808,6 @@ export const backfillCoinMarketCapContextForBacktest = async (
   const referenceDailyBackfillKeys = coverageRowsToKeySet(
     referenceDailyBackfillCoverage,
   );
-  const globalHourlyBackfillKeys = coverageRowsToKeySet(
-    globalHourlyBackfillCoverage,
-  );
-  const referenceHourlyBackfillKeys = coverageRowsToKeySet(
-    referenceHourlyBackfillCoverage,
-  );
-  const breadthBackfillKeys = coverageRowsToKeySet(breadthBackfillCoverage);
   const exchangeLiquidityBackfillKeys = coverageRowsToKeySet(
     exchangeLiquidityBackfillCoverage,
   );
@@ -1049,109 +817,107 @@ export const backfillCoinMarketCapContextForBacktest = async (
   const referencesDailyCached = REFERENCE_ASSETS.every((asset) =>
     hasDailyCoverage(referenceDailyCoverage.get(asset.symbol), fromMs, toMs),
   );
-  const globalHourlyCached =
-    !hourlyEnabled || hasHourlyCoverage(globalHourlyCoverage, fromMs, toMs);
-  const referencesHourlyCached =
-    !hourlyEnabled ||
-    REFERENCE_ASSETS.every((asset) =>
-      hasHourlyCoverage(
-        referenceHourlyCoverage.get(asset.symbol),
-        fromMs,
-        toMs,
-      ),
-    );
-  const breadthCached =
-    !breadthEnabled || hasDailyCoverage(breadthCoverage, fromMs, toMs);
   const exchangeLiquidityCached =
     !exchangeLiquidityEnabled ||
     hasDailyCoverage(exchangeLiquidityCoverage, fromMs, toMs);
   const fearGreedCached =
     !fearGreedEnabled || hasDailyCoverage(fearGreedCoverage, fromMs, toMs);
-  const globalDailyReady =
-    globalDailyCached ||
-    hasBackfillCoverage(globalDailyBackfillKeys, {
+  const globalDailyBackfillCovered = hasBackfillCoverage(
+    globalDailyBackfillKeys,
+    {
       source: SOURCE_GLOBAL_DAILY,
       scope: COVERAGE_SCOPE_ALL,
       interval: '1d',
       fromMs,
       toMs,
-    });
-  const referencesDailyReady =
-    referencesDailyCached ||
-    REFERENCE_ASSETS.every((asset) =>
-      hasBackfillCoverage(referenceDailyBackfillKeys, {
-        source: SOURCE_REFERENCE,
-        scope: asset.symbol,
-        interval: '1d',
-        fromMs,
-        toMs,
-      }),
-    );
-  const globalHourlyReady =
-    !hourlyEnabled ||
-    globalHourlyCached ||
-    hourlyChunks.every((chunk) =>
-      hasBackfillCoverage(globalHourlyBackfillKeys, {
-        source: SOURCE_GLOBAL_HOURLY,
-        scope: COVERAGE_SCOPE_ALL,
-        interval: '1h',
-        fromMs: chunk.fromMs,
-        toMs: chunk.toMs,
-      }),
-    );
-  const referencesHourlyReady =
-    !hourlyEnabled ||
-    referencesHourlyCached ||
-    hourlyChunks.every((chunk) =>
-      REFERENCE_ASSETS.every((asset) =>
-        hasBackfillCoverage(referenceHourlyBackfillKeys, {
-          source: SOURCE_REFERENCE,
-          scope: asset.symbol,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-        }),
-      ),
-    );
-  const breadthReady =
-    breadthCached ||
-    !breadthEnabled ||
-    dailyTimestamps.every((ts) =>
-      hasBackfillCoverage(breadthBackfillKeys, {
-        source: SOURCE_BREADTH,
-        scope: breadthUniverse,
-        interval: '1d',
-        fromMs: ts,
-        toMs: ts + DAY_MS,
-      }),
-    );
-  const exchangeLiquidityReady =
-    exchangeLiquidityCached ||
-    !exchangeLiquidityEnabled ||
-    hasBackfillCoverage(exchangeLiquidityBackfillKeys, {
+    },
+  );
+  const referencesDailyBackfillCovered = REFERENCE_ASSETS.every((asset) =>
+    hasBackfillCoverage(referenceDailyBackfillKeys, {
+      source: SOURCE_REFERENCE,
+      scope: asset.symbol,
+      interval: '1d',
+      fromMs,
+      toMs,
+    }),
+  );
+  const exchangeLiquidityBackfillCovered = hasBackfillCoverage(
+    exchangeLiquidityBackfillKeys,
+    {
       source: SOURCE_EXCHANGE_LIQUIDITY,
       scope: COVERAGE_SCOPE_ALL,
       interval: '1d',
       fromMs,
       toMs,
-    });
+    },
+  );
+  const fearGreedBackfillCovered = hasBackfillCoverage(fearGreedBackfillKeys, {
+    source: SOURCE_FEAR_GREED,
+    scope: COVERAGE_SCOPE_ALL,
+    interval: '1d',
+    fromMs,
+    toMs,
+  });
+  const globalDailyReady = globalDailyCached || globalDailyBackfillCovered;
+  const referencesDailyReady =
+    referencesDailyCached || referencesDailyBackfillCovered;
+  const exchangeLiquidityReady =
+    exchangeLiquidityCached ||
+    !exchangeLiquidityEnabled ||
+    exchangeLiquidityBackfillCovered;
   const fearGreedReady =
-    fearGreedCached ||
-    !fearGreedEnabled ||
-    hasBackfillCoverage(fearGreedBackfillKeys, {
-      source: SOURCE_FEAR_GREED,
-      scope: COVERAGE_SCOPE_ALL,
-      interval: '1d',
-      fromMs,
-      toMs,
-    });
+    fearGreedCached || !fearGreedEnabled || fearGreedBackfillCovered;
+
+  let globalStatus = resolveBackfillStatus({
+    cached: globalDailyCached,
+    covered: globalDailyBackfillCovered,
+  });
+  let referenceStatus = resolveBackfillStatus({
+    cached: referencesDailyCached,
+    covered: referencesDailyBackfillCovered,
+  });
+  let exchangeLiquidityStatus = resolveBackfillStatus({
+    enabled: exchangeLiquidityEnabled,
+    cached: exchangeLiquidityCached,
+    covered: exchangeLiquidityBackfillCovered,
+  });
+  let fearGreedStatus = resolveBackfillStatus({
+    enabled: fearGreedEnabled,
+    cached: fearGreedCached,
+    covered: fearGreedBackfillCovered,
+  });
+
+  console.log(
+    chalk.gray(
+      [
+        'coinmarketcap context status:',
+        formatSourceStatus({
+          name: 'global',
+          status: globalStatus,
+          coverage: formatCoverageRange(globalDailyCoverage),
+        }),
+        formatSourceStatus({
+          name: 'reference',
+          status: referenceStatus,
+          coverage: formatReferenceCoverage(referenceDailyCoverage),
+        }),
+        formatSourceStatus({
+          name: 'exchangeLiquidity',
+          status: exchangeLiquidityStatus,
+          coverage: formatCoverageRange(exchangeLiquidityCoverage),
+        }),
+        formatSourceStatus({
+          name: 'fearGreed',
+          status: fearGreedStatus,
+          coverage: formatCoverageRange(fearGreedCoverage),
+        }),
+      ].join(' '),
+    ),
+  );
 
   if (
     globalDailyReady &&
     referencesDailyReady &&
-    globalHourlyReady &&
-    referencesHourlyReady &&
-    breadthReady &&
     exchangeLiquidityReady &&
     fearGreedReady
   ) {
@@ -1173,7 +939,6 @@ export const backfillCoinMarketCapContextForBacktest = async (
 
   let globalRows = 0;
   let referenceRows = 0;
-  let breadthRows = 0;
   let exchangeLiquidityRows = 0;
   let fearGreedRows = 0;
   console.log(
@@ -1206,22 +971,22 @@ export const backfillCoinMarketCapContextForBacktest = async (
       },
     ]);
     globalRows += rows.length;
+    globalStatus = 'fetched';
   }
 
   if (!referencesDailyReady) {
     const payload = await coinMarketCapFetch({
-      path: '/v2/cryptocurrency/ohlcv/historical',
+      path: '/v3/cryptocurrency/quotes/historical',
       apiKey,
       searchParams: {
         id: REFERENCE_ASSETS.map((item) => item.cmcId).join(','),
         time_start: toIsoDate(fromMs),
         time_end: toIsoDate(toMs),
-        interval_period: 'daily',
         interval: '1d',
         convert: 'USD',
       },
     });
-    const rows = coinMarketCapOhlcvPayloadToRows(payload, '1d');
+    const rows = coinMarketCapHistoricalQuotesPayloadToRows(payload, '1d');
     await upsertMarketReferenceAssetContextRows(rows);
     await markBackfillCoverage(
       REFERENCE_ASSETS.map((asset) => ({
@@ -1234,170 +999,7 @@ export const backfillCoinMarketCapContextForBacktest = async (
       })),
     );
     referenceRows += rows.length;
-  }
-
-  if (hourlyEnabled && !globalHourlyCached) {
-    for (const chunk of hourlyChunks) {
-      if (
-        hasBackfillCoverage(globalHourlyBackfillKeys, {
-          source: SOURCE_GLOBAL_HOURLY,
-          scope: COVERAGE_SCOPE_ALL,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-        })
-      ) {
-        continue;
-      }
-      const payload = await coinMarketCapFetch({
-        path: '/v1/global-metrics/quotes/historical',
-        apiKey,
-        searchParams: {
-          time_start: toIso(chunk.fromMs),
-          time_end: toIso(chunk.toMs),
-          interval: '1h',
-          convert: 'USD',
-        },
-      });
-      const rows = coinMarketCapGlobalPayloadToRows(
-        payload,
-        SOURCE_GLOBAL_HOURLY,
-      );
-      await upsertMarketGlobalContextRows(rows);
-      await markBackfillCoverage([
-        {
-          source: SOURCE_GLOBAL_HOURLY,
-          scope: COVERAGE_SCOPE_ALL,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-          rowsCount: rows.length,
-        },
-      ]);
-      globalHourlyBackfillKeys.add(
-        coverageKey({
-          source: SOURCE_GLOBAL_HOURLY,
-          scope: COVERAGE_SCOPE_ALL,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-        }),
-      );
-      globalRows += rows.length;
-    }
-  }
-
-  if (hourlyEnabled && !referencesHourlyCached) {
-    for (const chunk of hourlyChunks) {
-      const chunkCached = REFERENCE_ASSETS.every((asset) =>
-        hasBackfillCoverage(referenceHourlyBackfillKeys, {
-          source: SOURCE_REFERENCE,
-          scope: asset.symbol,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-        }),
-      );
-      if (chunkCached) {
-        continue;
-      }
-      const payload = await coinMarketCapFetch({
-        path: '/v3/cryptocurrency/quotes/historical',
-        apiKey,
-        searchParams: {
-          id: REFERENCE_ASSETS.map((item) => item.cmcId).join(','),
-          time_start: toIso(chunk.fromMs),
-          time_end: toIso(chunk.toMs),
-          interval: '1h',
-          convert: 'USD',
-        },
-      });
-      const rows = coinMarketCapHistoricalQuotesPayloadToRows(payload, '1h');
-      await upsertMarketReferenceAssetContextRows(rows);
-      await markBackfillCoverage(
-        REFERENCE_ASSETS.map((asset) => ({
-          source: SOURCE_REFERENCE,
-          scope: asset.symbol,
-          interval: '1h',
-          fromMs: chunk.fromMs,
-          toMs: chunk.toMs,
-          rowsCount: rows.filter((row) => row.symbol === asset.symbol).length,
-        })),
-      );
-      for (const asset of REFERENCE_ASSETS) {
-        referenceHourlyBackfillKeys.add(
-          coverageKey({
-            source: SOURCE_REFERENCE,
-            scope: asset.symbol,
-            interval: '1h',
-            fromMs: chunk.fromMs,
-            toMs: chunk.toMs,
-          }),
-        );
-      }
-      referenceRows += rows.length;
-    }
-  }
-
-  if (breadthEnabled && !breadthCached) {
-    const rows: MarketCmcBreadthContextRow[] = [];
-    for (const ts of dailyTimestamps) {
-      if (
-        hasBackfillCoverage(breadthBackfillKeys, {
-          source: SOURCE_BREADTH,
-          scope: breadthUniverse,
-          interval: '1d',
-          fromMs: ts,
-          toMs: ts + DAY_MS,
-        })
-      ) {
-        continue;
-      }
-      const payload = await coinMarketCapFetch({
-        path: '/v1/cryptocurrency/listings/historical',
-        apiKey,
-        searchParams: {
-          date: toIsoDate(ts),
-          start: '1',
-          limit: String(breadthTopLimit),
-          sort: 'market_cap',
-          sort_dir: 'desc',
-          cryptocurrency_type: 'all',
-          convert: 'USD',
-        },
-      });
-      const row = coinMarketCapListingsPayloadToBreadthRow(payload, {
-        ts: new Date(ts),
-        topLimit: breadthTopLimit,
-        universe: breadthUniverse,
-      });
-      if (row) rows.push(row);
-      await markBackfillCoverage([
-        {
-          source: SOURCE_BREADTH,
-          scope: breadthUniverse,
-          interval: '1d',
-          fromMs: ts,
-          toMs: ts + DAY_MS,
-          rowsCount: row ? 1 : 0,
-        },
-      ]);
-      breadthBackfillKeys.add(
-        coverageKey({
-          source: SOURCE_BREADTH,
-          scope: breadthUniverse,
-          interval: '1d',
-          fromMs: ts,
-          toMs: ts + DAY_MS,
-        }),
-      );
-      if (rows.length >= 250) {
-        breadthRows += rows.length;
-        await upsertMarketCmcBreadthContextRows(rows.splice(0, rows.length));
-      }
-    }
-    breadthRows += rows.length;
-    await upsertMarketCmcBreadthContextRows(rows);
+    referenceStatus = 'fetched';
   }
 
   if (exchangeLiquidityEnabled && !exchangeLiquidityReady) {
@@ -1428,6 +1030,7 @@ export const backfillCoinMarketCapContextForBacktest = async (
       },
     ]);
     exchangeLiquidityRows = rows.length;
+    exchangeLiquidityStatus = 'fetched';
   }
 
   if (fearGreedEnabled && !fearGreedReady) {
@@ -1464,11 +1067,18 @@ export const backfillCoinMarketCapContextForBacktest = async (
       },
     ]);
     fearGreedRows = rows.length;
+    fearGreedStatus = 'fetched';
   }
 
   console.log(
     chalk.green(
-      `coinmarketcap context backfill done: globalRows=${globalRows}, referenceRows=${referenceRows}, breadthRows=${breadthRows}, exchangeLiquidityRows=${exchangeLiquidityRows}, fearGreedRows=${fearGreedRows}`,
+      [
+        'coinmarketcap context backfill done:',
+        `global=${globalStatus} rows=${globalRows}`,
+        `reference=${referenceStatus} rows=${referenceRows}`,
+        `exchangeLiquidity=${exchangeLiquidityStatus} rows=${exchangeLiquidityRows}`,
+        `fearGreed=${fearGreedStatus} rows=${fearGreedRows}`,
+      ].join(' '),
     ),
   );
 
@@ -1476,9 +1086,16 @@ export const backfillCoinMarketCapContextForBacktest = async (
     skipped: false,
     globalRows,
     referenceRows,
-    breadthRows,
+    breadthRows: 0,
     exchangeLiquidityRows,
     fearGreedRows,
     cached: false,
   };
 };
+
+export const backfillCoinMarketCapContextForBacktest =
+  backfillCoinMarketCapContext;
+export const backfillCoinMarketCapContextForReplay =
+  backfillCoinMarketCapContext;
+export const backfillCoinMarketCapContextForSignals =
+  backfillCoinMarketCapContext;

@@ -3,9 +3,10 @@ import {
   coinMarketCapFearGreedPayloadToRows,
   coinMarketCapGlobalPayloadToRows,
   coinMarketCapHistoricalQuotesPayloadToRows,
-  coinMarketCapListingsPayloadToBreadthRow,
-  coinMarketCapOhlcvPayloadToRows,
+  resolveCoinMarketCapBackfillWindow,
   shouldBackfillCoinMarketCapContextForBacktest,
+  shouldBackfillCoinMarketCapContextForReplay,
+  shouldBackfillCoinMarketCapContextForSignals,
 } from '../lib/coinMarketCapContextBackfill';
 
 describe('coinMarketCapContextBackfill', () => {
@@ -57,49 +58,46 @@ describe('coinMarketCapContextBackfill', () => {
     ]);
   });
 
-  it('maps historical BTC and ETH OHLCV rows', () => {
-    const rows = coinMarketCapOhlcvPayloadToRows({
-      data: {
-        1: {
-          id: 1,
-          symbol: 'BTC',
-          quotes: [
-            {
-              quote: {
-                USD: {
-                  timestamp: '2026-01-01T00:00:00.000Z',
-                  open: 100,
-                  high: 110,
-                  low: 90,
-                  close: 105,
-                  volume: 1000,
-                  market_cap: 2000,
+  it('maps historical daily BTC and ETH quote rows', () => {
+    const rows = coinMarketCapHistoricalQuotesPayloadToRows(
+      {
+        data: {
+          1: {
+            id: 1,
+            symbol: 'BTC',
+            quotes: [
+              {
+                timestamp: '2026-01-01T00:00:00.000Z',
+                quote: {
+                  USD: {
+                    price: 105,
+                    volume_24h: 1000,
+                    market_cap: 2000,
+                  },
                 },
               },
-            },
-          ],
-        },
-        1027: {
-          id: 1027,
-          symbol: 'ETH',
-          quotes: [
-            {
-              quote: {
-                USD: {
-                  timestamp: '2026-01-01T00:00:00.000Z',
-                  open: 10,
-                  high: 11,
-                  low: 9,
-                  close: 10.5,
-                  volume: 100,
-                  market_cap: 500,
+            ],
+          },
+          1027: {
+            id: 1027,
+            symbol: 'ETH',
+            quotes: [
+              {
+                timestamp: '2026-01-01T00:00:00.000Z',
+                quote: {
+                  USD: {
+                    price: 10.5,
+                    volume_24h: 100,
+                    market_cap: 500,
+                  },
                 },
               },
-            },
-          ],
+            ],
+          },
         },
       },
-    });
+      '1d',
+    );
 
     expect(rows).toEqual([
       expect.objectContaining({
@@ -123,7 +121,7 @@ describe('coinMarketCapContextBackfill', () => {
     ]);
   });
 
-  it('maps hourly BTC and ETH quote rows', () => {
+  it('maps daily BTC and ETH quote rows', () => {
     const rows = coinMarketCapHistoricalQuotesPayloadToRows({
       data: {
         1: {
@@ -165,7 +163,7 @@ describe('coinMarketCapContextBackfill', () => {
       expect.objectContaining({
         source: 'coinmarketcap_reference_asset',
         symbol: 'BTCUSDT',
-        interval: '1h',
+        interval: '1d',
         closeUsd: 101,
         volumeUsd: 1000,
         marketCapUsd: 2000,
@@ -173,86 +171,12 @@ describe('coinMarketCapContextBackfill', () => {
       expect.objectContaining({
         source: 'coinmarketcap_reference_asset',
         symbol: 'ETHUSDT',
-        interval: '1h',
+        interval: '1d',
         closeUsd: 11,
         volumeUsd: 100,
         marketCapUsd: 500,
       }),
     ]);
-  });
-
-  it('aggregates historical listings into CMC market breadth', () => {
-    const row = coinMarketCapListingsPayloadToBreadthRow(
-      {
-        data: [
-          {
-            id: 1,
-            symbol: 'BTC',
-            quote: {
-              USD: {
-                market_cap: 500,
-                volume_24h: 50,
-                percent_change_24h: 2,
-                percent_change_7d: 5,
-              },
-            },
-          },
-          {
-            id: 1027,
-            symbol: 'ETH',
-            quote: {
-              USD: {
-                market_cap: 250,
-                volume_24h: 40,
-                percent_change_24h: 3,
-                percent_change_7d: 6,
-              },
-            },
-          },
-          {
-            id: 825,
-            symbol: 'USDT',
-            quote: {
-              USD: {
-                market_cap: 100,
-                volume_24h: 80,
-                percent_change_24h: 0.01,
-                percent_change_7d: 0.02,
-              },
-            },
-          },
-          {
-            id: 99,
-            symbol: 'ALT',
-            quote: {
-              USD: {
-                market_cap: 50,
-                volume_24h: 20,
-                percent_change_24h: -1,
-                percent_change_7d: 4,
-              },
-            },
-          },
-        ],
-      },
-      { ts: new Date('2026-01-01T00:00:00.000Z'), topLimit: 4 },
-    );
-
-    expect(row).toMatchObject({
-      source: 'coinmarketcap_market_breadth',
-      universe: 'cmc_top4',
-      interval: '1d',
-      topAssetsCount: 4,
-      assetsCount: 4,
-      positive24hPct: 0.75,
-      positive7dPct: 1,
-      totalMarketCapUsd: 900,
-      totalVolumeUsd: 190,
-      stablecoinMarketCapShare: 100 / 900,
-      stablecoinVolumeShare: 80 / 190,
-    });
-    expect(row?.btcMarketCapShare).toBeCloseTo(500 / 900);
-    expect(row?.ethMarketCapShare).toBeCloseTo(250 / 900);
   });
 
   it('aggregates historical exchange quotes into CMC exchange liquidity', () => {
@@ -318,6 +242,23 @@ describe('coinMarketCapContextBackfill', () => {
     ]);
   });
 
+  it('clamps requested windows to the CMC historical access floor', () => {
+    const window = resolveCoinMarketCapBackfillWindow({
+      userName: 'root',
+      startMs: Date.parse('2022-03-08T20:18:03.000Z'),
+      endMs: Date.parse('2026-06-15T20:18:03.000Z'),
+      preloadStartMs: Date.parse('2022-03-08T20:18:03.000Z'),
+      nowMs: Date.parse('2026-06-15T21:00:17.558Z'),
+    });
+
+    expect(new Date(window.fromMs).toISOString()).toBe(
+      '2023-06-16T00:00:00.000Z',
+    );
+    expect(new Date(window.toMs).toISOString()).toBe(
+      '2026-06-15T00:00:00.000Z',
+    );
+  });
+
   it('defaults to historical backfill for AI/ML backtests but not cache-only runs', () => {
     expect(
       shouldBackfillCoinMarketCapContextForBacktest({
@@ -337,6 +278,29 @@ describe('coinMarketCapContextBackfill', () => {
       shouldBackfillCoinMarketCapContextForBacktest({
         aiEnabled: true,
         mlEnabled: false,
+        cacheOnly: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('defaults to historical backfill for replay and signals when not cache-only', () => {
+    expect(
+      shouldBackfillCoinMarketCapContextForReplay({
+        cacheOnly: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBackfillCoinMarketCapContextForSignals({
+        cacheOnly: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBackfillCoinMarketCapContextForReplay({
+        cacheOnly: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldBackfillCoinMarketCapContextForSignals({
         cacheOnly: true,
       }),
     ).toBe(false);

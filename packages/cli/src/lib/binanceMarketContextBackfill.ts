@@ -19,6 +19,7 @@ import type {
 } from '@tradejs/types';
 import {
   aggregateAggTradesToRows,
+  buildKlineTradeFlowRows,
   buildMarketBreadthRows,
   MARKET_FEATURE_INTERVAL_MS,
   selectBreadthUniverseFromTickers,
@@ -177,6 +178,49 @@ export const buildBreadthBackfillChunks = ({
 
   return chunks;
 };
+
+export const buildTradeFlowBackfillChunks = ({
+  startMs,
+  endMs,
+  intervalMs,
+  chunkDays,
+}: {
+  startMs: number;
+  endMs: number;
+  intervalMs: number;
+  chunkDays: number;
+}) => {
+  const chunkMs = Math.max(intervalMs, chunkDays * DAY_MS);
+  const chunks: Array<{ startMs: number; endMs: number }> = [];
+  let cursor = startMs;
+
+  while (cursor <= endMs) {
+    const chunkEndMs = Math.min(endMs, cursor + chunkMs - 1);
+    chunks.push({ startMs: cursor, endMs: chunkEndMs });
+    cursor = chunkEndMs + 1;
+  }
+
+  return chunks;
+};
+
+export const filterMissingBreadthBackfillChunks = ({
+  chunks,
+  coverage,
+  intervalMs,
+}: {
+  chunks: Array<{ startMs: number; endMs: number; fetchStartMs: number }>;
+  coverage?: { firstMs: number; lastMs: number; rows: number } | null;
+  intervalMs: number;
+}) =>
+  chunks.filter(
+    (chunk) =>
+      !hasCoverage({
+        coverage,
+        startMs: chunk.startMs,
+        endMs: chunk.endMs,
+        intervalMs,
+      }),
+  );
 
 const fetchAggTradesForWindow = async ({
   connector,
@@ -339,6 +383,15 @@ const backfillBinanceMarketContext = async (
     process.env.BINANCE_MARKET_CONTEXT_BREADTH_CHUNK_DAYS,
     30,
   );
+  const tradeFlowChunkDays = asFloat(
+    process.env.BINANCE_MARKET_CONTEXT_TRADE_FLOW_CHUNK_DAYS,
+    30,
+  );
+  const tradeFlowSource = String(
+    process.env.BINANCE_MARKET_CONTEXT_TRADE_FLOW_SOURCE || 'klines',
+  )
+    .trim()
+    .toLowerCase();
   const referenceSymbols = getReferenceSymbols().slice(0, symbolLimit);
   const skippedSymbols = Math.max(0, symbols.length - referenceSymbols.length);
 
@@ -378,18 +431,84 @@ const backfillBinanceMarketContext = async (
       bar.tick(1, { rows: 0, skip: referenceSymbols.length, symbol: 'cached' });
     }
 
+    const connectorInterval = marketIntervalToConnectorInterval(interval);
+    const chunks = buildTradeFlowBackfillChunks({
+      startMs: tradeFlowStartMs,
+      endMs,
+      intervalMs,
+      chunkDays: tradeFlowChunkDays,
+    });
+    const chunkBar = missingSymbols.length
+      ? new ProgressBar(
+          'tradeFlow chunks :current/:total [:bar][:percent] :etas(s) rows=:rows skip=:skip chunk=:chunk :symbol',
+          {
+            total: Math.max(1, chunks.length * missingSymbols.length),
+            width: 24,
+          },
+        )
+      : null;
+    let skippedTradeFlowChunks = 0;
+
     for (const symbol of missingSymbols) {
-      const trades = await fetchAggTradesForWindow({
-        connector,
-        symbol,
-        fromMs: tradeFlowStartMs,
-        toMs: endMs,
-        batchMinutes,
-        requestDelayMs,
-      });
-      const rows = aggregateAggTradesToRows({ symbol, interval, trades });
-      await upsertMarketTradeFlowRows(rows);
-      tradeFlowRows += rows.length;
+      const symbolCoverage = coverage.get(symbol);
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+        const chunk = chunks[chunkIndex];
+        if (
+          hasCoverage({
+            coverage: symbolCoverage,
+            startMs: chunk.startMs,
+            endMs: chunk.endMs,
+            intervalMs,
+          })
+        ) {
+          skippedTradeFlowChunks += 1;
+          chunkBar?.tick(1, {
+            rows: tradeFlowRows,
+            skip: skippedTradeFlowChunks,
+            chunk: `${chunkIndex + 1}/${chunks.length}`,
+            symbol,
+          });
+          continue;
+        }
+
+        const rows =
+          tradeFlowSource === 'agg_trades'
+            ? aggregateAggTradesToRows({
+                symbol,
+                interval,
+                trades: await fetchAggTradesForWindow({
+                  connector,
+                  symbol,
+                  fromMs: chunk.startMs,
+                  toMs: chunk.endMs,
+                  batchMinutes,
+                  requestDelayMs,
+                }),
+              })
+            : buildKlineTradeFlowRows({
+                symbol,
+                interval,
+                candles: await connector.kline({
+                  symbol,
+                  interval: connectorInterval as Interval,
+                  start: chunk.startMs,
+                  end: chunk.endMs,
+                  silent: true,
+                }),
+              });
+        const boundedRows = rows.filter((row) => {
+          const ts = row.ts.getTime();
+          return ts >= chunk.startMs && ts <= chunk.endMs;
+        });
+        await upsertMarketTradeFlowRows(boundedRows);
+        tradeFlowRows += boundedRows.length;
+        chunkBar?.tick(1, {
+          rows: tradeFlowRows,
+          skip: skippedTradeFlowChunks,
+          chunk: `${chunkIndex + 1}/${chunks.length}`,
+          symbol,
+        });
+      }
       bar.tick(1, {
         rows: tradeFlowRows,
         skip: referenceSymbols.length - missingSymbols.length + skippedSymbols,
@@ -430,16 +549,38 @@ const backfillBinanceMarketContext = async (
         intervalMs,
         chunkDays: breadthChunkDays,
       });
+      const missingChunks = filterMissingBreadthBackfillChunks({
+        chunks,
+        coverage,
+        intervalMs,
+      });
       const bar = new ProgressBar(
-        'breadth :current/:total [:bar][:percent] :etas(s) candles=:candles chunk=:chunk :symbol',
+        'breadth :current/:total [:bar][:percent] :etas(s) candles=:candles skip=:skip chunk=:chunk :symbol',
         {
-          total: Math.max(1, chunks.length * breadthSymbols.length),
+          total: Math.max(1, missingChunks.length * breadthSymbols.length),
           width: 24,
         },
       );
       let candlesRead = 0;
-      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-        const chunk = chunks[chunkIndex];
+      let skippedBreadthChunks = chunks.length - missingChunks.length;
+      if (!missingChunks.length) {
+        bar.tick(1, {
+          candles: 0,
+          skip: skippedBreadthChunks,
+          chunk: 'cached',
+          symbol: universe,
+        });
+      }
+      for (
+        let chunkIndex = 0;
+        chunkIndex < missingChunks.length;
+        chunkIndex += 1
+      ) {
+        const chunk = missingChunks[chunkIndex];
+        const originalChunkIndex = chunks.findIndex(
+          (item) =>
+            item.startMs === chunk.startMs && item.endMs === chunk.endMs,
+        );
         const candlesBySymbol: Record<string, KlineChartData> = {};
 
         for (const symbol of breadthSymbols) {
@@ -454,7 +595,8 @@ const backfillBinanceMarketContext = async (
           candlesRead += candles.length;
           bar.tick(1, {
             candles: candlesRead,
-            chunk: `${chunkIndex + 1}/${chunks.length}`,
+            skip: skippedBreadthChunks,
+            chunk: `${originalChunkIndex + 1}/${chunks.length}`,
             symbol,
           });
         }

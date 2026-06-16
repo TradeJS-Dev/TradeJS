@@ -104,13 +104,19 @@ jest.mock('../lib/derivativesContextBackfill', () => ({
 jest.mock('../lib/binanceMarketContextBackfill', () => ({
   backfillBinanceMarketContextForBacktest: jest.fn(),
   backfillBinanceMarketContextForReplay: jest.fn(),
+  backfillBinanceMarketContextForSignals: jest.fn(),
   shouldBackfillBinanceMarketContextForBacktest: jest.fn(),
   shouldBackfillBinanceMarketContextForReplay: jest.fn(),
+  shouldBackfillBinanceMarketContextForSignals: jest.fn(() => false),
 }));
 
 jest.mock('../lib/coinMarketCapContextBackfill', () => ({
   backfillCoinMarketCapContextForBacktest: jest.fn(),
+  backfillCoinMarketCapContextForReplay: jest.fn(),
+  backfillCoinMarketCapContextForSignals: jest.fn(),
   shouldBackfillCoinMarketCapContextForBacktest: jest.fn(() => false),
+  shouldBackfillCoinMarketCapContextForReplay: jest.fn(() => false),
+  shouldBackfillCoinMarketCapContextForSignals: jest.fn(() => false),
 }));
 
 jest.mock('../lib/cliArgs', () => ({
@@ -159,6 +165,10 @@ import {
   backfillBinanceMarketContextForReplay,
   shouldBackfillBinanceMarketContextForReplay,
 } from '../lib/binanceMarketContextBackfill';
+import {
+  backfillCoinMarketCapContextForReplay,
+  shouldBackfillCoinMarketCapContextForReplay,
+} from '../lib/coinMarketCapContextBackfill';
 import {
   REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS,
   REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
@@ -306,7 +316,7 @@ describe('backtest script helpers', () => {
         configId: 'cfg-low',
         strategyConfig: cfgLow,
       },
-      stat: { netProfit: 100, wins: 1, losses: 1, winRate: 50 },
+      stat: { netProfit: 100, orders: 2, wins: 1, losses: 1, winRate: 50 },
     } as any);
     recordResultAggregates({
       test: {
@@ -315,7 +325,7 @@ describe('backtest script helpers', () => {
         configId: 'cfg-low',
         strategyConfig: cfgLow,
       },
-      stat: { netProfit: -50, wins: 0, losses: 1, winRate: 0 },
+      stat: { netProfit: -50, orders: 1, wins: 0, losses: 1, winRate: 0 },
     } as any);
     recordResultAggregates({
       test: {
@@ -324,7 +334,7 @@ describe('backtest script helpers', () => {
         configId: 'cfg-high',
         strategyConfig: cfgHigh,
       },
-      stat: { netProfit: 40, wins: 1, losses: 0, winRate: 100 },
+      stat: { netProfit: 40, orders: 1, wins: 1, losses: 0, winRate: 100 },
     } as any);
     recordResultAggregates({
       test: {
@@ -333,19 +343,22 @@ describe('backtest script helpers', () => {
         configId: 'cfg-high',
         strategyConfig: cfgHigh,
       },
-      stat: { netProfit: 30, wins: 1, losses: 1, winRate: 50 },
+      stat: { netProfit: 30, orders: 2, wins: 1, losses: 1, winRate: 50 },
     } as any);
 
     const progress = getProgressStats();
     expect(getAggregateAverageProfit(progress)).toBe(30);
     expect(getAggregateWinRate(progress)).toBe(50);
+    expect(progress.ordersSum).toBe(6);
 
     const topConfigs = getTopConfigResultBuckets(2);
     expect(topConfigs[0]?.configId).toBe('cfg-high');
     expect(getAggregateAverageProfit(topConfigs[0]!)).toBe(35);
+    expect(topConfigs[0]?.ordersSum).toBe(3);
     expect(topConfigs[0]?.strategyConfig).toBe(cfgHigh);
     expect(topConfigs[1]?.configId).toBe('cfg-low');
     expect(getAggregateAverageProfit(topConfigs[1]!)).toBe(25);
+    expect(topConfigs[1]?.ordersSum).toBe(3);
   });
 
   it('parses runtime strategy config keys and rejects unrelated keys', () => {
@@ -1379,8 +1392,11 @@ describe('backtest script helpers', () => {
     ).toBeNull();
   });
 
-  it('prepares Binance market context for replay from the prepared run window', async () => {
+  it('prepares historical market context for replay from the prepared run window', async () => {
     (shouldBackfillBinanceMarketContextForReplay as jest.Mock).mockReturnValue(
+      true,
+    );
+    (shouldBackfillCoinMarketCapContextForReplay as jest.Mock).mockReturnValue(
       true,
     );
     (backfillBinanceMarketContextForReplay as jest.Mock).mockResolvedValue({
@@ -1389,6 +1405,12 @@ describe('backtest script helpers', () => {
       depthRows: 1,
       breadthRows: 1,
       skippedSymbols: 0,
+    });
+    (backfillCoinMarketCapContextForReplay as jest.Mock).mockResolvedValue({
+      globalRows: 1,
+      referenceRows: 2,
+      exchangeLiquidityRows: 1,
+      fearGreedRows: 1,
     });
 
     await prepareReplayBinanceMarketContext({
@@ -1405,6 +1427,15 @@ describe('backtest script helpers', () => {
       projectRoot: String(process.env.PROJECT_CWD || process.cwd()).trim(),
       symbols: ['ETHUSDT', 'SOLUSDT'],
       interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      preloadStartMs: 500,
+    });
+    expect(shouldBackfillCoinMarketCapContextForReplay).toHaveBeenCalledWith({
+      cacheOnly: false,
+    });
+    expect(backfillCoinMarketCapContextForReplay).toHaveBeenCalledWith({
+      userName: 'root',
       startMs: 1_000,
       endMs: 2_000,
       preloadStartMs: 500,

@@ -3,7 +3,6 @@ import {
   KlineChartData,
   DerivativesInterval,
   DerivativesRow,
-  MarketCmcBreadthContextRow,
   MarketCmcExchangeLiquidityContextRow,
   MarketCmcFearGreedContextRow,
   MarketBreadthRow,
@@ -555,49 +554,6 @@ const ensureBinanceMarketSchema = async () => {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS market_reference_asset_context_lookup_idx
         ON market_reference_asset_context (source, symbol, interval, ts DESC)
-      `);
-
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS market_cmc_breadth_context (
-          source text NOT NULL,
-          universe text NOT NULL,
-          interval text NOT NULL,
-          ts timestamptz NOT NULL,
-          top_assets_count integer NOT NULL,
-          assets_count integer NOT NULL,
-          positive_24h_pct double precision,
-          positive_7d_pct double precision,
-          avg_return_24h_pct double precision,
-          median_return_24h_pct double precision,
-          avg_return_7d_pct double precision,
-          median_return_7d_pct double precision,
-          return_dispersion_24h_pct double precision,
-          return_dispersion_7d_pct double precision,
-          top_10_market_cap_share double precision,
-          top_25_market_cap_share double precision,
-          btc_market_cap_share double precision,
-          eth_market_cap_share double precision,
-          btc_eth_market_cap_share double precision,
-          stablecoin_market_cap_share double precision,
-          stablecoin_volume_share double precision,
-          total_market_cap_usd double precision,
-          total_volume_usd double precision,
-          breadth_regime text,
-          ingested_at timestamptz NOT NULL DEFAULT now(),
-          PRIMARY KEY (source, universe, interval, ts)
-        )
-      `);
-      await pool.query(`
-        SELECT create_hypertable(
-          'market_cmc_breadth_context',
-          'ts',
-          if_not_exists => TRUE,
-          chunk_time_interval => interval '30 days'
-        )
-      `);
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS market_cmc_breadth_context_lookup_idx
-        ON market_cmc_breadth_context (source, universe, interval, ts DESC)
       `);
 
       await pool.query(`
@@ -1569,112 +1525,6 @@ export async function upsertMarketReferenceAssetContextRows(
   );
 }
 
-export async function upsertMarketCmcBreadthContextRows(
-  rows: MarketCmcBreadthContextRow[],
-) {
-  if (!rows.length) return;
-  await ensureBinanceMarketSchema();
-
-  const pool = getPool();
-  const cols = [
-    'source',
-    'universe',
-    'interval',
-    'ts',
-    'top_assets_count',
-    'assets_count',
-    'positive_24h_pct',
-    'positive_7d_pct',
-    'avg_return_24h_pct',
-    'median_return_24h_pct',
-    'avg_return_7d_pct',
-    'median_return_7d_pct',
-    'return_dispersion_24h_pct',
-    'return_dispersion_7d_pct',
-    'top_10_market_cap_share',
-    'top_25_market_cap_share',
-    'btc_market_cap_share',
-    'eth_market_cap_share',
-    'btc_eth_market_cap_share',
-    'stablecoin_market_cap_share',
-    'stablecoin_volume_share',
-    'total_market_cap_usd',
-    'total_volume_usd',
-    'breadth_regime',
-  ] as const;
-
-  const maxRows = getSafeBulkInsertRows(cols.length);
-  if (rows.length > maxRows) {
-    for (let i = 0; i < rows.length; i += maxRows) {
-      await upsertMarketCmcBreadthContextRows(rows.slice(i, i + maxRows));
-    }
-    return;
-  }
-
-  const valuesSql = rows
-    .map(
-      (_, i) =>
-        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
-    )
-    .join(',');
-  const flat = rows.flatMap((row) => [
-    row.source,
-    row.universe,
-    row.interval,
-    row.ts,
-    Math.trunc(row.topAssetsCount),
-    Math.trunc(row.assetsCount),
-    row.positive24hPct ?? null,
-    row.positive7dPct ?? null,
-    row.avgReturn24hPct ?? null,
-    row.medianReturn24hPct ?? null,
-    row.avgReturn7dPct ?? null,
-    row.medianReturn7dPct ?? null,
-    row.returnDispersion24hPct ?? null,
-    row.returnDispersion7dPct ?? null,
-    row.top10MarketCapShare ?? null,
-    row.top25MarketCapShare ?? null,
-    row.btcMarketCapShare ?? null,
-    row.ethMarketCapShare ?? null,
-    row.btcEthMarketCapShare ?? null,
-    row.stablecoinMarketCapShare ?? null,
-    row.stablecoinVolumeShare ?? null,
-    row.totalMarketCapUsd ?? null,
-    row.totalVolumeUsd ?? null,
-    row.breadthRegime ?? null,
-  ]);
-
-  await pool.query(
-    `
-      INSERT INTO market_cmc_breadth_context (${cols.join(',')})
-      VALUES ${valuesSql}
-      ON CONFLICT (source, universe, interval, ts) DO UPDATE SET
-        top_assets_count = EXCLUDED.top_assets_count,
-        assets_count = EXCLUDED.assets_count,
-        positive_24h_pct = COALESCE(EXCLUDED.positive_24h_pct, market_cmc_breadth_context.positive_24h_pct),
-        positive_7d_pct = COALESCE(EXCLUDED.positive_7d_pct, market_cmc_breadth_context.positive_7d_pct),
-        avg_return_24h_pct = COALESCE(EXCLUDED.avg_return_24h_pct, market_cmc_breadth_context.avg_return_24h_pct),
-        median_return_24h_pct = COALESCE(EXCLUDED.median_return_24h_pct, market_cmc_breadth_context.median_return_24h_pct),
-        avg_return_7d_pct = COALESCE(EXCLUDED.avg_return_7d_pct, market_cmc_breadth_context.avg_return_7d_pct),
-        median_return_7d_pct = COALESCE(EXCLUDED.median_return_7d_pct, market_cmc_breadth_context.median_return_7d_pct),
-        return_dispersion_24h_pct = COALESCE(EXCLUDED.return_dispersion_24h_pct, market_cmc_breadth_context.return_dispersion_24h_pct),
-        return_dispersion_7d_pct = COALESCE(EXCLUDED.return_dispersion_7d_pct, market_cmc_breadth_context.return_dispersion_7d_pct),
-        top_10_market_cap_share = COALESCE(EXCLUDED.top_10_market_cap_share, market_cmc_breadth_context.top_10_market_cap_share),
-        top_25_market_cap_share = COALESCE(EXCLUDED.top_25_market_cap_share, market_cmc_breadth_context.top_25_market_cap_share),
-        btc_market_cap_share = COALESCE(EXCLUDED.btc_market_cap_share, market_cmc_breadth_context.btc_market_cap_share),
-        eth_market_cap_share = COALESCE(EXCLUDED.eth_market_cap_share, market_cmc_breadth_context.eth_market_cap_share),
-        btc_eth_market_cap_share = COALESCE(EXCLUDED.btc_eth_market_cap_share, market_cmc_breadth_context.btc_eth_market_cap_share),
-        stablecoin_market_cap_share = COALESCE(EXCLUDED.stablecoin_market_cap_share, market_cmc_breadth_context.stablecoin_market_cap_share),
-        stablecoin_volume_share = COALESCE(EXCLUDED.stablecoin_volume_share, market_cmc_breadth_context.stablecoin_volume_share),
-        total_market_cap_usd = COALESCE(EXCLUDED.total_market_cap_usd, market_cmc_breadth_context.total_market_cap_usd),
-        total_volume_usd = COALESCE(EXCLUDED.total_volume_usd, market_cmc_breadth_context.total_volume_usd),
-        breadth_regime = COALESCE(EXCLUDED.breadth_regime, market_cmc_breadth_context.breadth_regime),
-        ingested_at = now()
-    `,
-    flat,
-  );
-}
-
 export async function upsertMarketCmcExchangeLiquidityContextRows(
   rows: MarketCmcExchangeLiquidityContextRow[],
 ) {
@@ -2323,65 +2173,6 @@ export async function getLatestMarketReferenceAssetContexts(params: {
   return rows;
 }
 
-export async function getLatestMarketCmcBreadthContext(params: {
-  source?: MarketCmcBreadthContextRow['source'];
-  universe: string;
-  interval?: MarketCmcBreadthContextRow['interval'];
-  atMs: number;
-  maxAgeMs?: number;
-}): Promise<MarketFeatureAsOf<MarketCmcBreadthContextRow> | null> {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const source = params.source ?? 'coinmarketcap_market_breadth';
-  const interval = params.interval ?? '1d';
-  const res = await pool.query(
-    `
-      SELECT
-        source,
-        universe,
-        interval,
-        ts,
-        top_assets_count::int AS "topAssetsCount",
-        assets_count::int AS "assetsCount",
-        positive_24h_pct AS "positive24hPct",
-        positive_7d_pct AS "positive7dPct",
-        avg_return_24h_pct AS "avgReturn24hPct",
-        median_return_24h_pct AS "medianReturn24hPct",
-        avg_return_7d_pct AS "avgReturn7dPct",
-        median_return_7d_pct AS "medianReturn7dPct",
-        return_dispersion_24h_pct AS "returnDispersion24hPct",
-        return_dispersion_7d_pct AS "returnDispersion7dPct",
-        top_10_market_cap_share AS "top10MarketCapShare",
-        top_25_market_cap_share AS "top25MarketCapShare",
-        btc_market_cap_share AS "btcMarketCapShare",
-        eth_market_cap_share AS "ethMarketCapShare",
-        btc_eth_market_cap_share AS "btcEthMarketCapShare",
-        stablecoin_market_cap_share AS "stablecoinMarketCapShare",
-        stablecoin_volume_share AS "stablecoinVolumeShare",
-        total_market_cap_usd AS "totalMarketCapUsd",
-        total_volume_usd AS "totalVolumeUsd",
-        breadth_regime AS "breadthRegime"
-      FROM market_cmc_breadth_context
-      WHERE source = $1
-        AND universe = $2
-        AND interval = $3
-        AND ts <= to_timestamp($4/1000.0)
-      ORDER BY ts DESC
-      LIMIT 1
-    `,
-    [source, params.universe, interval, params.atMs],
-  );
-  const row = res.rows[0] as MarketCmcBreadthContextRow | undefined;
-  if (!row) return null;
-  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
-  return {
-    ...row,
-    ageMs,
-    stale:
-      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
-  };
-}
-
 export async function getLatestMarketCmcExchangeLiquidityContext(params: {
   source?: MarketCmcExchangeLiquidityContextRow['source'];
   interval?: MarketCmcExchangeLiquidityContextRow['interval'];
@@ -2536,45 +2327,6 @@ export async function getLatestMarketCmcFearGreedContext(params: {
   };
 }
 
-export async function getMarketCmcBreadthContextCoverage(params: {
-  source: MarketCmcBreadthContextRow['source'];
-  universe: string;
-  interval: MarketCmcBreadthContextRow['interval'];
-  startMs: number;
-  endMs: number;
-}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const res = await pool.query(
-    `
-      SELECT
-        extract(epoch from MIN(ts))*1000 AS first_ms,
-        extract(epoch from MAX(ts))*1000 AS last_ms,
-        COUNT(*)::int AS rows
-      FROM market_cmc_breadth_context
-      WHERE source = $1
-        AND universe = $2
-        AND interval = $3
-        AND ts >= to_timestamp($4/1000.0)
-        AND ts <= to_timestamp($5/1000.0)
-    `,
-    [
-      params.source,
-      params.universe,
-      params.interval,
-      params.startMs,
-      params.endMs,
-    ],
-  );
-  const rows = Number(res.rows[0]?.rows ?? 0);
-  const firstMs = Number(res.rows[0]?.first_ms);
-  const lastMs = Number(res.rows[0]?.last_ms);
-  if (!rows || !Number.isFinite(firstMs) || !Number.isFinite(lastMs)) {
-    return null;
-  }
-  return { firstMs, lastMs, rows };
-}
-
 export async function getMarketCmcFearGreedContextCoverage(params: {
   source: MarketCmcFearGreedContextRow['source'];
   interval: MarketCmcFearGreedContextRow['interval'];
@@ -2706,6 +2458,43 @@ export async function cleanupDeprecatedMarketContext(
   const pool = getPool();
   const items: DeprecatedMarketContextCleanupItem[] = [];
 
+  const cleanupRows = async ({
+    tableName,
+    whereSql,
+    name,
+  }: {
+    tableName: string;
+    whereSql: string;
+    name: string;
+  }) => {
+    const tableRows = await getTableRowCountIfExists(tableName);
+    if (tableRows == null) return;
+    const count = await pool.query(
+      `
+        SELECT COUNT(*)::int AS rows
+        FROM ${tableName}
+        WHERE ${whereSql}
+      `,
+    );
+    const rows = Number(count.rows[0]?.rows ?? 0);
+    if (rows <= 0) return;
+    if (apply) {
+      await pool.query(
+        `
+          DELETE FROM ${tableName}
+          WHERE ${whereSql}
+        `,
+      );
+    }
+    items.push({
+      kind: 'rows',
+      name,
+      rows,
+      action: 'delete_rows',
+      applied: apply,
+    });
+  };
+
   for (const tableName of ['market_order_book_depth', 'onchain_flow_context']) {
     const rows = await getTableRowCountIfExists(tableName);
     if (rows == null) continue;
@@ -2721,36 +2510,32 @@ export async function cleanupDeprecatedMarketContext(
     });
   }
 
-  const globalTableRows = await getTableRowCountIfExists(
-    'market_global_context',
-  );
-  if (globalTableRows != null) {
-    const count = await pool.query(
-      `
-        SELECT COUNT(*)::int AS rows
-        FROM market_global_context
-        WHERE source = 'coingecko_global'
-      `,
-    );
-    const rows = Number(count.rows[0]?.rows ?? 0);
-    if (rows > 0) {
-      if (apply) {
-        await pool.query(
-          `
-            DELETE FROM market_global_context
-            WHERE source = 'coingecko_global'
-          `,
-        );
-      }
-      items.push({
-        kind: 'rows',
-        name: 'market_global_context/source=coingecko_global',
-        rows,
-        action: 'delete_rows',
-        applied: apply,
-      });
-    }
-  }
+  await cleanupRows({
+    tableName: 'market_global_context',
+    whereSql: "source = 'coingecko_global'",
+    name: 'market_global_context/source=coingecko_global',
+  });
+  await cleanupRows({
+    tableName: 'market_global_context',
+    whereSql: "source = 'coinmarketcap_global_hourly'",
+    name: 'market_global_context/source=coinmarketcap_global_hourly',
+  });
+  await cleanupRows({
+    tableName: 'market_reference_asset_context',
+    whereSql: "source = 'coinmarketcap_reference_asset' AND interval = '1h'",
+    name: 'market_reference_asset_context/source=coinmarketcap_reference_asset/interval=1h',
+  });
+  await cleanupRows({
+    tableName: 'market_cmc_breadth_context',
+    whereSql: "source = 'coinmarketcap_market_breadth'",
+    name: 'market_cmc_breadth_context/source=coinmarketcap_market_breadth',
+  });
+  await cleanupRows({
+    tableName: 'market_context_backfill_coverage',
+    whereSql:
+      "(source IN ('coinmarketcap_global_hourly', 'coinmarketcap_market_breadth') OR (source = 'coinmarketcap_reference_asset' AND interval = '1h'))",
+    name: 'market_context_backfill_coverage/deprecated_cmc_sources',
+  });
 
   return items;
 }

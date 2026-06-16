@@ -1,5 +1,7 @@
 import {
   buildBreadthBackfillChunks,
+  buildTradeFlowBackfillChunks,
+  filterMissingBreadthBackfillChunks,
   shouldBackfillBinanceMarketContextForReplay,
   shouldBackfillBinanceMarketContextForSignals,
 } from '../lib/binanceMarketContextBackfill';
@@ -29,6 +31,62 @@ describe('buildBreadthBackfillChunks', () => {
         startMs: 1_000 + day * 4,
         endMs: 1_000 + day * 5 - 1,
         fetchStartMs: 1_000 + day * 2,
+      },
+    ]);
+  });
+});
+
+describe('filterMissingBreadthBackfillChunks', () => {
+  it('skips breadth chunks already covered in Timescale', () => {
+    const chunks = [
+      {
+        startMs: 1_000,
+        endMs: 1_000 + 86_400_000 - 1,
+        fetchStartMs: 1_000,
+      },
+      {
+        startMs: 1_000 + 86_400_000,
+        endMs: 1_000 + 86_400_000 * 2 - 1,
+        fetchStartMs: 1_000,
+      },
+    ];
+
+    expect(
+      filterMissingBreadthBackfillChunks({
+        chunks,
+        coverage: {
+          firstMs: 1_000,
+          lastMs: 1_000 + 86_400_000 - 1,
+          rows: 96,
+        },
+        intervalMs: 900_000,
+      }),
+    ).toEqual([chunks[1]]);
+  });
+});
+
+describe('buildTradeFlowBackfillChunks', () => {
+  it('splits long trade-flow backfills into bounded windows', () => {
+    const day = 86_400_000;
+    const chunks = buildTradeFlowBackfillChunks({
+      startMs: 1_000,
+      endMs: 1_000 + day * 5 - 1,
+      intervalMs: 900_000,
+      chunkDays: 2,
+    });
+
+    expect(chunks).toEqual([
+      {
+        startMs: 1_000,
+        endMs: 1_000 + day * 2 - 1,
+      },
+      {
+        startMs: 1_000 + day * 2,
+        endMs: 1_000 + day * 4 - 1,
+      },
+      {
+        startMs: 1_000 + day * 4,
+        endMs: 1_000 + day * 5 - 1,
       },
     ]);
   });

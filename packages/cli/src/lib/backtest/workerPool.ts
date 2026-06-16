@@ -29,7 +29,11 @@ export const executeBacktestWorkerPool = async ({
   onFinish: () => Promise<void>;
   introLines: string[];
   chunkTestSuite: (testSuite: TestSuite) => TestSuite[];
-  getProgressSnapshot: () => { averageProfit: number; winRate: number };
+  getProgressSnapshot: () => {
+    averageProfit: number;
+    tradesCount: number;
+    winRate: number;
+  };
 }) => {
   const chunks = chunkTestSuite(testSuite);
   let completedTests = 0;
@@ -73,7 +77,7 @@ export const executeBacktestWorkerPool = async ({
   console.log('');
 
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] avg :amount win :winRate :eta(s)',
+    ':current/:total [:bar][:percent] avg :amount win :winRate trades :trades :eta(s)',
     {
       total: testSuite.length,
       width: 20,
@@ -114,13 +118,14 @@ export const executeBacktestWorkerPool = async ({
         completedTests % progressStep === 0 ||
         completedTests === testSuite.length
       ) {
-        const { averageProfit, winRate } = getProgressSnapshot();
+        const { averageProfit, tradesCount, winRate } = getProgressSnapshot();
         const amount = averageProfit || 0;
         const amountStr = `${amount.toFixed(2)}$`;
         const progressIncrement = completedTests - renderedTests;
         if (progressIncrement > 0) {
           bar.tick(progressIncrement, {
             amount: amount > 0 ? chalk.green(amountStr) : chalk.red(amountStr),
+            trades: chalk.cyan(String(tradesCount)),
             winRate: chalk.cyan(`${winRate.toFixed(1)}%`),
           });
           renderedTests = completedTests;

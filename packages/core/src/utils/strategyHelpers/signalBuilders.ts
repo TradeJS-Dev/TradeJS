@@ -322,7 +322,6 @@ export const buildBaseContextGateFeatures = ({
   const marketBreadth = baseContext.relative?.marketBreadth;
   const cmcGlobal = baseContext.relative?.cmcGlobal;
   const cmcReferenceAssets = baseContext.relative?.cmcReferenceAssets;
-  const cmcMarketBreadth = baseContext.relative?.cmcMarketBreadth;
   const cmcExchangeLiquidity = baseContext.relative?.cmcExchangeLiquidity;
   const cmcFearGreed = baseContext.relative?.cmcFearGreed;
   const targetVsBtc = baseContext.relative?.targetVsBtc;
@@ -462,26 +461,6 @@ export const buildBaseContextGateFeatures = ({
         ? cmcEthBtcReferenceRegime === 'eth_led'
         : cmcEthBtcReferenceRegime === 'btc_led' ||
           cmcEthBtcReferenceRegime === 'thin';
-  const cmcMarketBreadthRegime = cmcMarketBreadth?.breadthRegime ?? 'unknown';
-  const cmcMarketBreadthStale =
-    typeof cmcMarketBreadth?.stale === 'boolean'
-      ? cmcMarketBreadth.stale
-      : null;
-  const cmcMarketBreadthPositive24hPct = asFiniteNumberOrNull(
-    cmcMarketBreadth?.positive24hPct,
-  );
-  const cmcMarketBreadthAligned =
-    direction == null ||
-    cmcMarketBreadthStale === true ||
-    cmcMarketBreadthRegime === 'unknown' ||
-    cmcMarketBreadthRegime === 'neutral' ||
-    cmcMarketBreadthRegime === 'mixed'
-      ? null
-      : direction === 'LONG'
-        ? cmcMarketBreadthRegime === 'risk_on' ||
-          cmcMarketBreadthRegime === 'alt_broadening'
-        : cmcMarketBreadthRegime === 'risk_off' ||
-          cmcMarketBreadthRegime === 'btc_concentrated';
   const cmcExchangeLiquidityRegime =
     cmcExchangeLiquidity?.liquidityRegime ?? 'unknown';
   const cmcExchangeLiquidityStale =
@@ -664,11 +643,6 @@ export const buildBaseContextGateFeatures = ({
   pushWhen(confirmations, cmcEthBtcAligned === true, 'cmc_eth_btc_aligned');
   pushWhen(
     confirmations,
-    cmcMarketBreadthAligned === true,
-    'cmc_market_breadth_aligned',
-  );
-  pushWhen(
-    confirmations,
     cmcExchangeLiquidityAligned === true,
     'cmc_exchange_liquidity_aligned',
   );
@@ -712,11 +686,6 @@ export const buildBaseContextGateFeatures = ({
     'cmc_alt_liquidity_against',
   );
   pushWhen(conflicts, cmcEthBtcAligned === false, 'cmc_eth_btc_against');
-  pushWhen(
-    conflicts,
-    cmcMarketBreadthAligned === false,
-    'cmc_market_breadth_against',
-  );
   pushWhen(
     conflicts,
     cmcExchangeLiquidityAligned === false,
@@ -763,7 +732,6 @@ export const buildBaseContextGateFeatures = ({
       marketBreadthAligned,
       cmcAltLiquidityAligned,
       cmcEthBtcAligned,
-      cmcMarketBreadthAligned,
       cmcFearGreedAligned,
       targetVsBtcAligned,
       targetVsEthAligned,
@@ -849,7 +817,6 @@ export const buildBaseContextGateFeatures = ({
               marketBreadthAligned === false ||
               cmcAltLiquidityAligned === false ||
               cmcEthBtcAligned === false ||
-              cmcMarketBreadthAligned === false ||
               cmcFearGreedAligned === false ||
               targetVsBtcAligned === false ||
               targetVsEthAligned === false ||
@@ -964,10 +931,6 @@ export const buildBaseContextGateFeatures = ({
       cmcEthBtcReferenceRegime,
       cmcEthBtcAligned,
       cmcEthBtcStale,
-      cmcMarketBreadthRegime,
-      cmcMarketBreadthAligned,
-      cmcMarketBreadthStale,
-      cmcMarketBreadthPositive24hPct,
       cmcExchangeLiquidityRegime,
       cmcExchangeLiquidityAligned,
       cmcExchangeLiquidityStale,

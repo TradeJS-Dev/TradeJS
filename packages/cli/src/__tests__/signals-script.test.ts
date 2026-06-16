@@ -24,6 +24,7 @@ type Scenario = {
   flags: ScriptFlags;
   derivativesContextEnabled?: boolean;
   binanceMarketContextBackfillEnabled?: boolean;
+  coinMarketCapContextBackfillEnabled?: boolean;
   includeOpenCandle?: boolean;
   strategyConfig?: Record<string, unknown>;
   strategyResult?: unknown;
@@ -209,6 +210,16 @@ const loadScript = async (scenario: Scenario) => {
     ({ cacheOnly }: { cacheOnly: boolean }) =>
       !cacheOnly && Boolean(scenario.binanceMarketContextBackfillEnabled),
   );
+  const backfillCoinMarketCapContextForSignals = jest.fn(async () => ({
+    globalRows: 1,
+    referenceRows: 2,
+    exchangeLiquidityRows: 1,
+    fearGreedRows: 1,
+  }));
+  const shouldBackfillCoinMarketCapContextForSignals = jest.fn(
+    ({ cacheOnly }: { cacheOnly: boolean }) =>
+      !cacheOnly && Boolean(scenario.coinMarketCapContextBackfillEnabled),
+  );
   const enrichSignalWithBinanceMarketContext = jest.fn(async (params: any) => {
     params.signal.additionalIndicators = {
       ...(params.signal.additionalIndicators ?? {}),
@@ -326,8 +337,21 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('../lib/binanceMarketContextBackfill', () => ({
+    backfillBinanceMarketContextForBacktest: jest.fn(),
+    backfillBinanceMarketContextForReplay: jest.fn(),
     backfillBinanceMarketContextForSignals,
+    shouldBackfillBinanceMarketContextForBacktest: jest.fn(() => false),
+    shouldBackfillBinanceMarketContextForReplay: jest.fn(() => false),
     shouldBackfillBinanceMarketContextForSignals,
+  }));
+
+  jest.doMock('../lib/coinMarketCapContextBackfill', () => ({
+    backfillCoinMarketCapContextForBacktest: jest.fn(),
+    backfillCoinMarketCapContextForReplay: jest.fn(),
+    backfillCoinMarketCapContextForSignals,
+    shouldBackfillCoinMarketCapContextForBacktest: jest.fn(() => false),
+    shouldBackfillCoinMarketCapContextForReplay: jest.fn(() => false),
+    shouldBackfillCoinMarketCapContextForSignals,
   }));
 
   const prevNodeEnv = process.env.NODE_ENV;
@@ -340,6 +364,7 @@ const loadScript = async (scenario: Scenario) => {
     mocks: {
       backfillDerivativesContextForSignals,
       backfillBinanceMarketContextForSignals,
+      backfillCoinMarketCapContextForSignals,
       enrichSignalWithBinanceMarketContext,
       connector,
       getData,
@@ -359,6 +384,7 @@ const loadScript = async (scenario: Scenario) => {
       setData,
       setHashJsonField,
       shouldBackfillBinanceMarketContextForSignals,
+      shouldBackfillCoinMarketCapContextForSignals,
       shouldBackfillDerivativesContextForSignals,
       strategyCreatorMap,
       strategyFnMap,
@@ -1100,6 +1126,57 @@ describe('signals script', () => {
     });
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^binance market context backfill: done in /),
+    );
+  });
+
+  it('prepares CMC context for signals without execution-candle preload', async () => {
+    const { signals, mocks } = await loadScript({
+      coinMarketCapContextBackfillEnabled: true,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: true,
+        cacheOnly: false,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(
+      mocks.shouldBackfillCoinMarketCapContextForSignals,
+    ).toHaveBeenCalledWith({
+      cacheOnly: false,
+    });
+    expect(mocks.backfillCoinMarketCapContextForSignals).toHaveBeenCalledWith({
+      userName: 'root',
+      startMs: CURRENT_TS,
+      endMs: CURRENT_TS,
+      preloadStartMs: PRELOAD_TS,
+    });
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      '15',
+      ['ETHUSDT'],
+      60,
+      expect.objectContaining({ connectorLabel: 'bybit' }),
+    );
+    expect(mocks.update).not.toHaveBeenCalledWith(
+      expect.anything(),
+      '5',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^coinmarketcap historical context backfill: done in /,
+      ),
     );
   });
 

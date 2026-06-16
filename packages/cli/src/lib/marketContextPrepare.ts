@@ -16,7 +16,11 @@ import {
 } from './derivativesContextBackfill';
 import {
   backfillCoinMarketCapContextForBacktest,
+  backfillCoinMarketCapContextForReplay,
+  backfillCoinMarketCapContextForSignals,
   shouldBackfillCoinMarketCapContextForBacktest,
+  shouldBackfillCoinMarketCapContextForReplay,
+  shouldBackfillCoinMarketCapContextForSignals,
 } from './coinMarketCapContextBackfill';
 import { timeOperation as runTimedOperation } from './runFormatting';
 
@@ -86,13 +90,78 @@ export const shouldPrepareCoinMarketCapContextForRun = (
     PrepareMarketContextForRunParams,
     'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
   >,
-) =>
-  params.mode === 'backtest' &&
-  shouldBackfillCoinMarketCapContextForBacktest({
-    aiEnabled: Boolean(params.aiEnabled),
+) => {
+  if (params.mode === 'backtest') {
+    return shouldBackfillCoinMarketCapContextForBacktest({
+      aiEnabled: Boolean(params.aiEnabled),
+      cacheOnly: params.cacheOnly,
+      mlEnabled: Boolean(params.mlEnabled),
+    });
+  }
+
+  if (params.mode === 'signals') {
+    return shouldBackfillCoinMarketCapContextForSignals({
+      cacheOnly: params.cacheOnly,
+    });
+  }
+
+  return shouldBackfillCoinMarketCapContextForReplay({
     cacheOnly: params.cacheOnly,
-    mlEnabled: Boolean(params.mlEnabled),
   });
+};
+
+const resolveCoinMarketCapBackfillForMode = (mode: MarketContextRunMode) =>
+  mode === 'backtest'
+    ? backfillCoinMarketCapContextForBacktest
+    : mode === 'signals'
+      ? backfillCoinMarketCapContextForSignals
+      : backfillCoinMarketCapContextForReplay;
+
+const buildCoinMarketCapBackfillParams = (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    'userName' | 'startMs' | 'endMs' | 'preloadStartMs'
+  >,
+) => ({
+  userName: params.userName,
+  startMs: params.startMs,
+  endMs: params.endMs,
+  preloadStartMs: params.preloadStartMs,
+});
+
+const buildBinanceMarketBackfillParams = (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    | 'userName'
+    | 'projectRoot'
+    | 'symbols'
+    | 'interval'
+    | 'startMs'
+    | 'endMs'
+    | 'preloadStartMs'
+  >,
+) => ({
+  userName: params.userName,
+  projectRoot: params.projectRoot,
+  symbols: params.symbols,
+  interval: params.interval,
+  startMs: params.startMs,
+  endMs: params.endMs,
+  preloadStartMs: params.preloadStartMs,
+});
+
+const buildDerivativesBackfillParams = (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    'userName' | 'symbols' | 'startMs' | 'endMs' | 'preloadStartMs'
+  >,
+) => ({
+  userName: params.userName,
+  symbols: params.symbols,
+  startMs: params.startMs,
+  endMs: params.endMs,
+  preloadStartMs: params.preloadStartMs,
+});
 
 export const prepareMarketContextForRun = async (
   params: PrepareMarketContextForRunParams,
@@ -109,13 +178,9 @@ export const prepareMarketContextForRun = async (
     await timeOperation('derivatives context backfill', () =>
       (params.mode === 'signals'
         ? backfillDerivativesContextForSignals
-        : backfillDerivativesContextForBacktest)({
-        userName: params.userName,
-        symbols: params.symbols,
-        startMs: params.startMs,
-        endMs: params.endMs,
-        preloadStartMs: params.preloadStartMs,
-      }),
+        : backfillDerivativesContextForBacktest)(
+        buildDerivativesBackfillParams(params),
+      ),
     );
   }
 
@@ -128,26 +193,15 @@ export const prepareMarketContextForRun = async (
             ? backfillBinanceMarketContextForSignals
             : backfillBinanceMarketContextForReplay;
 
-      return backfill({
-        userName: params.userName,
-        projectRoot: params.projectRoot,
-        symbols: params.symbols,
-        interval: params.interval,
-        startMs: params.startMs,
-        endMs: params.endMs,
-        preloadStartMs: params.preloadStartMs,
-      });
+      return backfill(buildBinanceMarketBackfillParams(params));
     });
   }
 
   if (shouldPrepareCoinMarketCapContextForRun(params)) {
     await timeOperation('coinmarketcap historical context backfill', () =>
-      backfillCoinMarketCapContextForBacktest({
-        userName: params.userName,
-        startMs: params.startMs,
-        endMs: params.endMs,
-        preloadStartMs: params.preloadStartMs,
-      }),
+      resolveCoinMarketCapBackfillForMode(params.mode)(
+        buildCoinMarketCapBackfillParams(params),
+      ),
     );
   }
 };
