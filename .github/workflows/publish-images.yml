@@ -241,7 +241,7 @@ jobs:
             ghcr.io/tradejs-dev/tradejs-app:${{ env.IMAGE_TAG }}
             ghcr.io/tradejs-dev/tradejs-app:latest
           cache-from: type=gha,scope=app
-          cache-to: type=gha,mode=max,scope=app
+          cache-to: type=gha,mode=max,scope=app,ignore-error=true
 
       - name: Build and push agent image
         if: env.AGENT_CHANGED == 'true'
@@ -254,7 +254,7 @@ jobs:
             ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
             ghcr.io/tradejs-dev/tradejs-agent:latest
           cache-from: type=gha,scope=agent
-          cache-to: type=gha,mode=max,scope=agent
+          cache-to: type=gha,mode=max,scope=agent,ignore-error=true
 
       - name: Build and push ml-infer image
         if: env.ML_INFER_CHANGED == 'true'
@@ -267,7 +267,7 @@ jobs:
             ghcr.io/tradejs-dev/tradejs-ml-infer:${{ env.IMAGE_TAG }}
             ghcr.io/tradejs-dev/tradejs-ml-infer:latest
           cache-from: type=gha,scope=ml-infer
-          cache-to: type=gha,mode=max,scope=ml-infer
+          cache-to: type=gha,mode=max,scope=ml-infer,ignore-error=true
 
       - name: Notify deploy repository
         env:
