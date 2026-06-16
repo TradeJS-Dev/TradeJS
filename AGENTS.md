@@ -359,6 +359,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Feature-window parity must remain consistent between backtest write path and inference path.
 - Keep causality guards intact unless explicitly debugging.
 - For all future backtest/config research sweeps, set `MAX_LOSS_VALUE` to `10` when the config includes that field.
+- When updating a backtest `:ai` config, enable both `LONG` and `SHORT`; let the AI gate disable a side later if needed.
 - Treat `runtime-parity` as core/backtest execution parity, not live AI/ML approval parity:
   - it replays in `ENV=BACKTEST` with order placement enabled and compares replayed entry orders to saved runtime trade records
   - `runtime=0` and `backtest=0` for a strategy means the selected replay targets produced no comparable entries in that window; it does not measure how many AI rows would be approved
