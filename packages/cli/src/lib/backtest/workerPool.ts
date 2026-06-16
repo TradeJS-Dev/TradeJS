@@ -12,11 +12,14 @@ export const executeBacktestWorkerPool = async ({
   testerWorkerPath,
   testerNeedsTsRuntime,
   onMessage,
+  onInterrupt,
   onWorkerError,
   onFinish,
   introLines,
   chunkTestSuite,
   getProgressSnapshot,
+  initialCompletedTests = 0,
+  totalTests,
 }: {
   testSuite: TestSuite;
   userName: string;
@@ -24,7 +27,8 @@ export const executeBacktestWorkerPool = async ({
   workerHeapMb: number;
   testerWorkerPath: string;
   testerNeedsTsRuntime: boolean;
-  onMessage: (msg: any) => void;
+  onMessage: (msg: any) => Promise<void> | void;
+  onInterrupt?: (signal: 'SIGINT' | 'SIGTERM') => Promise<void> | void;
   onWorkerError: (message: string) => void;
   onFinish: () => Promise<void>;
   introLines: string[];
@@ -34,9 +38,16 @@ export const executeBacktestWorkerPool = async ({
     tradesCount: number;
     winRate: number;
   };
+  initialCompletedTests?: number;
+  totalTests?: number;
 }) => {
   const chunks = chunkTestSuite(testSuite);
-  let completedTests = 0;
+  const totalExpectedTests = Math.max(
+    testSuite.length,
+    totalTests ?? testSuite.length,
+    initialCompletedTests,
+  );
+  let completedTests = initialCompletedTests;
   let renderedTests = 0;
   let isFinishing = false;
   const workers = new Set<ReturnType<typeof fork>>();
@@ -46,7 +57,7 @@ export const executeBacktestWorkerPool = async ({
       return;
     }
 
-    if (completedTests !== testSuite.length || workers.size > 0) {
+    if (completedTests !== totalExpectedTests || workers.size > 0) {
       return;
     }
 
@@ -62,14 +73,23 @@ export const executeBacktestWorkerPool = async ({
     }
   };
 
-  process.once('SIGINT', () => {
+  const handleInterrupt = (signal: 'SIGINT' | 'SIGTERM', exitCode: number) => {
     stopWorkers();
-    process.exit(130);
-  });
-  process.once('SIGTERM', () => {
-    stopWorkers();
-    process.exit(143);
-  });
+    void Promise.resolve(onInterrupt?.(signal))
+      .catch((error) => {
+        console.error(
+          chalk.red(
+            `failed to update backtest run status before ${signal}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+        );
+      })
+      .finally(() => process.exit(exitCode));
+  };
+
+  process.once('SIGINT', () => handleInterrupt('SIGINT', 130));
+  process.once('SIGTERM', () => handleInterrupt('SIGTERM', 143));
 
   for (const line of introLines) {
     console.log(line);
@@ -79,10 +99,27 @@ export const executeBacktestWorkerPool = async ({
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] avg :amount win :winRate trades :trades :eta(s)',
     {
-      total: testSuite.length,
+      total: totalExpectedTests,
       width: 20,
     },
   );
+
+  const tickProgress = () => {
+    const { averageProfit, tradesCount, winRate } = getProgressSnapshot();
+    const amount = averageProfit || 0;
+    const amountStr = `${amount.toFixed(2)}$`;
+    const progressIncrement = completedTests - renderedTests;
+    if (progressIncrement > 0) {
+      bar.tick(progressIncrement, {
+        amount: amount > 0 ? chalk.green(amountStr) : chalk.red(amountStr),
+        trades: chalk.cyan(String(tradesCount)),
+        winRate: chalk.cyan(`${winRate.toFixed(1)}%`),
+      });
+      renderedTests = completedTests;
+    }
+  };
+
+  tickProgress();
 
   for (const chunk of chunks) {
     const chunkId = randomUUID().slice(-12);
@@ -112,24 +149,13 @@ export const executeBacktestWorkerPool = async ({
       }
 
       completedTests++;
-      onMessage(msg);
+      await onMessage(msg);
 
       if (
         completedTests % progressStep === 0 ||
-        completedTests === testSuite.length
+        completedTests === totalExpectedTests
       ) {
-        const { averageProfit, tradesCount, winRate } = getProgressSnapshot();
-        const amount = averageProfit || 0;
-        const amountStr = `${amount.toFixed(2)}$`;
-        const progressIncrement = completedTests - renderedTests;
-        if (progressIncrement > 0) {
-          bar.tick(progressIncrement, {
-            amount: amount > 0 ? chalk.green(amountStr) : chalk.red(amountStr),
-            trades: chalk.cyan(String(tradesCount)),
-            winRate: chalk.cyan(`${winRate.toFixed(1)}%`),
-          });
-          renderedTests = completedTests;
-        }
+        tickProgress();
       }
     });
 

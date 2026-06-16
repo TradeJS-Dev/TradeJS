@@ -22,7 +22,7 @@ const parseEnabledFlag = (value: unknown, env: string) => {
   const normalized = String(value ?? '')
     .trim()
     .toLowerCase();
-  if (!normalized) return false;
+  if (!normalized) return true;
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (normalized === 'backtest') return env === 'BACKTEST';
   if (normalized === 'live') return env !== 'BACKTEST';

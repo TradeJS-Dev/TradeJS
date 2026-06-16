@@ -84,9 +84,17 @@ import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
 
 jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
+  setHashJsonField: jest.fn(),
   getData: jest.fn(),
+  getHashJsonValues: jest.fn(async () => []),
   getKeys: jest.fn(),
   redisKeys: {
+    backtestLatestRun: (userName: string, config: string) =>
+      `users:${userName}:backtests:latest:${config}`,
+    backtestRun: (userName: string, runId: string) =>
+      `users:${userName}:backtests:runs:${runId}`,
+    backtestRunResults: (userName: string, runId: string) =>
+      `users:${userName}:backtests:runs:${runId}:results`,
     cacheOrders: (userName: string, orderLogId: string) =>
       `users:${userName}:cache:orders:${orderLogId}`,
     cachePositions: (userName: string, orderLogId: string) =>

@@ -126,6 +126,12 @@ args.option(
   'Skip per-test artifact persistence and keep only in-memory summary/AI-ML dataset output',
   false,
 );
+args.option(
+  ['K', 'continue'],
+  'Continue latest compatible interrupted backtest run',
+  false,
+);
+args.option(['R', 'runId'], 'Backtest run id to continue');
 
 const hasCliFlag = (argv: string[], names: string[]) =>
   argv.some(
@@ -187,6 +193,11 @@ export const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, [
   '-n',
 ]);
 export const isUpdateOnlyRun = Boolean(flags.updateOnly);
+export const isContinueRun = Boolean(flags.continue);
+export const continueRunId =
+  typeof flags.runId === 'string' && flags.runId.trim()
+    ? flags.runId.trim()
+    : undefined;
 export const isFastMode = Boolean(flags.fast);
 export const testItemTimeoutMs = 600_000;
 export const workerHeapMb = resolveWorkerHeapMb();

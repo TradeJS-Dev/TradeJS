@@ -501,14 +501,20 @@ export const executeTestSuite = async ({
   preloadStart,
   replayModeLabel,
   onResult,
+  onInterrupt,
   onFinish,
+  initialCompletedTests = 0,
+  totalTests,
 }: {
   testSuite: TestSuite;
   window: ResolvedWindow;
   preloadStart: number;
   replayModeLabel?: string;
-  onResult: (result: TestWorkerResult) => void;
+  onResult: (result: TestWorkerResult) => Promise<void> | void;
+  onInterrupt?: (signal: 'SIGINT' | 'SIGTERM') => Promise<void> | void;
   onFinish: () => Promise<void>;
+  initialCompletedTests?: number;
+  totalTests?: number;
 }) => {
   markTestsStarted();
   const { testerWorkerPath, testerNeedsTsRuntime } = resolveTesterWorker();
@@ -526,7 +532,10 @@ export const executeTestSuite = async ({
       replayModeLabel,
     }),
     chunkTestSuite: (suite) => chunkTestSuiteBySymbol(suite, effectiveParallel),
-    onMessage: (msg) => {
+    initialCompletedTests,
+    totalTests,
+    onInterrupt,
+    onMessage: async (msg) => {
       if (msg.error) {
         incrementErrorTests();
         recordError({
@@ -543,7 +552,7 @@ export const executeTestSuite = async ({
 
       incrementSuccessTests();
       recordResultAggregates(msg as TestWorkerResult);
-      onResult(msg as TestWorkerResult);
+      await onResult(msg as TestWorkerResult);
     },
     onWorkerError: (message) => {
       recordError({ error: message });

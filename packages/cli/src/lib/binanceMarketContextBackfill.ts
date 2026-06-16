@@ -101,7 +101,7 @@ const marketIntervalToConnectorInterval = (interval: MarketFeatureInterval) => {
   return '15';
 };
 
-const resolveWindow = ({
+export const resolveBinanceMarketContextBackfillWindow = ({
   startMs,
   endMs,
   preloadStartMs,
@@ -116,10 +116,7 @@ const resolveWindow = ({
   );
   const breadthWarmupStartMs = startMs - breadthLookbackDays * DAY_MS;
   return {
-    breadthStartMs:
-      preloadStartMs == null
-        ? breadthWarmupStartMs
-        : Math.max(preloadStartMs, breadthWarmupStartMs),
+    breadthStartMs: preloadStartMs ?? breadthWarmupStartMs,
     tradeFlowStartMs: preloadStartMs ?? startMs,
     endMs,
   };
@@ -345,7 +342,8 @@ const backfillBinanceMarketContext = async (
 
   const interval = intervalToMarketFeatureInterval(params.interval);
   const intervalMs = MARKET_FEATURE_INTERVAL_MS[interval];
-  const { breadthStartMs, tradeFlowStartMs, endMs } = resolveWindow(params);
+  const { breadthStartMs, tradeFlowStartMs, endMs } =
+    resolveBinanceMarketContextBackfillWindow(params);
   if (endMs <= Math.min(breadthStartMs, tradeFlowStartMs)) {
     return skippedBackfillResult();
   }

@@ -108,7 +108,7 @@ const isDerivativesContextBackfillEnabled = (env: string) => {
   const normalized = String(process.env.DERIVATIVES_CONTEXT_ENABLED ?? '')
     .trim()
     .toLowerCase();
-  if (!normalized) return false;
+  if (!normalized) return true;
   if (['1', 'true', 'yes', 'on'].includes(normalized)) {
     return true;
   }
@@ -158,10 +158,7 @@ export const resolveDerivativesContextBackfillWindow = (params: {
   const safeEndMs = Math.min(endMs, nowMs);
   const safeStartMs = Math.max(0, Math.min(startMs, safeEndMs));
   const lookbackFromMs = safeStartMs - resolveDerivativesContextLookbackMs();
-  const requestedFromMs =
-    preloadStartMs != null
-      ? Math.max(Number(preloadStartMs), lookbackFromMs)
-      : lookbackFromMs;
+  const requestedFromMs = preloadStartMs ?? lookbackFromMs;
   const fromMs = Math.max(
     0,
     Math.min(

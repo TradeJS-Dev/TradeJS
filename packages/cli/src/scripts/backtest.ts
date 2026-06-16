@@ -5,7 +5,13 @@ import { calculateStatsFull } from '@tradejs/core/backtest';
 import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
-import { StrategyConfigGrid, TestStat, TestWorkerResult } from '@tradejs/types';
+import {
+  Interval,
+  StrategyConfigGrid,
+  TestStat,
+  TestSuite,
+  TestWorkerResult,
+} from '@tradejs/types';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
   buildPreparedTestSuite,
@@ -33,6 +39,8 @@ import {
 } from '../lib/backtest/runnerCore';
 import {
   normalizedArgv,
+  backtestEntryDelayBars,
+  backtestPriceMode,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   resolveEffectiveParallel,
@@ -49,8 +57,23 @@ import {
   getRunStartedAt,
   getTopConfigResultBuckets,
   getTopResults,
+  incrementSuccessTests,
+  recordResultAggregates,
   resetRunState,
 } from '../lib/backtest/runState';
+import {
+  BacktestCheckpointResult,
+  BacktestRunManifest,
+  createBacktestRunManifest,
+  filterCompletedBacktestResultsForSuite,
+  filterRemainingBacktestTests,
+  loadBacktestCheckpointResults,
+  loadBacktestRunManifest,
+  markBacktestRunStatus,
+  resolveBacktestRunIdForContinue,
+  saveBacktestCheckpointResult,
+} from '../lib/backtest/checkpoint';
+import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
 
 if (
   process.argv.some(
@@ -476,9 +499,136 @@ const finishBacktest = async (
   process.exit();
 };
 
+const restoreCompletedBacktestResults = (
+  completed: BacktestCheckpointResult[],
+) => {
+  for (const { result } of completed) {
+    incrementSuccessTests();
+    recordResultAggregates(result);
+    trackTopResult(result);
+    updateBestTickerResult(result);
+  }
+};
+
+const loadBacktestRunForContinue = async (): Promise<{
+  completed: BacktestCheckpointResult[];
+  manifest: BacktestRunManifest;
+} | null> => {
+  if (!flags.continue) {
+    return null;
+  }
+
+  const runId = await resolveBacktestRunIdForContinue({
+    config: flags.config,
+    requestedRunId: typeof flags.runId === 'string' ? flags.runId : undefined,
+    userName,
+  });
+  if (!runId) {
+    throw new Error(
+      `No backtest run found to continue for config "${flags.config}"`,
+    );
+  }
+
+  const manifest = await loadBacktestRunManifest({ runId, userName });
+  if (!manifest) {
+    throw new Error(`Backtest run "${runId}" was not found`);
+  }
+  if (manifest.userName !== userName) {
+    throw new Error(
+      `Backtest run "${runId}" belongs to user "${manifest.userName}", not "${userName}"`,
+    );
+  }
+  if (manifest.config !== flags.config) {
+    throw new Error(
+      `Backtest run "${runId}" was created for config "${manifest.config}", not "${flags.config}"`,
+    );
+  }
+
+  const completed = filterCompletedBacktestResultsForSuite({
+    completed: await loadBacktestCheckpointResults({ runId, userName }),
+    testSuite: manifest.testSuite,
+  });
+  console.log(
+    chalk.gray(
+      `continue backtest run ${runId}: completed=${completed.length}/${manifest.testSuite.length}`,
+    ),
+  );
+
+  return {
+    completed,
+    manifest: await markBacktestRunStatus({ run: manifest, status: 'running' }),
+  };
+};
+
+const prepareContinuedBacktestMarketContext = async ({
+  manifest,
+  remainingSuite,
+}: {
+  manifest: BacktestRunManifest;
+  remainingSuite: TestSuite;
+}) => {
+  await prepareMarketContextForRun({
+    mode: 'backtest',
+    userName,
+    projectRoot,
+    symbols: Array.from(new Set(remainingSuite.map((test) => test.symbol))),
+    interval: manifest.interval as Interval,
+    startMs: manifest.window.start,
+    endMs: manifest.window.end,
+    preloadStartMs: manifest.preloadStart,
+    cacheOnly: manifest.flags.cacheOnly,
+    aiEnabled: manifest.flags.ai,
+    mlEnabled: manifest.flags.ml,
+    log: (message) => console.log(chalk.gray(message)),
+  });
+};
+
 export const backtest = async () => {
   resetRunState();
   const config = await loadBacktestConfig();
+  const continuedRun = await loadBacktestRunForContinue();
+  if (continuedRun) {
+    const { completed, manifest } = continuedRun;
+    restoreCompletedBacktestResults(completed);
+    const remainingSuite = filterRemainingBacktestTests({
+      completed,
+      testSuite: manifest.testSuite,
+    });
+
+    if (!remainingSuite.length) {
+      await markBacktestRunStatus({ run: manifest, status: 'completed' });
+      await finishBacktest(manifest.testSuite);
+      return;
+    }
+
+    await prepareContinuedBacktestMarketContext({ manifest, remainingSuite });
+
+    await executeTestSuite({
+      testSuite: remainingSuite,
+      window: manifest.window,
+      preloadStart: manifest.preloadStart,
+      initialCompletedTests: completed.length,
+      totalTests: manifest.testSuite.length,
+      onResult: async (result) => {
+        await saveBacktestCheckpointResult({
+          result,
+          runId: manifest.runId,
+          userName,
+        });
+        trackTopResult(result);
+        updateBestTickerResult(result);
+      },
+      onInterrupt: async () => {
+        await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
+      },
+      onFinish: async () => {
+        await markBacktestRunStatus({ run: manifest, status: 'completed' });
+        await finishBacktest(manifest.testSuite);
+      },
+    });
+    return;
+  }
+
   const preparedRun = await prepareRunEnvironment();
   if (!preparedRun || flags.updateOnly) {
     return;
@@ -501,15 +651,47 @@ export const backtest = async () => {
     return;
   }
 
+  const manifest = await createBacktestRunManifest({
+    userName,
+    config: flags.config,
+    command: process.argv,
+    connectorName: preparedRun.connectorName,
+    interval: String(interval),
+    window: preparedRun.window,
+    preloadStart: preparedRun.preloadStart,
+    flags: {
+      ai: Boolean(flags.ai),
+      backtestEntryDelayBars,
+      backtestPriceMode,
+      cacheOnly: Boolean(flags.cacheOnly),
+      fast: Boolean(flags.fast),
+      ml: Boolean(flags.ml),
+    },
+    marketContextPreparedAt: new Date().toISOString(),
+    testSuite,
+  });
+  console.log(chalk.gray(`backtest run id: ${manifest.runId}`));
+
   await executeTestSuite({
     testSuite,
     window: preparedRun.window,
     preloadStart: preparedRun.preloadStart,
-    onResult: (result) => {
+    onResult: async (result) => {
+      await saveBacktestCheckpointResult({
+        result,
+        runId: manifest.runId,
+        userName,
+      });
       trackTopResult(result);
       updateBestTickerResult(result);
     },
-    onFinish: () => finishBacktest(testSuite),
+    onInterrupt: async () => {
+      await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
+    },
+    onFinish: async () => {
+      await markBacktestRunStatus({ run: manifest, status: 'completed' });
+      await finishBacktest(testSuite);
+    },
   });
 };
 

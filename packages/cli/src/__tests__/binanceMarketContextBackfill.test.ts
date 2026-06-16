@@ -2,9 +2,46 @@ import {
   buildBreadthBackfillChunks,
   buildTradeFlowBackfillChunks,
   filterMissingBreadthBackfillChunks,
+  resolveBinanceMarketContextBackfillWindow,
   shouldBackfillBinanceMarketContextForReplay,
   shouldBackfillBinanceMarketContextForSignals,
 } from '../lib/binanceMarketContextBackfill';
+
+describe('resolveBinanceMarketContextBackfillWindow', () => {
+  it('uses explicit preload start for both trade flow and breadth windows', () => {
+    const startMs = Date.parse('2026-04-01T00:00:00.000Z');
+    const endMs = Date.parse('2026-04-02T00:00:00.000Z');
+    const preloadStartMs = Date.parse('2026-02-01T00:00:00.000Z');
+
+    expect(
+      resolveBinanceMarketContextBackfillWindow({
+        startMs,
+        endMs,
+        preloadStartMs,
+      }),
+    ).toEqual({
+      breadthStartMs: preloadStartMs,
+      tradeFlowStartMs: preloadStartMs,
+      endMs,
+    });
+  });
+
+  it('falls back to short breadth lookback when no preload start is provided', () => {
+    const startMs = Date.parse('2026-04-01T00:00:00.000Z');
+    const endMs = Date.parse('2026-04-02T00:00:00.000Z');
+
+    expect(
+      resolveBinanceMarketContextBackfillWindow({
+        startMs,
+        endMs,
+      }),
+    ).toEqual({
+      breadthStartMs: startMs - 3 * 86_400_000,
+      tradeFlowStartMs: startMs,
+      endMs,
+    });
+  });
+});
 
 describe('buildBreadthBackfillChunks', () => {
   it('splits long breadth backfills into bounded windows with warmup', () => {

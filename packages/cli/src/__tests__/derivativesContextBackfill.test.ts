@@ -43,9 +43,7 @@ describe('shouldBackfillDerivativesContextForBacktest', () => {
     ).toBe(false);
   });
 
-  it('backfills derivatives context only when enabled for AI or ML backtests', () => {
-    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
-
+  it('backfills derivatives context by default for AI or ML backtests', () => {
     expect(
       shouldBackfillDerivativesContextForBacktest({
         aiEnabled: false,
@@ -57,6 +55,18 @@ describe('shouldBackfillDerivativesContextForBacktest', () => {
     expect(
       shouldBackfillDerivativesContextForBacktest({
         aiEnabled: false,
+        cacheOnly: false,
+        mlEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('can be disabled explicitly for backtests', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
+
+    expect(
+      shouldBackfillDerivativesContextForBacktest({
+        aiEnabled: true,
         cacheOnly: false,
         mlEnabled: false,
       }),
@@ -101,14 +111,22 @@ describe('shouldBackfillDerivativesContextForSignals', () => {
     ).toBe(false);
   });
 
-  it('backfills signals when derivatives context is enabled globally', () => {
-    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
-
+  it('backfills signals by default', () => {
     expect(
       shouldBackfillDerivativesContextForSignals({
         cacheOnly: false,
       }),
     ).toBe(true);
+  });
+
+  it('can be disabled explicitly for signals', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
+
+    expect(
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: false,
+      }),
+    ).toBe(false);
   });
 
   it('backfills signals only when live mode is enabled', () => {
@@ -177,7 +195,7 @@ describe('resolveDerivativesContextBackfillWindow', () => {
     });
   });
 
-  it('keeps the shorter derivatives lookback when preload starts earlier', () => {
+  it('uses the explicit preload start as the full backfill warmup', () => {
     process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS = '12';
     const startMs = Date.parse('2026-04-01T00:00:00.000Z');
     const endMs = Date.parse('2026-04-02T00:00:00.000Z');
@@ -191,7 +209,7 @@ describe('resolveDerivativesContextBackfillWindow', () => {
         nowMs: endMs,
       }),
     ).toEqual({
-      fromMs: startMs - 12 * 60 * 60 * 1000,
+      fromMs: preloadStartMs,
       toMs: endMs,
       testStartMs: startMs,
     });

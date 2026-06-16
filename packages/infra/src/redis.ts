@@ -649,6 +649,13 @@ export const redisKeys = {
   screenshotSessionToken: (token: string) => `auth:screenshot:${token}`,
   backtestResults: (userName: string, config: string, timestamp: string) =>
     `users:${userName}:backtests:results:${config}:${timestamp}`,
+  backtestRuns: (userName: string) => `users:${userName}:backtests:runs:`,
+  backtestRun: (userName: string, runId: string) =>
+    `users:${userName}:backtests:runs:${runId}`,
+  backtestRunResults: (userName: string, runId: string) =>
+    `users:${userName}:backtests:runs:${runId}:results`,
+  backtestLatestRun: (userName: string, config: string) =>
+    `users:${userName}:backtests:latest:${config}`,
   researchRuns: (userName: string) => `users:${userName}:research:runs:`,
   researchRun: (userName: string, runId: string) =>
     `users:${userName}:research:runs:${runId}`,

@@ -85,7 +85,38 @@ describe('strategyHelpers/derivativesContext', () => {
     },
   } as any;
 
-  it('keeps derivatives context disabled by default', async () => {
+  it('enables derivatives context by default with 15m/1h and 48h lookback', async () => {
+    expect(isDerivativesContextEnabled('BACKTEST')).toBe(true);
+
+    const enrichedSignal = { ...signal };
+    const enriched = await enrichSignalWithDerivativesContext({
+      signal: enrichedSignal,
+      env: 'BACKTEST',
+    });
+
+    expect(enriched).toBe(true);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
+      symbol: 'BTCUSDT',
+      intervals: ['15m', '1h'],
+      endMs: signal.timestamp,
+      lookbackMs: 48 * 60 * 60 * 1000,
+    });
+    expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(2, {
+      symbol: 'ETHUSDT',
+      intervals: ['15m', '1h'],
+      endMs: signal.timestamp,
+      lookbackMs: 48 * 60 * 60 * 1000,
+    });
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
+      expect.objectContaining({
+        referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+      }),
+    );
+  });
+
+  it('can be disabled explicitly', async () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
     expect(isDerivativesContextEnabled('BACKTEST')).toBe(false);
 
     const enriched = await enrichSignalWithDerivativesContext({

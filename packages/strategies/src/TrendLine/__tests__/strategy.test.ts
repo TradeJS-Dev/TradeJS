@@ -102,8 +102,12 @@ const makeFreshBreakoutTrendLine = (
 };
 
 describe('TrendlineStrategyCreator', () => {
+  const originalDerivativesContextEnabled =
+    process.env.DERIVATIVES_CONTEXT_ENABLED;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
     (calculateCoinBtcCorrelation as jest.Mock).mockReturnValue({
       correlation: 0,
     });
@@ -118,6 +122,15 @@ describe('TrendlineStrategyCreator', () => {
       stopLossPrice: null,
       comment: 'ok',
     });
+  });
+
+  afterAll(() => {
+    if (originalDerivativesContextEnabled === undefined) {
+      delete process.env.DERIVATIVES_CONTEXT_ENABLED;
+    } else {
+      process.env.DERIVATIVES_CONTEXT_ENABLED =
+        originalDerivativesContextEnabled;
+    }
   });
 
   it('stores 10 indicator values and exposes them in signal', async () => {
