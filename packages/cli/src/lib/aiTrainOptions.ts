@@ -59,6 +59,29 @@ export const parseQualityThresholds = (value: unknown) => {
   return [...new Set(raw)].sort((left, right) => left - right);
 };
 
+export type AiTrainDumpFeatureMode = 'none' | 'gateFeatures' | 'baseContext';
+
+export const parseDumpFeatureMode = (
+  value: unknown,
+): AiTrainDumpFeatureMode => {
+  const text = String(value ?? 'none')
+    .trim()
+    .toLowerCase();
+  if (!text || text === 'none' || text === 'false' || text === '0') {
+    return 'none';
+  }
+  if (text === 'gatefeatures' || text === 'gate-features') {
+    return 'gateFeatures';
+  }
+  if (text === 'basecontext' || text === 'base-context') {
+    return 'baseContext';
+  }
+
+  throw new Error(
+    `Invalid --dumpFeatures value "${String(value)}". Use none, gateFeatures, or baseContext.`,
+  );
+};
+
 export const hasCliOption = ({
   argv,
   longName,

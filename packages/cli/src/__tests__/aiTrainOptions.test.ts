@@ -1,5 +1,6 @@
 import {
   hasCliOption,
+  parseDumpFeatureMode,
   parseQualityThresholds,
   parseTimestampFilter,
   parseTrailingPeriodMs,
@@ -42,6 +43,22 @@ describe('aiTrainOptions', () => {
   it('deduplicates and sorts quality thresholds', () => {
     expect(parseQualityThresholds('5,3,4,4,0,-1,x,2.9')).toEqual([2, 3, 4, 5]);
     expect(parseQualityThresholds(undefined)).toEqual([3, 4, 5]);
+  });
+
+  it('parses dump feature snapshot modes', () => {
+    expect(parseDumpFeatureMode(undefined)).toBe('none');
+    expect(parseDumpFeatureMode('')).toBe('none');
+    expect(parseDumpFeatureMode('none')).toBe('none');
+    expect(parseDumpFeatureMode('gateFeatures')).toBe('gateFeatures');
+    expect(parseDumpFeatureMode('gate-features')).toBe('gateFeatures');
+    expect(parseDumpFeatureMode('baseContext')).toBe('baseContext');
+    expect(parseDumpFeatureMode('base-context')).toBe('baseContext');
+  });
+
+  it('rejects invalid dump feature snapshot modes', () => {
+    expect(() => parseDumpFeatureMode('full')).toThrow(
+      /Invalid --dumpFeatures value/,
+    );
   });
 
   it('detects explicit CLI options without matching other flags', () => {

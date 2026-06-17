@@ -101,6 +101,7 @@ Shard-aware examples:
 yarn ai-train --strategy TrendShift --localOnly --json -n 0
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0 --dumpEvaluations /tmp/trendshift-evals.jsonl
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0 --dumpEvaluations /tmp/trendshift-evals.jsonl --dumpFeatures gateFeatures
 ```
 
 Interpretation:
@@ -108,7 +109,10 @@ Interpretation:
 - both commands above should evaluate the full shard group for that merge id, not only `part1`
 - if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
-- when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows and join/compare extra fields from the original dataset only as explanatory features
+- when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows
+- when the research needs signal-time gate inputs such as CMC, MTF, ATR bucket, benchmark conflict, participation, execution, or strategy-specific `*GateFeatures`, add `--dumpFeatures gateFeatures`; this writes the current `baseContext.gateFeatures` and strategy gate features into each dump row
+- when broader context is needed, use `--dumpFeatures baseContext`; it writes compact current base-context sections (`regime`, `structure`, `participation`, `relative`, `derivatives`, `mtf`, `gateFeatures`) without the bulky `raw` section
+- join/compare extra fields from the original dataset only when they are not available through `--dumpFeatures`, and treat those joined fields as explanatory features rather than current gate truth after adapter changes
 - before trusting a custom script, verify its baseline `approved`, q4+, q5+, PnL, PF, max drawdown, and max loss streak match `yarn ai-train --localOnly --json` for the same export/window
 
 5. Read these sections first:

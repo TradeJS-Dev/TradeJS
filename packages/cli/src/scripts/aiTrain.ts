@@ -32,6 +32,11 @@ import {
   summarizeAiTrainEvaluationsByQualityThreshold,
 } from '../lib/aiTrainMetrics';
 import {
+  buildAiTrainEvaluationFeatureSnapshot,
+  type AiTrainEvaluationFeatureSnapshot,
+} from '../lib/aiTrainEvaluationDump';
+import {
+  parseDumpFeatureMode,
   parseQualityThresholds,
   parseTimestampFilter,
   parseTrailingPeriodMs,
@@ -114,6 +119,11 @@ args.option(
   ['d', 'dumpEvaluations'],
   'Write evaluated rows as JSONL for offline pocket research',
   '',
+);
+args.option(
+  ['G', 'dumpFeatures'],
+  'Feature snapshot to include in --dumpEvaluations rows: none, gateFeatures, or baseContext',
+  'none',
 );
 args.option(
   ['Q', 'symbolQuarantine'],
@@ -413,6 +423,7 @@ type AiTrainResult = {
     mode: 'local-deterministic' | 'llm';
     model: string;
     parallel: number;
+    dumpFeatures: ReturnType<typeof parseDumpFeatureMode>;
   };
   outcome: ReturnType<typeof summarizeAiTrainEvaluations>;
   byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
@@ -635,6 +646,10 @@ export const main = async () => {
   });
   const qualityThresholds = parseQualityThresholds(flags.qualityThresholds);
   const dumpEvaluationsPath = String(flags.dumpEvaluations || '').trim();
+  const dumpFeatureMode = parseDumpFeatureMode(flags.dumpFeatures);
+  if (dumpFeatureMode !== 'none' && !dumpEvaluationsPath) {
+    throw new Error('--dumpFeatures requires --dumpEvaluations.');
+  }
   const symbolQuarantineEnabled = Boolean(flags.symbolQuarantine);
   const symbolQuarantineMinLosses = normalizePositiveInt(
     flags.symbolQuarantineMinLosses,
@@ -710,6 +725,7 @@ export const main = async () => {
     configId: string;
     rejectReason: string | null;
     sequence: number;
+    features?: AiTrainEvaluationFeatureSnapshot;
   }> = [];
   const evaluatedRows: AiTrainEvaluatedRow[] = [];
   const duplicateSignalRows: AiTrainDuplicateSignalRow[] = [];
@@ -757,6 +773,10 @@ export const main = async () => {
           : null;
       const modelDirectionMatches = modelDirection === row.direction;
       const isCorrect = aiApproved === profitableTrade;
+      const features = buildAiTrainEvaluationFeatureSnapshot({
+        additionalIndicators: payload.additionalIndicators,
+        mode: dumpFeatureMode,
+      });
 
       evaluations.push({
         signalId: row.signalId,
@@ -776,6 +796,7 @@ export const main = async () => {
         configId: row.configId?.trim() || '',
         rejectReason,
         sequence,
+        ...(features ? { features } : {}),
       });
 
       if (saveChart) {
@@ -920,6 +941,7 @@ export const main = async () => {
       mode: localOnly ? 'local-deterministic' : 'llm',
       model: localOnly ? 'local-deterministic' : model,
       parallel: concurrency,
+      dumpFeatures: dumpFeatureMode,
     },
     outcome: summary,
     byDirection: directionSummaries,
@@ -961,6 +983,7 @@ export const main = async () => {
             modelCandidate: evaluation.modelCandidate,
             rejectReason: evaluation.rejectReason,
             sequence: evaluation.sequence,
+            ...(evaluation.features ? { features: evaluation.features } : {}),
           }),
         )
         .join('\n') + (finalEvaluations.length ? '\n' : ''),
@@ -1036,6 +1059,12 @@ export const main = async () => {
           dumpEvaluationsPath
             ? chalk.gray(dumpEvaluationsPath)
             : chalk.gray('off'),
+        ],
+        [
+          'dump_features',
+          dumpFeatureMode === 'none'
+            ? chalk.gray('off')
+            : chalk.gray(dumpFeatureMode),
         ],
       ],
     ),
