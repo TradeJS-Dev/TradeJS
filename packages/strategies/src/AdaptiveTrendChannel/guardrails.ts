@@ -11,6 +11,8 @@ export type AdaptiveTrendChannelGuardrailContext =
     volumeRel20: number | null;
     h4VolatilityState: string | null;
     benchmarkTrendAlignment: string | null;
+    cmcExchangeLiquidityAligned: boolean | null;
+    cmcExchangeLiquidityStale: boolean | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
@@ -53,9 +55,9 @@ const isDirectionAligned = ({
 const MIN_APPROVAL_BREAKOUT_DISTANCE_PCT = 4;
 const MIN_SHORT_APPROVAL_BREAKOUT_DISTANCE_PCT = 4.2;
 const MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT = 4;
-const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 1.6;
+const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 2;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
-const MIN_APPROVAL_VOLUME_REL20 = 6;
+const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
 
 export const buildAdaptiveTrendChannelGuardrailContext = ({
@@ -83,6 +85,16 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     baseContext?.mtf?.summary?.h4VolatilityState ?? null;
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
+  const cmcExchangeLiquidityAligned =
+    typeof baseContext?.gateFeatures?.relative?.cmcExchangeLiquidityAligned ===
+    'boolean'
+      ? baseContext.gateFeatures.relative.cmcExchangeLiquidityAligned
+      : null;
+  const cmcExchangeLiquidityStale =
+    typeof baseContext?.gateFeatures?.relative?.cmcExchangeLiquidityStale ===
+    'boolean'
+      ? baseContext.gateFeatures.relative.cmcExchangeLiquidityStale
+      : null;
   const derivativesPressure =
     typeof derivativesSummary?.pressure === 'string'
       ? derivativesSummary.pressure
@@ -150,9 +162,15 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     direction === 'SHORT'
       ? MIN_SHORT_APPROVAL_VOLUME_REL20
       : MIN_APPROVAL_VOLUME_REL20;
+  const cmcExchangeLiquiditySupportsApproval =
+    direction === 'LONG' &&
+    cmcExchangeLiquidityAligned === true &&
+    cmcExchangeLiquidityStale !== true;
   const approvalSetup =
+    direction === 'LONG' &&
     breakoutAligned &&
     h4VolatilityState === 'expanded' &&
+    cmcExchangeLiquiditySupportsApproval &&
     breakoutDistancePct >= minApprovalBreakoutDistancePct &&
     channelWidthPct >= MIN_APPROVAL_CHANNEL_WIDTH_PCT &&
     (volumeRel20 ?? 0) >= minApprovalVolumeRel20;
@@ -169,11 +187,20 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   } else if (approvalSetup) {
     deterministicQuality = 4;
   } else {
+    if (direction === 'SHORT') {
+      softBlockReasons.push('short_side_disabled');
+    }
     if (!breakoutAligned) {
       softBlockReasons.push('breakout_not_aligned');
     }
     if (h4VolatilityState !== 'expanded') {
       softBlockReasons.push('h4_volatility_not_expanded');
+    }
+    if (cmcExchangeLiquidityStale === true) {
+      softBlockReasons.push('cmc_exchange_liquidity_stale');
+    }
+    if (direction === 'LONG' && cmcExchangeLiquidityAligned !== true) {
+      softBlockReasons.push('cmc_exchange_liquidity_not_aligned');
     }
     if (breakoutDistancePct < minApprovalBreakoutDistancePct) {
       softBlockReasons.push('weak_breakout_distance');
@@ -200,6 +227,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     volumeRel20,
     h4VolatilityState,
     benchmarkTrendAlignment,
+    cmcExchangeLiquidityAligned,
+    cmcExchangeLiquidityStale,
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
