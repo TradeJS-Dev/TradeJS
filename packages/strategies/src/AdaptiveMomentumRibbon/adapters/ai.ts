@@ -26,6 +26,8 @@ AdaptiveMomentumRibbon addon:
 - \`quality=5\` is reserved for the strongest momentum/low-effort pocket: oscillatorStrength >= 1.5, volumeRel20 <= 1.2, and effortVsResult <= 100.
 - \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
 - If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
+- The local deterministic gate currently approves LONG only. SHORT stays in watch mode until it has separate short-side calibration.
+- LONG approvals require cmcAltLiquidityRegime to be anything except \`btc_favored\` when that CMC field is available.
 - \`quality=4\` continuation approvals require targetVsBtcAlpha4h >= 1, spreadBps >= -10, and cmcFearGreedValueChange7d >= -15 when those fields are available. \`quality=5\` is not capped by this q4-only continuation guard.
 - A blocked q4 continuation may recover to \`quality=4\` when effortVsResult <= 60 and cmcBtcDominanceChange24hPct <= 0.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
@@ -33,7 +35,7 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -68,7 +70,9 @@ type AmrStructuralReason =
   | 'weak_participation'
   | 'weak_retest_quality'
   | 'elevated_venue_spread'
-  | 'derivatives_pressure_conflict';
+  | 'derivatives_pressure_conflict'
+  | 'short_disabled'
+  | 'cmc_alt_liquidity_btc_favored';
 
 type AdaptiveMomentumRibbonSnapshot = {
   entryLong?: unknown;
@@ -130,6 +134,7 @@ type AdaptiveMomentumRibbonAiContext = {
   spreadBps: number | null;
   spreadBias: SpreadBias;
   spreadSeverity: SpreadSeverity;
+  cmcAltLiquidityRegime: string | null;
   cmcFearGreedValueChange7d: number | null;
   cmcBtcDominanceChange24hPct: number | null;
   q4ContinuationAllowed: boolean;
@@ -497,6 +502,17 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     return 3;
   }
 
+  if (context.signalDirection === 'SHORT') {
+    return 3;
+  }
+
+  if (
+    context.signalDirection === 'LONG' &&
+    context.cmcAltLiquidityRegime === 'btc_favored'
+  ) {
+    return 3;
+  }
+
   const causalMomentumLowEffortPocket =
     isAtLeast(context.oscillatorStrength, 1.5) &&
     isInRange(context.volumeRel20, 0, 1.2) &&
@@ -717,6 +733,11 @@ const buildAdaptiveMomentumRibbonContext = (
       ? spreadContext.severity
       : null;
   const signalRangeAtrRatio = getSignalRangeAtrRatio(candle, raw);
+  const cmcAltLiquidityRegime =
+    typeof cmcGlobal?.altLiquidityRegime === 'string' &&
+    cmcGlobal.altLiquidityRegime.trim().length > 0
+      ? cmcGlobal.altLiquidityRegime
+      : null;
   const cmcFearGreedValueChange7d = toFiniteNumberOrNull(
     cmcFearGreed?.valueChange7d,
   );
@@ -830,6 +851,14 @@ const buildAdaptiveMomentumRibbonContext = (
     structuralHardBlockReasons.push('derivatives_pressure_conflict');
   }
 
+  if (signalDirection === 'SHORT') {
+    structuralHardBlockReasons.push('short_disabled');
+  }
+
+  if (signalDirection === 'LONG' && cmcAltLiquidityRegime === 'btc_favored') {
+    structuralHardBlockReasons.push('cmc_alt_liquidity_btc_favored');
+  }
+
   const deterministicQuality = getDeterministicAdaptiveMomentumRibbonQuality({
     signalDirection,
     momentumPeriod,
@@ -877,6 +906,7 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBps,
     spreadBias,
     spreadSeverity,
+    cmcAltLiquidityRegime,
     cmcFearGreedValueChange7d,
     cmcBtcDominanceChange24hPct,
     q4ContinuationAllowed,
@@ -933,6 +963,7 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBps,
     spreadBias,
     spreadSeverity,
+    cmcAltLiquidityRegime,
     cmcFearGreedValueChange7d,
     cmcBtcDominanceChange24hPct,
     q4ContinuationAllowed,
@@ -1102,6 +1133,7 @@ Additional AdaptiveMomentumRibbon context:
 - spreadBps=${context.spreadBps?.toFixed?.(2) ?? 'n/a'}
 - spreadBias=${context.spreadBias ?? 'n/a'}
 - spreadSeverity=${context.spreadSeverity ?? 'n/a'}
+- cmcAltLiquidityRegime=${context.cmcAltLiquidityRegime ?? 'n/a'}
 - cmcFearGreedValueChange7d=${context.cmcFearGreedValueChange7d?.toFixed?.(3) ?? 'n/a'}
 - cmcBtcDominanceChange24hPct=${context.cmcBtcDominanceChange24hPct?.toFixed?.(3) ?? 'n/a'}
 - q4ContinuationAllowed=${context.q4ContinuationAllowed}

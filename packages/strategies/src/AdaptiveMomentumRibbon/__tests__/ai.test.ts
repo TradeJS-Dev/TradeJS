@@ -274,6 +274,40 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('demotes strong longs when CMC alt liquidity favors BTC', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            cmcGlobal: {
+              altLiquidityRegime: 'btc_favored',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'LONG',
+        cmcAltLiquidityRegime: 'btc_favored',
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['cmc_alt_liquidity_btc_favored'],
+      }),
+    );
+  });
+
   it('keeps strong low-effort setups in watch mode when signal range is below 1.05 ATR', () => {
     const signal = makeSignal({
       additionalIndicators: {
@@ -1503,7 +1537,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('approves strong aligned short setups', () => {
+  it('keeps strong aligned short setups in watch mode while short gate is disabled', () => {
     const signal = makeSignal({
       direction: 'SHORT',
       prices: {
@@ -1583,8 +1617,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         btcBiasAligned: true,
         primarySession: 'off_hours',
         sessionAllowsApproval: true,
-        deterministicQuality: 5,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['short_disabled'],
       }),
     );
 
@@ -1599,12 +1634,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
 
     expect(analysis).toEqual(
       expect.objectContaining({
-        direction: 'SHORT',
-        quality: 5,
-        needRetest: false,
-        retestPrice: null,
-        takeProfitPrice: 96.6,
-        stopLossPrice: 99.9,
+        direction: null,
+        quality: 3,
+        needRetest: true,
+        retestPrice: 99,
+        takeProfitPrice: null,
+        stopLossPrice: null,
       }),
     );
   });
