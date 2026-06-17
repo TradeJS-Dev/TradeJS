@@ -15,6 +15,8 @@ export type LiquidityTailsGuardrailContext =
     roc1h: number | null;
     roc4h: number | null;
     benchmarkTrendAlignment: string | null;
+    atrPctRankBucket: string | null;
+    q4AtrRankEligible: boolean;
     higherTimeframeConflict: boolean;
     benchmarkConflict: boolean;
     derivativesPressure: string | null;
@@ -66,6 +68,7 @@ const MIN_APPROVAL_BODY_STRENGTH = 0.4;
 const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
 const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
 const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
+const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
 
 const buildLiquidityTailsGateFeatures = ({
   signalContext,
@@ -219,6 +222,13 @@ export const buildLiquidityTailsGuardrailContext = ({
   const roc4h = asFiniteNumber(baseContext?.regime?.momentum?.roc4h);
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
+  const atrPctRankBucket =
+    typeof baseContext?.gateFeatures?.volatility?.atrPctRankBucket === 'string'
+      ? baseContext.gateFeatures.volatility.atrPctRankBucket
+      : null;
+  const q4AtrRankEligible =
+    atrPctRankBucket != null &&
+    Q4_APPROVAL_ATR_RANK_BUCKETS.has(atrPctRankBucket);
   const higherTimeframeConflict =
     baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
   const benchmarkConflict =
@@ -352,6 +362,10 @@ export const buildLiquidityTailsGuardrailContext = ({
   ) {
     deterministicQuality = 3;
   }
+  if (deterministicQuality === 4 && !q4AtrRankEligible) {
+    deterministicQuality = 3;
+    softBlockReasons.push('q4_atr_rank_not_high');
+  }
 
   return {
     ...signalContext,
@@ -367,6 +381,8 @@ export const buildLiquidityTailsGuardrailContext = ({
     roc1h,
     roc4h,
     benchmarkTrendAlignment,
+    atrPctRankBucket,
+    q4AtrRankEligible,
     higherTimeframeConflict,
     benchmarkConflict,
     derivativesPressure,

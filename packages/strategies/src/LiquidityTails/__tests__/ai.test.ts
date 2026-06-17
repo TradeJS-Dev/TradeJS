@@ -397,6 +397,7 @@ describe('liquidityTailsAiAdapter', () => {
             volume: { volumeRel20: 1.1 },
           },
           gateFeatures: {
+            volatility: { atrPctRankBucket: 'high' },
             mtf: { higherTimeframeConflict: false },
             relative: { benchmarkConflict: false },
           },
@@ -413,6 +414,55 @@ describe('liquidityTailsAiAdapter', () => {
       quality: 4,
       approved: true,
     });
+  });
+
+  it('keeps q4 retests below approval when ATR rank is not high or extreme', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          gateFeatures: {
+            volatility: { atrPctRankBucket: 'normal' },
+            mtf: { higherTimeframeConflict: false },
+            relative: { benchmarkConflict: false },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('q4_atr_rank_not_high');
   });
 
   it('does not upgrade q3 retests with higher-timeframe conflict', () => {
