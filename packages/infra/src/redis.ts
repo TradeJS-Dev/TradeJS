@@ -596,6 +596,8 @@ export const redisKeys = {
     `users:${userName}:cache:tests:orders:${orderLogId}`,
   cachePositions: (userName: string, orderLogId: string) =>
     `users:${userName}:cache:tests:positions:${orderLogId}`,
+  tickerUniverse: (userName: string, connectorName: string) =>
+    `users:${userName}:cache:tickers:${connectorName}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>

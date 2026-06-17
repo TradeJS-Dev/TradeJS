@@ -412,6 +412,9 @@ describe('redis utils', () => {
     expect(redisKeys.cachePositions('root', 'p1')).toBe(
       'users:root:cache:tests:positions:p1',
     );
+    expect(redisKeys.tickerUniverse('root', 'ByBit')).toBe(
+      'users:root:cache:tickers:ByBit',
+    );
     expect(redisKeys.signal('BTCUSDT', 's1')).toBe('signals:BTCUSDT:s1');
     expect(redisKeys.signalsBySymbol('BTCUSDT')).toBe('signals:BTCUSDT:');
     expect(redisKeys.storeSignal('BTCUSDT', 's1')).toBe(

@@ -4,7 +4,7 @@ import {
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
-import { getTickers, update } from '@tradejs/node/cli';
+import { update } from '@tradejs/node/cli';
 import {
   BACKTEST_EXECUTION_INTERVAL,
   BACKTEST_DEFAULT_DAYS,
@@ -22,6 +22,7 @@ import {
   loadBtcReferenceConnectors,
   updateMarketHistoryWithBtcReferences,
 } from './marketData/historyPrepare';
+import { loadRunTickers } from './tickerUniverseCache';
 
 export type ResolvedWindow = {
   start: number;
@@ -143,12 +144,17 @@ export const prepareRunEnvironment = async ({
         ? Number(tickersLimit)
         : undefined;
   const loadedTickers = await timeOperation('tickers load', () =>
-    getTickers(
-      marketConnector,
-      typeof tickers === 'string' ? tickers : undefined,
-      typeof exclude === 'string' ? exclude : undefined,
-      Number.isFinite(resolvedTickersLimit) ? resolvedTickersLimit : undefined,
-    ),
+    loadRunTickers({
+      connector: marketConnector,
+      connectorName,
+      userName,
+      include: typeof tickers === 'string' ? tickers : undefined,
+      exclude: typeof exclude === 'string' ? exclude : undefined,
+      limit: Number.isFinite(resolvedTickersLimit)
+        ? resolvedTickersLimit
+        : undefined,
+      cacheOnly: Boolean(cacheOnly),
+    }),
   );
 
   if (showTickersList) {
