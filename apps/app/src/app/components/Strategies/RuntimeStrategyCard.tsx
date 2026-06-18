@@ -2148,7 +2148,11 @@ export const RuntimeStrategyCard = ({
           id="riskRewardRatio"
           title="Risk Ratio"
         />
-        <StatItem stat={strategy.stat} id="sharpeRatio" title="Sharpe" />
+        <StatItem
+          stat={strategy.stat}
+          id="maxConsecutiveLosses"
+          title="Max Loss Streak"
+        />
         <StatItem stat={strategy.stat} id="exposure" title="Exposure" />
       </SimpleGrid>
     </Box>
