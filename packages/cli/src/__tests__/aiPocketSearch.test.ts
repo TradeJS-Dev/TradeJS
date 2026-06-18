@@ -1,5 +1,6 @@
 import type { AiPayload } from '@tradejs/types';
 import {
+  buildAiPocketMarkdownReport,
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketSearchRow,
@@ -169,5 +170,162 @@ describe('aiPocketSearch', () => {
           pocket.summary.totalProfit === -11,
       ),
     ).toBe(true);
+  });
+
+  it('emits search progress updates', () => {
+    const rows: AiPocketSearchRow[] = [
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 0,
+        features: { a: true, b: 'x', c: 1 },
+      },
+      {
+        profit: -2,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 1,
+        features: { a: true, b: 'y', c: 2 },
+      },
+      {
+        profit: 4,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 4,
+        timestamp: 2,
+        features: { a: false, b: 'x', c: 3 },
+      },
+      {
+        profit: -3,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 1,
+        timestamp: 3,
+        features: { a: false, b: 'y', c: 4 },
+      },
+    ];
+    const progress: Array<{ current: number; total: number; done: boolean }> =
+      [];
+
+    const result = searchAiPockets(rows, {
+      minSupport: 1,
+      maxDepth: 2,
+      maxAtomicPredicates: 12,
+      maxCombinations: 100,
+      progressInterval: 1,
+      onProgress: (event) => {
+        progress.push({
+          current: event.current,
+          total: event.total,
+          done: event.done,
+        });
+      },
+    });
+
+    expect(result.stats.estimatedCombinations).toBeGreaterThan(0);
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.at(-1)).toEqual(
+      expect.objectContaining({
+        done: true,
+      }),
+    );
+    expect(progress.at(-1)!.current).toBeLessThanOrEqual(
+      progress.at(-1)!.total,
+    );
+  });
+
+  it('builds a markdown report with run, baseline, and pocket sections', () => {
+    const rows: AiPocketSearchRow[] = [
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 0,
+        symbol: 'A',
+        features: { a: true, b: 'x' },
+      },
+      {
+        profit: -3,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 1,
+        symbol: 'B',
+        features: { a: false, b: 'y' },
+      },
+    ];
+    const search = searchAiPockets(rows, {
+      minSupport: 1,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    });
+
+    const markdown = buildAiPocketMarkdownReport({
+      generatedAt: 0,
+      run: {
+        strategy: 'Example',
+        filePaths: ['data/ai/export/example.jsonl'],
+        sourceRows: 2,
+        selectedRows: 2,
+        evaluatedRows: 2,
+        scope: 'all',
+        scopeRows: 2,
+        scanned: 2,
+        dateSkipped: 0,
+        failed: 0,
+        recent: 0,
+        skip: 0,
+        since: null,
+        until: null,
+        period: null,
+        minQuality: 4,
+        qualityThresholds: [4],
+        includeSymbol: false,
+        includeGateContext: false,
+        reportPath: 'data/ai/output/report.md',
+        search: {
+          maxDepth: 1,
+          minSupport: 1,
+          minProfitFactor: 1,
+          minWinRate: 0,
+          minTotalProfit: 0,
+          maxAtomicPredicates: 10,
+          maxCombinations: 20,
+          top: 10,
+        },
+      },
+      currentGate: {
+        qualityThresholds: [
+          {
+            threshold: 4,
+            label: 'q4+',
+            summary: {
+              approved: 1,
+              avgApprovedTradesPerDay: 1,
+              avgProfitApprovedPerDay: 10,
+              approvedRisk: {
+                winRate: 1,
+                profitFactor: null,
+                totalProfit: 10,
+                maxDrawdown: 0,
+              },
+            },
+          } as any,
+        ],
+      },
+      pocketSearch: search,
+      errors: [],
+    });
+
+    expect(markdown).toContain('# AI Pocket Search Report');
+    expect(markdown).toContain('| strategy | Example |');
+    expect(markdown).toContain('## Current Gate qN+ Baseline');
+    expect(markdown).toContain('## Top Positive Pockets');
+    expect(markdown).toContain('data/ai/output/report.md');
   });
 });

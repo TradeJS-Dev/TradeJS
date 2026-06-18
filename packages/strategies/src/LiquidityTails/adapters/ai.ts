@@ -126,6 +126,7 @@ Additional Liquidity Tails context:
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - atrPctRankBucket=${context.atrPctRankBucket ?? 'n/a'}
 - q4AtrRankEligible=${String(context.q4AtrRankEligible)}
+- liquidityRisk=${context.liquidityRisk ?? 'n/a'}
 - higherTimeframeConflict=${String(context.higherTimeframeConflict)}
 - benchmarkConflict=${String(context.benchmarkConflict)}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}

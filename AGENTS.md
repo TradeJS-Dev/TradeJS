@@ -274,6 +274,7 @@ Common internal commands:
 - `yarn infra-down`
 - `yarn doctor`
 - `yarn build:ci`
+- `yarn ai-pocket-search`
 - `yarn backtest`
 - `yarn results`
 - `yarn signals`
@@ -366,6 +367,8 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
   - if AI/ML gates matter, inspect runtime signals/evaluations or run `ai-train` separately
 - Treat `ai-train` approved cadence metrics as historical dataset averages over selected rows, not a guarantee of one live approved trade on every calendar day.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
+- `yarn ai-pocket-search` is the preferred deterministic AI export pocket discovery tool before writing or tuning new AI-gate rules. It reconstructs current strategy AI payloads, groups sharded merged exports, shows progress bars, and writes Markdown reports to `data/ai/output` by default.
+- `ai-pocket-search` excludes outcome fields and current deterministic gate output fields from candidate features by default; use `--includeGateContext` only when explicitly auditing existing gate decisions, not when discovering future approval rules.
 - Treat `AI_MODE=gate` metrics as directly comparable to `ai-train --localOnly`, because both use the local deterministic strategy AI gate with the same `MIN_AI_QUALITY` threshold.
 - Do not present `ai-train --localOnly` results as `AI_MODE=llm` expectations; `AI_MODE=llm` depends on external model decisions and must be validated from normal `ai-train`, live runtime records, or another replay that actually includes provider output.
 - When reporting approved quality metrics, use `qN+` to mean the effective `MIN_AI_QUALITY=N` live stream, which includes every approval with quality `>= N`.
@@ -374,7 +377,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - TrendFollow and TrendShift AI gates have recent strategy-specific guardrail tuning; inspect their `guardrails.ts`, `adapters/ai.ts`, and tests before changing thresholds or interpreting qN+ metrics.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
 - Strategy backtest/config work has a dedicated local skill at `.codex/skills/strategy-backtest-research/SKILL.md`. Use it for strategy implementation, figures, cache-only backtest sweeps, and year-scale `--ai` export prep.
-- Local deterministic AI gate research has a strategy-neutral skill at `.codex/skills/ai-train-local-research/SKILL.md`. Use it for `yarn ai-train --localOnly`, qN+ metrics, drawdown/winrate reporting, direction/time/symbol stability checks, and gate-vs-LLM analysis.
+- Local deterministic AI gate research has a strategy-neutral skill at `.codex/skills/ai-train-local-research/SKILL.md`. Use it for `yarn ai-train --localOnly`, `yarn ai-pocket-search`, qN+ metrics, drawdown/winrate reporting, direction/time/symbol stability checks, pocket discovery, and gate-vs-LLM analysis.
 
 ## Generated / Build Files
 

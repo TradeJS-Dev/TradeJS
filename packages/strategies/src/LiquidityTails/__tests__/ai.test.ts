@@ -465,6 +465,55 @@ describe('liquidityTailsAiAdapter', () => {
     ).toContain('q4_atr_rank_not_high');
   });
 
+  it('keeps otherwise approved retests below approval when liquidity risk is high', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          gateFeatures: {
+            risk: { liquidityRisk: 'high' },
+            volatility: { atrPctRankBucket: 'high' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('high_liquidity_risk');
+  });
+
   it('does not upgrade q3 retests with higher-timeframe conflict', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

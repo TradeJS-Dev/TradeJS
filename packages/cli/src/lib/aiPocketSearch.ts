@@ -1,5 +1,8 @@
 import type { AiPayload } from '@tradejs/types';
-import type { AiTrainEvaluation } from './aiTrainMetrics';
+import type {
+  AiTrainEvaluation,
+  AiTrainQualityThresholdSummary,
+} from './aiTrainMetrics';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAYS_PER_WEEK = 7;
@@ -27,6 +30,8 @@ export type AiPocketSearchOptions = {
   maxCombinations?: number;
   maxCategories?: number;
   top?: number;
+  progressInterval?: number;
+  onProgress?: (progress: AiPocketSearchProgress) => void;
 };
 
 export type AiPocketPredicate =
@@ -91,9 +96,61 @@ export type AiPocketSearchResult = {
     featureKeys: number;
     predicates: number;
     atomicPredicatesUsed: number;
+    estimatedCombinations: number;
     combinationsEvaluated: number;
     truncated: boolean;
   };
+};
+
+export type AiPocketSearchProgress = {
+  phase: 'combinations';
+  current: number;
+  total: number;
+  done: boolean;
+  truncated: boolean;
+};
+
+export type AiPocketSearchRunReport = {
+  strategy: string;
+  filePaths: string[];
+  sourceRows: number;
+  selectedRows: number;
+  evaluatedRows: number;
+  scope: string;
+  scopeRows: number;
+  scanned: number;
+  dateSkipped: number;
+  failed: number;
+  recent: number;
+  skip: number;
+  since: number | null;
+  until: number | null;
+  period: string | null;
+  minQuality: number;
+  qualityThresholds: number[];
+  includeSymbol: boolean;
+  includeGateContext: boolean;
+  reportPath: string;
+  search: {
+    maxDepth: number;
+    minSupport: number;
+    minProfitFactor: number;
+    minWinRate: number;
+    minTotalProfit: number;
+    maxAtomicPredicates: number;
+    maxCombinations: number;
+    top: number;
+  };
+};
+
+export type AiPocketMarkdownReport = {
+  generatedAt: number;
+  run: AiPocketSearchRunReport;
+  currentGate: {
+    qualityThresholds: AiTrainQualityThresholdSummary[];
+  };
+  pocketSearch: AiPocketSearchResult;
+  errors: string[];
 };
 
 type FeatureCollectionOptions = {
@@ -864,6 +921,30 @@ const createPocketResult = (
   } satisfies AiPocketResult;
 };
 
+const estimateCombinationCount = (
+  poolSize: number,
+  maxDepth: number,
+  maxCombinations: number,
+) => {
+  if (poolSize <= 0 || maxCombinations <= 0) {
+    return 0;
+  }
+
+  let total = 0;
+  let combinationsAtDepth = 1;
+  const depthLimit = Math.min(poolSize, maxDepth);
+  for (let depth = 1; depth <= depthLimit; depth += 1) {
+    combinationsAtDepth =
+      (combinationsAtDepth * (poolSize - depth + 1)) / depth;
+    total += combinationsAtDepth;
+    if (total >= maxCombinations) {
+      return maxCombinations;
+    }
+  }
+
+  return Math.min(Math.trunc(total), maxCombinations);
+};
+
 export const searchAiPockets = (
   rows: AiPocketSearchRow[],
   options: AiPocketSearchOptions = {},
@@ -882,6 +963,11 @@ export const searchAiPockets = (
     Math.trunc(options.maxCombinations ?? 60_000),
   );
   const top = Math.max(1, Math.trunc(options.top ?? 50));
+  const progressInterval = Math.max(
+    1,
+    Math.trunc(options.progressInterval ?? 500),
+  );
+  const onProgress = options.onProgress;
 
   const featureKeys = new Set<string>();
   rows.forEach((row) =>
@@ -930,11 +1016,38 @@ export const searchAiPockets = (
     }
   });
   const selectedPredicatePool = [...predicatePoolById.values()];
+  const estimatedCombinations = estimateCombinationCount(
+    selectedPredicatePool.length,
+    maxDepth,
+    maxCombinations,
+  );
 
   const positivePockets = new Map<string, AiPocketResult>();
   const negativePockets = new Map<string, AiPocketResult>();
   let combinationsEvaluated = 0;
   let truncated = false;
+  let lastProgressCombinations = 0;
+
+  const emitProgress = (done = false) => {
+    if (!onProgress) {
+      return;
+    }
+    if (
+      !done &&
+      combinationsEvaluated - lastProgressCombinations < progressInterval
+    ) {
+      return;
+    }
+
+    lastProgressCombinations = combinationsEvaluated;
+    onProgress({
+      phase: 'combinations',
+      current: Math.min(combinationsEvaluated, estimatedCombinations),
+      total: estimatedCombinations,
+      done,
+      truncated,
+    });
+  };
 
   const addPocket = (
     pocketPredicates: AiPocketPredicate[],
@@ -1000,6 +1113,7 @@ export const searchAiPockets = (
           ? predicate.mask
           : intersectMasks(mask, predicate.mask).mask;
       combinationsEvaluated += 1;
+      emitProgress();
       const support =
         mask == null
           ? predicate.support
@@ -1032,6 +1146,7 @@ export const searchAiPockets = (
     mask: null,
     usedFeatureKeys: new Set(),
   });
+  emitProgress(true);
 
   return {
     baseline: summarizeAiPocketRows(rows),
@@ -1047,8 +1162,208 @@ export const searchAiPockets = (
       featureKeys: featureKeys.size,
       predicates: predicates.length,
       atomicPredicatesUsed: selectedPredicatePool.length,
+      estimatedCombinations,
       combinationsEvaluated,
       truncated,
     },
   };
+};
+
+const formatMdNumber = (value: number | null, digits = 2) =>
+  value == null || !Number.isFinite(value) ? 'n/a' : value.toFixed(digits);
+
+const formatMdPercent = (value: number | null) =>
+  value == null || !Number.isFinite(value)
+    ? 'n/a'
+    : `${(value * 100).toFixed(1)}%`;
+
+const escapeMarkdownCell = (value: unknown) =>
+  String(value ?? 'n/a')
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, '<br>');
+
+const markdownTable = (headers: string[], rows: unknown[][]) => {
+  const header = `| ${headers.map(escapeMarkdownCell).join(' | ')} |`;
+  const divider = `| ${headers.map(() => '---').join(' | ')} |`;
+  const body = rows.map(
+    (row) => `| ${row.map(escapeMarkdownCell).join(' | ')} |`,
+  );
+  return [header, divider, ...body].join('\n');
+};
+
+const summaryMetricRows = (summary: AiPocketSummary) => [
+  ['rows', summary.support],
+  ['win_rate', formatMdPercent(summary.winRate)],
+  ['total_profit', formatMdNumber(summary.totalProfit)],
+  ['gross_profit', formatMdNumber(summary.grossProfit)],
+  ['gross_loss', formatMdNumber(-summary.grossLoss)],
+  ['profit_factor', formatMdNumber(summary.profitFactor)],
+  ['max_drawdown', formatMdNumber(summary.maxDrawdown)],
+  [
+    'max_drawdown_pct_of_gross_profit',
+    formatMdPercent(summary.maxDrawdownPctOfGrossProfit),
+  ],
+  [
+    'max_drawdown_pct_of_total_profit',
+    formatMdPercent(summary.maxDrawdownPctOfTotalProfit),
+  ],
+  ['max_consecutive_losses', summary.maxConsecutiveLosses],
+  ['avg_trades_per_day', formatMdNumber(summary.avgTradesPerDay)],
+  ['avg_trades_per_week', formatMdNumber(summary.avgTradesPerWeek)],
+  ['avg_profit_per_day', formatMdNumber(summary.avgProfitPerDay)],
+  ['avg_profit_per_month', formatMdNumber(summary.avgProfitPerMonth)],
+  ['losing_months', summary.losingMonths],
+  [
+    'worst_month',
+    summary.worstMonth
+      ? `${summary.worstMonth.month} ${formatMdNumber(summary.worstMonth.totalProfit)}`
+      : 'n/a',
+  ],
+];
+
+const pocketRows = (pockets: AiPocketResult[]) =>
+  pockets.map((pocket, index) => [
+    index + 1,
+    pocket.summary.support,
+    formatMdPercent(pocket.summary.winRate),
+    formatMdNumber(pocket.summary.profitFactor),
+    formatMdNumber(pocket.summary.totalProfit),
+    formatMdNumber(pocket.summary.maxDrawdown),
+    formatMdNumber(pocket.summary.avgTradesPerDay),
+    pocket.summary.losingMonths,
+    formatMdNumber(pocket.score),
+    pocket.condition,
+  ]);
+
+export const buildAiPocketMarkdownReport = ({
+  generatedAt,
+  run,
+  currentGate,
+  pocketSearch,
+  errors,
+}: AiPocketMarkdownReport) => {
+  const generatedIso = new Date(generatedAt).toISOString();
+  const lines = [
+    '# AI Pocket Search Report',
+    '',
+    `Generated: ${generatedIso}`,
+    '',
+    '## Run',
+    '',
+    markdownTable(
+      ['Field', 'Value'],
+      [
+        ['strategy', run.strategy],
+        ['source_rows', run.sourceRows],
+        ['selected_rows', run.selectedRows],
+        ['evaluated_rows', run.evaluatedRows],
+        ['scope', run.scope],
+        ['scope_rows', run.scopeRows],
+        ['failed', run.failed],
+        ['recent', run.recent === 0 ? 'all' : run.recent],
+        ['skip', run.skip],
+        [
+          'since',
+          run.since == null ? 'n/a' : new Date(run.since).toISOString(),
+        ],
+        [
+          'until',
+          run.until == null ? 'n/a' : new Date(run.until).toISOString(),
+        ],
+        ['period', run.period ?? 'n/a'],
+        ['min_quality', run.minQuality],
+        ['max_depth', run.search.maxDepth],
+        ['min_support', run.search.minSupport],
+        ['max_atomic_predicates', run.search.maxAtomicPredicates],
+        ['max_combinations', run.search.maxCombinations],
+        ['include_symbol', run.includeSymbol ? 'on' : 'off'],
+        ['include_gate_context', run.includeGateContext ? 'on' : 'off'],
+        ['report_path', run.reportPath],
+      ],
+    ),
+    '',
+    '## Dataset Files',
+    '',
+    ...run.filePaths.map((filePath) => `- \`${filePath}\``),
+    '',
+    '## Current Gate qN+ Baseline',
+    '',
+    markdownTable(
+      ['Q', 'Approved', 'WR', 'PF', 'PNL', 'Max DD', 'Trades/Day', 'PNL/Day'],
+      currentGate.qualityThresholds.map(({ label, summary }) => [
+        label,
+        summary.approved,
+        formatMdPercent(summary.approvedRisk.winRate),
+        formatMdNumber(summary.approvedRisk.profitFactor),
+        formatMdNumber(summary.approvedRisk.totalProfit),
+        formatMdNumber(summary.approvedRisk.maxDrawdown),
+        formatMdNumber(summary.avgApprovedTradesPerDay),
+        formatMdNumber(summary.avgProfitApprovedPerDay),
+      ]),
+    ),
+    '',
+    '## Search Scope Baseline',
+    '',
+    markdownTable(
+      ['Metric', 'Value'],
+      summaryMetricRows(pocketSearch.baseline),
+    ),
+    '',
+    '## Search Stats',
+    '',
+    markdownTable(
+      ['Field', 'Value'],
+      [
+        ['feature_keys', pocketSearch.stats.featureKeys],
+        ['predicates', pocketSearch.stats.predicates],
+        ['atomic_used', pocketSearch.stats.atomicPredicatesUsed],
+        ['estimated_combinations', pocketSearch.stats.estimatedCombinations],
+        ['combinations_evaluated', pocketSearch.stats.combinationsEvaluated],
+        ['truncated', pocketSearch.stats.truncated ? 'yes' : 'no'],
+      ],
+    ),
+    '',
+    '## Top Positive Pockets',
+    '',
+    markdownTable(
+      [
+        '#',
+        'N',
+        'WR',
+        'PF',
+        'PNL',
+        'Max DD',
+        'Trades/Day',
+        'Losing Months',
+        'Score',
+        'Pocket',
+      ],
+      pocketRows(pocketSearch.positivePockets),
+    ),
+    '',
+    '## Top Loss Pockets',
+    '',
+    markdownTable(
+      [
+        '#',
+        'N',
+        'WR',
+        'PF',
+        'PNL',
+        'Max DD',
+        'Trades/Day',
+        'Losing Months',
+        'Score',
+        'Pocket',
+      ],
+      pocketRows(pocketSearch.negativePockets),
+    ),
+    '',
+  ];
+
+  if (errors.length) {
+    lines.push('## Errors', '', ...errors.map((error) => `- ${error}`), '');
+  }
+
+  return `${lines.join('\n')}\n`;
 };

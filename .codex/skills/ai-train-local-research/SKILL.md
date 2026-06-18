@@ -1,6 +1,6 @@
 ---
 name: ai-train-local-research
-description: Run strategy-neutral TradeJS ai-train investigations, especially local deterministic gate research with `yarn ai-train --localOnly`, qN+ metrics, drawdown/winrate analysis, time/symbol stability checks, and gate-vs-LLM comparison when needed.
+description: Run strategy-neutral TradeJS ai-train investigations, especially local deterministic gate research with `yarn ai-train --localOnly`, `yarn ai-pocket-search`, qN+ metrics, pocket discovery, drawdown/winrate analysis, time/symbol stability checks, and gate-vs-LLM comparison when needed.
 ---
 
 # AI Train Local Research
@@ -8,6 +8,7 @@ description: Run strategy-neutral TradeJS ai-train investigations, especially lo
 Use this skill when the user asks to:
 
 - run `ai-train` for a strategy
+- run `ai-pocket-search` over AI export files
 - research or tune a local deterministic AI gate
 - analyze `latest N` or `skip K`
 - do the replay without OpenRouter
@@ -36,6 +37,7 @@ Important shard-aware rule:
 - `yarn ai-train` already groups matching part files automatically when:
   - no explicit `--file` is given and it selects the latest merge id
   - or `--file` points to any one shard like `...-part1.jsonl`
+- `yarn ai-pocket-search` follows the same shard grouping convention and treats a `--file ...-part1.jsonl` argument as the whole merge group
 - when reporting the export used, list the merge id and shard count, not only the first shard path
 
 Useful check:
@@ -93,6 +95,7 @@ Examples:
 yarn ai-train --strategy TrendLine -n 500 --localOnly
 yarn ai-train --strategy ReverseTrendLine -n 500 --localOnly
 yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
+yarn ai-pocket-search --strategy TrendLine -n 0 --maxDepth 2 --minSupport 25
 ```
 
 Shard-aware examples:
@@ -102,6 +105,8 @@ yarn ai-train --strategy TrendShift --localOnly --json -n 0
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0 --dumpEvaluations /tmp/trendshift-evals.jsonl
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0 --dumpEvaluations /tmp/trendshift-evals.jsonl --dumpFeatures gateFeatures
+yarn ai-pocket-search --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl -n 0 --maxDepth 2 --minSupport 25
+yarn ai-pocket-search --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl -n 0 --scope approved --maxDepth 2 --minSupport 5
 ```
 
 Interpretation:
@@ -109,6 +114,9 @@ Interpretation:
 - both commands above should evaluate the full shard group for that merge id, not only `part1`
 - if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
+- `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, and writes a Markdown report under `data/ai/output`.
+- use `--includeGateContext` only for auditing existing gate output fields, not for discovering new future approval rules
+- use `--scope approved` with a smaller `--minSupport` to find sub-pockets inside the current qN+ approved stream; use `--scope all` or `--scope candidates` to look for expansion candidates
 - when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows
 - when the research needs signal-time gate inputs such as CMC, MTF, ATR bucket, benchmark conflict, participation, execution, or strategy-specific `*GateFeatures`, add `--dumpFeatures gateFeatures`; this writes the current `baseContext.gateFeatures` and strategy gate features into each dump row
 - when broader context is needed, use `--dumpFeatures baseContext`; it writes compact current base-context sections (`regime`, `structure`, `participation`, `relative`, `derivatives`, `mtf`, `gateFeatures`) without the bulky `raw` section

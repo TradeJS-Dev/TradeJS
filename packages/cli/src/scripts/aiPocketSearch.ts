@@ -28,6 +28,7 @@ import {
   resolveAiTrainRecentLimit,
 } from '../lib/aiTrainOptions';
 import {
+  buildAiPocketMarkdownReport,
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketResult,
@@ -117,6 +118,12 @@ args.option(
   'Allow current deterministic gate output fields as pocket features',
   false,
 );
+args.option(
+  ['r', 'reportDir'],
+  'Directory for generated Markdown reports',
+  'data/ai/output',
+);
+args.option(['B', 'reportFile'], 'Explicit Markdown report file path', '');
 args.option(['j', 'json'], 'Print structured JSON summary', false);
 args.option(['O', 'output'], 'Write structured JSON summary to file', '');
 
@@ -170,6 +177,12 @@ const colorizeProfit = (value: number | null) => {
 
 const colorizeNumber = (value: number | null) =>
   value == null ? chalk.gray('n/a') : chalk.cyan(formatNumber(value));
+
+const toReportTimestamp = (timestamp: number) =>
+  new Date(timestamp)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, 'Z')
+    .replace(/[:]/g, '-');
 
 const normalizeInt = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -254,6 +267,34 @@ const getMergedGroupId = (filePath: string) => {
     strategyToken: match[1],
     mergeId: match[2],
   };
+};
+
+const resolveMarkdownReportPath = ({
+  explicitReportFile,
+  reportDir,
+  strategyName,
+  filePath,
+  scope,
+  generatedAt,
+}: {
+  explicitReportFile: string;
+  reportDir: string;
+  strategyName: string;
+  filePath: string;
+  scope: string;
+  generatedAt: number;
+}) => {
+  if (explicitReportFile) {
+    return explicitReportFile;
+  }
+
+  const groupId = getMergedGroupId(filePath);
+  const strategyToken = groupId?.strategyToken ?? toFileToken(strategyName);
+  const mergeToken = groupId?.mergeId ? `merged-${groupId.mergeId}` : 'merged';
+  return path.join(
+    reportDir,
+    `ai-pocket-search-${strategyToken}-${mergeToken}-${scope}-${toReportTimestamp(generatedAt)}.md`,
+  );
 };
 
 const sortDatasetPartPaths = (filePaths: string[]) =>
@@ -462,6 +503,19 @@ const buildQualityRows = (
     colorizeProfit(summary.avgProfitApprovedPerDay),
   ]);
 
+const tickProgressBarTo = (
+  bar: ProgressBar,
+  target: number,
+  tokens: Record<string, string>,
+) => {
+  const current = Number((bar as unknown as { curr?: number }).curr ?? 0);
+  const next = Math.max(current, Math.min(target, bar.total));
+  const delta = next - current;
+  if (delta > 0) {
+    bar.tick(delta, tokens);
+  }
+};
+
 export const main = async () => {
   const outDir = String(flags.outDir || 'data/ai/export');
   const strategyName = String(flags.strategy || '').trim() || undefined;
@@ -508,6 +562,9 @@ export const main = async () => {
   const includeGateContext = Boolean(flags.includeGateContext);
   const jsonOutput = Boolean(flags.json);
   const outputPath = String(flags.output || '').trim();
+  const reportDir = String(flags.reportDir || 'data/ai/output').trim();
+  const explicitReportFile = String(flags.reportFile || '').trim();
+  const generatedAt = Date.now();
 
   await ensureAiStrategyPluginsLoaded();
   const filePaths = await resolveMergedDatasetFiles({
@@ -544,12 +601,14 @@ export const main = async () => {
   let failed = 0;
   const errors: string[] = [];
   const rows: AiPocketSearchRow[] = [];
-  const bar = jsonOutput
-    ? null
-    : new ProgressBar(':current/:total [:bar][:percent] :symbol :status', {
-        total: selectedRows,
-        width: 20,
-      });
+  const bar = new ProgressBar(
+    'eval   :current/:total [:bar] :percent :symbol :status',
+    {
+      total: selectedRows,
+      width: 20,
+      stream: process.stderr,
+    },
+  );
 
   await streamAiDatasetRows({
     filePaths,
@@ -636,6 +695,7 @@ export const main = async () => {
   const currentGateSummary = summarizeAiTrainEvaluations(rows);
   const currentGateQualityThresholds =
     summarizeAiTrainEvaluationsByQualityThreshold(rows, qualityThresholds);
+  let searchBar: ProgressBar | null = null;
   const search = searchAiPockets(scopeRows, {
     minSupport,
     minProfitFactor,
@@ -645,9 +705,40 @@ export const main = async () => {
     maxAtomicPredicates,
     maxCombinations,
     top,
+    progressInterval: 250,
+    onProgress: (progress) => {
+      if (!searchBar) {
+        searchBar = new ProgressBar(
+          'search :current/:total [:bar] :percent :status',
+          {
+            total: Math.max(progress.total, 1),
+            width: 20,
+            stream: process.stderr,
+          },
+        );
+      }
+
+      tickProgressBarTo(searchBar, progress.current, {
+        status: progress.truncated ? chalk.yellow('truncated') : 'running',
+      });
+      if (progress.done) {
+        tickProgressBarTo(searchBar, searchBar.total, {
+          status: progress.truncated ? chalk.yellow('truncated') : 'done',
+        });
+      }
+    },
+  });
+  const reportPath = resolveMarkdownReportPath({
+    explicitReportFile,
+    reportDir,
+    strategyName: resolvedStrategyName,
+    filePath: filePaths[0] || '',
+    scope,
+    generatedAt,
   });
 
   const result = {
+    generatedAt,
     run: {
       strategy: resolvedStrategyName,
       filePaths,
@@ -668,6 +759,7 @@ export const main = async () => {
       qualityThresholds,
       includeSymbol,
       includeGateContext,
+      reportPath,
       search: {
         maxDepth,
         minSupport,
@@ -686,6 +778,12 @@ export const main = async () => {
     pocketSearch: search,
     errors,
   };
+
+  const markdownReport = buildAiPocketMarkdownReport(result);
+  await fs.mkdir(path.dirname(path.resolve(reportPath)), {
+    recursive: true,
+  });
+  await fs.writeFile(reportPath, markdownReport, 'utf8');
 
   if (outputPath) {
     await fs.mkdir(path.dirname(path.resolve(outputPath)), {
@@ -751,6 +849,7 @@ export const main = async () => {
           'include_gate_context',
           includeGateContext ? chalk.yellow('on') : chalk.gray('off'),
         ],
+        ['report', chalk.gray(reportPath)],
         ['output', outputPath ? chalk.gray(outputPath) : chalk.gray('off')],
       ],
     ),
@@ -789,6 +888,10 @@ export const main = async () => {
         ['feature_keys', chalk.cyan(String(search.stats.featureKeys))],
         ['predicates', chalk.cyan(String(search.stats.predicates))],
         ['atomic_used', chalk.cyan(String(search.stats.atomicPredicatesUsed))],
+        [
+          'estimated_combinations',
+          chalk.cyan(String(search.stats.estimatedCombinations)),
+        ],
         [
           'combinations_evaluated',
           chalk.cyan(String(search.stats.combinationsEvaluated)),

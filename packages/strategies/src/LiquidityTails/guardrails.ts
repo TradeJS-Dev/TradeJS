@@ -17,6 +17,7 @@ export type LiquidityTailsGuardrailContext =
     benchmarkTrendAlignment: string | null;
     atrPctRankBucket: string | null;
     q4AtrRankEligible: boolean;
+    liquidityRisk: string | null;
     higherTimeframeConflict: boolean;
     benchmarkConflict: boolean;
     derivativesPressure: string | null;
@@ -229,6 +230,10 @@ export const buildLiquidityTailsGuardrailContext = ({
   const q4AtrRankEligible =
     atrPctRankBucket != null &&
     Q4_APPROVAL_ATR_RANK_BUCKETS.has(atrPctRankBucket);
+  const liquidityRisk =
+    typeof baseContext?.gateFeatures?.risk?.liquidityRisk === 'string'
+      ? baseContext.gateFeatures.risk.liquidityRisk
+      : null;
   const higherTimeframeConflict =
     baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
   const benchmarkConflict =
@@ -366,6 +371,10 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 3;
     softBlockReasons.push('q4_atr_rank_not_high');
   }
+  if (deterministicQuality >= 4 && liquidityRisk === 'high') {
+    deterministicQuality = 3;
+    softBlockReasons.push('high_liquidity_risk');
+  }
 
   return {
     ...signalContext,
@@ -383,6 +392,7 @@ export const buildLiquidityTailsGuardrailContext = ({
     benchmarkTrendAlignment,
     atrPctRankBucket,
     q4AtrRankEligible,
+    liquidityRisk,
     higherTimeframeConflict,
     benchmarkConflict,
     derivativesPressure,
