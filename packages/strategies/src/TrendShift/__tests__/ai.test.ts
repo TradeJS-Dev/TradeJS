@@ -252,6 +252,212 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps sub-defensive reward-to-volatility flips in watch mode', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 4,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect(result?.rejectReason).toContain(
+      'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs',
+    );
+  });
+
+  it('does not recover sub-defensive reward-to-volatility vetoes', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 4,
+              },
+            },
+            mtf: {
+              summary: {
+                mtfAlignment: 'mixed',
+              },
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0,
+                trendAlignment: 'aligned_bear',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect(result?.rejectReason).toContain(
+      'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs',
+    );
+  });
+
+  it('keeps LONG flips in watch mode when BTC-alt regime is BTC-led', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                btcAltRegime: 'btc_lead',
+                btcAltRegimeStale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the LONG flip is fighting a BTC-led or risk-off alt regime, so keep it in watch mode',
+    });
+  });
+
+  it('keeps flips in watch mode during choppy CMC exchange-liquidity change', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                cmcExchangeLiquidityStale: false,
+                cmcExchangeLiquidityVolumeChange24hPct: 0.18,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'price_down_oi_up',
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'major-exchange liquidity change is in a historically choppy CMC band, so keep the flip in watch mode',
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

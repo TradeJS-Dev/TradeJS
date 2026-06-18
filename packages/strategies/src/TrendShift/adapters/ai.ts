@@ -125,6 +125,8 @@ Additional TrendShift context:
 - liquidityTailSide=${context.liquidityTailSide ?? 'n/a'}
 - nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
+- btcAltRegime=${context.btcAltRegime ?? 'n/a'}
+- cmcExchangeLiquidityVolumeChange24hPct=${String(context.cmcExchangeLiquidityVolumeChange24hPct ?? 'n/a')}
 - trendShiftGateReversalConfirmation=${context.trendShiftGateFeatures.reversalConfirmation}
 - trendShiftGateExhaustionSignal=${context.trendShiftGateFeatures.exhaustionSignal}
 - trendShiftGateOiConfirmation=${context.trendShiftGateFeatures.oiConfirmation}
@@ -146,6 +148,9 @@ Additional TrendShift context:
 - shortFailedLowOiNotConfirming=${String(context.shortFailedLowOiNotConfirming)}
 - shortBelowLowOiFallingLongFlushRisk=${String(context.shortBelowLowOiFallingLongFlushRisk)}
 - shortNearPointOfControlRisk=${String(context.shortNearPointOfControlRisk)}
+- defensiveRewardToVolatilityRisk=${String(context.defensiveRewardToVolatilityRisk)}
+- longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
+- cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
@@ -175,6 +180,9 @@ Interpretation rules for TrendShift:
 - For SHORT, US-session long-flush setups are watch-only unless later research revalidates that pocket.
 - For SHORT, a below-low long-liquidation flush with falling OI is watch-only outside Asia because it lacks continuation OI.
 - For SHORT, being near the price-volume point of control is a watch-only warning; LONG near-POC flips are not blocked by this rule.
+- The defensive live gate requires rewardToVolatility >= 8 when that field is available.
+- For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
+- If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

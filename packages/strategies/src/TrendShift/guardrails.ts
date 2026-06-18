@@ -68,6 +68,9 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortNearPointOfControlRisk: boolean;
   shortExtremeAtrHighBbRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
+  defensiveRewardToVolatilityRisk: boolean;
+  longBtcAltRegimeRisk: boolean;
+  cmcExchangeLiquidityVolumeChangeRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
@@ -76,6 +79,8 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   liquidityTailSide: string | null;
   nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
+  btcAltRegime: string | null;
+  cmcExchangeLiquidityVolumeChange24hPct: number | null;
   trendShiftGateFeatures: TrendShiftGateFeatures;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
@@ -500,6 +505,17 @@ export const buildTrendShiftGuardrailContext = ({
     baseContext?.gateFeatures?.setup?.rewardToVolatility,
   );
   const gateVolatility = baseContext?.gateFeatures?.volatility;
+  const gateRelative = baseContext?.gateFeatures?.relative;
+  const btcAltRegime =
+    typeof gateRelative?.btcAltRegime === 'string'
+      ? gateRelative.btcAltRegime
+      : null;
+  const btcAltRegimeStale = gateRelative?.btcAltRegimeStale === true;
+  const cmcExchangeLiquidityVolumeChange24hPct = asFiniteNumber(
+    gateRelative?.cmcExchangeLiquidityVolumeChange24hPct,
+  );
+  const cmcExchangeLiquidityStale =
+    gateRelative?.cmcExchangeLiquidityStale === true;
 
   if (!signalContext.confirmedFlip) {
     hardBlockReasons.push('unconfirmed_flip');
@@ -786,6 +802,21 @@ export const buildTrendShiftGuardrailContext = ({
     gateVolatility.bbWidthRankBucket === 'high';
   const lowRewardToVolatilityRisk =
     rewardToVolatility != null && rewardToVolatility < 0.25;
+  const defensiveRewardToVolatilityRisk =
+    rewardToVolatility != null &&
+    rewardToVolatility >= 0.25 &&
+    rewardToVolatility < 8;
+  const longBtcAltRegimeRisk =
+    signalContext.signalDirection === 'LONG' &&
+    btcAltRegimeStale !== true &&
+    (btcAltRegime === 'btc_lead' || btcAltRegime === 'risk_off');
+  const cmcExchangeLiquidityVolumeChangeRisk =
+    cmcExchangeLiquidityStale !== true &&
+    cmcExchangeLiquidityVolumeChange24hPct != null &&
+    ((cmcExchangeLiquidityVolumeChange24hPct > -0.1 &&
+      cmcExchangeLiquidityVolumeChange24hPct < 0) ||
+      (cmcExchangeLiquidityVolumeChange24hPct >= 0.1 &&
+        cmcExchangeLiquidityVolumeChange24hPct < 0.3));
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -827,9 +858,24 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('short_extreme_atr_high_bb');
   }
 
-  if (deterministicQuality >= 5 && lowRewardToVolatilityRisk) {
+  if (deterministicQuality >= 4 && lowRewardToVolatilityRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('low_reward_to_volatility');
+  }
+
+  if (deterministicQuality >= 4 && defensiveRewardToVolatilityRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('reward_to_volatility_below_defensive_threshold');
+  }
+
+  if (deterministicQuality >= 4 && longBtcAltRegimeRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_btc_alt_regime_risk');
+  }
+
+  if (deterministicQuality >= 4 && cmcExchangeLiquidityVolumeChangeRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('cmc_exchange_liquidity_volume_change_risk');
   }
 
   const trendShiftGateFeaturesRecoveryAllowedReasons = [
@@ -879,6 +925,9 @@ export const buildTrendShiftGuardrailContext = ({
     shortNearPointOfControlRisk,
     shortExtremeAtrHighBbRisk,
     lowRewardToVolatilityRisk,
+    defensiveRewardToVolatilityRisk,
+    longBtcAltRegimeRisk,
+    cmcExchangeLiquidityVolumeChangeRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
@@ -887,6 +936,8 @@ export const buildTrendShiftGuardrailContext = ({
     liquidityTailSide,
     nearPointOfControl,
     relativeStrength1h,
+    btcAltRegime,
+    cmcExchangeLiquidityVolumeChange24hPct,
     trendShiftGateFeatures,
     sessionPrimary,
     sessionIsOverlap,
@@ -948,6 +999,12 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode';
     case 'low_reward_to_volatility':
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
+    case 'reward_to_volatility_below_defensive_threshold':
+      return 'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs';
+    case 'long_btc_alt_regime_risk':
+      return 'the LONG flip is fighting a BTC-led or risk-off alt regime, so keep it in watch mode';
+    case 'cmc_exchange_liquidity_volume_change_risk':
+      return 'major-exchange liquidity change is in a historically choppy CMC band, so keep the flip in watch mode';
     default:
       return reason;
   }
