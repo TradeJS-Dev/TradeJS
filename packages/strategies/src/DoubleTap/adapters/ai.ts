@@ -17,6 +17,7 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   swingBias: string | null;
   breakoutState: string | null;
   barsSinceBreakout: number | null;
+  lowTouchCount20: number | null;
   volumeRel20: number | null;
   benchmarkTrendAlignment: string | null;
   benchmarkBias: string | null;
@@ -308,6 +309,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     'localRange',
     'barsSinceBreakout',
   ]);
+  const lowTouchCount20 = getNestedNumber(baseContext, [
+    'structure',
+    'levels',
+    'lowTouchCount20',
+  ]);
   const volumeRel20 = getNestedNumber(baseContext, [
     'participation',
     'volume',
@@ -453,7 +459,9 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const indicatorApproval =
     sessionWindowPhase === 'active' &&
     executionScore != null &&
-    executionScore >= 35;
+    executionScore >= 35 &&
+    lowTouchCount20 != null &&
+    lowTouchCount20 >= 1;
   const highPrecisionCmcApproval =
     highPrecisionPocket &&
     indicatorApproval &&
@@ -474,6 +482,9 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
       : []),
     ...(approvalPocket && (executionScore == null || executionScore < 35)
       ? ['low_or_missing_execution_score']
+      : []),
+    ...(approvalPocket && (lowTouchCount20 == null || lowTouchCount20 < 1)
+      ? ['low_touch_count_below_gate']
       : []),
     ...(highPrecisionPocket && volumeStructureAligned !== true
       ? ['high_precision_volume_structure_not_aligned']
@@ -541,6 +552,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     swingBias,
     breakoutState,
     barsSinceBreakout,
+    lowTouchCount20,
     volumeRel20,
     benchmarkTrendAlignment,
     benchmarkBias,
@@ -647,6 +659,7 @@ Additional DoubleTap context:
 - swingBias=${context.swingBias ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - barsSinceBreakout=${String(context.barsSinceBreakout ?? 'n/a')}
+- lowTouchCount20=${String(context.lowTouchCount20 ?? 'n/a')}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
@@ -678,8 +691,8 @@ Interpretation rules for DoubleTap:
 - Prefer compact breaks close to the neckline; late/extended breaks should be downgraded.
 - Extremely tiny breaks can still be early noise; live approval needs support from baseContext.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
-- Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
-- Local q4 approval needs the structural approval pocket plus active session window, execution score >= 35, and -0.3 < CMC BTC dominance change <= -0.05.
+- Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
+- Local q4 approval needs the structural approval pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, and -0.3 < CMC BTC dominance change <= -0.05.
 - A good long has two comparable lows and a clean close above the neckline.
 - A good short has two comparable highs and a clean close below the neckline.
 - Venue spread, trend bias, body strength, and reward-to-volatility are diagnostics for this gate, not strict local blockers.

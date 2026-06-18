@@ -40,6 +40,9 @@ const baseContext = {
     swing: {
       bias: 'bull',
     },
+    levels: {
+      lowTouchCount20: 1,
+    },
     localRange: {
       breakoutState: 'above_high_level',
       barsSinceBreakout: 0,
@@ -617,6 +620,35 @@ describe('doubleTapAiAdapter', () => {
             gateFeatures: {
               scores: {
                 execution: 34,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades q4 pockets when low touch count is below the gate', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            structure: {
+              levels: {
+                lowTouchCount20: 0,
               },
             },
           }),
