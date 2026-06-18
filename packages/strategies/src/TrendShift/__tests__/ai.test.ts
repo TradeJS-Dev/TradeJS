@@ -219,6 +219,53 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps q5 SHORT in watch mode while swing structure is still bullish', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            structure: {
+              swing: {
+                bias: 'bull',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'price_down_oi_up',
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip is still fighting a bullish swing structure, so keep it in watch mode',
+    });
+  });
+
   it('keeps low reward-to-volatility flips in watch mode after costs', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -1095,6 +1142,53 @@ describe('trendShiftAiAdapter', () => {
       approved: false,
       rejectReason:
         'the US-session LONG flush still lacks expanding OI confirmation, so keep it in watch mode',
+    });
+  });
+
+  it('recovers US closing q5 LONG when only OI expansion is missing', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                sessionWindowPhase: 'closing',
+                isOverlap: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'price_up_oi_down',
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
     });
   });
 

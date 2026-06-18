@@ -67,12 +67,15 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortBelowLowOiFallingLongFlushRisk: boolean;
   shortNearPointOfControlRisk: boolean;
   shortExtremeAtrHighBbRisk: boolean;
+  shortBullSwingStructureRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
   defensiveRewardToVolatilityRisk: boolean;
   longBtcAltRegimeRisk: boolean;
   cmcExchangeLiquidityVolumeChangeRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
+  q4UsClosingOiConfirmationRecoveryCandidate: boolean;
   breakoutState: string | null;
+  swingBias: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
   adaptiveChannelDirection: string | null;
@@ -83,6 +86,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   cmcExchangeLiquidityVolumeChange24hPct: number | null;
   trendShiftGateFeatures: TrendShiftGateFeatures;
   sessionPrimary: string | null;
+  sessionWindowPhase: string | null;
   sessionIsOverlap: boolean;
   priceOiDivergenceType: string | null;
 };
@@ -482,8 +486,16 @@ export const buildTrendShiftGuardrailContext = ({
       ? derivativesSummary.pressure
       : null;
   const sessionPrimary = session?.sessionPhase ?? null;
+  const sessionWindowPhase =
+    typeof session?.sessionWindowPhase === 'string'
+      ? session.sessionWindowPhase
+      : null;
   const sessionIsOverlap = session?.isOverlap === true;
   const breakoutState = localRange?.breakoutState ?? null;
+  const swingBias =
+    typeof baseContext?.structure?.swing?.bias === 'string'
+      ? baseContext.structure.swing.bias
+      : null;
   const volumeRel20 = asFiniteNumber(volume?.volumeRel20);
   const atrPctZScore = asFiniteNumber(volatility?.atrPctZScore);
   const adaptiveChannelDirection =
@@ -800,6 +812,8 @@ export const buildTrendShiftGuardrailContext = ({
     gateVolatility?.state === 'normal' &&
     gateVolatility.atrPctRankBucket === 'extreme' &&
     gateVolatility.bbWidthRankBucket === 'high';
+  const shortBullSwingStructureRisk =
+    signalContext.signalDirection === 'SHORT' && swingBias === 'bull';
   const lowRewardToVolatilityRisk =
     rewardToVolatility != null && rewardToVolatility < 0.25;
   const defensiveRewardToVolatilityRisk =
@@ -858,6 +872,11 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('short_extreme_atr_high_bb');
   }
 
+  if (deterministicQuality >= 5 && shortBullSwingStructureRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_bull_swing_structure');
+  }
+
   if (deterministicQuality >= 4 && lowRewardToVolatilityRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('low_reward_to_volatility');
@@ -893,8 +912,25 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.every((reason) =>
       trendShiftGateFeaturesRecoveryAllowedReasons.includes(reason),
     );
+  const q4UsClosingOiConfirmationRecoveryAllowedReasons = [
+    'long_us_oi_not_confirming',
+    'us_short_oi_not_expanding',
+  ];
+  const q4UsClosingOiConfirmationRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    sessionPrimary === 'us' &&
+    sessionWindowPhase === 'closing' &&
+    hardBlockReasons.length > 0 &&
+    hardBlockReasons.every((reason) =>
+      q4UsClosingOiConfirmationRecoveryAllowedReasons.includes(reason),
+    );
 
-  if (q4TrendShiftGateFeaturesRecoveryCandidate) {
+  if (
+    q4TrendShiftGateFeaturesRecoveryCandidate ||
+    q4UsClosingOiConfirmationRecoveryCandidate
+  ) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
   }
@@ -924,12 +960,15 @@ export const buildTrendShiftGuardrailContext = ({
     shortBelowLowOiFallingLongFlushRisk,
     shortNearPointOfControlRisk,
     shortExtremeAtrHighBbRisk,
+    shortBullSwingStructureRisk,
     lowRewardToVolatilityRisk,
     defensiveRewardToVolatilityRisk,
     longBtcAltRegimeRisk,
     cmcExchangeLiquidityVolumeChangeRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
+    q4UsClosingOiConfirmationRecoveryCandidate,
     breakoutState,
+    swingBias,
     volumeRel20,
     atrPctZScore,
     adaptiveChannelDirection,
@@ -940,6 +979,7 @@ export const buildTrendShiftGuardrailContext = ({
     cmcExchangeLiquidityVolumeChange24hPct,
     trendShiftGateFeatures,
     sessionPrimary,
+    sessionWindowPhase,
     sessionIsOverlap,
     priceOiDivergenceType,
   };
@@ -997,6 +1037,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is too close to the price-volume point of control, where continuation has been less reliable';
     case 'short_extreme_atr_high_bb':
       return 'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode';
+    case 'short_bull_swing_structure':
+      return 'the SHORT flip is still fighting a bullish swing structure, so keep it in watch mode';
     case 'low_reward_to_volatility':
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     case 'reward_to_volatility_below_defensive_threshold':

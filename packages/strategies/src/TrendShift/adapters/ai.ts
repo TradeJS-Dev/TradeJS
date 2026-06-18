@@ -119,6 +119,7 @@ Additional TrendShift context:
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned)}
 - derivativesFlushSupport=${String(context.derivativesFlushSupport)}
 - breakoutState=${context.breakoutState ?? 'n/a'}
+- swingBias=${context.swingBias ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
 - atrPctZScore=${String(context.atrPctZScore ?? 'n/a')}
 - adaptiveChannelDirection=${context.adaptiveChannelDirection ?? 'n/a'}
@@ -149,12 +150,15 @@ Additional TrendShift context:
 - shortBelowLowOiFallingLongFlushRisk=${String(context.shortBelowLowOiFallingLongFlushRisk)}
 - shortNearPointOfControlRisk=${String(context.shortNearPointOfControlRisk)}
 - defensiveRewardToVolatilityRisk=${String(context.defensiveRewardToVolatilityRisk)}
+- shortBullSwingStructureRisk=${String(context.shortBullSwingStructureRisk)}
 - longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
+- q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
+- sessionWindowPhase=${context.sessionWindowPhase ?? 'n/a'}
 - sessionIsOverlap=${String(context.sessionIsOverlap)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
@@ -180,9 +184,11 @@ Interpretation rules for TrendShift:
 - For SHORT, US-session long-flush setups are watch-only unless later research revalidates that pocket.
 - For SHORT, a below-low long-liquidation flush with falling OI is watch-only outside Asia because it lacks continuation OI.
 - For SHORT, being near the price-volume point of control is a watch-only warning; LONG near-POC flips are not blocked by this rule.
+- For SHORT, a bullish swing structure is a watch-only warning even when the immediate flip geometry looks q5-strong.
 - The defensive live gate requires rewardToVolatility >= 8 when that field is available.
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
+- A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },
