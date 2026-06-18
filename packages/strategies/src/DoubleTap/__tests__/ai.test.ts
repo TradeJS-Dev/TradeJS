@@ -1,6 +1,29 @@
 import { doubleTapAiAdapter } from '../adapters/ai';
 
-const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
+const mergeRecord = (
+  base: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+): Record<string, unknown> => {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = result[key];
+    result[key] =
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      current &&
+      typeof current === 'object' &&
+      !Array.isArray(current)
+        ? mergeRecord(
+            current as Record<string, unknown>,
+            value as Record<string, unknown>,
+          )
+        : value;
+  }
+  return result;
+};
+
+const baseContext = {
   regime: {
     session: {
       sessionPhase: 'europe',
@@ -34,6 +57,10 @@ const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
     execution: {
       venueSpreadZScore: 1.5,
     },
+    cmcGlobal: {
+      altVolumeChange24hPct: 0.2,
+      btcDominanceChange24hPct: -0.1,
+    },
   },
   derivatives: {
     summary: {
@@ -45,9 +72,17 @@ const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
     setup: {
       rewardToVolatility: 10,
     },
+    participation: {
+      volumeStructureAligned: true,
+    },
+    relative: {
+      benchmarkConflict: false,
+    },
   },
-  ...overrides,
-});
+};
+
+const createBaseContext = (overrides: Record<string, unknown> = {}) =>
+  mergeRecord(baseContext, overrides);
 
 describe('doubleTapAiAdapter', () => {
   it('copies DoubleTap context into AI payload', () => {
@@ -88,7 +123,7 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
-  it('approves strict high precision breakouts when baseContext supports the gate', () => {
+  it('approves high precision breakouts when CMC and baseContext support the gate', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -123,7 +158,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBe('LONG');
   });
 
-  it('approves q4 pockets only when trend is neutral', () => {
+  it('approves q4 pockets when BTC dominance change is in the CMC band', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -133,7 +168,7 @@ describe('doubleTapAiAdapter', () => {
                 sessionPhase: 'europe',
               },
               trend: {
-                bias: 'neutral',
+                bias: 'bull',
               },
               momentum: {
                 bodyStrength: 0.75,
@@ -203,7 +238,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
-  it('downgrades q4 approval pockets with neutral venue spread', () => {
+  it('keeps q4 approval pockets with neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -232,11 +267,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(3);
-    expect(result?.direction).toBeNull();
+    expect(result?.quality).toBe(4);
+    expect(result?.direction).toBe('LONG');
   });
 
-  it('downgrades q4 approval pockets with negative venue spread', () => {
+  it('keeps q4 approval pockets with negative venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -265,11 +300,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(3);
-    expect(result?.direction).toBeNull();
+    expect(result?.quality).toBe(4);
+    expect(result?.direction).toBe('LONG');
   });
 
-  it('downgrades q4 approval pockets with non-neutral trend', () => {
+  it('keeps q4 approval pockets with non-neutral trend', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -298,11 +333,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(3);
-    expect(result?.direction).toBeNull();
+    expect(result?.quality).toBe(4);
+    expect(result?.direction).toBe('LONG');
   });
 
-  it('downgrades high precision pockets when volume is below strict threshold', () => {
+  it('keeps high precision pockets when volume is below the old strict threshold', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -338,11 +373,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(3);
-    expect(result?.direction).toBeNull();
+    expect(result?.quality).toBe(5);
+    expect(result?.direction).toBe('LONG');
   });
 
-  it('downgrades high precision pockets when reward-to-volatility is below strict threshold', () => {
+  it('keeps high precision pockets when reward-to-volatility is below the old strict threshold', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -378,11 +413,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(3);
-    expect(result?.direction).toBeNull();
+    expect(result?.quality).toBe(5);
+    expect(result?.direction).toBe('LONG');
   });
 
-  it('keeps strict q5 high precision pockets despite neutral venue spread', () => {
+  it('keeps q5 high precision pockets despite neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -424,5 +459,145 @@ describe('doubleTapAiAdapter', () => {
 
     expect(result?.quality).toBe(5);
     expect(result?.direction).toBe('LONG');
+  });
+
+  it('downgrades high precision pockets when volume structure is not aligned', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+            },
+            gateFeatures: {
+              participation: {
+                volumeStructureAligned: false,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades high precision pockets when benchmark conflict is present', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+            },
+            gateFeatures: {
+              relative: {
+                benchmarkConflict: true,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades high precision pockets when CMC alt volume is too hot', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+            },
+            relative: {
+              cmcGlobal: {
+                altVolumeChange24hPct: 0.6,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades q4 pockets when BTC dominance change is outside the CMC band', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              cmcGlobal: {
+                btcDominanceChange24hPct: 0.1,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 });
