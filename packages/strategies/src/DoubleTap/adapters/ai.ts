@@ -12,6 +12,7 @@ type Direction = 'LONG' | 'SHORT';
 type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   baseContextAvailable: boolean;
   primarySession: string | null;
+  sessionWindowPhase: string | null;
   trendBias: string | null;
   swingBias: string | null;
   breakoutState: string | null;
@@ -24,6 +25,7 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   bodyStrength: number | null;
   venueSpreadZScore: number | null;
   rewardToVolatility: number | null;
+  executionScore: number | null;
   volumeStructureAligned: boolean | null;
   benchmarkConflict: boolean | null;
   cmcAltVolumeChange24hPct: number | null;
@@ -285,6 +287,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     'session',
     'sessionPhase',
   ]);
+  const sessionWindowPhase = getNestedString(baseContext, [
+    'regime',
+    'session',
+    'sessionWindowPhase',
+  ]);
   const trendBias = getNestedString(baseContext, ['regime', 'trend', 'bias']);
   const swingBias = getNestedString(baseContext, [
     'structure',
@@ -335,6 +342,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     'gateFeatures',
     'setup',
     'rewardToVolatility',
+  ]);
+  const executionScore = getNestedNumber(baseContext, [
+    'gateFeatures',
+    'scores',
+    'execution',
   ]);
   const volumeStructureAligned = getNestedBoolean(baseContext, [
     'gateFeatures',
@@ -438,8 +450,13 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const approvalPocket =
     baseContextAvailable &&
     (longApprovalPocket || shortApprovalPocket || highPrecisionPocket);
+  const indicatorApproval =
+    sessionWindowPhase === 'active' &&
+    executionScore != null &&
+    executionScore >= 35;
   const highPrecisionCmcApproval =
     highPrecisionPocket &&
+    indicatorApproval &&
     volumeStructureAligned === true &&
     benchmarkConflict === false &&
     cmcAltVolumeChange24hPct != null &&
@@ -447,10 +464,17 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const q4CmcApproval =
     approvalPocket &&
     !highPrecisionPocket &&
+    indicatorApproval &&
     cmcBtcDominanceChange24hPct != null &&
     cmcBtcDominanceChange24hPct > -0.3 &&
     cmcBtcDominanceChange24hPct <= -0.05;
   const softBlockReasons = [
+    ...(approvalPocket && sessionWindowPhase !== 'active'
+      ? ['inactive_session_window']
+      : []),
+    ...(approvalPocket && (executionScore == null || executionScore < 35)
+      ? ['low_or_missing_execution_score']
+      : []),
     ...(highPrecisionPocket && volumeStructureAligned !== true
       ? ['high_precision_volume_structure_not_aligned']
       : []),
@@ -512,6 +536,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     ...context,
     baseContextAvailable,
     primarySession,
+    sessionWindowPhase,
     trendBias,
     swingBias,
     breakoutState,
@@ -524,6 +549,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     bodyStrength,
     venueSpreadZScore,
     rewardToVolatility,
+    executionScore,
     volumeStructureAligned,
     benchmarkConflict,
     cmcAltVolumeChange24hPct,
@@ -616,6 +642,7 @@ Additional DoubleTap context:
 - currentPrice=${String(context.currentPrice ?? 'n/a')}
 - baseContextAvailable=${String(context.baseContextAvailable)}
 - primarySession=${context.primarySession ?? 'n/a'}
+- sessionWindowPhase=${context.sessionWindowPhase ?? 'n/a'}
 - trendBias=${context.trendBias ?? 'n/a'}
 - swingBias=${context.swingBias ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
@@ -627,6 +654,7 @@ Additional DoubleTap context:
 - bodyStrength=${String(context.bodyStrength ?? 'n/a')}
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - rewardToVolatility=${String(context.rewardToVolatility ?? 'n/a')}
+- executionScore=${String(context.executionScore ?? 'n/a')}
 - volumeStructureAligned=${String(context.volumeStructureAligned ?? 'n/a')}
 - benchmarkConflict=${String(context.benchmarkConflict ?? 'n/a')}
 - cmcAltVolumeChange24hPct=${String(context.cmcAltVolumeChange24hPct ?? 'n/a')}
@@ -650,8 +678,8 @@ Interpretation rules for DoubleTap:
 - Prefer compact breaks close to the neckline; late/extended breaks should be downgraded.
 - Extremely tiny breaks can still be early noise; live approval needs support from baseContext.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
-- Local q5 approval needs the high-precision pocket plus aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
-- Local q4 approval needs the structural approval pocket plus -0.3 < CMC BTC dominance change <= -0.05.
+- Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
+- Local q4 approval needs the structural approval pocket plus active session window, execution score >= 35, and -0.3 < CMC BTC dominance change <= -0.05.
 - A good long has two comparable lows and a clean close above the neckline.
 - A good short has two comparable highs and a clean close below the neckline.
 - Venue spread, trend bias, body strength, and reward-to-volatility are diagnostics for this gate, not strict local blockers.

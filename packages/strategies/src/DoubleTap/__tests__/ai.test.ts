@@ -27,6 +27,7 @@ const baseContext = {
   regime: {
     session: {
       sessionPhase: 'europe',
+      sessionWindowPhase: 'active',
     },
     trend: {
       bias: 'bull',
@@ -71,6 +72,9 @@ const baseContext = {
   gateFeatures: {
     setup: {
       rewardToVolatility: 10,
+    },
+    scores: {
+      execution: 50,
     },
     participation: {
       volumeStructureAligned: true,
@@ -558,6 +562,68 @@ describe('doubleTapAiAdapter', () => {
             signalDirection: 'LONG',
             height: 10,
             breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades high precision pockets outside the active session window', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+                sessionWindowPhase: 'closing',
+              },
+              trend: {
+                bias: 'bull',
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades q4 pockets when execution score is weak', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            gateFeatures: {
+              scores: {
+                execution: 34,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
           },
         },
       },
