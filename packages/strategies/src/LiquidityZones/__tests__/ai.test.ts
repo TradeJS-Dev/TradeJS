@@ -184,7 +184,7 @@ describe('liquidityZonesAiAdapter', () => {
     });
   });
 
-  it('approves high-volume long breakout retests with supportive venue spread', () => {
+  it('rejects long breakout retests until the long side is recalibrated', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -226,9 +226,167 @@ describe('liquidityZonesAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('rejects short continuation breakdown retests', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 20,
+          reactionCloseDistancePct: 1.1,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.6,
+              effortVsResult: 80,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining('continuation_breakout_retest'),
+    });
+  });
+
+  it('rejects overextended volume confirmations', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 20,
+          reactionCloseDistancePct: 1.1,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            localRange: {
+              breakoutState: 'inside_range',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 2.2,
+              effortVsResult: 80,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining('overextended_volume_confirmation'),
+    });
+  });
+
+  it('rejects retests with only one direct MA/MACD/OBV confirmation', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          currentPrice: 100,
+          retestPenetrationPct: 20,
+          reactionCloseDistancePct: 1.1,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            trend: {
+              maFast: 95,
+              maMedium: 94,
+              maSlow: 90,
+            },
+            momentum: {
+              macd: 0.2,
+              macdSignal: 0.1,
+              macdHistogram: -0.1,
+            },
+            volume: {
+              obv: 120,
+              obvSma: 100,
+            },
+          },
+          regime: {
+            momentum: {
+              macdHistogramSlope: 0.02,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'inside_range',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.6,
+              effortVsResult: 80,
+              obvSlope: 10,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining('isolated_indicator_support'),
     });
   });
 });

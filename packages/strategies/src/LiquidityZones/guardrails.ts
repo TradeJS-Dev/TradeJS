@@ -7,10 +7,28 @@ export type LiquidityZonesGuardrailContext =
     primarySession: string | null;
     trendBias: string | null;
     breakoutState: string | null;
+    entryLocation: string | null;
     liquidityZoneRetestDirection: string | null;
     volumeRel20: number | null;
     turnoverRel20: number | null;
     effortVsResult: number | null;
+    maFast: number | null;
+    maMedium: number | null;
+    maSlow: number | null;
+    macd: number | null;
+    macdSignal: number | null;
+    macdHistogram: number | null;
+    macdHistogramSlope: number | null;
+    obv: number | null;
+    obvSma: number | null;
+    obvSlope: number | null;
+    priceVsMaFastAligned: boolean | null;
+    priceVsMaSlowAligned: boolean | null;
+    macdHistogramAligned: boolean | null;
+    macdHistogramSlopeAligned: boolean | null;
+    obvLevelAligned: boolean | null;
+    obvSlopeAligned: boolean | null;
+    directIndicatorSupportCount: number | null;
     venueSpreadZScore: number | null;
     benchmarkTrendAlignment: string | null;
     derivativesPressure: string | null;
@@ -52,6 +70,34 @@ const isDirectionAligned = ({
       ? value === bearishValue
       : false;
 
+const isDirectionalNumberAligned = ({
+  direction,
+  value,
+}: {
+  direction: unknown;
+  value: number | null;
+}) =>
+  direction === 'LONG'
+    ? value != null && value > 0
+    : direction === 'SHORT'
+      ? value != null && value < 0
+      : null;
+
+const isDirectionalPriceAboveLevel = ({
+  direction,
+  price,
+  level,
+}: {
+  direction: unknown;
+  price: number | null;
+  level: number | null;
+}) =>
+  direction === 'LONG'
+    ? price != null && level != null && price > level
+    : direction === 'SHORT'
+      ? price != null && level != null && price < level
+      : null;
+
 export const buildLiquidityZonesGuardrailContext = ({
   signalContext,
   baseContext,
@@ -64,6 +110,7 @@ export const buildLiquidityZonesGuardrailContext = ({
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
+  const entryLocation = baseContext?.gateFeatures?.setup?.entryLocation ?? null;
   const liquidityZoneRetestDirection = signalContext.signalDirection ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
@@ -74,6 +121,20 @@ export const buildLiquidityZonesGuardrailContext = ({
   const effortVsResult = asFiniteNumber(
     baseContext?.participation?.volume?.effortVsResult,
   );
+  const maFast = asFiniteNumber(baseContext?.raw?.trend?.maFast);
+  const maMedium = asFiniteNumber(baseContext?.raw?.trend?.maMedium);
+  const maSlow = asFiniteNumber(baseContext?.raw?.trend?.maSlow);
+  const macd = asFiniteNumber(baseContext?.raw?.momentum?.macd);
+  const macdSignal = asFiniteNumber(baseContext?.raw?.momentum?.macdSignal);
+  const macdHistogram = asFiniteNumber(
+    baseContext?.raw?.momentum?.macdHistogram,
+  );
+  const macdHistogramSlope = asFiniteNumber(
+    baseContext?.regime?.momentum?.macdHistogramSlope,
+  );
+  const obv = asFiniteNumber(baseContext?.raw?.volume?.obv);
+  const obvSma = asFiniteNumber(baseContext?.raw?.volume?.obvSma);
+  const obvSlope = asFiniteNumber(baseContext?.participation?.volume?.obvSlope);
   const venueSpreadZScore = asFiniteNumber(
     baseContext?.relative?.execution?.venueSpreadZScore,
   );
@@ -153,15 +214,86 @@ export const buildLiquidityZonesGuardrailContext = ({
 
   const filterMetric = signalContext.filterMetric ?? 0;
   const hitCount = signalContext.hitCount ?? 0;
+  const currentPrice = asFiniteNumber(signalContext.currentPrice);
   const reactionCloseDistancePct = signalContext.reactionCloseDistancePct ?? 0;
   const retestPenetrationPct = signalContext.retestPenetrationPct ?? 999;
+  const priceVsMaFastAligned = isDirectionalPriceAboveLevel({
+    direction,
+    price: currentPrice,
+    level: maFast,
+  });
+  const priceVsMaSlowAligned = isDirectionalPriceAboveLevel({
+    direction,
+    price: currentPrice,
+    level: maSlow,
+  });
+  const macdHistogramAligned = isDirectionalNumberAligned({
+    direction,
+    value: macdHistogram,
+  });
+  const macdHistogramSlopeAligned = isDirectionalNumberAligned({
+    direction,
+    value: macdHistogramSlope,
+  });
+  const obvLevelAligned =
+    direction === 'LONG'
+      ? obv != null && obvSma != null && obv > obvSma
+      : direction === 'SHORT'
+        ? obv != null && obvSma != null && obv < obvSma
+        : null;
+  const obvSlopeAligned = isDirectionalNumberAligned({
+    direction,
+    value: obvSlope,
+  });
+  const directIndicatorAlignments = [
+    priceVsMaFastAligned,
+    priceVsMaSlowAligned,
+    macdHistogramAligned,
+    macdHistogramSlopeAligned,
+    obvLevelAligned,
+    obvSlopeAligned,
+  ];
+  const directIndicatorsAvailable = directIndicatorAlignments.every(
+    (value) => value != null,
+  );
+  const directIndicatorSupportCount = directIndicatorsAvailable
+    ? directIndicatorAlignments.filter(Boolean).length
+    : null;
+  const hasIsolatedIndicatorSupport = directIndicatorSupportCount === 1;
   const hasVolumeConfirmation =
     volumeRel20 != null &&
     volumeRel20 >= 1 &&
     effortVsResult != null &&
     effortVsResult <= 100;
+  const hasOverextendedVolumeConfirmation =
+    hasVolumeConfirmation && volumeRel20 >= 2;
   const hasStrongVolumeConfirmation =
-    hasVolumeConfirmation && volumeRel20 >= 1.5;
+    hasVolumeConfirmation && volumeRel20 >= 1.5 && volumeRel20 < 2;
+  const isContinuationBreakoutRetest =
+    direction === 'LONG'
+      ? breakoutState === 'above_high_level' || entryLocation === 'breakout'
+      : direction === 'SHORT'
+        ? breakoutState === 'below_low_level' || entryLocation === 'breakdown'
+        : false;
+  const approvalDisqualifiedByCalibration =
+    direction === 'LONG' ||
+    isContinuationBreakoutRetest ||
+    hasOverextendedVolumeConfirmation ||
+    hasIsolatedIndicatorSupport;
+
+  if (direction === 'LONG') {
+    softBlockReasons.push('long_liquidity_retest_requires_recalibration');
+  }
+  if (isContinuationBreakoutRetest) {
+    softBlockReasons.push('continuation_breakout_retest');
+  }
+  if (hasOverextendedVolumeConfirmation) {
+    softBlockReasons.push('overextended_volume_confirmation');
+  }
+  if (hasIsolatedIndicatorSupport) {
+    softBlockReasons.push('isolated_indicator_support');
+  }
+
   const hasLongBreakoutConfirmation =
     direction === 'LONG' &&
     (breakoutState === 'below_low_level' ||
@@ -197,6 +329,9 @@ export const buildLiquidityZonesGuardrailContext = ({
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
     deterministicQuality = 4;
   }
+  if (deterministicQuality >= 4 && approvalDisqualifiedByCalibration) {
+    deterministicQuality = 3;
+  }
 
   return {
     ...signalContext,
@@ -204,10 +339,28 @@ export const buildLiquidityZonesGuardrailContext = ({
     primarySession,
     trendBias,
     breakoutState,
+    entryLocation,
     liquidityZoneRetestDirection,
     volumeRel20,
     turnoverRel20,
     effortVsResult,
+    maFast,
+    maMedium,
+    maSlow,
+    macd,
+    macdSignal,
+    macdHistogram,
+    macdHistogramSlope,
+    obv,
+    obvSma,
+    obvSlope,
+    priceVsMaFastAligned,
+    priceVsMaSlowAligned,
+    macdHistogramAligned,
+    macdHistogramSlopeAligned,
+    obvLevelAligned,
+    obvSlopeAligned,
+    directIndicatorSupportCount,
     venueSpreadZScore,
     benchmarkTrendAlignment,
     derivativesPressure,
