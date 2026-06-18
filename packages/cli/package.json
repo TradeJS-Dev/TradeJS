@@ -65,6 +65,7 @@
     "clean-tests": "yarn run run:dist clean-tests",
     "doctor": "yarn run run:dist doctor",
     "ai-export": "yarn run run:dist ai-export",
+    "ai-pocket-search": "yarn run run:dist ai-pocket-search",
     "ai-train": "yarn run run:dist ai-train",
     "backtest": "yarn run run:dist backtest",
     "bot": "yarn run run:dist bot",

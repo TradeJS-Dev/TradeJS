@@ -11,6 +11,7 @@
   "scripts": {
     "agent-run": "yarn cli:node8g agent-run",
     "ai-export": "yarn cli:node8g ai-export",
+    "ai-pocket-search": "yarn cli:node8g ai-pocket-search",
     "ai-train": "yarn cli:node8g ai-train",
     "backtest": "yarn cli:backtest backtest",
     "bot": "yarn cli:node8g bot",
