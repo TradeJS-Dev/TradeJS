@@ -44,6 +44,12 @@ const makePayload = (
   } as any;
 };
 
+const getRejectReason = (result: unknown): string | undefined => {
+  const rejectReason = (result as { rejectReason?: unknown } | undefined)
+    ?.rejectReason;
+  return typeof rejectReason === 'string' ? rejectReason : undefined;
+};
+
 describe('trendShiftAiAdapter', () => {
   it('builds strategy-local gate features for narrow q4 recovery discovery', () => {
     const context = buildTrendShiftGuardrailContext({
@@ -294,7 +300,7 @@ describe('trendShiftAiAdapter', () => {
       quality: 4,
       approved: false,
     });
-    expect(result?.rejectReason).toContain(
+    expect(getRejectReason(result)).toContain(
       'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs',
     );
   });
@@ -352,7 +358,7 @@ describe('trendShiftAiAdapter', () => {
       quality: 4,
       approved: false,
     });
-    expect(result?.rejectReason).toContain(
+    expect(getRejectReason(result)).toContain(
       'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs',
     );
   });
