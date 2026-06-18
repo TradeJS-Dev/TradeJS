@@ -2,6 +2,7 @@
 
 import { type ReactNode, useMemo, useState } from 'react';
 import {
+  Badge,
   Box,
   Button,
   CloseButton,
@@ -1542,6 +1543,14 @@ export const RuntimeStrategyCard = ({
         <Text fontSize="lg" fontWeight="bold" color="gray.200">
           {strategy.strategyName}
         </Text>
+        <Badge
+          colorPalette={strategy.enabled ? 'teal' : 'gray'}
+          variant="subtle"
+          fontFamily="mono"
+          letterSpacing="0"
+        >
+          {strategy.enabled ? 'enabled' : 'disabled'}
+        </Badge>
 
         <Flex gap="1">
           <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>

@@ -53,6 +53,7 @@ interface OrdersDrawerPanelProps {
   orders: OrdersDrawerOrder[];
   emptyText?: string;
   rowHeight?: number;
+  showStatusFilter?: boolean;
   statusFilterOptions?: readonly {
     label: string;
     value: OrderStatusFilter;
@@ -293,12 +294,14 @@ const OrdersFilterGroup = <TValue extends string>({
 const OrdersFilters = ({
   statusFilter,
   directionFilter,
+  showStatusFilter,
   statusFilterOptions,
   onStatusFilterChange,
   onDirectionFilterChange,
 }: {
   statusFilter: OrderStatusFilter;
   directionFilter: OrderDirectionFilter;
+  showStatusFilter: boolean;
   statusFilterOptions: readonly {
     label: string;
     value: OrderStatusFilter;
@@ -315,12 +318,14 @@ const OrdersFilters = ({
     wrap="wrap"
     flex="0 0 auto"
   >
-    <OrdersFilterGroup
-      label="Status"
-      options={statusFilterOptions}
-      value={statusFilter}
-      onChange={onStatusFilterChange}
-    />
+    {showStatusFilter ? (
+      <OrdersFilterGroup
+        label="Status"
+        options={statusFilterOptions}
+        value={statusFilter}
+        onChange={onStatusFilterChange}
+      />
+    ) : null}
     <OrdersFilterGroup
       label="Type"
       options={orderDirectionFilterOptions}
@@ -533,6 +538,7 @@ export const OrdersDrawerPanel = ({
   orders,
   emptyText = 'No orders for the selected period.',
   rowHeight = DEFAULT_ROW_HEIGHT,
+  showStatusFilter = true,
   statusFilterOptions = orderStatusFilterOptions,
   onOpenChange,
 }: OrdersDrawerPanelProps) => {
@@ -540,8 +546,13 @@ export const OrdersDrawerPanel = ({
   const [directionFilter, setDirectionFilter] =
     useState<OrderDirectionFilter>('all');
   const filteredOrders = useMemo(
-    () => filterOrders({ orders, statusFilter, directionFilter }),
-    [directionFilter, orders, statusFilter],
+    () =>
+      filterOrders({
+        orders,
+        statusFilter: showStatusFilter ? statusFilter : 'all',
+        directionFilter,
+      }),
+    [directionFilter, orders, showStatusFilter, statusFilter],
   );
 
   return (
@@ -579,6 +590,7 @@ export const OrdersDrawerPanel = ({
               <OrdersFilters
                 statusFilter={statusFilter}
                 directionFilter={directionFilter}
+                showStatusFilter={showStatusFilter}
                 statusFilterOptions={statusFilterOptions}
                 onStatusFilterChange={setStatusFilter}
                 onDirectionFilterChange={setDirectionFilter}

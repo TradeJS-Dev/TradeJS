@@ -50,7 +50,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             trend: { bias: 'bull' },
           },
           participation: {
-            volume: { volumeRel20: 7 },
+            volume: { volumeRel20: 10 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
@@ -63,6 +63,12 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               pressure: 'short_flush',
               directionAligned: true,
               riskFlags: ['short_liquidation_spike'],
+            },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
             },
           },
         },
@@ -80,7 +86,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
   });
 
-  it('approves clean short flips above side-specific thresholds', () => {
+  it('keeps clean short flips in watch mode while short side is disabled', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -115,10 +121,13 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 3,
+      approved: false,
     });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('short_side_disabled');
   });
 
   it('rejects short flips below side-specific thresholds', () => {
@@ -263,13 +272,19 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             },
           },
           participation: {
-            volume: { volumeRel20: 7 },
+            volume: { volumeRel20: 10 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
           },
           mtf: {
             summary: { h4VolatilityState: 'expanded' },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
           },
         },
       ),
@@ -309,13 +324,19 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             },
           },
           participation: {
-            volume: { volumeRel20: 7 },
+            volume: { volumeRel20: 10 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
           },
           mtf: {
             summary: { h4VolatilityState: 'expanded' },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
           },
         },
       ),

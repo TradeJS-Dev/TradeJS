@@ -72,6 +72,7 @@ export interface RuntimeStrategyTradeView {
 export interface RuntimeStrategyView {
   strategyName: string;
   connected: boolean;
+  enabled: boolean;
   symbols: string[];
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;

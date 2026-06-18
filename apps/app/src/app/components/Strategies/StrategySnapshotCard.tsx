@@ -2285,6 +2285,7 @@ export const StrategySnapshotCard = ({
           open={ordersOpen}
           orders={snapshotOrders}
           rowHeight={SNAPSHOT_ORDER_ROW_HEIGHT}
+          showStatusFilter={false}
           emptyText={
             mode === 'replay'
               ? 'No replay order points for this card.'

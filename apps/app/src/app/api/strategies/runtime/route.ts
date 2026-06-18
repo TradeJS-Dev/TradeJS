@@ -16,6 +16,7 @@ import type {
   ConnectorCreator,
   PositionPnlSnapshot,
   RuntimeTradeRecord,
+  StrategyConfig,
 } from '@tradejs/types';
 import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 import {
@@ -68,6 +69,34 @@ const loadConnectedStrategyNames = async (userName: string) => {
     .filter((value): value is string => Boolean(value));
 
   return [...new Set(names)].sort((left, right) => left.localeCompare(right));
+};
+
+const isRuntimeStrategyConfigEnabled = (config: StrategyConfig | null) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return false;
+  }
+
+  return (config as Record<string, unknown>).ENABLE !== false;
+};
+
+const loadRuntimeStrategyEnabledByName = async (userName: string) => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+  const configKeys = keys.filter((key) => key.endsWith(':config'));
+  const entries = await Promise.all(
+    configKeys.map(async (key): Promise<[string, boolean] | null> => {
+      const strategyName = resolveStrategyNameByConfigKey(userName, key);
+      if (!strategyName) {
+        return null;
+      }
+
+      const config = (await getData(key, null)) as StrategyConfig | null;
+      return [strategyName, isRuntimeStrategyConfigEnabled(config)];
+    }),
+  );
+
+  return new Map(
+    entries.filter((entry): entry is [string, boolean] => entry != null),
+  );
 };
 
 const loadConfiguredStrategyNames = async () => {
@@ -525,6 +554,7 @@ export const GET = async (request: NextRequest) => {
 
     const [
       connectedStrategyNames,
+      runtimeStrategyEnabledByName,
       configuredStrategyNames,
       runtimeTrades,
       activeOrderIds,
@@ -533,6 +563,7 @@ export const GET = async (request: NextRequest) => {
       openPositions,
     ] = await Promise.all([
       loadConnectedStrategyNames(userName),
+      loadRuntimeStrategyEnabledByName(userName),
       loadConfiguredStrategyNames(),
       loadRuntimeTrades(userName, { startTime, endTime }),
       loadActiveRuntimeOrderIds(userName),
@@ -610,6 +641,7 @@ export const GET = async (request: NextRequest) => {
         return {
           strategyName,
           connected: connectedSet.has(strategyName),
+          enabled: runtimeStrategyEnabledByName.get(strategyName) ?? false,
           symbols: [...new Set(strategyTrades.map((trade) => trade.symbol))],
           stat: analytics.stat,
           summary: analytics.summary,
