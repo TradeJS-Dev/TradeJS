@@ -48,6 +48,8 @@ describe('adaptiveTrendChannelAiAdapter', () => {
         {
           regime: {
             trend: { bias: 'bull' },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
           },
           participation: {
             volume: { volumeRel20: 10 },
@@ -270,6 +272,8 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             trend: {
               adaptiveChannel: { regime: 'bear' },
             },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
           },
           participation: {
             volume: { volumeRel20: 10 },
@@ -322,6 +326,8 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             trend: {
               adaptiveChannel: { regime: 'bear' },
             },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
           },
           participation: {
             volume: { volumeRel20: 10 },
@@ -351,5 +357,115 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects otherwise clean long flips with overheated rsi', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        {
+          regime: {
+            trend: { bias: 'bull' },
+            momentum: { rsi: 78 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
+          },
+          participation: {
+            volume: { volumeRel20: 10 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('overheated_rsi');
+  });
+
+  it('rejects otherwise clean long flips without enough volatility expansion rank', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        {
+          regime: {
+            trend: { bias: 'bull' },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 40 } },
+          },
+          participation: {
+            volume: { volumeRel20: 10 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('low_bb_width_rank');
   });
 });

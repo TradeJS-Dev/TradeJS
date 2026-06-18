@@ -9,6 +9,8 @@ export type AdaptiveTrendChannelGuardrailContext =
     adaptiveChannelRegime: string | null;
     breakoutState: string | null;
     volumeRel20: number | null;
+    rsi: number | null;
+    bbWidthRank100: number | null;
     h4VolatilityState: string | null;
     benchmarkTrendAlignment: string | null;
     cmcExchangeLiquidityAligned: boolean | null;
@@ -59,6 +61,8 @@ const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 2;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
+const MAX_APPROVAL_RSI = 75;
+const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
 export const buildAdaptiveTrendChannelGuardrailContext = ({
   signalContext,
@@ -80,6 +84,10 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
+  );
+  const rsi = asFiniteNumber(baseContext?.regime?.momentum?.rsi);
+  const bbWidthRank100 = asFiniteNumber(
+    baseContext?.regime?.volatility?.percentiles?.bbWidthRank100,
   );
   const h4VolatilityState =
     baseContext?.mtf?.summary?.h4VolatilityState ?? null;
@@ -173,7 +181,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     cmcExchangeLiquiditySupportsApproval &&
     breakoutDistancePct >= minApprovalBreakoutDistancePct &&
     channelWidthPct >= MIN_APPROVAL_CHANNEL_WIDTH_PCT &&
-    (volumeRel20 ?? 0) >= minApprovalVolumeRel20;
+    (volumeRel20 ?? 0) >= minApprovalVolumeRel20 &&
+    (rsi ?? Number.POSITIVE_INFINITY) <= MAX_APPROVAL_RSI &&
+    (bbWidthRank100 ?? 0) >= MIN_APPROVAL_BB_WIDTH_RANK_100;
   const highConfidenceSetup =
     approvalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
@@ -211,6 +221,12 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     if ((volumeRel20 ?? 0) < minApprovalVolumeRel20) {
       softBlockReasons.push('weak_participation');
     }
+    if ((rsi ?? Number.POSITIVE_INFINITY) > MAX_APPROVAL_RSI) {
+      softBlockReasons.push('overheated_rsi');
+    }
+    if ((bbWidthRank100 ?? 0) < MIN_APPROVAL_BB_WIDTH_RANK_100) {
+      softBlockReasons.push('low_bb_width_rank');
+    }
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -225,6 +241,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     adaptiveChannelRegime,
     breakoutState,
     volumeRel20,
+    rsi,
+    bbWidthRank100,
     h4VolatilityState,
     benchmarkTrendAlignment,
     cmcExchangeLiquidityAligned,
