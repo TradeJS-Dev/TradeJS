@@ -11,6 +11,7 @@ export type AdaptiveTrendChannelGuardrailContext =
     volumeRel20: number | null;
     rsi: number | null;
     bbWidthRank100: number | null;
+    trendFollowState: string | null;
     h4VolatilityState: string | null;
     benchmarkTrendAlignment: string | null;
     cmcExchangeLiquidityAligned: boolean | null;
@@ -89,6 +90,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const bbWidthRank100 = asFiniteNumber(
     baseContext?.regime?.volatility?.percentiles?.bbWidthRank100,
   );
+  const trendFollowState =
+    baseContext?.regime?.trend?.trendFollow?.state ?? null;
   const h4VolatilityState =
     baseContext?.mtf?.summary?.h4VolatilityState ?? null;
   const benchmarkTrendAlignment =
@@ -174,11 +177,14 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     direction === 'LONG' &&
     cmcExchangeLiquidityAligned === true &&
     cmcExchangeLiquidityStale !== true;
+  const trendFollowSupportsApproval =
+    direction === 'LONG' && trendFollowState === 'bull';
   const approvalSetup =
     direction === 'LONG' &&
     breakoutAligned &&
     h4VolatilityState === 'expanded' &&
     cmcExchangeLiquiditySupportsApproval &&
+    trendFollowSupportsApproval &&
     breakoutDistancePct >= minApprovalBreakoutDistancePct &&
     channelWidthPct >= MIN_APPROVAL_CHANNEL_WIDTH_PCT &&
     (volumeRel20 ?? 0) >= minApprovalVolumeRel20 &&
@@ -227,6 +233,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     if ((bbWidthRank100 ?? 0) < MIN_APPROVAL_BB_WIDTH_RANK_100) {
       softBlockReasons.push('low_bb_width_rank');
     }
+    if (direction === 'LONG' && trendFollowState !== 'bull') {
+      softBlockReasons.push('trend_follow_not_bull');
+    }
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -243,6 +252,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     volumeRel20,
     rsi,
     bbWidthRank100,
+    trendFollowState,
     h4VolatilityState,
     benchmarkTrendAlignment,
     cmcExchangeLiquidityAligned,

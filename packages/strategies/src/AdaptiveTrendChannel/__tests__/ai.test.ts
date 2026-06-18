@@ -47,7 +47,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
         },
         {
           regime: {
-            trend: { bias: 'bull' },
+            trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
             volatility: { percentiles: { bbWidthRank100: 80 } },
           },
@@ -271,6 +271,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           regime: {
             trend: {
               adaptiveChannel: { regime: 'bear' },
+              trendFollow: { state: 'bull' },
             },
             momentum: { rsi: 72 },
             volatility: { percentiles: { bbWidthRank100: 80 } },
@@ -325,6 +326,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           regime: {
             trend: {
               adaptiveChannel: { regime: 'bear' },
+              trendFollow: { state: 'bull' },
             },
             momentum: { rsi: 72 },
             volatility: { percentiles: { bbWidthRank100: 80 } },
@@ -377,7 +379,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
         },
         {
           regime: {
-            trend: { bias: 'bull' },
+            trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 78 },
             volatility: { percentiles: { bbWidthRank100: 80 } },
           },
@@ -432,7 +434,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
         },
         {
           regime: {
-            trend: { bias: 'bull' },
+            trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
             volatility: { percentiles: { bbWidthRank100: 40 } },
           },
@@ -467,5 +469,60 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(
       (result as { rejectReason?: string } | undefined)?.rejectReason,
     ).toContain('low_bb_width_rank');
+  });
+
+  it('rejects otherwise clean long flips outside a bullish trend-follow state', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        {
+          regime: {
+            trend: { bias: 'bull', trendFollow: { state: 'sideways' } },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
+          },
+          participation: {
+            volume: { volumeRel20: 10 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('trend_follow_not_bull');
   });
 });
