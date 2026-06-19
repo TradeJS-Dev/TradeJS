@@ -724,7 +724,7 @@ const skippedResult = (cached = false): BackfillResult => ({
 export const backfillCoinMarketCapContext = async (
   params: BackfillParams,
 ): Promise<BackfillResult> => {
-  if (params.endMs <= params.startMs) {
+  if (!Number.isFinite(params.startMs) || !Number.isFinite(params.endMs)) {
     return skippedResult();
   }
 

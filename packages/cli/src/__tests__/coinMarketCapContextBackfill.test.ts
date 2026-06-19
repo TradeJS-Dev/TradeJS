@@ -1,4 +1,46 @@
+const mockGetMarketGlobalContextCoverage = jest.fn();
+const mockGetMarketReferenceAssetContextCoverage = jest.fn();
+const mockGetMarketCmcExchangeLiquidityContextCoverage = jest.fn();
+const mockGetMarketCmcFearGreedContextCoverage = jest.fn();
+const mockGetMarketContextBackfillCoverage = jest.fn();
+const mockUpsertMarketGlobalContextRows = jest.fn();
+const mockUpsertMarketReferenceAssetContextRows = jest.fn();
+const mockUpsertMarketCmcExchangeLiquidityContextRows = jest.fn();
+const mockUpsertMarketCmcFearGreedContextRows = jest.fn();
+const mockUpsertMarketContextBackfillCoverage = jest.fn();
+const mockWaitForDbReady = jest.fn();
+const mockGetUserSettings = jest.fn();
+
+jest.mock('@tradejs/infra/timescale', () => ({
+  getMarketGlobalContextCoverage: (...args: unknown[]) =>
+    mockGetMarketGlobalContextCoverage(...args),
+  getMarketReferenceAssetContextCoverage: (...args: unknown[]) =>
+    mockGetMarketReferenceAssetContextCoverage(...args),
+  getMarketCmcExchangeLiquidityContextCoverage: (...args: unknown[]) =>
+    mockGetMarketCmcExchangeLiquidityContextCoverage(...args),
+  getMarketCmcFearGreedContextCoverage: (...args: unknown[]) =>
+    mockGetMarketCmcFearGreedContextCoverage(...args),
+  getMarketContextBackfillCoverage: (...args: unknown[]) =>
+    mockGetMarketContextBackfillCoverage(...args),
+  upsertMarketGlobalContextRows: (...args: unknown[]) =>
+    mockUpsertMarketGlobalContextRows(...args),
+  upsertMarketReferenceAssetContextRows: (...args: unknown[]) =>
+    mockUpsertMarketReferenceAssetContextRows(...args),
+  upsertMarketCmcExchangeLiquidityContextRows: (...args: unknown[]) =>
+    mockUpsertMarketCmcExchangeLiquidityContextRows(...args),
+  upsertMarketCmcFearGreedContextRows: (...args: unknown[]) =>
+    mockUpsertMarketCmcFearGreedContextRows(...args),
+  upsertMarketContextBackfillCoverage: (...args: unknown[]) =>
+    mockUpsertMarketContextBackfillCoverage(...args),
+  waitForDbReady: (...args: unknown[]) => mockWaitForDbReady(...args),
+}));
+
+jest.mock('@tradejs/infra/userSettings', () => ({
+  getUserSettings: (...args: unknown[]) => mockGetUserSettings(...args),
+}));
+
 import {
+  backfillCoinMarketCapContextForSignals,
   coinMarketCapExchangeQuotesPayloadToLiquidityRows,
   coinMarketCapFearGreedPayloadToRows,
   coinMarketCapGlobalPayloadToRows,
@@ -11,8 +53,36 @@ import {
 } from '../lib/coinMarketCapContextBackfill';
 
 describe('coinMarketCapContextBackfill', () => {
+  const originalDateNow = Date.now;
+
   beforeEach(() => {
+    jest.clearAllMocks();
+    Date.now = originalDateNow;
     delete process.env.COINMARKETCAP_CONTEXT_BACKFILL_ENABLED;
+    delete process.env.COINMARKETCAP_CONTEXT_EXCHANGE_LIQUIDITY_ENABLED;
+    delete process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_ENABLED;
+    mockGetMarketGlobalContextCoverage.mockResolvedValue(null);
+    mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(new Map());
+    mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(null);
+    mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue(null);
+    mockGetMarketContextBackfillCoverage.mockResolvedValue([]);
+    mockUpsertMarketGlobalContextRows.mockResolvedValue(undefined);
+    mockUpsertMarketReferenceAssetContextRows.mockResolvedValue(undefined);
+    mockUpsertMarketCmcExchangeLiquidityContextRows.mockResolvedValue(
+      undefined,
+    );
+    mockUpsertMarketCmcFearGreedContextRows.mockResolvedValue(undefined);
+    mockUpsertMarketContextBackfillCoverage.mockResolvedValue(undefined);
+    mockWaitForDbReady.mockResolvedValue(undefined);
+    mockGetUserSettings.mockResolvedValue({ COINMARKETCAP_API_KEY: 'test' });
+  });
+
+  afterEach(() => {
+    Date.now = originalDateNow;
+  });
+
+  afterAll(() => {
+    Date.now = originalDateNow;
   });
 
   it('maps historical global metrics rows', () => {
@@ -258,6 +328,60 @@ describe('coinMarketCapContextBackfill', () => {
     expect(new Date(window.toMs).toISOString()).toBe(
       '2026-06-15T00:00:00.000Z',
     );
+  });
+
+  it('uses preload warmup for point-in-time signals backfill', async () => {
+    const nowMs = Date.parse('2026-06-19T15:27:40.000Z');
+    const preloadStartMs = nowMs - 60 * 86_400_000;
+    Date.now = jest.fn(() => nowMs);
+    const window = resolveCoinMarketCapBackfillWindow({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+      nowMs,
+    });
+    const rows = Math.max(
+      1,
+      Math.floor((window.toMs - window.fromMs) / 86_400_000),
+    );
+    const readyCoverage = {
+      firstMs: window.fromMs,
+      lastMs: window.toMs,
+      rows,
+    };
+    mockGetMarketGlobalContextCoverage.mockResolvedValue(readyCoverage);
+    mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(
+      new Map([
+        ['BTCUSDT', readyCoverage],
+        ['ETHUSDT', readyCoverage],
+      ]),
+    );
+    mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(
+      readyCoverage,
+    );
+    mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue(readyCoverage);
+
+    const result = await backfillCoinMarketCapContextForSignals({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+    });
+
+    expect(mockWaitForDbReady).toHaveBeenCalled();
+    expect(mockGetMarketGlobalContextCoverage).toHaveBeenCalledWith({
+      source: 'coinmarketcap_global',
+      startMs: window.fromMs,
+      endMs: window.toMs,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        skipped: true,
+        cached: true,
+      }),
+    );
+    expect(mockGetUserSettings).not.toHaveBeenCalled();
   });
 
   it('does not treat zero-row backfill markers as data coverage', () => {
