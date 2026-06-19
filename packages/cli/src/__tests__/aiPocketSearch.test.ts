@@ -23,9 +23,19 @@ describe('aiPocketSearch', () => {
         },
       },
       figures: {},
-      indicators: {},
+      indicators: {
+        legacy: {
+          maFast: 91,
+        },
+      },
       additionalIndicators: {
         baseContext: {
+          candle: {
+            close: 100,
+          },
+          prevCandle: {
+            close: 99,
+          },
           raw: {
             price: {
               current: 100,
@@ -46,6 +56,16 @@ describe('aiPocketSearch', () => {
               },
             },
           },
+          derivatives: {
+            referenceContexts: {
+              BTCUSDT: {
+                fundingRate: 0.01,
+              },
+            },
+            summary: {
+              pressure: 'neutral',
+            },
+          },
           liquidityZonesContext: {
             approvalAllowedNow: true,
             deterministicQuality: 5,
@@ -54,6 +74,13 @@ describe('aiPocketSearch', () => {
           },
           tradeResult: {
             profit: 500,
+          },
+        },
+        marketContext: {
+          relative: {
+            benchmark: {
+              trend: 'bull',
+            },
           },
         },
       },
@@ -65,9 +92,25 @@ describe('aiPocketSearch', () => {
         approvalAllowedNow: true,
         quality: 5,
       },
+      featureProfile: 'compact',
     });
 
     expect(features['signal.direction']).toBe('LONG');
+    expect(features['indicators.legacy.maFast']).toBeUndefined();
+    expect(
+      features['additionalIndicators.marketContext.relative.benchmark.trend'],
+    ).toBeUndefined();
+    expect(features['additionalIndicators.baseContext.candle.close']).toBe(
+      undefined,
+    );
+    expect(
+      features[
+        'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.fundingRate'
+      ],
+    ).toBeUndefined();
+    expect(
+      features['additionalIndicators.baseContext.derivatives.summary.pressure'],
+    ).toBe('neutral');
     expect(
       features['additionalIndicators.baseContext.tradeResult.profit'],
     ).toBeUndefined();
@@ -87,6 +130,19 @@ describe('aiPocketSearch', () => {
     expect(features['derived.macdHistogramAligned']).toBe(true);
     expect(features['derived.obvSlopeAligned']).toBe(true);
     expect(features['derived.directIndicatorSupportCount']).toBe(6);
+
+    const broadFeatures = collectAiPocketFeatures({
+      payload,
+    });
+    expect(broadFeatures['indicators.legacy.maFast']).toBe(91);
+    expect(
+      broadFeatures[
+        'additionalIndicators.marketContext.relative.benchmark.trend'
+      ],
+    ).toBe('bull');
+    expect(broadFeatures['additionalIndicators.baseContext.candle.close']).toBe(
+      100,
+    );
   });
 
   it('finds profitable and losing pockets across predicate combinations', () => {
@@ -178,6 +234,8 @@ describe('aiPocketSearch', () => {
           pocket.summary.totalProfit === -11,
       ),
     ).toBe(true);
+    expect(result.predicates[0]).not.toHaveProperty('atomSummary');
+    expect(result.positivePockets[0].predicates[0]).not.toHaveProperty('mask');
   });
 
   it('deduplicates equivalent row-selection pockets', () => {

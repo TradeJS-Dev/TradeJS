@@ -135,6 +135,11 @@ args.option(
   false,
 );
 args.option(
+  ['p', 'featureProfile'],
+  'Feature extraction profile: compact or all',
+  'all',
+);
+args.option(
   ['r', 'reportDir'],
   'Directory for generated Markdown reports',
   'data/ai/output',
@@ -270,6 +275,13 @@ const normalizeRatio = (value: unknown, fallback: number) => {
     return fallback;
   }
   return Math.max(0, Math.min(0.9, parsed));
+};
+
+const normalizeFeatureProfile = (value: unknown): 'compact' | 'all' => {
+  const normalized = String(value || 'all')
+    .trim()
+    .toLowerCase();
+  return normalized === 'compact' ? 'compact' : 'all';
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -705,6 +717,7 @@ export const main = async () => {
   const top = normalizePositiveInt(flags.top, 30);
   const includeSymbol = Boolean(flags.includeSymbol);
   const includeGateContext = Boolean(flags.includeGateContext);
+  const featureProfile = normalizeFeatureProfile(flags.featureProfile);
   const jsonOutput = Boolean(flags.json);
   const outputPath = String(flags.output || '').trim();
   const reportDir = String(flags.reportDir || 'data/ai/output').trim();
@@ -838,6 +851,7 @@ export const main = async () => {
             gateContext,
             includeSymbol,
             includeGateContext,
+            featureProfile,
           }),
         });
         bar?.tick(1, {
@@ -951,6 +965,7 @@ export const main = async () => {
       qualityThresholds,
       includeSymbol,
       includeGateContext,
+      featureProfile,
       validationSplit,
       minValidationSupport,
       reportPath,
@@ -1054,6 +1069,7 @@ export const main = async () => {
           'include_gate_context',
           includeGateContext ? chalk.yellow('on') : chalk.gray('off'),
         ],
+        ['feature_profile', chalk.magenta(featureProfile)],
         ['report', chalk.gray(reportPath)],
         ['output', outputPath ? chalk.gray(outputPath) : chalk.gray('off')],
       ],
