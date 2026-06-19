@@ -284,11 +284,15 @@ const coverageKey = (params: {
     Math.trunc(params.toMs),
   ].join(':');
 
-const coverageRowsToKeySet = (
+export const isMarketContextBackfillCoverageDataBearing = (row: {
+  rowsCount?: number | null;
+}) => Number(row.rowsCount ?? 0) > 0;
+
+export const coverageRowsToKeySet = (
   rows: Awaited<ReturnType<typeof getMarketContextBackfillCoverage>>,
 ) =>
   new Set(
-    rows.map((row) =>
+    rows.filter(isMarketContextBackfillCoverageDataBearing).map((row) =>
       coverageKey({
         source: row.source,
         scope: row.scope,

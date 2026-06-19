@@ -3,6 +3,7 @@ import {
   coinMarketCapFearGreedPayloadToRows,
   coinMarketCapGlobalPayloadToRows,
   coinMarketCapHistoricalQuotesPayloadToRows,
+  coverageRowsToKeySet,
   resolveCoinMarketCapBackfillWindow,
   shouldBackfillCoinMarketCapContextForBacktest,
   shouldBackfillCoinMarketCapContextForReplay,
@@ -257,6 +258,29 @@ describe('coinMarketCapContextBackfill', () => {
     expect(new Date(window.toMs).toISOString()).toBe(
       '2026-06-15T00:00:00.000Z',
     );
+  });
+
+  it('does not treat zero-row backfill markers as data coverage', () => {
+    expect(
+      coverageRowsToKeySet([
+        {
+          source: 'coinmarketcap_global',
+          scope: 'all',
+          interval: '1d',
+          fromMs: 1_000,
+          toMs: 2_000,
+          rowsCount: 0,
+        },
+        {
+          source: 'coinmarketcap_global',
+          scope: 'all',
+          interval: '1d',
+          fromMs: 2_000,
+          toMs: 3_000,
+          rowsCount: 1,
+        },
+      ]),
+    ).toEqual(new Set(['coinmarketcap_global:all:1d:2000:3000']));
   });
 
   it('defaults to historical backfill for AI/ML backtests but not cache-only runs', () => {
