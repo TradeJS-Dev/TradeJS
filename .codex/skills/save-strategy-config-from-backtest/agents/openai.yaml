@@ -1,0 +1,4 @@
+interface:
+  display_name: "Save Strategy Config"
+  short_description: "Create runtime strategy configs from Redis backtest configs."
+  default_prompt: "Save a runtime strategy config from a backtest config."
