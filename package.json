@@ -30,7 +30,7 @@
     "cli": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" time bash ./bin/run-cli-dist.sh",
     "cli:backtest": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=${BACKTEST_PARENT_HEAP_MB:-1536}\" time bash ./bin/run-cli-dist.sh",
     "cli:replay": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=${REPLAY_PARENT_HEAP_MB:-12288}\" time bash ./bin/run-cli-dist.sh",
-    "cli:node8g": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=${CLI_PARENT_HEAP_MB:-8192}\" time bash ./bin/run-cli-dist.sh",
+    "cli:node8g": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=${CLI_PARENT_HEAP_MB:-16384}\" time bash ./bin/run-cli-dist.sh",
     "continuity": "yarn cli:node8g continuity",
     "derivatives:ingest": "yarn cli:node8g derivatives:ingest --provider coinalyze",
     "derivatives:ingest:coinalyze:all": "yarn cli:node8g derivatives:ingest:coinalyze:all",
