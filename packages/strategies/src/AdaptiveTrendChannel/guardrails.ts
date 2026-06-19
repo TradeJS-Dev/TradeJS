@@ -18,6 +18,9 @@ export type AdaptiveTrendChannelGuardrailContext =
     cmcExchangeLiquidityStale: boolean | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
+    targetLiqImbalance1h: number | null;
+    targetLiqSpikeRatio1h: number | null;
+    ethFundingRate1h: number | null;
     derivativesRiskFlags: string[];
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -62,6 +65,10 @@ const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 2;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
+const MIN_SHORT_RECOVERY_VOLUME_REL20 = 4.6069;
+const MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H = -0.9665;
+const MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H = 3.2984;
+const MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H = 0.003707;
 const MAX_APPROVAL_RSI = 75;
 const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
@@ -73,6 +80,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   baseContext?: BaseStrategyContextSnapshot | null;
 }): AdaptiveTrendChannelGuardrailContext => {
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
+  const targetDerivatives1h = baseContext?.derivatives?.intervals?.['1h'];
+  const ethDerivatives1h =
+    baseContext?.derivatives?.referenceContexts?.['ETHUSDT']?.intervals?.['1h'];
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const adaptiveChannelRegime =
@@ -114,6 +124,13 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     typeof derivativesSummary?.directionAligned === 'boolean'
       ? derivativesSummary.directionAligned
       : null;
+  const targetLiqImbalance1h = asFiniteNumber(
+    targetDerivatives1h?.liqImbalance,
+  );
+  const targetLiqSpikeRatio1h = asFiniteNumber(
+    targetDerivatives1h?.liqSpikeRatio,
+  );
+  const ethFundingRate1h = asFiniteNumber(ethDerivatives1h?.fundingRate);
   const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
   const hardBlockReasons: string[] = [];
   const softBlockReasons: string[] = [];
@@ -179,7 +196,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     cmcExchangeLiquidityStale !== true;
   const trendFollowSupportsApproval =
     direction === 'LONG' && trendFollowState === 'bull';
-  const approvalSetup =
+  const longApprovalSetup =
     direction === 'LONG' &&
     breakoutAligned &&
     h4VolatilityState === 'expanded' &&
@@ -190,8 +207,18 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     (volumeRel20 ?? 0) >= minApprovalVolumeRel20 &&
     (rsi ?? Number.POSITIVE_INFINITY) <= MAX_APPROVAL_RSI &&
     (bbWidthRank100 ?? 0) >= MIN_APPROVAL_BB_WIDTH_RANK_100;
+  const shortRecoverySetup =
+    direction === 'SHORT' &&
+    (targetLiqImbalance1h ?? Number.POSITIVE_INFINITY) <=
+      MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H &&
+    (targetLiqSpikeRatio1h ?? 0) >=
+      MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H &&
+    (volumeRel20 ?? 0) >= MIN_SHORT_RECOVERY_VOLUME_REL20 &&
+    (ethFundingRate1h ?? Number.POSITIVE_INFINITY) <=
+      MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H;
+  const approvalSetup = longApprovalSetup || shortRecoverySetup;
   const highConfidenceSetup =
-    approvalSetup &&
+    longApprovalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
     channelWidthPct >= MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT;
   let deterministicQuality = 3;
@@ -259,6 +286,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     cmcExchangeLiquidityStale,
     derivativesPressure,
     derivativesDirectionAligned,
+    targetLiqImbalance1h,
+    targetLiqSpikeRatio1h,
+    ethFundingRate1h,
     derivativesRiskFlags,
     hardBlockReasons,
     softBlockReasons,

@@ -132,6 +132,119 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('short_side_disabled');
   });
 
+  it('approves short liquidation recovery pockets with ETH funding support', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 2,
+          channelWidthPct: 1.4,
+          currentPrice: 98,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 4.7 },
+          },
+          structure: {
+            localRange: { breakoutState: 'inside_range' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'compressed' },
+          },
+          derivatives: {
+            intervals: {
+              '1h': {
+                liqImbalance: -0.97,
+                liqSpikeRatio: 3.4,
+              },
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '1h': {
+                    fundingRate: 0.003,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects short liquidation recovery pockets without ETH funding support', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 2,
+          channelWidthPct: 1.4,
+          currentPrice: 98,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 4.7 },
+          },
+          derivatives: {
+            intervals: {
+              '1h': {
+                liqImbalance: -0.97,
+                liqSpikeRatio: 3.4,
+              },
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '1h': {
+                    fundingRate: 0.004,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('short_side_disabled');
+  });
+
   it('rejects short flips below side-specific thresholds', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

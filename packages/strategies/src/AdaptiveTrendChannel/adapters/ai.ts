@@ -92,6 +92,9 @@ Additional AdaptiveTrendChannel context:
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
+- targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
+- targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
+- ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
