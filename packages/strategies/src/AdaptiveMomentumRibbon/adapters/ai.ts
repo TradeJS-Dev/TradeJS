@@ -26,7 +26,8 @@ AdaptiveMomentumRibbon addon:
 - \`quality=5\` is reserved for the strongest momentum/low-effort pocket: oscillatorStrength >= 1.5, volumeRel20 <= 1.2, and effortVsResult <= 100.
 - \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
 - If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
-- The local deterministic gate currently approves LONG only. SHORT stays in watch mode until it has separate short-side calibration.
+- The local deterministic gate approves LONG by default. SHORT stays in watch mode except for the separately calibrated BTC-favored market-breadth shock pocket.
+- SHORT breadth-shock approvals require cmcAltLiquidityRegime=\`btc_favored\`, marketBreadthAdvanceDeclineRatio <= 0, and marketBreadthReturn <= -0.01.
 - LONG approvals require cmcAltLiquidityRegime to be anything except \`btc_favored\` when that CMC field is available.
 - \`quality=4\` continuation approvals require targetVsBtcAlpha4h >= 1, spreadBps >= -10, and cmcFearGreedValueChange7d >= -15 when those fields are available. \`quality=5\` is not capped by this q4-only continuation guard.
 - A blocked q4 continuation may recover to \`quality=4\` when effortVsResult <= 60 and cmcBtcDominanceChange24hPct <= 0.
@@ -35,9 +36,11 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
+
+const SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX = -0.01;
 
 type Direction = 'LONG' | 'SHORT';
 type Bias = 'bullish' | 'bearish' | null;
@@ -137,6 +140,9 @@ type AdaptiveMomentumRibbonAiContext = {
   cmcAltLiquidityRegime: string | null;
   cmcFearGreedValueChange7d: number | null;
   cmcBtcDominanceChange24hPct: number | null;
+  marketBreadthAdvanceDeclineRatio: number | null;
+  marketBreadthReturn: number | null;
+  shortBreadthShockPocket: boolean;
   q4ContinuationAllowed: boolean;
   q4ContinuationBlockReasons: AmrQ4ContinuationBlockReason[];
   q4ContinuationRecoveryAllowed: boolean;
@@ -503,7 +509,7 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   }
 
   if (context.signalDirection === 'SHORT') {
-    return 3;
+    return context.shortBreadthShockPocket ? 4 : 3;
   }
 
   if (
@@ -682,11 +688,17 @@ const buildAdaptiveMomentumRibbonContext = (
   const participation = getRecord(baseContext?.participation);
   const volumeContext = getRecord(participation?.volume);
   const relative = getRecord(baseContext?.relative);
+  const gateFeatures = getRecord(baseContext?.gateFeatures);
+  const gateFeaturesRelative = getRecord(gateFeatures?.relative);
   const benchmark = getRecord(relative?.benchmark);
   const targetVsBtc = getRecord(relative?.targetVsBtc);
   const cmcGlobal = getRecord(relative?.cmcGlobal);
   const cmcFearGreed = getRecord(relative?.cmcFearGreed);
+  const baseMarketBreadth = getRecord(relative?.marketBreadth);
   const marketContext = getRecord(additional?.marketContext);
+  const marketContextRelative = getRecord(marketContext?.relative);
+  const marketContextBreadth = getRecord(marketContextRelative?.marketBreadth);
+  const marketBreadth = baseMarketBreadth ?? marketContextBreadth;
   const marketExecution = getRecord(marketContext?.execution);
   const spreadContext = getRecord(marketExecution?.binanceCoinbaseSpread);
   const primarySession = getPrimarySession(signal);
@@ -744,6 +756,19 @@ const buildAdaptiveMomentumRibbonContext = (
   const cmcBtcDominanceChange24hPct = toFiniteNumberOrNull(
     cmcGlobal?.btcDominanceChange24hPct,
   );
+  const marketBreadthAdvanceDeclineRatio = toFiniteNumberOrNull(
+    marketBreadth?.advanceDeclineRatio,
+  );
+  const marketBreadthReturn =
+    toFiniteNumberOrNull(gateFeaturesRelative?.marketBreadthReturn) ??
+    toFiniteNumberOrNull(marketBreadth?.equalWeightedReturn);
+  const shortBreadthShockPocket =
+    signalDirection === 'SHORT' &&
+    cmcAltLiquidityRegime === 'btc_favored' &&
+    marketBreadthAdvanceDeclineRatio != null &&
+    marketBreadthAdvanceDeclineRatio <= 0 &&
+    marketBreadthReturn != null &&
+    marketBreadthReturn <= SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX;
   const q4ContinuationBlockReasons = getQ4ContinuationBlockReasons({
     targetVsBtcAlpha4h,
     spreadBps,
@@ -851,7 +876,7 @@ const buildAdaptiveMomentumRibbonContext = (
     structuralHardBlockReasons.push('derivatives_pressure_conflict');
   }
 
-  if (signalDirection === 'SHORT') {
+  if (signalDirection === 'SHORT' && !shortBreadthShockPocket) {
     structuralHardBlockReasons.push('short_disabled');
   }
 
@@ -909,6 +934,9 @@ const buildAdaptiveMomentumRibbonContext = (
     cmcAltLiquidityRegime,
     cmcFearGreedValueChange7d,
     cmcBtcDominanceChange24hPct,
+    marketBreadthAdvanceDeclineRatio,
+    marketBreadthReturn,
+    shortBreadthShockPocket,
     q4ContinuationAllowed,
     q4ContinuationBlockReasons,
     q4ContinuationRecoveryAllowed,
@@ -966,6 +994,9 @@ const buildAdaptiveMomentumRibbonContext = (
     cmcAltLiquidityRegime,
     cmcFearGreedValueChange7d,
     cmcBtcDominanceChange24hPct,
+    marketBreadthAdvanceDeclineRatio,
+    marketBreadthReturn,
+    shortBreadthShockPocket,
     q4ContinuationAllowed,
     q4ContinuationBlockReasons,
     q4ContinuationRecoveryAllowed,
@@ -1136,6 +1167,9 @@ Additional AdaptiveMomentumRibbon context:
 - cmcAltLiquidityRegime=${context.cmcAltLiquidityRegime ?? 'n/a'}
 - cmcFearGreedValueChange7d=${context.cmcFearGreedValueChange7d?.toFixed?.(3) ?? 'n/a'}
 - cmcBtcDominanceChange24hPct=${context.cmcBtcDominanceChange24hPct?.toFixed?.(3) ?? 'n/a'}
+- marketBreadthAdvanceDeclineRatio=${context.marketBreadthAdvanceDeclineRatio?.toFixed?.(3) ?? 'n/a'}
+- marketBreadthReturn=${context.marketBreadthReturn?.toFixed?.(5) ?? 'n/a'}
+- shortBreadthShockPocket=${context.shortBreadthShockPocket}
 - q4ContinuationAllowed=${context.q4ContinuationAllowed}
 - q4ContinuationBlockReasons=${context.q4ContinuationBlockReasons.join(', ') || 'none'}
 - q4ContinuationRecoveryAllowed=${context.q4ContinuationRecoveryAllowed}

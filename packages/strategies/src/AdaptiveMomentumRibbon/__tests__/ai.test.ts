@@ -1644,6 +1644,182 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('approves calibrated BTC-favored market-breadth shock shorts', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            relative: {
+              marketBreadthReturn: -0.011,
+            },
+          },
+          relative: {
+            cmcGlobal: {
+              altLiquidityRegime: 'btc_favored',
+            },
+            marketBreadth: {
+              advanceDeclineRatio: 0,
+              equalWeightedReturn: -0.011,
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        cmcAltLiquidityRegime: 'btc_favored',
+        marketBreadthAdvanceDeclineRatio: 0,
+        marketBreadthReturn: -0.011,
+        shortBreadthShockPocket: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+        structuralHardBlockReasons: [],
+      }),
+    );
+
+    const analysis = adaptiveMomentumRibbonAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'SHORT',
+        quality: 4,
+        needRetest: false,
+        retestPrice: null,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      }),
+    );
+  });
+
+  it('keeps BTC-favored shorts blocked when the market-breadth shock is too mild', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            relative: {
+              marketBreadthReturn: -0.007,
+            },
+          },
+          relative: {
+            cmcGlobal: {
+              altLiquidityRegime: 'btc_favored',
+            },
+            marketBreadth: {
+              advanceDeclineRatio: 0,
+              equalWeightedReturn: -0.007,
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        cmcAltLiquidityRegime: 'btc_favored',
+        marketBreadthAdvanceDeclineRatio: 0,
+        marketBreadthReturn: -0.007,
+        shortBreadthShockPocket: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['short_disabled'],
+      }),
+    );
+  });
+
   it('caps strong longs at q3 when baseContext is missing', () => {
     const signal = makeSignal();
     delete signal.additionalIndicators.baseContext;
