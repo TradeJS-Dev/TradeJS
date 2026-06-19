@@ -110,8 +110,14 @@ export type AiPocketSearchResult = {
   };
 };
 
+export type AiPocketSearchProgressPhase =
+  | 'features'
+  | 'predicates'
+  | 'masks'
+  | 'combinations';
+
 export type AiPocketSearchProgress = {
-  phase: 'combinations';
+  phase: AiPocketSearchProgressPhase;
   current: number;
   total: number;
   done: boolean;
@@ -174,6 +180,19 @@ type InternalPredicate = AiPocketPredicate & {
   mask: Uint8Array;
   support: number;
   atomSummary: AiPocketSummary;
+};
+
+type FeatureBucket = {
+  key: string;
+  count: number;
+  numericValues: number[];
+  categoryCounts: Map<
+    string,
+    {
+      value: string | boolean | null;
+      count: number;
+    }
+  >;
 };
 
 const OUTCOME_SEGMENTS = new Set([
@@ -803,32 +822,140 @@ const buildPredicateListMask = (
   return { mask, support };
 };
 
-export const buildAiPocketPredicates = (
+const upperBound = (values: number[], threshold: number) => {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (values[middle] <= threshold) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
+};
+
+const lowerBound = (values: number[], threshold: number) => {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (values[middle] < threshold) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
+};
+
+const buildAiPocketPredicateResult = (
   rows: AiPocketSearchRow[],
   options: {
     minSupport?: number;
     maxCategories?: number;
+    progressInterval?: number;
+    onProgress?: (progress: AiPocketSearchProgress) => void;
   } = {},
-): AiPocketPredicate[] => {
+): { featureKeys: number; predicates: AiPocketPredicate[] } => {
   const minSupport = Math.max(1, Math.trunc(options.minSupport ?? 20));
   const maxCategories = Math.max(2, Math.trunc(options.maxCategories ?? 24));
-  const keys = new Set<string>();
-  for (const row of rows) {
-    Object.keys(row.features).forEach((key) => keys.add(key));
-  }
+  const progressInterval = Math.max(
+    1,
+    Math.trunc(options.progressInterval ?? 500),
+  );
+  const onProgress = options.onProgress;
+  const buckets = new Map<string, FeatureBucket>();
+  let lastFeatureProgress = 0;
+  let lastPredicateProgress = 0;
 
+  const emitProgress = (
+    phase: AiPocketSearchProgressPhase,
+    current: number,
+    total: number,
+    done = false,
+  ) => {
+    if (!onProgress) {
+      return;
+    }
+    const lastProgress =
+      phase === 'features' ? lastFeatureProgress : lastPredicateProgress;
+    if (!done && current - lastProgress < progressInterval) {
+      return;
+    }
+    if (phase === 'features') {
+      lastFeatureProgress = current;
+    } else if (phase === 'predicates') {
+      lastPredicateProgress = current;
+    }
+    onProgress({
+      phase,
+      current,
+      total,
+      done,
+      truncated: false,
+    });
+  };
+
+  rows.forEach((row, rowIndex) => {
+    for (const [key, value] of Object.entries(row.features)) {
+      if (value === undefined) {
+        continue;
+      }
+      const bucket = buckets.get(key) ?? {
+        key,
+        count: 0,
+        numericValues: [],
+        categoryCounts: new Map<
+          string,
+          {
+            value: string | boolean | null;
+            count: number;
+          }
+        >(),
+      };
+      bucket.count += 1;
+
+      if (isFiniteNumber(value)) {
+        bucket.numericValues.push(value);
+      }
+      if (
+        typeof value === 'string' ||
+        typeof value === 'boolean' ||
+        value === null
+      ) {
+        const serialized = JSON.stringify(value);
+        const categoryBucket = bucket.categoryCounts.get(serialized) ?? {
+          value,
+          count: 0,
+        };
+        categoryBucket.count += 1;
+        bucket.categoryCounts.set(serialized, categoryBucket);
+      }
+
+      buckets.set(key, bucket);
+    }
+    emitProgress('features', rowIndex + 1, rows.length);
+  });
+  emitProgress('features', rows.length, rows.length, true);
+
+  const bucketList = [...buckets.values()].sort((left, right) =>
+    left.key.localeCompare(right.key),
+  );
   const predicates: AiPocketPredicate[] = [];
-  for (const key of [...keys].sort()) {
-    const values = rows
-      .map((row) => row.features[key])
-      .filter((value): value is AiPocketPrimitive => value !== undefined);
-    if (values.length < minSupport) {
+
+  for (let bucketIndex = 0; bucketIndex < bucketList.length; bucketIndex += 1) {
+    const bucket = bucketList[bucketIndex];
+    const key = bucket.key;
+    if (bucket.count < minSupport) {
+      emitProgress('predicates', bucketIndex + 1, bucketList.length);
       continue;
     }
 
-    const numericValues = values
-      .filter(isFiniteNumber)
-      .sort((left, right) => left - right);
+    const numericValues = bucket.numericValues.sort((left, right) => {
+      return left - right;
+    });
     if (numericValues.length >= minSupport) {
       const uniqueValues = [...new Set(numericValues.map(roundThreshold))];
       if (uniqueValues.length > 1) {
@@ -844,9 +971,10 @@ export const buildAiPocketPredicates = (
           (left, right) => left - right,
         )) {
           for (const op of ['<=', '>='] as const) {
-            const support = numericValues.filter((value) =>
-              op === '<=' ? value <= threshold : value >= threshold,
-            ).length;
+            const support =
+              op === '<='
+                ? upperBound(numericValues, threshold)
+                : numericValues.length - lowerBound(numericValues, threshold);
             if (support < minSupport || support >= rows.length) {
               continue;
             }
@@ -861,38 +989,19 @@ export const buildAiPocketPredicates = (
           }
         }
       }
+      emitProgress('predicates', bucketIndex + 1, bucketList.length);
       continue;
     }
 
-    const categoryCounts = new Map<
-      string,
-      {
-        value: string | boolean | null;
-        count: number;
-      }
-    >();
-    for (const value of values) {
-      if (
-        typeof value !== 'string' &&
-        typeof value !== 'boolean' &&
-        value !== null
-      ) {
-        continue;
-      }
-      const serialized = JSON.stringify(value);
-      const bucket = categoryCounts.get(serialized) ?? {
-        value,
-        count: 0,
-      };
-      bucket.count += 1;
-      categoryCounts.set(serialized, bucket);
-    }
-
-    if (!categoryCounts.size || categoryCounts.size > maxCategories) {
+    if (
+      !bucket.categoryCounts.size ||
+      bucket.categoryCounts.size > maxCategories
+    ) {
+      emitProgress('predicates', bucketIndex + 1, bucketList.length);
       continue;
     }
 
-    for (const { value, count } of categoryCounts.values()) {
+    for (const { value, count } of bucket.categoryCounts.values()) {
       if (count < minSupport || count >= rows.length) {
         continue;
       }
@@ -905,10 +1014,24 @@ export const buildAiPocketPredicates = (
         value,
       });
     }
-  }
 
-  return predicates;
+    emitProgress('predicates', bucketIndex + 1, bucketList.length);
+  }
+  emitProgress('predicates', bucketList.length, bucketList.length, true);
+
+  return { featureKeys: buckets.size, predicates };
 };
+
+export const buildAiPocketPredicates = (
+  rows: AiPocketSearchRow[],
+  options: {
+    minSupport?: number;
+    maxCategories?: number;
+    progressInterval?: number;
+    onProgress?: (progress: AiPocketSearchProgress) => void;
+  } = {},
+): AiPocketPredicate[] =>
+  buildAiPocketPredicateResult(rows, options).predicates;
 
 const scorePositivePocket = (summary: AiPocketSummary) => {
   const profitFactor =
@@ -1063,17 +1186,34 @@ export const searchAiPockets = (
   );
   const onProgress = options.onProgress;
 
-  const featureKeys = new Set<string>();
-  rows.forEach((row) =>
-    Object.keys(row.features).forEach((key) => featureKeys.add(key)),
-  );
-  const predicates = buildAiPocketPredicates(rows, {
+  const predicateResult = buildAiPocketPredicateResult(rows, {
     minSupport,
     maxCategories: options.maxCategories,
+    progressInterval,
+    onProgress,
   });
+  const { predicates } = predicateResult;
+  let lastMaskProgress = 0;
+  const emitMaskProgress = (current: number, done = false) => {
+    if (!onProgress) {
+      return;
+    }
+    if (!done && current - lastMaskProgress < progressInterval) {
+      return;
+    }
+    lastMaskProgress = current;
+    onProgress({
+      phase: 'masks',
+      current,
+      total: predicates.length,
+      done,
+      truncated: false,
+    });
+  };
   const internalPredicates = predicates
-    .map((predicate): InternalPredicate | null => {
+    .map((predicate, index): InternalPredicate | null => {
       const { mask, support } = buildMask(rows, predicate);
+      emitMaskProgress(index + 1);
       if (support < minSupport) {
         return null;
       }
@@ -1085,6 +1225,7 @@ export const searchAiPockets = (
       };
     })
     .filter((predicate): predicate is InternalPredicate => predicate != null);
+  emitMaskProgress(predicates.length, true);
 
   const predicatePool = [...internalPredicates]
     .sort(
@@ -1302,7 +1443,7 @@ export const searchAiPockets = (
       .slice(0, top),
     stats: {
       rows: rows.length,
-      featureKeys: featureKeys.size,
+      featureKeys: predicateResult.featureKeys,
       predicates: predicates.length,
       atomicPredicatesUsed: selectedPredicatePool.length,
       estimatedCombinations,

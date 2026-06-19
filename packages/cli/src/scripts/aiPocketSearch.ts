@@ -32,6 +32,7 @@ import {
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketResult,
+  type AiPocketSearchProgressPhase,
   type AiPocketSearchRow,
   type AiPocketSummary,
 } from '../lib/aiPocketSearch';
@@ -198,6 +199,52 @@ const toReportTimestamp = (timestamp: number) =>
     .toISOString()
     .replace(/\.\d{3}Z$/, 'Z')
     .replace(/[:]/g, '-');
+
+const markdownPlainTable = (headers: string[], rows: string[][]) => {
+  const escapeCell = (value: string) => value.replace(/\|/g, '\\|');
+  return [
+    `| ${headers.map(escapeCell).join(' | ')} |`,
+    `| ${headers.map(() => '---').join(' | ')} |`,
+    ...rows.map((row) => `| ${row.map(escapeCell).join(' | ')} |`),
+  ].join('\n');
+};
+
+const buildPendingMarkdownReport = ({
+  generatedAt,
+  strategy,
+  filePaths,
+  selectedRows,
+  reportPath,
+}: {
+  generatedAt: number;
+  strategy: string;
+  filePaths: string[];
+  selectedRows: number;
+  reportPath: string;
+}) =>
+  [
+    '# AI Pocket Search Report',
+    '',
+    'Status: running',
+    '',
+    `Generated at: ${new Date(generatedAt).toISOString()}`,
+    '',
+    markdownPlainTable(
+      ['Field', 'Value'],
+      [
+        ['strategy', strategy],
+        ['selected_rows', String(selectedRows)],
+        ['report', reportPath],
+      ],
+    ),
+    '',
+    '## Source Files',
+    '',
+    ...filePaths.map((filePath) => `- \`${filePath}\``),
+    '',
+    'Final metrics and pockets will be written when the search finishes.',
+    '',
+  ].join('\n');
 
 const normalizeInt = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -591,6 +638,13 @@ const tickProgressBarTo = (
   }
 };
 
+const searchPhaseLabels: Record<AiPocketSearchProgressPhase, string> = {
+  features: 'features',
+  predicates: 'preds',
+  masks: 'masks',
+  combinations: 'search',
+};
+
 const hasCliOption = (longName: string, shortName?: string) =>
   process.argv.some(
     (arg) =>
@@ -687,6 +741,31 @@ export const main = async () => {
   }
 
   let resolvedStrategyName = deriveStrategyNameFromFile(filePaths[0] || '');
+  const reportPath = resolveMarkdownReportPath({
+    explicitReportFile,
+    reportDir,
+    strategyName: resolvedStrategyName,
+    filePath: filePaths[0] || '',
+    scope,
+    generatedAt,
+  });
+  await fs.mkdir(path.dirname(path.resolve(reportPath)), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    reportPath,
+    buildPendingMarkdownReport({
+      generatedAt,
+      strategy: resolvedStrategyName,
+      filePaths,
+      selectedRows,
+      reportPath,
+    }),
+    'utf8',
+  );
+  console.error(
+    chalk.gray(`report: ${reportPath} (pending; final report after search)`),
+  );
   let scanned = 0;
   let dateSkipped = 0;
   let failed = 0;
@@ -797,6 +876,7 @@ export const main = async () => {
   const currentGateQualityThresholds =
     summarizeAiTrainEvaluationsByQualityThreshold(rows, qualityThresholds);
   let searchBar: ProgressBar | null = null;
+  let searchBarPhase: AiPocketSearchProgressPhase | null = null;
   const search = searchAiPockets(trainRows, {
     minSupport,
     minProfitFactor,
@@ -811,9 +891,23 @@ export const main = async () => {
     dedupeEquivalentSelections,
     progressInterval: 250,
     onProgress: (progress) => {
+      if (searchBar && searchBarPhase !== progress.phase) {
+        tickProgressBarTo(searchBar, searchBar.total, {
+          status: chalk.gray('done'),
+        });
+        searchBar = null;
+      }
+
       if (!searchBar) {
+        searchBarPhase = progress.phase;
+        const label = searchPhaseLabels[progress.phase].padEnd(8, ' ');
+        console.error(
+          chalk.gray(
+            `stage: ${searchPhaseLabels[progress.phase]} (${progress.total})`,
+          ),
+        );
         searchBar = new ProgressBar(
-          'search :current/:total [:bar] :percent :status',
+          `${label} :current/:total [:bar] :percent :status`,
           {
             total: Math.max(progress.total, 1),
             width: 20,
@@ -829,18 +923,10 @@ export const main = async () => {
         tickProgressBarTo(searchBar, searchBar.total, {
           status: progress.truncated ? chalk.yellow('truncated') : 'done',
         });
+        searchBar = null;
       }
     },
   });
-  const reportPath = resolveMarkdownReportPath({
-    explicitReportFile,
-    reportDir,
-    strategyName: resolvedStrategyName,
-    filePath: filePaths[0] || '',
-    scope,
-    generatedAt,
-  });
-
   const result = {
     generatedAt,
     run: {

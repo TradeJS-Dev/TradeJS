@@ -340,8 +340,12 @@ describe('aiPocketSearch', () => {
         features: { a: false, b: 'y', c: 4 },
       },
     ];
-    const progress: Array<{ current: number; total: number; done: boolean }> =
-      [];
+    const progress: Array<{
+      phase: string;
+      current: number;
+      total: number;
+      done: boolean;
+    }> = [];
 
     const result = searchAiPockets(rows, {
       minSupport: 1,
@@ -351,6 +355,7 @@ describe('aiPocketSearch', () => {
       progressInterval: 1,
       onProgress: (event) => {
         progress.push({
+          phase: event.phase,
           current: event.current,
           total: event.total,
           done: event.done,
@@ -360,6 +365,9 @@ describe('aiPocketSearch', () => {
 
     expect(result.stats.estimatedCombinations).toBeGreaterThan(0);
     expect(progress.length).toBeGreaterThan(0);
+    expect(new Set(progress.map((event) => event.phase))).toEqual(
+      new Set(['features', 'predicates', 'masks', 'combinations']),
+    );
     expect(progress.at(-1)).toEqual(
       expect.objectContaining({
         done: true,
