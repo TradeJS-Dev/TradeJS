@@ -32,6 +32,9 @@ export type AiPocketSearchOptions = {
   top?: number;
   progressInterval?: number;
   onProgress?: (progress: AiPocketSearchProgress) => void;
+  validationRows?: AiPocketSearchRow[];
+  minValidationSupport?: number;
+  dedupeEquivalentSelections?: boolean;
 };
 
 export type AiPocketPredicate =
@@ -83,11 +86,14 @@ export type AiPocketResult = {
   predicates: AiPocketPredicate[];
   condition: string;
   summary: AiPocketSummary;
+  validationSummary?: AiPocketSummary;
+  validationScore?: number;
   score: number;
 };
 
 export type AiPocketSearchResult = {
   baseline: AiPocketSummary;
+  validationBaseline?: AiPocketSummary;
   predicates: AiPocketPredicate[];
   positivePockets: AiPocketResult[];
   negativePockets: AiPocketResult[];
@@ -98,6 +104,8 @@ export type AiPocketSearchResult = {
     atomicPredicatesUsed: number;
     estimatedCombinations: number;
     combinationsEvaluated: number;
+    validationRows: number;
+    duplicatePocketsSkipped: number;
     truncated: boolean;
   };
 };
@@ -118,6 +126,8 @@ export type AiPocketSearchRunReport = {
   evaluatedRows: number;
   scope: string;
   scopeRows: number;
+  trainRows: number;
+  validationRows: number;
   scanned: number;
   dateSkipped: number;
   failed: number;
@@ -130,6 +140,8 @@ export type AiPocketSearchRunReport = {
   qualityThresholds: number[];
   includeSymbol: boolean;
   includeGateContext: boolean;
+  validationSplit: number;
+  minValidationSupport: number;
   reportPath: string;
   search: {
     maxDepth: number;
@@ -184,14 +196,22 @@ const OUTCOME_SEGMENTS = new Set([
   'futureprofit',
   'hardblockreasons',
   'label',
+  'maxallowedquality',
+  'maxquality',
   'modeldirection',
   'modeldirectionmatches',
   'outcome',
   'pnl',
   'profit',
   'profitabletrade',
+  'q4continuationrecoveryallowed',
+  'q4continuationrecoverycandidate',
+  'q4trendshiftgatefeaturesrecoverycandidate',
+  'q4usclosingoiconfirmationrecoverycandidate',
   'quality',
   'rawaiapproved',
+  'recoveryallowed',
+  'recoverycandidate',
   'realized',
   'realizedpnl',
   'rejectreason',
@@ -764,6 +784,25 @@ const intersectMasks = (left: Uint8Array, right: Uint8Array) => {
   return { mask, support };
 };
 
+const buildPredicateListMask = (
+  rows: AiPocketSearchRow[],
+  predicates: AiPocketPredicate[],
+) => {
+  const mask = new Uint8Array(rows.length);
+  let support = 0;
+  rows.forEach((row, index) => {
+    if (
+      predicates.every((predicate) =>
+        matchesPredicate(row.features[predicate.featureKey], predicate),
+      )
+    ) {
+      mask[index] = 1;
+      support += 1;
+    }
+  });
+  return { mask, support };
+};
+
 export const buildAiPocketPredicates = (
   rows: AiPocketSearchRow[],
   options: {
@@ -891,13 +930,21 @@ const scoreNegativePocket = (summary: AiPocketSummary) =>
   summary.maxConsecutiveLosses * 3;
 
 const comparePositivePockets = (left: AiPocketResult, right: AiPocketResult) =>
+  (right.validationScore ?? right.score) -
+    (left.validationScore ?? left.score) ||
   right.score - left.score ||
+  (right.validationSummary?.totalProfit ?? right.summary.totalProfit) -
+    (left.validationSummary?.totalProfit ?? left.summary.totalProfit) ||
   right.summary.totalProfit - left.summary.totalProfit ||
   (right.summary.profitFactor ?? 999) - (left.summary.profitFactor ?? 999) ||
   right.summary.support - left.summary.support;
 
 const compareNegativePockets = (left: AiPocketResult, right: AiPocketResult) =>
+  (right.validationScore ?? right.score) -
+    (left.validationScore ?? left.score) ||
   right.score - left.score ||
+  (left.validationSummary?.totalProfit ?? left.summary.totalProfit) -
+    (right.validationSummary?.totalProfit ?? right.summary.totalProfit) ||
   left.summary.totalProfit - right.summary.totalProfit ||
   right.summary.grossLoss - left.summary.grossLoss ||
   right.summary.support - left.summary.support;
@@ -906,20 +953,60 @@ const createPocketResult = (
   rows: AiPocketSearchRow[],
   predicates: AiPocketPredicate[],
   mask: Uint8Array,
+  validationRows: AiPocketSearchRow[],
 ) => {
   const summary = summarizeMask(rows, mask);
+  const validationMask = validationRows.length
+    ? buildPredicateListMask(validationRows, predicates).mask
+    : null;
+  const validationSummary =
+    validationMask == null
+      ? undefined
+      : summarizeMask(validationRows, validationMask);
   const condition = predicates
     .map((predicate) => predicate.label)
     .join(' AND ');
+  const validationScore =
+    validationSummary == null
+      ? undefined
+      : validationSummary.support > 0
+        ? scorePositivePocket(validationSummary)
+        : Number.NEGATIVE_INFINITY;
   return {
     id: predicates.map((predicate) => predicate.id).join('&&'),
     depth: predicates.length,
     predicates,
     condition,
     summary,
+    ...(validationSummary ? { validationSummary } : {}),
+    ...(validationScore != null ? { validationScore } : {}),
     score: scorePositivePocket(summary),
   } satisfies AiPocketResult;
 };
+
+const hashMask = (mask: Uint8Array) => {
+  let hash = 2166136261;
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] !== 1) {
+      continue;
+    }
+    hash ^= index + 1;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const isBetterRepresentativePocket = (
+  candidate: AiPocketResult,
+  existing: AiPocketResult,
+  compare: (left: AiPocketResult, right: AiPocketResult) => number,
+) =>
+  candidate.depth < existing.depth ||
+  (candidate.depth === existing.depth &&
+    candidate.condition.length < existing.condition.length) ||
+  (candidate.depth === existing.depth &&
+    candidate.condition.length === existing.condition.length &&
+    compare(candidate, existing) < 0);
 
 const estimateCombinationCount = (
   poolSize: number,
@@ -963,6 +1050,13 @@ export const searchAiPockets = (
     Math.trunc(options.maxCombinations ?? 60_000),
   );
   const top = Math.max(1, Math.trunc(options.top ?? 50));
+  const validationRows = options.validationRows ?? [];
+  const minValidationSupport = Math.max(
+    0,
+    Math.trunc(options.minValidationSupport ?? 0),
+  );
+  const dedupeEquivalentSelections =
+    options.dedupeEquivalentSelections !== false;
   const progressInterval = Math.max(
     1,
     Math.trunc(options.progressInterval ?? 500),
@@ -1024,7 +1118,10 @@ export const searchAiPockets = (
 
   const positivePockets = new Map<string, AiPocketResult>();
   const negativePockets = new Map<string, AiPocketResult>();
+  const positiveSelectionKeys = new Map<string, AiPocketResult>();
+  const negativeSelectionKeys = new Map<string, AiPocketResult>();
   let combinationsEvaluated = 0;
+  let duplicatePocketsSkipped = 0;
   let truncated = false;
   let lastProgressCombinations = 0;
 
@@ -1053,7 +1150,12 @@ export const searchAiPockets = (
     pocketPredicates: AiPocketPredicate[],
     mask: Uint8Array,
   ) => {
-    const pocket = createPocketResult(rows, pocketPredicates, mask);
+    const pocket = createPocketResult(
+      rows,
+      pocketPredicates,
+      mask,
+      validationRows,
+    );
     const { summary } = pocket;
     const profitFactor =
       summary.profitFactor ??
@@ -1061,21 +1163,61 @@ export const searchAiPockets = (
         ? Number.POSITIVE_INFINITY
         : 0);
     const winRate = summary.winRate ?? 0;
+    const validationSupport = pocket.validationSummary?.support ?? 0;
+    const validationEligible =
+      !validationRows.length || validationSupport >= minValidationSupport;
 
     if (
       summary.support >= minSupport &&
       summary.totalProfit >= minTotalProfit &&
       profitFactor >= minProfitFactor &&
-      winRate >= minWinRate
+      winRate >= minWinRate &&
+      validationEligible
     ) {
-      positivePockets.set(pocket.id, pocket);
+      const selectionKey = `${summary.support}:${hashMask(mask)}`;
+      const mapKey = dedupeEquivalentSelections ? selectionKey : pocket.id;
+      const existing = dedupeEquivalentSelections
+        ? positiveSelectionKeys.get(mapKey)
+        : positivePockets.get(mapKey);
+      if (
+        !existing ||
+        isBetterRepresentativePocket(pocket, existing, comparePositivePockets)
+      ) {
+        positivePockets.delete(existing?.id ?? '');
+        positivePockets.set(pocket.id, pocket);
+        positiveSelectionKeys.set(mapKey, pocket);
+      } else {
+        duplicatePocketsSkipped += 1;
+      }
     }
 
     if (summary.support >= minSupport && summary.totalProfit < 0) {
-      negativePockets.set(pocket.id, {
+      const negativePocket = {
         ...pocket,
         score: scoreNegativePocket(summary),
-      });
+        ...(pocket.validationSummary
+          ? { validationScore: scoreNegativePocket(pocket.validationSummary) }
+          : {}),
+      };
+      const selectionKey = `${summary.support}:${hashMask(mask)}`;
+      const mapKey = dedupeEquivalentSelections ? selectionKey : pocket.id;
+      const existing = dedupeEquivalentSelections
+        ? negativeSelectionKeys.get(mapKey)
+        : negativePockets.get(mapKey);
+      if (
+        !existing ||
+        isBetterRepresentativePocket(
+          negativePocket,
+          existing,
+          compareNegativePockets,
+        )
+      ) {
+        negativePockets.delete(existing?.id ?? '');
+        negativePockets.set(negativePocket.id, negativePocket);
+        negativeSelectionKeys.set(mapKey, negativePocket);
+      } else {
+        duplicatePocketsSkipped += 1;
+      }
     }
   };
 
@@ -1108,16 +1250,14 @@ export const searchAiPockets = (
         continue;
       }
 
-      const nextMask =
+      const intersection =
         mask == null
-          ? predicate.mask
-          : intersectMasks(mask, predicate.mask).mask;
+          ? { mask: predicate.mask, support: predicate.support }
+          : intersectMasks(mask, predicate.mask);
+      const nextMask = intersection.mask;
       combinationsEvaluated += 1;
       emitProgress();
-      const support =
-        mask == null
-          ? predicate.support
-          : nextMask.reduce((count, value) => count + (value === 1 ? 1 : 0), 0);
+      const support = intersection.support;
       if (support < minSupport) {
         continue;
       }
@@ -1150,6 +1290,9 @@ export const searchAiPockets = (
 
   return {
     baseline: summarizeAiPocketRows(rows),
+    ...(validationRows.length
+      ? { validationBaseline: summarizeAiPocketRows(validationRows) }
+      : {}),
     predicates,
     positivePockets: [...positivePockets.values()]
       .sort(comparePositivePockets)
@@ -1164,6 +1307,8 @@ export const searchAiPockets = (
       atomicPredicatesUsed: selectedPredicatePool.length,
       estimatedCombinations,
       combinationsEvaluated,
+      validationRows: validationRows.length,
+      duplicatePocketsSkipped,
       truncated,
     },
   };
@@ -1225,10 +1370,21 @@ const pocketRows = (pockets: AiPocketResult[]) =>
   pockets.map((pocket, index) => [
     index + 1,
     pocket.summary.support,
+    formatMdPercent(pocket.summary.supportRatio),
     formatMdPercent(pocket.summary.winRate),
     formatMdNumber(pocket.summary.profitFactor),
     formatMdNumber(pocket.summary.totalProfit),
     formatMdNumber(pocket.summary.maxDrawdown),
+    pocket.validationSummary?.support ?? 'n/a',
+    pocket.validationSummary
+      ? formatMdPercent(pocket.validationSummary.winRate)
+      : 'n/a',
+    pocket.validationSummary
+      ? formatMdNumber(pocket.validationSummary.profitFactor)
+      : 'n/a',
+    pocket.validationSummary
+      ? formatMdNumber(pocket.validationSummary.totalProfit)
+      : 'n/a',
     formatMdNumber(pocket.summary.avgTradesPerDay),
     pocket.summary.losingMonths,
     formatMdNumber(pocket.score),
@@ -1259,6 +1415,10 @@ export const buildAiPocketMarkdownReport = ({
         ['evaluated_rows', run.evaluatedRows],
         ['scope', run.scope],
         ['scope_rows', run.scopeRows],
+        ['train_rows', run.trainRows],
+        ['validation_rows', run.validationRows],
+        ['validation_split', formatMdPercent(run.validationSplit)],
+        ['min_validation_support', run.minValidationSupport],
         ['failed', run.failed],
         ['recent', run.recent === 0 ? 'all' : run.recent],
         ['skip', run.skip],
@@ -1302,13 +1462,24 @@ export const buildAiPocketMarkdownReport = ({
       ]),
     ),
     '',
-    '## Search Scope Baseline',
+    '## Train Baseline',
     '',
     markdownTable(
       ['Metric', 'Value'],
       summaryMetricRows(pocketSearch.baseline),
     ),
     '',
+    ...(pocketSearch.validationBaseline
+      ? [
+          '## Validation Baseline',
+          '',
+          markdownTable(
+            ['Metric', 'Value'],
+            summaryMetricRows(pocketSearch.validationBaseline),
+          ),
+          '',
+        ]
+      : []),
     '## Search Stats',
     '',
     markdownTable(
@@ -1319,6 +1490,11 @@ export const buildAiPocketMarkdownReport = ({
         ['atomic_used', pocketSearch.stats.atomicPredicatesUsed],
         ['estimated_combinations', pocketSearch.stats.estimatedCombinations],
         ['combinations_evaluated', pocketSearch.stats.combinationsEvaluated],
+        ['validation_rows', pocketSearch.stats.validationRows],
+        [
+          'duplicate_pockets_skipped',
+          pocketSearch.stats.duplicatePocketsSkipped,
+        ],
         ['truncated', pocketSearch.stats.truncated ? 'yes' : 'no'],
       ],
     ),
@@ -1329,10 +1505,15 @@ export const buildAiPocketMarkdownReport = ({
       [
         '#',
         'N',
+        'Support',
         'WR',
         'PF',
         'PNL',
         'Max DD',
+        'Val N',
+        'Val WR',
+        'Val PF',
+        'Val PNL',
         'Trades/Day',
         'Losing Months',
         'Score',
@@ -1347,10 +1528,15 @@ export const buildAiPocketMarkdownReport = ({
       [
         '#',
         'N',
+        'Support',
         'WR',
         'PF',
         'PNL',
         'Max DD',
+        'Val N',
+        'Val WR',
+        'Val PF',
+        'Val PNL',
         'Trades/Day',
         'Losing Months',
         'Score',

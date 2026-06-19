@@ -114,7 +114,8 @@ Interpretation:
 - both commands above should evaluate the full shard group for that merge id, not only `part1`
 - if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
-- `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, and writes a Markdown report under `data/ai/output`.
+- `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
+- `ai-pocket-search` uses time-ordered holdout validation by default (`--validationSplit 0.25`). Treat train-only pockets as hypotheses; prefer pockets with enough validation support and acceptable validation PnL/PF/drawdown. Use `--validationSplit 0` only for legacy full-sample exploration.
 - use `--includeGateContext` only for auditing existing gate output fields, not for discovering new future approval rules
 - use `--scope approved` with a smaller `--minSupport` to find sub-pockets inside the current qN+ approved stream; use `--scope all` or `--scope candidates` to look for expansion candidates
 - when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows

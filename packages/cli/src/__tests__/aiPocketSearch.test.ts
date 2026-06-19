@@ -49,6 +49,8 @@ describe('aiPocketSearch', () => {
           liquidityZonesContext: {
             approvalAllowedNow: true,
             deterministicQuality: 5,
+            maxAllowedQuality: 5,
+            q4ContinuationRecoveryAllowed: true,
           },
           tradeResult: {
             profit: 500,
@@ -73,6 +75,11 @@ describe('aiPocketSearch', () => {
     expect(
       features[
         'additionalIndicators.baseContext.liquidityZonesContext.approvalAllowedNow'
+      ],
+    ).toBeUndefined();
+    expect(
+      features[
+        'additionalIndicators.baseContext.liquidityZonesContext.maxAllowedQuality'
       ],
     ).toBeUndefined();
     expect(features['derived.maFastAligned']).toBe(true);
@@ -152,6 +159,7 @@ describe('aiPocketSearch', () => {
       maxDepth: 2,
       maxAtomicPredicates: 20,
       maxCombinations: 200,
+      dedupeEquivalentSelections: false,
       top: 10,
     });
 
@@ -170,6 +178,131 @@ describe('aiPocketSearch', () => {
           pocket.summary.totalProfit === -11,
       ),
     ).toBe(true);
+  });
+
+  it('deduplicates equivalent row-selection pockets', () => {
+    const rows: AiPocketSearchRow[] = [
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 0,
+        features: { a: true, aliasA: true },
+      },
+      {
+        profit: 8,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 1,
+        features: { a: true, aliasA: true },
+      },
+      {
+        profit: -4,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 2,
+        features: { a: false, aliasA: false },
+      },
+      {
+        profit: -3,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 3,
+        features: { a: false, aliasA: false },
+      },
+    ];
+
+    const deduped = searchAiPockets(rows, {
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      top: 10,
+    });
+    const notDeduped = searchAiPockets(rows, {
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      dedupeEquivalentSelections: false,
+      top: 10,
+    });
+
+    expect(deduped.positivePockets).toHaveLength(1);
+    expect(notDeduped.positivePockets.length).toBeGreaterThan(
+      deduped.positivePockets.length,
+    );
+    expect(deduped.stats.duplicatePocketsSkipped).toBeGreaterThan(0);
+  });
+
+  it('evaluates pocket candidates on validation rows', () => {
+    const trainRows: AiPocketSearchRow[] = [
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 0,
+        features: { a: true },
+      },
+      {
+        profit: 8,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 1,
+        features: { a: true },
+      },
+      {
+        profit: -3,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 2,
+        features: { a: false },
+      },
+    ];
+    const validationRows: AiPocketSearchRow[] = [
+      {
+        profit: -5,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 3,
+        features: { a: true },
+      },
+      {
+        profit: 2,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 4,
+        timestamp: 4,
+        features: { a: false },
+      },
+    ];
+
+    const result = searchAiPockets(trainRows, {
+      validationRows,
+      minSupport: 2,
+      minValidationSupport: 1,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      top: 10,
+    });
+
+    expect(result.validationBaseline?.support).toBe(2);
+    expect(result.stats.validationRows).toBe(2);
+    expect(result.positivePockets[0].validationSummary).toEqual(
+      expect.objectContaining({
+        support: 1,
+        totalProfit: -5,
+      }),
+    );
   });
 
   it('emits search progress updates', () => {
@@ -275,6 +408,8 @@ describe('aiPocketSearch', () => {
         evaluatedRows: 2,
         scope: 'all',
         scopeRows: 2,
+        trainRows: 2,
+        validationRows: 0,
         scanned: 2,
         dateSkipped: 0,
         failed: 0,
@@ -287,6 +422,8 @@ describe('aiPocketSearch', () => {
         qualityThresholds: [4],
         includeSymbol: false,
         includeGateContext: false,
+        validationSplit: 0,
+        minValidationSupport: 0,
         reportPath: 'data/ai/output/report.md',
         search: {
           maxDepth: 1,

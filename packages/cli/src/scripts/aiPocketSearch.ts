@@ -111,6 +111,21 @@ args.option(
   'Maximum predicate combinations to evaluate',
   60000,
 );
+args.option(
+  ['V', 'validationSplit'],
+  'Trailing time-ordered scope share reserved for validation (0 disables)',
+  0.25,
+);
+args.option(
+  ['N', 'minValidationSupport'],
+  'Minimum validation rows required for positive pockets (0 = auto)',
+  0,
+);
+args.option(
+  ['D', 'dedupeEquivalentSelections'],
+  'Collapse pockets that select the same train rows',
+  true,
+);
 args.option(['t', 'top'], 'Top pockets to print in each section', 30);
 args.option(['Y', 'includeSymbol'], 'Allow symbol as a pocket feature', false);
 args.option(
@@ -197,6 +212,17 @@ const normalizePositiveInt = (value: unknown, fallback: number) => {
 const normalizeNonNegativeNumber = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const normalizeRatio = (value: unknown, fallback: number) => {
+  if (typeof value === 'boolean') {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(0.9, parsed));
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -437,6 +463,42 @@ const resolveScopeRows = (
   return rows;
 };
 
+const splitValidationRows = (
+  rows: AiPocketSearchRow[],
+  validationSplit: number,
+) => {
+  if (validationSplit <= 0 || rows.length < 2) {
+    return {
+      trainRows: rows,
+      validationRows: [] as AiPocketSearchRow[],
+    };
+  }
+
+  const sortedRows = [...rows].sort((left, right) => {
+    const leftTimestamp =
+      typeof left.timestamp === 'number' && Number.isFinite(left.timestamp)
+        ? left.timestamp
+        : Number.POSITIVE_INFINITY;
+    const rightTimestamp =
+      typeof right.timestamp === 'number' && Number.isFinite(right.timestamp)
+        ? right.timestamp
+        : Number.POSITIVE_INFINITY;
+    return leftTimestamp - rightTimestamp;
+  });
+  const validationCount = Math.max(
+    1,
+    Math.min(
+      sortedRows.length - 1,
+      Math.floor(sortedRows.length * validationSplit),
+    ),
+  );
+  const splitIndex = sortedRows.length - validationCount;
+  return {
+    trainRows: sortedRows.slice(0, splitIndex),
+    validationRows: sortedRows.slice(splitIndex),
+  };
+};
+
 const printSection = (title: string, table: string) => {
   console.log(chalk.gray(`${title}:`));
   console.log(table);
@@ -477,10 +539,23 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
   pockets.map((pocket, index) => [
     chalk.gray(String(index + 1)),
     chalk.cyan(String(pocket.summary.support)),
+    colorizeRatio(pocket.summary.supportRatio),
     colorizeRatio(pocket.summary.winRate),
     colorizeNumber(pocket.summary.profitFactor),
     colorizeProfit(pocket.summary.totalProfit),
     colorizeProfit(-pocket.summary.maxDrawdown),
+    pocket.validationSummary
+      ? chalk.cyan(String(pocket.validationSummary.support))
+      : chalk.gray('n/a'),
+    pocket.validationSummary
+      ? colorizeRatio(pocket.validationSummary.winRate)
+      : chalk.gray('n/a'),
+    pocket.validationSummary
+      ? colorizeNumber(pocket.validationSummary.profitFactor)
+      : chalk.gray('n/a'),
+    pocket.validationSummary
+      ? colorizeProfit(pocket.validationSummary.totalProfit)
+      : chalk.gray('n/a'),
     colorizeNumber(pocket.summary.avgTradesPerDay),
     chalk.yellow(String(pocket.summary.losingMonths)),
     colorizeNumber(pocket.score),
@@ -515,6 +590,14 @@ const tickProgressBarTo = (
     bar.tick(delta, tokens);
   }
 };
+
+const hasCliOption = (longName: string, shortName?: string) =>
+  process.argv.some(
+    (arg) =>
+      arg === `--${longName}` ||
+      arg.startsWith(`--${longName}=`) ||
+      (shortName ? arg === `-${shortName}` : false),
+  );
 
 export const main = async () => {
   const outDir = String(flags.outDir || 'data/ai/export');
@@ -557,6 +640,14 @@ export const main = async () => {
     180,
   );
   const maxCombinations = normalizePositiveInt(flags.maxCombinations, 60_000);
+  const validationSplit = hasCliOption('validationSplit', 'V')
+    ? normalizeRatio(flags.validationSplit, 0.25)
+    : 0.25;
+  const explicitMinValidationSupport = normalizeInt(
+    flags.minValidationSupport,
+    0,
+  );
+  const dedupeEquivalentSelections = Boolean(flags.dedupeEquivalentSelections);
   const top = normalizePositiveInt(flags.top, 30);
   const includeSymbol = Boolean(flags.includeSymbol);
   const includeGateContext = Boolean(flags.includeGateContext);
@@ -692,11 +783,21 @@ export const main = async () => {
   });
 
   const scopeRows = resolveScopeRows(rows, scope);
+  const { trainRows, validationRows } = splitValidationRows(
+    scopeRows,
+    validationSplit,
+  );
+  const minValidationSupport =
+    explicitMinValidationSupport > 0
+      ? explicitMinValidationSupport
+      : validationRows.length
+        ? Math.max(3, Math.ceil(minSupport * validationSplit * 0.5))
+        : 0;
   const currentGateSummary = summarizeAiTrainEvaluations(rows);
   const currentGateQualityThresholds =
     summarizeAiTrainEvaluationsByQualityThreshold(rows, qualityThresholds);
   let searchBar: ProgressBar | null = null;
-  const search = searchAiPockets(scopeRows, {
+  const search = searchAiPockets(trainRows, {
     minSupport,
     minProfitFactor,
     minTotalProfit,
@@ -705,6 +806,9 @@ export const main = async () => {
     maxAtomicPredicates,
     maxCombinations,
     top,
+    validationRows,
+    minValidationSupport,
+    dedupeEquivalentSelections,
     progressInterval: 250,
     onProgress: (progress) => {
       if (!searchBar) {
@@ -747,6 +851,8 @@ export const main = async () => {
       evaluatedRows: rows.length,
       scope,
       scopeRows: scopeRows.length,
+      trainRows: trainRows.length,
+      validationRows: validationRows.length,
       scanned,
       dateSkipped,
       failed,
@@ -759,6 +865,8 @@ export const main = async () => {
       qualityThresholds,
       includeSymbol,
       includeGateContext,
+      validationSplit,
+      minValidationSupport,
       reportPath,
       search: {
         maxDepth,
@@ -768,6 +876,9 @@ export const main = async () => {
         minTotalProfit,
         maxAtomicPredicates,
         maxCombinations,
+        validationSplit,
+        minValidationSupport,
+        dedupeEquivalentSelections,
         top,
       },
     },
@@ -812,6 +923,8 @@ export const main = async () => {
         ['evaluated', chalk.blue(String(rows.length))],
         ['scope', chalk.yellow(scope)],
         ['scope_rows', chalk.blue(String(scopeRows.length))],
+        ['train_rows', chalk.blue(String(trainRows.length))],
+        ['validation_rows', chalk.blue(String(validationRows.length))],
         ['source_rows', chalk.blue(String(totalRows))],
         ['date_skipped', chalk.blue(String(dateSkipped))],
         [
@@ -841,6 +954,12 @@ export const main = async () => {
         ['min_support', chalk.magenta(String(minSupport))],
         ['max_atomic_predicates', chalk.magenta(String(maxAtomicPredicates))],
         ['max_combinations', chalk.magenta(String(maxCombinations))],
+        ['validation_split', chalk.magenta(formatRatio(validationSplit))],
+        ['min_validation_support', chalk.magenta(String(minValidationSupport))],
+        [
+          'dedupe_equivalent',
+          dedupeEquivalentSelections ? chalk.green('on') : chalk.gray('off'),
+        ],
         [
           'include_symbol',
           includeSymbol ? chalk.yellow('on') : chalk.gray('off'),
@@ -873,12 +992,22 @@ export const main = async () => {
   );
 
   printSection(
-    'SEARCH SCOPE BASELINE',
+    'TRAIN BASELINE',
     createTable(
       [chalk.gray('METRIC'), chalk.gray('VALUE')],
       buildSummaryRows(search.baseline),
     ),
   );
+
+  if (search.validationBaseline) {
+    printSection(
+      'VALIDATION BASELINE',
+      createTable(
+        [chalk.gray('METRIC'), chalk.gray('VALUE')],
+        buildSummaryRows(search.validationBaseline),
+      ),
+    );
+  }
 
   printSection(
     'SEARCH STATS',
@@ -896,6 +1025,11 @@ export const main = async () => {
           'combinations_evaluated',
           chalk.cyan(String(search.stats.combinationsEvaluated)),
         ],
+        ['validation_rows', chalk.cyan(String(search.stats.validationRows))],
+        [
+          'duplicate_pockets_skipped',
+          chalk.cyan(String(search.stats.duplicatePocketsSkipped)),
+        ],
         [
           'truncated',
           search.stats.truncated ? chalk.yellow('yes') : chalk.green('no'),
@@ -910,10 +1044,15 @@ export const main = async () => {
       [
         chalk.gray('#'),
         chalk.gray('N'),
+        chalk.gray('SUP'),
         chalk.gray('WR'),
         chalk.gray('PF'),
         chalk.gray('PNL'),
         chalk.gray('MAX_DD'),
+        chalk.gray('VAL_N'),
+        chalk.gray('VAL_WR'),
+        chalk.gray('VAL_PF'),
+        chalk.gray('VAL_PNL'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),
@@ -929,10 +1068,15 @@ export const main = async () => {
       [
         chalk.gray('#'),
         chalk.gray('N'),
+        chalk.gray('SUP'),
         chalk.gray('WR'),
         chalk.gray('PF'),
         chalk.gray('PNL'),
         chalk.gray('MAX_DD'),
+        chalk.gray('VAL_N'),
+        chalk.gray('VAL_WR'),
+        chalk.gray('VAL_PF'),
+        chalk.gray('VAL_PNL'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),
