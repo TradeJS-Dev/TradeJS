@@ -113,8 +113,12 @@ Additional Liquidity Zones context:
 - directIndicatorSupportCount=${String(context.directIndicatorSupportCount ?? 'n/a')}
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- btcCorrelation=${String(context.btcCorrelation ?? 'n/a')}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
+- derivatives15mPoints=${String(context.derivatives15mPoints ?? 'n/a')}
+- derivativesQuiet15mPocket=${String(context.derivativesQuiet15mPocket)}
+- derivativesQuiet15mConfirmation=${String(context.derivativesQuiet15mConfirmation)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
@@ -128,6 +132,7 @@ Interpretation rules for Liquidity Zones:
 - Count/volume hit metrics describe how often delayed candles interacted with the zone after it formed.
 - Prefer zones with multiple hits or meaningful volume, clean reaction close, and no thin-participation warning.
 - A close fully through the level marks the zone crossed; crossed zones are not live-entry candidates.
+- A compact derivatives-history pocket can approve a structurally valid retest when derivatives15mPoints<=117 and btcCorrelation>=0.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

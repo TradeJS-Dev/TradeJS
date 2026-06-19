@@ -31,8 +31,12 @@ export type LiquidityZonesGuardrailContext =
     directIndicatorSupportCount: number | null;
     venueSpreadZScore: number | null;
     benchmarkTrendAlignment: string | null;
+    btcCorrelation: number | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
+    derivatives15mPoints: number | null;
+    derivativesQuiet15mPocket: boolean;
+    derivativesQuiet15mConfirmation: boolean;
     derivativesRiskFlags: string[];
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -44,6 +48,9 @@ const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const asPresentFiniteNumber = (value: unknown): number | null =>
+  value == null ? null : asFiniteNumber(value);
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value)
@@ -140,6 +147,9 @@ export const buildLiquidityZonesGuardrailContext = ({
   );
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
+  const btcCorrelation = asPresentFiniteNumber(
+    baseContext?.raw?.crossAsset?.btcCorrelation,
+  );
   const derivativesPressure =
     typeof derivativesSummary?.pressure === 'string'
       ? derivativesSummary.pressure
@@ -148,6 +158,9 @@ export const buildLiquidityZonesGuardrailContext = ({
     typeof derivativesSummary?.directionAligned === 'boolean'
       ? derivativesSummary.directionAligned
       : null;
+  const derivatives15mPoints = asPresentFiniteNumber(
+    baseContext?.derivatives?.intervals?.['15m']?.points,
+  );
   const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
   const hardBlockReasons: string[] = [];
   const softBlockReasons: string[] = [];
@@ -275,13 +288,25 @@ export const buildLiquidityZonesGuardrailContext = ({
       : direction === 'SHORT'
         ? breakoutState === 'below_low_level' || entryLocation === 'breakdown'
         : false;
+  const hasBaseRetestConfirmation =
+    filterMetric >= 3 &&
+    hitCount >= 2 &&
+    reactionCloseDistancePct >= 0.08 &&
+    retestPenetrationPct <= 90;
+  const derivativesQuiet15mPocket =
+    derivatives15mPoints != null &&
+    derivatives15mPoints <= 117 &&
+    btcCorrelation != null &&
+    btcCorrelation >= 0;
+  const derivativesQuiet15mConfirmation =
+    hasBaseRetestConfirmation && derivativesQuiet15mPocket;
   const approvalDisqualifiedByCalibration =
-    direction === 'LONG' ||
+    (direction === 'LONG' && !derivativesQuiet15mConfirmation) ||
     isContinuationBreakoutRetest ||
     hasOverextendedVolumeConfirmation ||
     hasIsolatedIndicatorSupport;
 
-  if (direction === 'LONG') {
+  if (direction === 'LONG' && !derivativesQuiet15mConfirmation) {
     softBlockReasons.push('long_liquidity_retest_requires_recalibration');
   }
   if (isContinuationBreakoutRetest) {
@@ -316,11 +341,10 @@ export const buildLiquidityZonesGuardrailContext = ({
     deterministicQuality = 5;
   } else if (hasShortContinuationConfirmation) {
     deterministicQuality = 4;
+  } else if (derivativesQuiet15mConfirmation) {
+    deterministicQuality = 4;
   } else if (
-    filterMetric >= 3 &&
-    hitCount >= 2 &&
-    reactionCloseDistancePct >= 0.08 &&
-    retestPenetrationPct <= 90 &&
+    hasBaseRetestConfirmation &&
     (trendAligned || benchmarkAligned || failedBreakoutAligned || flushSupport)
   ) {
     deterministicQuality = 3;
@@ -363,8 +387,12 @@ export const buildLiquidityZonesGuardrailContext = ({
     directIndicatorSupportCount,
     venueSpreadZScore,
     benchmarkTrendAlignment,
+    btcCorrelation,
     derivativesPressure,
     derivativesDirectionAligned,
+    derivatives15mPoints,
+    derivativesQuiet15mPocket,
+    derivativesQuiet15mConfirmation,
     derivativesRiskFlags,
     hardBlockReasons,
     softBlockReasons,

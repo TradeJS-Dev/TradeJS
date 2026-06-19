@@ -235,6 +235,139 @@ describe('liquidityZonesAiAdapter', () => {
     });
   });
 
+  it('approves structurally valid long retests in the quiet derivatives pocket', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            crossAsset: {
+              btcCorrelation: 0.2,
+            },
+          },
+          derivatives: {
+            intervals: {
+              '15m': {
+                points: 100,
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('keeps long quiet-derivatives candidates blocked when BTC correlation conflicts', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            crossAsset: {
+              btcCorrelation: -0.1,
+            },
+          },
+          derivatives: {
+            intervals: {
+              '15m': {
+                points: 100,
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('keeps long quiet-derivatives candidates blocked when BTC correlation is missing', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          derivatives: {
+            intervals: {
+              '15m': {
+                points: 100,
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
   it('rejects short continuation breakdown retests', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
