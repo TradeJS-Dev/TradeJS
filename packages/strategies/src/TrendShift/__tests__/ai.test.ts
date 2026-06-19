@@ -1655,6 +1655,111 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('recovers q4 SHORT breadth-shock pockets when 1h short liquidations stay low', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              relative: {
+                marketBreadthReturn: -0.012,
+              },
+            },
+          },
+          derivativesContext: {
+            intervals: {
+              '1h': {
+                liqShort: 0.1,
+              },
+            },
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps breadth-shock SHORT recovery in watch mode when Bollinger width is compressed', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              volatility: {
+                bbWidthPct: 1.7,
+              },
+            },
+            gateFeatures: {
+              relative: {
+                marketBreadthReturn: -0.012,
+              },
+            },
+          },
+          derivativesContext: {
+            intervals: {
+              '1h': {
+                liqShort: 0.1,
+              },
+            },
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip is in a narrow Bollinger-width compression pocket that has been less reliable, so keep it in watch mode',
+    });
+  });
+
   it('keeps neutral q4 SHORT failed-low breakouts in watch mode even when the adaptive channel is bearish', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

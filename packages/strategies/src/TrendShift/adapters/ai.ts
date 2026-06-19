@@ -122,10 +122,13 @@ Additional TrendShift context:
 - swingBias=${context.swingBias ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
 - atrPctZScore=${String(context.atrPctZScore ?? 'n/a')}
+- bbWidthPct=${String(context.bbWidthPct ?? 'n/a')}
 - adaptiveChannelDirection=${context.adaptiveChannelDirection ?? 'n/a'}
 - liquidityTailSide=${context.liquidityTailSide ?? 'n/a'}
 - nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
+- marketBreadthReturn=${String(context.marketBreadthReturn ?? 'n/a')}
+- derivatives1hLiqShort=${String(context.derivatives1hLiqShort ?? 'n/a')}
 - btcAltRegime=${context.btcAltRegime ?? 'n/a'}
 - cmcExchangeLiquidityVolumeChange24hPct=${String(context.cmcExchangeLiquidityVolumeChange24hPct ?? 'n/a')}
 - trendShiftGateReversalConfirmation=${context.trendShiftGateFeatures.reversalConfirmation}
@@ -149,12 +152,14 @@ Additional TrendShift context:
 - shortFailedLowOiNotConfirming=${String(context.shortFailedLowOiNotConfirming)}
 - shortBelowLowOiFallingLongFlushRisk=${String(context.shortBelowLowOiFallingLongFlushRisk)}
 - shortNearPointOfControlRisk=${String(context.shortNearPointOfControlRisk)}
+- shortLowBollingerWidthRisk=${String(context.shortLowBollingerWidthRisk)}
 - defensiveRewardToVolatilityRisk=${String(context.defensiveRewardToVolatilityRisk)}
 - shortBullSwingStructureRisk=${String(context.shortBullSwingStructureRisk)}
 - longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
+- q4ShortBreadthShockLiquidationRecoveryCandidate=${String(context.q4ShortBreadthShockLiquidationRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -185,10 +190,12 @@ Interpretation rules for TrendShift:
 - For SHORT, a below-low long-liquidation flush with falling OI is watch-only outside Asia because it lacks continuation OI.
 - For SHORT, being near the price-volume point of control is a watch-only warning; LONG near-POC flips are not blocked by this rule.
 - For SHORT, a bullish swing structure is a watch-only warning even when the immediate flip geometry looks q5-strong.
+- For SHORT, a narrow Bollinger-width compression pocket is watch-only even if another q4 recovery condition is present.
 - The defensive live gate requires rewardToVolatility >= 8 when that field is available.
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
 - A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
+- A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override the low-Bollinger-width defensive cut.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

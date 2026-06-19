@@ -68,20 +68,25 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortNearPointOfControlRisk: boolean;
   shortExtremeAtrHighBbRisk: boolean;
   shortBullSwingStructureRisk: boolean;
+  shortLowBollingerWidthRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
   defensiveRewardToVolatilityRisk: boolean;
   longBtcAltRegimeRisk: boolean;
   cmcExchangeLiquidityVolumeChangeRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   q4UsClosingOiConfirmationRecoveryCandidate: boolean;
+  q4ShortBreadthShockLiquidationRecoveryCandidate: boolean;
   breakoutState: string | null;
   swingBias: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
+  bbWidthPct: number | null;
   adaptiveChannelDirection: string | null;
   liquidityTailSide: string | null;
   nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
+  marketBreadthReturn: number | null;
+  derivatives1hLiqShort: number | null;
   btcAltRegime: string | null;
   cmcExchangeLiquidityVolumeChange24hPct: number | null;
   trendShiftGateFeatures: TrendShiftGateFeatures;
@@ -103,6 +108,10 @@ const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const SHORT_LOW_BB_WIDTH_PCT_MAX = 1.7584;
+const SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX = -0.0112952;
+const SHORT_BREADTH_SHOCK_1H_LIQ_SHORT_MAX = 0.208;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -518,6 +527,11 @@ export const buildTrendShiftGuardrailContext = ({
   );
   const gateVolatility = baseContext?.gateFeatures?.volatility;
   const gateRelative = baseContext?.gateFeatures?.relative;
+  const bbWidthPct = asFiniteNumber(volatility?.bbWidthPct);
+  const marketBreadthReturn = asFiniteNumber(gateRelative?.marketBreadthReturn);
+  const derivatives1hLiqShort = asFiniteNumber(
+    baseContext?.derivatives?.intervals?.['1h']?.liqShort,
+  );
   const btcAltRegime =
     typeof gateRelative?.btcAltRegime === 'string'
       ? gateRelative.btcAltRegime
@@ -814,6 +828,10 @@ export const buildTrendShiftGuardrailContext = ({
     gateVolatility.bbWidthRankBucket === 'high';
   const shortBullSwingStructureRisk =
     signalContext.signalDirection === 'SHORT' && swingBias === 'bull';
+  const shortLowBollingerWidthRisk =
+    signalContext.signalDirection === 'SHORT' &&
+    bbWidthPct != null &&
+    bbWidthPct <= SHORT_LOW_BB_WIDTH_PCT_MAX;
   const lowRewardToVolatilityRisk =
     rewardToVolatility != null && rewardToVolatility < 0.25;
   const defensiveRewardToVolatilityRisk =
@@ -926,13 +944,28 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.every((reason) =>
       q4UsClosingOiConfirmationRecoveryAllowedReasons.includes(reason),
     );
+  const q4ShortBreadthShockLiquidationRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.signalDirection === 'SHORT' &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    marketBreadthReturn != null &&
+    marketBreadthReturn <= SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX &&
+    derivatives1hLiqShort != null &&
+    derivatives1hLiqShort <= SHORT_BREADTH_SHOCK_1H_LIQ_SHORT_MAX;
 
   if (
     q4TrendShiftGateFeaturesRecoveryCandidate ||
-    q4UsClosingOiConfirmationRecoveryCandidate
+    q4UsClosingOiConfirmationRecoveryCandidate ||
+    q4ShortBreadthShockLiquidationRecoveryCandidate
   ) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
+  }
+
+  if (deterministicQuality >= 5 && shortLowBollingerWidthRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_low_bollinger_width');
   }
 
   return {
@@ -961,20 +994,25 @@ export const buildTrendShiftGuardrailContext = ({
     shortNearPointOfControlRisk,
     shortExtremeAtrHighBbRisk,
     shortBullSwingStructureRisk,
+    shortLowBollingerWidthRisk,
     lowRewardToVolatilityRisk,
     defensiveRewardToVolatilityRisk,
     longBtcAltRegimeRisk,
     cmcExchangeLiquidityVolumeChangeRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     q4UsClosingOiConfirmationRecoveryCandidate,
+    q4ShortBreadthShockLiquidationRecoveryCandidate,
     breakoutState,
     swingBias,
     volumeRel20,
     atrPctZScore,
+    bbWidthPct,
     adaptiveChannelDirection,
     liquidityTailSide,
     nearPointOfControl,
     relativeStrength1h,
+    marketBreadthReturn,
+    derivatives1hLiqShort,
     btcAltRegime,
     cmcExchangeLiquidityVolumeChange24hPct,
     trendShiftGateFeatures,
@@ -1039,6 +1077,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode';
     case 'short_bull_swing_structure':
       return 'the SHORT flip is still fighting a bullish swing structure, so keep it in watch mode';
+    case 'short_low_bollinger_width':
+      return 'the SHORT flip is in a narrow Bollinger-width compression pocket that has been less reliable, so keep it in watch mode';
     case 'low_reward_to_volatility':
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     case 'reward_to_volatility_below_defensive_threshold':
