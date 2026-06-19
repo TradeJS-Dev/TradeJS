@@ -69,6 +69,13 @@ describe('trendFollowAiAdapter', () => {
             localRange: { breakoutState: 'below_low_level' },
           },
           derivatives: {
+            intervals: {
+              '1h': {
+                oiChangePct24h: 2.1,
+                liqLong: 13,
+                liqImbalance: -0.8,
+              },
+            },
             summary: {
               pressure: 'long_flush',
               directionAligned: true,
@@ -299,7 +306,7 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
-  it('approves short relative beta continuation pockets', () => {
+  it('approves short derivatives flush/OI cadence pockets', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
@@ -326,8 +333,18 @@ describe('trendFollowAiAdapter', () => {
         structure: {
           localRange: { breakoutState: 'below_low_level' },
         },
-        relative: {
-          targetVsBtc: { betaToBtc20: 1.35 },
+        derivatives: {
+          intervals: {
+            '1h': {
+              oiChangePct24h: 2.1,
+              liqLong: 13,
+              liqImbalance: -0.8,
+            },
+          },
+          summary: {
+            pressure: 'long_flush',
+            riskFlags: ['long_liquidation_spike'],
+          },
         },
       },
     );
@@ -354,7 +371,68 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
-  it('approves long relative beta continuation pockets', () => {
+  it('approves q4 soft-blocked derivatives flush/OI cadence pockets', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 42 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        derivatives: {
+          intervals: {
+            '1h': {
+              oiChangePct24h: 2.1,
+              liqLong: 13,
+              liqImbalance: -0.8,
+            },
+          },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 102,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects long relative beta continuation pockets', () => {
     const payload = makePayload(
       {
         signalDirection: 'LONG',
@@ -403,13 +481,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
   });
 
-  it('rejects relative beta continuation pockets with stop distance at or above 1.9 ATR', () => {
+  it('rejects relative beta compact-stop pockets without derivatives flush/OI support', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
@@ -445,7 +523,71 @@ describe('trendFollowAiAdapter', () => {
     payload.signal.prices = {
       currentPrice: 100,
       takeProfitPrice: 97.4,
-      stopLossPrice: 103.2,
+      stopLossPrice: 102,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('rejects short derivatives pockets with insufficient liquidation imbalance', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 32 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        derivatives: {
+          intervals: {
+            '1h': {
+              oiChangePct24h: 2.1,
+              liqLong: 13,
+              liqImbalance: -0.5,
+            },
+          },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 102,
     };
 
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
@@ -540,6 +682,13 @@ describe('trendFollowAiAdapter', () => {
             localRange: { breakoutState: 'below_low_level' },
           },
           derivatives: {
+            intervals: {
+              '1h': {
+                oiChangePct24h: 2.1,
+                liqLong: 13,
+                liqImbalance: -0.8,
+              },
+            },
             summary: {
               pressure: 'long_flush',
               directionAligned: true,

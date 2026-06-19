@@ -106,6 +106,10 @@ Additional TrendFollow context:
 - trendFollowGateMarketBreadthContinuation=${context.trendFollowGateFeatures.marketBreadthContinuation}
 - trendFollowGateMarketBreadthDispersion=${String(context.trendFollowGateFeatures.marketBreadthDispersion ?? 'n/a')}
 - trendFollowGateTargetVsBtcBeta20=${String(context.trendFollowGateFeatures.targetVsBtcBeta20 ?? 'n/a')}
+- trendFollowGateDerivatives1hOiChangePct24h=${String(context.trendFollowGateFeatures.derivatives1hOiChangePct24h ?? 'n/a')}
+- trendFollowGateDerivatives1hLiqLong=${String(context.trendFollowGateFeatures.derivatives1hLiqLong ?? 'n/a')}
+- trendFollowGateDerivatives1hLiqImbalance=${String(context.trendFollowGateFeatures.derivatives1hLiqImbalance ?? 'n/a')}
+- trendFollowGateDerivativesShortFlushOiPocket=${String(context.trendFollowGateFeatures.derivativesShortFlushOiPocket)}
 - trendFollowGateHighQualityCadencePocket=${String(context.trendFollowGateFeatures.highQualityCadencePocket)}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
@@ -123,7 +127,7 @@ Interpretation rules for TrendFollow:
 - The ATR trailing stop is the structural invalidation line and also updates while a position is open.
 - Prefer breakouts aligned with shared market context and backed by participation.
 - Late, thin, crowded, inside-range, adverse-delta, weak-momentum, or weak-volume-structure breakouts should be downgraded even if the pivot cross is valid.
-- Live approval is reserved for the relative-beta compact-stop cadence pocket; other structurally valid breakouts remain watch mode.
+- Live approval is reserved for the SHORT derivatives long-liquidation flush + rising-OI cadence pocket; other structurally valid breakouts remain watch mode.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
