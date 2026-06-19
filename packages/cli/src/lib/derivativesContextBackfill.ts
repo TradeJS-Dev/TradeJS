@@ -53,8 +53,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const DEFAULT_LOOKBACK_HOURS = 48;
 const DEFAULT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
-// Coinalyze intraday endpoints retain roughly 1500-2000 points.
-const DEFAULT_EMPTY_COVERAGE_RETENTION_POINTS = 2_000;
 
 const coinalyzeIntervalMap: Record<DerivativesInterval, string> = {
   '15m': '15min',
@@ -273,29 +271,6 @@ const coverageKey = (params: {
     Math.trunc(params.fromMs),
     Math.trunc(params.toMs),
   ].join(':');
-
-const isDataBearingCoverage = (row: { rowsCount?: number | null }) =>
-  Number(row.rowsCount ?? 0) > 0;
-
-const getEmptyCoverageRetentionPoints = () =>
-  asInt(
-    process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS,
-    DEFAULT_EMPTY_COVERAGE_RETENTION_POINTS,
-  );
-
-export const shouldReuseDerivativesEmptyCoverage = (params: {
-  row: { rowsCount?: number | null; toMs: number };
-  intervalMs: number;
-  nowMs?: number;
-}) => {
-  if (Number(params.row.rowsCount ?? 0) !== 0) {
-    return false;
-  }
-
-  const retentionMs = params.intervalMs * getEmptyCoverageRetentionPoints();
-  const oldestFetchableToMs = (params.nowMs ?? Date.now()) - retentionMs;
-  return Math.trunc(params.row.toMs) <= oldestFetchableToMs;
-};
 
 const extendEdges = (
   current: { min?: number; max?: number } | undefined,
@@ -710,7 +685,6 @@ const backfillDerivativesContext = async (
     }),
   );
   const coverageKeysByInterval = new Map<DerivativesInterval, Set<string>>();
-  const reusableEmptyCoverageNowMs = Date.now();
   await Promise.all(
     intervalWindows.map(async (window) => {
       const coverageRows = await getDerivativesBackfillCoverage({
@@ -723,24 +697,14 @@ const backfillDerivativesContext = async (
       coverageKeysByInterval.set(
         window.interval,
         new Set(
-          coverageRows
-            .filter(
-              (row) =>
-                isDataBearingCoverage(row) ||
-                shouldReuseDerivativesEmptyCoverage({
-                  row,
-                  intervalMs: window.intervalMs,
-                  nowMs: reusableEmptyCoverageNowMs,
-                }),
-            )
-            .map((row) =>
-              coverageKey({
-                symbol: row.symbol,
-                interval: row.interval,
-                fromMs: row.fromMs,
-                toMs: row.toMs,
-              }),
-            ),
+          coverageRows.map((row) =>
+            coverageKey({
+              symbol: row.symbol,
+              interval: row.interval,
+              fromMs: row.fromMs,
+              toMs: row.toMs,
+            }),
+          ),
         ),
       );
     }),
@@ -994,29 +958,18 @@ const backfillDerivativesContext = async (
             await upsertDerivativesBackfillCoverage(coverageRows);
             for (const coverageRow of coverageRows) {
               const symbol = coverageRow.symbol.toUpperCase();
-              if (coverageRow.rowsCount > 0) {
-                edgesBySymbol.set(
+              edgesBySymbol.set(
+                symbol,
+                extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
+              );
+              coverageKeys.add(
+                coverageKey({
                   symbol,
-                  extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
-                );
-              }
-              if (
-                coverageRow.rowsCount > 0 ||
-                shouldReuseDerivativesEmptyCoverage({
-                  row: coverageRow,
-                  intervalMs,
-                  nowMs: reusableEmptyCoverageNowMs,
-                })
-              ) {
-                coverageKeys.add(
-                  coverageKey({
-                    symbol,
-                    interval,
-                    fromMs: cursor,
-                    toMs,
-                  }),
-                );
-              }
+                  interval,
+                  fromMs: cursor,
+                  toMs,
+                }),
+              );
             }
           }
         } catch (error) {

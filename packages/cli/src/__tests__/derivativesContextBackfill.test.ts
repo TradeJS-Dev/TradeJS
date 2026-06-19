@@ -4,7 +4,6 @@ import {
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
   formatCoinalyzeRequestError,
-  shouldReuseDerivativesEmptyCoverage,
   shouldBackfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
@@ -325,80 +324,6 @@ describe('resolveDerivativesContextMissingFetchFromMs', () => {
         intervalMs: 1_000,
       }),
     ).toBeNull();
-  });
-});
-
-describe('shouldReuseDerivativesEmptyCoverage', () => {
-  const originalRetentionPoints =
-    process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS;
-  const nowMs = Date.parse('2026-06-19T00:00:00.000Z');
-  const intervalMs = 60 * 60 * 1000;
-
-  beforeEach(() => {
-    delete process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS;
-  });
-
-  afterAll(() => {
-    if (originalRetentionPoints === undefined) {
-      delete process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS;
-    } else {
-      process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS =
-        originalRetentionPoints;
-    }
-  });
-
-  it('reuses empty coverage outside the Coinalyze intraday retention horizon', () => {
-    expect(
-      shouldReuseDerivativesEmptyCoverage({
-        row: {
-          rowsCount: 0,
-          toMs: nowMs - 2_001 * intervalMs,
-        },
-        intervalMs,
-        nowMs,
-      }),
-    ).toBe(true);
-  });
-
-  it('does not reuse recent empty coverage', () => {
-    expect(
-      shouldReuseDerivativesEmptyCoverage({
-        row: {
-          rowsCount: 0,
-          toMs: nowMs - 1_999 * intervalMs,
-        },
-        intervalMs,
-        nowMs,
-      }),
-    ).toBe(false);
-  });
-
-  it('keeps data-bearing coverage out of the negative-cache helper', () => {
-    expect(
-      shouldReuseDerivativesEmptyCoverage({
-        row: {
-          rowsCount: 1,
-          toMs: nowMs - 2_001 * intervalMs,
-        },
-        intervalMs,
-        nowMs,
-      }),
-    ).toBe(false);
-  });
-
-  it('supports overriding the retention horizon for local experiments', () => {
-    process.env.DERIVATIVES_CONTEXT_EMPTY_COVERAGE_RETENTION_POINTS = '10';
-
-    expect(
-      shouldReuseDerivativesEmptyCoverage({
-        row: {
-          rowsCount: 0,
-          toMs: nowMs - 11 * intervalMs,
-        },
-        intervalMs,
-        nowMs,
-      }),
-    ).toBe(true);
   });
 });
 
