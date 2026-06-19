@@ -2,6 +2,11 @@
 
 import { trendFollowAiAdapter } from '../adapters/ai';
 
+const supportiveBtcAltRegime = {
+  btcTurnoverShare24h: 0.35,
+  altBasketReturn24h: -0.01,
+};
+
 const makePayload = (
   context: Record<string, unknown>,
   baseContext: Record<string, unknown> = {},
@@ -84,6 +89,7 @@ describe('trendFollowAiAdapter', () => {
           },
           relative: {
             targetVsBtc: { betaToBtc20: 1.35 },
+            btcAltRegime: supportiveBtcAltRegime,
           },
         },
       ),
@@ -346,6 +352,9 @@ describe('trendFollowAiAdapter', () => {
             riskFlags: ['long_liquidation_spike'],
           },
         },
+        relative: {
+          btcAltRegime: supportiveBtcAltRegime,
+        },
       },
     );
 
@@ -406,6 +415,9 @@ describe('trendFollowAiAdapter', () => {
               liqImbalance: -0.8,
             },
           },
+        },
+        relative: {
+          btcAltRegime: supportiveBtcAltRegime,
         },
       },
     );
@@ -609,6 +621,146 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
+  it('rejects short derivatives pockets when BTC turnover dominates', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 32 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        derivatives: {
+          intervals: {
+            '1h': {
+              oiChangePct24h: 2.1,
+              liqLong: 13,
+              liqImbalance: -0.8,
+            },
+          },
+        },
+        relative: {
+          btcAltRegime: {
+            btcTurnoverShare24h: 0.5,
+            altBasketReturn24h: 0,
+          },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 102,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('rejects short derivatives pockets when the alt basket is deeply red', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 32 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        derivatives: {
+          intervals: {
+            '1h': {
+              oiChangePct24h: 2.1,
+              liqLong: 13,
+              liqImbalance: -0.8,
+            },
+          },
+        },
+        relative: {
+          btcAltRegime: {
+            btcTurnoverShare24h: 0.35,
+            altBasketReturn24h: -0.03,
+          },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 102,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
   it('downgrades adverse delta and weak volume structure', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -697,6 +849,7 @@ describe('trendFollowAiAdapter', () => {
           },
           relative: {
             targetVsBtc: { betaToBtc20: 1.35 },
+            btcAltRegime: supportiveBtcAltRegime,
           },
         },
       ),
