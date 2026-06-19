@@ -47,6 +47,8 @@ type BackfillResult = {
   skippedWindows: number;
 };
 
+type DerivativesContextBackfillMode = 'backtest' | 'signals';
+
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const DEFAULT_LOOKBACK_HOURS = 48;
@@ -149,16 +151,24 @@ export const resolveDerivativesContextLookbackMs = () => {
 };
 
 export const resolveDerivativesContextBackfillWindow = (params: {
+  mode?: DerivativesContextBackfillMode;
   startMs: number;
   endMs: number;
   preloadStartMs?: number;
   nowMs?: number;
 }) => {
-  const { startMs, endMs, preloadStartMs, nowMs = Date.now() } = params;
+  const {
+    mode = 'signals',
+    startMs,
+    endMs,
+    preloadStartMs,
+    nowMs = Date.now(),
+  } = params;
   const safeEndMs = Math.min(endMs, nowMs);
   const safeStartMs = Math.max(0, Math.min(startMs, safeEndMs));
   const lookbackFromMs = safeStartMs - resolveDerivativesContextLookbackMs();
-  const requestedFromMs = preloadStartMs ?? lookbackFromMs;
+  const defaultFromMs = mode === 'backtest' ? safeStartMs : lookbackFromMs;
+  const requestedFromMs = preloadStartMs ?? defaultFromMs;
   const fromMs = Math.max(
     0,
     Math.min(
@@ -261,6 +271,9 @@ const coverageKey = (params: {
     Math.trunc(params.fromMs),
     Math.trunc(params.toMs),
   ].join(':');
+
+const isDataBearingCoverage = (row: { rowsCount?: number | null }) =>
+  Number(row.rowsCount ?? 0) > 0;
 
 const extendEdges = (
   current: { min?: number; max?: number } | undefined,
@@ -612,6 +625,7 @@ const backfillDerivativesContext = async (
     preloadStartMs?: number;
   },
   enabled: boolean,
+  mode: DerivativesContextBackfillMode,
 ): Promise<BackfillResult> => {
   const { userName, startMs, endMs } = params;
   const requestedSymbols = normalizeSymbols(params.symbols);
@@ -631,6 +645,7 @@ const backfillDerivativesContext = async (
     toMs: safeEndMs,
     testStartMs: safeStartMs,
   } = resolveDerivativesContextBackfillWindow({
+    mode,
     startMs,
     endMs,
     preloadStartMs: params.preloadStartMs,
@@ -685,7 +700,7 @@ const backfillDerivativesContext = async (
       coverageKeysByInterval.set(
         window.interval,
         new Set(
-          coverageRows.map((row) =>
+          coverageRows.filter(isDataBearingCoverage).map((row) =>
             coverageKey({
               symbol: row.symbol,
               interval: row.interval,
@@ -923,12 +938,18 @@ const backfillDerivativesContext = async (
               await upsertDerivatives(rows);
               totalRows += rows.length;
             }
+            const rowsCountBySymbol = new Map<string, number>();
+            for (const row of rows) {
+              const symbol = row.symbol.toUpperCase();
+              rowsCountBySymbol.set(
+                symbol,
+                (rowsCountBySymbol.get(symbol) ?? 0) + 1,
+              );
+            }
             await upsertDerivativesBackfillCoverage(
               missingBatch.map((item) => {
-                const rowsCount = rows.filter(
-                  (row) =>
-                    row.symbol.toUpperCase() === item.symbol.toUpperCase(),
-                ).length;
+                const normalizedSymbol = item.symbol.toUpperCase();
+                const rowsCount = rowsCountBySymbol.get(normalizedSymbol) ?? 0;
                 return {
                   source: 'coinalyze',
                   symbol: item.symbol,
@@ -941,6 +962,10 @@ const backfillDerivativesContext = async (
             );
             for (const item of missingBatch) {
               const symbol = item.symbol.toUpperCase();
+              const rowsCount = rowsCountBySymbol.get(symbol) ?? 0;
+              if (rowsCount <= 0) {
+                continue;
+              }
               edgesBySymbol.set(
                 symbol,
                 extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
@@ -1008,7 +1033,11 @@ export const backfillDerivativesContextForBacktest = async (params: {
   endMs: number;
   preloadStartMs?: number;
 }): Promise<BackfillResult> =>
-  backfillDerivativesContext(params, isBacktestDerivativesContextEnabled());
+  backfillDerivativesContext(
+    params,
+    isBacktestDerivativesContextEnabled(),
+    'backtest',
+  );
 
 export const backfillDerivativesContextForSignals = async (params: {
   userName: string;
@@ -1017,4 +1046,8 @@ export const backfillDerivativesContextForSignals = async (params: {
   endMs: number;
   preloadStartMs?: number;
 }): Promise<BackfillResult> =>
-  backfillDerivativesContext(params, isSignalsDerivativesContextEnabled());
+  backfillDerivativesContext(
+    params,
+    isSignalsDerivativesContextEnabled(),
+    'signals',
+  );

@@ -232,6 +232,44 @@ describe('resolveDerivativesContextBackfillWindow', () => {
       testStartMs: startMs,
     });
   });
+
+  it('uses the whole requested test window for backtests without explicit preload', () => {
+    process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS = '12';
+    const startMs = Date.parse('2024-04-01T00:00:00.000Z');
+    const endMs = Date.parse('2026-04-02T00:00:00.000Z');
+
+    expect(
+      resolveDerivativesContextBackfillWindow({
+        mode: 'backtest',
+        startMs,
+        endMs,
+        nowMs: endMs,
+      }),
+    ).toEqual({
+      fromMs: startMs,
+      toMs: endMs,
+      testStartMs: startMs,
+    });
+  });
+
+  it('keeps signal backfill on the short derivatives lookback window', () => {
+    process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS = '12';
+    const startMs = Date.parse('2026-04-01T00:00:00.000Z');
+    const endMs = Date.parse('2026-04-01T00:15:00.000Z');
+
+    expect(
+      resolveDerivativesContextBackfillWindow({
+        mode: 'signals',
+        startMs,
+        endMs,
+        nowMs: endMs,
+      }),
+    ).toEqual({
+      fromMs: startMs - 12 * 60 * 60 * 1000,
+      toMs: endMs,
+      testStartMs: startMs,
+    });
+  });
 });
 
 describe('resolveDerivativesContextIntervalBackfillWindow', () => {
