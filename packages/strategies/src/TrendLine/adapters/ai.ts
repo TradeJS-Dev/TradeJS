@@ -251,11 +251,18 @@ const buildTrendlineContext = (signal: {
     'participation',
     'volume',
   ]);
+  const participationVolumeStructure = getNestedRecord(baseContext, [
+    'participation',
+    'volumeStructure',
+  ]);
   const benchmarkContext = getNestedRecord(baseContext, [
     'relative',
     'benchmark',
   ]);
   const volumeRel20 = toFiniteNumberOrNull(participationVolume?.volumeRel20);
+  const volumeStructurePocIndex = toFiniteNumberOrNull(
+    participationVolumeStructure?.pocIndex,
+  );
   const benchmarkTrendAlignment =
     typeof benchmarkContext?.trendAlignment === 'string'
       ? benchmarkContext.trendAlignment
@@ -287,6 +294,15 @@ const buildTrendlineContext = (signal: {
     typeof derivativesSummary?.directionAligned === 'boolean'
       ? derivativesSummary.directionAligned
       : null;
+  const ethReferenceDerivativesSummary = getNestedRecord(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'ETHUSDT',
+    'summary',
+  ]);
+  const ethReferenceOiAcceleration = toFiniteNumberOrNull(
+    ethReferenceDerivativesSummary?.oiAcceleration,
+  );
   const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
   const structural = buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
@@ -462,10 +478,17 @@ const buildTrendlineContext = (signal: {
     volumeRel20 != null &&
     volumeRel20 < 0.8 &&
     benchmarkTrendAlignment === 'neutral';
+  const q4ReferenceOiPocApproval =
+    deterministicQuality === 4 &&
+    volumeStructurePocIndex != null &&
+    volumeStructurePocIndex >= 5 &&
+    ethReferenceOiAcceleration != null &&
+    ethReferenceOiAcceleration <= -0.5906;
   const approvalAllowedNow =
     deterministicQuality >= 4 &&
     longBaseContextApprovalPocket &&
-    !shortThinNeutralBenchmarkRisk;
+    !shortThinNeutralBenchmarkRisk &&
+    (deterministicQuality >= 5 || q4ReferenceOiPocApproval);
   const trendLineGateFeatures = buildTrendLineGateFeatures({
     structural,
     entryTiming,
@@ -495,16 +518,19 @@ const buildTrendlineContext = (signal: {
     sessionPrimary,
     sessionIsOverlap,
     volumeRel20,
+    volumeStructurePocIndex,
     benchmarkTrendAlignment,
     venueSpreadZScore,
     derivativesDirectionAligned,
     derivativesRiskFlags,
+    ethReferenceOiAcceleration,
     oiNotConfirming,
     longUsLowVolumeCrowdedShortSqueeze,
     longHighQualitySessionApproval,
     longStrongDerivativesAlignedApproval,
     longModerateRetestLiquidSessionApproval,
     shortThinNeutralBenchmarkRisk,
+    q4ReferenceOiPocApproval,
     trendLineGateFeatures,
     deterministicQuality,
     maxAllowedQuality,
@@ -809,6 +835,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
     if (
       (trendlineContext.aggressivePreBreakPressure === true ||
         trendlineContext.strongNearBreakPressure === true) &&
+      trendlineContext.approvalAllowedNow === true &&
       signalDirection != null
     ) {
       const fallbackReason =
@@ -940,6 +967,9 @@ Additional TrendLine context:
 - trendline.longStrongDerivativesAlignedApproval=${String(trendlineContext.longStrongDerivativesAlignedApproval)}
 - trendline.longModerateRetestLiquidSessionApproval=${String(trendlineContext.longModerateRetestLiquidSessionApproval)}
 - trendline.shortThinNeutralBenchmarkRisk=${String(trendlineContext.shortThinNeutralBenchmarkRisk)}
+- trendline.volumeStructurePocIndex=${formatPromptNumber(trendlineContext.volumeStructurePocIndex, 0)}
+- trendline.ethReferenceOiAcceleration=${formatPromptNumber(trendlineContext.ethReferenceOiAcceleration, 3)}
+- trendline.q4ReferenceOiPocApproval=${String(trendlineContext.q4ReferenceOiPocApproval)}
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}

@@ -200,6 +200,44 @@ const withBaseContext = (signal: any) => {
   };
 };
 
+const withTrendlineQ4ReferenceConfirmation = (signal: any) => {
+  const additionalIndicators = signal.additionalIndicators ?? {};
+  const baseContext = additionalIndicators.baseContext ?? {};
+  const participation = baseContext.participation ?? {};
+  const derivatives = baseContext.derivatives ?? {};
+  const referenceContexts = derivatives.referenceContexts ?? {};
+  const ethReference = referenceContexts.ETHUSDT ?? {};
+
+  signal.additionalIndicators = {
+    ...additionalIndicators,
+    baseContext: {
+      ...baseContext,
+      participation: {
+        ...participation,
+        volumeStructure: {
+          ...(participation.volumeStructure ?? {}),
+          pocIndex: 5,
+        },
+      },
+      derivatives: {
+        ...derivatives,
+        referenceContexts: {
+          ...referenceContexts,
+          ETHUSDT: {
+            ...ethReference,
+            summary: {
+              ...(ethReference.summary ?? {}),
+              oiAcceleration: -0.7,
+            },
+          },
+        },
+      },
+    },
+  };
+
+  return signal;
+};
+
 const makeSignal = () =>
   withBaseContext({
     signalId: 'sig-1',
@@ -1644,6 +1682,7 @@ describe('ai helpers', () => {
           entryTiming: 'ready_breakout',
         },
       };
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(payload.signal.symbol).toBe('ETHUSDT');
@@ -2179,7 +2218,9 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeModerateReadyBreakoutShortTrendlineSignal(),
+          signal: withTrendlineQ4ReferenceConfirmation(
+            makeModerateReadyBreakoutShortTrendlineSignal(),
+          ),
         },
       );
 
@@ -2296,7 +2337,9 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeStrongReadyBreakoutShortSignal(),
+          signal: withTrendlineQ4ReferenceConfirmation(
+            makeStrongReadyBreakoutShortSignal(),
+          ),
         },
       );
 
@@ -2829,7 +2872,9 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeAggressivePreBreakTrendlineSignal(),
+          signal: withTrendlineQ4ReferenceConfirmation(
+            makeAggressivePreBreakTrendlineSignal(),
+          ),
         },
       );
 
@@ -2867,7 +2912,9 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeStrongNearBreakPressureTrendlineSignal(),
+          signal: withTrendlineQ4ReferenceConfirmation(
+            makeStrongNearBreakPressureTrendlineSignal(),
+          ),
         },
       );
 
@@ -2891,6 +2938,7 @@ describe('ai helpers', () => {
           entryTiming: 'ready_follow_through',
         },
       };
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -2939,6 +2987,7 @@ describe('ai helpers', () => {
           },
         },
       };
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -2947,6 +2996,7 @@ describe('ai helpers', () => {
           deterministicQuality: 4,
           hardBlockReasons: [],
           longStrongDerivativesAlignedApproval: true,
+          q4ReferenceOiPocApproval: true,
         }),
       );
 
@@ -2998,6 +3048,7 @@ describe('ai helpers', () => {
           },
         },
       };
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -3063,6 +3114,7 @@ describe('ai helpers', () => {
           },
         },
       };
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -3071,6 +3123,7 @@ describe('ai helpers', () => {
           deterministicQuality: 4,
           hardBlockReasons: [],
           longModerateRetestLiquidSessionApproval: true,
+          q4ReferenceOiPocApproval: true,
         }),
       );
 
@@ -3132,8 +3185,37 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
+    it('keeps TrendLine q4 setups in watch mode without reference OI and POC confirmation', async () => {
+      const signal = makeModerateReadyBreakoutShortTrendlineSignal();
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+          q4ReferenceOiPocApproval: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('promotes moderate TrendLine short ready-breakout setups into q4 during local replay', async () => {
       const signal = makeModerateReadyBreakoutShortTrendlineSignal();
+      withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -3141,6 +3223,7 @@ describe('ai helpers', () => {
           approvalAllowedNow: true,
           deterministicQuality: 4,
           hardBlockReasons: [],
+          q4ReferenceOiPocApproval: true,
         }),
       );
 

@@ -185,6 +185,8 @@ const isShortBtcOnlyRecoveryLane = (
     biasConflictState === 'btc_only' &&
     context.deterministicRejectionScore != null &&
     context.deterministicRejectionScore >= 6 &&
+    context.distance != null &&
+    context.distance >= 61 &&
     !hasMissingDerivatives &&
     (derivativesPressure === 'long_flush' ||
       derivativesPressure === 'short_flush' ||
@@ -243,6 +245,11 @@ const getBaseContextApprovalBlockReasons = (
     'localRange',
     'rangePosition20',
   ]);
+  const activeLiquidityTails = getNestedNumber(baseContext, [
+    'structure',
+    'liquidityTails',
+    'activeCount',
+  ]);
   const atrPctZScore = getNestedNumber(baseContext, [
     'regime',
     'volatility',
@@ -276,6 +283,25 @@ const getBaseContextApprovalBlockReasons = (
   }
   if (volumeRel20 != null && volumeRel20 < 0.8) {
     reasons.push('weak_volume_participation');
+  }
+  if (activeLiquidityTails != null && activeLiquidityTails > 4) {
+    reasons.push('crowded_liquidity_tails');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    derivativesPressure === 'neutral' &&
+    volumeRel20 != null &&
+    volumeRel20 < 0.85
+  ) {
+    reasons.push('short_neutral_thin_participation');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    biasConflictState === 'btc_only' &&
+    context.distance != null &&
+    context.distance <= 60
+  ) {
+    reasons.push('short_btc_conflict_too_shallow');
   }
   if (
     context.signalDirection === 'SHORT' &&
@@ -718,6 +744,12 @@ const getHardBlockReasonText = (reason: string) => {
       return 'derivatives context is missing';
     case 'weak_volume_participation':
       return 'volume participation is too weak for this bounce';
+    case 'crowded_liquidity_tails':
+      return 'too many active liquidity-tail traps around the bounce';
+    case 'short_neutral_thin_participation':
+      return 'SHORT bounce has neutral derivatives and thin participation';
+    case 'short_btc_conflict_too_shallow':
+      return 'SHORT btc-conflict bounce is too shallow near the line';
     case 'short_extreme_volatility':
       return 'SHORT bounce appears in an extreme volatility regime';
     case 'short_low_range_position':
