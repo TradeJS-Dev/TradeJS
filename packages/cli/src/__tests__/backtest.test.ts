@@ -814,10 +814,10 @@ describe('backtest script helpers', () => {
     expect(result.matched[0].timestampDiffMs).toBe(0);
   });
 
-  it('uses two bars as replay runtime comparison tolerance', () => {
-    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS).toBe(2);
-    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_MS).toBe(30 * 60 * 1000);
-    expect(formatReplayRuntimeCompareTolerance()).toBe('2 bars');
+  it('uses one bar as replay runtime comparison tolerance', () => {
+    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS).toBe(1);
+    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_MS).toBe(15 * 60 * 1000);
+    expect(formatReplayRuntimeCompareTolerance()).toBe('1 bar');
   });
 
   it('builds replay parity details with nearest unmatched candidates', () => {
