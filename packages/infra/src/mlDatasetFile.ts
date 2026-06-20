@@ -2,10 +2,12 @@ import { once } from 'events';
 import { createReadStream, createWriteStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
+import readline from 'node:readline';
 
 const DEFAULT_DIR = 'data/ml/export';
 const ML_DATASET_WRITE_BATCH_SIZE = 200;
 const ML_CHUNK_FILE_RE = /^ml-dataset-(.+)-chunk-[^.]+\.jsonl$/;
+const BACKTEST_RUN_CHUNK_ID_RE = /^(\d{12}-[a-f0-9]{8})-/;
 
 type WriterState = {
   filePath: string;
@@ -33,6 +35,24 @@ export const getMlChunkFilePath = (
     outDir,
     `ml-dataset-${toFileToken(strategyName)}-chunk-${toFileToken(chunkId)}.jsonl`,
   );
+
+const getMlChunkFilePrefix = (strategyName: string, runId?: string) =>
+  `ml-dataset-${toFileToken(strategyName)}-chunk-${
+    runId ? `${toFileToken(runId)}-` : ''
+  }`;
+
+const getRunIdFromMlChunkFileName = (
+  strategyName: string,
+  fileName: string,
+) => {
+  const prefix = getMlChunkFilePrefix(strategyName);
+  if (!fileName.startsWith(prefix) || !fileName.endsWith('.jsonl')) {
+    return '';
+  }
+
+  const chunkToken = fileName.slice(prefix.length, -'.jsonl'.length);
+  return chunkToken.match(BACKTEST_RUN_CHUNK_ID_RE)?.[1] ?? '';
+};
 
 export const appendMlDatasetRow = async (params: {
   strategyName: string;
@@ -120,9 +140,10 @@ export const closeAllMlDatasetWriters = async () => {
 export const listMlChunkFiles = async (params: {
   strategyName: string;
   outDir?: string;
+  runId?: string;
 }) => {
-  const { strategyName, outDir = DEFAULT_DIR } = params;
-  const prefix = `ml-dataset-${toFileToken(strategyName)}-chunk-`;
+  const { strategyName, outDir = DEFAULT_DIR, runId } = params;
+  const prefix = getMlChunkFilePrefix(strategyName, runId);
   let entries: string[] = [];
   try {
     entries = await fs.readdir(outDir);
@@ -133,6 +154,27 @@ export const listMlChunkFiles = async (params: {
     .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
     .map((name) => path.join(outDir, name))
     .sort();
+};
+
+export const listMlChunkRunIds = async (params: {
+  strategyName: string;
+  outDir?: string;
+}) => {
+  const { strategyName, outDir = DEFAULT_DIR } = params;
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(outDir);
+  } catch {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      entries
+        .map((name) => getRunIdFromMlChunkFileName(strategyName, name))
+        .filter(Boolean),
+    ),
+  ].sort();
 };
 
 export const listMlChunkStrategies = async (params?: { outDir?: string }) => {
@@ -156,13 +198,39 @@ export const listMlChunkStrategies = async (params?: { outDir?: string }) => {
 export const mergeJsonlFiles = async (params: {
   filePaths: string[];
   outPath: string;
+  shouldIncludeRow?: (row: Record<string, unknown>) => boolean;
 }) => {
-  const { filePaths, outPath } = params;
+  const { filePaths, outPath, shouldIncludeRow } = params;
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   const stream = createWriteStream(outPath, { encoding: 'utf8' });
   const done = Promise.all([once(stream, 'finish'), once(stream, 'close')]);
   try {
     for (const filePath of filePaths) {
+      if (shouldIncludeRow) {
+        const reader = readline.createInterface({
+          input: createReadStream(filePath, { encoding: 'utf8' }),
+          crlfDelay: Infinity,
+        });
+        try {
+          for await (const line of reader) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+              continue;
+            }
+            const row = JSON.parse(trimmed) as Record<string, unknown>;
+            if (!shouldIncludeRow(row)) {
+              continue;
+            }
+            if (!stream.write(`${trimmed}\n`)) {
+              await once(stream, 'drain');
+            }
+          }
+        } finally {
+          reader.close();
+        }
+        continue;
+      }
+
       const reader = createReadStream(filePath, { encoding: 'utf8' });
       for await (const chunk of reader) {
         if (!stream.write(chunk)) {

@@ -53,6 +53,7 @@ import {
   userName,
   workerHeapMb,
 } from './cliConfig';
+import { withBacktestRunDatasetMetadata } from './checkpoint';
 import {
   getBestTickerResultForSymbol,
   getPersistedTestSummariesMap,
@@ -505,6 +506,7 @@ export const executeTestSuite = async ({
   onFinish,
   initialCompletedTests = 0,
   totalTests,
+  backtestRunId,
 }: {
   testSuite: TestSuite;
   window: ResolvedWindow;
@@ -515,18 +517,23 @@ export const executeTestSuite = async ({
   onFinish: () => Promise<void>;
   initialCompletedTests?: number;
   totalTests?: number;
+  backtestRunId?: string;
 }) => {
   markTestsStarted();
   const { testerWorkerPath, testerNeedsTsRuntime } = resolveTesterWorker();
-  await executeBacktestWorkerPool({
+  const executableTestSuite = withBacktestRunDatasetMetadata({
+    runId: backtestRunId,
     testSuite,
+  });
+  await executeBacktestWorkerPool({
+    testSuite: executableTestSuite,
     userName,
     progressStep,
     workerHeapMb,
     testerWorkerPath,
     testerNeedsTsRuntime,
     introLines: buildRunIntroLines({
-      testSuite,
+      testSuite: executableTestSuite,
       window,
       preloadStart,
       replayModeLabel,

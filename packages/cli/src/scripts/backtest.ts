@@ -607,6 +607,7 @@ export const backtest = async () => {
       testSuite: remainingSuite,
       window: manifest.window,
       preloadStart: manifest.preloadStart,
+      backtestRunId: manifest.runId,
       initialCompletedTests: completed.length,
       totalTests: manifest.testSuite.length,
       onResult: async (result) => {
@@ -676,6 +677,7 @@ export const backtest = async () => {
     testSuite,
     window: preparedRun.window,
     preloadStart: preparedRun.preloadStart,
+    backtestRunId: manifest.runId,
     onResult: async (result) => {
       await saveBacktestCheckpointResult({
         result,

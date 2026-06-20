@@ -635,7 +635,14 @@ describe('testing backtest flow', () => {
       { signalId: 's1', profit: 2.5 },
     ]);
 
-    await testing(createTest({ ml: true }));
+    await testing(
+      createTest({
+        ml: true,
+        chunkId: '202606201200-aaaaaaaa-ml',
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: 'test-key',
+      }),
+    );
 
     expect(mockBuildMlPayload).toHaveBeenCalledTimes(1);
     expect(mockBuildMlPayload.mock.calls[0][0]).toEqual(
@@ -655,8 +662,13 @@ describe('testing backtest flow', () => {
     expect(mockAppendMlDatasetRow).toHaveBeenCalledWith(
       expect.objectContaining({
         strategyName: 'TrendLine',
-        chunkId: 'single',
-        row: { featureA: 1 },
+        chunkId: '202606201200-aaaaaaaa-ml',
+        row: expect.objectContaining({
+          featureA: 1,
+          backtestRunId: '202606201200-aaaaaaaa',
+          backtestTestKey: 'test-key',
+          backtestChunkId: '202606201200-aaaaaaaa-ml',
+        }),
       }),
     );
   });
@@ -687,13 +699,20 @@ describe('testing backtest flow', () => {
       { signalId: 's1', profit: -3.5, tradeResult },
     ]);
 
-    await testing(createTest({ ai: true, chunkId: 'worker-7' }));
+    await testing(
+      createTest({
+        ai: true,
+        chunkId: '202606201200-aaaaaaaa-ai',
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: 'test-key',
+      }),
+    );
 
     expect(mockBuildAiPayload).toHaveBeenCalledTimes(1);
     expect(mockAppendAiDatasetRow).toHaveBeenCalledWith(
       expect.objectContaining({
         strategyName: 'TrendLine',
-        chunkId: 'worker-7',
+        chunkId: '202606201200-aaaaaaaa-ai',
         row: expect.objectContaining({
           signalId: 's1',
           symbol: 'ETHUSDT',
@@ -705,6 +724,9 @@ describe('testing backtest flow', () => {
           }),
           profit: -3.5,
           tradeResult,
+          backtestRunId: '202606201200-aaaaaaaa',
+          backtestTestKey: 'test-key',
+          backtestChunkId: '202606201200-aaaaaaaa-ai',
         }),
       }),
     );

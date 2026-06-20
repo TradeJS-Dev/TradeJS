@@ -122,7 +122,12 @@ export const executeBacktestWorkerPool = async ({
   tickProgress();
 
   for (const chunk of chunks) {
-    const chunkId = randomUUID().slice(-12);
+    const runId =
+      typeof chunk[0]?.backtestRunId === 'string'
+        ? chunk[0].backtestRunId.trim()
+        : '';
+    const attemptId = randomUUID().slice(-12);
+    const chunkId = runId ? `${runId}-${attemptId}` : attemptId;
     const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
     const tester = fork(testerWorkerPath, [], {
       execArgv: testerNeedsTsRuntime

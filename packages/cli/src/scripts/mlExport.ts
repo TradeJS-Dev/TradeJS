@@ -3,10 +3,17 @@ import chalk from 'chalk';
 import fs from 'fs/promises';
 import path from 'path';
 import {
+  listMlChunkFiles,
+  listMlChunkRunIds,
   listMlChunkStrategies,
   mergeJsonlFiles,
   toFileToken,
 } from '@tradejs/infra/ml';
+import {
+  buildCompletedBacktestDatasetAttemptKeys,
+  isBacktestDatasetRowForCompletedAttempt,
+  loadBacktestCheckpointResults,
+} from '../lib/backtest/checkpoint';
 import { resolveExportStrategy } from './resolveExportStrategy';
 
 args.example(
@@ -21,18 +28,50 @@ args.option(
   'Keep source chunk files after successful merge',
   false,
 );
+args.option(['R', 'runId'], 'Backtest run id to export');
+args.option(
+  ['u', 'user'],
+  'Backtest user for checkpoint-filtered export',
+  'root',
+);
 
 const flags = args.parse(process.argv);
 
-const listChunkFiles = async (outDir: string, strategyName: string) => {
-  const prefix = `ml-dataset-${toFileToken(strategyName)}-chunk-`;
-  const entries = await fs.readdir(outDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
-    .map((name) => path.join(outDir, name))
-    .sort();
+const resolveRunScopedMlChunks = async ({
+  outDir,
+  strategyName,
+}: {
+  outDir: string;
+  strategyName: string;
+}) => {
+  const requestedRunId =
+    typeof flags.runId === 'string' && flags.runId.trim()
+      ? flags.runId.trim()
+      : '';
+  const runIds = requestedRunId
+    ? [requestedRunId]
+    : await listMlChunkRunIds({ strategyName, outDir });
+  const runId = runIds.at(-1) ?? '';
+  if (!runId) {
+    return null;
+  }
+
+  const chunkFiles = await listMlChunkFiles({ strategyName, outDir, runId });
+  if (!chunkFiles.length) {
+    return {
+      runId,
+      chunkFiles,
+      completedAttemptKeys: new Set<string>(),
+    };
+  }
+
+  const userName = String(flags.user || 'root');
+  const completed = await loadBacktestCheckpointResults({ runId, userName });
+  return {
+    runId,
+    chunkFiles,
+    completedAttemptKeys: buildCompletedBacktestDatasetAttemptKeys(completed),
+  };
 };
 
 export const main = async () => {
@@ -51,7 +90,13 @@ export const main = async () => {
     process.exit(0);
   }
 
-  const chunkFiles = await listChunkFiles(outDir, strategyName);
+  const runScopedChunks = await resolveRunScopedMlChunks({
+    strategyName,
+    outDir,
+  });
+  const chunkFiles = runScopedChunks
+    ? runScopedChunks.chunkFiles
+    : await listMlChunkFiles({ outDir, strategyName });
   if (!chunkFiles.length) {
     console.log(
       chalk.yellow(
@@ -59,6 +104,11 @@ export const main = async () => {
       ),
     );
     process.exit(0);
+  }
+  if (runScopedChunks && runScopedChunks.completedAttemptKeys.size === 0) {
+    throw new Error(
+      `No completed checkpoint attempts found for ML export run "${runScopedChunks.runId}"`,
+    );
   }
 
   const mergedPath = path.join(
@@ -68,6 +118,13 @@ export const main = async () => {
   await mergeJsonlFiles({
     filePaths: chunkFiles,
     outPath: mergedPath,
+    shouldIncludeRow: runScopedChunks
+      ? (row) =>
+          isBacktestDatasetRowForCompletedAttempt(
+            row,
+            runScopedChunks.completedAttemptKeys,
+          )
+      : undefined,
   });
 
   const shouldDeleteChunks = !Boolean(flags.keepChunks);
@@ -82,7 +139,11 @@ export const main = async () => {
     chalk.gray(
       `strategy=${strategyName}, source_chunks=${chunkFiles.length}, deleteChunks=${Boolean(
         shouldDeleteChunks,
-      )}`,
+      )}${
+        runScopedChunks
+          ? `, runId=${runScopedChunks.runId}, completedAttempts=${runScopedChunks.completedAttemptKeys.size}`
+          : ''
+      }`,
     ),
   );
   process.exit(0);

@@ -4,11 +4,17 @@ import fs from 'fs/promises';
 import path from 'path';
 import {
   listAiChunkFiles,
+  listAiChunkRunIds,
   listAiChunkStrategies,
   mergeAiJsonlFiles,
   splitAiMergedDatasetFile,
   toFileToken,
 } from '@tradejs/infra/ai';
+import {
+  buildCompletedBacktestDatasetAttemptKeys,
+  isBacktestDatasetRowForCompletedAttempt,
+  loadBacktestCheckpointResults,
+} from '../lib/backtest/checkpoint';
 import { resolveExportStrategy } from './resolveExportStrategy';
 
 args.example(
@@ -28,8 +34,51 @@ args.option(
   'Split merged AI dataset into time windows of N months (0 = disable split)',
   2,
 );
+args.option(['R', 'runId'], 'Backtest run id to export');
+args.option(
+  ['u', 'user'],
+  'Backtest user for checkpoint-filtered export',
+  'root',
+);
 
 const flags = args.parse(process.argv);
+
+const resolveRunScopedAiChunks = async ({
+  outDir,
+  strategyName,
+}: {
+  outDir: string;
+  strategyName: string;
+}) => {
+  const requestedRunId =
+    typeof flags.runId === 'string' && flags.runId.trim()
+      ? flags.runId.trim()
+      : '';
+  const runIds = requestedRunId
+    ? [requestedRunId]
+    : await listAiChunkRunIds({ strategyName, outDir });
+  const runId = runIds.at(-1) ?? '';
+  if (!runId) {
+    return null;
+  }
+
+  const chunkFiles = await listAiChunkFiles({ strategyName, outDir, runId });
+  if (!chunkFiles.length) {
+    return {
+      runId,
+      chunkFiles,
+      completedAttemptKeys: new Set<string>(),
+    };
+  }
+
+  const userName = String(flags.user || 'root');
+  const completed = await loadBacktestCheckpointResults({ runId, userName });
+  return {
+    runId,
+    chunkFiles,
+    completedAttemptKeys: buildCompletedBacktestDatasetAttemptKeys(completed),
+  };
+};
 
 export const main = async () => {
   const outDir = String(flags.outDir || 'data/ai/export');
@@ -47,10 +96,16 @@ export const main = async () => {
     process.exit(0);
   }
 
-  const chunkFiles = await listAiChunkFiles({
+  const runScopedChunks = await resolveRunScopedAiChunks({
     strategyName,
     outDir,
   });
+  const chunkFiles = runScopedChunks
+    ? runScopedChunks.chunkFiles
+    : await listAiChunkFiles({
+        strategyName,
+        outDir,
+      });
   if (!chunkFiles.length) {
     console.log(
       chalk.yellow(
@@ -58,6 +113,11 @@ export const main = async () => {
       ),
     );
     process.exit(0);
+  }
+  if (runScopedChunks && runScopedChunks.completedAttemptKeys.size === 0) {
+    throw new Error(
+      `No completed checkpoint attempts found for AI export run "${runScopedChunks.runId}"`,
+    );
   }
 
   const mergedPath = path.join(
@@ -67,6 +127,13 @@ export const main = async () => {
   await mergeAiJsonlFiles({
     filePaths: chunkFiles,
     outPath: mergedPath,
+    shouldIncludeRow: runScopedChunks
+      ? (row) =>
+          isBacktestDatasetRowForCompletedAttempt(
+            row,
+            runScopedChunks.completedAttemptKeys,
+          )
+      : undefined,
   });
   const partMonths = Math.max(0, Math.trunc(Number(flags.partMonths) || 0));
   const splitResult =
@@ -102,7 +169,11 @@ export const main = async () => {
     chalk.gray(
       `strategy=${strategyName}, source_chunks=${chunkFiles.length}, deleteChunks=${Boolean(
         shouldDeleteChunks,
-      )}, partMonths=${partMonths}, partCount=${splitResult.partCount}`,
+      )}, partMonths=${partMonths}, partCount=${splitResult.partCount}${
+        runScopedChunks
+          ? `, runId=${runScopedChunks.runId}, completedAttempts=${runScopedChunks.completedAttemptKeys.size}`
+          : ''
+      }`,
     ),
   );
   process.exit(0);

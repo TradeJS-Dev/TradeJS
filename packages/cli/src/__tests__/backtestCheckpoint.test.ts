@@ -1,7 +1,10 @@
 import {
+  buildCompletedBacktestDatasetAttemptKeys,
   buildBacktestTestKey,
   filterCompletedBacktestResultsForSuite,
   filterRemainingBacktestTests,
+  isBacktestDatasetRowForCompletedAttempt,
+  withBacktestRunDatasetMetadata,
 } from '../lib/backtest/checkpoint';
 
 const makeTest = (overrides: Record<string, unknown> = {}) =>
@@ -85,5 +88,63 @@ describe('backtest checkpoint helpers', () => {
         testSuite: [first, second],
       }),
     ).toEqual([second]);
+  });
+
+  it('adds run dataset metadata without changing stable test keys', () => {
+    const test = makeTest({ symbol: 'ETHUSDT' });
+    const testKey = buildBacktestTestKey(test);
+
+    const [withMetadata] = withBacktestRunDatasetMetadata({
+      runId: '202606201200-aaaaaaaa',
+      testSuite: [test],
+    });
+
+    expect(withMetadata).toEqual(
+      expect.objectContaining({
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: testKey,
+      }),
+    );
+    expect(buildBacktestTestKey(withMetadata)).toBe(testKey);
+  });
+
+  it('matches dataset rows only for completed chunk attempts', () => {
+    const test = makeTest({
+      symbol: 'ETHUSDT',
+      chunkId: '202606201200-aaaaaaaa-new',
+    });
+    const testKey = buildBacktestTestKey(test);
+    const completed = [
+      {
+        result: {
+          orderLogId: '1',
+          stat: { amount: 1, orders: 1, profit: 1 },
+          test,
+        },
+        status: 'success',
+        testKey,
+        updatedAt: new Date(0).toISOString(),
+      },
+    ] as any;
+    const attempts = buildCompletedBacktestDatasetAttemptKeys(completed);
+
+    expect(
+      isBacktestDatasetRowForCompletedAttempt(
+        {
+          backtestTestKey: testKey,
+          backtestChunkId: '202606201200-aaaaaaaa-old',
+        },
+        attempts,
+      ),
+    ).toBe(false);
+    expect(
+      isBacktestDatasetRowForCompletedAttempt(
+        {
+          backtestTestKey: testKey,
+          backtestChunkId: '202606201200-aaaaaaaa-new',
+        },
+        attempts,
+      ),
+    ).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import {
   flushAiDatasetWriter,
   getAiChunkFilePath,
   listAiChunkFiles,
+  listAiChunkRunIds,
   listAiChunkStrategies,
   mergeAiJsonlFiles,
   readAiDatasetRows,
@@ -146,6 +147,46 @@ describe('aiDatasetFile', () => {
         outDir: tempDir,
       }),
     ).resolves.toEqual(['trendline', 'volumedivergence']);
+  });
+
+  it('lists and filters run-scoped AI chunk files', async () => {
+    await fs.writeFile(
+      path.join(
+        tempDir,
+        'ai-dataset-trendline-chunk-202606201200-aaaaaaaa-old.jsonl',
+      ),
+      '{"a":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(
+        tempDir,
+        'ai-dataset-trendline-chunk-202606201201-bbbbbbbb-new.jsonl',
+      ),
+      '{"b":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ai-dataset-trendline-chunk-legacy.jsonl'),
+      '{"legacy":1}\n',
+      'utf8',
+    );
+
+    await expect(
+      listAiChunkRunIds({ strategyName: 'TrendLine', outDir: tempDir }),
+    ).resolves.toEqual(['202606201200-aaaaaaaa', '202606201201-bbbbbbbb']);
+    await expect(
+      listAiChunkFiles({
+        strategyName: 'TrendLine',
+        outDir: tempDir,
+        runId: '202606201201-bbbbbbbb',
+      }),
+    ).resolves.toEqual([
+      path.join(
+        tempDir,
+        'ai-dataset-trendline-chunk-202606201201-bbbbbbbb-new.jsonl',
+      ),
+    ]);
   });
 
   it('merges chunk files in chronological order and reads recent rows from tail', async () => {
@@ -549,5 +590,67 @@ describe('aiDatasetFile', () => {
       'signal-6',
       'signal-7',
     ]);
+  });
+
+  it('filters orphan AI rows while merging checkpointed attempts', async () => {
+    const oldChunk = path.join(
+      tempDir,
+      'ai-dataset-trendfollow-chunk-202606201200-aaaaaaaa-old.jsonl',
+    );
+    const newChunk = path.join(
+      tempDir,
+      'ai-dataset-trendfollow-chunk-202606201200-aaaaaaaa-new.jsonl',
+    );
+    const makeRow = ({
+      chunkId,
+      signalId,
+      timestamp,
+    }: {
+      chunkId: string;
+      signalId: string;
+      timestamp: number;
+    }) => ({
+      signalId,
+      strategyName: 'TrendFollow',
+      symbol: 'ETHUSDT',
+      direction: 'LONG' as const,
+      timestamp,
+      profit: timestamp,
+      backtestRunId: '202606201200-aaaaaaaa',
+      backtestTestKey: 'test-key',
+      backtestChunkId: chunkId,
+      payload: makePayload({
+        signalId,
+        symbol: 'ETHUSDT',
+        direction: 'LONG',
+        timestamp,
+        strategyName: 'TrendFollow',
+      }),
+    });
+    await fs.writeFile(
+      oldChunk,
+      JSON.stringify(
+        makeRow({ chunkId: 'old', signalId: 'old', timestamp: 1 }),
+      ) + '\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      newChunk,
+      JSON.stringify(
+        makeRow({ chunkId: 'new', signalId: 'new', timestamp: 2 }),
+      ) + '\n',
+      'utf8',
+    );
+
+    const merged = path.join(tempDir, 'ai-dataset-trendfollow-merged.jsonl');
+    await mergeAiJsonlFiles({
+      filePaths: [oldChunk, newChunk],
+      outPath: merged,
+      shouldIncludeRow: (row) =>
+        `${row.backtestTestKey}:${row.backtestChunkId}` === 'test-key:new',
+    });
+
+    const mergedRows = await readAiDatasetRows({ filePath: merged });
+    expect(mergedRows.rows.map((row) => row.signalId)).toEqual(['new']);
   });
 });

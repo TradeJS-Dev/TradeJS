@@ -143,4 +143,44 @@ describe('executeBacktestWorkerPool', () => {
     );
     expect(onFinish).toHaveBeenCalledTimes(1);
   });
+
+  it('prefixes worker chunk ids with backtest run id for dataset attempts', async () => {
+    const { executeBacktestWorkerPool, forkedWorkers } = await loadWorkerPool();
+
+    await executeBacktestWorkerPool({
+      testSuite: [
+        {
+          name: 'SOLUSDT__1',
+          backtestRunId: '202606201200-aaaaaaaa',
+        },
+      ] as any,
+      userName: 'root',
+      progressStep: 1,
+      workerHeapMb: 512,
+      testerWorkerPath: '/repo/worker.js',
+      testerNeedsTsRuntime: false,
+      onMessage: jest.fn(),
+      onWorkerError: jest.fn(),
+      onFinish: jest.fn(async () => undefined),
+      introLines: [],
+      chunkTestSuite: (testSuite) => [testSuite as any],
+      getProgressSnapshot: () => ({
+        averageProfit: 0,
+        tradesCount: 0,
+        winRate: 0,
+      }),
+    });
+
+    const worker = forkedWorkers[0];
+    expect(worker.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chunkId: expect.stringMatching(/^202606201200-aaaaaaaa-[a-f0-9]+$/),
+        chunk: [
+          expect.objectContaining({
+            chunkId: expect.stringMatching(/^202606201200-aaaaaaaa-[a-f0-9]+$/),
+          }),
+        ],
+      }),
+    );
+  });
 });

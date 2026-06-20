@@ -8,6 +8,7 @@ import {
   flushMlDatasetWriter,
   getMlChunkFilePath,
   listMlChunkFiles,
+  listMlChunkRunIds,
   listMlChunkStrategies,
   mergeJsonlFiles,
   toFileToken,
@@ -144,6 +145,46 @@ describe('mlDatasetFile', () => {
     ).resolves.toEqual(['trendline', 'volumedivergence']);
   });
 
+  it('lists and filters run-scoped ML chunk files', async () => {
+    await fs.writeFile(
+      path.join(
+        tempDir,
+        'ml-dataset-trendline-chunk-202606201200-aaaaaaaa-old.jsonl',
+      ),
+      '{"a":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(
+        tempDir,
+        'ml-dataset-trendline-chunk-202606201201-bbbbbbbb-new.jsonl',
+      ),
+      '{"b":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ml-dataset-trendline-chunk-legacy.jsonl'),
+      '{"legacy":1}\n',
+      'utf8',
+    );
+
+    await expect(
+      listMlChunkRunIds({ strategyName: 'TrendLine', outDir: tempDir }),
+    ).resolves.toEqual(['202606201200-aaaaaaaa', '202606201201-bbbbbbbb']);
+    await expect(
+      listMlChunkFiles({
+        strategyName: 'TrendLine',
+        outDir: tempDir,
+        runId: '202606201201-bbbbbbbb',
+      }),
+    ).resolves.toEqual([
+      path.join(
+        tempDir,
+        'ml-dataset-trendline-chunk-202606201201-bbbbbbbb-new.jsonl',
+      ),
+    ]);
+  });
+
   it('returns empty chunk list when output directory does not exist', async () => {
     const files = await listMlChunkFiles({
       strategyName: 'TrendLine',
@@ -164,5 +205,54 @@ describe('mlDatasetFile', () => {
 
     const content = await fs.readFile(merged, 'utf8');
     expect(content).toBe('{"a":1}\n{"a":2}\n{"b":1}\n');
+  });
+
+  it('filters orphan ML rows while merging checkpointed attempts', async () => {
+    const oldChunk = path.join(
+      tempDir,
+      'ml-dataset-trendfollow-chunk-202606201200-aaaaaaaa-old.jsonl',
+    );
+    const newChunk = path.join(
+      tempDir,
+      'ml-dataset-trendfollow-chunk-202606201200-aaaaaaaa-new.jsonl',
+    );
+    await fs.writeFile(
+      oldChunk,
+      `${JSON.stringify({
+        signalId: 'old',
+        profit: 1,
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: 'test-key',
+        backtestChunkId: 'old',
+      })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(
+      newChunk,
+      `${JSON.stringify({
+        signalId: 'new',
+        profit: 2,
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: 'test-key',
+        backtestChunkId: 'new',
+      })}\n`,
+      'utf8',
+    );
+
+    const merged = path.join(tempDir, 'ml-dataset-trendfollow-merged.jsonl');
+    await mergeJsonlFiles({
+      filePaths: [oldChunk, newChunk],
+      outPath: merged,
+      shouldIncludeRow: (row) =>
+        `${row.backtestTestKey}:${row.backtestChunkId}` === 'test-key:new',
+    });
+
+    const content = await fs.readFile(merged, 'utf8');
+    expect(
+      content
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line).signalId),
+    ).toEqual(['new']);
   });
 });

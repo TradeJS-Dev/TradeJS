@@ -79,9 +79,66 @@ export const buildBacktestTestKey = (test: Test) =>
     userName: test.userName,
   });
 
+export const withBacktestRunDatasetMetadata = ({
+  runId,
+  testSuite,
+}: {
+  runId?: string;
+  testSuite: TestSuite;
+}) => {
+  if (!runId) {
+    return testSuite;
+  }
+
+  return testSuite.map((test) => ({
+    ...test,
+    backtestRunId: runId,
+    backtestTestKey: buildBacktestTestKey(test),
+  }));
+};
+
 export const buildCompletedTestKeySet = (
   completed: BacktestCheckpointResult[],
 ) => new Set(completed.map((item) => item.testKey));
+
+export const buildBacktestDatasetAttemptKey = ({
+  chunkId,
+  testKey,
+}: {
+  chunkId?: unknown;
+  testKey?: unknown;
+}) => {
+  const resolvedTestKey = typeof testKey === 'string' ? testKey.trim() : '';
+  const resolvedChunkId = typeof chunkId === 'string' ? chunkId.trim() : '';
+  return resolvedTestKey && resolvedChunkId
+    ? `${resolvedTestKey}:${resolvedChunkId}`
+    : '';
+};
+
+export const buildCompletedBacktestDatasetAttemptKeys = (
+  completed: BacktestCheckpointResult[],
+) =>
+  new Set(
+    completed
+      .map((item) =>
+        buildBacktestDatasetAttemptKey({
+          testKey: item.testKey,
+          chunkId: item.result?.test?.chunkId,
+        }),
+      )
+      .filter(Boolean),
+  );
+
+export const isBacktestDatasetRowForCompletedAttempt = (
+  row: { backtestTestKey?: unknown; backtestChunkId?: unknown },
+  completedAttemptKeys: Set<string>,
+) =>
+  completedAttemptKeys.has(
+    buildBacktestDatasetAttemptKey({
+      testKey: row.backtestTestKey,
+      chunkId: row.backtestChunkId,
+    }),
+  );
 
 export const filterCompletedBacktestResultsForSuite = ({
   completed,

@@ -29,4 +29,7 @@ export interface AiDatasetRow {
   testName?: string;
   configId?: string;
   connectorName?: string;
+  backtestRunId?: string;
+  backtestTestKey?: string;
+  backtestChunkId?: string;
 }

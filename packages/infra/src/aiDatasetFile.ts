@@ -14,6 +14,7 @@ const AI_MERGE_SORT_RUN_MAX_ROWS = 2_000;
 const AI_MERGE_SORT_RUN_MAX_BYTES = 16 * 1024 * 1024;
 const AI_MERGE_SORT_MAX_OPEN_RUNS = 16;
 const AI_CHUNK_FILE_RE = /^ai-dataset-(.+)-chunk-[^.]+\.jsonl$/;
+const BACKTEST_RUN_CHUNK_ID_RE = /^(\d{12}-[a-f0-9]{8})-/;
 
 type WriterState = {
   filePath: string;
@@ -56,6 +57,24 @@ export const getAiChunkFilePath = (
     outDir,
     `ai-dataset-${toFileToken(strategyName)}-chunk-${toFileToken(chunkId)}.jsonl`,
   );
+
+const getAiChunkFilePrefix = (strategyName: string, runId?: string) =>
+  `ai-dataset-${toFileToken(strategyName)}-chunk-${
+    runId ? `${toFileToken(runId)}-` : ''
+  }`;
+
+const getRunIdFromAiChunkFileName = (
+  strategyName: string,
+  fileName: string,
+) => {
+  const prefix = getAiChunkFilePrefix(strategyName);
+  if (!fileName.startsWith(prefix) || !fileName.endsWith('.jsonl')) {
+    return '';
+  }
+
+  const chunkToken = fileName.slice(prefix.length, -'.jsonl'.length);
+  return chunkToken.match(BACKTEST_RUN_CHUNK_ID_RE)?.[1] ?? '';
+};
 
 export const appendAiDatasetRow = async (params: {
   strategyName: string;
@@ -145,9 +164,10 @@ export const closeAllAiDatasetWriters = async () => {
 export const listAiChunkFiles = async (params: {
   strategyName: string;
   outDir?: string;
+  runId?: string;
 }) => {
-  const { strategyName, outDir = DEFAULT_DIR } = params;
-  const prefix = `ai-dataset-${toFileToken(strategyName)}-chunk-`;
+  const { strategyName, outDir = DEFAULT_DIR, runId } = params;
+  const prefix = getAiChunkFilePrefix(strategyName, runId);
   let entries: string[] = [];
   try {
     entries = await fs.readdir(outDir);
@@ -158,6 +178,27 @@ export const listAiChunkFiles = async (params: {
     .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
     .map((name) => path.join(outDir, name))
     .sort();
+};
+
+export const listAiChunkRunIds = async (params: {
+  strategyName: string;
+  outDir?: string;
+}) => {
+  const { strategyName, outDir = DEFAULT_DIR } = params;
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(outDir);
+  } catch {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      entries
+        .map((name) => getRunIdFromAiChunkFileName(strategyName, name))
+        .filter(Boolean),
+    ),
+  ].sort();
 };
 
 export const listAiChunkStrategies = async (params?: { outDir?: string }) => {
@@ -434,6 +475,7 @@ export const mergeAiJsonlFiles = async (params: {
   maxRowsInMemory?: number;
   maxBytesInMemory?: number;
   maxOpenRuns?: number;
+  shouldIncludeRow?: (row: AiDatasetRow) => boolean;
 }) => {
   const {
     filePaths,
@@ -441,6 +483,7 @@ export const mergeAiJsonlFiles = async (params: {
     maxRowsInMemory = AI_MERGE_SORT_RUN_MAX_ROWS,
     maxBytesInMemory = AI_MERGE_SORT_RUN_MAX_BYTES,
     maxOpenRuns = AI_MERGE_SORT_MAX_OPEN_RUNS,
+    shouldIncludeRow,
   } = params;
 
   const tempDir = path.join(
@@ -486,9 +529,14 @@ export const mergeAiJsonlFiles = async (params: {
             continue;
           }
 
+          const row = parseAiDatasetLine(trimmed, filePath);
+          if (shouldIncludeRow && !shouldIncludeRow(row)) {
+            continue;
+          }
+
           batch.push({
             line: trimmed,
-            sortKey: getAiDatasetSortKey(parseAiDatasetLine(trimmed, filePath)),
+            sortKey: getAiDatasetSortKey(row),
             sourceIndex,
           });
           sourceIndex += 1;

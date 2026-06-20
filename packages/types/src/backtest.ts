@@ -99,6 +99,8 @@ export interface Test extends BacktestRunConfig {
   fast?: boolean;
   collectReplaySignalEvaluations?: boolean;
   chunkId?: string;
+  backtestRunId?: string;
+  backtestTestKey?: string;
   timeoutMs?: number;
 }
 

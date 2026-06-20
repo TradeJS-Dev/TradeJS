@@ -135,6 +135,26 @@ type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
   signal: Signal;
 };
 
+const buildBacktestDatasetMetadata = ({
+  backtestRunId,
+  backtestTestKey,
+  chunkId,
+}: {
+  backtestRunId?: string;
+  backtestTestKey?: string;
+  chunkId?: string;
+}): Record<string, string> => {
+  if (!backtestRunId || !backtestTestKey || !chunkId) {
+    return {};
+  }
+
+  return {
+    backtestRunId,
+    backtestTestKey,
+    backtestChunkId: chunkId,
+  };
+};
+
 const cloneAiPayloadSignal = (signal: Signal): Signal => {
   const cloneValue = <T>(value: T): T => {
     if (value == null) {
@@ -859,6 +879,8 @@ export const testing: TestingBox = async ({
   fast = false,
   collectReplaySignalEvaluations = false,
   chunkId = 'single',
+  backtestRunId,
+  backtestTestKey,
   timeoutMs,
 }) => {
   if (!start) {
@@ -1101,7 +1123,14 @@ export const testing: TestingBox = async ({
         const fullRow = buildMlTrainingRow(payload, {
           profit: resultRecord.profit,
         });
-        const row = trimMlTrainingRowWindows(fullRow, 5);
+        const row = {
+          ...trimMlTrainingRowWindows(fullRow, 5),
+          ...buildBacktestDatasetMetadata({
+            backtestRunId,
+            backtestTestKey,
+            chunkId,
+          }),
+        };
         await appendMlDatasetRow({
           strategyName,
           chunkId,
@@ -1203,6 +1232,11 @@ export const testing: TestingBox = async ({
         testName: name,
         configId,
         connectorName,
+        ...buildBacktestDatasetMetadata({
+          backtestRunId,
+          backtestTestKey,
+          chunkId,
+        }),
       });
     }
   };
@@ -1547,10 +1581,18 @@ export const testingGroupInSharedCandleLoop = async (
           const fullRow = buildMlTrainingRow(payload, {
             profit: resultRecord.profit,
           });
-          const row = trimMlTrainingRowWindows(fullRow, 5);
+          const resolvedChunkId = runner.test.chunkId ?? 'single';
+          const row = {
+            ...trimMlTrainingRowWindows(fullRow, 5),
+            ...buildBacktestDatasetMetadata({
+              backtestRunId: runner.test.backtestRunId,
+              backtestTestKey: runner.test.backtestTestKey,
+              chunkId: resolvedChunkId,
+            }),
+          };
           await appendMlDatasetRow({
             strategyName: runner.test.strategyName,
-            chunkId: runner.test.chunkId ?? 'single',
+            chunkId: resolvedChunkId,
             row,
           });
         }
@@ -1561,9 +1603,10 @@ export const testingGroupInSharedCandleLoop = async (
         if (aiRowBase) {
           runner.pendingAiRowBySignalId.delete(resultRecord.signalId);
           const { signal: aiSignal, ...rowBase } = aiRowBase;
+          const resolvedChunkId = runner.test.chunkId ?? 'single';
           await appendAiDatasetRow({
             strategyName: runner.test.strategyName,
-            chunkId: runner.test.chunkId ?? 'single',
+            chunkId: resolvedChunkId,
             row: {
               ...rowBase,
               payload: buildAiPayload(aiSignal),
@@ -1657,6 +1700,11 @@ export const testingGroupInSharedCandleLoop = async (
           testName: test.name,
           configId: test.configId,
           connectorName: test.connectorName,
+          ...buildBacktestDatasetMetadata({
+            backtestRunId: test.backtestRunId,
+            backtestTestKey: test.backtestTestKey,
+            chunkId: test.chunkId ?? 'single',
+          }),
         });
       }
     };
