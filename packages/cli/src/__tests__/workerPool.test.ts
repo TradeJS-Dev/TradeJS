@@ -182,5 +182,44 @@ describe('executeBacktestWorkerPool', () => {
         ],
       }),
     );
+
+    worker.emit('message', { id: '1' });
+    await Promise.resolve();
+    worker.emit('message', { done: true });
+    await Promise.resolve();
+  });
+
+  it('removes interrupt handlers after worker pool finishes', async () => {
+    const { executeBacktestWorkerPool, forkedWorkers } = await loadWorkerPool();
+    const sigintListenersBefore = process.listenerCount('SIGINT');
+    const sigtermListenersBefore = process.listenerCount('SIGTERM');
+
+    await executeBacktestWorkerPool({
+      testSuite: [{ name: 'BTCUSDT__1' }] as any,
+      userName: 'root',
+      progressStep: 1,
+      workerHeapMb: 512,
+      testerWorkerPath: '/repo/worker.js',
+      testerNeedsTsRuntime: false,
+      onMessage: jest.fn(),
+      onWorkerError: jest.fn(),
+      onFinish: jest.fn(async () => undefined),
+      introLines: [],
+      chunkTestSuite: (testSuite) => [testSuite as any],
+      getProgressSnapshot: () => ({
+        averageProfit: 0,
+        tradesCount: 0,
+        winRate: 0,
+      }),
+    });
+
+    const worker = forkedWorkers[0];
+    worker.emit('message', { id: '1' });
+    await Promise.resolve();
+    worker.emit('message', { done: true });
+    await Promise.resolve();
+
+    expect(process.listenerCount('SIGINT')).toBe(sigintListenersBefore);
+    expect(process.listenerCount('SIGTERM')).toBe(sigtermListenersBefore);
   });
 });

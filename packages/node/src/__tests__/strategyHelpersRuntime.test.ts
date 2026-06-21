@@ -7,6 +7,18 @@ const mockRunAiPromptLocal = jest.fn();
 const mockSetData = jest.fn();
 const mockCreateRuntimeOrderId = jest.fn();
 const mockRecordRuntimeTradeOpen = jest.fn();
+const mockEnrichSignalWithDerivativesContext = jest.fn<
+  Promise<boolean>,
+  [unknown]
+>(async () => true);
+const mockEnrichSignalWithBinanceMarketContext = jest.fn<
+  Promise<boolean>,
+  [unknown]
+>(async () => false);
+const mockEnrichSignalWithCoinMarketCapContext = jest.fn<
+  Promise<boolean>,
+  [unknown]
+>(async () => false);
 
 jest.mock('@tradejs/infra/ml', () => ({
   buildMlTrainingRow: (...args: unknown[]) => mockBuildMlTrainingRow(...args),
@@ -41,6 +53,21 @@ jest.mock('../runtimeJournal', () => ({
     mockCreateRuntimeOrderId(...args),
   recordRuntimeTradeOpen: (...args: unknown[]) =>
     mockRecordRuntimeTradeOpen(...args),
+}));
+
+jest.mock('../strategyHelpers/derivativesContext', () => ({
+  enrichSignalWithDerivativesContext: (params: unknown) =>
+    mockEnrichSignalWithDerivativesContext(params),
+}));
+
+jest.mock('../strategyHelpers/binanceMarketContext', () => ({
+  enrichSignalWithBinanceMarketContext: (params: unknown) =>
+    mockEnrichSignalWithBinanceMarketContext(params),
+}));
+
+jest.mock('../strategyHelpers/coinMarketCapContext', () => ({
+  enrichSignalWithCoinMarketCapContext: (params: unknown) =>
+    mockEnrichSignalWithCoinMarketCapContext(params),
 }));
 
 import {

@@ -50,20 +50,8 @@ export const executeBacktestWorkerPool = async ({
   let completedTests = initialCompletedTests;
   let renderedTests = 0;
   let isFinishing = false;
+  let signalHandlersRemoved = false;
   const workers = new Set<ReturnType<typeof fork>>();
-
-  const maybeFinish = async () => {
-    if (isFinishing) {
-      return;
-    }
-
-    if (completedTests !== totalExpectedTests || workers.size > 0) {
-      return;
-    }
-
-    isFinishing = true;
-    await onFinish();
-  };
 
   const stopWorkers = () => {
     for (const worker of workers) {
@@ -88,8 +76,38 @@ export const executeBacktestWorkerPool = async ({
       .finally(() => process.exit(exitCode));
   };
 
-  process.once('SIGINT', () => handleInterrupt('SIGINT', 130));
-  process.once('SIGTERM', () => handleInterrupt('SIGTERM', 143));
+  const handleSigint = () => handleInterrupt('SIGINT', 130);
+  const handleSigterm = () => handleInterrupt('SIGTERM', 143);
+
+  const cleanupSignalHandlers = () => {
+    if (signalHandlersRemoved) {
+      return;
+    }
+
+    signalHandlersRemoved = true;
+    process.removeListener('SIGINT', handleSigint);
+    process.removeListener('SIGTERM', handleSigterm);
+  };
+
+  const maybeFinish = async () => {
+    if (isFinishing) {
+      return;
+    }
+
+    if (completedTests !== totalExpectedTests || workers.size > 0) {
+      return;
+    }
+
+    isFinishing = true;
+    try {
+      await onFinish();
+    } finally {
+      cleanupSignalHandlers();
+    }
+  };
+
+  process.once('SIGINT', handleSigint);
+  process.once('SIGTERM', handleSigterm);
 
   for (const line of introLines) {
     console.log(line);
