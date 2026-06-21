@@ -5,6 +5,7 @@ import {
   DerivativesRow,
   MarketCmcExchangeLiquidityContextRow,
   MarketCmcFearGreedContextRow,
+  MarketCmcIndexContextRow,
   MarketBreadthRow,
   MarketFeatureInterval,
   MarketGlobalContextRow,
@@ -607,6 +608,34 @@ const ensureBinanceMarketSchema = async () => {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS market_cmc_fear_greed_context_lookup_idx
         ON market_cmc_fear_greed_context (source, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_cmc_index_context (
+          source text NOT NULL,
+          index_slug text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          value double precision NOT NULL,
+          constituents_count integer,
+          top_constituent_symbol text,
+          top_constituent_weight_pct double precision,
+          constituents jsonb,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, index_slug, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_cmc_index_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '30 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_cmc_index_context_lookup_idx
+        ON market_cmc_index_context (source, index_slug, interval, ts DESC)
       `);
 
       await pool.query(`
@@ -1642,6 +1671,67 @@ export async function upsertMarketCmcFearGreedContextRows(
   );
 }
 
+export async function upsertMarketCmcIndexContextRows(
+  rows: MarketCmcIndexContextRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'source',
+    'index_slug',
+    'interval',
+    'ts',
+    'value',
+    'constituents_count',
+    'top_constituent_symbol',
+    'top_constituent_weight_pct',
+    'constituents',
+  ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketCmcIndexContextRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.source,
+    row.indexSlug,
+    row.interval,
+    row.ts,
+    row.value,
+    row.constituentsCount ?? null,
+    row.topConstituentSymbol ?? null,
+    row.topConstituentWeightPct ?? null,
+    row.constituents ? JSON.stringify(row.constituents) : null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_cmc_index_context (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, index_slug, interval, ts) DO UPDATE SET
+        value = EXCLUDED.value,
+        constituents_count = COALESCE(EXCLUDED.constituents_count, market_cmc_index_context.constituents_count),
+        top_constituent_symbol = COALESCE(EXCLUDED.top_constituent_symbol, market_cmc_index_context.top_constituent_symbol),
+        top_constituent_weight_pct = COALESCE(EXCLUDED.top_constituent_weight_pct, market_cmc_index_context.top_constituent_weight_pct),
+        constituents = COALESCE(EXCLUDED.constituents, market_cmc_index_context.constituents),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
 export async function getMarketContextBackfillCoverage(params: {
   source: string;
   scopes: string[];
@@ -2244,6 +2334,98 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
   };
 }
 
+export async function getLatestMarketCmcIndexContexts(params: {
+  source?: MarketCmcIndexContextRow['source'];
+  indexSlugs: MarketCmcIndexContextRow['indexSlug'][];
+  interval?: MarketCmcIndexContextRow['interval'];
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<
+  Map<
+    MarketCmcIndexContextRow['indexSlug'],
+    MarketFeatureAsOf<MarketCmcIndexContextRow> & {
+      valueChange24hPct: number | null;
+    }
+  >
+> {
+  const source = params.source ?? 'coinmarketcap_index';
+  const interval = params.interval ?? '1d';
+  const indexSlugs = [
+    ...new Set(
+      params.indexSlugs
+        .map((slug) => slug.trim().toLowerCase())
+        .filter((slug): slug is MarketCmcIndexContextRow['indexSlug'] =>
+          ['cmc100', 'cmc20'].includes(slug),
+        ),
+    ),
+  ];
+  const rows = new Map<
+    MarketCmcIndexContextRow['indexSlug'],
+    MarketFeatureAsOf<MarketCmcIndexContextRow> & {
+      valueChange24hPct: number | null;
+    }
+  >();
+  if (!indexSlugs.length) return rows;
+
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT DISTINCT ON (index_slug)
+        source,
+        index_slug AS "indexSlug",
+        interval,
+        ts,
+        value,
+        constituents_count::int AS "constituentsCount",
+        top_constituent_symbol AS "topConstituentSymbol",
+        top_constituent_weight_pct AS "topConstituentWeightPct",
+        constituents
+      FROM market_cmc_index_context
+      WHERE source = $1
+        AND index_slug = ANY($2)
+        AND interval = $3
+        AND ts <= to_timestamp($4/1000.0)
+      ORDER BY index_slug ASC, ts DESC
+    `,
+    [source, indexSlugs, interval, params.atMs],
+  );
+
+  for (const row of res.rows as MarketCmcIndexContextRow[]) {
+    const previousRes = await pool.query(
+      `
+        SELECT value
+        FROM market_cmc_index_context
+        WHERE source = $1
+          AND index_slug = $2
+          AND interval = $3
+          AND ts <= $4::timestamptz - interval '24 hours'
+        ORDER BY ts DESC
+        LIMIT 1
+      `,
+      [source, row.indexSlug, interval, row.ts],
+    );
+    const currentValue = row.value == null ? null : Number(row.value);
+    const previousValue =
+      previousRes.rows[0]?.value == null
+        ? null
+        : Number(previousRes.rows[0].value);
+    const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+    rows.set(row.indexSlug, {
+      ...row,
+      ageMs,
+      stale:
+        ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+      valueChange24hPct:
+        currentValue != null && previousValue != null && previousValue > 0
+          ? (currentValue - previousValue) / previousValue
+          : null,
+    });
+  }
+
+  return rows;
+}
+
 export async function getLatestMarketCmcFearGreedContext(params: {
   source?: MarketCmcFearGreedContextRow['source'];
   interval?: MarketCmcFearGreedContextRow['interval'];
@@ -2387,6 +2569,71 @@ export async function getMarketCmcExchangeLiquidityContextCoverage(params: {
     return null;
   }
   return { firstMs, lastMs, rows };
+}
+
+export async function getMarketCmcIndexContextCoverage(params: {
+  source: MarketCmcIndexContextRow['source'];
+  indexSlugs: MarketCmcIndexContextRow['indexSlug'][];
+  interval: MarketCmcIndexContextRow['interval'];
+  startMs: number;
+  endMs: number;
+}): Promise<
+  Map<
+    MarketCmcIndexContextRow['indexSlug'],
+    { firstMs: number; lastMs: number; rows: number }
+  >
+> {
+  const indexSlugs = [
+    ...new Set(
+      params.indexSlugs
+        .map((slug) => slug.trim().toLowerCase())
+        .filter((slug): slug is MarketCmcIndexContextRow['indexSlug'] =>
+          ['cmc100', 'cmc20'].includes(slug),
+        ),
+    ),
+  ];
+  const coverage = new Map<
+    MarketCmcIndexContextRow['indexSlug'],
+    { firstMs: number; lastMs: number; rows: number }
+  >();
+  if (!indexSlugs.length) return coverage;
+
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        index_slug,
+        extract(epoch from MIN(ts))*1000 AS first_ms,
+        extract(epoch from MAX(ts))*1000 AS last_ms,
+        COUNT(*)::int AS rows
+      FROM market_cmc_index_context
+      WHERE source = $1
+        AND index_slug = ANY($2)
+        AND interval = $3
+        AND ts >= to_timestamp($4/1000.0)
+        AND ts <= to_timestamp($5/1000.0)
+      GROUP BY index_slug
+    `,
+    [params.source, indexSlugs, params.interval, params.startMs, params.endMs],
+  );
+
+  for (const row of res.rows as Array<{
+    index_slug: string;
+    first_ms: number | string;
+    last_ms: number | string;
+    rows: number | string;
+  }>) {
+    const indexSlug = row.index_slug as MarketCmcIndexContextRow['indexSlug'];
+    const firstMs = Number(row.first_ms);
+    const lastMs = Number(row.last_ms);
+    const rows = Number(row.rows);
+    if (Number.isFinite(firstMs) && Number.isFinite(lastMs) && rows > 0) {
+      coverage.set(indexSlug, { firstMs, lastMs, rows });
+    }
+  }
+
+  return coverage;
 }
 
 export async function getMarketTradeFlowCoverage(params: {

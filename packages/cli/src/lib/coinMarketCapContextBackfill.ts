@@ -3,11 +3,13 @@ import { delay } from '@tradejs/core/async';
 import {
   getMarketCmcExchangeLiquidityContextCoverage,
   getMarketCmcFearGreedContextCoverage,
+  getMarketCmcIndexContextCoverage,
   getMarketContextBackfillCoverage,
   getMarketGlobalContextCoverage,
   getMarketReferenceAssetContextCoverage,
   upsertMarketCmcExchangeLiquidityContextRows,
   upsertMarketCmcFearGreedContextRows,
+  upsertMarketCmcIndexContextRows,
   upsertMarketContextBackfillCoverage,
   upsertMarketGlobalContextRows,
   upsertMarketReferenceAssetContextRows,
@@ -20,6 +22,8 @@ import type {
   CmcFearGreedRegime,
   MarketCmcExchangeLiquidityContextRow,
   MarketCmcFearGreedContextRow,
+  MarketCmcIndexContextRow,
+  MarketCmcIndexSlug,
   MarketGlobalContextRow,
   MarketReferenceAssetContextRow,
 } from '@tradejs/types';
@@ -38,6 +42,7 @@ type BackfillResult = {
   breadthRows: number;
   exchangeLiquidityRows: number;
   fearGreedRows: number;
+  indexRows: number;
   cached: boolean;
 };
 
@@ -46,11 +51,16 @@ const SOURCE_GLOBAL_DAILY = 'coinmarketcap_global' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
 const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
+const SOURCE_INDEX = 'coinmarketcap_index' as const;
 const COVERAGE_SCOPE_ALL = 'all';
 const REFERENCE_ASSETS = [
   { symbol: 'BTCUSDT', cmcId: 1 },
   { symbol: 'ETHUSDT', cmcId: 1027 },
 ] as const;
+const CMC_INDEXES = [
+  { slug: 'cmc100', path: '/v3/index/cmc100-historical' },
+  { slug: 'cmc20', path: '/v3/index/cmc20-historical' },
+] as const satisfies Array<{ slug: MarketCmcIndexSlug; path: string }>;
 const DEFAULT_EXCHANGE_SLUGS = [
   'binance',
   'coinbase-exchange',
@@ -433,6 +443,36 @@ const coinMarketCapFetch = async (params: {
   return null;
 };
 
+const fetchCoinMarketCapIndexRows = async (params: {
+  apiKey: string;
+  index: (typeof CMC_INDEXES)[number];
+  fromMs: number;
+  toMs: number;
+}) => {
+  const rows: MarketCmcIndexContextRow[] = [];
+  const maxChunkDays = 9;
+  for (
+    let cursorMs = params.fromMs;
+    cursorMs <= params.toMs;
+    cursorMs += (maxChunkDays + 1) * DAY_MS
+  ) {
+    const chunkEndMs = Math.min(params.toMs, cursorMs + maxChunkDays * DAY_MS);
+    const payload = await coinMarketCapFetch({
+      path: params.index.path,
+      apiKey: params.apiKey,
+      searchParams: {
+        time_start: new Date(cursorMs).toISOString(),
+        time_end: new Date(chunkEndMs).toISOString(),
+        interval: 'daily',
+      },
+    });
+    rows.push(
+      ...coinMarketCapIndexPayloadToRows(payload, params.index.slug, '1d'),
+    );
+  }
+  return rows;
+};
+
 export const coinMarketCapGlobalPayloadToRows = (
   payload: unknown,
   source: MarketGlobalContextRow['source'] = SOURCE_GLOBAL_DAILY,
@@ -667,6 +707,78 @@ export const coinMarketCapFearGreedPayloadToRows = (
     .filter((row): row is MarketCmcFearGreedContextRow => row != null);
 };
 
+const toCmcIndexWeightPct = (value: unknown): number | null => {
+  if (typeof value === 'string') {
+    return toFiniteNumberOrNull(value.replace('%', ''));
+  }
+  return toFiniteNumberOrNull(value);
+};
+
+export const coinMarketCapIndexPayloadToRows = (
+  payload: unknown,
+  indexSlug: MarketCmcIndexSlug,
+  interval: MarketCmcIndexContextRow['interval'] = '1d',
+): MarketCmcIndexContextRow[] => {
+  const data = getRecord(payload).data;
+  const items = Array.isArray(data) ? data : [];
+
+  return items
+    .map((item): MarketCmcIndexContextRow | null => {
+      const record = getRecord(item);
+      const tsRaw = record.update_time ?? record.timestamp;
+      const ts = typeof tsRaw === 'string' ? new Date(tsRaw) : null;
+      const value = toFiniteNumberOrNull(record.value);
+      if (!ts || Number.isNaN(ts.getTime()) || value == null) return null;
+
+      const constituentsRaw = Array.isArray(record.constituents)
+        ? record.constituents
+        : [];
+      const constituents = constituentsRaw.map((constituent) => {
+        const constituentRecord = getRecord(constituent);
+        return {
+          id: toIntOrNull(constituentRecord.id),
+          name:
+            typeof constituentRecord.name === 'string'
+              ? constituentRecord.name
+              : null,
+          symbol:
+            typeof constituentRecord.symbol === 'string'
+              ? constituentRecord.symbol
+              : null,
+          url:
+            typeof constituentRecord.url === 'string'
+              ? constituentRecord.url
+              : null,
+          weightPct: toCmcIndexWeightPct(constituentRecord.weight),
+          priceUsd: toFiniteNumberOrNull(constituentRecord.priceUsd),
+          units: toFiniteNumberOrNull(constituentRecord.units),
+        };
+      });
+      const topConstituent = constituents.reduce<
+        (typeof constituents)[number] | null
+      >((top, constituent) => {
+        if (top == null) return constituent;
+        return (constituent.weightPct ?? Number.NEGATIVE_INFINITY) >
+          (top.weightPct ?? Number.NEGATIVE_INFINITY)
+          ? constituent
+          : top;
+      }, null);
+
+      return {
+        source: SOURCE_INDEX,
+        indexSlug,
+        interval,
+        ts,
+        value,
+        constituentsCount: constituents.length,
+        topConstituentSymbol: topConstituent?.symbol ?? null,
+        topConstituentWeightPct: topConstituent?.weightPct ?? null,
+        constituents,
+      };
+    })
+    .filter((row): row is MarketCmcIndexContextRow => row != null);
+};
+
 const shouldBackfillCoinMarketCapContextForMode = ({
   mode,
   aiEnabled,
@@ -718,6 +830,7 @@ const skippedResult = (cached = false): BackfillResult => ({
   breadthRows: 0,
   exchangeLiquidityRows: 0,
   fearGreedRows: 0,
+  indexRows: 0,
   cached,
 });
 
@@ -740,10 +853,12 @@ export const backfillCoinMarketCapContext = async (
     referenceDailyCoverage,
     exchangeLiquidityCoverage,
     fearGreedCoverage,
+    indexCoverage,
     globalDailyBackfillCoverage,
     referenceDailyBackfillCoverage,
     exchangeLiquidityBackfillCoverage,
     fearGreedBackfillCoverage,
+    indexBackfillCoverage,
   ] = await Promise.all([
     getMarketGlobalContextCoverage({
       source: SOURCE_GLOBAL_DAILY,
@@ -773,6 +888,13 @@ export const backfillCoinMarketCapContext = async (
           endMs: toMs,
         })
       : Promise.resolve(null),
+    getMarketCmcIndexContextCoverage({
+      source: SOURCE_INDEX,
+      indexSlugs: CMC_INDEXES.map((index) => index.slug),
+      interval: '1d',
+      startMs: fromMs,
+      endMs: toMs,
+    }),
     getMarketContextBackfillCoverage({
       source: SOURCE_GLOBAL_DAILY,
       scopes: [COVERAGE_SCOPE_ALL],
@@ -805,6 +927,13 @@ export const backfillCoinMarketCapContext = async (
           toMs,
         })
       : Promise.resolve([]),
+    getMarketContextBackfillCoverage({
+      source: SOURCE_INDEX,
+      scopes: CMC_INDEXES.map((index) => index.slug),
+      interval: '1d',
+      fromMs,
+      toMs,
+    }),
   ]);
   const globalDailyBackfillKeys = coverageRowsToKeySet(
     globalDailyBackfillCoverage,
@@ -816,6 +945,7 @@ export const backfillCoinMarketCapContext = async (
     exchangeLiquidityBackfillCoverage,
   );
   const fearGreedBackfillKeys = coverageRowsToKeySet(fearGreedBackfillCoverage);
+  const indexBackfillKeys = coverageRowsToKeySet(indexBackfillCoverage);
 
   const globalDailyCached = hasDailyCoverage(globalDailyCoverage, fromMs, toMs);
   const referencesDailyCached = REFERENCE_ASSETS.every((asset) =>
@@ -826,6 +956,9 @@ export const backfillCoinMarketCapContext = async (
     hasDailyCoverage(exchangeLiquidityCoverage, fromMs, toMs);
   const fearGreedCached =
     !fearGreedEnabled || hasDailyCoverage(fearGreedCoverage, fromMs, toMs);
+  const indexesCached = CMC_INDEXES.every((index) =>
+    hasDailyCoverage(indexCoverage.get(index.slug), fromMs, toMs),
+  );
   const globalDailyBackfillCovered = hasBackfillCoverage(
     globalDailyBackfillKeys,
     {
@@ -862,6 +995,15 @@ export const backfillCoinMarketCapContext = async (
     fromMs,
     toMs,
   });
+  const indexesBackfillCovered = CMC_INDEXES.every((index) =>
+    hasBackfillCoverage(indexBackfillKeys, {
+      source: SOURCE_INDEX,
+      scope: index.slug,
+      interval: '1d',
+      fromMs,
+      toMs,
+    }),
+  );
   const globalDailyReady = globalDailyCached || globalDailyBackfillCovered;
   const referencesDailyReady =
     referencesDailyCached || referencesDailyBackfillCovered;
@@ -871,6 +1013,7 @@ export const backfillCoinMarketCapContext = async (
     exchangeLiquidityBackfillCovered;
   const fearGreedReady =
     fearGreedCached || !fearGreedEnabled || fearGreedBackfillCovered;
+  const indexesReady = indexesCached || indexesBackfillCovered;
 
   let globalStatus = resolveBackfillStatus({
     cached: globalDailyCached,
@@ -889,6 +1032,10 @@ export const backfillCoinMarketCapContext = async (
     enabled: fearGreedEnabled,
     cached: fearGreedCached,
     covered: fearGreedBackfillCovered,
+  });
+  let indexStatus = resolveBackfillStatus({
+    cached: indexesCached,
+    covered: indexesBackfillCovered,
   });
 
   console.log(
@@ -915,6 +1062,14 @@ export const backfillCoinMarketCapContext = async (
           status: fearGreedStatus,
           coverage: formatCoverageRange(fearGreedCoverage),
         }),
+        formatSourceStatus({
+          name: 'indexes',
+          status: indexStatus,
+          coverage: CMC_INDEXES.map(
+            (index) =>
+              `${index.slug}:${formatCoverageRange(indexCoverage.get(index.slug))}`,
+          ).join(' '),
+        }),
       ].join(' '),
     ),
   );
@@ -923,7 +1078,8 @@ export const backfillCoinMarketCapContext = async (
     globalDailyReady &&
     referencesDailyReady &&
     exchangeLiquidityReady &&
-    fearGreedReady
+    fearGreedReady &&
+    indexesReady
   ) {
     console.log(
       chalk.gray(
@@ -945,6 +1101,7 @@ export const backfillCoinMarketCapContext = async (
   let referenceRows = 0;
   let exchangeLiquidityRows = 0;
   let fearGreedRows = 0;
+  let indexRows = 0;
   console.log(
     chalk.cyan(
       `coinmarketcap context backfill: window=${new Date(fromMs).toISOString()}..${new Date(toMs).toISOString()}`,
@@ -1074,6 +1231,34 @@ export const backfillCoinMarketCapContext = async (
     fearGreedStatus = 'fetched';
   }
 
+  if (!indexesReady) {
+    const rowsByIndex = await Promise.all(
+      CMC_INDEXES.map(async (index) => ({
+        index,
+        rows: await fetchCoinMarketCapIndexRows({
+          apiKey,
+          index,
+          fromMs,
+          toMs,
+        }),
+      })),
+    );
+    const rows = rowsByIndex.flatMap((item) => item.rows);
+    await upsertMarketCmcIndexContextRows(rows);
+    await markBackfillCoverage(
+      rowsByIndex.map(({ index, rows: indexSpecificRows }) => ({
+        source: SOURCE_INDEX,
+        scope: index.slug,
+        interval: '1d',
+        fromMs,
+        toMs,
+        rowsCount: indexSpecificRows.length,
+      })),
+    );
+    indexRows = rows.length;
+    indexStatus = 'fetched';
+  }
+
   console.log(
     chalk.green(
       [
@@ -1082,6 +1267,7 @@ export const backfillCoinMarketCapContext = async (
         `reference=${referenceStatus} rows=${referenceRows}`,
         `exchangeLiquidity=${exchangeLiquidityStatus} rows=${exchangeLiquidityRows}`,
         `fearGreed=${fearGreedStatus} rows=${fearGreedRows}`,
+        `indexes=${indexStatus} rows=${indexRows}`,
       ].join(' '),
     ),
   );
@@ -1093,6 +1279,7 @@ export const backfillCoinMarketCapContext = async (
     breadthRows: 0,
     exchangeLiquidityRows,
     fearGreedRows,
+    indexRows,
     cached: false,
   };
 };

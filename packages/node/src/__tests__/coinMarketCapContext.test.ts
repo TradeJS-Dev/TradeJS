@@ -2,6 +2,7 @@ const mockGetLatestMarketGlobalContext = jest.fn();
 const mockGetLatestMarketReferenceAssetContexts = jest.fn();
 const mockGetLatestMarketCmcExchangeLiquidityContext = jest.fn();
 const mockGetLatestMarketCmcFearGreedContext = jest.fn();
+const mockGetLatestMarketCmcIndexContexts = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
@@ -9,6 +10,8 @@ jest.mock('@tradejs/infra/timescale', () => ({
     mockGetLatestMarketCmcExchangeLiquidityContext(...args),
   getLatestMarketCmcFearGreedContext: (...args: unknown[]) =>
     mockGetLatestMarketCmcFearGreedContext(...args),
+  getLatestMarketCmcIndexContexts: (...args: unknown[]) =>
+    mockGetLatestMarketCmcIndexContexts(...args),
   getLatestMarketGlobalContext: (...args: unknown[]) =>
     mockGetLatestMarketGlobalContext(...args),
   getLatestMarketReferenceAssetContexts: (...args: unknown[]) =>
@@ -89,6 +92,40 @@ const makeReferenceMap = (ts: number) =>
     ],
   ]);
 
+const makeIndexMap = (ts: number) =>
+  new Map([
+    [
+      'cmc100',
+      {
+        source: 'coinmarketcap_index',
+        indexSlug: 'cmc100',
+        interval: '1d',
+        ts: new Date(ts),
+        ageMs: timestamp - ts,
+        stale: false,
+        value: '240',
+        valueChange24hPct: '0.01',
+        topConstituentSymbol: 'BTC',
+        topConstituentWeightPct: '64.2',
+      },
+    ],
+    [
+      'cmc20',
+      {
+        source: 'coinmarketcap_index',
+        indexSlug: 'cmc20',
+        interval: '1d',
+        ts: new Date(ts),
+        ageMs: timestamp - ts,
+        stale: false,
+        value: '260',
+        valueChange24hPct: '0.024',
+        topConstituentSymbol: 'BTC',
+        topConstituentWeightPct: '72.4',
+      },
+    ],
+  ]);
+
 describe('strategyHelpers/coinMarketCapContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -144,6 +181,9 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       classification: 'Greed',
       sentimentRegime: 'risk_on',
     });
+    mockGetLatestMarketCmcIndexContexts.mockResolvedValue(
+      makeIndexMap(timestamp),
+    );
     mockGetLatestMarketReferenceAssetContexts
       .mockResolvedValueOnce(makeReferenceMap(timestamp))
       .mockResolvedValueOnce(makeReferenceMap(timestamp - DAY_MS));
@@ -201,6 +241,13 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         maxAgeMs: 48 * 60 * 60_000 + DAY_MS,
       },
     );
+    expect(mockGetLatestMarketCmcIndexContexts).toHaveBeenCalledWith({
+      source: 'coinmarketcap_index',
+      indexSlugs: ['cmc100', 'cmc20'],
+      interval: '1d',
+      atMs: timestamp,
+      maxAgeMs: 48 * 60 * 60_000,
+    });
     expect(signal.additionalIndicators.baseContext.relative).toMatchObject({
       cmcGlobal: {
         source: 'coinmarketcap_global',
@@ -232,6 +279,22 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         valueChange7d: 15,
         classification: 'Greed',
         sentimentRegime: 'risk_on',
+      },
+      cmcIndexes: {
+        source: 'coinmarketcap_index',
+        interval: '1d',
+        stale: false,
+        cmc100Value: 240,
+        cmc100Change24hPct: 0.01,
+        cmc100TopConstituentSymbol: 'BTC',
+        cmc100TopConstituentWeightPct: 64.2,
+        cmc20Value: 260,
+        cmc20Change24hPct: 0.024,
+        cmc20TopConstituentSymbol: 'BTC',
+        cmc20TopConstituentWeightPct: 72.4,
+        cmc20ToCmc100Ratio: 260 / 240,
+        cmc20ToCmc100RatioChange24hPct: (1 + 0.024) / (1 + 0.01) - 1,
+        indexRegime: 'top20_led',
       },
     });
     expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({

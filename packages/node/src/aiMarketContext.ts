@@ -182,6 +182,30 @@ export type AiMarketContext = {
       classification: CmcFearGreedClassification | null;
       sentimentRegime: CmcFearGreedRegime | null;
     };
+    cmcIndexes: {
+      source: string | null;
+      available: boolean;
+      interval: string | null;
+      asOfTs: number | null;
+      stale: boolean | null;
+      cmc100Value: number | null;
+      cmc100Change24hPct: number | null;
+      cmc100TopConstituentSymbol: string | null;
+      cmc100TopConstituentWeightPct: number | null;
+      cmc20Value: number | null;
+      cmc20Change24hPct: number | null;
+      cmc20TopConstituentSymbol: string | null;
+      cmc20TopConstituentWeightPct: number | null;
+      cmc20ToCmc100Ratio: number | null;
+      cmc20ToCmc100RatioChange24hPct: number | null;
+      indexRegime:
+        | 'top20_led'
+        | 'large_cap_led'
+        | 'risk_off'
+        | 'balanced'
+        | 'unknown'
+        | null;
+    };
     referenceTradeFlow: {
       source: string | null;
       available: boolean;
@@ -697,6 +721,73 @@ const buildCmcFearGreedContextFromSignal = (signal: Signal) => {
   };
 };
 
+const buildCmcIndexesContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const cmcIndexes = toRecord(relative?.cmcIndexes);
+
+  if (!cmcIndexes) {
+    return {
+      source: null,
+      available: false,
+      interval: null,
+      asOfTs: null,
+      stale: null,
+      cmc100Value: null,
+      cmc100Change24hPct: null,
+      cmc100TopConstituentSymbol: null,
+      cmc100TopConstituentWeightPct: null,
+      cmc20Value: null,
+      cmc20Change24hPct: null,
+      cmc20TopConstituentSymbol: null,
+      cmc20TopConstituentWeightPct: null,
+      cmc20ToCmc100Ratio: null,
+      cmc20ToCmc100RatioChange24hPct: null,
+      indexRegime: null,
+    };
+  }
+
+  return {
+    source: String(cmcIndexes.source ?? ''),
+    available: true,
+    interval:
+      typeof cmcIndexes.interval === 'string' ? cmcIndexes.interval : null,
+    asOfTs: toFiniteNumber(cmcIndexes.asOfTs),
+    stale: typeof cmcIndexes.stale === 'boolean' ? cmcIndexes.stale : null,
+    cmc100Value: toFiniteNumber(cmcIndexes.cmc100Value),
+    cmc100Change24hPct: toFiniteNumber(cmcIndexes.cmc100Change24hPct),
+    cmc100TopConstituentSymbol:
+      typeof cmcIndexes.cmc100TopConstituentSymbol === 'string'
+        ? cmcIndexes.cmc100TopConstituentSymbol
+        : null,
+    cmc100TopConstituentWeightPct: toFiniteNumber(
+      cmcIndexes.cmc100TopConstituentWeightPct,
+    ),
+    cmc20Value: toFiniteNumber(cmcIndexes.cmc20Value),
+    cmc20Change24hPct: toFiniteNumber(cmcIndexes.cmc20Change24hPct),
+    cmc20TopConstituentSymbol:
+      typeof cmcIndexes.cmc20TopConstituentSymbol === 'string'
+        ? cmcIndexes.cmc20TopConstituentSymbol
+        : null,
+    cmc20TopConstituentWeightPct: toFiniteNumber(
+      cmcIndexes.cmc20TopConstituentWeightPct,
+    ),
+    cmc20ToCmc100Ratio: toFiniteNumber(cmcIndexes.cmc20ToCmc100Ratio),
+    cmc20ToCmc100RatioChange24hPct: toFiniteNumber(
+      cmcIndexes.cmc20ToCmc100RatioChange24hPct,
+    ),
+    indexRegime:
+      typeof cmcIndexes.indexRegime === 'string'
+        ? (cmcIndexes.indexRegime as
+            | 'top20_led'
+            | 'large_cap_led'
+            | 'risk_off'
+            | 'balanced'
+            | 'unknown')
+        : null,
+  };
+};
+
 const buildReferenceTradeFlowContextFromSignal = (signal: Signal) => {
   const baseContext = toRecord(signal.additionalIndicators?.baseContext);
   const relative = toRecord(baseContext?.relative);
@@ -755,6 +846,7 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
     cmcReferenceAssets: buildCmcReferenceAssetsContextFromSignal(signal),
     cmcExchangeLiquidity: buildCmcExchangeLiquidityContextFromSignal(signal),
     cmcFearGreed: buildCmcFearGreedContextFromSignal(signal),
+    cmcIndexes: buildCmcIndexesContextFromSignal(signal),
     referenceTradeFlow: buildReferenceTradeFlowContextFromSignal(signal),
   },
 });

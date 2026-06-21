@@ -2,11 +2,13 @@ const mockGetMarketGlobalContextCoverage = jest.fn();
 const mockGetMarketReferenceAssetContextCoverage = jest.fn();
 const mockGetMarketCmcExchangeLiquidityContextCoverage = jest.fn();
 const mockGetMarketCmcFearGreedContextCoverage = jest.fn();
+const mockGetMarketCmcIndexContextCoverage = jest.fn();
 const mockGetMarketContextBackfillCoverage = jest.fn();
 const mockUpsertMarketGlobalContextRows = jest.fn();
 const mockUpsertMarketReferenceAssetContextRows = jest.fn();
 const mockUpsertMarketCmcExchangeLiquidityContextRows = jest.fn();
 const mockUpsertMarketCmcFearGreedContextRows = jest.fn();
+const mockUpsertMarketCmcIndexContextRows = jest.fn();
 const mockUpsertMarketContextBackfillCoverage = jest.fn();
 const mockWaitForDbReady = jest.fn();
 const mockGetUserSettings = jest.fn();
@@ -20,6 +22,8 @@ jest.mock('@tradejs/infra/timescale', () => ({
     mockGetMarketCmcExchangeLiquidityContextCoverage(...args),
   getMarketCmcFearGreedContextCoverage: (...args: unknown[]) =>
     mockGetMarketCmcFearGreedContextCoverage(...args),
+  getMarketCmcIndexContextCoverage: (...args: unknown[]) =>
+    mockGetMarketCmcIndexContextCoverage(...args),
   getMarketContextBackfillCoverage: (...args: unknown[]) =>
     mockGetMarketContextBackfillCoverage(...args),
   upsertMarketGlobalContextRows: (...args: unknown[]) =>
@@ -30,6 +34,8 @@ jest.mock('@tradejs/infra/timescale', () => ({
     mockUpsertMarketCmcExchangeLiquidityContextRows(...args),
   upsertMarketCmcFearGreedContextRows: (...args: unknown[]) =>
     mockUpsertMarketCmcFearGreedContextRows(...args),
+  upsertMarketCmcIndexContextRows: (...args: unknown[]) =>
+    mockUpsertMarketCmcIndexContextRows(...args),
   upsertMarketContextBackfillCoverage: (...args: unknown[]) =>
     mockUpsertMarketContextBackfillCoverage(...args),
   waitForDbReady: (...args: unknown[]) => mockWaitForDbReady(...args),
@@ -45,6 +51,7 @@ import {
   coinMarketCapFearGreedPayloadToRows,
   coinMarketCapGlobalPayloadToRows,
   coinMarketCapHistoricalQuotesPayloadToRows,
+  coinMarketCapIndexPayloadToRows,
   coverageRowsToKeySet,
   resolveCoinMarketCapBackfillWindow,
   shouldBackfillCoinMarketCapContextForBacktest,
@@ -65,6 +72,7 @@ describe('coinMarketCapContextBackfill', () => {
     mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(new Map());
     mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(null);
     mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue(null);
+    mockGetMarketCmcIndexContextCoverage.mockResolvedValue(new Map());
     mockGetMarketContextBackfillCoverage.mockResolvedValue([]);
     mockUpsertMarketGlobalContextRows.mockResolvedValue(undefined);
     mockUpsertMarketReferenceAssetContextRows.mockResolvedValue(undefined);
@@ -72,6 +80,7 @@ describe('coinMarketCapContextBackfill', () => {
       undefined,
     );
     mockUpsertMarketCmcFearGreedContextRows.mockResolvedValue(undefined);
+    mockUpsertMarketCmcIndexContextRows.mockResolvedValue(undefined);
     mockUpsertMarketContextBackfillCoverage.mockResolvedValue(undefined);
     mockWaitForDbReady.mockResolvedValue(undefined);
     mockGetUserSettings.mockResolvedValue({ COINMARKETCAP_API_KEY: 'test' });
@@ -313,6 +322,68 @@ describe('coinMarketCapContextBackfill', () => {
     ]);
   });
 
+  it('maps historical CMC index rows', () => {
+    const rows = coinMarketCapIndexPayloadToRows(
+      {
+        data: [
+          {
+            update_time: '2026-01-01T00:00:00.000Z',
+            value: 224.5,
+            constituents: [
+              {
+                id: 1,
+                name: 'Bitcoin',
+                symbol: 'BTC',
+                url: 'https://coinmarketcap.com/currencies/bitcoin/',
+                weight: '64.2%',
+                priceUsd: '105000',
+                units: '0.001',
+              },
+              {
+                id: 1027,
+                name: 'Ethereum',
+                symbol: 'ETH',
+                weight: 12.5,
+                priceUsd: 3800,
+                units: 0.01,
+              },
+            ],
+          },
+        ],
+      },
+      'cmc100',
+    );
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        source: 'coinmarketcap_index',
+        indexSlug: 'cmc100',
+        interval: '1d',
+        ts: new Date('2026-01-01T00:00:00.000Z'),
+        value: 224.5,
+        constituentsCount: 2,
+        topConstituentSymbol: 'BTC',
+        topConstituentWeightPct: 64.2,
+        constituents: [
+          expect.objectContaining({
+            id: 1,
+            symbol: 'BTC',
+            weightPct: 64.2,
+            priceUsd: 105000,
+            units: 0.001,
+          }),
+          expect.objectContaining({
+            id: 1027,
+            symbol: 'ETH',
+            weightPct: 12.5,
+            priceUsd: 3800,
+            units: 0.01,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('clamps requested windows to the CMC historical access floor', () => {
     const window = resolveCoinMarketCapBackfillWindow({
       userName: 'root',
@@ -361,6 +432,12 @@ describe('coinMarketCapContextBackfill', () => {
       readyCoverage,
     );
     mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue(readyCoverage);
+    mockGetMarketCmcIndexContextCoverage.mockResolvedValue(
+      new Map([
+        ['cmc100', readyCoverage],
+        ['cmc20', readyCoverage],
+      ]),
+    );
 
     const result = await backfillCoinMarketCapContextForSignals({
       userName: 'root',

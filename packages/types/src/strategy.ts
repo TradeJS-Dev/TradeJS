@@ -719,6 +719,29 @@ export interface BaseRelativeContext {
     classification: CmcFearGreedClassification;
     sentimentRegime: CmcFearGreedRegime;
   };
+  cmcIndexes?: {
+    source: 'coinmarketcap_index';
+    interval: '1d';
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    cmc100Value: number | null;
+    cmc100Change24hPct: number | null;
+    cmc100TopConstituentSymbol: string | null;
+    cmc100TopConstituentWeightPct: number | null;
+    cmc20Value: number | null;
+    cmc20Change24hPct: number | null;
+    cmc20TopConstituentSymbol: string | null;
+    cmc20TopConstituentWeightPct: number | null;
+    cmc20ToCmc100Ratio: number | null;
+    cmc20ToCmc100RatioChange24hPct: number | null;
+    indexRegime:
+      | 'top20_led'
+      | 'large_cap_led'
+      | 'risk_off'
+      | 'balanced'
+      | 'unknown';
+  };
   referenceTradeFlow?: {
     source: 'binance_reference_market';
     primaryReferenceSymbol: string;

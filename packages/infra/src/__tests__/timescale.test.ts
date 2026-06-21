@@ -476,12 +476,41 @@ describe('timescale candle helpers', () => {
 
   it('stores and reads CoinMarketCap aggregate context rows', async () => {
     const atMs = 10_000;
-    const query = jest.fn(async (sql: string) => {
+    const query = jest.fn(async (sql: string, params?: unknown[]) => {
       if (
         sql.includes('FROM market_cmc_exchange_liquidity_context') &&
         sql.includes("interval '24 hours'")
       ) {
         return { rows: [{ totalVolumeUsd: '80' }] };
+      }
+      if (
+        sql.includes('FROM market_cmc_index_context') &&
+        sql.includes("interval '24 hours'")
+      ) {
+        return {
+          rows: [{ value: params?.[1] === 'cmc20' ? '195' : '90' }],
+        };
+      }
+      if (
+        sql.includes('FROM market_cmc_index_context') &&
+        sql.includes('GROUP BY index_slug')
+      ) {
+        return {
+          rows: [
+            {
+              index_slug: 'cmc100',
+              first_ms: '1000',
+              last_ms: '9000',
+              rows: '2',
+            },
+            {
+              index_slug: 'cmc20',
+              first_ms: '1000',
+              last_ms: '9000',
+              rows: '2',
+            },
+          ],
+        };
       }
       if (sql.includes('FROM market_context_backfill_coverage')) {
         return {
@@ -523,6 +552,34 @@ describe('timescale candle helpers', () => {
           ],
         };
       }
+      if (sql.includes('FROM market_cmc_index_context')) {
+        return {
+          rows: [
+            {
+              source: 'coinmarketcap_index',
+              indexSlug: 'cmc100',
+              interval: '1d',
+              ts: new Date(9_000),
+              value: 100,
+              constituentsCount: 2,
+              topConstituentSymbol: 'BTC',
+              topConstituentWeightPct: 64.2,
+              constituents: [{ symbol: 'BTC', weightPct: 64.2 }],
+            },
+            {
+              source: 'coinmarketcap_index',
+              indexSlug: 'cmc20',
+              interval: '1d',
+              ts: new Date(9_500),
+              value: 200,
+              constituentsCount: 2,
+              topConstituentSymbol: 'BTC',
+              topConstituentWeightPct: 72.4,
+              constituents: [{ symbol: 'BTC', weightPct: 72.4 }],
+            },
+          ],
+        };
+      }
       if (sql.includes('FROM market_cmc_exchange_liquidity_context')) {
         return {
           rows: [
@@ -553,9 +610,12 @@ describe('timescale candle helpers', () => {
     const {
       getLatestMarketCmcExchangeLiquidityContext,
       getLatestMarketCmcFearGreedContext,
+      getLatestMarketCmcIndexContexts,
+      getMarketCmcIndexContextCoverage,
       getMarketContextBackfillCoverage,
       upsertMarketCmcExchangeLiquidityContextRows,
       upsertMarketCmcFearGreedContextRows,
+      upsertMarketCmcIndexContextRows,
       upsertMarketContextBackfillCoverage,
     } = await import('@tradejs/infra/timescale');
 
@@ -580,6 +640,19 @@ describe('timescale candle helpers', () => {
         value: 42,
         classification: 'Fear',
         sentimentRegime: 'risk_off',
+      },
+    ]);
+    await upsertMarketCmcIndexContextRows([
+      {
+        source: 'coinmarketcap_index',
+        indexSlug: 'cmc100',
+        interval: '1d',
+        ts: new Date(9_000),
+        value: 100,
+        constituentsCount: 1,
+        topConstituentSymbol: 'BTC',
+        topConstituentWeightPct: 64.2,
+        constituents: [{ symbol: 'BTC', weightPct: 64.2 }],
       },
     ]);
     await upsertMarketContextBackfillCoverage([
@@ -623,6 +696,45 @@ describe('timescale candle helpers', () => {
       valueChange24h: 7,
       valueChange7d: 12,
     });
+    const indexRows = await getLatestMarketCmcIndexContexts({
+      source: 'coinmarketcap_index',
+      indexSlugs: ['cmc100', 'cmc20'],
+      interval: '1d',
+      atMs,
+      maxAgeMs: 2_000,
+    });
+    expect(indexRows.get('cmc100')).toMatchObject({
+      source: 'coinmarketcap_index',
+      indexSlug: 'cmc100',
+      ageMs: 1_000,
+      stale: false,
+      value: 100,
+      topConstituentSymbol: 'BTC',
+      valueChange24hPct: (100 - 90) / 90,
+    });
+    expect(indexRows.get('cmc20')).toMatchObject({
+      source: 'coinmarketcap_index',
+      indexSlug: 'cmc20',
+      ageMs: 500,
+      stale: false,
+      value: 200,
+      topConstituentSymbol: 'BTC',
+      valueChange24hPct: (200 - 195) / 195,
+    });
+    await expect(
+      getMarketCmcIndexContextCoverage({
+        source: 'coinmarketcap_index',
+        indexSlugs: ['cmc100', 'cmc20'],
+        interval: '1d',
+        startMs: 1_000,
+        endMs: 10_000,
+      }),
+    ).resolves.toEqual(
+      new Map([
+        ['cmc100', { firstMs: 1_000, lastMs: 9_000, rows: 2 }],
+        ['cmc20', { firstMs: 1_000, lastMs: 9_000, rows: 2 }],
+      ]),
+    );
     await expect(
       getMarketContextBackfillCoverage({
         source: 'coinmarketcap_fear_greed',
@@ -661,6 +773,19 @@ describe('timescale candle helpers', () => {
         42,
         'Fear',
         'risk_off',
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_cmc_index_context'),
+      expect.arrayContaining([
+        'coinmarketcap_index',
+        'cmc100',
+        '1d',
+        new Date(9_000),
+        100,
+        1,
+        'BTC',
+        64.2,
       ]),
     );
     expect(query).toHaveBeenCalledWith(

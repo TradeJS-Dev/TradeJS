@@ -209,6 +209,30 @@ export type MarketCmcFearGreedContextRow = {
   sentimentRegime: CmcFearGreedRegime;
 };
 
+export type MarketCmcIndexSlug = 'cmc100' | 'cmc20';
+
+export type MarketCmcIndexConstituent = {
+  id?: number | null;
+  name?: string | null;
+  symbol?: string | null;
+  url?: string | null;
+  weightPct?: number | null;
+  priceUsd?: number | null;
+  units?: number | null;
+};
+
+export type MarketCmcIndexContextRow = {
+  source: 'coinmarketcap_index';
+  indexSlug: MarketCmcIndexSlug;
+  interval: '1d';
+  ts: Date;
+  value: number;
+  constituentsCount?: number | null;
+  topConstituentSymbol?: string | null;
+  topConstituentWeightPct?: number | null;
+  constituents?: MarketCmcIndexConstituent[] | null;
+};
+
 export type MarketBreadthRow = {
   universe: string;
   interval: MarketFeatureInterval;

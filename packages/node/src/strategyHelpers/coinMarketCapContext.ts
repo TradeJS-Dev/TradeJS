@@ -3,6 +3,7 @@ import { logger } from '@tradejs/infra/logger';
 import {
   getLatestMarketCmcExchangeLiquidityContext,
   getLatestMarketCmcFearGreedContext,
+  getLatestMarketCmcIndexContexts,
   getLatestMarketGlobalContext,
   getLatestMarketReferenceAssetContexts,
 } from '@tradejs/infra/timescale';
@@ -13,6 +14,7 @@ const SOURCE_GLOBAL_DAILY = 'coinmarketcap_global' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
 const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
+const SOURCE_INDEX = 'coinmarketcap_index' as const;
 const DAY_MS = 86_400_000;
 
 let coinMarketCapContextUnavailable = false;
@@ -31,6 +33,10 @@ const exchangeLiquidityContextCache = new Map<
 const fearGreedContextCache = new Map<
   string,
   ReturnType<typeof getLatestMarketCmcFearGreedContext>
+>();
+const indexContextCache = new Map<
+  string,
+  ReturnType<typeof getLatestMarketCmcIndexContexts>
 >();
 
 const parseEnabledFlag = (value: unknown, env: string) => {
@@ -167,6 +173,35 @@ const toExchangeLiquidityRegime = ({
   return fallback;
 };
 
+const toIndexRegime = ({
+  stale,
+  cmc100Change24hPct,
+  cmc20Change24hPct,
+  cmc20ToCmc100RatioChange24hPct,
+}: {
+  stale: boolean;
+  cmc100Change24hPct: number | null;
+  cmc20Change24hPct: number | null;
+  cmc20ToCmc100RatioChange24hPct: number | null;
+}): NonNullable<
+  BaseStrategyContextSnapshot['relative']['cmcIndexes']
+>['indexRegime'] => {
+  if (stale) return 'unknown';
+  if (cmc100Change24hPct == null && cmc20Change24hPct == null) {
+    return 'unknown';
+  }
+  if ((cmc100Change24hPct ?? 0) <= -0.02 && (cmc20Change24hPct ?? 0) <= -0.02) {
+    return 'risk_off';
+  }
+  if ((cmc20ToCmc100RatioChange24hPct ?? 0) >= 0.005) {
+    return 'top20_led';
+  }
+  if ((cmc20ToCmc100RatioChange24hPct ?? 0) <= -0.005) {
+    return 'large_cap_led';
+  }
+  return 'balanced';
+};
+
 const getCachedGlobalContext = ({
   timestamp,
   maxAgeMs,
@@ -251,6 +286,28 @@ const getCachedFearGreedContext = ({
   return promise;
 };
 
+const getCachedIndexContexts = ({
+  timestamp,
+  maxAgeMs,
+}: {
+  timestamp: number;
+  maxAgeMs: number;
+}) => {
+  const key = `${SOURCE_INDEX}:1d:${timestamp}:${maxAgeMs}`;
+  const cached = indexContextCache.get(key);
+  if (cached) return cached;
+
+  const promise = getLatestMarketCmcIndexContexts({
+    source: SOURCE_INDEX,
+    indexSlugs: ['cmc100', 'cmc20'],
+    interval: '1d',
+    atMs: timestamp,
+    maxAgeMs,
+  });
+  indexContextCache.set(key, promise);
+  return promise;
+};
+
 export const isCoinMarketCapContextEnabled = (env: string) =>
   parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_ENABLED, env);
 
@@ -260,6 +317,7 @@ export const resetCoinMarketCapContextRuntimeState = () => {
   referenceContextCache.clear();
   exchangeLiquidityContextCache.clear();
   fearGreedContextCache.clear();
+  indexContextCache.clear();
 };
 
 export const enrichSignalWithCoinMarketCapContext = async (params: {
@@ -285,6 +343,7 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
       previousDailyReferences,
       exchangeLiquidityRow,
       fearGreedRow,
+      indexRows,
     ] = await Promise.all([
       getCachedGlobalContext({
         timestamp: signal.timestamp,
@@ -306,6 +365,10 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
         timestamp: signal.timestamp,
         maxAgeMs,
       }),
+      getCachedIndexContexts({
+        timestamp: signal.timestamp,
+        maxAgeMs,
+      }),
     ]);
     const globalRow = globalDailyRow;
     const references = dailyReferences;
@@ -315,7 +378,8 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
       !globalRow &&
       !references.size &&
       !exchangeLiquidityRow &&
-      !fearGreedRow
+      !fearGreedRow &&
+      !indexRows.size
     ) {
       return false;
     }
@@ -374,6 +438,30 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
           fallback: exchangeLiquidityRow.liquidityRegime ?? 'unknown',
         })
       : 'unknown';
+    const cmc100Row = indexRows.get('cmc100') ?? null;
+    const cmc20Row = indexRows.get('cmc20') ?? null;
+    const cmc100Value = toFiniteNumberOrNull(cmc100Row?.value);
+    const cmc20Value = toFiniteNumberOrNull(cmc20Row?.value);
+    const cmc100Change24hPct = toFiniteNumberOrNull(
+      cmc100Row?.valueChange24hPct,
+    );
+    const cmc20Change24hPct = toFiniteNumberOrNull(cmc20Row?.valueChange24hPct);
+    const cmc20ToCmc100Ratio = safeDivide(cmc20Value, cmc100Value);
+    const cmc20ToCmc100RatioChange24hPct =
+      cmc20Change24hPct != null && cmc100Change24hPct != null
+        ? (1 + cmc20Change24hPct) / (1 + cmc100Change24hPct) - 1
+        : null;
+    const indexStale =
+      cmc100Row?.stale === true ||
+      cmc20Row?.stale === true ||
+      !cmc100Row ||
+      !cmc20Row;
+    const indexRegime = toIndexRegime({
+      stale: indexStale,
+      cmc100Change24hPct,
+      cmc20Change24hPct,
+      cmc20ToCmc100RatioChange24hPct,
+    });
     const baseContext = signal.additionalIndicators.baseContext;
 
     signal.additionalIndicators = {
@@ -515,6 +603,40 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
                   ),
                   classification: fearGreedRow.classification ?? 'Unknown',
                   sentimentRegime: fearGreedRow.sentimentRegime ?? 'unknown',
+                },
+              }
+            : {}),
+          ...(cmc100Row || cmc20Row
+            ? {
+                cmcIndexes: {
+                  source: SOURCE_INDEX,
+                  interval: '1d' as const,
+                  asOfTs: Math.max(
+                    cmc100Row?.ts.getTime() ?? 0,
+                    cmc20Row?.ts.getTime() ?? 0,
+                  ),
+                  ageMs:
+                    cmc100Row?.ageMs != null && cmc20Row?.ageMs != null
+                      ? Math.max(cmc100Row.ageMs, cmc20Row.ageMs)
+                      : cmc100Row?.ageMs ?? cmc20Row?.ageMs ?? null,
+                  stale: indexStale,
+                  cmc100Value,
+                  cmc100Change24hPct,
+                  cmc100TopConstituentSymbol:
+                    cmc100Row?.topConstituentSymbol ?? null,
+                  cmc100TopConstituentWeightPct: toFiniteNumberOrNull(
+                    cmc100Row?.topConstituentWeightPct,
+                  ),
+                  cmc20Value,
+                  cmc20Change24hPct,
+                  cmc20TopConstituentSymbol:
+                    cmc20Row?.topConstituentSymbol ?? null,
+                  cmc20TopConstituentWeightPct: toFiniteNumberOrNull(
+                    cmc20Row?.topConstituentWeightPct,
+                  ),
+                  cmc20ToCmc100Ratio,
+                  cmc20ToCmc100RatioChange24hPct,
+                  indexRegime,
                 },
               }
             : {}),
