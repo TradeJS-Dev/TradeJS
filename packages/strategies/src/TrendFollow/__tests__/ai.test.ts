@@ -43,6 +43,72 @@ const makePayload = (
   } as any;
 };
 
+const makeShortFlushPayload = ({
+  oiChangePct24h = 2.1,
+  liqLong = 13,
+  liqImbalance = -0.8,
+  btcTurnoverShare24h = 0.35,
+  altBasketReturn24h = -0.01,
+}: {
+  oiChangePct24h?: number;
+  liqLong?: number;
+  liqImbalance?: number;
+  btcTurnoverShare24h?: number;
+  altBasketReturn24h?: number;
+} = {}) => {
+  const payload = makePayload(
+    {
+      signalDirection: 'SHORT',
+      entryLevel: 100,
+      trailStop: 104,
+      atr: 1.2,
+      pivotKind: 'low',
+      breakoutDistancePct: 0.8,
+      distanceToStopPct: 2,
+      currentPrice: 99,
+    },
+    {
+      raw: {
+        volatility: { atr: 1.2 },
+      },
+      regime: {
+        momentum: { rsi: 32 },
+      },
+      participation: {
+        volume: { volumeRel20: 1.6 },
+        volumeStructure: { totalDownVolumeShare: 0.55 },
+        delta: { deltaDivergenceVsPrice: 'none' },
+      },
+      structure: {
+        localRange: { breakoutState: 'below_low_level' },
+      },
+      derivatives: {
+        intervals: {
+          '1h': {
+            oiChangePct24h,
+            liqLong,
+            liqImbalance,
+          },
+        },
+      },
+      relative: {
+        btcAltRegime: {
+          btcTurnoverShare24h,
+          altBasketReturn24h,
+        },
+      },
+    },
+  );
+
+  payload.signal.prices = {
+    currentPrice: 100,
+    takeProfitPrice: 97.4,
+    stopLossPrice: 102,
+  };
+
+  return payload;
+};
+
 describe('trendFollowAiAdapter', () => {
   it('approves high-conviction short flush breakouts', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
@@ -675,6 +741,72 @@ describe('trendFollowAiAdapter', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('approves the tuned short flush pocket at the new liquidation threshold', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        liqLong: 12,
+        liqImbalance: -0.75,
+        btcTurnoverShare24h: 0.416873,
+        altBasketReturn24h: 0.052358,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects short derivatives pockets at the BTC turnover cap', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        btcTurnoverShare24h: 0.416874,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('rejects short derivatives pockets at the upper alt basket return cap', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        altBasketReturn24h: 0.052359,
+      }),
       analysis: {
         direction: 'SHORT',
         quality: 5,

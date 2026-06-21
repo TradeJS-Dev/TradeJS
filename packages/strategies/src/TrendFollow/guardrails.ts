@@ -69,11 +69,12 @@ type TrendFollowSignalPrices = {
   stopLossPrice?: number | null;
 };
 
-const TREND_FOLLOW_SHORT_FLUSH_OI_MIN_CHANGE_24H = 1.9893;
-const TREND_FOLLOW_SHORT_FLUSH_OI_MIN_LIQ_LONG = 12.759;
+const TREND_FOLLOW_SHORT_FLUSH_OI_MIN_CHANGE_24H = 2.1;
+const TREND_FOLLOW_SHORT_FLUSH_OI_MIN_LIQ_LONG = 12;
 const TREND_FOLLOW_SHORT_FLUSH_OI_MAX_LIQ_IMBALANCE = -0.75;
-const TREND_FOLLOW_SHORT_MARKET_MAX_BTC_TURNOVER_SHARE_24H = 0.422382;
+const TREND_FOLLOW_SHORT_MARKET_MAX_BTC_TURNOVER_SHARE_24H = 0.416874;
 const TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H = -0.020269;
+const TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H = 0.052359;
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -346,11 +347,13 @@ const buildTrendFollowGateFeatures = ({
     derivatives1hLiqImbalance <= TREND_FOLLOW_SHORT_FLUSH_OI_MAX_LIQ_IMBALANCE;
   const marketRegimeCadencePocket =
     btcAltRegimeBtcTurnoverShare24h != null &&
-    btcAltRegimeBtcTurnoverShare24h <=
+    btcAltRegimeBtcTurnoverShare24h <
       TREND_FOLLOW_SHORT_MARKET_MAX_BTC_TURNOVER_SHARE_24H &&
     btcAltRegimeAltBasketReturn24h != null &&
     btcAltRegimeAltBasketReturn24h >=
-      TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H;
+      TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H &&
+    btcAltRegimeAltBasketReturn24h <
+      TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H;
 
   return {
     setupStopDistanceAtr,
