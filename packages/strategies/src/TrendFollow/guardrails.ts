@@ -75,6 +75,7 @@ const TREND_FOLLOW_SHORT_FLUSH_OI_MAX_LIQ_IMBALANCE = -0.75;
 const TREND_FOLLOW_SHORT_MARKET_MAX_BTC_TURNOVER_SHARE_24H = 0.416874;
 const TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H = -0.020269;
 const TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H = 0.052359;
+const TREND_FOLLOW_SHORT_MIN_TARGET_BTC_BETA_20 = 0.627393;
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -354,6 +355,9 @@ const buildTrendFollowGateFeatures = ({
       TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H &&
     btcAltRegimeAltBasketReturn24h <
       TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H;
+  const relativeCadencePocket =
+    targetVsBtcBeta20 != null &&
+    targetVsBtcBeta20 > TREND_FOLLOW_SHORT_MIN_TARGET_BTC_BETA_20;
 
   return {
     setupStopDistanceAtr,
@@ -378,7 +382,9 @@ const buildTrendFollowGateFeatures = ({
     derivativesShortFlushOiPocket,
     marketRegimeCadencePocket,
     highQualityCadencePocket:
-      derivativesShortFlushOiPocket && marketRegimeCadencePocket,
+      derivativesShortFlushOiPocket &&
+      marketRegimeCadencePocket &&
+      relativeCadencePocket,
   };
 };
 

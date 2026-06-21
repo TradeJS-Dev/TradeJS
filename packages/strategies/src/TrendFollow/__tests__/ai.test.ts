@@ -49,12 +49,14 @@ const makeShortFlushPayload = ({
   liqImbalance = -0.8,
   btcTurnoverShare24h = 0.35,
   altBasketReturn24h = -0.01,
+  targetVsBtcBeta20 = 1.35,
 }: {
   oiChangePct24h?: number;
   liqLong?: number;
   liqImbalance?: number;
   btcTurnoverShare24h?: number;
   altBasketReturn24h?: number;
+  targetVsBtcBeta20?: number;
 } = {}) => {
   const payload = makePayload(
     {
@@ -92,6 +94,9 @@ const makeShortFlushPayload = ({
         },
       },
       relative: {
+        targetVsBtc: {
+          betaToBtc20: targetVsBtcBeta20,
+        },
         btcAltRegime: {
           btcTurnoverShare24h,
           altBasketReturn24h,
@@ -419,6 +424,7 @@ describe('trendFollowAiAdapter', () => {
           },
         },
         relative: {
+          targetVsBtc: { betaToBtc20: 1.35 },
           btcAltRegime: supportiveBtcAltRegime,
         },
       },
@@ -483,6 +489,7 @@ describe('trendFollowAiAdapter', () => {
           },
         },
         relative: {
+          targetVsBtc: { betaToBtc20: 1.35 },
           btcAltRegime: supportiveBtcAltRegime,
         },
       },
@@ -806,6 +813,28 @@ describe('trendFollowAiAdapter', () => {
       signal: {} as any,
       payload: makeShortFlushPayload({
         altBasketReturn24h: 0.052359,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('rejects short derivatives pockets at the target-vs-BTC beta floor', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        targetVsBtcBeta20: 0.627393,
       }),
       analysis: {
         direction: 'SHORT',
