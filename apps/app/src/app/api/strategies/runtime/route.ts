@@ -79,23 +79,27 @@ const isRuntimeStrategyConfigEnabled = (config: StrategyConfig | null) => {
   return (config as Record<string, unknown>).ENABLE !== false;
 };
 
-const loadRuntimeStrategyEnabledByName = async (userName: string) => {
+const loadRuntimeStrategyConfigByName = async (userName: string) => {
   const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
   const configKeys = keys.filter((key) => key.endsWith(':config'));
   const entries = await Promise.all(
-    configKeys.map(async (key): Promise<[string, boolean] | null> => {
+    configKeys.map(async (key): Promise<[string, StrategyConfig] | null> => {
       const strategyName = resolveStrategyNameByConfigKey(userName, key);
       if (!strategyName) {
         return null;
       }
 
       const config = (await getData(key, null)) as StrategyConfig | null;
-      return [strategyName, isRuntimeStrategyConfigEnabled(config)];
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        return null;
+      }
+
+      return [strategyName, config];
     }),
   );
 
   return new Map(
-    entries.filter((entry): entry is [string, boolean] => entry != null),
+    entries.filter((entry): entry is [string, StrategyConfig] => entry != null),
   );
 };
 
@@ -554,7 +558,7 @@ export const GET = async (request: NextRequest) => {
 
     const [
       connectedStrategyNames,
-      runtimeStrategyEnabledByName,
+      runtimeStrategyConfigByName,
       configuredStrategyNames,
       runtimeTrades,
       activeOrderIds,
@@ -563,7 +567,7 @@ export const GET = async (request: NextRequest) => {
       openPositions,
     ] = await Promise.all([
       loadConnectedStrategyNames(userName),
-      loadRuntimeStrategyEnabledByName(userName),
+      loadRuntimeStrategyConfigByName(userName),
       loadConfiguredStrategyNames(),
       loadRuntimeTrades(userName, { startTime, endTime }),
       loadActiveRuntimeOrderIds(userName),
@@ -637,11 +641,14 @@ export const GET = async (request: NextRequest) => {
           startTime,
           endTime,
         });
+        const strategyConfig =
+          runtimeStrategyConfigByName.get(strategyName) ?? null;
 
         return {
           strategyName,
           connected: connectedSet.has(strategyName),
-          enabled: runtimeStrategyEnabledByName.get(strategyName) ?? false,
+          enabled: isRuntimeStrategyConfigEnabled(strategyConfig),
+          config: strategyConfig,
           symbols: [...new Set(strategyTrades.map((trade) => trade.symbol))],
           stat: analytics.stat,
           summary: analytics.summary,

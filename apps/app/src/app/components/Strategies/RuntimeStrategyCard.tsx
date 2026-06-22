@@ -1437,9 +1437,17 @@ export const RuntimeStrategyCard = ({
   strategy: RuntimeStrategyView;
   provider: string;
 }) => {
+  const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const lastTrade = strategy.recentTrades[0];
+  const configJson = useMemo(
+    () =>
+      strategy.config
+        ? JSON.stringify(strategy.config, null, 2)
+        : 'No runtime strategy config found in Redis.',
+    [strategy.config],
+  );
   const runtimeOrders = useMemo(
     () => strategy.orders.map(mapRuntimeOrder),
     [strategy.orders],
@@ -1603,6 +1611,9 @@ export const RuntimeStrategyCard = ({
             <Portal>
               <Menu.Positioner>
                 <Menu.Content minW="160px">
+                  <Menu.Item value="config" onClick={() => setConfigOpen(true)}>
+                    Config
+                  </Menu.Item>
                   <Menu.Item value="orders" onClick={() => setOrdersOpen(true)}>
                     Orders
                   </Menu.Item>
@@ -1623,6 +1634,52 @@ export const RuntimeStrategyCard = ({
         rowHeight={RUNTIME_ORDER_ROW_HEIGHT}
         onOpenChange={setOrdersOpen}
       />
+
+      <Drawer.Root
+        size="xl"
+        open={configOpen}
+        onOpenChange={(e) => setConfigOpen(e.open)}
+      >
+        <Portal>
+          <Drawer.Backdrop />
+          <Drawer.Positioner>
+            <Drawer.Content
+              display="flex"
+              flexDirection="column"
+              w="50vw"
+              minW="640px"
+              maxW="50vw"
+              bg="gray.950"
+            >
+              <Drawer.Header>
+                <Drawer.Title>{strategy.strategyName} config</Drawer.Title>
+                <Drawer.CloseTrigger asChild>
+                  <CloseButton size="sm" />
+                </Drawer.CloseTrigger>
+              </Drawer.Header>
+
+              <Drawer.Body overflowY="auto" flex="1">
+                <Box
+                  as="pre"
+                  p={4}
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor="gray.800"
+                  bg="gray.900"
+                  color={strategy.config ? 'gray.100' : 'gray.500'}
+                  fontFamily="mono"
+                  fontSize="sm"
+                  lineHeight="1.5"
+                  whiteSpace="pre-wrap"
+                  wordBreak="break-word"
+                >
+                  {configJson}
+                </Box>
+              </Drawer.Body>
+            </Drawer.Content>
+          </Drawer.Positioner>
+        </Portal>
+      </Drawer.Root>
 
       <Drawer.Root
         size="xl"

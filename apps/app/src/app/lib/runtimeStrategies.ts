@@ -10,6 +10,7 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
   SimpleOrderLogData,
+  StrategyConfig,
   TestStat,
 } from '@tradejs/types';
 
@@ -73,6 +74,7 @@ export interface RuntimeStrategyView {
   strategyName: string;
   connected: boolean;
   enabled: boolean;
+  config: StrategyConfig | null;
   symbols: string[];
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
