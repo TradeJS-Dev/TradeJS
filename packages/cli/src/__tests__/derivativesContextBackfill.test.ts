@@ -149,6 +149,22 @@ describe('shouldBackfillDerivativesContextForSignals', () => {
 });
 
 describe('resolveDerivativesContextBackfillSymbols', () => {
+  const originalTargetContextEnabled =
+    process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
+
+  beforeEach(() => {
+    delete process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
+  });
+
+  afterAll(() => {
+    if (originalTargetContextEnabled === undefined) {
+      delete process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
+    } else {
+      process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED =
+        originalTargetContextEnabled;
+    }
+  });
+
   it('uses only BTC/ETH reference symbols for Coinalyze backfill', () => {
     expect(
       resolveDerivativesContextBackfillSymbols([
@@ -157,6 +173,19 @@ describe('resolveDerivativesContextBackfillSymbols', () => {
         'DOGEUSDT',
       ]),
     ).toEqual(['BTCUSDT', 'ETHUSDT']);
+  });
+
+  it('includes requested target symbols when target derivatives context is enabled', () => {
+    process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED = 'true';
+
+    expect(
+      resolveDerivativesContextBackfillSymbols([
+        'SOLUSDT',
+        'BTCUSDT',
+        'xrpusdt',
+        'SOLUSDT',
+      ]),
+    ).toEqual(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']);
   });
 });
 

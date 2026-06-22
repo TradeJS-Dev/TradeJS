@@ -108,11 +108,35 @@ export interface DerivativesSymbolContext {
   };
 }
 
+export interface DerivativesTargetDerivedContext {
+  available: boolean;
+  stale: boolean | null;
+  sourceSymbol: string;
+  referenceSymbol: string | null;
+  directionAligned: boolean | null;
+  referenceDirectionAligned: boolean | null;
+  pressure: DerivativesPressure | null;
+  referencePressure: DerivativesPressure | null;
+  riskFlags: DerivativesContextRiskFlag[];
+  oiChangePct1h: number | null;
+  oiAcceleration: number | null;
+  fundingRate: number | null;
+  fundingZScore: number | null;
+  fundingChange1h: number | null;
+  liqSpikeRatio: number | null;
+  liqImbalance: number | null;
+  targetVsPrimaryOiChangePct1hDelta: number | null;
+  targetVsPrimaryFundingZScoreDelta: number | null;
+  targetReferenceConflict: boolean | null;
+}
+
 export interface DerivativesContext extends DerivativesSymbolContext {
   targetSymbol?: string;
   primaryReferenceSymbol?: string;
   referenceSymbols?: string[];
   referenceContexts?: Record<string, DerivativesSymbolContext>;
+  targetContext?: DerivativesSymbolContext;
+  targetDerived?: DerivativesTargetDerivedContext;
 }
 
 export type SpreadRow = {

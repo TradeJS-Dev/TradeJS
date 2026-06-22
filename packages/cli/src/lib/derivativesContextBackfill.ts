@@ -75,6 +75,16 @@ const parseList = (value: unknown) =>
     .map((item) => item.trim().toUpperCase())
     .filter(Boolean);
 
+const parseBooleanFlag = (value: unknown, fallback = false) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
 const normalizeSymbols = (symbols: unknown[]) => [
   ...new Set(
     symbols
@@ -87,9 +97,18 @@ const normalizeSymbols = (symbols: unknown[]) => [
   ),
 ];
 
+export const isDerivativesTargetContextEnabled = () =>
+  parseBooleanFlag(process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED, false);
+
 export const resolveDerivativesContextBackfillSymbols = (
-  _requestedSymbols: string[] = [],
-) => [...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS];
+  requestedSymbols: string[] = [],
+) =>
+  isDerivativesTargetContextEnabled()
+    ? normalizeSymbols([
+        ...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS,
+        ...requestedSymbols,
+      ])
+    : [...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS];
 
 const chunkArray = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -721,7 +740,7 @@ const backfillDerivativesContext = async (
       }),
     0,
   );
-  const allReferenceWindowsCached = intervalWindows.every((window) => {
+  const allBackfillWindowsCached = intervalWindows.every((window) => {
     const edgesBySymbol = edgesByInterval.get(window.interval);
     const coverageKeys = coverageKeysByInterval.get(window.interval);
     const backfillWindows = buildBackfillWindows({
@@ -752,10 +771,10 @@ const backfillDerivativesContext = async (
     );
   });
 
-  if (allReferenceWindowsCached) {
+  if (allBackfillWindowsCached) {
     console.log(
       chalk.gray(
-        `derivatives context backfill: cached referenceSymbols=${symbols.length}, requestedSymbols=${requestedSymbols.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}`,
+        `derivatives context backfill: cached symbols=${symbols.length}, requestedSymbols=${requestedSymbols.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}`,
       ),
     );
 
@@ -793,7 +812,7 @@ const backfillDerivativesContext = async (
   );
   if (!matches.length) {
     throw new Error(
-      'No matched derivatives reference symbols between BTC/ETH and Coinalyze',
+      'No matched derivatives context symbols between requested symbols and Coinalyze',
     );
   }
 
@@ -835,7 +854,7 @@ const backfillDerivativesContext = async (
 
   console.log(
     chalk.cyan(
-      `derivatives context backfill: referenceSymbols=${matches.length}, requestedSymbols=${requestedSymbols.length}, unmatched=${unmatched.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}, testStart=${new Date(safeStartMs).toISOString()}`,
+      `derivatives context backfill: symbols=${matches.length}, requestedSymbols=${requestedSymbols.length}, unmatched=${unmatched.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}, testStart=${new Date(safeStartMs).toISOString()}`,
     ),
   );
 

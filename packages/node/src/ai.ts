@@ -228,7 +228,7 @@ Input payload structure:
   • \`marketContext.relative.cmcIndexes\`: historical daily CoinMarketCap CMC100/CMC20 index values, 24h changes, top constituents, CMC20/CMC100 ratio, and \`indexRegime\`.
   • \`marketContext.relative.referenceTradeFlow\`: BTC/ETH reference trade-flow summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
-  If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
+  If \`baseContext.derivatives\` exists, its top-level \`summary\` and \`intervals\` are the primary BTC/ETH reference Coinalyze context for the time of the signal. \`referenceContexts\` contains the BTCUSDT/ETHUSDT broad-market derivatives views. If \`targetContext\` or \`targetDerived\` exists, those fields are the Coinalyze context for the actual target coin; use them as target-specific positioning evidence, but do not infer target-coin derivatives when they are absent.
   Key patterns:
   • current shared state: prefer \`payload.additionalIndicators.baseContext\`
   • recent historical series: \`payload.indicators\`
@@ -246,9 +246,9 @@ Explicit conflict rules:
 - If the figure or price structure is invalid or doubtful, indicators must not rescue the setup.
 - If strategy-specific helper fields explicitly say the signal is not confirmed yet, lacks margin, or requires waiting, do not overstate quality.
 - If the structure is acceptable but BTC or key indicators noticeably conflict, quality is usually \`<= 3\`.
-- If \`baseContext.derivatives.referenceContexts\` exists, check \`primaryReferenceSymbol\` first, then compare \`BTCUSDT\` and \`ETHUSDT\` as broad-market derivatives context. Do not search for Coinalyze data for \`targetSymbol\` unless \`targetSymbol\` itself is \`BTCUSDT\` or \`ETHUSDT\`.
-- If \`baseContext.derivatives.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
-- If \`baseContext.derivatives.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
+- If \`baseContext.derivatives.referenceContexts\` exists, check \`primaryReferenceSymbol\` first, then compare \`BTCUSDT\` and \`ETHUSDT\` as broad-market derivatives context. If \`targetDerived\` exists, compare it to the primary reference instead of treating reference pressure as the target coin's own pressure.
+- If top-level \`baseContext.derivatives.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as broad-market crowded positioning. If \`targetDerived.riskFlags\` contains the same directional crowding, treat that as target-specific crowded positioning.
+- If top-level \`baseContext.derivatives.summary.directionAligned=false\`, explicitly mention the broad-market derivatives conflict in \`confirmations\` or \`qualityReason\`. If \`targetDerived.directionAligned=false\`, explicitly mention the target-specific derivatives conflict.
 - If \`baseContext.derivatives\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
 - Use \`baseContext.regime.session\` directly as the canonical session/liquidity regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
 - If \`marketContext.execution.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
