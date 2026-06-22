@@ -581,7 +581,15 @@ export interface TrendLineOptions {
   maxLines?: number; // ограничение перебора пар опор (кандидатов)
   range?: number; // окно для локальных экстремумов (в барах)
   epsilon?: number; // допуск как доля цены (0.01 = 1%) — применяется для касаний, фитилей между опорами и close-пробоев ДО offset
-  epsilonOffset?: number; // размер окна в конце (в барах)
+  epsilonOffset?: number; // допуск для capture-пробоя в конце, как доля цены
+  epsilonMode?: 'static' | 'atr'; // static: epsilon как доля цены; atr: epsilon от локального ATR с clamp
+  epsilonAtrPeriod?: number; // период ATR для epsilonMode=atr
+  epsilonAtrMultiplier?: number; // множитель ATR fraction для базового epsilon
+  epsilonOffsetAtrMultiplier?: number; // множитель ATR fraction для capture epsilonOffset
+  epsilonMin?: number; // нижняя граница dynamic epsilon
+  epsilonMax?: number; // верхняя граница dynamic epsilon
+  epsilonOffsetMin?: number; // нижняя граница dynamic epsilonOffset
+  epsilonOffsetMax?: number; // верхняя граница dynamic epsilonOffset
   minTouches?: number; // минимум касаний по телу (с учётом minTouchGap)
   minDistance?: number; // минимум баров между опорами/крайними касаниями
   firstRange?: number; // «сила» первой опоры (окно сильного экстремума)

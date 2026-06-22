@@ -250,4 +250,35 @@ describe('trendLine vs trendLineEngine parity', () => {
     expectSignalsStyleParity('lows', lowsData, options);
     expectSignalsStyleParity('highs', highsData, options);
   });
+
+  it('keeps ATR epsilon mode deterministic across engine flows', () => {
+    const options = {
+      range: 2,
+      firstRange: 2,
+      minTouches: 2,
+      minDistance: 8,
+      minTouchGap: 2,
+      maxTouchGap: 50,
+      offset: 5,
+      capture: true,
+      bestLines: 5,
+      maxLines: 50,
+      maxDistance: 200,
+      epsilon: 0.001,
+      epsilonOffset: 0.001,
+      epsilonMode: 'atr',
+      epsilonAtrPeriod: 5,
+      epsilonAtrMultiplier: 0.15,
+      epsilonOffsetAtrMultiplier: 0.15,
+      epsilonMin: 0.001,
+      epsilonMax: 0.01,
+      epsilonOffsetMin: 0.001,
+      epsilonOffsetMax: 0.01,
+    };
+
+    expectBatchAndStreamingParity('lows', lowsData, options);
+    expectBatchAndStreamingParity('highs', highsData, options);
+    expectSignalsStyleParity('lows', lowsData, options);
+    expectSignalsStyleParity('highs', highsData, options);
+  });
 });

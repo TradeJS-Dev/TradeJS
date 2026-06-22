@@ -39,6 +39,47 @@ const DEFAULTS = TRENDLINE_DEFAULTS;
 const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);
 
+type EpsilonResolver = (barIndex: number) => number;
+
+const normalizePositiveNumber = (value: number, fallback: number) =>
+  Number.isFinite(value) && value > 0 ? value : fallback;
+
+const normalizePositiveInteger = (value: number, fallback: number) =>
+  Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.floor(value))
+    : fallback;
+
+const clampEpsilon = (value: number, min: number, max: number) => {
+  let nextValue = value;
+  if (Number.isFinite(min) && min > 0) nextValue = Math.max(nextValue, min);
+  if (Number.isFinite(max) && max > 0) nextValue = Math.min(nextValue, max);
+  return nextValue;
+};
+
+const createEpsilonResolver = (params: {
+  mode: TrendLineOptions['epsilonMode'];
+  baseEpsilon: number;
+  getAtrFraction: (barIndex: number) => number | undefined;
+  atrMultiplier: number;
+  min: number;
+  max: number;
+}): EpsilonResolver => {
+  const baseEpsilon = normalizePositiveNumber(params.baseEpsilon, 0);
+  if (params.mode !== 'atr') return () => baseEpsilon;
+
+  const atrMultiplier = normalizePositiveNumber(params.atrMultiplier, 1);
+
+  return (barIndex: number) => {
+    const atrFraction = params.getAtrFraction(barIndex);
+    const rawEpsilon =
+      Number.isFinite(atrFraction) && Number(atrFraction) > 0
+        ? Number(atrFraction) * atrMultiplier
+        : baseEpsilon;
+
+    return clampEpsilon(rawEpsilon, params.min, params.max);
+  };
+};
+
 const buildLineEvaluator = (params: {
   t1: number;
   y1: number;
@@ -91,7 +132,7 @@ const collectTouchIndices = (params: {
   startIndex: number;
   endIndex: number;
   evaluateY: (t: number) => number;
-  epsilon: number;
+  epsilonAtIndex: EpsilonResolver;
   minTouchGap: number;
 }): number[] => {
   const {
@@ -100,7 +141,7 @@ const collectTouchIndices = (params: {
     startIndex,
     endIndex,
     evaluateY,
-    epsilon,
+    epsilonAtIndex,
     minTouchGap,
   } = params;
 
@@ -109,7 +150,7 @@ const collectTouchIndices = (params: {
 
   for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
     const lineY = evaluateY(timestampsMs[barIndex]);
-    const tolerance = toleranceAt(lineY, epsilon);
+    const tolerance = toleranceAt(lineY, epsilonAtIndex(barIndex));
     const bodyValue = bodySeriesForTouches[barIndex];
 
     if (Math.abs(bodyValue - lineY) <= tolerance) {
@@ -133,7 +174,7 @@ const hasCloseBreachInRange = (params: {
   startIndex: number;
   endIndex: number;
   evaluateY: (t: number) => number;
-  epsilon: number;
+  epsilonAtIndex: EpsilonResolver;
 }): boolean => {
   const {
     mode,
@@ -142,13 +183,13 @@ const hasCloseBreachInRange = (params: {
     startIndex,
     endIndex,
     evaluateY,
-    epsilon,
+    epsilonAtIndex,
   } = params;
   if (startIndex > endIndex) return false;
 
   for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
     const lineY = evaluateY(timestampsMs[barIndex]);
-    const tolerance = toleranceAt(lineY, epsilon);
+    const tolerance = toleranceAt(lineY, epsilonAtIndex(barIndex));
     const closePrice = closeSeries[barIndex];
 
     if (mode === 'lows') {
@@ -169,6 +210,7 @@ const getBlockIndex = (barIndex: number) => Math.floor(barIndex / BLOCK_SIZE);
 type BlockStats = {
   lowBlockMins: number[];
   highBlockMaxs: number[];
+  epsilonBlockMins: number[];
 };
 
 const ensureBlockValue = (
@@ -184,11 +226,17 @@ const updateBlockStats = (
   barIndex: number,
   lowValue: number,
   highValue: number,
+  epsilonValue: number,
 ) => {
   const blockIndex = getBlockIndex(barIndex);
 
   ensureBlockValue(stats.lowBlockMins, blockIndex, Number.POSITIVE_INFINITY);
   ensureBlockValue(stats.highBlockMaxs, blockIndex, Number.NEGATIVE_INFINITY);
+  ensureBlockValue(
+    stats.epsilonBlockMins,
+    blockIndex,
+    Number.POSITIVE_INFINITY,
+  );
 
   stats.lowBlockMins[blockIndex] = Math.min(
     stats.lowBlockMins[blockIndex],
@@ -197,6 +245,10 @@ const updateBlockStats = (
   stats.highBlockMaxs[blockIndex] = Math.max(
     stats.highBlockMaxs[blockIndex],
     highValue,
+  );
+  stats.epsilonBlockMins[blockIndex] = Math.min(
+    stats.epsilonBlockMins[blockIndex],
+    epsilonValue,
   );
 };
 
@@ -208,8 +260,9 @@ const hasWickBreachOnSegmentFast = (params: {
   startIndex: number;
   endIndex: number;
   evaluateY: (t: number) => number;
-  epsilon: number;
+  epsilonAtIndex: EpsilonResolver;
   blockStats: BlockStats;
+  useDynamicEpsilon: boolean;
 }): boolean => {
   const {
     mode,
@@ -219,8 +272,9 @@ const hasWickBreachOnSegmentFast = (params: {
     startIndex,
     endIndex,
     evaluateY,
-    epsilon,
+    epsilonAtIndex,
     blockStats,
+    useDynamicEpsilon,
   } = params;
 
   if (startIndex > endIndex) return false;
@@ -228,7 +282,7 @@ const hasWickBreachOnSegmentFast = (params: {
   const scanBarsPrecisely = (fromIndex: number, toIndex: number) => {
     for (let barIndex = fromIndex; barIndex <= toIndex; barIndex++) {
       const lineY = evaluateY(timestampsMs[barIndex]);
-      const tolerance = toleranceAt(lineY, epsilon);
+      const tolerance = toleranceAt(lineY, epsilonAtIndex(barIndex));
 
       if (mode === 'lows') {
         if (lowSeries[barIndex] < lineY - tolerance) return true;
@@ -267,19 +321,61 @@ const hasWickBreachOnSegmentFast = (params: {
     const startLineY = evaluateY(startTimestamp);
     const endLineY = evaluateY(endTimestamp);
 
+    // Dynamic epsilon is not linear inside the block; use a conservative bound
+    // and fall back to exact scanning when the shortcut cannot prove safety.
     if (mode === 'lows') {
-      const startThreshold = startLineY - toleranceAt(startLineY, epsilon);
-      const endThreshold = endLineY - toleranceAt(endLineY, epsilon);
-      const maxThresholdInBlock = Math.max(startThreshold, endThreshold);
+      let maxThresholdInBlock: number;
+
+      if (useDynamicEpsilon) {
+        const blockEpsilonMin = blockStats.epsilonBlockMins[blockIndex];
+        if (
+          !Number.isFinite(blockEpsilonMin) ||
+          blockEpsilonMin < 0 ||
+          startLineY <= 0 ||
+          endLineY <= 0
+        ) {
+          if (scanBarsPrecisely(blockStartIndex, blockEndIndex)) return true;
+          continue;
+        }
+        const maxLineYInBlock = Math.max(startLineY, endLineY);
+        maxThresholdInBlock =
+          maxLineYInBlock - toleranceAt(maxLineYInBlock, blockEpsilonMin);
+      } else {
+        const startThreshold =
+          startLineY - toleranceAt(startLineY, epsilonAtIndex(blockStartIndex));
+        const endThreshold =
+          endLineY - toleranceAt(endLineY, epsilonAtIndex(blockEndIndex));
+        maxThresholdInBlock = Math.max(startThreshold, endThreshold);
+      }
 
       const blockLowMin = blockStats.lowBlockMins[blockIndex];
       if (blockLowMin >= maxThresholdInBlock) continue;
 
       if (scanBarsPrecisely(blockStartIndex, blockEndIndex)) return true;
     } else {
-      const startThreshold = startLineY + toleranceAt(startLineY, epsilon);
-      const endThreshold = endLineY + toleranceAt(endLineY, epsilon);
-      const minThresholdInBlock = Math.min(startThreshold, endThreshold);
+      let minThresholdInBlock: number;
+
+      if (useDynamicEpsilon) {
+        const blockEpsilonMin = blockStats.epsilonBlockMins[blockIndex];
+        if (
+          !Number.isFinite(blockEpsilonMin) ||
+          blockEpsilonMin < 0 ||
+          startLineY <= 0 ||
+          endLineY <= 0
+        ) {
+          if (scanBarsPrecisely(blockStartIndex, blockEndIndex)) return true;
+          continue;
+        }
+        const minLineYInBlock = Math.min(startLineY, endLineY);
+        minThresholdInBlock =
+          minLineYInBlock + toleranceAt(minLineYInBlock, blockEpsilonMin);
+      } else {
+        const startThreshold =
+          startLineY + toleranceAt(startLineY, epsilonAtIndex(blockStartIndex));
+        const endThreshold =
+          endLineY + toleranceAt(endLineY, epsilonAtIndex(blockEndIndex));
+        minThresholdInBlock = Math.min(startThreshold, endThreshold);
+      }
 
       const blockHighMax = blockStats.highBlockMaxs[blockIndex];
       if (blockHighMax <= minThresholdInBlock) continue;
@@ -304,6 +400,19 @@ export const createTrendlineEngine = (
     firstRange: options.firstRange ?? DEFAULTS.firstRange,
     epsilon: options.epsilon ?? DEFAULTS.epsilon,
     epsilonOffset: options.epsilonOffset ?? DEFAULTS.epsilonOffset,
+    epsilonMode: options.epsilonMode ?? DEFAULTS.epsilonMode,
+    epsilonAtrPeriod: normalizePositiveInteger(
+      options.epsilonAtrPeriod ?? DEFAULTS.epsilonAtrPeriod,
+      DEFAULTS.epsilonAtrPeriod,
+    ),
+    epsilonAtrMultiplier:
+      options.epsilonAtrMultiplier ?? DEFAULTS.epsilonAtrMultiplier,
+    epsilonOffsetAtrMultiplier:
+      options.epsilonOffsetAtrMultiplier ?? DEFAULTS.epsilonOffsetAtrMultiplier,
+    epsilonMin: options.epsilonMin ?? DEFAULTS.epsilonMin,
+    epsilonMax: options.epsilonMax ?? DEFAULTS.epsilonMax,
+    epsilonOffsetMin: options.epsilonOffsetMin ?? DEFAULTS.epsilonOffsetMin,
+    epsilonOffsetMax: options.epsilonOffsetMax ?? DEFAULTS.epsilonOffsetMax,
     minTouches: options.minTouches ?? DEFAULTS.minTouches,
     minDistance: options.minDistance ?? DEFAULTS.minDistance,
     minTouchGap: options.minTouchGap ?? DEFAULTS.minTouchGap,
@@ -319,6 +428,27 @@ export const createTrendlineEngine = (
   let lowSeries: number[] = [];
   let highSeries: number[] = [];
   let shadowSeries: number[] = [];
+  let trueRangeSeries: number[] = [];
+  let atrFractionSeries: number[] = [];
+  let atrRollingSum = 0;
+
+  const useDynamicEpsilon = opts.epsilonMode === 'atr';
+  const epsilonAtIndex = createEpsilonResolver({
+    mode: opts.epsilonMode,
+    baseEpsilon: opts.epsilon,
+    getAtrFraction: (barIndex) => atrFractionSeries[barIndex],
+    atrMultiplier: opts.epsilonAtrMultiplier,
+    min: opts.epsilonMin,
+    max: opts.epsilonMax,
+  });
+  const epsilonOffsetAtIndex = createEpsilonResolver({
+    mode: opts.epsilonMode,
+    baseEpsilon: opts.epsilonOffset,
+    getAtrFraction: (barIndex) => atrFractionSeries[barIndex],
+    atrMultiplier: opts.epsilonOffsetAtrMultiplier,
+    min: opts.epsilonOffsetMin,
+    max: opts.epsilonOffsetMax,
+  });
 
   const firstRangeWindowSize = 2 * opts.firstRange + 1;
   let lowFirstDeque: number[] = [];
@@ -326,7 +456,11 @@ export const createTrendlineEngine = (
   let lowFirstCenter: number[] = [];
   let highFirstCenter: number[] = [];
 
-  const blockStats: BlockStats = { lowBlockMins: [], highBlockMaxs: [] };
+  const blockStats: BlockStats = {
+    lowBlockMins: [],
+    highBlockMaxs: [],
+    epsilonBlockMins: [],
+  };
 
   let extremaDeque: number[] = [];
   let rawExtremaPoints: Point[] = [];
@@ -345,9 +479,13 @@ export const createTrendlineEngine = (
     lowSeries = [];
     highSeries = [];
     shadowSeries = [];
+    trueRangeSeries = [];
+    atrFractionSeries = [];
+    atrRollingSum = 0;
 
     blockStats.lowBlockMins = [];
     blockStats.highBlockMaxs = [];
+    blockStats.epsilonBlockMins = [];
 
     extremaDeque = [];
     rawExtremaPoints = [];
@@ -473,7 +611,7 @@ export const createTrendlineEngine = (
       startIndex: leftAnchor.x,
       endIndex: rightAnchor.x,
       evaluateY,
-      epsilon: opts.epsilon,
+      epsilonAtIndex,
       minTouchGap: opts.minTouchGap,
     });
 
@@ -495,8 +633,9 @@ export const createTrendlineEngine = (
       startIndex: leftAnchor.x,
       endIndex: rightAnchor.x,
       evaluateY,
-      epsilon: opts.epsilon,
+      epsilonAtIndex,
       blockStats,
+      useDynamicEpsilon,
     });
 
     const entry: PairCache = {
@@ -616,7 +755,7 @@ export const createTrendlineEngine = (
             startIndex: closeBreachStartIndex,
             endIndex: closeBreachEndIndex,
             evaluateY: cached.evaluateY,
-            epsilon: opts.epsilon,
+            epsilonAtIndex,
           });
 
           if (closeBreached) continue;
@@ -637,7 +776,10 @@ export const createTrendlineEngine = (
             barIndex++
           ) {
             const lineY = cached.evaluateY(timestampsMs[barIndex]);
-            const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
+            const offsetTolerance = toleranceAt(
+              lineY,
+              epsilonOffsetAtIndex(barIndex),
+            );
 
             const hit =
               opts.mode === 'lows'
@@ -728,7 +870,7 @@ export const createTrendlineEngine = (
 
     const timestamp = timestampsMs[checkIndex];
     const lineY = line.evaluateY(timestamp);
-    const tolerance = toleranceAt(lineY, opts.epsilon);
+    const tolerance = toleranceAt(lineY, epsilonAtIndex(checkIndex));
     const closePrice = closeSeries[checkIndex];
 
     if (opts.mode === 'lows') {
@@ -754,7 +896,10 @@ export const createTrendlineEngine = (
     if (lastBarIndex >= windowStartIndex) {
       const timestamp = timestampsMs[lastBarIndex];
       const lineY = line.evaluateY(timestamp);
-      const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
+      const offsetTolerance = toleranceAt(
+        lineY,
+        epsilonOffsetAtIndex(lastBarIndex),
+      );
 
       const hit =
         opts.mode === 'lows'
@@ -873,7 +1018,38 @@ export const createTrendlineEngine = (
     const shadowValue = opts.mode === 'lows' ? candle.low : candle.high;
     shadowSeries.push(shadowValue);
 
-    updateBlockStats(blockStats, barIndex, candle.low, candle.high);
+    const previousClose =
+      barIndex > 0 ? closeSeries[barIndex - 1] : candle.close;
+    const trueRange = Math.max(
+      candle.high - candle.low,
+      Math.abs(candle.high - previousClose),
+      Math.abs(candle.low - previousClose),
+    );
+    trueRangeSeries.push(trueRange);
+    atrRollingSum += trueRange;
+    if (trueRangeSeries.length > opts.epsilonAtrPeriod) {
+      atrRollingSum -=
+        trueRangeSeries[trueRangeSeries.length - opts.epsilonAtrPeriod - 1];
+    }
+
+    const atrWindowSize = Math.min(
+      opts.epsilonAtrPeriod,
+      trueRangeSeries.length,
+    );
+    const atrValue = atrWindowSize > 0 ? atrRollingSum / atrWindowSize : 0;
+    atrFractionSeries.push(
+      Number.isFinite(atrValue) && candle.close > 0
+        ? atrValue / candle.close
+        : 0,
+    );
+
+    updateBlockStats(
+      blockStats,
+      barIndex,
+      candle.low,
+      candle.high,
+      epsilonAtIndex(barIndex),
+    );
 
     updateFirstRangeExtrema(barIndex);
     updateExtremaDeque(barIndex);
