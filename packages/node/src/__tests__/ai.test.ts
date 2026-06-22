@@ -1509,9 +1509,11 @@ const makeFailedReverseBounceLongSignal = () => {
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  const originalProjectCwd = process.env.PROJECT_CWD;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.PROJECT_CWD = '/tmp/tradejs-ai-test';
     resetAiRuntimeCache();
     resetStrategyRegistryCache();
     registerStrategyEntries(strategyEntries);
@@ -1525,6 +1527,11 @@ describe('ai helpers', () => {
 
   afterAll(() => {
     resetStrategyRegistryCache();
+    if (originalProjectCwd === undefined) {
+      delete process.env.PROJECT_CWD;
+    } else {
+      process.env.PROJECT_CWD = originalProjectCwd;
+    }
     errorSpy.mockRestore();
     logSpy.mockRestore();
   });
