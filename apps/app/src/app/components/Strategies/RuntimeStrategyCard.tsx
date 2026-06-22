@@ -2150,10 +2150,14 @@ export const RuntimeStrategyCard = ({
         />
         <StatItem
           stat={strategy.stat}
+          id="maxConsecutiveWins"
+          title="Max Gross Streak"
+        />
+        <StatItem
+          stat={strategy.stat}
           id="maxConsecutiveLosses"
           title="Max Loss Streak"
         />
-        <StatItem stat={strategy.stat} id="exposure" title="Exposure" />
       </SimpleGrid>
     </Box>
   );

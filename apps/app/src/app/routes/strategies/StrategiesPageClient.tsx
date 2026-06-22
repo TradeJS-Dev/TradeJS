@@ -24,12 +24,18 @@ import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
 type StrategyMode = 'runtime' | 'replay' | 'ai' | 'backtest';
+type RuntimeStatusFilter = 'all' | 'enabled' | 'disabled';
 
 const MODE_ITEMS = [
   { label: 'Runtime', value: 'runtime' },
   { label: 'Replay', value: 'replay' },
   { label: 'AI', value: 'ai' },
   { label: 'Backtest', value: 'backtest' },
+];
+const RUNTIME_STATUS_ITEMS = [
+  { label: 'All', value: 'all' },
+  { label: 'Enabled', value: 'enabled' },
+  { label: 'Disabled', value: 'disabled' },
 ];
 const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
@@ -61,6 +67,8 @@ const RuntimeStrategiesContent = () => {
   const [mode, setMode] = useState<StrategyMode>(routeMode);
   const [hours, setHours] = useState('168');
   const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
+  const [runtimeStatusFilter, setRuntimeStatusFilter] =
+    useState<RuntimeStatusFilter>('all');
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [pendingSnapshotDelete, setPendingSnapshotDelete] =
@@ -84,6 +92,7 @@ const RuntimeStrategiesContent = () => {
     const handlePopState = () => {
       setMode(modeFromPathname(window.location.pathname));
       setSelectedStrategy(ALL_STRATEGIES);
+      setRuntimeStatusFilter('all');
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -95,6 +104,7 @@ const RuntimeStrategiesContent = () => {
 
     setMode(nextMode);
     setSelectedStrategy(ALL_STRATEGIES);
+    setRuntimeStatusFilter('all');
 
     window.history.pushState(null, '', `/routes/strategies/${nextMode}`);
   }, []);
@@ -162,14 +172,25 @@ const RuntimeStrategiesContent = () => {
   const filteredRuntimeStrategies = useMemo(() => {
     const strategies = runtimeData?.strategies ?? [];
 
-    if (selectedStrategy === ALL_STRATEGIES) {
-      return strategies;
-    }
+    return strategies.filter((strategy) => {
+      if (
+        selectedStrategy !== ALL_STRATEGIES &&
+        strategy.strategyName !== selectedStrategy
+      ) {
+        return false;
+      }
 
-    return strategies.filter(
-      (strategy) => strategy.strategyName === selectedStrategy,
-    );
-  }, [runtimeData?.strategies, selectedStrategy]);
+      if (runtimeStatusFilter === 'enabled') {
+        return strategy.enabled;
+      }
+
+      if (runtimeStatusFilter === 'disabled') {
+        return !strategy.enabled;
+      }
+
+      return true;
+    });
+  }, [runtimeData?.strategies, runtimeStatusFilter, selectedStrategy]);
 
   const filteredSnapshotStrategies = useMemo(() => {
     const strategies = snapshotData?.strategies ?? [];
@@ -416,6 +437,20 @@ const RuntimeStrategiesContent = () => {
                   onChange={(value) => setHours(value[0] || '168')}
                   items={HOURS_OPTIONS}
                   width="180px"
+                />
+              ) : null}
+              {mode === 'runtime' ? (
+                <Segment
+                  defaultValue="all"
+                  value={runtimeStatusFilter}
+                  onChange={(value) =>
+                    setRuntimeStatusFilter(
+                      value === 'enabled' || value === 'disabled'
+                        ? value
+                        : 'all',
+                    )
+                  }
+                  items={RUNTIME_STATUS_ITEMS}
                 />
               ) : null}
               {runtimeSourceWarning ? (

@@ -17,6 +17,7 @@ import {
 import { type ReactNode, useMemo, useState } from 'react';
 import {
   calculateAdvancedTradeMetrics,
+  getFormatted,
   type AdvancedTradeInput,
 } from '@tradejs/core/backtest';
 import type {
@@ -24,6 +25,8 @@ import type {
   StrategyChartMetric,
   StrategyChartOrder,
   StrategyChartSnapshot,
+  TestStat,
+  TestThresholdsKey,
 } from '@tradejs/types';
 import {
   formatCompactNumber,
@@ -47,6 +50,19 @@ const SNAPSHOT_ORDER_ROW_HEIGHT = 318;
 const DIRECTION_DETAIL_PREFIX = 'direction:';
 const SYMBOL_DETAIL_PREFIX = 'symbol:';
 const AI_STAT_DIRECTIONS = ['LONG', 'SHORT'] as const;
+const SNAPSHOT_SUMMARY_METRICS: {
+  id: TestThresholdsKey;
+  label: string;
+}[] = [
+  { id: 'netProfit', label: 'P&L' },
+  { id: 'minAmount', label: 'Min Amount' },
+  { id: 'maxDrawdown', label: 'Drawdown' },
+  { id: 'orders', label: 'Orders' },
+  { id: 'winRate', label: 'Win Rate' },
+  { id: 'riskRewardRatio', label: 'Risk Ratio' },
+  { id: 'maxConsecutiveWins', label: 'Max Gross Streak' },
+  { id: 'maxConsecutiveLosses', label: 'Max Loss Streak' },
+];
 
 type AiStatDirection = (typeof AI_STAT_DIRECTIONS)[number];
 
@@ -165,7 +181,7 @@ const getMetricColor = (tone: StrategyChartMetric['tone']) => {
   }
 };
 
-const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
+const calculateMaxDrawdownValue = (orderLog: Array<[number, number]>) => {
   if (!orderLog.length) {
     return null;
   }
@@ -187,7 +203,14 @@ const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
     maxDrawdownPercent = Math.max(maxDrawdownPercent, drawdownPercent);
   }
 
-  return `${maxDrawdownPercent.toFixed(1)}%`;
+  return maxDrawdownPercent;
+};
+
+const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
+  const maxDrawdownPercent = calculateMaxDrawdownValue(orderLog);
+  return maxDrawdownPercent == null
+    ? null
+    : `${maxDrawdownPercent.toFixed(1)}%`;
 };
 
 const getSnapshotStepPnl = (
@@ -204,8 +227,12 @@ const getSnapshotStepPnl = (
   return current[1] - previous[1];
 };
 
-const calculateMaxLossStreak = (
+const asFiniteNumber = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const calculateMaxPnlStreak = (
   orderLog: StrategyChartSnapshot['orderLog'],
+  isStreakPnl: (pnl: number) => boolean,
 ) => {
   let currentStreak = 0;
   let maxStreak = 0;
@@ -216,7 +243,7 @@ const calculateMaxLossStreak = (
       continue;
     }
 
-    if (pnl < 0) {
+    if (isStreakPnl(pnl)) {
       currentStreak += 1;
       maxStreak = Math.max(maxStreak, currentStreak);
       continue;
@@ -226,6 +253,110 @@ const calculateMaxLossStreak = (
   }
 
   return maxStreak;
+};
+
+const calculateMaxGrossStreak = (orderLog: StrategyChartSnapshot['orderLog']) =>
+  calculateMaxPnlStreak(orderLog, (pnl) => pnl > 0);
+
+const calculateMaxLossStreak = (orderLog: StrategyChartSnapshot['orderLog']) =>
+  calculateMaxPnlStreak(orderLog, (pnl) => pnl < 0);
+
+const getSnapshotTradePnls = (snapshot: StrategyChartSnapshot) => {
+  const orderPnls = snapshot.orders
+    .map((order) => asFiniteNumber(order.pnl))
+    .filter((pnl): pnl is number => pnl != null);
+
+  if (orderPnls.length) {
+    return orderPnls;
+  }
+
+  return snapshot.orderLog
+    .map((_, index) =>
+      index === 0
+        ? null
+        : asFiniteNumber(getSnapshotStepPnl(snapshot.orderLog, index)),
+    )
+    .filter((pnl): pnl is number => pnl != null);
+};
+
+const calculateSnapshotRiskRewardRatio = (pnls: number[]) => {
+  const wins = pnls.filter((pnl) => pnl > 0);
+  const losses = pnls.filter((pnl) => pnl < 0);
+
+  if (!wins.length || !losses.length) {
+    return null;
+  }
+
+  const avgWin = wins.reduce((sum, pnl) => sum + pnl, 0) / wins.length;
+  const avgLossAbs = Math.abs(
+    losses.reduce((sum, pnl) => sum + pnl, 0) / losses.length,
+  );
+
+  return avgLossAbs > 0 ? avgWin / avgLossAbs : null;
+};
+
+const buildSnapshotSummaryStat = (
+  snapshot: StrategyChartSnapshot,
+): Partial<TestStat> => {
+  const amounts = snapshot.orderLog
+    .map(([, amount]) => asFiniteNumber(amount))
+    .filter((amount): amount is number => amount != null);
+  const firstAmount = amounts[0] ?? null;
+  const lastAmount = amounts.at(-1) ?? null;
+  const pnls = getSnapshotTradePnls(snapshot);
+  const wins = pnls.filter((pnl) => pnl > 0).length;
+  const orders =
+    asFiniteNumber(snapshot.stat?.orders) ??
+    (snapshot.orders.length || pnls.length);
+  const netProfit =
+    asFiniteNumber(snapshot.stat?.netProfit) ??
+    (firstAmount != null && lastAmount != null
+      ? lastAmount - firstAmount
+      : pnls.reduce((sum, pnl) => sum + pnl, 0));
+  const minAmount =
+    asFiniteNumber(snapshot.stat?.minAmount) ??
+    (amounts.length ? Math.min(...amounts) : null);
+  const maxDrawdown =
+    asFiniteNumber(snapshot.stat?.maxDrawdown) ??
+    calculateMaxDrawdownValue(snapshot.orderLog);
+  const winRate =
+    asFiniteNumber(snapshot.stat?.winRate) ??
+    (orders > 0 ? (wins / orders) * 100 : 0);
+  const riskRewardRatio =
+    asFiniteNumber(snapshot.stat?.riskRewardRatio) ??
+    calculateSnapshotRiskRewardRatio(pnls);
+  const maxConsecutiveWins =
+    asFiniteNumber(snapshot.stat?.maxConsecutiveWins) ??
+    calculateMaxGrossStreak(snapshot.orderLog);
+  const maxConsecutiveLosses =
+    asFiniteNumber(snapshot.stat?.maxConsecutiveLosses) ??
+    calculateMaxLossStreak(snapshot.orderLog);
+
+  return {
+    netProfit,
+    minAmount: minAmount ?? undefined,
+    maxDrawdown: maxDrawdown ?? undefined,
+    orders,
+    winRate,
+    riskRewardRatio,
+    maxConsecutiveWins,
+    maxConsecutiveLosses,
+  };
+};
+
+const buildSnapshotSummaryMetrics = (snapshot: StrategyChartSnapshot) => {
+  const stat = buildSnapshotSummaryStat(snapshot);
+
+  return SNAPSHOT_SUMMARY_METRICS.map(({ id, label }) => {
+    const { formatted, level } = getFormatted(stat, id);
+
+    return {
+      id,
+      label,
+      value: formatted,
+      tone: level,
+    };
+  });
 };
 
 const resolveTradingSession = (hour: number): TradingSession => {
@@ -1958,7 +2089,11 @@ export const StrategySnapshotCard = ({
     mode === 'ai'
       ? snapshot.subtitle?.replace(/^q\d+\+\s*(?:·\s*)?/i, '').trim()
       : snapshot.subtitle;
-  const metrics =
+  const metrics = useMemo(
+    () => buildSnapshotSummaryMetrics(snapshot),
+    [snapshot],
+  );
+  const drawerBaseMetrics =
     mode === 'ai'
       ? snapshot.metrics
           .filter((metric) => metric.id !== 'pnl')
@@ -1982,7 +2117,7 @@ export const StrategySnapshotCard = ({
     () =>
       mode === 'ai'
         ? sortAiDrawerMetrics([
-            ...metrics,
+            ...drawerBaseMetrics,
             {
               id: 'maxLossStreak',
               label: 'Max loss streak',
@@ -1991,8 +2126,8 @@ export const StrategySnapshotCard = ({
                 maxLossStreak > 0 ? ('warning' as const) : ('success' as const),
             },
           ])
-        : metrics,
-    [maxLossStreak, metrics, mode],
+        : drawerBaseMetrics,
+    [drawerBaseMetrics, maxLossStreak, mode],
   );
   const advancedMetrics = useMemo(() => {
     const firstPoint = snapshot.orderLog[0];
