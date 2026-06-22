@@ -807,6 +807,7 @@ export type BaseGateFeatureConfirmation =
   | 'cmc_eth_btc_aligned'
   | 'cmc_exchange_liquidity_aligned'
   | 'cmc_fear_greed_aligned'
+  | 'cmc_index_aligned'
   | 'target_vs_btc_aligned'
   | 'target_vs_eth_aligned'
   | 'btc_alt_regime_aligned'
@@ -825,6 +826,7 @@ export type BaseGateFeatureConflict =
   | 'cmc_eth_btc_against'
   | 'cmc_exchange_liquidity_against'
   | 'cmc_fear_greed_against'
+  | 'cmc_index_against'
   | 'target_vs_btc_against'
   | 'target_vs_eth_against'
   | 'btc_alt_regime_against'
@@ -963,6 +965,12 @@ export interface BaseContextGateFeatures {
     cmcFearGreedRegime: CmcFearGreedRegime;
     cmcFearGreedAligned: boolean | null;
     cmcFearGreedStale: boolean | null;
+    cmcIndexRegime: NonNullable<
+      BaseRelativeContext['cmcIndexes']
+    >['indexRegime'];
+    cmcIndexAligned: boolean | null;
+    cmcIndexStale: boolean | null;
+    cmc20ToCmc100RatioChange24hPct: number | null;
     targetVsBtcRatioReturn24h: number | null;
     targetVsBtcAlpha24h: number | null;
     targetVsBtcBeta20: number | null;

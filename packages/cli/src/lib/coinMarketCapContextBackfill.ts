@@ -109,6 +109,9 @@ const isExchangeLiquidityBackfillEnabled = () =>
 const isFearGreedBackfillEnabled = () =>
   parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_ENABLED, true);
 
+const isVerboseRequestLoggingEnabled = () =>
+  parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_VERBOSE_REQUESTS, false);
+
 const getFearGreedPageSize = () =>
   asInt(process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_PAGE_SIZE, 500);
 
@@ -374,6 +377,76 @@ const formatSourceStatus = ({
   coverage: string;
 }) => `${name}=${status}${rows == null ? '' : ` rows=${rows}`} ${coverage}`;
 
+type CoinMarketCapFetchStats = {
+  requests: number;
+  totalCredits: number;
+  byPath: Map<string, { requests: number; credits: number }>;
+};
+
+const createCoinMarketCapFetchStats = (): CoinMarketCapFetchStats => ({
+  requests: 0,
+  totalCredits: 0,
+  byPath: new Map(),
+});
+
+const getCoinMarketCapPathLabel = (path: string) => {
+  if (path.includes('global-metrics')) return 'global';
+  if (path.includes('cryptocurrency/quotes')) return 'reference';
+  if (path.includes('exchange/quotes')) return 'exchangeLiquidity';
+  if (path.includes('fear-and-greed')) return 'fearGreed';
+  if (path.includes('cmc100')) return 'cmc100';
+  if (path.includes('cmc20')) return 'cmc20';
+  return path;
+};
+
+const recordCoinMarketCapFetchStats = (
+  stats: CoinMarketCapFetchStats | undefined,
+  path: string,
+  creditCount: number | null,
+) => {
+  if (!stats) return;
+  const existing = stats.byPath.get(path) ?? { requests: 0, credits: 0 };
+  existing.requests += 1;
+  existing.credits += creditCount ?? 0;
+  stats.requests += 1;
+  stats.totalCredits += creditCount ?? 0;
+  stats.byPath.set(path, existing);
+};
+
+const formatCoinMarketCapFetchStats = (stats: CoinMarketCapFetchStats) => {
+  const byPath = [...stats.byPath.entries()]
+    .map(
+      ([path, item]) =>
+        `${getCoinMarketCapPathLabel(path)}=${item.requests}req/${item.credits}cr`,
+    )
+    .join(' ');
+  return `apiRequests=${stats.requests} apiCredits=${stats.totalCredits}${byPath ? ` ${byPath}` : ''}`;
+};
+
+const formatRowTimeRange = (rows: Array<{ ts: Date }>) => {
+  if (!rows.length) return 'range=none';
+  const times = rows
+    .map((row) => row.ts.getTime())
+    .filter((value) => Number.isFinite(value));
+  if (!times.length) return 'range=none';
+  return `range=${new Date(Math.min(...times)).toISOString()}..${new Date(
+    Math.max(...times),
+  ).toISOString()}`;
+};
+
+const logBackfillSourceDone = (params: {
+  name: string;
+  status: SourceBackfillStatus;
+  rows: number;
+  details?: string;
+}) => {
+  console.log(
+    chalk.gray(
+      `coinmarketcap context source done: ${params.name}=${params.status} rows=${params.rows}${params.details ? ` ${params.details}` : ''}`,
+    ),
+  );
+};
+
 const markBackfillCoverage = (
   rows: Array<{
     source: string;
@@ -389,6 +462,7 @@ const coinMarketCapFetch = async (params: {
   path: string;
   apiKey: string;
   searchParams: Record<string, string>;
+  stats?: CoinMarketCapFetchStats;
 }) => {
   const url = new URL(`${getBaseUrl()}${params.path}`);
   for (const [key, value] of Object.entries(params.searchParams)) {
@@ -417,7 +491,8 @@ const coinMarketCapFetch = async (params: {
       const creditCount = toFiniteNumberOrNull(
         getRecord(getRecord(payload).status).credit_count,
       );
-      if (creditCount != null) {
+      recordCoinMarketCapFetchStats(params.stats, params.path, creditCount);
+      if (creditCount != null && isVerboseRequestLoggingEnabled()) {
         console.log(
           chalk.gray(`coinmarketcap ${params.path}: credits=${creditCount}`),
         );
@@ -448,18 +523,28 @@ const fetchCoinMarketCapIndexRows = async (params: {
   index: (typeof CMC_INDEXES)[number];
   fromMs: number;
   toMs: number;
+  stats?: CoinMarketCapFetchStats;
 }) => {
   const rows: MarketCmcIndexContextRow[] = [];
   const maxChunkDays = 9;
+  const totalChunks = Math.max(
+    1,
+    Math.ceil(
+      (params.toMs - params.fromMs + DAY_MS) / ((maxChunkDays + 1) * DAY_MS),
+    ),
+  );
+  let chunk = 0;
   for (
     let cursorMs = params.fromMs;
     cursorMs <= params.toMs;
     cursorMs += (maxChunkDays + 1) * DAY_MS
   ) {
+    chunk += 1;
     const chunkEndMs = Math.min(params.toMs, cursorMs + maxChunkDays * DAY_MS);
     const payload = await coinMarketCapFetch({
       path: params.index.path,
       apiKey: params.apiKey,
+      stats: params.stats,
       searchParams: {
         time_start: new Date(cursorMs).toISOString(),
         time_end: new Date(chunkEndMs).toISOString(),
@@ -469,8 +554,15 @@ const fetchCoinMarketCapIndexRows = async (params: {
     rows.push(
       ...coinMarketCapIndexPayloadToRows(payload, params.index.slug, '1d'),
     );
+    if (chunk === 1 || chunk === totalChunks || chunk % 25 === 0) {
+      console.log(
+        chalk.gray(
+          `coinmarketcap index backfill progress: ${params.index.slug} chunk=${chunk}/${totalChunks} rows=${rows.length} chunkRange=${new Date(cursorMs).toISOString()}..${new Date(chunkEndMs).toISOString()}`,
+        ),
+      );
+    }
   }
-  return rows;
+  return { rows, chunks: chunk };
 };
 
 export const coinMarketCapGlobalPayloadToRows = (
@@ -1102,9 +1194,19 @@ export const backfillCoinMarketCapContext = async (
   let exchangeLiquidityRows = 0;
   let fearGreedRows = 0;
   let indexRows = 0;
+  const fetchStats = createCoinMarketCapFetchStats();
+  const pendingSources = [
+    !globalDailyReady ? 'global' : null,
+    !referencesDailyReady ? 'reference' : null,
+    exchangeLiquidityEnabled && !exchangeLiquidityReady
+      ? 'exchangeLiquidity'
+      : null,
+    fearGreedEnabled && !fearGreedReady ? 'fearGreed' : null,
+    !indexesReady ? 'indexes' : null,
+  ].filter((source): source is string => source != null);
   console.log(
     chalk.cyan(
-      `coinmarketcap context backfill: window=${new Date(fromMs).toISOString()}..${new Date(toMs).toISOString()}`,
+      `coinmarketcap context backfill: window=${new Date(fromMs).toISOString()}..${new Date(toMs).toISOString()} days=${Math.floor((toMs - fromMs) / DAY_MS) + 1} fetch=${pendingSources.join(',')}`,
     ),
   );
 
@@ -1112,6 +1214,7 @@ export const backfillCoinMarketCapContext = async (
     const payload = await coinMarketCapFetch({
       path: '/v1/global-metrics/quotes/historical',
       apiKey,
+      stats: fetchStats,
       searchParams: {
         time_start: toIsoDate(fromMs),
         time_end: toIsoDate(toMs),
@@ -1133,12 +1236,19 @@ export const backfillCoinMarketCapContext = async (
     ]);
     globalRows += rows.length;
     globalStatus = 'fetched';
+    logBackfillSourceDone({
+      name: 'global',
+      status: globalStatus,
+      rows: rows.length,
+      details: formatRowTimeRange(rows),
+    });
   }
 
   if (!referencesDailyReady) {
     const payload = await coinMarketCapFetch({
       path: '/v3/cryptocurrency/quotes/historical',
       apiKey,
+      stats: fetchStats,
       searchParams: {
         id: REFERENCE_ASSETS.map((item) => item.cmcId).join(','),
         time_start: toIsoDate(fromMs),
@@ -1161,12 +1271,22 @@ export const backfillCoinMarketCapContext = async (
     );
     referenceRows += rows.length;
     referenceStatus = 'fetched';
+    logBackfillSourceDone({
+      name: 'reference',
+      status: referenceStatus,
+      rows: rows.length,
+      details: `${REFERENCE_ASSETS.map(
+        (asset) =>
+          `${asset.symbol}:${rows.filter((row) => row.symbol === asset.symbol).length}`,
+      ).join(' ')} ${formatRowTimeRange(rows)}`,
+    });
   }
 
   if (exchangeLiquidityEnabled && !exchangeLiquidityReady) {
     const payload = await coinMarketCapFetch({
       path: '/v1/exchange/quotes/historical',
       apiKey,
+      stats: fetchStats,
       searchParams: {
         slug: getExchangeSlugs().join(','),
         time_start: toIsoDate(fromMs),
@@ -1192,20 +1312,29 @@ export const backfillCoinMarketCapContext = async (
     ]);
     exchangeLiquidityRows = rows.length;
     exchangeLiquidityStatus = 'fetched';
+    logBackfillSourceDone({
+      name: 'exchangeLiquidity',
+      status: exchangeLiquidityStatus,
+      rows: rows.length,
+      details: formatRowTimeRange(rows),
+    });
   }
 
   if (fearGreedEnabled && !fearGreedReady) {
     const rows: MarketCmcFearGreedContextRow[] = [];
     const pageSize = getFearGreedPageSize();
+    let pages = 0;
     for (let start = 1; ; start += pageSize) {
       const payload = await coinMarketCapFetch({
         path: '/v3/fear-and-greed/historical',
         apiKey,
+        stats: fetchStats,
         searchParams: {
           start: String(start),
           limit: String(pageSize),
         },
       });
+      pages += 1;
       const pageRows = coinMarketCapFearGreedPayloadToRows(payload);
       if (!pageRows.length) break;
       const matchingRows = pageRows.filter((row) => {
@@ -1229,34 +1358,52 @@ export const backfillCoinMarketCapContext = async (
     ]);
     fearGreedRows = rows.length;
     fearGreedStatus = 'fetched';
+    logBackfillSourceDone({
+      name: 'fearGreed',
+      status: fearGreedStatus,
+      rows: rows.length,
+      details: `pages=${pages} ${formatRowTimeRange(rows)}`,
+    });
   }
 
   if (!indexesReady) {
     const rowsByIndex = await Promise.all(
       CMC_INDEXES.map(async (index) => ({
         index,
-        rows: await fetchCoinMarketCapIndexRows({
+        result: await fetchCoinMarketCapIndexRows({
           apiKey,
           index,
           fromMs,
           toMs,
+          stats: fetchStats,
         }),
       })),
     );
-    const rows = rowsByIndex.flatMap((item) => item.rows);
+    const rows = rowsByIndex.flatMap((item) => item.result.rows);
     await upsertMarketCmcIndexContextRows(rows);
     await markBackfillCoverage(
-      rowsByIndex.map(({ index, rows: indexSpecificRows }) => ({
+      rowsByIndex.map(({ index, result }) => ({
         source: SOURCE_INDEX,
         scope: index.slug,
         interval: '1d',
         fromMs,
         toMs,
-        rowsCount: indexSpecificRows.length,
+        rowsCount: result.rows.length,
       })),
     );
     indexRows = rows.length;
     indexStatus = 'fetched';
+    logBackfillSourceDone({
+      name: 'indexes',
+      status: indexStatus,
+      rows: rows.length,
+      details: `${rowsByIndex
+        .map(
+          ({ index, result }) =>
+            `${index.slug}:${result.rows.length} rows/${result.chunks} chunks`,
+        )
+        .join(' ')} ${formatRowTimeRange(rows)}`,
+    });
   }
 
   console.log(
@@ -1268,6 +1415,7 @@ export const backfillCoinMarketCapContext = async (
         `exchangeLiquidity=${exchangeLiquidityStatus} rows=${exchangeLiquidityRows}`,
         `fearGreed=${fearGreedStatus} rows=${fearGreedRows}`,
         `indexes=${indexStatus} rows=${indexRows}`,
+        formatCoinMarketCapFetchStats(fetchStats),
       ].join(' '),
     ),
   );

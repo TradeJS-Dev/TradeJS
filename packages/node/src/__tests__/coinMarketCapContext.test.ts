@@ -303,12 +303,17 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         cmcEthBtcAligned: null,
         cmcExchangeLiquidityAligned: true,
         cmcFearGreedAligned: true,
+        cmcIndexRegime: 'top20_led',
+        cmcIndexAligned: true,
+        cmcIndexStale: false,
+        cmc20ToCmc100RatioChange24hPct: (1 + 0.024) / (1 + 0.01) - 1,
       },
       confirmations: {
         items: expect.arrayContaining([
           'cmc_alt_liquidity_aligned',
           'cmc_exchange_liquidity_aligned',
           'cmc_fear_greed_aligned',
+          'cmc_index_aligned',
         ]),
       },
     });

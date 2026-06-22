@@ -324,6 +324,7 @@ export const buildBaseContextGateFeatures = ({
   const cmcReferenceAssets = baseContext.relative?.cmcReferenceAssets;
   const cmcExchangeLiquidity = baseContext.relative?.cmcExchangeLiquidity;
   const cmcFearGreed = baseContext.relative?.cmcFearGreed;
+  const cmcIndexes = baseContext.relative?.cmcIndexes;
   const targetVsBtc = baseContext.relative?.targetVsBtc;
   const targetVsEth = baseContext.relative?.targetVsEth;
   const btcAltRegime = baseContext.relative?.btcAltRegime;
@@ -495,6 +496,21 @@ export const buildBaseContextGateFeatures = ({
         ? cmcFearGreedRegime === 'risk_on'
         : cmcFearGreedRegime === 'risk_off' ||
           cmcFearGreedRegime === 'capitulation';
+  const cmcIndexRegime = cmcIndexes?.indexRegime ?? 'unknown';
+  const cmcIndexStale =
+    typeof cmcIndexes?.stale === 'boolean' ? cmcIndexes.stale : null;
+  const cmc20ToCmc100RatioChange24hPct = asFiniteNumberOrNull(
+    cmcIndexes?.cmc20ToCmc100RatioChange24hPct,
+  );
+  const cmcIndexAligned =
+    direction == null ||
+    cmcIndexStale === true ||
+    cmcIndexRegime === 'unknown' ||
+    cmcIndexRegime === 'balanced'
+      ? null
+      : direction === 'LONG'
+        ? cmcIndexRegime === 'top20_led' || cmcIndexRegime === 'large_cap_led'
+        : cmcIndexRegime === 'risk_off';
   const targetVsBtcRatioReturn24h = asFiniteNumberOrNull(
     targetVsBtc?.ratioReturn24h,
   );
@@ -651,6 +667,7 @@ export const buildBaseContextGateFeatures = ({
     cmcFearGreedAligned === true,
     'cmc_fear_greed_aligned',
   );
+  pushWhen(confirmations, cmcIndexAligned === true, 'cmc_index_aligned');
   pushWhen(confirmations, targetVsBtcAligned === true, 'target_vs_btc_aligned');
   pushWhen(confirmations, targetVsEthAligned === true, 'target_vs_eth_aligned');
   pushWhen(
@@ -692,6 +709,7 @@ export const buildBaseContextGateFeatures = ({
     'cmc_exchange_liquidity_against',
   );
   pushWhen(conflicts, cmcFearGreedAligned === false, 'cmc_fear_greed_against');
+  pushWhen(conflicts, cmcIndexAligned === false, 'cmc_index_against');
   pushWhen(conflicts, targetVsBtcAligned === false, 'target_vs_btc_against');
   pushWhen(conflicts, targetVsEthAligned === false, 'target_vs_eth_against');
   pushWhen(conflicts, btcAltRegimeAligned === false, 'btc_alt_regime_against');
@@ -733,6 +751,7 @@ export const buildBaseContextGateFeatures = ({
       cmcAltLiquidityAligned,
       cmcEthBtcAligned,
       cmcFearGreedAligned,
+      cmcIndexAligned,
       targetVsBtcAligned,
       targetVsEthAligned,
       btcAltRegimeAligned,
@@ -818,6 +837,7 @@ export const buildBaseContextGateFeatures = ({
               cmcAltLiquidityAligned === false ||
               cmcEthBtcAligned === false ||
               cmcFearGreedAligned === false ||
+              cmcIndexAligned === false ||
               targetVsBtcAligned === false ||
               targetVsEthAligned === false ||
               btcAltRegimeAligned === false
@@ -940,6 +960,10 @@ export const buildBaseContextGateFeatures = ({
       cmcFearGreedRegime,
       cmcFearGreedAligned,
       cmcFearGreedStale,
+      cmcIndexRegime,
+      cmcIndexAligned,
+      cmcIndexStale,
+      cmc20ToCmc100RatioChange24hPct,
       targetVsBtcRatioReturn24h,
       targetVsBtcAlpha24h,
       targetVsBtcBeta20,
