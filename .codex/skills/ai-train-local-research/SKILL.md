@@ -19,6 +19,141 @@ Use this skill when the user asks to:
 - save conclusions in `notes/AI_*_REPLAY_NOTES.md`
 - tune approval cadence toward roughly 2-3 approved trades per day when possible, with ~1 approved trade per day as the practical lower bound for narrow high-quality pockets; if a gate approves more, look for filters that lower approvals and raise winrate
 
+## AI Gate Pocket Hygiene
+
+Do not move a discovered pocket into a deterministic AI gate just because it
+improves aggregate backtest PnL. Treat every candidate rule as overfit until it
+survives the checks below.
+
+Hard rule:
+
+- Do not use data-availability or sample-count fields as approval evidence.
+  Examples include derivatives `points`, `rows`, `latestIndex`, source array
+  `.length`, coverage counts, shard counts, or "how much context was loaded".
+  These may be used only as data-quality guards that block or mark data as
+  missing/stale; they must not promote quality or unlock approval pockets.
+- Event counts that are genuine market structure features, such as trendline
+  touches, zone `hitCount`, bars since a detected setup, or pivot counts, are
+  allowed only when they measure the setup itself and are causal at signal time.
+  Do not confuse them with "number of rows available in the dataset".
+
+Before implementing a pocket:
+
+- Audit existing gate conditions before proposing new ones. Inventory current
+  approval, downgrade, recovery, and block pockets in the strategy adapter /
+  guardrails, including constants, high-precision thresholds, env-sensitive
+  fields, and data-count fields.
+- Revalidate old pockets under the same export, live env assumptions, and metric
+  table used for any new candidate. Do not assume existing gate rules are still
+  valid after data provider, context, lookback, interval, target/reference, or
+  adapter changes.
+- For each existing pocket, classify it as `keep`, `round`, `replace`,
+  `disable`, or `needs-more-data`, and explain why.
+- Require time-ordered validation, not only full-sample or train metrics.
+- Check train and validation support separately. A profitable pocket with tiny
+  validation support is a hypothesis, not a gate rule.
+- Check stability by direction, month/quarter, and symbol. Avoid rules where the
+  result depends on one short period, one side, or a few symbols.
+- Compare q4+ and q5+ streams before and after the rule. A pocket that improves
+  total PnL but worsens drawdown, loss streak, or losing months usually should
+  not become live approval logic.
+- Run an ablation: show the baseline gate, the new pocket alone, and the final
+  gate with the pocket included.
+- Run threshold sensitivity around each numeric cutoff. Test adjacent rounded
+  values and a small band around the discovered value; prefer rules that remain
+  useful after rounding.
+
+Threshold implementation rules:
+
+- Do not paste high-precision search cutoffs directly into gate code unless
+  there is a strong documented reason. Values like `0.416874`, `-0.00904779`,
+  `4.6069`, or `-0.5906` should be treated as search artifacts first.
+- Convert discovered thresholds to coarser, defensible boundaries before
+  implementation, then rerun replay metrics. Examples: use human-scale values
+  such as `0.42`, `-0.01`, `4.7`, `-0.6`, or a clearly named domain threshold
+  instead of copying the exact optimizer boundary.
+- Round approval thresholds in the stricter direction by default so rounding
+  does not silently expand the approved set. For `>=` approval cutoffs, round
+  upward; for `<=` approval cutoffs, round downward. If a relaxed rounded value
+  is desired, validate it explicitly as a separate candidate.
+- If rounding materially changes cadence, PF, drawdown, or month stability, do
+  not implement the pocket until a stable rounded threshold is found.
+- Name constants by their market meaning and validation scope, not by the search
+  output. Good names mention the feature, direction, and intent, for example
+  `SHORT_BREADTH_SHOCK_MARKET_RETURN_MAX`.
+
+Documentation requirement for any new AI-gate pocket:
+
+- Report the exact export/merge id and shard count.
+- Report train and validation metrics, support, direction split, month/quarter
+  split, symbol concentration, PF, drawdown, and max loss streak.
+- State the raw discovered threshold and the rounded implemented threshold.
+- State whether the rounded rule was rerun and whether it stayed stable.
+- If the rule uses a context field whose semantics can change with env settings
+  such as lookback, interval list, target/reference mode, or data provider, call
+  that out explicitly and avoid using the field for approval unless the rule is
+  validated under the intended live env.
+
+Documentation requirement for existing AI-gate pockets:
+
+- Include an "Existing Gate Audit" section in the report or notes whenever gate
+  tuning is requested.
+- List each existing pocket or threshold group with file/line references where
+  practical.
+- For every old high-precision threshold, state whether it should stay exact,
+  be rounded and rerun, or be removed.
+- For every old data-count or env-sensitive condition, state whether it is only
+  a data-quality guard or whether it currently affects approval. If it affects
+  approval, recommend replacing it with market-state features unless validation
+  proves it is stable under the intended live env.
+- If old rules are not revalidated, mark the final recommendation as incomplete
+  and do not present new pockets as production-ready.
+
+Suggested old-gate audit commands:
+
+```bash
+rg -n "pocket|calibrated|q4|q5|recovery|approvalAllowedNow|deterministicQuality|hardBlockReasons|softBlockReasons|[0-9]+\\.[0-9]{3,}|\\.points|\\.length" packages/strategies/src/<Strategy>
+rg -n "DERIVATIVES_CONTEXT|targetContext|targetDerived|referenceContexts|points|rows|lookback|intervals" packages/strategies/src/<Strategy> packages/core/src packages/node/src
+```
+
+Mandatory validation sections for gate work:
+
+- **Live-env parity**: record the intended live env and compare it with the
+  export/replay assumptions. Include at least `AI_MODE`, `MIN_AI_QUALITY`,
+  interval/timeframe, strategy config name, derivatives lookback/intervals/
+  target mode, CMC windows, and any provider/context toggles that can affect
+  gate fields. If parity is unknown, mark the recommendation as not ready for
+  production.
+- **Feature provenance**: for every field used by an old or new pocket, list
+  the source path, whether it is causal at signal time, whether it is
+  market-state, setup-event-count, or data-availability, and whether it depends
+  on lookback/window/cache/provider settings.
+- **Walk-forward validation**: when the export spans enough history, validate
+  across multiple chronological folds or at least month/quarter buckets. Prefer
+  pockets that survive changing market regimes over pockets that win only in a
+  single terminal validation split.
+- **Acceptance gates**: define minimum validation support, maximum symbol
+  concentration, acceptable losing months, max loss streak, PF/drawdown
+  improvement, and cadence bounds before recommending implementation. If a
+  candidate misses any gate, classify it as research-only. Default gates unless
+  strategy evidence justifies otherwise: validation support `>= 25`, no single
+  symbol provides more than about one third of approved profit or count, no new
+  losing-month cluster, no worse max loss streak, and cadence remains within the
+  target live range.
+- **Negative control**: for suspiciously strong or highly specific pockets, run
+  a sanity check such as shuffled labels/profits or a nearby nonsense feature.
+  A pocket that still looks good under a negative control is overfit or the
+  script is wrong.
+- **Boundary tests**: require unit tests for implemented gate changes at the
+  threshold boundary, just above/below it, with missing/null fields, and with
+  rounded thresholds rather than raw optimizer cutoffs.
+- **Passive rollout**: prefer adding new or changed gate logic in observation
+  mode first. Log old decision, new decision, and reason deltas for a live
+  comparison window before enforcing approvals, unless the user explicitly asks
+  for immediate enforcement and accepts the risk.
+- **Old-gate cleanup**: when an old pocket is replaced or disabled, remove dead
+  constants/prompt fields/tests, update notes, and explain the migration path.
+
 ## Workflow
 
 1. Confirm the latest merged dataset exists.
@@ -246,6 +381,28 @@ NODE
 
 Minimum checks:
 
+- audit existing gate pockets and thresholds before adding new ones
+- revalidate existing approval/recovery/downgrade/block rules on the same export
+  and env assumptions used for the proposed change
+- classify old pockets as `keep`, `round`, `replace`, `disable`, or
+  `needs-more-data`
+- include live-env parity and feature provenance tables in the analysis
+- run walk-forward or month/quarter stability checks when history allows it
+- define acceptance gates before treating a pocket as production-ready
+- use a negative control for unusually strong or highly specific pockets
+- reject approval rules based on data-count or availability fields such as
+  derivatives `points`, row counts, `.length`, coverage counts, or loaded-window
+  size; use those only as missing/stale-data guards
+- reject high-precision pocket thresholds until they have been rounded to a
+  defensible value and replayed again
+- run sensitivity checks around each proposed numeric threshold
+- report train and validation support separately when using `ai-pocket-search`
+  or a custom split
+- include an ablation table: baseline, pocket-only when applicable, and final
+  gate
+- require boundary tests and a passive-rollout plan for implemented gate changes
+- clean up old disabled pockets instead of leaving dead constants or prompt
+  fields behind
 - compare q4+ and q5+ separately
 - report winrate as a percentage
 - report max drawdown both as an absolute value and as percentages of gross profit and total profit
@@ -257,6 +414,10 @@ Minimum checks:
 - prefer candidate pockets that improve profit factor or drawdown without destroying cadence
 - for live-style approval gates, usually aim for about 2-3 approved trades per day, but accept narrow high-quality pockets down to ~1 approved trade per day when profit factor/drawdown materially improve; if a strategy approves substantially more, assume there is likely room to lower approvals and raise winrate with additional filters
 - treat tiny added slices as unstable even when aggregate profit improves
+- if the candidate depends on env-sensitive context construction, such as
+  derivatives lookback, interval selection, target/reference mode, or CMC window
+  availability, validate it under the intended live env before recommending code
+  changes
 
 ## Notes format
 
@@ -291,6 +452,28 @@ Keep the structure similar:
    - strategy core
    - backtest config
    - AI adapter
+9. existing gate audit:
+   - current pockets and thresholds
+   - classification: `keep`, `round`, `replace`, `disable`, `needs-more-data`
+   - old high-precision and data-count conditions
+10. live-env parity and feature provenance:
+    - live env assumptions vs export/replay assumptions
+    - source, causality, field type, and env sensitivity for every pocket field
+11. validation evidence:
+    - train vs validation support
+    - walk-forward or month/quarter split
+    - symbol concentration
+    - ablation table
+    - negative-control result when applicable
+12. threshold implementation:
+    - raw discovered thresholds
+    - rounded implemented thresholds
+    - sensitivity results
+    - boundary tests added or still missing
+13. rollout and cleanup:
+    - passive rollout or immediate enforcement decision
+    - old gate cleanup required
+    - remaining blockers before production
 
 ## Current repo conventions
 
@@ -299,7 +482,7 @@ Keep the structure similar:
   - `approvalAllowedNow`
   - `deterministicQuality`
   - `structuralHardBlockReasons`
-  local replay is the preferred research mode.
+    local replay is the preferred research mode.
 - If these fields are missing, add them before trusting `--localOnly`.
 
 ## Existing examples
