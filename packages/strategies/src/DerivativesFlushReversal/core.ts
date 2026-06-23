@@ -19,6 +19,7 @@ import {
 
 export interface DerivativesFlushReversalSignalContext {
   signalDirection: Direction;
+  signalSource: 'derivatives' | 'structure';
   pressure: string | null;
   riskFlags: string[];
   liqSpikeRatio: number | null;
@@ -36,10 +37,17 @@ export interface DerivativesFlushReversalSignalContext {
   participationConfirmed: boolean;
 }
 
+type FlushCandidate = {
+  direction: Direction;
+  source: DerivativesFlushReversalSignalContext['signalSource'];
+};
+
 const getRiskFlags = (baseContext: BaseStrategyContextSnapshot) =>
-  Array.isArray(baseContext.derivatives?.summary?.riskFlags)
-    ? baseContext.derivatives.summary.riskFlags
-    : [];
+  Array.isArray(baseContext.derivatives?.targetDerived?.riskFlags)
+    ? baseContext.derivatives.targetDerived.riskFlags
+    : Array.isArray(baseContext.derivatives?.summary?.riskFlags)
+      ? baseContext.derivatives.summary.riskFlags
+      : [];
 
 const maxFinite = (...values: Array<number | null | undefined>) => {
   const finite = values.filter(
@@ -61,31 +69,140 @@ const selectDirectionalImbalance = (
   return direction === 'LONG' ? Math.min(...finite) : Math.max(...finite);
 };
 
-const getFlushCandidate = ({
+const getDerivativesPressure = (baseContext: BaseStrategyContextSnapshot) =>
+  baseContext.derivatives?.targetDerived?.pressure ??
+  baseContext.derivatives?.summary?.pressure ??
+  null;
+
+const getDerivativesIntervals = (baseContext: BaseStrategyContextSnapshot) =>
+  baseContext.derivatives?.targetContext?.intervals ??
+  baseContext.derivatives?.intervals;
+
+const getDerivativesLiqSpikeRatio = (
+  baseContext: BaseStrategyContextSnapshot,
+) => {
+  const intervals = getDerivativesIntervals(baseContext);
+  return maxFinite(
+    baseContext.derivatives?.targetDerived?.liqSpikeRatio,
+    intervals?.['15m']?.liqSpikeRatio,
+    intervals?.['1h']?.liqSpikeRatio,
+  );
+};
+
+const getDirectionalDerivativesImbalance = (
+  baseContext: BaseStrategyContextSnapshot,
+  direction: Direction,
+) => {
+  const intervals = getDerivativesIntervals(baseContext);
+  return selectDirectionalImbalance(
+    direction,
+    baseContext.derivatives?.targetDerived?.liqImbalance,
+    intervals?.['15m']?.liqImbalance,
+    intervals?.['1h']?.liqImbalance,
+  );
+};
+
+const getDerivativesFundingZScore = (
+  baseContext: BaseStrategyContextSnapshot,
+) => {
+  const intervals = getDerivativesIntervals(baseContext);
+  return maxFinite(
+    baseContext.derivatives?.targetDerived?.fundingZScore,
+    intervals?.['15m']?.fundingZScore,
+    intervals?.['1h']?.fundingZScore,
+  );
+};
+
+const getDerivativesPriceOiDivergenceType = (
+  baseContext: BaseStrategyContextSnapshot,
+) =>
+  baseContext.derivatives?.targetContext?.summary?.priceOiDivergenceType ??
+  baseContext.derivatives?.summary?.priceOiDivergenceType ??
+  null;
+
+const hasBlockingDerivativesContext = (
+  baseContext: BaseStrategyContextSnapshot,
+) => {
+  const riskFlags = getRiskFlags(baseContext);
+  return (
+    riskFlags.includes('missing_derivatives') ||
+    riskFlags.includes('stale_derivatives')
+  );
+};
+
+const getStructureFallbackCandidate = ({
   baseContext,
   config,
 }: {
   baseContext: BaseStrategyContextSnapshot;
   config: DerivativesFlushReversalConfig;
 }): Direction | null => {
-  const summary = baseContext.derivatives?.summary;
-  const pressure = summary?.pressure ?? null;
+  const localRange = baseContext.structure?.localRange;
+  const liquidity = baseContext.structure?.liquidity;
+  const currentTail = baseContext.structure?.liquidityTails?.currentTail;
+  const rangePosition20 = toFiniteNumberOrNull(localRange?.rangePosition20);
+  const sweepWickPct = toFiniteNumberOrNull(liquidity?.sweepWickPct);
+  const minSweepWickPct = Number(config.DFR_MIN_SWEEP_WICK_PCT ?? 0.2);
+  const buyPressurePct = toFiniteNumberOrNull(
+    baseContext.participation?.delta?.buyPressurePct,
+  );
+  const deltaDivergenceVsPrice =
+    baseContext.participation?.delta?.deltaDivergenceVsPrice ?? null;
+  const candle = baseContext.candle;
+  const candleReversal =
+    candle.close === candle.open
+      ? null
+      : candle.close > candle.open
+        ? 'LONG'
+        : 'SHORT';
+  const wickOk =
+    sweepWickPct == null ||
+    sweepWickPct >= minSweepWickPct ||
+    currentTail?.side != null;
+  const longRange =
+    rangePosition20 != null &&
+    rangePosition20 <= Number(config.DFR_MAX_LONG_RANGE_POSITION ?? 0.45);
+  const shortRange =
+    rangePosition20 != null &&
+    rangePosition20 >= Number(config.DFR_MIN_SHORT_RANGE_POSITION ?? 0.55);
+  const longPrimary =
+    liquidity?.sweepState === 'swept_low' ||
+    localRange?.breakoutState === 'failed_low_breakout';
+  const shortPrimary =
+    liquidity?.sweepState === 'swept_high' ||
+    localRange?.breakoutState === 'failed_high_breakout';
+  const longPressure =
+    isPressureAligned({ direction: 'LONG', buyPressurePct }) === true ||
+    deltaDivergenceVsPrice === 'bullish' ||
+    candleReversal === 'LONG';
+  const shortPressure =
+    isPressureAligned({ direction: 'SHORT', buyPressurePct }) === true ||
+    deltaDivergenceVsPrice === 'bearish' ||
+    candleReversal === 'SHORT';
+  const longScore = wickOk && longPressure && longPrimary && longRange ? 3 : 0;
+  const shortScore =
+    wickOk && shortPressure && shortPrimary && shortRange ? 3 : 0;
+
+  if (longScore <= 0 && shortScore <= 0) return null;
+  if (longScore === shortScore) return null;
+  return longScore > shortScore ? 'LONG' : 'SHORT';
+};
+
+const getFlushCandidate = ({
+  baseContext,
+  config,
+}: {
+  baseContext: BaseStrategyContextSnapshot;
+  config: DerivativesFlushReversalConfig;
+}): FlushCandidate | null => {
+  const pressure = getDerivativesPressure(baseContext);
   const riskFlags = getRiskFlags(baseContext);
-  const intervals = baseContext.derivatives?.intervals;
-  const liqSpikeRatio = maxFinite(
-    intervals?.['15m']?.liqSpikeRatio,
-    intervals?.['1h']?.liqSpikeRatio,
-  );
+  const liqSpikeRatio = getDerivativesLiqSpikeRatio(baseContext);
   const minSpike = Number(config.DFR_MIN_LIQ_SPIKE_RATIO ?? 2);
-  const longImbalance = selectDirectionalImbalance(
-    'LONG',
-    intervals?.['15m']?.liqImbalance,
-    intervals?.['1h']?.liqImbalance,
-  );
-  const shortImbalance = selectDirectionalImbalance(
+  const longImbalance = getDirectionalDerivativesImbalance(baseContext, 'LONG');
+  const shortImbalance = getDirectionalDerivativesImbalance(
+    baseContext,
     'SHORT',
-    intervals?.['15m']?.liqImbalance,
-    intervals?.['1h']?.liqImbalance,
   );
 
   const longFlush =
@@ -103,8 +220,20 @@ const getFlushCandidate = ({
       shortImbalance != null &&
       shortImbalance >= 0.35);
 
-  if (longFlush === shortFlush) return null;
-  return longFlush ? 'LONG' : 'SHORT';
+  if (longFlush !== shortFlush && !hasBlockingDerivativesContext(baseContext)) {
+    return {
+      direction: longFlush ? 'LONG' : 'SHORT',
+      source: 'derivatives',
+    };
+  }
+
+  const fallbackDirection = getStructureFallbackCandidate({
+    baseContext,
+    config,
+  });
+  return fallbackDirection
+    ? { direction: fallbackDirection, source: 'structure' }
+    : null;
 };
 
 const detectSignal = ({
@@ -114,36 +243,22 @@ const detectSignal = ({
   baseContext: BaseStrategyContextSnapshot;
   config: DerivativesFlushReversalConfig;
 }): DerivativesFlushReversalSignalContext | null => {
-  const direction = getFlushCandidate({ baseContext, config });
-  if (!direction) return null;
-
-  const riskFlags = getRiskFlags(baseContext);
-  if (
-    riskFlags.includes('missing_derivatives') ||
-    riskFlags.includes('stale_derivatives')
-  ) {
-    return null;
-  }
+  const candidate = getFlushCandidate({ baseContext, config });
+  if (!candidate) return null;
+  const { direction } = candidate;
 
   const localRange = baseContext.structure?.localRange;
   const liquidity = baseContext.structure?.liquidity;
   const currentTail = baseContext.structure?.liquidityTails?.currentTail;
   const volume = baseContext.participation?.volume;
   const delta = baseContext.participation?.delta;
-  const intervals = baseContext.derivatives?.intervals;
-  const liqSpikeRatio = maxFinite(
-    intervals?.['15m']?.liqSpikeRatio,
-    intervals?.['1h']?.liqSpikeRatio,
-  );
-  const liqImbalance = selectDirectionalImbalance(
+  const riskFlags = getRiskFlags(baseContext);
+  const liqSpikeRatio = getDerivativesLiqSpikeRatio(baseContext);
+  const liqImbalance = getDirectionalDerivativesImbalance(
+    baseContext,
     direction,
-    intervals?.['15m']?.liqImbalance,
-    intervals?.['1h']?.liqImbalance,
   );
-  const fundingZScore = maxFinite(
-    intervals?.['15m']?.fundingZScore,
-    intervals?.['1h']?.fundingZScore,
-  );
+  const fundingZScore = getDerivativesFundingZScore(baseContext);
   const rangePosition20 =
     toFiniteNumberOrNull(localRange?.rangePosition20) ?? null;
   const sweepWickPct = toFiniteNumberOrNull(liquidity?.sweepWickPct);
@@ -195,16 +310,19 @@ const detectSignal = ({
     volumeRel20 >= Number(config.DFR_MIN_VOLUME_REL20 ?? 1.1) ||
     deltaAligned === true ||
     divergenceAligned;
+  if (candidate.source === 'structure' && !participationConfirmed) {
+    return null;
+  }
 
   return {
     signalDirection: direction,
-    pressure: baseContext.derivatives?.summary?.pressure ?? null,
+    signalSource: candidate.source,
+    pressure: getDerivativesPressure(baseContext),
     riskFlags,
     liqSpikeRatio,
     liqImbalance,
     fundingZScore,
-    priceOiDivergenceType:
-      baseContext.derivatives?.summary?.priceOiDivergenceType ?? null,
+    priceOiDivergenceType: getDerivativesPriceOiDivergenceType(baseContext),
     sweepState: liquidity?.sweepState ?? null,
     breakoutState: localRange?.breakoutState ?? null,
     tailSide: currentTail?.side ?? null,

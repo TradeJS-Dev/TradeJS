@@ -281,6 +281,39 @@ describe('context strategies', () => {
     );
   });
 
+  it('opens DerivativesFlushReversal from structure when derivatives are not available in core', async () => {
+    const baseContext = makeBaseContext({ derivatives: undefined });
+    const { strategyApi } = makeStrategyApi(101);
+    const core = await createDerivativesFlushReversalCore(
+      makeCoreParams({
+        config: DFR_DEFAULT_CONFIG,
+        strategyApi,
+        baseContext,
+      }),
+    );
+
+    const result = await core(baseContext.candle, baseContext.candle);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'DFR_LONG_FLUSH_REVERSAL',
+        direction: 'LONG',
+      }),
+    );
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalIndicators: {
+          derivativesFlushReversalContext: expect.objectContaining({
+            signalDirection: 'LONG',
+            signalSource: 'structure',
+            structureConfirmed: true,
+          }),
+        },
+      }),
+    );
+  });
+
   it('opens VolatilityCompressionBreakout long after compressed range expansion', async () => {
     const baseContext = makeBaseContext();
     const { strategyApi } = makeStrategyApi(101);
