@@ -358,6 +358,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         baseContext: {
           relative: {
             targetVsBtc: {
+              alphaVsBtc1h: 1.4,
               alphaVsBtc4h: 0.8,
             },
             cmcFearGreed: {
@@ -414,6 +415,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         baseContext: {
           relative: {
             targetVsBtc: {
+              alphaVsBtc1h: 1.4,
               alphaVsBtc4h: 0.8,
             },
             cmcGlobal: {
@@ -447,6 +449,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
       expect.objectContaining({
         cmcBtcDominanceChange24hPct: -0.2,
+        q4TargetAlpha1Allowed: true,
         q4ContinuationAllowed: false,
         q4ContinuationBlockReasons: [
           'weak_target_vs_btc_alpha_4h',
@@ -456,6 +459,61 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         q4ContinuationRecoveryAllowed: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('does not recover q4 continuations after target has outrun BTC too far', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 10, 30),
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 3.4,
+              alphaVsBtc4h: 0.8,
+            },
+            cmcGlobal: {
+              btcDominanceChange24hPct: -0.2,
+            },
+            cmcFearGreed: {
+              valueChange7d: -20,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.3,
+              effortVsResult: 50,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              bps: -12,
+              bias: 'binance_premium',
+              severity: 'elevated',
+            },
+          },
+        },
+      },
+    });
+
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        targetVsBtcAlpha1h: 3.4,
+        q4TargetAlpha1Allowed: false,
+        q4ContinuationRecoveryAllowed: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'target_vs_btc_alpha_1h_chase',
+        ]),
       }),
     );
   });
@@ -1738,6 +1796,89 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         retestPrice: null,
         takeProfitPrice: 96.6,
         stopLossPrice: 99.9,
+      }),
+    );
+  });
+
+  it('approves target-aligned market-breadth shock shorts without BTC-favored CMC context', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            relative: {
+              marketBreadthReturn: -0.0091,
+            },
+          },
+          relative: {
+            marketBreadth: {
+              advancers: 0,
+              advanceDeclineRatio: 1,
+              equalWeightedReturn: -0.0091,
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          derivatives: {
+            targetDerived: {
+              directionAligned: true,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        cmcAltLiquidityRegime: null,
+        marketBreadthAdvancers: 0,
+        marketBreadthReturn: -0.0091,
+        derivativesTargetDirectionAligned: true,
+        shortBreadthShockPocket: false,
+        shortBreadthTargetAlignedPocket: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+        structuralHardBlockReasons: [],
       }),
     );
   });
