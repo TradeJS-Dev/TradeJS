@@ -3,8 +3,10 @@ import { type StrategyConfig } from '@tradejs/types';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { adaptiveTrendChannelManifest } from './AdaptiveTrendChannel/manifest';
 import { breakoutManifest } from './Breakout/manifest';
+import { derivativesFlushReversalManifest } from './DerivativesFlushReversal/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
+import { relativeRotationManifest } from './RelativeRotation/manifest';
 import { liquidityTailsManifest } from './LiquidityTails/manifest';
 import { liquidityZonesManifest } from './LiquidityZones/manifest';
 import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
@@ -13,16 +15,21 @@ import { trendFollowManifest } from './TrendFollow/manifest';
 import { trendShiftManifest } from './TrendShift/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
+import { volatilityCompressionBreakoutManifest } from './VolatilityCompressionBreakout/manifest';
 import { config as adaptiveMomentumRibbonDefaultConfig } from './AdaptiveMomentumRibbon/config';
 import { AdaptiveMomentumRibbonStrategyCreator } from './AdaptiveMomentumRibbon/strategy';
 import { config as adaptiveTrendChannelDefaultConfig } from './AdaptiveTrendChannel/config';
 import { AdaptiveTrendChannelStrategyCreator } from './AdaptiveTrendChannel/strategy';
 import { config as breakoutDefaultConfig } from './Breakout/config';
 import { BreakoutStrategyCreator } from './Breakout/strategy';
+import { config as derivativesFlushReversalDefaultConfig } from './DerivativesFlushReversal/config';
+import { DerivativesFlushReversalStrategyCreator } from './DerivativesFlushReversal/strategy';
 import { config as doubleTapDefaultConfig } from './DoubleTap/config';
 import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { MaStrategyCreator } from './MaStrategy/strategy';
+import { config as relativeRotationDefaultConfig } from './RelativeRotation/config';
+import { RelativeRotationStrategyCreator } from './RelativeRotation/strategy';
 import { config as liquidityTailsDefaultConfig } from './LiquidityTails/config';
 import { LiquidityTailsStrategyCreator } from './LiquidityTails/strategy';
 import { config as liquidityZonesDefaultConfig } from './LiquidityZones/config';
@@ -39,6 +46,8 @@ import { config as trendLineDefaultConfig } from './TrendLine/config';
 import { TrendlineStrategyCreator } from './TrendLine/strategy';
 import { config as volumeDivergenceDefaultConfig } from './VolumeDivergence/config';
 import { VolumeDivergenceStrategyCreator } from './VolumeDivergence/strategy';
+import { config as volatilityCompressionBreakoutDefaultConfig } from './VolatilityCompressionBreakout/config';
+import { VolatilityCompressionBreakoutStrategyCreator } from './VolatilityCompressionBreakout/strategy';
 import { type StrategyRegistryEntry } from '@tradejs/types';
 
 export const strategyEntries: StrategyRegistryEntry[] = [
@@ -49,6 +58,18 @@ export const strategyEntries: StrategyRegistryEntry[] = [
   {
     manifest: trendLineManifest,
     creator: TrendlineStrategyCreator,
+  },
+  {
+    manifest: derivativesFlushReversalManifest,
+    creator: DerivativesFlushReversalStrategyCreator,
+  },
+  {
+    manifest: volatilityCompressionBreakoutManifest,
+    creator: VolatilityCompressionBreakoutStrategyCreator,
+  },
+  {
+    manifest: relativeRotationManifest,
+    creator: RelativeRotationStrategyCreator,
   },
   {
     manifest: trendShiftManifest,
@@ -99,6 +120,9 @@ export const strategyEntries: StrategyRegistryEntry[] = [
 const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   Breakout: breakoutDefaultConfig,
   TrendLine: trendLineDefaultConfig,
+  DerivativesFlushReversal: derivativesFlushReversalDefaultConfig,
+  VolatilityCompressionBreakout: volatilityCompressionBreakoutDefaultConfig,
+  RelativeRotation: relativeRotationDefaultConfig,
   TrendShift: trendShiftDefaultConfig,
   DoubleTap: doubleTapDefaultConfig,
   LiquidityTails: liquidityTailsDefaultConfig,
@@ -119,7 +143,9 @@ export const getBuiltInStrategyDefaultConfig = (
 export { adaptiveMomentumRibbonDefaultConfig };
 export { adaptiveTrendChannelDefaultConfig };
 export { breakoutDefaultConfig };
+export { derivativesFlushReversalDefaultConfig };
 export { maStrategyDefaultConfig };
+export { relativeRotationDefaultConfig };
 export { trendLineDefaultConfig };
 export { trendShiftDefaultConfig };
 export { doubleTapDefaultConfig };
@@ -129,10 +155,13 @@ export { trendFollowDefaultConfig };
 export { structureZonesDefaultConfig };
 export { reverseTrendLineDefaultConfig };
 export { volumeDivergenceDefaultConfig };
+export { volatilityCompressionBreakoutDefaultConfig };
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
 export { adaptiveMomentumRibbonMlAdapter } from './AdaptiveMomentumRibbon/adapters/ml';
 export { adaptiveTrendChannelAiAdapter } from './AdaptiveTrendChannel/adapters/ai';
+export { derivativesFlushReversalAiAdapter } from './DerivativesFlushReversal/adapters/ai';
 export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
+export { relativeRotationAiAdapter } from './RelativeRotation/adapters/ai';
 export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
 export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
@@ -143,5 +172,6 @@ export { structureZonesAiAdapter } from './StructureZones/adapters/ai';
 export { trendFollowAiAdapter } from './TrendFollow/adapters/ai';
 export { volumeDivergenceAiAdapter } from './VolumeDivergence/adapters/ai';
 export { volumeDivergenceMlAdapter } from './VolumeDivergence/adapters/ml';
+export { volatilityCompressionBreakoutAiAdapter } from './VolatilityCompressionBreakout/adapters/ai';
 
 export default defineStrategyPlugin({ strategyEntries });
