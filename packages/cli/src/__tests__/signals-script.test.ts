@@ -1078,7 +1078,7 @@ describe('signals script', () => {
       symbols: ['ETHUSDT'],
       startMs: CURRENT_TS,
       endMs: CURRENT_TS,
-      preloadStartMs: PRELOAD_TS,
+      preloadStartMs: undefined,
     });
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^tickers load: done in /),

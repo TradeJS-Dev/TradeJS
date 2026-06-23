@@ -148,7 +148,13 @@ describe('prepareMarketContextForRun', () => {
       log: jest.fn(),
     });
 
-    expect(mockBackfillDerivativesContextForSignals).toHaveBeenCalled();
+    expect(mockBackfillDerivativesContextForSignals).toHaveBeenCalledWith({
+      userName: 'root',
+      symbols: ['ETHUSDT'],
+      startMs: 1_000,
+      endMs: 1_000,
+      preloadStartMs: undefined,
+    });
     expect(mockBackfillBinanceMarketContextForSignals).toHaveBeenCalled();
     expect(
       mockShouldBackfillCoinMarketCapContextForSignals,

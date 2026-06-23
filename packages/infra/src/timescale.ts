@@ -849,8 +849,8 @@ export async function getDerivativesBackfillCoverage(params: {
       WHERE source = $1
         AND symbol = ANY($2)
         AND interval = $3
-        AND from_ts >= to_timestamp($4/1000.0)
-        AND to_ts <= to_timestamp($5/1000.0)
+        AND from_ts <= to_timestamp($5/1000.0)
+        AND to_ts >= to_timestamp($4/1000.0)
     `,
     [
       normalizedSource,

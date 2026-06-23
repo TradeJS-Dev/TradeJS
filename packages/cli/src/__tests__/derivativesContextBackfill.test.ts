@@ -1,8 +1,11 @@
 import {
   resolveDerivativesContextIntervalBackfillWindow,
   resolveDerivativesContextMissingFetchFromMs,
+  resolveDerivativesContextMissingCoverageFetchFromMs,
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
+  groupDerivativesContextMissingFetchRanges,
+  hasDerivativesContextCoverageRange,
   formatCoinalyzeRequestError,
   shouldBackfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForSignals,
@@ -204,7 +207,7 @@ describe('resolveDerivativesContextBackfillWindow', () => {
     }
   });
 
-  it('caps the backfill start at explicit preload start', () => {
+  it('caps backtest backfill start at explicit preload start', () => {
     process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS = '1000';
     const startMs = Date.parse('2026-04-01T00:00:00.000Z');
     const endMs = Date.parse('2026-04-02T00:00:00.000Z');
@@ -212,6 +215,7 @@ describe('resolveDerivativesContextBackfillWindow', () => {
 
     expect(
       resolveDerivativesContextBackfillWindow({
+        mode: 'backtest',
         startMs,
         endMs,
         preloadStartMs,
@@ -224,7 +228,7 @@ describe('resolveDerivativesContextBackfillWindow', () => {
     });
   });
 
-  it('uses the explicit preload start as the full backfill warmup', () => {
+  it('ignores explicit preload start for signals backfill', () => {
     process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS = '12';
     const startMs = Date.parse('2026-04-01T00:00:00.000Z');
     const endMs = Date.parse('2026-04-02T00:00:00.000Z');
@@ -232,13 +236,14 @@ describe('resolveDerivativesContextBackfillWindow', () => {
 
     expect(
       resolveDerivativesContextBackfillWindow({
+        mode: 'signals',
         startMs,
         endMs,
         preloadStartMs,
         nowMs: endMs,
       }),
     ).toEqual({
-      fromMs: preloadStartMs,
+      fromMs: startMs - 12 * 60 * 60 * 1000,
       toMs: endMs,
       testStartMs: startMs,
     });
@@ -353,6 +358,99 @@ describe('resolveDerivativesContextMissingFetchFromMs', () => {
         intervalMs: 1_000,
       }),
     ).toBeNull();
+  });
+});
+
+describe('hasDerivativesContextCoverageRange', () => {
+  it('treats zero-row coverage ranges as covering nested windows', () => {
+    expect(
+      hasDerivativesContextCoverageRange(
+        [{ fromMs: 1_000, toMs: 10_000 }],
+        2_000,
+        9_000,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not cover windows that extend outside the recorded range', () => {
+    expect(
+      hasDerivativesContextCoverageRange(
+        [{ fromMs: 1_000, toMs: 10_000 }],
+        500,
+        9_000,
+      ),
+    ).toBe(false);
+    expect(
+      hasDerivativesContextCoverageRange(
+        [{ fromMs: 1_000, toMs: 10_000 }],
+        2_000,
+        11_000,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('resolveDerivativesContextMissingCoverageFetchFromMs', () => {
+  it('skips windows fully covered by zero-row coverage ranges', () => {
+    expect(
+      resolveDerivativesContextMissingCoverageFetchFromMs({
+        ranges: [{ fromMs: 1_000, toMs: 10_000 }],
+        fromMs: 2_000,
+        toMs: 9_000,
+        intervalMs: 1_000,
+      }),
+    ).toBeNull();
+  });
+
+  it('fetches only the uncovered tail after a prior zero-row coverage range', () => {
+    expect(
+      resolveDerivativesContextMissingCoverageFetchFromMs({
+        ranges: [{ fromMs: 1_000, toMs: 10_000 }],
+        fromMs: 2_000,
+        toMs: 12_000,
+        intervalMs: 1_000,
+      }),
+    ).toBe(11_000);
+  });
+
+  it('uses the request start when coverage does not include the beginning', () => {
+    expect(
+      resolveDerivativesContextMissingCoverageFetchFromMs({
+        ranges: [{ fromMs: 5_000, toMs: 10_000 }],
+        fromMs: 2_000,
+        toMs: 9_000,
+        intervalMs: 1_000,
+      }),
+    ).toBe(2_000);
+  });
+
+  it('merges adjacent coverage ranges before deciding the missing tail', () => {
+    expect(
+      resolveDerivativesContextMissingCoverageFetchFromMs({
+        ranges: [
+          { fromMs: 6_000, toMs: 10_000 },
+          { fromMs: 1_000, toMs: 5_000 },
+        ],
+        fromMs: 1_000,
+        toMs: 12_000,
+        intervalMs: 1_000,
+      }),
+    ).toBe(11_000);
+  });
+});
+
+describe('groupDerivativesContextMissingFetchRanges', () => {
+  it('groups missing symbols by fetch start to avoid broad batch refetches', () => {
+    expect(
+      groupDerivativesContextMissingFetchRanges([
+        { item: 'tail-a', fromMs: 10_000 },
+        { item: 'full-a', fromMs: 1_000 },
+        { item: 'tail-b', fromMs: 10_000 },
+      ]),
+    ).toEqual([
+      { fromMs: 1_000, items: ['full-a'] },
+      { fromMs: 10_000, items: ['tail-a', 'tail-b'] },
+    ]);
   });
 });
 

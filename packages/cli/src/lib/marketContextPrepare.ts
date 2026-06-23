@@ -153,14 +153,14 @@ const buildBinanceMarketBackfillParams = (
 const buildDerivativesBackfillParams = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'userName' | 'symbols' | 'startMs' | 'endMs' | 'preloadStartMs'
+    'mode' | 'userName' | 'symbols' | 'startMs' | 'endMs' | 'preloadStartMs'
   >,
 ) => ({
   userName: params.userName,
   symbols: params.symbols,
   startMs: params.startMs,
   endMs: params.endMs,
-  preloadStartMs: params.preloadStartMs,
+  preloadStartMs: params.mode === 'signals' ? undefined : params.preloadStartMs,
 });
 
 export const prepareMarketContextForRun = async (

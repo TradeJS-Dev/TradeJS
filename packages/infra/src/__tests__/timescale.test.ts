@@ -372,6 +372,14 @@ describe('timescale candle helpers', () => {
       expect.stringContaining('FROM derivatives_backfill_coverage'),
       ['coinalyze', ['BTCUSDT'], '1h', 1_000, 2_000],
     );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('AND from_ts <= to_timestamp($5/1000.0)'),
+      ['coinalyze', ['BTCUSDT'], '1h', 1_000, 2_000],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('AND to_ts >= to_timestamp($4/1000.0)'),
+      ['coinalyze', ['BTCUSDT'], '1h', 1_000, 2_000],
+    );
   });
 
   it('upserts Binance market feature rows into compact tables', async () => {
