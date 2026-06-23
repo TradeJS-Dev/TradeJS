@@ -3438,6 +3438,16 @@ describe('ai helpers', () => {
           btcMaSlow: [50, 50, 50],
         },
         additionalIndicators: {
+          baseContext: {
+            relative: {
+              targetVsBtc: {
+                alphaVsBtc1h: 0.4,
+                alphaVsBtc4h: 4.2,
+                alphaVsBtc24h: 8,
+                ratioTrend: 'up',
+              },
+            },
+          },
           amr: {
             signalOsc: 0.34,
             kcMidline: 100.1,
@@ -3534,6 +3544,16 @@ describe('ai helpers', () => {
           stopLossPrice: 99.92,
         },
         additionalIndicators: {
+          baseContext: {
+            relative: {
+              targetVsBtc: {
+                alphaVsBtc1h: 0.4,
+                alphaVsBtc4h: 4.2,
+                alphaVsBtc24h: 8,
+                ratioTrend: 'up',
+              },
+            },
+          },
           amr: {
             signalOsc: 0.72,
             kcMidline: 100.2,
