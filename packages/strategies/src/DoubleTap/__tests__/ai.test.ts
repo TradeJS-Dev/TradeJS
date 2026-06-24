@@ -34,6 +34,7 @@ const baseContext = {
     },
     momentum: {
       bodyStrength: 0.75,
+      roc1d: -5.25,
     },
   },
   structure: {
@@ -198,6 +199,118 @@ describe('doubleTapAiAdapter', () => {
 
     expect(result?.quality).toBe(4);
     expect(result?.direction).toBe('LONG');
+  });
+
+  it('marks strict momentum approval when approved pockets have ROC1D above the strict gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              momentum: {
+                roc1d: -5.25,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(true);
+    expect(context.strictMomentumBlockReasons).toEqual([]);
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: true,
+      strictMomentumApproved: true,
+      strictMomentumRoc1dOk: true,
+    });
+  });
+
+  it('blocks main approval below the strict ROC1D gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              momentum: {
+                roc1d: -5.26,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.strictMomentumBlockReasons).toContain(
+      'roc1d_below_strict_momentum_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: true,
+      strictMomentumApproved: false,
+      strictMomentumRoc1dOk: false,
+    });
+  });
+
+  it('blocks main approval when strict ROC1D is missing', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              momentum: {
+                roc1d: undefined,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.strictMomentumBlockReasons).toContain(
+      'missing_roc1d_for_strict_momentum',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: true,
+      strictMomentumApproved: false,
+      strictMomentumRoc1dOk: null,
+    });
   });
 
   it('caps compact breakouts when baseContext is missing', () => {
