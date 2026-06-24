@@ -37,7 +37,7 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / approvalBlockReasons / riskAnnotations.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -67,20 +67,21 @@ type AmrChannelState =
   | 'below_midline'
   | 'below_lower'
   | 'unknown';
-type AmrStructuralReason =
+type AmrApprovalBlockReason =
   | AmrHardBlockReason
-  | 'session_thin'
   | 'missing_base_context'
-  | 'range_bound_structure'
-  | 'benchmark_conflict'
   | 'weak_signal_range'
-  | 'weak_participation'
-  | 'weak_retest_quality'
-  | 'elevated_venue_spread'
-  | 'derivatives_pressure_conflict'
   | 'target_vs_btc_alpha_1h_chase'
   | 'short_disabled'
   | 'cmc_alt_liquidity_btc_favored';
+type AmrRiskAnnotation =
+  | 'session_thin'
+  | 'range_bound_structure'
+  | 'benchmark_conflict'
+  | 'weak_participation'
+  | 'weak_retest_quality'
+  | 'elevated_venue_spread'
+  | 'derivatives_pressure_conflict';
 
 type AdaptiveMomentumRibbonSnapshot = {
   entryLong?: unknown;
@@ -156,7 +157,8 @@ type AdaptiveMomentumRibbonAiContext = {
   q4ContinuationBlockReasons: AmrQ4ContinuationBlockReason[];
   q4ContinuationRecoveryAllowed: boolean;
   hardBlockReasons: AmrHardBlockReason[];
-  structuralHardBlockReasons: AmrStructuralReason[];
+  approvalBlockReasons: AmrApprovalBlockReason[];
+  riskAnnotations: AmrRiskAnnotation[];
   deterministicQuality: number;
   approvalAllowedNow: boolean;
   maxAllowedQuality: number;
@@ -500,10 +502,12 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     | 'approvalAllowedNow'
     | 'maxAllowedQuality'
     | 'hardBlockReasons'
-    | 'structuralHardBlockReasons'
+    | 'approvalBlockReasons'
+    | 'riskAnnotations'
   > & {
     hardBlockReasons: AmrHardBlockReason[];
-    structuralHardBlockReasons: AmrStructuralReason[];
+    approvalBlockReasons: AmrApprovalBlockReason[];
+    riskAnnotations: AmrRiskAnnotation[];
   },
 ) => {
   if (context.hardBlockReasons.length > 0) {
@@ -848,16 +852,15 @@ const buildAdaptiveMomentumRibbonContext = (
     hardBlockReasons.push('invalidation_wrong_side');
   }
 
-  const structuralHardBlockReasons: AmrStructuralReason[] = [
-    ...hardBlockReasons,
-  ];
+  const approvalBlockReasons: AmrApprovalBlockReason[] = [...hardBlockReasons];
+  const riskAnnotations: AmrRiskAnnotation[] = [];
 
   if (!baseContextAvailable) {
-    structuralHardBlockReasons.push('missing_base_context');
+    approvalBlockReasons.push('missing_base_context');
   }
 
   if (sessionAllowsApproval === false) {
-    structuralHardBlockReasons.push('session_thin');
+    riskAnnotations.push('session_thin');
   }
 
   if (
@@ -868,7 +871,7 @@ const buildAdaptiveMomentumRibbonContext = (
       (signalDirection === 'SHORT' && breakoutState === 'below_low_level')
     )
   ) {
-    structuralHardBlockReasons.push('range_bound_structure');
+    riskAnnotations.push('range_bound_structure');
   }
 
   if (
@@ -878,22 +881,22 @@ const buildAdaptiveMomentumRibbonContext = (
       value: benchmarkRelativeStrength1h,
     }) === false
   ) {
-    structuralHardBlockReasons.push('benchmark_conflict');
+    riskAnnotations.push('benchmark_conflict');
   }
 
   if (
     (volumeRel20 != null && (volumeRel20 < 0.8 || volumeRel20 > 1.5)) ||
     (effortVsResult != null && (effortVsResult < -0.1 || effortVsResult > 500))
   ) {
-    structuralHardBlockReasons.push('weak_participation');
+    riskAnnotations.push('weak_participation');
   }
 
   if (signalRangeAtrRatio != null && signalRangeAtrRatio < 1.05) {
-    structuralHardBlockReasons.push('weak_signal_range');
+    approvalBlockReasons.push('weak_signal_range');
   }
 
   if (breakoutRetestQuality != null && breakoutRetestQuality < 0.25) {
-    structuralHardBlockReasons.push('weak_retest_quality');
+    riskAnnotations.push('weak_retest_quality');
   }
 
   if (
@@ -905,25 +908,25 @@ const buildAdaptiveMomentumRibbonContext = (
           value: benchmarkRelativeStrength1h,
         }) === false))
   ) {
-    structuralHardBlockReasons.push('elevated_venue_spread');
+    riskAnnotations.push('elevated_venue_spread');
   }
 
   if (
     (signalDirection === 'LONG' && derivativesPressure === 'crowded_long') ||
     (signalDirection === 'SHORT' && derivativesPressure === 'crowded_short')
   ) {
-    structuralHardBlockReasons.push('derivatives_pressure_conflict');
+    riskAnnotations.push('derivatives_pressure_conflict');
   }
 
   if (
     signalDirection === 'SHORT' &&
     !(shortBreadthShockPocket || shortBreadthNeutralPocket)
   ) {
-    structuralHardBlockReasons.push('short_disabled');
+    approvalBlockReasons.push('short_disabled');
   }
 
   if (signalDirection === 'LONG' && cmcAltLiquidityRegime === 'btc_favored') {
-    structuralHardBlockReasons.push('cmc_alt_liquidity_btc_favored');
+    approvalBlockReasons.push('cmc_alt_liquidity_btc_favored');
   }
 
   const deterministicQuality = getDeterministicAdaptiveMomentumRibbonQuality({
@@ -987,7 +990,8 @@ const buildAdaptiveMomentumRibbonContext = (
     q4ContinuationBlockReasons,
     q4ContinuationRecoveryAllowed,
     hardBlockReasons,
-    structuralHardBlockReasons,
+    approvalBlockReasons,
+    riskAnnotations,
   });
 
   if (
@@ -995,9 +999,10 @@ const buildAdaptiveMomentumRibbonContext = (
     !q4TargetAlpha1Allowed &&
     deterministicQuality < 4 &&
     hardBlockReasons.length === 0 &&
-    structuralHardBlockReasons.length === 0
+    approvalBlockReasons.length === 0 &&
+    riskAnnotations.length === 0
   ) {
-    structuralHardBlockReasons.push('target_vs_btc_alpha_1h_chase');
+    approvalBlockReasons.push('target_vs_btc_alpha_1h_chase');
   }
 
   return {
@@ -1061,7 +1066,8 @@ const buildAdaptiveMomentumRibbonContext = (
     q4ContinuationBlockReasons,
     q4ContinuationRecoveryAllowed,
     hardBlockReasons,
-    structuralHardBlockReasons,
+    approvalBlockReasons,
+    riskAnnotations,
     deterministicQuality,
     approvalAllowedNow: deterministicQuality >= 4,
     maxAllowedQuality: deterministicQuality,
@@ -1129,11 +1135,15 @@ const postProcessAnalysis = ({
           ? `AdaptiveMomentumRibbon guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : context.structuralHardBlockReasons.length > 0
-            ? `AdaptiveMomentumRibbon watch mode: ${context.structuralHardBlockReasons.join(
+          : context.approvalBlockReasons.length > 0
+            ? `AdaptiveMomentumRibbon approval blocked: ${context.approvalBlockReasons.join(
                 ', ',
               )}.`
-            : 'AdaptiveMomentumRibbon keeps the setup in watch mode until momentum confirmation becomes cleaner.'),
+            : context.riskAnnotations.length > 0
+              ? `AdaptiveMomentumRibbon risk annotations: ${context.riskAnnotations.join(
+                  ', ',
+                )}.`
+              : 'AdaptiveMomentumRibbon keeps the setup in watch mode until momentum confirmation becomes cleaner.'),
       triggerInvalidation:
         analysis.triggerInvalidation ||
         (retestPrice != null
@@ -1145,11 +1155,15 @@ const postProcessAnalysis = ({
           ? `AdaptiveMomentumRibbon rejected: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : context.structuralHardBlockReasons.length > 0
-            ? `AdaptiveMomentumRibbon waiting: ${context.structuralHardBlockReasons.join(
+          : context.approvalBlockReasons.length > 0
+            ? `AdaptiveMomentumRibbon blocked: ${context.approvalBlockReasons.join(
                 ', ',
               )}.`
-            : 'AdaptiveMomentumRibbon keeps the signal in watch mode until continuation confirmation becomes cleaner.'),
+            : context.riskAnnotations.length > 0
+              ? `AdaptiveMomentumRibbon waiting with risk annotations: ${context.riskAnnotations.join(
+                  ', ',
+                )}.`
+              : 'AdaptiveMomentumRibbon keeps the signal in watch mode until continuation confirmation becomes cleaner.'),
     };
   }
 
@@ -1240,11 +1254,12 @@ Additional AdaptiveMomentumRibbon context:
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
-- structuralHardBlockReasons=${context.structuralHardBlockReasons.join(', ') || 'none'}
+- approvalBlockReasons=${context.approvalBlockReasons.join(', ') || 'none'}
+- riskAnnotations=${context.riskAnnotations.join(', ') || 'none'}
 
 Interpretation rules for AdaptiveMomentumRibbon:
 - a zero-cross alone does not make quality high;
-- pay attention to Keltner channel side, sane invalidation distance, bias alignment, and derivatives confirmation for q4 setups;
+- pay attention to Keltner channel side, sane invalidation distance, bias alignment, derivatives confirmation, and risk annotations for q4 setups;
 - if \`signalOsc\` already conflicts with direction or the signal is invalidated, do not treat the entry as confirmed.
 `;
   },

@@ -31,6 +31,8 @@ type DeterministicAiGateContext = {
   approvalAllowedNow?: boolean;
   deterministicQuality?: number;
   maxAllowedQuality?: number;
+  approvalBlockReasons?: string[];
+  riskAnnotations?: string[];
   structuralHardBlockReasons?: string[];
 };
 
@@ -132,8 +134,10 @@ const getDeterministicQuality = (
     return Math.max(1, Math.min(5, Math.round(maxAllowedQuality)));
   }
 
-  return Array.isArray(gateContext?.structuralHardBlockReasons) &&
-    gateContext.structuralHardBlockReasons.length > 0
+  return (Array.isArray(gateContext?.approvalBlockReasons) &&
+    gateContext.approvalBlockReasons.length > 0) ||
+    (Array.isArray(gateContext?.structuralHardBlockReasons) &&
+      gateContext.structuralHardBlockReasons.length > 0)
     ? 2
     : 3;
 };
@@ -320,6 +324,8 @@ export const getDeterministicAiGateContext = (
 
   return (candidates.find(
     (candidate) =>
+      Array.isArray(candidate.approvalBlockReasons) ||
+      Array.isArray(candidate.riskAnnotations) ||
       Array.isArray(candidate.structuralHardBlockReasons) ||
       typeof candidate.approvalAllowedNow === 'boolean',
   ) ?? null) as DeterministicAiGateContext | null;

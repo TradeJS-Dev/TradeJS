@@ -3371,7 +3371,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: true,
           deterministicQuality: 5,
-          structuralHardBlockReasons: [],
+          riskAnnotations: [],
         }),
       );
 
@@ -3405,7 +3405,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 2,
-          structuralHardBlockReasons: ['invalidated'],
+          approvalBlockReasons: ['invalidated'],
         }),
       );
 
@@ -3463,7 +3463,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          structuralHardBlockReasons: [],
+          riskAnnotations: [],
         }),
       );
 
@@ -3516,7 +3516,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          structuralHardBlockReasons: [],
+          riskAnnotations: [],
         }),
       );
 
@@ -3569,7 +3569,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          structuralHardBlockReasons: [],
+          riskAnnotations: [],
         }),
       );
 
@@ -3634,7 +3634,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          structuralHardBlockReasons: ['short_disabled'],
+          approvalBlockReasons: ['short_disabled'],
         }),
       );
 

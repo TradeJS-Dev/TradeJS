@@ -269,7 +269,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         signalRangeAtrRatio: expect.closeTo(1.2),
         deterministicQuality: 5,
         approvalAllowedNow: true,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
   });
@@ -303,7 +303,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         cmcAltLiquidityRegime: 'btc_favored',
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['cmc_alt_liquidity_btc_favored'],
+        approvalBlockReasons: ['cmc_alt_liquidity_btc_favored'],
       }),
     );
   });
@@ -343,7 +343,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         signalRangeAtrRatio: expect.closeTo(0.8),
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['weak_signal_range'],
+        approvalBlockReasons: ['weak_signal_range'],
       }),
     );
   });
@@ -511,7 +511,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         q4ContinuationRecoveryAllowed: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
+        approvalBlockReasons: expect.arrayContaining([
           'target_vs_btc_alpha_1h_chase',
         ]),
       }),
@@ -604,7 +604,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         invalidated: true,
         deterministicQuality: 2,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['invalidated'],
+        approvalBlockReasons: ['invalidated'],
       }),
     );
 
@@ -740,7 +740,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         targetVsBtcAlpha4h: 0.8,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
 
@@ -917,7 +917,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         sessionAllowsApproval: true,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
   });
@@ -1278,7 +1278,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         derivativesPressure: 'crowded_long',
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
+        riskAnnotations: expect.arrayContaining([
           'derivatives_pressure_conflict',
         ]),
       }),
@@ -1340,7 +1340,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
   });
@@ -1380,7 +1380,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         sessionAllowsApproval: false,
         deterministicQuality: 5,
         approvalAllowedNow: true,
-        structuralHardBlockReasons: ['session_thin'],
+        riskAnnotations: ['session_thin'],
       }),
     );
   });
@@ -1502,7 +1502,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         spreadSeverity: 'elevated',
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
+        riskAnnotations: expect.arrayContaining([
           'benchmark_conflict',
           'weak_participation',
           'weak_retest_quality',
@@ -1586,7 +1586,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         spreadSeverity: 'wide',
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
+        riskAnnotations: expect.arrayContaining([
           'session_thin',
           'benchmark_conflict',
           'elevated_venue_spread',
@@ -1677,7 +1677,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         sessionAllowsApproval: true,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['short_disabled'],
+        approvalBlockReasons: ['short_disabled'],
       }),
     );
 
@@ -1775,7 +1775,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         shortBreadthShockPocket: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
 
@@ -1876,7 +1876,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         shortBreadthNeutralPocket: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
-        structuralHardBlockReasons: [],
+        riskAnnotations: [],
       }),
     );
   });
@@ -1956,7 +1956,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         shortBreadthNeutralPocket: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['weak_participation', 'short_disabled'],
+        approvalBlockReasons: ['short_disabled'],
+        riskAnnotations: ['weak_participation'],
       }),
     );
   });
@@ -2034,7 +2035,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         shortBreadthShockPocket: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['short_disabled'],
+        approvalBlockReasons: ['short_disabled'],
       }),
     );
   });
@@ -2049,7 +2050,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         baseContextAvailable: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: ['missing_base_context'],
+        approvalBlockReasons: ['missing_base_context'],
       }),
     );
   });
@@ -2073,9 +2074,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         breakoutState: 'inside_range',
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
-          'range_bound_structure',
-        ]),
+        riskAnnotations: expect.arrayContaining(['range_bound_structure']),
       }),
     );
   });
@@ -2109,9 +2108,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         effortVsResult: 640,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        structuralHardBlockReasons: expect.arrayContaining([
-          'weak_participation',
-        ]),
+        riskAnnotations: expect.arrayContaining(['weak_participation']),
       }),
     );
   });
