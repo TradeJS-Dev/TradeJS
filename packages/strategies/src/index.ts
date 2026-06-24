@@ -3,7 +3,7 @@ import { type StrategyConfig } from '@tradejs/types';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { adaptiveTrendChannelManifest } from './AdaptiveTrendChannel/manifest';
 import { breakoutManifest } from './Breakout/manifest';
-import { derivativesFlushReversalManifest } from './DerivativesFlushReversal/manifest';
+import { marketFlushReversalManifest } from './MarketFlushReversal/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { relativeRotationManifest } from './RelativeRotation/manifest';
@@ -22,8 +22,8 @@ import { config as adaptiveTrendChannelDefaultConfig } from './AdaptiveTrendChan
 import { AdaptiveTrendChannelStrategyCreator } from './AdaptiveTrendChannel/strategy';
 import { config as breakoutDefaultConfig } from './Breakout/config';
 import { BreakoutStrategyCreator } from './Breakout/strategy';
-import { config as derivativesFlushReversalDefaultConfig } from './DerivativesFlushReversal/config';
-import { DerivativesFlushReversalStrategyCreator } from './DerivativesFlushReversal/strategy';
+import { config as marketFlushReversalDefaultConfig } from './MarketFlushReversal/config';
+import { MarketFlushReversalStrategyCreator } from './MarketFlushReversal/strategy';
 import { config as doubleTapDefaultConfig } from './DoubleTap/config';
 import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
@@ -60,8 +60,8 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: TrendlineStrategyCreator,
   },
   {
-    manifest: derivativesFlushReversalManifest,
-    creator: DerivativesFlushReversalStrategyCreator,
+    manifest: marketFlushReversalManifest,
+    creator: MarketFlushReversalStrategyCreator,
   },
   {
     manifest: volatilityCompressionBreakoutManifest,
@@ -120,7 +120,7 @@ export const strategyEntries: StrategyRegistryEntry[] = [
 const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   Breakout: breakoutDefaultConfig,
   TrendLine: trendLineDefaultConfig,
-  DerivativesFlushReversal: derivativesFlushReversalDefaultConfig,
+  MarketFlushReversal: marketFlushReversalDefaultConfig,
   VolatilityCompressionBreakout: volatilityCompressionBreakoutDefaultConfig,
   RelativeRotation: relativeRotationDefaultConfig,
   TrendShift: trendShiftDefaultConfig,
@@ -143,7 +143,7 @@ export const getBuiltInStrategyDefaultConfig = (
 export { adaptiveMomentumRibbonDefaultConfig };
 export { adaptiveTrendChannelDefaultConfig };
 export { breakoutDefaultConfig };
-export { derivativesFlushReversalDefaultConfig };
+export { marketFlushReversalDefaultConfig };
 export { maStrategyDefaultConfig };
 export { relativeRotationDefaultConfig };
 export { trendLineDefaultConfig };
@@ -159,7 +159,7 @@ export { volatilityCompressionBreakoutDefaultConfig };
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
 export { adaptiveMomentumRibbonMlAdapter } from './AdaptiveMomentumRibbon/adapters/ml';
 export { adaptiveTrendChannelAiAdapter } from './AdaptiveTrendChannel/adapters/ai';
-export { derivativesFlushReversalAiAdapter } from './DerivativesFlushReversal/adapters/ai';
+export { marketFlushReversalAiAdapter } from './MarketFlushReversal/adapters/ai';
 export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
 export { relativeRotationAiAdapter } from './RelativeRotation/adapters/ai';
 export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';

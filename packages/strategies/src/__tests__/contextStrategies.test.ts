@@ -1,7 +1,8 @@
 /** @jest-environment node */
 
-import { config as DFR_DEFAULT_CONFIG } from '../DerivativesFlushReversal/config';
-import { createDerivativesFlushReversalCore } from '../DerivativesFlushReversal/core';
+import { config as MFR_DEFAULT_CONFIG } from '../MarketFlushReversal/config';
+import { createMarketFlushReversalCore } from '../MarketFlushReversal/core';
+import { buildMarketFlushReversalGuardrailContext } from '../MarketFlushReversal/guardrails';
 import { config as RR_DEFAULT_CONFIG } from '../RelativeRotation/config';
 import { createRelativeRotationCore } from '../RelativeRotation/core';
 import { config as VCB_DEFAULT_CONFIG } from '../VolatilityCompressionBreakout/config';
@@ -172,6 +173,16 @@ const makeBaseContext = (overrides: Record<string, unknown> = {}) => {
   } as any;
 };
 
+const makeCalibratedMarketFlushBaseContext = () => {
+  const baseContext = makeBaseContext();
+  baseContext.relative.targetVsBtc.ratioReturn24h = -3.3;
+  baseContext.relative.cmcReferenceAssets = {
+    ethVsBtcVolumeRatio: 0.54,
+  };
+  baseContext.mtf.summary.h1RangePosition = 0.2;
+  return baseContext;
+};
+
 const makeIndicatorsState = (baseContext: any) =>
   ({
     setCurrentBar: jest.fn(),
@@ -243,12 +254,12 @@ const makeCoreParams = ({
 });
 
 describe('context strategies', () => {
-  it('opens DerivativesFlushReversal long on a swept long-liquidation flush', async () => {
+  it('opens MarketFlushReversal long on a swept long-liquidation flush', async () => {
     const baseContext = makeBaseContext();
     const { strategyApi, lastTradeController } = makeStrategyApi(101);
-    const core = await createDerivativesFlushReversalCore(
+    const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: DFR_DEFAULT_CONFIG,
+        config: MFR_DEFAULT_CONFIG,
         strategyApi,
         baseContext,
       }),
@@ -259,16 +270,17 @@ describe('context strategies', () => {
     expect(result).toEqual(
       expect.objectContaining({
         kind: 'entry',
-        code: 'DFR_LONG_FLUSH_REVERSAL',
+        code: 'MFR_LONG_FLUSH_REVERSAL',
         direction: 'LONG',
       }),
     );
     expect(strategyApi.entry).toHaveBeenCalledWith(
       expect.objectContaining({
         additionalIndicators: {
-          derivativesFlushReversalContext: expect.objectContaining({
+          marketFlushReversalContext: expect.objectContaining({
             signalDirection: 'LONG',
-            pressure: 'long_flush',
+            marketPressure: 'long_flush',
+            marketFlushConfirmed: true,
             structureConfirmed: true,
           }),
         },
@@ -281,12 +293,12 @@ describe('context strategies', () => {
     );
   });
 
-  it('opens DerivativesFlushReversal from structure when derivatives are not available in core', async () => {
+  it('opens MarketFlushReversal local structure candidate when derivatives are not available in core', async () => {
     const baseContext = makeBaseContext({ derivatives: undefined });
     const { strategyApi } = makeStrategyApi(101);
-    const core = await createDerivativesFlushReversalCore(
+    const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: DFR_DEFAULT_CONFIG,
+        config: MFR_DEFAULT_CONFIG,
         strategyApi,
         baseContext,
       }),
@@ -297,19 +309,191 @@ describe('context strategies', () => {
     expect(result).toEqual(
       expect.objectContaining({
         kind: 'entry',
-        code: 'DFR_LONG_FLUSH_REVERSAL',
+        code: 'MFR_LONG_FLUSH_REVERSAL',
         direction: 'LONG',
       }),
     );
     expect(strategyApi.entry).toHaveBeenCalledWith(
       expect.objectContaining({
         additionalIndicators: {
-          derivativesFlushReversalContext: expect.objectContaining({
+          marketFlushReversalContext: expect.objectContaining({
             signalDirection: 'LONG',
-            signalSource: 'structure',
+            marketFlushConfirmed: false,
             structureConfirmed: true,
           }),
         },
+      }),
+    );
+  });
+
+  it('approves MarketFlushReversal gate on calibrated broad-market long rebound', () => {
+    const baseContext = makeCalibratedMarketFlushBaseContext();
+    const context = buildMarketFlushReversalGuardrailContext({
+      signalContext: {
+        signalDirection: 'LONG',
+        minMarketLiqSpikeRatio: 2,
+        structureConfirmed: true,
+        participationConfirmed: true,
+        volumeRel20: 1.5,
+        sweepWickPct: 0.4,
+      },
+      baseContext,
+    });
+
+    expect(context).toEqual(
+      expect.objectContaining({
+        approvalAllowedNow: true,
+        deterministicQuality: 5,
+        marketFlushConfirmed: true,
+        approvalBlockReasons: [],
+      }),
+    );
+    expect(context.marketFlushReversalGateFeatures).toEqual(
+      expect.objectContaining({
+        broadMarketPressure: 'long_flush',
+        broadMarketFlushDirection: 'LONG',
+        broadMarketFlushConfirmed: true,
+        targetVsBtcRatioReturn24h: -3.3,
+        ethVsBtcVolumeRatio: 0.54,
+        calibratedLongRebound: true,
+      }),
+    );
+  });
+
+  it('approves MarketFlushReversal gate through the H1 washout pocket without ETH/BTC volume', () => {
+    const baseContext = makeCalibratedMarketFlushBaseContext();
+    baseContext.relative.cmcReferenceAssets = undefined;
+    baseContext.mtf.summary.h1RangePosition = 0.08;
+
+    const context = buildMarketFlushReversalGuardrailContext({
+      signalContext: {
+        signalDirection: 'LONG',
+        minMarketLiqSpikeRatio: 2,
+        structureConfirmed: true,
+        participationConfirmed: true,
+      },
+      baseContext,
+    });
+
+    expect(context).toEqual(
+      expect.objectContaining({
+        approvalAllowedNow: true,
+        deterministicQuality: 5,
+        approvalBlockReasons: [],
+      }),
+    );
+    expect(context.marketFlushReversalGateFeatures).toEqual(
+      expect.objectContaining({
+        ethVsBtcVolumeRatio: null,
+        h1RangePosition: 0.08,
+        calibratedLongRebound: true,
+      }),
+    );
+  });
+
+  it('blocks MarketFlushReversal gate outside calibrated rebound boundaries', () => {
+    const cases = [
+      {
+        ratioReturn24h: -3.29,
+        ethVsBtcVolumeRatio: 0.54,
+        h1RangePosition: 0.08,
+      },
+      {
+        ratioReturn24h: -3.3,
+        ethVsBtcVolumeRatio: 0.53,
+        h1RangePosition: 0.081,
+      },
+      {
+        ratioReturn24h: null,
+        ethVsBtcVolumeRatio: 0.54,
+        h1RangePosition: 0.08,
+      },
+    ];
+
+    for (const item of cases) {
+      const baseContext = makeCalibratedMarketFlushBaseContext();
+      baseContext.relative.targetVsBtc.ratioReturn24h = item.ratioReturn24h;
+      baseContext.relative.cmcReferenceAssets.ethVsBtcVolumeRatio =
+        item.ethVsBtcVolumeRatio;
+      baseContext.mtf.summary.h1RangePosition = item.h1RangePosition;
+
+      const context = buildMarketFlushReversalGuardrailContext({
+        signalContext: {
+          signalDirection: 'LONG',
+          minMarketLiqSpikeRatio: 2,
+          structureConfirmed: true,
+          participationConfirmed: true,
+        },
+        baseContext,
+      });
+
+      expect(context).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          approvalBlockReasons: expect.arrayContaining([
+            'calibrated_long_rebound_missing',
+          ]),
+        }),
+      );
+      expect(context.marketFlushReversalGateFeatures).toEqual(
+        expect.objectContaining({
+          calibratedLongRebound: false,
+        }),
+      );
+    }
+  });
+
+  it('blocks MarketFlushReversal short approvals until a short pocket is validated', () => {
+    const baseContext = makeCalibratedMarketFlushBaseContext();
+    baseContext.derivatives.summary.pressure = 'short_flush';
+    baseContext.derivatives.summary.riskFlags = ['short_liquidation_spike'];
+    baseContext.derivatives.intervals['15m'].liqImbalance = 0.7;
+
+    const context = buildMarketFlushReversalGuardrailContext({
+      signalContext: {
+        signalDirection: 'SHORT',
+        minMarketLiqSpikeRatio: 2,
+        structureConfirmed: true,
+        participationConfirmed: true,
+      },
+      baseContext,
+    });
+
+    expect(context).toEqual(
+      expect.objectContaining({
+        approvalAllowedNow: false,
+        deterministicQuality: 3,
+        marketFlushConfirmed: true,
+        approvalBlockReasons: expect.arrayContaining([
+          'short_flush_rebound_pocket_not_validated',
+        ]),
+      }),
+    );
+  });
+
+  it('blocks MarketFlushReversal gate without broad-market derivatives', () => {
+    const baseContext = makeBaseContext({ derivatives: undefined });
+    const context = buildMarketFlushReversalGuardrailContext({
+      signalContext: {
+        signalDirection: 'LONG',
+        minMarketLiqSpikeRatio: 2,
+        structureConfirmed: true,
+        participationConfirmed: true,
+        volumeRel20: 1.5,
+        sweepWickPct: 0.4,
+      },
+      baseContext,
+    });
+
+    expect(context).toEqual(
+      expect.objectContaining({
+        approvalAllowedNow: false,
+        deterministicQuality: 2,
+        marketFlushConfirmed: false,
+        approvalBlockReasons: expect.arrayContaining([
+          'missing_broad_market_derivatives',
+        ]),
       }),
     );
   });

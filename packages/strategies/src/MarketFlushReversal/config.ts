@@ -6,7 +6,7 @@ import {
   StrategyConfig,
 } from '@tradejs/types';
 
-export interface DerivativesFlushReversalSideConfig {
+export interface MarketFlushReversalSideConfig {
   enable: boolean;
   direction: Direction;
   minRiskRatio: number;
@@ -18,11 +18,11 @@ export const config = {
   MAKE_ORDERS: true,
   CLOSE_OPPOSITE_POSITIONS: false,
   BACKTEST_PRICE_MODE: 'open' as const,
-  AI_ENABLED: false,
-  AI_MODE: 'llm' as const,
+  AI_ENABLED: true,
+  AI_MODE: 'gate' as const,
   ML_ENABLED: false,
   ML_THRESHOLD: 0.1,
-  MIN_AI_QUALITY: 3,
+  MIN_AI_QUALITY: 4,
   FEE_PERCENT,
   MAX_LOSS_VALUE: 10,
   MA_FAST: 14,
@@ -39,16 +39,16 @@ export const config = {
   MACD_SIGNAL: 9,
   LEVEL_LOOKBACK: 20,
   LEVEL_DELAY: 2,
-  DFR_MIN_VOLUME_REL20: 1.1,
-  DFR_MIN_LIQ_SPIKE_RATIO: 2,
-  DFR_MIN_SWEEP_WICK_PCT: 0.2,
-  DFR_MAX_LONG_RANGE_POSITION: 0.45,
-  DFR_MIN_SHORT_RANGE_POSITION: 0.55,
-  DFR_STOP_ATR_BUFFER_MULT: 0.25,
-  DFR_STOP_BUFFER_PCT: 0.05,
-  DFR_FALLBACK_STOP_ATR_MULT: 1.4,
-  DFR_TARGET_R_MULT: 2.2,
-  DFR_EXIT_ON_OPPOSITE_SIGNAL: true,
+  MFR_MIN_VOLUME_REL20: 1.1,
+  MFR_MIN_MARKET_LIQ_SPIKE_RATIO: 2,
+  MFR_MIN_SWEEP_WICK_PCT: 0.2,
+  MFR_MAX_LONG_RANGE_POSITION: 0.45,
+  MFR_MIN_SHORT_RANGE_POSITION: 0.55,
+  MFR_STOP_ATR_BUFFER_MULT: 0.25,
+  MFR_STOP_BUFFER_PCT: 0.05,
+  MFR_FALLBACK_STOP_ATR_MULT: 1.4,
+  MFR_TARGET_R_MULT: 2.2,
+  MFR_EXIT_ON_OPPOSITE_SIGNAL: true,
   LONG: {
     enable: true,
     direction: 'LONG',
@@ -61,9 +61,9 @@ export const config = {
   },
 } as const;
 
-export type DerivativesFlushReversalConfig = StrategyConfig &
+export type MarketFlushReversalConfig = StrategyConfig &
   Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
-    LONG: DerivativesFlushReversalSideConfig;
-    SHORT: DerivativesFlushReversalSideConfig;
+    LONG: MarketFlushReversalSideConfig;
+    SHORT: MarketFlushReversalSideConfig;
   };

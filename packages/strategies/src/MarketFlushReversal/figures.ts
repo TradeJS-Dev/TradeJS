@@ -1,7 +1,7 @@
 import type { Direction, StrategyEntryModelFigures } from '@tradejs/types';
 import { buildEntryStopTargetFigures } from '../shared/contextStrategy';
 
-export const buildDerivativesFlushReversalFigures = ({
+export const buildMarketFlushReversalFigures = ({
   direction,
   entryTimestamp,
   entryPrice,
@@ -19,7 +19,7 @@ export const buildDerivativesFlushReversalFigures = ({
   referencePrice?: number | null;
 }): StrategyEntryModelFigures =>
   buildEntryStopTargetFigures({
-    idPrefix: 'dfr',
+    idPrefix: 'mfr',
     direction,
     entryTimestamp,
     entryPrice,
