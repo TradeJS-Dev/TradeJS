@@ -41,6 +41,7 @@ const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
   { label: 'Last 7d', value: '168' },
   { label: 'Last 30d', value: '720' },
+  { label: 'Last 60d', value: '1440' },
   { label: 'Last 90d', value: '2160' },
 ];
 
