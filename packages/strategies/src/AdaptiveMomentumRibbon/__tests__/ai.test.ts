@@ -1800,7 +1800,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('approves target-aligned market-breadth shock shorts without BTC-favored CMC context', () => {
+  it('approves neutral market-breadth exhaustion shorts without target derivatives', () => {
     const signal = makeSignal({
       direction: 'SHORT',
       prices: {
@@ -1817,6 +1817,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       additionalIndicators: {
         baseContext: {
           gateFeatures: {
+            decisionHints: {
+              approveBias: 'neutral',
+            },
             relative: {
               marketBreadthReturn: -0.0091,
             },
@@ -1832,11 +1835,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc4h: -4.2,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
-            },
-          },
-          derivatives: {
-            targetDerived: {
-              directionAligned: true,
             },
           },
           structure: {
@@ -1871,14 +1869,94 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         signalDirection: 'SHORT',
         cmcAltLiquidityRegime: null,
+        baseDecisionApproveBias: 'neutral',
         marketBreadthAdvancers: 0,
         marketBreadthReturn: -0.0091,
-        derivativesTargetDirectionAligned: true,
         shortBreadthShockPocket: false,
-        shortBreadthTargetAlignedPocket: true,
+        shortBreadthNeutralPocket: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
         structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('blocks neutral market-breadth exhaustion shorts when effort is too high', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            decisionHints: {
+              approveBias: 'neutral',
+            },
+            relative: {
+              marketBreadthReturn: -0.0091,
+            },
+          },
+          relative: {
+            marketBreadth: {
+              advancers: 0,
+              advanceDeclineRatio: 1,
+              equalWeightedReturn: -0.0091,
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 801,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        baseDecisionApproveBias: 'neutral',
+        marketBreadthAdvancers: 0,
+        marketBreadthReturn: -0.0091,
+        shortBreadthShockPocket: false,
+        shortBreadthNeutralPocket: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['weak_participation', 'short_disabled'],
       }),
     );
   });
