@@ -20,12 +20,21 @@ import {
 } from '../strategyHelpers/derivativesContext';
 
 const originalEnv = process.env;
+const DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'BNBUSDT',
+  'SOLUSDT',
+  'TRXUSDT',
+  'XRPUSDT',
+];
 
 describe('strategyHelpers/derivativesContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env = { ...originalEnv };
     delete process.env.DERIVATIVES_CONTEXT_ENABLED;
+    delete process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS;
     delete process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
     delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
     delete process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS;
@@ -96,7 +105,7 @@ describe('strategyHelpers/derivativesContext', () => {
     });
 
     expect(enriched).toBe(true);
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
       intervals: ['15m', '1h'],
@@ -111,7 +120,7 @@ describe('strategyHelpers/derivativesContext', () => {
     });
     expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
       expect.objectContaining({
-        referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
       }),
     );
   });
@@ -129,10 +138,21 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(mockGetDerivativesWindow).not.toHaveBeenCalled();
   });
 
-  it('uses only BTC/ETH as derivatives reference symbols', () => {
+  it('uses BTC/ETH plus default extra derivatives reference symbols', () => {
+    expect(getDerivativesContextReferenceSymbols()).toEqual(
+      DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
+    );
+  });
+
+  it('uses env-configured extra derivatives reference symbols', () => {
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS =
+      'bnb,adausdt, BNB';
+
     expect(getDerivativesContextReferenceSymbols()).toEqual([
       'BTCUSDT',
       'ETHUSDT',
+      'BNBUSDT',
+      'ADAUSDT',
     ]);
   });
 
@@ -146,7 +166,7 @@ describe('strategyHelpers/derivativesContext', () => {
     });
 
     expect(enriched).toBe(true);
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
       intervals: ['15m', '1h'],
@@ -164,7 +184,7 @@ describe('strategyHelpers/derivativesContext', () => {
         symbol: 'ETHUSDT',
         targetSymbol: 'ETHUSDT',
         primaryReferenceSymbol: 'ETHUSDT',
-        referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
         referenceContexts: expect.objectContaining({
           BTCUSDT: expect.objectContaining({ symbol: 'BTCUSDT' }),
           ETHUSDT: expect.objectContaining({ symbol: 'ETHUSDT' }),
@@ -197,7 +217,7 @@ describe('strategyHelpers/derivativesContext', () => {
 
   it('uses BTC as the primary derivatives context for non-reference symbols', async () => {
     process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
-    const enrichedSignal = { ...signal, symbol: 'SOLUSDT' };
+    const enrichedSignal = { ...signal, symbol: 'DOGEUSDT' };
 
     await expect(
       enrichSignalWithDerivativesContext({
@@ -206,16 +226,16 @@ describe('strategyHelpers/derivativesContext', () => {
       }),
     ).resolves.toBe(true);
 
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(
       mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
-    ).toEqual(['BTCUSDT', 'ETHUSDT']);
+    ).toEqual(DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS);
     expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
       expect.objectContaining({
         symbol: 'BTCUSDT',
-        targetSymbol: 'SOLUSDT',
+        targetSymbol: 'DOGEUSDT',
         primaryReferenceSymbol: 'BTCUSDT',
-        referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
       }),
     );
     expect(
@@ -226,7 +246,7 @@ describe('strategyHelpers/derivativesContext', () => {
   it('adds target derivatives context for non-reference symbols when enabled', async () => {
     process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
     process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED = 'true';
-    const enrichedSignal = { ...signal, symbol: 'SOLUSDT' };
+    const enrichedSignal = { ...signal, symbol: 'DOGEUSDT' };
 
     await expect(
       enrichSignalWithDerivativesContext({
@@ -235,29 +255,29 @@ describe('strategyHelpers/derivativesContext', () => {
       }),
     ).resolves.toBe(true);
 
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(3);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(7);
     expect(
       mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
-    ).toEqual(['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);
+    ).toEqual([...DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS, 'DOGEUSDT']);
     expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
       expect.objectContaining({
         symbol: 'BTCUSDT',
-        targetSymbol: 'SOLUSDT',
+        targetSymbol: 'DOGEUSDT',
         primaryReferenceSymbol: 'BTCUSDT',
-        referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
         referenceContexts: expect.objectContaining({
           BTCUSDT: expect.objectContaining({ symbol: 'BTCUSDT' }),
           ETHUSDT: expect.objectContaining({ symbol: 'ETHUSDT' }),
         }),
         targetContext: expect.objectContaining({
-          symbol: 'SOLUSDT',
+          symbol: 'DOGEUSDT',
           summary: expect.objectContaining({
             directionAligned: true,
           }),
         }),
         targetDerived: expect.objectContaining({
           available: true,
-          sourceSymbol: 'SOLUSDT',
+          sourceSymbol: 'DOGEUSDT',
           referenceSymbol: 'BTCUSDT',
           directionAligned: true,
           referenceDirectionAligned: true,
@@ -271,10 +291,10 @@ describe('strategyHelpers/derivativesContext', () => {
     ).toBe(true);
   });
 
-  it('does not duplicate target context for BTC/ETH reference symbols', async () => {
+  it('does not duplicate target context for derivatives reference symbols', async () => {
     process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
     process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED = 'true';
-    const enrichedSignal = { ...signal, symbol: 'ETHUSDT' };
+    const enrichedSignal = { ...signal, symbol: 'SOLUSDT' };
 
     await expect(
       enrichSignalWithDerivativesContext({
@@ -283,10 +303,10 @@ describe('strategyHelpers/derivativesContext', () => {
       }),
     ).resolves.toBe(true);
 
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(
       mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
-    ).toEqual(['BTCUSDT', 'ETHUSDT']);
+    ).toEqual(DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS);
     expect(
       enrichedSignal.additionalIndicators.baseContext.derivatives.targetContext,
     ).toBeUndefined();
@@ -311,7 +331,7 @@ describe('strategyHelpers/derivativesContext', () => {
       }),
     ).resolves.toBe(false);
 
-    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(2);
+    expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
   });
 });

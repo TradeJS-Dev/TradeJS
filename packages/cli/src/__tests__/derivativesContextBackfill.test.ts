@@ -11,6 +11,15 @@ import {
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
 
+const DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'BNBUSDT',
+  'SOLUSDT',
+  'TRXUSDT',
+  'XRPUSDT',
+];
+
 describe('shouldBackfillDerivativesContextForBacktest', () => {
   const originalContextEnabled = process.env.DERIVATIVES_CONTEXT_ENABLED;
   const originalLookbackHours = process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS;
@@ -154,9 +163,12 @@ describe('shouldBackfillDerivativesContextForSignals', () => {
 describe('resolveDerivativesContextBackfillSymbols', () => {
   const originalTargetContextEnabled =
     process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
+  const originalExtraReferenceSymbols =
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS;
 
   beforeEach(() => {
     delete process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
+    delete process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS;
   });
 
   afterAll(() => {
@@ -166,16 +178,34 @@ describe('resolveDerivativesContextBackfillSymbols', () => {
       process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED =
         originalTargetContextEnabled;
     }
+    if (originalExtraReferenceSymbols === undefined) {
+      delete process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS;
+    } else {
+      process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS =
+        originalExtraReferenceSymbols;
+    }
   });
 
-  it('uses only BTC/ETH reference symbols for Coinalyze backfill', () => {
+  it('uses default derivatives reference symbols for Coinalyze backfill', () => {
     expect(
       resolveDerivativesContextBackfillSymbols([
         'SOLUSDT',
         'XRPUSDT',
         'DOGEUSDT',
       ]),
-    ).toEqual(['BTCUSDT', 'ETHUSDT']);
+    ).toEqual(DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS);
+  });
+
+  it('uses env-configured extra reference symbols for Coinalyze backfill', () => {
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS =
+      'bnb,adausdt, BNB';
+
+    expect(resolveDerivativesContextBackfillSymbols()).toEqual([
+      'BTCUSDT',
+      'ETHUSDT',
+      'BNBUSDT',
+      'ADAUSDT',
+    ]);
   });
 
   it('includes requested target symbols when target derivatives context is enabled', () => {
@@ -188,7 +218,20 @@ describe('resolveDerivativesContextBackfillSymbols', () => {
         'xrpusdt',
         'SOLUSDT',
       ]),
-    ).toEqual(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']);
+    ).toEqual([...DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS]);
+  });
+
+  it('appends requested non-reference symbols when target derivatives context is enabled', () => {
+    process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED = 'true';
+
+    expect(
+      resolveDerivativesContextBackfillSymbols([
+        'DOGEUSDT',
+        'BTCUSDT',
+        'xrpusdt',
+        'DOGEUSDT',
+      ]),
+    ).toEqual([...DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS, 'DOGEUSDT']);
   });
 });
 

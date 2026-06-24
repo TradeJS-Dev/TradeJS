@@ -19,6 +19,17 @@ describe('constants/index', () => {
       expect(constants.TTL_10D).toBe(864_000);
       expect(constants.TESTS_TOP_LIMIT).toBe(50);
       expect(constants.TESTS_LIMIT).toBe(100_000);
+      expect(constants.DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS).toEqual([
+        'BTCUSDT',
+        'ETHUSDT',
+        'BNBUSDT',
+        'SOLUSDT',
+        'TRXUSDT',
+        'XRPUSDT',
+      ]);
+      expect(
+        constants.resolveDerivativesContextReferenceSymbols('bnb,adausdt, BNB'),
+      ).toEqual(['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT']);
       expect(constants.KLINE_CONCURRENCY_LIMIT).toBeUndefined();
       expect(constants.SCREENSHOT_CONCURRENCY_LIMIT).toBeUndefined();
     });

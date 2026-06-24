@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ProgressBar from 'progress';
 import { delay } from '@tradejs/core/async';
-import { DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS } from '@tradejs/core/constants';
+import { resolveDerivativesContextReferenceSymbols } from '@tradejs/core/constants';
 import {
   coinalyzePointsToRows,
   mergeCoinalyzeMetrics,
@@ -102,13 +102,15 @@ export const isDerivativesTargetContextEnabled = () =>
 
 export const resolveDerivativesContextBackfillSymbols = (
   requestedSymbols: string[] = [],
-) =>
-  isDerivativesTargetContextEnabled()
-    ? normalizeSymbols([
-        ...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS,
-        ...requestedSymbols,
-      ])
-    : [...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS];
+) => {
+  const referenceSymbols = resolveDerivativesContextReferenceSymbols(
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS,
+  );
+
+  return isDerivativesTargetContextEnabled()
+    ? normalizeSymbols([...referenceSymbols, ...requestedSymbols])
+    : referenceSymbols;
+};
 
 const chunkArray = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];

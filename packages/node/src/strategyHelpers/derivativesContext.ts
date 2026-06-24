@@ -3,7 +3,7 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
-import { DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS } from '@tradejs/core/constants';
+import { resolveDerivativesContextReferenceSymbols } from '@tradejs/core/constants';
 import { getDerivativesWindow } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
 import type {
@@ -56,7 +56,9 @@ const parseIntervals = (): DerivativesInterval[] => {
 };
 
 export const getDerivativesContextReferenceSymbols = () => [
-  ...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS,
+  ...resolveDerivativesContextReferenceSymbols(
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS,
+  ),
 ];
 
 const normalizeSymbol = (symbol: string) =>

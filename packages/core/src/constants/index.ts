@@ -40,10 +40,50 @@ export const TESTS_ORDERS_MIN_LIMIT = 3;
 export const MARKET_CATEGORY = 'linear';
 export const ML_CANDLE_FEATURE_WINDOW = 50;
 export const ML_BASE_CANDLES_WINDOW = 50;
-export const DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS = [
+export const DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS = [
   'BTCUSDT',
   'ETHUSDT',
 ] as const;
+export const DERIVATIVES_CONTEXT_DEFAULT_EXTRA_REFERENCE_SYMBOLS = [
+  'BNBUSDT',
+  'SOLUSDT',
+  'TRXUSDT',
+  'XRPUSDT',
+] as const;
+export const DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS = [
+  ...DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS,
+  ...DERIVATIVES_CONTEXT_DEFAULT_EXTRA_REFERENCE_SYMBOLS,
+] as const;
+
+const parseDerivativesReferenceSymbolList = (value: unknown) =>
+  String(value ?? '')
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+
+const normalizeDerivativesReferenceSymbol = (value: string) => {
+  const compact = value.replace(/[^A-Z0-9]/g, '');
+  if (!compact) return null;
+  return compact.endsWith('USDT') ? compact : `${compact}USDT`;
+};
+
+export const resolveDerivativesContextReferenceSymbols = (
+  extraReferenceSymbols?: unknown,
+) => {
+  const extras =
+    extraReferenceSymbols === undefined
+      ? [...DERIVATIVES_CONTEXT_DEFAULT_EXTRA_REFERENCE_SYMBOLS]
+      : parseDerivativesReferenceSymbolList(extraReferenceSymbols);
+  const symbols = [
+    ...DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS,
+    ...extras,
+  ].flatMap((symbol) => {
+    const normalized = normalizeDerivativesReferenceSymbol(String(symbol));
+    return normalized ? [normalized] : [];
+  });
+
+  return [...new Set(symbols)];
+};
 
 export const TRENDLINE_DEFAULTS = {
   maxLines: 20,
