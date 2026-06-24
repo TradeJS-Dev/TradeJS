@@ -127,12 +127,17 @@ Additional Liquidity Tails context:
 - atrPctRankBucket=${context.atrPctRankBucket ?? 'n/a'}
 - q4AtrRankEligible=${String(context.q4AtrRankEligible)}
 - liquidityRisk=${context.liquidityRisk ?? 'n/a'}
+- cmcFearGreedValue=${String(context.cmcFearGreedValue ?? 'n/a')}
+- btcCorrelation=${String(context.btcCorrelation ?? 'n/a')}
+- derivativesEth15mPoints=${String(context.derivativesEth15mPoints ?? 'n/a')}
+- derivativesOiChangePct4h1h=${String(context.derivativesOiChangePct4h1h ?? 'n/a')}
 - higherTimeframeConflict=${String(context.higherTimeframeConflict)}
 - benchmarkConflict=${String(context.benchmarkConflict)}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - cadenceUpgradePocket=${String(context.cadenceUpgradePocket)}
+- derivativesLongQ3UpgradePocket=${String(context.derivativesLongQ3UpgradePocket)}
 - liquidityTailsGateZoneQuality=${context.liquidityTailsGateFeatures.zoneQuality}
 - liquidityTailsGateRetestAcceptance=${context.liquidityTailsGateFeatures.retestAcceptance}
 - liquidityTailsGateReactionMomentum=${context.liquidityTailsGateFeatures.reactionMomentum}

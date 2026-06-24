@@ -113,6 +113,9 @@ describe('liquidityTailsAiAdapter', () => {
           participation: {
             volume: { volumeRel20: 1.2 },
           },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
           derivatives: {
             summary: {
               pressure: 'short_flush',
@@ -157,6 +160,9 @@ describe('liquidityTailsAiAdapter', () => {
               adx: { adx: 35, strength: 'strong' },
             },
             momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
           },
         },
       ),
@@ -235,6 +241,9 @@ describe('liquidityTailsAiAdapter', () => {
             },
             momentum: { roc1h: 1.4, roc4h: 0.8 },
           },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
         },
       ),
       analysis: {
@@ -273,6 +282,9 @@ describe('liquidityTailsAiAdapter', () => {
               adx: { adx: 35, strength: 'strong' },
             },
             momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
           },
         },
       ),
@@ -355,6 +367,9 @@ describe('liquidityTailsAiAdapter', () => {
             },
             momentum: { bodyStrength: 0.4, roc1h: 1.4, roc4h: 0.8 },
           },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
         },
       ),
       analysis: {
@@ -395,6 +410,9 @@ describe('liquidityTailsAiAdapter', () => {
           },
           participation: {
             volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
           },
           gateFeatures: {
             volatility: { atrPctRankBucket: 'high' },
@@ -512,6 +530,333 @@ describe('liquidityTailsAiAdapter', () => {
     expect(
       (result as { rejectReason?: string } | undefined)?.rejectReason,
     ).toContain('high_liquidity_risk');
+  });
+
+  it('approves otherwise eligible retests at the CMC fear and greed approval cap', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
+          gateFeatures: {
+            risk: { liquidityRisk: 'low' },
+            volatility: { atrPctRankBucket: 'high' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps otherwise approved retests below approval when CMC fear and greed is above the cap', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 40 },
+          },
+          gateFeatures: {
+            risk: { liquidityRisk: 'low' },
+            volatility: { atrPctRankBucket: 'high' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('cmc_fear_greed_above_approval_max');
+  });
+
+  it('keeps otherwise approved retests below approval when CMC fear and greed is unavailable', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          gateFeatures: {
+            risk: { liquidityRisk: 'low' },
+            volatility: { atrPctRankBucket: 'high' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('cmc_fear_greed_unavailable');
+  });
+
+  it('upgrades q3 long retests in the old P2 correlation pocket at the ETH 15m points boundary', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.2,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            crossAsset: { btcCorrelation: 0.5 },
+          },
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 20, strength: 'developing' },
+            },
+            momentum: { bodyStrength: 0.4, roc1h: 0.1, roc4h: 0.1 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
+          derivatives: {
+            intervals: {
+              '1h': { oiChangePct4h: -0.9831 },
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': { points: 176 },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('does not upgrade q3 long retests above the ETH 15m points boundary', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.2,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            crossAsset: { btcCorrelation: 0.5 },
+          },
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 20, strength: 'developing' },
+            },
+            momentum: { bodyStrength: 0.4, roc1h: 0.1, roc4h: 0.1 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
+          derivatives: {
+            intervals: {
+              '1h': { oiChangePct4h: -0.9831 },
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': { points: 177 },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('does not upgrade short retests in the old P2 correlation pocket', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'sell_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.5,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            crossAsset: { btcCorrelation: 0.5 },
+          },
+          regime: {
+            trend: {
+              bias: 'neutral',
+              adx: { adx: 20, strength: 'developing' },
+            },
+            momentum: { bodyStrength: 0.4, roc1h: -0.1, roc4h: 0.1 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
+          derivatives: {
+            intervals: {
+              '1h': { oiChangePct4h: -0.9831 },
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': { points: 176 },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
   });
 
   it('does not upgrade q3 retests with higher-timeframe conflict', () => {
@@ -676,6 +1021,9 @@ describe('liquidityTailsAiAdapter', () => {
             },
             momentum: { roc1h: -1.4, roc4h: 0.8 },
           },
+          relative: {
+            cmcFearGreed: { value: 39 },
+          },
         },
       ),
       analysis: {
@@ -713,6 +1061,9 @@ describe('liquidityTailsAiAdapter', () => {
               adx: { adx: 35, strength: 'strong' },
             },
             momentum: { roc1h: -1.4, roc4h: 0.8 },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
           },
         },
       ),
@@ -779,6 +1130,9 @@ describe('liquidityTailsAiAdapter', () => {
           },
           structure: {
             liquidityTails: { activeRetestDirection: 'SHORT' },
+          },
+          relative: {
+            cmcFearGreed: { value: 39 },
           },
         },
       ),

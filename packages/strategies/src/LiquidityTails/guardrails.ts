@@ -18,12 +18,17 @@ export type LiquidityTailsGuardrailContext =
     atrPctRankBucket: string | null;
     q4AtrRankEligible: boolean;
     liquidityRisk: string | null;
+    cmcFearGreedValue: number | null;
+    btcCorrelation: number | null;
+    derivativesEth15mPoints: number | null;
+    derivativesOiChangePct4h1h: number | null;
     higherTimeframeConflict: boolean;
     benchmarkConflict: boolean;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
     cadenceUpgradePocket: boolean;
+    derivativesLongQ3UpgradePocket: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -69,6 +74,10 @@ const MIN_APPROVAL_BODY_STRENGTH = 0.4;
 const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
 const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
 const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
+const MAX_APPROVAL_CMC_FEAR_GREED_VALUE = 39;
+const MAX_Q3_DERIVATIVES_LONG_ETH_15M_POINTS = 176;
+const MAX_Q3_DERIVATIVES_LONG_OI_CHANGE_PCT_4H_1H = -0.9831;
+const MIN_Q3_DERIVATIVES_LONG_ABS_BTC_CORRELATION = 0.5;
 const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
 
 const buildLiquidityTailsGateFeatures = ({
@@ -234,6 +243,19 @@ export const buildLiquidityTailsGuardrailContext = ({
     typeof baseContext?.gateFeatures?.risk?.liquidityRisk === 'string'
       ? baseContext.gateFeatures.risk.liquidityRisk
       : null;
+  const cmcFearGreedValue = asFiniteNumber(
+    baseContext?.relative?.cmcFearGreed?.value,
+  );
+  const btcCorrelation = asFiniteNumber(
+    baseContext?.raw?.crossAsset?.btcCorrelation,
+  );
+  const derivativesEth15mPoints = asFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.ETHUSDT?.intervals?.['15m']
+      ?.points,
+  );
+  const derivativesOiChangePct4h1h = asFiniteNumber(
+    baseContext?.derivatives?.intervals?.['1h']?.oiChangePct4h,
+  );
   const higherTimeframeConflict =
     baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
   const benchmarkConflict =
@@ -332,6 +354,16 @@ export const buildLiquidityTailsGuardrailContext = ({
     !benchmarkConflict &&
     nonBullTrendContext &&
     (strongAdxExpansion || momentumExpansion);
+  const derivativesLongQ3UpgradePocket =
+    direction === 'LONG' &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue <= MAX_APPROVAL_CMC_FEAR_GREED_VALUE &&
+    derivativesEth15mPoints != null &&
+    derivativesEth15mPoints <= MAX_Q3_DERIVATIVES_LONG_ETH_15M_POINTS &&
+    derivativesOiChangePct4h1h != null &&
+    derivativesOiChangePct4h1h <= MAX_Q3_DERIVATIVES_LONG_OI_CHANGE_PCT_4H_1H &&
+    btcCorrelation != null &&
+    Math.abs(btcCorrelation) >= MIN_Q3_DERIVATIVES_LONG_ABS_BTC_CORRELATION;
   const liquidityTailsGateFeatures = buildLiquidityTailsGateFeatures({
     signalContext,
     trendBias,
@@ -375,6 +407,25 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 3;
     softBlockReasons.push('high_liquidity_risk');
   }
+  if (deterministicQuality >= 4 && cmcFearGreedValue == null) {
+    deterministicQuality = 3;
+    softBlockReasons.push('cmc_fear_greed_unavailable');
+  }
+  if (
+    deterministicQuality >= 4 &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue > MAX_APPROVAL_CMC_FEAR_GREED_VALUE
+  ) {
+    deterministicQuality = 3;
+    softBlockReasons.push('cmc_fear_greed_above_approval_max');
+  }
+  if (
+    deterministicQuality === 3 &&
+    hardBlockReasons.length === 0 &&
+    derivativesLongQ3UpgradePocket
+  ) {
+    deterministicQuality = 4;
+  }
 
   return {
     ...signalContext,
@@ -393,12 +444,17 @@ export const buildLiquidityTailsGuardrailContext = ({
     atrPctRankBucket,
     q4AtrRankEligible,
     liquidityRisk,
+    cmcFearGreedValue,
+    btcCorrelation,
+    derivativesEth15mPoints,
+    derivativesOiChangePct4h1h,
     higherTimeframeConflict,
     benchmarkConflict,
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
     cadenceUpgradePocket,
+    derivativesLongQ3UpgradePocket,
     liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,
