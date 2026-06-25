@@ -771,4 +771,68 @@ describe('buildStrategySignal', () => {
       },
     });
   });
+
+  it('does not materialize lazy indicator snapshot fields when moving baseContext', () => {
+    let lazyReads = 0;
+    const indicators = new Proxy(
+      {
+        baseContext,
+        maFast: [98, 99, 100],
+      },
+      {
+        ownKeys(target) {
+          return [...Reflect.ownKeys(target), 'maFast1h'];
+        },
+        getOwnPropertyDescriptor(target, prop) {
+          if (prop === 'maFast1h') {
+            return {
+              enumerable: true,
+              configurable: true,
+            };
+          }
+
+          return Reflect.getOwnPropertyDescriptor(target, prop);
+        },
+        get(target, prop, receiver) {
+          if (prop === 'maFast1h') {
+            lazyReads += 1;
+            return [1, 2, 3];
+          }
+
+          return Reflect.get(target, prop, receiver);
+        },
+      },
+    ) as unknown as Record<string, unknown>;
+
+    const signal = buildStrategySignal({
+      signalId: 's3',
+      strategy: 'AdaptiveTrendChannel',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 3,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators,
+    });
+
+    expect(lazyReads).toBe(0);
+    expect(signal.indicators).toEqual({
+      maFast: [98, 99, 100],
+    });
+    expect(signal.additionalIndicators?.baseContext).toMatchObject({
+      raw: {
+        trend: {
+          maFast: 100,
+        },
+      },
+      gateFeatures: {
+        direction: 'LONG',
+      },
+    });
+  });
 });

@@ -93,6 +93,29 @@ const cloneSignalPayloadDataProperties = (
   return clone;
 };
 
+const copyEnumerableDataPropertiesExcept = (
+  value: Record<string, unknown>,
+  excludedKeys: ReadonlySet<string>,
+): Record<string, unknown> => {
+  const clone: Record<string, unknown> = {};
+
+  for (const [key, descriptor] of Object.entries(
+    Object.getOwnPropertyDescriptors(value),
+  )) {
+    if (
+      excludedKeys.has(key) ||
+      !descriptor.enumerable ||
+      !('value' in descriptor)
+    ) {
+      continue;
+    }
+
+    clone[key] = descriptor.value;
+  }
+
+  return clone;
+};
+
 const cloneCompactArrayTail = (
   value: unknown,
   limit = COMPACT_MTF_CANDLE_LIMIT,
@@ -1104,10 +1127,9 @@ export const buildStrategySignal = ({
   const normalizedIndicators =
     baseContext == null
       ? indicators
-      : Object.fromEntries(
-          Object.entries(indicatorsRecord).filter(
-            ([key]) => key !== 'baseContext',
-          ),
+      : copyEnumerableDataPropertiesExcept(
+          indicatorsRecord,
+          new Set(['baseContext']),
         );
   const mergedAdditionalIndicators =
     baseContext == null

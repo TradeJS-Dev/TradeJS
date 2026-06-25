@@ -1,5 +1,6 @@
 /** @jest-environment node */
 
+import { buildStrategySignal } from '@tradejs/core/strategies';
 import { adaptiveTrendChannelAiAdapter } from '../adapters/ai';
 
 const makePayload = (
@@ -81,6 +82,128 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       },
     });
 
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps gate approval stable without reading lazy indicator snapshot fields', () => {
+    let lazyReads = 0;
+    const approvingBaseContext = {
+      regime: {
+        trend: { bias: 'bull', trendFollow: { state: 'bull' } },
+        momentum: { rsi: 72 },
+        volatility: { percentiles: { bbWidthRank100: 80 } },
+      },
+      participation: {
+        volume: { volumeRel20: 10 },
+      },
+      structure: {
+        localRange: { breakoutState: 'above_high_level' },
+      },
+      mtf: {
+        summary: { h4VolatilityState: 'expanded' },
+      },
+      derivatives: {
+        summary: {
+          pressure: 'short_flush',
+          directionAligned: true,
+          riskFlags: ['short_liquidation_spike'],
+        },
+      },
+      relative: {
+        cmcExchangeLiquidity: {
+          liquidityRegime: 'expanding',
+          stale: false,
+        },
+      },
+    };
+    const indicators = new Proxy(
+      {
+        baseContext: approvingBaseContext,
+        maFast: [98, 99, 100],
+      },
+      {
+        ownKeys(target) {
+          return [...Reflect.ownKeys(target), 'maFast1h'];
+        },
+        getOwnPropertyDescriptor(target, prop) {
+          if (prop === 'maFast1h') {
+            return {
+              enumerable: true,
+              configurable: true,
+            };
+          }
+
+          return Reflect.getOwnPropertyDescriptor(target, prop);
+        },
+        get(target, prop, receiver) {
+          if (prop === 'maFast1h') {
+            lazyReads += 1;
+            return [1, 2, 3];
+          }
+
+          return Reflect.get(target, prop, receiver);
+        },
+      },
+    ) as any;
+    const signal = buildStrategySignal({
+      signalId: 'signal-2',
+      strategy: 'AdaptiveTrendChannel',
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 1_700_000_000_000,
+      prices: {
+        currentPrice: 104.2,
+        takeProfitPrice: 110,
+        stopLossPrice: 98,
+        riskRatio: 2,
+      },
+      indicators,
+      additionalIndicators: {
+        adaptiveTrendChannelContext: {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+      },
+    });
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: signal.prices,
+        },
+        figures: signal.figures,
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      } as any,
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(lazyReads).toBe(0);
+    expect(signal.indicators).toEqual({
+      maFast: [98, 99, 100],
+    });
     expect(result).toMatchObject({
       direction: 'LONG',
       quality: 5,
