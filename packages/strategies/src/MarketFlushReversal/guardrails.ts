@@ -1,5 +1,9 @@
 import type { BaseStrategyContextSnapshot, Direction } from '@tradejs/types';
 import type { MarketFlushReversalSignalContext } from './core';
+import {
+  getMarketFlushReversalLongReboundPocketFeatures,
+  isMarketFlushReversalCalibratedLongReboundPocket,
+} from './pockets';
 
 export type MarketFlushReversalGateFeatures = {
   signalDirection: Direction | null;
@@ -112,30 +116,6 @@ const hasBlockingMarketContext = (
   );
 };
 
-const CALIBRATED_LONG_TARGET_VS_BTC_RATIO_RETURN_24H_MAX = -3.3;
-const CALIBRATED_LONG_ETH_VS_BTC_VOLUME_RATIO_MIN = 0.54;
-const CALIBRATED_LONG_H1_RANGE_POSITION_MAX = 0.08;
-
-const isCalibratedLongReboundPocket = ({
-  direction,
-  targetVsBtcRatioReturn24h,
-  ethVsBtcVolumeRatio,
-  h1RangePosition,
-}: {
-  direction: Direction | null;
-  targetVsBtcRatioReturn24h: number | null;
-  ethVsBtcVolumeRatio: number | null;
-  h1RangePosition: number | null;
-}) =>
-  direction === 'LONG' &&
-  targetVsBtcRatioReturn24h != null &&
-  targetVsBtcRatioReturn24h <=
-    CALIBRATED_LONG_TARGET_VS_BTC_RATIO_RETURN_24H_MAX &&
-  ((ethVsBtcVolumeRatio != null &&
-    ethVsBtcVolumeRatio >= CALIBRATED_LONG_ETH_VS_BTC_VOLUME_RATIO_MIN) ||
-    (h1RangePosition != null &&
-      h1RangePosition <= CALIBRATED_LONG_H1_RANGE_POSITION_MAX));
-
 const getBroadMarketFlushDirection = ({
   baseContext,
   minSpike,
@@ -209,21 +189,15 @@ export const buildMarketFlushReversalGuardrailContext = ({
     signalContext.participationConfirmed === true;
   const volumeRel20 = toFiniteNumberOrNull(signalContext.volumeRel20);
   const sweepWickPct = toFiniteNumberOrNull(signalContext.sweepWickPct);
-  const targetVsBtcRatioReturn24h = toFiniteNumberOrNull(
-    baseContext?.relative?.targetVsBtc?.ratioReturn24h,
-  );
-  const ethVsBtcVolumeRatio = toFiniteNumberOrNull(
-    baseContext?.relative?.cmcReferenceAssets?.ethVsBtcVolumeRatio,
-  );
-  const h1RangePosition = toFiniteNumberOrNull(
-    baseContext?.mtf?.summary?.h1RangePosition,
-  );
-  const calibratedLongRebound = isCalibratedLongReboundPocket({
-    direction,
-    targetVsBtcRatioReturn24h,
-    ethVsBtcVolumeRatio,
-    h1RangePosition,
-  });
+  const longReboundPocketFeatures =
+    getMarketFlushReversalLongReboundPocketFeatures(baseContext);
+  const calibratedLongRebound =
+    isMarketFlushReversalCalibratedLongReboundPocket({
+      ...longReboundPocketFeatures,
+      direction,
+    });
+  const { targetVsBtcRatioReturn24h, ethVsBtcVolumeRatio, h1RangePosition } =
+    longReboundPocketFeatures;
   const approvalBlockReasons: string[] = [];
   const riskAnnotations: string[] = [];
 

@@ -16,6 +16,10 @@ import {
   resolveAtrBuffer,
   toFiniteNumberOrNull,
 } from '../shared/contextStrategy';
+import {
+  getMarketFlushReversalLongReboundPocketFeatures,
+  isMarketFlushReversalCalibratedLongReboundPocket,
+} from './pockets';
 
 export interface MarketFlushReversalSignalContext {
   signalDirection: Direction;
@@ -406,6 +410,16 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       signal.signalDirection === 'LONG' ? config.LONG : config.SHORT;
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
+    }
+
+    if (
+      signal.signalDirection === 'LONG' &&
+      !isMarketFlushReversalCalibratedLongReboundPocket({
+        direction: signal.signalDirection,
+        ...getMarketFlushReversalLongReboundPocketFeatures(baseContext),
+      })
+    ) {
+      return strategyApi.skip('MFR_LONG_REBOUND_POCKET_MISSING');
     }
 
     const { timestamp, currentPrice } = await strategyApi.getMarketData();

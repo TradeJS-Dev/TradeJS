@@ -183,6 +183,30 @@ const makeCalibratedMarketFlushBaseContext = () => {
   return baseContext;
 };
 
+const makeShortMarketFlushBaseContext = () => {
+  const candle = {
+    ...makeCandle(100),
+    open: 100.4,
+    high: 102,
+    low: 99,
+    close: 100,
+  };
+  const baseContext = makeBaseContext({ candle });
+  baseContext.raw.levels.highLevel = 102.5;
+  baseContext.structure.localRange.rangePosition20 = 0.8;
+  baseContext.structure.localRange.breakoutState = 'failed_high_breakout';
+  baseContext.structure.zones.resistance = { upper: 102.2, level: 102 };
+  baseContext.structure.liquidity.sweepState = 'swept_high';
+  baseContext.structure.liquidityTails.currentTail.side = 'upper';
+  baseContext.participation.delta.buyPressurePct = 0.38;
+  baseContext.participation.delta.deltaDivergenceVsPrice = 'bearish';
+  baseContext.derivatives.summary.pressure = 'short_flush';
+  baseContext.derivatives.summary.riskFlags = ['short_liquidation_spike'];
+  baseContext.derivatives.summary.priceOiDivergenceType = 'price_up_oi_up';
+  baseContext.derivatives.intervals['15m'].liqImbalance = 0.7;
+  return baseContext;
+};
+
 const makeIndicatorsState = (baseContext: any) =>
   ({
     setCurrentBar: jest.fn(),
@@ -255,7 +279,7 @@ const makeCoreParams = ({
 
 describe('context strategies', () => {
   it('opens MarketFlushReversal long on a swept long-liquidation flush', async () => {
-    const baseContext = makeBaseContext();
+    const baseContext = makeCalibratedMarketFlushBaseContext();
     const { strategyApi, lastTradeController } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
@@ -294,7 +318,8 @@ describe('context strategies', () => {
   });
 
   it('opens MarketFlushReversal local structure candidate when derivatives are not available in core', async () => {
-    const baseContext = makeBaseContext({ derivatives: undefined });
+    const baseContext = makeCalibratedMarketFlushBaseContext();
+    baseContext.derivatives = undefined;
     const { strategyApi } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
@@ -319,6 +344,60 @@ describe('context strategies', () => {
           marketFlushReversalContext: expect.objectContaining({
             signalDirection: 'LONG',
             marketFlushConfirmed: false,
+            structureConfirmed: true,
+          }),
+        },
+      }),
+    );
+  });
+
+  it('skips MarketFlushReversal long entry outside the calibrated rebound pocket', async () => {
+    const baseContext = makeBaseContext();
+    const { strategyApi } = makeStrategyApi(101);
+    const core = await createMarketFlushReversalCore(
+      makeCoreParams({
+        config: MFR_DEFAULT_CONFIG,
+        strategyApi,
+        baseContext,
+      }),
+    );
+
+    const result = await core(baseContext.candle, baseContext.candle);
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'MFR_LONG_REBOUND_POCKET_MISSING',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
+  it('keeps MarketFlushReversal short candidates available outside the long rebound pocket', async () => {
+    const baseContext = makeShortMarketFlushBaseContext();
+    const { strategyApi } = makeStrategyApi(101);
+    const core = await createMarketFlushReversalCore(
+      makeCoreParams({
+        config: MFR_DEFAULT_CONFIG,
+        strategyApi,
+        baseContext,
+      }),
+    );
+
+    const result = await core(baseContext.candle, baseContext.candle);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'MFR_SHORT_FLUSH_REVERSAL',
+        direction: 'SHORT',
+      }),
+    );
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalIndicators: {
+          marketFlushReversalContext: expect.objectContaining({
+            signalDirection: 'SHORT',
+            marketPressure: 'short_flush',
+            marketFlushConfirmed: true,
             structureConfirmed: true,
           }),
         },
