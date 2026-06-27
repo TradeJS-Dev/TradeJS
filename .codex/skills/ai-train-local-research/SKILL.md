@@ -36,6 +36,13 @@ Hard rule:
   touches, zone `hitCount`, bars since a detected setup, or pivot counts, are
   allowed only when they measure the setup itself and are causal at signal time.
   Do not confuse them with "number of rows available in the dataset".
+- Do not reject `baseContext.derivatives.intervals` as an AI-gate input only
+  because the historical export has partial coverage. In TradeJS exports these
+  target derivative interval fields may be unavailable for older history and
+  cannot always be backfilled to a longer period, but they are causal live
+  market-state fields when present and may be used for deterministic AI-gate
+  approval after validation. Treat missing/stale interval data as a quality
+  guard, not as approval evidence.
 
 Before implementing a pocket:
 

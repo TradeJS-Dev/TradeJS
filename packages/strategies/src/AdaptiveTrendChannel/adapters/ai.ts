@@ -90,12 +90,10 @@ Additional AdaptiveTrendChannel context:
 - trendFollowState=${context.trendFollowState ?? 'n/a'}
 - h4VolatilityState=${context.h4VolatilityState ?? 'n/a'}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
-- derivativesPressure=${context.derivativesPressure ?? 'n/a'}
-- derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
 - targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
+- targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}
 - ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
-- derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
@@ -107,7 +105,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - SHORT appears when the channel regime flips from bullish to bearish.
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
 - Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
-- Thin participation, crowded positioning, or derivatives disagreement should downgrade the setup.
+- Thin participation, missing shared-context confirmation, or missing liquidation-shock recovery evidence should downgrade the setup.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

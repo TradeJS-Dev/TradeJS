@@ -255,7 +255,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('short_side_disabled');
   });
 
-  it('approves short liquidation recovery pockets with ETH funding support', () => {
+  it('approves short liquidation recovery from canonical target derivative intervals', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -284,8 +284,8 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           derivatives: {
             intervals: {
               '1h': {
-                liqImbalance: -0.97,
-                liqSpikeRatio: 3.4,
+                liqImbalance: -0.98,
+                liqSpikeRatio: 5.8,
               },
             },
             referenceContexts: {
@@ -313,7 +313,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
   });
 
-  it('rejects short liquidation recovery pockets without ETH funding support', () => {
+  it('rejects short liquidation recovery when ETH funding is missing', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -336,15 +336,15 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           derivatives: {
             intervals: {
               '1h': {
-                liqImbalance: -0.97,
-                liqSpikeRatio: 3.4,
+                liqImbalance: -0.98,
+                liqSpikeRatio: 5.8,
               },
             },
             referenceContexts: {
               ETHUSDT: {
                 intervals: {
                   '1h': {
-                    fundingRate: 0.004,
+                    fundingRate: null,
                   },
                 },
               },
@@ -366,6 +366,79 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(
       (result as { rejectReason?: string } | undefined)?.rejectReason,
     ).toContain('short_side_disabled');
+  });
+
+  it('includes canonical target derivative interval fields in the human prompt addon', () => {
+    const prompt = adaptiveTrendChannelAiAdapter.buildHumanPromptAddon?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        {
+          regime: {
+            trend: { bias: 'bull', trendFollow: { state: 'bull' } },
+            momentum: { rsi: 72 },
+            volatility: { percentiles: { bbWidthRank100: 80 } },
+          },
+          participation: {
+            volume: { volumeRel20: 10 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+          derivatives: {
+            intervals: {
+              '1h': {
+                liqImbalance: -0.97,
+                liqSpikeRatio: 5.8,
+                liqTotal: 32,
+              },
+            },
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '1h': {
+                    fundingRate: 0.003,
+                  },
+                },
+              },
+            },
+          },
+          gateFeatures: {
+            relative: {
+              cmcExchangeLiquidityAligned: true,
+              cmcExchangeLiquidityStale: false,
+            },
+          },
+        },
+      ),
+    });
+
+    expect(prompt).toContain('targetLiqImbalance1h=-0.97');
+    expect(prompt).toContain('targetLiqSpikeRatio1h=5.8');
+    expect(prompt).toContain('targetLiqTotal1h=32');
+    expect(prompt).toContain('ethFundingRate1h=0.003');
+    expect(prompt).not.toContain('derivativesPressure');
+    expect(prompt).not.toContain('derivativesDirectionAligned');
+    expect(prompt).not.toContain('derivativesRiskFlags');
   });
 
   it('rejects short flips below side-specific thresholds', () => {

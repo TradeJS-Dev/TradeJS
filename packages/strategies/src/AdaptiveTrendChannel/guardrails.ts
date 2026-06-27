@@ -16,12 +16,10 @@ export type AdaptiveTrendChannelGuardrailContext =
     benchmarkTrendAlignment: string | null;
     cmcExchangeLiquidityAligned: boolean | null;
     cmcExchangeLiquidityStale: boolean | null;
-    derivativesPressure: string | null;
-    derivativesDirectionAligned: boolean | null;
     targetLiqImbalance1h: number | null;
     targetLiqSpikeRatio1h: number | null;
+    targetLiqTotal1h: number | null;
     ethFundingRate1h: number | null;
-    derivativesRiskFlags: string[];
     hardBlockReasons: string[];
     softBlockReasons: string[];
     deterministicQuality: number;
@@ -29,17 +27,13 @@ export type AdaptiveTrendChannelGuardrailContext =
   };
 
 const asFiniteNumber = (value: unknown): number | null => {
+  if (value == null || value === '') {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
-
-const asStringArray = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (entry): entry is string =>
-          typeof entry === 'string' && entry.trim().length > 0,
-      )
-    : [];
 
 const isDirectionAligned = ({
   direction,
@@ -65,10 +59,9 @@ const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 2;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
-const MIN_SHORT_RECOVERY_VOLUME_REL20 = 4.6069;
-const MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H = -0.9665;
-const MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H = 3.2984;
-const MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H = 0.003707;
+const MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H = -0.97;
+const MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H = 5.7;
+const MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H = 0.0037;
 const MAX_APPROVAL_RSI = 75;
 const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
@@ -79,10 +72,11 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   signalContext: Partial<AdaptiveTrendChannelSignalContext>;
   baseContext?: BaseStrategyContextSnapshot | null;
 }): AdaptiveTrendChannelGuardrailContext => {
-  const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const targetDerivatives1h = baseContext?.derivatives?.intervals?.['1h'];
   const ethDerivatives1h =
     baseContext?.derivatives?.referenceContexts?.['ETHUSDT']?.intervals?.['1h'];
+  const targetDerivatives1hStale = targetDerivatives1h?.stale === true;
+  const ethDerivatives1hStale = ethDerivatives1h?.stale === true;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const adaptiveChannelRegime =
@@ -116,22 +110,14 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     'boolean'
       ? baseContext.gateFeatures.relative.cmcExchangeLiquidityStale
       : null;
-  const derivativesPressure =
-    typeof derivativesSummary?.pressure === 'string'
-      ? derivativesSummary.pressure
-      : null;
-  const derivativesDirectionAligned =
-    typeof derivativesSummary?.directionAligned === 'boolean'
-      ? derivativesSummary.directionAligned
-      : null;
   const targetLiqImbalance1h = asFiniteNumber(
     targetDerivatives1h?.liqImbalance,
   );
   const targetLiqSpikeRatio1h = asFiniteNumber(
     targetDerivatives1h?.liqSpikeRatio,
   );
+  const targetLiqTotal1h = asFiniteNumber(targetDerivatives1h?.liqTotal);
   const ethFundingRate1h = asFiniteNumber(ethDerivatives1h?.fundingRate);
-  const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
   const hardBlockReasons: string[] = [];
   const softBlockReasons: string[] = [];
 
@@ -155,29 +141,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     bearishValue: 'below_low_level',
     value: breakoutState,
   });
-  const flushSupport =
-    direction === 'LONG'
-      ? derivativesRiskFlags.includes('short_liquidation_spike') ||
-        derivativesPressure === 'short_flush'
-      : direction === 'SHORT'
-        ? derivativesRiskFlags.includes('long_liquidation_spike') ||
-          derivativesPressure === 'long_flush'
-        : false;
-  const directionalCrowding =
-    direction === 'LONG'
-      ? derivativesRiskFlags.includes('crowded_long')
-      : direction === 'SHORT'
-        ? derivativesRiskFlags.includes('crowded_short')
-        : false;
 
   if (volumeRel20 != null && volumeRel20 < 0.8) {
     softBlockReasons.push('thin_participation');
-  }
-  if (directionalCrowding && !flushSupport) {
-    softBlockReasons.push('directional_crowding');
-  }
-  if (derivativesDirectionAligned === false && !flushSupport) {
-    softBlockReasons.push('derivatives_not_aligned');
   }
 
   const breakoutDistancePct = Math.abs(signalContext.breakoutDistancePct ?? 0);
@@ -209,13 +175,14 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     (bbWidthRank100 ?? 0) >= MIN_APPROVAL_BB_WIDTH_RANK_100;
   const shortRecoverySetup =
     direction === 'SHORT' &&
-    (targetLiqImbalance1h ?? Number.POSITIVE_INFINITY) <=
-      MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H &&
-    (targetLiqSpikeRatio1h ?? 0) >=
-      MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H &&
-    (volumeRel20 ?? 0) >= MIN_SHORT_RECOVERY_VOLUME_REL20 &&
-    (ethFundingRate1h ?? Number.POSITIVE_INFINITY) <=
-      MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H;
+    targetDerivatives1hStale !== true &&
+    ethDerivatives1hStale !== true &&
+    targetLiqImbalance1h != null &&
+    targetLiqSpikeRatio1h != null &&
+    ethFundingRate1h != null &&
+    targetLiqImbalance1h <= MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H &&
+    targetLiqSpikeRatio1h >= MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H &&
+    ethFundingRate1h <= MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H;
   const approvalSetup = longApprovalSetup || shortRecoverySetup;
   const highConfidenceSetup =
     longApprovalSetup &&
@@ -284,12 +251,10 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     benchmarkTrendAlignment,
     cmcExchangeLiquidityAligned,
     cmcExchangeLiquidityStale,
-    derivativesPressure,
-    derivativesDirectionAligned,
     targetLiqImbalance1h,
     targetLiqSpikeRatio1h,
+    targetLiqTotal1h,
     ethFundingRate1h,
-    derivativesRiskFlags,
     hardBlockReasons,
     softBlockReasons,
     deterministicQuality,
