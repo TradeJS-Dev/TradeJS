@@ -1178,11 +1178,6 @@ export interface StrategyAPI {
   getCurrentBarContext: <
     TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
   >() => Promise<StrategyCurrentBarContext<TIndicators>>;
-  nextIndicators: (
-    candle: KlineChartData[number],
-    btcCandle: KlineChartData[number],
-    ethCandle?: KlineChartData[number],
-  ) => unknown;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   isCurrentPositionExists: () => Promise<boolean>;
   getDirectionalTpSlPrices: (

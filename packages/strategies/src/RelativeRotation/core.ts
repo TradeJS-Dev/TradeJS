@@ -6,7 +6,6 @@ import type {
 } from '@tradejs/types';
 import { RelativeRotationConfig } from './config';
 import { buildRelativeRotationFigures } from './figures';
-import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
@@ -218,13 +217,12 @@ const detectSignal = ({
 export const createRelativeRotationCore: CreateStrategyCore<
   RelativeRotationConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi }) => {
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async () => {
-    indicatorsState.onBar();
-    const indicators = indicatorsState.snapshot();
-    const baseContext = getIndicatorsBaseContext(indicators);
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
@@ -297,7 +295,7 @@ export const createRelativeRotationCore: CreateStrategyCore<
           ? 'RR_LONG_RELATIVE_ROTATION'
           : 'RR_SHORT_RELATIVE_ROTATION',
       direction: modeConfig.direction,
-      indicators,
+      indicators: indicators ?? {},
       additionalIndicators: {
         relativeRotationContext: signal,
       },

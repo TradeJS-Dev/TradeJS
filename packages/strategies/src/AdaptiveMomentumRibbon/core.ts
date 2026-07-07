@@ -1,6 +1,10 @@
 import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
-import type { CreateStrategyCore } from '@tradejs/types';
+import type {
+  BaseStrategyContextSnapshot,
+  CreateStrategyCore,
+  IndicatorsHistorySnapshot,
+} from '@tradejs/types';
 import type { AdaptiveMomentumRibbonConfig } from './config';
 import { createAdaptiveMomentumRibbonEngine } from './engine';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
@@ -21,22 +25,20 @@ const getStringOrNull = (value: unknown): string | null =>
   typeof value === 'string' && value.trim().length > 0 ? value : null;
 
 const getDerivativesPressure = (
-  indicators: Record<string, unknown>,
+  baseContext: BaseStrategyContextSnapshot | undefined,
 ): string | null => {
-  const baseContext = getRecord(indicators.baseContext);
   const derivatives = getRecord(baseContext?.derivatives);
   const summary = getRecord(derivatives?.summary);
   return getStringOrNull(summary?.pressure);
 };
 
 const shouldRejectByStructure = ({
-  indicators,
+  baseContext,
   direction,
 }: {
-  indicators: Record<string, unknown>;
+  baseContext: BaseStrategyContextSnapshot | undefined;
   direction: 'LONG' | 'SHORT';
 }) => {
-  const baseContext = getRecord(indicators.baseContext);
   const structure = getRecord(baseContext?.structure);
   const localRange = getRecord(structure?.localRange);
   const participation = getRecord(baseContext?.participation);
@@ -46,7 +48,7 @@ const shouldRejectByStructure = ({
   const breakoutState = getStringOrNull(localRange?.breakoutState);
   const volumeRel20 = getNumberOrNull(volume?.volumeRel20);
   const benchmarkTrendAlignment = getStringOrNull(benchmark?.trendAlignment);
-  const derivativesPressure = getDerivativesPressure(indicators);
+  const derivativesPressure = getDerivativesPressure(baseContext);
 
   const breakoutConfirmed =
     direction === 'LONG'
@@ -113,14 +115,9 @@ const buildAdaptiveMomentumRibbonStateKey = ({
   });
 
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
-  AdaptiveMomentumRibbonConfig
-> = async ({
-  config,
-  symbol,
-  data: initialData,
-  strategyApi,
-  indicatorsState,
-}) => {
+  AdaptiveMomentumRibbonConfig,
+  IndicatorsHistorySnapshot | undefined
+> = async ({ config, symbol, data: initialData, strategyApi }) => {
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
     config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
@@ -255,9 +252,10 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const indicators = indicatorsState.snapshot() ?? {};
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     const structuralRejectCode = shouldRejectByStructure({
-      indicators,
+      baseContext,
       direction: modeConfig.direction,
     });
 
@@ -318,7 +316,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
       }),
-      indicators,
+      indicators: indicators ?? {},
       additionalIndicators: {
         amr,
         amrSignalTiming: {

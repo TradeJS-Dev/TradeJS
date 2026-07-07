@@ -4,6 +4,7 @@ import path from 'node:path';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const strategiesRoot = path.join(__dirname, '..');
+const repoRoot = path.join(strategiesRoot, '..', '..', '..');
 
 const strategyNames = readdirSync(strategiesRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -15,6 +16,9 @@ const strategyNames = readdirSync(strategiesRoot, { withFileTypes: true })
 
 const readStrategyCore = (strategyName: string) =>
   readFileSync(path.join(strategiesRoot, strategyName, 'core.ts'), 'utf8');
+
+const readRepoFile = (...segments: string[]) =>
+  readFileSync(path.join(repoRoot, ...segments), 'utf8');
 
 const marketFullDataAllowlist = new Map<string, string>([
   [
@@ -37,6 +41,22 @@ const readsMarketFullData = (source: string) =>
   /\bmarket\.fullData\b/.test(source) || destructuresFullDataFromMarket(source);
 
 describe('strategy data access policy', () => {
+  it('keeps nextIndicators out of the public strategy API surface', () => {
+    expect(readRepoFile('packages', 'types', 'src', 'strategy.ts')).not.toMatch(
+      /\bnextIndicators\s*:/,
+    );
+    expect(
+      readRepoFile(
+        'packages',
+        'core',
+        'src',
+        'utils',
+        'strategyHelpers',
+        'signalBuilders.ts',
+      ),
+    ).not.toContain('nextIndicators:');
+  });
+
   it.each(strategyNames)(
     '%s does not advance indicators directly from core.ts',
     (strategyName) => {

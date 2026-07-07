@@ -6,7 +6,6 @@ import type {
 } from '@tradejs/types';
 import { MarketFlushReversalConfig } from './config';
 import { buildMarketFlushReversalFigures } from './figures';
-import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
@@ -364,13 +363,12 @@ const buildStopLoss = ({
 export const createMarketFlushReversalCore: CreateStrategyCore<
   MarketFlushReversalConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi }) => {
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async () => {
-    indicatorsState.onBar();
-    const indicators = indicatorsState.snapshot();
-    const baseContext = getIndicatorsBaseContext(indicators);
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
@@ -452,7 +450,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
           ? 'MFR_LONG_FLUSH_REVERSAL'
           : 'MFR_SHORT_FLUSH_REVERSAL',
       direction: modeConfig.direction,
-      indicators,
+      indicators: indicators ?? {},
       additionalIndicators: {
         marketFlushReversalContext: signal,
       },

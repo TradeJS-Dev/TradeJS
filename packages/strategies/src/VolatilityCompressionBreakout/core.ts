@@ -6,7 +6,6 @@ import type {
 } from '@tradejs/types';
 import { VolatilityCompressionBreakoutConfig } from './config';
 import { buildVolatilityCompressionBreakoutFigures } from './figures';
-import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
@@ -262,13 +261,12 @@ const getBreakoutLevel = ({
 export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
   VolatilityCompressionBreakoutConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi }) => {
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async () => {
-    indicatorsState.onBar();
-    const indicators = indicatorsState.snapshot();
-    const baseContext = getIndicatorsBaseContext(indicators);
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
@@ -340,7 +338,7 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
           ? 'VCB_LONG_COMPRESSION_BREAKOUT'
           : 'VCB_SHORT_COMPRESSION_BREAKOUT',
       direction: modeConfig.direction,
-      indicators,
+      indicators: indicators ?? {},
       additionalIndicators: {
         volatilityCompressionBreakoutContext: signal,
       },

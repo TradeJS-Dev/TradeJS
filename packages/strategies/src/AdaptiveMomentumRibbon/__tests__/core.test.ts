@@ -36,10 +36,31 @@ const makeCandles = ({ bullishLast }: { bullishLast: boolean }) => {
   });
 };
 
+let activeIndicatorsState: any;
+
+const getMockIndicatorsContext = () => {
+  const indicators = activeIndicatorsState?.snapshot?.();
+  return {
+    indicators,
+    baseContext: indicators?.baseContext,
+  };
+};
+
 const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
     getMarketData: jest.fn(async () => marketData),
+    getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
+    getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
+    getDecisionPriceContext: jest.fn(async () => {
+      const baseContext = getMockIndicatorsContext().baseContext;
+      return {
+        timestamp: baseContext?.candle?.timestamp ?? marketData?.timestamp ?? 0,
+        currentPrice:
+          baseContext?.candle?.close ?? marketData?.currentPrice ?? 0,
+        candle: baseContext?.candle,
+      };
+    }),
     getCurrentPosition: jest.fn(async () => currentPosition),
     isCurrentPositionExists: jest.fn(async () =>
       Boolean(currentPosition && currentPosition.qty > 0),
@@ -113,8 +134,10 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
     },
   }) as any;
 
-const makeIndicatorsState = (snapshotOverrides: Record<string, unknown> = {}) =>
-  ({
+const makeIndicatorsState = (
+  snapshotOverrides: Record<string, unknown> = {},
+) => {
+  activeIndicatorsState = {
     setCurrentBar: jest.fn(),
     next: jest.fn(),
     onBar: jest.fn(),
@@ -156,7 +179,9 @@ const makeIndicatorsState = (snapshotOverrides: Record<string, unknown> = {}) =>
     })),
     latestNumber: jest.fn(() => 0.1),
     isInitialized: jest.fn(() => true),
-  }) as any;
+  };
+  return activeIndicatorsState as any;
+};
 
 const mockedEvaluateAdaptiveMomentumRibbon =
   evaluateAdaptiveMomentumRibbon as jest.MockedFunction<
@@ -201,6 +226,7 @@ const makeEvaluation = (
 
 describe('createAdaptiveMomentumRibbonCore', () => {
   beforeEach(() => {
+    activeIndicatorsState = undefined;
     mockedEvaluateAdaptiveMomentumRibbon.mockReset();
     mockedCreateAdaptiveMomentumRibbonEngine.mockReset();
     mockedCreateAdaptiveMomentumRibbonEngine.mockImplementation(

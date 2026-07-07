@@ -37,7 +37,7 @@ const buildAdaptiveTrendChannelStateKey = (
 export const createAdaptiveTrendChannelCore: CreateStrategyCore<
   AdaptiveTrendChannelConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
+> = async ({ config, data: initialData, strategyApi }) => {
   const detectorState = strategyApi.createStateController<
     { engine: ReturnType<typeof createAdaptiveTrendChannelEngine> },
     ReturnType<ReturnType<typeof createAdaptiveTrendChannelEngine>['next']>,
@@ -119,11 +119,12 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const indicators = indicatorsState.snapshot() ?? {};
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     const filterSkipCode = getAdaptiveTrendChannelFilterSkipCode({
       signal,
       config,
-      baseContext: indicators.baseContext,
+      baseContext,
     });
     if (filterSkipCode) {
       return strategyApi.skip(filterSkipCode);
@@ -170,7 +171,7 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
           ? 'ADAPTIVE_TREND_CHANNEL_BULLISH_FLIP'
           : 'ADAPTIVE_TREND_CHANNEL_BEARISH_FLIP',
       direction: modeConfig.direction,
-      indicators,
+      indicators: indicators ?? {},
       additionalIndicators: {
         adaptiveTrendChannelContext: buildAdaptiveTrendChannelSignalContext({
           ...signal,

@@ -1571,10 +1571,6 @@ export const createStrategyAPI = ({
     getBaseContext,
     getDecisionPriceContext,
     getCurrentBarContext,
-    nextIndicators: (candle, btcCandle, ethCandle) =>
-      ethCandle == null
-        ? indicatorsState?.next(candle, btcCandle)
-        : indicatorsState?.next(candle, btcCandle, ethCandle),
     getCurrentPosition,
     isCurrentPositionExists: isPositionExists,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),

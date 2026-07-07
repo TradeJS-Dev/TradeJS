@@ -246,7 +246,16 @@ const makeStrategyApi = (currentPrice = 101) => {
       timestamp: 1_700_000_000_000,
       currentPrice,
     })),
-    nextIndicators: jest.fn(),
+    getCurrentIndicatorsContext: jest.fn(() => ({
+      indicators: undefined,
+      baseContext: undefined,
+    })),
+    getBaseContext: jest.fn(() => undefined),
+    getDecisionPriceContext: jest.fn(async () => ({
+      timestamp: 1_700_000_000_000,
+      currentPrice,
+      candle: makeCandle(currentPrice),
+    })),
     getCurrentPosition: jest.fn(async () => null),
     isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: jest.fn(),
@@ -264,18 +273,32 @@ const makeCoreParams = ({
   config: any;
   strategyApi: any;
   baseContext: any;
-}) => ({
-  userName: 'root',
-  symbol: 'TESTUSDT',
-  config,
-  isConfigFromBacktest: false,
-  connector: {} as any,
-  data: [],
-  btcData: [],
-  loadPineScriptFile: jest.fn(),
-  strategyApi,
-  indicatorsState: makeIndicatorsState(baseContext),
-});
+}) => {
+  const indicatorsState = makeIndicatorsState(baseContext);
+  strategyApi.getCurrentIndicatorsContext.mockImplementation(() => {
+    const indicators = indicatorsState.snapshot();
+    return {
+      indicators,
+      baseContext: indicators.baseContext,
+    };
+  });
+  strategyApi.getBaseContext.mockImplementation(
+    () => strategyApi.getCurrentIndicatorsContext().baseContext,
+  );
+
+  return {
+    userName: 'root',
+    symbol: 'TESTUSDT',
+    config,
+    isConfigFromBacktest: false,
+    connector: {} as any,
+    data: [],
+    btcData: [],
+    loadPineScriptFile: jest.fn(),
+    strategyApi,
+    indicatorsState,
+  };
+};
 
 describe('context strategies', () => {
   it('opens MarketFlushReversal long on a swept long-liquidation flush', async () => {
