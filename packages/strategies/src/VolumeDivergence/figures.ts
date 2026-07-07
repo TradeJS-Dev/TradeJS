@@ -8,7 +8,7 @@ type BuildVolumeDivergenceFiguresParams = {
   previousPivotHigh: number;
   currentPivotLow: number;
   currentPivotHigh: number;
-  fullData: Candle[];
+  candleWindow: Candle[];
 };
 
 export const buildVolumeDivergenceFigures = ({
@@ -19,7 +19,7 @@ export const buildVolumeDivergenceFigures = ({
   previousPivotHigh,
   currentPivotLow,
   currentPivotHigh,
-  fullData,
+  candleWindow,
 }: BuildVolumeDivergenceFiguresParams) => ({
   lines: [
     {
@@ -27,11 +27,11 @@ export const buildVolumeDivergenceFigures = ({
       kind: `volume_divergence_${kind}_price`,
       points: [
         {
-          timestamp: fullData[previousPivotIndex]?.timestamp ?? 0,
+          timestamp: candleWindow[previousPivotIndex]?.timestamp ?? 0,
           value: kind === 'bullish' ? previousPivotLow : previousPivotHigh,
         },
         {
-          timestamp: fullData[currentPivotIndex]?.timestamp ?? 0,
+          timestamp: candleWindow[currentPivotIndex]?.timestamp ?? 0,
           value: kind === 'bullish' ? currentPivotLow : currentPivotHigh,
         },
       ],
@@ -46,11 +46,11 @@ export const buildVolumeDivergenceFigures = ({
       kind: `volume_divergence_${kind}_pivots`,
       points: [
         {
-          timestamp: fullData[previousPivotIndex]?.timestamp ?? 0,
+          timestamp: candleWindow[previousPivotIndex]?.timestamp ?? 0,
           value: kind === 'bullish' ? previousPivotLow : previousPivotHigh,
         },
         {
-          timestamp: fullData[currentPivotIndex]?.timestamp ?? 0,
+          timestamp: candleWindow[currentPivotIndex]?.timestamp ?? 0,
           value: kind === 'bullish' ? currentPivotLow : currentPivotHigh,
         },
       ],

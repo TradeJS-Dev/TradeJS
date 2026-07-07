@@ -12,7 +12,6 @@ import {
   buildTrendShiftGuardrailContext,
   getTrendShiftGuardrailSkipCode,
 } from './guardrails';
-import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
@@ -43,7 +42,7 @@ const buildTrendShiftStateKey = (config: TrendShiftConfig) =>
 export const createTrendShiftCore: CreateStrategyCore<
   TrendShiftConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
+> = async ({ config, data: initialData, strategyApi }) => {
   const detectorState = strategyApi.createStateController<
     { engine: ReturnType<typeof createTrendShiftEngine> },
     ReturnType<ReturnType<typeof createTrendShiftEngine>['next']>,
@@ -113,10 +112,8 @@ export const createTrendShiftCore: CreateStrategyCore<
     }
 
     const { timestamp, currentPrice } = await strategyApi.getMarketData();
-    const indicators = indicatorsState.snapshot();
-    const baseContext = getIndicatorsBaseContext(
-      indicators as Record<string, unknown>,
-    );
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     if (
       !filterByVeryVolatilityCandles(
         baseContext?.candle,

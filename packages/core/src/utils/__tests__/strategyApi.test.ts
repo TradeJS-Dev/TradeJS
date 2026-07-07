@@ -166,6 +166,7 @@ describe('createStrategyAPI', () => {
     });
 
     const context = await strategyApi.getCurrentBarContext();
+    const repeatedContext = await strategyApi.getCurrentBarContext();
 
     expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
     expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
@@ -173,6 +174,135 @@ describe('createStrategyAPI', () => {
     expect(context.market.timestamp).toBe(1_700_000_000_000);
     expect(context.indicators).toBe(indicators);
     expect(context.baseContext).toBe(baseContext);
+    expect(repeatedContext.indicators).toBe(indicators);
+    expect(repeatedContext.baseContext).toBe(baseContext);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
+  it('getCurrentIndicatorsContext and getBaseContext reuse one indicator snapshot per current bar', () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const baseContext = {
+      candle,
+      prevCandle: null,
+      raw: {},
+      regime: {},
+      structure: {},
+      participation: {},
+      relative: {},
+      mtf: {},
+    };
+    const indicators = {
+      baseContext,
+      atr: [1],
+    };
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => indicators),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const first = strategyApi.getCurrentIndicatorsContext();
+    const second = strategyApi.getCurrentIndicatorsContext();
+
+    expect(first.indicators).toBe(indicators);
+    expect(first.baseContext).toBe(baseContext);
+    expect(second).toBe(first);
+    expect(strategyApi.getBaseContext()).toBe(baseContext);
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
+    expect(connector.kline).not.toHaveBeenCalled();
+
+    const nextCandle = makeCandle(1_700_000_060_000, 105);
+    const nextBaseContext = {
+      ...baseContext,
+      candle: nextCandle,
+      prevCandle: candle,
+    };
+    const nextIndicators = {
+      baseContext: nextBaseContext,
+      atr: [1, 1.1],
+    };
+    indicatorsState.snapshot.mockReturnValue(nextIndicators);
+    data.push(nextCandle);
+
+    const third = strategyApi.getCurrentIndicatorsContext();
+
+    expect(third.indicators).toBe(nextIndicators);
+    expect(third.baseContext).toBe(nextBaseContext);
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(2);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('getDecisionPriceContext can resolve price from baseContext without market preload', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({
+        baseContext: {
+          candle,
+          prevCandle: null,
+          raw: {},
+          regime: {},
+          structure: {},
+          participation: {},
+          relative: {},
+          mtf: {},
+        },
+      })),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      isConfigFromBacktest: false,
+    });
+
+    const priceContext = await strategyApi.getDecisionPriceContext();
+
+    expect(priceContext).toEqual({
+      timestamp: 1_700_000_000_000,
+      currentPrice: 100,
+      candle,
+    });
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
     expect(connector.kline).not.toHaveBeenCalled();
   });
 

@@ -16,6 +16,8 @@ import {
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
   StrategyIndicatorsState,
+  StrategyIndicatorsContext,
+  StrategyDecisionPriceContext,
   StrategyLastTradeControllerParams,
   StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
@@ -1304,11 +1306,34 @@ export const createStrategyAPI = ({
       | undefined,
     marketDataByKey: new Map<string, Promise<StrategyMarketSnapshot>>(),
   };
+  let currentIndicatorsContextCache:
+    | {
+        key: string;
+        context: StrategyIndicatorsContext<unknown>;
+      }
+    | undefined;
   const getCurrentBarTimestamp = () => {
     const lastCandle = cachedData[cachedData.length - 1];
     return typeof lastCandle?.timestamp === 'number'
       ? lastCandle.timestamp
       : null;
+  };
+  const getCurrentIndicatorsCacheKey = () => {
+    const lastCandle = cachedData[cachedData.length - 1];
+    if (!lastCandle) {
+      return 'empty';
+    }
+
+    return [
+      cachedData.length,
+      lastCandle.timestamp,
+      lastCandle.open,
+      lastCandle.high,
+      lastCandle.low,
+      lastCandle.close,
+      lastCandle.volume,
+      lastCandle.turnover,
+    ].join(':');
   };
   const ensureBarCache = () => {
     if (!isBacktestEnv) {
@@ -1323,6 +1348,7 @@ export const createStrategyAPI = ({
     barCache.timestamp = currentBarTimestamp;
     barCache.currentPosition = undefined;
     barCache.marketDataByKey.clear();
+    currentIndicatorsContextCache = undefined;
   };
   const getCurrentPosition = () => {
     if (!isBacktestEnv) {
@@ -1353,6 +1379,31 @@ export const createStrategyAPI = ({
     isRecordLike(indicators) && isRecordLike(indicators.baseContext)
       ? (indicators.baseContext as unknown as BaseStrategyContextSnapshot)
       : undefined;
+  const getCurrentIndicatorsContext = <
+    TIndicators = unknown,
+  >(): StrategyIndicatorsContext<TIndicators> => {
+    ensureBarCache();
+
+    const cacheKey = getCurrentIndicatorsCacheKey();
+    if (currentIndicatorsContextCache?.key === cacheKey) {
+      return currentIndicatorsContextCache.context as StrategyIndicatorsContext<TIndicators>;
+    }
+
+    indicatorsState?.onBar();
+    const indicators = indicatorsState?.snapshot() as TIndicators | undefined;
+    const baseContext = getBaseContextFromIndicators(indicators);
+    const context: StrategyIndicatorsContext<TIndicators> = {
+      indicators,
+      ...(baseContext ? { baseContext } : {}),
+    };
+    currentIndicatorsContextCache = {
+      key: cacheKey,
+      context: context as StrategyIndicatorsContext<unknown>,
+    };
+
+    return context;
+  };
+  const getBaseContext = () => getCurrentIndicatorsContext().baseContext;
 
   const getMarketData = async (
     params: StrategyAPIMarketDataParams = {},
@@ -1392,19 +1443,42 @@ export const createStrategyAPI = ({
 
     return snapshot;
   };
+  const getDecisionPriceContext =
+    async (): Promise<StrategyDecisionPriceContext> => {
+      const baseContext = getBaseContext();
+      const candle = baseContext?.candle;
+      if (
+        candle &&
+        isFiniteNumber(candle.timestamp) &&
+        isFiniteNumber(candle.close)
+      ) {
+        return {
+          timestamp: candle.timestamp,
+          currentPrice: candle.close,
+          candle,
+        };
+      }
+
+      const market = await getMarketData();
+      return {
+        timestamp: market.timestamp,
+        currentPrice: market.currentPrice,
+        candle: market.lastCandle,
+      };
+    };
   const getCurrentBarContext = async <TIndicators = unknown>(): Promise<{
     market: StrategyMarketSnapshot;
     indicators: TIndicators | undefined;
     baseContext?: BaseStrategyContextSnapshot;
   }> => {
-    indicatorsState?.onBar();
-    const indicators = indicatorsState?.snapshot() as TIndicators | undefined;
+    const indicatorsContext = getCurrentIndicatorsContext<TIndicators>();
     const market = await getMarketData();
-    const baseContext = getBaseContextFromIndicators(indicators);
     return {
       market,
-      indicators,
-      ...(baseContext ? { baseContext } : {}),
+      indicators: indicatorsContext.indicators,
+      ...(indicatorsContext.baseContext
+        ? { baseContext: indicatorsContext.baseContext }
+        : {}),
     };
   };
 
@@ -1493,6 +1567,9 @@ export const createStrategyAPI = ({
         protectPlan,
       }) as Extract<StrategyDecision, { kind: 'protect' }>,
     getMarketData,
+    getCurrentIndicatorsContext,
+    getBaseContext,
+    getDecisionPriceContext,
     getCurrentBarContext,
     nextIndicators: (candle, btcCandle, ethCandle) =>
       ethCandle == null

@@ -546,7 +546,7 @@ const buildEntryPayloadFromPendingCandidate = ({
       previousPivotHigh: candidate.previousPivotHigh,
       currentPivotLow: candidate.currentPivotLow,
       currentPivotHigh: candidate.currentPivotHigh,
-      fullData: candleWindow,
+      candleWindow,
     }),
     additionalIndicators: {
       divergenceKind: candidate.kind,

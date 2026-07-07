@@ -10,7 +10,7 @@ describe('buildVolumeDivergenceFigures', () => {
       previousPivotHigh: 100,
       currentPivotLow: 85,
       currentPivotHigh: 102,
-      fullData: [{ timestamp: 1000 } as any, { timestamp: 2000 } as any],
+      candleWindow: [{ timestamp: 1000 } as any, { timestamp: 2000 } as any],
     });
 
     expect(figures.lines).toHaveLength(1);

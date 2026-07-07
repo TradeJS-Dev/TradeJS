@@ -9,7 +9,6 @@ import {
   buildTrendlineTimingContext,
 } from './guardrails';
 import { buildTrendlineRiskPlan } from './risk';
-import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   CreateStrategyCore,
   Direction,
@@ -186,10 +185,8 @@ export const createTrendLineCore: CreateStrategyCore<
 
     const market = await strategyApi.getMarketData();
     const { timestamp, currentPrice } = market;
-    const indicators = indicatorsState.snapshot();
-    const baseContext = getIndicatorsBaseContext(
-      indicators as Record<string, unknown>,
-    );
+    const { indicators, baseContext } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
 
     if (
       !filterByVeryVolatilityCandles(

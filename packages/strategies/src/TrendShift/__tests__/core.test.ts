@@ -38,6 +38,16 @@ const makeBullFlipCandle = (timestamp: number) =>
 const makeBearFlipCandle = (timestamp: number) =>
   makeCandle(timestamp, 145, 146, 80, 82);
 
+let activeIndicatorsState: any;
+
+const getMockIndicatorsContext = () => {
+  const indicators = activeIndicatorsState?.snapshot?.();
+  return {
+    indicators,
+    baseContext: indicators?.baseContext,
+  };
+};
+
 const makeStrategyApi = ({
   marketData,
   currentPosition = null,
@@ -48,6 +58,17 @@ const makeStrategyApi = ({
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
     getMarketData: jest.fn(async () => marketData),
+    getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
+    getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
+    getDecisionPriceContext: jest.fn(async () => {
+      const baseContext = getMockIndicatorsContext().baseContext;
+      return {
+        timestamp: baseContext?.candle?.timestamp ?? marketData?.timestamp ?? 0,
+        currentPrice:
+          baseContext?.candle?.close ?? marketData?.currentPrice ?? 0,
+        candle: baseContext?.candle,
+      };
+    }),
     getCurrentPosition: jest.fn(async () => currentPosition),
     isCurrentPositionExists: jest.fn(async () =>
       Boolean(currentPosition && currentPosition.qty > 0),
@@ -111,8 +132,8 @@ const makeStrategyApi = ({
     })),
   }) as any;
 
-const makeIndicatorsState = (overrides: Record<string, unknown> = {}) =>
-  ({
+const makeIndicatorsState = (overrides: Record<string, unknown> = {}) => {
+  activeIndicatorsState = {
     setCurrentBar: jest.fn(),
     next: jest.fn(),
     onBar: jest.fn(),
@@ -162,11 +183,14 @@ const makeIndicatorsState = (overrides: Record<string, unknown> = {}) =>
     })),
     latestNumber: jest.fn(() => undefined),
     isInitialized: jest.fn(() => true),
-  }) as any;
+  };
+  return activeIndicatorsState as any;
+};
 
 describe('TrendShift core', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    activeIndicatorsState = undefined;
     (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(true);
   });
 

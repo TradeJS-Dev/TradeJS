@@ -64,6 +64,16 @@ const makeRangeCandle = (
   turnover: close * 1000,
 });
 
+let activeIndicatorsState: any;
+
+const getMockIndicatorsContext = () => {
+  const indicators = activeIndicatorsState?.snapshot?.();
+  return {
+    indicators,
+    baseContext: indicators?.baseContext,
+  };
+};
+
 const makeStrategyApi = () => {
   let latestMarketData: {
     timestamp: number;
@@ -145,6 +155,18 @@ const makeStrategyApi = () => {
       latestMarketData = marketData;
       return marketData;
     },
+    getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
+    getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
+    getDecisionPriceContext: jest.fn(async () => {
+      const baseContext = getMockIndicatorsContext().baseContext;
+      return {
+        timestamp:
+          baseContext?.candle?.timestamp ?? latestMarketData?.timestamp ?? 0,
+        currentPrice:
+          baseContext?.candle?.close ?? latestMarketData?.currentPrice ?? 0,
+        candle: baseContext?.candle,
+      };
+    }),
     nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(async () => currentPosition),
     isCurrentPositionExists: jest.fn(async () => Boolean(currentPosition)),
@@ -166,8 +188,8 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeIndicatorsState = () =>
-  ({
+const makeIndicatorsState = () => {
+  activeIndicatorsState = {
     setCurrentBar: jest.fn(),
     onBar: jest.fn(),
     next: jest.fn(),
@@ -175,7 +197,9 @@ const makeIndicatorsState = () =>
     snapshot: jest.fn(() => ({ maFast: [1], correlation: [0.1] })),
     latestNumber: jest.fn(() => 0.1),
     isInitialized: jest.fn(() => true),
-  }) as any;
+  };
+  return activeIndicatorsState as any;
+};
 
 const makeBestLine = (mode: 'lows' | 'highs' = 'lows') => ({
   id: 'line-1',
@@ -193,6 +217,7 @@ const makeBestLine = (mode: 'lows' | 'highs' = 'lows') => ({
 describe('createTrendLineCore', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    activeIndicatorsState = undefined;
   });
 
   it('returns skip when no trendline is found', async () => {
