@@ -5,7 +5,7 @@ import {
   createIndicators,
   createTrendlineEngine,
 } from '@tradejs/core/indicators';
-import { filterByVeryVolatility } from '../filters';
+import { filterByVeryVolatilityCandles } from '../filters';
 import { logger } from '@tradejs/infra/logger';
 import { fetchMlThreshold } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
@@ -60,6 +60,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
+  filterByVeryVolatilityCandles: jest.fn(() => true),
 }));
 
 const makeCandle = (timestamp: number, price: number) => ({
@@ -111,7 +112,7 @@ describe('TrendlineStrategyCreator', () => {
     (calculateCoinBtcCorrelation as jest.Mock).mockReturnValue({
       correlation: 0,
     });
-    (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
+    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(true);
     (getData as jest.Mock).mockImplementation(async () => ({}));
     (askAI as jest.Mock).mockResolvedValue({
       direction: 'LONG',
@@ -506,7 +507,7 @@ describe('TrendlineStrategyCreator', () => {
   });
 
   it('returns VERY_VOLATILITY when filter fails', async () => {
-    (filterByVeryVolatility as jest.Mock).mockReturnValue(false);
+    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(false);
     (createTrendlineEngine as jest.Mock).mockImplementation(
       (_data, options) => {
         const line = {

@@ -2,11 +2,12 @@
 
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTrendShiftCore } from '../core';
-import { filterByVeryVolatility } from '../filters';
+import { filterByVeryVolatilityCandles } from '../filters';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
+  filterByVeryVolatilityCandles: jest.fn(() => true),
 }));
 
 const makeCandle = (
@@ -166,7 +167,7 @@ const makeIndicatorsState = (overrides: Record<string, unknown> = {}) =>
 describe('TrendShift core', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
+    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(true);
   });
 
   it('creates long entry on confirmed bullish flip', async () => {
@@ -281,7 +282,7 @@ describe('TrendShift core', () => {
       currentPrice: currentCandle.close,
     };
     const strategyApi = makeStrategyApi({ marketData });
-    (filterByVeryVolatility as jest.Mock).mockReturnValueOnce(false);
+    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValueOnce(false);
 
     const core = await createTrendShiftCore({
       userName: 'root',

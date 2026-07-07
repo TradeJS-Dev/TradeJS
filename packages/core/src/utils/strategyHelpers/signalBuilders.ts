@@ -15,6 +15,7 @@ import {
   StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
+  StrategyIndicatorsState,
   StrategyLastTradeControllerParams,
   StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
@@ -1231,13 +1232,7 @@ interface CreateStrategyAPIParams {
   env: string;
   connector: Connector;
   cachedData: KlineChartData;
-  indicatorsState?: {
-    next: (
-      candle: KlineChartData[number],
-      btcCandle: KlineChartData[number],
-      ethCandle?: KlineChartData[number],
-    ) => unknown;
-  };
+  indicatorsState?: StrategyIndicatorsState;
   preloadStart?: number;
   backtestPriceMode?: BacktestPriceMode;
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
@@ -1352,6 +1347,12 @@ export const createStrategyAPI = ({
     sharedReplayKey,
     getSharedReplayState,
   });
+  const getBaseContextFromIndicators = (
+    indicators: unknown,
+  ): BaseStrategyContextSnapshot | undefined =>
+    isRecordLike(indicators) && isRecordLike(indicators.baseContext)
+      ? (indicators.baseContext as unknown as BaseStrategyContextSnapshot)
+      : undefined;
 
   const getMarketData = async (
     params: StrategyAPIMarketDataParams = {},
@@ -1390,6 +1391,21 @@ export const createStrategyAPI = ({
     }
 
     return snapshot;
+  };
+  const getCurrentBarContext = async <TIndicators = unknown>(): Promise<{
+    market: StrategyMarketSnapshot;
+    indicators: TIndicators | undefined;
+    baseContext?: BaseStrategyContextSnapshot;
+  }> => {
+    indicatorsState?.onBar();
+    const indicators = indicatorsState?.snapshot() as TIndicators | undefined;
+    const market = await getMarketData();
+    const baseContext = getBaseContextFromIndicators(indicators);
+    return {
+      market,
+      indicators,
+      ...(baseContext ? { baseContext } : {}),
+    };
   };
 
   return {
@@ -1477,6 +1493,7 @@ export const createStrategyAPI = ({
         protectPlan,
       }) as Extract<StrategyDecision, { kind: 'protect' }>,
     getMarketData,
+    getCurrentBarContext,
     nextIndicators: (candle, btcCandle, ethCandle) =>
       ethCandle == null
         ? indicatorsState?.next(candle, btcCandle)

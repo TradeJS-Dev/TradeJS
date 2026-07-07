@@ -6,7 +6,7 @@ import type {
 } from '@tradejs/types';
 import { TrendShiftConfig } from './config';
 import { buildTrendShiftSignalContext, createTrendShiftEngine } from './engine';
-import { filterByVeryVolatility } from './filters';
+import { filterByVeryVolatilityCandles } from './filters';
 import { buildTrendShiftFigures } from './figures';
 import {
   buildTrendShiftGuardrailContext,
@@ -112,14 +112,20 @@ export const createTrendShiftCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
-
-    if (!filterByVeryVolatility(fullData)) {
+    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const indicators = indicatorsState.snapshot();
+    const baseContext = getIndicatorsBaseContext(
+      indicators as Record<string, unknown>,
+    );
+    if (
+      !filterByVeryVolatilityCandles(
+        baseContext?.candle,
+        baseContext?.prevCandle,
+      )
+    ) {
       return strategyApi.skip('VERY_VOLATILITY');
     }
 
-    const indicators = indicatorsState.snapshot();
     const direction = modeConfig.direction;
     const signalContext = buildTrendShiftSignalContext({
       snapshot: {
@@ -130,9 +136,7 @@ export const createTrendShiftCore: CreateStrategyCore<
     });
     const guardrailContext = buildTrendShiftGuardrailContext({
       signalContext,
-      baseContext: getIndicatorsBaseContext(
-        indicators as Record<string, unknown>,
-      ),
+      baseContext,
     });
 
     if (!guardrailContext.approvalAllowedNow) {

@@ -2,7 +2,7 @@ import { diffRel } from '@tradejs/core/math';
 import { ATR_PCT } from '@tradejs/indicators';
 import { getSma } from './utils';
 
-import { KlineChartData } from '@tradejs/types';
+import { Candle, KlineChartData } from '@tradejs/types';
 
 const MIN_ATR = 0.94;
 const SMA_SLOW = 200;
@@ -73,9 +73,13 @@ export const filterByATR = (data: KlineChartData) => {
   return true;
 };
 
-export const filterByVeryVolatility = (data: KlineChartData) => {
-  const lastCandle = data[data.length - 1];
-  const prevCandle = data[data.length - 2];
+export const filterByVeryVolatilityCandles = (
+  lastCandle: Candle | null | undefined,
+  prevCandle: Candle | null | undefined,
+) => {
+  if (!lastCandle || !prevCandle) {
+    return false;
+  }
 
   const isVeryVolatility =
     diffRel(lastCandle.low, lastCandle.high) > MAX_CANDLE_VOLATILITY ||
@@ -87,3 +91,6 @@ export const filterByVeryVolatility = (data: KlineChartData) => {
 
   return true;
 };
+
+export const filterByVeryVolatility = (data: KlineChartData) =>
+  filterByVeryVolatilityCandles(data[data.length - 1], data[data.length - 2]);

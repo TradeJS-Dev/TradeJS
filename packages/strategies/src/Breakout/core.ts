@@ -130,14 +130,15 @@ export const createBreakoutCore: CreateStrategyCore<
   Record<string, any> | undefined,
   IndicatorSnapshot | undefined
 > = async ({ config, strategyApi }) => {
-  return async (candle, btcCandle) => {
+  return async (candle) => {
     if (_.isEmpty(candle)) {
       return strategyApi.skip('NO_DATA');
     }
 
-    const indicatorValues = strategyApi.nextIndicators(candle, btcCandle) as
-      | IndicatorSnapshot
-      | undefined;
+    const {
+      market: { currentPrice, timestamp },
+      indicators: indicatorValues,
+    } = await strategyApi.getCurrentBarContext<IndicatorSnapshot>();
     if (!indicatorValues) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -169,7 +170,6 @@ export const createBreakoutCore: CreateStrategyCore<
       return strategyApi.skip('WAIT_DATA');
     }
 
-    const { currentPrice, timestamp } = await strategyApi.getMarketData();
     const position = await strategyApi.getCurrentPosition();
     const positionExists = await strategyApi.isCurrentPositionExists();
     const qty = config.LIMIT / currentPrice;

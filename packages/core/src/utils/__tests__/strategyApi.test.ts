@@ -120,6 +120,62 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
+  it('getCurrentBarContext returns the shared market and indicator snapshot for the current bar', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const prevCandle = makeCandle(1_699_999_940_000, 95);
+    const data: any[] = [prevCandle, candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const baseContext = {
+      candle,
+      prevCandle,
+      raw: {},
+      regime: {},
+      structure: {},
+      participation: {},
+      relative: {},
+      mtf: {},
+    };
+    const indicators = {
+      baseContext,
+      correlation: [0.1],
+    };
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => indicators),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const context = await strategyApi.getCurrentBarContext();
+
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
+    expect(context.market.currentPrice).toBe(100);
+    expect(context.market.timestamp).toBe(1_700_000_000_000);
+    expect(context.indicators).toBe(indicators);
+    expect(context.baseContext).toBe(baseContext);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
   it('getCurrentPosition reuses one connector read within the same BACKTEST bar and invalidates on the next bar', async () => {
     const data: any[] = [makeCandle(1_700_000_000_000, 100)];
     let currentPosition: any = {

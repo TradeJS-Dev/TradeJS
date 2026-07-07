@@ -20,6 +20,7 @@ jest.mock('@tradejs/node/strategies', () => {
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
+  filterByVeryVolatilityCandles: jest.fn(() => true),
 }));
 
 import { createTrendlineEngine } from '@tradejs/core/indicators';
@@ -28,7 +29,7 @@ import {
   getStrategyMarketSnapshot,
   getDirectionalTpSlPrices,
 } from '@tradejs/node/strategies';
-import { filterByVeryVolatility } from '../filters';
+import { filterByVeryVolatilityCandles } from '../filters';
 import { createTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
@@ -662,7 +663,7 @@ describe('createTrendLineCore', () => {
       timestamp: candle.timestamp,
       currentPrice: candle.close,
     });
-    (filterByVeryVolatility as jest.Mock).mockReturnValueOnce(false);
+    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValueOnce(false);
 
     const core = await createTrendLineCore({
       userName: 'test',

@@ -133,6 +133,12 @@ export interface StrategyMarketSnapshot {
   currentPrice: number;
 }
 
+export interface StrategyCurrentBarContext<TIndicators = unknown> {
+  market: StrategyMarketSnapshot;
+  indicators: TIndicators | undefined;
+  baseContext?: BaseStrategyContextSnapshot;
+}
+
 export interface MlCandleIndicatorsSnapshot {
   candles15m: Candle[];
   candles1h: Candle[];
@@ -1153,6 +1159,9 @@ export interface StrategyAPI {
   getMarketData: (
     params?: StrategyAPIMarketDataParams,
   ) => Promise<StrategyMarketSnapshot>;
+  getCurrentBarContext: <
+    TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
+  >() => Promise<StrategyCurrentBarContext<TIndicators>>;
   nextIndicators: (
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],

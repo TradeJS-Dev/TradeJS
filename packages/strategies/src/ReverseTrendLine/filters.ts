@@ -1,12 +1,12 @@
 import { diffRel } from '@tradejs/core/math';
-import { KlineChartData } from '@tradejs/types';
+import { Candle, KlineChartData } from '@tradejs/types';
 
 const MAX_CANDLE_VOLATILITY = 0.025;
 
-export const filterByVeryVolatility = (data: KlineChartData) => {
-  const lastCandle = data[data.length - 1];
-  const prevCandle = data[data.length - 2];
-
+export const filterByVeryVolatilityCandles = (
+  lastCandle: Candle | null | undefined,
+  prevCandle: Candle | null | undefined,
+) => {
   if (!lastCandle || !prevCandle) {
     return false;
   }
@@ -17,3 +17,6 @@ export const filterByVeryVolatility = (data: KlineChartData) => {
 
   return !isVeryVolatility;
 };
+
+export const filterByVeryVolatility = (data: KlineChartData) =>
+  filterByVeryVolatilityCandles(data[data.length - 1], data[data.length - 2]);

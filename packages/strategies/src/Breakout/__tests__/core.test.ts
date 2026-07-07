@@ -24,6 +24,16 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
     nextIndicators: jest.fn((candle: any, btcCandle: any) =>
       overrides.nextIndicators?.(candle, btcCandle),
     ),
+    getCurrentBarContext: jest.fn(async () => {
+      const indicators =
+        overrides.indicators ??
+        overrides.nextIndicators?.(overrides.candle, overrides.btcCandle);
+      return {
+        market: overrides.marketData,
+        indicators,
+        baseContext: indicators?.baseContext,
+      };
+    }),
     getCurrentPosition: jest.fn(async () => overrides.currentPosition),
     isCurrentPositionExists: jest.fn(async () =>
       Boolean(overrides.currentPosition?.qty > 0),

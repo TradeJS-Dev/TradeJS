@@ -1,7 +1,7 @@
 import { round } from '@tradejs/core/math';
 import { createTrendlineEngine } from '@tradejs/core/indicators';
 
-import { filterByVeryVolatility } from './filters';
+import { filterByVeryVolatilityCandles } from './filters';
 import { TrendLineConfig } from './config';
 import { buildTrendLineFigures } from './figures';
 import {
@@ -9,6 +9,7 @@ import {
   buildTrendlineTimingContext,
 } from './guardrails';
 import { buildTrendlineRiskPlan } from './risk';
+import { getIndicatorsBaseContext } from '../shared/baseContext';
 import {
   CreateStrategyCore,
   Direction,
@@ -183,14 +184,22 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
+    const market = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } = market;
+    const indicators = indicatorsState.snapshot();
+    const baseContext = getIndicatorsBaseContext(
+      indicators as Record<string, unknown>,
+    );
 
-    if (!filterByVeryVolatility(fullData)) {
+    if (
+      !filterByVeryVolatilityCandles(
+        baseContext?.candle ?? market.fullData.at(-1),
+        baseContext?.prevCandle ?? market.fullData.at(-2),
+      )
+    ) {
       return strategyApi.skip('VERY_VOLATILITY');
     }
 
-    const indicators = indicatorsState.snapshot();
     const signalSeed = buildTrendlineSignalSeed({
       direction,
       currentPrice,
@@ -207,7 +216,7 @@ export const createTrendLineCore: CreateStrategyCore<
 
     const timingContext = buildTrendlineTimingContext({
       signal: signalSeed,
-      candles: fullData,
+      candles: market.fullData,
       structuralContext,
     });
 
