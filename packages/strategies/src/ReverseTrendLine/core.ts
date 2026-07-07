@@ -11,6 +11,11 @@ import {
 } from './guardrails';
 import { buildReverseTrendlineRiskPlan } from './risk';
 import {
+  appendRecentCandle,
+  takeRecentCandles,
+  type RecentCandle,
+} from '../shared/recentCandles';
+import {
   CreateStrategyCore,
   Direction,
   IndicatorsHistorySnapshot,
@@ -18,6 +23,8 @@ import {
   TrendLine,
   TrendLineOptions,
 } from '@tradejs/types';
+
+const REVERSE_TRENDLINE_TIMING_CANDLE_LIMIT = 6;
 
 const buildReverseTrendlineSignalSeed = ({
   direction,
@@ -187,10 +194,12 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     {
       lows: ReturnType<typeof createTrendlineEngine>;
       highs: ReturnType<typeof createTrendlineEngine>;
+      recentCandles: RecentCandle[];
     },
     {
       lowsTrendlines: TrendLine[];
       highsTrendlines: TrendLine[];
+      recentCandles: RecentCandle[];
     }
   >(
     'ReverseTrendLine',
@@ -203,6 +212,10 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         mode: 'highs',
         ...trendlineOptions,
       }),
+      recentCandles: takeRecentCandles(
+        cachedData,
+        REVERSE_TRENDLINE_TIMING_CANDLE_LIMIT,
+      ),
     }),
     {
       configKey: buildReverseTrendlineStateKey(trendlineOptions),
@@ -214,15 +227,22 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     detectorState.oncePerTimestamp(candle.timestamp, (state) => {
       const lowsTrendlines = state.lows.next(candle);
       const highsTrendlines = state.highs.next(candle);
+      state.recentCandles = appendRecentCandle(
+        state.recentCandles,
+        candle,
+        REVERSE_TRENDLINE_TIMING_CANDLE_LIMIT,
+      );
       indicatorsState.onBar();
       return {
         lowsTrendlines,
         highsTrendlines,
+        recentCandles: state.recentCandles,
       };
     });
 
   return async (candle) => {
-    const { lowsTrendlines, highsTrendlines } = nextDetectorState(candle);
+    const { lowsTrendlines, highsTrendlines, recentCandles } =
+      nextDetectorState(candle);
     const currentPosition = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(currentPosition)) {
@@ -296,15 +316,15 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       );
     }
 
-    const market = await strategyApi.getMarketData();
-    const { timestamp, currentPrice } = market;
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
       strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
 
     if (
       !filterByVeryVolatilityCandles(
-        baseContext?.candle ?? market.fullData.at(-1),
-        baseContext?.prevCandle ?? market.fullData.at(-2),
+        baseContext?.candle ?? recentCandles.at(-1),
+        baseContext?.prevCandle ?? recentCandles.at(-2),
       )
     ) {
       return strategyApi.skip('VERY_VOLATILITY');
@@ -329,7 +349,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
 
     const timingContext = buildReverseTrendlineTimingContext({
       signal: signalSeed,
-      candles: market.fullData,
+      candles: recentCandles,
       structuralContext,
     });
 

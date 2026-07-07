@@ -426,6 +426,103 @@ describe('createStrategyAPI', () => {
     expect(decision.code).toBe('CUSTOM_ENTRY_CODE');
   });
 
+  it('entry uses cached baseContext decision price when it is already materialized', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({
+        baseContext: {
+          candle,
+          prevCandle: null,
+          raw: {},
+          regime: {},
+          structure: {},
+          participation: {},
+          relative: {},
+          mtf: {},
+        },
+      })),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      isConfigFromBacktest: false,
+    });
+
+    strategyApi.getCurrentIndicatorsContext();
+    const decision = await strategyApi.entry({
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 110 }],
+      },
+    });
+
+    expect(decision.entryContext.timestamp).toBe(candle.timestamp);
+    expect(decision.entryContext.prices.currentPrice).toBe(candle.close);
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
+  it('entry does not materialize indicators just to resolve fallback market price', async () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      preloadStart: 1,
+      isConfigFromBacktest: false,
+    });
+
+    await strategyApi.entry({
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 110 }],
+      },
+    });
+
+    expect(indicatorsState.onBar).not.toHaveBeenCalled();
+    expect(indicatorsState.snapshot).not.toHaveBeenCalled();
+  });
+
   it('entry always reads fresh market data snapshot', async () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {
@@ -504,6 +601,60 @@ describe('createStrategyAPI', () => {
         timestamp: 1_700_000_000_000,
       },
     });
+  });
+
+  it('exit uses cached baseContext decision price when it is already materialized', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({
+        baseContext: {
+          candle,
+          prevCandle: null,
+          raw: {},
+          regime: {},
+          structure: {},
+          participation: {},
+          relative: {},
+          mtf: {},
+        },
+      })),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      isConfigFromBacktest: false,
+    });
+
+    strategyApi.getCurrentIndicatorsContext();
+    await expect(strategyApi.exit({ direction: 'SHORT' })).resolves.toEqual({
+      kind: 'exit',
+      code: 'TREND_LINE_SHORT_EXIT',
+      closePlan: {
+        direction: 'SHORT',
+        price: candle.close,
+        timestamp: candle.timestamp,
+      },
+    });
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
+    expect(connector.kline).not.toHaveBeenCalled();
   });
 
   it('protect builds deterministic protection decision', () => {

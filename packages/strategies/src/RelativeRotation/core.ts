@@ -264,7 +264,8 @@ export const createRelativeRotationCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const stopLossPrice = buildAtrFallbackStop({
       direction: modeConfig.direction,
       currentPrice,

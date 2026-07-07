@@ -170,6 +170,19 @@ Stateful strategy best practices:
 - Add unit coverage proving `initialCandles + next(lastCandle)` matches a continuous run, especially for strategies with pending confirmation on the next bar.
 - Do not change strategy engine or shared execution behavior unless the user explicitly asks for that implementation change. When a runtime/execution behavior change looks useful, propose it first and continue with data/config work unless approved.
 
+Strategy authoring best practices:
+
+- Build new strategies as replay-safe from the first implementation. The core runner should make decisions from the current closed candle, replayable engine state, and StrategyAPI context helpers, not from ad hoc market snapshots.
+- Prefer `strategyApi.getDecisionPriceContext()` for signal-time `timestamp`, `currentPrice`, and current candle access. Use `strategyApi.getMarketData()` only when the strategy truly needs a full market snapshot or connector-backed data; do not use it just to read current price/time.
+- Prefer `strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>()` or `strategyApi.getBaseContext()` for indicator and shared context reads. Avoid direct `indicatorsState.onBar()` / `indicatorsState.snapshot()` in new strategy cores unless the code is inside an intentional once-per-candle detector transition.
+- Do not read `market.fullData` or destructure `fullData` from `strategyApi.getMarketData()` in strategy cores. If a detector or guardrail needs recent candles, keep a bounded replayable history in `strategyApi.createStateController(...)`, seed it from `initialData`, append the current candle once per timestamp, and store only the required tail.
+- Keep detector engines pure: no StrategyAPI calls, no positions, no order plans, no AI/ML calls, no connector access. Engines should accept candle/config input and return deterministic signal/state output.
+- Keep execution decisions in `core.ts`: position checks, cooldown, policy gates, risk sizing, figures, `strategyApi.entry(...)`, and `strategyApi.exit(...)` belong outside the detector engine.
+- Build figures from deterministic engine/baseContext/signal data. Do not depend on UI-only code or unbounded market history to explain an entry.
+- Resolve BTC/ETH, MTF, derivatives, relative-strength, and venue-spread inputs at or before the evaluated candle timestamp. Prefer fields already normalized in `additionalIndicators.baseContext` / `baseContext` over custom lookup chains.
+- For order entry, pass `direction`, `orderPlan`, optional `code`, `figures`, `indicators`, and `additionalIndicators` to `strategyApi.entry(...)`; let the shared runtime resolve entry context fields.
+- Add focused unit tests for every new strategy covering continuous run vs `initialCandles + next(lastCandle)`, same-timestamp idempotence, delayed/pending confirmation state, entry/exit payload shape, and any bounded-history guardrail behavior.
+
 Runtime AI config conventions:
 
 - `AI_ENABLED` remains the primary runtime AI on/off switch, matching the existing `ML_ENABLED` convention.

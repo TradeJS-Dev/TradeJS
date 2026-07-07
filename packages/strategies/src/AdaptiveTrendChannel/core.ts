@@ -130,7 +130,8 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       return strategyApi.skip(filterSkipCode);
     }
 
-    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const stopLossPrice =
       signal.direction === 'LONG' ? signal.floor : signal.roof;
     const riskDistance = Math.abs(currentPrice - stopLossPrice);

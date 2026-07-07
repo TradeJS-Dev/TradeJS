@@ -1466,6 +1466,30 @@ export const createStrategyAPI = ({
         candle: market.lastCandle,
       };
     };
+  const getCachedDecisionPriceContext =
+    async (): Promise<StrategyDecisionPriceContext> => {
+      ensureBarCache();
+
+      const candle = currentIndicatorsContextCache?.context.baseContext?.candle;
+      if (
+        candle &&
+        isFiniteNumber(candle.timestamp) &&
+        isFiniteNumber(candle.close)
+      ) {
+        return {
+          timestamp: candle.timestamp,
+          currentPrice: candle.close,
+          candle,
+        };
+      }
+
+      const market = await getMarketData();
+      return {
+        timestamp: market.timestamp,
+        currentPrice: market.currentPrice,
+        candle: market.lastCandle,
+      };
+    };
   const getCurrentBarContext = async <TIndicators = unknown>(): Promise<{
     market: StrategyMarketSnapshot;
     indicators: TIndicators | undefined;
@@ -1494,9 +1518,9 @@ export const createStrategyAPI = ({
       orderPlan,
       runtime,
     }: StrategyAPIEntryParams) => {
-      const marketData = await getMarketData();
-      const currentPrice = marketData.currentPrice;
-      const timestamp = marketData.timestamp;
+      const priceContext = await getCachedDecisionPriceContext();
+      const currentPrice = priceContext.currentPrice;
+      const timestamp = priceContext.timestamp;
       const stopLossPrice = orderPlan.stopLossPrice;
       const takeProfitPrice = resolveTakeProfitPrice({
         direction,
@@ -1548,13 +1572,16 @@ export const createStrategyAPI = ({
       price,
       timestamp,
     }: StrategyAPIExitParams) => {
-      const marketData = await getMarketData();
+      const priceContext =
+        price == null || timestamp == null
+          ? await getCachedDecisionPriceContext()
+          : undefined;
       return {
         kind: 'exit',
         code: code ?? toDefaultExitCode(String(strategy), direction),
         closePlan: {
-          price: price ?? marketData.currentPrice,
-          timestamp: timestamp ?? marketData.timestamp,
+          price: price ?? priceContext!.currentPrice,
+          timestamp: timestamp ?? priceContext!.timestamp,
           direction,
         },
       } as Extract<StrategyDecision, { kind: 'exit' }>;

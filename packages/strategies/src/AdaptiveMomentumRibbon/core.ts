@@ -180,7 +180,6 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     });
 
   return async (candle) => {
-    const { currentPrice, timestamp } = await strategyApi.getMarketData();
     let detectorResult;
     try {
       detectorResult = nextDetectorState(candle);
@@ -207,6 +206,13 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 
     const { evaluation } = detectorResult;
     const { snapshot: amr, plotSeries } = evaluation;
+    let cachedPriceContext:
+      | Awaited<ReturnType<typeof strategyApi.getDecisionPriceContext>>
+      | undefined;
+    const getPriceContext = async () => {
+      cachedPriceContext ??= await strategyApi.getDecisionPriceContext();
+      return cachedPriceContext;
+    };
 
     if (amr.entryLong && amr.entryShort) {
       return strategyApi.skip('AMR_SIGNAL_CONFLICT');
@@ -217,6 +223,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         (position.direction === 'LONG' && amr.entryShort) ||
         (position.direction === 'SHORT' && amr.entryLong)
       ) {
+        const { currentPrice, timestamp } = await getPriceContext();
         return {
           kind: 'exit',
           code: 'CLOSE_BY_AMR_SIGNAL',
@@ -229,6 +236,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       }
 
       if (Boolean(AMR_EXIT_ON_INVALIDATION) && amr.invalidated) {
+        const { currentPrice, timestamp } = await getPriceContext();
         return {
           kind: 'exit',
           code: 'CLOSE_BY_AMR_INVALIDATION',
@@ -263,6 +271,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip(structuralRejectCode);
     }
 
+    const { currentPrice, timestamp } = await getPriceContext();
     const structuralStopBase =
       modeConfig.direction === 'LONG'
         ? amr.invalidationLevel ?? amr.kcLower

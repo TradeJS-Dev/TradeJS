@@ -159,12 +159,15 @@ const makeStrategyApi = () => {
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
       const baseContext = getMockIndicatorsContext().baseContext;
+      if (!baseContext && !latestMarketData) {
+        latestMarketData = await getStrategyMarketSnapshot({} as any);
+      }
       return {
         timestamp:
           baseContext?.candle?.timestamp ?? latestMarketData?.timestamp ?? 0,
         currentPrice:
           baseContext?.candle?.close ?? latestMarketData?.currentPrice ?? 0,
-        candle: baseContext?.candle,
+        candle: baseContext?.candle ?? (latestMarketData as any)?.lastCandle,
       };
     }),
     nextIndicators: jest.fn(),
@@ -529,7 +532,7 @@ describe('createTrendLineCore', () => {
       .mockReturnValueOnce({ next: jest.fn(() => [bestLine]) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
-      fullData: candles,
+      fullData: [candles[candles.length - 1]],
       lastCandle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
@@ -590,7 +593,7 @@ describe('createTrendLineCore', () => {
       .mockReturnValueOnce({ next: jest.fn(() => [bestLine]) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
-      fullData: candles,
+      fullData: [candles[candles.length - 1]],
       lastCandle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,

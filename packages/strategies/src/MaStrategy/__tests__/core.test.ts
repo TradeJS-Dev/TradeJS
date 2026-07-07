@@ -25,6 +25,19 @@ const makeIndicatorsState = (snapshot: Record<string, unknown> | null) =>
     isInitialized: jest.fn(() => true),
   }) as any;
 
+let activeIndicatorsState: any;
+
+const getMockIndicatorsContext = () => {
+  const indicators = activeIndicatorsState?.snapshot?.();
+  return {
+    indicators,
+    baseContext:
+      indicators && typeof indicators === 'object'
+        ? (indicators as any).baseContext
+        : undefined,
+  };
+};
+
 const makeStrategyApi = ({
   marketData,
   currentPosition = null,
@@ -45,6 +58,16 @@ const makeStrategyApi = ({
   const strategyApi = {
     skip: jest.fn((code: string) => ({ kind: 'skip', code })),
     getMarketData: jest.fn(async () => marketData),
+    getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
+    getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
+    getDecisionPriceContext: jest.fn(async () => {
+      const baseContext = getMockIndicatorsContext().baseContext;
+      return {
+        timestamp: baseContext?.candle?.timestamp ?? marketData.timestamp,
+        currentPrice: baseContext?.candle?.close ?? marketData.currentPrice,
+        candle: baseContext?.candle ?? marketData.lastCandle,
+      };
+    }),
     getCurrentPosition: jest.fn(async () => currentPosition),
     createLastTradeController: jest.fn(() => lastTradeController),
     getDirectionalTpSlPrices: jest.fn(() => ({
@@ -73,8 +96,9 @@ const makeCore = async ({
 }: {
   indicators: Record<string, unknown> | null;
   strategyApi: any;
-}) =>
-  createMaStrategyCore({
+}) => {
+  activeIndicatorsState = makeIndicatorsState(indicators);
+  return createMaStrategyCore({
     userName: 'root',
     symbol: 'TESTUSDT',
     config: DEFAULT_CONFIG as any,
@@ -84,10 +108,15 @@ const makeCore = async ({
     btcData: [],
     loadPineScriptFile: jest.fn(),
     strategyApi,
-    indicatorsState: makeIndicatorsState(indicators),
+    indicatorsState: activeIndicatorsState,
   });
+};
 
 describe('MaStrategy core', () => {
+  beforeEach(() => {
+    activeIndicatorsState = undefined;
+  });
+
   it('skips when fast and slow moving averages do not cross', async () => {
     const candles = [makeCandle(0, 100), makeCandle(1, 101)];
     const { strategyApi } = makeStrategyApi({
@@ -125,6 +154,7 @@ describe('MaStrategy core', () => {
       indicators: {
         maFast: [99, 102],
         maSlow: [100, 101],
+        candles15m: candles,
       },
     });
 
@@ -153,6 +183,10 @@ describe('MaStrategy core', () => {
       }),
     );
     expect((result as any).figures.lines).toHaveLength(2);
+    expect((result as any).figures.lines[0].points).toEqual([
+      { timestamp: candles[0].timestamp, value: 99 },
+      { timestamp: candles[1].timestamp, value: 102 },
+    ]);
     expect((result as any).figures.points).toHaveLength(1);
     expect(lastTradeController.markTrade).toHaveBeenCalledWith(
       candles[1].timestamp,

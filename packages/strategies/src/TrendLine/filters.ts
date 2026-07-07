@@ -73,9 +73,11 @@ export const filterByATR = (data: KlineChartData) => {
   return true;
 };
 
+type VolatilityCandle = Pick<Candle, 'high' | 'low'>;
+
 export const filterByVeryVolatilityCandles = (
-  lastCandle: Candle | null | undefined,
-  prevCandle: Candle | null | undefined,
+  lastCandle: VolatilityCandle | null | undefined,
+  prevCandle: VolatilityCandle | null | undefined,
 ) => {
   if (!lastCandle || !prevCandle) {
     return false;

@@ -5,7 +5,7 @@ import {
 } from '@tradejs/types';
 
 interface BuildMaStrategyFiguresParams {
-  fullData: KlineChartData;
+  candles: KlineChartData;
   maFast: number[];
   maSlow: number[];
   crossTimestamp: number;
@@ -36,7 +36,7 @@ const toLinePoints = (
 };
 
 export const buildMaStrategyFigures = ({
-  fullData,
+  candles,
   maFast,
   maSlow,
   crossTimestamp,
@@ -47,7 +47,7 @@ export const buildMaStrategyFigures = ({
     {
       id: 'ma-fast',
       kind: 'ma_fast',
-      points: toLinePoints(fullData, maFast),
+      points: toLinePoints(candles, maFast),
       color: '#22d3ee',
       width: 2,
       style: 'solid',
@@ -55,7 +55,7 @@ export const buildMaStrategyFigures = ({
     {
       id: 'ma-slow',
       kind: 'ma_slow',
-      points: toLinePoints(fullData, maSlow),
+      points: toLinePoints(candles, maSlow),
       color: '#f59e0b',
       width: 2,
       style: 'solid',

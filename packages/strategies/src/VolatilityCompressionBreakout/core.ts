@@ -308,7 +308,8 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const stopLossPrice = buildStopLoss({
       baseContext,
       direction: modeConfig.direction,

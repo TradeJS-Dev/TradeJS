@@ -3,9 +3,11 @@ import { Candle, KlineChartData } from '@tradejs/types';
 
 const MAX_CANDLE_VOLATILITY = 0.025;
 
+type VolatilityCandle = Pick<Candle, 'high' | 'low'>;
+
 export const filterByVeryVolatilityCandles = (
-  lastCandle: Candle | null | undefined,
-  prevCandle: Candle | null | undefined,
+  lastCandle: VolatilityCandle | null | undefined,
+  prevCandle: VolatilityCandle | null | undefined,
 ) => {
   if (!lastCandle || !prevCandle) {
     return false;

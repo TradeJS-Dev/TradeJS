@@ -20,18 +20,6 @@ const readStrategyCore = (strategyName: string) =>
 const readRepoFile = (...segments: string[]) =>
   readFileSync(path.join(repoRoot, ...segments), 'utf8');
 
-const marketFullDataAllowlist = new Map<string, string>([
-  [
-    'MaStrategy',
-    'figure generation still renders the full evaluated MA window',
-  ],
-  [
-    'ReverseTrendLine',
-    'trendline guardrails still evaluate a bounded timing window',
-  ],
-  ['TrendLine', 'trendline guardrails still evaluate a bounded timing window'],
-]);
-
 const destructuresFullDataFromMarket = (source: string) =>
   /const\s+\{[\s\S]*?\bfullData\b[\s\S]*?\}\s*=\s*await\s+strategyApi\.getMarketData\(/.test(
     source,
@@ -67,20 +55,16 @@ describe('strategy data access policy', () => {
   );
 
   it.each(strategyNames)(
-    '%s keeps full market history usage explicit and allowlisted',
+    '%s does not read full market history from strategy core',
     (strategyName) => {
       const source = readStrategyCore(strategyName);
-      const usesFullData = readsMarketFullData(source);
-      const allowlistReason = marketFullDataAllowlist.get(strategyName);
 
       expect({
         strategyName,
-        allowlistReason,
-        usesFullData,
+        usesFullData: readsMarketFullData(source),
       }).toEqual({
         strategyName,
-        allowlistReason,
-        usesFullData: Boolean(allowlistReason),
+        usesFullData: false,
       });
     },
   );

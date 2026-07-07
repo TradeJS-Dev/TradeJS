@@ -420,7 +420,8 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       return strategyApi.skip('MFR_LONG_REBOUND_POCKET_MISSING');
     }
 
-    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const stopLossPrice = buildStopLoss({
       baseContext,
       direction: modeConfig.direction,

@@ -2,7 +2,11 @@ import { round } from '@tradejs/core/math';
 
 import { MaStrategyConfig } from './config';
 import { buildMaStrategyFigures } from './figures';
-import { CreateStrategyCore, IndicatorsHistorySnapshot } from '@tradejs/types';
+import type {
+  CreateStrategyCore,
+  IndicatorsHistorySnapshot,
+  KlineChartData,
+} from '@tradejs/types';
 import { getIndicatorsCorrelation } from '../shared/baseContext';
 
 interface CrossState {
@@ -61,7 +65,7 @@ const detectCross = (maFast: number[], maSlow: number[]): CrossState | null => {
 export const createMaStrategyCore: CreateStrategyCore<
   MaStrategyConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi }) => {
   const { FEE_PERCENT, MAX_LOSS_VALUE, TRADE_COOLDOWN_MS, LONG, SHORT } =
     config;
 
@@ -71,9 +75,8 @@ export const createMaStrategyCore: CreateStrategyCore<
   });
 
   return async () => {
-    indicatorsState.onBar();
-
-    const indicators = indicatorsState.snapshot();
+    const { indicators } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
     if (!indicators) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -96,7 +99,8 @@ export const createMaStrategyCore: CreateStrategyCore<
         (position.direction === 'LONG' && cross?.kind === 'bearish') ||
         (position.direction === 'SHORT' && cross?.kind === 'bullish')
       ) {
-        const { currentPrice, timestamp } = await strategyApi.getMarketData();
+        const { currentPrice, timestamp } =
+          await strategyApi.getDecisionPriceContext();
         return {
           kind: 'exit',
           code: 'CLOSE_BY_OPPOSITE_MA_CROSS',
@@ -120,8 +124,8 @@ export const createMaStrategyCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
+    const { timestamp, currentPrice, candle } =
+      await strategyApi.getDecisionPriceContext();
     if (lastTradeController.isInCooldown(timestamp)) {
       return strategyApi.skip('TRADE_COOLDOWN');
     }
@@ -146,6 +150,11 @@ export const createMaStrategyCore: CreateStrategyCore<
     }
 
     const correlation = getIndicatorsCorrelation(indicators);
+    const figureCandles = Array.isArray(indicators.candles15m)
+      ? (indicators.candles15m as KlineChartData)
+      : candle
+        ? ([candle] as KlineChartData)
+        : [];
 
     lastTradeController.markTrade(timestamp);
 
@@ -153,7 +162,7 @@ export const createMaStrategyCore: CreateStrategyCore<
       code: cross.kind === 'bullish' ? 'MA_BULLISH_CROSS' : 'MA_BEARISH_CROSS',
       direction: modeConfig.direction,
       figures: buildMaStrategyFigures({
-        fullData,
+        candles: figureCandles,
         maFast,
         maSlow,
         crossTimestamp: timestamp,

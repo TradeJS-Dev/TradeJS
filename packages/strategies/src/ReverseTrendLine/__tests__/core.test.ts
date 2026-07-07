@@ -168,12 +168,15 @@ const makeStrategyApi = () => {
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
       const baseContext = getMockIndicatorsContext().baseContext;
+      if (!baseContext && !latestMarketData) {
+        latestMarketData = await getStrategyMarketSnapshot({} as any);
+      }
       return {
         timestamp:
           baseContext?.candle?.timestamp ?? latestMarketData?.timestamp ?? 0,
         currentPrice:
           baseContext?.candle?.close ?? latestMarketData?.currentPrice ?? 0,
-        candle: baseContext?.candle,
+        candle: baseContext?.candle ?? (latestMarketData as any)?.lastCandle,
       };
     }),
     nextIndicators: jest.fn(),
@@ -293,6 +296,57 @@ describe('createReverseTrendLineCore', () => {
     expect(decision.kind).toBe('entry');
     expect((decision as any).direction).toBe('LONG');
     expect(decision.code).toBe('REVERSE_TRENDLINE_SIGNAL');
+  });
+
+  it('uses bounded initial candle history for follow-through timing', async () => {
+    const baseTimestamp = 1_700_000_000_000;
+    const previousCandle = makeCandle(baseTimestamp, {
+      open: 99.9,
+      close: 100.25,
+      high: 100.4,
+      low: 99.7,
+    });
+    const currentCandle = makeCandle(baseTimestamp + 900_000, {
+      open: 100.3,
+      close: 100.4,
+      high: 100.6,
+      low: 100.2,
+    });
+    const lowsLine = makeLine({
+      mode: 'lows',
+      timestamp: currentCandle.timestamp,
+      linePrice: 100,
+      distance: 90,
+      touches: 5,
+    });
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [lowsLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [currentCandle],
+      lastCandle: currentCandle,
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    });
+
+    const core = await createReverseTrendLineCore(
+      makeCoreParams({
+        data: [previousCandle, currentCandle] as any,
+      }) as any,
+    );
+
+    const decision = await core(currentCandle as any, currentCandle as any);
+
+    expect(decision.kind).toBe('entry');
+    expect(
+      (decision as any).additionalIndicators.reverseTrendlineTiming,
+    ).toEqual(
+      expect.objectContaining({
+        entryTiming: 'ready_follow_through',
+        entryReadyNow: true,
+      }),
+    );
   });
 
   it('opens SHORT on resistance rejection', async () => {
