@@ -2,6 +2,7 @@
 
 import { config as DEFAULT_CONFIG } from '../config';
 import { createDoubleTapCore } from '../core';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 const makeCandle = (
   index: number,
@@ -61,6 +62,7 @@ const makeStrategyApi = ({
       markTrade: jest.fn(),
       getLastTradeTimestamp: () => null,
     })),
+    createStateController: createTestStateController(),
     entry: jest.fn(async (params: any) => ({
       kind: 'entry',
       code: params.code,

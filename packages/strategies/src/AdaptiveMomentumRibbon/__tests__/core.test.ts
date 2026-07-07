@@ -7,6 +7,7 @@ import {
   createAdaptiveMomentumRibbonEngine,
   evaluateAdaptiveMomentumRibbon,
 } from '../engine';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 jest.mock('../engine', () => ({
   createAdaptiveMomentumRibbonEngine: jest.fn(),
@@ -54,6 +55,7 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       markTrade: jest.fn(),
       getLastTradeTimestamp: () => null,
     })),
+    createStateController: createTestStateController(),
     entry: (params: any) => {
       const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
         ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))

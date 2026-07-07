@@ -165,6 +165,10 @@ const pickBestCandidateLine = ({
   return ranked[0] ?? null;
 };
 
+const buildReverseTrendlineStateKey = (
+  trendlineOptions: Partial<TrendLineOptions>,
+) => JSON.stringify(trendlineOptions);
+
 export const createReverseTrendLineCore: CreateStrategyCore<
   ReverseTrendLineConfig,
   IndicatorsHistorySnapshot | undefined
@@ -179,21 +183,46 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     ...TRENDLINE,
   };
 
-  const getLowsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'lows',
-    ...trendlineOptions,
-  });
-
-  const getHighsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'highs',
-    ...trendlineOptions,
-  });
+  const detectorState = strategyApi.createStateController<
+    {
+      lows: ReturnType<typeof createTrendlineEngine>;
+      highs: ReturnType<typeof createTrendlineEngine>;
+    },
+    {
+      lowsTrendlines: TrendLine[];
+      highsTrendlines: TrendLine[];
+    }
+  >(
+    'ReverseTrendLine',
+    () => ({
+      lows: createTrendlineEngine(cachedData, {
+        mode: 'lows',
+        ...trendlineOptions,
+      }),
+      highs: createTrendlineEngine(cachedData, {
+        mode: 'highs',
+        ...trendlineOptions,
+      }),
+    }),
+    {
+      configKey: buildReverseTrendlineStateKey(trendlineOptions),
+    },
+  );
+  const nextDetectorState = (
+    candle: Parameters<ReturnType<typeof createTrendlineEngine>['next']>[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) => {
+      const lowsTrendlines = state.lows.next(candle);
+      const highsTrendlines = state.highs.next(candle);
+      indicatorsState.onBar();
+      return {
+        lowsTrendlines,
+        highsTrendlines,
+      };
+    });
 
   return async (candle) => {
-    const lowsTrendlines = getLowsTrendlines.next(candle);
-    const highsTrendlines = getHighsTrendlines.next(candle);
-
-    indicatorsState.onBar();
+    const { lowsTrendlines, highsTrendlines } = nextDetectorState(candle);
     const currentPosition = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(currentPosition)) {

@@ -31,6 +31,7 @@ import {
 import { filterByVeryVolatility } from '../filters';
 import { createTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
@@ -155,6 +156,7 @@ const makeStrategyApi = () => {
       markTrade: jest.fn(),
       getLastTradeTimestamp: jest.fn(() => null),
     })),
+    createStateController: createTestStateController(),
   } as any;
 };
 

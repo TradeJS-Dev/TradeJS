@@ -25,6 +25,7 @@ import {
 import {
   formatRuntimeTradeSyncError,
   loadClosedPnlRows,
+  splitExchangeHistoryTimeRange,
   syncRuntimeTrades,
 } from '../runtimeTradeSync';
 import { createTable } from '../runFormatting';
@@ -80,7 +81,139 @@ const formatDrilldownSummary = (summary: Record<string, number>) =>
     .map(([classification, count]) => `${classification}=${count}`)
     .join(', ');
 
-const loadExchangeEntryRows = async ({
+const toFiniteNumberOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const sumOptionalNumbers = (values: Array<number | null | undefined>) => {
+  let sum = 0;
+  let hasValue = false;
+
+  for (const value of values) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      continue;
+    }
+    sum += value;
+    hasValue = true;
+  }
+
+  return hasValue ? Number(sum.toFixed(12)) : null;
+};
+
+const firstFiniteNumber = (values: Array<number | null | undefined>) => {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const firstString = (values: Array<string | undefined>) =>
+  values.find((value) => typeof value === 'string' && value.trim());
+
+const getExchangeExecutionMergeKey = (entry: ExchangeEntryRecord) => {
+  const orderId = firstString([entry.orderId, entry.orderLinkId]);
+  return orderId ? `${entry.symbol}::${entry.direction}::${orderId}` : null;
+};
+
+const mergeExchangeExecutionGroup = (
+  group: ExchangeEntryRecord[],
+): ExchangeEntryRecord => {
+  const [first] = group;
+  const qty = sumOptionalNumbers(group.map((entry) => entry.qty)) ?? first.qty;
+  const weightedPriceSum = group.reduce((sum, entry) => {
+    const entryQty = toFiniteNumberOrNull(entry.qty);
+    const entryPrice = toFiniteNumberOrNull(entry.entryPrice);
+    return entryQty != null && entryPrice != null
+      ? sum + entryQty * entryPrice
+      : sum;
+  }, 0);
+  const entryPrice =
+    qty > 0 && weightedPriceSum > 0
+      ? Number((weightedPriceSum / qty).toFixed(12))
+      : firstFiniteNumber(group.map((entry) => entry.entryPrice));
+  const openFee = sumOptionalNumbers(group.map((entry) => entry.openFee));
+  const closeFee = sumOptionalNumbers(group.map((entry) => entry.closeFee));
+  const fundingFee = firstFiniteNumber(group.map((entry) => entry.fundingFee));
+  const totalFee =
+    sumOptionalNumbers([openFee, closeFee, fundingFee]) ??
+    firstFiniteNumber(group.map((entry) => entry.totalFee));
+
+  return {
+    symbol: first.symbol,
+    direction: first.direction,
+    qty,
+    entryPrice,
+    entryTimestamp: Math.min(...group.map((entry) => entry.entryTimestamp)),
+    ...(firstString(group.map((entry) => entry.orderId))
+      ? { orderId: firstString(group.map((entry) => entry.orderId)) }
+      : {}),
+    ...(firstString(group.map((entry) => entry.orderLinkId))
+      ? { orderLinkId: firstString(group.map((entry) => entry.orderLinkId)) }
+      : {}),
+    ...(firstFiniteNumber(group.map((entry) => entry.takeProfitPrice)) != null
+      ? {
+          takeProfitPrice: firstFiniteNumber(
+            group.map((entry) => entry.takeProfitPrice),
+          ),
+        }
+      : {}),
+    ...(firstFiniteNumber(group.map((entry) => entry.stopLossPrice)) != null
+      ? {
+          stopLossPrice: firstFiniteNumber(
+            group.map((entry) => entry.stopLossPrice),
+          ),
+        }
+      : {}),
+    ...(firstFiniteNumber(group.map((entry) => entry.exitPrice)) != null
+      ? { exitPrice: firstFiniteNumber(group.map((entry) => entry.exitPrice)) }
+      : {}),
+    ...(firstFiniteNumber(group.map((entry) => entry.exitTimestamp)) != null
+      ? {
+          exitTimestamp: firstFiniteNumber(
+            group.map((entry) => entry.exitTimestamp),
+          ),
+        }
+      : {}),
+    ...(sumOptionalNumbers(group.map((entry) => entry.closedPnl)) != null
+      ? { closedPnl: sumOptionalNumbers(group.map((entry) => entry.closedPnl)) }
+      : {}),
+    ...(openFee != null ? { openFee } : {}),
+    ...(closeFee != null ? { closeFee } : {}),
+    ...(fundingFee != null ? { fundingFee } : {}),
+    ...(totalFee != null ? { totalFee } : {}),
+  };
+};
+
+const mergeExchangeEntryExecutions = (rows: ExchangeEntryRecord[]) => {
+  const mergedRows: ExchangeEntryRecord[] = [];
+  const groups = new Map<string, ExchangeEntryRecord[]>();
+
+  for (const row of rows) {
+    const key = getExchangeExecutionMergeKey(row);
+    if (!key) {
+      mergedRows.push(row);
+      continue;
+    }
+
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    mergedRows.push(
+      group.length === 1 ? group[0] : mergeExchangeExecutionGroup(group),
+    );
+  }
+
+  return mergedRows.sort(
+    (left, right) => left.entryTimestamp - right.entryTimestamp,
+  );
+};
+
+export const loadExchangeEntryRows = async ({
   connector,
   startTime,
   endTime,
@@ -98,32 +231,36 @@ const loadExchangeEntryRows = async ({
     return [];
   }
 
-  try {
-    const rows = await connector.getEntryExecutions({
-      startTime,
-      endTime,
-      limit: 100,
-    });
+  const rows: ExchangeEntryRecord[] = [];
+  const chunks = splitExchangeHistoryTimeRange({ startTime, endTime });
 
-    if (rows.length >= 100) {
+  for (const chunk of chunks) {
+    try {
+      const chunkRows = await connector.getEntryExecutions({
+        startTime: chunk.startTime,
+        endTime: chunk.endTime,
+        limit: 100,
+      });
+
+      if (chunkRows.length >= 100) {
+        console.log(
+          chalk.yellow(
+            'runtime compare: exchange entry executions returned 100 rows (connector cap); older entry trades in this chunk may be truncated',
+          ),
+        );
+      }
+
+      rows.push(...chunkRows);
+    } catch (error) {
       console.log(
         chalk.yellow(
-          'runtime compare: exchange entry executions returned 100 rows (connector cap); older entry trades in the window may be truncated',
+          `runtime compare: getEntryExecutions failed: ${formatRuntimeTradeSyncError(error)}`,
         ),
       );
     }
-
-    return rows.sort(
-      (left, right) => left.entryTimestamp - right.entryTimestamp,
-    );
-  } catch (error) {
-    console.log(
-      chalk.yellow(
-        `runtime compare: getEntryExecutions failed: ${formatRuntimeTradeSyncError(error)}`,
-      ),
-    );
-    return [];
   }
+
+  return mergeExchangeEntryExecutions(rows);
 };
 
 const buildPriceDeltaPct = (

@@ -19,18 +19,47 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
+const buildDoubleTapStateKey = (config: DoubleTapConfig) =>
+  JSON.stringify({
+    pivotLength: config.DOUBLETAP_PIVOT_LENGTH,
+    pivotTolerancePct: config.DOUBLETAP_PIVOT_TOLERANCE_PCT,
+    targetFibPct: config.DOUBLETAP_TARGET_FIB_PCT,
+    stopFibPct: config.DOUBLETAP_STOP_FIB_PCT,
+    minPatternHeightPct: config.DOUBLETAP_MIN_PATTERN_HEIGHT_PCT,
+    maxBreakoutDistancePct: config.DOUBLETAP_MAX_BREAKOUT_DISTANCE_PCT,
+  });
+
 export const createDoubleTapCore: CreateStrategyCore<
   DoubleTapConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createDoubleTapEngine({
-    config,
-    initialCandles: initialData,
-  });
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createDoubleTapEngine> },
+    ReturnType<ReturnType<typeof createDoubleTapEngine>['next']>,
+    ReturnType<ReturnType<typeof createDoubleTapEngine>['getState']>
+  >(
+    'DoubleTap',
+    () => ({
+      engine: createDoubleTapEngine({
+        config,
+        initialCandles: initialData,
+      }),
+    }),
+    {
+      configKey: buildDoubleTapStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<ReturnType<typeof createDoubleTapEngine>['next']>[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const pattern = runtimeState.pattern;
 
     if (!pattern) {

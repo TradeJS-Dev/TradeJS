@@ -1557,6 +1557,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       preloadStart: getTimestamp(SIGNALS_PRELOAD_DAYS),
       backtestPriceMode,
       isConfigFromBacktest,
+      sharedReplayKey: strategySharedReplayKey,
+      getSharedReplayState: getSharedStrategyReplayState,
     });
 
     const core = await createCore({

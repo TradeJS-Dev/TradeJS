@@ -16,6 +16,44 @@ type ClosedPnlLoadCallbacks = {
 };
 
 const CLOSED_PNL_LIMIT = 100;
+export const EXCHANGE_HISTORY_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const splitExchangeHistoryTimeRange = ({
+  startTime,
+  endTime,
+  maxRangeMs = EXCHANGE_HISTORY_MAX_RANGE_MS,
+}: {
+  startTime: number;
+  endTime: number;
+  maxRangeMs?: number;
+}) => {
+  if (
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(endTime) ||
+    !Number.isFinite(maxRangeMs) ||
+    maxRangeMs <= 0 ||
+    endTime <= startTime
+  ) {
+    return [{ startTime, endTime }];
+  }
+
+  const chunks: Array<{ startTime: number; endTime: number }> = [];
+  let chunkStart = Math.trunc(startTime);
+  const finalEnd = Math.trunc(endTime);
+  const maxRange = Math.trunc(maxRangeMs);
+
+  while (chunkStart < finalEnd) {
+    const chunkEnd = Math.min(finalEnd, chunkStart + maxRange);
+    chunks.push({ startTime: chunkStart, endTime: chunkEnd });
+
+    if (chunkEnd >= finalEnd) {
+      break;
+    }
+    chunkStart = chunkEnd + 1;
+  }
+
+  return chunks;
+};
 
 export const formatRuntimeTradeSyncError = (error: unknown): string => {
   if (!error || typeof error !== 'object') {
@@ -84,22 +122,28 @@ export const loadClosedPnlRows = async ({
     return [];
   }
 
-  try {
-    const rows = await connector.getClosedPnl({
-      startTime,
-      endTime,
-      limit: CLOSED_PNL_LIMIT,
-    });
+  const rows: ClosedPnlRecord[] = [];
+  const chunks = splitExchangeHistoryTimeRange({ startTime, endTime });
 
-    if (rows.length >= CLOSED_PNL_LIMIT) {
-      callbacks?.onCapped?.(rows.length);
+  for (const chunk of chunks) {
+    try {
+      const chunkRows = await connector.getClosedPnl({
+        startTime: chunk.startTime,
+        endTime: chunk.endTime,
+        limit: CLOSED_PNL_LIMIT,
+      });
+
+      if (chunkRows.length >= CLOSED_PNL_LIMIT) {
+        callbacks?.onCapped?.(chunkRows.length);
+      }
+
+      rows.push(...chunkRows);
+    } catch (error) {
+      callbacks?.onError?.(error);
     }
-
-    return rows.sort((left, right) => left.closedAt - right.closedAt);
-  } catch (error) {
-    callbacks?.onError?.(error);
-    return [];
   }
+
+  return rows.sort((left, right) => left.closedAt - right.closedAt);
 };
 
 export const consumeClosedPnlMatch = (

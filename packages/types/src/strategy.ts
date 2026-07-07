@@ -1110,6 +1110,35 @@ export interface StrategyLastTradeControllerParams {
   cooldownMs?: number;
 }
 
+export type StrategySharedReplayStateGetter = <TState>(
+  key: string | undefined,
+  createState: () => TState,
+) => TState;
+
+export interface StrategyStateControllerOptions<TState, TSnapshot = TState> {
+  sharedReplay?: boolean;
+  configKey?: string;
+  monotonic?: boolean;
+  snapshot?: (state: TState) => TSnapshot;
+  hash?: (snapshot: TSnapshot) => string;
+}
+
+export interface StrategyStateController<
+  TState,
+  TResult = unknown,
+  TSnapshot = unknown,
+> {
+  get: () => TState;
+  set: (state: TState) => void;
+  update: (fn: (state: TState) => void) => TState;
+  oncePerTimestamp: (
+    timestamp: number,
+    compute: (state: TState) => TResult,
+  ) => TResult;
+  snapshot: () => TSnapshot;
+  hash: () => string;
+}
+
 export interface StrategyAPI {
   skip: (code: string) => Extract<StrategyDecision, { kind: 'skip' }>;
   entry: (
@@ -1137,6 +1166,11 @@ export interface StrategyAPI {
   createLastTradeController: (
     params?: StrategyLastTradeControllerParams,
   ) => StrategyLastTradeController;
+  createStateController: <TState, TResult = unknown, TSnapshot = TState>(
+    key: string,
+    createState: () => TState,
+    options?: StrategyStateControllerOptions<TState, TSnapshot>,
+  ) => StrategyStateController<TState, TResult, TSnapshot>;
 }
 
 export interface StrategyIndicatorsState<
@@ -1241,10 +1275,7 @@ export interface CreateStrategyCoreParams<
   strategyApi: StrategyAPI;
   indicatorsState: TIndicatorsState;
   sharedReplayKey?: string;
-  getSharedReplayState?: <TState>(
-    key: string | undefined,
-    createState: () => TState,
-  ) => TState;
+  getSharedReplayState?: StrategySharedReplayStateGetter;
 }
 
 export type StrategyCoreRunner = (

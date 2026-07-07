@@ -23,18 +23,50 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
+const buildAdaptiveTrendChannelStateKey = (
+  config: AdaptiveTrendChannelConfig,
+) =>
+  JSON.stringify({
+    regressionBars: config.ADAPTIVE_TREND_CHANNEL_REGRESSION_BARS,
+    envelopeBars: config.ADAPTIVE_TREND_CHANNEL_ENVELOPE_BARS,
+    atrStretch: config.ADAPTIVE_TREND_CHANNEL_ATR_STRETCH,
+    volatilityLookback: config.ADAPTIVE_TREND_CHANNEL_VOLATILITY_LOOKBACK,
+    maxFigurePoints: config.ADAPTIVE_TREND_CHANNEL_MAX_FIGURE_POINTS,
+  });
+
 export const createAdaptiveTrendChannelCore: CreateStrategyCore<
   AdaptiveTrendChannelConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createAdaptiveTrendChannelEngine({
-    config,
-    initialCandles: initialData,
-  });
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createAdaptiveTrendChannelEngine> },
+    ReturnType<ReturnType<typeof createAdaptiveTrendChannelEngine>['next']>,
+    ReturnType<ReturnType<typeof createAdaptiveTrendChannelEngine>['getState']>
+  >(
+    'AdaptiveTrendChannel',
+    () => ({
+      engine: createAdaptiveTrendChannelEngine({
+        config,
+        initialCandles: initialData,
+      }),
+    }),
+    {
+      configKey: buildAdaptiveTrendChannelStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<
+      ReturnType<typeof createAdaptiveTrendChannelEngine>['next']
+    >[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
     const snapshot = runtimeState.snapshot;
 

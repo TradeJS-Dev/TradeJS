@@ -22,18 +22,52 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
+const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
+  JSON.stringify({
+    pivotLength: config.STRUCTURE_ZONES_PIVOT_LENGTH,
+    atrLength: config.STRUCTURE_ZONES_ATR_LENGTH,
+    minSwingAtr: config.STRUCTURE_ZONES_MIN_SWING_ATR,
+    zoneWidthAtr: config.STRUCTURE_ZONES_ZONE_WIDTH_ATR,
+    acceptBars: config.STRUCTURE_ZONES_ACCEPT_BARS,
+    reactionCloseBeyondZone: config.STRUCTURE_ZONES_REACTION_CLOSE_BEYOND_ZONE,
+    requireReactionBody: config.STRUCTURE_ZONES_REQUIRE_REACTION_BODY,
+    tradeTransitionBreakouts: config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
+    maxFigurePoints: config.STRUCTURE_ZONES_MAX_FIGURE_POINTS,
+  });
+
 export const createStructureZonesCore: CreateStrategyCore<
   StructureZonesConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createStructureZonesEngine({
-    config,
-    initialCandles: initialData,
-  });
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createStructureZonesEngine> },
+    ReturnType<ReturnType<typeof createStructureZonesEngine>['next']>,
+    ReturnType<ReturnType<typeof createStructureZonesEngine>['getState']>
+  >(
+    'StructureZones',
+    () => ({
+      engine: createStructureZonesEngine({
+        config,
+        initialCandles: initialData,
+      }),
+    }),
+    {
+      configKey: buildStructureZonesStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<
+      ReturnType<typeof createStructureZonesEngine>['next']
+    >[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
 
     const position = await strategyApi.getCurrentPosition();

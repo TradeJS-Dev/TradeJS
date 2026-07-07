@@ -9,7 +9,6 @@ import {
   buildLiquidityZonesDetectorKey,
   buildLiquidityZonesSignalContext,
   createLiquidityZonesEngine,
-  type LiquidityZonesRuntimeState,
 } from './engine';
 import { buildLiquidityZonesFigures } from './figures';
 
@@ -27,53 +26,34 @@ const isOpenPosition = (position: Position | null): position is Position =>
 export const createLiquidityZonesCore: CreateStrategyCore<
   LiquidityZonesConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({
-  config,
-  data: initialData,
-  strategyApi,
-  indicatorsState,
-  sharedReplayKey,
-  getSharedReplayState,
-}) => {
+> = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
   const detectorKey = buildLiquidityZonesDetectorKey(config);
-  const createSharedEngineState = () => ({
-    engine: createLiquidityZonesEngine({
-      config,
-      initialCandles: initialData,
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createLiquidityZonesEngine> },
+    ReturnType<ReturnType<typeof createLiquidityZonesEngine>['next']>,
+    ReturnType<ReturnType<typeof createLiquidityZonesEngine>['getState']>
+  >(
+    'LiquidityZones',
+    () => ({
+      engine: createLiquidityZonesEngine({
+        config,
+        initialCandles: initialData,
+      }),
     }),
-    lastTimestamp: null as number | null,
-    lastResult: undefined as LiquidityZonesRuntimeState | undefined,
-  });
-  const sharedEngineState = getSharedReplayState
-    ? getSharedReplayState(
-        sharedReplayKey
-          ? `${sharedReplayKey}:LiquidityZones:${detectorKey}`
-          : undefined,
-        createSharedEngineState,
-      )
-    : createSharedEngineState();
+    {
+      configKey: detectorKey,
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
   const nextDetectorState = (
-    candle: Parameters<typeof sharedEngineState.engine.next>[0],
-  ) => {
-    if (sharedEngineState.lastTimestamp === candle.timestamp) {
-      return (
-        sharedEngineState.lastResult ?? sharedEngineState.engine.getState()
-      );
-    }
-    if (
-      sharedEngineState.lastTimestamp != null &&
-      candle.timestamp < sharedEngineState.lastTimestamp
-    ) {
-      throw new Error(
-        `LiquidityZones shared detector received non-monotonic candle timestamp ${candle.timestamp} after ${sharedEngineState.lastTimestamp}`,
-      );
-    }
-
-    sharedEngineState.lastTimestamp = candle.timestamp;
-    sharedEngineState.lastResult = sharedEngineState.engine.next(candle);
-    return sharedEngineState.lastResult;
-  };
+    candle: Parameters<
+      ReturnType<typeof createLiquidityZonesEngine>['next']
+    >[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
     const runtimeState = nextDetectorState(candle);

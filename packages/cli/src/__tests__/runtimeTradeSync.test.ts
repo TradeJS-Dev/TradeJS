@@ -34,6 +34,49 @@ describe('runtimeTradeSync', () => {
     expect(message).not.toContain('headers');
   });
 
+  it('loads closed pnl in exchange-safe time chunks', async () => {
+    const { EXCHANGE_HISTORY_MAX_RANGE_MS, loadClosedPnlRows } = await import(
+      '../lib/runtimeTradeSync'
+    );
+    const startTime = Date.parse('2026-06-23T10:53:02.000Z');
+    const endTime = startTime + 14 * 24 * 60 * 60 * 1000;
+    const getClosedPnl = jest.fn(async ({ startTime: chunkStart }) => [
+      {
+        symbol: 'BTCUSDT',
+        qty: 1,
+        entryPrice: 100,
+        exitPrice: 101,
+        closedPnl: 1,
+        closedAt: chunkStart + 1_000,
+      },
+    ]);
+    const connector = {
+      getClosedPnl,
+    } as unknown as Connector;
+
+    const rows = await loadClosedPnlRows({
+      connector,
+      startTime,
+      endTime,
+    });
+
+    expect(getClosedPnl).toHaveBeenCalledTimes(2);
+    expect(getClosedPnl).toHaveBeenNthCalledWith(1, {
+      startTime,
+      endTime: startTime + EXCHANGE_HISTORY_MAX_RANGE_MS,
+      limit: 100,
+    });
+    expect(getClosedPnl).toHaveBeenNthCalledWith(2, {
+      startTime: startTime + EXCHANGE_HISTORY_MAX_RANGE_MS + 1,
+      endTime,
+      limit: 100,
+    });
+    expect(rows.map((row) => row.closedAt)).toEqual([
+      startTime + 1_000,
+      startTime + EXCHANGE_HISTORY_MAX_RANGE_MS + 1 + 1_000,
+    ]);
+  });
+
   it('keeps active trades active when open position sync fails', async () => {
     const getData = jest.fn(async () => ({ orderId: 'ord-1' }));
     const setData = jest.fn(async () => null);

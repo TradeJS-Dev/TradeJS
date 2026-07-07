@@ -22,18 +22,53 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
+const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
+  JSON.stringify({
+    atrLength: config.LIQUIDITY_TAILS_ATR_LENGTH,
+    atrMult: config.LIQUIDITY_TAILS_ATR_MULT,
+    minWickRatio: config.LIQUIDITY_TAILS_MIN_WICK_RATIO,
+    wickDominance: config.LIQUIDITY_TAILS_WICK_DOMINANCE,
+    minGap: config.LIQUIDITY_TAILS_MIN_GAP,
+    maxAge: config.LIQUIDITY_TAILS_MAX_AGE,
+    keepBroken: config.LIQUIDITY_TAILS_KEEP_BROKEN,
+    reactionCloseBeyondZone: config.LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE,
+    requireReactionBody: config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY,
+    maxRetestDistancePct: config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT,
+  });
+
 export const createLiquidityTailsCore: CreateStrategyCore<
   LiquidityTailsConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createLiquidityTailsEngine({
-    config,
-    initialCandles: initialData,
-  });
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createLiquidityTailsEngine> },
+    ReturnType<ReturnType<typeof createLiquidityTailsEngine>['next']>,
+    ReturnType<ReturnType<typeof createLiquidityTailsEngine>['getState']>
+  >(
+    'LiquidityTails',
+    () => ({
+      engine: createLiquidityTailsEngine({
+        config,
+        initialCandles: initialData,
+      }),
+    }),
+    {
+      configKey: buildLiquidityTailsStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<
+      ReturnType<typeof createLiquidityTailsEngine>['next']
+    >[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
 
     if (!signal) {

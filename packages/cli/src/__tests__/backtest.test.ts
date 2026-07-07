@@ -183,6 +183,7 @@ import {
   buildReplayStrategyConfig,
   formatReplayRuntimeCompareTolerance,
 } from '../lib/replay/support';
+import { loadExchangeEntryRows } from '../lib/replay/runtimeComparison';
 import {
   summarizeRuntimeTradesByStrategy,
   summarizeTradeParityByStrategy,
@@ -739,6 +740,99 @@ describe('backtest script helpers', () => {
         },
       ],
     });
+  });
+
+  it('loads replay exchange entry executions in exchange-safe time chunks', async () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const startTime = Date.parse('2026-06-23T10:53:02.000Z');
+    const endTime = startTime + 14 * dayMs;
+    const getEntryExecutions = jest.fn(
+      async ({ startTime: chunkStart, endTime: chunkEnd }) => [
+        {
+          symbol: chunkStart === startTime ? 'ETHUSDT' : 'BTCUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 100,
+          entryTimestamp:
+            chunkStart === startTime ? chunkEnd - 1_000 : chunkStart + 1_000,
+          orderId: `order-${chunkStart}`,
+          orderLinkId: `link-${chunkStart}`,
+        },
+      ],
+    );
+
+    const rows = await loadExchangeEntryRows({
+      connector: {
+        getEntryExecutions,
+      } as any,
+      startTime,
+      endTime,
+    });
+
+    expect(getEntryExecutions).toHaveBeenCalledTimes(2);
+    expect(getEntryExecutions).toHaveBeenNthCalledWith(1, {
+      startTime,
+      endTime: startTime + 7 * dayMs,
+      limit: 100,
+    });
+    expect(getEntryExecutions).toHaveBeenNthCalledWith(2, {
+      startTime: startTime + 7 * dayMs + 1,
+      endTime,
+      limit: 100,
+    });
+    expect(rows.map((row) => row.symbol)).toEqual(['ETHUSDT', 'BTCUSDT']);
+  });
+
+  it('merges partial replay exchange entry executions by order id', async () => {
+    const getEntryExecutions = jest.fn(async () => [
+      {
+        symbol: 'ZBTUSDT',
+        direction: 'SHORT',
+        qty: 16.3,
+        entryPrice: 0.10503,
+        entryTimestamp: 1_000,
+        orderId: 'order-1',
+        orderLinkId: 'link-1',
+        openFee: 0.00171199,
+        fundingFee: 0.00080371,
+        totalFee: 0.0025157,
+      },
+      {
+        symbol: 'ZBTUSDT',
+        direction: 'SHORT',
+        qty: 5.6,
+        entryPrice: 0.10505,
+        entryTimestamp: 1_000,
+        orderId: 'order-1',
+        orderLinkId: 'link-1',
+        openFee: 0.00058828,
+        fundingFee: 0.00080371,
+        totalFee: 0.00139199,
+      },
+    ]);
+
+    const rows = await loadExchangeEntryRows({
+      connector: {
+        getEntryExecutions,
+      } as any,
+      startTime: 0,
+      endTime: 2_000,
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        symbol: 'ZBTUSDT',
+        direction: 'SHORT',
+        qty: 21.9,
+        entryPrice: 0.105035114155,
+        entryTimestamp: 1_000,
+        orderId: 'order-1',
+        orderLinkId: 'link-1',
+        openFee: 0.00230027,
+        fundingFee: 0.00080371,
+        totalFee: 0.00310398,
+      }),
+    ]);
   });
 
   it('matches replay exchange entries against the backtest candle close timestamp', () => {

@@ -3,6 +3,7 @@
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTrendShiftCore } from '../core';
 import { filterByVeryVolatility } from '../filters';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
@@ -61,6 +62,7 @@ const makeStrategyApi = ({
       markTrade: jest.fn(),
       getLastTradeTimestamp: () => null,
     })),
+    createStateController: createTestStateController(),
     entry: jest.fn(async (params: any) => ({
       kind: 'entry',
       code: params.code,

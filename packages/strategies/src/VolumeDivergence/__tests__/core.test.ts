@@ -1,5 +1,6 @@
 import { createVolumeDivergenceCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 const makeCandle = (timestamp: number, price: number, volume: number) => ({
   timestamp,
@@ -38,6 +39,7 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
       markTrade: jest.fn(),
       getLastTradeTimestamp: jest.fn(() => null),
     })),
+    createStateController: createTestStateController(),
     ...overrides,
   } as any;
 

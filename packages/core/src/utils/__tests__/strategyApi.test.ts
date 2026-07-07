@@ -1,4 +1,8 @@
 import { createStrategyAPI } from '../strategyHelpers/signalBuilders';
+import {
+  getSharedStrategyReplayState,
+  releaseStrategyReplayCache,
+} from '../strategyHelpers/sharedReplay';
 
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
@@ -12,6 +16,10 @@ const makeCandle = (timestamp: number, price: number) => ({
 });
 
 describe('createStrategyAPI', () => {
+  afterEach(() => {
+    releaseStrategyReplayCache('test-state');
+  });
+
   it('getMarketData reads updated cachedData on each call in BACKTEST mode', async () => {
     const data: any[] = [];
     const connector = {
@@ -346,5 +354,278 @@ describe('createStrategyAPI', () => {
         stopLossPrice: 101,
       },
     });
+  });
+
+  it('createStateController manages local state, snapshots and hashes', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const controller = strategyApi.createStateController(
+      'detector',
+      () => ({ calls: 1 }),
+      {
+        snapshot: (state) => ({ calls: state.calls }),
+      },
+    );
+    const initialHash = controller.hash();
+
+    expect(controller.get()).toEqual({ calls: 1 });
+    expect(controller.snapshot()).toEqual({ calls: 1 });
+
+    controller.update((state) => {
+      state.calls += 1;
+    });
+
+    expect(controller.get()).toEqual({ calls: 2 });
+    expect(controller.snapshot()).toEqual({ calls: 2 });
+    expect(controller.hash()).not.toBe(initialHash);
+
+    controller.set({ calls: 10 });
+
+    expect(controller.get()).toEqual({ calls: 10 });
+    expect(controller.snapshot()).toEqual({ calls: 10 });
+  });
+
+  it('createStateController runs a compute function once per timestamp', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+    const controller = strategyApi.createStateController<
+      { calls: number },
+      number
+    >('detector', () => ({ calls: 0 }));
+    const compute = jest.fn((state: { calls: number }) => {
+      state.calls += 1;
+      return state.calls;
+    });
+
+    expect(controller.oncePerTimestamp(1_700_000_000_000, compute)).toBe(1);
+    expect(controller.oncePerTimestamp(1_700_000_000_000, compute)).toBe(1);
+    expect(controller.oncePerTimestamp(1_700_000_060_000, compute)).toBe(2);
+    expect(compute).toHaveBeenCalledTimes(2);
+  });
+
+  it('createStateController rejects invalid and non-monotonic timestamps by default', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+    const controller = strategyApi.createStateController<
+      { calls: number },
+      number
+    >('detector', () => ({ calls: 0 }));
+
+    expect(() => controller.oncePerTimestamp(Number.NaN, () => 0)).toThrow(
+      /non-finite timestamp/,
+    );
+
+    controller.oncePerTimestamp(1_700_000_060_000, () => 1);
+
+    expect(() =>
+      controller.oncePerTimestamp(1_700_000_000_000, () => 2),
+    ).toThrow(/non-monotonic timestamp/);
+  });
+
+  it('createStateController can opt out of monotonic timestamp checks', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+    const controller = strategyApi.createStateController<
+      { calls: number },
+      number
+    >('detector', () => ({ calls: 0 }), { monotonic: false });
+
+    controller.oncePerTimestamp(1_700_000_060_000, () => 1);
+
+    expect(controller.oncePerTimestamp(1_700_000_000_000, () => 2)).toBe(2);
+  });
+
+  it('createStateController reuses shared replay state in replay environments', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const createApi = () =>
+      createStrategyAPI({
+        strategy: 'TrendLine' as any,
+        symbol: 'TESTUSDT',
+        interval: '15' as any,
+        env: 'PARITY',
+        connector,
+        cachedData: data,
+        preloadStart: 1,
+        backtestPriceMode: 'close',
+        isConfigFromBacktest: false,
+        sharedReplayKey: 'test-state:shared',
+        getSharedReplayState: getSharedStrategyReplayState,
+      });
+    const first = createApi().createStateController<{ calls: number }, number>(
+      'detector',
+      () => ({ calls: 0 }),
+    );
+    const second = createApi().createStateController<{ calls: number }, number>(
+      'detector',
+      () => ({ calls: 100 }),
+    );
+    const secondCompute = jest.fn((state: { calls: number }) => {
+      state.calls += 100;
+      return state.calls;
+    });
+
+    expect(
+      first.oncePerTimestamp(1_700_000_000_000, (state) => {
+        state.calls += 1;
+        return state.calls;
+      }),
+    ).toBe(1);
+    expect(second.oncePerTimestamp(1_700_000_000_000, secondCompute)).toBe(1);
+    expect(second.get()).toEqual({ calls: 1 });
+    expect(secondCompute).not.toHaveBeenCalled();
+  });
+
+  it('createStateController separates shared state by config key', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+      sharedReplayKey: 'test-state:configs',
+      getSharedReplayState: getSharedStrategyReplayState,
+    });
+    const first = strategyApi.createStateController(
+      'detector',
+      () => ({
+        calls: 1,
+      }),
+      {
+        configKey: 'a',
+      },
+    );
+    const second = strategyApi.createStateController(
+      'detector',
+      () => ({
+        calls: 2,
+      }),
+      {
+        configKey: 'b',
+      },
+    );
+
+    expect(first.get()).toEqual({ calls: 1 });
+    expect(second.get()).toEqual({ calls: 2 });
+  });
+
+  it('createStateController keeps local state when shared replay is disabled or unavailable', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const sharedApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+      sharedReplayKey: 'test-state:disabled',
+      getSharedReplayState: getSharedStrategyReplayState,
+    });
+    const first = sharedApi.createStateController(
+      'detector',
+      () => ({ calls: 1 }),
+      { sharedReplay: false },
+    );
+    const second = sharedApi.createStateController(
+      'detector',
+      () => ({ calls: 2 }),
+      { sharedReplay: false, configKey: 'isolated' },
+    );
+    const cronApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'CRON',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+      sharedReplayKey: 'test-state:disabled',
+      getSharedReplayState: getSharedStrategyReplayState,
+    });
+    const cronController = cronApi.createStateController('detector', () => ({
+      calls: 3,
+    }));
+
+    expect(first.get()).toEqual({ calls: 1 });
+    expect(second.get()).toEqual({ calls: 2 });
+    expect(cronController.get()).toEqual({ calls: 3 });
   });
 });

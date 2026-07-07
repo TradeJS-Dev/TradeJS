@@ -19,6 +19,7 @@ import {
   StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
+  StrategySharedReplayStateGetter,
   BaseStrategyContextSnapshot,
   BaseContextGateFeatures,
   BaseGateFeatureConfirmation,
@@ -31,7 +32,10 @@ import {
   getDirectionalTpSlPrices,
   getStrategyMarketSnapshot,
 } from './market';
-import { createLastTradeController } from './state';
+import {
+  createLastTradeController,
+  createStrategyStateControllerFactory,
+} from './state';
 import { uuid } from '../uuid';
 
 type AiRuntimeConfigLike = {
@@ -1237,6 +1241,8 @@ interface CreateStrategyAPIParams {
   preloadStart?: number;
   backtestPriceMode?: BacktestPriceMode;
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
+  sharedReplayKey?: string;
+  getSharedReplayState?: StrategySharedReplayStateGetter;
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -1292,6 +1298,8 @@ export const createStrategyAPI = ({
   indicatorsState,
   preloadStart,
   isConfigFromBacktest,
+  sharedReplayKey,
+  getSharedReplayState,
 }: CreateStrategyAPIParams): StrategyAPI => {
   const isBacktestEnv = env === 'BACKTEST';
   const barCache = {
@@ -1339,6 +1347,11 @@ export const createStrategyAPI = ({
       position && typeof position.qty === 'number' && position.qty > 0,
     );
   };
+  const createStateController = createStrategyStateControllerFactory({
+    env,
+    sharedReplayKey,
+    getSharedReplayState,
+  });
 
   const getMarketData = async (
     params: StrategyAPIMarketDataParams = {},
@@ -1476,5 +1489,6 @@ export const createStrategyAPI = ({
         env,
         ...params,
       }),
+    createStateController,
   };
 };

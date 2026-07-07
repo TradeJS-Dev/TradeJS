@@ -85,6 +85,33 @@ const resolveLinePlots = (value: unknown): string[] => {
     .filter((item) => item.length > 0);
 };
 
+const buildAdaptiveMomentumRibbonStateKey = ({
+  config,
+  linePlots,
+  lookbackBars,
+}: {
+  config: AdaptiveMomentumRibbonConfig;
+  linePlots: string[];
+  lookbackBars: number;
+}) =>
+  JSON.stringify({
+    lookbackBars,
+    linePlots,
+    momentumPeriod: config.AMR_MOMENTUM_PERIOD,
+    butterworthSmoothing: config.AMR_BUTTERWORTH_SMOOTHING,
+    waitClose: config.AMR_WAIT_CLOSE,
+    confirmOnNextBar: config.AMR_CONFIRM_ON_NEXT_BAR,
+    minSignalOscAbs: config.AMR_MIN_SIGNAL_OSC_ABS,
+    requireKcBias: config.AMR_REQUIRE_KC_BIAS,
+    minBarsBetweenSignals: config.AMR_MIN_BARS_BETWEEN_SIGNALS,
+    showInvalidationLevels: config.AMR_SHOW_INVALIDATION_LEVELS,
+    showKeltnerChannel: config.AMR_SHOW_KELTNER_CHANNEL,
+    kcLength: config.AMR_KC_LENGTH,
+    kcMaType: config.AMR_KC_MA_TYPE,
+    atrLength: config.AMR_ATR_LENGTH,
+    atrMultiplier: config.AMR_ATR_MULTIPLIER,
+  });
+
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
 > = async ({
@@ -103,19 +130,63 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     lookbackBars > 0
       ? initialCandles.slice(-Math.max(lookbackBars - 1, 0))
       : initialCandles;
-  const engine = createAdaptiveMomentumRibbonEngine({
-    config,
-    linePlots,
-    initialCandles: warmupCandles,
-  });
-  let processedCandles = warmupCandles.length;
+  const detectorState = strategyApi.createStateController<
+    {
+      engine: ReturnType<typeof createAdaptiveMomentumRibbonEngine>;
+      processedCandles: number;
+    },
+    {
+      evaluation: ReturnType<
+        ReturnType<typeof createAdaptiveMomentumRibbonEngine>['next']
+      >;
+      processedCandles: number;
+    },
+    ReturnType<
+      ReturnType<typeof createAdaptiveMomentumRibbonEngine>['getState']
+    > & {
+      processedCandles: number;
+    }
+  >(
+    'AdaptiveMomentumRibbon',
+    () => ({
+      engine: createAdaptiveMomentumRibbonEngine({
+        config,
+        linePlots,
+        initialCandles: warmupCandles,
+      }),
+      processedCandles: warmupCandles.length,
+    }),
+    {
+      configKey: buildAdaptiveMomentumRibbonStateKey({
+        config,
+        linePlots,
+        lookbackBars,
+      }),
+      snapshot: (state) => ({
+        ...state.engine.getState(),
+        processedCandles: state.processedCandles,
+      }),
+    },
+  );
+  const nextDetectorState = (
+    candle: Parameters<
+      ReturnType<typeof createAdaptiveMomentumRibbonEngine>['next']
+    >[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) => {
+      const evaluation = state.engine.next(candle);
+      state.processedCandles += 1;
+      return {
+        evaluation,
+        processedCandles: state.processedCandles,
+      };
+    });
 
   return async (candle) => {
     const { currentPrice, timestamp } = await strategyApi.getMarketData();
-    let evaluation;
+    let detectorResult;
     try {
-      evaluation = engine.next(candle);
-      processedCandles += 1;
+      detectorResult = nextDetectorState(candle);
     } catch (error) {
       if (typeof globalThis.setImmediate === 'function') {
         logger.warn(
@@ -128,7 +199,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('AMR_EVALUATION_FAILED');
     }
 
-    if (processedCandles < 2) {
+    if (detectorResult.processedCandles < 2) {
       return strategyApi.skip('WAIT_DATA');
     }
 
@@ -137,6 +208,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       position && typeof position.qty === 'number' && position.qty > 0,
     );
 
+    const { evaluation } = detectorResult;
     const { snapshot: amr, plotSeries } = evaluation;
 
     if (amr.entryLong && amr.entryShort) {

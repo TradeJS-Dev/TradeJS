@@ -22,18 +22,46 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
+const buildTrendFollowStateKey = (config: TrendFollowConfig) =>
+  JSON.stringify({
+    pivotLength: config.TRENDFOLLOW_PIVOT_LENGTH,
+    minBarsBetween: config.TRENDFOLLOW_MIN_BARS_BETWEEN_SIGNALS,
+    atrLength: config.TRENDFOLLOW_ATR_LENGTH,
+    atrMult: config.TRENDFOLLOW_ATR_MULT,
+    maxFigurePoints: config.TRENDFOLLOW_MAX_FIGURE_POINTS,
+  });
+
 export const createTrendFollowCore: CreateStrategyCore<
   TrendFollowConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createTrendFollowEngine({
-    config,
-    initialCandles: initialData,
-  });
+  const detectorState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createTrendFollowEngine> },
+    ReturnType<ReturnType<typeof createTrendFollowEngine>['next']>,
+    ReturnType<ReturnType<typeof createTrendFollowEngine>['getState']>
+  >(
+    'TrendFollow',
+    () => ({
+      engine: createTrendFollowEngine({
+        config,
+        initialCandles: initialData,
+      }),
+    }),
+    {
+      configKey: buildTrendFollowStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<ReturnType<typeof createTrendFollowEngine>['next']>[0],
+  ) =>
+    detectorState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next(candle),
+    );
 
   return async (candle) => {
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
     const snapshot = runtimeState.snapshot;
 
