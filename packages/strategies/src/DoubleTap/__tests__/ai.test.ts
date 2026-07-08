@@ -66,6 +66,9 @@ const baseContext = {
       altVolumeChange24hPct: 0.2,
       btcDominanceChange24hPct: -0.1,
     },
+    btcAltRegime: {
+      altDispersion24h: 0.04,
+    },
   },
   derivatives: {
     summary: {
@@ -201,6 +204,109 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBe('LONG');
   });
 
+  it('blocks q4 pockets when alt dispersion reaches the q4 gate', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              btcAltRegime: {
+                altDispersion24h: 0.06,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('blocks q4 pockets when alt dispersion is missing', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              btcAltRegime: {
+                altDispersion24h: undefined,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'missing_alt_dispersion_24h_for_q4',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: false,
+      q4AltDispersionOk: null,
+    });
+  });
+
+  it('keeps q5 high precision pockets when alt dispersion is above the q4 gate', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+            },
+            relative: {
+              btcAltRegime: {
+                altDispersion24h: 0.12,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(5);
+    expect(result?.direction).toBe('LONG');
+  });
+
   it('marks strict momentum approval when approved pockets have ROC1D above the strict gate', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
@@ -232,6 +338,7 @@ describe('doubleTapAiAdapter', () => {
     expect(context.strictMomentumBlockReasons).toEqual([]);
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
+      q4AltDispersionOk: true,
       strictMomentumApproved: true,
       strictMomentumRoc1dOk: true,
     });

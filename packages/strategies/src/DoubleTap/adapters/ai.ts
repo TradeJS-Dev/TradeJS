@@ -14,6 +14,7 @@ const MIN_LOW_TOUCH_COUNT20_FOR_AI_GATE = 1;
 const HIGH_PRECISION_CMC_ALT_VOLUME_CHANGE_MAX = 0.5;
 const Q4_CMC_BTC_DOMINANCE_CHANGE_MIN = -0.3;
 const Q4_CMC_BTC_DOMINANCE_CHANGE_MAX = -0.05;
+const Q4_ALT_DISPERSION_24H_MAX = 0.06;
 const STRICT_MOMENTUM_ROC1D_MIN = -5.25;
 
 type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
@@ -39,6 +40,7 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   benchmarkConflict: boolean | null;
   cmcAltVolumeChange24hPct: number | null;
   cmcBtcDominanceChange24hPct: number | null;
+  altDispersion24h: number | null;
   doubleTapGateFeatures: DoubleTapGateFeatures;
   structuralHardBlockReasons: string[];
   softBlockReasons: string[];
@@ -69,6 +71,7 @@ type DoubleTapGateFeatures = {
     | 'watch';
   highQualityCadencePocket: boolean;
   defaultApprovalAllowed: boolean;
+  q4AltDispersionOk: boolean | null;
   strictMomentumApproved: boolean;
   strictMomentumRoc1dOk: boolean | null;
 };
@@ -195,6 +198,7 @@ const buildDoubleTapGateFeatures = ({
   highPrecisionApprovalBlocked,
   q4ApprovalBlocked,
   defaultApprovalAllowed,
+  q4AltDispersionOk,
   strictMomentumApproved,
   strictMomentumRoc1dOk,
 }: {
@@ -213,6 +217,7 @@ const buildDoubleTapGateFeatures = ({
   highPrecisionApprovalBlocked: boolean;
   q4ApprovalBlocked: boolean;
   defaultApprovalAllowed: boolean;
+  q4AltDispersionOk: boolean | null;
   strictMomentumApproved: boolean;
   strictMomentumRoc1dOk: boolean | null;
 }): DoubleTapGateFeatures => {
@@ -285,6 +290,7 @@ const buildDoubleTapGateFeatures = ({
           : 'watch',
     highQualityCadencePocket: highPrecisionPocket,
     defaultApprovalAllowed,
+    q4AltDispersionOk,
     strictMomentumApproved,
     strictMomentumRoc1dOk,
   };
@@ -397,6 +403,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     'cmcGlobal',
     'btcDominanceChange24hPct',
   ]);
+  const altDispersion24h = getNestedNumber(baseContext, [
+    'relative',
+    'btcAltRegime',
+    'altDispersion24h',
+  ]);
 
   const structuralHardBlockReasons: string[] = [];
   if (!baseContextAvailable) {
@@ -502,7 +513,9 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     baseIndicatorCandidate &&
     cmcBtcDominanceChange24hPct != null &&
     cmcBtcDominanceChange24hPct > Q4_CMC_BTC_DOMINANCE_CHANGE_MIN &&
-    cmcBtcDominanceChange24hPct <= Q4_CMC_BTC_DOMINANCE_CHANGE_MAX;
+    cmcBtcDominanceChange24hPct <= Q4_CMC_BTC_DOMINANCE_CHANGE_MAX &&
+    altDispersion24h != null &&
+    altDispersion24h < Q4_ALT_DISPERSION_24H_MAX;
   const softBlockReasons = [
     ...(legacyShapeCandidate && sessionWindowPhase !== 'active'
       ? ['inactive_session_window']
@@ -541,6 +554,20 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     (cmcBtcDominanceChange24hPct <= Q4_CMC_BTC_DOMINANCE_CHANGE_MIN ||
       cmcBtcDominanceChange24hPct > Q4_CMC_BTC_DOMINANCE_CHANGE_MAX)
       ? ['cmc_btc_dominance_change_outside_band']
+      : []),
+    ...(legacyShapeCandidate &&
+    !legacyHighPrecisionShapeCandidate &&
+    cmcBtcDominanceChange24hPct != null &&
+    cmcBtcDominanceChange24hPct > Q4_CMC_BTC_DOMINANCE_CHANGE_MIN &&
+    cmcBtcDominanceChange24hPct <= Q4_CMC_BTC_DOMINANCE_CHANGE_MAX &&
+    altDispersion24h == null
+      ? ['missing_alt_dispersion_24h_for_q4']
+      : []),
+    ...(legacyShapeCandidate &&
+    !legacyHighPrecisionShapeCandidate &&
+    altDispersion24h != null &&
+    altDispersion24h >= Q4_ALT_DISPERSION_24H_MAX
+      ? ['alt_dispersion_24h_too_high_for_q4']
       : []),
   ];
   const highPrecisionApprovalBlocked =
@@ -585,6 +612,10 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     highPrecisionApprovalBlocked,
     q4ApprovalBlocked,
     defaultApprovalAllowed,
+    q4AltDispersionOk:
+      altDispersion24h == null
+        ? null
+        : altDispersion24h < Q4_ALT_DISPERSION_24H_MAX,
     strictMomentumApproved: strictMomentumApprovalAllowedNow,
     strictMomentumRoc1dOk,
   });
@@ -622,6 +653,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     benchmarkConflict,
     cmcAltVolumeChange24hPct,
     cmcBtcDominanceChange24hPct,
+    altDispersion24h,
     doubleTapGateFeatures,
     structuralHardBlockReasons,
     softBlockReasons,
@@ -731,6 +763,7 @@ Additional DoubleTap context:
 - benchmarkConflict=${String(context.benchmarkConflict ?? 'n/a')}
 - cmcAltVolumeChange24hPct=${String(context.cmcAltVolumeChange24hPct ?? 'n/a')}
 - cmcBtcDominanceChange24hPct=${String(context.cmcBtcDominanceChange24hPct ?? 'n/a')}
+- altDispersion24h=${String(context.altDispersion24h ?? 'n/a')}
 - doubleTapGatePatternGeometry=${context.doubleTapGateFeatures.patternGeometry}
 - doubleTapGateNecklineBreakout=${context.doubleTapGateFeatures.necklineBreakout}
 - doubleTapGateTrendContext=${context.doubleTapGateFeatures.trendContext}
@@ -740,6 +773,7 @@ Additional DoubleTap context:
 - doubleTapGateApprovalPocket=${context.doubleTapGateFeatures.approvalPocket}
 - doubleTapGateHighQualityCadencePocket=${String(context.doubleTapGateFeatures.highQualityCadencePocket)}
 - doubleTapGateDefaultApprovalAllowed=${String(context.doubleTapGateFeatures.defaultApprovalAllowed)}
+- doubleTapGateQ4AltDispersionOk=${String(context.doubleTapGateFeatures.q4AltDispersionOk ?? 'n/a')}
 - doubleTapGateStrictMomentumApproved=${String(context.doubleTapGateFeatures.strictMomentumApproved)}
 - doubleTapGateStrictMomentumRoc1dOk=${String(context.doubleTapGateFeatures.strictMomentumRoc1dOk ?? 'n/a')}
 - deterministicQuality=${String(context.deterministicQuality)}
@@ -756,7 +790,7 @@ Interpretation rules for DoubleTap:
 - Extremely tiny breaks can still be early noise; live approval needs support from baseContext.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
 - Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
-- Local q4 approval needs the structural approval pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, and -0.3 < CMC BTC dominance change <= -0.05.
+- Local q4 approval needs the structural approval pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, -0.3 < CMC BTC dominance change <= -0.05, and BTC/alt dispersion 24h < 0.06.
 - Main local approval additionally needs strict momentum confirmation with ROC1D >= -5.25 on top of the local q4/q5 approval.
 - A good long has two comparable lows and a clean close above the neckline.
 - A good short has two comparable highs and a clean close below the neckline.
