@@ -3,7 +3,10 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
-import { resolveDerivativesContextReferenceSymbols } from '@tradejs/core/constants';
+import {
+  DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS,
+  resolveDerivativesContextReferenceSymbols,
+} from '@tradejs/core/constants';
 import { getDerivativesWindow } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
 import type {
@@ -17,6 +20,10 @@ import type {
 
 const DEFAULT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 const DEFAULT_LOOKBACK_HOURS = 48;
+const PRIMARY_DERIVATIVES_REFERENCE_SYMBOL =
+  DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS[0];
+const SECONDARY_DERIVATIVES_REFERENCE_SYMBOL =
+  DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS[1];
 
 let derivativesContextUnavailable = false;
 
@@ -97,13 +104,11 @@ const getSignalPriceChangePct1h = (signal: Signal) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const resolvePrimaryReferenceSymbol = (signalSymbol: string) => {
-  const symbol = normalizeSymbol(signalSymbol);
-  const referenceSymbols = getDerivativesContextReferenceSymbols();
-  return referenceSymbols.some((referenceSymbol) => referenceSymbol === symbol)
-    ? symbol
-    : referenceSymbols[0];
-};
+const resolvePrimaryReferenceSymbol = () =>
+  PRIMARY_DERIVATIVES_REFERENCE_SYMBOL;
+
+const resolveSecondaryReferenceSymbol = () =>
+  SECONDARY_DERIVATIVES_REFERENCE_SYMBOL;
 
 const getPrimaryIntervalContext = (
   context: DerivativesSymbolContext | null | undefined,
@@ -192,12 +197,14 @@ const buildTargetDerivedContext = (params: {
 const buildReferenceDerivativesContext = (params: {
   targetSymbol: string;
   primaryReferenceSymbol: string;
+  secondaryReferenceSymbol: string;
   referenceContexts: Record<string, DerivativesSymbolContext>;
   targetContext?: DerivativesSymbolContext;
 }): DerivativesContext => {
   const {
     targetSymbol,
     primaryReferenceSymbol,
+    secondaryReferenceSymbol,
     referenceContexts,
     targetContext,
   } = params;
@@ -219,6 +226,9 @@ const buildReferenceDerivativesContext = (params: {
     ...primaryContext,
     targetSymbol,
     primaryReferenceSymbol: primaryContext.symbol,
+    secondaryReferenceSymbol:
+      referenceContexts[secondaryReferenceSymbol]?.symbol ??
+      secondaryReferenceSymbol,
     referenceSymbols: getDerivativesContextReferenceSymbols(),
     referenceContexts,
     ...(targetContext && targetDerived
@@ -281,13 +291,19 @@ export const enrichSignalWithDerivativesContext = async (params: {
       string,
       DerivativesSymbolContext
     >;
-    const shouldLoadTargetContext =
+    const primaryReferenceSymbol = resolvePrimaryReferenceSymbol();
+    const secondaryReferenceSymbol = resolveSecondaryReferenceSymbol();
+    const referenceTargetContext =
+      targetSymbol !== primaryReferenceSymbol
+        ? referenceContexts[targetSymbol]
+        : undefined;
+    const shouldFetchTargetContext =
       isDerivativesTargetContextEnabled() &&
       targetSymbol.length > 0 &&
       !referenceSymbols.some(
         (referenceSymbol) => referenceSymbol === targetSymbol,
       );
-    const targetContext = shouldLoadTargetContext
+    const fetchedTargetContext = shouldFetchTargetContext
       ? await (async () => {
           const rowsByInterval = await getDerivativesWindow({
             symbol: targetSymbol,
@@ -306,9 +322,14 @@ export const enrichSignalWithDerivativesContext = async (params: {
           return hasDerivativesSymbolData(context) ? context : undefined;
         })()
       : undefined;
+    const targetContext =
+      referenceTargetContext && hasDerivativesSymbolData(referenceTargetContext)
+        ? referenceTargetContext
+        : fetchedTargetContext;
     const derivativesContext = buildReferenceDerivativesContext({
       targetSymbol: targetSymbol || signal.symbol,
-      primaryReferenceSymbol: resolvePrimaryReferenceSymbol(targetSymbol),
+      primaryReferenceSymbol,
+      secondaryReferenceSymbol,
       referenceContexts,
       targetContext,
     });

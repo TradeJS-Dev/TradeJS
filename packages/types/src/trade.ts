@@ -133,6 +133,7 @@ export interface DerivativesTargetDerivedContext {
 export interface DerivativesContext extends DerivativesSymbolContext {
   targetSymbol?: string;
   primaryReferenceSymbol?: string;
+  secondaryReferenceSymbol?: string;
   referenceSymbols?: string[];
   referenceContexts?: Record<string, DerivativesSymbolContext>;
   targetContext?: DerivativesSymbolContext;

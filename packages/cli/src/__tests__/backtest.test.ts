@@ -67,6 +67,7 @@ jest.mock('@tradejs/core/strategies', () => ({
 jest.mock('@tradejs/core/constants', () => ({
   BACKTEST_DEFAULT_DAYS: 30,
   BACKTEST_PRELOAD_DAYS: 5,
+  DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS: ['BTCUSDT', 'ETHUSDT'],
   TESTS_LIMIT: 100,
   TESTS_TOP_LIMIT: 10,
   TTL_1D: 86400,

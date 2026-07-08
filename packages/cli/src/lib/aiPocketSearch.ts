@@ -328,6 +328,7 @@ const isCompactFeaturePathSkipped = (segments: string[]) => {
       'timestamp',
       'targetSymbol',
       'primaryReferenceSymbol',
+      'secondaryReferenceSymbol',
     ].includes(segments[3] ?? '')
   ) {
     return true;
