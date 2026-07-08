@@ -12,6 +12,17 @@ const makePayload = (
   baseContext: Record<string, unknown> = {},
 ) => {
   const direction = context.signalDirection === 'SHORT' ? 'SHORT' : 'LONG';
+  const normalizedBaseContext =
+    baseContext.gateFeatures === undefined
+      ? {
+          ...baseContext,
+          gateFeatures: {
+            scores: {
+              participation: 86,
+            },
+          },
+        }
+      : baseContext;
 
   return {
     signal: {
@@ -38,7 +49,7 @@ const makePayload = (
     indicators: {},
     additionalIndicators: {
       trendFollowContext: context,
-      baseContext,
+      baseContext: normalizedBaseContext,
     },
   } as any;
 };
@@ -50,6 +61,7 @@ const makeShortFlushPayload = ({
   btcTurnoverShare24h = 0.35,
   altBasketReturn24h = -0.01,
   targetVsBtcBeta20 = 1.35,
+  participationScore = 86,
 }: {
   oiChangePct24h?: number;
   liqLong?: number;
@@ -57,6 +69,7 @@ const makeShortFlushPayload = ({
   btcTurnoverShare24h?: number;
   altBasketReturn24h?: number;
   targetVsBtcBeta20?: number;
+  participationScore?: number | null;
 } = {}) => {
   const payload = makePayload(
     {
@@ -73,6 +86,14 @@ const makeShortFlushPayload = ({
       raw: {
         volatility: { atr: 1.2 },
       },
+      gateFeatures:
+        participationScore == null
+          ? { scores: {} }
+          : {
+              scores: {
+                participation: participationScore,
+              },
+            },
       regime: {
         momentum: { rsi: 32 },
       },
@@ -784,6 +805,50 @@ describe('trendFollowAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects short derivatives pockets above the shared participation score cap', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        participationScore: 87,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('rejects short derivatives pockets without the shared participation score', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        participationScore: null,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects short derivatives pockets at the BTC turnover cap', () => {

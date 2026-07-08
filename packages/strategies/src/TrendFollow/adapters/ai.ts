@@ -111,8 +111,10 @@ Additional TrendFollow context:
 - trendFollowGateDerivatives1hOiChangePct24h=${String(context.trendFollowGateFeatures.derivatives1hOiChangePct24h ?? 'n/a')}
 - trendFollowGateDerivatives1hLiqLong=${String(context.trendFollowGateFeatures.derivatives1hLiqLong ?? 'n/a')}
 - trendFollowGateDerivatives1hLiqImbalance=${String(context.trendFollowGateFeatures.derivatives1hLiqImbalance ?? 'n/a')}
+- trendFollowGateSharedParticipationScore=${String(context.trendFollowGateFeatures.sharedParticipationScore ?? 'n/a')}
 - trendFollowGateDerivativesShortFlushOiPocket=${String(context.trendFollowGateFeatures.derivativesShortFlushOiPocket)}
 - trendFollowGateMarketRegimeCadencePocket=${String(context.trendFollowGateFeatures.marketRegimeCadencePocket)}
+- trendFollowGateParticipationCadencePocket=${String(context.trendFollowGateFeatures.participationCadencePocket)}
 - trendFollowGateHighQualityCadencePocket=${String(context.trendFollowGateFeatures.highQualityCadencePocket)}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}

@@ -224,6 +224,73 @@ describe('strategyHelpers/derivativesContext', () => {
     });
   });
 
+  it('keeps BTC as primary reference metadata for BTC signals', async () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS = 'BNB,SOL,TRX,XRP';
+    const enrichedSignal = { ...signal, symbol: 'BTCUSDT' };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: enrichedSignal,
+        env: 'LIVE',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
+    ).toEqual(DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS);
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        targetSymbol: 'BTCUSDT',
+        primaryReferenceSymbol: 'BTCUSDT',
+        secondaryReferenceSymbol: 'ETHUSDT',
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
+        referenceContexts: expect.objectContaining({
+          BTCUSDT: expect.objectContaining({ symbol: 'BTCUSDT' }),
+          ETHUSDT: expect.objectContaining({ symbol: 'ETHUSDT' }),
+        }),
+      }),
+    );
+    expect(
+      enrichedSignal.additionalIndicators.baseContext.derivatives.targetContext,
+    ).toBeUndefined();
+  });
+
+  it('keeps ETH as secondary reference and target context without replacing BTC primary', async () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
+    process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS = 'BNB,SOL,TRX,XRP';
+    const enrichedSignal = { ...signal, symbol: 'ETHUSDT' };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: enrichedSignal,
+        env: 'LIVE',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
+    ).toEqual(DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS);
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        targetSymbol: 'ETHUSDT',
+        primaryReferenceSymbol: 'BTCUSDT',
+        secondaryReferenceSymbol: 'ETHUSDT',
+        referenceSymbols: DEFAULT_DERIVATIVES_REFERENCE_SYMBOLS,
+        targetContext: expect.objectContaining({
+          symbol: 'ETHUSDT',
+        }),
+        targetDerived: expect.objectContaining({
+          available: true,
+          sourceSymbol: 'ETHUSDT',
+          referenceSymbol: 'BTCUSDT',
+        }),
+      }),
+    );
+  });
+
   it('uses BTC as the primary derivatives context for non-reference symbols', async () => {
     process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
     const enrichedSignal = { ...signal, symbol: 'DOGEUSDT' };

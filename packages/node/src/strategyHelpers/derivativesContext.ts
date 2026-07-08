@@ -198,6 +198,7 @@ const buildReferenceDerivativesContext = (params: {
   targetSymbol: string;
   primaryReferenceSymbol: string;
   secondaryReferenceSymbol: string;
+  referenceSymbols: string[];
   referenceContexts: Record<string, DerivativesSymbolContext>;
   targetContext?: DerivativesSymbolContext;
 }): DerivativesContext => {
@@ -205,15 +206,24 @@ const buildReferenceDerivativesContext = (params: {
     targetSymbol,
     primaryReferenceSymbol,
     secondaryReferenceSymbol,
+    referenceSymbols,
     referenceContexts,
     targetContext,
   } = params;
   const primaryContext =
     referenceContexts[primaryReferenceSymbol] ??
-    referenceContexts[getDerivativesContextReferenceSymbols()[0]];
+    referenceContexts[referenceSymbols[0]];
   if (!primaryContext) {
     throw new Error('No derivatives reference contexts built');
   }
+  const referenceSymbolsMetadata = [
+    ...new Set([
+      primaryReferenceSymbol,
+      secondaryReferenceSymbol,
+      ...referenceSymbols,
+      ...Object.keys(referenceContexts),
+    ]),
+  ];
   const targetDerived =
     targetContext && hasDerivativesSymbolData(targetContext)
       ? buildTargetDerivedContext({
@@ -229,7 +239,7 @@ const buildReferenceDerivativesContext = (params: {
     secondaryReferenceSymbol:
       referenceContexts[secondaryReferenceSymbol]?.symbol ??
       secondaryReferenceSymbol,
-    referenceSymbols: getDerivativesContextReferenceSymbols(),
+    referenceSymbols: referenceSymbolsMetadata,
     referenceContexts,
     ...(targetContext && targetDerived
       ? {
@@ -330,6 +340,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
       targetSymbol: targetSymbol || signal.symbol,
       primaryReferenceSymbol,
       secondaryReferenceSymbol,
+      referenceSymbols,
       referenceContexts,
       targetContext,
     });

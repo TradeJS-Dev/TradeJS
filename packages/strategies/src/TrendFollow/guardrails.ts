@@ -58,8 +58,10 @@ export type TrendFollowGateFeatures = {
   derivatives1hOiChangePct24h: number | null;
   derivatives1hLiqLong: number | null;
   derivatives1hLiqImbalance: number | null;
+  sharedParticipationScore: number | null;
   derivativesShortFlushOiPocket: boolean;
   marketRegimeCadencePocket: boolean;
+  participationCadencePocket: boolean;
   highQualityCadencePocket: boolean;
 };
 
@@ -76,6 +78,7 @@ const TREND_FOLLOW_SHORT_MARKET_MAX_BTC_TURNOVER_SHARE_24H = 0.416874;
 const TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H = -0.020269;
 const TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H = 0.052359;
 const TREND_FOLLOW_SHORT_MIN_TARGET_BTC_BETA_20 = 0.627393;
+const TREND_FOLLOW_SHORT_MAX_SHARED_PARTICIPATION_SCORE = 86;
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -325,6 +328,9 @@ const buildTrendFollowGateFeatures = ({
   const targetVsBtcBeta20 = asFiniteNumber(
     baseContext?.relative?.targetVsBtc?.betaToBtc20,
   );
+  const sharedParticipationScore = asFiniteNumber(
+    baseContext?.gateFeatures?.scores?.participation,
+  );
   const btcAltRegime = baseContext?.relative?.btcAltRegime;
   const btcAltRegimeBtcTurnoverShare24h = asFiniteNumber(
     btcAltRegime?.btcTurnoverShare24h,
@@ -358,6 +364,10 @@ const buildTrendFollowGateFeatures = ({
   const relativeCadencePocket =
     targetVsBtcBeta20 != null &&
     targetVsBtcBeta20 > TREND_FOLLOW_SHORT_MIN_TARGET_BTC_BETA_20;
+  const participationCadencePocket =
+    sharedParticipationScore != null &&
+    sharedParticipationScore <=
+      TREND_FOLLOW_SHORT_MAX_SHARED_PARTICIPATION_SCORE;
 
   return {
     setupStopDistanceAtr,
@@ -379,12 +389,15 @@ const buildTrendFollowGateFeatures = ({
     derivatives1hOiChangePct24h,
     derivatives1hLiqLong,
     derivatives1hLiqImbalance,
+    sharedParticipationScore,
     derivativesShortFlushOiPocket,
     marketRegimeCadencePocket,
+    participationCadencePocket,
     highQualityCadencePocket:
       derivativesShortFlushOiPocket &&
       marketRegimeCadencePocket &&
-      relativeCadencePocket,
+      relativeCadencePocket &&
+      participationCadencePocket,
   };
 };
 
