@@ -20,6 +20,8 @@ export type AdaptiveTrendChannelGuardrailContext =
     targetLiqSpikeRatio1h: number | null;
     targetLiqTotal1h: number | null;
     ethFundingRate1h: number | null;
+    xrpOpenInterest15m: number | null;
+    baseApproveBias: string | null;
     hardBlockReasons: string[];
     softBlockReasons: string[];
     deterministicQuality: number;
@@ -62,6 +64,7 @@ const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
 const MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H = -0.97;
 const MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H = 5.7;
 const MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H = 0.0037;
+const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
 const MAX_APPROVAL_RSI = 75;
 const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
@@ -75,6 +78,10 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const targetDerivatives1h = baseContext?.derivatives?.intervals?.['1h'];
   const ethDerivatives1h =
     baseContext?.derivatives?.referenceContexts?.['ETHUSDT']?.intervals?.['1h'];
+  const xrpDerivatives15m =
+    baseContext?.derivatives?.referenceContexts?.['XRPUSDT']?.intervals?.[
+      '15m'
+    ];
   const targetDerivatives1hStale = targetDerivatives1h?.stale === true;
   const ethDerivatives1hStale = ethDerivatives1h?.stale === true;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
@@ -110,6 +117,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     'boolean'
       ? baseContext.gateFeatures.relative.cmcExchangeLiquidityStale
       : null;
+  const baseApproveBias =
+    baseContext?.gateFeatures?.decisionHints?.approveBias ?? null;
   const targetLiqImbalance1h = asFiniteNumber(
     targetDerivatives1h?.liqImbalance,
   );
@@ -118,6 +127,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   );
   const targetLiqTotal1h = asFiniteNumber(targetDerivatives1h?.liqTotal);
   const ethFundingRate1h = asFiniteNumber(ethDerivatives1h?.fundingRate);
+  const xrpOpenInterest15m = asFiniteNumber(xrpDerivatives15m?.openInterest);
   const hardBlockReasons: string[] = [];
   const softBlockReasons: string[] = [];
 
@@ -132,6 +142,13 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   }
   if ((signalContext.channelWidthPct ?? 0) <= 0) {
     hardBlockReasons.push('invalid_channel');
+  }
+  if (
+    xrpOpenInterest15m != null &&
+    xrpOpenInterest15m >= MIN_XRP_OI_REJECT_BIAS_BLOCK_15M &&
+    baseApproveBias === 'reject'
+  ) {
+    hardBlockReasons.push('xrp_oi_reject_bias');
   }
 
   const direction = signalContext.signalDirection;
@@ -255,6 +272,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     targetLiqSpikeRatio1h,
     targetLiqTotal1h,
     ethFundingRate1h,
+    xrpOpenInterest15m,
+    baseApproveBias,
     hardBlockReasons,
     softBlockReasons,
     deterministicQuality,

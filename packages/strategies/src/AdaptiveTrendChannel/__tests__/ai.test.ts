@@ -29,6 +29,55 @@ const makePayload = (
     },
   }) as any;
 
+const makeCleanLongBaseContext = ({
+  approveBias = 'neutral',
+  xrpOpenInterest15m,
+}: {
+  approveBias?: 'support' | 'neutral' | 'reject';
+  xrpOpenInterest15m?: number | null;
+} = {}) => ({
+  regime: {
+    trend: { bias: 'bull', trendFollow: { state: 'bull' } },
+    momentum: { rsi: 72 },
+    volatility: { percentiles: { bbWidthRank100: 80 } },
+  },
+  participation: {
+    volume: { volumeRel20: 10 },
+  },
+  structure: {
+    localRange: { breakoutState: 'above_high_level' },
+  },
+  mtf: {
+    summary: { h4VolatilityState: 'expanded' },
+  },
+  derivatives:
+    xrpOpenInterest15m === undefined
+      ? {}
+      : {
+          referenceContexts: {
+            XRPUSDT: {
+              intervals: {
+                '15m': {
+                  openInterest: xrpOpenInterest15m,
+                },
+              },
+            },
+          },
+        },
+  gateFeatures: {
+    decisionHints: {
+      approveBias,
+      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+      needsExtraConfirmation: approveBias === 'reject',
+      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    },
+    relative: {
+      cmcExchangeLiquidityAligned: true,
+      cmcExchangeLiquidityStale: false,
+    },
+  },
+});
+
 describe('adaptiveTrendChannelAiAdapter', () => {
   it('approves clean adaptive channel flips', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
@@ -88,6 +137,84 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       approved: true,
     });
   });
+
+  it('blocks clean flips when XRP open interest is high and base approve bias rejects', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        makeCleanLongBaseContext({
+          approveBias: 'reject',
+          xrpOpenInterest15m: 250_000_000,
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('xrp_oi_reject_bias');
+  });
+
+  it.each([
+    ['below the XRP OI threshold', 249_999_999],
+    ['with missing XRP OI', undefined],
+    ['with null XRP OI', null],
+  ])(
+    'keeps clean reject-bias flips approvable %s',
+    (_label, xrpOpenInterest15m) => {
+      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload(
+          {
+            signalDirection: 'LONG',
+            regime: 1,
+            centerline: 100,
+            roof: 103,
+            floor: 97,
+            halfChannel: 3,
+            atr: 3,
+            breakoutDistancePct: 4.2,
+            channelWidthPct: 6,
+            currentPrice: 104.2,
+          },
+          makeCleanLongBaseContext({
+            approveBias: 'reject',
+            xrpOpenInterest15m,
+          }),
+        ),
+        analysis: {
+          direction: 'LONG',
+          quality: 1,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: 'LONG',
+        quality: 5,
+        approved: true,
+      });
+    },
+  );
 
   it('keeps gate approval stable without reading lazy indicator snapshot fields', () => {
     let lazyReads = 0;

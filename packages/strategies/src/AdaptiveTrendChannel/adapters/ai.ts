@@ -94,6 +94,8 @@ Additional AdaptiveTrendChannel context:
 - targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
 - targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}
 - ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
+- xrpOpenInterest15m=${String(context.xrpOpenInterest15m ?? 'n/a')}
+- baseApproveBias=${context.baseApproveBias ?? 'n/a'}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
