@@ -626,6 +626,36 @@ describe('signals script', () => {
     );
   });
 
+  it('initializes strategy state from previous closed candles before evaluating the latest closed candle', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [makeCandle(CLOSED_1_TS, 10)],
+        btcData: [makeCandle(CLOSED_1_TS, 100)],
+      }),
+    );
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
+    );
+  });
+
   it('treats strategy config with ENABLE=false as inactive for signals', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
