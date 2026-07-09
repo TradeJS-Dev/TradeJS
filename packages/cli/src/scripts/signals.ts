@@ -21,7 +21,7 @@ import type {
   TradejsConfigAfterSignalsHookContext,
   TradejsConfigHooks,
 } from '@tradejs/core/config';
-import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
+import { SIGNALS_CLI_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { enrichSignalWithBinanceMarketContext } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
@@ -34,6 +34,7 @@ import {
   Signal,
 } from '@tradejs/types';
 import {
+  getRuntimeSignalRetentionTtlSeconds,
   getRuntimeStorageDayKey,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
@@ -305,9 +306,10 @@ const findSignals = async (
       );
     }
     strategySignals.push(signal);
+    const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
 
     await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
-      expire: TTL_10D,
+      expire: runtimeSignalRetentionTtl,
     });
 
     await setHashJsonField(
@@ -319,7 +321,7 @@ const findSignals = async (
       signal.signalId,
       toRuntimeSignalBucketRef(signal),
       {
-        expire: TTL_10D,
+        expire: runtimeSignalRetentionTtl,
       },
     );
 

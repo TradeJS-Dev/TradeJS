@@ -400,6 +400,7 @@ describe('signals script', () => {
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
   afterEach(() => {
+    delete process.env.RUNTIME_SIGNAL_RETENTION_DAYS;
     jest.clearAllMocks();
   });
 
@@ -478,6 +479,47 @@ describe('signals script', () => {
         signals: 1,
       },
       { expire: TTL_10D },
+    );
+  });
+
+  it('uses configured runtime signal retention ttl for signal storage', async () => {
+    process.env.RUNTIME_SIGNAL_RETENTION_DAYS = '1';
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
+      expect.objectContaining({ signalId: 'TrendLine-sig' }),
+      { expire: 86_400 },
+    );
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalBucket('root', '1970-01-01', 'TrendLine'),
+      'TrendLine-sig',
+      expect.objectContaining({ signalId: 'TrendLine-sig' }),
+      { expire: 86_400 },
+    );
+    expect(mocks.incrHashFields).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      expect.objectContaining({ evaluated: 1, signals: 1 }),
+      { expire: 86_400 },
     );
   });
 

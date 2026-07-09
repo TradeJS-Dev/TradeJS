@@ -1,3 +1,4 @@
+import { TTL_10D } from '@tradejs/core/constants';
 import { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
 import {
   getRuntimeStorageDayKey,
@@ -25,8 +26,34 @@ export type RuntimeSignalStatsBucket = {
   reasonGroups: Map<string, Map<string, number>>;
 };
 
+const SECONDS_PER_DAY = 86_400;
+
+export const RUNTIME_SIGNAL_RETENTION_DAYS_ENV =
+  'RUNTIME_SIGNAL_RETENTION_DAYS';
+export const DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS = TTL_10D;
+
 // Runtime summary cron runs at 21:00 Europe/Moscow. Shift the logical
 // bucket boundary so one stored "day" maps to exactly one summary window.
+
+const parsePositiveNumber = (value: unknown): number | null => {
+  if (value == null || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+export const getRuntimeSignalRetentionTtlSeconds = () => {
+  const explicitDays = parsePositiveNumber(
+    process.env[RUNTIME_SIGNAL_RETENTION_DAYS_ENV],
+  );
+  if (explicitDays != null) {
+    return Math.ceil(explicitDays * SECONDS_PER_DAY);
+  }
+
+  return DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS;
+};
 
 export const toRuntimeSignalBucketRef = (
   signal: Signal,

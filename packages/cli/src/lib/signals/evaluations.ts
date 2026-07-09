@@ -1,4 +1,3 @@
-import { TTL_10D } from '@tradejs/core/constants';
 import type { RuntimeSignalEvaluationRecord } from '@tradejs/types';
 import {
   incrHashFields,
@@ -7,6 +6,7 @@ import {
 } from '@tradejs/infra/redis';
 import {
   buildRuntimeSignalStatsIncrements,
+  getRuntimeSignalRetentionTtlSeconds,
   getRuntimeStorageDayKey,
   shouldStoreDetailedRuntimeSignalEvaluation,
 } from '../runtimeSignalsStorage';
@@ -25,6 +25,7 @@ export const saveRuntimeSignalEvaluation = async (
   evaluation: RuntimeSignalEvaluationRecord,
 ) => {
   const dayKey = getRuntimeStorageDayKey(evaluation.timestamp);
+  const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
   if (shouldStoreDetailedRuntimeSignalEvaluation(evaluation)) {
     await setHashJsonField(
       redisKeys.runtimeSignalEvaluationBucket(
@@ -35,7 +36,7 @@ export const saveRuntimeSignalEvaluation = async (
       evaluation.evaluationId,
       evaluation,
       {
-        expire: TTL_10D,
+        expire: runtimeSignalRetentionTtl,
       },
     );
   }
@@ -47,7 +48,7 @@ export const saveRuntimeSignalEvaluation = async (
     ),
     buildRuntimeSignalStatsIncrements(evaluation),
     {
-      expire: TTL_10D,
+      expire: runtimeSignalRetentionTtl,
     },
   );
 };

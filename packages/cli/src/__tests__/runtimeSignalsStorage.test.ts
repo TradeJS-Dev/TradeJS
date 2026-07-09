@@ -1,5 +1,7 @@
 import {
   buildRuntimeSignalStatsIncrements,
+  DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS,
+  getRuntimeSignalRetentionTtlSeconds,
   getRuntimeStorageDayKey,
   getRuntimeStorageDayKeys,
   isRuntimeSignalBucketRef,
@@ -213,5 +215,31 @@ describe('runtimeSignalsStorage', () => {
         reason: 'NO_SIGNAL',
       }),
     ).toBe(false);
+  });
+});
+
+describe('runtimeSignalsStorage retention', () => {
+  const originalDays = process.env.RUNTIME_SIGNAL_RETENTION_DAYS;
+
+  afterEach(() => {
+    if (originalDays == null) {
+      delete process.env.RUNTIME_SIGNAL_RETENTION_DAYS;
+    } else {
+      process.env.RUNTIME_SIGNAL_RETENTION_DAYS = originalDays;
+    }
+  });
+
+  it('uses default retention when env override is absent or invalid', () => {
+    process.env.RUNTIME_SIGNAL_RETENTION_DAYS = 'bad';
+
+    expect(getRuntimeSignalRetentionTtlSeconds()).toBe(
+      DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS,
+    );
+  });
+
+  it('resolves retention from days env', () => {
+    process.env.RUNTIME_SIGNAL_RETENTION_DAYS = '3';
+
+    expect(getRuntimeSignalRetentionTtlSeconds()).toBe(259_200);
   });
 });
