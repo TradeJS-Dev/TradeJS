@@ -223,4 +223,26 @@ describe('prepareMarketContextForRun', () => {
       expect(mockBackfillCoinMarketCapContextForSignals).not.toHaveBeenCalled();
     },
   );
+
+  it('does not request crypto-only context for TradFi', async () => {
+    mockShouldBackfillDerivativesContextForSignals.mockReturnValue(true);
+    mockShouldBackfillBinanceMarketContextForSignals.mockReturnValue(true);
+    mockShouldBackfillCoinMarketCapContextForSignals.mockReturnValue(true);
+
+    await prepareMarketContextForRun({
+      mode: 'signals',
+      universe: 'tradfi',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['AAPLUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+    });
+
+    expect(mockBackfillDerivativesContextForSignals).not.toHaveBeenCalled();
+    expect(mockBackfillBinanceMarketContextForSignals).not.toHaveBeenCalled();
+    expect(mockBackfillCoinMarketCapContextForSignals).not.toHaveBeenCalled();
+  });
 });

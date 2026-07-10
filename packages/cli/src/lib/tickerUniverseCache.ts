@@ -1,6 +1,11 @@
 import { getTopTickers } from '@tradejs/core/tickers';
 import { getData, redisKeys, setData } from '@tradejs/infra/redis';
-import type { Connector, Ticker } from '@tradejs/types';
+import type {
+  AssetClass,
+  Connector,
+  MarketUniverse,
+  Ticker,
+} from '@tradejs/types';
 import { getTickers } from '@tradejs/node/cli';
 
 const TICKER_CACHE_VERSION = 1;
@@ -67,6 +72,9 @@ export const loadRunTickers = async ({
   exclude,
   limit,
   cacheOnly,
+  universe,
+  accountId,
+  assetClasses,
 }: {
   connector: Connector;
   connectorName: string;
@@ -75,12 +83,23 @@ export const loadRunTickers = async ({
   exclude?: string;
   limit?: number;
   cacheOnly?: boolean;
+  universe?: MarketUniverse;
+  accountId?: string;
+  assetClasses?: readonly AssetClass[];
 }): Promise<string[]> => {
   if (include?.trim()) {
-    return getTickers(connector, include, exclude, limit);
+    return getTickers(connector, include, exclude, limit, undefined, {
+      universe,
+      assetClasses,
+    });
   }
 
-  const cacheKey = redisKeys.tickerUniverse(userName, connectorName);
+  const cacheKey = redisKeys.tickerUniverse(
+    userName,
+    connectorName,
+    universe,
+    accountId,
+  );
 
   if (cacheOnly) {
     const cachedTickers = await readCachedTickerUniverse(cacheKey);
@@ -97,7 +116,10 @@ export const loadRunTickers = async ({
     });
   }
 
-  const exchangeTickers = await connector.getTickers();
+  const exchangeTickers = await connector.getTickers({
+    universe,
+    assetClasses,
+  });
   if (exchangeTickers.length) {
     await setData(
       cacheKey,

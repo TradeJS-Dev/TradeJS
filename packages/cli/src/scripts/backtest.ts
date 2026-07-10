@@ -103,7 +103,7 @@ type BacktestReportRow = {
 
 type PersistedBacktestResultEntry = Pick<
   TestWorkerResult,
-  'orderLogId' | 'stat'
+  'orderLogId' | 'stat' | 'executionCostModel'
 > & {
   test: Pick<
     TestWorkerResult['test'],
@@ -116,6 +116,11 @@ type PersistedBacktestResultEntry = Pick<
     | 'strategyName'
     | 'strategyConfig'
     | 'connectorName'
+    | 'universe'
+    | 'assetClass'
+    | 'accountId'
+    | 'deploymentId'
+    | 'policyProfileId'
     | 'options'
     | 'ml'
     | 'ai'
@@ -127,6 +132,7 @@ export const toPersistedBacktestResultEntry = (
 ): PersistedBacktestResultEntry => ({
   orderLogId: result.orderLogId,
   stat: result.stat,
+  executionCostModel: result.executionCostModel,
   test: {
     userName: result.test.userName,
     name: result.test.name,
@@ -137,6 +143,11 @@ export const toPersistedBacktestResultEntry = (
     strategyName: result.test.strategyName,
     strategyConfig: result.test.strategyConfig,
     connectorName: result.test.connectorName,
+    universe: result.test.universe,
+    assetClass: result.test.assetClass,
+    accountId: result.test.accountId,
+    deploymentId: result.test.deploymentId,
+    policyProfileId: result.test.policyProfileId,
     options: result.test.options,
     ml: result.test.ml,
     ai: result.test.ai,
@@ -572,6 +583,7 @@ const prepareContinuedBacktestMarketContext = async ({
     userName,
     projectRoot,
     symbols: Array.from(new Set(remainingSuite.map((test) => test.symbol))),
+    universe: remainingSuite[0]?.universe,
     interval: manifest.interval as Interval,
     startMs: manifest.window.start,
     endMs: manifest.window.end,
@@ -643,7 +655,32 @@ export const backtest = async () => {
       config.strategyConfigGrid,
       preparedRun.connectorName,
       interval,
-    ),
+    ).map((test) => {
+      const deploymentStrategy = preparedRun.deployment?.strategies.find(
+        ({ strategyName }) => strategyName === config.strategyName,
+      );
+      if (preparedRun.deployment && !deploymentStrategy) {
+        throw new Error(
+          `Strategy ${config.strategyName} is not enabled in deployment ${preparedRun.deployment.id}`,
+        );
+      }
+      const policyProfileId =
+        (typeof flags.policyProfile === 'string' && flags.policyProfile.trim()
+          ? flags.policyProfile.trim()
+          : deploymentStrategy?.policyProfileId) || undefined;
+      return {
+        ...test,
+        universe: preparedRun.universe,
+        accountId: preparedRun.accountId,
+        deploymentId: preparedRun.deploymentId,
+        policyProfileId,
+        strategyConfig: {
+          ...test.strategyConfig,
+          ...deploymentStrategy?.config,
+          ...(policyProfileId ? { POLICY_PROFILE_ID: policyProfileId } : {}),
+        },
+      };
+    }),
     window: preparedRun.window,
     preloadStart: preparedRun.preloadStart,
     isReplay: false,

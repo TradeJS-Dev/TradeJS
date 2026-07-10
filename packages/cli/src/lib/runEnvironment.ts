@@ -11,7 +11,14 @@ import {
   BACKTEST_PRELOAD_DAYS,
 } from '@tradejs/core/constants';
 import { getBacktestPreloadStart, getTimestamp } from '@tradejs/core/time';
-import { Connector, ConnectorCreator, Interval } from '@tradejs/types';
+import {
+  AssetClass,
+  Connector,
+  ConnectorCreator,
+  Interval,
+  MarketUniverse,
+  RuntimeDeployment,
+} from '@tradejs/types';
 import { resolveTimeWindow } from './timeWindow';
 import {
   loadRuntimeStrategyBacktestConfigs,
@@ -36,6 +43,11 @@ export type PreparedRunEnvironment = {
   tickers: string[];
   window: ResolvedWindow;
   preloadStart: number;
+  universe?: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  assetClasses?: AssetClass[];
+  deployment?: RuntimeDeployment | null;
 };
 
 const timeOperation = async <T>(
@@ -108,6 +120,11 @@ export const prepareRunEnvironment = async ({
   cacheOnly,
   interval,
   projectRoot,
+  universe = 'crypto',
+  accountId,
+  deploymentId,
+  assetClasses,
+  deployment,
 }: {
   connector: unknown;
   userName: string;
@@ -121,6 +138,11 @@ export const prepareRunEnvironment = async ({
   cacheOnly?: unknown;
   interval: Interval;
   projectRoot: string;
+  universe?: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  assetClasses?: AssetClass[];
+  deployment?: RuntimeDeployment | null;
 }): Promise<PreparedRunEnvironment | null> => {
   const connectorName = await resolveRunConnectorName({
     value: connector,
@@ -136,6 +158,9 @@ export const prepareRunEnvironment = async ({
 
   const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName,
+    universe,
+    accountId,
+    deploymentId,
   });
   const resolvedTickersLimit =
     typeof tickersLimit === 'number'
@@ -154,6 +179,9 @@ export const prepareRunEnvironment = async ({
         ? resolvedTickersLimit
         : undefined,
       cacheOnly: Boolean(cacheOnly),
+      universe,
+      accountId,
+      assetClasses,
     }),
   );
 
@@ -180,8 +208,8 @@ export const prepareRunEnvironment = async ({
       marketConnector,
       userName,
       projectRoot,
-      shouldUseDedicatedReferences: true,
-      requireDedicatedReferences: true,
+      shouldUseDedicatedReferences: universe === 'crypto',
+      requireDedicatedReferences: universe === 'crypto',
       warn: (message) => console.log(chalk.yellow(message)),
     });
     await updateMarketHistoryWithBtcReferences({
@@ -192,6 +220,7 @@ export const prepareRunEnvironment = async ({
       symbols: loadedTickers,
       preloadStart,
       preloadEnd: window.end,
+      universe,
       log: (message) => console.log(chalk.gray(message)),
     });
 
@@ -224,5 +253,10 @@ export const prepareRunEnvironment = async ({
     tickers: loadedTickers,
     window,
     preloadStart,
+    universe,
+    accountId,
+    deploymentId,
+    assetClasses,
+    deployment,
   };
 };

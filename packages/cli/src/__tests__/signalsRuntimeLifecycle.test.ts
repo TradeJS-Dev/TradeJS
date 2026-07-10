@@ -232,4 +232,37 @@ describe('signals strategy runtime lifecycle', () => {
       }),
     ).toBe('ByBit:ETHUSDT:15:TrendLine');
   });
+
+  it('isolates daemon state by universe, account, and deployment', () => {
+    const base = {
+      connectorName: 'ByBit',
+      symbol: 'AAPLUSDT',
+      interval: '15',
+      strategyName: 'TrendLine',
+    };
+
+    expect(
+      buildSignalsStrategyLifecycleKey({
+        ...base,
+        universe: 'tradfi',
+        accountId: 'tradfi-account',
+        deploymentId: 'tradfi-live',
+      }),
+    ).toBe('ByBit:tradfi:tradfi-account:tradfi-live:AAPLUSDT:15:TrendLine');
+    expect(
+      buildSignalsStrategyLifecycleKey({
+        ...base,
+        universe: 'crypto',
+        accountId: 'crypto-account',
+        deploymentId: 'crypto-live',
+      }),
+    ).not.toBe(
+      buildSignalsStrategyLifecycleKey({
+        ...base,
+        universe: 'tradfi',
+        accountId: 'tradfi-account',
+        deploymentId: 'tradfi-live',
+      }),
+    );
+  });
 });

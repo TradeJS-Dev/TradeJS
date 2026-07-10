@@ -8,6 +8,11 @@ import {
 } from './strategy';
 import { StrategyConfig } from './backtest';
 import { Connector, KlineChartItem, Signal, SignalAnalysis } from './trade';
+import type {
+  AssetClass,
+  MarketDataCapability,
+  MarketUniverse,
+} from './market';
 
 export interface AiPayload {
   signal: {
@@ -71,9 +76,29 @@ export interface StrategyHookCtx {
   strategyName: string;
   userName: string;
   symbol: string;
+  universe?: MarketUniverse;
+  assetClass?: AssetClass;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   strategyConfig: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
+}
+
+export interface StrategyPolicyProfile {
+  id: string;
+  appliesTo?: {
+    universes?: readonly MarketUniverse[];
+    assetClasses?: readonly AssetClass[];
+  };
+  marketDataRequirements?: readonly MarketDataCapability[];
+  entryRuntimeDefaults?: {
+    ai?: StrategyRuntimeAiOptions;
+    ml?: StrategyRuntimeMlOptions;
+  };
+  aiAdapter?: StrategyAiAdapter;
+  mlAdapter?: StrategyMlAdapter;
 }
 
 export interface StrategyHookMarketContext {
@@ -237,6 +262,8 @@ export interface StrategyHookAfterPlaceOrderContext {
 
 export interface StrategyManifest {
   name: string;
+  policyProfiles?: readonly StrategyPolicyProfile[];
+  defaultPolicyProfileId?: string;
   entryRuntimeDefaults?: {
     ai?: StrategyRuntimeAiOptions;
     ml?: Pick<StrategyRuntimeMlOptions, 'enabled'>;

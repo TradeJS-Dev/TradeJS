@@ -4,6 +4,7 @@ import {
   Candle,
   Connector,
   ConnectorCreator,
+  ExecutionCostModel,
   Interval,
   KlineChartData,
   KlineChartItem,
@@ -38,6 +39,7 @@ import {
   getConnectorCreatorByName,
 } from './connectorsRegistry';
 import { createTestConnector } from './testConnector';
+import { resolveExecutionCosts } from './executionCosts';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
 type TestingKlineCacheState = {
@@ -274,6 +276,8 @@ const getKlineCacheKey = (params: {
   end: number;
   interval: Interval;
   cacheOnly: boolean;
+  universe?: string;
+  accountId?: string;
 }) => {
   const {
     userName,
@@ -283,10 +287,14 @@ const getKlineCacheKey = (params: {
     end,
     interval,
     cacheOnly,
+    universe,
+    accountId,
   } = params;
   return [
     userName,
     connectorName,
+    universe ?? 'crypto',
+    accountId ?? 'default',
     symbol,
     preloadStart,
     end,
@@ -306,6 +314,8 @@ const getPreparedDataCacheKey = (params: {
   btcBinanceConnectorName: string;
   btcCoinbaseConnectorName: string;
   backtestExecutionInterval: Interval;
+  universe?: string;
+  accountId?: string;
 }) => {
   const {
     userName,
@@ -318,11 +328,15 @@ const getPreparedDataCacheKey = (params: {
     btcBinanceConnectorName,
     btcCoinbaseConnectorName,
     backtestExecutionInterval,
+    universe,
+    accountId,
   } = params;
 
   return [
     userName,
     connectorName,
+    universe ?? 'crypto',
+    accountId ?? 'default',
     symbol,
     preloadStart,
     start,
@@ -337,7 +351,15 @@ const getPreparedDataCacheKey = (params: {
 const getConnectorCacheKey = (params: {
   userName: string;
   connectorName: string;
-}) => [params.userName, params.connectorName].join(':');
+  universe?: string;
+  accountId?: string;
+}) =>
+  [
+    params.userName,
+    params.connectorName,
+    params.universe ?? 'crypto',
+    params.accountId ?? 'default',
+  ].join(':');
 
 const BACKTEST_INTERVAL: Interval = '15';
 const resolveBacktestExecutionInterval = (
@@ -439,9 +461,25 @@ const getCachedConnector = async (params: {
   projectRoot: string;
   userName: string;
   connectorName: string;
+  universe?: Test['universe'];
+  accountId?: string;
+  deploymentId?: string;
 }): Promise<Connector | undefined> => {
-  const { state, projectRoot, userName, connectorName } = params;
-  const cacheKey = getConnectorCacheKey({ userName, connectorName });
+  const {
+    state,
+    projectRoot,
+    userName,
+    connectorName,
+    universe,
+    accountId,
+    deploymentId,
+  } = params;
+  const cacheKey = getConnectorCacheKey({
+    userName,
+    connectorName,
+    universe,
+    accountId,
+  });
   const cachedConnector = state.connectorCache.get(cacheKey);
   if (cachedConnector) {
     return cachedConnector;
@@ -457,6 +495,9 @@ const getCachedConnector = async (params: {
 
   const connector = await (connectorCreator as ConnectorCreator)({
     userName,
+    universe,
+    accountId,
+    deploymentId,
   });
   state.connectorCache.set(cacheKey, connector);
 
@@ -483,11 +524,14 @@ export const releaseTestingSymbolCache = (params: {
 }) => {
   const { cwd, userName, connectorName, symbol } = params;
   const { state } = getTestingKlineCacheState(cwd);
-  const symbolCacheKeyPrefix =
-    [userName, connectorName, symbol].join(':') + ':';
-
-  deleteMapEntriesByPrefix(state.coinKlineCache, symbolCacheKeyPrefix);
-  deleteMapEntriesByPrefix(state.preparedDataCache, symbolCacheKeyPrefix);
+  const connectorPrefix = [userName, connectorName].join(':') + ':';
+  for (const cache of [state.coinKlineCache, state.preparedDataCache]) {
+    for (const key of cache.keys()) {
+      if (key.startsWith(connectorPrefix) && key.split(':').includes(symbol)) {
+        cache.delete(key);
+      }
+    }
+  }
 };
 
 const prepareTestingData = async (params: {
@@ -500,6 +544,9 @@ const prepareTestingData = async (params: {
   start: number;
   end: number;
   interval: Interval;
+  universe?: Test['universe'];
+  accountId?: string;
+  deploymentId?: string;
 }) => {
   const {
     state,
@@ -511,19 +558,28 @@ const prepareTestingData = async (params: {
     start,
     end,
     interval,
+    universe = 'crypto',
+    accountId,
+    deploymentId,
   } = params;
-  const binanceConnector = await getCachedConnector({
-    state,
-    projectRoot,
-    userName,
-    connectorName: BUILTIN_CONNECTOR_NAMES.Binance,
-  });
-  const coinbaseConnector = await getCachedConnector({
-    state,
-    projectRoot,
-    userName,
-    connectorName: BUILTIN_CONNECTOR_NAMES.Coinbase,
-  });
+  const binanceConnector =
+    universe === 'crypto'
+      ? await getCachedConnector({
+          state,
+          projectRoot,
+          userName,
+          connectorName: BUILTIN_CONNECTOR_NAMES.Binance,
+        })
+      : undefined;
+  const coinbaseConnector =
+    universe === 'crypto'
+      ? await getCachedConnector({
+          state,
+          projectRoot,
+          userName,
+          connectorName: BUILTIN_CONNECTOR_NAMES.Coinbase,
+        })
+      : undefined;
 
   const cacheOnly = true;
   const connector = await getCachedConnector({
@@ -531,6 +587,9 @@ const prepareTestingData = async (params: {
     projectRoot,
     userName,
     connectorName,
+    universe,
+    accountId,
+    deploymentId,
   });
   if (!connector) {
     throw new Error(`Unknown connector: ${connectorName}`);
@@ -551,6 +610,8 @@ const prepareTestingData = async (params: {
     end,
     interval,
     cacheOnly,
+    universe,
+    accountId,
   });
   const btcCacheKey = getKlineCacheKey({
     userName,
@@ -560,6 +621,8 @@ const prepareTestingData = async (params: {
     end,
     interval,
     cacheOnly,
+    universe,
+    accountId,
   });
   const ethCacheKey = getKlineCacheKey({
     userName,
@@ -569,6 +632,8 @@ const prepareTestingData = async (params: {
     end,
     interval,
     cacheOnly,
+    universe,
+    accountId,
   });
   const btcBinanceConnectorName = binanceConnector
     ? BUILTIN_CONNECTOR_NAMES.Binance
@@ -584,6 +649,7 @@ const prepareTestingData = async (params: {
     end,
     interval,
     cacheOnly,
+    universe: 'crypto',
   });
   const btcCoinbaseCacheKey = getKlineCacheKey({
     userName,
@@ -593,6 +659,7 @@ const prepareTestingData = async (params: {
     end,
     interval,
     cacheOnly,
+    universe: 'crypto',
   });
 
   const cachedCoinData = state.coinKlineCache.get(coinCacheKey);
@@ -615,6 +682,8 @@ const prepareTestingData = async (params: {
     end,
     interval: backtestExecutionCacheInterval,
     cacheOnly,
+    universe,
+    accountId,
   });
   const executionBtcCacheKey = getKlineCacheKey({
     userName,
@@ -624,6 +693,8 @@ const prepareTestingData = async (params: {
     end,
     interval: backtestExecutionCacheInterval,
     cacheOnly,
+    universe,
+    accountId,
   });
   const cachedExecutionCoinData = shouldLoadExecutionCandles
     ? state.coinKlineCache.get(executionCoinCacheKey)
@@ -642,6 +713,8 @@ const prepareTestingData = async (params: {
     backtestExecutionInterval: backtestExecutionCacheInterval,
     btcBinanceConnectorName,
     btcCoinbaseConnectorName,
+    universe,
+    accountId,
   });
 
   const cachedPreparedData = state.preparedDataCache.get(preparedDataCacheKey);
@@ -649,50 +722,62 @@ const prepareTestingData = async (params: {
     return cachedPreparedData;
   }
 
-  const btcDataPromise: Promise<KlineChartData> = cachedBtcData
-    ? Promise.resolve(cachedBtcData)
-    : connector.kline({
-        symbol: 'BTCUSDT',
-        start: preloadStart,
-        end,
-        interval,
-        silent: true,
-        cacheOnly,
-      });
-  const ethDataPromise: Promise<KlineChartData> = cachedEthData
-    ? Promise.resolve(cachedEthData)
-    : connector.kline({
-        symbol: 'ETHUSDT',
-        start: preloadStart,
-        end,
-        interval,
-        silent: true,
-        cacheOnly,
-      });
-  const btcBinanceDataPromise: Promise<KlineChartData> = cachedBtcBinanceData
-    ? Promise.resolve(cachedBtcBinanceData)
-    : btcBinanceCacheKey === btcCacheKey
-      ? btcDataPromise
-      : (binanceConnector ?? connector).kline({
-          symbol: 'BTCUSDT',
-          start: preloadStart,
-          end,
-          interval,
-          silent: true,
-          cacheOnly,
-        });
-  const btcCoinbaseDataPromise: Promise<KlineChartData> = cachedBtcCoinbaseData
-    ? Promise.resolve(cachedBtcCoinbaseData)
-    : btcCoinbaseCacheKey === btcCacheKey
-      ? btcDataPromise
-      : (coinbaseConnector ?? connector).kline({
-          symbol: 'BTCUSDT',
-          start: preloadStart,
-          end,
-          interval,
-          silent: true,
-          cacheOnly,
-        });
+  const btcDataPromise: Promise<KlineChartData> =
+    universe === 'tradfi'
+      ? Promise.resolve([])
+      : cachedBtcData
+        ? Promise.resolve(cachedBtcData)
+        : connector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+            silent: true,
+            cacheOnly,
+          });
+  const ethDataPromise: Promise<KlineChartData> =
+    universe === 'tradfi'
+      ? Promise.resolve([])
+      : cachedEthData
+        ? Promise.resolve(cachedEthData)
+        : connector.kline({
+            symbol: 'ETHUSDT',
+            start: preloadStart,
+            end,
+            interval,
+            silent: true,
+            cacheOnly,
+          });
+  const btcBinanceDataPromise: Promise<KlineChartData> =
+    universe === 'tradfi'
+      ? Promise.resolve([])
+      : cachedBtcBinanceData
+        ? Promise.resolve(cachedBtcBinanceData)
+        : btcBinanceCacheKey === btcCacheKey
+          ? btcDataPromise
+          : (binanceConnector ?? connector).kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            });
+  const btcCoinbaseDataPromise: Promise<KlineChartData> =
+    universe === 'tradfi'
+      ? Promise.resolve([])
+      : cachedBtcCoinbaseData
+        ? Promise.resolve(cachedBtcCoinbaseData)
+        : btcCoinbaseCacheKey === btcCacheKey
+          ? btcDataPromise
+          : (coinbaseConnector ?? connector).kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            });
   const executionDataPromise: Promise<KlineChartData> =
     !shouldLoadExecutionCandles
       ? Promise.resolve([])
@@ -707,7 +792,7 @@ const prepareTestingData = async (params: {
             cacheOnly,
           });
   const executionBtcDataPromise: Promise<KlineChartData> =
-    !shouldLoadExecutionCandles
+    universe === 'tradfi' || !shouldLoadExecutionCandles
       ? Promise.resolve([])
       : cachedExecutionBtcData
         ? Promise.resolve(cachedExecutionBtcData)
@@ -769,26 +854,36 @@ const prepareTestingData = async (params: {
     state.btcKlineCache.set(executionBtcCacheKey, executionBtcDataRaw);
   }
 
-  const aligned = alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
+  const aligned =
+    universe === 'tradfi'
+      ? { alignedCoinCandles: dataRaw, alignedBtcCandles: dataRaw }
+      : alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
   const { data, btcData } = filterClosedAlignedCandles(
     aligned.alignedCoinCandles,
     aligned.alignedBtcCandles,
     interval,
   );
-  const { alignedBtcCandles: btcBinanceData } = alignSortedCandlesByTimestamp(
-    data,
-    btcBinanceDataRaw,
-  );
-  const { alignedBtcCandles: btcCoinbaseData } = alignSortedCandlesByTimestamp(
-    data,
-    btcCoinbaseDataRaw,
-  );
-  const { alignedBtcCandles: ethData } = alignSortedCandlesByTimestamp(
-    data,
-    ethDataRaw,
-  );
+  const btcBinanceData =
+    universe === 'tradfi'
+      ? []
+      : alignSortedCandlesByTimestamp(data, btcBinanceDataRaw)
+          .alignedBtcCandles;
+  const btcCoinbaseData =
+    universe === 'tradfi'
+      ? []
+      : alignSortedCandlesByTimestamp(data, btcCoinbaseDataRaw)
+          .alignedBtcCandles;
+  const ethData =
+    universe === 'tradfi'
+      ? []
+      : alignSortedCandlesByTimestamp(data, ethDataRaw).alignedBtcCandles;
   const alignedExecution = shouldLoadExecutionCandles
-    ? alignSortedCandlesByTimestamp(executionDataRaw, executionBtcDataRaw)
+    ? universe === 'tradfi'
+      ? {
+          alignedCoinCandles: executionDataRaw,
+          alignedBtcCandles: executionDataRaw,
+        }
+      : alignSortedCandlesByTimestamp(executionDataRaw, executionBtcDataRaw)
     : { alignedCoinCandles: [], alignedBtcCandles: [] };
   const { data: backtestExecutionData, btcData: backtestExecutionBtcData } =
     filterClosedAlignedCandles(
@@ -847,6 +942,9 @@ export const canRunTestsInSharedCandleLoop = (tests: Test[]): boolean => {
     (test) =>
       test.userName === first.userName &&
       test.connectorName === first.connectorName &&
+      (test.universe ?? 'crypto') === (first.universe ?? 'crypto') &&
+      (test.accountId ?? null) === (first.accountId ?? null) &&
+      (test.deploymentId ?? null) === (first.deploymentId ?? null) &&
       test.symbol === first.symbol &&
       test.strategyName === first.strategyName &&
       test.options?.start === firstStart &&
@@ -873,6 +971,12 @@ export const testing: TestingBox = async ({
   strategyName,
   strategyConfig,
   connectorName,
+  universe = 'crypto',
+  assetClass,
+  instrument: requestedInstrument,
+  accountId,
+  deploymentId,
+  policyProfileId,
   interval = BACKTEST_INTERVAL,
   ml = false,
   ai = false,
@@ -1017,6 +1121,9 @@ export const testing: TestingBox = async ({
       projectRoot,
       userName,
       connectorName,
+      universe,
+      accountId,
+      deploymentId,
     }),
   );
   if (!connector) {
@@ -1041,6 +1148,9 @@ export const testing: TestingBox = async ({
       start,
       end,
       interval,
+      universe,
+      accountId,
+      deploymentId,
     }),
   );
 
@@ -1068,11 +1178,33 @@ export const testing: TestingBox = async ({
   const runtimeEthData = [...ethPrevData, ...ethTestData];
   totalCandles = testData.length;
 
+  const instrument =
+    requestedInstrument ??
+    (typeof connector.listInstruments === 'function'
+      ? (
+          await connector.listInstruments({
+            universe,
+            symbols: [symbol],
+          })
+        )[0]
+      : undefined);
+  const { model: executionCostModel, fundingRates } =
+    await resolveExecutionCosts({
+      connector,
+      symbol,
+      config: strategyConfig,
+      startTime: start,
+      endTime: end,
+      instrument,
+    });
+
   const testConnector = createTestConnector(connector, {
     userName,
     mlEnabled: ml,
     aiEnabled: ai,
     fastMode: fast,
+    executionCostModel,
+    fundingRates,
   });
 
   const strategy = await withTimeout(
@@ -1080,6 +1212,12 @@ export const testing: TestingBox = async ({
     strategyCreator({
       userName,
       connectorName,
+      universe,
+      assetClass: assetClass ?? instrument?.assetClass,
+      instrument,
+      accountId,
+      deploymentId,
+      policyProfileId,
       config: {
         ...strategyConfig,
         INTERVAL: interval,
@@ -1312,6 +1450,9 @@ export const testingGroupInSharedCandleLoop = async (
     options: { start, end },
     strategyName,
     connectorName,
+    universe = 'crypto',
+    accountId,
+    deploymentId,
     interval = BACKTEST_INTERVAL,
     ml = false,
     ai = false,
@@ -1452,6 +1593,9 @@ export const testingGroupInSharedCandleLoop = async (
       projectRoot,
       userName,
       connectorName,
+      universe,
+      accountId,
+      deploymentId,
     }),
   );
   if (!connector) {
@@ -1476,6 +1620,9 @@ export const testingGroupInSharedCandleLoop = async (
       start,
       end,
       interval,
+      universe,
+      accountId,
+      deploymentId,
     }),
   );
   if (!preparedData) {
@@ -1523,17 +1670,44 @@ export const testingGroupInSharedCandleLoop = async (
   const runners: Runner[] = [];
   try {
     for (const test of tests) {
+      const instrument =
+        test.instrument ??
+        (typeof connector.listInstruments === 'function'
+          ? (
+              await connector.listInstruments({
+                universe: test.universe ?? universe,
+                symbols: [test.symbol],
+              })
+            )[0]
+          : undefined);
+      const { model: executionCostModel, fundingRates } =
+        await resolveExecutionCosts({
+          connector,
+          symbol: test.symbol,
+          config: test.strategyConfig,
+          startTime: start,
+          endTime: end,
+          instrument,
+        });
       const testConnector = createTestConnector(connector, {
         userName: test.userName,
         mlEnabled: test.ml,
         aiEnabled: test.ai,
         fastMode: test.fast,
+        executionCostModel,
+        fundingRates,
       });
       const strategy = (await withTimeout(
         'strategy init',
         strategyCreator({
           userName: test.userName,
           connectorName: test.connectorName,
+          universe: test.universe ?? universe,
+          assetClass: test.assetClass ?? instrument?.assetClass,
+          instrument,
+          accountId: test.accountId ?? accountId,
+          deploymentId: test.deploymentId ?? deploymentId,
+          policyProfileId: test.policyProfileId,
           config: {
             ...test.strategyConfig,
             INTERVAL: test.interval ?? interval,

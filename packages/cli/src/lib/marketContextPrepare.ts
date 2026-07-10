@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { Interval } from '@tradejs/types';
+import type { Interval, MarketUniverse } from '@tradejs/types';
 import {
   backfillBinanceMarketContextForBacktest,
   backfillBinanceMarketContextForReplay,
@@ -31,6 +31,7 @@ export type PrepareMarketContextForRunParams = {
   userName: string;
   projectRoot: string;
   symbols: string[];
+  universe?: MarketUniverse;
   interval: Interval;
   startMs: number;
   endMs: number;
@@ -44,9 +45,10 @@ export type PrepareMarketContextForRunParams = {
 export const shouldPrepareDerivativesContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
+    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled' | 'universe'
   >,
 ) => {
+  if (params.universe === 'tradfi') return false;
   if (params.mode === 'signals') {
     return shouldBackfillDerivativesContextForSignals({
       cacheOnly: params.cacheOnly,
@@ -63,9 +65,10 @@ export const shouldPrepareDerivativesContextForRun = (
 export const shouldPrepareBinanceMarketContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
+    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled' | 'universe'
   >,
 ) => {
+  if (params.universe === 'tradfi') return false;
   if (params.mode === 'backtest') {
     return shouldBackfillBinanceMarketContextForBacktest({
       aiEnabled: Boolean(params.aiEnabled),
@@ -88,9 +91,10 @@ export const shouldPrepareBinanceMarketContextForRun = (
 export const shouldPrepareCoinMarketCapContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
+    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled' | 'universe'
   >,
 ) => {
+  if (params.universe === 'tradfi') return false;
   if (params.mode === 'backtest') {
     return shouldBackfillCoinMarketCapContextForBacktest({
       aiEnabled: Boolean(params.aiEnabled),

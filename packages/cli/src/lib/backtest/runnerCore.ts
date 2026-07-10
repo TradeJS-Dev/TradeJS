@@ -10,6 +10,7 @@ import {
   writePersistedBacktestOrderLog,
 } from '@tradejs/infra/backtestArtifacts';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
+import { getRuntimeDeployment } from '@tradejs/infra/tradingAccounts';
 import {
   Item,
   OrderLog,
@@ -51,6 +52,7 @@ import {
   testsLimit,
   testsSkip,
   userName,
+  marketUniverse,
   workerHeapMb,
 } from './cliConfig';
 import { withBacktestRunDatasetMetadata } from './checkpoint';
@@ -328,10 +330,21 @@ export const loadReplayStrategies = async (): Promise<
 
 export const prepareRunEnvironment =
   async (): Promise<PreparedRunEnvironment | null> => {
+    const deployment = flags.deployment
+      ? await getRuntimeDeployment(userName, String(flags.deployment))
+      : null;
+    if (flags.deployment && !deployment) {
+      throw new Error(`Runtime deployment not found: ${flags.deployment}`);
+    }
+    if (deployment && String(deployment.interval) !== String(interval)) {
+      throw new Error(
+        `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${interval}`,
+      );
+    }
     const preparedRun = await prepareRunEnvironmentShared({
-      connector: flags.connector,
+      connector: deployment?.connectorName ?? flags.connector,
       userName,
-      tickers: flags.tickers,
+      tickers: flags.tickers || deployment?.tickers?.join(','),
       exclude: flags.exclude,
       tickersLimit: flags.tickersLimit,
       showTickersList: flags.showTickersList,
@@ -341,6 +354,11 @@ export const prepareRunEnvironment =
       cacheOnly: flags.cacheOnly,
       interval,
       projectRoot,
+      universe: deployment?.universe ?? marketUniverse,
+      accountId: deployment?.accountId ?? flags.account,
+      deploymentId: deployment?.id,
+      assetClasses: deployment?.assetClasses,
+      deployment,
     });
     if (!preparedRun) {
       return null;
@@ -388,6 +406,7 @@ export const buildPreparedTestSuite = async ({
         CLOSE_OPPOSITE_POSITIONS: false,
         BACKTEST_PRICE_MODE: backtestPriceMode,
         BACKTEST_ENTRY_DELAY_BARS: backtestEntryDelayBars,
+        ...(flags.cacheOnly ? { EXECUTION_COSTS_CACHE_ONLY: true } : {}),
       },
       options: {
         start: window.start,
@@ -421,6 +440,7 @@ export const buildPreparedTestSuite = async ({
     userName,
     projectRoot,
     symbols: preparedSuite.map((test) => test.symbol),
+    universe: preparedSuite[0]?.universe,
     interval,
     startMs: window.start,
     endMs: window.end,

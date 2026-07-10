@@ -11,6 +11,8 @@ import {
   KlineRequest,
   Interval,
   ConnectorCreator,
+  isMarketUniverse,
+  MarketUniverse,
 } from '@tradejs/types';
 import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
@@ -27,6 +29,7 @@ interface Params {
   provider: string;
   symbol: string;
   interval: string;
+  universe?: string;
 }
 
 type KlineCacheEntry = {
@@ -133,6 +136,7 @@ const getCacheTtlMs = (interval: Interval) =>
 
 const buildRawCacheKey = (params: {
   provider: string;
+  universe: MarketUniverse;
   symbol: string;
   interval: Interval;
   start: number;
@@ -141,6 +145,7 @@ const buildRawCacheKey = (params: {
 }) =>
   [
     params.provider,
+    params.universe,
     params.symbol,
     params.interval,
     params.start,
@@ -151,6 +156,7 @@ const buildRawCacheKey = (params: {
 const buildEnrichedCacheKey = (params: {
   userName: string;
   provider: string;
+  universe: MarketUniverse;
   symbol: string;
   interval: Interval;
   start: number;
@@ -162,6 +168,7 @@ const buildEnrichedCacheKey = (params: {
   [
     params.userName,
     params.provider,
+    params.universe,
     params.symbol,
     params.interval,
     params.start,
@@ -281,7 +288,21 @@ export const POST = async (
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { provider, symbol, interval } = await params;
+    const routeParams = await params;
+    const {
+      provider,
+      universe: requestedUniverse,
+      symbol,
+      interval,
+    } = routeParams;
+    const rawUniverse = requestedUniverse ?? 'crypto';
+    if (!isMarketUniverse(rawUniverse)) {
+      return NextResponse.json(
+        { error: `Unknown market universe: ${rawUniverse}` },
+        { status: 400 },
+      );
+    }
+    const universe: MarketUniverse = rawUniverse;
     const body = await request.json();
     const options = body as
       | Omit<KlineRequest, 'symbol' | 'interval'>
@@ -304,6 +325,7 @@ export const POST = async (
     const requestKey = buildEnrichedCacheKey({
       userName,
       provider,
+      universe,
       symbol,
       interval: typedInterval,
       start: Number(options.start ?? 0),
@@ -336,6 +358,7 @@ export const POST = async (
       }
       const connector = await (connectorCreator as ConnectorCreator)({
         userName,
+        ...(requestedUniverse ? { universe } : {}),
       });
 
       const liveTailRequired = Number(options.end) > historicalEnd;
@@ -356,6 +379,7 @@ export const POST = async (
         const cache = segmentParams.useBtcCache ? btcCache : rawCache;
         const cacheKey = buildRawCacheKey({
           provider,
+          universe,
           symbol: segmentParams.symbol,
           interval: typedInterval,
           start: segmentParams.start,
@@ -404,27 +428,29 @@ export const POST = async (
       }
 
       const btcData =
-        symbol === 'BTCUSDT'
-          ? baseData
-          : mergeData(
-              historicalEnd > Number(options.start ?? 0)
-                ? await fetchRawSegment({
-                    symbol: 'BTCUSDT',
-                    start: Number(options.start ?? 0),
-                    end: historicalEnd,
-                    useBtcCache: true,
-                  })
-                : [],
-              liveTailRequired
-                ? await connector.kline({
-                    symbol: 'BTCUSDT',
-                    interval: typedInterval,
-                    ...options,
-                    start: liveTailStart,
-                    end: Number(options.end),
-                  })
-                : [],
-            );
+        universe === 'tradfi'
+          ? []
+          : symbol === 'BTCUSDT'
+            ? baseData
+            : mergeData(
+                historicalEnd > Number(options.start ?? 0)
+                  ? await fetchRawSegment({
+                      symbol: 'BTCUSDT',
+                      start: Number(options.start ?? 0),
+                      end: historicalEnd,
+                      useBtcCache: true,
+                    })
+                  : [],
+                liveTailRequired
+                  ? await connector.kline({
+                      symbol: 'BTCUSDT',
+                      interval: typedInterval,
+                      ...options,
+                      start: liveTailStart,
+                      end: Number(options.end),
+                    })
+                  : [],
+              );
 
       const data = enrichWithPluginIndicators(
         baseData,
@@ -442,9 +468,8 @@ export const POST = async (
     return NextResponse.json({ data: await pending });
   } catch (error) {
     logger.log('error', `Kline fetch error: %o`, error);
-    return NextResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    const status = /unsupported market universe/i.test(message) ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 };

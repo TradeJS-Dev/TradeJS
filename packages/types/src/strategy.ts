@@ -1201,6 +1201,7 @@ export interface StrategyIndicatorsState<
 
 export interface StrategyRuntimeMlOptions {
   enabled?: boolean;
+  modelKey?: string;
   strategyConfig?: StrategyConfig;
   mlThreshold?: number;
 }

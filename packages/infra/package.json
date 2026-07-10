@@ -83,6 +83,11 @@
       "types": "./dist/timescale.d.ts",
       "import": "./dist/timescale.mjs",
       "require": "./dist/timescale.js"
+    },
+    "./tradingAccounts": {
+      "types": "./dist/tradingAccounts.d.ts",
+      "import": "./dist/tradingAccounts.mjs",
+      "require": "./dist/tradingAccounts.js"
     }
   },
   "dependencies": {

@@ -11,6 +11,7 @@ interface FiltersState {
 const useStore = create<FiltersState>((set) => ({
   filters: {
     provider: 'bybit',
+    universe: 'crypto',
     symbol: 'BTCUSDT',
     interval: '15' as Interval,
     start: getTimestamp(DASHBOARD_PRELOAD_DAYS),

@@ -208,7 +208,12 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
     breadthUniverse = resolveBreadthUniverse(),
     maxAgeMs = DEFAULT_MAX_AGE_BY_INTERVAL[interval],
   } = params;
-  if (!enabled || binanceMarketContextUnavailable || !hasBaseContext(signal)) {
+  if (
+    signal.universe === 'tradfi' ||
+    !enabled ||
+    binanceMarketContextUnavailable ||
+    !hasBaseContext(signal)
+  ) {
     return false;
   }
 

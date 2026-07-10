@@ -1,6 +1,6 @@
 import args from 'args';
 import os from 'os';
-import { BacktestPriceMode, Interval } from '@tradejs/types';
+import { BacktestPriceMode, Interval, isMarketUniverse } from '@tradejs/types';
 import { TESTS_LIMIT, TESTS_TOP_LIMIT } from '@tradejs/core/constants';
 import { normalizeCliArgv } from '../cliArgs';
 
@@ -111,6 +111,10 @@ args.option(
   'Connector provider or name for backtest (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
+args.option(['V', 'universe'], 'Market universe (crypto or tradfi)', 'crypto');
+args.option('account', 'Trading account id');
+args.option('deployment', 'Runtime deployment id');
+args.option('policyProfile', 'Strategy AI/ML policy profile id');
 args.option(
   ['m', 'ml'],
   'Write ML dataset rows to per-worker JSONL chunks',
@@ -158,6 +162,13 @@ export const normalizedArgv = normalizeCliArgv(
 
 export const flags = args.parse(normalizedArgv);
 export const interval = String(flags.timeframe ?? 15) as Interval;
+export const marketUniverse = (() => {
+  const value = String(flags.universe ?? 'crypto');
+  if (!isMarketUniverse(value)) {
+    throw new Error(`Unknown market universe: ${value}`);
+  }
+  return value;
+})();
 export const resolveBacktestPriceMode = (value: unknown): BacktestPriceMode => {
   const normalized = String(value ?? 'open')
     .trim()

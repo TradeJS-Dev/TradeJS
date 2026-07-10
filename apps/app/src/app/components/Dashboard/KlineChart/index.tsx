@@ -152,8 +152,16 @@ export const KlineChart = ({
   useWmaIndicator(chart, indicators.wma.enabled, indicators.wma.periods || []);
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
-  useBtcCorrelation(chart, indicators.btcCorrelation?.enabled, filters);
-  useSpreadIndicator(chart, indicators.spread?.enabled, filters);
+  useBtcCorrelation(
+    chart,
+    indicators.btcCorrelation?.enabled && filters.universe !== 'tradfi',
+    filters,
+  );
+  useSpreadIndicator(
+    chart,
+    indicators.spread?.enabled && filters.universe !== 'tradfi',
+    filters,
+  );
   useBacktest(chart, filters.backtestId || undefined);
   useSupportResistanceLines(chart, indicators.resistant?.enabled);
   useSignal(chart, true);

@@ -1348,6 +1348,93 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('discovers native Bybit TradFi instruments through linear symbol types', async () => {
+    const getInstrumentsInfo = jest.fn(async ({ symbolType }) => ({
+      retCode: 0,
+      result: {
+        list: [
+          {
+            symbol: `${String(symbolType).toUpperCase()}USDT`,
+            symbolType,
+            status: 'Trading',
+            contractType: 'LinearPerpetual',
+            leverageFilter: { maxLeverage: '5' },
+          },
+        ],
+        nextPageCursor: '',
+      },
+    }));
+    mockedGetClient.mockResolvedValue({ getInstrumentsInfo } as any);
+    const connector = await ByBitConnectorCreator({
+      userName: 'alice',
+      universe: 'tradfi',
+    });
+
+    const instruments = await connector.listInstruments({
+      universe: 'tradfi',
+    });
+
+    expect(getInstrumentsInfo).toHaveBeenCalledTimes(3);
+    expect(instruments.map(({ assetClass }) => assetClass).sort()).toEqual([
+      'commodity',
+      'equity',
+      'forex',
+    ]);
+    expect(instruments.every(({ kind }) => kind === 'perpetual')).toBe(true);
+  });
+
+  it('paginates historical funding backwards from endTime', async () => {
+    const getFundingRateHistory = jest
+      .fn()
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'AAPLUSDT',
+              fundingRateTimestamp: '300',
+              fundingRate: '0.003',
+            },
+            {
+              symbol: 'AAPLUSDT',
+              fundingRateTimestamp: '200',
+              fundingRate: '0.002',
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'AAPLUSDT',
+              fundingRateTimestamp: '100',
+              fundingRate: '0.001',
+            },
+          ],
+        },
+      });
+    mockedGetClient.mockResolvedValue({ getFundingRateHistory } as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const funding = await connector.getFundingRateHistory!({
+      symbol: 'AAPLUSDT',
+      startTime: 150,
+      endTime: 300,
+      limit: 2,
+    });
+
+    expect(getFundingRateHistory).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ endTime: 199 }),
+    );
+    expect(funding).toEqual([
+      { symbol: 'AAPLUSDT', timestamp: 200, rate: 0.002 },
+      { symbol: 'AAPLUSDT', timestamp: 300, rate: 0.003 },
+    ]);
+  });
+
   it('getState/setState merges state incrementally', async () => {
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
 

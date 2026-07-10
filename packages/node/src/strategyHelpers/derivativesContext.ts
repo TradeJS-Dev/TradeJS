@@ -266,7 +266,11 @@ export const enrichSignalWithDerivativesContext = async (params: {
   enabled?: boolean;
 }): Promise<boolean> => {
   const { signal, env, enabled = isDerivativesContextEnabled(env) } = params;
-  if (!enabled || derivativesContextUnavailable) {
+  if (
+    signal.universe === 'tradfi' ||
+    !enabled ||
+    derivativesContextUnavailable
+  ) {
     return false;
   }
 

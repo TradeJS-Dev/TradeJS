@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TTL_1M } from '@tradejs/core/constants';
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { listRuntimeDeployments } from '@tradejs/infra/tradingAccounts';
 import { strategyEntries } from '@tradejs/strategies';
 import {
   delKey,
@@ -565,6 +566,7 @@ export const GET = async (request: NextRequest) => {
       closedPnlRows,
       entryRows,
       openPositions,
+      runtimeDeployments,
     ] = await Promise.all([
       loadConnectedStrategyNames(userName),
       loadRuntimeStrategyConfigByName(userName),
@@ -584,19 +586,27 @@ export const GET = async (request: NextRequest) => {
         errors: exchangeErrors,
       }),
       loadOpenPositions(connector, exchangeErrors),
+      listRuntimeDeployments(userName),
     ]);
     const relevantTrades = selectTradesForWindow(
       runtimeTrades,
       startTime,
       activeOrderIds,
     );
-    const syncedTrades = await syncRuntimeTrades({
+    const scopedTrades = relevantTrades.filter((trade) =>
+      Boolean(trade.accountId || trade.deploymentId),
+    );
+    const defaultAccountTrades = relevantTrades.filter(
+      (trade) => !trade.accountId && !trade.deploymentId,
+    );
+    const syncedDefaultAccountTrades = await syncRuntimeTrades({
       userName,
-      trades: relevantTrades,
+      trades: defaultAccountTrades,
       endTime,
       openPositions,
       closedPnlRows,
     });
+    const syncedTrades = [...scopedTrades, ...syncedDefaultAccountTrades];
     const fallbackStrategyNames = [
       ...new Set([...connectedStrategyNames, ...configuredStrategyNames]),
     ];
@@ -612,21 +622,73 @@ export const GET = async (request: NextRequest) => {
       isRuntimeTradeRecord,
     );
     const connectedSet = new Set(connectedStrategyNames);
-    const tradeStrategyNames = allTrades
-      .map((trade) =>
-        typeof trade?.strategy === 'string' && trade.strategy.trim()
-          ? trade.strategy
-          : null,
-      )
-      .filter((value): value is string => value != null);
-    const strategyNames = [
-      ...new Set([...connectedStrategyNames, ...tradeStrategyNames]),
-    ];
+    const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
+      [
+        trade.strategy,
+        trade.universe ?? 'crypto',
+        trade.accountId ?? 'default',
+        trade.deploymentId ?? 'default',
+        trade.policyProfileId ?? 'default',
+      ].join(':');
+    const identityByKey = new Map<
+      string,
+      {
+        strategyName: string;
+        universe: 'crypto' | 'tradfi';
+        accountId?: string;
+        deploymentId?: string;
+        policyProfileId?: string;
+        enabled?: boolean;
+        config?: Record<string, unknown>;
+      }
+    >();
+    const deployedStrategyNames = new Set<string>();
+    for (const deployment of runtimeDeployments) {
+      for (const deploymentStrategy of deployment.strategies) {
+        deployedStrategyNames.add(deploymentStrategy.strategyName);
+        const runtimeKey = [
+          deploymentStrategy.strategyName,
+          deployment.universe,
+          deployment.accountId,
+          deployment.id,
+          deploymentStrategy.policyProfileId,
+        ].join(':');
+        identityByKey.set(runtimeKey, {
+          strategyName: deploymentStrategy.strategyName,
+          universe: deployment.universe,
+          accountId: deployment.accountId,
+          deploymentId: deployment.id,
+          policyProfileId: deploymentStrategy.policyProfileId,
+          enabled: deployment.enabled && deploymentStrategy.enabled !== false,
+          config: deploymentStrategy.config,
+        });
+      }
+    }
+    for (const strategyName of connectedStrategyNames.filter(
+      (name) => !deployedStrategyNames.has(name),
+    )) {
+      identityByKey.set(`${strategyName}:crypto:default:default:default`, {
+        strategyName,
+        universe: 'crypto',
+      });
+    }
+    for (const trade of allTrades) {
+      const key = runtimeIdentityKey(trade);
+      identityByKey.set(key, {
+        ...identityByKey.get(key),
+        strategyName: trade.strategy,
+        universe: trade.universe ?? 'crypto',
+        accountId: trade.accountId,
+        deploymentId: trade.deploymentId,
+        policyProfileId: trade.policyProfileId,
+      });
+    }
 
     const strategies = await Promise.all(
-      strategyNames.map(async (strategyName) => {
+      [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
+        const { strategyName } = identity;
         const strategyTrades = allTrades
-          .filter((trade) => trade.strategy === strategyName)
+          .filter((trade) => runtimeIdentityKey(trade) === runtimeKey)
           .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
         const orders = strategyTrades
           .sort((left, right) => {
@@ -643,12 +705,22 @@ export const GET = async (request: NextRequest) => {
         });
         const strategyConfig =
           runtimeStrategyConfigByName.get(strategyName) ?? null;
+        const effectiveStrategyConfig = identity.config
+          ? { ...strategyConfig, ...identity.config }
+          : strategyConfig;
 
         return {
+          runtimeKey,
           strategyName,
+          universe: identity.universe,
+          accountId: identity.accountId,
+          deploymentId: identity.deploymentId,
+          policyProfileId: identity.policyProfileId,
           connected: connectedSet.has(strategyName),
-          enabled: isRuntimeStrategyConfigEnabled(strategyConfig),
-          config: strategyConfig,
+          enabled:
+            identity.enabled ??
+            isRuntimeStrategyConfigEnabled(effectiveStrategyConfig),
+          config: effectiveStrategyConfig,
           symbols: [...new Set(strategyTrades.map((trade) => trade.symbol))],
           stat: analytics.stat,
           summary: analytics.summary,

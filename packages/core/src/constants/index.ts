@@ -37,7 +37,6 @@ export const TESTS_TOP_LIMIT = 50;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 3;
 
-export const MARKET_CATEGORY = 'linear';
 export const ML_CANDLE_FEATURE_WINDOW = 50;
 export const ML_BASE_CANDLES_WINDOW = 50;
 export const DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS = [

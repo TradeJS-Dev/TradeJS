@@ -305,8 +305,12 @@ export const drawStatInCLI = (
   });
 };
 
-const scanner = async (connector: Connector, limit?: number) => {
-  const data = await connector.getTickers();
+const scanner = async (
+  connector: Connector,
+  limit?: number,
+  query?: Parameters<Connector['getTickers']>[0],
+) => {
+  const data = await connector.getTickers(query);
 
   const tickers = getTopTickers(data, limit);
   return tickers.map(({ value }) => value);
@@ -318,6 +322,7 @@ export const getTickers = async (
   exclude = '',
   limit?: number,
   chunk?: string,
+  query?: Parameters<Connector['getTickers']>[0],
 ) => {
   let tickers: Array<string>;
 
@@ -326,7 +331,7 @@ export const getTickers = async (
   if (include) {
     tickers = parseSymbolsFromCLI(include);
   } else {
-    tickers = await scanner(connector, limit);
+    tickers = await scanner(connector, limit, query);
   }
 
   if (chunk) {

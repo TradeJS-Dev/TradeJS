@@ -7,6 +7,7 @@ import {
 import { buildCompactAiIndicatorsSnapshot, trimSeriesDeep } from '../aiShared';
 import { buildAiMarketContext } from '../aiMarketContext';
 import { getStrategyManifest } from '../strategy/manifests';
+import { getStrategyProfileAiAdapter } from '../strategy/policyProfiles';
 
 const toRecord = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -44,11 +45,15 @@ const buildBaseAiPayload = (signal: Signal): AiPayload => {
 
 const defaultAiAdapter: StrategyAiAdapter = {};
 
-export const getStrategyAiAdapter = (strategy?: string): StrategyAiAdapter =>
-  getStrategyManifest(strategy)?.aiAdapter ?? defaultAiAdapter;
+export const getStrategyAiAdapter = (
+  strategy?: string,
+  profileId?: string,
+): StrategyAiAdapter =>
+  getStrategyProfileAiAdapter(getStrategyManifest(strategy), profileId) ??
+  defaultAiAdapter;
 
 const getSignalAiAdapter = (signal: Signal) =>
-  getStrategyAiAdapter(signal.strategy);
+  getStrategyAiAdapter(signal.strategy, signal.policyProfileId);
 
 export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
   const basePayload = buildBaseAiPayload(signal);

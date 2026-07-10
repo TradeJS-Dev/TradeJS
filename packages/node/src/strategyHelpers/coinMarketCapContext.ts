@@ -332,7 +332,12 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
     enabled = isCoinMarketCapContextEnabled(env),
     maxAgeMs = resolveMaxAgeMs(),
   } = params;
-  if (!enabled || coinMarketCapContextUnavailable || !hasBaseContext(signal)) {
+  if (
+    signal.universe === 'tradfi' ||
+    !enabled ||
+    coinMarketCapContextUnavailable ||
+    !hasBaseContext(signal)
+  ) {
     return false;
   }
 

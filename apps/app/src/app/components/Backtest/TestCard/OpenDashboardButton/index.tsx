@@ -28,7 +28,7 @@ export const TestCardOpenDashboardButton = () => {
       variant="outline"
       onClick={() =>
         window.open(
-          `/routes/dashboard/${provider}/${testResult.test.symbol}/15?${params.toString()}`,
+          `/routes/dashboard/${provider}/${testResult.test.universe ?? 'crypto'}/${testResult.test.symbol}/${testResult.test.interval ?? '15'}?${params.toString()}`,
           '_blank',
           'noopener,noreferrer',
         )

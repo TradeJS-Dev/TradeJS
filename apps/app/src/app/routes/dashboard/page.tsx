@@ -10,9 +10,15 @@ const DashboardIndex = () => {
 
   useEffect(() => {
     router.replace(
-      `/routes/dashboard/${filters.provider || 'bybit'}/${filters.symbol}/${filters.interval}`,
+      `/routes/dashboard/${filters.provider || 'bybit'}/${filters.universe || 'crypto'}/${filters.symbol}/${filters.interval}`,
     );
-  }, [filters.interval, filters.provider, filters.symbol, router]);
+  }, [
+    filters.interval,
+    filters.provider,
+    filters.symbol,
+    filters.universe,
+    router,
+  ]);
 
   return null;
 };

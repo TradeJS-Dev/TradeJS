@@ -1,10 +1,32 @@
 import {
   getCurrentSignalsCycleDelay,
   getNextSignalsCycleDelay,
+  getSignalsHeartbeatStatus,
   runSignalsDaemon,
 } from '../lib/signals/daemon';
 
 describe('signals daemon', () => {
+  it('keeps deployment heartbeat running between daemon cycles', () => {
+    expect(
+      getSignalsHeartbeatStatus({
+        cycleStatus: 'completed',
+        continuous: true,
+      }),
+    ).toBe('running');
+    expect(
+      getSignalsHeartbeatStatus({
+        cycleStatus: 'completed',
+        continuous: false,
+      }),
+    ).toBe('stopped');
+    expect(
+      getSignalsHeartbeatStatus({
+        cycleStatus: 'failed',
+        continuous: true,
+      }),
+    ).toBe('error');
+  });
+
   it('schedules the next cycle after the next candle boundary', () => {
     expect(
       getNextSignalsCycleDelay({

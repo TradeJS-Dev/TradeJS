@@ -24,6 +24,17 @@ export const getCurrentSignalsCycleDelay = ({
   return Math.max(0, currentBoundary + settleDelayMs - now);
 };
 
+export const getSignalsHeartbeatStatus = ({
+  cycleStatus,
+  continuous,
+}: {
+  cycleStatus: 'completed' | 'failed';
+  continuous: boolean;
+}) => {
+  if (cycleStatus === 'failed') return 'error' as const;
+  return continuous ? ('running' as const) : ('stopped' as const);
+};
+
 const waitForNextCycle = (delayMs: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
     if (signal.aborted) {

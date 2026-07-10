@@ -36,6 +36,7 @@ import {
 } from './runtimeJournal';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
+import { resolveStrategyPolicyProfile } from './strategy/policyProfiles';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
@@ -52,6 +53,7 @@ import {
   StrategyHookPolicyContext,
   StrategyHookStage,
   StrategyManifest,
+  StrategyPolicyProfile,
   StrategyConfig,
   StrategyCreator,
   StrategyDecision,
@@ -113,14 +115,34 @@ const resolveEntryRuntimePolicy = ({
   decision,
   config,
   manifest,
+  policyProfile,
 }: {
   decision: EntryDecision;
   config: StrategyConfig;
   manifest?: StrategyManifest;
+  policyProfile?: StrategyPolicyProfile;
 }) => {
-  const manifestDefaults = manifest?.entryRuntimeDefaults;
-  const adapterMl = manifest?.mlAdapter?.mapEntryRuntimeFromConfig?.(config);
-  const adapterAi = manifest?.aiAdapter?.mapEntryRuntimeFromConfig?.(config);
+  const baseDefaults = manifest?.entryRuntimeDefaults;
+  const profileDefaults = policyProfile?.entryRuntimeDefaults;
+  const manifestDefaults =
+    baseDefaults || profileDefaults
+      ? {
+          ...baseDefaults,
+          ...profileDefaults,
+          ...(baseDefaults?.ml || profileDefaults?.ml
+            ? { ml: { ...baseDefaults?.ml, ...profileDefaults?.ml } }
+            : {}),
+          ...(baseDefaults?.ai || profileDefaults?.ai
+            ? { ai: { ...baseDefaults?.ai, ...profileDefaults?.ai } }
+            : {}),
+        }
+      : undefined;
+  const adapterMl = (
+    policyProfile?.mlAdapter ?? manifest?.mlAdapter
+  )?.mapEntryRuntimeFromConfig?.(config);
+  const adapterAi = (
+    policyProfile?.aiAdapter ?? manifest?.aiAdapter
+  )?.mapEntryRuntimeFromConfig?.(config);
   const ml =
     manifestDefaults?.ml || adapterMl || decision.runtime?.ml
       ? {
@@ -585,6 +607,11 @@ const buildHookCtx = ({
   strategyName,
   userName,
   symbol,
+  universe,
+  assetClass,
+  accountId,
+  deploymentId,
+  policyProfileId,
   strategyConfig,
   env,
   isConfigFromBacktest,
@@ -593,6 +620,11 @@ const buildHookCtx = ({
   strategyName: string;
   userName: string;
   symbol: string;
+  universe?: StrategyHookCtx['universe'];
+  assetClass?: StrategyHookCtx['assetClass'];
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   strategyConfig: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
@@ -601,6 +633,11 @@ const buildHookCtx = ({
   strategyName,
   userName,
   symbol,
+  ...(universe ? { universe } : {}),
+  ...(assetClass ? { assetClass } : {}),
+  ...(accountId ? { accountId } : {}),
+  ...(deploymentId ? { deploymentId } : {}),
+  ...(policyProfileId ? { policyProfileId } : {}),
   strategyConfig,
   env,
   isConfigFromBacktest,
@@ -813,7 +850,12 @@ const handleExitDecision = async ({
     let activeTradeForClose: Awaited<ReturnType<typeof getActiveRuntimeTrade>> =
       null;
     if (userName) {
-      const activeTrade = await getActiveRuntimeTrade({ userName, symbol });
+      const activeTrade = await getActiveRuntimeTrade({
+        userName,
+        symbol,
+        accountId: connector.accountId,
+        deploymentId: connector.deploymentId,
+      });
       if (!activeTrade) {
         logger.warn(
           '[%s] blocked closePosition for untracked runtime position: %s',
@@ -854,6 +896,8 @@ const handleExitDecision = async ({
       exitPrice: decision.closePlan.price,
       exitTimestamp: decision.closePlan.timestamp,
       exitType: 'exit',
+      accountId: connector.accountId,
+      deploymentId: connector.deploymentId,
     });
     const trade = closedTrade ?? activeTradeForClose;
     if (trade && strategyName) {
@@ -1025,6 +1069,9 @@ const executeEntryDecision = async ({
         timestamp: decision.entryContext.timestamp,
         takeProfits: decision.orderPlan.takeProfits,
         stopLossPrice: decision.orderPlan.stopLossPrice,
+        ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
+          ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
+          : {}),
         signal,
         beforePlaceOrder,
         recordRuntimeTrade: recordRuntimeJournal,
@@ -1056,6 +1103,9 @@ const executeEntryDecision = async ({
       price: decision.entryContext.prices.currentPrice,
       timestamp: decision.entryContext.timestamp,
       direction: decision.entryContext.direction,
+      ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
+        ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
+        : {}),
     });
 
     if (!orderPlaced) {
@@ -1166,6 +1216,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     connectorName,
     config: baseConfig,
     symbol,
+    universe: requestedUniverse,
+    assetClass,
+    accountId: requestedAccountId,
+    deploymentId: requestedDeploymentId,
+    policyProfileId,
     data,
     btcData,
     ethData = [],
@@ -1184,6 +1239,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       baseConfig,
       defaults,
     });
+    const universe = requestedUniverse ?? connector.universe;
+    const accountId = requestedAccountId ?? connector.accountId;
+    const deploymentId = requestedDeploymentId ?? connector.deploymentId;
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
@@ -1226,25 +1284,48 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       backtestExecutionIntervalMs < primaryIntervalMs;
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
+    const requestedPolicyProfileId =
+      policyProfileId ??
+      (typeof config.POLICY_PROFILE_ID === 'string'
+        ? config.POLICY_PROFILE_ID
+        : undefined);
+    const getPolicyProfile = (name = strategyName) =>
+      resolveStrategyPolicyProfile(resolveManifest(name), {
+        profileId: requestedPolicyProfileId,
+        universe,
+        assetClass,
+      });
+    const strategyPolicyProfile = getPolicyProfile();
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
     const hookBase = {
       connector,
       strategyName,
       userName,
       symbol,
+      universe,
+      assetClass,
+      accountId,
+      deploymentId,
+      policyProfileId: strategyPolicyProfile?.id ?? requestedPolicyProfileId,
       strategyConfig: config,
       env,
       isConfigFromBacktest,
     };
-    const getHookCtx = (name = strategyName): StrategyHookCtx =>
-      buildHookCtx({
+    const getHookCtx = (name = strategyName): StrategyHookCtx => {
+      const profile = getPolicyProfile(name);
+      return buildHookCtx({
         ...hookBase,
         strategyName: name,
+        policyProfileId: profile?.id ?? requestedPolicyProfileId,
       });
+    };
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
-    const indicatorReplayKey = JSON.stringify({ periods: indicatorPeriods });
+    const indicatorReplayKey = JSON.stringify({
+      periods: indicatorPeriods,
+      universe,
+    });
     const sharedReplayEnabled = canUseSharedReplayState({
       env,
       sharedReplayKey: sharedIndicatorsReplayKey,
@@ -1551,6 +1632,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
       sharedReplayKey: indicatorSharedReplayKey,
+      useBtcReference: universe === 'crypto',
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,
@@ -1597,10 +1679,14 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       if (data[data.length - 1]?.timestamp !== candle.timestamp) {
         data.push(candle);
       }
-      if (btcData[btcData.length - 1]?.timestamp !== btcCandle.timestamp) {
+      if (
+        universe === 'crypto' &&
+        btcData[btcData.length - 1]?.timestamp !== btcCandle.timestamp
+      ) {
         btcData.push(btcCandle);
       }
       if (
+        universe === 'crypto' &&
         ethCandle &&
         ethData[ethData.length - 1]?.timestamp !== ethCandle.timestamp
       ) {
@@ -1957,8 +2043,18 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         decision,
         config,
         manifest: decisionManifest,
+        policyProfile: getPolicyProfile(decisionStrategyName),
       });
       const signal = decision.signal;
+      if (signal) {
+        if (universe) signal.universe = universe;
+        if (assetClass) signal.assetClass = assetClass;
+        if (accountId) signal.accountId = accountId;
+        if (deploymentId) signal.deploymentId = deploymentId;
+        if (decisionHookCtx.policyProfileId) {
+          signal.policyProfileId = decisionHookCtx.policyProfileId;
+        }
+      }
       const entry = buildHookEntry({
         decision,
         runtime,

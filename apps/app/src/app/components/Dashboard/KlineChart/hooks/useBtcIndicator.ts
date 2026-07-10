@@ -62,16 +62,19 @@ export const useBtcIndicator = (
     () => ({
       bybit: {
         ...filters,
+        universe: 'crypto' as const,
         provider: 'bybit' as Provider,
         symbol: enabled ? 'BTCUSDT' : '',
       },
       binance: {
         ...filters,
+        universe: 'crypto' as const,
         provider: 'binance' as Provider,
         symbol: enabled ? 'BTCUSDT' : '',
       },
       coinbase: {
         ...filters,
+        universe: 'crypto' as const,
         provider: 'coinbase' as Provider,
         symbol: enabled ? 'BTCUSDT' : '',
       },

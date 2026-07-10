@@ -175,7 +175,7 @@ export const screenDashboard = async (
       `Failed to create screenshot session token for ${userName}`,
     );
   }
-  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1&screenshotToken=${encodeURIComponent(screenshotToken)}`;
+  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${signal.universe ?? 'crypto'}/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1&screenshotToken=${encodeURIComponent(screenshotToken)}`;
   const maskedDashboardUrl = maskTokenInUrl(dashboardUrl);
 
   logger.info(

@@ -16,6 +16,7 @@ export const SelectProvider = () => {
     if (!value[0]) return;
     onChangeFilters?.({
       provider: value[0] as 'bybit' | 'binance' | 'coinbase',
+      ...(value[0] === 'bybit' ? {} : { universe: 'crypto' }),
       backtestId: null,
       backtestStrategy: null,
     });

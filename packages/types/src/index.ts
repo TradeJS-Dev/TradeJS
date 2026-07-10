@@ -7,3 +7,4 @@ export * from './ai';
 export * from './strategy';
 export * from './strategyAdapters';
 export * from './strategyCharts';
+export * from './market';

@@ -563,6 +563,15 @@ export const consumeScreenshotSessionToken = async (
 export const redisKeys = {
   users: () => 'users:index:',
   user: (userName: string) => `users:index:${userName}`,
+  tradingAccounts: (userName: string) => `users:${userName}:trading-accounts:`,
+  tradingAccount: (userName: string, accountId: string) =>
+    `users:${userName}:trading-accounts:${accountId}`,
+  runtimeDeployments: (userName: string) =>
+    `users:${userName}:runtime:deployments:`,
+  runtimeDeployment: (userName: string, deploymentId: string) =>
+    `users:${userName}:runtime:deployments:${deploymentId}`,
+  runtimeDeploymentHeartbeat: (userName: string, deploymentId: string) =>
+    `users:${userName}:runtime:deployments:${deploymentId}:heartbeat`,
   bots: (userName: string) => `users:${userName}:bots`,
   botsPrefix: () => 'users:',
   bot: (userName: string, botId: string) => `users:${userName}:bots:${botId}`,
@@ -596,8 +605,15 @@ export const redisKeys = {
     `users:${userName}:cache:tests:orders:${orderLogId}`,
   cachePositions: (userName: string, orderLogId: string) =>
     `users:${userName}:cache:tests:positions:${orderLogId}`,
-  tickerUniverse: (userName: string, connectorName: string) =>
-    `users:${userName}:cache:tickers:${connectorName}`,
+  tickerUniverse: (
+    userName: string,
+    connectorName: string,
+    universe?: string,
+    accountId?: string,
+  ) =>
+    universe || accountId
+      ? `users:${userName}:cache:tickers:${connectorName}:${universe ?? 'crypto'}:${accountId ?? 'default'}`
+      : `users:${userName}:cache:tickers:${connectorName}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
@@ -642,8 +658,10 @@ export const redisKeys = {
     `users:${userName}:runtime:trade-records:days:${dayKey}`,
   runtimeActiveTrades: (userName: string) =>
     `users:${userName}:runtime:active-trades:`,
-  runtimeActiveTrade: (userName: string, symbol: string) =>
-    `users:${userName}:runtime:active-trades:${symbol}`,
+  runtimeActiveTrade: (userName: string, symbol: string, scopeId?: string) =>
+    scopeId
+      ? `users:${userName}:runtime:active-trades:${scopeId}:${symbol}`
+      : `users:${userName}:runtime:active-trades:${symbol}`,
   aiChatHistory: (userName: string, symbolKey: string) =>
     `users:${userName}:ai:chats:${symbolKey}`,
   analysis: (symbol: string, signalId: string) =>

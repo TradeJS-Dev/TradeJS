@@ -6,6 +6,7 @@ import {
   calculateExecutionSlippageBreakdown,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
+  extractExecutionDelayRiskBps,
 } from '@tradejs/core/trade';
 import {
   Candle,
@@ -53,6 +54,13 @@ export const createTestConnector: TestConnectorCreator = (
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
   const fastMode = Boolean(context?.fastMode);
+  const executionCostModel = context?.executionCostModel;
+  const makerFeeRate = executionCostModel?.fees.makerRate ?? FEE_PERCENT;
+  const takerFeeRate = executionCostModel?.fees.takerRate ?? FEE_PERCENT;
+  const fundingRates = [...(context?.fundingRates ?? [])].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
+  const processedFundingTimestamps = new Set<number>();
   let currentPosition: (Order & { amount: number }) | null = null;
   let amount = INITIAL_BACKTEST_AMOUNT;
   let originalQty = 0;
@@ -324,16 +332,47 @@ export const createTestConnector: TestConnectorCreator = (
     grossProfit,
     price,
     qty,
+    feeRate = takerFeeRate,
   }: {
     grossProfit: number;
     price: number;
     qty: number;
+    feeRate?: number;
   }) => {
-    const fee = price * qty * FEE_PERCENT;
+    const fee = price * qty * feeRate;
     return {
       fee,
       profit: grossProfit - fee,
     };
+  };
+
+  const applyFunding = (candle: Candle) => {
+    if (!executionCostModel?.funding.enabled || !currentPosition) {
+      return;
+    }
+
+    for (const point of fundingRates) {
+      if (
+        processedFundingTimestamps.has(point.timestamp) ||
+        point.symbol.toUpperCase() !== currentPosition.symbol.toUpperCase() ||
+        point.timestamp <= currentPosition.timestamp ||
+        point.timestamp > candle.timestamp
+      ) {
+        continue;
+      }
+      processedFundingTimestamps.add(point.timestamp);
+      const notional = candle.close * currentPosition.qty;
+      const fundingCost =
+        notional * point.rate * (currentPosition.direction === 'LONG' ? 1 : -1);
+      amount -= fundingCost;
+      currentPositionProfit -= fundingCost;
+      if (currentTradeResult) {
+        currentTradeResult.fundingFee =
+          (currentTradeResult.fundingFee ?? 0) + fundingCost;
+        currentTradeResult.netProfit -= fundingCost;
+        currentTradeResult.totalFee += fundingCost;
+      }
+    }
   };
 
   const getExitTimestamp = (candle: Candle) =>
@@ -353,9 +392,17 @@ export const createTestConnector: TestConnectorCreator = (
     signal?: Order['signal'];
   }) => {
     const modelParams = {
+      baseSlippageBps: executionCostModel?.slippage.baseBps,
       spreadBps: extractExecutionSpreadBps(signal),
-      marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps: null,
+      spreadMultiplier: executionCostModel?.slippage.spreadMultiplier,
+      marketImpactBps:
+        extractExecutionMarketImpactBps(signal) ??
+        executionCostModel?.slippage.marketImpactBps,
+      delayRiskBps:
+        stage === 'entry'
+          ? (extractExecutionDelayRiskBps(signal) ?? 0) *
+            (executionCostModel?.slippage.delayRiskMultiplier ?? 1)
+          : null,
     };
 
     return applyModeledExecutionSlippage({
@@ -374,9 +421,17 @@ export const createTestConnector: TestConnectorCreator = (
     signal?: Order['signal'];
   }) =>
     calculateExecutionSlippageBreakdown({
+      baseSlippageBps: executionCostModel?.slippage.baseBps,
       spreadBps: extractExecutionSpreadBps(signal),
-      marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps: null,
+      spreadMultiplier: executionCostModel?.slippage.spreadMultiplier,
+      marketImpactBps:
+        extractExecutionMarketImpactBps(signal) ??
+        executionCostModel?.slippage.marketImpactBps,
+      delayRiskBps:
+        stage === 'entry'
+          ? (extractExecutionDelayRiskBps(signal) ?? 0) *
+            (executionCostModel?.slippage.delayRiskMultiplier ?? 1)
+          : null,
     });
 
   const getExecutionSlippageLogData = (
@@ -395,6 +450,17 @@ export const createTestConnector: TestConnectorCreator = (
 
   return {
     __tradejsTestConnector: true,
+    capabilities: connector.capabilities,
+    universe: connector.universe,
+    accountId: connector.accountId,
+    deploymentId: connector.deploymentId,
+    listInstruments: (query) => connector.listInstruments(query),
+    getFundingRateHistory: connector.getFundingRateHistory
+      ? (request) => connector.getFundingRateHistory!(request)
+      : undefined,
+    getTradingFeeRate: connector.getTradingFeeRate
+      ? (symbol) => connector.getTradingFeeRate!(symbol)
+      : undefined,
 
     getState: async () => state,
     setState: async (newState: object) => {
@@ -422,6 +488,7 @@ export const createTestConnector: TestConnectorCreator = (
               orders: positionLog.length,
             },
         orderLogId,
+        ...(executionCostModel ? { executionCostModel } : {}),
         ...(fastMode
           ? {}
           : {
@@ -458,6 +525,7 @@ export const createTestConnector: TestConnectorCreator = (
       if (!candle || !currentPosition || !currentPosition.qty) {
         return;
       }
+      applyFunding(candle);
 
       const isLong = currentPosition.direction === 'LONG';
       const entryPrice = currentPosition.price;
@@ -535,6 +603,7 @@ export const createTestConnector: TestConnectorCreator = (
       if (!stopLossPrice || !currentPosition || !candle) {
         return;
       }
+      applyFunding(candle);
 
       const isLong = currentPosition.direction === 'LONG';
       const hitStop = isLong
@@ -594,6 +663,7 @@ export const createTestConnector: TestConnectorCreator = (
       if (!candle || !currentPosition) {
         return;
       }
+      applyFunding(candle);
 
       if (stopLossPrice) {
         const isLong = currentPosition.direction === 'LONG';
@@ -753,6 +823,7 @@ export const createTestConnector: TestConnectorCreator = (
         grossProfit: 0,
         price: entryPrice,
         qty: order.qty,
+        feeRate: order.isLimit ? makerFeeRate : takerFeeRate,
       });
       const entrySlippageCost = getSlippageCost({
         requestedPrice: order.price,
@@ -781,7 +852,7 @@ export const createTestConnector: TestConnectorCreator = (
             netProfit: profit,
             openFee: fee,
             closeFee: 0,
-            fundingFee: null,
+            fundingFee: executionCostModel?.funding.enabled ? 0 : null,
             totalFee: fee,
             entrySlippagePrice: entryPrice - order.price,
             entrySlippageBps: getSlippageBps(order.price, entryPrice),

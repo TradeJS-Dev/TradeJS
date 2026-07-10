@@ -1559,6 +1559,24 @@ export const RuntimeStrategyCard = ({
         >
           {strategy.enabled ? 'enabled' : 'disabled'}
         </Badge>
+        <Badge colorPalette="blue" variant="outline">
+          {strategy.universe}
+        </Badge>
+        {strategy.accountId ? (
+          <Badge colorPalette="purple" variant="outline">
+            account: {strategy.accountId}
+          </Badge>
+        ) : null}
+        {strategy.deploymentId ? (
+          <Badge colorPalette="orange" variant="outline">
+            deployment: {strategy.deploymentId}
+          </Badge>
+        ) : null}
+        {strategy.policyProfileId ? (
+          <Badge colorPalette="cyan" variant="outline">
+            policy: {strategy.policyProfileId}
+          </Badge>
+        ) : null}
 
         <Flex gap="1">
           <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>

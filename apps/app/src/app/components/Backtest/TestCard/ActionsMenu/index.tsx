@@ -39,7 +39,7 @@ export const TestCardActionsMenu = () => {
     params.set('backtestStrategy', testResult.test.strategyName);
 
     window.open(
-      `/routes/dashboard/${provider}/${testResult.test.symbol}/15?${params.toString()}`,
+      `/routes/dashboard/${provider}/${testResult.test.universe ?? 'crypto'}/${testResult.test.symbol}/${testResult.test.interval ?? '15'}?${params.toString()}`,
       '_blank',
       'noopener,noreferrer',
     );

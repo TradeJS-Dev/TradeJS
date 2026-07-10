@@ -7,6 +7,7 @@ import {
   KlineChartData,
   KlineRequest,
   Ticker,
+  resolveConnectorUniverse,
 } from '@tradejs/types';
 import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
 
@@ -78,8 +79,14 @@ const MAJOR_PRODUCTS = [
   'AVAX-USD',
 ];
 
-export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
+const capabilities = {
+  supportedUniverses: ['crypto'],
+  defaultUniverse: 'crypto',
+} as const;
+
+export const CoinbaseConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
+  const universe = resolveConnectorUniverse(capabilities, config.universe);
 
   const requestKline = async ({
     symbol,
@@ -143,7 +150,85 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
     return [...dedup.values()].sort((a, b) => a.timestamp - b.timestamp);
   };
 
+  const loadTickers = async () => {
+    const baseUrl =
+      process.env.COINBASE_BASE_URL?.trim() ||
+      'https://api.exchange.coinbase.com';
+
+    const entries = await Promise.all(
+      MAJOR_PRODUCTS.map(async (product) => {
+        const [tickerRes, statsRes] = await Promise.all([
+          fetchWithRetry(`${baseUrl}/products/${product}/ticker`, {
+            headers: { 'User-Agent': 'tradejs/coinbase-connector' },
+          }),
+          fetchWithRetry(`${baseUrl}/products/${product}/stats`, {
+            headers: { 'User-Agent': 'tradejs/coinbase-connector' },
+          }),
+        ]);
+        if (!tickerRes.ok || !statsRes.ok) return null;
+        const ticker = (await tickerRes.json()) as Record<string, unknown>;
+        const stats = (await statsRes.json()) as Record<string, unknown>;
+        const base = product.replace('-USD', '');
+        const symbol = `${base}USDT`;
+        const open = toNum(stats.open);
+        const last = toNum(ticker.price);
+        const pct = open > 0 ? (last - open) / open : 0;
+        return {
+          symbol,
+          lastPrice: last,
+          indexPrice: last,
+          markPrice: last,
+          prevPrice24h: open,
+          price24hPcnt: pct,
+          highPrice24h: toNum(stats.high),
+          lowPrice24h: toNum(stats.low),
+          prevPrice1h: 0,
+          openInterest: 0,
+          openInterestValue: 0,
+          turnover24h: 0,
+          volume24h: toNum(stats.volume),
+          fundingRate: 0,
+          nextFundingTime: 0,
+          predictedDeliveryPrice: '',
+          basisRate: '',
+          deliveryFeeRate: '',
+          deliveryTime: 0,
+          ask1Size: toNum(ticker.ask_size),
+          bid1Price: toNum(ticker.bid),
+          ask1Price: toNum(ticker.ask),
+          bid1Size: toNum(ticker.bid_size),
+          basis: '',
+          preOpenPrice: '',
+          preQty: '',
+        } as Ticker;
+      }),
+    );
+
+    return entries.filter((item): item is Ticker => item != null);
+  };
+
   return {
+    capabilities,
+    universe,
+    accountId: config.accountId,
+    deploymentId: config.deploymentId,
+    listInstruments: async (query) => {
+      resolveConnectorUniverse(capabilities, query?.universe ?? universe);
+      const symbols = query?.symbols?.length
+        ? new Set(query.symbols.map((symbol) => symbol.trim().toUpperCase()))
+        : null;
+      const tickers = await loadTickers();
+      return tickers
+        .filter((ticker) => !symbols || symbols.has(ticker.symbol))
+        .map((ticker) => ({
+          provider: 'coinbase',
+          symbol: ticker.symbol,
+          kind: 'spot' as const,
+          assetClass: 'crypto' as const,
+          universe: 'crypto' as const,
+          status: 'trading' as const,
+        }));
+    },
     getState: async () => state,
     setState: async (newState) => {
       state = { ...state, ...newState };
@@ -163,61 +248,9 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
     setStopLoss: async () => false,
     closePosition: async () => false,
 
-    getTickers: async () => {
-      const baseUrl =
-        process.env.COINBASE_BASE_URL?.trim() ||
-        'https://api.exchange.coinbase.com';
-
-      const entries = await Promise.all(
-        MAJOR_PRODUCTS.map(async (product) => {
-          const [tickerRes, statsRes] = await Promise.all([
-            fetchWithRetry(`${baseUrl}/products/${product}/ticker`, {
-              headers: { 'User-Agent': 'tradejs/coinbase-connector' },
-            }),
-            fetchWithRetry(`${baseUrl}/products/${product}/stats`, {
-              headers: { 'User-Agent': 'tradejs/coinbase-connector' },
-            }),
-          ]);
-          if (!tickerRes.ok || !statsRes.ok) return null;
-          const ticker = (await tickerRes.json()) as Record<string, unknown>;
-          const stats = (await statsRes.json()) as Record<string, unknown>;
-          const base = product.replace('-USD', '');
-          const symbol = `${base}USDT`;
-          const open = toNum(stats.open);
-          const last = toNum(ticker.price);
-          const pct = open > 0 ? (last - open) / open : 0;
-          return {
-            symbol,
-            lastPrice: last,
-            indexPrice: last,
-            markPrice: last,
-            prevPrice24h: open,
-            price24hPcnt: pct,
-            highPrice24h: toNum(stats.high),
-            lowPrice24h: toNum(stats.low),
-            prevPrice1h: 0,
-            openInterest: 0,
-            openInterestValue: 0,
-            turnover24h: 0,
-            volume24h: toNum(stats.volume),
-            fundingRate: 0,
-            nextFundingTime: 0,
-            predictedDeliveryPrice: '',
-            basisRate: '',
-            deliveryFeeRate: '',
-            deliveryTime: 0,
-            ask1Size: toNum(ticker.ask_size),
-            bid1Price: toNum(ticker.bid),
-            ask1Price: toNum(ticker.ask),
-            bid1Size: toNum(ticker.bid_size),
-            basis: '',
-            preOpenPrice: '',
-            preQty: '',
-          } as Ticker;
-        }),
-      );
-
-      return entries.filter((item): item is Ticker => item != null);
+    getTickers: async (query) => {
+      resolveConnectorUniverse(capabilities, query?.universe ?? universe);
+      return loadTickers();
     },
   };
 };

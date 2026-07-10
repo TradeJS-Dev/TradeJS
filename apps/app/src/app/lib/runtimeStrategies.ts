@@ -12,6 +12,7 @@ import type {
   SimpleOrderLogData,
   StrategyConfig,
   TestStat,
+  MarketUniverse,
 } from '@tradejs/types';
 
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
@@ -71,7 +72,12 @@ export interface RuntimeStrategyTradeView {
 }
 
 export interface RuntimeStrategyView {
+  runtimeKey: string;
   strategyName: string;
+  universe: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   connected: boolean;
   enabled: boolean;
   config: StrategyConfig | null;

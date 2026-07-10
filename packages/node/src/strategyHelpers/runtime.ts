@@ -151,7 +151,7 @@ export const enrichSignalWithMl = async ({
     const row = trimMlTrainingRowWindows(fullRow, 5);
     const features = buildMlFeatures(row);
     const mlResult = await fetchMlThreshold({
-      strategy,
+      strategy: ml.modelKey ?? strategy,
       features,
       threshold: ml.mlThreshold,
       projectRoot: getTradejsProjectCwd(),
@@ -234,6 +234,7 @@ interface ExecuteEntryOrderParams {
   timestamp: number;
   takeProfits: Tp[];
   stopLossPrice: number | null;
+  leverage?: number;
   signal: Signal;
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
@@ -387,6 +388,7 @@ export const executeEntryOrder = async ({
   signal,
   beforePlaceOrder,
   recordRuntimeTrade = true,
+  leverage,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
   const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
@@ -406,6 +408,9 @@ export const executeEntryOrder = async ({
     isLimit: false,
     timestamp,
     direction,
+    ...(typeof leverage === 'number' && Number.isFinite(leverage)
+      ? { leverage }
+      : {}),
     orderId,
     signal,
   });
@@ -502,6 +507,11 @@ export const executeEntryOrder = async ({
       openFee: estimatedOpenFee,
       totalFee: estimatedOpenFee,
       entryTimestamp: timestamp,
+      universe: signal.universe,
+      assetClass: signal.assetClass,
+      accountId: signal.accountId,
+      deploymentId: signal.deploymentId,
+      policyProfileId: signal.policyProfileId,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     });
   }

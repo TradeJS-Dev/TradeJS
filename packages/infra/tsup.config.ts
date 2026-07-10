@@ -14,6 +14,7 @@ export default defineConfig({
     'src/redis.ts',
     'src/userSettings.ts',
     'src/timescale.ts',
+    'src/tradingAccounts.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,

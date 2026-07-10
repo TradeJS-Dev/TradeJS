@@ -73,15 +73,34 @@ const stableStringify = (value: unknown): string => {
 
 export const buildSignalsStrategyLifecycleKey = ({
   connectorName,
+  universe,
+  accountId,
+  deploymentId,
   symbol,
   interval,
   strategyName,
 }: {
   connectorName: string;
+  universe?: string;
+  accountId?: string;
+  deploymentId?: string;
   symbol: string;
   interval: string;
   strategyName: string;
-}) => [connectorName, symbol, interval, strategyName].join(':');
+}) => {
+  if (!universe && !accountId && !deploymentId) {
+    return [connectorName, symbol, interval, strategyName].join(':');
+  }
+  return [
+    connectorName,
+    universe ?? 'crypto',
+    accountId ?? 'default',
+    deploymentId ?? 'default',
+    symbol,
+    interval,
+    strategyName,
+  ].join(':');
+};
 
 export const createSignalsStrategyLifecycle = ({
   intervalMs,

@@ -2,7 +2,12 @@ import chalk from 'chalk';
 import { ConnectorNames } from '@tradejs/connectors';
 import { update } from '@tradejs/node/cli';
 import { getConnectorCreatorByName } from '@tradejs/node/connectors';
-import type { Connector, ConnectorCreator, Interval } from '@tradejs/types';
+import type {
+  Connector,
+  ConnectorCreator,
+  Interval,
+  MarketUniverse,
+} from '@tradejs/types';
 import { timeOperation as runTimedOperation } from '../runFormatting';
 
 export type BtcReferenceConnectors = {
@@ -76,6 +81,7 @@ export const updateMarketHistoryWithBtcReferences = async ({
   preloadStart,
   preloadEnd,
   log,
+  universe = marketConnector.universe ?? 'crypto',
 }: {
   marketConnector: Connector;
   connectorName: string;
@@ -86,6 +92,7 @@ export const updateMarketHistoryWithBtcReferences = async ({
   preloadStart?: number;
   preloadEnd?: number;
   log?: (message: string) => void;
+  universe?: MarketUniverse;
 }) => {
   const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
     runTimedOperation(
@@ -106,7 +113,9 @@ export const updateMarketHistoryWithBtcReferences = async ({
     update(
       marketConnector,
       interval,
-      withPrimaryMarketReferenceSymbols(symbols),
+      universe === 'crypto'
+        ? withPrimaryMarketReferenceSymbols(symbols)
+        : symbols,
       preloadDays,
       updateOptions,
     ),
@@ -137,12 +146,14 @@ export const updateMarketHistoryWithBtcReferences = async ({
     );
   };
 
-  await updateReference({
-    connector: btcReferences.binance,
-    connectorLabel: ConnectorNames.Binance,
-  });
-  await updateReference({
-    connector: btcReferences.coinbase,
-    connectorLabel: ConnectorNames.Coinbase,
-  });
+  if (universe === 'crypto') {
+    await updateReference({
+      connector: btcReferences.binance,
+      connectorLabel: ConnectorNames.Binance,
+    });
+    await updateReference({
+      connector: btcReferences.coinbase,
+      connectorLabel: ConnectorNames.Coinbase,
+    });
+  }
 };

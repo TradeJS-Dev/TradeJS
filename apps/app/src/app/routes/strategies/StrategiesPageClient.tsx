@@ -23,6 +23,7 @@ import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
+const ALL_RUNTIME_SCOPES = '__all_runtime_scopes__';
 type StrategyMode = 'runtime' | 'replay' | 'ai' | 'backtest';
 type RuntimeStatusFilter = 'all' | 'enabled' | 'disabled';
 
@@ -70,6 +71,10 @@ const RuntimeStrategiesContent = () => {
   const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
   const [runtimeStatusFilter, setRuntimeStatusFilter] =
     useState<RuntimeStatusFilter>('all');
+  const [runtimeUniverse, setRuntimeUniverse] = useState(ALL_RUNTIME_SCOPES);
+  const [runtimeAccount, setRuntimeAccount] = useState(ALL_RUNTIME_SCOPES);
+  const [runtimeDeployment, setRuntimeDeployment] =
+    useState(ALL_RUNTIME_SCOPES);
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [pendingSnapshotDelete, setPendingSnapshotDelete] =
@@ -180,6 +185,24 @@ const RuntimeStrategiesContent = () => {
       ) {
         return false;
       }
+      if (
+        runtimeUniverse !== ALL_RUNTIME_SCOPES &&
+        strategy.universe !== runtimeUniverse
+      ) {
+        return false;
+      }
+      if (
+        runtimeAccount !== ALL_RUNTIME_SCOPES &&
+        (strategy.accountId ?? 'default') !== runtimeAccount
+      ) {
+        return false;
+      }
+      if (
+        runtimeDeployment !== ALL_RUNTIME_SCOPES &&
+        (strategy.deploymentId ?? 'default') !== runtimeDeployment
+      ) {
+        return false;
+      }
 
       if (runtimeStatusFilter === 'enabled') {
         return strategy.enabled;
@@ -191,7 +214,38 @@ const RuntimeStrategiesContent = () => {
 
       return true;
     });
-  }, [runtimeData?.strategies, runtimeStatusFilter, selectedStrategy]);
+  }, [
+    runtimeAccount,
+    runtimeData?.strategies,
+    runtimeDeployment,
+    runtimeStatusFilter,
+    runtimeUniverse,
+    selectedStrategy,
+  ]);
+
+  const runtimeScopeItems = useMemo(() => {
+    const strategies = runtimeData?.strategies ?? [];
+    const makeItems = (values: Array<string | undefined>, allLabel: string) => [
+      { label: allLabel, value: ALL_RUNTIME_SCOPES },
+      ...[...new Set(values.map((value) => value ?? 'default'))]
+        .sort()
+        .map((value) => ({ label: value, value })),
+    ];
+    return {
+      universes: makeItems(
+        strategies.map(({ universe }) => universe),
+        'All universes',
+      ),
+      accounts: makeItems(
+        strategies.map(({ accountId }) => accountId),
+        'All accounts',
+      ),
+      deployments: makeItems(
+        strategies.map(({ deploymentId }) => deploymentId),
+        'All deployments',
+      ),
+    };
+  }, [runtimeData?.strategies]);
 
   const filteredSnapshotStrategies = useMemo(() => {
     const strategies = snapshotData?.strategies ?? [];
@@ -454,6 +508,39 @@ const RuntimeStrategiesContent = () => {
                   items={RUNTIME_STATUS_ITEMS}
                 />
               ) : null}
+              {mode === 'runtime' ? (
+                <Select
+                  value={[runtimeUniverse]}
+                  defaultValue={[runtimeUniverse]}
+                  onChange={(value) =>
+                    setRuntimeUniverse(value[0] || ALL_RUNTIME_SCOPES)
+                  }
+                  items={runtimeScopeItems.universes}
+                  width="160px"
+                />
+              ) : null}
+              {mode === 'runtime' ? (
+                <Select
+                  value={[runtimeAccount]}
+                  defaultValue={[runtimeAccount]}
+                  onChange={(value) =>
+                    setRuntimeAccount(value[0] || ALL_RUNTIME_SCOPES)
+                  }
+                  items={runtimeScopeItems.accounts}
+                  width="170px"
+                />
+              ) : null}
+              {mode === 'runtime' ? (
+                <Select
+                  value={[runtimeDeployment]}
+                  defaultValue={[runtimeDeployment]}
+                  onChange={(value) =>
+                    setRuntimeDeployment(value[0] || ALL_RUNTIME_SCOPES)
+                  }
+                  items={runtimeScopeItems.deployments}
+                  width="190px"
+                />
+              ) : null}
               {runtimeSourceWarning ? (
                 <Box
                   px={3}
@@ -527,7 +614,7 @@ const RuntimeStrategiesContent = () => {
               mode === 'runtime' &&
               filteredRuntimeStrategies.map((strategy) => (
                 <RuntimeStrategyCard
-                  key={strategy.strategyName}
+                  key={strategy.runtimeKey}
                   strategy={strategy}
                   provider={runtimeData?.provider || 'bybit'}
                 />

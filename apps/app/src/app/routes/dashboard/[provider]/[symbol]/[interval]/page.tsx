@@ -6,13 +6,20 @@ import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '#store';
 import { Filters } from '#shared/Filters';
 import { MainChart } from '#app/components/Dashboard/MainChart';
-import { Interval, OnChangeFilters, Provider } from '@tradejs/types';
+import {
+  Interval,
+  isMarketUniverse,
+  MarketUniverse,
+  OnChangeFilters,
+  Provider,
+} from '@tradejs/types';
 
 const Dashboard = () => {
   const searchParams = useSearchParams();
   const { filters, setFilters } = useFilters();
   const { tickers, ensureLoaded: ensureTickersLoaded } = useTickers(
     filters.provider || 'bybit',
+    filters.universe ?? 'crypto',
     { enabled: false },
   );
   const { tests, ensureLoaded: ensureBacktestsLoaded } = useTestList({
@@ -27,10 +34,13 @@ const Dashboard = () => {
 
   const parseDashboardPath = useCallback(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
+    const hasUniverseSegment = isMarketUniverse(parts[3]);
     return {
       provider: (parts[2] || filters.provider || 'bybit') as Provider,
-      symbol: (parts[3] || filters.symbol) as string,
-      interval: (parts[4] || filters.interval) as Interval,
+      universe: (hasUniverseSegment ? parts[3] : 'crypto') as MarketUniverse,
+      symbol: (parts[hasUniverseSegment ? 4 : 3] || filters.symbol) as string,
+      interval: (parts[hasUniverseSegment ? 5 : 4] ||
+        filters.interval) as Interval,
     };
   }, [filters.interval, filters.provider, filters.symbol]);
 
@@ -38,6 +48,7 @@ const Dashboard = () => {
     const parsed = parseDashboardPath();
     setFilters({
       provider: parsed.provider,
+      universe: parsed.universe,
       symbol: parsed.symbol,
       interval: parsed.interval,
       ...(hasBacktestId ? { backtestId } : {}),
@@ -59,11 +70,13 @@ const Dashboard = () => {
         ...filters,
         ...newFilters,
         provider: (newFilters.provider || parsed.provider) as Provider,
+        universe: (newFilters.universe || parsed.universe) as MarketUniverse,
         symbol: (newFilters.symbol || parsed.symbol) as string,
         interval: (newFilters.interval || parsed.interval) as Interval,
       };
       setFilters(nextFilters);
       const nextProvider = nextFilters.provider || 'bybit';
+      const nextUniverse = nextFilters.universe || 'crypto';
       const nextSymbol = nextFilters.symbol;
       const nextInterval = nextFilters.interval;
       const params = new URLSearchParams(window.location.search);
@@ -85,7 +98,7 @@ const Dashboard = () => {
       window.history.replaceState(
         null,
         '',
-        `/routes/dashboard/${nextProvider}/${nextSymbol}/${nextInterval}${search ? `?${search}` : ''}`,
+        `/routes/dashboard/${nextProvider}/${nextUniverse}/${nextSymbol}/${nextInterval}${search ? `?${search}` : ''}`,
       );
     },
     [filters, parseDashboardPath, setFilters],
@@ -114,6 +127,7 @@ const Dashboard = () => {
           >
             <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
               <Filters.SelectProvider />
+              {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
               <Filters.SelectSymbol />
               <Filters.FavoriteIndicator />
               <Filters.SelectInterval />

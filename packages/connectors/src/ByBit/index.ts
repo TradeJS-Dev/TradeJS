@@ -3,10 +3,7 @@
 import _ from 'lodash';
 import chalk from 'chalk';
 import { delay } from '@tradejs/core/async';
-import {
-  MARKET_CATEGORY,
-  PRELOAD_FALLBACK_DAYS,
-} from '@tradejs/core/constants';
+import { PRELOAD_FALLBACK_DAYS } from '@tradejs/core/constants';
 import { toJson } from '@tradejs/core/data';
 import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
@@ -33,9 +30,22 @@ import {
   Position,
   PositionPnlSnapshot,
   Tp,
+  AssetClass,
+  FundingRatePoint,
+  InstrumentDescriptor,
+  InstrumentQuery,
+  MarketUniverse,
+  resolveConnectorUniverse,
 } from '@tradejs/types';
 
 const LIMIT = 1000;
+const BYBIT_CATEGORY = 'linear' as const;
+const BYBIT_CAPABILITIES = {
+  supportedUniverses: ['crypto', 'tradfi'],
+  defaultUniverse: 'crypto',
+} as const;
+const BYBIT_TRADFI_SYMBOL_TYPES = ['stock', 'commodity', 'forex'] as const;
+const FUNDING_HISTORY_LIMIT = 200;
 const BYBIT_RATE_LIMIT_RETCODE = 10_006;
 const BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE = 34_040;
 const KLINE_RATE_LIMIT_MAX_ATTEMPTS = 3;
@@ -73,6 +83,43 @@ const isTradingStopAccepted = (res: any) =>
   res?.retCode === 0 || isTradingStopNotModified(res);
 const isKlineRateLimited = (res: any) =>
   res?.retCode === BYBIT_RATE_LIMIT_RETCODE;
+
+const mapBybitAssetClass = (symbolType: unknown): AssetClass => {
+  if (symbolType === 'stock') return 'equity';
+  if (symbolType === 'commodity') return 'commodity';
+  if (symbolType === 'forex') return 'forex';
+  return 'crypto';
+};
+
+const mapBybitInstrument = (
+  item: Record<string, any>,
+): InstrumentDescriptor => {
+  const assetClass = mapBybitAssetClass(item.symbolType);
+  return {
+    provider: 'bybit',
+    symbol: String(item.symbol ?? '')
+      .trim()
+      .toUpperCase(),
+    kind: 'perpetual',
+    assetClass,
+    universe: assetClass === 'crypto' ? 'crypto' : 'tradfi',
+    status:
+      String(item.status ?? '').toLowerCase() === 'trading'
+        ? 'trading'
+        : 'inactive',
+    baseAsset: String(item.baseCoin ?? '').trim() || undefined,
+    quoteAsset: String(item.quoteCoin ?? '').trim() || undefined,
+    settleAsset: String(item.settleCoin ?? '').trim() || undefined,
+    displayName: String(item.displayName ?? '').trim() || undefined,
+    venueMetadata: {
+      category: BYBIT_CATEGORY,
+      symbolType: String(item.symbolType ?? ''),
+      contractType: String(item.contractType ?? ''),
+      fundingInterval: Number(item.fundingInterval ?? Number.NaN),
+      maxLeverage: Number(item.leverageFilter?.maxLeverage ?? Number.NaN),
+    },
+  };
+};
 
 const getOptionalStringField = (
   source: unknown,
@@ -138,7 +185,7 @@ const loadFundingFeeRows = async ({
     for (let page = 0; page < FUNDING_TRANSACTION_LOG_MAX_PAGES; page += 1) {
       const response = await client.getTransactionLog({
         accountType: 'UNIFIED',
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         type: 'SETTLEMENT',
         startTime,
         endTime,
@@ -263,6 +310,10 @@ const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
+  const universe = resolveConnectorUniverse(
+    BYBIT_CAPABILITIES,
+    config.universe,
+  );
   let publicClientPromise: Promise<
     Awaited<ReturnType<typeof getClient>>
   > | null = null;
@@ -283,6 +334,109 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   const getPrivateClient = async () => {
     privateClientPromise ??= getClient(config, 'private');
     return privateClientPromise;
+  };
+
+  const instrumentCache = new Map<
+    MarketUniverse,
+    { expiresAt: number; promise: Promise<InstrumentDescriptor[]> }
+  >();
+
+  const fetchInstrumentGroup = async (
+    symbolType?: (typeof BYBIT_TRADFI_SYMBOL_TYPES)[number],
+  ): Promise<InstrumentDescriptor[]> => {
+    const client = await getPublicClient();
+    if (!client) return [];
+    if (typeof client.getInstrumentsInfo !== 'function') {
+      if (universe === 'tradfi' || symbolType) {
+        throw new Error('Bybit instrument discovery is unavailable');
+      }
+      return [];
+    }
+
+    const instruments: InstrumentDescriptor[] = [];
+    let cursor: string | undefined;
+
+    for (;;) {
+      const response = await client.getInstrumentsInfo({
+        category: BYBIT_CATEGORY,
+        limit: LIMIT,
+        ...(symbolType ? { symbolType } : {}),
+        ...(cursor ? { cursor } : {}),
+      } as any);
+
+      if (response.retCode !== 0) {
+        throw new Error(
+          `Bybit instruments failed: ${response.retCode} ${response.retMsg}`,
+        );
+      }
+
+      for (const raw of (response.result?.list ?? []) as Array<
+        Record<string, any>
+      >) {
+        const instrument = mapBybitInstrument(raw);
+        if (instrument.symbol) instruments.push(instrument);
+      }
+
+      const nextCursor = String(response.result?.nextPageCursor ?? '').trim();
+      if (!nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    }
+
+    return instruments;
+  };
+
+  const loadInstrumentUniverse = (
+    requestedUniverse: MarketUniverse,
+  ): Promise<InstrumentDescriptor[]> => {
+    const cached = instrumentCache.get(requestedUniverse);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.promise;
+    }
+
+    const promise =
+      requestedUniverse === 'tradfi'
+        ? Promise.all(
+            BYBIT_TRADFI_SYMBOL_TYPES.map((symbolType) =>
+              fetchInstrumentGroup(symbolType),
+            ),
+          ).then((groups) => {
+            const bySymbol = new Map<string, InstrumentDescriptor>();
+            for (const instrument of groups.flat()) {
+              bySymbol.set(instrument.symbol, instrument);
+            }
+            return [...bySymbol.values()];
+          })
+        : fetchInstrumentGroup().then((instruments) =>
+            instruments.filter(
+              (instrument) => instrument.universe === 'crypto',
+            ),
+          );
+
+    instrumentCache.set(requestedUniverse, {
+      expiresAt: Date.now() + 5 * 60_000,
+      promise,
+    });
+    promise.catch(() => instrumentCache.delete(requestedUniverse));
+    return promise;
+  };
+
+  const listInstruments = async (query: InstrumentQuery = {}) => {
+    const requestedUniverse = resolveConnectorUniverse(
+      BYBIT_CAPABILITIES,
+      query?.universe ?? universe,
+    );
+    const [assetClasses, symbols] = [
+      query?.assetClasses?.length ? new Set(query.assetClasses) : null,
+      query?.symbols?.length
+        ? new Set(query.symbols.map((symbol) => symbol.trim().toUpperCase()))
+        : null,
+    ];
+
+    return (await loadInstrumentUniverse(requestedUniverse)).filter(
+      (instrument) =>
+        (!assetClasses || assetClasses.has(instrument.assetClass)) &&
+        (!symbols || symbols.has(instrument.symbol)),
+    );
   };
 
   const withTimeout = async <T>(
@@ -374,7 +528,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         attempt += 1
       ) {
         const kline = await client.getKline({
-          category: MARKET_CATEGORY,
+          category: BYBIT_CATEGORY,
           symbol,
           interval,
           start: normalizedStart,
@@ -471,7 +625,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       const positionRes = await withTimeout(
         client.getPositionInfo({
           symbol,
-          category: MARKET_CATEGORY,
+          category: BYBIT_CATEGORY,
         }),
         POSITION_SNAPSHOT_TIMEOUT_MS,
         `bybit getPositionInfo ${symbol}`,
@@ -602,7 +756,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       const isFullMode = takeProfits.length === 1 && tp.rate === 1;
 
       const tpRes = await client.setTradingStop({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         symbol,
         tpSize: isFullMode ? undefined : tpSizeStr,
         tpslMode: isFullMode ? 'Full' : 'Partial',
@@ -679,7 +833,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     );
 
     const slRes = await client.setTradingStop({
-      category: MARKET_CATEGORY,
+      category: BYBIT_CATEGORY,
       symbol,
       tpslMode: 'Full',
       stopLoss: slNormalized.priceStr,
@@ -719,6 +873,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
   /** -------------------- public API -------------------- */
   return {
+    capabilities: BYBIT_CAPABILITIES,
+    universe,
+    accountId: config.accountId,
+    deploymentId: config.deploymentId,
+    listInstruments,
+
     getState: async () => state,
 
     setState: async (newState: object) => {
@@ -742,7 +902,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
 
       const positionRes = await client.getPositionInfo({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         settleCoin: 'USDT',
       });
 
@@ -772,7 +932,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
 
       const positionRes = await client.getPositionInfo({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         settleCoin: 'USDT',
       });
 
@@ -851,7 +1011,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
       for (let page = 0; page < CLOSED_PNL_MAX_PAGES; page += 1) {
         const response = await client.getClosedPnL({
-          category: MARKET_CATEGORY,
+          category: BYBIT_CATEGORY,
           startTime,
           endTime,
           symbol,
@@ -973,7 +1133,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
       for (let page = 0; page < EXECUTION_MAX_PAGES; page += 1) {
         const response = await client.getExecutionList({
-          category: MARKET_CATEGORY,
+          category: BYBIT_CATEGORY,
           settleCoin: 'USDT',
           startTime,
           endTime,
@@ -1071,6 +1231,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       isLimit,
       orderId,
       signal,
+      leverage,
     }) => {
       invalidatePositionSnapshot(symbol);
       const client = await getPrivateClient();
@@ -1138,15 +1299,24 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         ),
       );
 
+      const requestedLeverage =
+        typeof leverage === 'number' && Number.isFinite(leverage)
+          ? Math.max(1, leverage)
+          : 10;
+      const effectiveLeverage =
+        meta.maxLeverage != null
+          ? Math.min(requestedLeverage, meta.maxLeverage)
+          : requestedLeverage;
+
       await client.setLeverage({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         symbol,
-        buyLeverage: '10',
-        sellLeverage: '10',
+        buyLeverage: String(effectiveLeverage),
+        sellLeverage: String(effectiveLeverage),
       });
 
       const orderRes = await client.submitOrder({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         symbol,
         price: entryNormalized?.priceStr || undefined,
         side: isLong ? 'Buy' : 'Sell',
@@ -1193,7 +1363,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
 
       const closeRes = await client.submitOrder({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
         symbol,
         side: direction === 'LONG' ? 'Sell' : 'Buy',
         orderType: 'Market',
@@ -1217,18 +1387,131 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       return true;
     },
 
-    getTickers: async () => {
+    getFundingRateHistory: async (rateRequest) => {
+      const client = await getPublicClient();
+      if (!client) return [];
+
+      const safeLimit = Math.min(
+        FUNDING_HISTORY_LIMIT,
+        Math.max(1, Math.trunc(rateRequest.limit ?? FUNDING_HISTORY_LIMIT)),
+      );
+      const byTimestamp = new Map<number, FundingRatePoint>();
+      let cursorEnd = Math.trunc(rateRequest.endTime);
+
+      while (
+        Number.isFinite(cursorEnd) &&
+        cursorEnd >= (rateRequest.startTime ?? 0)
+      ) {
+        const response = await client.getFundingRateHistory({
+          category: BYBIT_CATEGORY,
+          symbol: rateRequest.symbol.trim().toUpperCase(),
+          endTime: cursorEnd,
+          limit: safeLimit,
+        });
+
+        if (response.retCode !== 0) {
+          throw new Error(
+            `Bybit funding history failed: ${response.retCode} ${response.retMsg}`,
+          );
+        }
+
+        const page = (response.result?.list ?? []) as unknown as Array<
+          Record<string, unknown>
+        >;
+        if (!page.length) break;
+
+        let oldestTimestamp = Number.POSITIVE_INFINITY;
+        for (const item of page) {
+          const timestamp = Number(item.fundingRateTimestamp);
+          const rate = Number(item.fundingRate);
+          if (!Number.isFinite(timestamp) || !Number.isFinite(rate)) continue;
+          oldestTimestamp = Math.min(oldestTimestamp, timestamp);
+          if (timestamp >= (rateRequest.startTime ?? 0)) {
+            byTimestamp.set(timestamp, {
+              symbol: String(item.symbol ?? rateRequest.symbol),
+              timestamp,
+              rate,
+            });
+          }
+        }
+
+        if (
+          page.length < safeLimit ||
+          !Number.isFinite(oldestTimestamp) ||
+          oldestTimestamp <= (rateRequest.startTime ?? 0)
+        ) {
+          break;
+        }
+
+        const nextEnd = oldestTimestamp - 1;
+        if (nextEnd >= cursorEnd) break;
+        cursorEnd = nextEnd;
+      }
+
+      return [...byTimestamp.values()].sort(
+        (left, right) => left.timestamp - right.timestamp,
+      );
+    },
+
+    getTradingFeeRate: async (symbol) => {
+      const client = await getPrivateClient();
+      if (!client) return null;
+
+      const normalizedSymbol = symbol.trim().toUpperCase();
+      const response = await client.getFeeRate({
+        category: BYBIT_CATEGORY,
+        symbol: normalizedSymbol,
+      });
+      if (response.retCode !== 0) return null;
+
+      const row = (response.result?.list ?? []).find(
+        (item) => String(item.symbol ?? '').toUpperCase() === normalizedSymbol,
+      );
+      const makerRate = Number(row?.makerFeeRate);
+      const takerRate = Number(row?.takerFeeRate);
+      if (!Number.isFinite(makerRate) || !Number.isFinite(takerRate)) {
+        return null;
+      }
+
+      return {
+        symbol: normalizedSymbol,
+        makerRate,
+        takerRate,
+        source: 'exchange-account',
+        capturedAt: Date.now(),
+      };
+    },
+
+    getTickers: async (query = {}) => {
       const client = await getPublicClient();
 
       if (!client) {
         return [];
       }
 
+      const requestedUniverse = resolveConnectorUniverse(
+        BYBIT_CAPABILITIES,
+        query.universe ?? universe,
+      );
+      const instruments = await listInstruments({
+        ...query,
+        universe: requestedUniverse,
+      });
+      const allowedSymbols = instruments.length
+        ? new Set(instruments.map((instrument) => instrument.symbol))
+        : null;
+
       const data = await client.getTickers({
-        category: MARKET_CATEGORY,
+        category: BYBIT_CATEGORY,
       });
 
-      return data.result.list.map((item) => normalizeTickerData(item as any));
+      return data.result.list
+        .filter(
+          (item) =>
+            allowedSymbols == null ||
+            allowedSymbols.has(String(item.symbol ?? '')),
+        )
+        .map((item) => normalizeTickerData(item as any));
     },
   };
 };

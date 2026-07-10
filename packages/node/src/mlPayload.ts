@@ -28,16 +28,19 @@ export type MlSignalPayload = {
 export const normalizeStrategyConfig = (
   strategyConfig?: Record<string, any>,
   strategyName?: string,
+  profileId?: string,
 ): Record<string, any> | undefined => {
-  return getStrategyMlAdapter(strategyName).normalizeStrategyConfig?.(
-    strategyConfig,
-  );
+  return getStrategyMlAdapter(
+    strategyName,
+    profileId,
+  ).normalizeStrategyConfig?.(strategyConfig);
 };
 
 export const buildMlPayload = (payload: MlSignalPayload): MlSignalPayload => {
   const strategyName =
     payload.signal?.strategy ?? payload.context?.strategyName;
-  const mlAdapter = getStrategyMlAdapter(strategyName);
+  const profileId = payload.signal?.policyProfileId;
+  const mlAdapter = getStrategyMlAdapter(strategyName, profileId);
   const normalizedSignal =
     mlAdapter.normalizeSignal?.(payload.signal) ?? payload.signal;
   const nextSignal = {
@@ -52,6 +55,7 @@ export const buildMlPayload = (payload: MlSignalPayload): MlSignalPayload => {
         strategyConfig: normalizeStrategyConfig(
           payload.context.strategyConfig,
           strategyName,
+          profileId,
         ),
       }
     : undefined;

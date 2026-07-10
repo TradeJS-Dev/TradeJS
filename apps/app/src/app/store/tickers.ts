@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 import { get, set } from 'idb-keyval';
 import _ from 'lodash';
 import { scan } from '#actions/scanner';
-import { Items } from '@tradejs/types';
+import { Items, MarketUniverse } from '@tradejs/types';
 
 const LOCAL_STORAGE_KEY = 'tickers';
 const TICKERS_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -78,12 +78,19 @@ const useScannerStore = create<TickersScannerState>((set) => ({
     })),
 }));
 
-const getTickersCacheKey = (provider: string) => `tickers:${provider}`;
+const getProviderUniverseKey = (provider: string, universe: MarketUniverse) =>
+  universe === 'crypto' ? provider : `${provider}:${universe}`;
+const getTickersCacheKey = (providerUniverseKey: string) =>
+  `tickers:${providerUniverseKey}`;
 
 const isFresh = (savedAt: number) =>
   Date.now() - savedAt < TICKERS_CACHE_TTL_MS;
 
-const loadTickersForProvider = async (provider: string) => {
+const loadTickersForProvider = async (
+  provider: string,
+  universe: MarketUniverse,
+) => {
+  const providerUniverseKey = getProviderUniverseKey(provider, universe);
   const {
     tickersByProvider,
     loadedAtByProvider,
@@ -91,52 +98,58 @@ const loadTickersForProvider = async (provider: string) => {
     setTickers,
     setInFlight,
   } = useScannerStore.getState();
-  const memoryTickers = tickersByProvider[provider] ?? [];
-  const loadedAt = loadedAtByProvider[provider] ?? 0;
+  const memoryTickers = tickersByProvider[providerUniverseKey] ?? [];
+  const loadedAt = loadedAtByProvider[providerUniverseKey] ?? 0;
 
   if (memoryTickers.length && isFresh(loadedAt)) {
     return memoryTickers;
   }
 
-  const inFlight = inFlightByProvider[provider];
+  const inFlight = inFlightByProvider[providerUniverseKey];
   if (inFlight) {
     return inFlight;
   }
 
   const pending = (async () => {
     const cached = (await get(
-      getTickersCacheKey(provider),
+      getTickersCacheKey(providerUniverseKey),
     )) as TickersCacheRecord | null;
 
     if (cached?.items?.length && isFresh(cached.savedAt)) {
-      setTickers(provider, cached.items, cached.savedAt);
+      setTickers(providerUniverseKey, cached.items, cached.savedAt);
       return cached.items;
     }
 
-    const coins = await scan(provider);
+    const coins = await scan(provider, universe);
     const savedAt = Date.now();
-    setTickers(provider, coins, savedAt);
-    await set(getTickersCacheKey(provider), {
+    setTickers(providerUniverseKey, coins, savedAt);
+    await set(getTickersCacheKey(providerUniverseKey), {
       savedAt,
       items: coins,
     } satisfies TickersCacheRecord);
     return coins;
   })().finally(() => {
-    useScannerStore.getState().setInFlight(provider, undefined);
+    useScannerStore.getState().setInFlight(providerUniverseKey, undefined);
   });
 
-  setInFlight(provider, pending);
+  setInFlight(providerUniverseKey, pending);
   return pending;
 };
 
 export const useTickers = (
   provider = 'bybit',
+  universeOrOptions: MarketUniverse | { enabled?: boolean } = 'crypto',
   options: { enabled?: boolean } = {},
 ) => {
-  const { enabled = true } = options;
+  const universe =
+    typeof universeOrOptions === 'string' ? universeOrOptions : 'crypto';
+  const { enabled = true } =
+    typeof universeOrOptions === 'string' ? options : universeOrOptions;
   const favorites = useFavoriteTickersStore((s) => s.favorites);
   const tickers = useScannerStore(
-    (s) => s.tickersByProvider[provider] ?? EMPTY_ITEMS,
+    (s) =>
+      s.tickersByProvider[getProviderUniverseKey(provider, universe)] ??
+      EMPTY_ITEMS,
   );
   const toggleFavorite = useFavoriteTickersStore((s) => s.toggleFavorite);
   const checkIsFavorite = useCallback(
@@ -144,8 +157,8 @@ export const useTickers = (
     [favorites],
   );
   const ensureLoaded = useCallback(
-    () => loadTickersForProvider(provider),
-    [provider],
+    () => loadTickersForProvider(provider, universe),
+    [provider, universe],
   );
 
   useEffect(() => {

@@ -366,6 +366,11 @@ export const createPortfolioReplayConnector = (
   return {
     __tradejsReplayConnector: true,
     __tradejsTestConnector: true,
+    capabilities: connector.capabilities,
+    universe: connector.universe,
+    accountId: connector.accountId,
+    deploymentId: connector.deploymentId,
+    listInstruments: (query) => connector.listInstruments(query),
 
     getState: async () => state,
     setState: async (newState: object) => {

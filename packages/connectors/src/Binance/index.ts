@@ -7,6 +7,7 @@ import {
   KlineChartData,
   KlineRequest,
   Ticker,
+  resolveConnectorUniverse,
 } from '@tradejs/types';
 import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
 
@@ -57,8 +58,14 @@ const intervalToMinutes = (interval: Interval): number | null => {
   return intervalMs ? Math.floor(intervalMs / 60_000) : null;
 };
 
-export const BinanceConnectorCreator: ConnectorCreator = async () => {
+const capabilities = {
+  supportedUniverses: ['crypto'],
+  defaultUniverse: 'crypto',
+} as const;
+
+export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
+  const universe = resolveConnectorUniverse(capabilities, config.universe);
 
   const requestKline = async ({
     symbol,
@@ -133,7 +140,71 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
     return rows;
   };
 
+  const loadTickers = async () => {
+    const baseUrl =
+      process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+    const response = await fetchWithRetry(`${baseUrl}/api/v3/ticker/24hr`, {
+      headers: { 'User-Agent': 'tradejs/binance-connector' },
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as Array<Record<string, unknown>>;
+    if (!Array.isArray(payload)) return [];
+
+    return payload.map((row) => {
+      const symbol = String(row.symbol ?? '');
+      return {
+        symbol,
+        lastPrice: toNum(row.lastPrice),
+        indexPrice: toNum(row.lastPrice),
+        markPrice: toNum(row.lastPrice),
+        prevPrice24h: toNum(row.openPrice),
+        price24hPcnt: toNum(row.priceChangePercent) / 100,
+        highPrice24h: toNum(row.highPrice),
+        lowPrice24h: toNum(row.lowPrice),
+        prevPrice1h: 0,
+        openInterest: 0,
+        openInterestValue: 0,
+        turnover24h: toNum(row.quoteVolume),
+        volume24h: toNum(row.volume),
+        fundingRate: 0,
+        nextFundingTime: 0,
+        predictedDeliveryPrice: '',
+        basisRate: '',
+        deliveryFeeRate: '',
+        deliveryTime: 0,
+        ask1Size: toNum(row.askQty),
+        bid1Price: toNum(row.bidPrice),
+        ask1Price: toNum(row.askPrice),
+        bid1Size: toNum(row.bidQty),
+        basis: '',
+        preOpenPrice: '',
+        preQty: '',
+      } as Ticker;
+    });
+  };
+
   return {
+    capabilities,
+    universe,
+    accountId: config.accountId,
+    deploymentId: config.deploymentId,
+    listInstruments: async (query) => {
+      resolveConnectorUniverse(capabilities, query?.universe ?? universe);
+      const symbols = query?.symbols?.length
+        ? new Set(query.symbols.map((symbol) => symbol.trim().toUpperCase()))
+        : null;
+      const tickers = await loadTickers();
+      return tickers
+        .filter((ticker) => !symbols || symbols.has(ticker.symbol))
+        .map((ticker) => ({
+          provider: 'binance',
+          symbol: ticker.symbol,
+          kind: 'spot' as const,
+          assetClass: 'crypto' as const,
+          universe: 'crypto' as const,
+          status: 'trading' as const,
+        }));
+    },
     getState: async () => state,
     setState: async (newState) => {
       state = { ...state, ...newState };
@@ -153,47 +224,9 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
     setStopLoss: async () => false,
     closePosition: async () => false,
 
-    getTickers: async () => {
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
-      const response = await fetchWithRetry(`${baseUrl}/api/v3/ticker/24hr`, {
-        headers: { 'User-Agent': 'tradejs/binance-connector' },
-      });
-      if (!response.ok) return [];
-      const payload = (await response.json()) as Array<Record<string, unknown>>;
-      if (!Array.isArray(payload)) return [];
-
-      return payload.map((row) => {
-        const symbol = String(row.symbol ?? '');
-        return {
-          symbol,
-          lastPrice: toNum(row.lastPrice),
-          indexPrice: toNum(row.lastPrice),
-          markPrice: toNum(row.lastPrice),
-          prevPrice24h: toNum(row.openPrice),
-          price24hPcnt: toNum(row.priceChangePercent) / 100,
-          highPrice24h: toNum(row.highPrice),
-          lowPrice24h: toNum(row.lowPrice),
-          prevPrice1h: 0,
-          openInterest: 0,
-          openInterestValue: 0,
-          turnover24h: toNum(row.quoteVolume),
-          volume24h: toNum(row.volume),
-          fundingRate: 0,
-          nextFundingTime: 0,
-          predictedDeliveryPrice: '',
-          basisRate: '',
-          deliveryFeeRate: '',
-          deliveryTime: 0,
-          ask1Size: toNum(row.askQty),
-          bid1Price: toNum(row.bidPrice),
-          ask1Price: toNum(row.askPrice),
-          bid1Size: toNum(row.bidQty),
-          basis: '',
-          preOpenPrice: '',
-          preQty: '',
-        } as Ticker;
-      });
+    getTickers: async (query) => {
+      resolveConnectorUniverse(capabilities, query?.universe ?? universe);
+      return loadTickers();
     },
 
     getTopOfBookTicker: async (symbol) => {

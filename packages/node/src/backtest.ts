@@ -7,3 +7,4 @@ export {
   testingGroupInSharedCandleLoop,
 } from './testing';
 export { createTestConnector } from './testConnector';
+export { resolveExecutionCosts } from './executionCosts';

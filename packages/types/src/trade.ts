@@ -1,4 +1,14 @@
 import { KlineIntervalV3 } from 'bybit-api';
+import type {
+  ConnectorCapabilities,
+  FundingRateHistoryRequest,
+  FundingRatePoint,
+  InstrumentDescriptor,
+  InstrumentQuery,
+  MarketUniverse,
+  TickerQuery,
+  TradingFeeRate,
+} from './market';
 
 export type Interval = KlineIntervalV3;
 export type Provider = 'bybit' | 'binance' | 'coinbase';
@@ -331,6 +341,7 @@ export type Order = {
   price: number;
   timestamp: number;
   direction: Direction;
+  leverage?: number;
   orderId?: string;
   signal?: Signal;
 };
@@ -364,6 +375,9 @@ export type ConnectorCreator = (config: ConnectorConfig) => Promise<Connector>;
 
 export interface ConnectorConfig {
   userName: string;
+  accountId?: string;
+  deploymentId?: string;
+  universe?: MarketUniverse;
 }
 
 export interface ConnectorRegistryEntry {
@@ -440,7 +454,16 @@ type SetStopLoss = (params: {
   stopLossPrice: Sl;
 }) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
-export type GetTickers = () => Promise<Ticker[]>;
+export type GetTickers = (query?: TickerQuery) => Promise<Ticker[]>;
+export type ListInstruments = (
+  query?: InstrumentQuery,
+) => Promise<InstrumentDescriptor[]>;
+export type GetFundingRateHistory = (
+  request: FundingRateHistoryRequest,
+) => Promise<FundingRatePoint[]>;
+export type GetTradingFeeRate = (
+  symbol: string,
+) => Promise<TradingFeeRate | null>;
 export type GetTopOfBookTicker = (
   symbol: string,
 ) => Promise<TopOfBookTicker | null>;
@@ -450,6 +473,11 @@ export type GetOrderBookDepth = (
 ) => Promise<OrderBookDepth | null>;
 
 export interface Connector {
+  capabilities: ConnectorCapabilities;
+  universe: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  listInstruments: ListInstruments;
   kline: Kline;
   getState: () => Promise<object>;
   setState: (state: object) => Promise<void>;
@@ -463,6 +491,8 @@ export interface Connector {
   setStopLoss: SetStopLoss;
   closePosition: ClosePosition;
   getTickers: GetTickers;
+  getFundingRateHistory?: GetFundingRateHistory;
+  getTradingFeeRate?: GetTradingFeeRate;
   getTopOfBookTicker?: GetTopOfBookTicker;
   getAggTrades?: GetAggTrades;
   getOrderBookDepth?: GetOrderBookDepth;
@@ -479,6 +509,7 @@ export type Indicators = Indicator[];
 
 export interface Filters {
   provider?: Provider;
+  universe?: MarketUniverse;
   symbol: string;
   interval: Interval;
   start: number;
@@ -632,6 +663,11 @@ export interface Signal {
   symbol: string;
   interval: Interval;
   strategy: string;
+  universe?: MarketUniverse;
+  assetClass?: import('./market').AssetClass;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   direction: Direction;
   timestamp: number;
   orderStatus?: SignalOrderStatus;
@@ -669,6 +705,11 @@ export interface RuntimeSignalEvaluationRecord {
   evaluationId: string;
   userName: string;
   strategy: string;
+  universe?: MarketUniverse;
+  assetClass?: import('./market').AssetClass;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   symbol: string;
   interval: Interval;
   timestamp: number;
@@ -731,6 +772,11 @@ export interface RuntimeTradeRecord {
   orderId: string;
   signalId?: string;
   strategy: string;
+  universe?: MarketUniverse;
+  assetClass?: import('./market').AssetClass;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   symbol: string;
   interval?: Interval;
   direction: Direction;

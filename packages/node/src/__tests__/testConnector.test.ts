@@ -919,4 +919,62 @@ describe('testConnector', () => {
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
   });
+
+  it('applies historical funding to long positions', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      aiEnabled: true,
+      executionCostModel: {
+        fees: { makerRate: 0, takerRate: 0, source: 'config' },
+        funding: { enabled: true, source: 'historical', points: 1 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+      fundingRates: [{ symbol: 'AAPLUSDT', timestamp: 5, rate: 0.01 }],
+    });
+
+    await connector.placeOrder({
+      symbol: 'AAPLUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: { signalId: 'funded-long' } as any,
+    });
+    await connector.checkExits({
+      open: 100,
+      high: 100,
+      low: 100,
+      close: 100,
+      volume: 1,
+      turnover: 100,
+      timestamp: 10,
+    });
+    await connector.closePosition({
+      symbol: 'AAPLUSDT',
+      price: 100,
+      isLimit: false,
+      timestamp: 11,
+      direction: 'LONG',
+    });
+
+    expect(await connector.drainMlResultsBatch()).toEqual([
+      expect.objectContaining({
+        signalId: 'funded-long',
+        profit: -1,
+        tradeResult: expect.objectContaining({
+          fundingFee: 1,
+          netProfit: -1,
+        }),
+      }),
+    ]);
+  });
 });

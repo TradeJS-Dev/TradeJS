@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
-import { KlineChartData, Interval, Filters, Provider } from '@tradejs/types';
+import {
+  KlineChartData,
+  Interval,
+  Filters,
+  MarketUniverse,
+  Provider,
+} from '@tradejs/types';
 import { kline } from '#actions/kline';
 import { isWrongData, mergeData } from '@tradejs/core/data';
 import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
@@ -14,6 +20,7 @@ interface DataState {
     symbol: string,
     interval: Interval,
     data: KlineChartData,
+    universe?: MarketUniverse,
   ) => void;
 }
 
@@ -22,6 +29,7 @@ interface DataRequest {
   provider: Provider;
   symbol: string;
   interval: Interval;
+  universe: MarketUniverse;
   start: number;
   end: number;
   cacheBucketEnd: number;
@@ -30,17 +38,23 @@ interface DataRequest {
 
 const MIN_CACHED_CANDLES = 2;
 
-const getKey = (provider: Provider, symbol: string, interval: Interval) =>
-  `${provider}_${symbol}_${interval}`;
+const getKey = (
+  provider: Provider,
+  universe: MarketUniverse,
+  symbol: string,
+  interval: Interval,
+) => `${provider}_${universe}_${symbol}_${interval}`;
 
 const getProvider = (provider?: Provider): Provider => provider || 'bybit';
 
 const toRequest = (filters: Filters, cacheOnly: boolean): DataRequest => {
   const provider = getProvider(filters.provider);
+  const universe = filters.universe ?? 'crypto';
 
   return {
-    key: getKey(provider, filters.symbol, filters.interval),
+    key: getKey(provider, universe, filters.symbol, filters.interval),
     provider,
+    universe,
     symbol: filters.symbol,
     interval: filters.interval,
     start: filters.start,
@@ -75,11 +89,11 @@ const inFlightRequests = new Map<string, Promise<KlineChartData>>();
 
 const useDataStore = create<DataState>((set) => ({
   data: new Map<string, KlineChartData | null>(),
-  setData: (provider, symbol, interval, newData) =>
+  setData: (provider, symbol, interval, newData, universe = 'crypto') =>
     set(({ data }) => {
       const next = new Map(data);
 
-      next.set(getKey(provider, symbol, interval), newData);
+      next.set(getKey(provider, universe, symbol, interval), newData);
 
       return {
         data: next,
@@ -103,11 +117,12 @@ const getFetchStart = (start: number, data: KlineChartData) =>
 const requestKline = async (
   request: Pick<
     DataRequest,
-    'provider' | 'symbol' | 'interval' | 'end' | 'cacheOnly'
+    'provider' | 'universe' | 'symbol' | 'interval' | 'end' | 'cacheOnly'
   > & { start: number },
 ) =>
   kline({
     provider: request.provider,
+    universe: request.universe,
     symbol: request.symbol,
     interval: request.interval,
     start: request.start,
@@ -178,13 +193,14 @@ const mergeFreshData = async (
 const persistData = async (
   {
     provider,
+    universe,
     symbol,
     interval,
     key,
-  }: Pick<DataRequest, 'provider' | 'symbol' | 'interval' | 'key'>,
+  }: Pick<DataRequest, 'provider' | 'universe' | 'symbol' | 'interval' | 'key'>,
   data: KlineChartData,
 ) => {
-  useDataStore.getState().setData(provider, symbol, interval, data);
+  useDataStore.getState().setData(provider, symbol, interval, data, universe);
   await set(key, data);
 };
 
@@ -214,7 +230,7 @@ const fetchAndStoreData = async (dataRequest: DataRequest) => {
 export const useData = (filters: Filters) => {
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
-  const { end, interval, provider, start, symbol } = filters;
+  const { end, interval, provider, start, symbol, universe } = filters;
   const dataRequest = useMemo(
     () =>
       toRequest(
@@ -222,12 +238,13 @@ export const useData = (filters: Filters) => {
           end,
           interval,
           provider,
+          universe,
           start,
           symbol,
         } as Filters,
         cacheOnly,
       ),
-    [cacheOnly, end, interval, provider, start, symbol],
+    [cacheOnly, end, interval, provider, start, symbol, universe],
   );
   const requestKey = useMemo(() => getRequestKey(dataRequest), [dataRequest]);
   const [fulfilledRequestKey, setFulfilledRequestKey] = useState<string | null>(

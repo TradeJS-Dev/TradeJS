@@ -13,6 +13,53 @@ import {
   RuntimeSignalEvaluationRecord,
   Signal,
 } from './trade';
+import type {
+  AssetClass,
+  FundingRatePoint,
+  InstrumentDescriptor,
+  MarketUniverse,
+} from './market';
+
+export type ExecutionCostSource =
+  | 'exchange-account'
+  | 'connector-default'
+  | 'config'
+  | 'historical'
+  | 'calibrated'
+  | 'fallback'
+  | 'disabled'
+  | 'unavailable';
+
+export type ExecutionCostQuality = 'full' | 'partial' | 'fallback';
+
+export interface ExecutionCostModel {
+  fees: {
+    makerRate: number;
+    takerRate: number;
+    source: ExecutionCostSource;
+  };
+  funding: {
+    enabled: boolean;
+    source: ExecutionCostSource;
+    points?: number;
+    fromTimestamp?: number | null;
+    toTimestamp?: number | null;
+  };
+  slippage: {
+    baseBps: number;
+    spreadMultiplier: number;
+    marketImpactBps: number;
+    delayRiskMultiplier: number;
+    source: ExecutionCostSource;
+  };
+  leverage: {
+    requested: number;
+    effective: number;
+    maxAllowed: number | null;
+  };
+  quality: ExecutionCostQuality;
+  capturedAt: number;
+}
 
 export type Strategy = (
   candle: KlineChartItem,
@@ -44,6 +91,16 @@ export interface StrategyConfig {
   BACKTEST_EXECUTION_INTERVAL?: Interval;
   BACKTEST_EXECUTION_DELAY_MS?: number;
   ML_ENABLED?: boolean;
+  POLICY_PROFILE_ID?: string;
+  MAKER_FEE_RATE?: number;
+  TAKER_FEE_RATE?: number;
+  FUNDING_ENABLED?: boolean;
+  LEVERAGE?: number;
+  SLIPPAGE_BASE_BPS?: number;
+  SLIPPAGE_SPREAD_MULTIPLIER?: number;
+  SLIPPAGE_MARKET_IMPACT_BPS?: number;
+  SLIPPAGE_DELAY_RISK_MULTIPLIER?: number;
+  EXECUTION_COSTS_CACHE_ONLY?: boolean;
   [key: string]: any;
 }
 export type StrategyResultConfig = StrategyConfig;
@@ -53,6 +110,12 @@ export interface StrategyCreatorParams {
   userName: string;
   connectorName: string;
   symbol: string;
+  universe?: MarketUniverse;
+  assetClass?: AssetClass;
+  instrument?: InstrumentDescriptor;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
   config: StrategyConfig;
   connector: Connector;
   data: KlineChartData;
@@ -93,6 +156,13 @@ export interface Test extends BacktestRunConfig {
   testSuiteId: string;
   configId?: string;
   symbol: string;
+  universe?: MarketUniverse;
+  assetClass?: AssetClass;
+  instrument?: InstrumentDescriptor;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
+  executionCostModel?: ExecutionCostModel;
   interval?: Interval;
   options: TestingOptions;
   ml?: boolean;
@@ -130,6 +200,7 @@ export interface TestingBoxResult {
   inlineOrderLog?: OrderLogData;
   inlinePositionLog?: PositionLogData;
   inlineReplaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  executionCostModel?: ExecutionCostModel;
 }
 
 export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;
@@ -235,6 +306,8 @@ export interface TestConnectorContext {
   mlEnabled?: boolean;
   aiEnabled?: boolean;
   fastMode?: boolean;
+  executionCostModel?: ExecutionCostModel;
+  fundingRates?: FundingRatePoint[];
 }
 
 export type TestConnectorCreator = (

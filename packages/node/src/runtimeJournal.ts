@@ -17,6 +17,8 @@ import {
   RuntimeTradeFillSource,
   RuntimeTradeTelemetryQuality,
   SignalAnalysis,
+  MarketUniverse,
+  AssetClass,
 } from '@tradejs/types';
 
 const now = () => Date.now();
@@ -79,6 +81,11 @@ export const recordRuntimeTradeOpen = async (params: {
   openFee?: number | null;
   totalFee?: number | null;
   aiAnalysis?: Partial<SignalAnalysis> | null;
+  universe?: MarketUniverse;
+  assetClass?: AssetClass;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
 }) => {
   const { userName } = params;
   if (!userName) {
@@ -96,6 +103,7 @@ export const recordRuntimeTradeOpen = async (params: {
     lastSyncedAt: now(),
   };
   const dayKey = getRuntimeStorageDayKey(record.entryTimestamp);
+  const runtimeScopeId = record.deploymentId ?? record.accountId;
 
   try {
     await Promise.all([
@@ -109,7 +117,7 @@ export const recordRuntimeTradeOpen = async (params: {
         { expire: 0 },
       ),
       setData(
-        redisKeys.runtimeActiveTrade(userName, record.symbol),
+        redisKeys.runtimeActiveTrade(userName, record.symbol, runtimeScopeId),
         { orderId: record.orderId },
         { expire: 0 },
       ),
@@ -128,14 +136,16 @@ export const recordRuntimeTradeOpen = async (params: {
 export const getActiveRuntimeTrade = async (params: {
   userName?: string;
   symbol: string;
+  accountId?: string;
+  deploymentId?: string;
 }): Promise<RuntimeTradeRecord | null> => {
-  const { userName, symbol } = params;
+  const { userName, symbol, accountId, deploymentId } = params;
   if (!userName) {
     return null;
   }
 
   const activeRef = (await getData(
-    redisKeys.runtimeActiveTrade(userName, symbol),
+    redisKeys.runtimeActiveTrade(userName, symbol, deploymentId ?? accountId),
     null,
   )) as { orderId?: string } | null;
   const orderId = String(activeRef?.orderId || '').trim();
@@ -148,7 +158,9 @@ export const getActiveRuntimeTrade = async (params: {
     null,
   )) as RuntimeTradeRecord | null;
   if (!existing) {
-    await delKey(redisKeys.runtimeActiveTrade(userName, symbol));
+    await delKey(
+      redisKeys.runtimeActiveTrade(userName, symbol, deploymentId ?? accountId),
+    );
     return null;
   }
 
@@ -163,6 +175,8 @@ export const markRuntimeTradeClosed = async (params: {
   exitTimestamp?: number | null;
   closedPnl?: number | null;
   exitType?: RuntimeTradeRecord['exitType'];
+  accountId?: string;
+  deploymentId?: string;
 }) => {
   const {
     userName,
@@ -172,12 +186,19 @@ export const markRuntimeTradeClosed = async (params: {
     exitTimestamp,
     closedPnl,
     exitType,
+    accountId,
+    deploymentId,
   } = params;
   if (!userName) {
     return null;
   }
 
-  const existing = await getActiveRuntimeTrade({ userName, symbol });
+  const existing = await getActiveRuntimeTrade({
+    userName,
+    symbol,
+    accountId,
+    deploymentId,
+  });
   if (!existing) {
     return null;
   }
@@ -231,7 +252,13 @@ export const markRuntimeTradeClosed = async (params: {
         next,
         { expire: TTL_1M },
       ),
-      delKey(redisKeys.runtimeActiveTrade(userName, symbol)),
+      delKey(
+        redisKeys.runtimeActiveTrade(
+          userName,
+          symbol,
+          deploymentId ?? accountId,
+        ),
+      ),
     ]);
   } catch (error) {
     logger.error(

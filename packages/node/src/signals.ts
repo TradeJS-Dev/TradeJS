@@ -573,7 +573,7 @@ export const sendSignal = async (
 
   const publicAppUrl = APP_URL?.startsWith('https') ? APP_URL : null;
   const dashboardUrl = publicAppUrl
-    ? `${APP_URL}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}`
+    ? `${APP_URL}/routes/dashboard/bybit/${signal.universe ?? 'crypto'}/${symbol}/${interval}/?signalId=${signalId}`
     : null;
   const actionButtons = [
     dashboardUrl ? { text: 'Dashboard', url: dashboardUrl } : null,

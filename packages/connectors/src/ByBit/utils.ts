@@ -1,8 +1,9 @@
 import { OHLCVKlineV5, RestClientV5, PositionV5 } from 'bybit-api';
-import { MARKET_CATEGORY } from '@tradejs/core/constants';
 import { formatUnix } from '@tradejs/core/time';
 
 import { KlineChartItem, Position, Direction } from '@tradejs/types';
+
+const BYBIT_CATEGORY = 'linear' as const;
 
 const parseKlineItem = (item: OHLCVKlineV5): KlineChartItem => ({
   dt: formatUnix(parseInt(item[0])),
@@ -24,6 +25,7 @@ type SymbolMeta = {
   minOrderQty: number;
   pricePrecision: number;
   qtyPrecision: number;
+  maxLeverage?: number | null;
 };
 
 const symbolMetaCache = new Map<string, SymbolMeta>();
@@ -58,7 +60,7 @@ export const getSymbolMeta = async (
   if (cached) return cached;
 
   const res = await client.getInstrumentsInfo({
-    category: MARKET_CATEGORY,
+    category: BYBIT_CATEGORY,
     symbol,
   });
 
@@ -77,6 +79,11 @@ export const getSymbolMeta = async (
     minOrderQty: Number(minOrderQtyStr),
     pricePrecision: stepToPrecision(tickSizeStr),
     qtyPrecision: stepToPrecision(qtyStepStr),
+    maxLeverage: Number.isFinite(
+      Number((item as any).leverageFilter?.maxLeverage),
+    )
+      ? Number((item as any).leverageFilter.maxLeverage)
+      : null,
   };
 
   symbolMetaCache.set(symbol, meta);

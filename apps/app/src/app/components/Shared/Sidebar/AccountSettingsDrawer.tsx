@@ -33,6 +33,7 @@ import {
   normalizeAiModel,
 } from '@tradejs/infra/aiModels';
 import { toaster } from '#ui';
+import { TradingAccountsPanel } from './TradingAccountsPanel';
 
 type SettingsResponse = {
   userName: string;
@@ -663,6 +664,8 @@ export const AccountSettingsDrawer = () => {
                       {settings.userName || 'Unknown user'}
                     </Text>
                   </Text>
+
+                  <TradingAccountsPanel />
 
                   <Box
                     borderWidth="1px"
