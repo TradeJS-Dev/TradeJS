@@ -594,8 +594,8 @@ export const createIndicators = (
     );
     return ethCandlesByTimestamp.get(candle.timestamp);
   };
-  const btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
-  const btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
+  let btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
+  let btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
   const restoredState = options.initialRuntimeState;
   const spreadSmoother = createSerializableSpreadSmoother(
     undefined,
@@ -603,6 +603,43 @@ export const createIndicators = (
   );
   let btcBinanceCursor = restoredState?.btcBinanceCursor ?? 0;
   let btcCoinbaseCursor = restoredState?.btcCoinbaseCursor ?? 0;
+  const replaceReferenceData = ({
+    btcBinanceData,
+    btcCoinbaseData,
+  }: {
+    btcBinanceData?: Candle[];
+    btcCoinbaseData?: Candle[];
+  }) => {
+    const binanceCursorTimestamp =
+      btcBinanceCandles[btcBinanceCursor]?.timestamp ?? null;
+    const coinbaseCursorTimestamp =
+      btcCoinbaseCandles[btcCoinbaseCursor]?.timestamp ?? null;
+    btcBinanceCandles = (btcBinanceData ?? []).map(toMlCandle);
+    btcCoinbaseCandles = (btcCoinbaseData ?? []).map(toMlCandle);
+    const resolveCursor = (candles: Candle[], timestamp: number | null) => {
+      if (candles.length === 0 || timestamp == null) {
+        return 0;
+      }
+      let low = 0;
+      let high = candles.length - 1;
+      let result = 0;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (candles[middle].timestamp <= timestamp) {
+          result = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      return result;
+    };
+    btcBinanceCursor = resolveCursor(btcBinanceCandles, binanceCursorTimestamp);
+    btcCoinbaseCursor = resolveCursor(
+      btcCoinbaseCandles,
+      coinbaseCursorTimestamp,
+    );
+  };
   const createRollingCandleWindow = (windowSize: number) => {
     const buffer = new Array<Candle | undefined>(Math.max(0, windowSize));
     const snapshot: Candle[] = [];
@@ -2125,6 +2162,7 @@ export const createIndicators = (
 
   return {
     next,
+    updateReferenceData: replaceReferenceData,
     snapshot: (options?: {
       compact?: boolean;
       limit?: number;

@@ -44,6 +44,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'server-health': () => import('./scripts/serverHealth'),
   'runtime-parity': () => import('./scripts/runtimeParity'),
   signals: () => import('./scripts/signals'),
+  'signals-daemon': () => import('./scripts/signalsDaemon'),
   replay: () => import('./scripts/replay'),
   'signals-summary': () => import('./scripts/signalsSummary'),
   'spread:ingest': () => import('./scripts/derivativesIngest'),

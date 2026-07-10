@@ -1,5 +1,10 @@
 import { logger } from '@tradejs/infra/logger';
-import type { StrategyConfig, StrategyCreator } from '@tradejs/types';
+import { getData, redisKeys } from '@tradejs/infra/redis';
+import type {
+  StrategyConfig,
+  StrategyCreator,
+  StrategyResults,
+} from '@tradejs/types';
 import { getStrategyCreator } from '@tradejs/node/strategies';
 import {
   isRuntimeStrategyEnabled,
@@ -10,6 +15,7 @@ export interface StrategyRuntimeConfig {
   strategyName: string;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
+  strategyResults: StrategyResults;
 }
 
 export const loadRuntimeStrategies = async ({
@@ -33,10 +39,10 @@ export const loadRuntimeStrategies = async ({
           );
           return null;
         }
-        const strategyCreator = await getStrategyCreator(
-          strategyName,
-          projectRoot,
-        );
+        const [strategyCreator, strategyResults] = await Promise.all([
+          getStrategyCreator(strategyName, projectRoot),
+          getData(redisKeys.strategyResults(userName, strategyName), {}),
+        ]);
         if (!strategyCreator) {
           logger.warn('Skip unknown strategy config key: %s', key);
           return null;
@@ -45,6 +51,7 @@ export const loadRuntimeStrategies = async ({
           strategyName,
           strategyCreator,
           strategyConfig,
+          strategyResults: (strategyResults ?? {}) as StrategyResults,
         };
       },
     ),

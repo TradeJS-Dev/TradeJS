@@ -219,6 +219,10 @@ Runtime AI config conventions:
 ### Signals / Backtest Parity Rules
 
 - `yarn signals` evaluates only the last closed candle; do not include the still-forming newest candle in strategy decisions.
+- `yarn signals` is the one-shot/manual runtime path. `yarn signals:daemon` is the long-running production path and must reuse each strategy instance only for the next sequential closed candle.
+- The signals daemon must rebuild a strategy from the rolling warmup history after restart, a candle gap, an effective config change, or its bounded live-bar limit. Catch-up recovery must not place historical orders or send historical notifications.
+- Runtime lifecycle identity includes connector, symbol, interval, strategy, and the effective per-symbol config (`user strategy config` plus results config). Removed tickers or strategies must be evicted from the in-memory lifecycle.
+- Do not add Redis strategy-state persistence unless every participating engine exposes a complete versioned transition checkpoint and restore path. Diagnostic `getState()` snapshots are not sufficient checkpoints.
 - AI/ML/gate approval decisions must be strictly signal-time causal. `yarn signals`, `yarn backtest`, `yarn replay`, and `ai-train --localOnly` must decide from data available at the signal candle decision time, not from later execution or outcome fields.
 - Delayed-entry execution telemetry such as `backtestExecution.executionPrice`, `entryDelayMoveBps`, delayed entry timestamps, realized exit reason, or final trade result may be exported and analyzed after the fact, but must not be used as inputs to AI-gate approval, deterministic quality, or prompt-time decision context for the same signal.
 - `BACKTEST_ENTRY_DELAY_BARS` may change fill timing, execution price, and PnL. It must not change the signal-time gate decision unless an equivalent live/runtime pre-entry re-evaluation path exists and is used by both `yarn signals` and `yarn backtest`.
@@ -291,6 +295,7 @@ Common internal commands:
 - `yarn backtest`
 - `yarn results`
 - `yarn signals`
+- `yarn signals:daemon`
 - `yarn bot`
 - `yarn build`
 - `yarn lint`

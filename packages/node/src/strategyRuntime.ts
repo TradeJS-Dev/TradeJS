@@ -2148,6 +2148,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCandle: KlineChartItem,
       ethCandle?: KlineChartItem,
     ) => runWithDecisionOverride(candle, btcCandle, { ethCandle })) as any;
+    strategy.__tradejsUpdateReferenceData = (params: {
+      btcBinanceData?: KlineChartData;
+      btcCoinbaseData?: KlineChartData;
+    }) => indicatorsState.updateReferenceData?.(params);
     strategy.__tradejsFlushBacktestDelayedEntry = flushPendingBacktestEntry;
 
     const resolvedDetectorKey = detectorKey?.(config);

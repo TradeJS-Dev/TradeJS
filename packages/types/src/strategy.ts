@@ -1203,6 +1203,10 @@ export interface StrategyIndicatorsState<
     btcCandle: KlineChartData[number],
     ethCandle?: KlineChartData[number],
   ) => void;
+  updateReferenceData?: (params: {
+    btcBinanceData?: KlineChartData;
+    btcCoinbaseData?: KlineChartData;
+  }) => void;
   onBar: (
     candle?: KlineChartData[number],
     btcCandle?: KlineChartData[number],

@@ -1557,6 +1557,49 @@ describe('utils indicators', () => {
     );
   });
 
+  it('updates venue reference candles without rebuilding indicator state', () => {
+    const coinData = Array.from({ length: 60 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 10 + index),
+    );
+    const btcData = Array.from({ length: 60 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+    const btcBinanceData = btcData.map((candle) => ({
+      ...candle,
+      close: 100,
+    }));
+    const btcCoinbaseData = btcData.map((candle) => ({
+      ...candle,
+      close: 101,
+    }));
+    const indicators = createIndicators(coinData, btcData, {
+      btcBinanceData,
+      btcCoinbaseData,
+      includeMlPayload: false,
+      runtimeOnly: true,
+    });
+    const first = indicators.latestSnapshot();
+    const secondTimestamp = 60 * INTERVAL_15M_MS;
+
+    indicators.updateReferenceData({
+      btcBinanceData: [...btcBinanceData, makeCandle(secondTimestamp, 100)],
+      btcCoinbaseData: [...btcCoinbaseData, makeCandle(secondTimestamp, 110)],
+    });
+    const second = indicators.next(
+      makeCandle(secondTimestamp, 11),
+      makeCandle(secondTimestamp, 101),
+    );
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    if (!first || !second) {
+      throw new Error('Expected indicator snapshots');
+    }
+    expect(first.spread).not.toBeNull();
+    expect(second.spread).not.toBeNull();
+    expect(second.spread!).toBeGreaterThan(first.spread!);
+  });
+
   it('keeps the last base indicator values in order after history window overflow', () => {
     const indicators = createIndicators([], [], {
       periods: {

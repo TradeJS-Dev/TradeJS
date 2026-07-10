@@ -22,6 +22,8 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tsconfig.base.json tsconfig.packages.json tradejs.config.ts ./
 COPY .yarn ./.yarn
 COPY apps/app/package.json ./apps/app/package.json
@@ -45,4 +47,5 @@ RUN chmod +x ./entrypoint.sh ./bin/*.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["./entrypoint.sh"]

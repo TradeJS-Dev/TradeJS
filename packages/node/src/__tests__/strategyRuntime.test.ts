@@ -63,6 +63,7 @@ jest.mock('@tradejs/core/strategies', () => ({
   createStrategyIndicatorsState: jest.fn(() => ({
     isInitialized: jest.fn(() => true),
     setCurrentBar: jest.fn(),
+    updateReferenceData: jest.fn(),
     onBar: jest.fn(),
     next: jest.fn(),
     ensureInitializedWithCurrentBar: jest.fn(() => ({
@@ -361,7 +362,7 @@ describe('strategyRuntime', () => {
       { timestamp: 4, close: 204 },
     ] as any;
 
-    await strategyCreator({
+    const strategy = await strategyCreator({
       userName: 'root',
       connectorName: 'ByBit',
       symbol: 'ETHUSDT',
@@ -388,6 +389,16 @@ describe('strategyRuntime', () => {
       ]?.[0];
     expect(lastCall).not.toHaveProperty('initialRuntimeState');
     expect(lastCall).not.toHaveProperty('replayStartIndex');
+    const indicatorsState =
+      createStrategyIndicatorsStateMock.mock.results.at(-1)?.value;
+    const referenceData = {
+      btcBinanceData: [{ timestamp: 5, close: 205 }],
+      btcCoinbaseData: [{ timestamp: 5, close: 206 }],
+    } as any;
+    (strategy as any).__tradejsUpdateReferenceData(referenceData);
+    expect(indicatorsState.updateReferenceData).toHaveBeenCalledWith(
+      referenceData,
+    );
   });
 
   it('does not append a duplicate candle when shared replay data already advanced', async () => {

@@ -68,6 +68,12 @@ import {
 } from '../lib/signals/evaluations';
 import { getTelegramDeliverableSignals } from '../lib/signals/telegram';
 import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
+import {
+  buildSignalsStrategyLifecycleKey,
+  createSignalsStrategyLifecycle,
+  type SignalsStrategyLifecycle,
+} from '../lib/signals/runtimeLifecycle';
+import { runSignalsDaemon } from '../lib/signals/daemon';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -91,13 +97,18 @@ args.option(
 );
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(['w', 'watch'], 'Keep signals running on candle boundaries', false);
+args.option(
+  ['d', 'settleDelayMs'],
+  'Delay after candle close before a daemon cycle',
+  Number(process.env.SIGNALS_DAEMON_SETTLE_DELAY_MS || 5_000),
+);
 args.option(
   ['o', 'connector'],
   'Connector provider or name for signals (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
 
-const PRELOAD_START = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
 const SLOW_SIGNALS_WARNING_MS = 10 * 60_000;
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -105,6 +116,13 @@ const projectRoot =
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const intervalMs = Number(interval) * 60_000;
+
+export interface SignalsSession {
+  connectorName: string;
+  marketConnector: Connector;
+  btcReferences: Awaited<ReturnType<typeof loadBtcReferenceConnectors>>;
+  lifecycle: SignalsStrategyLifecycle;
+}
 
 const formatDuration = (durationMs: number) =>
   `${(durationMs / 1000).toFixed(1)}s`;
@@ -117,6 +135,31 @@ const resolvePositiveInteger = (value: unknown, fallback: number) => {
   const normalized = Math.floor(parsed);
   return normalized > 0 ? normalized : fallback;
 };
+
+const resolveNonNegativeInteger = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(parsed));
+};
+
+const resolveSignalsDaemonMaxLiveBars = () => {
+  const intervalMinutes = Number(interval);
+  const preloadBars = Math.ceil(
+    (SIGNALS_CLI_PRELOAD_DAYS * 24 * 60) / intervalMinutes,
+  );
+  return resolvePositiveInteger(
+    process.env.SIGNALS_DAEMON_MAX_LIVE_BARS,
+    preloadBars,
+  );
+};
+
+const createDefaultSignalsLifecycle = () =>
+  createSignalsStrategyLifecycle({
+    intervalMs,
+    maxLiveBars: resolveSignalsDaemonMaxLiveBars(),
+  });
 
 const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
   runTimedOperation(label, operation, (message) =>
@@ -150,6 +193,38 @@ const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
   return DEFAULT_CONNECTOR_NAME;
 };
 
+export const createSignalsSession = async (
+  lifecycle: SignalsStrategyLifecycle,
+): Promise<SignalsSession> => {
+  const connectorName = await resolveSignalsConnectorName(flags.connector);
+  const connectorFactory = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
+  if (!connectorFactory) {
+    throw new Error(`Connector "${connectorName}" is not registered`);
+  }
+  const marketConnector = await (connectorFactory as ConnectorCreator)({
+    userName: flags.user,
+  });
+  const btcReferences = await loadBtcReferenceConnectors({
+    connectorName,
+    marketConnector,
+    userName: flags.user,
+    projectRoot,
+    shouldUseDedicatedReferences:
+      connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase(),
+    warn: (message) => logger.warn(message),
+  });
+
+  return {
+    connectorName,
+    marketConnector,
+    btcReferences,
+    lifecycle,
+  };
+};
+
 const findSignals = async (
   symbol: string,
   connectorName: string,
@@ -159,28 +234,30 @@ const findSignals = async (
   runtimeStrategies: StrategyRuntimeConfig[],
   strategyStats: StrategySkipStatsMap,
   runtimeCloseNotifications: RuntimeStrategyCloseNotification[],
+  lifecycle: SignalsStrategyLifecycle,
+  preloadStart: number,
+  currentTimestamp: number,
 ): Promise<Signal[]> => {
-  const currentTimestamp = getTimestamp();
   const strategySignals: Signal[] = [];
 
   const [cachedData, btcCachedData, ethCachedData] = await Promise.all([
     connector.kline({
       symbol,
-      start: PRELOAD_START,
+      start: preloadStart,
       end: currentTimestamp,
       cacheOnly: true,
       interval,
     }),
     connector.kline({
       symbol: 'BTCUSDT',
-      start: PRELOAD_START,
+      start: preloadStart,
       end: currentTimestamp,
       cacheOnly: true,
       interval,
     }),
     connector.kline({
       symbol: 'ETHUSDT',
-      start: PRELOAD_START,
+      start: preloadStart,
       end: currentTimestamp,
       cacheOnly: true,
       interval,
@@ -232,36 +309,70 @@ const findSignals = async (
   );
 
   for (const runtimeStrategy of runtimeStrategies) {
-    const { strategyName, strategyCreator, strategyConfig } = runtimeStrategy;
+    const { strategyName, strategyCreator, strategyConfig, strategyResults } =
+      runtimeStrategy;
+    const runtimeConfig = buildRuntimeModeStrategyConfig({
+      strategyConfig,
+      env: 'CRON',
+      interval,
+      makeOrders: flags.makeOrders,
+    });
+    const lifecycleKey = buildSignalsStrategyLifecycleKey({
+      connectorName,
+      symbol,
+      interval,
+      strategyName,
+    });
     const stats = strategyStats.get(strategyName);
+    const evaluation = await lifecycle.evaluate({
+      key: lifecycleKey,
+      timestamp: lastCandle.timestamp,
+      config: {
+        runtimeConfig,
+        symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
+      },
+      btcBinanceData,
+      btcCoinbaseData,
+      onRuntimeClose: (event) => {
+        runtimeCloseNotifications.push(event);
+      },
+      create: async ({
+        btcBinanceData: lifecycleBtcBinanceData,
+        btcCoinbaseData: lifecycleBtcCoinbaseData,
+        onRuntimeClose,
+      }) =>
+        strategyCreator({
+          userName: flags.user,
+          connectorName,
+          connector,
+          symbol,
+          data: [...previousData],
+          btcData: [...previousBtcData],
+          ethData: [...previousEthData],
+          btcBinanceData: lifecycleBtcBinanceData,
+          btcCoinbaseData: lifecycleBtcCoinbaseData,
+          config: runtimeConfig,
+          onRuntimeClose,
+        }),
+      run: (strategy) => strategy(lastCandle, btcLastCandle, ethLastCandle),
+    });
+
+    if (evaluation.action === 'duplicate' || evaluation.action === 'stale') {
+      continue;
+    }
+    if (evaluation.action.startsWith('rebuilt_')) {
+      logger.info(
+        'Rebuilt signals strategy state (%s): %s %s',
+        evaluation.action.slice('rebuilt_'.length),
+        strategyName,
+        symbol,
+      );
+    }
     if (stats) {
       stats.evaluated += 1;
     }
 
-    const strategy = await strategyCreator({
-      userName: flags.user,
-      connectorName,
-      connector,
-      symbol,
-      data: [...previousData],
-      btcData: [...previousBtcData],
-      ethData: ethLastCandle
-        ? [...previousEthData, ethLastCandle]
-        : [...previousEthData],
-      btcBinanceData,
-      btcCoinbaseData,
-      config: buildRuntimeModeStrategyConfig({
-        strategyConfig,
-        env: 'CRON',
-        interval,
-        makeOrders: flags.makeOrders,
-      }),
-      onRuntimeClose: (event) => {
-        runtimeCloseNotifications.push(event);
-      },
-    });
-
-    const signal = await strategy(lastCandle, btcLastCandle);
+    const signal = evaluation.result;
     if (!signal || typeof signal === 'string') {
       const reason =
         typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL';
@@ -353,7 +464,7 @@ const findSignals = async (
   return strategySignals;
 };
 
-export const signals = async () => {
+export const signals = async (options: { session?: SignalsSession } = {}) => {
   const startedAt = Date.now();
   const signals = new Array<Signal>();
   const runtimeCloseNotifications =
@@ -366,27 +477,11 @@ export const signals = async () => {
   > | null = null;
 
   try {
-    const connectorName = await resolveSignalsConnectorName(flags.connector);
-    const connectorFactory = await getConnectorCreatorByName(
-      connectorName,
-      projectRoot,
-    );
-    if (!connectorFactory) {
-      throw new Error(`Connector "${connectorName}" is not registered`);
-    }
-    const marketConnector = await (connectorFactory as ConnectorCreator)({
-      userName: flags.user,
-    });
-
-    const btcReferences = await loadBtcReferenceConnectors({
-      connectorName,
-      marketConnector,
-      userName: flags.user,
-      projectRoot,
-      shouldUseDedicatedReferences:
-        connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase(),
-      warn: (message) => logger.warn(message),
-    });
+    const session =
+      options.session ??
+      (await createSignalsSession(createDefaultSignalsLifecycle()));
+    const { connectorName, marketConnector, btcReferences, lifecycle } =
+      session;
 
     const tickers = await timeOperation('tickers load', () =>
       getTickers(
@@ -407,6 +502,9 @@ export const signals = async () => {
     const projectConfig = await loadTradejsConfig(projectRoot);
     projectHooks = projectConfig.hooks;
 
+    const currentTimestamp = getTimestamp();
+    const preloadStart = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
+
     if (!flags.cacheOnly) {
       await updateMarketHistoryWithBtcReferences({
         marketConnector,
@@ -419,7 +517,6 @@ export const signals = async () => {
       });
     }
 
-    const currentTimestamp = getTimestamp();
     await prepareMarketContextForRun({
       mode: 'signals',
       userName: flags.user,
@@ -428,7 +525,7 @@ export const signals = async () => {
       interval,
       startMs: currentTimestamp,
       endMs: currentTimestamp,
-      preloadStartMs: PRELOAD_START,
+      preloadStartMs: preloadStart,
       cacheOnly: Boolean(flags.cacheOnly),
       log: (message) => logger.info(chalk.gray(message)),
     });
@@ -443,14 +540,14 @@ export const signals = async () => {
         Promise.all([
           btcReferences.binance.kline({
             symbol: 'BTCUSDT',
-            start: PRELOAD_START,
+            start: preloadStart,
             end: currentTimestamp,
             cacheOnly: true,
             interval,
           }),
           btcReferences.coinbase.kline({
             symbol: 'BTCUSDT',
-            start: PRELOAD_START,
+            start: preloadStart,
             end: currentTimestamp,
             cacheOnly: true,
             interval,
@@ -463,12 +560,27 @@ export const signals = async () => {
       projectRoot,
     });
     if (!runtimeStrategies.length) {
+      lifecycle.clear();
       logger.warn(
         'No strategy configs found by users:%s:strategies:*:config',
         flags.user,
       );
       return;
     }
+    lifecycle.retain(
+      new Set(
+        tickers.flatMap((symbol) =>
+          runtimeStrategies.map(({ strategyName }) =>
+            buildSignalsStrategyLifecycleKey({
+              connectorName,
+              symbol,
+              interval,
+              strategyName,
+            }),
+          ),
+        ),
+      ),
+    );
     logger.info(
       chalk.yellow(
         `loaded strategies (user=${flags.user}): ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
@@ -525,6 +637,9 @@ export const signals = async () => {
           runtimeStrategies,
           strategyStats,
           runtimeCloseNotifications,
+          lifecycle,
+          preloadStart,
+          currentTimestamp,
         );
 
         if (strategySignals.length > 0) {
@@ -617,4 +732,57 @@ export const signals = async () => {
     logger.info('');
   }
 };
-export const main = signals;
+export const signalsDaemon = async () => {
+  if (flags.updateOnly || flags.showTickersList) {
+    throw new Error(
+      'Signals daemon does not support updateOnly or showTickersList mode',
+    );
+  }
+
+  const lifecycle = createDefaultSignalsLifecycle();
+  const abortController = new AbortController();
+  let session: SignalsSession | undefined;
+  const stop = (signalName: string) => {
+    logger.info('signals daemon stopping by %s', signalName);
+    abortController.abort();
+  };
+  const stopOnSigint = () => stop('SIGINT');
+  const stopOnSigterm = () => stop('SIGTERM');
+  process.once('SIGINT', stopOnSigint);
+  process.once('SIGTERM', stopOnSigterm);
+
+  logger.info(
+    'signals daemon started (interval=%s, maxLiveBars=%s)',
+    interval,
+    resolveSignalsDaemonMaxLiveBars(),
+  );
+  try {
+    await runSignalsDaemon({
+      intervalMs,
+      settleDelayMs: resolveNonNegativeInteger(flags.settleDelayMs, 5_000),
+      signal: abortController.signal,
+      runCycle: async () => {
+        session ??= await createSignalsSession(lifecycle);
+        try {
+          await signals({ session });
+        } catch (error) {
+          lifecycle.clear();
+          session = undefined;
+          throw error;
+        }
+      },
+      onCycleError: (error) => {
+        logger.error(
+          'signals daemon cycle failed: %s',
+          (error as Error)?.message || String(error),
+        );
+      },
+    });
+  } finally {
+    process.removeListener('SIGINT', stopOnSigint);
+    process.removeListener('SIGTERM', stopOnSigterm);
+    lifecycle.clear();
+  }
+};
+
+export const main = () => (flags.watch ? signalsDaemon() : signals());

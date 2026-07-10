@@ -1,4 +1,4 @@
-export {};
+import { createSignalsStrategyLifecycle } from '../lib/signals/runtimeLifecycle';
 
 const TTL_10D = 864_000;
 
@@ -49,6 +49,8 @@ const PRELOAD_TS = CURRENT_TS - 7 * 24 * 60 * 60 * 1000;
 
 const makeRedisKeys = () => ({
   strategies: (userName: string) => `users:${userName}:strategies`,
+  strategyResults: (userName: string, strategyName: string) =>
+    `users:${userName}:strategy-results:${strategyName}`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
   runtimeSignalBucket: (
@@ -360,6 +362,7 @@ const loadScript = async (scenario: Scenario) => {
   (process.env as any).NODE_ENV = prevNodeEnv;
 
   return {
+    createSignalsSession: signalsScriptModule.createSignalsSession,
     signals: signalsScriptModule.signals,
     mocks: {
       backfillDerivativesContextForSignals,
@@ -369,6 +372,7 @@ const loadScript = async (scenario: Scenario) => {
       connector,
       getData,
       getKeys,
+      getTimestamp,
       getStrategyCreator,
       getTickers,
       incrHashFields,
@@ -430,6 +434,7 @@ describe('signals script', () => {
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
@@ -623,6 +628,7 @@ describe('signals script', () => {
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
     );
   });
 
@@ -653,6 +659,90 @@ describe('signals script', () => {
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
+    );
+  });
+
+  it('reuses a session strategy and skips duplicate candle evaluation', async () => {
+    const { createSignalsSession, signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+    });
+    const session = await createSignalsSession(lifecycle);
+
+    await signals({ session });
+    await signals({ session });
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.setData).toHaveBeenCalledTimes(1);
+  });
+
+  it('advances one session strategy on the next sequential closed candle', async () => {
+    const { createSignalsSession, signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+    });
+    const session = await createSignalsSession(lifecycle);
+
+    await signals({ session });
+    const nextCurrentTimestamp = CURRENT_TS + INTERVAL_MS;
+    mocks.getTimestamp.mockImplementation((days?: number) =>
+      typeof days === 'number' && days > 0
+        ? PRELOAD_TS + INTERVAL_MS
+        : nextCurrentTimestamp,
+    );
+    mocks.connector.kline.mockImplementation(
+      async ({ symbol }: { symbol: string }) => {
+        const timestamps = [
+          CLOSED_1_TS,
+          CLOSED_2_TS,
+          CURRENT_OPEN_TS,
+          CURRENT_OPEN_TS + INTERVAL_MS,
+        ];
+        const base = symbol === 'BTCUSDT' ? 100 : 10;
+        return timestamps.map((timestamp, index) =>
+          makeCandle(timestamp, base + index),
+        );
+      },
+    );
+
+    await signals({ session });
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(2);
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timestamp: CURRENT_OPEN_TS, close: 12 }),
+      expect.objectContaining({ timestamp: CURRENT_OPEN_TS, close: 102 }),
+      expect.objectContaining({ timestamp: CURRENT_OPEN_TS, close: 12 }),
     );
   });
 

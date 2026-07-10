@@ -408,6 +408,13 @@ export const createStrategyIndicatorsState = ({
       currentBarPair = { candle, btcCandle, ethCandle };
     },
 
+    updateReferenceData: (nextReferenceData) => {
+      btcBinanceData = nextReferenceData.btcBinanceData;
+      btcCoinbaseData = nextReferenceData.btcCoinbaseData;
+      controller?.updateReferenceData(nextReferenceData);
+      sharedReplayState?.controller?.updateReferenceData(nextReferenceData);
+    },
+
     onBar: (candle, btcCandle, ethCandle) => {
       const resolvedCandle = candle ?? currentBarPair?.candle;
       const resolvedBtcCandle = btcCandle ?? currentBarPair?.btcCandle;

@@ -567,6 +567,8 @@ const runSignalsPath = async () => {
     getKeys: jest.fn(),
     incrHashFields: jest.fn(),
     redisKeys: {
+      strategyResults: (userName: string, strategyName: string) =>
+        `users:${userName}:strategy-results:${strategyName}`,
       storeSignal: (symbol: string, signalId: string) =>
         `store:signals:${symbol}:${signalId}`,
       runtimeSignalBucket: (

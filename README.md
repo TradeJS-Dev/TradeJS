@@ -145,6 +145,7 @@ yarn build:ci
 yarn backtest
 yarn results
 yarn signals
+yarn signals:daemon -- --notify --makeOrders
 yarn signals:summary -- --printOnly
 yarn bot
 ```
@@ -160,6 +161,7 @@ yarn continuity --user root --timeframe 15 --provider bybit
 
 - Telegram bot credentials are configured per user via `TG_BOT_TOKEN` and `TG_CHAT_ID` in the app settings drawer.
 - `yarn signals -- --notify` sends runtime signal notifications; `skipped` and `canceled` signals are filtered out and not delivered to Telegram.
+- `yarn signals:daemon -- --notify --makeOrders` keeps strategy instances alive between closed candles. It rebuilds an instance from the rolling warmup window after a restart, candle gap, config change, or bounded-history limit.
 - Each signal is delivered in order with its optional AI analysis follow-up so chat ordering stays stable.
 - `yarn signals:summary` builds the Telegram digest; current cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone for the last 24 hours and the weekly report on Sundays at `22:10` for the last 168 hours. Runtime parity runs every day at `21:10` in `Europe/Moscow` timezone.
 - The summary groups signal statuses and trade PnL/status by strategy and uses generated runtime `orderId` linkage (`orderLinkId` on Bybit).

@@ -83,6 +83,7 @@ yarn backtest
 yarn backtest -- --days 3 --config TrendLine:prod
 yarn results
 yarn signals
+yarn signals:daemon
 yarn signals:summary -- --printOnly
 yarn runtime-parity -- --days 3
 yarn bot
@@ -98,7 +99,7 @@ Telegram delivery uses per-user settings from the account drawer:
 Runtime signal delivery:
 
 - `yarn signals -- --notify` sends Telegram messages for runtime signals
-- production cron runs `signals --notify --makeOrders` every 15 minutes
+- production runtime runs `yarn signals:daemon -- --notify --makeOrders`; `yarn signals` remains the one-shot manual and recovery command
 - signals with `orderStatus=skipped` or `orderStatus=canceled` are not sent to Telegram anymore
 - deliverable signals are sent one by one so the main signal message stays grouped with its optional AI analysis message
 - the main signal message tries to send a screenshot with caption first; if photo delivery fails, TradeJS falls back to a text message
@@ -134,6 +135,7 @@ Useful manual checks:
 
 ```bash
 yarn signals -- --notify --user root --connector bybit
+yarn signals:daemon -- --notify --makeOrders --user root --connector bybit
 yarn signals:summary -- --user root --connector bybit --printOnly
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
 ```
