@@ -873,6 +873,37 @@ describe('createStrategyAPI', () => {
     expect(secondCompute).not.toHaveBeenCalled();
   });
 
+  it('createStateController reuses explicitly keyed CRON state', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const createApi = () =>
+      createStrategyAPI({
+        strategy: 'TrendLine' as any,
+        symbol: 'TESTUSDT',
+        interval: '15' as any,
+        env: 'CRON',
+        connector,
+        cachedData: data,
+        preloadStart: 1,
+        backtestPriceMode: 'close',
+        isConfigFromBacktest: false,
+        sharedReplayKey: 'test-state:cron',
+        getSharedReplayState: getSharedStrategyReplayState,
+      });
+    const first = createApi().createStateController('detector', () => ({
+      calls: 1,
+    }));
+    const second = createApi().createStateController('detector', () => ({
+      calls: 2,
+    }));
+
+    expect(second.get()).toBe(first.get());
+    expect(second.get()).toEqual({ calls: 1 });
+  });
+
   it('createStateController separates shared state by config key', () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {

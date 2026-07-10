@@ -38,13 +38,16 @@ const makeParams = ({
 });
 
 describe('signals strategy runtime lifecycle', () => {
-  it('reuses one strategy instance for sequential candles', async () => {
+  it('reuses state while recreating disposable strategy runtimes', async () => {
     const lifecycle = makeLifecycle();
-    const updateReferenceData = jest.fn();
-    const strategy = Object.assign(jest.fn(), {
-      __tradejsUpdateReferenceData: updateReferenceData,
-    }) as unknown as Strategy;
-    const create = jest.fn(async () => strategy);
+    const updateReferenceData: jest.Mock[] = [];
+    const create = jest.fn(async () => {
+      const update = jest.fn();
+      updateReferenceData.push(update);
+      return Object.assign(jest.fn(), {
+        __tradejsUpdateReferenceData: update,
+      }) as unknown as Strategy;
+    });
     const run = jest.fn(async () => 'NO_SIGNAL');
 
     await expect(
@@ -56,9 +59,12 @@ describe('signals strategy runtime lifecycle', () => {
       ),
     ).resolves.toMatchObject({ action: 'reused', result: 'NO_SIGNAL' });
 
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledTimes(2);
-    expect(updateReferenceData).toHaveBeenCalledWith({
+    const firstRuntime = (run.mock.calls as unknown[][])[0]?.[0];
+    const secondRuntime = (run.mock.calls as unknown[][])[1]?.[0];
+    expect(firstRuntime).not.toBe(secondRuntime);
+    expect(updateReferenceData[1]).toHaveBeenCalledWith({
       btcBinanceData: [{ timestamp: 1_000_000 + INTERVAL_MS, close: 100 }],
       btcCoinbaseData: [{ timestamp: 1_000_000 + INTERVAL_MS, close: 101 }],
     });
@@ -88,7 +94,12 @@ describe('signals strategy runtime lifecycle', () => {
       { nextTimestamp: 1_000_000 + INTERVAL_MS, config: { VALUE: 2 } },
     ],
   ])('rebuilds from warmup after a %s', async (_name, next) => {
-    const lifecycle = makeLifecycle();
+    const releaseState = jest.fn();
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+      releaseState,
+    });
     const create = jest.fn(async () => jest.fn() as unknown as Strategy);
     const run = jest.fn(async () => 'NO_SIGNAL');
 
@@ -106,10 +117,16 @@ describe('signals strategy runtime lifecycle', () => {
       _name === 'gap' ? 'rebuilt_gap' : 'rebuilt_config',
     );
     expect(create).toHaveBeenCalledTimes(2);
+    expect(releaseState).toHaveBeenCalledWith('ByBit:ETHUSDT:15:TrendLine');
   });
 
   it('periodically rebuilds to keep runtime history bounded', async () => {
-    const lifecycle = makeLifecycle(1);
+    const releaseState = jest.fn();
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 1,
+      releaseState,
+    });
     const create = jest.fn(async () => jest.fn() as unknown as Strategy);
     const run = jest.fn(async () => 'NO_SIGNAL');
 
@@ -121,6 +138,7 @@ describe('signals strategy runtime lifecycle', () => {
     ).resolves.toMatchObject({ action: 'rebuilt_limit' });
 
     expect(create).toHaveBeenCalledTimes(2);
+    expect(releaseState).toHaveBeenCalledWith('ByBit:ETHUSDT:15:TrendLine');
   });
 
   it('routes runtime close events to the current cycle', async () => {
@@ -158,8 +176,13 @@ describe('signals strategy runtime lifecycle', () => {
     expect(secondSink).toHaveBeenCalledTimes(1);
   });
 
-  it('evicts failed and inactive strategy instances', async () => {
-    const lifecycle = makeLifecycle();
+  it('releases failed and inactive strategy state', async () => {
+    const releaseState = jest.fn();
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+      releaseState,
+    });
     const create = jest.fn(async () => jest.fn() as unknown as Strategy);
     const run = jest
       .fn()
@@ -177,6 +200,25 @@ describe('signals strategy runtime lifecycle', () => {
     lifecycle.retain(new Set());
 
     expect(create).toHaveBeenCalledTimes(2);
+    expect(lifecycle.size()).toBe(0);
+    expect(releaseState).toHaveBeenCalledTimes(2);
+    expect(releaseState).toHaveBeenLastCalledWith('ByBit:ETHUSDT:15:TrendLine');
+  });
+
+  it('releases every retained state entry when cleared', async () => {
+    const releaseState = jest.fn();
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+      releaseState,
+    });
+    const create = jest.fn(async () => jest.fn() as unknown as Strategy);
+    const run = jest.fn(async () => 'NO_SIGNAL');
+
+    await lifecycle.evaluate(makeParams({ timestamp: 1_000_000, create, run }));
+    lifecycle.clear();
+
+    expect(releaseState).toHaveBeenCalledWith('ByBit:ETHUSDT:15:TrendLine');
     expect(lifecycle.size()).toBe(0);
   });
 

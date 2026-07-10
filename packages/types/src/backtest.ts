@@ -68,6 +68,7 @@ export interface StrategyCreatorParams {
     btcDataByTimestamp?: Map<number, KlineChartItem>;
   };
   sharedIndicatorsReplayKey?: string;
+  sharedStrategyStateKey?: string;
   onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
 }
 

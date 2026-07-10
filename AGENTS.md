@@ -219,7 +219,9 @@ Runtime AI config conventions:
 ### Signals / Backtest Parity Rules
 
 - `yarn signals` evaluates only the last closed candle; do not include the still-forming newest candle in strategy decisions.
-- `yarn signals` is the one-shot/manual runtime path. `yarn signals:daemon` is the long-running production path and must reuse each strategy instance only for the next sequential closed candle.
+- `yarn signals` is the one-shot/manual runtime path. `yarn signals:daemon` is the long-running production path and must preserve keyed StrategyAPI state only for the next sequential closed candle.
+- Do not retain a full strategy runtime or indicator controller per symbol/strategy in the signals daemon. Runtime wrappers and indicator history are disposable per evaluation; only bounded detector state from `createStateController` may survive between cycles.
+- Keep the production daemon heap bounded through `SIGNALS_DAEMON_HEAP_MB` and retain its per-cycle RSS/heap/state-key log line when changing process supervision.
 - The signals daemon must rebuild a strategy from the rolling warmup history after restart, a candle gap, an effective config change, or its bounded live-bar limit. Catch-up recovery must not place historical orders or send historical notifications.
 - Runtime lifecycle identity includes connector, symbol, interval, strategy, and the effective per-symbol config (`user strategy config` plus results config). Removed tickers or strategies must be evicted from the in-memory lifecycle.
 - Do not add Redis strategy-state persistence unless every participating engine exposes a complete versioned transition checkpoint and restore path. Diagnostic `getState()` snapshots are not sufficient checkpoints.

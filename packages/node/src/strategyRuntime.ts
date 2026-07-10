@@ -1174,6 +1174,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     backtestExecutionMarketData,
     connector,
     sharedIndicatorsReplayKey,
+    sharedStrategyStateKey,
     onRuntimeClose,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
@@ -1252,10 +1253,15 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       sharedReplayEnabled && sharedIndicatorsReplayKey
         ? `${sharedIndicatorsReplayKey}:indicators:${indicatorReplayKey}`
         : undefined;
-    const strategySharedReplayKey =
-      sharedReplayEnabled && sharedIndicatorsReplayKey
-        ? `${sharedIndicatorsReplayKey}:strategy:${strategyName}`
-        : undefined;
+    const strategyStateBaseKey =
+      env === 'CRON' && sharedStrategyStateKey
+        ? sharedStrategyStateKey
+        : sharedReplayEnabled
+          ? sharedIndicatorsReplayKey
+          : undefined;
+    const strategySharedReplayKey = strategyStateBaseKey
+      ? `${strategyStateBaseKey}:strategy:${strategyName}`
+      : undefined;
 
     const notifyRuntimeError = async ({
       stage,

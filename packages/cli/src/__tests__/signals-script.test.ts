@@ -116,6 +116,7 @@ const loadScript = async (scenario: Scenario) => {
   const setData = jest.fn(async () => null);
   const setHashJsonField = jest.fn(async () => null);
   const incrHashFields = jest.fn(async () => null);
+  const releaseStrategyReplayCache = jest.fn();
   const logger = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -309,6 +310,10 @@ const loadScript = async (scenario: Scenario) => {
     runWithConcurrency,
   }));
 
+  jest.doMock('@tradejs/core/strategies', () => ({
+    releaseStrategyReplayCache,
+  }));
+
   jest.doMock('@tradejs/node/strategies', () => ({
     enrichSignalWithBinanceMarketContext,
     enrichSignalWithCoinMarketCapContext,
@@ -380,6 +385,7 @@ const loadScript = async (scenario: Scenario) => {
       logger,
       makeScreenshots,
       progressTick,
+      releaseStrategyReplayCache,
       redisKeys,
       runWithConcurrency,
       sendRuntimeCloseNotificationsToTG,
@@ -656,6 +662,9 @@ describe('signals script', () => {
         btcData: [makeCandle(CLOSED_1_TS, 100)],
       }),
     );
+    expect(
+      mocks.strategyCreatorMap.get('TrendLine')?.mock.calls[0]?.[0],
+    ).not.toHaveProperty('sharedStrategyStateKey');
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
@@ -663,7 +672,7 @@ describe('signals script', () => {
     );
   });
 
-  it('reuses a session strategy and skips duplicate candle evaluation', async () => {
+  it('reuses session state and skips duplicate candle evaluation', async () => {
     const { createSignalsSession, signals, mocks } = await loadScript({
       flags: {
         timeframe: 15,
@@ -692,7 +701,7 @@ describe('signals script', () => {
     expect(mocks.setData).toHaveBeenCalledTimes(1);
   });
 
-  it('advances one session strategy on the next sequential closed candle', async () => {
+  it('advances session state with a disposable runtime on the next candle', async () => {
     const { createSignalsSession, signals, mocks } = await loadScript({
       flags: {
         timeframe: 15,
@@ -737,7 +746,12 @@ describe('signals script', () => {
 
     await signals({ session });
 
-    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(2);
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sharedStrategyStateKey: 'bybit:ETHUSDT:15:TrendLine',
+      }),
+    );
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(2);
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenLastCalledWith(
       expect.objectContaining({ timestamp: CURRENT_OPEN_TS, close: 12 }),

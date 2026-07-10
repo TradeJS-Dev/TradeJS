@@ -19,16 +19,10 @@ export interface SignalsStrategyLifecycleResult {
   result?: Awaited<ReturnType<Strategy>>;
 }
 
-interface RuntimeCloseSink {
-  current: (event: RuntimeStrategyCloseNotification) => void;
-}
-
 interface SignalsStrategyLifecycleEntry {
-  strategy: Strategy;
   configFingerprint: string;
   lastTimestamp: number;
   processedBars: number;
-  runtimeCloseSink: RuntimeCloseSink;
 }
 
 type ReferenceAwareStrategy = Strategy & {
@@ -92,9 +86,11 @@ export const buildSignalsStrategyLifecycleKey = ({
 export const createSignalsStrategyLifecycle = ({
   intervalMs,
   maxLiveBars,
+  releaseState = () => undefined,
 }: {
   intervalMs: number;
   maxLiveBars: number;
+  releaseState?: (key: string) => void;
 }): SignalsStrategyLifecycle => {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     throw new Error('Signals strategy lifecycle requires a positive interval');
@@ -123,14 +119,6 @@ export const createSignalsStrategyLifecycle = ({
     const configFingerprint = stableStringify(config);
     const current = entries.get(key);
     if (current) {
-      current.runtimeCloseSink.current = onRuntimeClose;
-      (
-        current.strategy as ReferenceAwareStrategy
-      ).__tradejsUpdateReferenceData?.({
-        btcBinanceData: btcBinanceData ?? [],
-        btcCoinbaseData: btcCoinbaseData ?? [],
-      });
-
       if (timestamp === current.lastTimestamp) {
         return { action: 'duplicate' };
       }
@@ -150,36 +138,31 @@ export const createSignalsStrategyLifecycle = ({
       action = 'reused';
     }
 
-    let entry = current;
-    if (action !== 'reused') {
-      const runtimeCloseSink: RuntimeCloseSink = { current: onRuntimeClose };
-      const nextBtcBinanceData = [...(btcBinanceData ?? [])];
-      const nextBtcCoinbaseData = [...(btcCoinbaseData ?? [])];
-      const strategy = await create({
-        btcBinanceData: nextBtcBinanceData,
-        btcCoinbaseData: nextBtcCoinbaseData,
-        onRuntimeClose: (event) => runtimeCloseSink.current(event),
-      });
-      entry = {
-        strategy,
-        configFingerprint,
-        lastTimestamp: timestamp,
-        processedBars: 0,
-        runtimeCloseSink,
-      };
-      entries.set(key, entry);
-    }
-    if (!entry) {
-      throw new Error(`Signals strategy lifecycle could not create ${key}`);
+    if (action.startsWith('rebuilt_')) {
+      releaseState(key);
     }
 
     try {
-      const result = await run(entry.strategy);
-      entry.lastTimestamp = timestamp;
-      entry.processedBars += 1;
+      const strategy = await create({
+        btcBinanceData: [...(btcBinanceData ?? [])],
+        btcCoinbaseData: [...(btcCoinbaseData ?? [])],
+        onRuntimeClose,
+      });
+      (strategy as ReferenceAwareStrategy).__tradejsUpdateReferenceData?.({
+        btcBinanceData: btcBinanceData ?? [],
+        btcCoinbaseData: btcCoinbaseData ?? [],
+      });
+      const result = await run(strategy);
+      entries.set(key, {
+        configFingerprint,
+        lastTimestamp: timestamp,
+        processedBars:
+          (action === 'reused' ? current?.processedBars ?? 0 : 0) + 1,
+      });
       return { action, result };
     } catch (error) {
       entries.delete(key);
+      releaseState(key);
       throw error;
     }
   };
@@ -190,10 +173,16 @@ export const createSignalsStrategyLifecycle = ({
       for (const key of entries.keys()) {
         if (!activeKeys.has(key)) {
           entries.delete(key);
+          releaseState(key);
         }
       }
     },
-    clear: () => entries.clear(),
+    clear: () => {
+      for (const key of entries.keys()) {
+        releaseState(key);
+      }
+      entries.clear();
+    },
     size: () => entries.size,
   };
 };

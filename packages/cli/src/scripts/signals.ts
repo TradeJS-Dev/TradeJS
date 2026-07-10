@@ -17,6 +17,7 @@ import {
   sendToTG,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
+import { releaseStrategyReplayCache } from '@tradejs/core/strategies';
 import type {
   TradejsConfigAfterSignalsHookContext,
   TradejsConfigHooks,
@@ -159,6 +160,7 @@ const createDefaultSignalsLifecycle = () =>
   createSignalsStrategyLifecycle({
     intervalMs,
     maxLiveBars: resolveSignalsDaemonMaxLiveBars(),
+    releaseState: releaseStrategyReplayCache,
   });
 
 const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
@@ -237,6 +239,7 @@ const findSignals = async (
   lifecycle: SignalsStrategyLifecycle,
   preloadStart: number,
   currentTimestamp: number,
+  persistStrategyState: boolean,
 ): Promise<Signal[]> => {
   const strategySignals: Signal[] = [];
 
@@ -352,6 +355,9 @@ const findSignals = async (
           btcBinanceData: lifecycleBtcBinanceData,
           btcCoinbaseData: lifecycleBtcCoinbaseData,
           config: runtimeConfig,
+          ...(persistStrategyState
+            ? { sharedStrategyStateKey: lifecycleKey }
+            : {}),
           onRuntimeClose,
         }),
       run: (strategy) => strategy(lastCandle, btcLastCandle, ethLastCandle),
@@ -480,6 +486,7 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
     const session =
       options.session ??
       (await createSignalsSession(createDefaultSignalsLifecycle()));
+    const persistStrategyState = options.session != null;
     const { connectorName, marketConnector, btcReferences, lifecycle } =
       session;
 
@@ -640,6 +647,7 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
           lifecycle,
           preloadStart,
           currentTimestamp,
+          persistStrategyState,
         );
 
         if (strategySignals.length > 0) {
@@ -769,6 +777,15 @@ export const signalsDaemon = async () => {
           lifecycle.clear();
           session = undefined;
           throw error;
+        } finally {
+          const memory = process.memoryUsage();
+          logger.info(
+            'signals daemon resources: rss=%sMB heapUsed=%sMB heapTotal=%sMB stateKeys=%s',
+            (memory.rss / 1024 / 1024).toFixed(1),
+            (memory.heapUsed / 1024 / 1024).toFixed(1),
+            (memory.heapTotal / 1024 / 1024).toFixed(1),
+            lifecycle.size(),
+          );
         }
       },
       onCycleError: (error) => {

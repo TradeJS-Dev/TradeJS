@@ -127,7 +127,7 @@ const canUseSharedStrategyState = ({
   sharedReplay: boolean;
 }) =>
   sharedReplay &&
-  (env === 'BACKTEST' || env === 'PARITY') &&
+  (env === 'BACKTEST' || env === 'PARITY' || env === 'CRON') &&
   Boolean(sharedReplayKey && getSharedReplayState);
 
 export const createStrategyStateControllerFactory = ({

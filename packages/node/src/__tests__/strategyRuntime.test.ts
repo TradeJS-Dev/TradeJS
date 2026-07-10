@@ -401,6 +401,50 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('shares CRON strategy state without retaining indicator replay state', async () => {
+    mockResolveStrategyConfig.mockResolvedValue({
+      config: { ENV: 'CRON', MAKE_ORDERS: false },
+      isConfigFromBacktest: false,
+    });
+    const createCore = jest.fn(async () => async () => ({
+      kind: 'skip' as const,
+      code: 'NOOP',
+    }));
+    const strategyCreator = createStrategyRuntime({
+      strategyName: 'TrendLine',
+      defaults: {} as any,
+      createCore,
+    });
+
+    await strategyCreator({
+      userName: 'root',
+      connectorName: 'ByBit',
+      symbol: 'ETHUSDT',
+      config: {},
+      data: [{ timestamp: 1, close: 101 }],
+      btcData: [{ timestamp: 1, close: 201 }],
+      connector: {
+        placeOrder: jest.fn(),
+        setTakeProfits: jest.fn(),
+        setStopLoss: jest.fn(),
+        closePosition: jest.fn(),
+      },
+      sharedStrategyStateKey: 'signals:ETHUSDT:15:TrendLine',
+    } as any);
+
+    expect(createCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sharedReplayKey: 'signals:ETHUSDT:15:TrendLine:strategy:TrendLine',
+      }),
+    );
+    const createStrategyIndicatorsStateMock = jest.requireMock(
+      '@tradejs/core/strategies',
+    ).createStrategyIndicatorsState as jest.Mock;
+    expect(createStrategyIndicatorsStateMock.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ sharedReplayKey: undefined }),
+    );
+  });
+
   it('does not append a duplicate candle when shared replay data already advanced', async () => {
     mockResolveStrategyConfig.mockResolvedValue({
       config: { ENV: 'PARITY', MAKE_ORDERS: false },
