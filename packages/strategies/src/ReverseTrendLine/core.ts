@@ -1,7 +1,6 @@
 import { round } from '@tradejs/core/math';
 import { createTrendlineEngine } from '@tradejs/core/indicators';
 
-import { filterByVeryVolatilityCandles } from './filters';
 import { ReverseTrendLineConfig } from './config';
 import { buildReverseTrendLineFigures } from './figures';
 import {
@@ -320,15 +319,6 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
       strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
-
-    if (
-      !filterByVeryVolatilityCandles(
-        baseContext?.candle ?? recentCandles.at(-1),
-        baseContext?.prevCandle ?? recentCandles.at(-2),
-      )
-    ) {
-      return strategyApi.skip('VERY_VOLATILITY');
-    }
 
     const signalSeed = buildReverseTrendlineSignalSeed({
       direction,

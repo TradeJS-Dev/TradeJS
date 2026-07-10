@@ -6,7 +6,6 @@ import type {
 } from '@tradejs/types';
 import { TrendShiftConfig } from './config';
 import { buildTrendShiftSignalContext, createTrendShiftEngine } from './engine';
-import { filterByVeryVolatilityCandles } from './filters';
 import { buildTrendShiftFigures } from './figures';
 import {
   buildTrendShiftGuardrailContext,
@@ -115,15 +114,6 @@ export const createTrendShiftCore: CreateStrategyCore<
       await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
       strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
-    if (
-      !filterByVeryVolatilityCandles(
-        baseContext?.candle,
-        baseContext?.prevCandle,
-      )
-    ) {
-      return strategyApi.skip('VERY_VOLATILITY');
-    }
-
     const direction = modeConfig.direction;
     const signalContext = buildTrendShiftSignalContext({
       snapshot: {

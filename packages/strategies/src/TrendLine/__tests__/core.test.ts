@@ -18,18 +18,12 @@ jest.mock('@tradejs/node/strategies', () => {
   };
 });
 
-jest.mock('../filters', () => ({
-  filterByVeryVolatility: jest.fn(() => true),
-  filterByVeryVolatilityCandles: jest.fn(() => true),
-}));
-
 import { createTrendlineEngine } from '@tradejs/core/indicators';
 import {
   buildEntrySignalDecision,
   getStrategyMarketSnapshot,
   getDirectionalTpSlPrices,
 } from '@tradejs/node/strategies';
-import { filterByVeryVolatilityCandles } from '../filters';
 import { createTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
@@ -678,36 +672,6 @@ describe('createTrendLineCore', () => {
 
     const result = await core(candle as any, candle as any);
     expect(result).toEqual({ kind: 'skip', code: 'DEV_TRADE_COOLDOWN' });
-  });
-
-  it('returns skip when volatility filter rejects market data', async () => {
-    const candle = makeCandle(1_700_000_000_000, 100);
-    (createTrendlineEngine as jest.Mock)
-      .mockReturnValueOnce({ next: jest.fn(() => [makeBestLine('lows')]) })
-      .mockReturnValueOnce({ next: jest.fn(() => []) });
-    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
-      fullData: [candle],
-      lastCandle: candle,
-      timestamp: candle.timestamp,
-      currentPrice: candle.close,
-    });
-    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValueOnce(false);
-
-    const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
-      config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
-      data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
-      strategyApi: makeStrategyApi(),
-      indicatorsState: makeIndicatorsState() as any,
-    });
-
-    const result = await core(candle as any, candle as any);
-    expect(result).toEqual({ kind: 'skip', code: 'VERY_VOLATILITY' });
   });
 
   it('returns skip when selected trendline side is disabled', async () => {

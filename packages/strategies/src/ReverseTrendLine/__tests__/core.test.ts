@@ -18,18 +18,12 @@ jest.mock('@tradejs/node/strategies', () => {
   };
 });
 
-jest.mock('../filters', () => ({
-  filterByVeryVolatility: jest.fn(() => true),
-  filterByVeryVolatilityCandles: jest.fn(() => true),
-}));
-
 import { createTrendlineEngine } from '@tradejs/core/indicators';
 import {
   buildEntrySignalDecision,
   getDirectionalTpSlPrices,
   getStrategyMarketSnapshot,
 } from '@tradejs/node/strategies';
-import { filterByVeryVolatilityCandles } from '../filters';
 import { createReverseTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
@@ -232,7 +226,6 @@ describe('createReverseTrendLineCore', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     activeIndicatorsState = undefined;
-    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(true);
     (getDirectionalTpSlPrices as jest.Mock).mockReturnValue({
       stopLossPrice: 99,
       takeProfitPrice: 102.2,

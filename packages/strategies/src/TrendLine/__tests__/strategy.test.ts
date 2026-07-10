@@ -5,7 +5,6 @@ import {
   createIndicators,
   createTrendlineEngine,
 } from '@tradejs/core/indicators';
-import { filterByVeryVolatilityCandles } from '../filters';
 import { logger } from '@tradejs/infra/logger';
 import { fetchMlThreshold } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
@@ -58,11 +57,6 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('../filters', () => ({
-  filterByVeryVolatility: jest.fn(() => true),
-  filterByVeryVolatilityCandles: jest.fn(() => true),
-}));
-
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
   dt: new Date(timestamp).toISOString(),
@@ -112,7 +106,6 @@ describe('TrendlineStrategyCreator', () => {
     (calculateCoinBtcCorrelation as jest.Mock).mockReturnValue({
       correlation: 0,
     });
-    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(true);
     (getData as jest.Mock).mockImplementation(async () => ({}));
     (askAI as jest.Mock).mockResolvedValue({
       direction: 'LONG',
@@ -504,118 +497,6 @@ describe('TrendlineStrategyCreator', () => {
     expect(typeof result).toBe('object');
     expect((result as any).isConfigFromBacktest).toBe(true);
     expect(redisKeys.strategyResults).toHaveBeenCalledWith('test', 'TrendLine');
-  });
-
-  it('returns VERY_VOLATILITY when filter fails', async () => {
-    (filterByVeryVolatilityCandles as jest.Mock).mockReturnValue(false);
-    (createTrendlineEngine as jest.Mock).mockImplementation(
-      (_data, options) => {
-        const line = {
-          id: 'line-1',
-          mode: options.mode ?? 'lows',
-          distance: 1,
-          touches: [{ timestamp: 1, value: 1 }],
-          points: [{ timestamp: 1, value: 1 }],
-        };
-        return {
-          next: jest.fn(() => [line]),
-        };
-      },
-    );
-
-    (createIndicators as jest.Mock).mockImplementation(() => {
-      const indicatorHistory: Record<string, number[]> = {};
-      const pushIndicator = (key: string, value: number) => {
-        if (!indicatorHistory[key]) {
-          indicatorHistory[key] = [];
-        }
-        indicatorHistory[key].push(value);
-        if (indicatorHistory[key].length > 10) {
-          indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
-        }
-      };
-
-      const next = () => {
-        const indicators = {
-          maFast: 1,
-          maMedium: 1,
-          maSlow: 1,
-          atr: 1,
-          atrPct: 1,
-          bbUpper: 1,
-          bbMiddle: 1,
-          bbLower: 1,
-          obv: 1,
-          smaObv: 1,
-          macd: 1,
-          macdSignal: 1,
-          macdHistogram: 1,
-          price24hPcnt: 1,
-          price1hPcnt: 1,
-          highPrice1h: 1,
-          lowPrice1h: 1,
-          volume1h: 1,
-          highPrice24h: 1,
-          lowPrice24h: 1,
-          volume24h: 1,
-        };
-
-        Object.entries(indicators).forEach(([key, val]) => {
-          pushIndicator(key, val);
-        });
-
-        return indicators;
-      };
-
-      return {
-        next,
-        result: () => indicatorHistory,
-      };
-    });
-
-    const cachedData: any[] = [makeCandle(1, 100)];
-    const btcCachedData: any[] = [makeCandle(1, 20000)];
-    const connector: any = {
-      getPosition: jest.fn(async () => ({ qty: 0 })),
-      kline: jest.fn(async () => cachedData),
-    };
-
-    const strategy = await TrendlineStrategyCreator({
-      userName: 'test',
-      connectorName: 'ByBit',
-      config: {
-        ENV: 'test',
-        INTERVAL: '15',
-        MAKE_ORDERS: false,
-        MAX_LOSS_VALUE: 10,
-        MAX_CORRELATION: 1,
-        TRENDLINE: {},
-        HIGHS: {
-          enable: false,
-          direction: 'LONG',
-          TP: 2,
-          SL: 1,
-          minRiskRatio: 0,
-        },
-        LOWS: {
-          enable: true,
-          direction: 'LONG',
-          TP: 2,
-          SL: 1,
-          minRiskRatio: 0,
-        },
-      },
-      symbol: 'TESTUSDT',
-      data: cachedData,
-      btcData: btcCachedData,
-      connector,
-    });
-
-    const candle = makeCandle(1_700_000_000_000, 100);
-    const btcCandle = makeCandle(1_700_000_000_000, 20000);
-    const result = await strategy(candle, btcCandle);
-
-    expect(result).toBe('VERY_VOLATILITY');
   });
 
   it('passes ML signal via signal.indicators without raw candles config fields', async () => {
