@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 import path from 'path';
+import { TTL_1M } from '@tradejs/core/constants';
 import { delKey, getData, getKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import type { StrategyConfigGrid } from '@tradejs/types';
@@ -258,7 +259,9 @@ const applyOutputChunk = (
 
 const saveJob = async (record: BacktestJobRecord) => {
   record.updatedAt = nowIso();
-  await setData(getJobKey(record.userName, record.id), record, { expire: 0 });
+  await setData(getJobKey(record.userName, record.id), record, {
+    expire: TTL_1M,
+  });
 };
 
 const loadJob = async (userName: string, jobId: string) =>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Item, TestStat } from '@tradejs/types';
 import { parseTestName } from '@tradejs/core/backtest';
+import { TTL_1M } from '@tradejs/core/constants';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { auth } from '#app/auth';
@@ -58,7 +59,9 @@ export const GET = async () => {
       });
     }
 
-    await setData(redisKeys.testSummaries(userName), result, { expire: 0 });
+    await setData(redisKeys.testSummaries(userName), result, {
+      expire: TTL_1M,
+    });
 
     return NextResponse.json({ items: result });
   } catch (error) {

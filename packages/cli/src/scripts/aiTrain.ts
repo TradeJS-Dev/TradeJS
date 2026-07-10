@@ -4,6 +4,7 @@ const ListIt = require('list-it');
 import fs from 'fs/promises';
 import path from 'path';
 import ProgressBar from 'progress';
+import { TTL_1M } from '@tradejs/core/constants';
 import {
   countAiDatasetRows,
   streamAiDatasetRows,
@@ -575,7 +576,7 @@ const persistAiChartSnapshot = async (params: {
   await Promise.all(
     snapshot.strategies.map((card) =>
       setData(redisKeys.strategyChartCard(userName, 'ai', card.cardId), card, {
-        expire: 0,
+        expire: TTL_1M,
       }),
     ),
   );

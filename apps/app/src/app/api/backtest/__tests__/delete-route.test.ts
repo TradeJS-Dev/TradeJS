@@ -144,7 +144,7 @@ describe('backtest delete route', () => {
           data: { strategyName: 'Breakout' },
         },
       ],
-      { expire: 0 },
+      { expire: 2_600_000 },
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ deleted: true, removedKeys: 3 });

@@ -317,7 +317,7 @@ export const persistTestSummariesIndex = async () => {
     redisKeys.testSummaries(userName),
     mergePersistedTestSummaries(existing, getPersistedTestSummariesMap()),
     {
-      expire: 0,
+      expire: TTL_1M,
     },
   );
 };

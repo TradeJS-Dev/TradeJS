@@ -121,7 +121,7 @@ describe('ai route', () => {
           text: 'Что по тренду?',
         },
       ],
-      { expire: 0 },
+      { expire: 2_600_000 },
     );
     expect(mockSetData).toHaveBeenNthCalledWith(
       2,
@@ -137,7 +137,7 @@ describe('ai route', () => {
           text: 'AI response',
         },
       ],
-      { expire: 0 },
+      { expire: 2_600_000 },
     );
     expect(response.body).toEqual({
       message: {

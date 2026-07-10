@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { TTL_1M } from '@tradejs/core/constants';
 import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import { createTimestamp } from '../lib/runFormatting';
@@ -152,7 +153,7 @@ const finishReplay = async ({
       outputReport,
     },
     {
-      expire: 0,
+      expire: TTL_1M,
     },
   );
 
@@ -163,7 +164,7 @@ const finishReplay = async ({
           redisKeys.strategyChartCard(replayUserName, 'replay', card.cardId),
           card,
           {
-            expire: 0,
+            expire: TTL_1M,
           },
         ),
       ),

@@ -12,7 +12,7 @@ import {
   TestSuite,
   TestWorkerResult,
 } from '@tradejs/types';
-import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
+import { BACKTEST_PRELOAD_DAYS, TTL_1M } from '@tradejs/core/constants';
 import {
   buildPreparedTestSuite,
   chunkTestSuiteBySymbol,
@@ -491,7 +491,7 @@ const finishBacktest = async (
         errorTests,
       },
       {
-        expire: 0,
+        expire: TTL_1M,
       },
     );
   }

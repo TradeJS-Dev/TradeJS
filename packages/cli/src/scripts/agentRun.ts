@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { TTL_1M } from '@tradejs/core/constants';
 import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { sendTelegramReport } from '../lib/telegramReports';
@@ -523,9 +524,11 @@ const saveAgentRun = async (
     ...run.artifacts,
     agentRun,
   };
-  await setData(redisKeys.researchRun(userName, runId), run, { expire: 0 });
+  await setData(redisKeys.researchRun(userName, runId), run, {
+    expire: TTL_1M,
+  });
   await setData(redisKeys.researchLatestRun(userName, strategy), run, {
-    expire: 0,
+    expire: TTL_1M,
   });
 };
 

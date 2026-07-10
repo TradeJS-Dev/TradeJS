@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { TTL_1M } from '@tradejs/core/constants';
 import {
   getData,
   getHashJsonValues,
@@ -184,9 +185,11 @@ export const createBacktestRunManifest = async (
   };
 
   await Promise.all([
-    setData(redisKeys.backtestRun(run.userName, run.runId), run, { expire: 0 }),
+    setData(redisKeys.backtestRun(run.userName, run.runId), run, {
+      expire: TTL_1M,
+    }),
     setData(redisKeys.backtestLatestRun(run.userName, run.config), run.runId, {
-      expire: 0,
+      expire: TTL_1M,
     }),
   ]);
   return run;
@@ -211,7 +214,7 @@ export const saveBacktestCheckpointResult = async ({
       testKey,
       updatedAt: new Date().toISOString(),
     } satisfies BacktestCheckpointResult,
-    { expire: 0 },
+    { expire: TTL_1M },
   );
 };
 
@@ -272,7 +275,7 @@ export const markBacktestRunStatus = async ({
     ...(status === 'completed' ? { completedAt: now } : {}),
   };
   await setData(redisKeys.backtestRun(run.userName, run.runId), nextRun, {
-    expire: 0,
+    expire: TTL_1M,
   });
   return nextRun;
 };

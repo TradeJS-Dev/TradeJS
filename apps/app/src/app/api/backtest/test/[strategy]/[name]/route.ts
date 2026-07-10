@@ -5,6 +5,7 @@ import {
   deletePersistedBacktestOrderLog,
   parseBacktestArtifactRef,
 } from '@tradejs/infra/backtestArtifacts';
+import { TTL_1M } from '@tradejs/core/constants';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { Item } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
@@ -76,7 +77,7 @@ export const DELETE = async (
         ),
     );
     await setData(redisKeys.testSummaries(userName), nextIndexedItems, {
-      expire: 0,
+      expire: TTL_1M,
     });
 
     return NextResponse.json({ deleted: true, removedKeys });

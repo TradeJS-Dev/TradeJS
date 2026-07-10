@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { TTL_1M } from '@tradejs/core/constants';
 import { toFileToken } from '@tradejs/infra/ai';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
@@ -341,10 +342,10 @@ export const createEmptySteps = (): Record<
 
 const saveRun = async (run: ResearchRunRecord) => {
   await setData(redisKeys.researchRun(run.userName, run.runId), run, {
-    expire: 0,
+    expire: TTL_1M,
   });
   await setData(redisKeys.researchLatestRun(run.userName, run.strategy), run, {
-    expire: 0,
+    expire: TTL_1M,
   });
 };
 

@@ -5,6 +5,7 @@ import {
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
+import { TTL_1M } from '@tradejs/core/constants';
 import { toJson } from '@tradejs/core/data';
 import { getAiResponseLanguagePromptName } from '@tradejs/infra/aiLanguages';
 import { DEFAULT_AI_MODEL, getOpenRouterModelKwargs } from '@tradejs/node/ai';
@@ -58,7 +59,7 @@ const appendMessagesToHistory = async (
 ): Promise<void> => {
   const history = await getHistory(userName, symbol);
   await setData(getHistoryKey(userName, symbol), [...history, ...messages], {
-    expire: 0,
+    expire: TTL_1M,
   });
 };
 

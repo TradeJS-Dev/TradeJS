@@ -115,7 +115,7 @@ describe('backtest files route', () => {
           },
         },
       ],
-      { expire: 0 },
+      { expire: 2_600_000 },
     );
   });
 });
