@@ -175,6 +175,37 @@ describe('strategyAdapters utils', () => {
     );
   });
 
+  it('selects AI and ML adapters from the signal policy profile', () => {
+    const profileBuildPayload = jest.fn(() => ({ profile: 'tradfi' }));
+    const profileNormalizeConfig = jest.fn((config) => ({
+      ...config,
+      profile: 'tradfi',
+    }));
+    mockGetStrategyManifest.mockReturnValue({
+      aiAdapter: { buildPayload: () => ({ profile: 'base' }) },
+      mlAdapter: {
+        normalizeStrategyConfig: (config: unknown) => config,
+      },
+      policyProfiles: [
+        {
+          id: 'tradfi',
+          aiAdapter: { buildPayload: profileBuildPayload },
+          mlAdapter: { normalizeStrategyConfig: profileNormalizeConfig },
+        },
+      ],
+    });
+    const signal = { ...makeSignal(), policyProfileId: 'tradfi' };
+
+    expect(buildAiPayloadByStrategy(signal)).toEqual({ profile: 'tradfi' });
+    expect(
+      getStrategyMlAdapter('TrendLine', 'tradfi').normalizeStrategyConfig?.({
+        value: 1,
+      } as any),
+    ).toEqual({ value: 1, profile: 'tradfi' });
+    expect(profileBuildPayload).toHaveBeenCalled();
+    expect(profileNormalizeConfig).toHaveBeenCalled();
+  });
+
   it('builds AI prompt addons from adapter and falls back to empty strings', () => {
     const signal = makeSignal();
     mockGetStrategyManifest.mockReturnValue({

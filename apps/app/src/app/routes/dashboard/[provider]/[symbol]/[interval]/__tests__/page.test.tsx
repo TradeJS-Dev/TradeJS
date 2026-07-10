@@ -112,4 +112,27 @@ describe('Dashboard route screenshot mode', () => {
       }),
     );
   });
+
+  it('parses the explicit TradFi path segment', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/routes/dashboard/bybit/tradfi/AAPLUSDT/15',
+    );
+    useSearchParamsMock.mockReturnValue(new URLSearchParams());
+    const Dashboard = require('../page').default;
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(setFiltersMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'bybit',
+          universe: 'tradfi',
+          symbol: 'AAPLUSDT',
+          interval: '15',
+        }),
+      );
+    });
+  });
 });

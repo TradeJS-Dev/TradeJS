@@ -27,6 +27,7 @@ import {
 import { getCurrentUserName } from '#app/lib/currentUser';
 import {
   buildRuntimeStrategyAnalytics,
+  buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
   isRuntimeTradeRecord,
   resolveStrategyNameByConfigKey,
@@ -623,13 +624,13 @@ export const GET = async (request: NextRequest) => {
     );
     const connectedSet = new Set(connectedStrategyNames);
     const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
-      [
-        trade.strategy,
-        trade.universe ?? 'crypto',
-        trade.accountId ?? 'default',
-        trade.deploymentId ?? 'default',
-        trade.policyProfileId ?? 'default',
-      ].join(':');
+      buildRuntimeStrategyIdentityKey({
+        strategyName: trade.strategy,
+        universe: trade.universe,
+        accountId: trade.accountId,
+        deploymentId: trade.deploymentId,
+        policyProfileId: trade.policyProfileId,
+      });
     const identityByKey = new Map<
       string,
       {
@@ -646,13 +647,13 @@ export const GET = async (request: NextRequest) => {
     for (const deployment of runtimeDeployments) {
       for (const deploymentStrategy of deployment.strategies) {
         deployedStrategyNames.add(deploymentStrategy.strategyName);
-        const runtimeKey = [
-          deploymentStrategy.strategyName,
-          deployment.universe,
-          deployment.accountId,
-          deployment.id,
-          deploymentStrategy.policyProfileId,
-        ].join(':');
+        const runtimeKey = buildRuntimeStrategyIdentityKey({
+          strategyName: deploymentStrategy.strategyName,
+          universe: deployment.universe,
+          accountId: deployment.accountId,
+          deploymentId: deployment.id,
+          policyProfileId: deploymentStrategy.policyProfileId,
+        });
         identityByKey.set(runtimeKey, {
           strategyName: deploymentStrategy.strategyName,
           universe: deployment.universe,

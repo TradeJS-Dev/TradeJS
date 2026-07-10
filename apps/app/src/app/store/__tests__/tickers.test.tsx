@@ -17,14 +17,16 @@ jest.mock('idb-keyval', () => ({
 
 const Probe = ({
   provider = 'bybit',
+  universe = 'crypto',
   enabled = true,
   onReady,
 }: {
   provider?: string;
+  universe?: 'crypto' | 'tradfi';
   enabled?: boolean;
   onReady?: (api: { ensureLoaded: () => Promise<unknown> }) => void;
 }) => {
-  const { tickers, ensureLoaded } = useTickers(provider, { enabled });
+  const { tickers, ensureLoaded } = useTickers(provider, universe, { enabled });
 
   React.useEffect(() => {
     onReady?.({ ensureLoaded });
@@ -117,5 +119,34 @@ describe('store/useTickers', () => {
       ]);
     });
     expect(scanMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps Crypto and TradFi scanner caches isolated', async () => {
+    scanMock.mockImplementation(async (_provider: string, universe: string) =>
+      universe === 'tradfi'
+        ? [{ value: 'AAPLUSDT', label: 'AAPLUSDT' }]
+        : [{ value: 'BTCUSDT', label: 'BTCUSDT' }],
+    );
+
+    render(
+      <>
+        <Probe provider="bybit" universe="crypto" />
+        <Probe provider="bybit" universe="tradfi" />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(scanMock).toHaveBeenCalledWith('bybit', 'crypto');
+      expect(scanMock).toHaveBeenCalledWith('bybit', 'tradfi');
+      expect(scanMock).toHaveBeenCalledTimes(2);
+    });
+    expect(idbGetMock).toHaveBeenCalledWith('tickers:bybit');
+    expect(idbGetMock).toHaveBeenCalledWith('tickers:bybit:tradfi');
+    expect(idbSetMock).toHaveBeenCalledWith(
+      'tickers:bybit:tradfi',
+      expect.objectContaining({
+        items: [{ value: 'AAPLUSDT', label: 'AAPLUSDT' }],
+      }),
+    );
   });
 });

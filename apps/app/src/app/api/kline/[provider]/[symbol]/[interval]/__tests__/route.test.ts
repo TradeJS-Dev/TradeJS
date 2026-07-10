@@ -222,6 +222,76 @@ describe('/api/kline route', () => {
     ).toBe(1);
   });
 
+  it('passes explicit TradFi universe and does not request BTC reference data', async () => {
+    const klineMock = jest.fn(async ({ symbol }: { symbol: string }) => [
+      makeCandle(900_000, symbol === 'AAPLUSDT' ? 200 : 100),
+      makeCandle(1_800_000, symbol === 'AAPLUSDT' ? 201 : 101),
+    ]);
+    const connectorCreator = jest.fn(async () => ({ kline: klineMock }));
+    mockGetConnectorCreatorByProvider.mockResolvedValue(connectorCreator);
+
+    const response = await POST(
+      makeRequest({ start: 900_000, end: 1_800_000 }),
+      {
+        params: Promise.resolve({
+          provider: 'bybit',
+          universe: 'tradfi',
+          symbol: 'AAPLUSDT',
+          interval: '15',
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(connectorCreator).toHaveBeenCalledWith({
+      userName: 'root',
+      universe: 'tradfi',
+    });
+    expect(klineMock).toHaveBeenCalledTimes(1);
+    expect(klineMock).toHaveBeenCalledWith(
+      expect.objectContaining({ symbol: 'AAPLUSDT' }),
+    );
+    expect(mockCreateIndicators).toHaveBeenCalledWith(
+      expect.any(Array),
+      [],
+      expect.objectContaining({ includeMlPayload: false }),
+    );
+  });
+
+  it('rejects invalid and connector-unsupported universes with status 400', async () => {
+    const invalid = await POST(makeRequest({ end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        universe: 'stocks',
+        symbol: 'AAPLUSDT',
+        interval: '15',
+      }),
+    });
+    expect(invalid).toEqual({
+      status: 400,
+      body: { error: 'Unknown market universe: stocks' },
+    });
+
+    mockGetConnectorCreatorByProvider.mockResolvedValue(async () => {
+      throw new Error('Unsupported market universe: tradfi');
+    });
+    const unsupported = await POST(
+      makeRequest({ start: 900_000, end: 1_800_000 }),
+      {
+        params: Promise.resolve({
+          provider: 'coinbase',
+          universe: 'tradfi',
+          symbol: 'AAPLUSDT',
+          interval: '15',
+        }),
+      },
+    );
+    expect(unsupported).toEqual({
+      status: 400,
+      body: { error: 'Unsupported market universe: tradfi' },
+    });
+  });
+
   it('expires enriched cache entries after ttl and refetches data', async () => {
     const nowSpy = jest.spyOn(Date, 'now');
     nowSpy.mockReturnValue(10_000);

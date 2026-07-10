@@ -15,6 +15,7 @@ import {
   Item,
   OrderLog,
   PositionLogData,
+  RuntimeDeployment,
   StrategyConfig,
   StrategyConfigGrid,
   Test,
@@ -328,19 +329,39 @@ export const loadReplayStrategies = async (): Promise<
   RuntimeStrategyBacktestConfig[]
 > => loadReplayStrategiesShared(userName);
 
+export const validateBacktestRuntimeDeployment = ({
+  deployment,
+  deploymentId,
+  requestedInterval,
+}: {
+  deployment: RuntimeDeployment | null;
+  deploymentId?: string;
+  requestedInterval: string;
+}) => {
+  if (deploymentId && !deployment) {
+    throw new Error(`Runtime deployment not found: ${deploymentId}`);
+  }
+  if (deployment && !deployment.enabled) {
+    throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
+  }
+  if (deployment && String(deployment.interval) !== String(requestedInterval)) {
+    throw new Error(
+      `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${requestedInterval}`,
+    );
+  }
+  return deployment;
+};
+
 export const prepareRunEnvironment =
   async (): Promise<PreparedRunEnvironment | null> => {
-    const deployment = flags.deployment
-      ? await getRuntimeDeployment(userName, String(flags.deployment))
-      : null;
-    if (flags.deployment && !deployment) {
-      throw new Error(`Runtime deployment not found: ${flags.deployment}`);
-    }
-    if (deployment && String(deployment.interval) !== String(interval)) {
-      throw new Error(
-        `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${interval}`,
-      );
-    }
+    const deployment = validateBacktestRuntimeDeployment({
+      deployment: flags.deployment
+        ? await getRuntimeDeployment(userName, String(flags.deployment))
+        : null,
+      deploymentId:
+        typeof flags.deployment === 'string' ? flags.deployment : undefined,
+      requestedInterval: interval,
+    });
     const preparedRun = await prepareRunEnvironmentShared({
       connector: deployment?.connectorName ?? flags.connector,
       userName,

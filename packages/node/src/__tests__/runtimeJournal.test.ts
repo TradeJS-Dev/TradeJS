@@ -7,8 +7,12 @@ jest.mock('@tradejs/infra/redis', () => ({
   delKey: (...args: unknown[]) => mockDelKey(...args),
   getData: (...args: unknown[]) => mockGetData(...args),
   redisKeys: {
-    runtimeActiveTrade: (userName: string, symbol: string) =>
-      `users:${userName}:runtime:active:${symbol}`,
+    runtimeActiveTrade: (
+      userName: string,
+      symbol: string,
+      runtimeScopeId?: string,
+    ) =>
+      `users:${userName}:runtime:active:${runtimeScopeId ? `${runtimeScopeId}:` : ''}${symbol}`,
     runtimeTrade: (userName: string, orderId: string) =>
       `users:${userName}:runtime:trade:${orderId}`,
     runtimeTradeBucket: (userName: string, dayKey: string) =>
@@ -143,6 +147,86 @@ describe('runtimeJournal', () => {
         fee: 0.201,
       }),
       { expire: 0 },
+    );
+  });
+
+  it('isolates active trade refs and metadata by deployment', async () => {
+    const opened = await recordRuntimeTradeOpen({
+      userName: 'root',
+      orderId: 'tradfi-ord-1',
+      strategy: 'TrendLine',
+      symbol: 'AAPLUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 200,
+      entryTimestamp: 100,
+      universe: 'tradfi',
+      assetClass: 'equity',
+      accountId: 'tradfi-main',
+      deploymentId: 'tradfi-live',
+      policyProfileId: 'tradfi',
+    });
+
+    expect(opened).toEqual(
+      expect.objectContaining({
+        universe: 'tradfi',
+        assetClass: 'equity',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+        policyProfileId: 'tradfi',
+      }),
+    );
+    expect(mockSetData).toHaveBeenCalledWith(
+      'users:root:runtime:active:tradfi-live:AAPLUSDT',
+      { orderId: 'tradfi-ord-1' },
+      { expire: 0 },
+    );
+  });
+
+  it('loads and closes only the requested deployment active trade', async () => {
+    const existingTrade = {
+      orderId: 'tradfi-ord-1',
+      strategy: 'TrendLine',
+      symbol: 'AAPLUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 200,
+      entryTimestamp: 100,
+      status: 'active',
+      deploymentId: 'tradfi-live',
+    };
+    mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:runtime:active:tradfi-live:AAPLUSDT') {
+        return { orderId: 'tradfi-ord-1' };
+      }
+      if (key === 'users:root:runtime:trade:tradfi-ord-1') {
+        return existingTrade;
+      }
+      return fallback;
+    });
+
+    await expect(
+      getActiveRuntimeTrade({
+        userName: 'root',
+        symbol: 'AAPLUSDT',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+      }),
+    ).resolves.toEqual(existingTrade);
+    await markRuntimeTradeClosed({
+      userName: 'root',
+      strategy: 'TrendLine',
+      symbol: 'AAPLUSDT',
+      exitPrice: 205,
+      deploymentId: 'tradfi-live',
+    });
+
+    expect(mockDelKey).toHaveBeenCalledWith(
+      'users:root:runtime:active:tradfi-live:AAPLUSDT',
+    );
+    expect(mockGetData).not.toHaveBeenCalledWith(
+      'users:root:runtime:active:AAPLUSDT',
+      expect.anything(),
     );
   });
 

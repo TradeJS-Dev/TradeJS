@@ -24,7 +24,9 @@ type RuntimeDeploymentView = RuntimeDeployment & {
   heartbeat?: RuntimeDeploymentHeartbeat | null;
 };
 
-const getDeploymentProcessStatus = (deployment: RuntimeDeploymentView) => {
+export const getDeploymentProcessStatus = (
+  deployment: RuntimeDeploymentView,
+) => {
   const heartbeat = deployment.heartbeat;
   if (!heartbeat) return 'not started';
   const staleAfterMs = Math.max(

@@ -645,6 +645,43 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('clamps requested leverage to the instrument maximum', async () => {
+    const client = {
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+      maxLeverage: 5,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    await connector.placeOrder({
+      symbol: 'AAPLUSDT',
+      price: 100,
+      qty: 1,
+      direction: 'LONG',
+      timestamp: Date.now(),
+      leverage: 20,
+    } as any);
+
+    expect(client.setLeverage).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'AAPLUSDT',
+      buyLeverage: '5',
+      sellLeverage: '5',
+    });
+  });
+
   it('submits market order without TP/SL in the entry request', async () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
@@ -1381,6 +1418,20 @@ describe('ByBitConnectorCreator', () => {
       'forex',
     ]);
     expect(instruments.every(({ kind }) => kind === 'perpetual')).toBe(true);
+
+    await expect(
+      connector.listInstruments({
+        universe: 'tradfi',
+        assetClasses: ['equity'],
+        symbols: [' stockusdt '],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        symbol: 'STOCKUSDT',
+        assetClass: 'equity',
+      }),
+    ]);
+    expect(getInstrumentsInfo).toHaveBeenCalledTimes(3);
   });
 
   it('paginates historical funding backwards from endTime', async () => {
@@ -1433,6 +1484,40 @@ describe('ByBitConnectorCreator', () => {
       { symbol: 'AAPLUSDT', timestamp: 200, rate: 0.002 },
       { symbol: 'AAPLUSDT', timestamp: 300, rate: 0.003 },
     ]);
+  });
+
+  it('loads account-specific maker and taker fee rates', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(123_456);
+    const getFeeRate = jest.fn(async () => ({
+      retCode: 0,
+      result: {
+        list: [
+          {
+            symbol: 'AAPLUSDT',
+            makerFeeRate: '0.0002',
+            takerFeeRate: '0.00055',
+          },
+        ],
+      },
+    }));
+    mockedGetClient.mockResolvedValue({ getFeeRate } as any);
+    const connector = await ByBitConnectorCreator({
+      userName: 'alice',
+      accountId: 'tradfi-main',
+      universe: 'tradfi',
+    });
+
+    await expect(connector.getTradingFeeRate?.(' aaplusdt ')).resolves.toEqual({
+      symbol: 'AAPLUSDT',
+      makerRate: 0.0002,
+      takerRate: 0.00055,
+      source: 'exchange-account',
+      capturedAt: 123_456,
+    });
+    expect(getFeeRate).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'AAPLUSDT',
+    });
   });
 
   it('getState/setState merges state incrementally', async () => {

@@ -1,4 +1,5 @@
 import { createSignalsStrategyLifecycle } from '../lib/signals/runtimeLifecycle';
+import type { RuntimeDeployment } from '@tradejs/types';
 
 const TTL_10D = 864_000;
 
@@ -18,10 +19,15 @@ type ScriptFlags = {
   chunk?: string;
   user: string;
   connector: string;
+  universe?: 'crypto' | 'tradfi';
+  account?: string;
+  deployment?: string;
+  watch?: boolean;
 };
 
 type Scenario = {
   flags: ScriptFlags;
+  deployment?: RuntimeDeployment | null;
   derivativesContextEnabled?: boolean;
   binanceMarketContextBackfillEnabled?: boolean;
   coinMarketCapContextBackfillEnabled?: boolean;
@@ -122,6 +128,18 @@ const loadScript = async (scenario: Scenario) => {
     warn: jest.fn(),
     error: jest.fn(),
   };
+  const listInstruments = jest.fn(
+    async ({ universe }: { universe: string }) => [
+      {
+        provider: 'bybit',
+        symbol: 'ETHUSDT',
+        kind: 'perpetual',
+        assetClass: universe === 'tradfi' ? 'equity' : 'crypto',
+        universe,
+        status: 'trading',
+      },
+    ],
+  );
   const connector = {
     kline: jest.fn(async ({ symbol }: { symbol: string }) => {
       const timestamps =
@@ -138,6 +156,19 @@ const loadScript = async (scenario: Scenario) => {
       );
     }),
   };
+  const connectorCreator = jest.fn(async (config: Record<string, unknown>) => ({
+    ...connector,
+    capabilities: {
+      supportedUniverses: ['crypto', 'tradfi'],
+      defaultUniverse: 'crypto',
+    },
+    universe: config.universe ?? 'crypto',
+    accountId: config.accountId,
+    deploymentId: config.deploymentId,
+    listInstruments,
+  }));
+  const getRuntimeDeployment = jest.fn(async () => scenario.deployment ?? null);
+  const saveRuntimeDeploymentHeartbeat = jest.fn(async () => undefined);
   const strategyCreatorMap = new Map<string, jest.Mock>();
   const strategyFnMap = new Map<string, jest.Mock>();
 
@@ -285,8 +316,13 @@ const loadScript = async (scenario: Scenario) => {
 
   jest.doMock('@tradejs/node/connectors', () => ({
     DEFAULT_CONNECTOR_NAME: 'bybit',
-    getConnectorCreatorByName: jest.fn(async () => async () => connector),
+    getConnectorCreatorByName: jest.fn(async () => connectorCreator),
     resolveConnectorName: jest.fn(async () => 'bybit'),
+  }));
+
+  jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+    getRuntimeDeployment,
+    saveRuntimeDeploymentHeartbeat,
   }));
 
   jest.doMock('@tradejs/connectors', () => ({
@@ -375,6 +411,8 @@ const loadScript = async (scenario: Scenario) => {
       backfillCoinMarketCapContextForSignals,
       enrichSignalWithBinanceMarketContext,
       connector,
+      connectorCreator,
+      getRuntimeDeployment,
       getData,
       getKeys,
       getTimestamp,
@@ -383,6 +421,7 @@ const loadScript = async (scenario: Scenario) => {
       incrHashFields,
       loadTradejsConfig,
       logger,
+      listInstruments,
       makeScreenshots,
       progressTick,
       releaseStrategyReplayCache,
@@ -391,6 +430,7 @@ const loadScript = async (scenario: Scenario) => {
       sendRuntimeCloseNotificationsToTG,
       sendTextToTG,
       sendToTG,
+      saveRuntimeDeploymentHeartbeat,
       setData,
       setHashJsonField,
       shouldBackfillBinanceMarketContextForSignals,
@@ -699,6 +739,164 @@ describe('signals script', () => {
     expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
     expect(mocks.setData).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds a TradFi daemon session to its deployment and account', async () => {
+    const runtimeDeployment: RuntimeDeployment = {
+      id: 'tradfi-live',
+      label: 'TradFi Live',
+      connectorName: 'bybit',
+      provider: 'bybit',
+      accountId: 'tradfi-main',
+      universe: 'tradfi',
+      interval: '15',
+      enabled: true,
+      tickers: ['ETHUSDT'],
+      assetClasses: ['equity'],
+      strategies: [
+        {
+          strategyName: 'TrendLine',
+          policyProfileId: 'tradfi',
+          enabled: true,
+          config: { DEPLOYMENT_ONLY: true },
+        },
+      ],
+    };
+    const { createSignalsSession, signals, mocks } = await loadScript({
+      deployment: runtimeDeployment,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: 'tradfi-live',
+      },
+    });
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+    });
+
+    const session = await createSignalsSession(lifecycle);
+    await signals({ session });
+
+    expect(mocks.getRuntimeDeployment).toHaveBeenCalledWith(
+      'root',
+      'tradfi-live',
+    );
+    expect(mocks.connectorCreator).toHaveBeenCalledWith({
+      userName: 'root',
+      universe: 'tradfi',
+      accountId: 'tradfi-main',
+      deploymentId: 'tradfi-live',
+    });
+    expect(mocks.getTickers).toHaveBeenCalledWith(
+      expect.any(Object),
+      'ETHUSDT',
+      undefined,
+      undefined,
+      undefined,
+      { universe: 'tradfi', assetClasses: ['equity'] },
+    );
+    expect(mocks.listInstruments).toHaveBeenCalledWith({
+      universe: 'tradfi',
+      assetClasses: ['equity'],
+      symbols: ['ETHUSDT'],
+    });
+    expect(
+      mocks.connector.kline.mock.calls.map(([params]) => params.symbol),
+    ).toEqual(['ETHUSDT']);
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({
+        universe: 'tradfi',
+        assetClass: 'equity',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+        btcData: [],
+        ethData: [],
+        config: expect.objectContaining({
+          DEPLOYMENT_ONLY: true,
+          POLICY_PROFILE_ID: 'tradfi',
+        }),
+      }),
+    );
+    expect(mocks.saveRuntimeDeploymentHeartbeat).toHaveBeenCalledWith(
+      'root',
+      expect.objectContaining({
+        deploymentId: 'tradfi-live',
+        status: 'running',
+      }),
+    );
+  });
+
+  it('rejects missing and interval-mismatched deployments before connector creation', async () => {
+    const missing = await loadScript({
+      deployment: null,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: 'missing',
+      },
+    });
+    await expect(
+      missing.createSignalsSession(
+        createSignalsStrategyLifecycle({
+          intervalMs: INTERVAL_MS,
+          maxLiveBars: 100,
+        }),
+      ),
+    ).rejects.toThrow('Runtime deployment not found: missing');
+    expect(missing.mocks.connectorCreator).not.toHaveBeenCalled();
+
+    const mismatch = await loadScript({
+      deployment: {
+        id: 'tradfi-live',
+        label: 'TradFi',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'tradfi-main',
+        universe: 'tradfi',
+        interval: '60',
+        enabled: true,
+        strategies: [],
+      },
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: 'tradfi-live',
+      },
+    });
+    await expect(
+      mismatch.createSignalsSession(
+        createSignalsStrategyLifecycle({
+          intervalMs: INTERVAL_MS,
+          maxLiveBars: 100,
+        }),
+      ),
+    ).rejects.toThrow('requires timeframe 60; received 15');
+    expect(mismatch.mocks.connectorCreator).not.toHaveBeenCalled();
   });
 
   it('advances session state with a disposable runtime on the next candle', async () => {

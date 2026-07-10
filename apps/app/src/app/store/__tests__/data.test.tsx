@@ -184,4 +184,46 @@ describe('store/useData', () => {
       );
     });
   });
+
+  it('keeps candle requests and caches isolated by universe', async () => {
+    klineMock.mockResolvedValue(makeData());
+    const symbol = 'AAPLUSDT_UNIVERSE_TEST';
+
+    render(
+      <>
+        <Probe
+          testId="crypto-probe"
+          filters={makeFilters({ symbol, universe: 'crypto' })}
+        />
+        <Probe
+          testId="tradfi-probe"
+          filters={makeFilters({ symbol, universe: 'tradfi' })}
+        />
+      </>,
+    );
+
+    await waitFor(() => expect(klineMock).toHaveBeenCalledTimes(2));
+    expect(klineMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'bybit',
+        universe: 'crypto',
+        symbol,
+      }),
+    );
+    expect(klineMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'bybit',
+        universe: 'tradfi',
+        symbol,
+      }),
+    );
+    expect(idbSetMock).toHaveBeenCalledWith(
+      `bybit_crypto_${symbol}_15`,
+      expect.any(Array),
+    );
+    expect(idbSetMock).toHaveBeenCalledWith(
+      `bybit_tradfi_${symbol}_15`,
+      expect.any(Array),
+    );
+  });
 });

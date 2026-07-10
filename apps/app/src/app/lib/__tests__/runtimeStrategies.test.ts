@@ -2,6 +2,7 @@ import type { ClosedPnlRecord, RuntimeTradeRecord } from '@tradejs/types';
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import {
   buildExchangeFallbackRuntimeTrades,
+  buildRuntimeStrategyIdentityKey,
   buildRuntimeStrategyAnalytics,
   resolveStrategyNameByConfigKey,
   resolveStrategyNameByOrderLinkId,
@@ -11,6 +12,21 @@ import {
 } from '../runtimeStrategies';
 
 describe('runtimeStrategies helpers', () => {
+  it('builds isolated runtime identity keys with crypto defaults', () => {
+    expect(buildRuntimeStrategyIdentityKey({ strategyName: 'TrendLine' })).toBe(
+      'TrendLine:crypto:default:default:default',
+    );
+    expect(
+      buildRuntimeStrategyIdentityKey({
+        strategyName: 'TrendLine',
+        universe: 'tradfi',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+        policyProfileId: 'tradfi',
+      }),
+    ).toBe('TrendLine:tradfi:tradfi-main:tradfi-live:tradfi');
+  });
+
   it('resolves strategy name from runtime config key', () => {
     expect(
       resolveStrategyNameByConfigKey(

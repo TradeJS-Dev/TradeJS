@@ -89,6 +89,27 @@ export interface RuntimeStrategyView {
   orders: RuntimeStrategyTradeView[];
 }
 
+export const buildRuntimeStrategyIdentityKey = ({
+  strategyName,
+  universe,
+  accountId,
+  deploymentId,
+  policyProfileId,
+}: {
+  strategyName: string;
+  universe?: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  policyProfileId?: string;
+}) =>
+  [
+    strategyName,
+    universe ?? 'crypto',
+    accountId ?? 'default',
+    deploymentId ?? 'default',
+    policyProfileId ?? 'default',
+  ].join(':');
+
 export interface RuntimeStrategiesResponse {
   provider: string;
   hours: number;

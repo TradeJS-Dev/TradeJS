@@ -55,7 +55,11 @@ export const POST = async (request: NextRequest) => {
       );
     }
     const account = await getTradingAccount(userName, body.accountId);
-    if (!account || account.provider !== body.provider.toLowerCase()) {
+    if (
+      !account ||
+      !account.enabled ||
+      account.provider !== body.provider.toLowerCase()
+    ) {
       return NextResponse.json(
         { error: 'Deployment trading account is unavailable' },
         { status: 400 },

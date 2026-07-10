@@ -31,6 +31,26 @@ describe('BinanceConnectorCreator', () => {
     jest.restoreAllMocks();
   });
 
+  it('defaults to crypto and rejects explicit TradFi', async () => {
+    const connector = await BinanceConnectorCreator({
+      userName: 'test',
+      accountId: 'account-1',
+      deploymentId: 'deployment-1',
+    });
+
+    expect(connector.universe).toBe('crypto');
+    expect(connector.capabilities).toEqual({
+      supportedUniverses: ['crypto'],
+      defaultUniverse: 'crypto',
+    });
+    expect(connector.accountId).toBe('account-1');
+    expect(connector.deploymentId).toBe('deployment-1');
+    await expect(
+      BinanceConnectorCreator({ userName: 'test', universe: 'tradfi' }),
+    ).rejects.toThrow('Unsupported market universe: tradfi');
+    expect(mockedFetchWithRetry).not.toHaveBeenCalled();
+  });
+
   it('loads symbol top-of-book from Binance bookTicker endpoint', async () => {
     process.env.BINANCE_BASE_URL = ' https://binance.local ';
     jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);

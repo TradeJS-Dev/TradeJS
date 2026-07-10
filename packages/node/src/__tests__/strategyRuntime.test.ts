@@ -249,6 +249,11 @@ const makeRuntime = async (
     testConnector?: boolean;
     onRuntimeClose?: jest.Mock;
     backtestExecutionMarketData?: any;
+    universe?: 'crypto' | 'tradfi';
+    assetClass?: 'crypto' | 'equity' | 'commodity' | 'forex';
+    accountId?: string;
+    deploymentId?: string;
+    policyProfileId?: string;
   } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
@@ -273,12 +278,20 @@ const makeRuntime = async (
     setTakeProfits: jest.fn(async () => true),
     setStopLoss: jest.fn(async () => true),
     closePosition: jest.fn(async () => true),
+    ...(options.universe ? { universe: options.universe } : {}),
+    ...(options.accountId ? { accountId: options.accountId } : {}),
+    ...(options.deploymentId ? { deploymentId: options.deploymentId } : {}),
   } as any;
 
   const strategy = await strategyCreator({
     userName: 'root',
     connectorName: 'ByBit',
     symbol: 'ETHUSDT',
+    universe: options.universe,
+    assetClass: options.assetClass,
+    accountId: options.accountId,
+    deploymentId: options.deploymentId,
+    policyProfileId: options.policyProfileId,
     config: {},
     data: [],
     btcData: [],
@@ -1439,6 +1452,76 @@ describe('strategyRuntime', () => {
     expect(mockEnrichSignalWithAi).toHaveBeenCalledWith(
       expect.objectContaining({
         ai: expect.objectContaining({ enabled: false }),
+      }),
+    );
+  });
+
+  it('applies TradFi policy metadata, model key and leverage to the shared core', async () => {
+    const baseManifest = realGetStrategyManifest('TrendLine') ?? {
+      name: 'TrendLine',
+    };
+    manifestOverrides.set('TrendLine', {
+      ...baseManifest,
+      policyProfiles: [
+        {
+          id: 'tradfi',
+          appliesTo: {
+            universes: ['tradfi'],
+            assetClasses: ['equity'],
+          },
+          entryRuntimeDefaults: {
+            ml: {
+              enabled: true,
+              modelKey: 'TrendLine:tradfi',
+              mlThreshold: 0.7,
+            },
+            ai: { enabled: false },
+          },
+        },
+      ],
+    });
+    const decision = makeDecisionEntry({ runtime: undefined });
+    const { strategy } = await makeRuntime(
+      () => decision,
+      { LEVERAGE: 7, ML_ENABLED: true, ML_THRESHOLD: 0.7 },
+      {
+        universe: 'tradfi',
+        assetClass: 'equity',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+        policyProfileId: 'tradfi',
+      },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockEnrichSignalWithMl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ml: expect.objectContaining({
+          enabled: true,
+          modelKey: 'TrendLine:tradfi',
+          mlThreshold: 0.7,
+        }),
+      }),
+    );
+    expect(mockEnrichSignalWithAi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({ enabled: false }),
+      }),
+    );
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ leverage: 7 }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        universe: 'tradfi',
+        assetClass: 'equity',
+        accountId: 'tradfi-main',
+        deploymentId: 'tradfi-live',
+        policyProfileId: 'tradfi',
       }),
     );
   });

@@ -153,6 +153,7 @@ import {
 import {
   buildPreparedTestSuite,
   updateBestTickerResult,
+  validateBacktestRuntimeDeployment,
 } from '../lib/backtest/runnerCore';
 import {
   getBestTickerResultForSymbol,
@@ -216,6 +217,49 @@ describe('backtest script helpers', () => {
 
     expect(resolveDefaultParallel(16 * 1024 * 1024 * 1024, 8, 1536)).toBe(4);
     expect(resolveDefaultParallel(6 * 1024 * 1024 * 1024, 8, 1536)).toBe(2);
+  });
+
+  it('validates runtime deployment availability, status and interval', () => {
+    expect(() =>
+      validateBacktestRuntimeDeployment({
+        deployment: null,
+        deploymentId: 'missing',
+        requestedInterval: '15',
+      }),
+    ).toThrow('Runtime deployment not found: missing');
+    expect(() =>
+      validateBacktestRuntimeDeployment({
+        deployment: {
+          id: 'tradfi-live',
+          enabled: false,
+          interval: '15',
+        } as any,
+        deploymentId: 'tradfi-live',
+        requestedInterval: '15',
+      }),
+    ).toThrow('Runtime deployment is disabled: tradfi-live');
+    expect(() =>
+      validateBacktestRuntimeDeployment({
+        deployment: {
+          id: 'tradfi-live',
+          enabled: true,
+          interval: '60',
+        } as any,
+        deploymentId: 'tradfi-live',
+        requestedInterval: '15',
+      }),
+    ).toThrow('requires timeframe 60; received 15');
+    expect(
+      validateBacktestRuntimeDeployment({
+        deployment: {
+          id: 'tradfi-live',
+          enabled: true,
+          interval: '15',
+        } as any,
+        deploymentId: 'tradfi-live',
+        requestedInterval: '15',
+      }),
+    ).toEqual(expect.objectContaining({ id: 'tradfi-live' }));
   });
 
   it('clamps worker heap env to a minimum floor and falls back on invalid values', () => {
