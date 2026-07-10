@@ -127,7 +127,7 @@ const checkSignals = (
 
 export const createBreakoutCore: CreateStrategyCore<
   BreakoutConfig,
-  Record<string, any> | undefined,
+  IndicatorSnapshot | undefined,
   IndicatorSnapshot | undefined
 > = async ({ config, strategyApi }) => {
   return async (candle) => {
@@ -136,7 +136,7 @@ export const createBreakoutCore: CreateStrategyCore<
     }
 
     const { indicators: indicatorValues } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorSnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
     if (!indicatorValues) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -169,7 +169,9 @@ export const createBreakoutCore: CreateStrategyCore<
     }
 
     const position = await strategyApi.getCurrentPosition();
-    const positionExists = await strategyApi.isCurrentPositionExists();
+    const positionExists = Boolean(
+      position && typeof position.qty === 'number' && position.qty > 0,
+    );
 
     const signals = getSignals(config, {
       ...indicatorValues,
@@ -299,23 +301,17 @@ export const createBreakoutCore: CreateStrategyCore<
     const direction = isLong ? 'LONG' : 'SHORT';
 
     if ((isLong && shouldOpenShort) || (isShort && shouldOpenLong)) {
-      const { currentPrice, timestamp } =
-        await strategyApi.getDecisionPriceContext();
-      return {
-        kind: 'exit',
+      return strategyApi.exit({
         code: 'CLOSE_POSITION_BY_OPEN_SIGNAL',
-        closePlan: { price: currentPrice, timestamp, direction },
-      };
+        direction,
+      });
     }
 
     if ((isLong && signals.SMA_DOWNTREND) || (isShort && signals.SMA_UPTREND)) {
-      const { currentPrice, timestamp } =
-        await strategyApi.getDecisionPriceContext();
-      return {
-        kind: 'exit',
+      return strategyApi.exit({
         code: 'CLOSE_POSITION_BY_SMA',
-        closePlan: { price: currentPrice, timestamp, direction },
-      };
+        direction,
+      });
     }
 
     return strategyApi.skip('POSITION_HELD');

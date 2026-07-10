@@ -128,14 +128,16 @@ const makeStrategyApi = () => {
       if (!latestMarketData) {
         latestMarketData = await getStrategyMarketSnapshot({} as any);
       }
+      const baseContext = getMockIndicatorsContext().baseContext;
 
       return {
         kind: 'exit',
         code: params.code ?? `TREND_LINE_${params.direction}_EXIT`,
         closePlan: {
           direction: params.direction,
-          price: params.price ?? latestMarketData.currentPrice,
-          timestamp: params.timestamp ?? latestMarketData.timestamp,
+          price: baseContext?.candle?.close ?? latestMarketData.currentPrice,
+          timestamp:
+            baseContext?.candle?.timestamp ?? latestMarketData.timestamp,
         },
       };
     },
@@ -144,11 +146,6 @@ const makeStrategyApi = () => {
       code: params.code ?? `TREND_LINE_${params.protectPlan.direction}_PROTECT`,
       protectPlan: params.protectPlan,
     }),
-    getMarketData: async (params: any) => {
-      const marketData = await getStrategyMarketSnapshot(params);
-      latestMarketData = marketData;
-      return marketData;
-    },
     getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
@@ -164,9 +161,7 @@ const makeStrategyApi = () => {
         candle: baseContext?.candle ?? (latestMarketData as any)?.lastCandle,
       };
     }),
-    nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(async () => currentPosition),
-    isCurrentPositionExists: jest.fn(async () => Boolean(currentPosition)),
     __setCurrentPosition: (position: any) => {
       currentPosition = position;
     },
@@ -260,7 +255,6 @@ describe('createTrendLineCore', () => {
     const result = await core(candle as any, candle as any);
 
     expect(result).toEqual({ kind: 'skip', code: 'NO_TRENDLINE' });
-    expect(strategyApi.isCurrentPositionExists).not.toHaveBeenCalled();
   });
 
   it('returns entry decision for valid trendline setup', async () => {

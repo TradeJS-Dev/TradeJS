@@ -49,7 +49,6 @@ const getMockIndicatorsContext = () => {
 const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(async () => marketData),
     getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
@@ -62,9 +61,6 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       };
     }),
     getCurrentPosition: jest.fn(async () => currentPosition),
-    isCurrentPositionExists: jest.fn(async () =>
-      Boolean(currentPosition && currentPosition.qty > 0),
-    ),
     getDirectionalTpSlPrices: jest.fn(({ price, direction }) => ({
       stopLossPrice: direction === 'LONG' ? price * 0.99 : price * 1.01,
       takeProfitPrice: direction === 'LONG' ? price * 1.02 : price * 0.98,
@@ -77,6 +73,15 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       getLastTradeTimestamp: () => null,
     })),
     createStateController: createTestStateController(),
+    exit: jest.fn(async (params: any) => ({
+      kind: 'exit',
+      code: params.code,
+      closePlan: {
+        price: marketData.currentPrice,
+        timestamp: marketData.timestamp,
+        direction: params.direction,
+      },
+    })),
     entry: (params: any) => {
       const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
         ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))

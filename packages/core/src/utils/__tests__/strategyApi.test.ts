@@ -20,106 +20,6 @@ describe('createStrategyAPI', () => {
     releaseStrategyReplayCache('test-state');
   });
 
-  it('getMarketData reads updated cachedData on each call in BACKTEST mode', async () => {
-    const data: any[] = [];
-    const connector = {
-      kline: jest.fn(),
-      getPosition: jest.fn(),
-    } as any;
-
-    const strategyApi = createStrategyAPI({
-      strategy: 'TrendLine' as any,
-      symbol: 'TESTUSDT',
-      interval: '15' as any,
-      env: 'BACKTEST',
-      connector,
-      cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
-      isConfigFromBacktest: false,
-    });
-
-    data.push(makeCandle(1_700_000_000_000, 100));
-    const first = await strategyApi.getMarketData();
-    const firstLengthAtCall = first.fullData.length;
-
-    data.push(makeCandle(1_700_000_060_000, 105));
-    const second = await strategyApi.getMarketData();
-
-    expect(firstLengthAtCall).toBe(1);
-    expect(first.lastCandle.close).toBe(100);
-    expect(first.fullData).toBe(second.fullData);
-    expect(second.fullData).toHaveLength(2);
-    expect(second.lastCandle.close).toBe(105);
-    expect(second.currentPrice).toBe(105);
-    expect(connector.kline).not.toHaveBeenCalled();
-  });
-
-  it('getMarketData reuses one snapshot within the same BACKTEST bar and invalidates on the next bar', async () => {
-    const data: any[] = [makeCandle(1_700_000_000_000, 100)];
-    const connector = {
-      kline: jest.fn(),
-      getPosition: jest.fn(),
-    } as any;
-
-    const strategyApi = createStrategyAPI({
-      strategy: 'TrendLine' as any,
-      symbol: 'TESTUSDT',
-      interval: '15' as any,
-      env: 'BACKTEST',
-      connector,
-      cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
-      isConfigFromBacktest: false,
-    });
-
-    const first = await strategyApi.getMarketData();
-    const second = await strategyApi.getMarketData();
-
-    expect(second).toBe(first);
-
-    data.push(makeCandle(1_700_000_060_000, 105));
-
-    const third = await strategyApi.getMarketData();
-
-    expect(third).not.toBe(second);
-    expect(third.lastCandle.close).toBe(105);
-    expect(connector.kline).not.toHaveBeenCalled();
-  });
-
-  it('getMarketData ignores BACKTEST_PRICE_MODE and returns the closed candle close for signals', async () => {
-    const data: any[] = [makeCandle(1_700_000_000_000, 100)];
-    const connector = {
-      kline: jest.fn(),
-      getPosition: jest.fn(),
-    } as any;
-
-    const strategyApi = createStrategyAPI({
-      strategy: 'TrendLine' as any,
-      symbol: 'TESTUSDT',
-      interval: '15' as any,
-      env: 'BACKTEST',
-      connector,
-      cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'open',
-      isConfigFromBacktest: false,
-    });
-
-    const openMode = await strategyApi.getMarketData({
-      backtestPriceMode: 'open',
-    });
-    const closeMode = await strategyApi.getMarketData({
-      backtestPriceMode: 'close',
-    });
-
-    expect(openMode.currentPrice).toBe(100);
-    expect(openMode.lastCandle.open).toBe(99);
-    expect(closeMode).toBe(openMode);
-    expect(connector.kline).not.toHaveBeenCalled();
-  });
-
   it('getDecisionPriceContext returns the current closed candle without loading indicators or market data', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     const data: any[] = [candle];
@@ -145,8 +45,6 @@ describe('createStrategyAPI', () => {
       connector,
       cachedData: data,
       indicatorsState,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -201,8 +99,6 @@ describe('createStrategyAPI', () => {
       connector,
       cachedData: data,
       indicatorsState,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -293,8 +189,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -332,8 +226,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -375,8 +267,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -473,7 +363,6 @@ describe('createStrategyAPI', () => {
       connector,
       cachedData: data,
       indicatorsState,
-      preloadStart: 1,
       isConfigFromBacktest: false,
     });
 
@@ -505,8 +394,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -551,8 +438,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -639,8 +524,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -674,8 +557,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
 
@@ -718,8 +599,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
     const controller = strategyApi.createStateController<
@@ -750,8 +629,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
     const controller = strategyApi.createStateController<
@@ -783,8 +660,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
     });
     const controller = strategyApi.createStateController<
@@ -811,8 +686,6 @@ describe('createStrategyAPI', () => {
         env: 'PARITY',
         connector,
         cachedData: data,
-        preloadStart: 1,
-        backtestPriceMode: 'close',
         isConfigFromBacktest: false,
         sharedReplayKey: 'test-state:shared',
         getSharedReplayState: getSharedStrategyReplayState,
@@ -855,8 +728,6 @@ describe('createStrategyAPI', () => {
         env: 'CRON',
         connector,
         cachedData: data,
-        preloadStart: 1,
-        backtestPriceMode: 'close',
         isConfigFromBacktest: false,
         sharedReplayKey: 'test-state:cron',
         getSharedReplayState: getSharedStrategyReplayState,
@@ -885,8 +756,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
       sharedReplayKey: 'test-state:configs',
       getSharedReplayState: getSharedStrategyReplayState,
@@ -927,8 +796,6 @@ describe('createStrategyAPI', () => {
       env: 'BACKTEST',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
       sharedReplayKey: 'test-state:disabled',
       getSharedReplayState: getSharedStrategyReplayState,
@@ -950,8 +817,6 @@ describe('createStrategyAPI', () => {
       env: 'CRON',
       connector,
       cachedData: data,
-      preloadStart: 1,
-      backtestPriceMode: 'close',
       isConfigFromBacktest: false,
       sharedReplayKey: 'test-state:disabled',
       getSharedReplayState: getSharedStrategyReplayState,

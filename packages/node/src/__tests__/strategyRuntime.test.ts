@@ -11,10 +11,8 @@ const mockGetDerivativesWindow = jest.fn();
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(),
     nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(),
-    isCurrentPositionExists: jest.fn(async () => false),
     entry: (entryParams: any) => ({
       kind: 'entry',
       code: entryParams.code,

@@ -75,8 +75,7 @@ export const createMaStrategyCore: CreateStrategyCore<
   });
 
   return async () => {
-    const { indicators } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
     if (!indicators) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -99,17 +98,10 @@ export const createMaStrategyCore: CreateStrategyCore<
         (position.direction === 'LONG' && cross?.kind === 'bearish') ||
         (position.direction === 'SHORT' && cross?.kind === 'bullish')
       ) {
-        const { currentPrice, timestamp } =
-          await strategyApi.getDecisionPriceContext();
-        return {
-          kind: 'exit',
+        return strategyApi.exit({
           code: 'CLOSE_BY_OPPOSITE_MA_CROSS',
-          closePlan: {
-            price: currentPrice,
-            timestamp,
-            direction: position.direction,
-          },
-        };
+          direction: position.direction,
+        });
       }
 
       return strategyApi.skip('POSITION_HELD');

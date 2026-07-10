@@ -20,9 +20,6 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
 const makeStrategyApi = (overrides: Record<string, any> = {}) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    nextIndicators: jest.fn((candle: any, btcCandle: any) =>
-      overrides.nextIndicators?.(candle, btcCandle),
-    ),
     getCurrentIndicatorsContext: jest.fn(() => {
       const indicators =
         overrides.indicators ??
@@ -39,9 +36,6 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
       candle: overrides.marketData?.lastCandle,
     })),
     getCurrentPosition: jest.fn(async () => overrides.currentPosition),
-    isCurrentPositionExists: jest.fn(async () =>
-      Boolean(overrides.currentPosition?.qty > 0),
-    ),
     getDirectionalTpSlPrices: jest.fn(
       ({
         price,
@@ -61,6 +55,15 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
       },
     ),
     createLastTradeController: jest.fn(),
+    exit: jest.fn(async (params: any) => ({
+      kind: 'exit',
+      code: params.code,
+      closePlan: {
+        price: overrides.marketData?.currentPrice,
+        timestamp: overrides.marketData?.timestamp,
+        direction: params.direction,
+      },
+    })),
     entry: (params: any) => {
       const marketData = overrides.marketData ?? {};
       const currentPrice = Number(marketData.currentPrice ?? 0);

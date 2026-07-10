@@ -113,7 +113,7 @@ export const createTrendShiftCore: CreateStrategyCore<
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
     const direction = modeConfig.direction;
     const signalContext = buildTrendShiftSignalContext({
       snapshot: {

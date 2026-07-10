@@ -205,7 +205,7 @@ export const createTrendLineCore: CreateStrategyCore<
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
 
     const signalSeed = buildTrendlineSignalSeed({
       direction,

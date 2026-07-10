@@ -1,5 +1,4 @@
 import {
-  BacktestPriceMode,
   BuildStrategySignalDraft,
   BuildStrategySignalParams,
   Connector,
@@ -9,7 +8,6 @@ import {
   StrategyDecision,
   StrategyAPI,
   StrategyAPIExitParams,
-  StrategyAPIMarketDataParams,
   StrategyAPIEntryParams,
   StrategyAPIProtectParams,
   StrategyEntrySignalContext,
@@ -18,8 +16,8 @@ import {
   StrategyIndicatorsState,
   StrategyIndicatorsContext,
   StrategyDecisionPriceContext,
+  IndicatorsHistorySnapshot,
   StrategyLastTradeControllerParams,
-  StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
   StrategySharedReplayStateGetter,
@@ -30,11 +28,7 @@ import {
   BaseGateFeatureEntryLocation,
   StrategySignalPriceParams,
 } from '@tradejs/types';
-import {
-  calculateRiskRatio,
-  getDirectionalTpSlPrices,
-  getStrategyMarketSnapshot,
-} from './market';
+import { calculateRiskRatio, getDirectionalTpSlPrices } from './market';
 import {
   createLastTradeController,
   createStrategyStateControllerFactory,
@@ -1235,8 +1229,6 @@ interface CreateStrategyAPIParams {
   connector: Connector;
   cachedData: KlineChartData;
   indicatorsState?: StrategyIndicatorsState;
-  preloadStart?: number;
-  backtestPriceMode?: BacktestPriceMode;
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
   sharedReplayKey?: string;
   getSharedReplayState?: StrategySharedReplayStateGetter;
@@ -1285,7 +1277,9 @@ const resolveTakeProfitPrice = ({
   return direction === 'LONG' ? Math.max(...prices) : Math.min(...prices);
 };
 
-export const createStrategyAPI = ({
+export const createStrategyAPI = <
+  TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
+>({
   strategy,
   symbol,
   interval,
@@ -1293,18 +1287,16 @@ export const createStrategyAPI = ({
   connector,
   cachedData,
   indicatorsState,
-  preloadStart,
   isConfigFromBacktest,
   sharedReplayKey,
   getSharedReplayState,
-}: CreateStrategyAPIParams): StrategyAPI => {
+}: CreateStrategyAPIParams): StrategyAPI<TIndicators> => {
   const isBacktestEnv = env === 'BACKTEST';
   const barCache = {
     timestamp: null as number | null,
     currentPosition: undefined as
       | Promise<Awaited<ReturnType<Connector['getPosition']>>>
       | undefined,
-    marketDataByKey: new Map<string, Promise<StrategyMarketSnapshot>>(),
   };
   let currentIndicatorsContextCache:
     | {
@@ -1347,7 +1339,6 @@ export const createStrategyAPI = ({
 
     barCache.timestamp = currentBarTimestamp;
     barCache.currentPosition = undefined;
-    barCache.marketDataByKey.clear();
     currentIndicatorsContextCache = undefined;
   };
   const getCurrentPosition = () => {
@@ -1362,12 +1353,6 @@ export const createStrategyAPI = ({
 
     return barCache.currentPosition;
   };
-  const isPositionExists = async () => {
-    const position = await getCurrentPosition();
-    return Boolean(
-      position && typeof position.qty === 'number' && position.qty > 0,
-    );
-  };
   const createStateController = createStrategyStateControllerFactory({
     env,
     sharedReplayKey,
@@ -1379,70 +1364,31 @@ export const createStrategyAPI = ({
     isRecordLike(indicators) && isRecordLike(indicators.baseContext)
       ? (indicators.baseContext as unknown as BaseStrategyContextSnapshot)
       : undefined;
-  const getCurrentIndicatorsContext = <
-    TIndicators = unknown,
-  >(): StrategyIndicatorsContext<TIndicators> => {
-    ensureBarCache();
+  const getCurrentIndicatorsContext =
+    (): StrategyIndicatorsContext<TIndicators> => {
+      ensureBarCache();
 
-    const cacheKey = getCurrentIndicatorsCacheKey();
-    if (currentIndicatorsContextCache?.key === cacheKey) {
-      return currentIndicatorsContextCache.context as StrategyIndicatorsContext<TIndicators>;
-    }
+      const cacheKey = getCurrentIndicatorsCacheKey();
+      if (currentIndicatorsContextCache?.key === cacheKey) {
+        return currentIndicatorsContextCache.context as StrategyIndicatorsContext<TIndicators>;
+      }
 
-    indicatorsState?.onBar();
-    const indicators = indicatorsState?.snapshot() as TIndicators | undefined;
-    const baseContext = getBaseContextFromIndicators(indicators);
-    const context: StrategyIndicatorsContext<TIndicators> = {
-      indicators,
-      ...(baseContext ? { baseContext } : {}),
+      indicatorsState?.onBar();
+      const indicators = indicatorsState?.snapshot() as TIndicators | undefined;
+      const baseContext = getBaseContextFromIndicators(indicators);
+      const context: StrategyIndicatorsContext<TIndicators> = {
+        indicators,
+        ...(baseContext ? { baseContext } : {}),
+      };
+      currentIndicatorsContextCache = {
+        key: cacheKey,
+        context: context as StrategyIndicatorsContext<unknown>,
+      };
+
+      return context;
     };
-    currentIndicatorsContextCache = {
-      key: cacheKey,
-      context: context as StrategyIndicatorsContext<unknown>,
-    };
-
-    return context;
-  };
   const getBaseContext = () => getCurrentIndicatorsContext().baseContext;
 
-  const getMarketData = async (
-    params: StrategyAPIMarketDataParams = {},
-  ): Promise<StrategyMarketSnapshot> => {
-    const resolvedPreloadStart = params.preloadStart ?? preloadStart;
-
-    if (typeof resolvedPreloadStart !== 'number') {
-      throw new Error('strategyApi.getMarketData requires preloadStart');
-    }
-
-    if (!isBacktestEnv) {
-      return getStrategyMarketSnapshot({
-        env,
-        connector,
-        symbol,
-        interval,
-        cachedData,
-        preloadStart: resolvedPreloadStart,
-      });
-    }
-
-    ensureBarCache();
-
-    const cacheKey = String(resolvedPreloadStart);
-    let snapshot = barCache.marketDataByKey.get(cacheKey);
-    if (!snapshot) {
-      snapshot = getStrategyMarketSnapshot({
-        env,
-        connector,
-        symbol,
-        interval,
-        cachedData,
-        preloadStart: resolvedPreloadStart,
-      });
-      barCache.marketDataByKey.set(cacheKey, snapshot);
-    }
-
-    return snapshot;
-  };
   const resolveDecisionPriceContext = (): StrategyDecisionPriceContext => {
     const candle = cachedData[cachedData.length - 1];
     if (
@@ -1462,8 +1408,6 @@ export const createStrategyAPI = ({
     };
   };
   const getDecisionPriceContext = async () => resolveDecisionPriceContext();
-  const getCachedDecisionPriceContext = async () =>
-    resolveDecisionPriceContext();
 
   return {
     skip: (code) => ({ kind: 'skip', code }),
@@ -1477,7 +1421,7 @@ export const createStrategyAPI = ({
       orderPlan,
       runtime,
     }: StrategyAPIEntryParams) => {
-      const priceContext = await getCachedDecisionPriceContext();
+      const priceContext = resolveDecisionPriceContext();
       const currentPrice = priceContext.currentPrice;
       const timestamp = priceContext.timestamp;
       const stopLossPrice = orderPlan.stopLossPrice;
@@ -1525,22 +1469,14 @@ export const createStrategyAPI = ({
         runtime,
       }) as Extract<StrategyDecision, { kind: 'entry' }>;
     },
-    exit: async ({
-      code,
-      direction,
-      price,
-      timestamp,
-    }: StrategyAPIExitParams) => {
-      const priceContext =
-        price == null || timestamp == null
-          ? await getCachedDecisionPriceContext()
-          : undefined;
+    exit: async ({ code, direction }: StrategyAPIExitParams) => {
+      const priceContext = resolveDecisionPriceContext();
       return {
         kind: 'exit',
         code: code ?? toDefaultExitCode(String(strategy), direction),
         closePlan: {
-          price: price ?? priceContext!.currentPrice,
-          timestamp: timestamp ?? priceContext!.timestamp,
+          price: priceContext.currentPrice,
+          timestamp: priceContext.timestamp,
           direction,
         },
       } as Extract<StrategyDecision, { kind: 'exit' }>;
@@ -1552,12 +1488,10 @@ export const createStrategyAPI = ({
           code ?? toDefaultProtectCode(String(strategy), protectPlan.direction),
         protectPlan,
       }) as Extract<StrategyDecision, { kind: 'protect' }>,
-    getMarketData,
     getCurrentIndicatorsContext,
     getBaseContext,
     getDecisionPriceContext,
     getCurrentPosition,
-    isCurrentPositionExists: isPositionExists,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),
     createLastTradeController: (params?: StrategyLastTradeControllerParams) =>
       createLastTradeController({

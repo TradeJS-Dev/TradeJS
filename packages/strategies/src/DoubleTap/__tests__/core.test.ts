@@ -55,7 +55,6 @@ const makeStrategyApi = ({
 }) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(async () => marketData),
     getDecisionPriceContext: jest.fn(async () => ({
       timestamp: marketData.timestamp,
       currentPrice: marketData.currentPrice,

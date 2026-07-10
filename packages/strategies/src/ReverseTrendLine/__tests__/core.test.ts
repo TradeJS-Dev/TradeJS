@@ -139,25 +139,28 @@ const makeStrategyApi = () => {
         runtime: params.runtime,
       });
     },
-    exit: async (params: any) => ({
-      kind: 'exit',
-      code: params.code,
-      closePlan: {
-        direction: params.direction,
-        price: params.price ?? 0,
-        timestamp: params.timestamp ?? 0,
-      },
-    }),
+    exit: async (params: any) => {
+      if (!latestMarketData) {
+        latestMarketData = await getStrategyMarketSnapshot({} as any);
+      }
+      const baseContext = getMockIndicatorsContext().baseContext;
+
+      return {
+        kind: 'exit',
+        code: params.code,
+        closePlan: {
+          direction: params.direction,
+          price: baseContext?.candle?.close ?? latestMarketData.currentPrice,
+          timestamp:
+            baseContext?.candle?.timestamp ?? latestMarketData.timestamp,
+        },
+      };
+    },
     protect: (params: any) => ({
       kind: 'protect',
       code: params.code,
       protectPlan: params.protectPlan,
     }),
-    getMarketData: async (params: any) => {
-      const marketData = await getStrategyMarketSnapshot(params);
-      latestMarketData = marketData;
-      return marketData;
-    },
     getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
@@ -173,9 +176,7 @@ const makeStrategyApi = () => {
         candle: baseContext?.candle ?? (latestMarketData as any)?.lastCandle,
       };
     }),
-    nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(async () => currentPosition),
-    isCurrentPositionExists: jest.fn(async () => Boolean(currentPosition)),
     __setCurrentPosition: (position: any) => {
       currentPosition = position;
     },

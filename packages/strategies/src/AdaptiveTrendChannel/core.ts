@@ -120,7 +120,7 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
     }
 
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
     const filterSkipCode = getAdaptiveTrendChannelFilterSkipCode({
       signal,
       config,

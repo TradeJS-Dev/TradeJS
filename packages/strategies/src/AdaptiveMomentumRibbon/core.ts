@@ -223,29 +223,17 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         (position.direction === 'LONG' && amr.entryShort) ||
         (position.direction === 'SHORT' && amr.entryLong)
       ) {
-        const { currentPrice, timestamp } = await getPriceContext();
-        return {
-          kind: 'exit',
+        return strategyApi.exit({
           code: 'CLOSE_BY_AMR_SIGNAL',
-          closePlan: {
-            price: currentPrice,
-            timestamp,
-            direction: position.direction,
-          },
-        };
+          direction: position.direction,
+        });
       }
 
       if (Boolean(AMR_EXIT_ON_INVALIDATION) && amr.invalidated) {
-        const { currentPrice, timestamp } = await getPriceContext();
-        return {
-          kind: 'exit',
+        return strategyApi.exit({
           code: 'CLOSE_BY_AMR_INVALIDATION',
-          closePlan: {
-            price: currentPrice,
-            timestamp,
-            direction: position.direction,
-          },
-        };
+          direction: position.direction,
+        });
       }
 
       return strategyApi.skip('POSITION_HELD');
@@ -261,7 +249,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     }
 
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
     const structuralRejectCode = shouldRejectByStructure({
       baseContext,
       direction: modeConfig.direction,

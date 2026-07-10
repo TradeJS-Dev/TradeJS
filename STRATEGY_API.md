@@ -215,7 +215,7 @@ Common fields:
 
 Behavior:
 
-- always calls `getMarketData()` internally to fill fresh:
+- resolves the current closed candle from decision context to fill:
   - `timestamp`
   - `currentPrice`
 - derives `takeProfitPrice` from `orderPlan.takeProfits`:
@@ -224,29 +224,42 @@ Behavior:
 - computes `riskRatio` automatically from direction/current/tp/sl
 - uses provided `code`; if omitted generates `<STRATEGY_NAME>_<DIRECTION>_ENTRY`
 
-### `strategyApi.getMarketData(params?)`
+### `strategyApi.exit(params)`
 
-Returns market snapshot:
+Builds an `exit` decision from:
 
-- `fullData`
-- `lastCandle`
-- `timestamp` (equal to `lastCandle.timestamp`)
-- `currentPrice`
+- `direction`
+- optional `code`
 
-Uses runtime defaults unless overridden:
+The shared runtime always resolves exit `price` and `timestamp` from the
+current closed candle. Strategy cores must not provide manual execution fields
+or return raw `{ kind: 'exit' }` objects.
 
-- `preloadStart`
-- `backtestPriceMode`
+### `strategyApi.getDecisionPriceContext()`
+
+Returns the current closed candle decision context:
+
+- `candle`
+- `timestamp`
+- `currentPrice` (equal to `candle.close`)
+
+This method does not advance indicators or load market history.
+
+### `strategyApi.getCurrentIndicatorsContext()`
+
+Returns the current strategy indicator snapshot and optional `baseContext`.
+The snapshot type comes from the strategy's `CreateStrategyCore` declaration;
+callers must not provide a generic type argument.
+
+### `strategyApi.getBaseContext()`
+
+Returns the current shared `BaseStrategyContextSnapshot` when available.
 
 ### `strategyApi.getCurrentPosition()`
 
 Wrapper for:
 
 - `connector.getPosition(symbol)`
-
-### `strategyApi.isCurrentPositionExists()`
-
-Returns `true` when an open position exists (`qty > 0`).
 
 ### `strategyApi.getDirectionalTpSlPrices(params)`
 
@@ -263,7 +276,8 @@ Creates reusable trade cooldown state controller.
 
 ### Runtime Notes
 
-- `getMarketData()` reads from runtime-managed candle history.
+- StrategyAPI does not expose full market history to strategy cores.
+- Entry and exit decision fields always come from the current closed candle.
 - `indicatorsState` is already wired with current bar by runtime.
 - `indicatorsState.snapshot()` is lazy-init safe via shared wrappers.
 
@@ -271,11 +285,18 @@ Creates reusable trade cooldown state controller.
 
 ```ts
 return async () => {
-  if (await strategyApi.isCurrentPositionExists()) {
+  const position = await strategyApi.getCurrentPosition();
+  if (position && position.qty > 0) {
     return strategyApi.skip('POSITION_EXISTS');
   }
 
-  const { currentPrice } = await strategyApi.getMarketData();
+  const { indicators, baseContext } =
+    strategyApi.getCurrentIndicatorsContext();
+  if (!indicators || !baseContext) {
+    return strategyApi.skip('WAIT_DATA');
+  }
+
+  const { currentPrice } = await strategyApi.getDecisionPriceContext();
 
   const { stopLossPrice, takeProfitPrice } =
     strategyApi.getDirectionalTpSlPrices({

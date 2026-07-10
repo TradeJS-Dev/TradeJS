@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { createStrategyAPI } from '@tradejs/core/strategies';
+import type { IndicatorsHistorySnapshot } from '@tradejs/types';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createLiquidityZonesCore } from '../core';
 
@@ -46,15 +47,13 @@ const makeCore = async () => {
     kline: jest.fn(),
     getPosition: jest.fn(async () => null),
   } as any;
-  const strategyApi = createStrategyAPI({
+  const strategyApi = createStrategyAPI<IndicatorsHistorySnapshot | undefined>({
     strategy: 'LiquidityZones' as any,
     symbol: 'TESTUSDT',
     interval: '15' as any,
     env: 'PARITY',
     connector,
     cachedData: runtimeData as any,
-    preloadStart: 1,
-    backtestPriceMode: 'close',
     isConfigFromBacktest: false,
   });
   const core = await createLiquidityZonesCore({

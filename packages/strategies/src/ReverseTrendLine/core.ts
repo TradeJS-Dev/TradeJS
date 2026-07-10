@@ -318,7 +318,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
 
     const signalSeed = buildReverseTrendlineSignalSeed({
       direction,

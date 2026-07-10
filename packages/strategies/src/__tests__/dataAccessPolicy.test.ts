@@ -45,6 +45,28 @@ describe('strategy data access policy', () => {
     ).not.toContain('nextIndicators:');
   });
 
+  it('keeps legacy market and position-existence helpers out of StrategyAPI', () => {
+    const strategyTypes = readRepoFile(
+      'packages',
+      'types',
+      'src',
+      'strategy.ts',
+    );
+    const strategyApi = readRepoFile(
+      'packages',
+      'core',
+      'src',
+      'utils',
+      'strategyHelpers',
+      'signalBuilders.ts',
+    );
+
+    expect(strategyTypes).not.toMatch(/\bgetMarketData\s*:/);
+    expect(strategyTypes).not.toMatch(/\bisCurrentPositionExists\s*:/);
+    expect(strategyApi).not.toContain('getMarketData,');
+    expect(strategyApi).not.toContain('isCurrentPositionExists:');
+  });
+
   it.each(strategyNames)(
     '%s does not advance indicators directly from core.ts',
     (strategyName) => {
@@ -83,6 +105,15 @@ describe('strategy data access policy', () => {
     (strategyName) => {
       expect(readStrategyCore(strategyName)).not.toContain(
         'strategyApi.getMarketData(',
+      );
+    },
+  );
+
+  it.each(strategyNames)(
+    '%s routes exit decisions through StrategyAPI',
+    (strategyName) => {
+      expect(readStrategyCore(strategyName)).not.toMatch(
+        /kind:\s*['"]exit['"]/,
       );
     },
   );

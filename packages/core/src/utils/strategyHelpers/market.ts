@@ -7,8 +7,14 @@ import {
   Interval,
   KlineChartData,
   KlineChartItem,
-  StrategyMarketSnapshot,
 } from '@tradejs/types';
+
+export interface StrategyMarketSnapshot {
+  fullData: KlineChartData;
+  lastCandle: KlineChartItem;
+  timestamp: number;
+  currentPrice: number;
+}
 
 export interface StrategyMarketSnapshotParams {
   env: string;

@@ -15,7 +15,7 @@ import {
   DerivativesContext,
   MarketFeatureInterval,
 } from './trade';
-import { BacktestPriceMode, StrategyConfig, StrategyCreator } from './backtest';
+import { StrategyConfig, StrategyCreator } from './backtest';
 import { StrategyManifest } from './strategyAdapters';
 
 export interface StrategySignalMetaParams {
@@ -106,8 +106,6 @@ export interface StrategyAPIEntryParams {
 export interface StrategyAPIExitParams {
   code?: string;
   direction: Direction;
-  price?: number;
-  timestamp?: number;
 }
 
 export interface StrategyProtectPlan {
@@ -119,18 +117,6 @@ export interface StrategyProtectPlan {
 export interface StrategyAPIProtectParams {
   code?: string;
   protectPlan: StrategyProtectPlan;
-}
-
-export interface StrategyAPIMarketDataParams {
-  preloadStart?: number;
-  backtestPriceMode?: BacktestPriceMode;
-}
-
-export interface StrategyMarketSnapshot {
-  fullData: KlineChartData;
-  lastCandle: KlineChartItem;
-  timestamp: number;
-  currentPrice: number;
 }
 
 export interface StrategyIndicatorsContext<TIndicators = unknown> {
@@ -1150,7 +1136,9 @@ export interface StrategyStateController<
   hash: () => string;
 }
 
-export interface StrategyAPI {
+export interface StrategyAPI<
+  TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
+> {
   skip: (code: string) => Extract<StrategyDecision, { kind: 'skip' }>;
   entry: (
     params: StrategyAPIEntryParams,
@@ -1161,16 +1149,10 @@ export interface StrategyAPI {
   protect: (
     params: StrategyAPIProtectParams,
   ) => Extract<StrategyDecision, { kind: 'protect' }>;
-  getMarketData: (
-    params?: StrategyAPIMarketDataParams,
-  ) => Promise<StrategyMarketSnapshot>;
-  getCurrentIndicatorsContext: <
-    TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
-  >() => StrategyIndicatorsContext<TIndicators>;
+  getCurrentIndicatorsContext: () => StrategyIndicatorsContext<TIndicators>;
   getBaseContext: () => BaseStrategyContextSnapshot | undefined;
   getDecisionPriceContext: () => Promise<StrategyDecisionPriceContext>;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
-  isCurrentPositionExists: () => Promise<boolean>;
   getDirectionalTpSlPrices: (
     params: StrategyDirectionalTpSlParams,
   ) => StrategyDirectionalTpSlResult;
@@ -1287,7 +1269,11 @@ export interface CreateStrategyCoreParams<
   btcData: KlineChartData;
   ethData?: KlineChartData;
   loadPineScriptFile: (fileNameOrPath: string, fallback?: string) => string;
-  strategyApi: StrategyAPI;
+  strategyApi: StrategyAPI<
+    TIndicatorsState extends StrategyIndicatorsState<any, infer TSnapshot>
+      ? TSnapshot
+      : never
+  >;
   indicatorsState: TIndicatorsState;
   sharedReplayKey?: string;
   getSharedReplayState?: StrategySharedReplayStateGetter;

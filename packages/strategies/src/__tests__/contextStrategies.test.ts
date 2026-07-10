@@ -240,12 +240,6 @@ const makeStrategyApi = (currentPrice = 101) => {
       closePlan: params,
     })),
     protect: jest.fn(),
-    getMarketData: jest.fn(async () => ({
-      fullData: [makeCandle(currentPrice)],
-      lastCandle: makeCandle(currentPrice),
-      timestamp: 1_700_000_000_000,
-      currentPrice,
-    })),
     getCurrentIndicatorsContext: jest.fn(() => ({
       indicators: undefined,
       baseContext: undefined,
@@ -257,7 +251,6 @@ const makeStrategyApi = (currentPrice = 101) => {
       candle: makeCandle(currentPrice),
     })),
     getCurrentPosition: jest.fn(async () => null),
-    isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: jest.fn(),
     createLastTradeController: jest.fn(() => lastTradeController),
   } as any;

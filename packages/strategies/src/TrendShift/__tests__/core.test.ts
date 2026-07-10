@@ -51,7 +51,6 @@ const makeStrategyApi = ({
 }) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(async () => marketData),
     getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
@@ -64,9 +63,6 @@ const makeStrategyApi = ({
       };
     }),
     getCurrentPosition: jest.fn(async () => currentPosition),
-    isCurrentPositionExists: jest.fn(async () =>
-      Boolean(currentPosition && currentPosition.qty > 0),
-    ),
     getDirectionalTpSlPrices: jest.fn(({ price, direction }) => ({
       stopLossPrice: direction === 'LONG' ? price * 0.989 : price * 1.011,
       takeProfitPrice: direction === 'LONG' ? price * 1.028 : price * 0.972,

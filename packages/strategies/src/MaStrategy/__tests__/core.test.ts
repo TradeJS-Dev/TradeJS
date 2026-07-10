@@ -57,7 +57,6 @@ const makeStrategyApi = ({
 
   const strategyApi = {
     skip: jest.fn((code: string) => ({ kind: 'skip', code })),
-    getMarketData: jest.fn(async () => marketData),
     getCurrentIndicatorsContext: jest.fn(getMockIndicatorsContext),
     getBaseContext: jest.fn(() => getMockIndicatorsContext().baseContext),
     getDecisionPriceContext: jest.fn(async () => {
@@ -84,6 +83,15 @@ const makeStrategyApi = ({
       indicators: params.indicators,
       additionalIndicators: params.additionalIndicators,
       orderPlan: params.orderPlan,
+    })),
+    exit: jest.fn(async (params: any) => ({
+      kind: 'exit',
+      code: params.code,
+      closePlan: {
+        price: marketData.currentPrice,
+        timestamp: marketData.timestamp,
+        direction: params.direction,
+      },
     })),
   } as any;
 

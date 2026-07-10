@@ -222,7 +222,7 @@ export const createRelativeRotationCore: CreateStrategyCore<
 
   return async () => {
     const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext<IndicatorsHistorySnapshot>();
+      strategyApi.getCurrentIndicatorsContext();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }

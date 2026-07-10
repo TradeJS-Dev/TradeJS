@@ -25,17 +25,8 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
         `VOLUME_DIVERGENCE_${params.protectPlan.direction}_PROTECT`,
       protectPlan: params.protectPlan,
     })),
-    getMarketData: jest.fn(),
-    getDecisionPriceContext: jest.fn(async () => {
-      const marketData = await strategyApi.getMarketData();
-      return {
-        timestamp: marketData.timestamp,
-        currentPrice: marketData.currentPrice,
-        candle: marketData.lastCandle,
-      };
-    }),
+    getDecisionPriceContext: jest.fn(),
     getCurrentPosition: jest.fn(async () => null),
-    isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: jest.fn(() => ({
       stopLossPrice: 98,
       takeProfitPrice: 104,
@@ -179,9 +170,8 @@ describe('createVolumeDivergenceCore', () => {
     );
 
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
     });
@@ -245,9 +235,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 94,
       volume: 90,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -291,9 +280,8 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -371,9 +359,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 96.6,
       volume: 90,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, weakStructureAdvanceCandle],
-      lastCandle: weakStructureAdvanceCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: weakStructureAdvanceCandle,
       timestamp: weakStructureAdvanceCandle.timestamp,
       currentPrice: weakStructureAdvanceCandle.close,
     });
@@ -394,9 +381,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 97.8,
       volume: 95,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, weakStructureAdvanceCandle, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -463,9 +449,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 107,
       volume: 120,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -503,10 +488,10 @@ describe('createVolumeDivergenceCore', () => {
         direction: 'LONG',
         slPrice: 99.4,
       })),
-      getMarketData: jest.fn(async () => ({
-        fullData: candles,
+      getDecisionPriceContext: jest.fn(async () => ({
         timestamp: candles[candles.length - 1].timestamp,
         currentPrice: candles[candles.length - 1].close,
+        candle: candles[candles.length - 1],
       })),
     });
     const indicatorsState = makeIndicatorsState();
@@ -541,9 +526,8 @@ describe('createVolumeDivergenceCore', () => {
   it('returns WAIT_DATA when candle history is too short', async () => {
     const candles = makeBullishDivergenceCandles().slice(0, 3);
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
     });
@@ -583,9 +567,8 @@ describe('createVolumeDivergenceCore', () => {
         getLastTradeTimestamp: jest.fn(() => candles[0].timestamp),
       })),
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
     });
@@ -618,9 +601,8 @@ describe('createVolumeDivergenceCore', () => {
   it('returns STRATEGY_DISABLED when divergence side is disabled in config', async () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: candles[candles.length - 1],
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
     });
@@ -687,9 +669,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 94,
       volume: 90,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -741,9 +722,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 94,
       volume: 90,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
@@ -795,9 +775,8 @@ describe('createVolumeDivergenceCore', () => {
       price: 94,
       volume: 90,
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: [...candles, confirmationCandle],
-      lastCandle: confirmationCandle,
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmationCandle,
       timestamp: confirmationCandle.timestamp,
       currentPrice: confirmationCandle.close,
     });
