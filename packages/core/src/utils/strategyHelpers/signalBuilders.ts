@@ -1443,68 +1443,27 @@ export const createStrategyAPI = ({
 
     return snapshot;
   };
-  const getDecisionPriceContext =
-    async (): Promise<StrategyDecisionPriceContext> => {
-      const baseContext = getBaseContext();
-      const candle = baseContext?.candle;
-      if (
-        candle &&
-        isFiniteNumber(candle.timestamp) &&
-        isFiniteNumber(candle.close)
-      ) {
-        return {
-          timestamp: candle.timestamp,
-          currentPrice: candle.close,
-          candle,
-        };
-      }
+  const resolveDecisionPriceContext = (): StrategyDecisionPriceContext => {
+    const candle = cachedData[cachedData.length - 1];
+    if (
+      !candle ||
+      !isFiniteNumber(candle.timestamp) ||
+      !isFiniteNumber(candle.close)
+    ) {
+      throw new Error(
+        'strategyApi.getDecisionPriceContext requires a current closed candle',
+      );
+    }
 
-      const market = await getMarketData();
-      return {
-        timestamp: market.timestamp,
-        currentPrice: market.currentPrice,
-        candle: market.lastCandle,
-      };
-    };
-  const getCachedDecisionPriceContext =
-    async (): Promise<StrategyDecisionPriceContext> => {
-      ensureBarCache();
-
-      const candle = currentIndicatorsContextCache?.context.baseContext?.candle;
-      if (
-        candle &&
-        isFiniteNumber(candle.timestamp) &&
-        isFiniteNumber(candle.close)
-      ) {
-        return {
-          timestamp: candle.timestamp,
-          currentPrice: candle.close,
-          candle,
-        };
-      }
-
-      const market = await getMarketData();
-      return {
-        timestamp: market.timestamp,
-        currentPrice: market.currentPrice,
-        candle: market.lastCandle,
-      };
-    };
-  const getCurrentBarContext = async <TIndicators = unknown>(): Promise<{
-    market: StrategyMarketSnapshot;
-    indicators: TIndicators | undefined;
-    baseContext?: BaseStrategyContextSnapshot;
-  }> => {
-    const indicatorsContext = getCurrentIndicatorsContext<TIndicators>();
-    const market = await getMarketData();
     return {
-      market,
-      indicators: indicatorsContext.indicators,
-      ...(indicatorsContext.baseContext
-        ? { baseContext: indicatorsContext.baseContext }
-        : {}),
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+      candle,
     };
   };
+  const getDecisionPriceContext = async () => resolveDecisionPriceContext();
+  const getCachedDecisionPriceContext = async () =>
+    resolveDecisionPriceContext();
 
   return {
     skip: (code) => ({ kind: 'skip', code }),
@@ -1597,7 +1556,6 @@ export const createStrategyAPI = ({
     getCurrentIndicatorsContext,
     getBaseContext,
     getDecisionPriceContext,
-    getCurrentBarContext,
     getCurrentPosition,
     isCurrentPositionExists: isPositionExists,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),

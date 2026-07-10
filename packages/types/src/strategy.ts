@@ -133,12 +133,6 @@ export interface StrategyMarketSnapshot {
   currentPrice: number;
 }
 
-export interface StrategyCurrentBarContext<TIndicators = unknown> {
-  market: StrategyMarketSnapshot;
-  indicators: TIndicators | undefined;
-  baseContext?: BaseStrategyContextSnapshot;
-}
-
 export interface StrategyIndicatorsContext<TIndicators = unknown> {
   indicators: TIndicators | undefined;
   baseContext?: BaseStrategyContextSnapshot;
@@ -147,7 +141,7 @@ export interface StrategyIndicatorsContext<TIndicators = unknown> {
 export interface StrategyDecisionPriceContext {
   timestamp: number;
   currentPrice: number;
-  candle?: Candle;
+  candle: Candle;
 }
 
 export interface MlCandleIndicatorsSnapshot {
@@ -1175,9 +1169,6 @@ export interface StrategyAPI {
   >() => StrategyIndicatorsContext<TIndicators>;
   getBaseContext: () => BaseStrategyContextSnapshot | undefined;
   getDecisionPriceContext: () => Promise<StrategyDecisionPriceContext>;
-  getCurrentBarContext: <
-    TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
-  >() => Promise<StrategyCurrentBarContext<TIndicators>>;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   isCurrentPositionExists: () => Promise<boolean>;
   getDirectionalTpSlPrices: (

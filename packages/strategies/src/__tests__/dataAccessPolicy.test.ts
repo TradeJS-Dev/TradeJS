@@ -68,4 +68,22 @@ describe('strategy data access policy', () => {
       });
     },
   );
+
+  it.each(strategyNames)(
+    '%s does not use the combined current bar context',
+    (strategyName) => {
+      expect(readStrategyCore(strategyName)).not.toContain(
+        'strategyApi.getCurrentBarContext(',
+      );
+    },
+  );
+
+  it.each(strategyNames)(
+    '%s does not load market data from strategy core',
+    (strategyName) => {
+      expect(readStrategyCore(strategyName)).not.toContain(
+        'strategyApi.getMarketData(',
+      );
+    },
+  );
 });

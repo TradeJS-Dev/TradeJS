@@ -112,7 +112,8 @@ export const createTrendFollowCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { timestamp, currentPrice } = await strategyApi.getMarketData();
+    const { timestamp, currentPrice } =
+      await strategyApi.getDecisionPriceContext();
     const indicators = indicatorsState.snapshot();
     const stopLossPrice = signal.trailStop;
     const riskDistance = Math.abs(currentPrice - stopLossPrice);

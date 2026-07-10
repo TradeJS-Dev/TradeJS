@@ -120,34 +120,19 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
-  it('getCurrentBarContext returns the shared market and indicator snapshot for the current bar', async () => {
+  it('getDecisionPriceContext returns the current closed candle without loading indicators or market data', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
-    const prevCandle = makeCandle(1_699_999_940_000, 95);
-    const data: any[] = [prevCandle, candle];
+    const data: any[] = [candle];
     const connector = {
       kline: jest.fn(),
       getPosition: jest.fn(),
     } as any;
-    const baseContext = {
-      candle,
-      prevCandle,
-      raw: {},
-      regime: {},
-      structure: {},
-      participation: {},
-      relative: {},
-      mtf: {},
-    };
-    const indicators = {
-      baseContext,
-      correlation: [0.1],
-    };
     const indicatorsState = {
       setCurrentBar: jest.fn(),
       next: jest.fn(),
       onBar: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
-      snapshot: jest.fn(() => indicators),
+      snapshot: jest.fn(),
       latestNumber: jest.fn(() => undefined),
       isInitialized: jest.fn(() => true),
     } as any;
@@ -165,17 +150,15 @@ describe('createStrategyAPI', () => {
       isConfigFromBacktest: false,
     });
 
-    const context = await strategyApi.getCurrentBarContext();
-    const repeatedContext = await strategyApi.getCurrentBarContext();
+    const context = await strategyApi.getDecisionPriceContext();
 
-    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
-    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
-    expect(context.market.currentPrice).toBe(100);
-    expect(context.market.timestamp).toBe(1_700_000_000_000);
-    expect(context.indicators).toBe(indicators);
-    expect(context.baseContext).toBe(baseContext);
-    expect(repeatedContext.indicators).toBe(indicators);
-    expect(repeatedContext.baseContext).toBe(baseContext);
+    expect(context).toEqual({
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+      candle,
+    });
+    expect(indicatorsState.onBar).not.toHaveBeenCalled();
+    expect(indicatorsState.snapshot).not.toHaveBeenCalled();
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
@@ -255,9 +238,8 @@ describe('createStrategyAPI', () => {
     expect(indicatorsState.snapshot).toHaveBeenCalledTimes(2);
   });
 
-  it('getDecisionPriceContext can resolve price from baseContext without market preload', async () => {
-    const candle = makeCandle(1_700_000_000_000, 100);
-    const data: any[] = [candle];
+  it('getDecisionPriceContext rejects when no current closed candle exists', async () => {
+    const data: any[] = [];
     const connector = {
       kline: jest.fn(),
       getPosition: jest.fn(),
@@ -267,18 +249,7 @@ describe('createStrategyAPI', () => {
       next: jest.fn(),
       onBar: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
-      snapshot: jest.fn(() => ({
-        baseContext: {
-          candle,
-          prevCandle: null,
-          raw: {},
-          regime: {},
-          structure: {},
-          participation: {},
-          relative: {},
-          mtf: {},
-        },
-      })),
+      snapshot: jest.fn(),
       latestNumber: jest.fn(() => undefined),
       isInitialized: jest.fn(() => true),
     } as any;
@@ -294,15 +265,11 @@ describe('createStrategyAPI', () => {
       isConfigFromBacktest: false,
     });
 
-    const priceContext = await strategyApi.getDecisionPriceContext();
-
-    expect(priceContext).toEqual({
-      timestamp: 1_700_000_000_000,
-      currentPrice: 100,
-      candle,
-    });
-    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
-    expect(indicatorsState.snapshot).toHaveBeenCalledTimes(1);
+    await expect(strategyApi.getDecisionPriceContext()).rejects.toThrow(
+      'requires a current closed candle',
+    );
+    expect(indicatorsState.onBar).not.toHaveBeenCalled();
+    expect(indicatorsState.snapshot).not.toHaveBeenCalled();
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
@@ -426,7 +393,7 @@ describe('createStrategyAPI', () => {
     expect(decision.code).toBe('CUSTOM_ENTRY_CODE');
   });
 
-  it('entry uses cached baseContext decision price when it is already materialized', async () => {
+  it('entry uses the current closed candle when indicators are already materialized', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     const data: any[] = [candle];
     const connector = {
@@ -482,7 +449,7 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
-  it('entry does not materialize indicators just to resolve fallback market price', async () => {
+  it('entry does not materialize indicators to resolve the current closed candle', async () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {
       kline: jest.fn(),
@@ -521,9 +488,10 @@ describe('createStrategyAPI', () => {
 
     expect(indicatorsState.onBar).not.toHaveBeenCalled();
     expect(indicatorsState.snapshot).not.toHaveBeenCalled();
+    expect(connector.kline).not.toHaveBeenCalled();
   });
 
-  it('entry always reads fresh market data snapshot', async () => {
+  it('entry always reads the latest current closed candle', async () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {
       kline: jest.fn(),
@@ -569,7 +537,7 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
-  it('exit auto-builds timestamp and price from market data', async () => {
+  it('exit auto-builds timestamp and price from the current closed candle', async () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {
       kline: jest.fn(),
@@ -603,7 +571,7 @@ describe('createStrategyAPI', () => {
     });
   });
 
-  it('exit uses cached baseContext decision price when it is already materialized', async () => {
+  it('exit uses the current closed candle when indicators are already materialized', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     const data: any[] = [candle];
     const connector = {

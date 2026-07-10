@@ -135,10 +135,8 @@ export const createBreakoutCore: CreateStrategyCore<
       return strategyApi.skip('NO_DATA');
     }
 
-    const {
-      market: { currentPrice, timestamp },
-      indicators: indicatorValues,
-    } = await strategyApi.getCurrentBarContext<IndicatorSnapshot>();
+    const { indicators: indicatorValues } =
+      strategyApi.getCurrentIndicatorsContext<IndicatorSnapshot>();
     if (!indicatorValues) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -172,7 +170,6 @@ export const createBreakoutCore: CreateStrategyCore<
 
     const position = await strategyApi.getCurrentPosition();
     const positionExists = await strategyApi.isCurrentPositionExists();
-    const qty = config.LIMIT / currentPrice;
 
     const signals = getSignals(config, {
       ...indicatorValues,
@@ -203,6 +200,8 @@ export const createBreakoutCore: CreateStrategyCore<
 
     if (!positionExists || !position) {
       if (shouldOpenLong) {
+        const { currentPrice } = await strategyApi.getDecisionPriceContext();
+        const qty = config.LIMIT / currentPrice;
         const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
             price: currentPrice,
@@ -247,6 +246,8 @@ export const createBreakoutCore: CreateStrategyCore<
       }
 
       if (shouldOpenShort) {
+        const { currentPrice } = await strategyApi.getDecisionPriceContext();
+        const qty = config.LIMIT / currentPrice;
         const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
             price: currentPrice,
@@ -298,6 +299,8 @@ export const createBreakoutCore: CreateStrategyCore<
     const direction = isLong ? 'LONG' : 'SHORT';
 
     if ((isLong && shouldOpenShort) || (isShort && shouldOpenLong)) {
+      const { currentPrice, timestamp } =
+        await strategyApi.getDecisionPriceContext();
       return {
         kind: 'exit',
         code: 'CLOSE_POSITION_BY_OPEN_SIGNAL',
@@ -306,6 +309,8 @@ export const createBreakoutCore: CreateStrategyCore<
     }
 
     if ((isLong && signals.SMA_DOWNTREND) || (isShort && signals.SMA_UPTREND)) {
+      const { currentPrice, timestamp } =
+        await strategyApi.getDecisionPriceContext();
       return {
         kind: 'exit',
         code: 'CLOSE_POSITION_BY_SMA',

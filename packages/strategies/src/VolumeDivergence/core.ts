@@ -878,12 +878,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     }
 
     const detector = detectorState.get();
-    const evaluationPrice = detector.pendingCandidate
-      ? Number(
-          (await strategyApi.getMarketData())?.currentPrice ??
-            currentCandle.close,
-        )
-      : Number(currentCandle.close);
+    const evaluationPrice = Number(currentCandle.close);
     const evaluation = evaluateCurrentCandle(
       detector,
       currentCandle,

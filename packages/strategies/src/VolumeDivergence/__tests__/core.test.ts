@@ -26,6 +26,14 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
       protectPlan: params.protectPlan,
     })),
     getMarketData: jest.fn(),
+    getDecisionPriceContext: jest.fn(async () => {
+      const marketData = await strategyApi.getMarketData();
+      return {
+        timestamp: marketData.timestamp,
+        currentPrice: marketData.currentPrice,
+        candle: marketData.lastCandle,
+      };
+    }),
     getCurrentPosition: jest.fn(async () => null),
     isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: jest.fn(() => ({
@@ -44,9 +52,9 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
   } as any;
 
   strategyApi.entry.mockImplementation(async (params: any) => {
-    const marketData = await strategyApi.getMarketData();
-    const currentPrice = Number(marketData.currentPrice);
-    const timestamp = Number(marketData.timestamp);
+    const decisionContext = await strategyApi.getDecisionPriceContext();
+    const currentPrice = Number(decisionContext.currentPrice);
+    const timestamp = Number(decisionContext.timestamp);
     const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
       ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))
       : [];

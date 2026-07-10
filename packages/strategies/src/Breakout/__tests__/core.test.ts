@@ -20,20 +20,24 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
 const makeStrategyApi = (overrides: Record<string, any> = {}) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(async () => overrides.marketData),
     nextIndicators: jest.fn((candle: any, btcCandle: any) =>
       overrides.nextIndicators?.(candle, btcCandle),
     ),
-    getCurrentBarContext: jest.fn(async () => {
+    getCurrentIndicatorsContext: jest.fn(() => {
       const indicators =
         overrides.indicators ??
         overrides.nextIndicators?.(overrides.candle, overrides.btcCandle);
       return {
-        market: overrides.marketData,
         indicators,
         baseContext: indicators?.baseContext,
       };
     }),
+    getBaseContext: jest.fn(() => overrides.indicators?.baseContext),
+    getDecisionPriceContext: jest.fn(async () => ({
+      timestamp: overrides.marketData?.timestamp,
+      currentPrice: overrides.marketData?.currentPrice,
+      candle: overrides.marketData?.lastCandle,
+    })),
     getCurrentPosition: jest.fn(async () => overrides.currentPosition),
     isCurrentPositionExists: jest.fn(async () =>
       Boolean(overrides.currentPosition?.qty > 0),
@@ -534,6 +538,37 @@ describe('createBreakoutCore', () => {
 
   it('returns NO_SIGNAL when no entry conditions match and no position exists', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
+    const strategyApi = makeStrategyApi({
+      currentPosition: {
+        symbol: 'TESTUSDT',
+        qty: 0,
+        direction: 'LONG',
+        price: 0,
+      },
+      marketData: {
+        currentPrice: candle.close,
+        timestamp: candle.timestamp,
+        fullData: [candle],
+        lastCandle: candle,
+      },
+      nextIndicators: () =>
+        makeIndicatorSnapshot(candle, {
+          maFast: 100,
+          maSlow: 100,
+          obv: 100,
+          smaObv: 100,
+          prevCandle: {
+            ...makeCandle(candle.timestamp - 60_000, 100),
+            high: 100,
+            low: 100,
+            close: 100,
+          },
+          highLevel: 100,
+          lowLevel: 100,
+          bbUpper: 100,
+          bbLower: 100,
+        }),
+    });
 
     const core = await createBreakoutCore({
       userName: 'test',
@@ -553,37 +588,7 @@ describe('createBreakoutCore', () => {
       data: [],
       btcData: [],
       loadPineScriptFile: jest.fn(() => ''),
-      strategyApi: makeStrategyApi({
-        currentPosition: {
-          symbol: 'TESTUSDT',
-          qty: 0,
-          direction: 'LONG',
-          price: 0,
-        },
-        marketData: {
-          currentPrice: candle.close,
-          timestamp: candle.timestamp,
-          fullData: [candle],
-          lastCandle: candle,
-        },
-        nextIndicators: () =>
-          makeIndicatorSnapshot(candle, {
-            maFast: 100,
-            maSlow: 100,
-            obv: 100,
-            smaObv: 100,
-            prevCandle: {
-              ...makeCandle(candle.timestamp - 60_000, 100),
-              high: 100,
-              low: 100,
-              close: 100,
-            },
-            highLevel: 100,
-            lowLevel: 100,
-            bbUpper: 100,
-            bbLower: 100,
-          }),
-      }),
+      strategyApi,
       indicatorsState: {} as any,
     });
 
@@ -592,6 +597,7 @@ describe('createBreakoutCore', () => {
       kind: 'skip',
       code: 'NO_SIGNAL',
     });
+    expect(strategyApi.getDecisionPriceContext).not.toHaveBeenCalled();
   });
 
   it('returns CLOSE_POSITION_BY_SMA on adverse trend for open position', async () => {
