@@ -79,7 +79,7 @@
     "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^24",
     "tsup": "^8.5.1",
     "typescript": "^5.1"
   },

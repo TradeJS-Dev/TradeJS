@@ -2,7 +2,7 @@
 
 ## 1. Prerequisites
 
-- Node.js `20.19.6` (from `.nvmrc`)
+- Node.js `24.17.0` (from `.nvmrc`)
 - Yarn `4.x` (`corepack enable`)
 - Docker + Docker Compose
 

@@ -7,7 +7,7 @@ export default defineConfig({
   tsconfig: './tsconfig.build.json',
   clean: true,
   outDir: 'dist',
-  target: 'node20',
+  target: 'node24',
   external: [
     '@tradejs/connectors',
     '@tradejs/core',

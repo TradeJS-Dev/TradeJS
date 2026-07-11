@@ -106,7 +106,7 @@ Plugin indicators are registered via indicator entries and can add:
 
 ### 1. Prerequisites
 
-- Node.js `20.19.6` (see `.nvmrc`)
+- Node.js `24.17.0` (see `.nvmrc`)
 - Yarn `4.x`
 - Docker + Docker Compose
 
