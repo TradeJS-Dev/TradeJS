@@ -34,6 +34,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'maintenance:cleanup-market-context': () =>
     import('./scripts/cleanupMarketContext'),
   migration: () => import('./scripts/migration'),
+  'market-ws': () => import('./scripts/marketWs'),
   'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),

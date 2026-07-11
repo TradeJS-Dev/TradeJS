@@ -58,7 +58,9 @@ import {
 import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
 import {
   loadBtcReferenceConnectors,
+  updateBtcReferenceHistory,
   updateMarketHistoryWithBtcReferences,
+  updatePrimaryMarketHistory,
 } from '../lib/marketData/historyPrepare';
 import {
   loadRuntimeStrategies,
@@ -85,6 +87,10 @@ import {
   getSignalsHeartbeatStatus,
   runSignalsDaemon,
 } from '../lib/signals/daemon';
+import {
+  createSignalsKlineFeed,
+  type SignalsKlineFeed,
+} from '../lib/signals/klineFeed';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -140,6 +146,7 @@ export interface SignalsSession {
   marketConnector: Connector;
   btcReferences: Awaited<ReturnType<typeof loadBtcReferenceConnectors>>;
   lifecycle: SignalsStrategyLifecycle;
+  klineFeed?: SignalsKlineFeed;
 }
 
 const formatDuration = (durationMs: number) =>
@@ -172,6 +179,16 @@ const resolveSignalsDaemonMaxLiveBars = () => {
     preloadBars,
   );
 };
+
+const isSignalsKlineWsEnabled = () =>
+  !['0', 'false', 'off', 'no'].includes(
+    String(process.env.SIGNALS_KLINE_WS_ENABLED ?? 'true')
+      .trim()
+      .toLowerCase(),
+  );
+
+const resolveSignalsKlineWsWaitMs = () =>
+  resolveNonNegativeInteger(process.env.SIGNALS_KLINE_WS_WAIT_MS, 10_000);
 
 const createDefaultSignalsLifecycle = () =>
   createSignalsStrategyLifecycle({
@@ -610,7 +627,47 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
     const currentTimestamp = getTimestamp();
     const preloadStart = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
 
-    if (!flags.cacheOnly) {
+    if (!flags.cacheOnly && session.klineFeed) {
+      const expectedSymbols =
+        universe === 'crypto'
+          ? [...new Set([...tickers, 'BTCUSDT', 'ETHUSDT'])]
+          : tickers;
+      session.klineFeed.setSubscriptions(expectedSymbols);
+      const targetTimestamp =
+        Math.floor(currentTimestamp / intervalMs) * intervalMs - intervalMs;
+      const missingSymbols = await timeOperation(
+        'websocket candle readiness',
+        () =>
+          session.klineFeed!.waitForClosed({
+            symbols: expectedSymbols,
+            timestamp: targetTimestamp,
+            timeoutMs: resolveSignalsKlineWsWaitMs(),
+          }),
+      );
+      await session.klineFeed.flush();
+      logger.info(
+        chalk.gray(
+          `websocket candles: ready=${expectedSymbols.length - missingSymbols.length}/${expectedSymbols.length} missing=${missingSymbols.length}`,
+        ),
+      );
+      await updatePrimaryMarketHistory({
+        marketConnector,
+        connectorName,
+        interval,
+        symbols: missingSymbols,
+        preloadDays: SIGNALS_CLI_PRELOAD_DAYS,
+        universe,
+        log: (message) => logger.info(chalk.gray(message)),
+      });
+      await updateBtcReferenceHistory({
+        marketConnector,
+        btcReferences,
+        interval,
+        preloadDays: SIGNALS_CLI_PRELOAD_DAYS,
+        universe,
+        log: (message) => logger.info(chalk.gray(message)),
+      });
+    } else if (!flags.cacheOnly) {
       await updateMarketHistoryWithBtcReferences({
         marketConnector,
         connectorName,
@@ -896,9 +953,27 @@ export const signalsDaemon = async () => {
       signal: abortController.signal,
       runCycle: async () => {
         session ??= await createSignalsSession(lifecycle);
+        if (
+          !session.klineFeed &&
+          isSignalsKlineWsEnabled() &&
+          session.connectorName.toLowerCase() === 'bybit'
+        ) {
+          session.klineFeed = await createSignalsKlineFeed({
+            config: {
+              userName: flags.user,
+              universe: session.universe,
+              accountId: session.accountId,
+              deploymentId: session.deployment?.id,
+            },
+            interval,
+            universe: session.universe,
+          });
+          logger.info('Bybit websocket candle feed enabled');
+        }
         try {
           await signals({ session });
         } catch (error) {
+          await session.klineFeed?.close();
           lifecycle.clear();
           session = undefined;
           throw error;
@@ -923,6 +998,7 @@ export const signalsDaemon = async () => {
   } finally {
     process.removeListener('SIGINT', stopOnSigint);
     process.removeListener('SIGTERM', stopOnSigterm);
+    await session?.klineFeed?.close();
     lifecycle.clear();
     if (session?.deployment) {
       await saveRuntimeDeploymentHeartbeat(flags.user, {

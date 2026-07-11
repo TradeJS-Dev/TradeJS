@@ -76,6 +76,14 @@ export const getConnectorCreatorByProvider = (
 
 export { spotKlineProviders } from './marketData/spotKlineProviders';
 export {
+  buildBybitKlineTopic,
+  createBybitKlineStream,
+  createBybitKlineStreamWithClient,
+  parseBybitKlineEvent,
+  type BybitKlineStream,
+  type BybitKlineStreamEvent,
+} from './ByBit/klineStream';
+export {
   marketDataProviders,
   type MarketDataProvider,
   type MarketDataProviderName,

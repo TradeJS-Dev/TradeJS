@@ -45,7 +45,7 @@ RUN yarn turbo run build --filter=@tradejs/cli... --filter=@tradejs/app...
 
 RUN chmod +x ./entrypoint.sh ./bin/*.sh
 
-EXPOSE 3000
+EXPOSE 3000 3001
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["./entrypoint.sh"]

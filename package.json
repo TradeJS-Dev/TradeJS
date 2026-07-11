@@ -46,6 +46,7 @@
     "infra-up": "yarn cli:node8g infra-up",
     "lint": "turbo run lint",
     "migration": "yarn cli:node8g migration",
+    "market:ws": "yarn cli:node8g market-ws",
     "ml-build": "docker compose -f docker-compose.ml.yml build",
     "ml-build:profile": "docker compose -f docker-compose.ml.yml build ml-profile",
     "ml-export": "yarn cli:node8g ml-export",

@@ -35,6 +35,7 @@ interface KlineChartProps {
   filters: UIFilters;
   indicators: Record<string, Indicator>;
   indicatorRenderers: Record<string, IndicatorRendererConfig>;
+  live?: boolean;
 }
 
 export const KlineChart = ({
@@ -42,9 +43,10 @@ export const KlineChart = ({
   filters,
   indicators,
   indicatorRenderers,
+  live = true,
 }: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
-  const { data, key, fulfilled } = useData(filters);
+  const { data, key, fulfilled } = useData(filters, live);
   const updateDataCallback = useRef<
     DataLoaderSubscribeBarParams['callback'] | null
   >(null);

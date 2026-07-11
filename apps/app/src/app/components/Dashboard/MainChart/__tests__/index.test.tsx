@@ -65,17 +65,15 @@ describe('Dashboard/MainChart', () => {
     expect(setFiltersMock).not.toHaveBeenCalled();
   });
 
-  it('keeps dashboard auto-refresh in normal mode', async () => {
+  it('enables websocket live updates without timer polling in normal mode', async () => {
     const { MainChart } = require('..');
 
     render(<MainChart />);
 
-    jest.advanceTimersByTime(11_000);
-
-    expect(setFiltersMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        end: expect.any(Number),
-      }),
+    expect(klineChartMock).toHaveBeenCalledWith(
+      expect.objectContaining({ live: true }),
     );
+    jest.advanceTimersByTime(11_000);
+    expect(setFiltersMock).not.toHaveBeenCalled();
   });
 });

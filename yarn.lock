@@ -2918,6 +2918,7 @@ __metadata:
     "@tradejs/strategies": "workspace:^"
     "@tradejs/types": "workspace:^"
     "@types/node": "npm:^24"
+    "@types/ws": "npm:^8.18.1"
     args: "npm:^5.0.3"
     bcryptjs: "npm:^2.4.3"
     chalk: "npm:4.1.2"
@@ -2931,6 +2932,7 @@ __metadata:
     tsconfig-paths: "npm:^4.2.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
+    ws: "npm:^8.18.0"
   bin:
     tradejs: dist/cli.js
   languageName: unknown
@@ -3448,6 +3450,15 @@ __metadata:
   version: 0.0.6
   resolution: "@types/use-sync-external-store@npm:0.0.6"
   checksum: 10c0/77c045a98f57488201f678b181cccd042279aff3da34540ad242f893acc52b358bd0a8207a321b8ac09adbcef36e3236944390e2df4fcedb556ce7bb2a88f2a8
+  languageName: node
+  linkType: hard
+
+"@types/ws@npm:^8.18.1":
+  version: 8.18.1
+  resolution: "@types/ws@npm:8.18.1"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/61aff1129143fcc4312f083bc9e9e168aa3026b7dd6e70796276dcfb2c8211c4292603f9c4864fae702f2ed86e4abd4d38aa421831c2fd7f856c931a481afbab
   languageName: node
   linkType: hard
 

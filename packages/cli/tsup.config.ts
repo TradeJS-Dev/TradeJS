@@ -24,5 +24,6 @@ export default defineConfig({
     'ioredis',
     'lodash',
     'progress',
+    'ws',
   ],
 });

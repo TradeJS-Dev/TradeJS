@@ -44,10 +44,12 @@
     "dotenv": "^16.4.1",
     "ioredis": "5.8.0",
     "lodash": "^4.18.1",
-    "progress": "^2.0.3"
+    "progress": "^2.0.3",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^24",
+    "@types/ws": "^8.18.1",
     "dotenv-cli": "^11.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
@@ -79,6 +81,7 @@
     "derivatives:ingest:coinalyze:all": "yarn run run:dist derivatives:ingest:coinalyze:all",
     "infra-init": "yarn run run:dist infra-init",
     "infra-up": "yarn run run:dist infra-up",
+    "market-ws": "yarn run run:dist market-ws",
     "infra-down": "yarn run run:dist infra-down",
     "spread:ingest": "yarn run run:dist spread:ingest",
     "migration": "yarn run run:dist migration",

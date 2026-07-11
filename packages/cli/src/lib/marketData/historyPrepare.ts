@@ -94,6 +94,52 @@ export const updateMarketHistoryWithBtcReferences = async ({
   log?: (message: string) => void;
   universe?: MarketUniverse;
 }) => {
+  await updatePrimaryMarketHistory({
+    marketConnector,
+    connectorName,
+    interval,
+    symbols,
+    preloadDays,
+    preloadStart,
+    preloadEnd,
+    universe,
+    log,
+  });
+
+  await updateBtcReferenceHistory({
+    marketConnector,
+    btcReferences,
+    interval,
+    preloadDays,
+    preloadStart,
+    preloadEnd,
+    universe,
+    log,
+  });
+};
+
+export const updatePrimaryMarketHistory = async ({
+  marketConnector,
+  connectorName,
+  interval,
+  symbols,
+  preloadDays,
+  preloadStart,
+  preloadEnd,
+  log,
+  universe = marketConnector.universe ?? 'crypto',
+}: {
+  marketConnector: Connector;
+  connectorName: string;
+  interval: Interval;
+  symbols: string[];
+  preloadDays?: number;
+  preloadStart?: number;
+  preloadEnd?: number;
+  log?: (message: string) => void;
+  universe?: MarketUniverse;
+}) => {
+  if (!symbols.length) return;
   const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
     runTimedOperation(
       label,
@@ -120,6 +166,34 @@ export const updateMarketHistoryWithBtcReferences = async ({
       updateOptions,
     ),
   );
+};
+
+export const updateBtcReferenceHistory = async ({
+  marketConnector,
+  btcReferences,
+  interval,
+  preloadDays,
+  preloadStart,
+  preloadEnd,
+  log,
+  universe = marketConnector.universe ?? 'crypto',
+}: {
+  marketConnector: Connector;
+  btcReferences: BtcReferenceConnectors;
+  interval: Interval;
+  preloadDays?: number;
+  preloadStart?: number;
+  preloadEnd?: number;
+  log?: (message: string) => void;
+  universe?: MarketUniverse;
+}) => {
+  if (universe !== 'crypto') return;
+  const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
+    runTimedOperation(
+      label,
+      operation,
+      log ?? ((message) => console.log(chalk.gray(message))),
+    );
 
   const updateReference = async ({
     connector,
@@ -146,14 +220,12 @@ export const updateMarketHistoryWithBtcReferences = async ({
     );
   };
 
-  if (universe === 'crypto') {
-    await updateReference({
-      connector: btcReferences.binance,
-      connectorLabel: ConnectorNames.Binance,
-    });
-    await updateReference({
-      connector: btcReferences.coinbase,
-      connectorLabel: ConnectorNames.Coinbase,
-    });
-  }
+  await updateReference({
+    connector: btcReferences.binance,
+    connectorLabel: ConnectorNames.Binance,
+  });
+  await updateReference({
+    connector: btcReferences.coinbase,
+    connectorLabel: ConnectorNames.Coinbase,
+  });
 };

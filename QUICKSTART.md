@@ -100,6 +100,8 @@ Runtime signal delivery:
 
 - `yarn signals -- --notify` sends Telegram messages for runtime signals
 - production runtime runs `yarn signals:daemon -- --notify --makeOrders`; `yarn signals` remains the one-shot manual and recovery command
+- Bybit candle streaming is enabled automatically in `signals:daemon`; REST only fills startup/reconnect gaps. Use `SIGNALS_KLINE_WS_ENABLED=0` to roll back to the previous REST-only cycle.
+- the production app entrypoint also supervises `yarn market:ws`, which serves dashboard live candles on port `3001` through the deployment proxy path `/ws/market`
 - signals with `orderStatus=skipped` or `orderStatus=canceled` are not sent to Telegram anymore
 - deliverable signals are sent one by one so the main signal message stays grouped with its optional AI analysis message
 - the main signal message tries to send a screenshot with caption first; if photo delivery fails, TradeJS falls back to a text message

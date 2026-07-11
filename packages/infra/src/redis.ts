@@ -158,6 +158,15 @@ interface Options {
   expire?: number; // TTL в секундах
 }
 
+export const publishData = async (
+  channel: string,
+  value: unknown,
+): Promise<number> => {
+  const redis = await getReadyRedis();
+  if (!redis) return 0;
+  return redis.publish(channel, toJson(value));
+};
+
 interface DelKeyOptions {
   raiseOnMisconf?: boolean;
 }

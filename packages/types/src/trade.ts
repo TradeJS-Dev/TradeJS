@@ -35,6 +35,16 @@ export interface KlineChartItem extends Candle {
 
 export type KlineChartData = Array<KlineChartItem>;
 
+export interface MarketKlineEvent {
+  provider: Provider;
+  universe: MarketUniverse;
+  symbol: string;
+  interval: Interval;
+  candle: KlineChartItem;
+  confirm: boolean;
+  receivedAt: number;
+}
+
 export interface KlineRequest {
   symbol: string;
   interval: Interval;

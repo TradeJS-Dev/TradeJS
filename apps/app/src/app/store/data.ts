@@ -12,6 +12,10 @@ import {
 import { kline } from '#actions/kline';
 import { isWrongData, mergeData } from '@tradejs/core/data';
 import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
+import {
+  buildDashboardKlineTopic,
+  subscribeMarketKline,
+} from './marketKlineStream';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;
@@ -227,7 +231,7 @@ const fetchAndStoreData = async (dataRequest: DataRequest) => {
   return pendingRequest;
 };
 
-export const useData = (filters: Filters) => {
+export const useData = (filters: Filters, live = true) => {
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
   const { end, interval, provider, start, symbol, universe } = filters;
@@ -250,11 +254,15 @@ export const useData = (filters: Filters) => {
   const [fulfilledRequestKey, setFulfilledRequestKey] = useState<string | null>(
     null,
   );
+  const [liveWindow, setLiveWindow] = useState({ key: '', end: 0 });
   const storedData = useDataStore((s) => s.data.get(dataRequest.key));
+  const effectiveEnd = Math.max(
+    dataRequest.end,
+    liveWindow.key === dataRequest.key ? liveWindow.end : dataRequest.end,
+  );
   const windowedData = useMemo(
-    () =>
-      filterDataToWindow(storedData ?? [], dataRequest.start, dataRequest.end),
-    [dataRequest.end, dataRequest.start, storedData],
+    () => filterDataToWindow(storedData ?? [], dataRequest.start, effectiveEnd),
+    [dataRequest.start, effectiveEnd, storedData],
   );
 
   const fulfilled = fulfilledRequestKey === requestKey;
@@ -283,6 +291,37 @@ export const useData = (filters: Filters) => {
       cancelled = true;
     };
   }, [dataRequest, requestKey]);
+
+  useEffect(() => {
+    if (!live || cacheOnly || !dataRequest.symbol) return;
+    const topic = buildDashboardKlineTopic(dataRequest);
+    const catchUp = () => {
+      const end = Date.now();
+      void fetchAndStoreData({
+        ...dataRequest,
+        end,
+        cacheBucketEnd: normalizeEndToIntervalBoundary(
+          end,
+          dataRequest.interval,
+        ),
+      });
+    };
+    return subscribeMarketKline({
+      topic,
+      onReconnect: catchUp,
+      onEvent: (event) => {
+        setLiveWindow((current) => ({
+          key: dataRequest.key,
+          end: Math.max(
+            current.key === dataRequest.key ? current.end : dataRequest.end,
+            event.candle.timestamp,
+          ),
+        }));
+        const current = useDataStore.getState().data.get(dataRequest.key) ?? [];
+        void persistData(dataRequest, mergeData(current, [event.candle]));
+      },
+    });
+  }, [cacheOnly, dataRequest, live]);
 
   return {
     key: dataRequest.key,
