@@ -39,10 +39,17 @@ import {
 import {
   parseDumpFeatureMode,
   parseQualityThresholds,
+  parseTerminalWindowDays,
   parseTimestampFilter,
   parseTrailingPeriodMs,
   resolveAiTrainRecentLimit,
 } from '../lib/aiTrainOptions';
+import {
+  buildAiTrainLineage,
+  summarizeAiTrainCoverage,
+  summarizeAiTrainRejectReasons,
+  summarizeAiTrainTerminalWindows,
+} from '../lib/aiTrainResearch';
 import {
   applyAiTrainSymbolQuarantine,
   summarizeAiTrainDuplicateSignals,
@@ -115,6 +122,11 @@ args.option(
   ['q', 'qualityThresholds'],
   'Comma-separated qN+ thresholds to summarize',
   '3,4,5',
+);
+args.option(
+  ['W', 'terminalWindows'],
+  'Comma-separated terminal dataset windows in days; use --terminalWindows=90,30,7',
+  '90,30,7',
 );
 args.option(
   ['d', 'dumpEvaluations'],
@@ -410,6 +422,8 @@ type DeterministicGateSummary = {
 type AiTrainResult = {
   run: {
     strategy: string;
+    datasetId: string | null;
+    shardCount: number;
     filePath: string;
     selected: number;
     sourceRows: number;
@@ -425,6 +439,7 @@ type AiTrainResult = {
     model: string;
     parallel: number;
     dumpFeatures: ReturnType<typeof parseDumpFeatureMode>;
+    terminalWindows: number[];
   };
   outcome: ReturnType<typeof summarizeAiTrainEvaluations>;
   byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
@@ -438,6 +453,12 @@ type AiTrainResult = {
   >['qualityBuckets'];
   symbolQuarantine: AiTrainSymbolQuarantineSummary;
   duplicates: ReturnType<typeof summarizeAiTrainDuplicateSignals>;
+  research: {
+    coverage: ReturnType<typeof summarizeAiTrainCoverage>;
+    terminalWindows: ReturnType<typeof summarizeAiTrainTerminalWindows>;
+    topRejectReasons: ReturnType<typeof summarizeAiTrainRejectReasons>;
+    lineage: Awaited<ReturnType<typeof buildAiTrainLineage>>;
+  };
   errors: {
     failed: number;
     providerErrors: string[];
@@ -646,6 +667,7 @@ export const main = async () => {
     hasDateFilter,
   });
   const qualityThresholds = parseQualityThresholds(flags.qualityThresholds);
+  const terminalWindowDays = parseTerminalWindowDays(flags.terminalWindows);
   const dumpEvaluationsPath = String(flags.dumpEvaluations || '').trim();
   const dumpFeatureMode = parseDumpFeatureMode(flags.dumpFeatures);
   if (dumpFeatureMode !== 'none' && !dumpEvaluationsPath) {
@@ -696,6 +718,7 @@ export const main = async () => {
   }
 
   let strategyName = deriveStrategyNameFromFile(filePaths[0] || '');
+  let strategyNameResolvedFromRow = false;
   const concurrency = Math.max(1, Math.min(parallel, selectedRows));
   const bar = jsonOutput
     ? null
@@ -847,11 +870,12 @@ export const main = async () => {
     onRow: async (row) => {
       scanned += 1;
       if (
-        strategyName === 'unknown' &&
+        !strategyNameResolvedFromRow &&
         typeof row.strategyName === 'string' &&
         row.strategyName.trim()
       ) {
         strategyName = row.strategyName.trim();
+        strategyNameResolvedFromRow = true;
       }
 
       const timestamp = getDatasetRowTimestamp(row);
@@ -924,10 +948,29 @@ export const main = async () => {
       modelCandidate: evaluation.modelCandidate,
     })),
   );
+  const coverage = summarizeAiTrainCoverage(finalEvaluations);
+  const terminalWindows = summarizeAiTrainTerminalWindows(
+    finalEvaluations,
+    terminalWindowDays,
+  );
+  const topRejectReasons = summarizeAiTrainRejectReasons(finalEvaluations);
+  const lineage = await buildAiTrainLineage({
+    projectRoot:
+      String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd(),
+    strategyName,
+    configIds: finalEvaluations.map((evaluation) => evaluation.configId),
+    runContext: {
+      mode: localOnly ? 'local-deterministic' : 'llm',
+      model: localOnly ? 'local-deterministic' : model,
+      minQuality,
+    },
+  });
   const evaluated = summary.correct + summary.incorrect;
   const result: AiTrainResult = {
     run: {
       strategy: strategyName,
+      datasetId: datasetId ?? null,
+      shardCount: filePaths.length,
       filePath: filePaths.join(','),
       selected: finalEvaluations.length,
       sourceRows: totalRows,
@@ -943,6 +986,7 @@ export const main = async () => {
       model: localOnly ? 'local-deterministic' : model,
       parallel: concurrency,
       dumpFeatures: dumpFeatureMode,
+      terminalWindows: terminalWindowDays,
     },
     outcome: summary,
     byDirection: directionSummaries,
@@ -952,6 +996,12 @@ export const main = async () => {
     qualityBreakdown: summary.qualityBuckets,
     symbolQuarantine: quarantine.summary,
     duplicates: duplicateSummary,
+    research: {
+      coverage,
+      terminalWindows,
+      topRejectReasons,
+      lineage,
+    },
     errors: {
       failed,
       providerErrors: errorMessages,
@@ -1022,6 +1072,8 @@ export const main = async () => {
       [chalk.gray('FIELD'), chalk.gray('VALUE')],
       [
         ['strategy', chalk.yellow(strategyName)],
+        ['dataset_id', chalk.gray(datasetId ?? 'n/a')],
+        ['dataset_shards', chalk.blue(String(filePaths.length))],
         ['selected', chalk.blue(String(finalEvaluations.length))],
         ['source_rows', chalk.blue(String(totalRows))],
         ['scanned', chalk.blue(String(scanned))],
@@ -1051,6 +1103,42 @@ export const main = async () => {
         ],
         ['model', chalk.yellow(localOnly ? 'local-deterministic' : model)],
         ['parallel', chalk.magenta(String(concurrency))],
+        [
+          'terminal_windows',
+          terminalWindowDays.length
+            ? chalk.gray(terminalWindowDays.map((days) => `${days}d`).join(','))
+            : chalk.gray('off'),
+        ],
+        [
+          'dataset_min_timestamp',
+          coverage.minTimestamp == null
+            ? chalk.gray('n/a')
+            : chalk.gray(new Date(coverage.minTimestamp).toISOString()),
+        ],
+        [
+          'dataset_max_timestamp',
+          coverage.maxTimestamp == null
+            ? chalk.gray('n/a')
+            : chalk.gray(new Date(coverage.maxTimestamp).toISOString()),
+        ],
+        [
+          'dataset_lag_days',
+          coverage.dataLagDays == null
+            ? chalk.gray('n/a')
+            : chalk.yellow(coverage.dataLagDays.toFixed(2)),
+        ],
+        ['git_sha', chalk.gray(lineage.gitSha ?? 'n/a')],
+        [
+          'git_dirty',
+          lineage.gitDirty == null
+            ? chalk.gray('n/a')
+            : lineage.gitDirty
+              ? chalk.yellow('true')
+              : chalk.green('false'),
+        ],
+        ['gate_fingerprint', chalk.gray(lineage.gateFingerprint)],
+        ['config_ids_fingerprint', chalk.gray(lineage.configIdsFingerprint)],
+        ['context_fingerprint', chalk.gray(lineage.contextFingerprint)],
         [
           'symbol_quarantine',
           symbolQuarantineEnabled ? chalk.green('enabled') : chalk.gray('off'),
@@ -1113,6 +1201,59 @@ export const main = async () => {
       ],
     ),
   );
+
+  if (terminalWindows.length) {
+    printSection(
+      'TERMINAL WINDOWS (ANCHORED TO DATASET MAX)',
+      createTable(
+        [
+          chalk.gray('WINDOW'),
+          chalk.gray('COVERAGE'),
+          chalk.gray('FROM'),
+          chalk.gray('TO'),
+          chalk.gray('EVAL'),
+          chalk.gray('APPROVED'),
+          chalk.gray('CALENDAR/D'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('MAX_DD'),
+          chalk.gray('TOP REJECT'),
+        ],
+        terminalWindows.map((window) => [
+          chalk.yellow(window.label),
+          window.complete ? chalk.green('full') : chalk.yellow('partial'),
+          chalk.gray(new Date(window.since).toISOString()),
+          chalk.gray(new Date(window.until).toISOString()),
+          chalk.blue(String(window.selected)),
+          chalk.cyan(String(window.outcome.approved)),
+          colorizeMetricNumber(window.approvedPerCalendarDay),
+          colorizeRatio(window.outcome.approvedRisk.winRate),
+          colorizeMetricNumber(window.outcome.approvedRisk.profitFactor),
+          colorizeProfit(window.outcome.approvedRisk.totalProfit),
+          colorizeProfit(-window.outcome.approvedRisk.maxDrawdown),
+          chalk.gray(
+            window.topRejectReasons[0]
+              ? `${window.topRejectReasons[0].reason} (${window.topRejectReasons[0].count})`
+              : 'n/a',
+          ),
+        ]),
+      ),
+    );
+  }
+
+  if (topRejectReasons.length) {
+    printSection(
+      'TOP REJECT REASONS',
+      createTable(
+        [chalk.gray('REASON'), chalk.gray('COUNT')],
+        topRejectReasons.map(({ reason, count }) => [
+          chalk.yellow(reason),
+          chalk.blue(String(count)),
+        ]),
+      ),
+    );
+  }
 
   printSection(
     'CONFUSION',

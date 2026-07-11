@@ -240,6 +240,47 @@ yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
 yarn ai-pocket-search --strategy TrendLine -n 0 --maxDepth 2 --minSupport 25
 ```
 
+### Freshness and terminal-window gate
+
+For any current/live cadence conclusion, run all selected rows so one execution
+produces the full result and terminal summaries:
+
+```bash
+yarn ai-train --strategy <Strategy> -n 0 --localOnly
+```
+
+The default terminal windows are `90d,30d,7d`, anchored to the maximum dataset
+timestamp. Use `--terminalWindows=90,30,11,7` when the production comparison
+uses an 11-day window. Do not run the provider repeatedly for these windows;
+the command derives them from the same evaluated rows.
+
+Before stating expected production cadence:
+
+- record dataset min/max timestamps and `dataLagDays`
+- require the export to overlap the production window under discussion
+- report full history and every terminal window, including zero approvals
+- use terminal `approvedPerCalendarDay`, not the full-history average, as the
+  current cadence evidence
+- record git SHA, dirty state, gate fingerprint, config-id fingerprint, and
+  context fingerprint from the report
+- compare runtime only when gate/config/context lineage and `MIN_AI_QUALITY`
+  match; otherwise label it a different experiment
+- inspect terminal top reject reasons before changing a threshold
+- if the export tail is stale, report current live cadence as unknown and build
+  a fresh export
+
+Context semantics rule:
+
+- top-level derivatives fields are BTC benchmark context
+- `targetContext` / `targetDerived` are target-symbol context
+- do not rename benchmark evidence as target evidence in reports
+- do not switch an existing gate from benchmark to target behavior without a
+  new export, terminal validation, and updated notes
+
+After any gate-code change, rerun the command and update the matching
+`notes/AI_*_REPLAY_NOTES.md`. Metrics from an older gate fingerprint are
+historical context only.
+
 Shard-aware examples:
 
 ```bash

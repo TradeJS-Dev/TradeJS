@@ -47,6 +47,12 @@ For DoubleTap, prioritize:
 
 4. Once a config is stable across 20+ tickers on `-d 30`, use it for year-scale `--ai` exports. Analyze exported local AI gate behavior with `ai-train-local-research`.
 
+For every AI export handed to gate research, record the merge id, shard count,
+minimum and maximum timestamps, backtest config ids, git SHA, and the context env
+used to construct derivatives/CMC inputs. A year-scale export without a fresh
+terminal tail is suitable for historical research but not for a current live
+cadence claim.
+
 ## Validation
 
 - Run the affected strategy tests after strategy edits, for example `yarn jest packages/strategies/src/<StrategyName> --runInBand`.

@@ -274,11 +274,11 @@ jobs:
           DISPATCH_TOKEN: ${{ secrets.TRADEJS_DEPLOY_REPO_TOKEN }}
         run: |
           if [ -z "$DISPATCH_TOKEN" ]; then
-            echo "TRADEJS_DEPLOY_REPO_TOKEN is not configured; skipping deploy dispatch."
-            exit 0
+            echo "TRADEJS_DEPLOY_REPO_TOKEN is not configured; refusing to report a successful publish without deploy dispatch." >&2
+            exit 1
           fi
 
-          curl -L \
+          curl --fail-with-body --silent --show-error -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${DISPATCH_TOKEN}" \

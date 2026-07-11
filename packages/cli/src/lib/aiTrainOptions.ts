@@ -59,6 +59,17 @@ export const parseQualityThresholds = (value: unknown) => {
   return [...new Set(raw)].sort((left, right) => left - right);
 };
 
+export const parseTerminalWindowDays = (value: unknown) => {
+  const raw = String(value ?? '90,30,7')
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((part) => Number.isFinite(part))
+    .map((part) => Math.trunc(part))
+    .filter((part) => part > 0);
+
+  return [...new Set(raw)].sort((left, right) => right - left);
+};
+
 export type AiTrainDumpFeatureMode = 'none' | 'gateFeatures' | 'baseContext';
 
 export const parseDumpFeatureMode = (

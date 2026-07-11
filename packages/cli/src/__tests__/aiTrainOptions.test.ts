@@ -2,6 +2,7 @@ import {
   hasCliOption,
   parseDumpFeatureMode,
   parseQualityThresholds,
+  parseTerminalWindowDays,
   parseTimestampFilter,
   parseTrailingPeriodMs,
   resolveAiTrainRecentLimit,
@@ -43,6 +44,12 @@ describe('aiTrainOptions', () => {
   it('deduplicates and sorts quality thresholds', () => {
     expect(parseQualityThresholds('5,3,4,4,0,-1,x,2.9')).toEqual([2, 3, 4, 5]);
     expect(parseQualityThresholds(undefined)).toEqual([3, 4, 5]);
+  });
+
+  it('parses terminal research windows in descending order', () => {
+    expect(parseTerminalWindowDays(undefined)).toEqual([90, 30, 7]);
+    expect(parseTerminalWindowDays('7,30,11,7,0,x')).toEqual([30, 11, 7]);
+    expect(parseTerminalWindowDays('')).toEqual([]);
   });
 
   it('parses dump feature snapshot modes', () => {
