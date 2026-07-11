@@ -307,12 +307,13 @@ export const enrichSignalWithDerivativesContext = async (params: {
     >;
     const primaryReferenceSymbol = resolvePrimaryReferenceSymbol();
     const secondaryReferenceSymbol = resolveSecondaryReferenceSymbol();
+    const targetContextEnabled = isDerivativesTargetContextEnabled();
     const referenceTargetContext =
-      targetSymbol !== primaryReferenceSymbol
+      targetContextEnabled && targetSymbol !== primaryReferenceSymbol
         ? referenceContexts[targetSymbol]
         : undefined;
     const shouldFetchTargetContext =
-      isDerivativesTargetContextEnabled() &&
+      targetContextEnabled &&
       targetSymbol.length > 0 &&
       !referenceSymbols.some(
         (referenceSymbol) => referenceSymbol === targetSymbol,

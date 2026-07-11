@@ -273,6 +273,9 @@ Context semantics rule:
 
 - top-level derivatives fields are BTC benchmark context
 - `targetContext` / `targetDerived` are target-symbol context
+- when `DERIVATIVES_CONTEXT_TARGET_ENABLED=false`, target fields must be absent;
+  downloaded target rows or membership in extra reference symbols may expose the
+  symbol only through `referenceContexts`
 - do not rename benchmark evidence as target evidence in reports
 - do not switch an existing gate from benchmark to target behavior without a
   new export, terminal validation, and updated notes
