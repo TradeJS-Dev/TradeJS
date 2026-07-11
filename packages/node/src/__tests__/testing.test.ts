@@ -2,6 +2,7 @@ import { Test } from '@tradejs/types';
 
 const mockByBitConnector = {
   kline: jest.fn(),
+  listInstruments: jest.fn(),
 };
 const mockByBitConnectorCreator = jest.fn(async () => mockByBitConnector);
 const mockBinanceConnector = {
@@ -187,6 +188,7 @@ describe('testing backtest flow', () => {
     resetTestingKlineCache();
     jest.clearAllMocks();
     mockByBitConnector.kline.mockReset();
+    mockByBitConnector.listInstruments.mockReset();
     mockBinanceConnector.kline.mockReset();
     mockCoinbaseConnector.kline.mockReset();
     mockByBitConnectorCreator.mockClear();
@@ -244,6 +246,21 @@ describe('testing backtest flow', () => {
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
+  it('does not discover instruments inside a backtest worker', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockByBitConnector.listInstruments.mockRejectedValue(
+      new Error('instrument discovery must stay in the parent process'),
+    );
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await expect(testing(createTest())).resolves.toBeTruthy();
+
+    expect(mockByBitConnector.listInstruments).not.toHaveBeenCalled();
+  });
+
   it('checks exits before strategy signals so new entries cannot close on the same candle', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
@@ -295,6 +312,9 @@ describe('testing backtest flow', () => {
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
     mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockByBitConnector.listInstruments.mockRejectedValue(
+      new Error('instrument discovery must stay in the parent process'),
+    );
     mockTestConnector.getResult.mockResolvedValue({
       orderLogId: 'log-1',
       stat: { amount: 100, profit: 0, orders: 0 },
@@ -315,6 +335,7 @@ describe('testing backtest flow', () => {
     expect(receivedSharedKeys).toHaveLength(2);
     expect(receivedSharedKeys[0]).toBeTruthy();
     expect(receivedSharedKeys[1]).toBe(receivedSharedKeys[0]);
+    expect(mockByBitConnector.listInstruments).not.toHaveBeenCalled();
   });
 
   it('fans out detector no-signal skips without re-running strategy core for matching detector keys', async () => {

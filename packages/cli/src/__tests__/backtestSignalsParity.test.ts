@@ -737,6 +737,7 @@ const runReplayPath = async () => {
       connectorName: 'bybit',
       marketConnector: connector as any,
       tickers: ['ETHUSDT'],
+      instrumentsBySymbol: new Map(),
       window: {
         start: CLOSED_1_TS,
         end: CLOSED_2_TS,

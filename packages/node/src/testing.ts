@@ -1178,16 +1178,7 @@ export const testing: TestingBox = async ({
   const runtimeEthData = [...ethPrevData, ...ethTestData];
   totalCandles = testData.length;
 
-  const instrument =
-    requestedInstrument ??
-    (typeof connector.listInstruments === 'function'
-      ? (
-          await connector.listInstruments({
-            universe,
-            symbols: [symbol],
-          })
-        )[0]
-      : undefined);
+  const instrument = requestedInstrument;
   const { model: executionCostModel, fundingRates } =
     await resolveExecutionCosts({
       connector,
@@ -1670,16 +1661,7 @@ export const testingGroupInSharedCandleLoop = async (
   const runners: Runner[] = [];
   try {
     for (const test of tests) {
-      const instrument =
-        test.instrument ??
-        (typeof connector.listInstruments === 'function'
-          ? (
-              await connector.listInstruments({
-                universe: test.universe ?? universe,
-                symbols: [test.symbol],
-              })
-            )[0]
-          : undefined);
+      const instrument = test.instrument;
       const { model: executionCostModel, fundingRates } =
         await resolveExecutionCosts({
           connector,

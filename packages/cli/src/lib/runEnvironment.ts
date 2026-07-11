@@ -15,6 +15,7 @@ import {
   AssetClass,
   Connector,
   ConnectorCreator,
+  InstrumentDescriptor,
   Interval,
   MarketUniverse,
   RuntimeDeployment,
@@ -41,6 +42,7 @@ export type PreparedRunEnvironment = {
   connectorName: string;
   marketConnector: Connector;
   tickers: string[];
+  instrumentsBySymbol: Map<string, InstrumentDescriptor>;
   window: ResolvedWindow;
   preloadStart: number;
   universe?: MarketUniverse;
@@ -190,6 +192,23 @@ export const prepareRunEnvironment = async ({
     return null;
   }
 
+  const instruments =
+    !cacheOnly && typeof marketConnector.listInstruments === 'function'
+      ? await timeOperation('instruments load', () =>
+          marketConnector.listInstruments!({
+            universe,
+            assetClasses,
+            symbols: loadedTickers,
+          }),
+        )
+      : [];
+  const instrumentsBySymbol = new Map(
+    instruments.map((instrument) => [
+      instrument.symbol.toUpperCase(),
+      instrument,
+    ]),
+  );
+
   const window = resolveTimeWindow({
     days,
     startTime,
@@ -251,6 +270,7 @@ export const prepareRunEnvironment = async ({
     connectorName,
     marketConnector,
     tickers: loadedTickers,
+    instrumentsBySymbol,
     window,
     preloadStart,
     universe,

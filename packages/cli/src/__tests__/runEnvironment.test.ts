@@ -102,6 +102,19 @@ describe('prepareRunEnvironment', () => {
   });
 
   it('preloads execution interval only on the selected market connector', async () => {
+    const instrument = {
+      symbol: 'ETHUSDT',
+      universe: 'crypto' as const,
+      assetClass: 'crypto' as const,
+      kind: 'perpetual' as const,
+    };
+    const listInstruments = jest.fn(async () => [instrument]);
+    mockGetConnectorCreatorByName.mockResolvedValue(async () => ({
+      name: 'ByBit',
+      getTickers: jest.fn(async () => [ticker('ETHUSDT', 100_000_000)]),
+      listInstruments,
+    }));
+
     const result = await prepareRunEnvironment({
       connector: 'ByBit',
       userName: 'root',
@@ -112,6 +125,13 @@ describe('prepareRunEnvironment', () => {
     });
 
     expect(result?.connectorName).toBe('ByBit');
+    expect(listInstruments).toHaveBeenCalledTimes(1);
+    expect(listInstruments).toHaveBeenCalledWith({
+      universe: 'crypto',
+      assetClasses: undefined,
+      symbols: ['ETHUSDT'],
+    });
+    expect(result?.instrumentsBySymbol.get('ETHUSDT')).toBe(instrument);
     expect(mockUpdateMarketHistoryWithBtcReferences).toHaveBeenCalledTimes(1);
     expect(mockUpdateMarketHistoryWithBtcReferences).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -147,9 +167,11 @@ describe('prepareRunEnvironment', () => {
     const connectorGetTickers = jest.fn(async () => [
       ticker('ETHUSDT', 100_000_000),
     ]);
+    const listInstruments = jest.fn(async () => []);
     mockGetConnectorCreatorByName.mockResolvedValue(async () => ({
       name: 'ByBit',
       getTickers: connectorGetTickers,
+      listInstruments,
     }));
     mockRedisGetData.mockResolvedValue({
       version: 1,
@@ -175,6 +197,8 @@ describe('prepareRunEnvironment', () => {
       null,
     );
     expect(connectorGetTickers).not.toHaveBeenCalled();
+    expect(listInstruments).not.toHaveBeenCalled();
+    expect(result?.instrumentsBySymbol.size).toBe(0);
     expect(mockRedisSetData).not.toHaveBeenCalled();
     expect(mockUpdateMarketHistoryWithBtcReferences).not.toHaveBeenCalled();
     expect(mockUpdate).not.toHaveBeenCalled();

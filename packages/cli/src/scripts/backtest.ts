@@ -670,6 +670,9 @@ export const backtest = async () => {
           : deploymentStrategy?.policyProfileId) || undefined;
       return {
         ...test,
+        instrument: preparedRun.instrumentsBySymbol.get(
+          test.symbol.toUpperCase(),
+        ),
         universe: preparedRun.universe,
         accountId: preparedRun.accountId,
         deploymentId: preparedRun.deploymentId,
