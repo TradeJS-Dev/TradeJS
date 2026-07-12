@@ -9,6 +9,7 @@ docker-compose.yml
 apps/**/.next
 apps/**/dist
 packages/**/dist
+packages/native
 .vscode
 data
 screenshots

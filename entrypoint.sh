@@ -52,7 +52,7 @@ managed_pids+=("$signals_pid")
 market_ws_pid=$!
 managed_pids+=("$market_ws_pid")
 
-yarn run start &
+node ./apps/app/bin/tradejs-app.mjs start &
 app_pid=$!
 managed_pids+=("$app_pid")
 
