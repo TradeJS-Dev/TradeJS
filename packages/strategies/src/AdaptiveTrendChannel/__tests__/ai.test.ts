@@ -78,6 +78,54 @@ const makeCleanLongBaseContext = ({
   },
 });
 
+const makeXrpShortRecoveryBaseContext = ({
+  approveBias = 'reject',
+  xrpOpenInterest15m = 300_000_000,
+  xrpPriceOiDivergenceType = 'price_down_oi_up',
+  xrpFundingZScore1h = -1.8,
+  btcVsAltReturn24h = -0.03,
+  xrpDerivatives1hStale = false,
+}: {
+  approveBias?: 'support' | 'neutral' | 'reject';
+  xrpOpenInterest15m?: number | null;
+  xrpPriceOiDivergenceType?: string | null;
+  xrpFundingZScore1h?: number | null;
+  btcVsAltReturn24h?: number | null;
+  xrpDerivatives1hStale?: boolean;
+} = {}) => ({
+  derivatives: {
+    referenceContexts: {
+      XRPUSDT: {
+        summary: {
+          priceOiDivergenceType: xrpPriceOiDivergenceType,
+        },
+        intervals: {
+          '15m': {
+            openInterest: xrpOpenInterest15m,
+          },
+          '1h': {
+            fundingZScore: xrpFundingZScore1h,
+            stale: xrpDerivatives1hStale,
+          },
+        },
+      },
+    },
+  },
+  gateFeatures: {
+    decisionHints: {
+      approveBias,
+      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+      needsExtraConfirmation: approveBias === 'reject',
+      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    },
+    relative: {
+      btcVsAltReturn24h,
+      cmcExchangeLiquidityAligned: false,
+      cmcExchangeLiquidityStale: false,
+    },
+  },
+});
+
 describe('adaptiveTrendChannelAiAdapter', () => {
   it('approves clean adaptive channel flips', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
@@ -174,6 +222,85 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       (result as { rejectReason?: string } | undefined)?.rejectReason,
     ).toContain('xrp_oi_reject_bias');
   });
+
+  it('allows the rounded XRP reference short recovery pocket through high-XRP reject bias', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 0.5,
+          channelWidthPct: 6,
+          currentPrice: 99.5,
+        },
+        makeXrpShortRecoveryBaseContext(),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['BTC-vs-alt weakness is too shallow', { btcVsAltReturn24h: -0.029 }],
+    ['XRP funding z-score is too shallow', { xrpFundingZScore1h: -1.79 }],
+    [
+      'XRP price/OI divergence is missing',
+      { xrpPriceOiDivergenceType: 'unknown' },
+    ],
+    ['XRP 1h derivatives are stale', { xrpDerivatives1hStale: true }],
+  ])(
+    'keeps high-XRP reject bias blocked when the short recovery pocket misses: %s',
+    (_label, overrides) => {
+      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload(
+          {
+            signalDirection: 'SHORT',
+            regime: -1,
+            centerline: 100,
+            roof: 103,
+            floor: 97,
+            halfChannel: 3,
+            atr: 3,
+            breakoutDistancePct: 0.5,
+            channelWidthPct: 6,
+            currentPrice: 99.5,
+          },
+          makeXrpShortRecoveryBaseContext(overrides),
+        ),
+        analysis: {
+          direction: 'SHORT',
+          quality: 5,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+      });
+      expect(
+        (result as { rejectReason?: string } | undefined)?.rejectReason,
+      ).toContain('xrp_oi_reject_bias');
+    },
+  );
 
   it.each([
     ['below the XRP OI threshold', 249_999_999],
@@ -495,7 +622,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('short_side_disabled');
   });
 
-  it('includes canonical target derivative interval fields in the human prompt addon', () => {
+  it('includes canonical derivative interval fields in the human prompt addon', () => {
     const prompt = adaptiveTrendChannelAiAdapter.buildHumanPromptAddon?.({
       signal: {} as any,
       payload: makePayload(
@@ -547,10 +674,24 @@ describe('adaptiveTrendChannelAiAdapter', () => {
                   },
                 },
               },
+              XRPUSDT: {
+                summary: {
+                  priceOiDivergenceType: 'price_down_oi_up',
+                },
+                intervals: {
+                  '15m': {
+                    openInterest: 300_000_000,
+                  },
+                  '1h': {
+                    fundingZScore: -1.8,
+                  },
+                },
+              },
             },
           },
           gateFeatures: {
             relative: {
+              btcVsAltReturn24h: -0.03,
               cmcExchangeLiquidityAligned: true,
               cmcExchangeLiquidityStale: false,
             },
@@ -563,6 +704,10 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(prompt).toContain('targetLiqSpikeRatio1h=5.8');
     expect(prompt).toContain('targetLiqTotal1h=32');
     expect(prompt).toContain('ethFundingRate1h=0.003');
+    expect(prompt).toContain('xrpOpenInterest15m=300000000');
+    expect(prompt).toContain('xrpPriceOiDivergenceType=price_down_oi_up');
+    expect(prompt).toContain('xrpFundingZScore1h=-1.8');
+    expect(prompt).toContain('btcVsAltReturn24h=-0.03');
     expect(prompt).not.toContain('derivativesPressure');
     expect(prompt).not.toContain('derivativesDirectionAligned');
     expect(prompt).not.toContain('derivativesRiskFlags');

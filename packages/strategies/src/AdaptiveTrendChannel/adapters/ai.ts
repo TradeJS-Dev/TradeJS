@@ -95,6 +95,9 @@ Additional AdaptiveTrendChannel context:
 - targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}
 - ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
 - xrpOpenInterest15m=${String(context.xrpOpenInterest15m ?? 'n/a')}
+- xrpPriceOiDivergenceType=${context.xrpPriceOiDivergenceType ?? 'n/a'}
+- xrpFundingZScore1h=${String(context.xrpFundingZScore1h ?? 'n/a')}
+- btcVsAltReturn24h=${String(context.btcVsAltReturn24h ?? 'n/a')}
 - baseApproveBias=${context.baseApproveBias ?? 'n/a'}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
@@ -108,6 +111,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
 - Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
 - Thin participation, missing shared-context confirmation, or missing liquidation-shock recovery evidence should downgrade the setup.
+- A high-XRP-OI reject bias should remain blocked unless a narrow XRP reference SHORT recovery setup is present.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
