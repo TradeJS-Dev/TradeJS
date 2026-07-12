@@ -29,12 +29,15 @@ export const TestCardOpenDashboardButton = () => {
       variant="outline"
       onClick={() =>
         window.open(
-          `${buildDashboardPath({
-            provider,
-            universe: testResult.test.universe ?? 'crypto',
-            symbol: testResult.test.symbol,
-            interval: testResult.test.interval ?? '15',
-          })}?${params.toString()}`,
+          buildDashboardPath(
+            {
+              provider,
+              universe: testResult.test.universe ?? 'crypto',
+              symbol: testResult.test.symbol,
+              interval: testResult.test.interval ?? '15',
+            },
+            params,
+          ),
           '_blank',
           'noopener,noreferrer',
         )

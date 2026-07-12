@@ -1,6 +1,7 @@
 'use client';
 
 import { Select } from '#ui';
+import { getDefaultMarketSymbol } from '#app/lib/marketDefaults';
 import { useFiltersContext } from '../context';
 
 const items = [
@@ -14,9 +15,13 @@ export const SelectProvider = () => {
 
   const onChange = (value: string[]) => {
     if (!value[0]) return;
+    const provider = value[0] as 'bybit' | 'binance' | 'coinbase';
+    const universe =
+      provider === 'bybit' ? filters.universe ?? 'crypto' : 'crypto';
     onChangeFilters?.({
-      provider: value[0] as 'bybit' | 'binance' | 'coinbase',
-      ...(value[0] === 'bybit' ? {} : { universe: 'crypto' }),
+      provider,
+      universe,
+      symbol: getDefaultMarketSymbol(provider, universe),
       backtestId: null,
       backtestStrategy: null,
     });

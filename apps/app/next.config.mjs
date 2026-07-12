@@ -13,30 +13,6 @@ const nextConfig = {
     externalDir: true,
     optimizePackageImports: ['@chakra-ui/react'],
   },
-  async redirects() {
-    return [
-      {
-        source: '/routes/dashboard/:symbol/:interval',
-        destination: '/routes/dashboard/bybit/crypto/:symbol/:interval',
-        permanent: false,
-      },
-      {
-        source: '/api/kline/:symbol/:interval',
-        destination: '/api/kline/bybit/crypto/:symbol/:interval',
-        permanent: false,
-      },
-      {
-        source: '/routes/dashboard/:provider/:symbol/:interval',
-        destination: '/routes/dashboard/:provider/crypto/:symbol/:interval',
-        permanent: false,
-      },
-      {
-        source: '/api/kline/:provider/:symbol/:interval',
-        destination: '/api/kline/:provider/crypto/:symbol/:interval',
-        permanent: false,
-      },
-    ];
-  },
 };
 
 export default nextConfig;

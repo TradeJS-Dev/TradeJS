@@ -11,7 +11,7 @@ const fallback = {
 };
 
 describe('market routes', () => {
-  it('uses universe as part of the canonical market identity', () => {
+  it('keeps universe out of the route and uses a query only for TradFi', () => {
     expect(
       buildKlinePath({
         provider: 'bybit',
@@ -19,7 +19,7 @@ describe('market routes', () => {
         symbol: 'AAPLUSDT',
         interval: '15',
       }),
-    ).toBe('/api/kline/bybit/tradfi/AAPLUSDT/15');
+    ).toBe('/api/kline/bybit/AAPLUSDT/15?universe=tradfi');
     expect(
       buildDashboardPath({
         provider: 'bybit',
@@ -27,13 +27,14 @@ describe('market routes', () => {
         symbol: 'AAPLUSDT',
         interval: '15',
       }),
-    ).toBe('/routes/dashboard/bybit/tradfi/AAPLUSDT/15');
+    ).toBe('/routes/dashboard/bybit/AAPLUSDT/15?universe=tradfi');
   });
 
-  it('parses explicit universe-aware dashboard routes', () => {
+  it('parses universe from the dashboard query', () => {
     expect(
       parseDashboardPath(
-        '/routes/dashboard/bybit/tradfi/AAPLUSDT/60',
+        '/routes/dashboard/bybit/AAPLUSDT/60',
+        new URLSearchParams('universe=tradfi'),
         fallback,
       ),
     ).toEqual({
@@ -44,10 +45,11 @@ describe('market routes', () => {
     });
   });
 
-  it('falls back to crypto when the universe segment is unknown', () => {
+  it('falls back to crypto when the universe query is unknown', () => {
     expect(
       parseDashboardPath(
-        '/routes/dashboard/coinbase/unknown/ETH-USD/5',
+        '/routes/dashboard/coinbase/ETH-USD/5',
+        new URLSearchParams('universe=unknown'),
         fallback,
       ),
     ).toEqual({
@@ -68,7 +70,23 @@ describe('market routes', () => {
           symbol: 'BTCUSDT',
           interval: '15',
         }),
-      ).toBe(`/api/kline/${provider}/crypto/BTCUSDT/15`);
+      ).toBe(`/api/kline/${provider}/BTCUSDT/15`);
     },
   );
+
+  it('merges dashboard state into one query string', () => {
+    expect(
+      buildDashboardPath(
+        {
+          provider: 'bybit',
+          universe: 'tradfi',
+          symbol: 'AAPLUSDT',
+          interval: '15',
+        },
+        new URLSearchParams('signalId=signal-1'),
+      ),
+    ).toBe(
+      '/routes/dashboard/bybit/AAPLUSDT/15?signalId=signal-1&universe=tradfi',
+    );
+  });
 });

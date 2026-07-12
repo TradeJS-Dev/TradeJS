@@ -3,6 +3,7 @@ import { delay } from '@tradejs/core/async';
 import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
 import { getUserSettings } from '@tradejs/infra/userSettings';
+import { buildDashboardUrl } from './dashboardUrl';
 import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
 
 const escapeHtml = (s?: string | null) => {
@@ -573,7 +574,13 @@ export const sendSignal = async (
 
   const publicAppUrl = APP_URL?.startsWith('https') ? APP_URL : null;
   const dashboardUrl = publicAppUrl
-    ? `${APP_URL}/routes/dashboard/bybit/${signal.universe ?? 'crypto'}/${symbol}/${interval}/?signalId=${signalId}`
+    ? buildDashboardUrl({
+        baseUrl: publicAppUrl,
+        universe: signal.universe ?? 'crypto',
+        symbol,
+        interval,
+        searchParams: { signalId },
+      })
     : null;
   const actionButtons = [
     dashboardUrl ? { text: 'Dashboard', url: dashboardUrl } : null,

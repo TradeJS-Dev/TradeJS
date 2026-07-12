@@ -2,6 +2,7 @@
 
 import { Select } from '#ui';
 import type { MarketUniverse } from '@tradejs/types';
+import { getDefaultMarketSymbol } from '#app/lib/marketDefaults';
 import { useFiltersContext } from '../context';
 
 export const SelectUniverse = () => {
@@ -20,8 +21,10 @@ export const SelectUniverse = () => {
       defaultValue={[filters.universe ?? 'crypto']}
       onChange={(value: string[]) => {
         if (!value[0]) return;
+        const universe = value[0] as MarketUniverse;
         onChangeFilters?.({
-          universe: value[0] as MarketUniverse,
+          universe,
+          symbol: getDefaultMarketSymbol(filters.provider ?? 'bybit', universe),
           backtestId: null,
           backtestStrategy: null,
         });

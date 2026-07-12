@@ -64,11 +64,7 @@ jest.mock('#app/components/Dashboard/MainChart', () => ({
 describe('Dashboard route screenshot mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    window.history.replaceState(
-      null,
-      '',
-      '/routes/dashboard/bybit/crypto/BTCUSDT/15',
-    );
+    window.history.replaceState(null, '', '/routes/dashboard/bybit/BTCUSDT/15');
   });
 
   it('hides filters and enables screenshot mode for the chart', async () => {
@@ -117,13 +113,13 @@ describe('Dashboard route screenshot mode', () => {
     );
   });
 
-  it('parses the explicit TradFi path segment', async () => {
+  it('parses the TradFi query parameter', async () => {
     window.history.replaceState(
       null,
       '',
-      '/routes/dashboard/bybit/tradfi/AAPLUSDT/15',
+      '/routes/dashboard/bybit/AAPLUSDT/15?universe=tradfi',
     );
-    useSearchParamsMock.mockReturnValue(new URLSearchParams());
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('universe=tradfi'));
     const Dashboard = require('../Dashboard').default;
 
     render(<Dashboard />);

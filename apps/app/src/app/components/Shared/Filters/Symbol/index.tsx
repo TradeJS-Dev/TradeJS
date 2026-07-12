@@ -29,6 +29,7 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
 
   return (
     <SelectWithSearch
+      key={`${filters.provider}:${filters.universe}:${filters.symbol}`}
       defaultValue={[filters.symbol]}
       defaultInputValue={defaultInputValue}
       onChange={onChange}

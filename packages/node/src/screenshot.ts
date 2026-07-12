@@ -5,6 +5,7 @@ import { Signal } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { logger } from '@tradejs/infra/logger';
 import { createScreenshotSessionToken } from '@tradejs/infra/redis';
+import { buildDashboardUrl } from './dashboardUrl';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
 const { APP_URL } = process.env;
@@ -175,7 +176,18 @@ export const screenDashboard = async (
       `Failed to create screenshot session token for ${userName}`,
     );
   }
-  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${signal.universe ?? 'crypto'}/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1&screenshotToken=${encodeURIComponent(screenshotToken)}`;
+  const dashboardUrl = buildDashboardUrl({
+    baseUrl: screenshotBaseUrl,
+    universe: signal.universe ?? 'crypto',
+    symbol,
+    interval,
+    searchParams: {
+      signalId,
+      autoZoom: 'true',
+      screenshot: '1',
+      screenshotToken,
+    },
+  });
   const maskedDashboardUrl = maskTokenInUrl(dashboardUrl);
 
   logger.info(

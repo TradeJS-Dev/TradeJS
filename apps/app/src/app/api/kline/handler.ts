@@ -29,7 +29,6 @@ interface KlineRouteParams {
   provider: string;
   symbol: string;
   interval: string;
-  universe?: string;
 }
 
 type KlineCacheEntry = {
@@ -289,12 +288,8 @@ export const POST = async (
     }
 
     const routeParams = await params;
-    const {
-      provider,
-      universe: requestedUniverse,
-      symbol,
-      interval,
-    } = routeParams;
+    const { provider, symbol, interval } = routeParams;
+    const requestedUniverse = request.nextUrl.searchParams.get('universe');
     const rawUniverse = requestedUniverse ?? 'crypto';
     if (!isMarketUniverse(rawUniverse)) {
       return NextResponse.json(
@@ -358,7 +353,7 @@ export const POST = async (
       }
       const connector = await (connectorCreator as ConnectorCreator)({
         userName,
-        ...(requestedUniverse ? { universe } : {}),
+        universe,
       });
 
       const liveTailRequired = Number(options.end) > historicalEnd;

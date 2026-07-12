@@ -83,6 +83,16 @@ describe('signals', () => {
     expect(payload.get('parse_mode')).toBe('HTML');
     expect(payload.get('reply_markup')).toContain('Dashboard');
     expect(payload.get('reply_markup')).not.toContain('Screenshot');
+    expect(JSON.parse(String(payload.get('reply_markup')))).toEqual({
+      inline_keyboard: [
+        [
+          {
+            text: 'Dashboard',
+            url: 'https://app.example.com/routes/dashboard/bybit/BTCUSDT/15?signalId=sig-1',
+          },
+        ],
+      ],
+    });
 
     const photo = payload.get('photo') as File;
 

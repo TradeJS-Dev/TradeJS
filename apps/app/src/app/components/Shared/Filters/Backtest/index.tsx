@@ -8,7 +8,6 @@ import { useFiltersContext } from '../context';
 export const SelectBacktest = () => {
   const { filters, backtestFiles, onChangeFilters, ensureBacktestsLoaded } =
     useFiltersContext();
-  const STORAGE_KEY = 'backtest-strategy';
 
   const tests = useMemo(
     () => backtestFiles.filter((file) => file.value.startsWith(filters.symbol)),
@@ -33,6 +32,16 @@ export const SelectBacktest = () => {
   }, [tests]);
 
   const [selectedStrategy, setSelectedStrategy] = useState<string>('');
+  const selectedTestStrategy = useMemo(() => {
+    if (!filters.backtestId) return null;
+
+    const strategyName = tests.find((test) => test.value === filters.backtestId)
+      ?.data?.strategyName;
+
+    return typeof strategyName === 'string' && strategyName
+      ? strategyName
+      : null;
+  }, [filters.backtestId, tests]);
 
   useEffect(() => {
     if (_.isEmpty(strategyItems)) {
@@ -40,59 +49,34 @@ export const SelectBacktest = () => {
       return;
     }
 
+    const requestedStrategy = filters.backtestStrategy ?? selectedTestStrategy;
+
     if (
-      filters.backtestStrategy &&
-      strategyItems.some((item) => item.value === filters.backtestStrategy) &&
-      selectedStrategy !== filters.backtestStrategy
+      requestedStrategy &&
+      strategyItems.some((item) => item.value === requestedStrategy) &&
+      selectedStrategy !== requestedStrategy
     ) {
-      setSelectedStrategy(filters.backtestStrategy);
+      setSelectedStrategy(requestedStrategy);
+      return;
+    }
+
+    if (!requestedStrategy && selectedStrategy) {
+      setSelectedStrategy('');
       return;
     }
 
     if (
       selectedStrategy &&
-      strategyItems.some((item) => item.value === selectedStrategy)
+      !strategyItems.some((item) => item.value === selectedStrategy)
     ) {
-      return;
+      setSelectedStrategy('');
     }
-
-    const saved =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem(STORAGE_KEY)
-        : null;
-
-    const defaultStrategy =
-      saved && strategyItems.some((item) => item.value === saved)
-        ? saved
-        : strategyItems[0]?.value || '';
-
-    if (defaultStrategy) {
-      setSelectedStrategy(defaultStrategy);
-    }
-  }, [strategyItems, filters.backtestStrategy, selectedStrategy]);
-
-  useEffect(() => {
-    if (!filters.backtestId) return;
-
-    const selectedTest = tests.find(
-      (test) => test.value === filters.backtestId,
-    );
-    const strategyName = selectedTest?.data?.strategyName;
-
-    if (
-      typeof strategyName === 'string' &&
-      strategyName &&
-      selectedStrategy !== strategyName
-    ) {
-      setSelectedStrategy(strategyName);
-    }
-  }, [filters.backtestId, tests, selectedStrategy]);
-
-  useEffect(() => {
-    if (selectedStrategy && typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, selectedStrategy);
-    }
-  }, [selectedStrategy]);
+  }, [
+    filters.backtestStrategy,
+    selectedStrategy,
+    selectedTestStrategy,
+    strategyItems,
+  ]);
 
   const onChange = (value: string[]) => {
     onChangeFilters?.({
@@ -103,9 +87,6 @@ export const SelectBacktest = () => {
   const onChangeStrategy = (value: string[]) => {
     const nextStrategy = value[0] || '';
     setSelectedStrategy(nextStrategy);
-    if (nextStrategy && typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, nextStrategy);
-    }
 
     const hasSelectedTest =
       filters.backtestId &&
@@ -167,6 +148,7 @@ export const SelectBacktest = () => {
           },
           ...strategyTests,
         ]}
+        disabled={!selectedStrategy}
         width="240px"
       />
     </>
