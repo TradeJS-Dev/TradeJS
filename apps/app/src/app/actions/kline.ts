@@ -5,8 +5,7 @@ import {
   MarketUniverse,
   Provider,
 } from '@tradejs/types';
-
-const API_PATH = '/api/kline';
+import { buildKlinePath } from '#app/lib/marketRoutes';
 
 export const kline = async ({
   provider = 'bybit',
@@ -16,7 +15,7 @@ export const kline = async ({
   ...options
 }: KlineRequest & { provider?: Provider; universe?: MarketUniverse }) => {
   const data = await API.post<{ data?: KlineChartData }>(
-    `${API_PATH}/${provider}/${universe}/${symbol}/${interval}`,
+    buildKlinePath({ provider, universe, symbol, interval }),
     options,
   );
 

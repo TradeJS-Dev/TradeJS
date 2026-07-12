@@ -1,5 +1,6 @@
 import { IconButton } from '@chakra-ui/react';
 import { FiBarChart2 } from 'react-icons/fi';
+import { buildDashboardPath } from '#app/lib/marketRoutes';
 import { useTestContext } from '../context';
 
 const connectorNameToProvider: Record<
@@ -28,7 +29,12 @@ export const TestCardOpenDashboardButton = () => {
       variant="outline"
       onClick={() =>
         window.open(
-          `/routes/dashboard/${provider}/${testResult.test.universe ?? 'crypto'}/${testResult.test.symbol}/${testResult.test.interval ?? '15'}?${params.toString()}`,
+          `${buildDashboardPath({
+            provider,
+            universe: testResult.test.universe ?? 'crypto',
+            symbol: testResult.test.symbol,
+            interval: testResult.test.interval ?? '15',
+          })}?${params.toString()}`,
           '_blank',
           'noopener,noreferrer',
         )

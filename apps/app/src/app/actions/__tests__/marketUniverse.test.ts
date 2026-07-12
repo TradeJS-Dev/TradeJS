@@ -42,7 +42,7 @@ describe('market-universe actions', () => {
       }),
     ).resolves.toEqual([{ timestamp: 1 }]);
     expect(mockPost).toHaveBeenCalledWith(
-      '/api/kline/bybit/tradfi/AAPLUSDT/15',
+      '/api/kline/bybit/universe/tradfi/AAPLUSDT/15',
       { start: 1, end: 2, cacheOnly: true },
     );
   });

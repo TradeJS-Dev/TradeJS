@@ -117,7 +117,7 @@ describe('Dashboard route screenshot mode', () => {
     window.history.replaceState(
       null,
       '',
-      '/routes/dashboard/bybit/tradfi/AAPLUSDT/15',
+      '/routes/dashboard/bybit/universe/tradfi/AAPLUSDT/15',
     );
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
     const Dashboard = require('../page').default;

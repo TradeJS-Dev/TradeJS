@@ -8,11 +8,14 @@ import { Filters } from '#shared/Filters';
 import { MainChart } from '#app/components/Dashboard/MainChart';
 import {
   Interval,
-  isMarketUniverse,
   MarketUniverse,
   OnChangeFilters,
   Provider,
 } from '@tradejs/types';
+import {
+  buildDashboardPath,
+  parseDashboardPath as parseMarketDashboardPath,
+} from '#app/lib/marketRoutes';
 
 const Dashboard = () => {
   const searchParams = useSearchParams();
@@ -33,16 +36,13 @@ const Dashboard = () => {
   const isScreenshotMode = searchParams.get('screenshot') === '1';
 
   const parseDashboardPath = useCallback(() => {
-    const parts = window.location.pathname.split('/').filter(Boolean);
-    const hasUniverseSegment = isMarketUniverse(parts[3]);
-    return {
-      provider: (parts[2] || filters.provider || 'bybit') as Provider,
-      universe: (hasUniverseSegment ? parts[3] : 'crypto') as MarketUniverse,
-      symbol: (parts[hasUniverseSegment ? 4 : 3] || filters.symbol) as string,
-      interval: (parts[hasUniverseSegment ? 5 : 4] ||
-        filters.interval) as Interval,
-    };
-  }, [filters.interval, filters.provider, filters.symbol]);
+    return parseMarketDashboardPath(window.location.pathname, {
+      provider: (filters.provider || 'bybit') as Provider,
+      universe: (filters.universe || 'crypto') as MarketUniverse,
+      symbol: filters.symbol,
+      interval: filters.interval as Interval,
+    });
+  }, [filters.interval, filters.provider, filters.symbol, filters.universe]);
 
   useEffect(() => {
     const parsed = parseDashboardPath();
@@ -98,7 +98,12 @@ const Dashboard = () => {
       window.history.replaceState(
         null,
         '',
-        `/routes/dashboard/${nextProvider}/${nextUniverse}/${nextSymbol}/${nextInterval}${search ? `?${search}` : ''}`,
+        `${buildDashboardPath({
+          provider: nextProvider,
+          universe: nextUniverse,
+          symbol: nextSymbol,
+          interval: nextInterval,
+        })}${search ? `?${search}` : ''}`,
       );
     },
     [filters, parseDashboardPath, setFilters],

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button, Menu, Portal } from '@chakra-ui/react';
 import { useFavoriteTests, useTestsCompare } from '#store';
+import { buildDashboardPath } from '#app/lib/marketRoutes';
 import { TestCardConfigDrawerPanel } from '../ConfigDrawer';
 import { TestCardDeleteDialog } from '../DeleteButton';
 import { TestCardOrdersDrawerPanel } from '../OrdersDrawer';
@@ -39,7 +40,12 @@ export const TestCardActionsMenu = () => {
     params.set('backtestStrategy', testResult.test.strategyName);
 
     window.open(
-      `/routes/dashboard/${provider}/${testResult.test.universe ?? 'crypto'}/${testResult.test.symbol}/${testResult.test.interval ?? '15'}?${params.toString()}`,
+      `${buildDashboardPath({
+        provider,
+        universe: testResult.test.universe ?? 'crypto',
+        symbol: testResult.test.symbol,
+        interval: testResult.test.interval ?? '15',
+      })}?${params.toString()}`,
       '_blank',
       'noopener,noreferrer',
     );

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFilters } from '#store';
+import { buildDashboardPath } from '#app/lib/marketRoutes';
 
 const DashboardIndex = () => {
   const { filters } = useFilters();
@@ -10,7 +11,12 @@ const DashboardIndex = () => {
 
   useEffect(() => {
     router.replace(
-      `/routes/dashboard/${filters.provider || 'bybit'}/${filters.universe || 'crypto'}/${filters.symbol}/${filters.interval}`,
+      buildDashboardPath({
+        provider: filters.provider || 'bybit',
+        universe: filters.universe || 'crypto',
+        symbol: filters.symbol,
+        interval: filters.interval,
+      }),
     );
   }, [
     filters.interval,
