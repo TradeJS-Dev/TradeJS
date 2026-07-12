@@ -135,6 +135,109 @@ const makeShortFlushPayload = ({
   return payload;
 };
 
+const makeReferencePocketPayload = ({
+  minutesFromSessionOpen = 120,
+  xrp15mOpenInterest = 273_000_000,
+  xrp15mOiChangePct24h = 0,
+  xrp1hOiChangePct1h = 0,
+  sol15mOpenInterest = 10_300_000,
+  sol15mOiChangePct4h = 0,
+  sol15mFundingZScore = 0,
+  bnb15mOpenInterest = 560_000,
+  bnb15mOiChangePct24h = -2.7,
+  trx15mFundingRate = 0,
+  ethCrowdingPersistenceBars = 0,
+}: {
+  minutesFromSessionOpen?: number;
+  xrp15mOpenInterest?: number;
+  xrp15mOiChangePct24h?: number;
+  xrp1hOiChangePct1h?: number;
+  sol15mOpenInterest?: number;
+  sol15mOiChangePct4h?: number;
+  sol15mFundingZScore?: number;
+  bnb15mOpenInterest?: number;
+  bnb15mOiChangePct24h?: number;
+  trx15mFundingRate?: number;
+  ethCrowdingPersistenceBars?: number;
+} = {}) =>
+  makePayload(
+    {
+      signalDirection: 'SHORT',
+      entryLevel: 100,
+      trailStop: 104,
+      atr: 1.2,
+      pivotKind: 'low',
+      breakoutDistancePct: 0.8,
+      distanceToStopPct: 2,
+      currentPrice: 99,
+    },
+    {
+      raw: {
+        volatility: { atr: 1.2 },
+      },
+      regime: {
+        session: {
+          minutesFromSessionOpen,
+        },
+        momentum: { rsi: 32 },
+      },
+      participation: {
+        volume: { volumeRel20: 1.6 },
+        volumeStructure: { totalDownVolumeShare: 0.55 },
+        delta: { deltaDivergenceVsPrice: 'none' },
+      },
+      structure: {
+        localRange: { breakoutState: 'below_low_level' },
+      },
+      derivatives: {
+        intervals: {},
+        referenceContexts: {
+          XRPUSDT: {
+            intervals: {
+              '15m': {
+                openInterest: xrp15mOpenInterest,
+                oiChangePct24h: xrp15mOiChangePct24h,
+              },
+              '1h': {
+                oiChangePct1h: xrp1hOiChangePct1h,
+              },
+            },
+          },
+          SOLUSDT: {
+            intervals: {
+              '15m': {
+                openInterest: sol15mOpenInterest,
+                oiChangePct4h: sol15mOiChangePct4h,
+                fundingZScore: sol15mFundingZScore,
+              },
+            },
+          },
+          BNBUSDT: {
+            intervals: {
+              '15m': {
+                openInterest: bnb15mOpenInterest,
+                oiChangePct24h: bnb15mOiChangePct24h,
+              },
+            },
+          },
+          TRXUSDT: {
+            intervals: {
+              '15m': {
+                fundingRate: trx15mFundingRate,
+              },
+            },
+          },
+          ETHUSDT: {
+            intervals: {},
+            summary: {
+              crowdingPersistenceBars: ethCrowdingPersistenceBars,
+            },
+          },
+        },
+      },
+    },
+  );
+
 describe('trendFollowAiAdapter', () => {
   it('approves high-conviction short flush breakouts', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
@@ -793,6 +896,142 @@ describe('trendFollowAiAdapter', () => {
         liqImbalance: -0.75,
         btcTurnoverShare24h: 0.416873,
         altBasketReturn24h: 0.052358,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('approves the rounded reference OI compression pocket', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload(),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects the reference OI compression pocket above the BNB OI-change cap', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload({
+        bnb15mOiChangePct24h: -2.69,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('approves the rounded opening-session XRP/BNB reference pocket', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload({
+        minutesFromSessionOpen: 75,
+        xrp15mOpenInterest: 324_000_000,
+        xrp1hOiChangePct1h: 0.4,
+        bnb15mOpenInterest: 560_000,
+        bnb15mOiChangePct24h: 0,
+        sol15mOpenInterest: 0,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects the opening-session reference pocket below the XRP 1h OI-change floor', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload({
+        minutesFromSessionOpen: 75,
+        xrp15mOpenInterest: 324_000_000,
+        xrp1hOiChangePct1h: 0.399,
+        bnb15mOpenInterest: 560_000,
+        bnb15mOiChangePct24h: 0,
+        sol15mOpenInterest: 0,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+  });
+
+  it('blocks guarded reference pockets in the crowded ETH/SOL loss regime', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload({
+        ethCrowdingPersistenceBars: 90,
+        sol15mFundingZScore: -1.6,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
+  it('keeps the opening-session reference pocket outside the crowded ETH/SOL loss block', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeReferencePocketPayload({
+        minutesFromSessionOpen: 75,
+        xrp15mOpenInterest: 324_000_000,
+        xrp1hOiChangePct1h: 0.4,
+        bnb15mOpenInterest: 560_000,
+        bnb15mOiChangePct24h: 0,
+        ethCrowdingPersistenceBars: 90,
+        sol15mOpenInterest: 0,
+        sol15mFundingZScore: -1.6,
       }),
       analysis: {
         direction: 'SHORT',

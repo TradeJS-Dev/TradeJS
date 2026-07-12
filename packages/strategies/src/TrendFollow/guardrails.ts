@@ -59,9 +59,26 @@ export type TrendFollowGateFeatures = {
   derivatives1hLiqLong: number | null;
   derivatives1hLiqImbalance: number | null;
   sharedParticipationScore: number | null;
+  minutesFromSessionOpen: number | null;
+  referenceXrp15mOpenInterest: number | null;
+  referenceXrp15mOiChangePct24h: number | null;
+  referenceXrp1hOiChangePct1h: number | null;
+  referenceSol15mOpenInterest: number | null;
+  referenceSol15mOiChangePct4h: number | null;
+  referenceSol15mFundingZScore: number | null;
+  referenceBnb15mOpenInterest: number | null;
+  referenceBnb15mOiChangePct24h: number | null;
+  referenceTrx15mFundingRate: number | null;
+  referenceEthCrowdingPersistenceBars: number | null;
   derivativesShortFlushOiPocket: boolean;
   marketRegimeCadencePocket: boolean;
   participationCadencePocket: boolean;
+  referenceDerivativesOiCompressionPocket: boolean;
+  referenceDerivativesXrpFundingPocket: boolean;
+  referenceDerivativesSolFlushPocket: boolean;
+  referenceDerivativesLossBlock: boolean;
+  referenceDerivativesCadencePocket: boolean;
+  referenceDerivativesOpeningPocket: boolean;
   highQualityCadencePocket: boolean;
 };
 
@@ -79,6 +96,20 @@ const TREND_FOLLOW_SHORT_MARKET_MIN_ALT_BASKET_RETURN_24H = -0.020269;
 const TREND_FOLLOW_SHORT_MARKET_MAX_ALT_BASKET_RETURN_24H = 0.052359;
 const TREND_FOLLOW_SHORT_MIN_TARGET_BTC_BETA_20 = 0.627393;
 const TREND_FOLLOW_SHORT_MAX_SHARED_PARTICIPATION_SCORE = 86;
+const TREND_FOLLOW_REF_HIGH_XRP_OI_MIN = 273_000_000;
+const TREND_FOLLOW_REF_HIGH_SOL_OI_MIN = 10_300_000;
+const TREND_FOLLOW_REF_BNB_OI_CHANGE_24H_MAX = -2.7;
+const TREND_FOLLOW_REF_XRP_OI_CHANGE_24H_MIN = 3.8;
+const TREND_FOLLOW_REF_TRX_FUNDING_RATE_MAX = -0.025;
+const TREND_FOLLOW_REF_SOL_FLUSH_OI_MIN = 9_900_000;
+const TREND_FOLLOW_REF_SOL_OI_CHANGE_4H_MIN = 1.31;
+const TREND_FOLLOW_REF_LOSS_XRP_OI_MIN = 272_000_000;
+const TREND_FOLLOW_REF_LOSS_ETH_CROWDING_MIN = 90;
+const TREND_FOLLOW_REF_LOSS_SOL_FUNDING_Z_MAX = -1.6;
+const TREND_FOLLOW_OPENING_SESSION_MAX_MINUTES_FROM_OPEN = 75;
+const TREND_FOLLOW_OPENING_REF_XRP_OI_MAX = 324_000_000;
+const TREND_FOLLOW_OPENING_REF_XRP_OI_CHANGE_1H_MIN = 0.4;
+const TREND_FOLLOW_OPENING_REF_BNB_OI_MIN = 560_000;
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -92,6 +123,18 @@ const asStringArray = (value: unknown): string[] =>
           typeof entry === 'string' && entry.trim().length > 0,
       )
     : [];
+
+const getReferenceInterval = (
+  baseContext: BaseStrategyContextSnapshot | null | undefined,
+  symbol: string,
+  interval: '15m' | '1h',
+) =>
+  baseContext?.derivatives?.referenceContexts?.[symbol]?.intervals?.[interval];
+
+const getReferenceSummary = (
+  baseContext: BaseStrategyContextSnapshot | null | undefined,
+  symbol: string,
+) => baseContext?.derivatives?.referenceContexts?.[symbol]?.summary;
 
 const isDirectionAligned = ({
   direction,
@@ -344,6 +387,27 @@ const buildTrendFollowGateFeatures = ({
   );
   const derivatives1hLiqLong = asFiniteNumber(derivatives1h?.liqLong);
   const derivatives1hLiqImbalance = asFiniteNumber(derivatives1h?.liqImbalance);
+  const xrp15m = getReferenceInterval(baseContext, 'XRPUSDT', '15m');
+  const xrp1h = getReferenceInterval(baseContext, 'XRPUSDT', '1h');
+  const sol15m = getReferenceInterval(baseContext, 'SOLUSDT', '15m');
+  const bnb15m = getReferenceInterval(baseContext, 'BNBUSDT', '15m');
+  const trx15m = getReferenceInterval(baseContext, 'TRXUSDT', '15m');
+  const ethSummary = getReferenceSummary(baseContext, 'ETHUSDT');
+  const minutesFromSessionOpen = asFiniteNumber(
+    baseContext?.regime?.session?.minutesFromSessionOpen,
+  );
+  const referenceXrp15mOpenInterest = asFiniteNumber(xrp15m?.openInterest);
+  const referenceXrp15mOiChangePct24h = asFiniteNumber(xrp15m?.oiChangePct24h);
+  const referenceXrp1hOiChangePct1h = asFiniteNumber(xrp1h?.oiChangePct1h);
+  const referenceSol15mOpenInterest = asFiniteNumber(sol15m?.openInterest);
+  const referenceSol15mOiChangePct4h = asFiniteNumber(sol15m?.oiChangePct4h);
+  const referenceSol15mFundingZScore = asFiniteNumber(sol15m?.fundingZScore);
+  const referenceBnb15mOpenInterest = asFiniteNumber(bnb15m?.openInterest);
+  const referenceBnb15mOiChangePct24h = asFiniteNumber(bnb15m?.oiChangePct24h);
+  const referenceTrx15mFundingRate = asFiniteNumber(trx15m?.fundingRate);
+  const referenceEthCrowdingPersistenceBars = asFiniteNumber(
+    ethSummary?.crowdingPersistenceBars,
+  );
   const derivativesShortFlushOiPocket =
     direction === 'SHORT' &&
     derivatives1hOiChangePct24h != null &&
@@ -368,6 +432,61 @@ const buildTrendFollowGateFeatures = ({
     sharedParticipationScore != null &&
     sharedParticipationScore <=
       TREND_FOLLOW_SHORT_MAX_SHARED_PARTICIPATION_SCORE;
+  const legacyCadencePocket =
+    derivativesShortFlushOiPocket &&
+    marketRegimeCadencePocket &&
+    relativeCadencePocket &&
+    participationCadencePocket;
+  const referenceDerivativesOiCompressionPocket =
+    direction === 'SHORT' &&
+    referenceXrp15mOpenInterest != null &&
+    referenceXrp15mOpenInterest >= TREND_FOLLOW_REF_HIGH_XRP_OI_MIN &&
+    referenceSol15mOpenInterest != null &&
+    referenceSol15mOpenInterest >= TREND_FOLLOW_REF_HIGH_SOL_OI_MIN &&
+    referenceBnb15mOiChangePct24h != null &&
+    referenceBnb15mOiChangePct24h <= TREND_FOLLOW_REF_BNB_OI_CHANGE_24H_MAX;
+  const referenceDerivativesXrpFundingPocket =
+    direction === 'SHORT' &&
+    referenceXrp15mOpenInterest != null &&
+    referenceXrp15mOpenInterest >= TREND_FOLLOW_REF_HIGH_XRP_OI_MIN &&
+    referenceXrp15mOiChangePct24h != null &&
+    referenceXrp15mOiChangePct24h >= TREND_FOLLOW_REF_XRP_OI_CHANGE_24H_MIN &&
+    referenceTrx15mFundingRate != null &&
+    referenceTrx15mFundingRate <= TREND_FOLLOW_REF_TRX_FUNDING_RATE_MAX;
+  const referenceDerivativesSolFlushPocket =
+    direction === 'SHORT' &&
+    referenceSol15mOpenInterest != null &&
+    referenceSol15mOpenInterest >= TREND_FOLLOW_REF_SOL_FLUSH_OI_MIN &&
+    derivativesShortFlushOiPocket &&
+    referenceSol15mOiChangePct4h != null &&
+    referenceSol15mOiChangePct4h >= TREND_FOLLOW_REF_SOL_OI_CHANGE_4H_MIN;
+  const referenceDerivativesLossBlock =
+    direction === 'SHORT' &&
+    referenceXrp15mOpenInterest != null &&
+    referenceXrp15mOpenInterest >= TREND_FOLLOW_REF_LOSS_XRP_OI_MIN &&
+    referenceEthCrowdingPersistenceBars != null &&
+    referenceEthCrowdingPersistenceBars >=
+      TREND_FOLLOW_REF_LOSS_ETH_CROWDING_MIN &&
+    referenceSol15mFundingZScore != null &&
+    referenceSol15mFundingZScore <= TREND_FOLLOW_REF_LOSS_SOL_FUNDING_Z_MAX;
+  const referenceDerivativesCadencePocket =
+    !referenceDerivativesLossBlock &&
+    (legacyCadencePocket ||
+      referenceDerivativesOiCompressionPocket ||
+      referenceDerivativesXrpFundingPocket ||
+      referenceDerivativesSolFlushPocket);
+  const referenceDerivativesOpeningPocket =
+    direction === 'SHORT' &&
+    minutesFromSessionOpen != null &&
+    minutesFromSessionOpen <=
+      TREND_FOLLOW_OPENING_SESSION_MAX_MINUTES_FROM_OPEN &&
+    referenceXrp15mOpenInterest != null &&
+    referenceXrp15mOpenInterest <= TREND_FOLLOW_OPENING_REF_XRP_OI_MAX &&
+    referenceXrp1hOiChangePct1h != null &&
+    referenceXrp1hOiChangePct1h >=
+      TREND_FOLLOW_OPENING_REF_XRP_OI_CHANGE_1H_MIN &&
+    referenceBnb15mOpenInterest != null &&
+    referenceBnb15mOpenInterest >= TREND_FOLLOW_OPENING_REF_BNB_OI_MIN;
 
   return {
     setupStopDistanceAtr,
@@ -390,14 +509,28 @@ const buildTrendFollowGateFeatures = ({
     derivatives1hLiqLong,
     derivatives1hLiqImbalance,
     sharedParticipationScore,
+    minutesFromSessionOpen,
+    referenceXrp15mOpenInterest,
+    referenceXrp15mOiChangePct24h,
+    referenceXrp1hOiChangePct1h,
+    referenceSol15mOpenInterest,
+    referenceSol15mOiChangePct4h,
+    referenceSol15mFundingZScore,
+    referenceBnb15mOpenInterest,
+    referenceBnb15mOiChangePct24h,
+    referenceTrx15mFundingRate,
+    referenceEthCrowdingPersistenceBars,
     derivativesShortFlushOiPocket,
     marketRegimeCadencePocket,
     participationCadencePocket,
+    referenceDerivativesOiCompressionPocket,
+    referenceDerivativesXrpFundingPocket,
+    referenceDerivativesSolFlushPocket,
+    referenceDerivativesLossBlock,
+    referenceDerivativesCadencePocket,
+    referenceDerivativesOpeningPocket,
     highQualityCadencePocket:
-      derivativesShortFlushOiPocket &&
-      marketRegimeCadencePocket &&
-      relativeCadencePocket &&
-      participationCadencePocket,
+      referenceDerivativesCadencePocket || referenceDerivativesOpeningPocket,
   };
 };
 
