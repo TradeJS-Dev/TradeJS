@@ -2040,6 +2040,235 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('approves reference-derivatives rotation shorts at the rounded boundary', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          candle: {
+            high: 100.4,
+            low: 100,
+          },
+          raw: {
+            volatility: {
+              atr: 2,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              XRPUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: 1.6,
+                  },
+                },
+              },
+              TRXUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: -0.2,
+                  },
+                },
+              },
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.4,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    const context = payload.additionalIndicators.adaptiveMomentumRibbonContext;
+
+    expect(context.signalRangeAtrRatio).toBeLessThan(1.05);
+    expect(context).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        referenceXrpOiChangePct4h15m: 1.6,
+        referenceTrxOiChangePct4h15m: -0.2,
+        referenceDerivativesRotationPocket: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+        approvalBlockReasons: [],
+      }),
+    );
+  });
+
+  it('does not let reference-derivatives rotation override hard invalidation', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            referenceContexts: {
+              XRPUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: 1.8,
+                  },
+                },
+              },
+              TRXUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: -0.4,
+                  },
+                },
+              },
+            },
+          },
+        },
+        amr: {
+          invalidated: 1,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        referenceDerivativesRotationPocket: true,
+        deterministicQuality: 2,
+        approvalAllowedNow: false,
+        approvalBlockReasons: ['invalidated'],
+      }),
+    );
+  });
+
+  it('demotes non-derivatives chase entries to watch mode', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            setup: {
+              stopDistanceAtr: 4.51,
+            },
+          },
+          structure: {
+            acceptance: {
+              breakoutBodyAtr: 2.26,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          signalOsc: 1.7,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        stopDistanceAtr: 4.51,
+        breakoutBodyAtr: 2.26,
+        chaseRiskBlocked: true,
+        referenceDerivativesRotationPocket: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        approvalBlockReasons: ['chase_entry_risk'],
+      }),
+    );
+  });
+
+  it('allows reference-derivatives rotation to offset chase risk', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            setup: {
+              stopDistanceAtr: 5,
+            },
+          },
+          structure: {
+            acceptance: {
+              breakoutBodyAtr: 2.5,
+            },
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              XRPUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: 2,
+                  },
+                },
+              },
+              TRXUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: -0.3,
+                  },
+                },
+              },
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.5,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        chaseRiskBlocked: true,
+        referenceDerivativesRotationPocket: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+        approvalBlockReasons: [],
+      }),
+    );
+  });
+
   it('caps strong longs at q3 when baseContext is missing', () => {
     const signal = makeSignal();
     delete signal.additionalIndicators.baseContext;
