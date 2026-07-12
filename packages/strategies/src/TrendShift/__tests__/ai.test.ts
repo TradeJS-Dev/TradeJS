@@ -178,6 +178,130 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('recovers narrow q4 LONG when alt leadership offsets tested OI blockers', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.13,
+          avgSlopePct: 0.1,
+          distanceAtrRatio: 0.85,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 6,
+              },
+              relative: {
+                btcVsAltReturn24h: -0.006,
+                cmcFearGreedValueChange24h: 0,
+                cmcFearGreedStale: false,
+              },
+            },
+            relative: {
+              btcAltRegime: {
+                btcVsAltReturn1h: -0.006,
+                stale: false,
+              },
+              cmcFearGreed: {
+                valueChange24h: 0,
+                stale: false,
+              },
+            },
+            derivatives: {
+              summary: {
+                pressure: 'short_flush',
+                directionAligned: true,
+                priceOiDivergenceType: 'flat_or_mixed',
+                riskFlags: [],
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('does not let LONG alt-leadership recovery override CMC liquidity risk', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.13,
+          avgSlopePct: 0.1,
+          distanceAtrRatio: 0.85,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 6,
+              },
+              relative: {
+                btcVsAltReturn24h: -0.006,
+                cmcFearGreedValueChange24h: 0,
+                cmcFearGreedStale: false,
+                cmcExchangeLiquidityVolumeChange24hPct: 0.2,
+                cmcExchangeLiquidityStale: false,
+              },
+            },
+            relative: {
+              btcAltRegime: {
+                btcVsAltReturn1h: -0.006,
+                stale: false,
+              },
+              cmcFearGreed: {
+                valueChange24h: 0,
+                stale: false,
+              },
+            },
+            derivatives: {
+              summary: {
+                pressure: 'short_flush',
+                directionAligned: true,
+                priceOiDivergenceType: 'flat_or_mixed',
+                riskFlags: [],
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'price and open-interest divergence still looks mixed, so keep the flip in watch mode; the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs; major-exchange liquidity change is in a historically choppy CMC band, so keep the flip in watch mode',
+    });
+  });
+
   it('keeps SHORT extreme ATR and high BB-width flips in watch mode', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

@@ -76,6 +76,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   q4UsClosingOiConfirmationRecoveryCandidate: boolean;
   q4ShortBreadthShockLiquidationRecoveryCandidate: boolean;
+  q4LongAltLeadershipRecoveryCandidate: boolean;
   breakoutState: string | null;
   swingBias: string | null;
   volumeRel20: number | null;
@@ -86,6 +87,9 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
   marketBreadthReturn: number | null;
+  btcVsAltReturn24h: number | null;
+  btcVsAltReturn1h: number | null;
+  cmcFearGreedValueChange24h: number | null;
   derivatives1hLiqShort: number | null;
   btcAltRegime: string | null;
   cmcExchangeLiquidityVolumeChange24hPct: number | null;
@@ -112,6 +116,9 @@ const asFiniteNumber = (value: unknown): number | null => {
 const SHORT_LOW_BB_WIDTH_PCT_MAX = 1.7584;
 const SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX = -0.0112952;
 const SHORT_BREADTH_SHOCK_1H_LIQ_SHORT_MAX = 0.208;
+const LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_24H_MAX = -0.00503054;
+const LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_1H_MAX = -0.00581403;
+const LONG_ALT_LEADERSHIP_FEAR_GREED_CHANGE_24H_MIN = -1;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -364,7 +371,8 @@ const buildTrendShiftGateFeatures = ({
   const volatility = baseContext.regime?.volatility;
   const atrPctZScore = asFiniteNumber(volatility?.atrPctZScore);
   const extremeVolatilityRisk = Math.abs(atrPctZScore ?? 0) >= 2;
-  const derivativesSummary = baseContext.derivatives?.summary;
+  const benchmarkDerivativesSummary = baseContext.derivatives?.summary;
+  const derivativesSummary = benchmarkDerivativesSummary;
   const derivativesPressure =
     typeof derivativesSummary?.pressure === 'string'
       ? derivativesSummary.pressure
@@ -466,7 +474,8 @@ export const buildTrendShiftGuardrailContext = ({
   baseContext?: BaseStrategyContextSnapshot | null;
   includeCoreTransferredFilters?: boolean;
 }): TrendShiftGuardrailContext => {
-  const derivativesSummary = baseContext?.derivatives?.summary ?? null;
+  const benchmarkDerivativesSummary = baseContext?.derivatives?.summary ?? null;
+  const derivativesSummary = benchmarkDerivativesSummary;
   const hasDerivativesSummary = derivativesSummary != null;
   const session = baseContext?.regime?.session ?? null;
   const localRange = baseContext?.structure?.localRange ?? null;
@@ -527,8 +536,19 @@ export const buildTrendShiftGuardrailContext = ({
   );
   const gateVolatility = baseContext?.gateFeatures?.volatility;
   const gateRelative = baseContext?.gateFeatures?.relative;
+  const baseBtcAltRegime = baseContext?.relative?.btcAltRegime;
+  const baseCmcFearGreed = baseContext?.relative?.cmcFearGreed;
   const bbWidthPct = asFiniteNumber(volatility?.bbWidthPct);
   const marketBreadthReturn = asFiniteNumber(gateRelative?.marketBreadthReturn);
+  const btcVsAltReturn24h = asFiniteNumber(gateRelative?.btcVsAltReturn24h);
+  const btcVsAltReturn1h = asFiniteNumber(baseBtcAltRegime?.btcVsAltReturn1h);
+  const cmcFearGreedValueChange24h = asFiniteNumber(
+    gateRelative?.cmcFearGreedValueChange24h ??
+      baseCmcFearGreed?.valueChange24h,
+  );
+  const cmcFearGreedStale =
+    gateRelative?.cmcFearGreedStale === true ||
+    baseCmcFearGreed?.stale === true;
   const derivatives1hLiqShort = asFiniteNumber(
     baseContext?.derivatives?.intervals?.['1h']?.liqShort,
   );
@@ -953,11 +973,38 @@ export const buildTrendShiftGuardrailContext = ({
     marketBreadthReturn <= SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX &&
     derivatives1hLiqShort != null &&
     derivatives1hLiqShort <= SHORT_BREADTH_SHOCK_1H_LIQ_SHORT_MAX;
+  const q4LongAltLeadershipRecoveryAllowedReasons = [
+    'flat_or_mixed_oi',
+    'neutral_derivatives_pressure',
+    'oi_not_confirming',
+    'long_us_oi_not_confirming',
+    'long_asia_short_flush',
+    'reward_to_volatility_below_defensive_threshold',
+  ];
+  const q4LongAltLeadershipRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.signalDirection === 'LONG' &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    btcAltRegimeStale !== true &&
+    cmcFearGreedStale !== true &&
+    btcVsAltReturn24h != null &&
+    btcVsAltReturn24h <= LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_24H_MAX &&
+    btcVsAltReturn1h != null &&
+    btcVsAltReturn1h <= LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_1H_MAX &&
+    cmcFearGreedValueChange24h != null &&
+    cmcFearGreedValueChange24h >=
+      LONG_ALT_LEADERSHIP_FEAR_GREED_CHANGE_24H_MIN &&
+    hardBlockReasons.length > 0 &&
+    hardBlockReasons.every((reason) =>
+      q4LongAltLeadershipRecoveryAllowedReasons.includes(reason),
+    );
 
   if (
     q4TrendShiftGateFeaturesRecoveryCandidate ||
     q4UsClosingOiConfirmationRecoveryCandidate ||
-    q4ShortBreadthShockLiquidationRecoveryCandidate
+    q4ShortBreadthShockLiquidationRecoveryCandidate ||
+    q4LongAltLeadershipRecoveryCandidate
   ) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
@@ -1002,6 +1049,7 @@ export const buildTrendShiftGuardrailContext = ({
     q4TrendShiftGateFeaturesRecoveryCandidate,
     q4UsClosingOiConfirmationRecoveryCandidate,
     q4ShortBreadthShockLiquidationRecoveryCandidate,
+    q4LongAltLeadershipRecoveryCandidate,
     breakoutState,
     swingBias,
     volumeRel20,
@@ -1012,6 +1060,9 @@ export const buildTrendShiftGuardrailContext = ({
     nearPointOfControl,
     relativeStrength1h,
     marketBreadthReturn,
+    btcVsAltReturn24h,
+    btcVsAltReturn1h,
+    cmcFearGreedValueChange24h,
     derivatives1hLiqShort,
     btcAltRegime,
     cmcExchangeLiquidityVolumeChange24hPct,

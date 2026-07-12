@@ -128,6 +128,9 @@ Additional TrendShift context:
 - nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
 - marketBreadthReturn=${String(context.marketBreadthReturn ?? 'n/a')}
+- btcVsAltReturn24h=${String(context.btcVsAltReturn24h ?? 'n/a')}
+- btcVsAltReturn1h=${String(context.btcVsAltReturn1h ?? 'n/a')}
+- cmcFearGreedValueChange24h=${String(context.cmcFearGreedValueChange24h ?? 'n/a')}
 - derivatives1hLiqShort=${String(context.derivatives1hLiqShort ?? 'n/a')}
 - btcAltRegime=${context.btcAltRegime ?? 'n/a'}
 - cmcExchangeLiquidityVolumeChange24hPct=${String(context.cmcExchangeLiquidityVolumeChange24hPct ?? 'n/a')}
@@ -160,6 +163,7 @@ Additional TrendShift context:
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
 - q4ShortBreadthShockLiquidationRecoveryCandidate=${String(context.q4ShortBreadthShockLiquidationRecoveryCandidate)}
+- q4LongAltLeadershipRecoveryCandidate=${String(context.q4LongAltLeadershipRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -196,6 +200,7 @@ Interpretation rules for TrendShift:
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
 - A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
 - A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override the low-Bollinger-width defensive cut.
+- A narrow LONG q4 recovery may pass only when alt leadership is clear (btcVsAltReturn24h <= -0.00503054 and btcVsAltReturn1h <= -0.00581403), fear/greed is not falling hard, and the only blockers are the tested OI/benchmark-derivatives or defensive reward-to-volatility blockers.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },
