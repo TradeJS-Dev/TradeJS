@@ -5,8 +5,6 @@ import {
   Provider,
 } from '@tradejs/types';
 
-const UNIVERSE_ROUTE_SEGMENT = 'universe';
-
 interface MarketRouteParts {
   provider: string;
   universe: MarketUniverse;
@@ -27,7 +25,7 @@ export const buildKlinePath = ({
   symbol,
   interval,
 }: MarketRouteParts) =>
-  `/api/kline/${provider}/${UNIVERSE_ROUTE_SEGMENT}/${universe}/${symbol}/${interval}`;
+  `/api/kline/${provider}/${universe}/${symbol}/${interval}`;
 
 export const buildDashboardPath = ({
   provider,
@@ -35,21 +33,19 @@ export const buildDashboardPath = ({
   symbol,
   interval,
 }: MarketRouteParts) =>
-  `/routes/dashboard/${provider}/${UNIVERSE_ROUTE_SEGMENT}/${universe}/${symbol}/${interval}`;
+  `/routes/dashboard/${provider}/${universe}/${symbol}/${interval}`;
 
 export const parseDashboardPath = (
   pathname: string,
-  fallback: DashboardRouteParts,
+  fallback: Omit<DashboardRouteParts, 'universe'>,
 ): DashboardRouteParts => {
   const parts = pathname.split('/').filter(Boolean);
-  const hasExplicitUniverse = parts[3] === UNIVERSE_ROUTE_SEGMENT;
-  const rawUniverse = hasExplicitUniverse ? parts[4] : 'crypto';
+  const rawUniverse = parts[3];
 
   return {
     provider: (parts[2] || fallback.provider) as Provider,
-    universe: isMarketUniverse(rawUniverse) ? rawUniverse : fallback.universe,
-    symbol: parts[hasExplicitUniverse ? 5 : 3] || fallback.symbol,
-    interval: (parts[hasExplicitUniverse ? 6 : 4] ||
-      fallback.interval) as Interval,
+    universe: isMarketUniverse(rawUniverse) ? rawUniverse : 'crypto',
+    symbol: parts[4] || fallback.symbol,
+    interval: (parts[5] || fallback.interval) as Interval,
   };
 };

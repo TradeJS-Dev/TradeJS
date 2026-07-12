@@ -39,7 +39,7 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-import { POST } from '../route';
+import { POST } from '../handler';
 
 const makeCandle = (timestamp: number, close: number) => ({
   timestamp,
@@ -55,7 +55,7 @@ const makeRequest = (body: Record<string, unknown>) =>
     json: async () => body,
   }) as Request;
 
-describe('/api/kline route', () => {
+describe('kline route handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete (global as any).__tradejsKlineRawCache__;

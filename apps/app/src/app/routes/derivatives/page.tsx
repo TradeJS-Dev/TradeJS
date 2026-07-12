@@ -39,6 +39,7 @@ import {
 import { format } from 'date-fns';
 import { FiBarChart2 } from 'react-icons/fi';
 import { API } from '@tradejs/core/api';
+import { buildKlinePath } from '#app/lib/marketRoutes';
 import { EmptyState, Segment, Select } from '#ui';
 
 type SummaryItem = {
@@ -920,7 +921,12 @@ const DerivativesPage = () => {
               `/api/derivatives/${symbol}/${selectedInterval}?from=${from}&to=${now}`,
             ),
             API.post<PriceResponse>(
-              `/api/kline/bybit/${symbol}/${klineInterval}`,
+              buildKlinePath({
+                provider: 'bybit',
+                universe: 'crypto',
+                symbol,
+                interval: klineInterval,
+              }),
               {
                 start: from,
                 end: now,

@@ -6,13 +6,12 @@ import {
 
 const fallback = {
   provider: 'bybit' as const,
-  universe: 'crypto' as const,
   symbol: 'BTCUSDT',
   interval: '15' as const,
 };
 
 describe('market routes', () => {
-  it('uses an explicit static namespace for universe-aware routes', () => {
+  it('uses universe as part of the canonical market identity', () => {
     expect(
       buildKlinePath({
         provider: 'bybit',
@@ -20,7 +19,7 @@ describe('market routes', () => {
         symbol: 'AAPLUSDT',
         interval: '15',
       }),
-    ).toBe('/api/kline/bybit/universe/tradfi/AAPLUSDT/15');
+    ).toBe('/api/kline/bybit/tradfi/AAPLUSDT/15');
     expect(
       buildDashboardPath({
         provider: 'bybit',
@@ -28,13 +27,13 @@ describe('market routes', () => {
         symbol: 'AAPLUSDT',
         interval: '15',
       }),
-    ).toBe('/routes/dashboard/bybit/universe/tradfi/AAPLUSDT/15');
+    ).toBe('/routes/dashboard/bybit/tradfi/AAPLUSDT/15');
   });
 
   it('parses explicit universe-aware dashboard routes', () => {
     expect(
       parseDashboardPath(
-        '/routes/dashboard/bybit/universe/tradfi/AAPLUSDT/60',
+        '/routes/dashboard/bybit/tradfi/AAPLUSDT/60',
         fallback,
       ),
     ).toEqual({
@@ -45,14 +44,31 @@ describe('market routes', () => {
     });
   });
 
-  it('keeps legacy dashboard routes as crypto routes', () => {
+  it('falls back to crypto when the universe segment is unknown', () => {
     expect(
-      parseDashboardPath('/routes/dashboard/bybit/ETHUSDT/5', fallback),
+      parseDashboardPath(
+        '/routes/dashboard/coinbase/unknown/ETH-USD/5',
+        fallback,
+      ),
     ).toEqual({
-      provider: 'bybit',
+      provider: 'coinbase',
       universe: 'crypto',
-      symbol: 'ETHUSDT',
+      symbol: 'ETH-USD',
       interval: '5',
     });
   });
+
+  it.each(['binance', 'coinbase'])(
+    'builds canonical crypto routes for %s',
+    (provider) => {
+      expect(
+        buildKlinePath({
+          provider,
+          universe: 'crypto',
+          symbol: 'BTCUSDT',
+          interval: '15',
+        }),
+      ).toBe(`/api/kline/${provider}/crypto/BTCUSDT/15`);
+    },
+  );
 });

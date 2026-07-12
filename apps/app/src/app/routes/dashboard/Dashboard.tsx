@@ -17,7 +17,7 @@ import {
   parseDashboardPath as parseMarketDashboardPath,
 } from '#app/lib/marketRoutes';
 
-const Dashboard = () => {
+const DashboardRoute = () => {
   const searchParams = useSearchParams();
   const { filters, setFilters } = useFilters();
   const { tickers, ensureLoaded: ensureTickersLoaded } = useTickers(
@@ -38,11 +38,10 @@ const Dashboard = () => {
   const parseDashboardPath = useCallback(() => {
     return parseMarketDashboardPath(window.location.pathname, {
       provider: (filters.provider || 'bybit') as Provider,
-      universe: (filters.universe || 'crypto') as MarketUniverse,
       symbol: filters.symbol,
       interval: filters.interval as Interval,
     });
-  }, [filters.interval, filters.provider, filters.symbol, filters.universe]);
+  }, [filters.interval, filters.provider, filters.symbol]);
 
   useEffect(() => {
     const parsed = parseDashboardPath();
@@ -151,4 +150,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default DashboardRoute;

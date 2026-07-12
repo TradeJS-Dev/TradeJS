@@ -25,7 +25,7 @@ const DEFAULT_KLINE_CACHE_TTL_MS = 30_000;
 const MAX_KLINE_CACHE_ENTRIES = 500;
 const MAX_KLINE_CACHE_BYTES = 32 * 1024 * 1024;
 
-interface Params {
+interface KlineRouteParams {
   provider: string;
   symbol: string;
   interval: string;
@@ -280,7 +280,7 @@ const getPluginRegistrySnapshot = async (): Promise<PluginRegistrySnapshot> => {
 
 export const POST = async (
   request: NextRequest,
-  { params }: { params: Promise<Params> },
+  { params }: { params: Promise<KlineRouteParams> },
 ) => {
   try {
     const userName = await getCurrentUserName();

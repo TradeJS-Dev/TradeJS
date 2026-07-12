@@ -101,7 +101,7 @@ describe('proxy', () => {
 
     const response = await proxy(
       createRequest(
-        'https://tradejs.dev/routes/dashboard/bybit/BTCUSDT/60?screenshotToken=shot-token&foo=1',
+        'https://tradejs.dev/routes/dashboard/bybit/crypto/BTCUSDT/60?screenshotToken=shot-token&foo=1',
       ),
     );
 
@@ -111,7 +111,7 @@ describe('proxy', () => {
     expect(mockGetToken).not.toHaveBeenCalled();
     expect(response.kind).toBe('redirect');
     expect(response.location).toBe(
-      'https://tradejs.dev/routes/dashboard/bybit/BTCUSDT/60?foo=1',
+      'https://tradejs.dev/routes/dashboard/bybit/crypto/BTCUSDT/60?foo=1',
     );
     expect(response.cookies.values).toEqual([
       {

@@ -64,7 +64,11 @@ jest.mock('#app/components/Dashboard/MainChart', () => ({
 describe('Dashboard route screenshot mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    window.history.replaceState(null, '', '/routes/dashboard/bybit/BTCUSDT/15');
+    window.history.replaceState(
+      null,
+      '',
+      '/routes/dashboard/bybit/crypto/BTCUSDT/15',
+    );
   });
 
   it('hides filters and enables screenshot mode for the chart', async () => {
@@ -72,7 +76,7 @@ describe('Dashboard route screenshot mode', () => {
       new URLSearchParams('signalId=test&screenshot=1'),
     );
 
-    const Dashboard = require('../page').default;
+    const Dashboard = require('../Dashboard').default;
 
     render(<Dashboard />);
 
@@ -97,7 +101,7 @@ describe('Dashboard route screenshot mode', () => {
   it('keeps filters visible outside screenshot mode', async () => {
     useSearchParamsMock.mockReturnValue(new URLSearchParams('signalId=test'));
 
-    const Dashboard = require('../page').default;
+    const Dashboard = require('../Dashboard').default;
 
     render(<Dashboard />);
 
@@ -117,10 +121,10 @@ describe('Dashboard route screenshot mode', () => {
     window.history.replaceState(
       null,
       '',
-      '/routes/dashboard/bybit/universe/tradfi/AAPLUSDT/15',
+      '/routes/dashboard/bybit/tradfi/AAPLUSDT/15',
     );
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
-    const Dashboard = require('../page').default;
+    const Dashboard = require('../Dashboard').default;
 
     render(<Dashboard />);
 
