@@ -103,7 +103,7 @@
     "sandbox:e2e": "cd examples/sandbox && yarn e2e",
     "sandbox:infra-down": "cd examples/sandbox && yarn infra-down",
     "sandbox:infra-up": "cd examples/sandbox && yarn infra-up",
-    "sandbox:install": "cd examples/sandbox && yarn install --immutable",
+    "sandbox:install": "cd examples/sandbox && PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_CHROME_SKIP_DOWNLOAD=true yarn install --immutable",
     "sandbox:refresh": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies && yarn install",
     "signals": "yarn cli:node8g signals",
     "signals:daemon": "yarn cli:node8g signals-daemon",
