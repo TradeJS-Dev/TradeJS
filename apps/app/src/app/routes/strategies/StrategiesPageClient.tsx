@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
+import { Box, ClientOnly, Flex } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
@@ -124,6 +124,15 @@ const RuntimeStrategiesContent = () => {
         const response = await getRuntimeStrategies({ hours: Number(hours) });
         setRuntimeData(response);
         setSnapshotData(null);
+
+        if (response.dataSources.exchangeErrors.length > 0) {
+          toaster.error({
+            title: 'Exchange fallback unavailable',
+            description: response.dataSources.exchangeErrors
+              .slice(0, 2)
+              .join('; '),
+          });
+        }
       } else if (mode === 'replay') {
         const response = await getReplayStrategies();
         setSnapshotData(response);
@@ -138,10 +147,14 @@ const RuntimeStrategiesContent = () => {
       }
       setFulfilled(true);
     } catch (err) {
-      setError(
+      const message =
         (err as Error)?.message ||
-          `Failed to load ${mode === 'runtime' ? 'runtime strategies' : `${mode} strategy charts`}`,
-      );
+        `Failed to load ${mode === 'runtime' ? 'runtime strategies' : `${mode} strategy charts`}`;
+      setError(message);
+      toaster.error({
+        title: 'Failed to load strategies',
+        description: message,
+      });
       setFulfilled(true);
     } finally {
       setLoading(false);
@@ -425,12 +438,6 @@ const RuntimeStrategiesContent = () => {
         ? 'Run `yarn replay --chart` to save replay strategy cards for this page.'
         : 'Run `yarn ai-train --chart` to save strategy-wide AI cards for this page.';
 
-  const runtimeExchangeErrors =
-    mode === 'runtime' ? runtimeData?.dataSources?.exchangeErrors ?? [] : [];
-  const runtimeSourceWarning =
-    runtimeExchangeErrors.length > 0
-      ? `Exchange fallback unavailable: ${runtimeExchangeErrors.slice(0, 2).join('; ')}`
-      : '';
   const deleteSelectedSnapshotCount =
     pendingSnapshotDelete?.cardIds.length ?? selectedFilteredCount;
   const deleteSnapshotLabel = pendingSnapshotDelete?.label ?? snapshotModeLabel;
@@ -541,26 +548,6 @@ const RuntimeStrategiesContent = () => {
                   width="190px"
                 />
               ) : null}
-              {runtimeSourceWarning ? (
-                <Box
-                  px={3}
-                  py={2}
-                  borderWidth="1px"
-                  borderColor="orange.700"
-                  borderRadius="md"
-                  bg="orange.950"
-                  maxW="520px"
-                >
-                  <Text
-                    color="orange.200"
-                    fontSize="xs"
-                    lineHeight="1.3"
-                    wordBreak="break-word"
-                  >
-                    {runtimeSourceWarning}
-                  </Text>
-                </Box>
-              ) : null}
             </Flex>
           </Flex>
 
@@ -578,20 +565,6 @@ const RuntimeStrategiesContent = () => {
               onRequestDelete={handleOpenDeleteSelectedSnapshots}
               onConfirmDelete={handleDeleteSelectedSnapshots}
             />
-          ) : null}
-
-          {error ? (
-            <Box
-              ml={2}
-              mb={4}
-              p={4}
-              borderRadius="md"
-              borderWidth="1px"
-              borderColor="red.900"
-              bg="red.950"
-            >
-              <Text color="red.200">{error}</Text>
-            </Box>
           ) : null}
 
           <Box flex="1" h="full" w="full">

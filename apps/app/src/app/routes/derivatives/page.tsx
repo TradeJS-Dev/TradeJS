@@ -40,7 +40,7 @@ import { format } from 'date-fns';
 import { FiBarChart2 } from 'react-icons/fi';
 import { API } from '@tradejs/core/api';
 import { buildKlinePath } from '#app/lib/marketRoutes';
-import { EmptyState, Segment, Select } from '#ui';
+import { EmptyState, Segment, Select, toaster } from '#ui';
 
 type SummaryItem = {
   symbol: string;
@@ -899,7 +899,12 @@ const DerivativesPage = () => {
       );
       setSummary(response);
     } catch (err) {
-      setSummaryError((err as Error)?.message || 'Failed to load derivatives');
+      const message = (err as Error)?.message || 'Failed to load derivatives';
+      setSummaryError(message);
+      toaster.error({
+        title: 'Failed to load derivatives',
+        description: message,
+      });
     } finally {
       setSummaryLoading(false);
     }
@@ -955,10 +960,14 @@ const DerivativesPage = () => {
         ),
       );
     } catch (err) {
-      setDetailError(
+      const message =
         (err as Error)?.message ||
-          'Failed to load symbol derivatives and price data',
-      );
+        'Failed to load symbol derivatives and price data';
+      setDetailError(message);
+      toaster.error({
+        title: 'Failed to load derivative details',
+        description: message,
+      });
     } finally {
       setDetailLoading(false);
     }
@@ -1053,32 +1062,6 @@ const DerivativesPage = () => {
               />
             </Flex>
           </Flex>
-
-          {summaryError ? (
-            <Box
-              mb={4}
-              p={4}
-              borderRadius="md"
-              borderWidth="1px"
-              borderColor="red.900"
-              bg="red.950"
-            >
-              <Text color="red.200">{summaryError}</Text>
-            </Box>
-          ) : null}
-
-          {detailError ? (
-            <Box
-              mb={4}
-              p={4}
-              borderRadius="md"
-              borderWidth="1px"
-              borderColor="red.900"
-              bg="red.950"
-            >
-              <Text color="red.200">{detailError}</Text>
-            </Box>
-          ) : null}
 
           {showSkeleton ? <DashboardSkeleton /> : null}
 
