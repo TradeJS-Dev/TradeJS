@@ -23,10 +23,12 @@ declare global {
 let redisConnectionWarningShown = false;
 let redisUnavailable = false;
 
-const isRedisConnectivityError = (error: Error): boolean =>
-  /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|MaxRetriesPerRequestError|Connection is closed|Stream isn't writeable/i.test(
-    error.message,
+const isRedisConnectivityError = (error: Error): boolean => {
+  const errorText = [error.name, error.message, String(error)].join(' ');
+  return /ECONNREFUSED|ECONNRESET|ECONNABORTED|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|MaxRetriesPerRequestError|Connection is closed|Stream isn't writeable/i.test(
+    errorText,
   );
+};
 
 const toNonNegativeInt = (value: string | undefined, fallback: number) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -587,8 +589,11 @@ export const redisKeys = {
   backtestConfig: (userName: string, config: string) =>
     `users:${userName}:backtests:configs:${config}`,
   strategies: (userName: string) => `users:${userName}:strategies`,
-  strategyConfig: (userName: string, strategyName: string) =>
-    `users:${userName}:strategies:${strategyName}:config`,
+  strategyConfig: (
+    userName: string,
+    strategyName: string,
+    configId = 'config',
+  ) => `users:${userName}:strategies:${strategyName}:${configId}`,
   strategyResults: (userName: string, strategyName: string) =>
     `users:${userName}:strategies:${strategyName}:results`,
   strategyCharts: (userName: string, mode: string) =>

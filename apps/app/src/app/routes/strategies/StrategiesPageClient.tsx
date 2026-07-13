@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex } from '@chakra-ui/react';
+import { Box, Button, ClientOnly, Flex } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
@@ -13,6 +13,7 @@ import {
 } from '#actions/strategies';
 import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
+import { RuntimeStrategyConfigDrawer } from '#components/Strategies/RuntimeStrategyConfigDrawer';
 import { StrategySnapshotList } from '#components/Strategies/StrategySnapshotList';
 import { BacktestResultsPageClient } from '#components/Backtest/ResultsPageClient';
 import {
@@ -72,9 +73,6 @@ const RuntimeStrategiesContent = () => {
   const [runtimeStatusFilter, setRuntimeStatusFilter] =
     useState<RuntimeStatusFilter>('all');
   const [runtimeUniverse, setRuntimeUniverse] = useState(ALL_RUNTIME_SCOPES);
-  const [runtimeAccount, setRuntimeAccount] = useState(ALL_RUNTIME_SCOPES);
-  const [runtimeDeployment, setRuntimeDeployment] =
-    useState(ALL_RUNTIME_SCOPES);
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [pendingSnapshotDelete, setPendingSnapshotDelete] =
@@ -84,6 +82,7 @@ const RuntimeStrategiesContent = () => {
   const [error, setError] = useState('');
   const [runtimeData, setRuntimeData] =
     useState<RuntimeStrategiesResponse | null>(null);
+  const [createRuntimeConfigOpen, setCreateRuntimeConfigOpen] = useState(false);
   const [snapshotData, setSnapshotData] =
     useState<StrategyChartsSnapshotResponse | null>(null);
   const isSnapshotMode = mode === 'replay' || mode === 'ai';
@@ -125,12 +124,11 @@ const RuntimeStrategiesContent = () => {
         setRuntimeData(response);
         setSnapshotData(null);
 
-        if (response.dataSources.exchangeErrors.length > 0) {
+        const exchangeErrors = response.dataSources?.exchangeErrors ?? [];
+        if (exchangeErrors.length > 0) {
           toaster.error({
             title: 'Exchange fallback unavailable',
-            description: response.dataSources.exchangeErrors
-              .slice(0, 2)
-              .join('; '),
+            description: exchangeErrors.slice(0, 2).join('; '),
           });
         }
       } else if (mode === 'replay') {
@@ -204,19 +202,6 @@ const RuntimeStrategiesContent = () => {
       ) {
         return false;
       }
-      if (
-        runtimeAccount !== ALL_RUNTIME_SCOPES &&
-        (strategy.accountId ?? 'default') !== runtimeAccount
-      ) {
-        return false;
-      }
-      if (
-        runtimeDeployment !== ALL_RUNTIME_SCOPES &&
-        (strategy.deploymentId ?? 'default') !== runtimeDeployment
-      ) {
-        return false;
-      }
-
       if (runtimeStatusFilter === 'enabled') {
         return strategy.enabled;
       }
@@ -228,36 +213,20 @@ const RuntimeStrategiesContent = () => {
       return true;
     });
   }, [
-    runtimeAccount,
     runtimeData?.strategies,
-    runtimeDeployment,
     runtimeStatusFilter,
     runtimeUniverse,
     selectedStrategy,
   ]);
 
-  const runtimeScopeItems = useMemo(() => {
+  const runtimeUniverseItems = useMemo(() => {
     const strategies = runtimeData?.strategies ?? [];
-    const makeItems = (values: Array<string | undefined>, allLabel: string) => [
-      { label: allLabel, value: ALL_RUNTIME_SCOPES },
-      ...[...new Set(values.map((value) => value ?? 'default'))]
+    return [
+      { label: 'All universes', value: ALL_RUNTIME_SCOPES },
+      ...[...new Set(strategies.map(({ universe }) => universe))]
         .sort()
         .map((value) => ({ label: value, value })),
     ];
-    return {
-      universes: makeItems(
-        strategies.map(({ universe }) => universe),
-        'All universes',
-      ),
-      accounts: makeItems(
-        strategies.map(({ accountId }) => accountId),
-        'All accounts',
-      ),
-      deployments: makeItems(
-        strategies.map(({ deploymentId }) => deploymentId),
-        'All deployments',
-      ),
-    };
   }, [runtimeData?.strategies]);
 
   const filteredSnapshotStrategies = useMemo(() => {
@@ -478,6 +447,8 @@ const RuntimeStrategiesContent = () => {
             gap={8}
             flexDirection="row"
             alignItems="center"
+            width="full"
+            pr={4}
           >
             <Flex gap={3} alignItems="center">
               {modeSegment}
@@ -522,34 +493,27 @@ const RuntimeStrategiesContent = () => {
                   onChange={(value) =>
                     setRuntimeUniverse(value[0] || ALL_RUNTIME_SCOPES)
                   }
-                  items={runtimeScopeItems.universes}
+                  items={runtimeUniverseItems}
                   width="160px"
                 />
               ) : null}
-              {mode === 'runtime' ? (
-                <Select
-                  value={[runtimeAccount]}
-                  defaultValue={[runtimeAccount]}
-                  onChange={(value) =>
-                    setRuntimeAccount(value[0] || ALL_RUNTIME_SCOPES)
-                  }
-                  items={runtimeScopeItems.accounts}
-                  width="170px"
-                />
-              ) : null}
-              {mode === 'runtime' ? (
-                <Select
-                  value={[runtimeDeployment]}
-                  defaultValue={[runtimeDeployment]}
-                  onChange={(value) =>
-                    setRuntimeDeployment(value[0] || ALL_RUNTIME_SCOPES)
-                  }
-                  items={runtimeScopeItems.deployments}
-                  width="190px"
-                />
-              ) : null}
             </Flex>
+            {mode === 'runtime' ? (
+              <Button
+                ml="auto"
+                colorPalette="teal"
+                onClick={() => setCreateRuntimeConfigOpen(true)}
+              >
+                Create
+              </Button>
+            ) : null}
           </Flex>
+
+          <RuntimeStrategyConfigDrawer
+            open={createRuntimeConfigOpen}
+            onOpenChange={setCreateRuntimeConfigOpen}
+            onSaved={load}
+          />
 
           {isSnapshotMode ? (
             <BulkDeleteToolbar
@@ -590,6 +554,7 @@ const RuntimeStrategiesContent = () => {
                   key={strategy.runtimeKey}
                   strategy={strategy}
                   provider={runtimeData?.provider || 'bybit'}
+                  onUpdated={load}
                 />
               ))}
 

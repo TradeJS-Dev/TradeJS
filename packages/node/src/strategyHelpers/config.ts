@@ -8,6 +8,7 @@ interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
   symbol: string;
   baseConfig: Record<string, any>;
   defaults: TConfig;
+  runtimeConfigId?: string;
 }
 
 export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
@@ -16,6 +17,7 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   symbol,
   baseConfig,
   defaults,
+  runtimeConfigId,
 }: ResolveStrategyConfigParams<TConfig>): Promise<{
   config: TConfig;
   isConfigFromBacktest: boolean;
@@ -40,23 +42,27 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
 
   if (config.ENV !== 'BACKTEST') {
     const userConfig = (await getData(
-      redisKeys.strategyConfig(userName, strategyName),
+      runtimeConfigId
+        ? redisKeys.strategyConfig(userName, strategyName, runtimeConfigId)
+        : redisKeys.strategyConfig(userName, strategyName),
       {},
     )) as TConfig;
     config = mergeIfNotEmpty(config, userConfig);
 
-    const results = (await getData(
-      redisKeys.strategyResults(userName, strategyName),
-      {},
-    )) as StrategyResults;
+    if (!runtimeConfigId || runtimeConfigId === 'config') {
+      const results = (await getData(
+        redisKeys.strategyResults(userName, strategyName),
+        {},
+      )) as StrategyResults;
 
-    const backtestResult = results?.[symbol];
-    if (backtestResult && !_.isEmpty(backtestResult.config)) {
-      config = mergeIfNotEmpty(
-        config,
-        backtestResult.config as Partial<TConfig>,
-      );
-      isConfigFromBacktest = true;
+      const backtestResult = results?.[symbol];
+      if (backtestResult && !_.isEmpty(backtestResult.config)) {
+        config = mergeIfNotEmpty(
+          config,
+          backtestResult.config as Partial<TConfig>,
+        );
+        isConfigFromBacktest = true;
+      }
     }
   }
 

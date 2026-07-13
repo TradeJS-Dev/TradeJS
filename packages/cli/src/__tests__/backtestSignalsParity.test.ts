@@ -592,6 +592,11 @@ const runSignalsPath = async () => {
     setData: setDataMock,
     setHashJsonField,
   }));
+  jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+    getRuntimeDeployment: jest.fn(async () => null),
+    saveRuntimeDeploymentHeartbeat: jest.fn(),
+    resolveTradingAccount: jest.fn(async () => null),
+  }));
   jest.doMock('../lib/derivativesContextBackfill', () => ({
     backfillDerivativesContextForSignals: jest.fn(),
     shouldBackfillDerivativesContextForSignals: jest.fn(() => false),

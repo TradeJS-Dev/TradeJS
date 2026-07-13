@@ -14,7 +14,7 @@ import {
 describe('runtimeStrategies helpers', () => {
   it('builds isolated runtime identity keys with crypto defaults', () => {
     expect(buildRuntimeStrategyIdentityKey({ strategyName: 'TrendLine' })).toBe(
-      'TrendLine:crypto:default:default:default',
+      'TrendLine:config:crypto:default:default:default',
     );
     expect(
       buildRuntimeStrategyIdentityKey({
@@ -24,7 +24,7 @@ describe('runtimeStrategies helpers', () => {
         deploymentId: 'tradfi-live',
         policyProfileId: 'tradfi',
       }),
-    ).toBe('TrendLine:tradfi:tradfi-main:tradfi-live:tradfi');
+    ).toBe('TrendLine:config:tradfi:tradfi-main:tradfi-live:tradfi');
   });
 
   it('resolves strategy name from runtime config key', () => {
@@ -32,6 +32,12 @@ describe('runtimeStrategies helpers', () => {
       resolveStrategyNameByConfigKey(
         'root',
         'users:root:strategies:TrendLine:config',
+      ),
+    ).toBe('TrendLine');
+    expect(
+      resolveStrategyNameByConfigKey(
+        'root',
+        'users:root:strategies:TrendLine:conservative',
       ),
     ).toBe('TrendLine');
     expect(

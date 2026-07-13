@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TTL_1M } from '@tradejs/core/constants';
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { listRuntimeDeployments } from '@tradejs/infra/tradingAccounts';
+import {
+  listRuntimeDeployments,
+  listTradingAccounts,
+  resolveTradingAccount,
+} from '@tradejs/infra/tradingAccounts';
 import { strategyEntries } from '@tradejs/strategies';
 import {
   delKey,
@@ -17,6 +21,7 @@ import type {
   ConnectorCreator,
   PositionPnlSnapshot,
   RuntimeTradeRecord,
+  Interval,
   StrategyConfig,
 } from '@tradejs/types';
 import { getAvailableStrategyNames } from '@tradejs/node/strategies';
@@ -30,7 +35,7 @@ import {
   buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
   isRuntimeTradeRecord,
-  resolveStrategyNameByConfigKey,
+  resolveStrategyConfigIdentityByKey,
   RuntimeStrategiesResponse,
   selectTradesForWindow,
   takeClosedPnlMatch,
@@ -63,16 +68,6 @@ const coerceHours = (value: string | null) => {
   return Math.min(MAX_HOURS, Math.max(MIN_HOURS, Math.trunc(parsed)));
 };
 
-const loadConnectedStrategyNames = async (userName: string) => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  const names = keys
-    .filter((key) => key.endsWith(':config'))
-    .map((key) => resolveStrategyNameByConfigKey(userName, key))
-    .filter((value): value is string => Boolean(value));
-
-  return [...new Set(names)].sort((left, right) => left.localeCompare(right));
-};
-
 const isRuntimeStrategyConfigEnabled = (config: StrategyConfig | null) => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return false;
@@ -81,13 +76,12 @@ const isRuntimeStrategyConfigEnabled = (config: StrategyConfig | null) => {
   return (config as Record<string, unknown>).ENABLE !== false;
 };
 
-const loadRuntimeStrategyConfigByName = async (userName: string) => {
+const loadRuntimeStrategyConfigs = async (userName: string) => {
   const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  const configKeys = keys.filter((key) => key.endsWith(':config'));
   const entries = await Promise.all(
-    configKeys.map(async (key): Promise<[string, StrategyConfig] | null> => {
-      const strategyName = resolveStrategyNameByConfigKey(userName, key);
-      if (!strategyName) {
+    keys.map(async (key) => {
+      const identity = resolveStrategyConfigIdentityByKey(userName, key);
+      if (!identity) {
         return null;
       }
 
@@ -96,12 +90,11 @@ const loadRuntimeStrategyConfigByName = async (userName: string) => {
         return null;
       }
 
-      return [strategyName, config];
+      return { ...identity, key, config };
     }),
   );
-
-  return new Map(
-    entries.filter((entry): entry is [string, StrategyConfig] => entry != null),
+  return entries.filter(
+    (entry): entry is NonNullable<typeof entry> => entry != null,
   );
 };
 
@@ -559,8 +552,7 @@ export const GET = async (request: NextRequest) => {
     });
 
     const [
-      connectedStrategyNames,
-      runtimeStrategyConfigByName,
+      runtimeStrategyConfigs,
       configuredStrategyNames,
       runtimeTrades,
       activeOrderIds,
@@ -568,9 +560,9 @@ export const GET = async (request: NextRequest) => {
       entryRows,
       openPositions,
       runtimeDeployments,
+      tradingAccounts,
     ] = await Promise.all([
-      loadConnectedStrategyNames(userName),
-      loadRuntimeStrategyConfigByName(userName),
+      loadRuntimeStrategyConfigs(userName),
       loadConfiguredStrategyNames(),
       loadRuntimeTrades(userName, { startTime, endTime }),
       loadActiveRuntimeOrderIds(userName),
@@ -588,6 +580,7 @@ export const GET = async (request: NextRequest) => {
       }),
       loadOpenPositions(connector, exchangeErrors),
       listRuntimeDeployments(userName),
+      listTradingAccounts(userName),
     ]);
     const relevantTrades = selectTradesForWindow(
       runtimeTrades,
@@ -609,7 +602,10 @@ export const GET = async (request: NextRequest) => {
     });
     const syncedTrades = [...scopedTrades, ...syncedDefaultAccountTrades];
     const fallbackStrategyNames = [
-      ...new Set([...connectedStrategyNames, ...configuredStrategyNames]),
+      ...new Set([
+        ...runtimeStrategyConfigs.map(({ strategyName }) => strategyName),
+        ...configuredStrategyNames,
+      ]),
     ];
     const fallbackTrades = buildExchangeFallbackRuntimeTrades({
       entryRows,
@@ -622,10 +618,18 @@ export const GET = async (request: NextRequest) => {
     const allTrades = [...syncedTrades, ...fallbackTrades].filter(
       isRuntimeTradeRecord,
     );
-    const connectedSet = new Set(connectedStrategyNames);
+    const connectedSet = new Set(
+      runtimeStrategyConfigs.map(
+        ({ strategyName, configId }) => `${strategyName}:${configId}`,
+      ),
+    );
+    const accountsById = new Map(
+      tradingAccounts.map((account) => [account.id, account]),
+    );
     const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
       buildRuntimeStrategyIdentityKey({
         strategyName: trade.strategy,
+        configId: trade.runtimeConfigId,
         universe: trade.universe,
         accountId: trade.accountId,
         deploymentId: trade.deploymentId,
@@ -635,20 +639,23 @@ export const GET = async (request: NextRequest) => {
       string,
       {
         strategyName: string;
+        configId: string;
+        interval: Interval;
         universe: 'crypto' | 'tradfi';
         accountId?: string;
+        accountLabel?: string;
         deploymentId?: string;
         policyProfileId?: string;
         enabled?: boolean;
         config?: Record<string, unknown>;
+        connected?: boolean;
       }
     >();
-    const deployedStrategyNames = new Set<string>();
     for (const deployment of runtimeDeployments) {
       for (const deploymentStrategy of deployment.strategies) {
-        deployedStrategyNames.add(deploymentStrategy.strategyName);
         const runtimeKey = buildRuntimeStrategyIdentityKey({
           strategyName: deploymentStrategy.strategyName,
+          configId: `deployment-${deployment.id}`,
           universe: deployment.universe,
           accountId: deployment.accountId,
           deploymentId: deployment.id,
@@ -656,21 +663,52 @@ export const GET = async (request: NextRequest) => {
         });
         identityByKey.set(runtimeKey, {
           strategyName: deploymentStrategy.strategyName,
+          configId: `deployment-${deployment.id}`,
+          interval: String(deployment.interval) as Interval,
           universe: deployment.universe,
           accountId: deployment.accountId,
+          accountLabel: accountsById.get(deployment.accountId)?.label,
           deploymentId: deployment.id,
           policyProfileId: deploymentStrategy.policyProfileId,
           enabled: deployment.enabled && deploymentStrategy.enabled !== false,
           config: deploymentStrategy.config,
+          connected: false,
         });
       }
     }
-    for (const strategyName of connectedStrategyNames.filter(
-      (name) => !deployedStrategyNames.has(name),
-    )) {
-      identityByKey.set(`${strategyName}:crypto:default:default:default`, {
-        strategyName,
-        universe: 'crypto',
+    for (const runtimeConfig of runtimeStrategyConfigs) {
+      const universe =
+        runtimeConfig.config.UNIVERSE === 'tradfi' ? 'tradfi' : 'crypto';
+      const configuredAccountId =
+        typeof runtimeConfig.config.ACCOUNT_ID === 'string' &&
+        runtimeConfig.config.ACCOUNT_ID.trim()
+          ? runtimeConfig.config.ACCOUNT_ID.trim()
+          : undefined;
+      const resolvedAccount = await resolveTradingAccount({
+        userName,
+        accountId: configuredAccountId,
+        provider,
+        universe,
+      }).catch(() => null);
+      const accountId = resolvedAccount?.id ?? configuredAccountId;
+      const runtimeKey = buildRuntimeStrategyIdentityKey({
+        strategyName: runtimeConfig.strategyName,
+        configId: runtimeConfig.configId,
+        universe,
+        accountId,
+      });
+      identityByKey.set(runtimeKey, {
+        strategyName: runtimeConfig.strategyName,
+        configId: runtimeConfig.configId,
+        interval: String(runtimeConfig.config.INTERVAL ?? '15') as Interval,
+        universe,
+        accountId,
+        accountLabel: accountId
+          ? accountsById.get(accountId)?.label
+          : undefined,
+        enabled: isRuntimeStrategyConfigEnabled(runtimeConfig.config),
+        config: runtimeConfig.config,
+        connected: true,
       });
     }
     for (const trade of allTrades) {
@@ -678,8 +716,13 @@ export const GET = async (request: NextRequest) => {
       identityByKey.set(key, {
         ...identityByKey.get(key),
         strategyName: trade.strategy,
+        configId: trade.runtimeConfigId ?? 'config',
+        interval: String(trade.interval ?? '15') as Interval,
         universe: trade.universe ?? 'crypto',
         accountId: trade.accountId,
+        accountLabel: trade.accountId
+          ? accountsById.get(trade.accountId)?.label
+          : undefined,
         deploymentId: trade.deploymentId,
         policyProfileId: trade.policyProfileId,
       });
@@ -704,20 +747,21 @@ export const GET = async (request: NextRequest) => {
           startTime,
           endTime,
         });
-        const strategyConfig =
-          runtimeStrategyConfigByName.get(strategyName) ?? null;
-        const effectiveStrategyConfig = identity.config
-          ? { ...strategyConfig, ...identity.config }
-          : strategyConfig;
+        const effectiveStrategyConfig = identity.config ?? null;
 
         return {
           runtimeKey,
           strategyName,
+          configId: identity.configId,
+          interval: identity.interval,
           universe: identity.universe,
           accountId: identity.accountId,
+          accountLabel: identity.accountLabel,
           deploymentId: identity.deploymentId,
           policyProfileId: identity.policyProfileId,
-          connected: connectedSet.has(strategyName),
+          connected:
+            identity.connected ??
+            connectedSet.has(`${strategyName}:${identity.configId}`),
           enabled:
             identity.enabled ??
             isRuntimeStrategyConfigEnabled(effectiveStrategyConfig),

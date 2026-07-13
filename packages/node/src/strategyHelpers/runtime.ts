@@ -512,6 +512,7 @@ export const executeEntryOrder = async ({
       accountId: signal.accountId,
       deploymentId: signal.deploymentId,
       policyProfileId: signal.policyProfileId,
+      runtimeConfigId: signal.runtimeConfigId,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     });
   }

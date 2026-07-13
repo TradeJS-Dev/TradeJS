@@ -1221,6 +1221,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     accountId: requestedAccountId,
     deploymentId: requestedDeploymentId,
     policyProfileId,
+    runtimeConfigId,
     data,
     btcData,
     ethData = [],
@@ -1238,6 +1239,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       symbol,
       baseConfig,
       defaults,
+      runtimeConfigId,
     });
     const universe = requestedUniverse ?? connector.universe;
     const accountId = requestedAccountId ?? connector.accountId;
@@ -2051,6 +2053,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (assetClass) signal.assetClass = assetClass;
         if (accountId) signal.accountId = accountId;
         if (deploymentId) signal.deploymentId = deploymentId;
+        if (runtimeConfigId) {
+          signal.runtimeConfigId = runtimeConfigId;
+          if (runtimeConfigId !== 'config') {
+            signal.signalId = `${signal.signalId}:${runtimeConfigId}`;
+          }
+        }
         if (decisionHookCtx.policyProfileId) {
           signal.policyProfileId = decisionHookCtx.policyProfileId;
         }

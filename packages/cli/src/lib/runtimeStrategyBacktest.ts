@@ -39,6 +39,7 @@ export const loadRuntimeStrategyBacktestConfigs = async (
   });
 
   return configs
+    .filter(({ configId }) => configId === 'config')
     .filter(({ strategyName, strategyConfig }) => {
       const enabled = isRuntimeStrategyEnabled(strategyConfig);
       if (!enabled) {

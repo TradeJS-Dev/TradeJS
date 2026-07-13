@@ -141,6 +141,8 @@ export interface SignalsSession {
   connectorName: string;
   universe: MarketUniverse;
   accountId?: string;
+  interval: Interval;
+  intervalMs: number;
   deployment?: RuntimeDeployment | null;
   startedAt: number;
   marketConnector: Connector;
@@ -169,8 +171,8 @@ const resolveNonNegativeInteger = (value: unknown, fallback: number) => {
   return Math.max(0, Math.floor(parsed));
 };
 
-const resolveSignalsDaemonMaxLiveBars = () => {
-  const intervalMinutes = Number(interval);
+const resolveSignalsDaemonMaxLiveBars = (runtimeInterval = interval) => {
+  const intervalMinutes = Number(runtimeInterval);
   const preloadBars = Math.ceil(
     (SIGNALS_CLI_PRELOAD_DAYS * 24 * 60) / intervalMinutes,
   );
@@ -190,10 +192,10 @@ const isSignalsKlineWsEnabled = () =>
 const resolveSignalsKlineWsWaitMs = () =>
   resolveNonNegativeInteger(process.env.SIGNALS_KLINE_WS_WAIT_MS, 10_000);
 
-const createDefaultSignalsLifecycle = () =>
+const createDefaultSignalsLifecycle = (runtimeInterval = interval) =>
   createSignalsStrategyLifecycle({
-    intervalMs,
-    maxLiveBars: resolveSignalsDaemonMaxLiveBars(),
+    intervalMs: Number(runtimeInterval) * 60_000,
+    maxLiveBars: resolveSignalsDaemonMaxLiveBars(runtimeInterval),
     releaseState: releaseStrategyReplayCache,
   });
 
@@ -231,6 +233,12 @@ const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
 
 export const createSignalsSession = async (
   lifecycle: SignalsStrategyLifecycle,
+  scope: {
+    interval?: Interval;
+    universe?: MarketUniverse;
+    accountId?: string;
+    connectorName?: string;
+  } = {},
 ): Promise<SignalsSession> => {
   const deployment = flags.deployment
     ? await getRuntimeDeployment(flags.user, String(flags.deployment))
@@ -241,16 +249,29 @@ export const createSignalsSession = async (
   if (deployment && !deployment.enabled) {
     throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
   }
-  if (deployment && String(deployment.interval) !== String(interval)) {
+  const requestedRuntimeInterval = (scope.interval ?? interval) as Interval;
+  const runtimeInterval = (deployment?.interval ??
+    requestedRuntimeInterval) as Interval;
+  const runtimeIntervalMs = Number(runtimeInterval) * 60_000;
+  if (!Number.isFinite(runtimeIntervalMs) || runtimeIntervalMs <= 0) {
+    throw new Error(`Invalid runtime timeframe: ${runtimeInterval}`);
+  }
+  if (
+    deployment &&
+    String(deployment.interval) !== String(requestedRuntimeInterval)
+  ) {
     throw new Error(
-      `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${interval}`,
+      `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${requestedRuntimeInterval}`,
     );
   }
   const connectorName = await resolveSignalsConnectorName(
-    deployment?.connectorName ?? flags.connector,
+    deployment?.connectorName ?? scope.connectorName ?? flags.connector,
   );
-  const universe = (deployment?.universe ?? flags.universe) as MarketUniverse;
-  const accountId = deployment?.accountId ?? flags.account;
+  const universe = (deployment?.universe ??
+    scope.universe ??
+    flags.universe) as MarketUniverse;
+  const requestedAccountId =
+    deployment?.accountId ?? scope.accountId ?? flags.account;
   const connectorFactory = await getConnectorCreatorByName(
     connectorName,
     projectRoot,
@@ -261,7 +282,7 @@ export const createSignalsSession = async (
   const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
     universe,
-    accountId,
+    accountId: requestedAccountId,
     deploymentId: deployment?.id,
   });
   const btcReferences = await loadBtcReferenceConnectors({
@@ -278,7 +299,9 @@ export const createSignalsSession = async (
   return {
     connectorName,
     universe,
-    accountId,
+    accountId: marketConnector.accountId ?? requestedAccountId,
+    interval: runtimeInterval,
+    intervalMs: runtimeIntervalMs,
     deployment,
     startedAt: Date.now(),
     marketConnector,
@@ -301,6 +324,8 @@ const findSignals = async (
   currentTimestamp: number,
   persistStrategyState: boolean,
   universe: MarketUniverse,
+  interval: Interval,
+  intervalMs: number,
   accountId?: string,
   deploymentId?: string,
   instrument?: InstrumentDescriptor,
@@ -370,8 +395,13 @@ const findSignals = async (
   );
 
   for (const runtimeStrategy of runtimeStrategies) {
-    const { strategyName, strategyCreator, strategyConfig, strategyResults } =
-      runtimeStrategy;
+    const {
+      strategyName,
+      configId,
+      strategyCreator,
+      strategyConfig,
+      strategyResults,
+    } = runtimeStrategy;
     const runtimeConfig = buildRuntimeModeStrategyConfig({
       strategyConfig,
       env: 'CRON',
@@ -386,6 +416,7 @@ const findSignals = async (
       symbol,
       interval,
       strategyName,
+      configId,
     });
     const stats = strategyStats.get(strategyName);
     const evaluation = await lifecycle.evaluate({
@@ -408,6 +439,7 @@ const findSignals = async (
         strategyCreator({
           userName: flags.user,
           connectorName,
+          runtimeConfigId: configId,
           connector,
           symbol,
           ...(runtimeScopeUniverse
@@ -460,9 +492,11 @@ const findSignals = async (
           strategyName,
           symbol,
           timestamp: lastCandle.timestamp,
+          runtimeConfigId: configId,
         }),
         userName: flags.user,
         strategy: strategyName,
+        runtimeConfigId: configId,
         symbol,
         interval,
         universe,
@@ -480,6 +514,14 @@ const findSignals = async (
 
     if (stats) {
       stats.signals += 1;
+    }
+    signal.runtimeConfigId = configId;
+    if (
+      configId &&
+      configId !== 'config' &&
+      !signal.signalId.endsWith(`:${configId}`)
+    ) {
+      signal.signalId = `${signal.signalId}:${configId}`;
     }
     await enrichSignalWithBinanceMarketContext({
       signal,
@@ -522,9 +564,11 @@ const findSignals = async (
         strategyName,
         symbol,
         timestamp: lastCandle.timestamp,
+        runtimeConfigId: configId,
       }),
       userName: flags.user,
       strategy: strategyName,
+      runtimeConfigId: configId,
       symbol,
       interval,
       universe,
@@ -578,6 +622,8 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
       marketConnector,
       btcReferences,
       lifecycle,
+      interval,
+      intervalMs,
     } = session;
     const universe =
       sessionUniverse ?? marketConnector.universe ?? ('crypto' as const);
@@ -724,6 +770,10 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
       userName: flags.user,
       projectRoot,
       deployment,
+      connectorName,
+      universe,
+      accountId,
+      interval,
     });
     if (!runtimeStrategies.length) {
       lifecycle.clear();
@@ -736,7 +786,7 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
     lifecycle.retain(
       new Set(
         tickers.flatMap((symbol) =>
-          runtimeStrategies.map(({ strategyName }) =>
+          runtimeStrategies.map(({ strategyName, configId }) =>
             buildSignalsStrategyLifecycleKey({
               connectorName,
               universe: sessionUniverse,
@@ -745,6 +795,7 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
               symbol,
               interval,
               strategyName,
+              configId,
             }),
           ),
         ),
@@ -811,6 +862,8 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
           currentTimestamp,
           persistStrategyState,
           universe,
+          interval,
+          intervalMs,
           accountId,
           deployment?.id,
           instrumentsBySymbol.get(symbol),
@@ -832,10 +885,10 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
       const telegramSignals = getTelegramDeliverableSignals(signals);
 
       if (!flags.skipScreenshots && telegramSignals.length > 0) {
-        await makeScreenshots(telegramSignals, '15', flags.user);
+        await makeScreenshots(telegramSignals, interval, flags.user);
       }
 
-      await sendToTG(telegramSignals, '15', flags.user);
+      await sendToTG(telegramSignals, interval, flags.user);
       await sendRuntimeCloseNotificationsToTG(
         runtimeCloseNotifications,
         flags.user,
@@ -922,6 +975,85 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
     logger.info('');
   }
 };
+
+type ConfiguredSignalsScope = {
+  connectorName: string;
+  universe: MarketUniverse;
+  accountId?: string;
+  interval: Interval;
+};
+
+const loadConfiguredSignalsScopes = async (
+  deployment?: RuntimeDeployment | null,
+) => {
+  const configuredStrategies = await loadRuntimeStrategies({
+    userName: flags.user,
+    projectRoot,
+    deployment,
+    connectorName: String(flags.connector),
+  });
+  const connectorName = await resolveSignalsConnectorName(
+    deployment?.connectorName ?? flags.connector,
+  );
+  const scopes = new Map<string, ConfiguredSignalsScope>();
+  for (const strategy of configuredStrategies) {
+    const key = [
+      connectorName,
+      strategy.universe,
+      strategy.accountId ?? 'default',
+      strategy.interval,
+    ].join(':');
+    scopes.set(key, {
+      connectorName,
+      universe: strategy.universe,
+      accountId: strategy.accountId,
+      interval: strategy.interval,
+    });
+  }
+  return scopes;
+};
+
+const hasExplicitSignalsScope = () =>
+  process.argv.some((argument) =>
+    [
+      '-f',
+      '--timeframe',
+      '-V',
+      '--universe',
+      '-A',
+      '--account',
+      '-D',
+      '--deployment',
+    ].some(
+      (option) => argument === option || argument.startsWith(`${option}=`),
+    ),
+  );
+
+export const signalsConfiguredScopesOnce = async () => {
+  if (
+    flags.updateOnly ||
+    flags.showTickersList ||
+    flags.deployment ||
+    hasExplicitSignalsScope()
+  ) {
+    return signals();
+  }
+  const scopes = await loadConfiguredSignalsScopes();
+  if (!scopes.size) return signals();
+  for (const scope of scopes.values()) {
+    const session = await createSignalsSession(
+      createDefaultSignalsLifecycle(scope.interval),
+      scope,
+    );
+    try {
+      await signals({ session });
+    } finally {
+      await session.klineFeed?.close();
+      session.lifecycle.clear();
+    }
+  }
+};
+
 export const signalsDaemon = async () => {
   if (flags.updateOnly || flags.showTickersList) {
     throw new Error(
@@ -929,9 +1061,15 @@ export const signalsDaemon = async () => {
     );
   }
 
-  const lifecycle = createDefaultSignalsLifecycle();
   const abortController = new AbortController();
-  let session: SignalsSession | undefined;
+  const daemonDeployment = flags.deployment
+    ? await getRuntimeDeployment(flags.user, String(flags.deployment))
+    : null;
+  if (flags.deployment && !daemonDeployment) {
+    throw new Error(`Runtime deployment not found: ${flags.deployment}`);
+  }
+  const sessions = new Map<string, SignalsSession>();
+  const lastBoundaryByScope = new Map<string, number>();
   const stop = (signalName: string) => {
     logger.info('signals daemon stopping by %s', signalName);
     abortController.abort();
@@ -942,51 +1080,83 @@ export const signalsDaemon = async () => {
   process.once('SIGTERM', stopOnSigterm);
 
   logger.info(
-    'signals daemon started (interval=%s, maxLiveBars=%s)',
+    'signals daemon started (config-driven scopes, fallback interval=%s)',
     interval,
-    resolveSignalsDaemonMaxLiveBars(),
   );
   try {
     await runSignalsDaemon({
-      intervalMs,
+      intervalMs: 60_000,
       settleDelayMs: resolveNonNegativeInteger(flags.settleDelayMs, 5_000),
       signal: abortController.signal,
       runCycle: async () => {
-        session ??= await createSignalsSession(lifecycle);
-        if (
-          !session.klineFeed &&
-          isSignalsKlineWsEnabled() &&
-          session.connectorName.toLowerCase() === 'bybit'
-        ) {
-          session.klineFeed = await createSignalsKlineFeed({
-            config: {
-              userName: flags.user,
+        const scopes = await loadConfiguredSignalsScopes(daemonDeployment);
+
+        for (const [key, staleSession] of sessions) {
+          if (scopes.has(key)) continue;
+          await staleSession.klineFeed?.close();
+          staleSession.lifecycle.clear();
+          sessions.delete(key);
+          lastBoundaryByScope.delete(key);
+        }
+
+        for (const [key, scope] of scopes) {
+          const scopeIntervalMs = Number(scope.interval) * 60_000;
+          const boundary =
+            Math.floor(Date.now() / scopeIntervalMs) * scopeIntervalMs;
+          if (lastBoundaryByScope.get(key) === boundary) continue;
+          let session = sessions.get(key);
+          if (!session) {
+            session = await createSignalsSession(
+              createDefaultSignalsLifecycle(scope.interval),
+              scope,
+            );
+            sessions.set(key, session);
+          }
+          if (
+            !session.klineFeed &&
+            isSignalsKlineWsEnabled() &&
+            session.connectorName.toLowerCase() === 'bybit'
+          ) {
+            session.klineFeed = await createSignalsKlineFeed({
+              config: {
+                userName: flags.user,
+                universe: session.universe,
+                accountId: session.accountId,
+                deploymentId: session.deployment?.id,
+              },
+              interval: session.interval,
               universe: session.universe,
-              accountId: session.accountId,
-              deploymentId: session.deployment?.id,
-            },
-            interval,
-            universe: session.universe,
-          });
-          logger.info('Bybit websocket candle feed enabled');
+            });
+            logger.info(
+              'Bybit websocket candle feed enabled (account=%s, universe=%s, interval=%s)',
+              session.accountId ?? 'default',
+              session.universe,
+              session.interval,
+            );
+          }
+          try {
+            await signals({ session });
+            lastBoundaryByScope.set(key, boundary);
+          } catch (error) {
+            await session.klineFeed?.close();
+            session.lifecycle.clear();
+            sessions.delete(key);
+            throw error;
+          }
         }
-        try {
-          await signals({ session });
-        } catch (error) {
-          await session.klineFeed?.close();
-          lifecycle.clear();
-          session = undefined;
-          throw error;
-        } finally {
-          const memory = process.memoryUsage();
-          logger.info(
-            'signals daemon resources: rss=%sMB heapUsed=%sMB heapTotal=%sMB stateKeys=%s',
-            (memory.rss / 1024 / 1024).toFixed(1),
-            (memory.heapUsed / 1024 / 1024).toFixed(1),
-            (memory.heapTotal / 1024 / 1024).toFixed(1),
-            lifecycle.size(),
-          );
-        }
+        const memory = process.memoryUsage();
+        const stateKeys = [...sessions.values()].reduce(
+          (sum, session) => sum + session.lifecycle.size(),
+          0,
+        );
+        logger.info(
+          'signals daemon resources: rss=%sMB heapUsed=%sMB heapTotal=%sMB stateKeys=%s scopes=%s',
+          (memory.rss / 1024 / 1024).toFixed(1),
+          (memory.heapUsed / 1024 / 1024).toFixed(1),
+          (memory.heapTotal / 1024 / 1024).toFixed(1),
+          stateKeys,
+          sessions.size,
+        );
       },
       onCycleError: (error) => {
         logger.error(
@@ -998,18 +1168,21 @@ export const signalsDaemon = async () => {
   } finally {
     process.removeListener('SIGINT', stopOnSigint);
     process.removeListener('SIGTERM', stopOnSigterm);
-    await session?.klineFeed?.close();
-    lifecycle.clear();
-    if (session?.deployment) {
-      await saveRuntimeDeploymentHeartbeat(flags.user, {
-        deploymentId: session.deployment.id,
-        status: 'stopped',
-        pid: process.pid,
-        startedAt: session.startedAt,
-        lastCycleAt: Date.now(),
-      });
+    for (const session of sessions.values()) {
+      await session.klineFeed?.close();
+      session.lifecycle.clear();
+      if (session.deployment) {
+        await saveRuntimeDeploymentHeartbeat(flags.user, {
+          deploymentId: session.deployment.id,
+          status: 'stopped',
+          pid: process.pid,
+          startedAt: session.startedAt,
+          lastCycleAt: Date.now(),
+        });
+      }
     }
   }
 };
 
-export const main = () => (flags.watch ? signalsDaemon() : signals());
+export const main = () =>
+  flags.watch ? signalsDaemon() : signalsConfiguredScopesOnce();

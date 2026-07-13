@@ -129,7 +129,12 @@ describe('redis utils', () => {
 
     await redisModule.getData('bootstrap', null);
 
-    redisClient.emit('error', new Error('ECONNREFUSED: connect failed'));
+    redisClient.emit('error', new Error('read ECONNRESET'));
+    const maxRetriesError = new Error(
+      'Reached the max retries per request limit (which is 1)',
+    );
+    maxRetriesError.name = 'MaxRetriesPerRequestError';
+    redisClient.emit('error', maxRetriesError);
     redisClient.emit('error', new Error('EAI_AGAIN: dns'));
     redisClient.emit('ready');
     redisClient.emit('error', new Error('ENOTFOUND: redis'));
@@ -138,6 +143,10 @@ describe('redis utils', () => {
     expect(consoleWarnMock).toHaveBeenCalledTimes(2);
     expect(consoleLogMock).toHaveBeenCalledTimes(1);
     expect(consoleErrorMock).toHaveBeenCalledTimes(1);
+    expect(consoleErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('Redis client error'),
+      expect.stringContaining('ECONNRESET'),
+    );
   });
 
   it('scans keys by prefix and returns empty array on scan failure', async () => {

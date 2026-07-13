@@ -86,6 +86,10 @@ export type BacktestDetectorOptimizedStrategy = Strategy & {
 export type BacktestPriceMode = 'mid' | 'close' | 'open';
 
 export interface StrategyConfig {
+  ENABLE?: boolean;
+  INTERVAL?: Interval | string;
+  UNIVERSE?: MarketUniverse;
+  ACCOUNT_ID?: string;
   BACKTEST_PRICE_MODE?: BacktestPriceMode;
   BACKTEST_ENTRY_DELAY_BARS?: number;
   BACKTEST_EXECUTION_INTERVAL?: Interval;
@@ -116,6 +120,7 @@ export interface StrategyCreatorParams {
   accountId?: string;
   deploymentId?: string;
   policyProfileId?: string;
+  runtimeConfigId?: string;
   config: StrategyConfig;
   connector: Connector;
   data: KlineChartData;

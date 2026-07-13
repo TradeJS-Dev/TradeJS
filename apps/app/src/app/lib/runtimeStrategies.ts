@@ -13,6 +13,7 @@ import type {
   StrategyConfig,
   TestStat,
   MarketUniverse,
+  Interval,
 } from '@tradejs/types';
 
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
@@ -74,8 +75,11 @@ export interface RuntimeStrategyTradeView {
 export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
+  configId: string;
+  interval: Interval;
   universe: MarketUniverse;
   accountId?: string;
+  accountLabel?: string;
   deploymentId?: string;
   policyProfileId?: string;
   connected: boolean;
@@ -91,12 +95,14 @@ export interface RuntimeStrategyView {
 
 export const buildRuntimeStrategyIdentityKey = ({
   strategyName,
+  configId,
   universe,
   accountId,
   deploymentId,
   policyProfileId,
 }: {
   strategyName: string;
+  configId?: string;
   universe?: MarketUniverse;
   accountId?: string;
   deploymentId?: string;
@@ -104,6 +110,7 @@ export const buildRuntimeStrategyIdentityKey = ({
 }) =>
   [
     strategyName,
+    configId ?? 'config',
     universe ?? 'crypto',
     accountId ?? 'default',
     deploymentId ?? 'default',
@@ -527,14 +534,31 @@ export const resolveStrategyNameByConfigKey = (
   userName: string,
   key: string,
 ): string | null => {
-  const prefix = `users:${userName}:strategies:`;
+  return (
+    resolveStrategyConfigIdentityByKey(userName, key)?.strategyName ?? null
+  );
+};
 
-  if (!key.startsWith(prefix) || !key.endsWith(':config')) {
+export const resolveStrategyConfigIdentityByKey = (
+  userName: string,
+  key: string,
+): { strategyName: string; configId: string } | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) return null;
+  const [users, keyUserName, strategies, strategyName, configId] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategies !== 'strategies' ||
+    !strategyName ||
+    strategyName === 'charts' ||
+    !configId ||
+    configId === 'results' ||
+    !/^[a-zA-Z0-9_-]+$/.test(configId)
+  ) {
     return null;
   }
-
-  const strategyName = key.slice(prefix.length, -':config'.length).trim();
-  return strategyName || null;
+  return { strategyName, configId };
 };
 
 const buildStrategyNameKeyMap = (strategyNames: string[]) => {

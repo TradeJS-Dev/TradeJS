@@ -678,6 +678,7 @@ export interface Signal {
   accountId?: string;
   deploymentId?: string;
   policyProfileId?: string;
+  runtimeConfigId?: string;
   direction: Direction;
   timestamp: number;
   orderStatus?: SignalOrderStatus;
@@ -720,6 +721,7 @@ export interface RuntimeSignalEvaluationRecord {
   accountId?: string;
   deploymentId?: string;
   policyProfileId?: string;
+  runtimeConfigId?: string;
   symbol: string;
   interval: Interval;
   timestamp: number;
@@ -787,6 +789,7 @@ export interface RuntimeTradeRecord {
   accountId?: string;
   deploymentId?: string;
   policyProfileId?: string;
+  runtimeConfigId?: string;
   symbol: string;
   interval?: Interval;
   direction: Direction;

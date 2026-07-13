@@ -9,7 +9,7 @@ export { getRuntimeStorageDayKey, getRuntimeStorageDayKeys };
 
 export type RuntimeSignalBucketRef = Pick<
   Signal,
-  'signalId' | 'symbol' | 'strategy' | 'timestamp'
+  'signalId' | 'symbol' | 'strategy' | 'timestamp' | 'runtimeConfigId'
 >;
 
 export type RuntimeSignalSkipSource =
@@ -62,6 +62,9 @@ export const toRuntimeSignalBucketRef = (
   symbol: signal.symbol,
   strategy: signal.strategy,
   timestamp: signal.timestamp,
+  ...(signal.runtimeConfigId && signal.runtimeConfigId !== 'config'
+    ? { runtimeConfigId: signal.runtimeConfigId }
+    : {}),
 });
 
 export const isRuntimeSignalBucketRef = (

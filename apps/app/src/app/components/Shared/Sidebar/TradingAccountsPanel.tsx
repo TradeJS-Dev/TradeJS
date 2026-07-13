@@ -1,12 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Button, Field, Flex, Input, Stack, Text } from '@chakra-ui/react';
-import type {
-  MarketUniverse,
-  RuntimeDeployment,
-  RuntimeDeploymentHeartbeat,
-} from '@tradejs/types';
+import {
+  Box,
+  Button,
+  Field,
+  Flex,
+  HStack,
+  IconButton,
+  Input,
+  Stack,
+  Text,
+} from '@chakra-ui/react';
+import { FiEdit2 } from 'react-icons/fi';
+import type { MarketUniverse } from '@tradejs/types';
 import { toaster } from '#ui';
 
 type PublicTradingAccount = {
@@ -19,27 +26,8 @@ type PublicTradingAccount = {
   environment: 'mainnet' | 'testnet';
   hasApiKey: boolean;
   hasApiSecret: boolean;
-};
-type RuntimeDeploymentView = RuntimeDeployment & {
-  heartbeat?: RuntimeDeploymentHeartbeat | null;
-};
-
-export const getDeploymentProcessStatus = (
-  deployment: RuntimeDeploymentView,
-) => {
-  const heartbeat = deployment.heartbeat;
-  if (!heartbeat) return 'not started';
-  const staleAfterMs = Math.max(
-    5 * 60_000,
-    Number(deployment.interval || 15) * 60_000 * 2,
-  );
-  if (
-    heartbeat.status === 'running' &&
-    Date.now() - heartbeat.lastCycleAt > staleAfterMs
-  ) {
-    return 'stale';
-  }
-  return heartbeat.status;
+  maskedApiKey: string;
+  maskedApiSecret: string;
 };
 
 const FieldInput = ({
@@ -63,45 +51,100 @@ const FieldInput = ({
   </Field.Root>
 );
 
+type CredentialFieldName = 'apiKey' | 'apiSecret';
+
+const AccountCredentialField = ({
+  label,
+  savedValue,
+  value,
+  editing,
+  onEdit,
+  onChange,
+}: {
+  label: string;
+  savedValue: string;
+  value: string;
+  editing: boolean;
+  onEdit: () => void;
+  onChange: (value: string) => void;
+}) => (
+  <Field.Root width="full">
+    <Field.Label>{label}</Field.Label>
+    <HStack align="stretch" width="full">
+      {editing ? (
+        <Input
+          flex="1"
+          minW="0"
+          type="password"
+          value={value}
+          placeholder={`Enter a new ${label}`}
+          onChange={(event) => onChange(event.target.value)}
+          autoFocus
+          fontFamily="mono"
+        />
+      ) : (
+        <Flex
+          flex="1"
+          minW="0"
+          h="10"
+          px="3"
+          borderWidth="1px"
+          borderColor="whiteAlpha.200"
+          borderRadius="md"
+          bg="blackAlpha.300"
+          align="center"
+          color={savedValue ? 'gray.200' : 'gray.500'}
+          cursor="default"
+          userSelect="none"
+        >
+          <Text
+            width="full"
+            overflow="hidden"
+            whiteSpace="nowrap"
+            textOverflow="ellipsis"
+            fontFamily={savedValue ? 'mono' : undefined}
+          >
+            {savedValue || 'Not set'}
+          </Text>
+        </Flex>
+      )}
+      <IconButton
+        aria-label={`Edit ${label}`}
+        size="md"
+        colorPalette="teal"
+        variant={editing ? 'solid' : 'outline'}
+        flexShrink={0}
+        onClick={onEdit}
+      >
+        <FiEdit2 />
+      </IconButton>
+    </HStack>
+  </Field.Root>
+);
+
 export const TradingAccountsPanel = () => {
   const [accounts, setAccounts] = useState<PublicTradingAccount[]>([]);
-  const [deployments, setDeployments] = useState<RuntimeDeploymentView[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<'account' | 'default' | null>(null);
+  const [settingDefaultId, setSettingDefaultId] = useState('');
   const [accountDraft, setAccountDraft] = useState({
     id: '',
     label: '',
     apiKey: '',
     apiSecret: '',
-    universe: 'crypto' as MarketUniverse,
-    isDefault: false,
   });
-  const [deploymentDraft, setDeploymentDraft] = useState({
-    id: '',
-    label: '',
-    accountId: '',
-    universe: 'crypto' as MarketUniverse,
-    interval: '15',
-    strategyName: '',
-    policyProfileId: 'crypto',
-    tickers: '',
-  });
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [editingCredentials, setEditingCredentials] = useState<
+    Record<CredentialFieldName, boolean>
+  >({ apiKey: false, apiSecret: false });
 
   const load = useCallback(async () => {
-    const [accountsResponse, deploymentsResponse] = await Promise.all([
-      fetch('/api/user/trading-accounts'),
-      fetch('/api/user/runtime-deployments'),
-    ]);
+    const accountsResponse = await fetch('/api/user/trading-accounts');
     if (accountsResponse.ok) {
       const payload = (await accountsResponse.json()) as {
         accounts?: PublicTradingAccount[];
       };
-      setAccounts(payload.accounts ?? []);
-    }
-    if (deploymentsResponse.ok) {
-      const payload = (await deploymentsResponse.json()) as {
-        deployments?: RuntimeDeploymentView[];
-      };
-      setDeployments(payload.deployments ?? []);
+      const nextAccounts = payload.accounts ?? [];
+      setAccounts(nextAccounts);
     }
   }, []);
 
@@ -110,17 +153,33 @@ export const TradingAccountsPanel = () => {
   }, [load]);
 
   const saveAccount = async () => {
-    setSaving(true);
+    setSaving('account');
     try {
+      const normalizedLabel = accountDraft.label.trim();
+      const baseId =
+        normalizedLabel
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || 'account';
+      const generatedId = `bybit-${baseId}`;
+      const id =
+        accountDraft.id ||
+        (accounts.some((account) => account.id === generatedId)
+          ? `${generatedId}-${Date.now().toString(36)}`
+          : generatedId);
       const response = await fetch('/api/user/trading-accounts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           ...accountDraft,
+          id,
           provider: 'bybit',
           enabled: true,
-          universes: [accountDraft.universe],
+          universes: ['crypto', 'tradfi'],
           environment: 'mainnet',
+          isDefault:
+            accounts.length === 0 ||
+            accounts.find((account) => account.id === id)?.isDefault === true,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -130,9 +189,9 @@ export const TradingAccountsPanel = () => {
         label: '',
         apiKey: '',
         apiSecret: '',
-        universe: 'crypto',
-        isDefault: false,
       });
+      setAddingAccount(false);
+      setEditingCredentials({ apiKey: false, apiSecret: false });
       await load();
       toaster.create({ title: 'Trading account saved', type: 'success' });
     } catch (error) {
@@ -141,289 +200,245 @@ export const TradingAccountsPanel = () => {
         type: 'error',
       });
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
-  const saveDeployment = async () => {
-    setSaving(true);
+  const editCredential = (
+    account: PublicTradingAccount,
+    field: CredentialFieldName,
+  ) => {
+    if (accountDraft.id !== account.id) {
+      setAccountDraft({
+        id: account.id,
+        label: account.label,
+        apiKey: '',
+        apiSecret: '',
+      });
+      setEditingCredentials({
+        apiKey: field === 'apiKey',
+        apiSecret: field === 'apiSecret',
+      });
+      return;
+    }
+    setEditingCredentials((current) => ({ ...current, [field]: true }));
+  };
+
+  const makeDefault = async (account: PublicTradingAccount) => {
+    setSaving('default');
+    setSettingDefaultId(account.id);
     try {
-      const response = await fetch('/api/user/runtime-deployments', {
+      const response = await fetch('/api/user/trading-accounts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          id: deploymentDraft.id,
-          label: deploymentDraft.label,
-          connectorName: 'bybit',
-          provider: 'bybit',
-          accountId: deploymentDraft.accountId,
-          universe: deploymentDraft.universe,
-          interval: deploymentDraft.interval,
-          enabled: true,
-          tickers: deploymentDraft.tickers
-            .split(',')
-            .map((ticker) => ticker.trim().toUpperCase())
-            .filter(Boolean),
-          strategies: [
-            {
-              strategyName: deploymentDraft.strategyName,
-              policyProfileId: deploymentDraft.policyProfileId,
-              enabled: true,
-            },
-          ],
+          id: account.id,
+          label: account.label,
+          provider: account.provider,
+          enabled: account.enabled,
+          universes: account.universes,
+          environment: account.environment,
+          isDefault: true,
         }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Save failed');
       await load();
-      toaster.create({ title: 'Runtime deployment saved', type: 'success' });
+      toaster.create({
+        title: 'Default trading account updated',
+        type: 'success',
+      });
     } catch (error) {
       toaster.create({
         title: error instanceof Error ? error.message : 'Save failed',
         type: 'error',
       });
     } finally {
-      setSaving(false);
+      setSaving(null);
+      setSettingDefaultId('');
     }
   };
 
   return (
-    <Box borderWidth="1px" borderColor="gray.700" borderRadius="lg" p={4}>
-      <Stack gap={5}>
+    <Box
+      borderWidth="1px"
+      borderColor="gray.700"
+      borderRadius="lg"
+      p={4}
+      bg="gray.900"
+    >
+      <Stack gap={4}>
         <Box>
-          <Text fontWeight="600">Trading accounts & deployments</Text>
+          <Text fontWeight="600">Bybit</Text>
           <Text fontSize="sm" color="gray.400">
-            Credentials belong to accounts. A deployment binds one account,
-            universe, interval and strategy policy for a signals process.
+            Trading account credentials used by active strategies.
           </Text>
         </Box>
 
-        <Stack gap={2}>
-          {accounts.map((account) => (
-            <Flex
+        {accounts.map((account) => {
+          const isEditingAccount = accountDraft.id === account.id;
+          const hasChanges = Boolean(
+            isEditingAccount &&
+              (accountDraft.apiKey.trim() || accountDraft.apiSecret.trim()),
+          );
+          return (
+            <Stack
               key={account.id}
-              justify="space-between"
-              borderWidth="1px"
+              borderWidth={accounts.length > 1 ? '1px' : '0'}
               borderColor="gray.700"
               borderRadius="md"
-              p={3}
+              p={accounts.length > 1 ? 3 : 0}
+              gap={3}
             >
-              <Box>
-                <Text fontWeight="600">{account.label}</Text>
-                <Text fontSize="xs" color="gray.400">
-                  {account.id} · {account.provider} ·{' '}
-                  {account.universes.join(', ')} · {account.environment}
-                </Text>
-              </Box>
-              <Text
-                fontSize="xs"
-                color={account.enabled ? 'green.300' : 'red.300'}
-              >
-                {account.enabled ? 'enabled' : 'disabled'}
-              </Text>
-            </Flex>
-          ))}
-        </Stack>
+              <Flex justify="space-between" align="center" gap={3}>
+                <Box>
+                  <Text fontWeight="600">{account.label}</Text>
+                  <Text fontSize="xs" color="gray.400">
+                    Bybit · {account.universes.join(' · ')} ·{' '}
+                    {account.environment}
+                  </Text>
+                </Box>
+                <Flex align="center" gap={2}>
+                  <Text
+                    fontSize="xs"
+                    color={account.enabled ? 'green.300' : 'red.300'}
+                  >
+                    {account.isDefault
+                      ? 'default'
+                      : account.enabled
+                        ? 'enabled'
+                        : 'disabled'}
+                  </Text>
+                  {!account.isDefault && account.enabled && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      colorPalette="teal"
+                      loading={
+                        saving === 'default' && settingDefaultId === account.id
+                      }
+                      onClick={() => makeDefault(account)}
+                    >
+                      Make default
+                    </Button>
+                  )}
+                </Flex>
+              </Flex>
+              <AccountCredentialField
+                label="BYBIT_API_KEY"
+                savedValue={account.maskedApiKey}
+                value={isEditingAccount ? accountDraft.apiKey : ''}
+                editing={isEditingAccount && editingCredentials.apiKey}
+                onEdit={() => editCredential(account, 'apiKey')}
+                onChange={(apiKey) =>
+                  setAccountDraft((draft) => ({ ...draft, apiKey }))
+                }
+              />
+              <AccountCredentialField
+                label="BYBIT_API_SECRET"
+                savedValue={account.maskedApiSecret}
+                value={isEditingAccount ? accountDraft.apiSecret : ''}
+                editing={isEditingAccount && editingCredentials.apiSecret}
+                onEdit={() => editCredential(account, 'apiSecret')}
+                onChange={(apiSecret) =>
+                  setAccountDraft((draft) => ({ ...draft, apiSecret }))
+                }
+              />
+              <Flex justify="flex-end">
+                <Button
+                  colorPalette="teal"
+                  loading={saving === 'account' && isEditingAccount}
+                  disabled={!hasChanges}
+                  onClick={saveAccount}
+                >
+                  Save
+                </Button>
+              </Flex>
+            </Stack>
+          );
+        })}
 
-        <Stack gap={3}>
-          <Text fontSize="sm" fontWeight="600">
-            Add or rotate Bybit account
-          </Text>
-          <Flex gap={3} direction={{ base: 'column', md: 'row' }}>
+        {(accounts.length === 0 || addingAccount) && (
+          <Stack gap={3}>
+            <Text fontSize="sm" fontWeight="600">
+              Connect account
+            </Text>
             <FieldInput
-              label="Account id"
-              value={accountDraft.id}
-              onChange={(id) => setAccountDraft((draft) => ({ ...draft, id }))}
-            />
-            <FieldInput
-              label="Label"
+              label="Account name"
               value={accountDraft.label}
               onChange={(label) =>
                 setAccountDraft((draft) => ({ ...draft, label }))
               }
             />
-          </Flex>
-          <Flex gap={3} direction={{ base: 'column', md: 'row' }}>
             <FieldInput
-              label="API key"
+              label="BYBIT_API_KEY"
+              type="password"
               value={accountDraft.apiKey}
               onChange={(apiKey) =>
                 setAccountDraft((draft) => ({ ...draft, apiKey }))
               }
             />
             <FieldInput
-              label="API secret"
+              label="BYBIT_API_SECRET"
               type="password"
               value={accountDraft.apiSecret}
               onChange={(apiSecret) =>
                 setAccountDraft((draft) => ({ ...draft, apiSecret }))
               }
             />
-          </Flex>
-          <Field.Root>
-            <Field.Label>Universe</Field.Label>
-            <select
-              value={accountDraft.universe}
-              onChange={(event) =>
-                setAccountDraft((draft) => ({
-                  ...draft,
-                  universe: event.target.value as MarketUniverse,
-                }))
-              }
-            >
-              <option value="crypto">Crypto</option>
-              <option value="tradfi">TradFi</option>
-            </select>
-          </Field.Root>
-          <label>
-            <input
-              type="checkbox"
-              checked={accountDraft.isDefault}
-              onChange={(event) =>
-                setAccountDraft((draft) => ({
-                  ...draft,
-                  isDefault: event.target.checked,
-                }))
-              }
-            />{' '}
-            Use as default Bybit account
-          </label>
-          <Button colorPalette="teal" loading={saving} onClick={saveAccount}>
-            Save account
-          </Button>
-        </Stack>
-
-        <Stack gap={2}>
-          {deployments.map((deployment) => (
-            <Box
-              key={deployment.id}
-              borderWidth="1px"
-              borderColor="gray.700"
-              borderRadius="md"
-              p={3}
-            >
-              <Text fontWeight="600">{deployment.label}</Text>
-              <Text fontSize="xs" color="gray.400">
-                {deployment.id} · account {deployment.accountId} ·{' '}
-                {deployment.universe} · {deployment.interval}m ·{' '}
-                {deployment.strategies
-                  .map(
-                    (strategy) =>
-                      `${strategy.strategyName}:${strategy.policyProfileId}`,
-                  )
-                  .join(', ')}
-              </Text>
-              <Text mt={2} fontSize="xs" color="gray.500">
-                yarn signals:daemon --deployment {deployment.id} --timeframe{' '}
-                {deployment.interval}
-              </Text>
-              <Text
-                mt={1}
-                fontSize="xs"
-                color={
-                  getDeploymentProcessStatus(deployment) === 'running'
-                    ? 'green.300'
-                    : getDeploymentProcessStatus(deployment) === 'error' ||
-                        getDeploymentProcessStatus(deployment) === 'stale'
-                      ? 'red.300'
-                      : 'gray.500'
+            <Flex justify="flex-end" gap={2}>
+              {accounts.length > 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setAddingAccount(false);
+                    setAccountDraft({
+                      id: '',
+                      label: '',
+                      apiKey: '',
+                      apiSecret: '',
+                    });
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
+              <Button
+                colorPalette="teal"
+                loading={saving === 'account'}
+                disabled={
+                  !accountDraft.label.trim() ||
+                  !accountDraft.apiKey.trim() ||
+                  !accountDraft.apiSecret.trim()
                 }
+                onClick={saveAccount}
               >
-                process: {getDeploymentProcessStatus(deployment)}
-                {deployment.heartbeat?.lastCycleAt
-                  ? ` · ${new Date(deployment.heartbeat.lastCycleAt).toLocaleString()}`
-                  : ''}
-              </Text>
-            </Box>
-          ))}
-        </Stack>
+                Connect
+              </Button>
+            </Flex>
+          </Stack>
+        )}
 
-        <Stack gap={3}>
-          <Text fontSize="sm" fontWeight="600">
-            Create deployment
-          </Text>
-          <Flex gap={3} direction={{ base: 'column', md: 'row' }}>
-            <FieldInput
-              label="Deployment id"
-              value={deploymentDraft.id}
-              onChange={(id) =>
-                setDeploymentDraft((draft) => ({ ...draft, id }))
-              }
-            />
-            <FieldInput
-              label="Label"
-              value={deploymentDraft.label}
-              onChange={(label) =>
-                setDeploymentDraft((draft) => ({ ...draft, label }))
-              }
-            />
-          </Flex>
-          <Flex gap={3} direction={{ base: 'column', md: 'row' }}>
-            <FieldInput
-              label="Account id"
-              value={deploymentDraft.accountId}
-              onChange={(accountId) =>
-                setDeploymentDraft((draft) => ({ ...draft, accountId }))
-              }
-            />
-            <FieldInput
-              label="Strategy"
-              value={deploymentDraft.strategyName}
-              onChange={(strategyName) =>
-                setDeploymentDraft((draft) => ({ ...draft, strategyName }))
-              }
-            />
-            <FieldInput
-              label="Policy profile"
-              value={deploymentDraft.policyProfileId}
-              onChange={(policyProfileId) =>
-                setDeploymentDraft((draft) => ({
-                  ...draft,
-                  policyProfileId,
-                }))
-              }
-            />
-          </Flex>
-          <Flex gap={3} direction={{ base: 'column', md: 'row' }}>
-            <Field.Root>
-              <Field.Label>Universe</Field.Label>
-              <select
-                value={deploymentDraft.universe}
-                onChange={(event) =>
-                  setDeploymentDraft((draft) => ({
-                    ...draft,
-                    universe: event.target.value as MarketUniverse,
-                  }))
-                }
-              >
-                <option value="crypto">Crypto</option>
-                <option value="tradfi">TradFi</option>
-              </select>
-            </Field.Root>
-            <FieldInput
-              label="Interval"
-              value={deploymentDraft.interval}
-              onChange={(interval) =>
-                setDeploymentDraft((draft) => ({ ...draft, interval }))
-              }
-            />
-            <FieldInput
-              label="Tickers (comma separated)"
-              value={deploymentDraft.tickers}
-              onChange={(tickers) =>
-                setDeploymentDraft((draft) => ({ ...draft, tickers }))
-              }
-            />
-          </Flex>
+        {accounts.length > 0 && !addingAccount && (
           <Button
-            colorPalette="teal"
+            alignSelf="flex-start"
+            size="sm"
             variant="outline"
-            loading={saving}
-            onClick={saveDeployment}
+            colorPalette="teal"
+            onClick={() => {
+              setAccountDraft({
+                id: '',
+                label: '',
+                apiKey: '',
+                apiSecret: '',
+              });
+              setEditingCredentials({ apiKey: false, apiSecret: false });
+              setAddingAccount(true);
+            }}
           >
-            Save deployment
+            Add another account
           </Button>
-        </Stack>
+        )}
       </Stack>
     </Box>
   );

@@ -676,43 +676,6 @@ export const AccountSettingsDrawer = () => {
                   >
                     <Stack gap={4}>
                       <Box>
-                        <Text fontWeight="600">Bybit connection</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          API credentials used for exchange access.
-                        </Text>
-                      </Box>
-                      {renderEditableField({
-                        label: 'BYBIT_API_KEY',
-                        field: 'bybitApiKey',
-                        placeholder: 'Enter a new Bybit API key',
-                      })}
-                      {renderEditableField({
-                        label: 'BYBIT_API_SECRET',
-                        field: 'bybitApiSecret',
-                        placeholder: 'Enter a new Bybit API secret',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'bybit'}
-                          disabled={!isSectionDirty('bybit')}
-                          onClick={() => saveSection('bybit')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
                         <Text fontWeight="600">CoinMarketCap</Text>
                         <Text fontSize="sm" color="gray.400">
                           API key stored in the user profile for historical

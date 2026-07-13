@@ -33,6 +33,13 @@ const isRuntimeDeployment = (value: unknown): value is RuntimeDeployment =>
       typeof (value as RuntimeDeployment).accountId === 'string',
   );
 
+const withProviderUniverses = (
+  account: TradingAccountRef,
+): TradingAccountRef =>
+  account.provider.toLowerCase() === 'bybit'
+    ? { ...account, universes: ['crypto', 'tradfi'] }
+    : account;
+
 export const listTradingAccounts = async (
   userName: string,
 ): Promise<TradingAccountRef[]> => {
@@ -41,6 +48,7 @@ export const listTradingAccounts = async (
   const values = await Promise.all(keys.map((key) => getData(key, null)));
   return values
     .filter(isTradingAccount)
+    .map(withProviderUniverses)
     .sort((left, right) => left.label.localeCompare(right.label));
 };
 
@@ -53,26 +61,29 @@ export const getTradingAccount = async (
     redisKeys.tradingAccount(userName, normalizedId),
     null,
   );
-  return isTradingAccount(value) ? value : null;
+  return isTradingAccount(value) ? withProviderUniverses(value) : null;
 };
 
 export const saveTradingAccount = async (
   userName: string,
   account: TradingAccountRef,
 ): Promise<TradingAccountRef> => {
-  const normalized: TradingAccountRef = {
+  const normalized = withProviderUniverses({
     ...account,
     id: normalizeId(account.id, 'Account id'),
     label: account.label.trim(),
     provider: account.provider.trim().toLowerCase(),
     universes: [...new Set(account.universes)],
-  };
+  });
   if (normalized.isDefault) {
     const previousDefaults = (await listTradingAccounts(userName)).filter(
       (candidate) =>
         candidate.provider === normalized.provider &&
         candidate.id !== normalized.id &&
-        candidate.isDefault,
+        candidate.isDefault &&
+        candidate.universes.some((universe) =>
+          normalized.universes.includes(universe),
+        ),
     );
     await Promise.all(
       previousDefaults.map((candidate) =>
@@ -131,27 +142,19 @@ export const resolveTradingAccount = async ({
   }
 
   const accounts = (await listTradingAccounts(userName)).filter(
-    (account) => account.enabled && account.provider === provider.toLowerCase(),
+    (account) =>
+      account.enabled &&
+      account.provider === provider.toLowerCase() &&
+      (!universe || account.universes.includes(universe)),
   );
   const selected =
     accounts.find((account) => account.isDefault) ??
     (accounts.length === 1 ? accounts[0] : null);
-  if (selected) {
-    if (universe && !selected.universes.includes(universe)) {
-      throw new Error(
-        `Trading account ${selected.id} does not support universe ${universe}`,
-      );
-    }
-    return selected;
-  }
+  if (selected) return selected;
 
   if (provider.toLowerCase() !== 'bybit' || accounts.length > 1) {
     return null;
   }
-  if (universe === 'tradfi') {
-    return null;
-  }
-
   const legacy = (await getData(redisKeys.user(userName))) as Record<
     string,
     unknown
@@ -168,7 +171,7 @@ export const resolveTradingAccount = async ({
     provider: 'bybit',
     enabled: true,
     isDefault: true,
-    universes: ['crypto'],
+    universes: ['crypto', 'tradfi'],
     environment: 'mainnet',
     apiKey: legacyApiKey,
     apiSecret: legacyApiSecret,

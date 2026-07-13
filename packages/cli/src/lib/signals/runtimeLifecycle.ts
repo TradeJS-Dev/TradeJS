@@ -79,6 +79,7 @@ export const buildSignalsStrategyLifecycleKey = ({
   symbol,
   interval,
   strategyName,
+  configId,
 }: {
   connectorName: string;
   universe?: string;
@@ -87,9 +88,14 @@ export const buildSignalsStrategyLifecycleKey = ({
   symbol: string;
   interval: string;
   strategyName: string;
+  configId?: string;
 }) => {
+  const namedConfigId =
+    configId && configId !== 'config' ? configId : undefined;
   if (!universe && !accountId && !deploymentId) {
-    return [connectorName, symbol, interval, strategyName].join(':');
+    return [connectorName, symbol, interval, strategyName, namedConfigId]
+      .filter(Boolean)
+      .join(':');
   }
   return [
     connectorName,
@@ -99,7 +105,10 @@ export const buildSignalsStrategyLifecycleKey = ({
     symbol,
     interval,
     strategyName,
-  ].join(':');
+    namedConfigId,
+  ]
+    .filter(Boolean)
+    .join(':');
 };
 
 export const createSignalsStrategyLifecycle = ({

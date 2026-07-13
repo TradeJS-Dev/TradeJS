@@ -126,7 +126,7 @@ describe('trading accounts persistence', () => {
         id: 'crypto-main',
         label: 'Z account',
         provider: 'bybit',
-        universes: ['crypto'],
+        universes: ['crypto', 'tradfi'],
       }),
     );
     await expect(listTradingAccounts('root')).resolves.toEqual([
@@ -153,11 +153,40 @@ describe('trading accounts persistence', () => {
     );
   });
 
+  it('keeps independent defaults for disjoint universes', async () => {
+    await saveTradingAccount(
+      'root',
+      makeAccount({
+        id: 'crypto-default',
+        provider: 'broker',
+        universes: ['crypto'],
+        isDefault: true,
+      }),
+    );
+    await saveTradingAccount(
+      'root',
+      makeAccount({
+        id: 'tradfi-default',
+        provider: 'broker',
+        universes: ['tradfi'],
+        isDefault: true,
+      }),
+    );
+
+    await expect(getTradingAccount('root', 'crypto-default')).resolves.toEqual(
+      expect.objectContaining({ isDefault: true }),
+    );
+    await expect(getTradingAccount('root', 'tradfi-default')).resolves.toEqual(
+      expect.objectContaining({ isDefault: true }),
+    );
+  });
+
   it('validates an explicitly selected account', async () => {
     await saveTradingAccount(
       'root',
       makeAccount({
         id: 'tradfi-main',
+        provider: 'broker',
         universes: ['tradfi'],
       }),
     );
@@ -166,7 +195,7 @@ describe('trading accounts persistence', () => {
       resolveTradingAccount({
         userName: 'root',
         accountId: 'tradfi-main',
-        provider: 'bybit',
+        provider: 'broker',
         universe: 'tradfi',
       }),
     ).resolves.toEqual(expect.objectContaining({ id: 'tradfi-main' }));
@@ -177,12 +206,12 @@ describe('trading accounts persistence', () => {
         provider: 'binance',
         universe: 'tradfi',
       }),
-    ).rejects.toThrow('belongs to bybit, not binance');
+    ).rejects.toThrow('belongs to broker, not binance');
     await expect(
       resolveTradingAccount({
         userName: 'root',
         accountId: 'tradfi-main',
-        provider: 'bybit',
+        provider: 'broker',
         universe: 'crypto',
       }),
     ).rejects.toThrow('does not support universe crypto');
@@ -228,21 +257,22 @@ describe('trading accounts persistence', () => {
     ).resolves.toEqual(expect.objectContaining({ id: 'other' }));
   });
 
-  it('validates the universe of an implicitly selected account', async () => {
-    await saveTradingAccount('root', makeAccount({ id: 'crypto-only' }));
+  it('selects defaults only from accounts compatible with the universe', async () => {
+    await saveTradingAccount(
+      'root',
+      makeAccount({ id: 'crypto-only', provider: 'broker' }),
+    );
 
     await expect(
       resolveTradingAccount({
         userName: 'root',
-        provider: 'bybit',
+        provider: 'broker',
         universe: 'tradfi',
       }),
-    ).rejects.toThrow(
-      'Trading account crypto-only does not support universe tradfi',
-    );
+    ).resolves.toBeNull();
   });
 
-  it('uses legacy Bybit credentials only as a crypto fallback', async () => {
+  it('uses legacy Bybit credentials for both supported universes', async () => {
     store.set(userKey('legacy'), {
       BYBIT_API_KEY: ' legacy-key ',
       BYBIT_API_SECRET: ' legacy-secret ',
@@ -257,7 +287,7 @@ describe('trading accounts persistence', () => {
     ).resolves.toEqual(
       expect.objectContaining({
         id: 'bybit-default',
-        universes: ['crypto'],
+        universes: ['crypto', 'tradfi'],
         apiKey: 'legacy-key',
         apiSecret: 'legacy-secret',
       }),
@@ -268,7 +298,12 @@ describe('trading accounts persistence', () => {
         provider: 'bybit',
         universe: 'tradfi',
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: 'bybit-default',
+        universes: ['crypto', 'tradfi'],
+      }),
+    );
 
     await expect(
       resolveTradingAccount({

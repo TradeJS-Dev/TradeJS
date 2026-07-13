@@ -6,6 +6,37 @@ describe('runtimeRedis', () => {
     jest.clearAllMocks();
   });
 
+  it('loads multiple named configs for the same strategy and ignores reserved keys', async () => {
+    const getKeys = jest.fn(async () => [
+      'users:root:strategies:TrendLine:config',
+      'users:root:strategies:TrendLine:conservative',
+      'users:root:strategies:TrendLine:results',
+      'users:root:strategies:charts:runtime',
+    ]);
+    const getData = jest.fn(async (key: string) => ({ key }));
+    jest.doMock('@tradejs/infra/redis', () => ({
+      getData,
+      getHashJsonValues: jest.fn(),
+      getKeys,
+      redisKeys: {
+        strategies: (userName: string) => `users:${userName}:strategies`,
+      },
+    }));
+
+    const { loadRuntimeStrategyConfigs } = await import('../lib/runtimeRedis');
+
+    await expect(loadRuntimeStrategyConfigs('root')).resolves.toEqual([
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        configId: 'config',
+      }),
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        configId: 'conservative',
+      }),
+    ]);
+  });
+
   it('loads runtime trades from day buckets for the requested time window', async () => {
     const getKeys = jest.fn(async (_prefix: string) => []);
     const getHashJsonValues = jest.fn(async (key: string) => {

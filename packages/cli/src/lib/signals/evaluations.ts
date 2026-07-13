@@ -15,11 +15,16 @@ export const buildRuntimeSignalEvaluationId = ({
   strategyName,
   symbol,
   timestamp,
+  runtimeConfigId,
 }: {
   strategyName: string;
   symbol: string;
   timestamp: number;
-}) => `${strategyName}:${symbol}:${timestamp}`;
+  runtimeConfigId?: string;
+}) =>
+  runtimeConfigId && runtimeConfigId !== 'config'
+    ? [strategyName, runtimeConfigId, symbol, timestamp].join(':')
+    : [strategyName, symbol, timestamp].join(':');
 
 export const saveRuntimeSignalEvaluation = async (
   evaluation: RuntimeSignalEvaluationRecord,

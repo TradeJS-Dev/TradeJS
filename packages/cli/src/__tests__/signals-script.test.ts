@@ -323,6 +323,10 @@ const loadScript = async (scenario: Scenario) => {
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
     getRuntimeDeployment,
     saveRuntimeDeploymentHeartbeat,
+    resolveTradingAccount: jest.fn(
+      async ({ accountId }: { accountId?: string }) =>
+        accountId ? { id: accountId } : null,
+    ),
   }));
 
   jest.doMock('@tradejs/connectors', () => ({
