@@ -42,7 +42,7 @@ describe('market-universe actions', () => {
       }),
     ).resolves.toEqual([{ timestamp: 1 }]);
     expect(mockPost).toHaveBeenCalledWith(
-      '/api/kline/bybit/AAPLUSDT/15?universe=tradfi',
+      '/api/kline/bybit/tradfi/AAPLUSDT/15',
       { start: 1, end: 2, cacheOnly: true },
     );
   });
@@ -61,7 +61,7 @@ describe('market-universe actions', () => {
       });
 
       expect(mockPost).toHaveBeenCalledWith(
-        `/api/kline/${provider}/BTCUSDT/15`,
+        `/api/kline/${provider}/crypto/BTCUSDT/15`,
         { start: 1, end: 2 },
       );
     },

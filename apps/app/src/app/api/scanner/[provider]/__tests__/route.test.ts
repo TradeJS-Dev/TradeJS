@@ -86,4 +86,26 @@ describe('/api/scanner provider route', () => {
       body: { error: 'Unsupported market universe: tradfi' },
     });
   });
+
+  it('serializes object-shaped provider errors', async () => {
+    mockGetConnectorCreatorByProvider.mockResolvedValue(async () => ({
+      getTickers: async () => {
+        throw {
+          code: 403,
+          message: 'Forbidden',
+          body: 'CloudFront blocked this request',
+          requestOptions: { apiKey: 'secret' },
+        };
+      },
+    }));
+
+    const response = await GET({} as Request, context('bybit', 'crypto'));
+
+    expect(response).toEqual({
+      status: 500,
+      body: {
+        error: '403 Forbidden: CloudFront blocked this request',
+      },
+    });
+  });
 });

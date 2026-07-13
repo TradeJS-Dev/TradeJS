@@ -16,6 +16,7 @@ import {
 } from '@tradejs/types';
 import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { getErrorMessage } from '#app/lib/errorMessage';
 import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,7 @@ const MAX_KLINE_CACHE_BYTES = 32 * 1024 * 1024;
 
 interface KlineRouteParams {
   provider: string;
+  universe?: string;
   symbol: string;
   interval: string;
 }
@@ -288,8 +290,12 @@ export const POST = async (
     }
 
     const routeParams = await params;
-    const { provider, symbol, interval } = routeParams;
-    const requestedUniverse = request.nextUrl.searchParams.get('universe');
+    const {
+      provider,
+      universe: requestedUniverse,
+      symbol,
+      interval,
+    } = routeParams;
     const rawUniverse = requestedUniverse ?? 'crypto';
     if (!isMarketUniverse(rawUniverse)) {
       return NextResponse.json(
@@ -463,7 +469,7 @@ export const POST = async (
     return NextResponse.json({ data: await pending });
   } catch (error) {
     logger.log('error', `Kline fetch error: %o`, error);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const status = /unsupported market universe/i.test(message) ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
   }

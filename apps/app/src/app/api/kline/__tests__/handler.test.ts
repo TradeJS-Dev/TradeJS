@@ -50,14 +50,9 @@ const makeCandle = (timestamp: number, close: number) => ({
   volume: close * 10,
 });
 
-const makeRequest = (body: Record<string, unknown>, universe?: string) =>
+const makeRequest = (body: Record<string, unknown>) =>
   ({
     json: async () => body,
-    nextUrl: new URL(
-      `http://localhost/api/kline/bybit/BTCUSDT/15${
-        universe ? `?universe=${universe}` : ''
-      }`,
-    ),
   }) as unknown as import('next/server').NextRequest;
 
 describe('kline route handler', () => {
@@ -236,10 +231,11 @@ describe('kline route handler', () => {
     mockGetConnectorCreatorByProvider.mockResolvedValue(connectorCreator);
 
     const response = await POST(
-      makeRequest({ start: 900_000, end: 1_800_000 }, 'tradfi'),
+      makeRequest({ start: 900_000, end: 1_800_000 }),
       {
         params: Promise.resolve({
           provider: 'bybit',
+          universe: 'tradfi',
           symbol: 'AAPLUSDT',
           interval: '15',
         }),
@@ -263,9 +259,10 @@ describe('kline route handler', () => {
   });
 
   it('rejects invalid and connector-unsupported universes with status 400', async () => {
-    const invalid = await POST(makeRequest({ end: 1_800_000 }, 'stocks'), {
+    const invalid = await POST(makeRequest({ end: 1_800_000 }), {
       params: Promise.resolve({
         provider: 'bybit',
+        universe: 'stocks',
         symbol: 'AAPLUSDT',
         interval: '15',
       }),
@@ -279,10 +276,11 @@ describe('kline route handler', () => {
       throw new Error('Unsupported market universe: tradfi');
     });
     const unsupported = await POST(
-      makeRequest({ start: 900_000, end: 1_800_000 }, 'tradfi'),
+      makeRequest({ start: 900_000, end: 1_800_000 }),
       {
         params: Promise.resolve({
           provider: 'coinbase',
+          universe: 'tradfi',
           symbol: 'AAPLUSDT',
           interval: '15',
         }),

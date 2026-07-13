@@ -10,11 +10,11 @@ describe('dashboard URL', () => {
         searchParams: { signalId: 'signal-1' },
       }),
     ).toBe(
-      'https://app.tradejs.dev/routes/dashboard/bybit/BTCUSDT/15?signalId=signal-1',
+      'https://app.tradejs.dev/routes/dashboard/bybit/crypto/BTCUSDT/15?signalId=signal-1',
     );
   });
 
-  it('keeps TradFi in a query parameter', () => {
+  it('keeps TradFi as a path value without a namespace segment', () => {
     expect(
       buildDashboardUrl({
         baseUrl: 'https://app.tradejs.dev',
@@ -24,7 +24,7 @@ describe('dashboard URL', () => {
         searchParams: { signalId: 'signal-2' },
       }),
     ).toBe(
-      'https://app.tradejs.dev/routes/dashboard/bybit/AAPLUSDT/15?signalId=signal-2&universe=tradfi',
+      'https://app.tradejs.dev/routes/dashboard/bybit/tradfi/AAPLUSDT/15?signalId=signal-2',
     );
   });
 });

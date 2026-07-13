@@ -1,7 +1,7 @@
 'use client';
 
 import _ from 'lodash';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Portal,
   Stack,
@@ -43,8 +43,29 @@ export const SelectWithSearch = ({
   onOpenChange,
 }: SelectWithSearchProps) => {
   const { contains } = useFilter({ sensitivity: 'base' });
-  const [inputValue, setInputValue] = useState(
-    defaultInputValue ?? defaultValue?.[0],
+  const defaultSelectedValue = defaultValue[0];
+  const [selectedValue, setSelectedValue] = useState(defaultValue);
+  const [isOpen, setIsOpen] = useState(false);
+  const currentValue = value ?? selectedValue;
+  const getSelectedInputValue = useCallback(
+    (selected: string[]) => {
+      if (multiple) return '';
+
+      const selectedItem = selected[0];
+      if (!selectedItem) return '';
+
+      return (
+        items.find((item) => item.value === selectedItem)?.label ??
+        (selectedItem === defaultSelectedValue
+          ? defaultInputValue
+          : undefined) ??
+        selectedItem
+      );
+    },
+    [defaultInputValue, defaultSelectedValue, items, multiple],
+  );
+  const [inputValue, setInputValue] = useState(() =>
+    getSelectedInputValue(currentValue),
   );
 
   const { collection, filter, set } = useListCollection({
@@ -56,21 +77,36 @@ export const SelectWithSearch = ({
     set(items);
   }, [items, set]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setInputValue(getSelectedInputValue(currentValue));
+    }
+  }, [currentValue, getSelectedInputValue, isOpen]);
+
   return (
     <Combobox.Root
       collection={collection}
       {...(value ? { value } : { defaultValue })}
       inputValue={inputValue}
-      onValueChange={(details) => onChange?.(details.value)}
+      onValueChange={(details) => {
+        if (!value) {
+          setSelectedValue(details.value);
+        }
+        setInputValue(getSelectedInputValue(details.value));
+        onChange?.(details.value);
+      }}
       onInputValueChange={(e) => {
         filter(e.inputValue);
         setInputValue(e.inputValue);
       }}
       onOpenChange={(details) => {
+        setIsOpen(details.open);
         onOpenChange?.(details.open);
         if (details.open) {
           filter('');
           setInputValue('');
+        } else {
+          setInputValue(getSelectedInputValue(currentValue));
         }
       }}
       width={width}

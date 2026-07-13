@@ -11,7 +11,7 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
     useFiltersContext();
   const defaultInputValue =
     tickers.find(({ value }) => value === filters.symbol)?.label ||
-    filters.symbol;
+    filters.symbol.replace(/USDT$/i, '');
 
   const onChange = (value: string[]) => {
     if (_.isEmpty(value)) {
@@ -35,7 +35,7 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
       onChange={onChange}
       onOpenChange={(open) => {
         if (open) {
-          void ensureTickersLoaded?.();
+          void Promise.resolve(ensureTickersLoaded?.()).catch(() => undefined);
         }
       }}
       items={tickers}

@@ -16,16 +16,12 @@ export const buildDashboardUrl = ({
   searchParams?: Record<string, string>;
 }) => {
   const url = new URL(
-    `/routes/dashboard/${provider}/${symbol}/${interval}`,
+    `/routes/dashboard/${provider}/${universe}/${symbol}/${interval}`,
     baseUrl,
   );
 
   for (const [key, value] of Object.entries(searchParams)) {
     url.searchParams.set(key, value);
-  }
-
-  if (universe !== 'crypto') {
-    url.searchParams.set('universe', universe);
   }
 
   return url.toString();

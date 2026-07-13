@@ -88,7 +88,7 @@ describe('signals', () => {
         [
           {
             text: 'Dashboard',
-            url: 'https://app.example.com/routes/dashboard/bybit/BTCUSDT/15?signalId=sig-1',
+            url: 'https://app.example.com/routes/dashboard/bybit/crypto/BTCUSDT/15?signalId=sig-1',
           },
         ],
       ],

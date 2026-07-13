@@ -86,6 +86,16 @@ const getTickersCacheKey = (providerUniverseKey: string) =>
 const isFresh = (savedAt: number) =>
   Date.now() - savedAt < TICKERS_CACHE_TTL_MS;
 
+const reportTickerLoadError = (
+  provider: string,
+  universe: MarketUniverse,
+  error: unknown,
+) => {
+  if (process.env.NODE_ENV !== 'test') {
+    console.warn(`Ticker loading failed for ${provider}:${universe}`, error);
+  }
+};
+
 const loadTickersForProvider = async (
   provider: string,
   universe: MarketUniverse,
@@ -120,7 +130,16 @@ const loadTickersForProvider = async (
       return cached.items;
     }
 
-    const coins = await scan(provider, universe);
+    let coins: Items;
+    try {
+      coins = await scan(provider, universe);
+    } catch (error) {
+      if (cached?.items?.length) {
+        setTickers(providerUniverseKey, cached.items, cached.savedAt);
+        return cached.items;
+      }
+      throw error;
+    }
     const savedAt = Date.now();
     setTickers(providerUniverseKey, coins, savedAt);
     await set(getTickersCacheKey(providerUniverseKey), {
@@ -128,9 +147,14 @@ const loadTickersForProvider = async (
       items: coins,
     } satisfies TickersCacheRecord);
     return coins;
-  })().finally(() => {
-    useScannerStore.getState().setInFlight(providerUniverseKey, undefined);
-  });
+  })()
+    .catch((error) => {
+      reportTickerLoadError(provider, universe, error);
+      throw error;
+    })
+    .finally(() => {
+      useScannerStore.getState().setInFlight(providerUniverseKey, undefined);
+    });
 
   setInFlight(providerUniverseKey, pending);
   return pending;
@@ -166,7 +190,7 @@ export const useTickers = (
       return;
     }
 
-    void ensureLoaded();
+    void ensureLoaded().catch(() => undefined);
   }, [enabled, ensureLoaded]);
 
   const items = useMemo(() => {

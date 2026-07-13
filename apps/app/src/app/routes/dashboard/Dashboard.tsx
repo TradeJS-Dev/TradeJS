@@ -36,15 +36,11 @@ const DashboardRoute = () => {
   const isScreenshotMode = searchParams.get('screenshot') === '1';
 
   const parseDashboardPath = useCallback(() => {
-    return parseMarketDashboardPath(
-      window.location.pathname,
-      new URLSearchParams(window.location.search),
-      {
-        provider: (filters.provider || 'bybit') as Provider,
-        symbol: filters.symbol,
-        interval: filters.interval as Interval,
-      },
-    );
+    return parseMarketDashboardPath(window.location.pathname, {
+      provider: (filters.provider || 'bybit') as Provider,
+      symbol: filters.symbol,
+      interval: filters.interval as Interval,
+    });
   }, [filters.interval, filters.provider, filters.symbol]);
 
   useEffect(() => {
@@ -83,6 +79,7 @@ const DashboardRoute = () => {
       const nextSymbol = nextFilters.symbol;
       const nextInterval = nextFilters.interval;
       const params = new URLSearchParams(window.location.search);
+      params.delete('universe');
 
       if (nextFilters.backtestId) {
         params.set('backtestId', nextFilters.backtestId);

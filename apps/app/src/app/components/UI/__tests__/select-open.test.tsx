@@ -37,11 +37,13 @@ jest.mock('@chakra-ui/react', () => {
   const ComboboxRoot = ({
     children,
     onOpenChange,
+    inputValue,
   }: {
     children: React.ReactNode;
     onOpenChange?: (details: { open: boolean }) => void;
+    inputValue?: string;
   }) => {
-    comboboxRootMock({ onOpenChange });
+    comboboxRootMock({ onOpenChange, inputValue });
     return (
       <div>
         <button
@@ -149,5 +151,29 @@ describe('select wrappers', () => {
 
     expect(onOpenChange).toHaveBeenNthCalledWith(1, true);
     expect(onOpenChange).toHaveBeenNthCalledWith(2, false);
+  });
+
+  it('restores the selected ticker label after search closes', () => {
+    const { getByTestId } = render(
+      <SelectWithSearch
+        defaultValue={['AAPLUSDT']}
+        defaultInputValue="AAPL"
+        items={[{ value: 'AAPLUSDT', label: 'AAPL' }]}
+      />,
+    );
+
+    expect(comboboxRootMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ inputValue: 'AAPL' }),
+    );
+
+    fireEvent.click(getByTestId('combobox-open'));
+    expect(comboboxRootMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ inputValue: '' }),
+    );
+
+    fireEvent.click(getByTestId('combobox-close'));
+    expect(comboboxRootMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ inputValue: 'AAPL' }),
+    );
   });
 });

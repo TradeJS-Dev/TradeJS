@@ -6,7 +6,9 @@ export const FavoriteIndicator = () => {
   const {
     filters: { symbol, provider },
   } = useFiltersContext();
-  const { checkIsFavorite, toggleFavorite } = useTickers(provider || 'bybit');
+  const { checkIsFavorite, toggleFavorite } = useTickers(provider || 'bybit', {
+    enabled: false,
+  });
   const isFavorite = checkIsFavorite(symbol);
 
   return (

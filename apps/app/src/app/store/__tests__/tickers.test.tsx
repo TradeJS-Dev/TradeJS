@@ -94,6 +94,33 @@ describe('store/useTickers', () => {
     });
   });
 
+  it('uses stale cached tickers when scanner refresh fails', async () => {
+    const staleItems = [{ value: 'BTCUSDT', label: 'BTCUSDT' }];
+    idbGetMock.mockResolvedValue({
+      savedAt: Date.now() - 11 * 60 * 1000,
+      items: staleItems,
+    });
+    scanMock.mockRejectedValue(new Error('provider unavailable'));
+
+    const { getByTestId } = render(<Probe provider="bybit" enabled />);
+
+    await waitFor(() => {
+      expect(scanMock).toHaveBeenCalledTimes(1);
+      expect(getByTestId('probe').getAttribute('data-length')).toBe('1');
+    });
+    expect(idbSetMock).not.toHaveBeenCalled();
+  });
+
+  it('handles an initial background scanner failure', async () => {
+    scanMock.mockRejectedValue(new Error('provider unavailable'));
+
+    render(<Probe provider="bybit" enabled />);
+
+    await waitFor(() => {
+      expect(scanMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('clears in-flight state after scanner failure so ensureLoaded can retry', async () => {
     let api!: { ensureLoaded: () => Promise<unknown> };
     scanMock

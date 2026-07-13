@@ -11,7 +11,12 @@ import { PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { deleteCandles, waitForDbReady } from '@tradejs/infra/timescale';
-import { ConnectorCreator, Interval, KlineChartData } from '@tradejs/types';
+import { Connector, ConnectorCreator, Interval } from '@tradejs/types';
+import {
+  findRepairableContinuityGap,
+  parseContinuityUniverse,
+  resolveContinuityUniverses,
+} from '../lib/continuity';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
@@ -21,6 +26,7 @@ args.option(
   'all',
 );
 args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(['V', 'universe'], 'Market universe: all|crypto|tradfi', 'all');
 
 const flags = args.parse(process.argv);
 const interval = Number(flags.timeframe);
@@ -57,22 +63,94 @@ const parseProviders = async (value: unknown): Promise<string[]> => {
   return uniqueSelected;
 };
 
-const findGapInData = (data: KlineChartData, expectedMs: number) => {
-  for (let i = 1; i < data.length; i++) {
-    const prev = data[i - 1];
-    const current = data[i];
-    const diff = current.timestamp - prev.timestamp;
+const runContinuity = async ({
+  connector,
+  provider,
+  connectorName,
+  reloadStart,
+  reloadEnd,
+}: {
+  connector: Connector;
+  provider: string;
+  connectorName: string;
+  reloadStart: number;
+  reloadEnd: number;
+}) => {
+  const { universe } = connector;
+  const tickers = await getTickers(
+    connector,
+    flags.tickers,
+    '',
+    undefined,
+    undefined,
+    { universe },
+  );
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] broken::broken fixed::fixed :eta(s) :symbol',
+    {
+      total: tickers.length,
+      width: 30,
+    },
+  );
+  let broken = 0;
+  let fixed = 0;
+  const expectedMs = interval * 60 * 1000;
 
-    if (diff !== expectedMs) {
-      return {
-        prevTs: prev.timestamp,
-        ts: current.timestamp,
-        diffSeconds: Math.floor(diff / 1000),
-      };
+  logger.info(
+    chalk.yellow(`continuity ${connectorName}:${universe}: ${tickers.length}`),
+  );
+
+  for await (const symbol of tickers) {
+    const data = await connector.kline({
+      symbol,
+      interval: intervalKey,
+      start: reloadStart,
+      end: reloadEnd,
+      silent: true,
+    });
+
+    let gap = findRepairableContinuityGap(data, expectedMs, universe);
+    if (gap) {
+      broken++;
+      logger.warn(
+        '[%s:%s] gap %s %s: %s -> %s (%ss)',
+        provider,
+        universe,
+        symbol,
+        interval,
+        formatUnix(gap.prevTs),
+        formatUnix(gap.ts),
+        gap.diffSeconds,
+      );
+
+      await deleteCandles(provider, symbol, interval);
+
+      const reloaded = await connector.kline({
+        symbol,
+        interval: intervalKey,
+        start: reloadStart,
+        end: reloadEnd,
+        silent: true,
+      });
+      gap = findRepairableContinuityGap(reloaded, expectedMs, universe);
+
+      if (!gap) {
+        fixed++;
+      }
     }
+
+    bar.tick(1, {
+      broken: chalk.yellow(broken),
+      fixed: chalk.cyan(fixed),
+      symbol: chalk.gray(symbol),
+    });
   }
 
-  return null;
+  logger.info(
+    chalk.yellow(
+      `[${provider}:${universe}] broken: ${broken}/${tickers.length}, fixed: ${fixed}`,
+    ),
+  );
 };
 
 export const main = async () => {
@@ -84,6 +162,13 @@ export const main = async () => {
   await waitForDbReady();
   const reloadStart = getTimestamp(PRELOAD_DAYS);
   const reloadEnd = getTimestamp();
+  let requestedUniverse;
+  try {
+    requestedUniverse = parseContinuityUniverse(flags.universe);
+  } catch (error) {
+    logger.error((error as Error).message);
+    process.exit(1);
+  }
   const providerIds = await parseProviders(flags.provider);
   const providers = await Promise.all(
     providerIds.map(async (providerId) => {
@@ -128,73 +213,38 @@ export const main = async () => {
   }
 
   for await (const provider of activeProviders) {
-    const connector = await provider.create({
+    const defaultConnector = await provider.create({
       userName: flags.user,
     });
-    const tickers = await getTickers(connector, flags.tickers);
-    const bar = new ProgressBar(
-      ':current/:total [:bar][:percent] broken::broken fixed::fixed :eta(s) :symbol',
-      {
-        total: tickers.length,
-        width: 30,
-      },
+    const universes = resolveContinuityUniverses(
+      requestedUniverse,
+      defaultConnector.capabilities.supportedUniverses,
     );
-    let broken = 0;
-    let fixed = 0;
-    const expectedMs = interval * 60 * 1000;
-
-    logger.info(chalk.yellow(`continuity ${provider.name}: ${tickers.length}`));
-
-    for await (const symbol of tickers) {
-      const data = await connector.kline({
-        symbol,
-        interval: intervalKey,
-        start: reloadStart,
-        end: reloadEnd,
-        silent: true,
-      });
-
-      let gap = findGapInData(data, expectedMs);
-      if (gap) {
-        broken++;
-        logger.warn(
-          '[%s] gap %s %s: %s -> %s (%ss)',
-          provider.id,
-          symbol,
-          interval,
-          formatUnix(gap.prevTs),
-          formatUnix(gap.ts),
-          gap.diffSeconds,
-        );
-
-        await deleteCandles(provider.id, symbol, interval);
-
-        const reloaded = await connector.kline({
-          symbol,
-          interval: intervalKey,
-          start: reloadStart,
-          end: reloadEnd,
-          silent: true,
-        });
-        gap = findGapInData(reloaded, expectedMs);
-
-        if (!gap) {
-          fixed++;
-        }
-      }
-
-      bar.tick(1, {
-        broken: chalk.yellow(broken),
-        fixed: chalk.cyan(fixed),
-        symbol: chalk.gray(symbol),
-      });
+    if (!universes.length) {
+      logger.warn(
+        'Skip provider "%s": universe "%s" is not supported',
+        provider.id,
+        requestedUniverse,
+      );
+      continue;
     }
 
-    logger.info(
-      chalk.yellow(
-        `[${provider.id}] broken: ${broken}/${tickers.length}, fixed: ${fixed}`,
-      ),
-    );
+    for (const universe of universes) {
+      const connector =
+        defaultConnector.universe === universe
+          ? defaultConnector
+          : await provider.create({
+              userName: flags.user,
+              universe,
+            });
+      await runContinuity({
+        connector,
+        provider: provider.id,
+        connectorName: provider.name,
+        reloadStart,
+        reloadEnd,
+      });
+    }
   }
 
   process.exit();

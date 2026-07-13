@@ -752,7 +752,9 @@ const BacktestRunPage = () => {
                             onChange={setSelectedTickers}
                             onOpenChange={(open) => {
                               if (open) {
-                                void ensureTickersLoaded();
+                                void ensureTickersLoaded().catch(
+                                  () => undefined,
+                                );
                               }
                             }}
                           />

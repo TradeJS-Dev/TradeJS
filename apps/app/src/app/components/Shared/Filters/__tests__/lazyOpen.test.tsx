@@ -8,10 +8,13 @@ import { SelectUniverse } from '../Universe';
 jest.mock('#ui', () => ({
   SelectWithSearch: ({
     onOpenChange,
+    defaultInputValue,
   }: {
     onOpenChange?: (open: boolean) => void;
+    defaultInputValue?: string;
   }) => (
     <div>
+      <span data-testid="symbol-input-value">{defaultInputValue}</span>
       <button onClick={() => onOpenChange?.(true)} data-testid="symbol-open" />
       <button
         onClick={() => onOpenChange?.(false)}
@@ -82,6 +85,27 @@ describe('filters lazy open', () => {
 
     fireEvent.click(getByTestId('symbol-open'));
     expect(ensureTickersLoaded).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the selected symbol even before TradFi tickers load', () => {
+    const { getByTestId } = render(
+      <FiltersContext.Provider
+        value={{
+          filters: {
+            provider: 'bybit',
+            universe: 'tradfi',
+            symbol: 'AAPLUSDT',
+            interval: '15',
+          },
+          tickers: [],
+          backtestFiles: [],
+        }}
+      >
+        <SelectSymbol />
+      </FiltersContext.Provider>,
+    );
+
+    expect(getByTestId('symbol-input-value').textContent).toBe('AAPL');
   });
 
   it('loads backtests only when strategy/backtest selects open', () => {
