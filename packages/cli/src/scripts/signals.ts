@@ -44,6 +44,7 @@ import {
 import {
   getRuntimeSignalRetentionTtlSeconds,
   getRuntimeStorageDayKey,
+  toStoredRuntimeSignal,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
 import {
@@ -542,9 +543,13 @@ const findSignals = async (
     strategySignals.push(signal);
     const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
 
-    await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
-      expire: runtimeSignalRetentionTtl,
-    });
+    await setData(
+      redisKeys.storeSignal(symbol, signal.signalId),
+      toStoredRuntimeSignal(signal),
+      {
+        expire: runtimeSignalRetentionTtl,
+      },
+    );
 
     await setHashJsonField(
       redisKeys.runtimeSignalBucket(

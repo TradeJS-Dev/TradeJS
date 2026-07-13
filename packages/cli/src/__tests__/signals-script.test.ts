@@ -1,7 +1,7 @@
 import { createSignalsStrategyLifecycle } from '../lib/signals/runtimeLifecycle';
 import type { RuntimeDeployment } from '@tradejs/types';
 
-const TTL_10D = 864_000;
+const TTL_3D = 259_200;
 
 type ScriptFlags = {
   tickers?: string;
@@ -492,8 +492,15 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         symbol: 'ETHUSDT',
       }),
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
+    const storedSignal = (mocks.setData.mock.calls as unknown[][]).find(
+      ([key]) =>
+        key === mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
+    )?.[1];
+    expect(storedSignal).not.toHaveProperty('figures');
+    expect(storedSignal).not.toHaveProperty('indicators');
+    expect(storedSignal).not.toHaveProperty('additionalIndicators');
     expect(mocks.setHashJsonField).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalBucket('root', '1970-01-01', 'TrendLine'),
       'TrendLine-sig',
@@ -503,7 +510,7 @@ describe('signals script', () => {
         strategy: 'TrendLine',
         timestamp: CLOSED_2_TS,
       },
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
     expect(mocks.setHashJsonField).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationBucket(
@@ -521,7 +528,7 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         direction: 'LONG',
       }),
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
@@ -533,7 +540,7 @@ describe('signals script', () => {
         evaluated: 1,
         signals: 1,
       },
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
   });
 
@@ -1068,7 +1075,7 @@ describe('signals script', () => {
         aiAnalysis,
         ml,
       }),
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
@@ -1081,7 +1088,7 @@ describe('signals script', () => {
         signals: 1,
         'reason:skip from AI:MIN_AI_QUALITY': 1,
       },
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
   });
 
@@ -1115,7 +1122,7 @@ describe('signals script', () => {
         evaluated: 1,
         'reason:skip from core:NO_SIGNAL': 1,
       },
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
   });
 
@@ -1149,7 +1156,7 @@ describe('signals script', () => {
         evaluated: 1,
         'reason:skip from core:TRENDLINE_TIMING:WAIT_RETEST': 1,
       },
-      { expire: TTL_10D },
+      { expire: TTL_3D },
     );
   });
 

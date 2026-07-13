@@ -1,3 +1,4 @@
+import type { Signal } from '@tradejs/types';
 import {
   buildRuntimeSignalStatsIncrements,
   DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS,
@@ -8,6 +9,8 @@ import {
   normalizeRuntimeSignalSkipReason,
   parseRuntimeSignalStatsBucket,
   shouldStoreDetailedRuntimeSignalEvaluation,
+  shouldStoreRuntimeSignalDiagnostics,
+  toStoredRuntimeSignal,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
 
@@ -44,6 +47,48 @@ describe('runtimeSignalsStorage', () => {
     });
     expect(isRuntimeSignalBucketRef(ref)).toBe(true);
     expect(isRuntimeSignalBucketRef({ signalId: 'sig-1' })).toBe(false);
+  });
+
+  it('stores heavy diagnostics only for completed or failed orders', () => {
+    const diagnostics = {
+      figures: { debug: [{ id: 'line-1' }] },
+      indicators: { atr: [1, 2, 3] },
+      additionalIndicators: { baseContext: { regime: 'trend' } },
+    };
+    const makeSignal = (orderStatus?: Signal['orderStatus']) =>
+      ({
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+        orderStatus,
+        ...diagnostics,
+      }) as Signal;
+
+    for (const orderStatus of [undefined, 'skipped', 'canceled'] as const) {
+      const signal = makeSignal(orderStatus);
+      expect(shouldStoreRuntimeSignalDiagnostics(signal)).toBe(false);
+      const stored = toStoredRuntimeSignal(signal);
+      expect(stored).not.toHaveProperty('figures');
+      expect(stored).not.toHaveProperty('indicators');
+      expect(stored).not.toHaveProperty('additionalIndicators');
+    }
+
+    for (const orderStatus of ['completed', 'failed'] as const) {
+      const signal = makeSignal(orderStatus);
+      expect(shouldStoreRuntimeSignalDiagnostics(signal)).toBe(true);
+      expect(toStoredRuntimeSignal(signal)).toEqual(
+        expect.objectContaining(diagnostics),
+      );
+    }
   });
 
   it('normalizes skip reasons into stable source and reason buckets', () => {

@@ -1,4 +1,4 @@
-import { TTL_10D } from '@tradejs/core/constants';
+import { TTL_3D } from '@tradejs/core/constants';
 import { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
 import {
   getRuntimeStorageDayKey,
@@ -11,6 +11,12 @@ export type RuntimeSignalBucketRef = Pick<
   Signal,
   'signalId' | 'symbol' | 'strategy' | 'timestamp' | 'runtimeConfigId'
 >;
+
+export type StoredRuntimeSignal = Omit<
+  Signal,
+  'figures' | 'indicators' | 'additionalIndicators'
+> &
+  Partial<Pick<Signal, 'figures' | 'indicators' | 'additionalIndicators'>>;
 
 export type RuntimeSignalSkipSource =
   | 'core'
@@ -30,7 +36,7 @@ const SECONDS_PER_DAY = 86_400;
 
 export const RUNTIME_SIGNAL_RETENTION_DAYS_ENV =
   'RUNTIME_SIGNAL_RETENTION_DAYS';
-export const DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS = TTL_10D;
+export const DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS = TTL_3D;
 
 // Runtime summary cron runs at 21:00 Europe/Moscow. Shift the logical
 // bucket boundary so one stored "day" maps to exactly one summary window.
@@ -66,6 +72,21 @@ export const toRuntimeSignalBucketRef = (
     ? { runtimeConfigId: signal.runtimeConfigId }
     : {}),
 });
+
+export const shouldStoreRuntimeSignalDiagnostics = (signal: Signal) =>
+  signal.orderStatus === 'completed' || signal.orderStatus === 'failed';
+
+export const toStoredRuntimeSignal = (signal: Signal): StoredRuntimeSignal => {
+  if (shouldStoreRuntimeSignalDiagnostics(signal)) {
+    return signal;
+  }
+
+  const stored: StoredRuntimeSignal = { ...signal };
+  delete stored.figures;
+  delete stored.indicators;
+  delete stored.additionalIndicators;
+  return stored;
+};
 
 export const isRuntimeSignalBucketRef = (
   value: unknown,

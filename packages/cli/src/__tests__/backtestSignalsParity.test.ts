@@ -543,6 +543,7 @@ const runSignalsPath = async () => {
   }));
   jest.doMock('@tradejs/core/constants', () => ({
     SIGNALS_CLI_PRELOAD_DAYS: 7,
+    TTL_3D: 259_200,
     TTL_10D: 864_000,
   }));
   jest.doMock('@tradejs/core/indicators', () => ({
@@ -842,7 +843,12 @@ describe('backtest/signals runtime parity', () => {
     expect(backtestRun.enrichedSignals).toHaveLength(1);
     expect(
       backtestRun.enrichedSignals[0]?.additionalIndicators?.baseContext,
-    ).toEqual(signalsRun.storedSignals[0]?.additionalIndicators?.baseContext);
+    ).toBeDefined();
+    expect(signalsRun.storedSignals[0]).not.toHaveProperty('figures');
+    expect(signalsRun.storedSignals[0]).not.toHaveProperty('indicators');
+    expect(signalsRun.storedSignals[0]).not.toHaveProperty(
+      'additionalIndicators',
+    );
   });
 
   it('evaluates historical replay with the same effective history and enriched signal payload', async () => {
