@@ -117,6 +117,41 @@ export const buildRuntimeStrategyIdentityKey = ({
     policyProfileId ?? 'default',
   ].join(':');
 
+export interface RuntimeStrategyAccountScope {
+  strategyName: string;
+  configId: string;
+  universe: MarketUniverse;
+  accountId?: string;
+}
+
+export const assignLegacyRuntimeTradeAccountScopes = (
+  trades: RuntimeTradeRecord[],
+  scopes: RuntimeStrategyAccountScope[],
+): RuntimeTradeRecord[] =>
+  trades.map((trade) => {
+    if (trade.accountId || trade.deploymentId) {
+      return trade;
+    }
+
+    const matchingAccountIds = new Set(
+      scopes
+        .filter(
+          (scope) =>
+            scope.strategyName === trade.strategy &&
+            scope.configId === (trade.runtimeConfigId ?? 'config') &&
+            scope.universe === (trade.universe ?? 'crypto'),
+        )
+        .map((scope) => scope.accountId)
+        .filter((accountId): accountId is string => Boolean(accountId)),
+    );
+
+    if (matchingAccountIds.size !== 1) {
+      return trade;
+    }
+
+    return { ...trade, accountId: [...matchingAccountIds][0] };
+  });
+
 export interface RuntimeStrategiesResponse {
   provider: string;
   hours: number;

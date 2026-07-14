@@ -31,6 +31,7 @@ import {
 } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import {
+  assignLegacyRuntimeTradeAccountScopes,
   buildRuntimeStrategyAnalytics,
   buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
@@ -651,6 +652,12 @@ export const GET = async (request: NextRequest) => {
         connected?: boolean;
       }
     >();
+    const runtimeConfigAccountScopes = new Array<{
+      strategyName: string;
+      configId: string;
+      universe: 'crypto' | 'tradfi';
+      accountId?: string;
+    }>();
     for (const deployment of runtimeDeployments) {
       for (const deploymentStrategy of deployment.strategies) {
         const runtimeKey = buildRuntimeStrategyIdentityKey({
@@ -691,6 +698,12 @@ export const GET = async (request: NextRequest) => {
         universe,
       }).catch(() => null);
       const accountId = resolvedAccount?.id ?? configuredAccountId;
+      runtimeConfigAccountScopes.push({
+        strategyName: runtimeConfig.strategyName,
+        configId: runtimeConfig.configId,
+        universe,
+        accountId,
+      });
       const runtimeKey = buildRuntimeStrategyIdentityKey({
         strategyName: runtimeConfig.strategyName,
         configId: runtimeConfig.configId,
@@ -711,7 +724,11 @@ export const GET = async (request: NextRequest) => {
         connected: true,
       });
     }
-    for (const trade of allTrades) {
+    const accountScopedTrades = assignLegacyRuntimeTradeAccountScopes(
+      allTrades,
+      runtimeConfigAccountScopes,
+    );
+    for (const trade of accountScopedTrades) {
       const key = runtimeIdentityKey(trade);
       identityByKey.set(key, {
         ...identityByKey.get(key),
@@ -731,7 +748,7 @@ export const GET = async (request: NextRequest) => {
     const strategies = await Promise.all(
       [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
         const { strategyName } = identity;
-        const strategyTrades = allTrades
+        const strategyTrades = accountScopedTrades
           .filter((trade) => runtimeIdentityKey(trade) === runtimeKey)
           .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
         const orders = strategyTrades

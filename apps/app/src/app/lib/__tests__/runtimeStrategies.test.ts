@@ -1,6 +1,7 @@
 import type { ClosedPnlRecord, RuntimeTradeRecord } from '@tradejs/types';
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import {
+  assignLegacyRuntimeTradeAccountScopes,
   buildExchangeFallbackRuntimeTrades,
   buildRuntimeStrategyIdentityKey,
   buildRuntimeStrategyAnalytics,
@@ -25,6 +26,85 @@ describe('runtimeStrategies helpers', () => {
         policyProfileId: 'tradfi',
       }),
     ).toBe('TrendLine:config:tradfi:tradfi-main:tradfi-live:tradfi');
+  });
+
+  it('assigns an unambiguous config account to legacy runtime trades', () => {
+    const trade = {
+      orderId: 'legacy',
+      strategy: 'LiquidityTails',
+      symbol: 'FHEUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 1,
+      entryTimestamp: 1,
+      status: 'closed',
+      universe: 'crypto',
+    } as RuntimeTradeRecord;
+
+    expect(
+      assignLegacyRuntimeTradeAccountScopes(
+        [trade],
+        [
+          {
+            strategyName: 'LiquidityTails',
+            configId: 'config',
+            universe: 'crypto',
+            accountId: 'bybit-main',
+          },
+        ],
+      ),
+    ).toEqual([{ ...trade, accountId: 'bybit-main' }]);
+  });
+
+  it('does not guess a legacy runtime trade account when the scope is ambiguous', () => {
+    const trade = {
+      orderId: 'legacy',
+      strategy: 'LiquidityTails',
+      symbol: 'FHEUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 1,
+      entryTimestamp: 1,
+      status: 'closed',
+    } as RuntimeTradeRecord;
+    const scopes = ['bybit-main', 'bybit-alt'].map((accountId) => ({
+      strategyName: 'LiquidityTails',
+      configId: 'config',
+      universe: 'crypto' as const,
+      accountId,
+    }));
+
+    expect(assignLegacyRuntimeTradeAccountScopes([trade], scopes)).toEqual([
+      trade,
+    ]);
+  });
+
+  it('preserves an account already stored on a runtime trade', () => {
+    const trade = {
+      orderId: 'scoped',
+      strategy: 'LiquidityTails',
+      symbol: 'FHEUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 1,
+      entryTimestamp: 1,
+      status: 'closed',
+      accountId: 'original-account',
+    } as RuntimeTradeRecord;
+
+    expect(
+      assignLegacyRuntimeTradeAccountScopes(
+        [trade],
+        [
+          {
+            strategyName: 'LiquidityTails',
+            configId: 'config',
+            universe: 'crypto',
+            accountId: 'new-account',
+          },
+        ],
+      ),
+    ).toEqual([trade]);
   });
 
   it('resolves strategy name from runtime config key', () => {
