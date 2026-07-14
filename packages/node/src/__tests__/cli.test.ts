@@ -454,6 +454,118 @@ describe('cli telegram notifications', () => {
     expect(sendSignalAnalysis).toHaveBeenCalledTimes(1);
   });
 
+  it('sends a gate-mode signal when LLM commentary fails', async () => {
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+    const getData = jest.fn().mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendShift:config') {
+        return { AI_MODE: 'gate', MIN_AI_QUALITY: 4 };
+      }
+      return null;
+    });
+    const askAI = jest.fn(async () => {
+      throw new Error('AI provider returned an empty chat completion');
+    });
+    const sendSignal = jest.fn(async () => undefined);
+    const sendSignalAnalysis = jest.fn(async () => undefined);
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick: jest.fn(),
+      })),
+    }));
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+    jest.doMock('@tradejs/core/backtest', () => ({ getFormatted: jest.fn() }));
+    jest.doMock('@tradejs/core/tickers', () => ({ getTopTickers: jest.fn() }));
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 0),
+    }));
+    jest.doMock('@tradejs/infra/files', () => ({ getFiles: jest.fn() }));
+    jest.doMock('@tradejs/infra/logger', () => ({ logger }));
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData,
+      getKeys: jest.fn(async () => []),
+      redisKeys: {
+        analysis: (symbol: string, signalId: string) =>
+          `analysis:${symbol}:${signalId}`,
+      },
+    }));
+    jest.doMock('../ai', () => ({ askAI }));
+    jest.doMock('../screenshot', () => ({ screenDashboard: jest.fn() }));
+    jest.doMock('../signals', () => ({
+      sendSignal,
+      sendSignalAnalysis,
+      sendTextToTG: jest.fn(),
+    }));
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => '/tmp/tradejs'),
+    }));
+
+    const { sendToTG } = require('../cli');
+    const gateAnalysis = {
+      direction: 'LONG',
+      quality: 5,
+      comment: 'gate approved',
+    };
+
+    await sendToTG(
+      [
+        {
+          signalId: 'sig-1',
+          symbol: 'GWEIUSDT',
+          strategy: 'TrendShift',
+          direction: 'LONG',
+          interval: '15',
+          timestamp: 1,
+          figures: {},
+          prices: {
+            currentPrice: 1,
+            takeProfitPrice: 2,
+            stopLossPrice: 0.5,
+            riskRatio: 2,
+          },
+          indicators: {},
+          aiAnalysis: gateAnalysis,
+        },
+      ] as any,
+      '15',
+      'root',
+    );
+
+    expect(sendSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ symbol: 'GWEIUSDT' }),
+      '15',
+      {
+        gateAnalysis,
+        gateDecision: 'approved',
+      },
+      { userName: 'root' },
+    );
+    expect(sendSignalAnalysis).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      'LLM commentary failed: %s (%s)',
+      'GWEIUSDT',
+      'AI provider returned an empty chat completion',
+    );
+    expect(logger.error).not.toHaveBeenCalledWith(
+      expect.stringContaining('Signal notification failed'),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('treats retest-required gate or LLM analyses as rejected for comparison metadata', async () => {
     const logger = {
       info: jest.fn(),

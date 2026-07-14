@@ -355,6 +355,30 @@ type AiModel = {
   invoke: (messages: BaseMessageLike[]) => Promise<{ content: unknown }>;
 };
 
+const getAiInvocationError = (error: unknown) => {
+  const details =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : String(error);
+  const isEmptyCompletion =
+    error instanceof TypeError &&
+    /Cannot read properties of undefined \(reading ['"]message['"]\)/.test(
+      details,
+    );
+  const wrapped = new Error(
+    isEmptyCompletion
+      ? 'AI provider returned an empty chat completion'
+      : `AI model invocation failed: ${details}`,
+  ) as Error & { cause?: unknown };
+  wrapped.cause = error;
+  return wrapped;
+};
+
+const isEmptyResponseContent = (content: string | object) =>
+  typeof content === 'string'
+    ? content.trim().length === 0
+    : Object.keys(content).length === 0;
+
 export const DEFAULT_AI_MODEL = 'openai/gpt-5-mini';
 
 const userSettingsCache = new Map<string, Promise<UserSettings>>();
@@ -525,10 +549,19 @@ export const runAiPrompt = async (
     }),
   );
 
-  const response = await model.invoke(messages);
-  const parsed = parseAIResponse(
-    normalizeResponseContent(response.content),
-  ) as any;
+  let response: { content: unknown };
+  try {
+    response = await model.invoke(messages);
+  } catch (error) {
+    throw getAiInvocationError(error);
+  }
+
+  const responseContent = normalizeResponseContent(response?.content);
+  if (isEmptyResponseContent(responseContent)) {
+    throw new Error('AI provider returned an empty chat completion');
+  }
+
+  const parsed = parseAIResponse(responseContent) as any;
   const normalized = normalizeAnalysis(parsed);
 
   if (!options.signal) {

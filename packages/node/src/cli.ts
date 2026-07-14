@@ -536,34 +536,54 @@ export const sendToTG = async (
         redisKeys.analysis(signal.symbol, signal.signalId),
         null,
       );
+      let shouldSendSignalAnalysis =
+        analysis &&
+        typeof analysis === 'object' &&
+        Object.keys(analysis).length > 0;
       const strategyConfig = await resolveStrategyConfig(signal.strategy);
       const aiMode = strategyConfig?.AI_MODE;
       const gateAnalysis = signal.aiAnalysis;
       if (aiMode === 'gate' && gateAnalysis) {
-        const llmAnalysis = await askAI(signal, { userName });
         const minQuality = Number(strategyConfig?.MIN_AI_QUALITY) || 4;
         const gateDecision = resolveDecision(
           gateAnalysis as Record<string, any>,
           signal.direction,
           minQuality,
         );
-        const llmDecision = resolveDecision(
-          llmAnalysis as Record<string, any>,
-          signal.direction,
-          minQuality,
-        );
-        analysis = {
-          ...(llmAnalysis ?? {}),
-          gateAnalysis,
-          gateDecision,
-          llmDecision,
-          gateContradictsLlm: gateDecision !== llmDecision,
-        };
+
+        try {
+          const llmAnalysis = await askAI(signal, { userName });
+          const llmDecision = resolveDecision(
+            llmAnalysis as Record<string, any>,
+            signal.direction,
+            minQuality,
+          );
+          analysis = {
+            ...(llmAnalysis ?? {}),
+            gateAnalysis,
+            gateDecision,
+            llmDecision,
+            gateContradictsLlm: gateDecision !== llmDecision,
+          };
+          shouldSendSignalAnalysis = true;
+        } catch (error) {
+          logger.error(
+            'LLM commentary failed: %s (%s)',
+            signal.symbol,
+            (error as Error)?.message || String(error),
+          );
+          analysis = {
+            gateAnalysis,
+            gateDecision,
+          };
+          shouldSendSignalAnalysis = false;
+        }
       }
 
       await sendSignal(signal, imgInterval, analysis, { userName });
 
       if (
+        shouldSendSignalAnalysis &&
         analysis &&
         typeof analysis === 'object' &&
         Object.keys(analysis).length > 0
@@ -572,7 +592,7 @@ export const sendToTG = async (
       }
     } catch (err) {
       logger.error(
-        'Failed sent: %s %s',
+        'Signal notification failed: %s (%s)',
         signal.symbol,
         (err as Error)?.message || String(err),
       );

@@ -1954,6 +1954,32 @@ describe('ai helpers', () => {
   });
 
   describe('askAI', () => {
+    it('reports an empty provider completion explicitly', async () => {
+      invokeMock.mockRejectedValue(
+        new TypeError(
+          "Cannot read properties of undefined (reading 'message')",
+        ),
+      );
+
+      await expect(
+        runAiPrompt({
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        }),
+      ).rejects.toThrow('AI provider returned an empty chat completion');
+    });
+
+    it('rejects an empty provider response before parsing it', async () => {
+      invokeMock.mockResolvedValue({ content: '' });
+
+      await expect(
+        runAiPrompt({
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        }),
+      ).rejects.toThrow('AI provider returned an empty chat completion');
+    });
+
     it('replays explicit prompts via runAiPrompt', async () => {
       invokeMock.mockResolvedValue({
         content: {
