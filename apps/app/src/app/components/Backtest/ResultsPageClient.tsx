@@ -12,6 +12,7 @@ import {
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
 import { parseTestName } from '@tradejs/core/backtest';
+import { CARD_PAGE_CONTENT_MAX_WIDTH } from '#app/lib/cardPageLayout';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';
@@ -292,69 +293,79 @@ export const BacktestResultsPageClient = ({
           flexDirection="column"
           alignItems="flex-start"
         >
-          <Flex
-            mb={2}
-            mt={2}
-            pl={2}
-            gap={8}
-            flexDirection="row"
-            alignItems="center"
+          <Box
+            minH="100vh"
+            w="full"
+            maxW={CARD_PAGE_CONTENT_MAX_WIDTH}
+            display="flex"
+            flex="1"
+            flexDirection="column"
+            alignItems="flex-start"
           >
-            <Flex gap={3} alignItems="center">
-              {toolbarPrefix}
-              <Select
-                placeholder="Strategy"
-                value={[selectedStrategy]}
-                defaultValue={[selectedStrategy]}
-                onChange={(value) =>
-                  setSelectedStrategy(value[0] || ALL_STRATEGIES)
-                }
-                items={strategyItems}
-                width="220px"
-              />
-              <Select
-                placeholder="TestSuite"
-                value={[selectedSuite]}
-                defaultValue={[selectedSuite]}
-                onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
-                items={suiteItems}
-                width="180px"
-              />
-              <Select
-                placeholder="ConfigId"
-                value={[selectedConfigId]}
-                defaultValue={[selectedConfigId]}
-                onChange={(value) =>
-                  setSelectedConfigId(value[0] || ALL_CONFIGS)
-                }
-                items={configItems}
-                width="180px"
-              />
+            <Flex
+              mb={2}
+              mt={2}
+              gap={8}
+              flexDirection="row"
+              alignItems="center"
+              w="full"
+            >
+              <Flex gap={3} alignItems="center">
+                {toolbarPrefix}
+                <Select
+                  placeholder="Strategy"
+                  value={[selectedStrategy]}
+                  defaultValue={[selectedStrategy]}
+                  onChange={(value) =>
+                    setSelectedStrategy(value[0] || ALL_STRATEGIES)
+                  }
+                  items={strategyItems}
+                  width="220px"
+                />
+                <Select
+                  placeholder="TestSuite"
+                  value={[selectedSuite]}
+                  defaultValue={[selectedSuite]}
+                  onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
+                  items={suiteItems}
+                  width="180px"
+                />
+                <Select
+                  placeholder="ConfigId"
+                  value={[selectedConfigId]}
+                  defaultValue={[selectedConfigId]}
+                  onChange={(value) =>
+                    setSelectedConfigId(value[0] || ALL_CONFIGS)
+                  }
+                  items={configItems}
+                  width="180px"
+                />
+              </Flex>
+              <CompareList />
             </Flex>
-            <CompareList />
-          </Flex>
-          <BulkDeleteToolbar
-            selectedCount={selectedFilteredCount}
-            checkboxState={selectionCheckboxState}
-            hasSelection={hasSelectedInFilter}
-            isDeleting={isDeletingSelected}
-            dialogOpen={isDeleteSelectedOpen}
-            deleteTitle="Delete selected tests"
-            deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
-            onDialogOpenChange={handleBulkDeleteDialogOpenChange}
-            onToggleAll={handleSelectAllFiltered}
-            onRequestDelete={handleOpenDeleteSelected}
-            onConfirmDelete={handleDeleteSelected}
-          />
-          <Box flex="1" h="full" w="full">
-            <TestList
-              tests={filteredTests}
-              loadding={loadding}
-              fulFilled={fulFilled}
-              noData={noData}
-              selectedTestNames={selectedTestNames}
-              onToggleSelection={handleToggleSelection}
+            <BulkDeleteToolbar
+              selectedCount={selectedFilteredCount}
+              checkboxState={selectionCheckboxState}
+              hasSelection={hasSelectedInFilter}
+              isDeleting={isDeletingSelected}
+              dialogOpen={isDeleteSelectedOpen}
+              deleteTitle="Delete selected tests"
+              deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
+              onDialogOpenChange={handleBulkDeleteDialogOpenChange}
+              onToggleAll={handleSelectAllFiltered}
+              onRequestDelete={handleOpenDeleteSelected}
+              onConfirmDelete={handleDeleteSelected}
             />
+            <Box flex="1" h="full" w="full">
+              <TestList
+                tests={filteredTests}
+                loadding={loadding}
+                fulFilled={fulFilled}
+                noData={noData}
+                selectedTestNames={selectedTestNames}
+                onToggleSelection={handleToggleSelection}
+              />
+            </Box>
           </Box>
         </Box>
       </Box>

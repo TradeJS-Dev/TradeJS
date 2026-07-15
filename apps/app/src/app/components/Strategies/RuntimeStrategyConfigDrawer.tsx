@@ -21,8 +21,13 @@ import {
   Text,
   Textarea,
 } from '@chakra-ui/react';
-import type { MarketUniverse, StrategyConfig } from '@tradejs/types';
+import type { MarketUniverse } from '@tradejs/types';
 import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
+import {
+  DEFAULT_RUNTIME_STRATEGY_MANAGED_PARAMETERS,
+  mergeRuntimeStrategyManagedParameters,
+  splitRuntimeStrategyConfig,
+} from '#app/lib/runtimeStrategyConfigForm';
 import { toaster } from '#ui';
 
 type AccountOption = {
@@ -40,18 +45,6 @@ type OptionsResponse = {
   intervals: string[];
   error?: string;
 };
-
-const RESERVED_FIELDS = new Set([
-  'ENABLE',
-  'INTERVAL',
-  'UNIVERSE',
-  'ACCOUNT_ID',
-]);
-
-const getParameters = (config: StrategyConfig | null) =>
-  Object.fromEntries(
-    Object.entries(config ?? {}).filter(([key]) => !RESERVED_FIELDS.has(key)),
-  );
 
 const SelectField = ({
   label,
@@ -103,6 +96,12 @@ export const RuntimeStrategyConfigDrawer = ({
   const [universe, setUniverse] = useState<MarketUniverse>('crypto');
   const [accountId, setAccountId] = useState('');
   const [enabled, setEnabled] = useState(true);
+  const [maxLossValue, setMaxLossValue] = useState('1');
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiMode, setAiMode] = useState<'gate' | 'llm'>('gate');
+  const [minAiQuality, setMinAiQuality] = useState('4');
+  const [mlEnabled, setMlEnabled] = useState(false);
+  const [mlThreshold, setMlThreshold] = useState('0.1');
   const [parameters, setParameters] = useState('{}');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,19 +131,34 @@ export const RuntimeStrategyConfigDrawer = ({
   useEffect(() => {
     if (!open) return;
     if (strategy) {
+      const { managed, parameters: strategyParameters } =
+        splitRuntimeStrategyConfig(strategy.config);
       setStrategyName(strategy.strategyName);
       setConfigId(strategy.configId);
       setInterval(String(strategy.interval ?? '15'));
       setUniverse(strategy.universe ?? 'crypto');
       setAccountId(String(strategy.config?.ACCOUNT_ID ?? ''));
       setEnabled(strategy.enabled);
-      setParameters(JSON.stringify(getParameters(strategy.config), null, 2));
+      setMaxLossValue(String(managed.maxLossValue));
+      setAiEnabled(managed.aiEnabled);
+      setAiMode(managed.aiMode);
+      setMinAiQuality(String(managed.minAiQuality));
+      setMlEnabled(managed.mlEnabled);
+      setMlThreshold(String(managed.mlThreshold));
+      setParameters(JSON.stringify(strategyParameters, null, 2));
     } else {
+      const managed = DEFAULT_RUNTIME_STRATEGY_MANAGED_PARAMETERS;
       setConfigId('config');
       setInterval('15');
       setUniverse('crypto');
       setAccountId('');
       setEnabled(true);
+      setMaxLossValue(String(managed.maxLossValue));
+      setAiEnabled(managed.aiEnabled);
+      setAiMode(managed.aiMode);
+      setMinAiQuality(String(managed.minAiQuality));
+      setMlEnabled(managed.mlEnabled);
+      setMlThreshold(String(managed.mlThreshold));
       setParameters('{}');
     }
     void loadOptions();
@@ -177,6 +191,37 @@ export const RuntimeStrategyConfigDrawer = ({
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new Error('Strategy parameters must be a JSON object');
       }
+      const parsedMaxLossValue = Number(maxLossValue);
+      if (!Number.isFinite(parsedMaxLossValue) || parsedMaxLossValue < 0) {
+        throw new Error('Max loss value must be a non-negative number');
+      }
+      const parsedMinAiQuality = Number(minAiQuality);
+      if (
+        !Number.isInteger(parsedMinAiQuality) ||
+        parsedMinAiQuality < 0 ||
+        parsedMinAiQuality > 5
+      ) {
+        throw new Error('Minimum AI quality must be an integer from 0 to 5');
+      }
+      const parsedMlThreshold = Number(mlThreshold);
+      if (
+        !Number.isFinite(parsedMlThreshold) ||
+        parsedMlThreshold < 0 ||
+        parsedMlThreshold > 1
+      ) {
+        throw new Error('ML threshold must be a number from 0 to 1');
+      }
+      const managedParameters = mergeRuntimeStrategyManagedParameters(
+        parsed as Record<string, unknown>,
+        {
+          maxLossValue: parsedMaxLossValue,
+          aiEnabled,
+          aiMode,
+          minAiQuality: parsedMinAiQuality,
+          mlEnabled,
+          mlThreshold: parsedMlThreshold,
+        },
+      );
       const response = await fetch('/api/user/runtime-strategy-configs', {
         method: editing ? 'PATCH' : 'POST',
         headers: { 'content-type': 'application/json' },
@@ -187,7 +232,7 @@ export const RuntimeStrategyConfigDrawer = ({
           universe,
           accountId: accountId || null,
           enabled,
-          parameters: parsed,
+          parameters: managedParameters,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -228,18 +273,25 @@ export const RuntimeStrategyConfigDrawer = ({
               </Drawer.CloseTrigger>
             </Drawer.Header>
             <Drawer.Body display="flex" flexDirection="column" gap={5}>
-              <SelectField
-                label="Strategy"
-                value={strategyName}
-                onChange={setStrategyName}
-                disabled={editing || loading}
-              >
-                {options.strategyNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </SelectField>
+              {editing ? (
+                <Field.Root>
+                  <Field.Label>Strategy</Field.Label>
+                  <Input value={strategyName} disabled />
+                </Field.Root>
+              ) : (
+                <SelectField
+                  label="Strategy"
+                  value={strategyName}
+                  onChange={setStrategyName}
+                  disabled={loading}
+                >
+                  {options.strategyNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
               <Field.Root>
                 <Field.Label>Configuration id</Field.Label>
                 <Input
@@ -247,9 +299,6 @@ export const RuntimeStrategyConfigDrawer = ({
                   disabled={editing}
                   onChange={(event) => setConfigId(event.target.value)}
                 />
-                <Field.HelperText>
-                  Redis key suffix, for example config or conservative.
-                </Field.HelperText>
               </Field.Root>
               <Flex gap={4} align="start">
                 <Box flex="1">
@@ -299,6 +348,84 @@ export const RuntimeStrategyConfigDrawer = ({
                 </Checkbox.Control>
                 <Checkbox.Label>Enabled</Checkbox.Label>
               </Checkbox.Root>
+              <Field.Root>
+                <Field.Label>Max loss value</Field.Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={maxLossValue}
+                  onChange={(event) => setMaxLossValue(event.target.value)}
+                />
+              </Field.Root>
+              <Text color="gray.300" fontWeight="semibold">
+                AI
+              </Text>
+              <Flex gap={4} align="start">
+                <Box flex="1">
+                  <SelectField
+                    label="AI status"
+                    value={aiEnabled ? 'enabled' : 'disabled'}
+                    onChange={(value) => setAiEnabled(value === 'enabled')}
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                  </SelectField>
+                </Box>
+                <Box flex="1">
+                  <SelectField
+                    label="AI mode"
+                    value={aiMode}
+                    onChange={(value) =>
+                      setAiMode(value === 'llm' ? 'llm' : 'gate')
+                    }
+                  >
+                    <option value="gate">Gate</option>
+                    <option value="llm">LLM</option>
+                  </SelectField>
+                </Box>
+                <Box flex="1">
+                  <Field.Root>
+                    <Field.Label>Minimum quality</Field.Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={5}
+                      step={1}
+                      value={minAiQuality}
+                      onChange={(event) => setMinAiQuality(event.target.value)}
+                    />
+                  </Field.Root>
+                </Box>
+              </Flex>
+              <Text color="gray.300" fontWeight="semibold">
+                ML
+              </Text>
+              <Flex gap={4} align="start">
+                <Box flex="1">
+                  <SelectField
+                    label="ML status"
+                    value={mlEnabled ? 'enabled' : 'disabled'}
+                    onChange={(value) => setMlEnabled(value === 'enabled')}
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                  </SelectField>
+                </Box>
+                <Box flex="1">
+                  <Field.Root>
+                    <Field.Label>ML threshold</Field.Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step="0.01"
+                      value={mlThreshold}
+                      onChange={(event) => setMlThreshold(event.target.value)}
+                    />
+                  </Field.Root>
+                </Box>
+              </Flex>
               <Field.Root flex="1">
                 <Field.Label>Strategy parameters (JSON)</Field.Label>
                 <Textarea
@@ -308,16 +435,7 @@ export const RuntimeStrategyConfigDrawer = ({
                   fontFamily="mono"
                   fontSize="sm"
                 />
-                <Field.HelperText>
-                  Runtime fields are controlled above and cannot be overridden
-                  here.
-                </Field.HelperText>
               </Field.Root>
-              <Text color="gray.500" fontSize="sm">
-                Safety rule: the same strategy cannot be enabled twice for the
-                same effective account, even with another timeframe or
-                parameters.
-              </Text>
             </Drawer.Body>
             <Drawer.Footer>
               <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -46,7 +46,7 @@ export const BulkDeleteToolbar = ({
   onRequestDelete,
   onConfirmDelete,
 }: BulkDeleteToolbarProps) => (
-  <Flex mb={4} pl={2} gap={4} alignItems="center" w="full" minH="32px">
+  <Flex mb={4} gap={4} alignItems="center" w="full" minH="32px">
     <Checkbox.Root
       size="sm"
       colorPalette="teal"

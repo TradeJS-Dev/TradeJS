@@ -44,7 +44,7 @@ export const TestList = ({
     ({ index, style }: ListChildComponentProps) => {
       const item = tests[index];
       return (
-        <Box style={style} px={2}>
+        <Box style={style}>
           <TestCard.Root key={item.value} testName={item.value}>
             <TestCard.Title
               leftSlot={

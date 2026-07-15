@@ -41,7 +41,7 @@ export const StrategySnapshotList = ({
       }
 
       return (
-        <Box style={style} px={2}>
+        <Box style={style}>
           <StrategySnapshotCard
             snapshot={strategy}
             mode={mode}
