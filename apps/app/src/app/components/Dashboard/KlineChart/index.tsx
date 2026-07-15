@@ -65,7 +65,7 @@ export const KlineChart = ({
   }, [id]);
 
   useEffect(() => {
-    if (!chartRef.current || _.isEmpty(data)) {
+    if (!chartRef.current || !fulfilled || _.isEmpty(data)) {
       return;
     }
 
