@@ -254,6 +254,10 @@ yarn sandbox:infra-down
 `yarn sandbox:install` is deterministic and installs `examples/sandbox` from its
 committed lockfile.
 
+The release workflow synchronizes the sandbox's direct `@tradejs/*` versions,
+publishes the packages, refreshes the standalone lockfile, and runs this e2e flow
+before publishing Docker images.
+
 If you intentionally want to refresh the published `@tradejs/*` packages used by
 the sandbox, run:
 

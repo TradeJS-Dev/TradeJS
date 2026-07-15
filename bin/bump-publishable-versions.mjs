@@ -22,6 +22,8 @@ const PUBLISHABLE_MANIFESTS = [
   'apps/app/package.json',
 ];
 
+const E2E_SANDBOX_MANIFESTS = ['examples/sandbox/package.json'];
+
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$/;
 
 const printUsage = () => {
@@ -239,6 +241,42 @@ for (const entry of manifestEntries) {
     `${JSON.stringify(manifest, null, 2)}\n`,
     'utf8',
   );
+}
+
+const publishablePackageNames = new Set(
+  manifestEntries.map(({ manifest }) => String(manifest.name)),
+);
+
+for (const relativePath of E2E_SANDBOX_MANIFESTS) {
+  const absolutePath = path.join(ROOT_DIR, relativePath);
+  const manifest = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  let changed = false;
+
+  for (const dependencyGroup of ['dependencies', 'devDependencies']) {
+    const dependencies = manifest[dependencyGroup];
+    if (!dependencies) continue;
+
+    for (const packageName of Object.keys(dependencies)) {
+      if (!publishablePackageNames.has(packageName)) continue;
+
+      const currentVersion = String(dependencies[packageName]);
+      if (currentVersion === nextVersion) continue;
+
+      console.log(
+        `[bump] ${relativePath} ${packageName}: ${currentVersion} -> ${nextVersion}`,
+      );
+      dependencies[packageName] = nextVersion;
+      changed = true;
+    }
+  }
+
+  if (changed && !dryRun) {
+    fs.writeFileSync(
+      absolutePath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8',
+    );
+  }
 }
 
 if (dryRun) {

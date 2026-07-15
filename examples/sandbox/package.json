@@ -9,9 +9,9 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@tradejs/cli": "^1.0.1",
-    "@tradejs/core": "^1.0.0",
-    "@tradejs/types": "^1.0.0",
+    "@tradejs/cli": "1.0.10",
+    "@tradejs/core": "1.0.10",
+    "@tradejs/types": "1.0.10",
     "ioredis": "5.8.0"
   },
   "devDependencies": {
@@ -24,7 +24,7 @@
   },
   "scripts": {
     "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",
-    "lint": "eslint src tradejs.config.ts --ext .ts",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src tradejs.config.ts --ext .ts",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "run:ts": "ts-node -P ./tsconfig.json",
     "run:cli": "PROJECT_CWD=\"$PWD\" tradejs",

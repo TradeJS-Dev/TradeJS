@@ -40,8 +40,10 @@ yarn sandbox:infra-down
 ```
 
 `yarn sandbox:install` is deterministic and installs from the committed
-`examples/sandbox` lockfile. Use `yarn sandbox:refresh` only when you explicitly
-want to update the published `@tradejs/*` versions used by the sandbox.
+`examples/sandbox` lockfile. The release workflow pins the direct `@tradejs/*`
+dependencies to the new release, refreshes this lockfile after npm publication,
+and runs e2e before publishing images. Use `yarn sandbox:refresh` only when you
+explicitly want to update the packages outside that release flow.
 
 ## What `e2e` does
 
@@ -54,7 +56,8 @@ want to update the published `@tradejs/*` versions used by the sandbox.
 
 ## CI Intent
 
-This sandbox is designed to be executed in GitHub Actions before deploy:
+This sandbox is designed to be executed in the release GitHub Actions workflow
+after npm publication and before image publication:
 
 - bring up infra (Redis + Timescale)
 - seed user/config

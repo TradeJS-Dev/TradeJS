@@ -204,6 +204,10 @@ yarn sandbox:infra-down
 `yarn sandbox:install` installs `examples/sandbox` deterministically from its
 committed lockfile.
 
+Package releases update the sandbox's direct `@tradejs/*` versions and lockfile,
+then run this e2e flow against those freshly published packages before images are
+published.
+
 Use `yarn sandbox:refresh` only when you intentionally want to update the
 published `@tradejs/*` versions used by the sandbox.
 
@@ -222,6 +226,21 @@ yarn infra-down
 ```
 
 ## Troubleshooting
+
+### Release smoke check
+
+The release workflow runs the root quickstart before publishing npm packages:
+
+```bash
+yarn infra-up
+yarn quickstart:smoke
+yarn infra-down
+```
+
+The smoke check waits for Redis and Timescale through `yarn doctor`, creates a
+throwaway local user, starts the already-built app, and probes the sign-in page.
+The standalone sandbox e2e runs separately after npm publication, so it verifies
+the packages downloaded from the registry rather than workspace packages.
 
 ### `ECONNREFUSED` for `5432` or `6379`
 

@@ -1,11 +1,19 @@
-name: Publish Images
+name: Publish Release
+
 on:
   push:
     branches:
       - stable
-    tags:
-      - v**
   workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+concurrency:
+  group: publish-release-stable
+  cancel-in-progress: false
 
 jobs:
   changes:
@@ -17,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect changed image inputs
         id: filter
@@ -82,20 +90,27 @@ jobs:
           echo "agent_changed=${AGENT_FILTER}" >> "$GITHUB_OUTPUT"
           echo "ml_infer_changed=${ML_INFER_FILTER}" >> "$GITHUB_OUTPUT"
 
-  repo-checks:
+  release:
     needs: changes
     if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    outputs:
+      release_sha: ${{ steps.release_commit.outputs.sha }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout stable with tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'push' && github.sha || 'stable' }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version-file: ".nvmrc"
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Enable Corepack
         run: |
@@ -126,6 +141,17 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Resolve synchronized release version
+        id: release
+        run: |
+          yarn bump:packages auto
+          version="$(node -p "require('./packages/types/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved npm release v$version"
+
+      - name: Verify root lockfile after version update
         run: yarn install --immutable
 
       - name: Build
@@ -140,71 +166,118 @@ jobs:
       - name: Unit tests
         run: yarn unit
 
-  sandbox-e2e:
-    needs: repo-checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+      - name: Prepare quickstart env
+        run: cp .env.example .env
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Quickstart infra up
+        run: yarn infra-up
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
+      - name: Quickstart smoke
+        env:
+          REDIS_HOST: 127.0.0.1
+          PG_HOST: 127.0.0.1
+          ML_GRPC_ADDRESS: 127.0.0.1:50051
+          NEXTAUTH_SECRET: quickstart-ci-secret
+          NEXTAUTH_URL: http://127.0.0.1:3000
+        run: yarn quickstart:smoke
 
-      - name: Enable Corepack
+      - name: Quickstart infra down
+        if: always()
+        run: yarn infra-down
+
+      - name: Preflight package archives
+        run: yarn npm:publish:all:dry
+
+      - name: Verify npm authentication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: yarn npm whoami
+
+      - name: Persist synchronized package versions
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          corepack enable
-          corepack prepare yarn@4.13.0 --activate
-          yarn --version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/app/package.json packages/*/package.json examples/sandbox/package.json
 
-      - name: Restore Yarn cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .yarn/cache
-            .yarn/install-state.gz
-            examples/sandbox/.yarn/cache
-            examples/sandbox/.yarn/install-state.gz
-          key: ${{ runner.os }}-yarn4-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json', 'examples/sandbox/yarn.lock', 'examples/sandbox/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn4-
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): v${RELEASE_VERSION} [skip ci]"
+          fi
 
-      - name: Restore Turbo cache
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-${{ github.ref_name }}-
-            ${{ runner.os }}-turbo-stable-
-            ${{ runner.os }}-turbo-
+          git push origin HEAD:stable
 
-      - name: Install dependencies
-        run: yarn install --immutable
+      - name: Publish packages in dependency order
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          YARN_NPM_PUBLISH_PROVENANCE: 'true'
+        run: yarn npm:publish:all
+
+      - name: Install freshly published sandbox dependencies
+        run: |
+          for attempt in $(seq 1 12); do
+            if yarn sandbox:install:update; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "Fresh npm packages were not available after ${attempt} attempts" >&2
+              exit 1
+            fi
+
+            echo "Fresh npm packages are not available yet; retrying in 10 seconds"
+            sleep 10
+          done
 
       - name: Prepare sandbox env
         run: cp examples/sandbox/.env.example examples/sandbox/.env
 
-      - name: Install sandbox dependencies
-        run: yarn sandbox:install
-
       - name: Sandbox infra up
-        run: cd examples/sandbox && yarn infra-up
+        run: yarn sandbox:infra-up
 
       - name: Sandbox deterministic e2e
-        run: cd examples/sandbox && yarn e2e
+        run: yarn sandbox:e2e
 
       - name: Sandbox infra down
         if: always()
-        run: cd examples/sandbox && yarn infra-down
+        run: yarn sandbox:infra-down
+
+      - name: Persist sandbox lockfile and resolve release commit
+        id: release_commit
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git add examples/sandbox/yarn.lock
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): refresh sandbox lockfile for v${RELEASE_VERSION} [skip ci]"
+            git push origin HEAD:stable
+          fi
+
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Tag successful release
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+
+          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
+            if [ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]; then
+              echo "Tag ${tag} already points to another commit" >&2
+              exit 1
+            fi
+          else
+            git tag -a "$tag" -m "TradeJS ${tag}"
+            git push origin "refs/tags/${tag}"
+          fi
 
   publish-images:
     needs:
       - changes
-      - sandbox-e2e
+      - release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -213,11 +286,13 @@ jobs:
       APP_CHANGED: ${{ needs.changes.outputs.app_changed }}
       AGENT_CHANGED: ${{ needs.changes.outputs.agent_changed }}
       ML_INFER_CHANGED: ${{ needs.changes.outputs.ml_infer_changed }}
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ needs.release.outputs.release_sha }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout release commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
