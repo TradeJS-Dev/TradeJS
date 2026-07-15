@@ -41,7 +41,7 @@ export default defineConfig(basePreset);
 - strategy runtime execution
 - connector/plugin registries
 - backtest orchestration helpers
-- Pine loading/runtime helpers
+- Pine-backed strategy loading/runtime helpers
 - runtime-side operational helpers used by CLI/app
 
 ## Public Surface

@@ -24,7 +24,7 @@ It supports two first-class authoring paths:
 - [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and AI/ML workflows
 - [`@tradejs/base`](https://www.npmjs.com/package/@tradejs/base) — default preset wiring built-in strategies, indicators, and connectors
 - [`@tradejs/core`](https://www.npmjs.com/package/@tradejs/core) — browser-safe public API for config, strategy authoring, indicators, and shared helpers
-- [`@tradejs/node`](https://www.npmjs.com/package/@tradejs/node) — Node runtime for strategies, backtests, Pine loading, and plugin registries
+- [`@tradejs/node`](https://www.npmjs.com/package/@tradejs/node) — Node runtime for strategies, backtests, Pine strategy loading, and plugin registries
 - [`@tradejs/types`](https://www.npmjs.com/package/@tradejs/types) — shared TypeScript contracts for the TradeJS ecosystem
 - [`@tradejs/infra`](https://www.npmjs.com/package/@tradejs/infra) — server-only adapters for Redis, Timescale, ML, logging, and IO
 - [`@tradejs/strategies`](https://www.npmjs.com/package/@tradejs/strategies) — built-in strategy plugin catalog
@@ -91,6 +91,8 @@ Pine strategies are stored as normal strategy modules and keep Pine source in a 
 - `packages/strategies/src/<Strategy>/<strategy>.pine`
 
 `createStrategyRuntime` provides `loadPineScriptFile(...)` to strategy core via `CreateStrategyCore` params.
+
+Pine support currently applies only to strategy modules. Custom indicator plugins must be authored in TypeScript; standalone Pine indicator plugins are not supported.
 
 ### Indicator Architecture
 

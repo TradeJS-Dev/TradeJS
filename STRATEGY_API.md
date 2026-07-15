@@ -179,6 +179,8 @@ For Pine-backed strategies:
 - runtime injects `loadPineScriptFile(...)` into `CreateStrategyCore` params
 - strategy `core.ts` executes Pine and maps plots into signal fields/figures
 
+Pine support is limited to strategy modules. Custom indicator plugins use TypeScript; standalone Pine indicator plugins are not supported.
+
 ## `strategyApi` Reference
 
 ### What `strategyApi` Is

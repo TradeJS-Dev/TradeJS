@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/node",
   "version": "1.0.10",
-  "description": "Node-only runtime for the TradeJS open-source framework: strategies, backtests, Pine loading, and plugin registries.",
+  "description": "Node-only runtime for the TradeJS open-source framework: strategies, backtests, Pine strategy loading, and plugin registries.",
   "keywords": [
     "tradejs",
     "trading",

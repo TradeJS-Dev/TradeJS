@@ -54,4 +54,4 @@ export default defineConfig(basePreset, {
 - import shared contracts from `@tradejs/types`
 - do not use non-public deep imports like `@tradejs/core/src/*`
 
-For runtime execution, Pine loading, plugin registries, and backtest orchestration, use `@tradejs/node`.
+For runtime execution, Pine strategy loading, plugin registries, and backtest orchestration, use `@tradejs/node`.
