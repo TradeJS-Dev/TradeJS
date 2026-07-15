@@ -14,7 +14,7 @@
   "homepage": "https://tradejs.dev",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "url": "https://github.com/TradeJS-Dev/TradeJS",
     "directory": "packages/cli"
   },
   "bugs": {
