@@ -1,8 +1,167 @@
 # DoubleTap AI Replay Notes
 
-Last updated: 2026-05-26.
+Last updated: 2026-07-15.
 
 This file keeps internal notes for `ai-train` replay windows and DoubleTap AI gate analysis.
+
+## Derivatives Refactor Gate Rebuild (`2026-07-15`)
+
+Latest logical export:
+
+```bash
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part1.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part2.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part3.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part4.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part5.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part6.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784107002034-part7.jsonl
+```
+
+Replay mode:
+
+```bash
+yarn ai-train --file data/ai/export/ai-dataset-doubletap-merged-1784107002034-part1.jsonl --localOnly --json -n 0 --minQuality 4 --dumpEvaluations /tmp/doubletap-evals-1784107002034-gate-v2-fixed.jsonl --dumpFeatures baseContext
+```
+
+Interpretation:
+
+- deterministic `AI_MODE=gate` research only; this does not measure provider/LLM behavior
+- `MIN_AI_QUALITY=4`
+- export period: `2025-07-15T07:30:00.000Z` -> `2026-07-14T15:30:00.000Z`
+- rows: `5780`; shards: `7`; duplicates: `0`
+- data lag at replay time: about `0.76d`
+- baseContext, CMC global, CMC indexes, and derivatives referenceContexts are present in all rows
+- top-level derivatives interval context is present in `3926 / 5780` rows
+- SOL 15m reference funding is present in `1642 / 5780` rows; ETH reference crowding persistence is present in `2402 / 5780`
+- `targetContext` and `targetDerived` are absent in the new export, expected with `DERIVATIVES_CONTEXT_TARGET_ENABLED=false`
+- `marketContext` root/payload is absent, same as the previous export lineage
+- largest timestamp gap is `2026-06-26T20:30:00.000Z` -> `2026-07-03T03:45:00.000Z`; the same gap exists in the previous merge, so it is not a new fast-export regression
+
+Existing gate audit:
+
+- keep q5 high-precision CMC pocket: compact legacy high-precision shape, active session window, execution score `>=35`, lowTouchCount20 `>=1`, volume structure aligned, no benchmark conflict, CMC alt volume change `<=0.5`
+- keep q4 structural CMC pocket: compact legacy structural shape, active session window, execution score `>=35`, lowTouchCount20 `>=1`, `-0.3 < btcDominanceChange24hPct <= -0.05`, and `altDispersion24h < 0.06`
+- keep strict ROC `>= -5.25` for structural q4/q5 approvals only
+- add q4 derivatives reference pocket: `btcVsAltReturn24h <= -0.009`, ETH reference `crowdingPersistenceBars >= 140`, SOL reference 15m `fundingZScore <= 0.2`
+- add CMC/BTC loss blocker for that derivatives pocket only: reject when `btcVsAltReturn24h <= -0.014` and `cmc20ToCmc100RatioChange24hPct <= -0.0007`
+- do not use derivatives row counts, points, or availability as approval evidence; missing SOL/ETH derivative fields block the derivatives pocket
+
+Feature provenance:
+
+- `btcVsAltReturn24h`: `baseContext.relative.btcAltRegime.btcVsAltReturn24h`, with gateFeatures fallback; causal market-state field from aligned benchmark/alt basket context
+- `ethCrowdingPersistenceBars`: `baseContext.derivatives.referenceContexts.ETHUSDT.summary.crowdingPersistenceBars`; causal reference derivatives market-state field
+- `solFundingZScore15m`: `baseContext.derivatives.referenceContexts.SOLUSDT.intervals.15m.fundingZScore`; causal reference derivatives market-state field, but env-sensitive to `DERIVATIVES_CONTEXT_INTERVALS=15m,1h` and provider coverage
+- `cmc20ToCmc100RatioChange24hPct`: `baseContext.relative.cmcIndexes.cmc20ToCmc100RatioChange24hPct`, with gateFeatures fallback; causal CMC daily index context
+- strict null handling was fixed so `null` no longer becomes `0` through numeric coercion
+
+Implemented thresholds:
+
+- raw pocket-search threshold `btcVsAltReturn24h <= -0.00848698`; implemented as stricter rounded `<= -0.009`
+- raw ETH crowding threshold `>= 138`; implemented as stricter rounded `>= 140`
+- raw SOL funding threshold `<= 0.2226`; implemented as stricter rounded `<= 0.2`
+- raw CMC loss blocker boundary near `<= -7.058e-4`; implemented as `<= -0.0007`
+
+Post-change q4+ metrics on merge `1784107002034`:
+
+- approved: `147`
+- WR: `62.6%`
+- PNL: `+816.66`
+- PF: `2.46`
+- max DD: `83.20`
+- max DD / gross profit: `6.0%`
+- max DD / total profit: `10.2%`
+- max loss streak: `5`
+- approved trades/day: `0.40`
+- approved trades/week: `2.82`
+- approved PNL/day: `+2.24`
+- approved PNL/month: `+68.23`
+- losing approved months: `0`; no approved trades in `2025-09` and `2026-04`
+
+Terminal windows:
+
+| Window | Approved | WR | PF | PNL | Max DD | Max LS | Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 90d | 107 | 57.0% | 1.96 | +442.90 | 83.20 | 5 | 1.19 |
+| 30d | 55 | 60.0% | 2.22 | +264.22 | 30.81 | 3 | 1.83 |
+| 7d | 12 | 58.3% | 1.98 | +51.87 | 30.81 | 3 | 1.71 |
+
+q5+ remains narrow:
+
+- approved: `9`
+- WR: `77.8%`
+- PNL: `+81.32`
+- PF: `5.08`
+- max DD: `10.09`
+- trades/day: `0.02`
+
+Ablation on merge `1784107002034`:
+
+| Gate | Approved | WR | PF | PNL | Max DD | Max LS | Losing Months |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| old q4/q5 only | 31 | 74.2% | 4.68 | +272.62 | 20.04 | 3 | 1 |
+| q4 derivatives only | 116 | 59.5% | 2.12 | +544.04 | 99.80 | 5 | 0 |
+| combined final | 147 | 62.6% | 2.46 | +816.66 | 83.20 | 5 | 0 |
+
+Direction split:
+
+- LONG: `58` approved, WR `55.2%`, PF `1.85`, PNL `+229.23`, maxDD `108.91`, maxLS `8`
+- SHORT: `89` approved, WR `67.4%`, PF `3.04`, PNL `+587.43`, maxDD `43.02`, maxLS `4`
+- SHORT is much cleaner; LONG keeps the combined gate profitable but is the next area to tune.
+
+Walk-forward split:
+
+- train first 75%: `40` approvals, WR `77.5%`, PF `4.74`, PNL `+373.76`, maxDD `13.14`
+- validation last 25%: `107` approvals, WR `57.0%`, PF `1.96`, PNL `+442.90`, maxDD `83.20`
+- q4 derivatives validation slice: `101` approvals, WR `57.4%`, PF `1.94`, PNL `+414.94`
+
+Comparison to previous merge `1783545654299` with the same fixed gate:
+
+- previous full: `132` approvals, WR `58.3%`, PF `2.07`, PNL `+611.60`, maxDD `107.71`, maxLS `9`
+- previous 30d: `37` approvals, WR `45.9%`, PF `1.30`, PNL `+61.26`, maxDD `93.96`, maxLS `9`
+- previous 7d: `23` approvals, WR `43.5%`, PF `1.13`, PNL `+18.46`, maxDD `93.96`, maxLS `9`
+- the new refactored export improves full PNL/PF and terminal 30d/7d stability under the same gate
+
+Sensitivity checks on merge `1784107002034`:
+
+| Variant | Approved | WR | PF | PNL | Max DD | Max LS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| implemented | 147 | 62.6% | 2.46 | +816.66 | 83.20 | 5 |
+| BTC relaxed `<= -0.0085` | 150 | 62.7% | 2.47 | +837.29 | 83.20 | 5 |
+| BTC strict `<= -0.010` | 132 | 61.4% | 2.33 | +685.99 | 87.76 | 4 |
+| ETH `>= 120` | 147 | 62.6% | 2.46 | +816.66 | 83.20 | 5 |
+| ETH `>= 160` | 146 | 62.3% | 2.43 | +800.34 | 83.20 | 5 |
+| SOL `<= 0` | 137 | 62.8% | 2.44 | +755.57 | 64.18 | 5 |
+| SOL `<= 0.3` | 156 | 60.3% | 2.21 | +770.77 | 94.13 | 5 |
+| no CMC bad-block | 174 | 59.8% | 2.17 | +835.25 | 73.89 | 4 |
+
+Negative control:
+
+- shuffled profit labels 300 times for the final selected rows
+- actual selected PNL: `+816.66`
+- shuffled mean PNL: `-94.53`
+- shuffled p95: `+165.05`
+- shuffled max: `+352.37`
+- shuffles at or above actual: `0 / 300`
+
+Code and tests:
+
+- adapter: `packages/strategies/src/DoubleTap/adapters/ai.ts`
+- tests: `packages/strategies/src/DoubleTap/__tests__/ai.test.ts`
+- added q4 derivatives pocket tests for approval, SOL funding above gate, missing SOL funding, and CMC/BTC loss blocker
+- verification used:
+  - `yarn jest packages/strategies/src/DoubleTap --runInBand`
+  - `yarn prettify`
+  - `yarn workspace @tradejs/strategies build`
+  - `yarn workspace @tradejs/node build`
+  - `yarn workspace @tradejs/cli build`
+
+Remaining concerns / next tuning:
+
+- full-history cadence is only `0.40` trades/day, but terminal 30d and 7d cadence is `~1.7-1.8` trades/day; production cadence should be monitored on fresh rolling exports
+- LONG side has weak Q2 behavior and larger maxDD than SHORT; next research should tune LONG-specific derivatives/relative filters instead of tightening the whole gate
+- `marketContext` is absent from export; do not base live expectations on marketContext fields until export wiring is restored or intentionally removed from the analysis surface
+- the repeated `2026-06-26` -> `2026-07-03` gap should be investigated in the data/export pipeline separately if that period matters for live cadence estimates
 
 ## Fresh 365d Split Export Local Gate Review (`2026-05-26`)
 
@@ -257,4 +416,3 @@ Full `yarn checks` was not run for this commit because the working tree already 
 - the `neutral_venue_spread` and `weak_signal_body` soft downgrade improves profit, PF, average trade, and drawdown without relying on new q3 promotions
 - the q3 short promotion pocket is promising but too drawdown-heavy; do not implement it without additional stabilizers
 - April and September remain the months to watch for regime weakness even after the improvement
-

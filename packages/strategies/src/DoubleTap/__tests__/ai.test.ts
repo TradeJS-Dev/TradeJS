@@ -204,6 +204,305 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBe('LONG');
   });
 
+  it('approves q4 derivatives reference pockets without requiring the strict ROC gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'SHORT',
+            height: 10,
+            breakoutDistancePct: 0.5,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                sessionWindowPhase: 'closing',
+              },
+              trend: {
+                bias: 'neutral',
+              },
+              momentum: {
+                roc1d: -8,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+              levels: {
+                lowTouchCount20: 0,
+              },
+            },
+            relative: {
+              cmcGlobal: {
+                btcDominanceChange24hPct: 0.1,
+              },
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: 0,
+              },
+              btcAltRegime: {
+                btcVsAltReturn24h: -0.009,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: 0.2,
+                    },
+                  },
+                },
+              },
+            },
+            gateFeatures: {
+              scores: {
+                execution: 10,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(4);
+    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.strictMomentumBlockReasons).toEqual([]);
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'q4_derivatives',
+      defaultApprovalAllowed: true,
+      q4DerivativesPocket: true,
+      q4DerivativesCmcRiskOk: true,
+      strictMomentumApproved: false,
+      strictMomentumRoc1dOk: false,
+    });
+  });
+
+  it('blocks q4 derivatives reference pockets when SOL funding is above the gate', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              cmcGlobal: {
+                btcDominanceChange24hPct: 0.1,
+              },
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: 0,
+              },
+              btcAltRegime: {
+                altDispersion24h: 0.12,
+                btcVsAltReturn24h: -0.009,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: 0.21,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('blocks q4 derivatives reference pockets when SOL funding is missing', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'SHORT',
+            height: 10,
+            breakoutDistancePct: 0.5,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                sessionWindowPhase: 'closing',
+              },
+              trend: {
+                bias: 'neutral',
+              },
+              momentum: {
+                roc1d: -8,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+              levels: {
+                lowTouchCount20: 0,
+              },
+            },
+            relative: {
+              cmcGlobal: {
+                btcDominanceChange24hPct: 0.1,
+              },
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: 0,
+              },
+              btcAltRegime: {
+                altDispersion24h: 0.12,
+                btcVsAltReturn24h: -0.009,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: null,
+                    },
+                  },
+                },
+              },
+            },
+            gateFeatures: {
+              scores: {
+                execution: 10,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.solFundingZScore15m).toBeNull();
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'q4_blocked',
+      defaultApprovalAllowed: false,
+      q4DerivativesPocket: false,
+    });
+  });
+
+  it('blocks q4 derivatives reference pockets in the CMC/BTC loss pocket', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'SHORT',
+            height: 10,
+            breakoutDistancePct: 0.5,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                sessionWindowPhase: 'closing',
+              },
+              trend: {
+                bias: 'neutral',
+              },
+              momentum: {
+                roc1d: -8,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+            relative: {
+              cmcGlobal: {
+                btcDominanceChange24hPct: 0.1,
+              },
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: -0.0007,
+              },
+              btcAltRegime: {
+                altDispersion24h: 0.12,
+                btcVsAltReturn24h: -0.014,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: 0.2,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'q4_derivatives_blocked',
+      defaultApprovalAllowed: false,
+      q4DerivativesPocket: true,
+      q4DerivativesCmcRiskOk: false,
+    });
+  });
+
   it('blocks q4 pockets when alt dispersion reaches the q4 gate', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
