@@ -15,6 +15,7 @@ It supports two first-class authoring paths:
 - Documentation: [docs.tradejs.dev](https://docs.tradejs.dev)
 - Site repo: [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
 - Docs repo: [TradeJS-Dev/TradeJS-Docs](https://github.com/TradeJS-Dev/TradeJS-Docs)
+- Discussions: [GitHub Discussions](https://github.com/TradeJS-Dev/TradeJS/discussions)
 - npm organization: [npmjs.com/org/tradejs](https://www.npmjs.com/org/tradejs)
 
 ### Published npm Packages
@@ -250,6 +251,17 @@ Public marketing site now lives in:
 - [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
 
 Use this monorepo README only for internal repository workflows.
+
+## Community
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing or implementing a
+  change.
+- Use [GitHub Discussions](https://github.com/TradeJS-Dev/TradeJS/discussions)
+  for questions, ideas, and project showcases.
+- Use [GitHub Issues](https://github.com/TradeJS-Dev/TradeJS/issues) for
+  reproducible bugs and actionable work.
+- Report vulnerabilities privately by following [SECURITY.md](SECURITY.md).
+- See [CHANGELOG.md](CHANGELOG.md) for notable user-facing changes.
 
 ## AI Discovery Surface
 
