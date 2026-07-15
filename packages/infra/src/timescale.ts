@@ -1746,6 +1746,7 @@ export async function getMarketContextBackfillCoverage(params: {
     fromMs: number;
     toMs: number;
     rowsCount: number;
+    checkedAtMs?: number;
   }>
 > {
   const source = String(params.source || '')
@@ -1777,7 +1778,8 @@ export async function getMarketContextBackfillCoverage(params: {
         interval,
         extract(epoch from from_ts)*1000 AS from_ms,
         extract(epoch from to_ts)*1000 AS to_ms,
-        rows_count
+        rows_count,
+        extract(epoch from checked_at)*1000 AS checked_at_ms
       FROM market_context_backfill_coverage
       WHERE source = $1
         AND scope = ANY($2)
@@ -1796,15 +1798,20 @@ export async function getMarketContextBackfillCoverage(params: {
       from_ms: number | string;
       to_ms: number | string;
       rows_count: number | string;
+      checked_at_ms?: number | string;
     }>
-  ).map((row) => ({
-    source: String(row.source).toLowerCase(),
-    scope: String(row.scope).toLowerCase(),
-    interval: String(row.interval).toLowerCase(),
-    fromMs: Number(row.from_ms),
-    toMs: Number(row.to_ms),
-    rowsCount: Number(row.rows_count ?? 0),
-  }));
+  ).map((row) => {
+    const checkedAtMs = Number(row.checked_at_ms);
+    return {
+      source: String(row.source).toLowerCase(),
+      scope: String(row.scope).toLowerCase(),
+      interval: String(row.interval).toLowerCase(),
+      fromMs: Number(row.from_ms),
+      toMs: Number(row.to_ms),
+      rowsCount: Number(row.rows_count ?? 0),
+      ...(Number.isFinite(checkedAtMs) ? { checkedAtMs } : {}),
+    };
+  });
 }
 
 export async function upsertMarketContextBackfillCoverage(

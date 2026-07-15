@@ -33,6 +33,7 @@ type BackfillParams = {
   startMs: number;
   endMs: number;
   preloadStartMs?: number;
+  refreshStaleFearGreed?: boolean;
 };
 
 type BackfillResult = {
@@ -47,6 +48,8 @@ type BackfillResult = {
 };
 
 const DAY_MS = 86_400_000;
+const DEFAULT_CONTEXT_MAX_AGE_MS = 48 * 60 * 60_000;
+const DEFAULT_FEAR_GREED_STALE_RETRY_MS = 60 * 60_000;
 const SOURCE_GLOBAL_DAILY = 'coinmarketcap_global' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
@@ -114,6 +117,18 @@ const isVerboseRequestLoggingEnabled = () =>
 
 const getFearGreedPageSize = () =>
   asInt(process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_PAGE_SIZE, 500);
+
+const getContextMaxAgeMs = () =>
+  asInt(
+    process.env.COINMARKETCAP_CONTEXT_MAX_AGE_MS,
+    DEFAULT_CONTEXT_MAX_AGE_MS,
+  );
+
+const getFearGreedStaleRetryMs = () =>
+  asInt(
+    process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_STALE_RETRY_MS,
+    DEFAULT_FEAR_GREED_STALE_RETRY_MS,
+  );
 
 const getExchangeSlugs = () => {
   const raw = process.env.COINMARKETCAP_CONTEXT_EXCHANGE_SLUGS;
@@ -326,6 +341,40 @@ const hasBackfillCoverage = (
     toMs: number;
   },
 ) => coverageKeys.has(coverageKey(params));
+
+const hasRecentBackfillCoverage = (
+  rows: Awaited<ReturnType<typeof getMarketContextBackfillCoverage>>,
+  params: {
+    source: string;
+    scope: string;
+    interval: string;
+    fromMs: number;
+    toMs: number;
+    atMs: number;
+    maxAgeMs: number;
+  },
+) => {
+  const key = coverageKey(params);
+  return rows.some((row) => {
+    if (!isMarketContextBackfillCoverageDataBearing(row)) return false;
+    if (
+      coverageKey({
+        source: row.source,
+        scope: row.scope,
+        interval: row.interval,
+        fromMs: row.fromMs,
+        toMs: row.toMs,
+      }) !== key
+    ) {
+      return false;
+    }
+    const checkedAtMs = Number(row.checkedAtMs);
+    return (
+      Number.isFinite(checkedAtMs) &&
+      Math.max(0, params.atMs - checkedAtMs) <= params.maxAgeMs
+    );
+  });
+};
 
 type DailyCoverage = { firstMs: number; lastMs: number; rows: number };
 type SourceBackfillStatus =
@@ -1080,13 +1129,32 @@ export const backfillCoinMarketCapContext = async (
       toMs,
     },
   );
-  const fearGreedBackfillCovered = hasBackfillCoverage(fearGreedBackfillKeys, {
+  const fearGreedBackfillParams = {
     source: SOURCE_FEAR_GREED,
     scope: COVERAGE_SCOPE_ALL,
     interval: '1d',
     fromMs,
     toMs,
-  });
+  };
+  const fearGreedBackfillWasCovered = hasBackfillCoverage(
+    fearGreedBackfillKeys,
+    fearGreedBackfillParams,
+  );
+  const fearGreedLatestAgeMs =
+    fearGreedCoverage == null
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, params.endMs - fearGreedCoverage.lastMs);
+  const refreshStaleFearGreed =
+    params.refreshStaleFearGreed === true &&
+    fearGreedLatestAgeMs > getContextMaxAgeMs();
+  const fearGreedBackfillCovered =
+    fearGreedBackfillWasCovered &&
+    (!refreshStaleFearGreed ||
+      hasRecentBackfillCoverage(fearGreedBackfillCoverage, {
+        ...fearGreedBackfillParams,
+        atMs: params.endMs,
+        maxAgeMs: getFearGreedStaleRetryMs(),
+      }));
   const indexesBackfillCovered = CMC_INDEXES.every((index) =>
     hasBackfillCoverage(indexBackfillKeys, {
       source: SOURCE_INDEX,
@@ -1436,5 +1504,6 @@ export const backfillCoinMarketCapContextForBacktest =
   backfillCoinMarketCapContext;
 export const backfillCoinMarketCapContextForReplay =
   backfillCoinMarketCapContext;
-export const backfillCoinMarketCapContextForSignals =
-  backfillCoinMarketCapContext;
+export const backfillCoinMarketCapContextForSignals = (
+  params: BackfillParams,
+) => backfillCoinMarketCapContext({ ...params, refreshStaleFearGreed: true });

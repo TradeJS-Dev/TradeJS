@@ -61,6 +61,7 @@ import {
 
 describe('coinMarketCapContextBackfill', () => {
   const originalDateNow = Date.now;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -68,6 +69,8 @@ describe('coinMarketCapContextBackfill', () => {
     delete process.env.COINMARKETCAP_CONTEXT_BACKFILL_ENABLED;
     delete process.env.COINMARKETCAP_CONTEXT_EXCHANGE_LIQUIDITY_ENABLED;
     delete process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_ENABLED;
+    delete process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_STALE_RETRY_MS;
+    delete process.env.COINMARKETCAP_CONTEXT_MAX_AGE_MS;
     mockGetMarketGlobalContextCoverage.mockResolvedValue(null);
     mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(new Map());
     mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(null);
@@ -88,10 +91,12 @@ describe('coinMarketCapContextBackfill', () => {
 
   afterEach(() => {
     Date.now = originalDateNow;
+    global.fetch = originalFetch;
   });
 
   afterAll(() => {
     Date.now = originalDateNow;
+    global.fetch = originalFetch;
   });
 
   it('maps historical global metrics rows', () => {
@@ -457,6 +462,158 @@ describe('coinMarketCapContextBackfill', () => {
         skipped: true,
         cached: true,
       }),
+    );
+    expect(mockGetUserSettings).not.toHaveBeenCalled();
+  });
+
+  it('retries stale signals Fear and Greed after the coverage cooldown', async () => {
+    const nowMs = Date.parse('2026-07-15T15:15:42.000Z');
+    const preloadStartMs = nowMs - 60 * 86_400_000;
+    const window = resolveCoinMarketCapBackfillWindow({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+      nowMs,
+    });
+    const readyCoverage = {
+      firstMs: window.fromMs,
+      lastMs: window.toMs - 86_400_000,
+      rows: 60,
+    };
+    mockGetMarketGlobalContextCoverage.mockResolvedValue(readyCoverage);
+    mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(
+      new Map([
+        ['BTCUSDT', readyCoverage],
+        ['ETHUSDT', readyCoverage],
+      ]),
+    );
+    mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(
+      readyCoverage,
+    );
+    mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue({
+      firstMs: window.fromMs,
+      lastMs: window.toMs - 2 * 86_400_000,
+      rows: 59,
+    });
+    mockGetMarketCmcIndexContextCoverage.mockResolvedValue(
+      new Map([
+        ['cmc100', readyCoverage],
+        ['cmc20', readyCoverage],
+      ]),
+    );
+    mockGetMarketContextBackfillCoverage.mockImplementation(
+      async (params: { source: string }) =>
+        params.source === 'coinmarketcap_fear_greed'
+          ? [
+              {
+                source: 'coinmarketcap_fear_greed',
+                scope: 'all',
+                interval: '1d',
+                fromMs: window.fromMs,
+                toMs: window.toMs,
+                rowsCount: 59,
+                checkedAtMs: nowMs - 2 * 60 * 60_000,
+              },
+            ]
+          : [],
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      json: async () => ({
+        status: { credit_count: 1 },
+        data: [
+          {
+            timestamp: String(Date.parse('2026-07-14T00:00:00.000Z') / 1000),
+            value: 48,
+            value_classification: 'Neutral',
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const result = await backfillCoinMarketCapContextForSignals({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(String((global.fetch as jest.Mock).mock.calls[0]?.[0])).toContain(
+      '/v3/fear-and-greed/historical',
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        skipped: false,
+        fearGreedRows: 1,
+      }),
+    );
+  });
+
+  it('does not retry stale signals Fear and Greed during the coverage cooldown', async () => {
+    const nowMs = Date.parse('2026-07-15T15:15:42.000Z');
+    const preloadStartMs = nowMs - 60 * 86_400_000;
+    const window = resolveCoinMarketCapBackfillWindow({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+      nowMs,
+    });
+    const readyCoverage = {
+      firstMs: window.fromMs,
+      lastMs: window.toMs - 86_400_000,
+      rows: 60,
+    };
+    mockGetMarketGlobalContextCoverage.mockResolvedValue(readyCoverage);
+    mockGetMarketReferenceAssetContextCoverage.mockResolvedValue(
+      new Map([
+        ['BTCUSDT', readyCoverage],
+        ['ETHUSDT', readyCoverage],
+      ]),
+    );
+    mockGetMarketCmcExchangeLiquidityContextCoverage.mockResolvedValue(
+      readyCoverage,
+    );
+    mockGetMarketCmcFearGreedContextCoverage.mockResolvedValue({
+      firstMs: window.fromMs,
+      lastMs: window.toMs - 2 * 86_400_000,
+      rows: 59,
+    });
+    mockGetMarketCmcIndexContextCoverage.mockResolvedValue(
+      new Map([
+        ['cmc100', readyCoverage],
+        ['cmc20', readyCoverage],
+      ]),
+    );
+    mockGetMarketContextBackfillCoverage.mockImplementation(
+      async (params: { source: string }) =>
+        params.source === 'coinmarketcap_fear_greed'
+          ? [
+              {
+                source: 'coinmarketcap_fear_greed',
+                scope: 'all',
+                interval: '1d',
+                fromMs: window.fromMs,
+                toMs: window.toMs,
+                rowsCount: 59,
+                checkedAtMs: nowMs - 30 * 60_000,
+              },
+            ]
+          : [],
+    );
+
+    const result = await backfillCoinMarketCapContextForSignals({
+      userName: 'root',
+      startMs: nowMs,
+      endMs: nowMs,
+      preloadStartMs,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ skipped: true, cached: true }),
     );
     expect(mockGetUserSettings).not.toHaveBeenCalled();
   });

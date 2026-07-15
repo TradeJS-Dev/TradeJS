@@ -530,6 +530,7 @@ describe('timescale candle helpers', () => {
               from_ms: '1000',
               to_ms: '2000',
               rows_count: '1',
+              checked_at_ms: '2500',
             },
           ],
         };
@@ -759,6 +760,7 @@ describe('timescale candle helpers', () => {
         fromMs: 1_000,
         toMs: 2_000,
         rowsCount: 1,
+        checkedAtMs: 2_500,
       },
     ]);
 
