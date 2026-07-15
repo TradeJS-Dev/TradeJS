@@ -61,7 +61,6 @@ User profile settings are stored in Redis under the user record and now include:
 
 - `BYBIT_API_KEY`
 - `BYBIT_API_SECRET`
-- passwordless auth `token`
 - `AI_API_KEY`
 - `AI_API_ENDPOINT`
 - `TG_BOT_TOKEN`
@@ -71,7 +70,6 @@ Use the drawer to:
 
 - rotate Bybit credentials
 - change the password
-- rotate the passwordless auth token
 - set per-user OpenAI provider settings
 - set per-user Telegram bot delivery settings
 
@@ -172,16 +170,16 @@ yarn ml-export
 yarn ml-train:latest
 ```
 
-Or run a predefined model script:
+Select the strategy and model explicitly:
 
 ```bash
-yarn ml-train:trendline:xgboost
+yarn ml-train:latest -- --strategy TrendLine --model xgboost
 ```
 
 AI offline replay flow:
 
 ```bash
-yarn backtest --AI
+yarn backtest --ai
 yarn ai-export
 yarn ai-train -n 50 --minQuality 4
 ```

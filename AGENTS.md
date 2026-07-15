@@ -372,7 +372,7 @@ Keep them aligned with:
 
 Keep these conventions stable unless explicitly changing the ML pipeline.
 
-- Use `yarn ml-train:trendline:*` scripts for model training.
+- Use `yarn ml-train:latest -- --strategy <Strategy> --model <model>` for model training; legacy `ml-train:trendline:*` package scripts are not CLI dispatch commands.
 - Backtest workers write chunked JSONL files:
   - `ml-dataset-[strategyName]-[chunkId].jsonl`
 - `yarn ml-export` merges chunk files to canonical JSONL export.

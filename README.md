@@ -200,7 +200,7 @@ yarn continuity --user root --timeframe 15 --provider bybit
 
 ## AI Flow (Offline Prompt Replay)
 
-1. `yarn backtest --AI` writes per-worker AI prompt chunks to `data/ai/export/ai-dataset-<strategy>-chunk-<chunkId>.jsonl`.
+1. `yarn backtest --ai` writes per-worker AI prompt chunks to `data/ai/export/ai-dataset-<strategy>-chunk-<chunkId>.jsonl`.
 2. `yarn ai-export` merges chunks to `data/ai/export/ai-dataset-<strategy>-merged-<timestamp>.jsonl`.
 3. `yarn ai-train -n 50 --minQuality 4` replays saved prompts through AI and prints approval/accuracy stats.
 4. `-n 0` evaluates all rows from the merged dataset instead of only the latest sample from the end.
