@@ -28,6 +28,68 @@ const makePayload = (
     },
   }) as any;
 
+const makeRiskOffRecoveryPayload = ({
+  direction = 'LONG',
+  altBasketReturn24h = -0.035,
+  trxOiChangePct4h = -1.8,
+  trxStale = false,
+  includeTrx = true,
+}: {
+  direction?: 'LONG' | 'SHORT';
+  altBasketReturn24h?: number;
+  trxOiChangePct4h?: number;
+  trxStale?: boolean;
+  includeTrx?: boolean;
+} = {}) =>
+  makePayload(
+    {
+      signalDirection: direction,
+      zoneKind: direction === 'LONG' ? 'buy_pressure' : 'sell_pressure',
+      zoneHeight: 5,
+      zoneTouches: 2,
+      wickBodyRatio: 2.5,
+      wickDominanceRatio: 2,
+      retestPenetrationPct: 30,
+      reactionCloseDistancePct: 1.2,
+      reactionBodyAligned: true,
+    },
+    {
+      regime: {
+        trend: {
+          bias: 'neutral',
+          adx: { adx: 20, strength: 'developing' },
+        },
+        momentum: { bodyStrength: 0.4, roc1h: 0.1, roc4h: 0.1 },
+      },
+      participation: {
+        volume: { volumeRel20: 1.1 },
+      },
+      relative: {
+        btcAltRegime: { altBasketReturn24h },
+        cmcFearGreed: { value: 39 },
+      },
+      derivatives: {
+        summary: {
+          pressure: 'neutral',
+          directionAligned: true,
+          riskFlags: [],
+        },
+        referenceContexts: includeTrx
+          ? {
+              TRXUSDT: {
+                intervals: {
+                  '1h': {
+                    stale: trxStale,
+                    oiChangePct4h: trxOiChangePct4h,
+                  },
+                },
+              },
+            }
+          : {},
+      },
+    },
+  );
+
 describe('liquidityTailsAiAdapter', () => {
   it('copies LiquidityTails gate features into strategy and base contexts', () => {
     const result = liquidityTailsAiAdapter.buildPayload?.({
@@ -682,52 +744,10 @@ describe('liquidityTailsAiAdapter', () => {
     ).toContain('cmc_fear_greed_unavailable');
   });
 
-  it('upgrades q3 long retests in the old P2 correlation pocket at the ETH 15m points boundary', () => {
+  it('upgrades risk-off long retests at the rounded derivatives boundaries', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makePayload(
-        {
-          signalDirection: 'LONG',
-          zoneKind: 'buy_pressure',
-          zoneHeight: 5,
-          zoneTouches: 2,
-          wickBodyRatio: 2.5,
-          wickDominanceRatio: 2,
-          retestPenetrationPct: 30,
-          reactionCloseDistancePct: 1.2,
-          reactionBodyAligned: true,
-        },
-        {
-          raw: {
-            crossAsset: { btcCorrelation: 0.5 },
-          },
-          regime: {
-            trend: {
-              bias: 'bear',
-              adx: { adx: 20, strength: 'developing' },
-            },
-            momentum: { bodyStrength: 0.4, roc1h: 0.1, roc4h: 0.1 },
-          },
-          participation: {
-            volume: { volumeRel20: 1.1 },
-          },
-          relative: {
-            cmcFearGreed: { value: 39 },
-          },
-          derivatives: {
-            intervals: {
-              '1h': { oiChangePct4h: -0.9831 },
-            },
-            referenceContexts: {
-              ETHUSDT: {
-                intervals: {
-                  '15m': { points: 176 },
-                },
-              },
-            },
-          },
-        },
-      ),
+      payload: makeRiskOffRecoveryPayload(),
       analysis: {
         direction: 'LONG',
         quality: 1,
@@ -741,52 +761,10 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('does not upgrade q3 long retests above the ETH 15m points boundary', () => {
+  it('does not upgrade risk-off long retests above the alt-return boundary', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makePayload(
-        {
-          signalDirection: 'LONG',
-          zoneKind: 'buy_pressure',
-          zoneHeight: 5,
-          zoneTouches: 2,
-          wickBodyRatio: 2.5,
-          wickDominanceRatio: 2,
-          retestPenetrationPct: 30,
-          reactionCloseDistancePct: 1.2,
-          reactionBodyAligned: true,
-        },
-        {
-          raw: {
-            crossAsset: { btcCorrelation: 0.5 },
-          },
-          regime: {
-            trend: {
-              bias: 'bear',
-              adx: { adx: 20, strength: 'developing' },
-            },
-            momentum: { bodyStrength: 0.4, roc1h: 0.1, roc4h: 0.1 },
-          },
-          participation: {
-            volume: { volumeRel20: 1.1 },
-          },
-          relative: {
-            cmcFearGreed: { value: 39 },
-          },
-          derivatives: {
-            intervals: {
-              '1h': { oiChangePct4h: -0.9831 },
-            },
-            referenceContexts: {
-              ETHUSDT: {
-                intervals: {
-                  '15m': { points: 177 },
-                },
-              },
-            },
-          },
-        },
-      ),
+      payload: makeRiskOffRecoveryPayload({ altBasketReturn24h: -0.0349 }),
       analysis: {
         direction: 'LONG',
         quality: 1,
@@ -795,57 +773,55 @@ describe('liquidityTailsAiAdapter', () => {
 
     expect(result).toMatchObject({
       direction: null,
-      quality: 3,
+      quality: 1,
       approved: false,
     });
   });
 
-  it('does not upgrade short retests in the old P2 correlation pocket', () => {
+  it('does not upgrade risk-off long retests above the TRX OI boundary', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makePayload(
-        {
-          signalDirection: 'SHORT',
-          zoneKind: 'sell_pressure',
-          zoneHeight: 5,
-          zoneTouches: 2,
-          wickBodyRatio: 2.5,
-          wickDominanceRatio: 2,
-          retestPenetrationPct: 30,
-          reactionCloseDistancePct: 2.5,
-          reactionBodyAligned: true,
+      payload: makeRiskOffRecoveryPayload({ trxOiChangePct4h: -1.79 }),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+  });
+
+  it.each([
+    ['stale', { trxStale: true }],
+    ['missing', { includeTrx: false }],
+  ])(
+    'does not upgrade risk-off long retests with %s TRX context',
+    (_, options) => {
+      const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makeRiskOffRecoveryPayload(options),
+        analysis: {
+          direction: 'LONG',
+          quality: 1,
         },
-        {
-          raw: {
-            crossAsset: { btcCorrelation: 0.5 },
-          },
-          regime: {
-            trend: {
-              bias: 'neutral',
-              adx: { adx: 20, strength: 'developing' },
-            },
-            momentum: { bodyStrength: 0.4, roc1h: -0.1, roc4h: 0.1 },
-          },
-          participation: {
-            volume: { volumeRel20: 1.1 },
-          },
-          relative: {
-            cmcFearGreed: { value: 39 },
-          },
-          derivatives: {
-            intervals: {
-              '1h': { oiChangePct4h: -0.9831 },
-            },
-            referenceContexts: {
-              ETHUSDT: {
-                intervals: {
-                  '15m': { points: 176 },
-                },
-              },
-            },
-          },
-        },
-      ),
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+      });
+    },
+  );
+
+  it('does not upgrade short retests in the risk-off long recovery pocket', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeRiskOffRecoveryPayload({ direction: 'SHORT' }),
       analysis: {
         direction: 'SHORT',
         quality: 1,
@@ -854,7 +830,7 @@ describe('liquidityTailsAiAdapter', () => {
 
     expect(result).toMatchObject({
       direction: null,
-      quality: 3,
+      quality: 1,
       approved: false,
     });
   });

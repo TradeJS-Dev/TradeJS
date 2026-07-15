@@ -19,16 +19,16 @@ export type LiquidityTailsGuardrailContext =
     q4AtrRankEligible: boolean;
     liquidityRisk: string | null;
     cmcFearGreedValue: number | null;
-    btcCorrelation: number | null;
-    derivativesEth15mPoints: number | null;
-    derivativesOiChangePct4h1h: number | null;
+    altBasketReturn24h: number | null;
+    referenceTrx1hOiChangePct4h: number | null;
+    referenceTrx1hStale: boolean | null;
     higherTimeframeConflict: boolean;
     benchmarkConflict: boolean;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
     cadenceUpgradePocket: boolean;
-    derivativesLongQ3UpgradePocket: boolean;
+    derivativesRiskOffLongRecoveryPocket: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -75,9 +75,8 @@ const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
 const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
 const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
 const MAX_APPROVAL_CMC_FEAR_GREED_VALUE = 39;
-const MAX_Q3_DERIVATIVES_LONG_ETH_15M_POINTS = 176;
-const MAX_Q3_DERIVATIVES_LONG_OI_CHANGE_PCT_4H_1H = -0.9831;
-const MIN_Q3_DERIVATIVES_LONG_ABS_BTC_CORRELATION = 0.5;
+const MAX_DERIVATIVES_RISK_OFF_ALT_BASKET_RETURN_24H = -0.035;
+const MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H = -1.8;
 const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
 
 const buildLiquidityTailsGateFeatures = ({
@@ -246,16 +245,16 @@ export const buildLiquidityTailsGuardrailContext = ({
   const cmcFearGreedValue = asFiniteNumber(
     baseContext?.relative?.cmcFearGreed?.value,
   );
-  const btcCorrelation = asFiniteNumber(
-    baseContext?.raw?.crossAsset?.btcCorrelation,
+  const altBasketReturn24h = asFiniteNumber(
+    baseContext?.relative?.btcAltRegime?.altBasketReturn24h,
   );
-  const derivativesEth15mPoints = asFiniteNumber(
-    baseContext?.derivatives?.referenceContexts?.ETHUSDT?.intervals?.['15m']
-      ?.points,
+  const referenceTrx1h =
+    baseContext?.derivatives?.referenceContexts?.TRXUSDT?.intervals?.['1h'];
+  const referenceTrx1hOiChangePct4h = asFiniteNumber(
+    referenceTrx1h?.oiChangePct4h,
   );
-  const derivativesOiChangePct4h1h = asFiniteNumber(
-    baseContext?.derivatives?.intervals?.['1h']?.oiChangePct4h,
-  );
+  const referenceTrx1hStale =
+    typeof referenceTrx1h?.stale === 'boolean' ? referenceTrx1h.stale : null;
   const higherTimeframeConflict =
     baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
   const benchmarkConflict =
@@ -303,11 +302,29 @@ export const buildLiquidityTailsGuardrailContext = ({
       : direction === 'SHORT'
         ? derivativesRiskFlags.includes('crowded_short')
         : false;
+  const derivativesRiskOffLongRecoveryPocket =
+    direction === 'LONG' &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue <= MAX_APPROVAL_CMC_FEAR_GREED_VALUE &&
+    altBasketReturn24h != null &&
+    altBasketReturn24h <= MAX_DERIVATIVES_RISK_OFF_ALT_BASKET_RETURN_24H &&
+    referenceTrx1hStale === false &&
+    referenceTrx1hOiChangePct4h != null &&
+    referenceTrx1hOiChangePct4h <=
+      MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H;
 
-  if (derivativesDirectionAligned === true && !flushSupport) {
+  if (
+    derivativesDirectionAligned === true &&
+    !flushSupport &&
+    !derivativesRiskOffLongRecoveryPocket
+  ) {
     hardBlockReasons.push('derivatives_reversal_aligned');
   }
-  if (derivativesDirectionAligned === false && !flushSupport) {
+  if (
+    derivativesDirectionAligned === false &&
+    !flushSupport &&
+    !derivativesRiskOffLongRecoveryPocket
+  ) {
     hardBlockReasons.push('derivatives_reversal_conflict');
   }
   if (volumeRel20 != null && volumeRel20 < 0.75) {
@@ -354,16 +371,6 @@ export const buildLiquidityTailsGuardrailContext = ({
     !benchmarkConflict &&
     nonBullTrendContext &&
     (strongAdxExpansion || momentumExpansion);
-  const derivativesLongQ3UpgradePocket =
-    direction === 'LONG' &&
-    cmcFearGreedValue != null &&
-    cmcFearGreedValue <= MAX_APPROVAL_CMC_FEAR_GREED_VALUE &&
-    derivativesEth15mPoints != null &&
-    derivativesEth15mPoints <= MAX_Q3_DERIVATIVES_LONG_ETH_15M_POINTS &&
-    derivativesOiChangePct4h1h != null &&
-    derivativesOiChangePct4h1h <= MAX_Q3_DERIVATIVES_LONG_OI_CHANGE_PCT_4H_1H &&
-    btcCorrelation != null &&
-    Math.abs(btcCorrelation) >= MIN_Q3_DERIVATIVES_LONG_ABS_BTC_CORRELATION;
   const liquidityTailsGateFeatures = buildLiquidityTailsGateFeatures({
     signalContext,
     trendBias,
@@ -422,7 +429,7 @@ export const buildLiquidityTailsGuardrailContext = ({
   if (
     deterministicQuality === 3 &&
     hardBlockReasons.length === 0 &&
-    derivativesLongQ3UpgradePocket
+    derivativesRiskOffLongRecoveryPocket
   ) {
     deterministicQuality = 4;
   }
@@ -445,16 +452,16 @@ export const buildLiquidityTailsGuardrailContext = ({
     q4AtrRankEligible,
     liquidityRisk,
     cmcFearGreedValue,
-    btcCorrelation,
-    derivativesEth15mPoints,
-    derivativesOiChangePct4h1h,
+    altBasketReturn24h,
+    referenceTrx1hOiChangePct4h,
+    referenceTrx1hStale,
     higherTimeframeConflict,
     benchmarkConflict,
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
     cadenceUpgradePocket,
-    derivativesLongQ3UpgradePocket,
+    derivativesRiskOffLongRecoveryPocket,
     liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,

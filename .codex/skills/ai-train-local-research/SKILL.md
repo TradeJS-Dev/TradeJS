@@ -246,19 +246,25 @@ For any current/live cadence conclusion, run all selected rows so one execution
 produces the full result and terminal summaries:
 
 ```bash
-yarn ai-train --strategy <Strategy> -n 0 --localOnly
+yarn ai-train --strategy <Strategy> -n 0 --localOnly --terminalWindows=180,90,30,7
 ```
 
-The default terminal windows are `90d,30d,7d`, anchored to the maximum dataset
-timestamp. Use `--terminalWindows=90,30,11,7` when the production comparison
+Terminal windows are anchored to the maximum dataset timestamp. Whenever a
+period comparison table is shown, it must include the full export plus `180d`,
+`90d`, `30d`, and `7d`, including windows with zero approvals. Use
+`--terminalWindows=180,90,30,11,7` when the production comparison additionally
 uses an 11-day window. Do not run the provider repeatedly for these windows;
-the command derives them from the same evaluated rows.
+the command derives them from the same evaluated rows. If the export is shorter
+than 180 days, keep the `180d` row and mark it as incomplete/overlapping the
+available full export rather than silently omitting it.
 
 Before stating expected production cadence:
 
 - record dataset min/max timestamps and `dataLagDays`
 - require the export to overlap the production window under discussion
 - report full history and every terminal window, including zero approvals
+- period tables must always show rows for the full export, `180d`, `90d`,
+  `30d`, and `7d`
 - use terminal `approvedPerCalendarDay`, not the full-history average, as the
   current cadence evidence
 - record git SHA, dirty state, gate fingerprint, config-id fingerprint, and
@@ -485,6 +491,8 @@ Keep the structure similar:
 2. current export and config
 3. replay mode used
 4. latest window metrics
+   - period comparison table with the full export, `180d`, `90d`, `30d`, and
+     `7d`
 5. `q4+` approved cadence/profit metrics:
    - `winrate`
    - `profit_factor`
