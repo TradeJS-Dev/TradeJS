@@ -235,7 +235,7 @@ describe('liquidityZonesAiAdapter', () => {
     });
   });
 
-  it('approves structurally valid long retests in the quiet derivatives pocket', () => {
+  it('does not approve long retests from benchmark derivatives point count alone', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -273,9 +273,277 @@ describe('liquidityZonesAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('approves calibrated transition-structure retests', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 17,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
       direction: 'LONG',
       quality: 4,
       approved: true,
+    });
+  });
+
+  it('rejects transition-structure retests below the rounded structure boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 16.99,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('blocks transition-structure retests during weak ETH reference OI', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: -0.8,
+                  },
+                },
+              },
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 17,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('approves the rounded SOL reference stress pocket', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            levels: {
+              lowTouchCount20: 3,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              SOLUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct24h: -4.2,
+                    fundingZScore: -1.2,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects SOL reference stress candidates above the rounded thresholds', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            levels: {
+              lowTouchCount20: 3,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              SOLUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct24h: -4.19,
+                    fundingZScore: -1.19,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
     });
   });
 

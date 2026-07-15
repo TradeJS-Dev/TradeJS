@@ -32,12 +32,18 @@ export type LiquidityZonesGuardrailContext =
     venueSpreadZScore: number | null;
     benchmarkTrendAlignment: string | null;
     btcCorrelation: number | null;
-    derivativesPressure: string | null;
-    derivativesDirectionAligned: boolean | null;
-    derivatives15mPoints: number | null;
-    derivativesQuiet15mPocket: boolean;
-    derivativesQuiet15mConfirmation: boolean;
-    derivativesRiskFlags: string[];
+    benchmarkDerivativesPressure: string | null;
+    benchmarkDerivativesDirectionAligned: boolean | null;
+    benchmarkDerivativesRiskFlags: string[];
+    structureZoneState: string | null;
+    structureScore: number | null;
+    adaptiveChannelFlipDown: boolean | null;
+    lowTouchCount20: number | null;
+    ethReferenceOiChangePct4h: number | null;
+    solReferenceOiChangePct24h: number | null;
+    solReferenceFundingZScore: number | null;
+    transitionStructureExpansionPocket: boolean;
+    solReferenceStressPocket: boolean;
     hardBlockReasons: string[];
     softBlockReasons: string[];
     deterministicQuality: number;
@@ -112,7 +118,7 @@ export const buildLiquidityZonesGuardrailContext = ({
   signalContext: Partial<LiquidityZonesSignalContext>;
   baseContext?: BaseStrategyContextSnapshot | null;
 }): LiquidityZonesGuardrailContext => {
-  const derivativesSummary = baseContext?.derivatives?.summary ?? null;
+  const benchmarkDerivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
@@ -150,18 +156,41 @@ export const buildLiquidityZonesGuardrailContext = ({
   const btcCorrelation = asPresentFiniteNumber(
     baseContext?.raw?.crossAsset?.btcCorrelation,
   );
-  const derivativesPressure =
-    typeof derivativesSummary?.pressure === 'string'
-      ? derivativesSummary.pressure
+  const benchmarkDerivativesPressure =
+    typeof benchmarkDerivativesSummary?.pressure === 'string'
+      ? benchmarkDerivativesSummary.pressure
       : null;
-  const derivativesDirectionAligned =
-    typeof derivativesSummary?.directionAligned === 'boolean'
-      ? derivativesSummary.directionAligned
+  const benchmarkDerivativesDirectionAligned =
+    typeof benchmarkDerivativesSummary?.directionAligned === 'boolean'
+      ? benchmarkDerivativesSummary.directionAligned
       : null;
-  const derivatives15mPoints = asPresentFiniteNumber(
-    baseContext?.derivatives?.intervals?.['15m']?.points,
+  const benchmarkDerivativesRiskFlags = asStringArray(
+    benchmarkDerivativesSummary?.riskFlags,
   );
-  const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
+  const structureZoneState =
+    baseContext?.structure?.structureZones?.state ?? null;
+  const structureScore = asPresentFiniteNumber(
+    baseContext?.gateFeatures?.scores?.structure,
+  );
+  const adaptiveChannelFlipDown =
+    typeof baseContext?.regime?.trend?.adaptiveChannel?.flipDown === 'boolean'
+      ? baseContext.regime.trend.adaptiveChannel.flipDown
+      : null;
+  const lowTouchCount20 = asPresentFiniteNumber(
+    baseContext?.structure?.levels?.lowTouchCount20,
+  );
+  const ethReferenceOiChangePct4h = asPresentFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.ETHUSDT?.intervals?.['15m']
+      ?.oiChangePct4h,
+  );
+  const solReferenceOiChangePct24h = asPresentFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.SOLUSDT?.intervals?.['15m']
+      ?.oiChangePct24h,
+  );
+  const solReferenceFundingZScore = asPresentFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.SOLUSDT?.intervals?.['15m']
+      ?.fundingZScore,
+  );
   const hardBlockReasons: string[] = [];
   const softBlockReasons: string[] = [];
 
@@ -202,17 +231,17 @@ export const buildLiquidityZonesGuardrailContext = ({
   });
   const flushSupport =
     direction === 'LONG'
-      ? derivativesRiskFlags.includes('short_liquidation_spike') ||
-        derivativesPressure === 'short_flush'
+      ? benchmarkDerivativesRiskFlags.includes('short_liquidation_spike') ||
+        benchmarkDerivativesPressure === 'short_flush'
       : direction === 'SHORT'
-        ? derivativesRiskFlags.includes('long_liquidation_spike') ||
-          derivativesPressure === 'long_flush'
+        ? benchmarkDerivativesRiskFlags.includes('long_liquidation_spike') ||
+          benchmarkDerivativesPressure === 'long_flush'
         : false;
   const directionalCrowding =
     direction === 'LONG'
-      ? derivativesRiskFlags.includes('crowded_long')
+      ? benchmarkDerivativesRiskFlags.includes('crowded_long')
       : direction === 'SHORT'
-        ? derivativesRiskFlags.includes('crowded_short')
+        ? benchmarkDerivativesRiskFlags.includes('crowded_short')
         : false;
 
   if (volumeRel20 != null && volumeRel20 < 0.75) {
@@ -221,7 +250,7 @@ export const buildLiquidityZonesGuardrailContext = ({
   if (directionalCrowding && !flushSupport) {
     softBlockReasons.push('directional_crowding');
   }
-  if (derivativesDirectionAligned === false && !flushSupport) {
+  if (benchmarkDerivativesDirectionAligned === false && !flushSupport) {
     softBlockReasons.push('derivatives_not_aligned');
   }
 
@@ -293,20 +322,36 @@ export const buildLiquidityZonesGuardrailContext = ({
     hitCount >= 2 &&
     reactionCloseDistancePct >= 0.08 &&
     retestPenetrationPct <= 90;
-  const derivativesQuiet15mPocket =
-    derivatives15mPoints != null &&
-    derivatives15mPoints <= 117 &&
-    btcCorrelation != null &&
-    btcCorrelation >= 0;
-  const derivativesQuiet15mConfirmation =
-    hasBaseRetestConfirmation && derivativesQuiet15mPocket;
+  const ethReferenceOiWeakPocket =
+    ethReferenceOiChangePct4h != null && ethReferenceOiChangePct4h <= -0.8;
+  const transitionStructureExpansionPocket =
+    hasBaseRetestConfirmation &&
+    structureZoneState === 'transition' &&
+    structureScore != null &&
+    structureScore >= 17 &&
+    adaptiveChannelFlipDown === false &&
+    !directionalCrowding &&
+    !ethReferenceOiWeakPocket;
+  const solReferenceStressPocket =
+    hasBaseRetestConfirmation &&
+    lowTouchCount20 != null &&
+    lowTouchCount20 <= 3 &&
+    solReferenceOiChangePct24h != null &&
+    solReferenceOiChangePct24h <= -4.2 &&
+    solReferenceFundingZScore != null &&
+    solReferenceFundingZScore <= -1.2;
+  const calibratedExpansionPocket =
+    transitionStructureExpansionPocket || solReferenceStressPocket;
+  const longRequiresCalibratedExpansion =
+    direction === 'LONG' && !calibratedExpansionPocket;
   const approvalDisqualifiedByCalibration =
-    (direction === 'LONG' && !derivativesQuiet15mConfirmation) ||
-    isContinuationBreakoutRetest ||
-    hasOverextendedVolumeConfirmation ||
-    hasIsolatedIndicatorSupport;
+    !calibratedExpansionPocket &&
+    (longRequiresCalibratedExpansion ||
+      isContinuationBreakoutRetest ||
+      hasOverextendedVolumeConfirmation ||
+      hasIsolatedIndicatorSupport);
 
-  if (direction === 'LONG' && !derivativesQuiet15mConfirmation) {
+  if (longRequiresCalibratedExpansion) {
     softBlockReasons.push('long_liquidity_retest_requires_recalibration');
   }
   if (isContinuationBreakoutRetest) {
@@ -341,7 +386,7 @@ export const buildLiquidityZonesGuardrailContext = ({
     deterministicQuality = 5;
   } else if (hasShortContinuationConfirmation) {
     deterministicQuality = 4;
-  } else if (derivativesQuiet15mConfirmation) {
+  } else if (calibratedExpansionPocket) {
     deterministicQuality = 4;
   } else if (
     hasBaseRetestConfirmation &&
@@ -388,12 +433,18 @@ export const buildLiquidityZonesGuardrailContext = ({
     venueSpreadZScore,
     benchmarkTrendAlignment,
     btcCorrelation,
-    derivativesPressure,
-    derivativesDirectionAligned,
-    derivatives15mPoints,
-    derivativesQuiet15mPocket,
-    derivativesQuiet15mConfirmation,
-    derivativesRiskFlags,
+    benchmarkDerivativesPressure,
+    benchmarkDerivativesDirectionAligned,
+    benchmarkDerivativesRiskFlags,
+    structureZoneState,
+    structureScore,
+    adaptiveChannelFlipDown,
+    lowTouchCount20,
+    ethReferenceOiChangePct4h,
+    solReferenceOiChangePct24h,
+    solReferenceFundingZScore,
+    transitionStructureExpansionPocket,
+    solReferenceStressPocket,
     hardBlockReasons,
     softBlockReasons,
     deterministicQuality,

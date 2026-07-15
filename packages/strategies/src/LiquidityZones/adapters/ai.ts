@@ -114,12 +114,18 @@ Additional Liquidity Zones context:
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - btcCorrelation=${String(context.btcCorrelation ?? 'n/a')}
-- derivativesPressure=${context.derivativesPressure ?? 'n/a'}
-- derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
-- derivatives15mPoints=${String(context.derivatives15mPoints ?? 'n/a')}
-- derivativesQuiet15mPocket=${String(context.derivativesQuiet15mPocket)}
-- derivativesQuiet15mConfirmation=${String(context.derivativesQuiet15mConfirmation)}
-- derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- benchmarkDerivativesPressure=${context.benchmarkDerivativesPressure ?? 'n/a'}
+- benchmarkDerivativesDirectionAligned=${String(context.benchmarkDerivativesDirectionAligned ?? 'n/a')}
+- benchmarkDerivativesRiskFlags=${JSON.stringify(context.benchmarkDerivativesRiskFlags)}
+- structureZoneState=${context.structureZoneState ?? 'n/a'}
+- structureScore=${String(context.structureScore ?? 'n/a')}
+- adaptiveChannelFlipDown=${String(context.adaptiveChannelFlipDown ?? 'n/a')}
+- lowTouchCount20=${String(context.lowTouchCount20 ?? 'n/a')}
+- ethReferenceOiChangePct4h=${String(context.ethReferenceOiChangePct4h ?? 'n/a')}
+- solReferenceOiChangePct24h=${String(context.solReferenceOiChangePct24h ?? 'n/a')}
+- solReferenceFundingZScore=${String(context.solReferenceFundingZScore ?? 'n/a')}
+- transitionStructureExpansionPocket=${String(context.transitionStructureExpansionPocket)}
+- solReferenceStressPocket=${String(context.solReferenceStressPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
@@ -132,7 +138,9 @@ Interpretation rules for Liquidity Zones:
 - Count/volume hit metrics describe how often delayed candles interacted with the zone after it formed.
 - Prefer zones with multiple hits or meaningful volume, clean reaction close, and no thin-participation warning.
 - A close fully through the level marks the zone crossed; crossed zones are not live-entry candidates.
-- A compact derivatives-history pocket can approve a structurally valid retest when derivatives15mPoints<=117 and btcCorrelation>=0.
+- Top-level derivatives context is BTC benchmark evidence; target-symbol derivatives require targetContext/targetDerived.
+- Do not treat derivatives points, rows, or loaded-history size as approval evidence.
+- A calibrated transition-structure pocket or SOL reference stress pocket can approve a structurally valid retest.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
