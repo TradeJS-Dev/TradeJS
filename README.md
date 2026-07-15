@@ -151,6 +151,27 @@ yarn signals:summary -- --printOnly
 yarn bot
 ```
 
+## Automated npm Releases
+
+Every push to `stable` runs `.github/workflows/publish-npm.yml`. The workflow:
+
+1. resolves one shared version for every public `@tradejs/*` package
+2. resumes the same version after a partial or interrupted release
+3. builds, lints, typechecks, tests, and dry-runs every package archive
+4. commits synchronized package versions back to `stable`
+5. publishes packages in dependency order with npm provenance
+6. creates the matching `v<version>` tag only after every publish succeeds
+
+Repository secret `NPM_TOKEN` must contain an npm automation-capable token with
+publish access to the `@tradejs` organization. GitHub Actions also receives
+`id-token: write` permission for npm provenance. Do not add npm tokens to
+`.npmrc`, `.yarnrc.yml`, or repository files.
+
+The first run publishes the current local version when it is newer than npm.
+Later runs increment the patch version after the previous npm version and Git
+tag are both complete. Manual local publishing remains available through
+`yarn publish:packages` and `yarn publish:packages:dry`.
+
 Data refresh and integrity:
 
 ```bash
