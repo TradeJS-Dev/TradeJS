@@ -7,6 +7,8 @@ WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_CHROME_SKIP_DOWNLOAD=true
 
+RUN apk add --no-cache git
+
 RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 # Keep dependency installation independent from application source changes.
@@ -73,6 +75,8 @@ ENV NODE_ENV=production \
 
 # This large layer changes only when workspace dependency manifests change.
 COPY --from=production-dependencies /app/node_modules ./node_modules
+COPY --from=production-dependencies /app/yarn.lock /app/.yarnrc.yml ./
+COPY --from=production-dependencies /app/.yarn ./.yarn
 
 COPY --from=builder /app/apps ./apps
 COPY --from=builder /app/packages ./packages
