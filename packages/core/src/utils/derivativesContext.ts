@@ -14,6 +14,10 @@ const DEFAULT_STALE_AFTER_MS: Record<DerivativesInterval, number> = {
   '15m': 45 * 60 * 1000,
   '1h': 3 * HOUR_MS,
 };
+const INTERVAL_MS: Record<DerivativesInterval, number> = {
+  '15m': 15 * 60 * 1000,
+  '1h': HOUR_MS,
+};
 
 const DERIVATIVES_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 
@@ -68,13 +72,14 @@ const pctChange = (current: number | null, previous: number | null) => {
 
 const normalizeRows = (
   rows: DerivativesRow[] | undefined,
+  interval: DerivativesInterval,
   timestamp: number,
 ): NormalizedDerivativesRow[] => {
   const normalized: NormalizedDerivativesRow[] = [];
 
   for (const row of rows ?? []) {
     const tsMs = toTimestampMs(row.ts);
-    if (tsMs == null || tsMs > timestamp) {
+    if (tsMs == null || tsMs + INTERVAL_MS[interval] > timestamp) {
       continue;
     }
 
@@ -386,7 +391,11 @@ export const buildDerivativesContext = (params: {
   > = {};
 
   for (const interval of intervals) {
-    const normalizedRows = normalizeRows(rowsByInterval[interval], timestamp);
+    const normalizedRows = normalizeRows(
+      rowsByInterval[interval],
+      interval,
+      timestamp,
+    );
     normalizedRowsByInterval[interval] = normalizedRows;
     const context = buildIntervalContext({
       interval,

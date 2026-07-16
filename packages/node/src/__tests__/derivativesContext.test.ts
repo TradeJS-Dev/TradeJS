@@ -44,7 +44,7 @@ describe('strategyHelpers/derivativesContext', () => {
         {
           symbol,
           interval: '15m',
-          ts: new Date(signal.timestamp - 60 * 60 * 1000),
+          ts: new Date(signal.timestamp - 75 * 60 * 1000),
           openInterest: symbol === 'BTCUSDT' ? 100 : 200,
           fundingRate: 0.0001,
           liqLong: 10,
@@ -54,7 +54,7 @@ describe('strategyHelpers/derivativesContext', () => {
         {
           symbol,
           interval: '15m',
-          ts: new Date(signal.timestamp),
+          ts: new Date(signal.timestamp - 15 * 60 * 1000),
           openInterest: symbol === 'BTCUSDT' ? 105 : 210,
           fundingRate: 0.0001,
           liqLong: 10,
