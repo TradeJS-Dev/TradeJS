@@ -19,7 +19,16 @@ Official CLI for the TradeJS open-source framework.
 
 ## Standard External Install Flow
 
-For a normal external project with CLI + runtime + UI:
+For a new external project with CLI + runtime + UI:
+
+```bash
+npx create-tradejs
+```
+
+The generator installs the packages, starts local infra, and opens the install
+page. The user chooses the local `root` password before entering the dashboard.
+
+For manual integration into an existing project:
 
 ```bash
 npm i @tradejs/app @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
@@ -34,7 +43,7 @@ import { basePreset } from '@tradejs/base';
 export default defineConfig(basePreset);
 ```
 
-## First Commands In A Fresh Project
+## Manual Setup Commands
 
 ```bash
 npx @tradejs/cli infra-init
@@ -43,10 +52,10 @@ npx @tradejs/cli doctor
 npx @tradejs/cli user-add -u root -p 'StrongPassword123!'
 ```
 
-After that you can run:
+After saving a backtest config, you can run:
 
 ```bash
-npx @tradejs/cli backtest
+npx @tradejs/cli backtest --config MaStrategy:base
 npx @tradejs/cli backtest --ai
 npx @tradejs/cli ai-export
 npx @tradejs/cli ai-train -n 50 --minQuality 4

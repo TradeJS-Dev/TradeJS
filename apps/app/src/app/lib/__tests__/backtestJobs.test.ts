@@ -35,11 +35,11 @@ describe('backtest jobs helpers', () => {
       ai: true,
       fast: false,
       interval: '15',
-      connector: 'bybit',
+      connector: 'binance',
     });
   });
 
-  it('builds yarn backtest args with range flags and resume skip', () => {
+  it('builds TradeJS CLI args with range flags and resume skip', () => {
     const request = normalizeBacktestJobRequest({
       strategyName: 'TrendLine',
       configId: 'TrendLine:base',

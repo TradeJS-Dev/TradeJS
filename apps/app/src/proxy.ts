@@ -3,6 +3,8 @@ import { encode, getToken } from 'next-auth/jwt';
 import { consumeScreenshotSessionToken } from '@tradejs/infra/redis';
 
 const SIGNIN_PATH = '/routes/signin';
+const INSTALL_PATH = '/routes/install';
+const INSTALL_API_PATH = '/api/install';
 const SCREENSHOT_API_PREFIX = '/api/files/screenshot';
 const SCREENSHOT_SESSION_QUERY_PARAM = 'screenshotToken';
 const SESSION_COOKIE_NAME = 'authjs.session-token';
@@ -54,6 +56,8 @@ export const proxy = async (req: NextRequest) => {
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico' ||
     pathname.startsWith(SIGNIN_PATH) ||
+    pathname.startsWith(INSTALL_PATH) ||
+    pathname === INSTALL_API_PATH ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith(SCREENSHOT_API_PREFIX) ||
     (!pathname.startsWith('/api') && PUBLIC_FILE_RE.test(pathname))

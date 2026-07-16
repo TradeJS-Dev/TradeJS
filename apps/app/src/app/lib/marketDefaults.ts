@@ -8,5 +8,5 @@ export const getDefaultMarketSymbol = (
     return 'AAPLUSDT';
   }
 
-  return provider === 'coinbase' ? 'BTC-USD' : 'BTCUSDT';
+  return 'BTCUSDT';
 };

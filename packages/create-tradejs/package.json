@@ -1,0 +1,43 @@
+{
+  "name": "create-tradejs",
+  "version": "1.0.10",
+  "description": "Create a ready-to-run TradeJS project with local infrastructure and the Web UI.",
+  "keywords": [
+    "tradejs",
+    "create",
+    "scaffold",
+    "backtesting",
+    "trading"
+  ],
+  "homepage": "https://tradejs.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TradeJS-Dev/TradeJS",
+    "directory": "packages/create-tradejs"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
+  "bin": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

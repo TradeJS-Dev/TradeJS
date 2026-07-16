@@ -2,7 +2,15 @@
 
 Publishable Next.js UI package for the TradeJS open-source framework, with backtests, charts, and signal flows.
 
-Typical external usage:
+Recommended external usage:
+
+```bash
+npx create-tradejs
+```
+
+The generator starts local infrastructure and opens the install page. Choose
+the local `root` password there; TradeJS then opens the dashboard with a
+**Create backtest** action. For manual installation into an existing project:
 
 ```bash
 npm install @tradejs/app @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli

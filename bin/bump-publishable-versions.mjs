@@ -20,6 +20,7 @@ const PUBLISHABLE_MANIFESTS = [
   'packages/base/package.json',
   'packages/cli/package.json',
   'apps/app/package.json',
+  'packages/create-tradejs/package.json',
 ];
 
 const E2E_SANDBOX_MANIFESTS = ['examples/sandbox/package.json'];

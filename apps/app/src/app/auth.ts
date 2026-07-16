@@ -2,25 +2,7 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { getData, redisKeys } from '@tradejs/infra/redis';
-
-const getPasswordHash = (user: unknown): string | null => {
-  if (!user) return null;
-  if (typeof user === 'string') return user;
-  if (typeof user !== 'object') return null;
-
-  const record = user as Record<string, unknown>;
-  const direct = record.passwordHash ?? record.password;
-  if (typeof direct === 'string') return direct;
-
-  const nested = record.password as Record<string, unknown> | undefined;
-  const nestedHash = nested?.hash;
-  if (typeof nestedHash === 'string') return nestedHash;
-
-  const alt = record.hash;
-  if (typeof alt === 'string') return alt;
-
-  return null;
-};
+import { getPasswordHash } from '#app/lib/installation';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,

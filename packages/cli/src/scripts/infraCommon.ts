@@ -27,13 +27,12 @@ const resolveProjectRoot = (): string => {
 const DEV_COMPOSE_TEMPLATE = `services:
   timescale:
     image: timescale/timescaledb:latest-pg16
-    container_name: tradejs-timescale
     environment:
       POSTGRES_USER: \${PG_USER:-app}
       POSTGRES_PASSWORD: \${PG_PASSWORD:-app}
       POSTGRES_DB: \${PG_DB:-app}
     ports:
-      - "5432:5432"
+      - "\${PG_PORT:-5432}:5432"
     command:
       - postgres
       - -c
@@ -53,14 +52,18 @@ const DEV_COMPOSE_TEMPLATE = `services:
 
   redis:
     image: redis/redis-stack:latest
-    container_name: tradejs-redis
     environment:
       REDIS_ARGS: --save "" --appendonly no --stop-writes-on-bgsave-error no
     ports:
-      - "6379:6379"
-      - "5540:8001"
+      - "\${REDIS_PORT:-6379}:6379"
+      - "\${REDIS_INSIGHT_PORT:-5540}:8001"
     volumes:
       - tradejs_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
 volumes:

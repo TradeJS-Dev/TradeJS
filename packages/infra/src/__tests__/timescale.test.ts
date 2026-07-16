@@ -303,6 +303,12 @@ describe('timescale candle helpers', () => {
       ['BTCUSDT', 'ETHUSDT'],
       5,
     ]);
+    const sqlCalls = query.mock.calls.map(([sql]) => String(sql));
+    expect(
+      sqlCalls.findIndex((sql) =>
+        sql.includes('CREATE TABLE IF NOT EXISTS candles'),
+      ),
+    ).toBeLessThan(sqlCalls.findIndex((sql) => sql.includes('unnest')));
   });
 
   it('stores and reads derivatives backfill coverage markers', async () => {

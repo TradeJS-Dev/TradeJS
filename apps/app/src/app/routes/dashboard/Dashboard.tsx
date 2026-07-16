@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Box, Flex, ClientOnly } from '@chakra-ui/react';
+import Link from 'next/link';
+import { Box, Button, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '#store';
 import { Filters } from '#shared/Filters';
 import { MainChart } from '#app/components/Dashboard/MainChart';
@@ -123,26 +124,46 @@ const DashboardRoute = () => {
         alignItems="flex-start"
       >
         {!isScreenshotMode && (
-          <Filters.Root
-            filters={filters}
-            tickers={tickers}
-            backtestFiles={tests}
-            onChangeFilters={onChangeFilters}
-            ensureTickersLoaded={ensureTickersLoaded}
-            ensureBacktestsLoaded={ensureBacktestsLoaded}
+          <Box
+            w="full"
+            display="grid"
+            gridTemplateColumns={{ base: '1fr', lg: 'minmax(0, 1fr) auto' }}
+            columnGap={4}
+            alignItems="start"
           >
-            <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
-              <Filters.SelectProvider />
-              {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
-              <Filters.SelectSymbol />
-              <Filters.FavoriteIndicator />
-              <Filters.SelectInterval />
-              <Filters.SelectIndicator />
-            </Flex>
-            <Flex mb={4} gap={4} flexDirection="row">
-              <Filters.SelectBacktest />
-            </Flex>
-          </Filters.Root>
+            <Box minW={0}>
+              <Filters.Root
+                filters={filters}
+                tickers={tickers}
+                backtestFiles={tests}
+                onChangeFilters={onChangeFilters}
+                ensureTickersLoaded={ensureTickersLoaded}
+                ensureBacktestsLoaded={ensureBacktestsLoaded}
+              >
+                <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
+                  <Filters.SelectProvider />
+                  {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
+                  <Filters.SelectSymbol />
+                  <Filters.FavoriteIndicator />
+                  <Filters.SelectInterval />
+                  <Filters.SelectIndicator />
+                </Flex>
+                <Flex mb={4} gap={4} flexDirection="row">
+                  <Filters.SelectBacktest />
+                </Flex>
+              </Filters.Root>
+            </Box>
+            <Button
+              asChild
+              bg="#20c5bd"
+              color="gray.950"
+              _hover={{ bg: '#42d8d0' }}
+              justifySelf={{ base: 'start', lg: 'end' }}
+              mb={4}
+            >
+              <Link href="/routes/backtest">Create backtest</Link>
+            </Button>
+          </Box>
         )}
         <Box position="relative" flex="1" w="full">
           <MainChart screenshotMode={isScreenshotMode} />

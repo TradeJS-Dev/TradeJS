@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import path from 'path';
 import { TTL_1M } from '@tradejs/core/constants';
 import { delKey, getData, getKeys, setData } from '@tradejs/infra/redis';
@@ -10,7 +11,7 @@ const HEARTBEAT_TIMEOUT_MS = 20_000;
 const SWEEP_INTERVAL_MS = 5_000;
 const MAX_LOG_LINES = 220;
 const DEFAULT_INTERVAL = '15';
-const DEFAULT_CONNECTOR = 'bybit';
+const DEFAULT_CONNECTOR = 'binance';
 
 export type BacktestJobStatus =
   | 'running'
@@ -116,7 +117,13 @@ const nowIso = () => new Date().toISOString();
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
-const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
+const localCliCommand = path.join(
+  projectRoot,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'tradejs.cmd' : 'tradejs',
+);
+const cliCommand = existsSync(localCliCommand) ? localCliCommand : 'tradejs';
 
 const emptyProgress = (): BacktestJobProgress => ({
   completed: 0,
@@ -439,7 +446,7 @@ const launchBacktestProcess = async (
     userName: record.userName,
     skip,
   });
-  const child = spawn(yarnCommand, args, {
+  const child = spawn(cliCommand, args, {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -452,7 +459,7 @@ const launchBacktestProcess = async (
   const startedAt = nowIso();
 
   record.status = 'running';
-  record.command = yarnCommand;
+  record.command = cliCommand;
   record.args = args;
   record.pid = child.pid;
   record.exitCode = undefined;
@@ -462,7 +469,7 @@ const launchBacktestProcess = async (
   record.startedAt ??= startedAt;
   record.lastHeartbeatAt = startedAt;
   record.runCount += 1;
-  appendLog(record, `$ ${yarnCommand} ${args.join(' ')}`);
+  appendLog(record, `$ ${cliCommand} ${args.join(' ')}`);
   await saveJob(record);
 
   const handle: BacktestProcessHandle = {
@@ -693,7 +700,7 @@ export const startBacktestJob = async (userName: string, payload: unknown) => {
     userName,
     status: 'paused',
     request,
-    command: yarnCommand,
+    command: cliCommand,
     args: [],
     createdAt,
     updatedAt: createdAt,

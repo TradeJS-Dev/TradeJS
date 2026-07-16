@@ -247,6 +247,7 @@ const BacktestRunPage = () => {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [starting, setStarting] = useState(false);
   const [busyAction, setBusyAction] = useState('');
+  const [onboardingMode, setOnboardingMode] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState('');
   const [selectedConfigId, setSelectedConfigId] = useState('');
   const [periodMode, setPeriodMode] = useState<PeriodMode>('days');
@@ -258,7 +259,7 @@ const BacktestRunPage = () => {
   const [ai, setAi] = useState(false);
   const [fast, setFast] = useState(false);
   const [interval, setIntervalValue] = useState('15');
-  const [connector, setConnector] = useState('bybit');
+  const [connector, setConnector] = useState('binance');
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [tickersLimit, setTickersLimit] = useState('');
   const [testsLimit, setTestsLimit] = useState('');
@@ -308,6 +309,21 @@ const BacktestRunPage = () => {
     void loadConfigs();
     void loadJobs();
   }, [loadConfigs, loadJobs]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('onboarding') !== '1') {
+      return;
+    }
+
+    setOnboardingMode(true);
+    setDays('45');
+    setIntervalValue('15');
+    setConnector('binance');
+    setSelectedTickers(['BTCUSDT']);
+    setTestsLimit('1');
+    setParallel('1');
+  }, []);
 
   useEffect(() => {
     if (!strategyItems.length) {
@@ -542,6 +558,9 @@ const BacktestRunPage = () => {
                       <Text fontWeight="700" flexShrink={0}>
                         New run
                       </Text>
+                      {onboardingMode ? (
+                        <Badge colorPalette="teal">First backtest preset</Badge>
+                      ) : null}
                       {selectedConfig ? (
                         <Flex gap={2} wrap="wrap">
                           <Badge colorPalette="teal">
@@ -727,7 +746,7 @@ const BacktestRunPage = () => {
                           value={[connector]}
                           defaultValue={[connector]}
                           onChange={(value) => {
-                            setConnector(value[0] || 'bybit');
+                            setConnector(value[0] || 'binance');
                             setSelectedTickers([]);
                           }}
                           items={CONNECTOR_ITEMS}

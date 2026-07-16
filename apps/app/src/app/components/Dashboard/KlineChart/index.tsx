@@ -172,7 +172,11 @@ export const KlineChart = ({
 
   return (
     <>
-      <div id={id} />
+      <div
+        id={id}
+        data-testid="market-chart"
+        data-chart-ready={fulfilled && !_.isEmpty(data) ? 'true' : 'false'}
+      />
       {!fulfilled && <OverlaySpinner />}
     </>
   );

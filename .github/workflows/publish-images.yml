@@ -166,25 +166,6 @@ jobs:
       - name: Unit tests
         run: yarn unit
 
-      - name: Prepare quickstart env
-        run: cp .env.example .env
-
-      - name: Quickstart infra up
-        run: yarn infra-up
-
-      - name: Quickstart smoke
-        env:
-          REDIS_HOST: 127.0.0.1
-          PG_HOST: 127.0.0.1
-          ML_GRPC_ADDRESS: 127.0.0.1:50051
-          NEXTAUTH_SECRET: quickstart-ci-secret
-          NEXTAUTH_URL: http://127.0.0.1:3000
-        run: yarn quickstart:smoke
-
-      - name: Quickstart infra down
-        if: always()
-        run: yarn infra-down
-
       - name: Preflight package archives
         run: yarn npm:publish:all:dry
 
@@ -214,6 +195,32 @@ jobs:
           YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           YARN_NPM_PUBLISH_PROVENANCE: 'true'
         run: yarn npm:publish:all
+
+      - name: Wait for create-tradejs on npm
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          for attempt in $(seq 1 12); do
+            if [ "$(npm view "create-tradejs@${RELEASE_VERSION}" version 2>/dev/null)" = "$RELEASE_VERSION" ]; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "create-tradejs@${RELEASE_VERSION} is not available after ${attempt} attempts" >&2
+              exit 1
+            fi
+
+            echo "create-tradejs@${RELEASE_VERSION} is not available yet; retrying in 10 seconds"
+            sleep 10
+          done
+
+      - name: Install Playwright browser
+        run: yarn playwright install --with-deps chromium
+
+      - name: Quickstart browser e2e
+        env:
+          QUICKSTART_CREATE_SPEC: create-tradejs@${{ steps.release.outputs.version }}
+        run: yarn quickstart:e2e
 
       - name: Install freshly published sandbox dependencies
         run: |

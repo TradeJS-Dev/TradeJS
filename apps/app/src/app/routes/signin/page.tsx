@@ -26,6 +26,13 @@ const SigninContent = () => {
     }
   }, [status, router, callbackUrl]);
 
+  useEffect(() => {
+    const suggestedUsername = searchParams.get('username')?.trim();
+    if (suggestedUsername) {
+      setUsername((current) => current || suggestedUsername);
+    }
+  }, [searchParams]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');

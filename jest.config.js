@@ -46,6 +46,7 @@ const customJestConfig = {
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   testPathIgnorePatterns: [
     '<rootDir>/.ai/',
+    '<rootDir>/e2e/',
     '<rootDir>/dist/',
     '<rootDir>/packages/.*/dist/',
     '<rootDir>/packages/cli/src/scripts/test.ts',

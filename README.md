@@ -20,6 +20,7 @@ It supports two first-class authoring paths:
 
 ### Published npm Packages
 
+- [`create-tradejs`](https://www.npmjs.com/package/create-tradejs) — one-command external project, infrastructure, login, and first-backtest UI bootstrap
 - [`@tradejs/app`](https://www.npmjs.com/package/@tradejs/app) — installable Next.js UI for dashboards, backtests, and runtime data
 - [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and AI/ML workflows
 - [`@tradejs/base`](https://www.npmjs.com/package/@tradejs/base) — default preset wiring built-in strategies, indicators, and connectors
@@ -41,6 +42,7 @@ It supports two first-class authoring paths:
 - `packages/base`: default preset that wires built-in strategies/indicators/connectors
 - `packages/connectors`: exchange connectors and market data providers
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ai-*`, `ml-*`, `doctor`, etc.)
+- `packages/create-tradejs`: external project generator and first-backtest bootstrap
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
 

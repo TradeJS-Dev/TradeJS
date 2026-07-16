@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { KlineChart } from '..';
 
 const useDataMock = jest.fn();
@@ -130,6 +130,9 @@ describe('Dashboard/KlineChart', () => {
     );
 
     expect(setDataLoaderMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId('market-chart').getAttribute('data-chart-ready'),
+    ).toBe('true');
     const [{ getBars }] = setDataLoaderMock.mock.calls[0];
     const callback = jest.fn();
     getBars({ callback });

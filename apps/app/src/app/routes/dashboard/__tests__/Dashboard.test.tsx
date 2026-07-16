@@ -16,6 +16,7 @@ jest.mock('@chakra-ui/react', () => ({
   Flex: ({ children, ...props }: any) => (
     <div data-testid={props['data-testid']}>{children}</div>
   ),
+  Button: ({ children }: any) => <button>{children}</button>,
   ClientOnly: ({ children }: any) => <>{children}</>,
 }));
 
@@ -110,6 +111,11 @@ describe('Dashboard route screenshot mode', () => {
     });
 
     expect(screen.getByTestId('filters-root')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Create backtest' })
+        .getAttribute('href'),
+    ).toBe('/routes/backtest');
     expect(mainChartMock).toHaveBeenCalledWith(
       expect.objectContaining({
         screenshotMode: false,
