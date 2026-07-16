@@ -48,6 +48,8 @@ RUN rm -rf apps/app/node_modules packages/cli/node_modules
 
 FROM node:24-alpine AS runner
 
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
+
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
       org.opencontainers.image.description="TradeJS app" \
       org.opencontainers.image.licenses="MIT"
