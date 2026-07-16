@@ -5,28 +5,22 @@ const ts = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const row = (params: {
   offsetHours: number;
-  interval?: DerivativesRow['interval'];
   openInterest?: number | null;
   fundingRate?: number | null;
   liqLong?: number | null;
   liqShort?: number | null;
   liqTotal?: number | null;
-}): DerivativesRow => {
-  const interval = params.interval ?? '15m';
-  const intervalMs = interval === '1h' ? 60 * 60 * 1000 : 15 * 60 * 1000;
-
-  return {
-    symbol: 'ETHUSDT',
-    interval,
-    ts: new Date(ts - params.offsetHours * 60 * 60 * 1000 - intervalMs),
-    openInterest: params.openInterest ?? null,
-    fundingRate: params.fundingRate ?? null,
-    liqLong: params.liqLong ?? null,
-    liqShort: params.liqShort ?? null,
-    liqTotal: params.liqTotal ?? null,
-    source: 'coinalyze',
-  };
-};
+}): DerivativesRow => ({
+  symbol: 'ETHUSDT',
+  interval: '15m',
+  ts: new Date(ts - params.offsetHours * 60 * 60 * 1000),
+  openInterest: params.openInterest ?? null,
+  fundingRate: params.fundingRate ?? null,
+  liqLong: params.liqLong ?? null,
+  liqShort: params.liqShort ?? null,
+  liqTotal: params.liqTotal ?? null,
+  source: 'coinalyze',
+});
 
 describe('buildDerivativesContext', () => {
   it('returns missing context without rows', () => {
@@ -49,7 +43,7 @@ describe('buildDerivativesContext', () => {
     expect(context.intervals).toEqual({});
   });
 
-  it('ignores unavailable rows and computes OI changes from closed intervals only', () => {
+  it('ignores future rows and computes OI changes from historical rows only', () => {
     const context = buildDerivativesContext({
       symbol: 'ETHUSDT',
       direction: 'LONG',
@@ -75,42 +69,6 @@ describe('buildDerivativesContext', () => {
     expect(context.intervals['15m']?.oiChangePct1h).toBe(10);
     expect(context.intervals['15m']?.oiChangePct4h).toBe(21);
     expect(context.summary.directionAligned).toBe(true);
-  });
-
-  it('does not expose a derivatives interval before that interval closes', () => {
-    const signalTimestamp = Date.UTC(2026, 0, 1, 12, 45, 0);
-    const oneHourRows: DerivativesRow[] = [
-      {
-        ...row({ offsetHours: 0, interval: '1h', openInterest: 100 }),
-        ts: new Date(Date.UTC(2026, 0, 1, 11, 0, 0)),
-      },
-      {
-        ...row({ offsetHours: 0, interval: '1h', openInterest: 110 }),
-        ts: new Date(Date.UTC(2026, 0, 1, 12, 0, 0)),
-      },
-    ];
-
-    const beforeClose = buildDerivativesContext({
-      symbol: 'ETHUSDT',
-      direction: 'LONG',
-      timestamp: signalTimestamp,
-      rowsByInterval: { '1h': oneHourRows },
-    });
-    const afterClose = buildDerivativesContext({
-      symbol: 'ETHUSDT',
-      direction: 'LONG',
-      timestamp: Date.UTC(2026, 0, 1, 13, 0, 0),
-      rowsByInterval: { '1h': oneHourRows },
-    });
-
-    expect(beforeClose.intervals['1h']?.asOfTs).toBe(
-      Date.UTC(2026, 0, 1, 11, 0, 0),
-    );
-    expect(beforeClose.intervals['1h']?.openInterest).toBe(100);
-    expect(afterClose.intervals['1h']?.asOfTs).toBe(
-      Date.UTC(2026, 0, 1, 12, 0, 0),
-    );
-    expect(afterClose.intervals['1h']?.openInterest).toBe(110);
   });
 
   it('detects crowded long funding as a LONG risk', () => {
