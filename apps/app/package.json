@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/app",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Installable Next.js UI for the TradeJS open-source framework: dashboards, backtests, charts, and runtime data.",
   "keywords": [
     "tradejs",
