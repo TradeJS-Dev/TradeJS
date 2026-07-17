@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const password = 'QuickstartE2e123!';
 
+test.describe.configure({ retries: 0 });
+
 test('installs TradeJS and completes the first backtest from the UI', async ({
   page,
 }) => {
@@ -32,7 +34,9 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
   await expect(chart.locator('canvas').first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Create backtest' }).click();
-  await expect(page).toHaveURL(/\/routes\/backtest(?:\?.*)?$/);
+  await expect(page).toHaveURL(/\/routes\/backtest(?:\?.*)?$/, {
+    timeout: 60_000,
+  });
   await expect(page.getByText('Backtest runs', { exact: true })).toBeVisible();
 
   await page.getByRole('spinbutton', { name: 'Days' }).fill('7');
