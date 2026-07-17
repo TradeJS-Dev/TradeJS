@@ -11,13 +11,16 @@ const mockedFetchWithRetry = fetchWithRetry as jest.MockedFunction<
 
 const makeResponse = ({
   ok = true,
+  status = ok ? 200 : 500,
   payload = {},
 }: {
   ok?: boolean;
+  status?: number;
   payload?: unknown;
 } = {}) =>
   ({
     ok,
+    status,
     json: jest.fn().mockResolvedValue(payload),
   }) as any;
 
@@ -49,6 +52,32 @@ describe('BinanceConnectorCreator', () => {
       BinanceConnectorCreator({ userName: 'test', universe: 'tradfi' }),
     ).rejects.toThrow('Unsupported market universe: tradfi');
     expect(mockedFetchWithRetry).not.toHaveBeenCalled();
+  });
+
+  it('uses the public market-data endpoint for the ticker universe', async () => {
+    mockedFetchWithRetry.mockResolvedValue(
+      makeResponse({ payload: [{ symbol: 'BTCUSDT', volume: '10' }] }),
+    );
+
+    const connector = await BinanceConnectorCreator({ userName: 'test' });
+    await connector.getTickers();
+
+    expect(mockedFetchWithRetry).toHaveBeenCalledWith(
+      'https://data-api.binance.vision/api/v3/ticker/24hr',
+      expect.any(Object),
+    );
+  });
+
+  it('rejects a failed ticker-universe request instead of returning no tickers', async () => {
+    mockedFetchWithRetry.mockResolvedValue(
+      makeResponse({ ok: false, status: 451 }),
+    );
+
+    const connector = await BinanceConnectorCreator({ userName: 'test' });
+
+    await expect(connector.getTickers()).rejects.toThrow(
+      'Binance ticker request failed with HTTP 451',
+    );
   });
 
   it('loads symbol top-of-book from Binance bookTicker endpoint', async () => {

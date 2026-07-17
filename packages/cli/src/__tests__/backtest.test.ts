@@ -498,6 +498,19 @@ describe('backtest script helpers', () => {
     ]);
   });
 
+  it('rejects an empty test selection instead of completing successfully', async () => {
+    await expect(
+      buildPreparedTestSuite({
+        testSuite: [],
+        window: { start: 100, end: 200, source: 'explicit' } as any,
+        preloadStart: 50,
+        isReplay: false,
+      }),
+    ).rejects.toThrow(
+      'No backtest tests selected (available=0, skip=0, limit=50).',
+    );
+  });
+
   it('forces signals replay configs into PARITY mode while preserving runtime gate settings', () => {
     expect(
       buildReplayStrategyConfig({

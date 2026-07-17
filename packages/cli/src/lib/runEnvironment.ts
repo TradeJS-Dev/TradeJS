@@ -187,6 +187,12 @@ export const prepareRunEnvironment = async ({
     }),
   );
 
+  if (!loadedTickers.length) {
+    throw new Error(
+      `No tickers available for ${connectorName}. Check connector market-data access or select tickers explicitly.`,
+    );
+  }
+
   if (showTickersList) {
     console.log(chalk.gray(JSON.stringify(loadedTickers.sort(), null, 2)));
     return null;

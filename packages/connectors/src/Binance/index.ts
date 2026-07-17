@@ -10,6 +10,7 @@ import {
   resolveConnectorUniverse,
 } from '@tradejs/types';
 import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
+import { getBinancePublicApiUrl } from '../shared/binancePublicApi';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m',
@@ -78,8 +79,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
 
     const intervalMs = INTERVAL_MS[String(interval)] ?? 900_000;
     const normalizedEnd = end ?? Date.now();
-    const baseUrl =
-      process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+    const baseUrl = getBinancePublicApiUrl();
 
     let cursor = start ?? Math.max(0, normalizedEnd - intervalMs * 1000);
     const rows: KlineChartData = [];
@@ -141,12 +141,15 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
   };
 
   const loadTickers = async () => {
-    const baseUrl =
-      process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+    const baseUrl = getBinancePublicApiUrl();
     const response = await fetchWithRetry(`${baseUrl}/api/v3/ticker/24hr`, {
       headers: { 'User-Agent': 'tradejs/binance-connector' },
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      throw new Error(
+        `Binance ticker request failed with HTTP ${response.status || 'unknown'}`,
+      );
+    }
     const payload = (await response.json()) as Array<Record<string, unknown>>;
     if (!Array.isArray(payload)) return [];
 
@@ -235,8 +238,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
         .toUpperCase();
       if (!normalizedSymbol) return null;
 
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const baseUrl = getBinancePublicApiUrl();
       const url = new URL(`${baseUrl}/api/v3/ticker/bookTicker`);
       url.searchParams.set('symbol', normalizedSymbol);
 
@@ -263,8 +265,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
       if (!normalizedSymbol) return [];
 
       const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const baseUrl = getBinancePublicApiUrl();
       const url = new URL(`${baseUrl}/api/v3/aggTrades`);
       url.searchParams.set('symbol', normalizedSymbol);
       url.searchParams.set('startTime', String(Math.floor(startTime)));
@@ -306,8 +307,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
 
       const allowedLimits = [5, 10, 20, 50, 100, 500, 1000, 5000] as const;
       const safeLimit = allowedLimits.includes(limit as any) ? limit : 100;
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const baseUrl = getBinancePublicApiUrl();
       const url = new URL(`${baseUrl}/api/v3/depth`);
       url.searchParams.set('symbol', normalizedSymbol);
       url.searchParams.set('limit', String(safeLimit));

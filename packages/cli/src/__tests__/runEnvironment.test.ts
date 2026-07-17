@@ -219,4 +219,25 @@ describe('prepareRunEnvironment', () => {
       'No cached ticker universe for ByBit. Run once without --cacheOnly or pass --tickers explicitly.',
     );
   });
+
+  it('fails a run when the connector returns an empty ticker universe', async () => {
+    mockGetConnectorCreatorByName.mockResolvedValue(async () => ({
+      name: 'ByBit',
+      getTickers: jest.fn(async () => []),
+    }));
+
+    await expect(
+      prepareRunEnvironment({
+        connector: 'ByBit',
+        userName: 'root',
+        interval: '15',
+        projectRoot: '/repo',
+        startTime: 1_700_000_000_000,
+        endTime: 1_700_086_400_000,
+      }),
+    ).rejects.toThrow(
+      'No tickers available for ByBit. Check connector market-data access or select tickers explicitly.',
+    );
+    expect(mockUpdateMarketHistoryWithBtcReferences).not.toHaveBeenCalled();
+  });
 });

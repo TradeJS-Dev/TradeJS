@@ -446,14 +446,11 @@ export const buildPreparedTestSuite = async ({
     );
 
   if (!preparedSuite.length) {
-    console.log(
-      chalk.yellow(
-        `No tests selected (skip=${testsSkip}, limit=${
-          Number.isFinite(requestedTestsLimit) ? requestedTestsLimit : 'all'
-        }).`,
-      ),
+    throw new Error(
+      `No backtest tests selected (available=${testSuite.length}, skip=${testsSkip}, limit=${
+        Number.isFinite(requestedTestsLimit) ? requestedTestsLimit : 'all'
+      }).`,
     );
-    return null;
   }
 
   await prepareMarketContextForRun({

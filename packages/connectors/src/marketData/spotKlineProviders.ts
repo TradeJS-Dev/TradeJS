@@ -1,5 +1,6 @@
 import { KlineChartData, DerivativesInterval } from '@tradejs/types';
 import { fetchWithRetry } from '@tradejs/infra/http';
+import { getBinancePublicApiUrl } from '../shared/binancePublicApi';
 
 export type SpotKlineRequest = {
   symbol: string;
@@ -91,8 +92,7 @@ export const spotKlineProviders: {
   binance: {
     kline: async ({ symbol, interval, start, end }) => {
       const token = toIntervalToken(interval);
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const baseUrl = getBinancePublicApiUrl();
       const url = new URL(`${baseUrl}/api/v3/klines`);
       url.searchParams.set('symbol', symbol);
       url.searchParams.set('interval', token);
