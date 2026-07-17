@@ -1,8 +1,7 @@
 'use client';
 
 import { PropsWithChildren } from 'react';
-import _ from 'lodash';
-import { Box } from '@chakra-ui/react';
+import { Box, Text } from '@chakra-ui/react';
 import { TestResultContext } from '../context';
 import { TestCardSkeleton } from '../Skeleton';
 import { useTest, useFavoriteTests } from '#store';
@@ -20,7 +19,22 @@ export const TestCardRoot = ({
   const testResult = useTest(testName);
   const { checkIsFavorite } = useFavoriteTests();
 
-  if (_.isEmpty(testResult)) {
+  if (testResult === null) {
+    return (
+      <Box
+        p={4}
+        mb={4}
+        borderRadius="md"
+        borderWidth="1px"
+        borderColor="gray.700"
+        color="gray.400"
+      >
+        <Text>Backtest data is no longer available.</Text>
+      </Box>
+    );
+  }
+
+  if (!testResult) {
     return <TestCardSkeleton />;
   }
 

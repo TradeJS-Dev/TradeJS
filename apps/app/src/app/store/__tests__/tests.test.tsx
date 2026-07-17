@@ -1,15 +1,22 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react';
-import { resetTestsStoreForTests, useTestList } from '../tests';
+import {
+  resetTestsStoreForTests,
+  useBacktest,
+  useTest,
+  useTestList,
+} from '../tests';
 
 const getBacktestFilesMock = jest.fn();
+const getBacktestMock = jest.fn();
+const getOrderLogMock = jest.fn();
 const idbGetMock = jest.fn();
 const idbSetMock = jest.fn();
 
 jest.mock('#actions/backtest', () => ({
   getBacktestFiles: (...args: unknown[]) => getBacktestFilesMock(...args),
-  getBacktest: jest.fn(),
-  getOrderLog: jest.fn(),
+  getBacktest: (...args: unknown[]) => getBacktestMock(...args),
+  getOrderLog: (...args: unknown[]) => getOrderLogMock(...args),
 }));
 
 jest.mock('idb-keyval', () => ({
@@ -143,5 +150,94 @@ describe('store/useTestList', () => {
     expect(getByTestId('error-probe').getAttribute('data-fulfilled')).toBe(
       'false',
     );
+  });
+});
+
+describe('store/useBacktest', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetTestsStoreForTests();
+    idbGetMock.mockResolvedValue(null);
+    idbSetMock.mockResolvedValue(undefined);
+  });
+
+  it('treats a missing order log as a non-fatal empty result', async () => {
+    getBacktestFilesMock.mockResolvedValue([
+      {
+        value: 'BTCUSDT__1',
+        label: 'BTCUSDT_1',
+        data: { strategyName: 'TrendLine', netProfit: 10 },
+      },
+    ]);
+    getOrderLogMock.mockRejectedValue(
+      new Error('{"error":"Backtest order log not found"}'),
+    );
+
+    const BacktestProbe = () => {
+      const { backtest, loading } = useBacktest('BTCUSDT__1');
+
+      return (
+        <div
+          data-testid="backtest-probe"
+          data-length={String(backtest.length)}
+          data-loading={String(loading)}
+        />
+      );
+    };
+
+    const { getByTestId } = render(<BacktestProbe />);
+
+    await waitFor(() => {
+      expect(getOrderLogMock).toHaveBeenCalledWith('BTCUSDT__1', 'TrendLine');
+      expect(getByTestId('backtest-probe').getAttribute('data-loading')).toBe(
+        'false',
+      );
+    });
+    expect(getByTestId('backtest-probe').getAttribute('data-length')).toBe('0');
+  });
+});
+
+describe('store/useTest', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetTestsStoreForTests();
+    idbGetMock.mockResolvedValue(null);
+    idbSetMock.mockResolvedValue(undefined);
+  });
+
+  it('stores a non-fatal unavailable state when a result returns 404', async () => {
+    getBacktestFilesMock.mockResolvedValue([
+      {
+        value: 'BTCUSDT__1',
+        label: 'BTCUSDT_1',
+        data: { strategyName: 'TrendLine', netProfit: 10 },
+      },
+    ]);
+    getBacktestMock.mockRejectedValue(
+      new Error('{"error":"Backtest order log not found"}'),
+    );
+
+    const TestProbe = () => {
+      const test = useTest('BTCUSDT__1');
+
+      return (
+        <div
+          data-testid="test-probe"
+          data-state={
+            test === null ? 'unavailable' : test ? 'ready' : 'loading'
+          }
+        />
+      );
+    };
+
+    const { getByTestId } = render(<TestProbe />);
+
+    await waitFor(() => {
+      expect(getBacktestMock).toHaveBeenCalledWith('BTCUSDT__1', 'TrendLine');
+      expect(getByTestId('test-probe').getAttribute('data-state')).toBe(
+        'unavailable',
+      );
+    });
+    expect(getBacktestMock).toHaveBeenCalledTimes(1);
   });
 });

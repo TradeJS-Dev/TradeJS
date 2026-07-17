@@ -18,6 +18,7 @@ const COMPARE_LOCAL_STORAGE_KEY = 'compare';
 const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
 const BACKTEST_FILES_CACHE_KEY = 'backtest-files';
 const BACKTEST_FILES_CACHE_TTL_MS = 5 * 60 * 1000;
+const testLoadRequests = new Map<string, Promise<void>>();
 
 const COLORS = [
   'purple',
@@ -180,6 +181,7 @@ const useTestsCompareStore = create<TestsCompareState>()(
 interface TestsState {
   tests: Map<string, TestResult | null>;
   setTest: (test: TestResult) => void;
+  setTestUnavailable: (testName: string) => void;
   removeTest: (testName: string) => void;
 }
 
@@ -189,6 +191,15 @@ const useTestsStore = create<TestsState>((set) => ({
     set(({ tests }) => {
       const next = new Map(tests);
       next.set(testResult.test.name, testResult);
+
+      return {
+        tests: next,
+      };
+    }),
+  setTestUnavailable: (testName) =>
+    set(({ tests }) => {
+      const next = new Map(tests);
+      next.set(testName, null);
 
       return {
         tests: next,
@@ -357,49 +368,73 @@ export const useTestList = (filters: TestListProps = {}) => {
 
 export const useTest = (testName: string) => {
   const testResult = useTestsStore((s) => s.tests.get(testName));
+  const hasTestResult = useTestsStore((s) => s.tests.has(testName));
   const setTest = useTestsStore((s) => s.setTest);
+  const setTestUnavailable = useTestsStore((s) => s.setTestUnavailable);
   const tests = useTestListStore((s) => s.tests);
   const setTestList = useTestListStore((s) => s.setTest);
   const testItem = tests.find((item) => item.value === testName);
   const strategyName = testItem?.data?.strategyName as string | undefined;
 
   useEffect(() => {
-    const loadData = async () => {
-      if (!_.isEmpty(testResult)) {
-        return;
-      }
+    if (hasTestResult) {
+      return;
+    }
 
+    const loadData = async () => {
       const key = `test-${testName}`;
 
-      const cachedResult = (await get(key)) as TestResult | null;
+      try {
+        const cachedResult = (await get(key)) as TestResult | null;
 
-      if (!_.isEmpty(cachedResult)) {
-        setTest(cachedResult);
+        if (!_.isEmpty(cachedResult)) {
+          setTest(cachedResult);
 
-        return;
+          return;
+        }
+
+        let resolvedStrategy = strategyName;
+        if (!resolvedStrategy) {
+          const newTests = await loadBacktestFilesList();
+          setTestList(newTests);
+          resolvedStrategy = newTests.find((item) => item.value === testName)
+            ?.data?.strategyName as string | undefined;
+        }
+
+        const test = await getBacktest(testName, resolvedStrategy);
+
+        if (!test) {
+          setTestUnavailable(testName);
+          return;
+        }
+
+        setTest(test);
+
+        await set(key, test);
+      } catch {
+        setTestUnavailable(testName);
       }
-
-      let resolvedStrategy = strategyName;
-      if (!resolvedStrategy) {
-        const newTests = await loadBacktestFilesList();
-        setTestList(newTests);
-        resolvedStrategy = newTests.find((item) => item.value === testName)
-          ?.data?.strategyName as string | undefined;
-      }
-
-      const test = await getBacktest(testName, resolvedStrategy);
-
-      if (!test) {
-        return;
-      }
-
-      setTest(test);
-
-      await set(key, test);
     };
 
-    void loadData();
-  }, [setTest, setTestList, strategyName, testName, testResult]);
+    let request = testLoadRequests.get(testName);
+
+    if (!request) {
+      request = loadData();
+      testLoadRequests.set(testName, request);
+      void request.finally(() => {
+        if (testLoadRequests.get(testName) === request) {
+          testLoadRequests.delete(testName);
+        }
+      });
+    }
+  }, [
+    hasTestResult,
+    setTest,
+    setTestList,
+    setTestUnavailable,
+    strategyName,
+    testName,
+  ]);
 
   return testResult;
 };
@@ -500,31 +535,33 @@ export const useBacktest = (id: string | undefined) => {
 
       setLoading(true);
 
-      const cachedResult = (await get(key)) as OrderLogData | null;
+      try {
+        const cachedResult = (await get(key)) as OrderLogData | null;
 
-      if (cachedResult && !_.isEmpty(cachedResult)) {
-        setBacktest(id, cachedResult);
+        if (cachedResult && !_.isEmpty(cachedResult)) {
+          setBacktest(id, cachedResult);
+          return;
+        }
+
+        let resolvedStrategy = strategyName;
+        if (!resolvedStrategy) {
+          const newTests = await loadBacktestFilesList();
+          setTestList(newTests);
+          resolvedStrategy = newTests.find((item) => item.value === id)?.data
+            ?.strategyName as string | undefined;
+        }
+
+        const backtestData = await getOrderLog(id, resolvedStrategy);
+
+        if (backtestData && !_.isEmpty(backtestData)) {
+          setBacktest(id, backtestData);
+          await set(key, backtestData);
+        }
+      } catch {
+        // A missing or expired order-log artifact must not crash the dashboard.
+      } finally {
         setLoading(false);
-
-        return;
       }
-
-      let resolvedStrategy = strategyName;
-      if (!resolvedStrategy) {
-        const newTests = await loadBacktestFilesList();
-        setTestList(newTests);
-        resolvedStrategy = newTests.find((item) => item.value === id)?.data
-          ?.strategyName as string | undefined;
-      }
-
-      const backtestData = await getOrderLog(id, resolvedStrategy);
-
-      if (backtestData && !_.isEmpty(backtestData)) {
-        setBacktest(id, backtestData);
-        await set(key, backtestData);
-      }
-
-      setLoading(false);
     };
 
     void updateBacktest();
@@ -537,6 +574,7 @@ export const useBacktest = (id: string | undefined) => {
 };
 
 export const resetTestsStoreForTests = () => {
+  testLoadRequests.clear();
   useDataStore.setState({
     backtests: new Map<string, OrderLogData | null>(),
   });
