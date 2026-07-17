@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
   packages: write
 
@@ -104,6 +104,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'push' && github.sha || 'stable' }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -242,13 +243,14 @@ jobs:
         run: cp examples/sandbox/.env.example examples/sandbox/.env
 
       - name: Sandbox infra up
+        id: sandbox_infra_up
         run: yarn sandbox:infra-up
 
       - name: Sandbox deterministic e2e
         run: yarn sandbox:e2e
 
       - name: Sandbox infra down
-        if: always()
+        if: ${{ always() && steps.sandbox_infra_up.outcome != 'skipped' }}
         run: yarn sandbox:infra-down
 
       - name: Persist sandbox lockfile and resolve release commit
