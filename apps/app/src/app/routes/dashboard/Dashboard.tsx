@@ -28,7 +28,7 @@ const DashboardRoute = () => {
   );
   const { tests, ensureLoaded: ensureBacktestsLoaded } = useTestList({
     symbol: filters.symbol,
-    enabled: false,
+    enabled: Boolean(filters.backtestId || filters.backtestStrategy),
   });
   const hasBacktestId = searchParams.has('backtestId');
   const hasBacktestStrategy = searchParams.has('backtestStrategy');

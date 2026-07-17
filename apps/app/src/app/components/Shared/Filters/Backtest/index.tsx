@@ -16,6 +16,9 @@ export const SelectBacktest = () => {
 
   const strategyItems = useMemo(() => {
     const names = new Set<string>();
+    if (filters.backtestStrategy) {
+      names.add(filters.backtestStrategy);
+    }
     for (const test of tests) {
       const strategyName = test.data?.strategyName;
       if (typeof strategyName === 'string' && strategyName) {
@@ -29,9 +32,11 @@ export const SelectBacktest = () => {
         label: strategyName,
         value: strategyName,
       }));
-  }, [tests]);
+  }, [filters.backtestStrategy, tests]);
 
-  const [selectedStrategy, setSelectedStrategy] = useState<string>('');
+  const [selectedStrategy, setSelectedStrategy] = useState<string>(
+    filters.backtestStrategy || '',
+  );
   const selectedTestStrategy = useMemo(() => {
     if (!filters.backtestId) return null;
 
@@ -45,7 +50,7 @@ export const SelectBacktest = () => {
 
   useEffect(() => {
     if (_.isEmpty(strategyItems)) {
-      setSelectedStrategy('');
+      setSelectedStrategy(filters.backtestStrategy || '');
       return;
     }
 
@@ -112,12 +117,23 @@ export const SelectBacktest = () => {
   const strategyTests = tests.filter(
     (test) => test.data?.strategyName === selectedStrategy,
   );
-  const hasStrategyItems = !_.isEmpty(strategyItems);
+  const backtestItems = [...strategyTests];
+  if (
+    filters.backtestId &&
+    selectedStrategy &&
+    !backtestItems.some((test) => test.value === filters.backtestId)
+  ) {
+    backtestItems.unshift({
+      label: filters.backtestId,
+      value: filters.backtestId,
+      data: { strategyName: selectedStrategy },
+    });
+  }
 
   return (
     <>
       <Select
-        placeholder={hasStrategyItems ? 'Strategy' : 'No strategies'}
+        placeholder="Strategy"
         emptyState="No strategies for this symbol"
         defaultValue={[selectedStrategy]}
         value={[selectedStrategy]}
@@ -128,7 +144,6 @@ export const SelectBacktest = () => {
           }
         }}
         items={strategyItems}
-        disabled={!hasStrategyItems}
         width="220px"
       />
       <Select
@@ -146,7 +161,7 @@ export const SelectBacktest = () => {
             label: 'Not selected',
             value: '',
           },
-          ...strategyTests,
+          ...backtestItems,
         ]}
         disabled={!selectedStrategy}
         width="240px"

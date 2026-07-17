@@ -144,7 +144,8 @@ describe('filters lazy open', () => {
     expect(ensureBacktestsLoaded).toHaveBeenCalledTimes(1);
   });
 
-  it('disables strategy select when there are no backtests for the symbol', () => {
+  it('keeps strategy select enabled so an empty list can be loaded lazily', () => {
+    const ensureBacktestsLoaded = jest.fn();
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
@@ -155,13 +156,41 @@ describe('filters lazy open', () => {
           },
           tickers: [],
           backtestFiles: [],
+          ensureBacktestsLoaded,
         }}
       >
         <SelectBacktest />
       </FiltersContext.Provider>,
     );
 
-    expect(getByTestId('No strategies-disabled').textContent).toBe('true');
+    expect(getByTestId('Strategy-disabled').textContent).toBe('false');
+    fireEvent.click(getByTestId('Strategy-open'));
+    expect(ensureBacktestsLoaded).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores backtest selects from the dashboard URL before the index loads', () => {
+    const { getByTestId } = render(
+      <FiltersContext.Provider
+        value={{
+          filters: {
+            provider: 'coinbase',
+            symbol: 'BCHUSDT',
+            interval: '15',
+            backtestId: 'BCHUSDT_suite_test',
+            backtestStrategy: 'AdaptiveMomentumRibbon',
+          },
+          tickers: [],
+          backtestFiles: [],
+        }}
+      >
+        <SelectBacktest />
+      </FiltersContext.Provider>,
+    );
+
+    expect(getByTestId('Strategy-disabled').textContent).toBe('false');
+    expect(getByTestId('Backtest-disabled').textContent).toBe('false');
+    expect(getByTestId('select-AdaptiveMomentumRibbon')).toBeTruthy();
+    expect(getByTestId('select-BCHUSDT_suite_test')).toBeTruthy();
   });
 
   it('resets the symbol when the market universe changes', () => {
