@@ -10,6 +10,7 @@ CREATE_BIN="${QUICKSTART_CREATE_BIN:-}"
 APP_URL="http://localhost:${PORT}"
 APP_LOG="${QUICKSTART_E2E_LOG:-$REPO_ROOT/output/quickstart-e2e.log}"
 CREATE_PID=""
+NPM_EXEC_DIR=""
 PROJECT_CREATED="false"
 
 terminate_process_tree() {
@@ -41,6 +42,10 @@ cleanup() {
   if [ "$PROJECT_CREATED" = "true" ]; then
     rm -rf "$PROJECT_DIR"
   fi
+
+  if [ -n "$NPM_EXEC_DIR" ]; then
+    rm -rf "$NPM_EXEC_DIR"
+  fi
 }
 
 trap cleanup EXIT
@@ -64,7 +69,11 @@ echo "Starting one-command quickstart with $CREATE_SPEC"
 if [ -n "$CREATE_BIN" ]; then
   "$CREATE_BIN" "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
 else
-  npm exec --yes --package="$CREATE_SPEC" -- create-tradejs "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
+  NPM_EXEC_DIR="$(mktemp -d)"
+  (
+    cd "$NPM_EXEC_DIR"
+    npm exec --yes --package="$CREATE_SPEC" -- create-tradejs "$PROJECT_DIR" --port "$PORT" --no-open
+  ) >"$APP_LOG" 2>&1 &
 fi
 CREATE_PID=$!
 
