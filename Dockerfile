@@ -18,6 +18,7 @@ COPY packages/base/package.json ./packages/base/package.json
 COPY packages/cli/package.json ./packages/cli/package.json
 COPY packages/connectors/package.json ./packages/connectors/package.json
 COPY packages/core/package.json ./packages/core/package.json
+COPY packages/create-tradejs/package.json ./packages/create-tradejs/package.json
 COPY packages/indicators/package.json ./packages/indicators/package.json
 COPY packages/infra/package.json ./packages/infra/package.json
 COPY packages/ml/package.json ./packages/ml/package.json
