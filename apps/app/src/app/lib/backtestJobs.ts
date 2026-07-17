@@ -3,7 +3,13 @@ import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import path from 'path';
 import { TTL_1M } from '@tradejs/core/constants';
-import { delKey, getData, getKeys, setData } from '@tradejs/infra/redis';
+import {
+  delKey,
+  getData,
+  getKeys,
+  redisKeys,
+  setData,
+} from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import type { StrategyConfigGrid } from '@tradejs/types';
 
@@ -104,11 +110,6 @@ const getProcesses = () => {
 
 const processKey = (userName: string, jobId: string) => `${userName}:${jobId}`;
 
-const getJobsPrefix = (userName: string) => `users:${userName}:backtests:runs:`;
-
-const getJobKey = (userName: string, jobId: string) =>
-  `${getJobsPrefix(userName)}${jobId}`;
-
 const getBacktestConfigsPrefix = (userName: string) =>
   `users:${userName}:backtests:configs:`;
 
@@ -161,6 +162,93 @@ const stripAnsi = (value: string) =>
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const BACKTEST_JOB_STATUSES = new Set<BacktestJobStatus>([
+  'running',
+  'pausing',
+  'paused',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const isNullableFiniteNumber = (value: unknown) =>
+  value === null || isFiniteNumber(value);
+
+const isOptionalFiniteNumber = (value: unknown) =>
+  value === undefined || isFiniteNumber(value);
+
+const isOptionalString = (value: unknown) =>
+  value === undefined || typeof value === 'string';
+
+const isBacktestJobRequest = (value: unknown): value is BacktestJobRequest => {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  const periodIsValid =
+    value.periodMode === 'days'
+      ? isFiniteNumber(value.days)
+      : value.periodMode === 'range' &&
+        isFiniteNumber(value.startTime) &&
+        isFiniteNumber(value.endTime);
+
+  return (
+    normalizeText(value.strategyName).length > 0 &&
+    normalizeText(value.configId).length > 0 &&
+    periodIsValid &&
+    typeof value.ai === 'boolean' &&
+    typeof value.fast === 'boolean' &&
+    normalizeText(value.interval).length > 0 &&
+    normalizeText(value.connector).length > 0 &&
+    isOptionalString(value.tickers) &&
+    isOptionalFiniteNumber(value.tickersLimit) &&
+    isOptionalFiniteNumber(value.testsLimit) &&
+    isOptionalFiniteNumber(value.parallel)
+  );
+};
+
+const isBacktestJobProgress = (value: unknown): value is BacktestJobProgress =>
+  isPlainObject(value) &&
+  isFiniteNumber(value.completed) &&
+  isNullableFiniteNumber(value.total) &&
+  isFiniteNumber(value.percent) &&
+  isNullableFiniteNumber(value.averageProfit) &&
+  isNullableFiniteNumber(value.winRate) &&
+  isNullableFiniteNumber(value.successTests) &&
+  isNullableFiniteNumber(value.errorTests);
+
+export const isBacktestJobRecord = (
+  value: unknown,
+): value is BacktestJobRecord =>
+  isPlainObject(value) &&
+  normalizeText(value.id).length > 0 &&
+  normalizeText(value.userName).length > 0 &&
+  typeof value.status === 'string' &&
+  BACKTEST_JOB_STATUSES.has(value.status as BacktestJobStatus) &&
+  isBacktestJobRequest(value.request) &&
+  typeof value.command === 'string' &&
+  Array.isArray(value.args) &&
+  value.args.every((item) => typeof item === 'string') &&
+  normalizeText(value.createdAt).length > 0 &&
+  normalizeText(value.updatedAt).length > 0 &&
+  isOptionalString(value.startedAt) &&
+  isOptionalString(value.finishedAt) &&
+  isOptionalString(value.pausedAt) &&
+  isOptionalString(value.cancelledAt) &&
+  isOptionalString(value.lastHeartbeatAt) &&
+  isOptionalFiniteNumber(value.pid) &&
+  (value.exitCode === null || isOptionalFiniteNumber(value.exitCode)) &&
+  (value.signal === null || isOptionalString(value.signal)) &&
+  isFiniteNumber(value.runCount) &&
+  isBacktestJobProgress(value.progress) &&
+  Array.isArray(value.logs) &&
+  value.logs.every((item) => typeof item === 'string') &&
+  isOptionalString(value.error) &&
+  isOptionalString(value.pauseReason);
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid =>
   isPlainObject(value) &&
@@ -266,13 +354,28 @@ const applyOutputChunk = (
 
 const saveJob = async (record: BacktestJobRecord) => {
   record.updatedAt = nowIso();
-  await setData(getJobKey(record.userName, record.id), record, {
+  await setData(redisKeys.backtestJob(record.userName, record.id), record, {
     expire: TTL_1M,
   });
 };
 
-const loadJob = async (userName: string, jobId: string) =>
-  (await getData(getJobKey(userName, jobId), null)) as BacktestJobRecord | null;
+const loadJob = async (userName: string, jobId: string) => {
+  const stored = await getData(redisKeys.backtestJob(userName, jobId), null);
+  if (stored == null) {
+    return null;
+  }
+
+  if (
+    !isBacktestJobRecord(stored) ||
+    stored.userName !== userName ||
+    stored.id !== jobId
+  ) {
+    logger.warn('ignored invalid backtest job record: %s', jobId);
+    return null;
+  }
+
+  return stored;
+};
 
 const getLiveRecord = async (userName: string, jobId: string) => {
   const handle = getProcesses().get(processKey(userName, jobId));
@@ -628,6 +731,28 @@ const reconcileDetachedRunningJob = async (record: BacktestJobRecord) => {
   return record;
 };
 
+const reconcileEmptyCompletedJob = async (record: BacktestJobRecord) => {
+  if (record.status !== 'completed') {
+    return record;
+  }
+
+  const noTestsMessage = record.logs.find((line) =>
+    /^(No tests selected|No backtest tests selected)\b/.test(line),
+  );
+  if (!noTestsMessage) {
+    return record;
+  }
+
+  record.status = 'failed';
+  record.error = noTestsMessage;
+  appendLog(record, 'Backtest failed because no tests were generated.');
+  await saveJob(record);
+  return record;
+};
+
+const reconcileStoredJob = async (record: BacktestJobRecord) =>
+  reconcileEmptyCompletedJob(await reconcileDetachedRunningJob(record));
+
 export const listBacktestConfigs = async (
   userName: string,
 ): Promise<BacktestConfigSummary[]> => {
@@ -665,19 +790,20 @@ export const listBacktestJobs = async (
   ensureSweepTimer();
   await sweepRunningHandles();
 
-  const keys = await getKeys(getJobsPrefix(userName));
+  const jobsPrefix = redisKeys.backtestJobs(userName);
+  const keys = await getKeys(jobsPrefix);
   const records = await Promise.all(
     keys.map(async (key) => {
-      const id = key.slice(getJobsPrefix(userName).length);
+      const id = key.slice(jobsPrefix.length);
       const live = getProcesses().get(processKey(userName, id));
-      return live?.record ?? ((await getData(key, null)) as BacktestJobRecord);
+      return live?.record ?? loadJob(userName, id);
     }),
   );
 
   const reconciled = await Promise.all(
     records
-      .filter(Boolean)
-      .map((record) => reconcileDetachedRunningJob(record)),
+      .filter((record): record is BacktestJobRecord => Boolean(record))
+      .map((record) => reconcileStoredJob(record)),
   );
 
   return reconciled.sort(
@@ -689,7 +815,7 @@ export const listBacktestJobs = async (
 export const getBacktestJob = async (userName: string, jobId: string) => {
   ensureSweepTimer();
   const record = await getLiveRecord(userName, jobId);
-  return record ? reconcileDetachedRunningJob(record) : null;
+  return record ? reconcileStoredJob(record) : null;
 };
 
 export const startBacktestJob = async (userName: string, payload: unknown) => {
@@ -795,5 +921,5 @@ export const cancelBacktestJob = async (userName: string, jobId: string) => {
 
 export const deleteBacktestJob = async (userName: string, jobId: string) => {
   await cancelBacktestJob(userName, jobId);
-  return delKey(getJobKey(userName, jobId));
+  return delKey(redisKeys.backtestJob(userName, jobId));
 };

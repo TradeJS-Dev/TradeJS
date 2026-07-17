@@ -1,6 +1,12 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Badge,
   Box,
@@ -264,6 +270,9 @@ const BacktestRunPage = () => {
   const [tickersLimit, setTickersLimit] = useState('');
   const [testsLimit, setTestsLimit] = useState('');
   const [parallel, setParallel] = useState('');
+  const jobsRequestRef = useRef<Promise<void> | null>(null);
+  const jobsErrorNotifiedRef = useRef(false);
+  const jobsRef = useRef<BacktestJobRecord[]>([]);
   const { tickers: tickerItems, ensureLoaded: ensureTickersLoaded } =
     useTickers(connector, {
       enabled: false,
@@ -290,19 +299,37 @@ const BacktestRunPage = () => {
     }
   }, []);
 
-  const loadJobs = useCallback(async () => {
-    setLoadingJobs(true);
-    try {
-      const nextJobs = await getBacktestRuns();
-      setJobs(nextJobs);
-    } catch (error) {
-      toaster.error({
-        title: 'Failed to load backtest jobs',
-        description: (error as Error)?.message || 'Request failed.',
-      });
-    } finally {
-      setLoadingJobs(false);
+  const loadJobs = useCallback((background = false) => {
+    if (jobsRequestRef.current) {
+      return jobsRequestRef.current;
     }
+
+    const request = (async () => {
+      if (!background) {
+        setLoadingJobs(true);
+      }
+      try {
+        const nextJobs = await getBacktestRuns();
+        setJobs(nextJobs);
+        jobsErrorNotifiedRef.current = false;
+      } catch (error) {
+        if (!background && !jobsErrorNotifiedRef.current) {
+          jobsErrorNotifiedRef.current = true;
+          toaster.error({
+            title: 'Failed to load backtest jobs',
+            description: (error as Error)?.message || 'Request failed.',
+          });
+        }
+      } finally {
+        if (!background) {
+          setLoadingJobs(false);
+        }
+        jobsRequestRef.current = null;
+      }
+    })();
+
+    jobsRequestRef.current = request;
+    return request;
   }, []);
 
   useEffect(() => {
@@ -349,15 +376,21 @@ const BacktestRunPage = () => {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void loadJobs();
+      void loadJobs(true);
     }, 3_000);
 
     return () => window.clearInterval(timer);
   }, [loadJobs]);
 
   useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
-      const runningJobs = jobs.filter((job) => job.status === 'running');
+      const runningJobs = jobsRef.current.filter(
+        (job) => job.status === 'running',
+      );
       if (!runningJobs.length) {
         return;
       }
@@ -374,7 +407,7 @@ const BacktestRunPage = () => {
     }, 5_000);
 
     return () => window.clearInterval(timer);
-  }, [jobs]);
+  }, []);
 
   const selectedConfig = useMemo(
     () => configs.find((config) => config.id === selectedConfigId),
@@ -1039,7 +1072,7 @@ const BacktestJobItem = ({
             <Button
               type="button"
               size="xs"
-              variant="outline"
+              variant="ghost"
               colorPalette="red"
               loading={busyAction === `${job.id}:cancel`}
               onClick={() => onAction(job.id, 'cancel')}
@@ -1049,18 +1082,17 @@ const BacktestJobItem = ({
             </Button>
           ) : null}
 
-          {canDelete ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              colorPalette="red"
-              loading={busyAction === `${job.id}:delete`}
-              onClick={() => onDelete(job.id)}
-            >
-              <FiTrash2 />
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            colorPalette="red"
+            disabled={!canDelete}
+            loading={busyAction === `${job.id}:delete`}
+            onClick={() => onDelete(job.id)}
+          >
+            <FiTrash2 />
+          </Button>
         </Flex>
       </Flex>
 

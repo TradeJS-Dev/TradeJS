@@ -2,6 +2,11 @@ jest.mock('@tradejs/infra/redis', () => ({
   delKey: jest.fn(),
   getData: jest.fn(),
   getKeys: jest.fn(),
+  redisKeys: {
+    backtestJob: (userName: string, jobId: string) =>
+      `users:${userName}:backtests:jobs:${jobId}`,
+    backtestJobs: (userName: string) => `users:${userName}:backtests:jobs:`,
+  },
   setData: jest.fn(),
 }));
 
@@ -14,11 +19,54 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 import {
   buildBacktestCommandArgs,
+  isBacktestJobRecord,
+  listBacktestJobs,
   normalizeBacktestJobRequest,
   parseBacktestProgressLine,
 } from '../backtestJobs';
+import { getData, getKeys, setData } from '@tradejs/infra/redis';
+
+const getDataMock = jest.mocked(getData);
+const getKeysMock = jest.mocked(getKeys);
+const setDataMock = jest.mocked(setData);
+
+const createJobRecord = (overrides: Record<string, unknown> = {}) => ({
+  id: 'job-1',
+  userName: 'alice',
+  status: 'completed',
+  request: {
+    strategyName: 'TrendLine',
+    configId: 'TrendLine:base',
+    periodMode: 'days',
+    days: 30,
+    ai: false,
+    fast: false,
+    interval: '15',
+    connector: 'bybit',
+  },
+  command: 'tradejs',
+  args: [],
+  createdAt: '2026-07-16T10:00:00.000Z',
+  updatedAt: '2026-07-16T10:01:00.000Z',
+  runCount: 1,
+  progress: {
+    completed: 1,
+    total: 1,
+    percent: 100,
+    averageProfit: null,
+    winRate: null,
+    successTests: 1,
+    errorTests: 0,
+  },
+  logs: ['Backtest completed.'],
+  ...overrides,
+});
 
 describe('backtest jobs helpers', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('normalizes days requests and defaults operational fields', () => {
     expect(
       normalizeBacktestJobRequest({
@@ -106,5 +154,70 @@ describe('backtest jobs helpers', () => {
     expect(parseBacktestProgressLine('tests: 70', 30)).toEqual({
       total: 100,
     });
+  });
+
+  it('validates persisted job records before processing them', () => {
+    expect(isBacktestJobRecord(createJobRecord())).toBe(true);
+    expect(isBacktestJobRecord(createJobRecord({ logs: undefined }))).toBe(
+      false,
+    );
+    expect(isBacktestJobRecord(createJobRecord({ status: 'unexpected' }))).toBe(
+      false,
+    );
+  });
+
+  it('lists only valid records from the dedicated jobs namespace', async () => {
+    getKeysMock.mockResolvedValue([
+      'users:alice:backtests:jobs:job-1',
+      'users:alice:backtests:jobs:invalid',
+    ]);
+    getDataMock.mockImplementation(async (key) =>
+      key.endsWith(':job-1')
+        ? createJobRecord()
+        : { status: 'running', logs: undefined },
+    );
+
+    await expect(listBacktestJobs('alice')).resolves.toEqual([
+      createJobRecord(),
+    ]);
+    expect(getKeysMock).toHaveBeenCalledWith('users:alice:backtests:jobs:');
+    expect(getDataMock).not.toHaveBeenCalledWith(
+      expect.stringContaining(':backtests:runs:'),
+      expect.anything(),
+    );
+  });
+
+  it('marks legacy completed jobs with no selected tests as failed', async () => {
+    getKeysMock.mockResolvedValue(['users:alice:backtests:jobs:job-1']);
+    getDataMock.mockResolvedValue(
+      createJobRecord({
+        progress: {
+          completed: 0,
+          total: null,
+          percent: 0,
+          averageProfit: null,
+          winRate: null,
+          successTests: null,
+          errorTests: null,
+        },
+        logs: [
+          'No tests selected (skip=0, limit=100000).',
+          'Backtest completed.',
+        ],
+      }),
+    );
+
+    const [job] = await listBacktestJobs('alice');
+
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe('No tests selected (skip=0, limit=100000).');
+    expect(job.logs).toContain(
+      'Backtest failed because no tests were generated.',
+    );
+    expect(setDataMock).toHaveBeenCalledWith(
+      'users:alice:backtests:jobs:job-1',
+      expect.objectContaining({ status: 'failed' }),
+      expect.any(Object),
+    );
   });
 });

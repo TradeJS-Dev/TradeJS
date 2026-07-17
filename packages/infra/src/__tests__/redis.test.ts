@@ -497,6 +497,10 @@ describe('redis utils', () => {
     expect(redisKeys.backtestResults('root', 'TrendLine:base', '123')).toBe(
       'users:root:backtests:results:TrendLine:base:123',
     );
+    expect(redisKeys.backtestJobs('root')).toBe('users:root:backtests:jobs:');
+    expect(redisKeys.backtestJob('root', 'job-1')).toBe(
+      'users:root:backtests:jobs:job-1',
+    );
     expect(redisKeys.mlSignalsByStrategy('TrendLine')).toBe(
       'ml:TrendLine:signals:',
     );
