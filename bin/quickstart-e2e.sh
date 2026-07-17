@@ -64,7 +64,7 @@ echo "Starting one-command quickstart with $CREATE_SPEC"
 if [ -n "$CREATE_BIN" ]; then
   "$CREATE_BIN" "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
 else
-  npx --yes "$CREATE_SPEC" "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
+  npm exec --yes --package="$CREATE_SPEC" -- create-tradejs "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
 fi
 CREATE_PID=$!
 
