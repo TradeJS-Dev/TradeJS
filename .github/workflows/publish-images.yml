@@ -220,6 +220,7 @@ jobs:
 
       - name: Quickstart browser e2e
         env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
           QUICKSTART_CREATE_SPEC: create-tradejs@${{ steps.release.outputs.version }}
         run: yarn quickstart:e2e
 
