@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
       org.opencontainers.image.description="TradeJS ML profiling image" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="BUSL-1.1"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

@@ -1,11 +1,17 @@
 # @tradejs/core
 
-Browser-safe public API for the TradeJS open-source framework: config, strategy authoring helpers, indicators, figures, math, and shared utilities.
+MIT-licensed browser-safe public API for TradeJS: config, strategy authoring helpers, indicators, figures, math, and shared utilities.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
 - Quickstart: https://docs.tradejs.dev/getting-started/quickstart
 - Core API docs: https://docs.tradejs.dev/api/framework
+
+## License
+
+This package remains MIT-licensed. Some TradeJS runtime dependencies use the
+Business Source License 1.1; see the
+[TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
 
 ## Install
 

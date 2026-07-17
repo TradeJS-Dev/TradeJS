@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/node",
-  "version": "1.0.12",
-  "description": "Node-only runtime for the TradeJS open-source framework: strategies, backtests, Pine strategy loading, and plugin registries.",
+  "version": "2.0.0",
+  "description": "Node-only runtime for the TradeJS TypeScript framework: strategies, backtests, Pine strategy loading, and plugin registries.",
   "keywords": [
     "tradejs",
     "trading",
@@ -87,6 +87,6 @@
     "build": "tsup",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
   },
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)"
 }

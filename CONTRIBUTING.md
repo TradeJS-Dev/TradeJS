@@ -141,4 +141,9 @@ formatting out of the diff. Maintainers may ask for a change to be split when it
 crosses unrelated package or architectural boundaries.
 
 By contributing, you agree that your contribution is licensed under the
-repository's [MIT License](LICENSE).
+license that applies to its target path as described in
+[LICENSING.md](LICENSING.md). You also grant the TradeJS-Dev maintainers a
+perpetual, worldwide, royalty-free, irrevocable license to use, reproduce,
+modify, distribute, sublicense, and relicense your contribution, including
+under commercial terms. Do not submit a contribution if you do not have the
+right to grant these permissions.

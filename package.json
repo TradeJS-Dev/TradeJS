@@ -1,8 +1,8 @@
 {
   "name": "tradejs",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)",
   "engines": {
     "node": "24.x"

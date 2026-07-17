@@ -55,7 +55,7 @@ RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
       org.opencontainers.image.description="TradeJS app" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="BUSL-1.1"
 
 RUN apk add --no-cache \
     bash \

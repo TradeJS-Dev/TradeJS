@@ -1,6 +1,6 @@
 # TradeJS
 
-TradeJS is an open-source framework for TypeScript and Pine Script strategy authoring, backtesting, live signal generation, and optional auto-trading.
+TradeJS is a TypeScript framework for strategy authoring, backtesting, live signal generation, and optional auto-trading, with a self-hosted runtime you control.
 
 It supports two first-class authoring paths:
 
@@ -31,6 +31,23 @@ It supports two first-class authoring paths:
 - [`@tradejs/strategies`](https://www.npmjs.com/package/@tradejs/strategies) — built-in strategy plugin catalog
 - [`@tradejs/indicators`](https://www.npmjs.com/package/@tradejs/indicators) — built-in indicator plugin catalog
 - [`@tradejs/connectors`](https://www.npmjs.com/package/@tradejs/connectors) — built-in exchange connectors and market data providers
+
+## Licensing
+
+TradeJS version 2.0.0 and later uses a mixed-license open-core model:
+
+- product components (`@tradejs/app`, `@tradejs/base`, `@tradejs/cli`,
+  `@tradejs/node`, `@tradejs/strategies`, and the private ML runtime) use the
+  Business Source License 1.1 with an Additional Use Grant
+- SDK, integration, scaffolding, and example components (`@tradejs/core`,
+  `@tradejs/types`, `@tradejs/indicators`, `@tradejs/connectors`,
+  `@tradejs/infra`, `create-tradejs`, and `examples/sandbox`) remain under MIT
+
+The Additional Use Grant permits production use, including internal trading,
+research, analytics, and operations. Providing a competing product or hosted
+or managed service requires a commercial license. Releases through version
+1.0.12 remain available under MIT. See [LICENSING.md](LICENSING.md) for exact
+package scopes and terms.
 
 ## Repository Layout
 
@@ -157,7 +174,8 @@ yarn bot
 
 ## Automated npm Releases
 
-Every push to `stable` runs `.github/workflows/publish-npm.yml`. The workflow:
+Every push to `stable` runs `.github/workflows/publish-images.yml`. The release
+workflow:
 
 1. resolves one shared version for every public `@tradejs/*` package
 2. resumes the same version after a partial or interrupted release

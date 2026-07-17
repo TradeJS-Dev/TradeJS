@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/cli",
-  "version": "1.0.12",
-  "description": "Official CLI for the TradeJS open-source framework: infra setup, backtests, signals, bots, and ML workflows.",
+  "version": "2.0.0",
+  "description": "Official CLI for the TradeJS TypeScript framework: infra setup, backtests, signals, bots, and ML workflows.",
   "keywords": [
     "tradejs",
     "trading",
@@ -100,6 +100,6 @@
     "test-ml": "yarn run run:dist test-ml",
     "user-add": "yarn run run:dist user-add"
   },
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)"
 }

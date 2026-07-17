@@ -1,10 +1,16 @@
 # @tradejs/indicators
 
-Built-in indicator plugin package for the TradeJS open-source framework.
+MIT-licensed indicator plugin package for the TradeJS framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
 - Quickstart: https://docs.tradejs.dev/getting-started/quickstart
+
+## License
+
+This package remains MIT-licensed. Some TradeJS runtime dependencies use the
+Business Source License 1.1; see the
+[TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
 
 ## What It Provides
 

@@ -1,6 +1,6 @@
 # TradeJS Sandbox App (Deterministic E2E)
 
-`examples/sandbox` is a full user-application style example for the TradeJS open-source framework:
+`examples/sandbox` is a full user-application style example for the TradeJS framework:
 
 - local `tradejs.config.ts`
 - custom strategy plugin (`SandboxDeterministicSignal`)
@@ -10,6 +10,9 @@
 
 This example is intentionally installed as a standalone Yarn project and pulls
 published `@tradejs/*` packages from npm instead of local workspaces.
+
+The example code remains MIT-licensed. Installed TradeJS packages use mixed
+MIT and Business Source License 1.1 terms; see [LICENSING.md](../../LICENSING.md).
 
 ## Files
 

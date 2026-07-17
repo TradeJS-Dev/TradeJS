@@ -1,6 +1,14 @@
 # @tradejs/app
 
-Publishable Next.js UI package for the TradeJS open-source framework, with backtests, charts, and signal flows.
+Publishable Next.js UI package for the TradeJS TypeScript framework, with backtests, charts, and signal flows.
+
+## License
+
+Version 2.0.0 and later is licensed under Business Source License 1.1. The
+Additional Use Grant permits internal and other non-competing production use;
+providing a competing product or service requires a commercial license.
+Earlier releases remain MIT-licensed. See the
+[TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
 
 Recommended external usage:
 

@@ -9,9 +9,9 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@tradejs/cli": "1.0.12",
-    "@tradejs/core": "1.0.12",
-    "@tradejs/types": "1.0.12",
+    "@tradejs/cli": "2.0.0",
+    "@tradejs/core": "2.0.0",
+    "@tradejs/types": "2.0.0",
     "ioredis": "5.8.0"
   },
   "devDependencies": {

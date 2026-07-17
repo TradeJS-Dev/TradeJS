@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/types",
-  "version": "1.0.12",
-  "description": "Shared TypeScript contracts for the TradeJS open-source framework.",
+  "version": "2.0.0",
+  "description": "MIT-licensed shared TypeScript contracts for the TradeJS framework.",
   "keywords": [
     "tradejs",
     "trading",

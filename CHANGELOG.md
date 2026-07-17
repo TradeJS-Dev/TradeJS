@@ -9,6 +9,18 @@ reconstructed release by release.
 
 ## Unreleased
 
+## 2.0.0 - 2026-07-17
+
+### Changed
+
+- Adopted a mixed-license open-core model. Product components are now licensed
+  under Business Source License 1.1 with an Additional Use Grant that permits
+  non-competing production and internal use; SDK, integration, scaffolding,
+  and example components remain MIT-licensed.
+- Added package-local license files so every published npm archive carries its
+  applicable terms.
+- Releases through 1.0.12 remain available under the MIT License.
+
 ### Added
 
 - Contributor and security policies for the repository.

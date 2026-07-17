@@ -1,10 +1,16 @@
 # @tradejs/infra
 
-Server-only infrastructure adapters for the TradeJS open-source framework.
+MIT-licensed server-only infrastructure adapters for the TradeJS framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
 - Quickstart: https://docs.tradejs.dev/getting-started/quickstart
+
+## License
+
+This package remains MIT-licensed. Some TradeJS runtime dependencies use the
+Business Source License 1.1; see the
+[TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
 
 ## Where It Fits
 

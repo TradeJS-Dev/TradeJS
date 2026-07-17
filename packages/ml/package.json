@@ -1,11 +1,11 @@
 {
   "name": "@tradejs/ml",
-  "version": "1.0.0",
-  "description": "Private ML runtime assets and Python build helpers for the TradeJS open-source framework.",
+  "version": "2.0.0",
+  "description": "Private ML runtime assets and Python build helpers for the TradeJS TypeScript framework.",
   "private": true,
   "scripts": {
     "build": "mkdir -p dist && echo 'ml: python/docker module' > dist/.build.txt"
   },
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)"
 }

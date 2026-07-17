@@ -1,11 +1,19 @@
 # @tradejs/cli
 
-Official CLI for the TradeJS open-source framework.
+Official CLI for the TradeJS TypeScript framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
 - CLI API docs: https://docs.tradejs.dev/api/cli
 - Quickstart: https://docs.tradejs.dev/getting-started/quickstart
+
+## License
+
+Version 2.0.0 and later is licensed under Business Source License 1.1. The
+Additional Use Grant permits internal and other non-competing production use;
+providing a competing product or service requires a commercial license.
+Earlier releases remain MIT-licensed. See the
+[TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
 
 ## Where It Fits
 

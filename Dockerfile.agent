@@ -2,7 +2,7 @@ FROM node:24-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
       org.opencontainers.image.description="TradeJS research and automation agent" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="BUSL-1.1"
 
 RUN apk add --no-cache \
     bash \
