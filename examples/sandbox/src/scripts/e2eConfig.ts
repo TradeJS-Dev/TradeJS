@@ -49,10 +49,10 @@ export const SANDBOX_E2E_EXPECTED: ExpectedSandboxSnapshot = {
   orders: 159,
   wins: 0,
   losses: 159,
-  amount: -44.12,
-  netProfit: -144.12,
+  amount: 98.85,
+  netProfit: -1.15,
   winRate: 0,
-  maxDrawdown: 144.12,
+  maxDrawdown: 1.15,
 };
 
 export const SANDBOX_E2E_SIGNALS_EXPECTED: ExpectedSandboxSignalsSnapshot = {
