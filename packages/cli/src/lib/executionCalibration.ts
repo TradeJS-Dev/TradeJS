@@ -975,7 +975,7 @@ const buildRecommendation = (
     );
   }
   notes.push(
-    'Delay risk bps is disabled; signal-to-arrival latency is modeled by delayed lower-timeframe backtest fills.',
+    'Delay risk bps is disabled; signal-to-arrival latency is modeled by next-bar-open backtest fills.',
   );
 
   return {

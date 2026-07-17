@@ -242,7 +242,7 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ml: true }));
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(5);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
@@ -440,7 +440,7 @@ describe('testing backtest flow', () => {
     );
   });
 
-  it('preloads 5m execution candles cache-only without adding them to signal data', async () => {
+  it('keeps lower timeframe execution candle loading disabled', async () => {
     const start = Date.parse('2026-04-01T00:00:00.000Z');
     const end = Date.parse('2026-04-02T00:00:00.000Z');
     const expectedPreloadStart = start - 30 * 24 * 60 * 60 * 1000;
@@ -462,22 +462,16 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ options: { start, end } }));
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+    expect(mockByBitConnector.kline).not.toHaveBeenCalledWith(
       expect.objectContaining({
         symbol: 'ETHUSDT',
         interval: '5',
-        start: expectedPreloadStart,
-        end,
-        cacheOnly: true,
       }),
     );
-    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+    expect(mockByBitConnector.kline).not.toHaveBeenCalledWith(
       expect.objectContaining({
         symbol: 'BTCUSDT',
         interval: '5',
-        start: expectedPreloadStart,
-        end,
-        cacheOnly: true,
       }),
     );
     expect(mockStrategyCreator).toHaveBeenCalledWith(
@@ -485,8 +479,8 @@ describe('testing backtest flow', () => {
         data: [primaryData[0]],
         backtestExecutionMarketData: expect.objectContaining({
           interval: '5',
-          data: executionData,
-          btcData: executionData,
+          data: [],
+          btcData: [],
           dataByTimestamp: expect.any(Map),
           btcDataByTimestamp: expect.any(Map),
         }),
@@ -494,15 +488,11 @@ describe('testing backtest flow', () => {
     );
     const strategyParams = mockStrategyCreator.mock.calls[0]?.[0] as any;
     expect(
-      strategyParams.backtestExecutionMarketData.dataByTimestamp.get(
-        executionData[0].timestamp,
-      ),
-    ).toBe(executionData[0]);
+      strategyParams.backtestExecutionMarketData.dataByTimestamp.size,
+    ).toBe(0);
     expect(
-      strategyParams.backtestExecutionMarketData.btcDataByTimestamp.get(
-        executionData[1].timestamp,
-      ),
-    ).toBe(executionData[1]);
+      strategyParams.backtestExecutionMarketData.btcDataByTimestamp.size,
+    ).toBe(0);
   });
 
   it('uses the test interval for market data requests and strategy runtime config', async () => {
@@ -543,18 +533,16 @@ describe('testing backtest flow', () => {
         interval: '5',
       }),
     );
-    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+    expect(mockByBitConnector.kline).not.toHaveBeenCalledWith(
       expect.objectContaining({
         symbol: 'ETHUSDT',
         interval: '15',
-        cacheOnly: true,
       }),
     );
-    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+    expect(mockByBitConnector.kline).not.toHaveBeenCalledWith(
       expect.objectContaining({
         symbol: 'BTCUSDT',
         interval: '15',
-        cacheOnly: true,
       }),
     );
     expect(mockStrategyCreator).toHaveBeenCalledWith(
@@ -1084,14 +1072,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(5);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
 
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(10);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
@@ -1100,14 +1088,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(10);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(15);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(9);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
   });
@@ -1125,7 +1113,7 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(5);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
   });
 
   it('releases symbol-scoped candle caches without dropping shared connectors', async () => {
@@ -1146,10 +1134,10 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(7);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(10);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(8);
   });
 
   it('times out a slow test item with symbol in the error message', async () => {

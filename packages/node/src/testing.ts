@@ -15,7 +15,10 @@ import {
   TestingBoxResult,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
-import { BACKTEST_EXECUTION_INTERVAL } from '@tradejs/core/constants';
+import {
+  BACKTEST_EXECUTION_INTERVAL,
+  BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED,
+} from '@tradejs/core/constants';
 import {
   releaseStrategyIndicatorsReplayCache,
   releaseStrategyReplayCache,
@@ -447,6 +450,9 @@ const filterClosedAlignedCandles = (
 };
 
 const shouldLoadBacktestExecutionCandles = (interval: Interval) => {
+  if (!BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED) {
+    return false;
+  }
   const executionInterval = resolveBacktestExecutionInterval(interval);
   if (!executionInterval) {
     return false;

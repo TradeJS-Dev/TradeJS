@@ -11,6 +11,7 @@ describe('constants/index', () => {
       expect(constants.BACKTEST_DELAY_RISK_MULTIPLIER).toBe(0);
       expect(constants.BACKTEST_DELAY_RISK_MAX_BPS).toBe(0);
       expect(constants.BACKTEST_EXPECTED_DELAY_MS).toBe(0);
+      expect(constants.BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED).toBe(false);
       expect(constants.BACKTEST_EXECUTION_INTERVAL).toBe('5');
       expect(constants.BACKTEST_EXECUTION_DELAY_MS).toBe(5 * 60_000);
       expect(constants.INITIAL_BACKTEST_AMOUNT).toBe(100);

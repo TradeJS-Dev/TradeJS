@@ -7,6 +7,7 @@ import {
 import { update } from '@tradejs/node/cli';
 import {
   BACKTEST_EXECUTION_INTERVAL,
+  BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED,
   BACKTEST_DEFAULT_DAYS,
   BACKTEST_PRELOAD_DAYS,
 } from '@tradejs/core/constants';
@@ -252,6 +253,7 @@ export const prepareRunEnvironment = async ({
     const backtestExecutionInterval =
       resolveBacktestExecutionPreloadInterval(interval);
     if (
+      BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED &&
       backtestExecutionInterval &&
       String(backtestExecutionInterval) !== String(interval)
     ) {

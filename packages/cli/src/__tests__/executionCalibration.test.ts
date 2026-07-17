@@ -180,7 +180,7 @@ describe('execution calibration helpers', () => {
     expect(report.recommendation.delayRiskMultiplier).toBeNull();
     expect(report.recommendation.delayRiskMaxBps).toBeNull();
     expect(report.recommendation.notes).toContain(
-      'Delay risk bps is disabled; signal-to-arrival latency is modeled by delayed lower-timeframe backtest fills.',
+      'Delay risk bps is disabled; signal-to-arrival latency is modeled by next-bar-open backtest fills.',
     );
   });
 

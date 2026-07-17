@@ -742,7 +742,7 @@ describe('strategyRuntime', () => {
     );
   });
 
-  it('skips delayed BACKTEST entries for unsupported intervals without lower timeframe fallback', async () => {
+  it('fills delayed BACKTEST entries at the next primary candle open for any interval', async () => {
     const decision = makeDecisionEntry({
       entryContext: {
         ...makeDecisionEntry().entryContext,
@@ -789,31 +789,49 @@ describe('strategyRuntime', () => {
     expect(queued).toBe('BACKTEST_ENTRY_DELAY_QUEUED:1');
     expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
 
-    const skipped = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+    const executed = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
       { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
       { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
     );
 
-    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
-    expect((skipped as any).orderStatus).toBe('skipped');
-    expect((skipped as any).orderSkipReason).toBe(
-      'BACKTEST_LOWER_EXECUTION_UNAVAILABLE',
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentPrice: 300,
+        timestamp: 20,
+      }),
     );
-    expect((skipped as any).additionalIndicators.backtestExecution).toEqual({
+    expect((executed as any).additionalIndicators.backtestExecution).toEqual({
       entryDelayBars: 1,
       priceMode: 'open',
       signalTimestamp: 1_700_000_000_000,
       signalPrice: 100,
-      executionSource: 'lower_timeframe',
-      executionDelayMs: 300_000,
+      executionTimestamp: 20,
+      executionPrice: 300,
+      executionSource: 'primary_timeframe',
+      executionInterval: '5',
+      executionDelayMs: 0,
       primaryExecutionTimestamp: 20,
-      requestedExecutionTimestamp: 300_020,
-      skipReason: 'BACKTEST_LOWER_EXECUTION_UNAVAILABLE',
+      requestedExecutionTimestamp: 20,
     });
   });
 
-  it('skips delayed BACKTEST entries when the requested lower execution candle is absent', async () => {
+  it('does not require lower timeframe data for delayed BACKTEST entries', async () => {
     const decision = makeDecisionEntry({
+      entryContext: {
+        ...makeDecisionEntry().entryContext,
+        direction: 'SHORT',
+        prices: {
+          currentPrice: 222,
+          takeProfitPrice: 200,
+          stopLossPrice: 330,
+          riskRatio: 1.2,
+        },
+      },
+      orderPlan: {
+        qty: 3,
+        stopLossPrice: 330,
+        takeProfits: [{ rate: 1, price: 200 }],
+      },
       runtime: {
         ml: { enabled: false },
         ai: { enabled: false },
@@ -857,21 +875,20 @@ describe('strategyRuntime', () => {
       { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
     );
 
-    const skipped = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+    const executed = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
       { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
       { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
     );
 
-    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
-    expect((skipped as any).orderSkipReason).toBe(
-      'BACKTEST_LOWER_EXECUTION_CANDLE_MISSING',
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ currentPrice: 300, timestamp: 20 }),
     );
     expect(
-      (skipped as any).additionalIndicators.backtestExecution.executionSource,
-    ).toBe('lower_timeframe');
+      (executed as any).additionalIndicators.backtestExecution.executionSource,
+    ).toBe('primary_timeframe');
   });
 
-  it('fills delayed BACKTEST entries from the lower timeframe execution candle', async () => {
+  it('fills delayed BACKTEST entries from the next primary candle open', async () => {
     const decision = makeDecisionEntry({
       entryContext: {
         ...makeDecisionEntry().entryContext,
@@ -906,7 +923,7 @@ describe('strategyRuntime', () => {
       () => decision,
       {
         ENV: 'BACKTEST',
-        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_PRICE_MODE: 'close',
         BACKTEST_ENTRY_DELAY_BARS: 1,
         INTERVAL: '15',
       },
@@ -947,27 +964,27 @@ describe('strategyRuntime', () => {
 
     expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentPrice: 310,
-        timestamp: 300_020,
+        currentPrice: 300,
+        timestamp: 20,
       }),
     );
-    expect((executed as any).prices.currentPrice).toBe(310);
+    expect((executed as any).prices.currentPrice).toBe(300);
     expect((executed as any).additionalIndicators.backtestExecution).toEqual(
       expect.objectContaining({
         entryDelayBars: 1,
         priceMode: 'open',
-        executionTimestamp: 300_020,
-        executionPrice: 310,
-        executionSource: 'lower_timeframe',
-        executionInterval: '5',
-        executionDelayMs: 300_000,
+        executionTimestamp: 20,
+        executionPrice: 300,
+        executionSource: 'primary_timeframe',
+        executionInterval: '15',
+        executionDelayMs: 0,
         primaryExecutionTimestamp: 20,
-        requestedExecutionTimestamp: 300_020,
+        requestedExecutionTimestamp: 20,
       }),
     );
   });
 
-  it('fills delayed 60m BACKTEST entries from the 15m execution candle', async () => {
+  it('fills delayed 60m BACKTEST entries from the next 60m candle open', async () => {
     const decision = makeDecisionEntry({
       entryContext: {
         ...makeDecisionEntry().entryContext,
@@ -1045,19 +1062,19 @@ describe('strategyRuntime', () => {
 
     expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentPrice: 315,
-        timestamp: 900_020,
+        currentPrice: 300,
+        timestamp: 20,
       }),
     );
     expect((executed as any).additionalIndicators.backtestExecution).toEqual(
       expect.objectContaining({
-        executionTimestamp: 900_020,
-        executionPrice: 315,
-        executionSource: 'lower_timeframe',
-        executionInterval: '15',
-        executionDelayMs: 900_000,
+        executionTimestamp: 20,
+        executionPrice: 300,
+        executionSource: 'primary_timeframe',
+        executionInterval: '60',
+        executionDelayMs: 0,
         primaryExecutionTimestamp: 20,
-        requestedExecutionTimestamp: 900_020,
+        requestedExecutionTimestamp: 20,
       }),
     );
   });
@@ -1157,7 +1174,7 @@ describe('strategyRuntime', () => {
     expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
     const hookArg = (beforePlaceOrder.mock.calls as any[][])[0][0];
     expect(hookArg.market.candle).toMatchObject({
-      timestamp: 300_020,
+      timestamp: 20,
       open: 300,
       high: 300,
       low: 300,
@@ -1166,7 +1183,7 @@ describe('strategyRuntime', () => {
       turnover: 0,
     });
     expect(hookArg.market.btcCandle).toMatchObject({
-      timestamp: 300_020,
+      timestamp: 20,
       open: 400,
       high: 400,
       low: 400,

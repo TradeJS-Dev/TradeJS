@@ -101,7 +101,7 @@ describe('prepareRunEnvironment', () => {
     }));
   });
 
-  it('preloads execution interval only on the selected market connector', async () => {
+  it('keeps lower timeframe execution history updates disabled', async () => {
     const instrument = {
       symbol: 'ETHUSDT',
       universe: 'crypto' as const,
@@ -141,18 +141,7 @@ describe('prepareRunEnvironment', () => {
         preloadEnd: 1_700_086_400_000,
       }),
     );
-    expect(mockUpdate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'ByBit' }),
-      '5',
-      ['ETHUSDT'],
-      undefined,
-      expect.objectContaining({
-        connectorLabel: 'ByBit',
-        preloadEnd: 1_700_086_400_000,
-        skipCovered: true,
-      }),
-    );
+    expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRedisSetData).toHaveBeenCalledWith(
       'users:root:cache:tickers:ByBit',
       expect.objectContaining({

@@ -8,6 +8,7 @@ import type {
 import {
   BACKTEST_EXECUTION_DELAY_MS,
   BACKTEST_EXECUTION_INTERVAL,
+  BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED,
   SIGNALS_PRELOAD_DAYS,
 } from '@tradejs/core/constants';
 import { intervalToMs } from '@tradejs/core/data';
@@ -300,7 +301,7 @@ type PendingBacktestEntry = {
 type BacktestExecutionCandleResolution = {
   candle?: KlineChartItem;
   btcCandle?: KlineChartItem;
-  source: 'lower_timeframe';
+  source: 'primary_timeframe' | 'lower_timeframe';
   requestedExecutionTimestamp?: number;
   executionInterval?: string;
   executionDelayMs?: number;
@@ -1719,6 +1720,18 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       candle: KlineChartItem,
       btcCandle: KlineChartItem,
     ): BacktestExecutionCandleResolution => {
+      if (!BACKTEST_LOWER_TIMEFRAME_EXECUTION_ENABLED) {
+        return {
+          candle,
+          btcCandle,
+          source: 'primary_timeframe',
+          requestedExecutionTimestamp: candle.timestamp,
+          executionInterval: String(config.INTERVAL ?? '15'),
+          executionDelayMs: 0,
+          primaryExecutionTimestamp: candle.timestamp,
+        };
+      }
+
       const requestedExecutionTimestamp =
         candle.timestamp + backtestExecutionDelayMs;
       const primaryExecutionTimestamp = candle.timestamp;
@@ -1802,7 +1815,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       const execution = applyBacktestDelayedEntryExecution({
         decision: pending.decision,
         execution: executionCandleResolution,
-        backtestPriceMode,
+        backtestPriceMode:
+          executionCandleResolution.source === 'primary_timeframe'
+            ? 'open'
+            : backtestPriceMode,
         delayBars: pending.delayBars,
       });
 
