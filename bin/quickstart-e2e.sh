@@ -12,9 +12,22 @@ APP_LOG="${QUICKSTART_E2E_LOG:-$REPO_ROOT/output/quickstart-e2e.log}"
 CREATE_PID=""
 PROJECT_CREATED="false"
 
+terminate_process_tree() {
+  local parent_pid="$1"
+  local child_pid
+
+  while IFS= read -r child_pid; do
+    if [ -n "$child_pid" ]; then
+      terminate_process_tree "$child_pid"
+    fi
+  done < <(pgrep -P "$parent_pid" 2>/dev/null || true)
+
+  kill "$parent_pid" 2>/dev/null || true
+}
+
 cleanup() {
   if [ -n "$CREATE_PID" ] && kill -0 "$CREATE_PID" 2>/dev/null; then
-    kill "$CREATE_PID" 2>/dev/null || true
+    terminate_process_tree "$CREATE_PID"
     wait "$CREATE_PID" 2>/dev/null || true
   fi
 
@@ -80,4 +93,4 @@ if [ "$ready" != "true" ]; then
 fi
 
 QUICKSTART_E2E_URL="$APP_URL" yarn playwright test e2e/quickstart.spec.ts
-echo "Quickstart e2e passed: install -> dashboard -> market chart"
+echo "Quickstart e2e passed: install -> dashboard -> backtest -> results"

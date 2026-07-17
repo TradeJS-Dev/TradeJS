@@ -1,7 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { parseArgs, scaffoldProject } from '../index';
+import { findAvailablePort, parseArgs, scaffoldProject } from '../index';
 
 describe('create-tradejs', () => {
   it('uses a one-command default project', () => {
@@ -24,6 +25,24 @@ describe('create-tradejs', () => {
       open: true,
       port: 3100,
     });
+  });
+
+  it('skips ports already occupied on IPv4', async () => {
+    const server = net.createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, '0.0.0.0', () => resolve()),
+    );
+
+    try {
+      const address = server.address() as AddressInfo;
+      await expect(findAvailablePort(address.port)).resolves.not.toBe(
+        address.port,
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   it('writes an external npm project', () => {

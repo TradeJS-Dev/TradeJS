@@ -2,9 +2,11 @@ import { expect, test } from '@playwright/test';
 
 const password = 'QuickstartE2e123!';
 
-test('installs TradeJS and opens a dashboard with market data', async ({
+test('installs TradeJS and completes the first backtest from the UI', async ({
   page,
 }) => {
+  test.setTimeout(300_000);
+
   await page.goto('/routes/install');
 
   await expect(
@@ -28,4 +30,51 @@ test('installs TradeJS and opens a dashboard with market data', async ({
     timeout: 90_000,
   });
   await expect(chart.locator('canvas').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Create backtest' }).click();
+  await expect(page).toHaveURL(/\/routes\/backtest(?:\?.*)?$/);
+  await expect(page.getByText('Backtest runs', { exact: true })).toBeVisible();
+
+  await page.getByRole('spinbutton', { name: 'Days' }).fill('7');
+
+  await page.getByRole('combobox', { name: 'Connector' }).click();
+  await page.getByRole('option', { name: 'Coinbase', exact: true }).click();
+
+  const tickersInput = page.getByRole('combobox', { name: 'Tickers' });
+  await tickersInput.click();
+  await tickersInput.fill('BTC');
+  await page
+    .getByRole('option', { name: /^BTC(?:USDT)?(?:\s|$)/ })
+    .first()
+    .click({ timeout: 30_000 });
+  await tickersInput.press('Escape');
+
+  await page.getByRole('spinbutton', { name: 'Tests limit' }).fill('1');
+  await page.getByRole('spinbutton', { name: 'Parallel' }).fill('1');
+
+  const startResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/backtest/runs',
+  );
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect((await startResponse).ok()).toBeTruthy();
+
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({
+    timeout: 180_000,
+  });
+  await page.getByRole('button', { name: 'Results' }).first().click();
+
+  await expect(page).toHaveURL(/\/routes\/strategies\/backtest$/, {
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/^(?:BTC|BTCUSDT)$/).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(
+    page
+      .getByText('strategy:', { exact: true })
+      .locator('..')
+      .getByText('MaStrategy', { exact: true }),
+  ).toBeVisible();
 });

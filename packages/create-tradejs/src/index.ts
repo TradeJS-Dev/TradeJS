@@ -250,15 +250,41 @@ const localBin = (projectDir: string, name: string) =>
     process.platform === 'win32' ? `${name}.cmd` : name,
   );
 
-const isPortAvailable = (port: number) =>
+const isPortListening = (port: number, host: string) =>
+  new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ port, host });
+    const finish = (listening: boolean) => {
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(250);
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    socket.once('timeout', () => finish(false));
+  });
+
+const canBindPort = (port: number) =>
   new Promise<boolean>((resolve) => {
     const server = net.createServer();
     server.unref();
     server.once('error', () => resolve(false));
-    server.listen(port, () => server.close(() => resolve(true)));
+    server.listen({ port, host: '0.0.0.0', exclusive: true }, () =>
+      server.close(() => resolve(true)),
+    );
   });
 
-const findAvailablePort = async (preferredPort: number) => {
+const isPortAvailable = async (port: number) => {
+  if (
+    (await isPortListening(port, '127.0.0.1')) ||
+    (await isPortListening(port, '::1'))
+  ) {
+    return false;
+  }
+
+  return canBindPort(port);
+};
+
+export const findAvailablePort = async (preferredPort: number) => {
   for (let offset = 0; offset < 20; offset += 1) {
     const port = preferredPort + offset;
     if (await isPortAvailable(port)) {
