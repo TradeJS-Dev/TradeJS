@@ -1,8 +1,108 @@
 # DoubleTap AI Replay Notes
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-18.
 
 This file keeps internal notes for `ai-train` replay windows and DoubleTap AI gate analysis.
+
+## Post-Refactor Gate Cleanup (`2026-07-18`)
+
+Latest logical export:
+
+```bash
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part1.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part2.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part3.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part4.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part5.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part6.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784373494652-part7.jsonl
+```
+
+Research artifacts:
+
+```bash
+data/ai/output/ai-pocket-search-doubletap-merged-1784373494652-all-2026-07-18T11-19-12Z.md
+data/ai/output/doubletap-ablation-1784373494652-cleanup-v2.md
+data/ai/output/doubletap-ai-train-1784373494652-cleanup-v2.json
+data/ai/output/doubletap-evals-1784373494652-cleanup-v2.jsonl
+```
+
+Replay mode:
+
+```bash
+yarn ai-train --file data/ai/export/ai-dataset-doubletap-merged-1784373494652-part1.jsonl --localOnly --json -n 0 --minQuality 4 --terminalWindows=180,90,30,7 --dumpEvaluations data/ai/output/doubletap-evals-1784373494652-cleanup-v2.jsonl --dumpFeatures baseContext
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs --file data/ai/export/ai-dataset-doubletap-merged-1784373494652-part1.jsonl --minQuality 4 --terminalWindows=365,180,90,30,7 --includeGateContext --featurePattern 'approvalPocket|q4DerivativesPocket|q4DerivativesCmcRiskOk|q4AltDispersionOk|strictMomentumRoc1dOk|signalDirection|roc1d|btcVsAltReturn24h|cmc20ToCmc100RatioChange24hPct|solFundingZScore15m|marketBreadth.pctAboveMa20|targetVsBtc.ratioReturn24h|btcAltRegime.regime' --output data/ai/output/doubletap-ablation-1784373494652-cleanup-v2.md
+```
+
+Interpretation:
+
+- deterministic `AI_MODE=gate` research only; this does not measure provider/LLM behavior
+- `MIN_AI_QUALITY=4`
+- export period: `2025-07-17T20:15:00.000Z` -> `2026-07-16T00:30:00.000Z`
+- rows: `5949`; shards: `7`; span: `363.18d`
+- `365d` terminal report is effectively the full export window because the export is shorter than 365 calendar days
+- `additionalIndicators.marketContext.relative.*` is present in this export and matches the baseContext relative fields used in the gate
+- `approvalPocket` after cleanup: `watch:5564`, `q4_blocked:182`, `q4_derivatives:117`, `q4_derivatives_blocked:31`, `high_precision_blocked:40`, `high_precision:15`
+- SOL 15m reference funding is still sparse: `1805` numeric rows, `4144` null rows; missing SOL blocks only the derivatives pocket
+
+Decision:
+
+- keep q5 high-precision CMC pocket as the only structural approval path
+- keep q4 derivatives reference pocket
+- demote the legacy structural q4 CMC pocket to observation/block context; it no longer gives `quality=4` or local approval
+- reject the new report's absolute OI/liquidation candidates for now: XRP/BNB adds full-history PNL but worsens 30d/7d; TRX liquidation adds too few rows and is overfit to absolute market-size levels
+
+Before/after on merge `1784373494652`, q4+:
+
+| Window | Before N | Before WR | Before PF | Before PNL | Before DD | Before LS | After N | After WR | After PF | After PNL | After DD | After LS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full / ~365d | 149 | 61.1% | 2.30 | +782.76 | 79.37 | 5 | 127 | 59.8% | 2.14 | +613.45 | 95.57 | 5 |
+| 180d | 130 | 58.5% | 2.08 | +602.07 | 79.37 | 5 | 119 | 58.8% | 2.07 | +549.81 | 95.57 | 5 |
+| 90d | 109 | 55.0% | 1.81 | +407.29 | 79.37 | 5 | 103 | 56.3% | 1.87 | +407.81 | 95.57 | 5 |
+| 30d | 57 | 56.1% | 1.83 | +215.82 | 44.43 | 5 | 53 | 60.4% | 2.09 | +248.12 | 33.48 | 3 |
+| 7d | 13 | 53.8% | 1.69 | +45.46 | 43.43 | 4 | 11 | 63.6% | 2.51 | +66.81 | 22.08 | 2 |
+
+Post-cleanup q4+ metrics:
+
+- approved: `127`
+- WR: `59.8%`
+- PNL: `+613.45`
+- PF: `2.14`
+- max DD: `95.57`
+- max DD / gross profit: `8.3%`
+- max DD / total profit: `15.6%`
+- max loss streak: `5`
+- approved trades/day: `0.35` full, `1.77` last 30d, `1.57` last 7d
+- losing approved months: `0`
+
+Direction split after cleanup:
+
+- LONG: `48` approved, WR `52.1%`, PF `1.67`, PNL `+157.14`, maxDD `125.23`, maxLS `8`
+- SHORT: `79` approved, WR `64.6%`, PF `2.52`, PNL `+456.31`, maxDD `39.93`, maxLS `3`
+- SHORT remains much cleaner; LONG still contributes positive PNL but remains the main drawdown source
+
+Rejected candidate checks:
+
+| Variant | Full N | Full WR | Full PF | Full PNL | 30d PNL | 7d PNL | Decision |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| current before cleanup | 149 | 61.1% | 2.30 | +782.76 | +215.82 | +45.46 | profitable but weaker terminal 30d/7d |
+| no legacy q4 | 127 | 59.8% | 2.14 | +613.45 | +248.12 | +66.81 | implemented |
+| add XRP/BNB/ROC pocket | 231 | 60.2% | 2.18 | +1140.47 | +193.61 | +13.17 | rejected: hurts fresh terminal and adds loss streak |
+| replace with XRP/BNB/ROC pocket | 95 | 61.1% | 2.16 | +470.24 | -35.65 | -32.29 | rejected |
+| no legacy q4 plus XRP/BNB/ROC | 214 | 59.3% | 2.07 | +989.75 | +225.91 | +34.52 | rejected: worse than simple cleanup in 30d/7d |
+| no legacy q4 plus TRX liquidation | 132 | 59.8% | 2.14 | +632.04 | +248.12 | +66.81 | rejected: only 5 added rows, absolute liquidation threshold |
+
+Code and tests:
+
+- adapter: `packages/strategies/src/DoubleTap/adapters/ai.ts`
+- tests: `packages/strategies/src/DoubleTap/__tests__/ai.test.ts`
+- targeted verification: `yarn jest packages/strategies/src/DoubleTap/__tests__/ai.test.ts --runInBand`
+
+Remaining concerns / next tuning:
+
+- full-history PNL and DD are worse than the previous combined gate, but the cleanup better matches the post-refactor fresh windows and keeps terminal cadence above `1.5` approvals/day
+- LONG side still has poor drawdown characteristics; the next useful research should be LONG-specific rather than adding broad derivatives reference pockets
+- absolute openInterest/liquidation pockets from the search report should not be promoted without a normalized or percentile form
 
 ## Derivatives Refactor Gate Rebuild (`2026-07-15`)
 

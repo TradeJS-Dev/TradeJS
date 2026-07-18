@@ -653,23 +653,20 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     altDispersion24h >= Q4_ALT_DISPERSION_24H_MAX
       ? ['alt_dispersion_24h_too_high_for_q4']
       : []),
+    ...(q4CmcApproval ? ['legacy_q4_structural_observation_only'] : []),
   ];
   const highPrecisionApprovalBlocked =
     legacyHighPrecisionShapeCandidate &&
     !highPrecisionCmcApproval &&
     !q4DerivativesApproval;
   const q4DerivativesApprovalBlocked =
-    q4DerivativesPocket &&
-    !q4DerivativesApproval &&
-    !highPrecisionCmcApproval &&
-    !q4CmcApproval;
+    q4DerivativesPocket && !q4DerivativesApproval && !highPrecisionCmcApproval;
   const q4ApprovalBlocked =
     legacyShapeCandidate &&
     !legacyHighPrecisionShapeCandidate &&
-    !q4CmcApproval &&
     !q4DerivativesApproval;
   const approvalSourceAllowed =
-    highPrecisionCmcApproval || q4CmcApproval || q4DerivativesApproval;
+    highPrecisionCmcApproval || q4DerivativesApproval;
   const approvalBlocked =
     !approvalSourceAllowed &&
     (highPrecisionApprovalBlocked ||
@@ -733,7 +730,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
       ? Math.min(geometryQuality, 2)
       : highPrecisionCmcApproval
         ? 5
-        : q4CmcApproval || q4DerivativesApproval
+        : q4DerivativesApproval
           ? 4
           : Math.min(geometryQuality, 3);
 
@@ -907,9 +904,9 @@ Interpretation rules for DoubleTap:
 - Extremely tiny breaks can still be early noise; live approval needs support from baseContext.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
 - Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
-- Local q4 approval can come from the structural approval pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, -0.3 < CMC BTC dominance change <= -0.05, and BTC/alt dispersion 24h < 0.06.
-- Local q4 approval can also come from the derivatives reference pocket: BTC underperforms alts by at least 0.9%, ETH crowding persistence >= 140, SOL 15m funding z-score <= 0.2, unless BTC underperforms alts by at least 1.4% while CMC20/CMC100 ratio change <= -0.0007.
-- Main local approval additionally needs strict momentum confirmation with ROC1D >= -5.25 for structural q4/q5 approvals; the derivatives reference q4 pocket is already momentum/positioning filtered and does not require that ROC gate.
+- The legacy structural q4 CMC pocket is retained only as observation context and should not be treated as local approval.
+- Local q4 approval comes from the derivatives reference pocket: BTC underperforms alts by at least 0.9%, ETH crowding persistence >= 140, SOL 15m funding z-score <= 0.2, unless BTC underperforms alts by at least 1.4% while CMC20/CMC100 ratio change <= -0.0007.
+- Main local approval additionally needs strict momentum confirmation with ROC1D >= -5.25 for q5 approval; the derivatives reference q4 pocket is already momentum/positioning filtered and does not require that ROC gate.
 - A good long has two comparable lows and a clean close above the neckline.
 - A good short has two comparable highs and a clean close below the neckline.
 - Venue spread, trend bias, body strength, and reward-to-volatility are diagnostics for this gate, not strict local blockers.

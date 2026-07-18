@@ -169,7 +169,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBe('LONG');
   });
 
-  it('approves q4 pockets when BTC dominance change is in the CMC band', () => {
+  it('downgrades legacy q4 CMC pockets to observation context', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -200,8 +200,8 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(4);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
   it('approves q4 derivatives reference pockets without requiring the strict ROC gate', () => {
@@ -326,9 +326,9 @@ describe('doubleTapAiAdapter', () => {
             },
           }),
           doubleTapContext: {
-            signalDirection: 'LONG',
+            signalDirection: 'SHORT',
             height: 10,
-            breakoutDistancePct: 0.4,
+            breakoutDistancePct: 0.6,
           },
         },
       },
@@ -613,7 +613,7 @@ describe('doubleTapAiAdapter', () => {
           doubleTapContext: {
             signalDirection: 'LONG',
             height: 10,
-            breakoutDistancePct: 0.4,
+            breakoutDistancePct: 0.6,
           },
         },
       } as any,
@@ -637,6 +637,7 @@ describe('doubleTapAiAdapter', () => {
     expect(context.strictMomentumBlockReasons).toEqual([]);
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
+      approvalPocket: 'high_precision',
       q4AltDispersionOk: true,
       strictMomentumApproved: true,
       strictMomentumRoc1dOk: true,
@@ -650,7 +651,7 @@ describe('doubleTapAiAdapter', () => {
           doubleTapContext: {
             signalDirection: 'LONG',
             height: 10,
-            breakoutDistancePct: 0.4,
+            breakoutDistancePct: 0.6,
           },
         },
       } as any,
@@ -676,6 +677,7 @@ describe('doubleTapAiAdapter', () => {
     );
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
+      approvalPocket: 'high_precision',
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
     });
@@ -688,7 +690,7 @@ describe('doubleTapAiAdapter', () => {
           doubleTapContext: {
             signalDirection: 'LONG',
             height: 10,
-            breakoutDistancePct: 0.4,
+            breakoutDistancePct: 0.6,
           },
         },
       } as any,
@@ -714,6 +716,7 @@ describe('doubleTapAiAdapter', () => {
     );
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
+      approvalPocket: 'high_precision',
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: null,
     });
@@ -764,7 +767,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
-  it('keeps q4 approval pockets with neutral venue spread', () => {
+  it('keeps legacy q4 CMC pockets downgraded with neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -793,11 +796,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(4);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
-  it('keeps q4 approval pockets with negative venue spread', () => {
+  it('keeps legacy q4 CMC pockets downgraded with negative venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -826,11 +829,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(4);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
-  it('keeps q4 approval pockets with non-neutral trend', () => {
+  it('keeps legacy q4 CMC pockets downgraded with non-neutral trend', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -859,8 +862,8 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(4);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
   it('keeps high precision pockets when volume is below the old strict threshold', () => {
