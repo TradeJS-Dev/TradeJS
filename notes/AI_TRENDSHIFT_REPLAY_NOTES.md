@@ -2,6 +2,58 @@
 
 Last updated: 2026-07-18
 
+## Derivatives Data-Quality Repair (`2026-07-18`, export `1784399805532`)
+
+Inputs:
+
+- export: `data/ai/export/ai-dataset-trendshift-merged-1784399805532-part1.jsonl` through `part7`
+- pocket report: `data/ai/output/ai-pocket-search-trendshift-merged-1784399805532-all-2026-07-18T18-41-04Z.md`
+- previous comparison export: `1784385127089`
+- context fingerprint: `c0834eb8e727ac4b`
+
+Diagnosis:
+
+- The new export had no duplicate groups and mostly the same signal-row set as the previous post-refactor export, but approvals changed because derivatives context content changed.
+- The main regression was data quality: `missing_derivatives` / `stale_derivatives` were represented downstream as `pressure=neutral` and `priceOiDivergenceType=unknown`, so the gate could treat unavailable derivatives as a neutral confirmation.
+- Broadly blocking every missing/stale derivatives row was too destructive because some non-stress historical rows stayed profitable.
+- The implemented repair is narrower:
+  - demote q5 and block neutral-q4 promotion when benchmark derivatives are missing/stale and CMC FearGreed is in stress mode (`<= 25`)
+  - do not let `q4ShortBreadthShockLiquidationRecoveryCandidate` clear already accumulated hard blockers such as `flat_or_mixed_oi`
+  - keep missing/stale fields as defensive evidence only, not approval evidence
+
+Metrics with `MIN_AI_QUALITY=5`:
+
+| Export / gate | Approved | WR | PF | PNL | MaxDD | Loss streak | Trades/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `1784399805532` before fix | 352 | 71.0% | 4.79 | +2083.70 | 104.48 | 10 | 0.973 |
+| `1784399805532` after fix | 292 | 79.5% | 8.34 | +2171.77 | 46.92 | 4 | 0.807 |
+| `1784385127089` before fix | 337 | 75.7% | 6.65 | +2274.63 | 80.04 | 5 | 0.930 |
+| `1784385127089` after fix | 321 | 76.3% | 7.26 | +2210.37 | 80.04 | 5 | 0.886 |
+
+Terminal windows on `1784399805532` after the fix:
+
+| Window | Approved | WR | PF | PNL | MaxDD | Loss streak | Trades/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 180d | 172 | 81.4% | 9.38 | +1340.78 | 46.92 | 4 | 0.956 |
+| 90d | 87 | 94.3% | 33.06 | +928.15 | 22.50 | 2 | 0.968 |
+| 30d | 5 | 40.0% | 1.04 | +1.20 | 22.50 | 2 | 0.167 |
+| 7d | 0 | n/a | n/a | +0.00 | 0.00 | 0 | 0.000 |
+
+Notes:
+
+- The fix improves the new export versus the broken baseline on full PNL, PF, winrate, maxDD, loss streak, and last30d PNL.
+- It costs `64.26` PNL and `16` approvals on `1784385127089`, but improves PF there from `6.65` to `7.26`; maxDD is unchanged.
+- q3+/q4+/q5+ are identical because the deterministic gate approves only effective q5 rows. Recommended runtime threshold remains `MIN_AI_QUALITY=5`.
+
+Verification commands:
+
+```bash
+yarn prettier --write packages/strategies/src/TrendShift/guardrails.ts packages/strategies/src/TrendShift/adapters/ai.ts packages/strategies/src/TrendShift/__tests__/ai.test.ts
+yarn jest packages/strategies/src/TrendShift/__tests__/ai.test.ts --runInBand
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1784399805532-part1.jsonl --localOnly --json -n 0 --terminalWindows=180,90,30,7
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1784385127089-part1.jsonl --localOnly --json -n 0 --terminalWindows=180,90,30,7
+```
+
 ## Post-Refactor Gate Rebuild (`2026-07-18`)
 
 Current export:

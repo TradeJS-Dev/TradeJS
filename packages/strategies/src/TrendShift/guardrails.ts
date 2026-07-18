@@ -70,6 +70,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortBullSwingStructureRisk: boolean;
   shortLowBollingerWidthRisk: boolean;
   shortAsiaLongFlushLowCmcBreadthRisk: boolean;
+  derivativesDataUnavailableStressRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
   defensiveRewardToVolatilityRisk: boolean;
   longBtcAltRegimeRisk: boolean;
@@ -129,6 +130,7 @@ const LONG_BROAD_MARKET_SHORT_FLUSH_PCT_ABOVE_MA20_MIN = 0.95;
 const LONG_BROAD_MARKET_SHORT_FLUSH_BTC_VS_ALT_RETURN_24H_MIN = 0;
 const SHORT_ASIA_LONG_FLUSH_LOW_CMC_FEAR_GREED_MAX = 18;
 const SHORT_ASIA_LONG_FLUSH_ADVANCERS_MAX = 2;
+const DERIVATIVES_DATA_UNAVAILABLE_STRESS_CMC_FEAR_GREED_MAX = 25;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -570,6 +572,14 @@ export const buildTrendShiftGuardrailContext = ({
   const cmcFearGreedStale =
     gateRelative?.cmcFearGreedStale === true ||
     baseCmcFearGreed?.stale === true;
+  const derivativesDataUnavailable =
+    derivativesRiskFlags.includes('missing_derivatives') ||
+    derivativesRiskFlags.includes('stale_derivatives');
+  const derivativesDataUnavailableStressRisk =
+    derivativesDataUnavailable &&
+    cmcFearGreedStale !== true &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue <= DERIVATIVES_DATA_UNAVAILABLE_STRESS_CMC_FEAR_GREED_MAX;
   const derivatives1hLiqShort = asFiniteNumber(
     baseContext?.derivatives?.intervals?.['1h']?.liqShort,
   );
@@ -651,6 +661,7 @@ export const buildTrendShiftGuardrailContext = ({
   const selectiveNeutralQ4Candidate =
     hasDerivativesSummary &&
     derivativesPressure === 'neutral' &&
+    !derivativesDataUnavailableStressRisk &&
     !sessionIsOverlap &&
     ((signalContext.signalDirection === 'LONG' &&
       sessionPrimary === 'europe' &&
@@ -663,6 +674,7 @@ export const buildTrendShiftGuardrailContext = ({
     signalContext.signalDirection === 'SHORT' &&
     breakoutState === 'below_low_level' &&
     derivativesPressure === 'neutral' &&
+    !derivativesDataUnavailableStressRisk &&
     atrPctZScore != null &&
     atrPctZScore >= 0 &&
     atrPctZScore < 1 &&
@@ -803,6 +815,11 @@ export const buildTrendShiftGuardrailContext = ({
       deterministicQuality = 4;
       hardBlockReasons.push('us_short_oi_not_expanding');
     }
+  }
+
+  if (deterministicQuality >= 5 && derivativesDataUnavailableStressRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('derivatives_data_unavailable_stress');
   }
 
   if (
@@ -1021,6 +1038,8 @@ export const buildTrendShiftGuardrailContext = ({
     signalContext.signalDirection === 'SHORT' &&
     signalContext.confirmedFlip === true &&
     signalContext.flipDistanceOk === true &&
+    hardBlockReasons.length === 0 &&
+    !derivativesDataUnavailableStressRisk &&
     marketBreadthReturn != null &&
     marketBreadthReturn <= SHORT_BREADTH_SHOCK_MARKET_BREADTH_RETURN_MAX &&
     derivatives1hLiqShort != null &&
@@ -1095,6 +1114,7 @@ export const buildTrendShiftGuardrailContext = ({
     shortBullSwingStructureRisk,
     shortLowBollingerWidthRisk,
     shortAsiaLongFlushLowCmcBreadthRisk,
+    derivativesDataUnavailableStressRisk,
     lowRewardToVolatilityRisk,
     defensiveRewardToVolatilityRisk,
     longBtcAltRegimeRisk,
@@ -1189,6 +1209,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is in a narrow Bollinger-width compression pocket that has been less reliable, so keep it in watch mode';
     case 'short_asia_long_flush_low_cmc_breadth':
       return 'the SHORT flip is selling an Asia-session long flush while CMC fear/greed and market breadth are already in capitulation, so keep it in watch mode';
+    case 'derivatives_data_unavailable_stress':
+      return 'benchmark derivatives data is missing or stale during CMC stress, so keep the flip in watch mode instead of treating neutral derivatives as confirmation';
     case 'low_reward_to_volatility':
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     case 'reward_to_volatility_below_defensive_threshold':

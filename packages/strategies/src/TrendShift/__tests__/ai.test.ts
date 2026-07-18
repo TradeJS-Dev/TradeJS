@@ -2064,6 +2064,58 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('does not recover SHORT breadth-shock pockets when OI is already mixed', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              relative: {
+                marketBreadthReturn: -0.012,
+              },
+            },
+          },
+          derivativesContext: {
+            intervals: {
+              '1h': {
+                liqShort: 0.1,
+              },
+            },
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+              priceOiDivergenceType: 'flat_or_mixed',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'price and open-interest divergence still looks mixed, so keep the flip in watch mode',
+    });
+  });
+
   it('keeps breadth-shock SHORT recovery in watch mode when Bollinger width is compressed', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -2117,6 +2169,60 @@ describe('trendShiftAiAdapter', () => {
       approved: false,
       rejectReason:
         'the SHORT flip is in a narrow Bollinger-width compression pocket that has been less reliable, so keep it in watch mode',
+    });
+  });
+
+  it('keeps flips in watch mode when benchmark derivatives are missing during CMC stress', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              relative: {
+                cmcFearGreedValue: 20,
+                cmcFearGreedStale: false,
+              },
+            },
+            relative: {
+              cmcFearGreed: {
+                value: 20,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: ['missing_derivatives'],
+              priceOiDivergenceType: 'unknown',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'benchmark derivatives data is missing or stale during CMC stress, so keep the flip in watch mode instead of treating neutral derivatives as confirmation',
     });
   });
 

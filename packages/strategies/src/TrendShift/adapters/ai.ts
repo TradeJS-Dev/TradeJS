@@ -162,6 +162,7 @@ Additional TrendShift context:
 - defensiveRewardToVolatilityRisk=${String(context.defensiveRewardToVolatilityRisk)}
 - shortBullSwingStructureRisk=${String(context.shortBullSwingStructureRisk)}
 - shortAsiaLongFlushLowCmcBreadthRisk=${String(context.shortAsiaLongFlushLowCmcBreadthRisk)}
+- derivativesDataUnavailableStressRisk=${String(context.derivativesDataUnavailableStressRisk)}
 - longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
 - longBroadMarketShortFlushRisk=${String(context.longBroadMarketShortFlushRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
@@ -201,12 +202,13 @@ Interpretation rules for TrendShift:
 - For SHORT, a bullish swing structure is a watch-only warning even when the immediate flip geometry looks q5-strong.
 - For SHORT, a narrow Bollinger-width compression pocket is watch-only even if another q4 recovery condition is present.
 - For SHORT, Asia-session long-flush setups are watch-only when CMC fear/greed and market breadth are already in capitulation.
+- If benchmark derivatives data is missing or stale while CMC fear/greed is in stress mode, keep the flip in watch mode; neutral/unknown derivatives are not confirmation in that state.
 - The defensive live gate requires rewardToVolatility >= 8 when that field is available.
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
 - For LONG, broad-market squeeze clusters are watch-only when breadth is already extreme, BTC is leading alts, and benchmark derivatives show a short flush.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
 - A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
-- A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override the low-Bollinger-width defensive cut.
+- A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override existing hard blockers or the low-Bollinger-width defensive cut.
 - A narrow LONG q4 recovery may pass only when alt leadership is clear (btcVsAltReturn24h <= -0.00503054 and btcVsAltReturn1h <= -0.00581403), fear/greed is not falling hard, and the only blockers are the tested OI/benchmark-derivatives or defensive reward-to-volatility blockers.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
