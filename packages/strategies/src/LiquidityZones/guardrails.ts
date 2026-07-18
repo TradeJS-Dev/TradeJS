@@ -40,9 +40,12 @@ export type LiquidityZonesGuardrailContext =
     adaptiveChannelFlipDown: boolean | null;
     lowTouchCount20: number | null;
     ethReferenceOiChangePct4h: number | null;
+    ethReferenceOiChangePct24h: number | null;
+    ethReferenceFundingZScore: number | null;
     solReferenceOiChangePct24h: number | null;
     solReferenceFundingZScore: number | null;
     transitionStructureExpansionPocket: boolean;
+    ethReferenceStressPocket: boolean;
     solReferenceStressPocket: boolean;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -179,9 +182,16 @@ export const buildLiquidityZonesGuardrailContext = ({
   const lowTouchCount20 = asPresentFiniteNumber(
     baseContext?.structure?.levels?.lowTouchCount20,
   );
+  const ethReferenceDerivatives15m =
+    baseContext?.derivatives?.referenceContexts?.ETHUSDT?.intervals?.['15m'];
   const ethReferenceOiChangePct4h = asPresentFiniteNumber(
-    baseContext?.derivatives?.referenceContexts?.ETHUSDT?.intervals?.['15m']
-      ?.oiChangePct4h,
+    ethReferenceDerivatives15m?.oiChangePct4h,
+  );
+  const ethReferenceOiChangePct24h = asPresentFiniteNumber(
+    ethReferenceDerivatives15m?.oiChangePct24h,
+  );
+  const ethReferenceFundingZScore = asPresentFiniteNumber(
+    ethReferenceDerivatives15m?.fundingZScore,
   );
   const solReferenceOiChangePct24h = asPresentFiniteNumber(
     baseContext?.derivatives?.referenceContexts?.SOLUSDT?.intervals?.['15m']
@@ -332,6 +342,14 @@ export const buildLiquidityZonesGuardrailContext = ({
     adaptiveChannelFlipDown === false &&
     !directionalCrowding &&
     !ethReferenceOiWeakPocket;
+  const ethReferenceStressPocket =
+    hasBaseRetestConfirmation &&
+    lowTouchCount20 != null &&
+    lowTouchCount20 <= 3 &&
+    ethReferenceOiChangePct24h != null &&
+    ethReferenceOiChangePct24h <= -5.8 &&
+    ethReferenceFundingZScore != null &&
+    ethReferenceFundingZScore <= -1.05;
   const solReferenceStressPocket =
     hasBaseRetestConfirmation &&
     lowTouchCount20 != null &&
@@ -341,7 +359,9 @@ export const buildLiquidityZonesGuardrailContext = ({
     solReferenceFundingZScore != null &&
     solReferenceFundingZScore <= -1.2;
   const calibratedExpansionPocket =
-    transitionStructureExpansionPocket || solReferenceStressPocket;
+    transitionStructureExpansionPocket ||
+    ethReferenceStressPocket ||
+    solReferenceStressPocket;
   const longRequiresCalibratedExpansion =
     direction === 'LONG' && !calibratedExpansionPocket;
   const approvalDisqualifiedByCalibration =
@@ -441,9 +461,12 @@ export const buildLiquidityZonesGuardrailContext = ({
     adaptiveChannelFlipDown,
     lowTouchCount20,
     ethReferenceOiChangePct4h,
+    ethReferenceOiChangePct24h,
+    ethReferenceFundingZScore,
     solReferenceOiChangePct24h,
     solReferenceFundingZScore,
     transitionStructureExpansionPocket,
+    ethReferenceStressPocket,
     solReferenceStressPocket,
     hardBlockReasons,
     softBlockReasons,

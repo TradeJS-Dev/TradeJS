@@ -446,6 +446,107 @@ describe('liquidityZonesAiAdapter', () => {
     });
   });
 
+  it('approves the rounded ETH reference stress pocket', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            levels: {
+              lowTouchCount20: 3,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct24h: -5.8,
+                    fundingZScore: -1.05,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects ETH reference stress candidates above the rounded thresholds', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            levels: {
+              lowTouchCount20: 3,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct24h: -5.79,
+                    fundingZScore: -1.04,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
   it('approves the rounded SOL reference stress pocket', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

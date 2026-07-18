@@ -122,9 +122,12 @@ Additional Liquidity Zones context:
 - adaptiveChannelFlipDown=${String(context.adaptiveChannelFlipDown ?? 'n/a')}
 - lowTouchCount20=${String(context.lowTouchCount20 ?? 'n/a')}
 - ethReferenceOiChangePct4h=${String(context.ethReferenceOiChangePct4h ?? 'n/a')}
+- ethReferenceOiChangePct24h=${String(context.ethReferenceOiChangePct24h ?? 'n/a')}
+- ethReferenceFundingZScore=${String(context.ethReferenceFundingZScore ?? 'n/a')}
 - solReferenceOiChangePct24h=${String(context.solReferenceOiChangePct24h ?? 'n/a')}
 - solReferenceFundingZScore=${String(context.solReferenceFundingZScore ?? 'n/a')}
 - transitionStructureExpansionPocket=${String(context.transitionStructureExpansionPocket)}
+- ethReferenceStressPocket=${String(context.ethReferenceStressPocket)}
 - solReferenceStressPocket=${String(context.solReferenceStressPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
@@ -140,7 +143,7 @@ Interpretation rules for Liquidity Zones:
 - A close fully through the level marks the zone crossed; crossed zones are not live-entry candidates.
 - Top-level derivatives context is BTC benchmark evidence; target-symbol derivatives require targetContext/targetDerived.
 - Do not treat derivatives points, rows, or loaded-history size as approval evidence.
-- A calibrated transition-structure pocket or SOL reference stress pocket can approve a structurally valid retest.
+- A calibrated transition-structure pocket, ETH reference stress pocket, or SOL reference stress pocket can approve a structurally valid retest.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
