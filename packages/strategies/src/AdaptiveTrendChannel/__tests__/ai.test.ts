@@ -126,6 +126,66 @@ const makeXrpShortRecoveryBaseContext = ({
   },
 });
 
+const makeXrpEthShortRecoveryBaseContext = ({
+  approveBias = 'reject',
+  xrpOpenInterest15m = 300_000_000,
+  xrpPriceOiDivergenceType = 'price_down_oi_up',
+  xrpFundingZScore1h = -1.8,
+  xrpDerivatives1hStale = false,
+  ethLiqImbalance1h = -0.99,
+  ethDerivatives1hStale = false,
+  btcVsAltReturn24h = 0,
+}: {
+  approveBias?: 'support' | 'neutral' | 'reject';
+  xrpOpenInterest15m?: number | null;
+  xrpPriceOiDivergenceType?: string | null;
+  xrpFundingZScore1h?: number | null;
+  xrpDerivatives1hStale?: boolean;
+  ethLiqImbalance1h?: number | null;
+  ethDerivatives1hStale?: boolean;
+  btcVsAltReturn24h?: number | null;
+} = {}) => ({
+  derivatives: {
+    referenceContexts: {
+      ETHUSDT: {
+        intervals: {
+          '1h': {
+            liqImbalance: ethLiqImbalance1h,
+            stale: ethDerivatives1hStale,
+          },
+        },
+      },
+      XRPUSDT: {
+        summary: {
+          priceOiDivergenceType: xrpPriceOiDivergenceType,
+        },
+        intervals: {
+          '15m': {
+            openInterest: xrpOpenInterest15m,
+          },
+          '1h': {
+            fundingZScore: xrpFundingZScore1h,
+            stale: xrpDerivatives1hStale,
+          },
+        },
+      },
+    },
+  },
+  gateFeatures: {
+    decisionHints: {
+      approveBias,
+      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+      needsExtraConfirmation: approveBias === 'reject',
+      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    },
+    relative: {
+      btcVsAltReturn24h,
+      cmcExchangeLiquidityAligned: false,
+      cmcExchangeLiquidityStale: false,
+    },
+  },
+});
+
 describe('adaptiveTrendChannelAiAdapter', () => {
   it('approves clean adaptive channel flips', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
@@ -223,7 +283,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('xrp_oi_reject_bias');
   });
 
-  it('allows the rounded XRP reference short recovery pocket through high-XRP reject bias', () => {
+  it('allows the rounded XRP/BTC reference short recovery pocket through high-XRP reject bias', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -240,6 +300,40 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           currentPrice: 99.5,
         },
         makeXrpShortRecoveryBaseContext(),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toBeUndefined();
+  });
+
+  it('allows the rounded XRP/ETH reference short recovery pocket through high-XRP reject bias', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 0.5,
+          channelWidthPct: 6,
+          currentPrice: 99.5,
+        },
+        makeXrpEthShortRecoveryBaseContext(),
       ),
       analysis: {
         direction: 'SHORT',
@@ -284,6 +378,52 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             currentPrice: 99.5,
           },
           makeXrpShortRecoveryBaseContext(overrides),
+        ),
+        analysis: {
+          direction: 'SHORT',
+          quality: 5,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+      });
+      expect(
+        (result as { rejectReason?: string } | undefined)?.rejectReason,
+      ).toContain('xrp_oi_reject_bias');
+    },
+  );
+
+  it.each([
+    ['ETH liquidation imbalance is too shallow', { ethLiqImbalance1h: -0.989 }],
+    ['XRP funding z-score is too shallow', { xrpFundingZScore1h: -1.79 }],
+    [
+      'XRP price/OI divergence is missing',
+      { xrpPriceOiDivergenceType: 'unknown' },
+    ],
+    ['ETH 1h derivatives are stale', { ethDerivatives1hStale: true }],
+    ['XRP 1h derivatives are stale', { xrpDerivatives1hStale: true }],
+  ])(
+    'keeps high-XRP reject bias blocked when the XRP/ETH recovery pocket misses: %s',
+    (_label, overrides) => {
+      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload(
+          {
+            signalDirection: 'SHORT',
+            regime: -1,
+            centerline: 100,
+            roof: 103,
+            floor: 97,
+            halfChannel: 3,
+            atr: 3,
+            breakoutDistancePct: 0.5,
+            channelWidthPct: 6,
+            currentPrice: 99.5,
+          },
+          makeXrpEthShortRecoveryBaseContext(overrides),
         ),
         analysis: {
           direction: 'SHORT',
@@ -509,7 +649,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('short_side_disabled');
   });
 
-  it('approves short liquidation recovery from canonical target derivative intervals', () => {
+  it('keeps benchmark-only short liquidation recovery in watch mode', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -546,6 +686,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               ETHUSDT: {
                 intervals: {
                   '1h': {
+                    liqImbalance: -0.99,
                     fundingRate: 0.003,
                   },
                 },
@@ -561,13 +702,16 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 4,
-      approved: true,
+      direction: null,
+      quality: 3,
+      approved: false,
     });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('short_side_disabled');
   });
 
-  it('rejects short liquidation recovery when ETH funding is missing', () => {
+  it('keeps benchmark-only short liquidation recovery rejected when ETH funding is missing', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -670,6 +814,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               ETHUSDT: {
                 intervals: {
                   '1h': {
+                    liqImbalance: -0.99,
                     fundingRate: 0.003,
                   },
                 },
@@ -703,6 +848,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(prompt).toContain('targetLiqImbalance1h=-0.97');
     expect(prompt).toContain('targetLiqSpikeRatio1h=5.8');
     expect(prompt).toContain('targetLiqTotal1h=32');
+    expect(prompt).toContain('ethLiqImbalance1h=-0.99');
     expect(prompt).toContain('ethFundingRate1h=0.003');
     expect(prompt).toContain('xrpOpenInterest15m=300000000');
     expect(prompt).toContain('xrpPriceOiDivergenceType=price_down_oi_up');

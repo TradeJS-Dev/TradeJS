@@ -93,6 +93,7 @@ Additional AdaptiveTrendChannel context:
 - targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
 - targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
 - targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}
+- ethLiqImbalance1h=${String(context.ethLiqImbalance1h ?? 'n/a')}
 - ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
 - xrpOpenInterest15m=${String(context.xrpOpenInterest15m ?? 'n/a')}
 - xrpPriceOiDivergenceType=${context.xrpPriceOiDivergenceType ?? 'n/a'}

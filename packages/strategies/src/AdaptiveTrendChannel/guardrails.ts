@@ -19,6 +19,7 @@ export type AdaptiveTrendChannelGuardrailContext =
     targetLiqImbalance1h: number | null;
     targetLiqSpikeRatio1h: number | null;
     targetLiqTotal1h: number | null;
+    ethLiqImbalance1h: number | null;
     ethFundingRate1h: number | null;
     xrpOpenInterest15m: number | null;
     xrpPriceOiDivergenceType: string | null;
@@ -64,9 +65,7 @@ const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 2;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
-const MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H = -0.97;
-const MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H = 5.7;
-const MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H = 0.0037;
+const MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H = -0.99;
 const MAX_XRP_SHORT_RECOVERY_BTC_VS_ALT_RETURN_24H = -0.03;
 const MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H = -1.8;
 const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
@@ -134,6 +133,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     targetDerivatives1h?.liqSpikeRatio,
   );
   const targetLiqTotal1h = asFiniteNumber(targetDerivatives1h?.liqTotal);
+  const ethLiqImbalance1h = asFiniteNumber(ethDerivatives1h?.liqImbalance);
   const ethFundingRate1h = asFiniteNumber(ethDerivatives1h?.fundingRate);
   const xrpOpenInterest15m = asFiniteNumber(xrpDerivatives15m?.openInterest);
   const xrpPriceOiDivergenceType =
@@ -197,17 +197,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     (volumeRel20 ?? 0) >= minApprovalVolumeRel20 &&
     (rsi ?? Number.POSITIVE_INFINITY) <= MAX_APPROVAL_RSI &&
     (bbWidthRank100 ?? 0) >= MIN_APPROVAL_BB_WIDTH_RANK_100;
-  const shortRecoverySetup =
-    direction === 'SHORT' &&
-    targetDerivatives1hStale !== true &&
-    ethDerivatives1hStale !== true &&
-    targetLiqImbalance1h != null &&
-    targetLiqSpikeRatio1h != null &&
-    ethFundingRate1h != null &&
-    targetLiqImbalance1h <= MAX_SHORT_RECOVERY_TARGET_LIQ_IMBALANCE_1H &&
-    targetLiqSpikeRatio1h >= MIN_SHORT_RECOVERY_TARGET_LIQ_SPIKE_RATIO_1H &&
-    ethFundingRate1h <= MAX_SHORT_RECOVERY_ETH_FUNDING_RATE_1H;
-  const xrpShortRecoverySetup =
+  const xrpBtcShortRecoverySetup =
     direction === 'SHORT' &&
     xrpDerivatives1hStale !== true &&
     xrpPriceOiDivergenceType === 'price_down_oi_up' &&
@@ -215,6 +205,17 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     btcVsAltReturn24h <= MAX_XRP_SHORT_RECOVERY_BTC_VS_ALT_RETURN_24H &&
     xrpFundingZScore1h != null &&
     xrpFundingZScore1h <= MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H;
+  const xrpEthShortRecoverySetup =
+    direction === 'SHORT' &&
+    xrpDerivatives1hStale !== true &&
+    ethDerivatives1hStale !== true &&
+    xrpPriceOiDivergenceType === 'price_down_oi_up' &&
+    xrpFundingZScore1h != null &&
+    xrpFundingZScore1h <= MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H &&
+    ethLiqImbalance1h != null &&
+    ethLiqImbalance1h <= MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H;
+  const xrpShortRecoverySetup =
+    xrpBtcShortRecoverySetup || xrpEthShortRecoverySetup;
 
   if (
     xrpOpenInterest15m != null &&
@@ -225,8 +226,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     hardBlockReasons.push('xrp_oi_reject_bias');
   }
 
-  const approvalSetup =
-    longApprovalSetup || shortRecoverySetup || xrpShortRecoverySetup;
+  const approvalSetup = longApprovalSetup || xrpShortRecoverySetup;
   const highConfidenceSetup =
     longApprovalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
@@ -297,6 +297,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     targetLiqImbalance1h,
     targetLiqSpikeRatio1h,
     targetLiqTotal1h,
+    ethLiqImbalance1h,
     ethFundingRate1h,
     xrpOpenInterest15m,
     xrpPriceOiDivergenceType,
