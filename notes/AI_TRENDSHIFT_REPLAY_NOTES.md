@@ -1,6 +1,94 @@
 # AI TrendShift Replay Notes
 
-Last updated: 2026-05-31
+Last updated: 2026-07-18
+
+## Post-Refactor Gate Rebuild (`2026-07-18`)
+
+Current export:
+
+- merge id: `1784385127089`
+- shards: `7`
+- rows: `2503`
+- window: `2025-07-18 07:30 UTC -> 2026-07-15 14:00 UTC`
+- data lag at research time: `3.04d`
+- config id: `1gis6b`
+- duplicate context groups: `0`
+- replay mode: deterministic local gate only (`AI_MODE=gate` equivalent)
+- lineage at final research run: git SHA `d9aa69ab5c9bf09419855ad42cfd150ec0b31d85`, gate fingerprint `c44db91220d1ab29`, context fingerprint `9c3f68a679418c5a`
+
+Baseline current gate on this export before the rebuild:
+
+| window | approved | winrate | total | PF | maxDD | max loss streak | cadence/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | `355` | `71.8%` | `+2135.10` | `4.94` | `123.73` | `9` | `0.980` |
+| last `180d` | `221` | `70.6%` | `+1305.01` | `4.64` | `123.73` | `9` | `1.228` |
+| last `90d` | `106` | `81.1%` | `+863.08` | `6.61` | `123.73` | `9` | `1.178` |
+| last `30d` | `20` | `10.0%` | `-123.73` | `0.19` | `123.73` | `9` | `0.667` |
+| last `7d` | `8` | `0.0%` | `-54.37` | `0.00` | `54.37` | `8` | `1.143` |
+
+Tested hypotheses:
+
+- the provided pocket report highlighted CMC/relative/derivatives pockets, but many positive candidates had tiny validation support or used data-availability fields such as derivatives `.points`, so they were not suitable for production gate rules
+- broad reference-derivatives exclusions around alt-leadership (`ETH oiAcceleration`, `XRP/TRX liqSpikeRatio`, `cmc20ToCmc100Ratio`, `altDispersion24h`) improved some full-history PF values but did not touch the latest `7d` failure cluster
+- the latest `7d` failure was a single LONG approval cluster at `2026-07-15 12:45 UTC`: 8 symbols, all losses, in extreme broad-market breadth with BTC leading alts and benchmark derivatives in a short-flush state
+- CMC fear/greed fields were useful for the second tail issue: the remaining last-30d SHORT losses concentrated in Asia-session long-flush capitulation when `cmcFearGreed.value <= 18` and market breadth had `advancers <= 2`
+
+Implemented gate changes:
+
+1. Downgrade q5 LONG broad-market squeeze clusters when:
+   - direction is `LONG`
+   - benchmark derivatives pressure is `short_flush`
+   - market breadth advancers `>= 27`
+   - market breadth pct above MA20 `>= 0.95`
+   - BTC is not underperforming alts on 24h (`btcVsAltReturn24h >= 0`)
+2. Downgrade q5 SHORT Asia-session capitulation clusters when:
+   - direction is `SHORT`
+   - session is `asia`
+   - benchmark derivatives pressure is `long_flush`
+   - CMC fear/greed value `<= 18`
+   - market breadth advancers `<= 2`
+
+Replay after rebuild:
+
+| window | approved | winrate | total | PF | maxDD | max loss streak | cadence/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | `337` | `75.7%` | `+2274.63` | `6.65` | `80.04` | `5` | `0.930` |
+| last `180d` | `203` | `76.8%` | `+1444.54` | `7.59` | `80.04` | `5` | `1.128` |
+| last `90d` | `91` | `94.5%` | `+988.01` | `35.13` | `22.50` | `2` | `1.012` |
+| last `30d` | `5` | `40.0%` | `+1.20` | `1.04` | `22.50` | `2` | `0.167` |
+| last `7d` | `0` | `n/a` | `0.00` | `n/a` | `0.00` | `0` | `0.000` |
+
+Directional split after rebuild:
+
+| direction | approved | winrate | total | PF | maxDD | max loss streak | cadence/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| LONG | `187` | `77.0%` | `+1429.67` | `7.76` | `59.37` | `5` | `0.534` |
+| SHORT | `150` | `74.0%` | `+844.96` | `5.43` | `34.76` | `4` | `0.414` |
+
+Net effect on the same export:
+
+- full: approved `355 -> 337`, winrate `71.8% -> 75.7%`, total `+2135.10 -> +2274.63`, PF `4.94 -> 6.65`, maxDD `123.73 -> 80.04`
+- last `180d`: total `+1305.01 -> +1444.54`, PF `4.64 -> 7.59`, maxDD `123.73 -> 80.04`
+- last `90d`: total `+863.08 -> +988.01`, PF `6.61 -> 35.13`, maxDD `123.73 -> 22.50`
+- last `30d`: total `-123.73 -> +1.20`; still weak but no longer negative on this export
+- last `7d`: approved `8 -> 0`, total `-54.37 -> 0.00`
+
+Stability check on previous export `1783871327390` with the rebuilt gate:
+
+| window | approved | winrate | total | PF | maxDD | max loss streak | cadence/day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | `305` | `70.5%` | `+1780.51` | `5.79` | `43.00` | `6` | `0.839` |
+| last `180d` | `181` | `68.0%` | `+1051.22` | `5.98` | `43.00` | `6` | `1.006` |
+| last `90d` | `83` | `86.7%` | `+736.00` | `19.27` | `17.47` | `2` | `0.925` |
+| last `30d` | `58` | `89.7%` | `+550.63` | `22.73` | `17.47` | `2` | `1.957` |
+| last `7d` | `2` | `50.0%` | `+10.38` | `3.37` | `4.38` | `1` | `0.300` |
+
+Current conclusion:
+
+- use `MIN_AI_QUALITY=5`; q3+/q4+/q5+ are identical because the deterministic gate now only approves q5 rows
+- the rebuilt gate is profitable and still trades (`337` approvals over `362.27d`, about `0.93/day`)
+- latest `30d` is only marginally positive, so the next export should specifically revalidate the two cluster cuts before adding any new recovery overlay
+- CMC fields helped as a defensive tail filter, not as a broad approval booster
 
 ## New Context Export Gate Rebuild (`2026-05-31`)
 

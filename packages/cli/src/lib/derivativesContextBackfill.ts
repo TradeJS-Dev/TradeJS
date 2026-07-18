@@ -4,8 +4,8 @@ import { delay } from '@tradejs/core/async';
 import { resolveDerivativesContextReferenceSymbols } from '@tradejs/core/constants';
 import {
   coinalyzePointsToRows,
+  getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
-  normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import {
   getDerivativesBackfillCoverage,
@@ -15,7 +15,7 @@ import {
   waitForDbReady,
 } from '@tradejs/infra/timescale';
 import { getUserSettings } from '@tradejs/infra/userSettings';
-import type { DerivativesInterval } from '@tradejs/types';
+import type { DerivativesInterval, DerivativesRow } from '@tradejs/types';
 
 type CoinalyzeMarket = {
   symbol: string;
@@ -52,7 +52,7 @@ type DerivativesContextBackfillMode = 'backtest' | 'signals';
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const DEFAULT_LOOKBACK_HOURS = 48;
-const DEFAULT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
+const SOURCE_INTERVALS: DerivativesInterval[] = ['15m'];
 
 const coinalyzeIntervalMap: Record<DerivativesInterval, string> = {
   '15m': '15min',
@@ -158,10 +158,7 @@ export const shouldBackfillDerivativesContextForSignals = (params: {
 }) => !params.cacheOnly && isSignalsDerivativesContextEnabled();
 
 export const resolveDerivativesContextIntervals = (): DerivativesInterval[] => {
-  const intervals = normalizeDerivativesIntervals(
-    process.env.DERIVATIVES_CONTEXT_INTERVALS,
-  ) as DerivativesInterval[];
-  return intervals.length ? intervals : DEFAULT_INTERVALS;
+  return [...SOURCE_INTERVALS];
 };
 
 export const resolveDerivativesContextLookbackMs = () => {
@@ -210,11 +207,15 @@ export const resolveDerivativesContextIntervalBackfillWindow = (params: {
   fromMs: number;
   toMs: number;
   interval: DerivativesInterval;
+  closedOnly?: boolean;
 }) => {
   const intervalMs = derivativesIntervalMs(params.interval);
+  const alignedToMs = params.closedOnly
+    ? getLastClosedDerivativesBarStartMs(params.toMs, params.interval)
+    : Math.floor(params.toMs / intervalMs) * intervalMs;
   return {
     fromMs: Math.floor(params.fromMs / intervalMs) * intervalMs,
-    toMs: Math.floor(params.toMs / intervalMs) * intervalMs,
+    toMs: alignedToMs,
     intervalMs,
   };
 };
@@ -238,6 +239,16 @@ export const resolveDerivativesContextMissingFetchFromMs = (params: {
   }
   return null;
 };
+
+export const resolveDerivativesContextFetchFromMs = (params: {
+  edges?: { min?: number; max?: number };
+  fromMs: number;
+  toMs: number;
+  intervalMs: number;
+  refreshClosedTail?: boolean;
+}) =>
+  resolveDerivativesContextMissingFetchFromMs(params) ??
+  (params.refreshClosedTail ? params.toMs : null);
 
 const countBackfillWindows = (params: {
   fromMs: number;
@@ -351,6 +362,21 @@ export const groupDerivativesContextMissingFetchRanges = <T>(
   return [...groups.entries()]
     .sort(([a], [b]) => a - b)
     .map(([fromMs, items]) => ({ fromMs, items }));
+};
+
+export const getMissingClosedDerivativesSymbols = (params: {
+  symbols: string[];
+  rows: DerivativesRow[];
+  expectedTimestamp: number;
+}) => {
+  const availableSymbols = new Set(
+    params.rows
+      .filter((row) => row.ts.getTime() === params.expectedTimestamp)
+      .map((row) => row.symbol.trim().toUpperCase()),
+  );
+  return params.symbols.filter(
+    (symbol) => !availableSymbols.has(symbol.trim().toUpperCase()),
+  );
 };
 
 const coverageKey = (params: {
@@ -757,6 +783,7 @@ const backfillDerivativesContext = async (
         fromMs,
         toMs: safeEndMs,
         interval,
+        closedOnly: mode === 'signals',
       }),
     }))
     .filter((item) => item.toMs > item.fromMs);
@@ -830,46 +857,48 @@ const backfillDerivativesContext = async (
       }),
     0,
   );
-  const allBackfillWindowsCached = intervalWindows.every((window) => {
-    const edgesBySymbol = edgesByInterval.get(window.interval);
-    const coverageKeys = coverageKeysByInterval.get(window.interval);
-    const backfillWindows = buildBackfillWindows({
-      fromMs: window.fromMs,
-      toMs: window.toMs,
-      batchMs,
-      intervalMs: window.intervalMs,
-    });
-    return symbols.every((symbol) =>
-      backfillWindows.every((backfillWindow) => {
-        const normalizedSymbol = symbol.toUpperCase();
-        const coverageRanges =
-          coverageRangesByInterval
-            .get(window.interval)
-            ?.get(normalizedSymbol) ?? [];
-        return (
-          hasDerivativesWindowCoverage({
-            edges: edgesBySymbol?.get(normalizedSymbol),
-            fromMs: backfillWindow.fromMs,
-            toMs: backfillWindow.toMs,
-          }) ||
-          resolveDerivativesContextMissingCoverageFetchFromMs({
-            ranges: coverageRanges,
-            fromMs: backfillWindow.fromMs,
-            toMs: backfillWindow.toMs,
-            intervalMs: window.intervalMs,
-          }) == null ||
-          coverageKeys?.has(
-            coverageKey({
-              symbol: normalizedSymbol,
-              interval: window.interval,
+  const allBackfillWindowsCached =
+    mode !== 'signals' &&
+    intervalWindows.every((window) => {
+      const edgesBySymbol = edgesByInterval.get(window.interval);
+      const coverageKeys = coverageKeysByInterval.get(window.interval);
+      const backfillWindows = buildBackfillWindows({
+        fromMs: window.fromMs,
+        toMs: window.toMs,
+        batchMs,
+        intervalMs: window.intervalMs,
+      });
+      return symbols.every((symbol) =>
+        backfillWindows.every((backfillWindow) => {
+          const normalizedSymbol = symbol.toUpperCase();
+          const coverageRanges =
+            coverageRangesByInterval
+              .get(window.interval)
+              ?.get(normalizedSymbol) ?? [];
+          return (
+            hasDerivativesWindowCoverage({
+              edges: edgesBySymbol?.get(normalizedSymbol),
               fromMs: backfillWindow.fromMs,
               toMs: backfillWindow.toMs,
-            }),
-          )
-        );
-      }),
-    );
-  });
+            }) ||
+            resolveDerivativesContextMissingCoverageFetchFromMs({
+              ranges: coverageRanges,
+              fromMs: backfillWindow.fromMs,
+              toMs: backfillWindow.toMs,
+              intervalMs: window.intervalMs,
+            }) == null ||
+            coverageKeys?.has(
+              coverageKey({
+                symbol: normalizedSymbol,
+                interval: window.interval,
+                fromMs: backfillWindow.fromMs,
+                toMs: backfillWindow.toMs,
+              }),
+            )
+          );
+        }),
+      );
+    });
 
   if (allBackfillWindowsCached) {
     console.log(
@@ -994,28 +1023,34 @@ const backfillDerivativesContext = async (
 
             const normalizedSymbol = item.symbol.toUpperCase();
             const coverageFromMs =
-              resolveDerivativesContextMissingCoverageFetchFromMs({
-                ranges: coverageRangesBySymbol.get(normalizedSymbol),
-                fromMs: cursor,
-                toMs,
-                intervalMs,
-              });
+              mode === 'signals'
+                ? cursor
+                : resolveDerivativesContextMissingCoverageFetchFromMs({
+                    ranges: coverageRangesBySymbol.get(normalizedSymbol),
+                    fromMs: cursor,
+                    toMs,
+                    intervalMs,
+                  });
             if (coverageFromMs == null) {
               return null;
             }
 
             const edges = edgesBySymbol.get(normalizedSymbol);
-            const edgesFromMs = resolveDerivativesContextMissingFetchFromMs({
+            const edgesFromMs = resolveDerivativesContextFetchFromMs({
               edges,
               fromMs: cursor,
               toMs,
               intervalMs,
+              refreshClosedTail: mode === 'signals',
             });
             if (edgesFromMs == null) {
               return null;
             }
 
-            return { item, fromMs: Math.max(coverageFromMs, edgesFromMs) };
+            return {
+              item,
+              fromMs: Math.max(coverageFromMs, edgesFromMs),
+            };
           })
           .filter(
             (item): item is { item: SymbolMatch; fromMs: number } =>
@@ -1033,87 +1068,129 @@ const backfillDerivativesContext = async (
               const marketSymbols = missingBatch.map(
                 (item) => item.marketSymbol,
               );
-              const oiMap = await fetchMetricBatch({
-                endpoint: oiPath,
-                metric: 'oi',
-                marketSymbols,
-                apiKey,
-                interval,
-                fromMs: group.fromMs,
-                toMs,
-              });
-              const fundingMap = await fetchMetricBatch({
-                endpoint: fundingPath,
-                metric: 'funding',
-                marketSymbols,
-                apiKey,
-                interval,
-                fromMs: group.fromMs,
-                toMs,
-              });
-              const liqMap = await fetchMetricBatch({
-                endpoint: liqPath,
-                metric: 'liq',
-                marketSymbols,
-                apiKey,
-                interval,
-                fromMs: group.fromMs,
-                toMs,
-              });
+              const maxClosedBarAttempts =
+                mode === 'signals'
+                  ? asInt(
+                      process.env.DERIVATIVES_CONTEXT_CLOSED_BAR_MAX_ATTEMPTS,
+                      3,
+                    )
+                  : 1;
+              const closedBarRetryDelayMs = asInt(
+                process.env.DERIVATIVES_CONTEXT_CLOSED_BAR_RETRY_DELAY_MS,
+                2_000,
+              );
+              let rows: DerivativesRow[] = [];
+              let missingClosedSymbols: string[] = [];
 
-              const rows = missingBatch.flatMap((item) => {
-                const marketSymbol = item.marketSymbol.toUpperCase();
-                const points = mergeCoinalyzeMetrics({
-                  symbol: item.symbol,
-                  oiRaw: oiMap.get(marketSymbol) ?? [],
-                  fundingRaw: fundingMap.get(marketSymbol) ?? [],
-                  liqRaw: liqMap.get(marketSymbol) ?? [],
+              for (
+                let attempt = 1;
+                attempt <= maxClosedBarAttempts;
+                attempt += 1
+              ) {
+                const oiMap = await fetchMetricBatch({
+                  endpoint: oiPath,
+                  metric: 'oi',
+                  marketSymbols,
+                  apiKey,
+                  interval,
+                  fromMs: group.fromMs,
+                  toMs,
                 });
-                return coinalyzePointsToRows(points, interval, 'coinalyze');
-              });
+                const fundingMap = await fetchMetricBatch({
+                  endpoint: fundingPath,
+                  metric: 'funding',
+                  marketSymbols,
+                  apiKey,
+                  interval,
+                  fromMs: group.fromMs,
+                  toMs,
+                });
+                const liqMap = await fetchMetricBatch({
+                  endpoint: liqPath,
+                  metric: 'liq',
+                  marketSymbols,
+                  apiKey,
+                  interval,
+                  fromMs: group.fromMs,
+                  toMs,
+                });
+
+                rows = missingBatch.flatMap((item) => {
+                  const marketSymbol = item.marketSymbol.toUpperCase();
+                  const points = mergeCoinalyzeMetrics({
+                    symbol: item.symbol,
+                    oiRaw: oiMap.get(marketSymbol) ?? [],
+                    fundingRaw: fundingMap.get(marketSymbol) ?? [],
+                    liqRaw: liqMap.get(marketSymbol) ?? [],
+                  });
+                  return coinalyzePointsToRows(points, interval, 'coinalyze');
+                });
+                missingClosedSymbols =
+                  mode === 'signals'
+                    ? getMissingClosedDerivativesSymbols({
+                        symbols: missingBatch.map((item) => item.symbol),
+                        rows,
+                        expectedTimestamp: toMs,
+                      })
+                    : [];
+                if (!missingClosedSymbols.length) break;
+                if (attempt < maxClosedBarAttempts) {
+                  await delay(closedBarRetryDelayMs);
+                }
+              }
+
+              if (missingClosedSymbols.length) {
+                throw new Error(
+                  `Coinalyze closed ${interval} bar ${new Date(toMs).toISOString()} unavailable for ${missingClosedSymbols.join(',')}`,
+                );
+              }
 
               if (rows.length) {
                 await upsertDerivatives(rows);
                 totalRows += rows.length;
               }
-              const rowsCountBySymbol = new Map<string, number>();
-              for (const row of rows) {
-                const symbol = row.symbol.toUpperCase();
-                rowsCountBySymbol.set(
-                  symbol,
-                  (rowsCountBySymbol.get(symbol) ?? 0) + 1,
-                );
-              }
-              const coverageRows = missingBatch.map((item) => {
-                const normalizedSymbol = item.symbol.toUpperCase();
-                const rowsCount = rowsCountBySymbol.get(normalizedSymbol) ?? 0;
-                return {
-                  source: 'coinalyze' as const,
-                  symbol: item.symbol,
-                  interval,
-                  fromMs: cursor,
-                  toMs,
-                  rowsCount,
-                };
-              });
-              await upsertDerivativesBackfillCoverage(coverageRows);
-              for (const coverageRow of coverageRows) {
-                const symbol = coverageRow.symbol.toUpperCase();
-                edgesBySymbol.set(
-                  symbol,
-                  extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
-                );
-                coverageKeys.add(
-                  coverageKey({
+              if (mode === 'backtest') {
+                const rowsCountBySymbol = new Map<string, number>();
+                for (const row of rows) {
+                  const symbol = row.symbol.toUpperCase();
+                  rowsCountBySymbol.set(
                     symbol,
+                    (rowsCountBySymbol.get(symbol) ?? 0) + 1,
+                  );
+                }
+                const coverageRows = missingBatch.map((item) => {
+                  const normalizedSymbol = item.symbol.toUpperCase();
+                  const rowsCount =
+                    rowsCountBySymbol.get(normalizedSymbol) ?? 0;
+                  return {
+                    source: 'coinalyze' as const,
+                    symbol: item.symbol,
                     interval,
                     fromMs: cursor,
                     toMs,
-                  }),
-                );
-                const coverageRanges = coverageRangesBySymbol.get(symbol) ?? [];
-                coverageRanges.push({ fromMs: cursor, toMs });
-                coverageRangesBySymbol.set(symbol, coverageRanges);
+                    rowsCount,
+                  };
+                });
+                await upsertDerivativesBackfillCoverage(coverageRows);
+                for (const coverageRow of coverageRows) {
+                  const symbol = coverageRow.symbol.toUpperCase();
+                  edgesBySymbol.set(
+                    symbol,
+                    extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
+                  );
+                  coverageKeys.add(
+                    coverageKey({
+                      symbol,
+                      interval,
+                      fromMs: cursor,
+                      toMs,
+                    }),
+                  );
+                  const coverageRanges =
+                    coverageRangesBySymbol.get(symbol) ?? [];
+                  coverageRanges.push({ fromMs: cursor, toMs });
+                  coverageRangesBySymbol.set(symbol, coverageRanges);
+                }
               }
             }
           }

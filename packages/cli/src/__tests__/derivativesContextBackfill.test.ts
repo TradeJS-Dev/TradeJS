@@ -1,10 +1,13 @@
 import {
   resolveDerivativesContextIntervalBackfillWindow,
+  resolveDerivativesContextIntervals,
+  resolveDerivativesContextFetchFromMs,
   resolveDerivativesContextMissingFetchFromMs,
   resolveDerivativesContextMissingCoverageFetchFromMs,
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
   groupDerivativesContextMissingFetchRanges,
+  getMissingClosedDerivativesSymbols,
   hasDerivativesContextCoverageRange,
   formatCoinalyzeRequestError,
   shouldBackfillDerivativesContextForBacktest,
@@ -378,6 +381,42 @@ describe('resolveDerivativesContextIntervalBackfillWindow', () => {
       intervalMs: 60 * 60 * 1000,
     });
   });
+
+  it('uses only the last closed provider bar for live signals', () => {
+    const fromMs = Date.parse('2026-05-25T09:32:31.000Z');
+    const toMs = Date.parse('2026-05-25T10:37:31.000Z');
+
+    expect(
+      resolveDerivativesContextIntervalBackfillWindow({
+        fromMs,
+        toMs,
+        interval: '15m',
+        closedOnly: true,
+      }),
+    ).toEqual({
+      fromMs: Date.parse('2026-05-25T09:30:00.000Z'),
+      toMs: Date.parse('2026-05-25T10:15:00.000Z'),
+      intervalMs: 15 * 60 * 1000,
+    });
+  });
+});
+
+describe('resolveDerivativesContextIntervals', () => {
+  const originalIntervals = process.env.DERIVATIVES_CONTEXT_INTERVALS;
+
+  afterEach(() => {
+    if (originalIntervals === undefined) {
+      delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
+    } else {
+      process.env.DERIVATIVES_CONTEXT_INTERVALS = originalIntervals;
+    }
+  });
+
+  it('downloads only 15m source rows and derives higher intervals locally', () => {
+    process.env.DERIVATIVES_CONTEXT_INTERVALS = '15m,1h';
+
+    expect(resolveDerivativesContextIntervals()).toEqual(['15m']);
+  });
 });
 
 describe('resolveDerivativesContextMissingFetchFromMs', () => {
@@ -397,6 +436,31 @@ describe('resolveDerivativesContextMissingFetchFromMs', () => {
       resolveDerivativesContextMissingFetchFromMs({
         edges: { min: 1_000, max: 20_000 },
         fromMs: 2_000,
+        toMs: 20_000,
+        intervalMs: 1_000,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('resolveDerivativesContextFetchFromMs', () => {
+  it('refreshes the latest closed tail for signals even when data already covers it', () => {
+    expect(
+      resolveDerivativesContextFetchFromMs({
+        edges: { min: 1_000, max: 20_000 },
+        fromMs: 1_000,
+        toMs: 20_000,
+        intervalMs: 1_000,
+        refreshClosedTail: true,
+      }),
+    ).toBe(20_000);
+  });
+
+  it('keeps cached historical windows untouched without live tail refresh', () => {
+    expect(
+      resolveDerivativesContextFetchFromMs({
+        edges: { min: 1_000, max: 20_000 },
+        fromMs: 1_000,
         toMs: 20_000,
         intervalMs: 1_000,
       }),
@@ -494,6 +558,31 @@ describe('groupDerivativesContextMissingFetchRanges', () => {
       { fromMs: 1_000, items: ['full-a'] },
       { fromMs: 10_000, items: ['tail-a', 'tail-b'] },
     ]);
+  });
+});
+
+describe('getMissingClosedDerivativesSymbols', () => {
+  it('requires the expected closed timestamp for every requested symbol', () => {
+    const expectedTimestamp = Date.parse('2026-07-15T12:45:00.000Z');
+
+    expect(
+      getMissingClosedDerivativesSymbols({
+        symbols: ['BTCUSDT', 'ETHUSDT'],
+        expectedTimestamp,
+        rows: [
+          {
+            symbol: 'BTCUSDT',
+            interval: '15m',
+            ts: new Date(expectedTimestamp),
+          },
+          {
+            symbol: 'ETHUSDT',
+            interval: '15m',
+            ts: new Date(expectedTimestamp - 15 * 60 * 1000),
+          },
+        ],
+      }),
+    ).toEqual(['ETHUSDT']);
   });
 });
 

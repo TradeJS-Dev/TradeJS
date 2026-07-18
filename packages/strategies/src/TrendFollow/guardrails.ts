@@ -52,6 +52,7 @@ export type TrendFollowGateFeatures = {
   relativeContinuation: 'aligned' | 'against' | 'neutral' | 'unknown';
   marketBreadthContinuation: 'aligned' | 'against' | 'stale' | 'unknown';
   marketBreadthDispersion: number | null;
+  marketVolatilityState: string | null;
   targetVsBtcBeta20: number | null;
   btcAltRegimeBtcTurnoverShare24h: number | null;
   btcAltRegimeAltBasketReturn24h: number | null;
@@ -79,6 +80,7 @@ export type TrendFollowGateFeatures = {
   referenceDerivativesLossBlock: boolean;
   referenceDerivativesCadencePocket: boolean;
   referenceDerivativesOpeningPocket: boolean;
+  normalVolatilityCadencePocket: boolean;
   highQualityCadencePocket: boolean;
 };
 
@@ -110,6 +112,7 @@ const TREND_FOLLOW_OPENING_SESSION_MAX_MINUTES_FROM_OPEN = 75;
 const TREND_FOLLOW_OPENING_REF_XRP_OI_MAX = 324_000_000;
 const TREND_FOLLOW_OPENING_REF_XRP_OI_CHANGE_1H_MIN = 0.4;
 const TREND_FOLLOW_OPENING_REF_BNB_OI_MIN = 560_000;
+const TREND_FOLLOW_ALLOWED_VOLATILITY_STATE = 'normal';
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -368,6 +371,10 @@ const buildTrendFollowGateFeatures = ({
         : marketBreadthAligned === false
           ? 'against'
           : 'unknown';
+  const marketVolatilityState =
+    typeof baseContext?.regime?.volatility?.state === 'string'
+      ? baseContext.regime.volatility.state
+      : null;
   const targetVsBtcBeta20 = asFiniteNumber(
     baseContext?.relative?.targetVsBtc?.betaToBtc20,
   );
@@ -487,6 +494,8 @@ const buildTrendFollowGateFeatures = ({
       TREND_FOLLOW_OPENING_REF_XRP_OI_CHANGE_1H_MIN &&
     referenceBnb15mOpenInterest != null &&
     referenceBnb15mOpenInterest >= TREND_FOLLOW_OPENING_REF_BNB_OI_MIN;
+  const normalVolatilityCadencePocket =
+    marketVolatilityState === TREND_FOLLOW_ALLOWED_VOLATILITY_STATE;
 
   return {
     setupStopDistanceAtr,
@@ -502,6 +511,7 @@ const buildTrendFollowGateFeatures = ({
     relativeContinuation,
     marketBreadthContinuation,
     marketBreadthDispersion: asFiniteNumber(marketBreadth?.dispersion),
+    marketVolatilityState,
     targetVsBtcBeta20,
     btcAltRegimeBtcTurnoverShare24h,
     btcAltRegimeAltBasketReturn24h,
@@ -529,8 +539,10 @@ const buildTrendFollowGateFeatures = ({
     referenceDerivativesLossBlock,
     referenceDerivativesCadencePocket,
     referenceDerivativesOpeningPocket,
+    normalVolatilityCadencePocket,
     highQualityCadencePocket:
-      referenceDerivativesCadencePocket || referenceDerivativesOpeningPocket,
+      normalVolatilityCadencePocket &&
+      (referenceDerivativesCadencePocket || referenceDerivativesOpeningPocket),
   };
 };
 

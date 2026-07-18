@@ -2,6 +2,7 @@ import 'dotenv/config';
 import args from 'args';
 import chalk from 'chalk';
 import {
+  getLastClosedDerivativesBarStartMs,
   normalizeCoinalyzeSymbols,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
@@ -18,12 +19,12 @@ import {
 } from '@tradejs/connectors';
 
 args.example(
-  'yarn ts-node ./src/scripts/derivativesIngest --provider coinalyze --symbols BTCUSDT,ETHUSDT --intervals 15m,1h --days 120',
+  'yarn ts-node ./src/scripts/derivativesIngest --provider coinalyze --symbols BTCUSDT,ETHUSDT --intervals 15m --days 120',
   'Ingest market features (derivatives/spread) into Timescale by provider',
 );
 
 args.option(['s', 'symbols'], 'Comma-separated symbols', 'BTCUSDT,ETHUSDT');
-args.option(['t', 'intervals'], 'Comma-separated intervals: 15m,1h', '15m,1h');
+args.option(['t', 'intervals'], 'Comma-separated intervals: 15m,1h', '15m');
 args.option(['d', 'days'], 'Lookback in days', 120);
 args.option(
   ['p', 'provider'],
@@ -74,9 +75,16 @@ export const main = async () => {
 
   for (const symbol of symbols) {
     for (const interval of intervals) {
+      const lastClosedStartMs = getLastClosedDerivativesBarStartMs(
+        now,
+        interval,
+      );
       let cursor = fromMs;
-      while (cursor < now) {
-        const toMs = Math.min(now, cursor + batchDays * 24 * 60 * 60 * 1000);
+      while (cursor < lastClosedStartMs) {
+        const toMs = Math.min(
+          lastClosedStartMs,
+          cursor + batchDays * 24 * 60 * 60 * 1000,
+        );
         process.stdout.write(
           `\r${chalk.cyan(providerName)} ${chalk.yellow(symbol)} ${interval} ${new Date(cursor).toISOString()} .. ${new Date(toMs).toISOString()}   `,
         );

@@ -14,6 +14,19 @@ export type CoinalyzePoint = {
   liqTotal?: number | null;
 };
 
+const DERIVATIVES_INTERVAL_MS: Record<DerivativesInterval, number> = {
+  '15m': 15 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+};
+
+export const getLastClosedDerivativesBarStartMs = (
+  timestamp: number,
+  interval: DerivativesInterval,
+) => {
+  const intervalMs = DERIVATIVES_INTERVAL_MS[interval];
+  return Math.floor(timestamp / intervalMs) * intervalMs - intervalMs;
+};
+
 export const normalizeCoinalyzeSymbols = (input: unknown): string[] =>
   String(input ?? '')
     .split(',')
@@ -122,3 +135,64 @@ export const coinalyzePointsToRows = (
     liqTotal: point.liqTotal ?? null,
     source,
   }));
+
+const sumAvailable = (values: Array<number | null | undefined>) => {
+  const available = values.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value),
+  );
+  return available.length
+    ? available.reduce((total, value) => total + value, 0)
+    : null;
+};
+
+const getLiquidationTotal = (row: DerivativesRow) =>
+  typeof row.liqTotal === 'number' && Number.isFinite(row.liqTotal)
+    ? row.liqTotal
+    : sumAvailable([row.liqLong, row.liqShort]);
+
+export const deriveCoinalyzeHourlyRowsFrom15m = (
+  rows: DerivativesRow[] | undefined,
+): DerivativesRow[] => {
+  const quarterHourMs = DERIVATIVES_INTERVAL_MS['15m'];
+  const hourMs = DERIVATIVES_INTERVAL_MS['1h'];
+  const rowsByHour = new Map<number, Map<number, DerivativesRow>>();
+
+  for (const row of rows ?? []) {
+    if (row.interval !== '15m') continue;
+    const timestamp = row.ts.getTime();
+    if (!Number.isFinite(timestamp) || timestamp % quarterHourMs !== 0) {
+      continue;
+    }
+    const hourStart = Math.floor(timestamp / hourMs) * hourMs;
+    const hourRows = rowsByHour.get(hourStart) ?? new Map();
+    hourRows.set(timestamp, row);
+    rowsByHour.set(hourStart, hourRows);
+  }
+
+  const hourlyRows: DerivativesRow[] = [];
+  for (const [hourStart, hourRows] of [...rowsByHour.entries()].sort(
+    ([left], [right]) => left - right,
+  )) {
+    const expectedRows = [0, 1, 2, 3].map((offset) =>
+      hourRows.get(hourStart + offset * quarterHourMs),
+    );
+    if (expectedRows.some((row) => row == null)) continue;
+
+    const completeRows = expectedRows as DerivativesRow[];
+    const latest = completeRows[completeRows.length - 1];
+    hourlyRows.push({
+      symbol: latest.symbol,
+      interval: '1h',
+      ts: new Date(hourStart),
+      openInterest: latest.openInterest ?? null,
+      fundingRate: latest.fundingRate ?? null,
+      liqLong: sumAvailable(completeRows.map((row) => row.liqLong)),
+      liqShort: sumAvailable(completeRows.map((row) => row.liqShort)),
+      liqTotal: sumAvailable(completeRows.map(getLiquidationTotal)),
+      source: latest.source ?? null,
+    });
+  }
+
+  return hourlyRows;
+};

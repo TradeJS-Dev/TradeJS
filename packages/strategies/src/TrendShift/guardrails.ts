@@ -69,9 +69,11 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortExtremeAtrHighBbRisk: boolean;
   shortBullSwingStructureRisk: boolean;
   shortLowBollingerWidthRisk: boolean;
+  shortAsiaLongFlushLowCmcBreadthRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
   defensiveRewardToVolatilityRisk: boolean;
   longBtcAltRegimeRisk: boolean;
+  longBroadMarketShortFlushRisk: boolean;
   cmcExchangeLiquidityVolumeChangeRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   q4UsClosingOiConfirmationRecoveryCandidate: boolean;
@@ -87,8 +89,11 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
   marketBreadthReturn: number | null;
+  marketBreadthAdvancers: number | null;
+  marketBreadthPctAboveMa20: number | null;
   btcVsAltReturn24h: number | null;
   btcVsAltReturn1h: number | null;
+  cmcFearGreedValue: number | null;
   cmcFearGreedValueChange24h: number | null;
   derivatives1hLiqShort: number | null;
   btcAltRegime: string | null;
@@ -119,6 +124,11 @@ const SHORT_BREADTH_SHOCK_1H_LIQ_SHORT_MAX = 0.208;
 const LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_24H_MAX = -0.00503054;
 const LONG_ALT_LEADERSHIP_BTC_VS_ALT_RETURN_1H_MAX = -0.00581403;
 const LONG_ALT_LEADERSHIP_FEAR_GREED_CHANGE_24H_MIN = -1;
+const LONG_BROAD_MARKET_SHORT_FLUSH_ADVANCERS_MIN = 27;
+const LONG_BROAD_MARKET_SHORT_FLUSH_PCT_ABOVE_MA20_MIN = 0.95;
+const LONG_BROAD_MARKET_SHORT_FLUSH_BTC_VS_ALT_RETURN_24H_MIN = 0;
+const SHORT_ASIA_LONG_FLUSH_LOW_CMC_FEAR_GREED_MAX = 18;
+const SHORT_ASIA_LONG_FLUSH_ADVANCERS_MAX = 2;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -536,12 +546,23 @@ export const buildTrendShiftGuardrailContext = ({
   );
   const gateVolatility = baseContext?.gateFeatures?.volatility;
   const gateRelative = baseContext?.gateFeatures?.relative;
+  const baseMarketBreadth = baseContext?.relative?.marketBreadth;
   const baseBtcAltRegime = baseContext?.relative?.btcAltRegime;
   const baseCmcFearGreed = baseContext?.relative?.cmcFearGreed;
   const bbWidthPct = asFiniteNumber(volatility?.bbWidthPct);
   const marketBreadthReturn = asFiniteNumber(gateRelative?.marketBreadthReturn);
+  const marketBreadthAdvancers = asFiniteNumber(baseMarketBreadth?.advancers);
+  const marketBreadthPctAboveMa20 = asFiniteNumber(
+    baseMarketBreadth?.pctAboveMa20,
+  );
+  const marketBreadthStale =
+    gateRelative?.marketBreadthStale === true ||
+    baseMarketBreadth?.stale === true;
   const btcVsAltReturn24h = asFiniteNumber(gateRelative?.btcVsAltReturn24h);
   const btcVsAltReturn1h = asFiniteNumber(baseBtcAltRegime?.btcVsAltReturn1h);
+  const cmcFearGreedValue = asFiniteNumber(
+    gateRelative?.cmcFearGreedValue ?? baseCmcFearGreed?.value,
+  );
   const cmcFearGreedValueChange24h = asFiniteNumber(
     gateRelative?.cmcFearGreedValueChange24h ??
       baseCmcFearGreed?.valueChange24h,
@@ -852,6 +873,16 @@ export const buildTrendShiftGuardrailContext = ({
     signalContext.signalDirection === 'SHORT' &&
     bbWidthPct != null &&
     bbWidthPct <= SHORT_LOW_BB_WIDTH_PCT_MAX;
+  const shortAsiaLongFlushLowCmcBreadthRisk =
+    signalContext.signalDirection === 'SHORT' &&
+    sessionPrimary === 'asia' &&
+    derivativesPressure === 'long_flush' &&
+    cmcFearGreedStale !== true &&
+    marketBreadthStale !== true &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue <= SHORT_ASIA_LONG_FLUSH_LOW_CMC_FEAR_GREED_MAX &&
+    marketBreadthAdvancers != null &&
+    marketBreadthAdvancers <= SHORT_ASIA_LONG_FLUSH_ADVANCERS_MAX;
   const lowRewardToVolatilityRisk =
     rewardToVolatility != null && rewardToVolatility < 0.25;
   const defensiveRewardToVolatilityRisk =
@@ -862,6 +893,17 @@ export const buildTrendShiftGuardrailContext = ({
     signalContext.signalDirection === 'LONG' &&
     btcAltRegimeStale !== true &&
     (btcAltRegime === 'btc_lead' || btcAltRegime === 'risk_off');
+  const longBroadMarketShortFlushRisk =
+    signalContext.signalDirection === 'LONG' &&
+    derivativesPressure === 'short_flush' &&
+    marketBreadthAdvancers != null &&
+    marketBreadthAdvancers >= LONG_BROAD_MARKET_SHORT_FLUSH_ADVANCERS_MIN &&
+    marketBreadthPctAboveMa20 != null &&
+    marketBreadthPctAboveMa20 >=
+      LONG_BROAD_MARKET_SHORT_FLUSH_PCT_ABOVE_MA20_MIN &&
+    btcVsAltReturn24h != null &&
+    btcVsAltReturn24h >=
+      LONG_BROAD_MARKET_SHORT_FLUSH_BTC_VS_ALT_RETURN_24H_MIN;
   const cmcExchangeLiquidityVolumeChangeRisk =
     cmcExchangeLiquidityStale !== true &&
     cmcExchangeLiquidityVolumeChange24hPct != null &&
@@ -915,6 +957,11 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('short_bull_swing_structure');
   }
 
+  if (deterministicQuality >= 5 && shortAsiaLongFlushLowCmcBreadthRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_asia_long_flush_low_cmc_breadth');
+  }
+
   if (deterministicQuality >= 4 && lowRewardToVolatilityRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('low_reward_to_volatility');
@@ -928,6 +975,11 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 4 && longBtcAltRegimeRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('long_btc_alt_regime_risk');
+  }
+
+  if (deterministicQuality >= 5 && longBroadMarketShortFlushRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_broad_market_short_flush_risk');
   }
 
   if (deterministicQuality >= 4 && cmcExchangeLiquidityVolumeChangeRisk) {
@@ -1042,9 +1094,11 @@ export const buildTrendShiftGuardrailContext = ({
     shortExtremeAtrHighBbRisk,
     shortBullSwingStructureRisk,
     shortLowBollingerWidthRisk,
+    shortAsiaLongFlushLowCmcBreadthRisk,
     lowRewardToVolatilityRisk,
     defensiveRewardToVolatilityRisk,
     longBtcAltRegimeRisk,
+    longBroadMarketShortFlushRisk,
     cmcExchangeLiquidityVolumeChangeRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     q4UsClosingOiConfirmationRecoveryCandidate,
@@ -1060,8 +1114,11 @@ export const buildTrendShiftGuardrailContext = ({
     nearPointOfControl,
     relativeStrength1h,
     marketBreadthReturn,
+    marketBreadthAdvancers,
+    marketBreadthPctAboveMa20,
     btcVsAltReturn24h,
     btcVsAltReturn1h,
+    cmcFearGreedValue,
     cmcFearGreedValueChange24h,
     derivatives1hLiqShort,
     btcAltRegime,
@@ -1130,12 +1187,16 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is still fighting a bullish swing structure, so keep it in watch mode';
     case 'short_low_bollinger_width':
       return 'the SHORT flip is in a narrow Bollinger-width compression pocket that has been less reliable, so keep it in watch mode';
+    case 'short_asia_long_flush_low_cmc_breadth':
+      return 'the SHORT flip is selling an Asia-session long flush while CMC fear/greed and market breadth are already in capitulation, so keep it in watch mode';
     case 'low_reward_to_volatility':
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     case 'reward_to_volatility_below_defensive_threshold':
       return 'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs';
     case 'long_btc_alt_regime_risk':
       return 'the LONG flip is fighting a BTC-led or risk-off alt regime, so keep it in watch mode';
+    case 'long_broad_market_short_flush_risk':
+      return 'the LONG flip is chasing a broad-market squeeze while BTC is leading alts and benchmark derivatives show a short flush, so keep it in watch mode';
     case 'cmc_exchange_liquidity_volume_change_risk':
       return 'major-exchange liquidity change is in a historically choppy CMC band, so keep the flip in watch mode';
     default:

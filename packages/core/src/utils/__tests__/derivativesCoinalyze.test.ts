@@ -1,5 +1,7 @@
 import {
   coinalyzePointsToRows,
+  deriveCoinalyzeHourlyRowsFrom15m,
+  getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
   normalizeCoinalyzeSymbols,
   normalizeDerivativesIntervals,
@@ -7,6 +9,7 @@ import {
   toCoinalyzeTimestampMs,
   toFiniteNumber,
 } from '../derivativesCoinalyze';
+import type { DerivativesRow } from '@tradejs/types';
 
 describe('derivativesCoinalyze utils', () => {
   test('normalizeCoinalyzeSymbols trims, uppercases and drops empty values', () => {
@@ -88,5 +91,58 @@ describe('derivativesCoinalyze utils', () => {
     expect(rows[0].openInterest).toBe(2000);
     expect(rows[0].fundingRate).toBeNull();
     expect(rows[0].liqTotal).toBeNull();
+  });
+
+  test('getLastClosedDerivativesBarStartMs resolves the bar that just closed', () => {
+    const boundary = Date.parse('2026-07-15T13:00:00.000Z');
+
+    expect(getLastClosedDerivativesBarStartMs(boundary, '15m')).toBe(
+      Date.parse('2026-07-15T12:45:00.000Z'),
+    );
+    expect(getLastClosedDerivativesBarStartMs(boundary + 5_000, '15m')).toBe(
+      Date.parse('2026-07-15T12:45:00.000Z'),
+    );
+  });
+
+  test('deriveCoinalyzeHourlyRowsFrom15m builds complete hours with metric-aware aggregation', () => {
+    const hourStart = Date.parse('2026-07-15T12:00:00.000Z');
+    const rows: DerivativesRow[] = [0, 1, 2, 3].map((offset) => ({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      ts: new Date(hourStart + offset * 15 * 60 * 1000),
+      openInterest: 100 + offset,
+      fundingRate: 0.0001 * (offset + 1),
+      liqLong: 10 + offset,
+      liqShort: 20 + offset,
+      liqTotal: offset === 2 ? null : 30 + 2 * offset,
+      source: 'coinalyze',
+    }));
+
+    expect(deriveCoinalyzeHourlyRowsFrom15m(rows)).toEqual([
+      {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        ts: new Date(hourStart),
+        openInterest: 103,
+        fundingRate: 0.0004,
+        liqLong: 46,
+        liqShort: 86,
+        liqTotal: 132,
+        source: 'coinalyze',
+      },
+    ]);
+  });
+
+  test('deriveCoinalyzeHourlyRowsFrom15m omits incomplete hours', () => {
+    const hourStart = Date.parse('2026-07-15T12:00:00.000Z');
+    const rows: DerivativesRow[] = [0, 1, 3].map((offset) => ({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      ts: new Date(hourStart + offset * 15 * 60 * 1000),
+      openInterest: 100 + offset,
+      source: 'coinalyze',
+    }));
+
+    expect(deriveCoinalyzeHourlyRowsFrom15m(rows)).toEqual([]);
   });
 });

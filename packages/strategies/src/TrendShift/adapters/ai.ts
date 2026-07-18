@@ -128,8 +128,11 @@ Additional TrendShift context:
 - nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
 - marketBreadthReturn=${String(context.marketBreadthReturn ?? 'n/a')}
+- marketBreadthAdvancers=${String(context.marketBreadthAdvancers ?? 'n/a')}
+- marketBreadthPctAboveMa20=${String(context.marketBreadthPctAboveMa20 ?? 'n/a')}
 - btcVsAltReturn24h=${String(context.btcVsAltReturn24h ?? 'n/a')}
 - btcVsAltReturn1h=${String(context.btcVsAltReturn1h ?? 'n/a')}
+- cmcFearGreedValue=${String(context.cmcFearGreedValue ?? 'n/a')}
 - cmcFearGreedValueChange24h=${String(context.cmcFearGreedValueChange24h ?? 'n/a')}
 - derivatives1hLiqShort=${String(context.derivatives1hLiqShort ?? 'n/a')}
 - btcAltRegime=${context.btcAltRegime ?? 'n/a'}
@@ -158,7 +161,9 @@ Additional TrendShift context:
 - shortLowBollingerWidthRisk=${String(context.shortLowBollingerWidthRisk)}
 - defensiveRewardToVolatilityRisk=${String(context.defensiveRewardToVolatilityRisk)}
 - shortBullSwingStructureRisk=${String(context.shortBullSwingStructureRisk)}
+- shortAsiaLongFlushLowCmcBreadthRisk=${String(context.shortAsiaLongFlushLowCmcBreadthRisk)}
 - longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
+- longBroadMarketShortFlushRisk=${String(context.longBroadMarketShortFlushRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
@@ -195,8 +200,10 @@ Interpretation rules for TrendShift:
 - For SHORT, being near the price-volume point of control is a watch-only warning; LONG near-POC flips are not blocked by this rule.
 - For SHORT, a bullish swing structure is a watch-only warning even when the immediate flip geometry looks q5-strong.
 - For SHORT, a narrow Bollinger-width compression pocket is watch-only even if another q4 recovery condition is present.
+- For SHORT, Asia-session long-flush setups are watch-only when CMC fear/greed and market breadth are already in capitulation.
 - The defensive live gate requires rewardToVolatility >= 8 when that field is available.
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
+- For LONG, broad-market squeeze clusters are watch-only when breadth is already extreme, BTC is leading alts, and benchmark derivatives show a short flush.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
 - A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
 - A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override the low-Bollinger-width defensive cut.

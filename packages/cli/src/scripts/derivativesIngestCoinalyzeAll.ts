@@ -7,6 +7,7 @@ import { ConnectorCreator } from '@tradejs/types';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
 import {
   coinalyzePointsToRows,
+  getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
@@ -45,7 +46,7 @@ const coinalyzeIntervalMap: Record<DerivativesInterval, string> = {
 };
 
 args.example(
-  'yarn ts-node ./src/scripts/derivativesIngestCoinalyzeAll --days 120 --intervals 15m,1h',
+  'yarn ts-node ./src/scripts/derivativesIngestCoinalyzeAll --days 120 --intervals 15m',
   'Fetch derivatives for all getTickers symbols matched to Coinalyze markets',
 );
 
@@ -54,7 +55,7 @@ args.option(['t', 'tickers'], 'Comma-separated include symbols');
 args.option(['e', 'exclude'], 'Comma-separated exclude symbols');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['c', 'chunk'], 'Chunk selector, e.g. 1/4');
-args.option(['i', 'intervals'], 'Intervals: 15m,1h', '15m,1h');
+args.option(['i', 'intervals'], 'Intervals: 15m,1h', '15m');
 args.option(['d', 'days'], 'Lookback in days', 120);
 args.option(['b', 'batchDays'], 'Request chunk size in days', 120);
 args.option(
@@ -417,13 +418,17 @@ export const main = async () => {
   let failedWindows = 0;
 
   for (const interval of intervals) {
+    const lastClosedStartMs = getLastClosedDerivativesBarStartMs(now, interval);
     for (let batchIdx = 0; batchIdx < symbolBatches.length; batchIdx += 1) {
       const batch = symbolBatches[batchIdx];
       const marketSymbols = batch.map((item) => item.marketSymbol);
       let cursor = fromMs;
 
-      while (cursor < now) {
-        const toMs = Math.min(now, cursor + batchDays * 24 * 60 * 60 * 1000);
+      while (cursor < lastClosedStartMs) {
+        const toMs = Math.min(
+          lastClosedStartMs,
+          cursor + batchDays * 24 * 60 * 60 * 1000,
+        );
 
         try {
           const oiMap = await fetchMetricBatch({

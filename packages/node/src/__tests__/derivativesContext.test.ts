@@ -95,7 +95,7 @@ describe('strategyHelpers/derivativesContext', () => {
     },
   } as any;
 
-  it('enables derivatives context by default with 15m/1h and 48h lookback', async () => {
+  it('loads only 15m derivatives source rows with a 48h lookback', async () => {
     expect(isDerivativesContextEnabled('BACKTEST')).toBe(true);
 
     const enrichedSignal = { ...signal };
@@ -108,13 +108,13 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
-      intervals: ['15m', '1h'],
+      intervals: ['15m'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(2, {
       symbol: 'ETHUSDT',
-      intervals: ['15m', '1h'],
+      intervals: ['15m'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
@@ -175,13 +175,13 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
-      intervals: ['15m', '1h'],
+      intervals: ['15m'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(2, {
       symbol: 'ETHUSDT',
-      intervals: ['15m', '1h'],
+      intervals: ['15m'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
@@ -226,6 +226,48 @@ describe('strategyHelpers/derivativesContext', () => {
         items: expect.arrayContaining(['derivatives_aligned']),
       },
     });
+  });
+
+  it('derives a complete 1h context from four 15m source rows', async () => {
+    const hourStart = Date.UTC(2026, 0, 1, 12, 0, 0);
+    mockGetDerivativesWindow.mockImplementation(({ symbol }: any) => ({
+      '15m': [0, 1, 2, 3].map((offset) => ({
+        symbol,
+        interval: '15m',
+        ts: new Date(hourStart + offset * 15 * 60 * 1000),
+        openInterest: 100 + offset,
+        fundingRate: 0.0001 * (offset + 1),
+        liqLong: 10 + offset,
+        liqShort: 20 + offset,
+        liqTotal: 30 + 2 * offset,
+      })),
+    }));
+    const enrichedSignal = {
+      ...signal,
+      timestamp: Date.UTC(2026, 0, 1, 12, 45, 0),
+    };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: enrichedSignal,
+        env: 'LIVE',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      enrichedSignal.additionalIndicators.baseContext.derivatives.intervals[
+        '1h'
+      ],
+    ).toEqual(
+      expect.objectContaining({
+        asOfTs: hourStart,
+        openInterest: 103,
+        fundingRate: 0.0004,
+        liqLong: 46,
+        liqShort: 86,
+        liqTotal: 132,
+      }),
+    );
   });
 
   it('keeps BTC as primary reference metadata for BTC signals', async () => {

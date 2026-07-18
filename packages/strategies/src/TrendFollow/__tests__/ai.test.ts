@@ -12,17 +12,29 @@ const makePayload = (
   baseContext: Record<string, unknown> = {},
 ) => {
   const direction = context.signalDirection === 'SHORT' ? 'SHORT' : 'LONG';
+  const regime = (baseContext.regime ?? {}) as Record<string, unknown>;
+  const volatility = (regime.volatility ?? {}) as Record<string, unknown>;
+  const baseContextWithDefaults: Record<string, unknown> = {
+    ...baseContext,
+    regime: {
+      ...regime,
+      volatility: {
+        state: 'normal',
+        ...volatility,
+      },
+    },
+  };
   const normalizedBaseContext =
-    baseContext.gateFeatures === undefined
+    baseContextWithDefaults.gateFeatures === undefined
       ? {
-          ...baseContext,
+          ...baseContextWithDefaults,
           gateFeatures: {
             scores: {
               participation: 86,
             },
           },
         }
-      : baseContext;
+      : baseContextWithDefaults;
 
   return {
     signal: {
@@ -62,6 +74,7 @@ const makeShortFlushPayload = ({
   altBasketReturn24h = -0.01,
   targetVsBtcBeta20 = 1.35,
   participationScore = 86,
+  volatilityState = 'normal',
 }: {
   oiChangePct24h?: number;
   liqLong?: number;
@@ -70,6 +83,7 @@ const makeShortFlushPayload = ({
   altBasketReturn24h?: number;
   targetVsBtcBeta20?: number;
   participationScore?: number | null;
+  volatilityState?: string;
 } = {}) => {
   const payload = makePayload(
     {
@@ -95,6 +109,7 @@ const makeShortFlushPayload = ({
               },
             },
       regime: {
+        volatility: { state: volatilityState },
         momentum: { rsi: 32 },
       },
       participation: {
@@ -179,6 +194,7 @@ const makeReferencePocketPayload = ({
         session: {
           minutesFromSessionOpen,
         },
+        volatility: { state: 'normal' },
         momentum: { rsi: 32 },
       },
       participation: {
@@ -908,6 +924,28 @@ describe('trendFollowAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects short derivatives pockets outside normal volatility', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeShortFlushPayload({
+        volatilityState: 'expanded',
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('approves the rounded reference OI compression pocket', () => {

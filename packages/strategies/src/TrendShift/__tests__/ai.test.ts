@@ -635,6 +635,242 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps broad-market LONG short-flush clusters in watch mode', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                btcVsAltReturn24h: 0,
+              },
+            },
+            relative: {
+              marketBreadth: {
+                advancers: 27,
+                pctAboveMa20: 0.95,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the LONG flip is chasing a broad-market squeeze while BTC is leading alts and benchmark derivatives show a short flush, so keep it in watch mode',
+    });
+  });
+
+  it('keeps q5 LONG approval below the broad-market breadth threshold', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                btcVsAltReturn24h: 0,
+              },
+            },
+            relative: {
+              marketBreadth: {
+                advancers: 26,
+                pctAboveMa20: 0.95,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps Asia SHORT long-flush capitulation clusters in watch mode', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                cmcFearGreedValue: 18,
+                cmcFearGreedStale: false,
+                marketBreadthStale: false,
+              },
+            },
+            regime: {
+              session: {
+                sessionPhase: 'asia',
+              },
+            },
+            relative: {
+              marketBreadth: {
+                advancers: 2,
+              },
+              cmcFearGreed: {
+                value: 18,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip is selling an Asia-session long flush while CMC fear/greed and market breadth are already in capitulation, so keep it in watch mode',
+    });
+  });
+
+  it('keeps q5 Asia SHORT approval above the CMC capitulation threshold', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+              relative: {
+                cmcFearGreedValue: 19,
+                cmcFearGreedStale: false,
+                marketBreadthStale: false,
+              },
+            },
+            regime: {
+              session: {
+                sessionPhase: 'asia',
+              },
+            },
+            relative: {
+              marketBreadth: {
+                advancers: 2,
+              },
+              cmcFearGreed: {
+                value: 19,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
