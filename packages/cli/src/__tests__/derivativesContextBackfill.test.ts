@@ -402,19 +402,7 @@ describe('resolveDerivativesContextIntervalBackfillWindow', () => {
 });
 
 describe('resolveDerivativesContextIntervals', () => {
-  const originalIntervals = process.env.DERIVATIVES_CONTEXT_INTERVALS;
-
-  afterEach(() => {
-    if (originalIntervals === undefined) {
-      delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
-    } else {
-      process.env.DERIVATIVES_CONTEXT_INTERVALS = originalIntervals;
-    }
-  });
-
   it('downloads only 15m source rows and derives higher intervals locally', () => {
-    process.env.DERIVATIVES_CONTEXT_INTERVALS = '15m,1h';
-
     expect(resolveDerivativesContextIntervals()).toEqual(['15m']);
   });
 });

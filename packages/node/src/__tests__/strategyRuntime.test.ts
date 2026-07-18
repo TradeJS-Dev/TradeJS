@@ -307,7 +307,6 @@ describe('strategyRuntime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env = { ...originalEnv };
-    delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
     delete process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS;
     process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
     resetDerivativesContextRuntimeState();

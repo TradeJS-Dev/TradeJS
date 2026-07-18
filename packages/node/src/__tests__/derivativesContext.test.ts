@@ -36,7 +36,6 @@ describe('strategyHelpers/derivativesContext', () => {
     delete process.env.DERIVATIVES_CONTEXT_ENABLED;
     delete process.env.DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS;
     delete process.env.DERIVATIVES_CONTEXT_TARGET_ENABLED;
-    delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
     delete process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS;
     resetDerivativesContextRuntimeState();
     mockGetDerivativesWindow.mockImplementation(({ symbol }: any) => ({
