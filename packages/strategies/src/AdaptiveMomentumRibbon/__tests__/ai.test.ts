@@ -45,6 +45,7 @@ const withBaseContext = (signal: any) => ({
           unknown
         >) ?? {}),
         benchmark: {
+          relativeStrength1d: 0,
           ...((signal.additionalIndicators?.baseContext?.relative
             ?.benchmark as Record<string, unknown>) ?? {}),
           maFast: getLastFiniteNumber(signal.indicators?.btcMaFast),
@@ -64,6 +65,15 @@ const withBaseContext = (signal: any) => ({
           string,
           unknown
         >) ?? {}),
+        trend: {
+          ...((signal.additionalIndicators?.baseContext?.regime
+            ?.trend as Record<string, unknown>) ?? {}),
+          adx: {
+            adx: 18,
+            ...((signal.additionalIndicators?.baseContext?.regime?.trend
+              ?.adx as Record<string, unknown>) ?? {}),
+          },
+        },
         session: {
           sessionPhase: 'off_hours',
           isOverlap: false,
@@ -72,6 +82,17 @@ const withBaseContext = (signal: any) => ({
           fundingWindowNearby: true,
           ...((signal.additionalIndicators?.baseContext?.regime
             ?.session as Record<string, unknown>) ?? {}),
+        },
+      },
+      gateFeatures: {
+        ...((signal.additionalIndicators?.baseContext?.gateFeatures as Record<
+          string,
+          unknown
+        >) ?? {}),
+        setup: {
+          tpDistanceAtr: 3,
+          ...((signal.additionalIndicators?.baseContext?.gateFeatures
+            ?.setup as Record<string, unknown>) ?? {}),
         },
       },
       derivatives:
@@ -273,6 +294,125 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       }),
     );
   });
+
+  it('approves strong setups at the calibrated regime boundary', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          gateFeatures: {
+            setup: {
+              tpDistanceAtr: 2.9,
+            },
+          },
+          regime: {
+            trend: {
+              adx: {
+                adx: 15,
+              },
+            },
+          },
+          relative: {
+            benchmark: {
+              relativeStrength1d: 4,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        tpDistanceAtr: 2.9,
+        trendAdx: 15,
+        benchmarkRelativeStrength1d: 4,
+        approvalRegimeAllowed: true,
+        approvalRegimeBlockReasons: [],
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it.each([
+    [
+      'take-profit distance is too tight',
+      {
+        gateFeatures: {
+          setup: {
+            tpDistanceAtr: 2.89,
+          },
+        },
+      },
+      'low_tp_distance_atr',
+    ],
+    [
+      'trend ADX is too weak',
+      {
+        regime: {
+          trend: {
+            adx: {
+              adx: 14.99,
+            },
+          },
+        },
+      },
+      'weak_trend_adx',
+    ],
+    [
+      'benchmark one-day move is already extended',
+      {
+        relative: {
+          benchmark: {
+            relativeStrength1d: 4.01,
+          },
+        },
+      },
+      'benchmark_1d_chase_risk',
+    ],
+  ])(
+    'demotes strong q5 setups when %s',
+    (_label, baseContextOverride, reason) => {
+      const signal = makeSignal({
+        additionalIndicators: {
+          amr: {
+            signalOsc: 1.6,
+          },
+          baseContext: {
+            ...baseContextOverride,
+            participation: {
+              volume: {
+                volumeRel20: 1,
+                effortVsResult: 80,
+              },
+            },
+          },
+        },
+      });
+      const payload = buildPayloadForSignal(signal);
+
+      expect(
+        payload.additionalIndicators.adaptiveMomentumRibbonContext,
+      ).toEqual(
+        expect.objectContaining({
+          approvalRegimeAllowed: false,
+          approvalRegimeBlockReasons: [reason],
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+          approvalBlockReasons: [reason],
+        }),
+      );
+    },
+  );
 
   it('demotes strong longs when CMC alt liquidity favors BTC', () => {
     const signal = makeSignal({

@@ -30,6 +30,7 @@ AdaptiveMomentumRibbon addon:
 - SHORT breadth-shock approvals use two calibrated pockets: BTC-favored breadth shock, or a neutral shared-context breadth exhaustion pocket with marketBreadth.advancers <= 0 and effortVsResult <= 800.
 - A reference-derivatives rotation pocket can approve q4 when XRP 15m OI 4h change >= 1.6 and TRX 15m OI 4h change <= -0.2. It may override weak signal range and the default SHORT watch mode, but never hard signal invalidation.
 - Non-derivatives approvals are demoted when stopDistanceAtr > 4.5 and breakoutBodyAtr > 2.25, because that combination behaves like a chase entry.
+- All live approvals require a calibrated market-regime floor: tpDistanceAtr >= 2.9, trendAdx >= 15, and benchmarkRelativeStrength1d <= 4 when available.
 - LONG approvals require cmcAltLiquidityRegime to be anything except \`btc_favored\` when that CMC field is available.
 - Non-q5 LONG approvals require targetVsBtcAlpha1h <= 2.4 when that field is available, to avoid chase entries after target already outran BTC.
 - \`quality=4\` continuation approvals require targetVsBtcAlpha4h >= 1, spreadBps >= -10, and cmcFearGreedValueChange7d >= -15 when those fields are available. \`quality=5\` is not capped by this q4-only continuation guard.
@@ -39,7 +40,7 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / stopDistanceAtr / breakoutBodyAtr / chaseRiskBlocked / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / referenceDerivativesRotationPocket / referenceXrpOiChangePct4h15m / referenceTrxOiChangePct4h15m / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / approvalBlockReasons / riskAnnotations.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / stopDistanceAtr / tpDistanceAtr / breakoutBodyAtr / trendAdx / benchmarkRelativeStrength1d / chaseRiskBlocked / approvalRegimeAllowed / approvalRegimeBlockReasons / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / referenceDerivativesRotationPocket / referenceXrpOiChangePct4h15m / referenceTrxOiChangePct4h15m / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / approvalBlockReasons / riskAnnotations.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -50,6 +51,9 @@ const REFERENCE_XRP_OI_CHANGE_PCT_4H_15M_MIN = 1.6;
 const REFERENCE_TRX_OI_CHANGE_PCT_4H_15M_MAX = -0.2;
 const CHASE_STOP_DISTANCE_ATR_MAX = 4.5;
 const CHASE_BREAKOUT_BODY_ATR_MAX = 2.25;
+const MIN_APPROVAL_TP_DISTANCE_ATR = 2.9;
+const MIN_APPROVAL_TREND_ADX = 15;
+const MAX_APPROVAL_BENCHMARK_RELATIVE_STRENGTH_1D = 4;
 
 type Direction = 'LONG' | 'SHORT';
 type Bias = 'bullish' | 'bearish' | null;
@@ -66,6 +70,10 @@ type AmrQ4ContinuationBlockReason =
   | 'weak_target_vs_btc_alpha_4h'
   | 'binance_btc_premium_risk'
   | 'cmc_fear_greed_deteriorating';
+type AmrApprovalRegimeBlockReason =
+  | 'low_tp_distance_atr'
+  | 'weak_trend_adx'
+  | 'benchmark_1d_chase_risk';
 type AmrChannelState =
   | 'above_upper'
   | 'above_midline'
@@ -78,6 +86,7 @@ type AmrApprovalBlockReason =
   | 'missing_base_context'
   | 'weak_signal_range'
   | 'chase_entry_risk'
+  | AmrApprovalRegimeBlockReason
   | 'target_vs_btc_alpha_1h_chase'
   | 'short_disabled'
   | 'cmc_alt_liquidity_btc_favored';
@@ -116,8 +125,13 @@ type AdaptiveMomentumRibbonAiContext = {
   oscillatorStrength: number | null;
   signalRangeAtrRatio: number | null;
   stopDistanceAtr: number | null;
+  tpDistanceAtr: number | null;
   breakoutBodyAtr: number | null;
+  trendAdx: number | null;
+  benchmarkRelativeStrength1d: number | null;
   chaseRiskBlocked: boolean;
+  approvalRegimeAllowed: boolean;
+  approvalRegimeBlockReasons: AmrApprovalRegimeBlockReason[];
   kcMidline: number | null;
   kcUpper: number | null;
   kcLower: number | null;
@@ -508,6 +522,36 @@ const getQ4ContinuationRecoveryAllowed = (
   context.cmcBtcDominanceChange24hPct != null &&
   context.cmcBtcDominanceChange24hPct <= 0;
 
+const getApprovalRegimeBlockReasons = (
+  context: Pick<
+    AdaptiveMomentumRibbonAiContext,
+    'tpDistanceAtr' | 'trendAdx' | 'benchmarkRelativeStrength1d'
+  >,
+): AmrApprovalRegimeBlockReason[] => {
+  const reasons: AmrApprovalRegimeBlockReason[] = [];
+
+  if (
+    context.tpDistanceAtr == null ||
+    context.tpDistanceAtr < MIN_APPROVAL_TP_DISTANCE_ATR
+  ) {
+    reasons.push('low_tp_distance_atr');
+  }
+
+  if (context.trendAdx == null || context.trendAdx < MIN_APPROVAL_TREND_ADX) {
+    reasons.push('weak_trend_adx');
+  }
+
+  if (
+    context.benchmarkRelativeStrength1d != null &&
+    context.benchmarkRelativeStrength1d >
+      MAX_APPROVAL_BENCHMARK_RELATIVE_STRENGTH_1D
+  ) {
+    reasons.push('benchmark_1d_chase_risk');
+  }
+
+  return reasons;
+};
+
 const getDeterministicAdaptiveMomentumRibbonQuality = (
   context: Omit<
     AdaptiveMomentumRibbonAiContext,
@@ -540,6 +584,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   }
 
   if (context.chaseRiskBlocked && !context.referenceDerivativesRotationPocket) {
+    return 3;
+  }
+
+  if (!context.approvalRegimeAllowed) {
     return 3;
   }
 
@@ -729,6 +777,8 @@ const buildAdaptiveMomentumRibbonContext = (
   const candle = getRecord(baseContext?.candle);
   const raw = getRecord(baseContext?.raw);
   const regime = getRecord(baseContext?.regime);
+  const regimeTrend = getRecord(regime?.trend);
+  const regimeTrendAdx = getRecord(regimeTrend?.adx);
   const regimeSession = getRecord(regime?.session);
   const structure = getRecord(baseContext?.structure);
   const localRange = getRecord(structure?.localRange);
@@ -773,6 +823,9 @@ const buildAdaptiveMomentumRibbonContext = (
   const benchmarkRelativeStrength1h = toFiniteNumberOrNull(
     benchmark?.relativeStrength1h,
   );
+  const benchmarkRelativeStrength1d = toFiniteNumberOrNull(
+    benchmark?.relativeStrength1d,
+  );
   const benchmarkTrendAlignment =
     typeof benchmark?.trendAlignment === 'string'
       ? benchmark.trendAlignment
@@ -808,6 +861,8 @@ const buildAdaptiveMomentumRibbonContext = (
   const stopDistanceAtr = toFiniteNumberOrNull(
     gateFeaturesSetup?.stopDistanceAtr,
   );
+  const tpDistanceAtr = toFiniteNumberOrNull(gateFeaturesSetup?.tpDistanceAtr);
+  const trendAdx = toFiniteNumberOrNull(regimeTrendAdx?.adx);
   const breakoutBodyAtr = toFiniteNumberOrNull(
     structureAcceptance?.breakoutBodyAtr,
   );
@@ -881,6 +936,14 @@ const buildAdaptiveMomentumRibbonContext = (
     effortVsResult,
     cmcBtcDominanceChange24hPct,
   });
+  const approvalRegimeBlockReasons = baseContextAvailable
+    ? getApprovalRegimeBlockReasons({
+        tpDistanceAtr,
+        trendAdx,
+        benchmarkRelativeStrength1d,
+      })
+    : [];
+  const approvalRegimeAllowed = approvalRegimeBlockReasons.length === 0;
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -961,6 +1024,8 @@ const buildAdaptiveMomentumRibbonContext = (
     approvalBlockReasons.push('chase_entry_risk');
   }
 
+  approvalBlockReasons.push(...approvalRegimeBlockReasons);
+
   if (breakoutRetestQuality != null && breakoutRetestQuality < 0.25) {
     riskAnnotations.push('weak_retest_quality');
   }
@@ -1012,8 +1077,13 @@ const buildAdaptiveMomentumRibbonContext = (
     oscillatorStrength,
     signalRangeAtrRatio,
     stopDistanceAtr,
+    tpDistanceAtr,
     breakoutBodyAtr,
+    trendAdx,
+    benchmarkRelativeStrength1d,
     chaseRiskBlocked,
+    approvalRegimeAllowed,
+    approvalRegimeBlockReasons,
     kcMidline,
     kcUpper,
     kcLower,
@@ -1094,8 +1164,13 @@ const buildAdaptiveMomentumRibbonContext = (
     oscillatorStrength,
     signalRangeAtrRatio,
     stopDistanceAtr,
+    tpDistanceAtr,
     breakoutBodyAtr,
+    trendAdx,
+    benchmarkRelativeStrength1d,
     chaseRiskBlocked,
+    approvalRegimeAllowed,
+    approvalRegimeBlockReasons,
     kcMidline,
     kcUpper,
     kcLower,
@@ -1293,8 +1368,13 @@ Additional AdaptiveMomentumRibbon context:
 - oscillatorStrength=${context.oscillatorStrength?.toFixed?.(3) ?? 'n/a'}
 - signalRangeAtrRatio=${context.signalRangeAtrRatio?.toFixed?.(3) ?? 'n/a'}
 - stopDistanceAtr=${context.stopDistanceAtr?.toFixed?.(3) ?? 'n/a'}
+- tpDistanceAtr=${context.tpDistanceAtr?.toFixed?.(3) ?? 'n/a'}
 - breakoutBodyAtr=${context.breakoutBodyAtr?.toFixed?.(3) ?? 'n/a'}
+- trendAdx=${context.trendAdx?.toFixed?.(3) ?? 'n/a'}
+- benchmarkRelativeStrength1d=${context.benchmarkRelativeStrength1d?.toFixed?.(3) ?? 'n/a'}
 - chaseRiskBlocked=${context.chaseRiskBlocked}
+- approvalRegimeAllowed=${context.approvalRegimeAllowed}
+- approvalRegimeBlockReasons=${context.approvalRegimeBlockReasons.join(', ') || 'none'}
 - channelState=${context.channelState}
 - channelBiasAligned=${context.channelBiasAligned}
 - channelExtensionPct=${context.channelExtensionPct?.toFixed?.(3) ?? 'n/a'}%

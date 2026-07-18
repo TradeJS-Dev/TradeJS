@@ -554,6 +554,23 @@ const makeAdaptiveMomentumRibbonSignal = (
         atrMultiplier: 2,
       },
       baseContext: {
+        regime: {
+          trend: {
+            adx: {
+              adx: 18,
+            },
+          },
+        },
+        relative: {
+          benchmark: {
+            relativeStrength1d: 0,
+          },
+        },
+        gateFeatures: {
+          setup: {
+            tpDistanceAtr: 3,
+          },
+        },
         participation: {
           volume: {
             volumeRel20: 1,

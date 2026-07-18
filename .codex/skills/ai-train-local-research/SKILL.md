@@ -257,6 +257,11 @@ Before stating expected production cadence:
 - report full history and every terminal window, including zero approvals
 - period tables must always show rows for the full export, `180d`, `90d`,
   `30d`, and `7d`
+- when comparing a new candidate/gate with a baseline or previous result, show
+  terminal-window metrics as a comparison table for every row (`full`, `180d`,
+  `90d`, `30d`, `7d`) rather than only the candidate values. Include baseline
+  and candidate N, WR, PF, PnL, Max DD, max loss streak, losing months, and
+  trades/day; include deltas where they make the table easier to scan.
 - use terminal `approvedPerCalendarDay`, not the full-history average, as the
   current cadence evidence
 - record git SHA, dirty state, gate fingerprint, config-id fingerprint, and
