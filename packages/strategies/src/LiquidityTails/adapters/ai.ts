@@ -124,6 +124,8 @@ Additional Liquidity Tails context:
 - roc1h=${String(context.roc1h ?? 'n/a')}
 - roc4h=${String(context.roc4h ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- priceDistanceToMaSlowAtr=${String(context.priceDistanceToMaSlowAtr ?? 'n/a')}
+- liquidityZonesActiveCount=${String(context.liquidityZonesActiveCount ?? 'n/a')}
 - atrPctRankBucket=${context.atrPctRankBucket ?? 'n/a'}
 - q4AtrRankEligible=${String(context.q4AtrRankEligible)}
 - liquidityRisk=${context.liquidityRisk ?? 'n/a'}

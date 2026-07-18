@@ -15,6 +15,8 @@ export type LiquidityTailsGuardrailContext =
     roc1h: number | null;
     roc4h: number | null;
     benchmarkTrendAlignment: string | null;
+    priceDistanceToMaSlowAtr: number | null;
+    liquidityZonesActiveCount: number | null;
     atrPctRankBucket: string | null;
     q4AtrRankEligible: boolean;
     liquidityRisk: string | null;
@@ -62,6 +64,9 @@ const asFiniteNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const asNullableFiniteNumber = (value: unknown): number | null =>
+  value == null ? null : asFiniteNumber(value);
+
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.filter(
@@ -75,6 +80,8 @@ const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
 const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
 const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
 const MAX_APPROVAL_CMC_FEAR_GREED_VALUE = 39;
+const MAX_APPROVAL_PRICE_DISTANCE_TO_MA_SLOW_ATR = 1.2;
+const MIN_APPROVAL_ACTIVE_LIQUIDITY_ZONES = 1;
 const MAX_DERIVATIVES_RISK_OFF_ALT_BASKET_RETURN_24H = -0.035;
 const MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H = -1.8;
 const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
@@ -231,6 +238,12 @@ export const buildLiquidityTailsGuardrailContext = ({
   const roc4h = asFiniteNumber(baseContext?.regime?.momentum?.roc4h);
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
+  const priceDistanceToMaSlowAtr = asNullableFiniteNumber(
+    baseContext?.regime?.trend?.priceDistanceToMaSlowAtr,
+  );
+  const liquidityZonesActiveCount = asNullableFiniteNumber(
+    baseContext?.structure?.liquidityZones?.activeCount,
+  );
   const atrPctRankBucket =
     typeof baseContext?.gateFeatures?.volatility?.atrPctRankBucket === 'string'
       ? baseContext.gateFeatures.volatility.atrPctRankBucket
@@ -433,6 +446,26 @@ export const buildLiquidityTailsGuardrailContext = ({
   ) {
     deterministicQuality = 4;
   }
+  if (deterministicQuality >= 4) {
+    const approvalContextReasons: string[] = [];
+    if (priceDistanceToMaSlowAtr == null) {
+      approvalContextReasons.push('price_distance_to_ma_slow_unavailable');
+    } else if (
+      priceDistanceToMaSlowAtr > MAX_APPROVAL_PRICE_DISTANCE_TO_MA_SLOW_ATR
+    ) {
+      approvalContextReasons.push('price_overextended_from_ma_slow');
+    }
+    if (
+      liquidityZonesActiveCount == null ||
+      liquidityZonesActiveCount < MIN_APPROVAL_ACTIVE_LIQUIDITY_ZONES
+    ) {
+      approvalContextReasons.push('liquidity_zone_confirmation_missing');
+    }
+    if (approvalContextReasons.length > 0) {
+      deterministicQuality = 3;
+      softBlockReasons.push(...approvalContextReasons);
+    }
+  }
 
   return {
     ...signalContext,
@@ -448,6 +481,8 @@ export const buildLiquidityTailsGuardrailContext = ({
     roc1h,
     roc4h,
     benchmarkTrendAlignment,
+    priceDistanceToMaSlowAtr,
+    liquidityZonesActiveCount,
     atrPctRankBucket,
     q4AtrRankEligible,
     liquidityRisk,

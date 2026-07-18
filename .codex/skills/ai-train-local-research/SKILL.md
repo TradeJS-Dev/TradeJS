@@ -1,6 +1,6 @@
 ---
 name: ai-train-local-research
-description: Run strategy-neutral TradeJS ai-train investigations, especially local deterministic gate research with `yarn ai-train --localOnly`, `yarn ai-pocket-search`, qN+ metrics, pocket discovery, drawdown/winrate analysis, time/symbol stability checks, and gate-vs-LLM comparison when needed.
+description: Run strategy-neutral TradeJS AI-gate research with `yarn ai-train --localOnly`, `yarn ai-pocket-search`, and the reusable gate-ablation tool for qN+ metrics, causal filter hypotheses, drawdown/winrate analysis, stability checks, and gate-vs-LLM comparison.
 ---
 
 # AI Train Local Research
@@ -18,6 +18,27 @@ Use this skill when the user asks to:
 - break down false positives / false negatives
 - save conclusions in `notes/AI_*_REPLAY_NOTES.md`
 - tune approval cadence toward roughly 2-3 approved trades per day when possible, with ~1 approved trade per day as the practical lower bound for narrow high-quality pockets; if a gate approves more, look for filters that lower approvals and raise winrate
+
+## Reusable Research Tooling
+
+Use `scripts/ai-gate-ablation.mjs` for custom deterministic gate filters,
+exclusions, recovery additions, gate replacements, feature inventory, and
+baseline-vs-candidate tables. Read `references/gate-ablation.md` for its
+expression grammar and report contract.
+
+Mandatory rule:
+
+- Do not create `/tmp` parsers, heredoc ESM replays, or strategy-specific
+  one-off scripts for work covered by this tool.
+- If a recurring analysis is missing, extend the permanent script, add or update
+  `scripts/ai-gate-ablation.test.mjs`, and document the behavior in the
+  reference. Run `node --test scripts/ai-gate-ablation.test.mjs` from the skill
+  directory.
+- Build changed strategy/node/CLI packages before running the tool because it
+  reconstructs current gate context from `dist`.
+- Keep `yarn ai-train --localOnly --json -n 0` as the authoritative baseline;
+  do not interpret variants until baseline qN+ support, PnL, PF, max drawdown,
+  strict loss, and loss streak match.
 
 ## AI Gate Pocket Hygiene
 
@@ -165,10 +186,10 @@ Mandatory validation sections for gate work:
 
 1. Confirm the latest merged dataset exists.
 
-Prefer:
+Use the shard-aware permanent discovery command:
 
 ```bash
-node -e "const fs=require('fs');const p='data/ai/export';const f=fs.readdirSync(p).filter(x=>x.startsWith('ai-dataset-<token>-merged-')&&x.endsWith('.jsonl')).sort().at(-1); console.log(f?require('path').join(p,f):'');"
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs --list --strategy <Strategy>
 ```
 
 Important shard-aware rule:
@@ -181,35 +202,6 @@ Important shard-aware rule:
   - or `--file` points to any one shard like `...-part1.jsonl`
 - `yarn ai-pocket-search` follows the same shard grouping convention and treats a `--file ...-part1.jsonl` argument as the whole merge group
 - when reporting the export used, list the merge id and shard count, not only the first shard path
-
-Useful check:
-
-```bash
-node - <<'NODE'
-const fs=require('fs');
-const path=require('path');
-const p='data/ai/export';
-const entries=fs.readdirSync(p).filter(x=>x.endsWith('.jsonl'));
-const groups=new Map();
-for (const name of entries) {
-  const m=name.match(/^ai-dataset-(.+)-merged-(\d+)(?:-part(\d+))?\.jsonl$/);
-  if (!m) continue;
-  const key=`${m[1]}:${m[2]}`;
-  const row=groups.get(key) ?? {strategy:m[1], mergeId:m[2], files:[]};
-  row.files.push(name);
-  groups.set(key,row);
-}
-for (const row of [...groups.values()].sort((a,b)=>a.mergeId.localeCompare(b.mergeId))) {
-  row.files.sort((a,b)=>{
-    const ap=Number(a.match(/-part(\d+)\.jsonl$/)?.[1] ?? 0);
-    const bp=Number(b.match(/-part(\d+)\.jsonl$/)?.[1] ?? 0);
-    return ap-bp || a.localeCompare(b);
-  });
-  console.log(`${row.strategy} merge=${row.mergeId} shards=${row.files.length}`);
-  for (const file of row.files) console.log(`  ${path.join(p,file)}`);
-}
-NODE
-```
 
 2. If the user wants config analysis, read the real Redis config instead of guessing from defaults.
 
@@ -304,7 +296,8 @@ yarn ai-pocket-search --strategy TrendShift --file data/ai/export/ai-dataset-tre
 Interpretation:
 
 - both commands above should evaluate the full shard group for that merge id, not only `part1`
-- if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
+- if a partial replay is genuinely needed, use native `ai-train` selection
+  options rather than assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
 - `ai-pocket-search` uses time-ordered holdout validation by default (`--validationSplit 0.25`). Treat train-only pockets as hypotheses; prefer pockets with enough validation support and acceptable validation PnL/PF/drawdown. Use `--validationSplit 0` only for legacy full-sample exploration.
@@ -314,7 +307,8 @@ Interpretation:
 - when the research needs signal-time gate inputs such as CMC, MTF, ATR bucket, benchmark conflict, participation, execution, or strategy-specific `*GateFeatures`, add `--dumpFeatures gateFeatures`; this writes the current `baseContext.gateFeatures` and strategy gate features into each dump row
 - when broader context is needed, use `--dumpFeatures baseContext`; it writes compact current base-context sections (`regime`, `structure`, `participation`, `relative`, `derivatives`, `mtf`, `gateFeatures`) without the bulky `raw` section
 - join/compare extra fields from the original dataset only when they are not available through `--dumpFeatures`, and treat those joined fields as explanatory features rather than current gate truth after adapter changes
-- before trusting a custom script, verify its baseline `approved`, q4+, q5+, PnL, PF, max drawdown, and max loss streak match `yarn ai-train --localOnly --json` for the same export/window
+- use `scripts/ai-gate-ablation.mjs` for custom rule ablations and verify its
+  baseline against `yarn ai-train --localOnly --json` for the same export/window
 
 5. Read these sections first:
 
@@ -350,79 +344,25 @@ For the default `q4+` approved stream, report:
 
 Use the same period logic as `packages/cli/src/lib/aiTrainMetrics.ts`: `(max timestamp - min timestamp) / 1 day`, with a minimum of `1` day. If useful, also mention the full-window normalization separately, but the required table is for the default approved stream named in `qN+` notation. If `q5+` or another threshold is important for the strategy, include it too. If the user explicitly asks for isolated `q1` / `q2` / `q3` / `q4` / `q5`, report those separately and label them clearly.
 
-7. For deeper FP/FN analysis, do not read the entire merged JSONL into memory.
-
-For large exports:
-
-- if the export is sharded, stream across shards in part order first
-- use `tail -n <N>` or another streaming slice on the combined stream
-- then run a small local script against only the selected window
-
-Preferred pattern:
+7. For deeper FP/FN and gate-ablation analysis, use the permanent tool.
 
 ```bash
-tmp=$(mktemp)
-cat data/ai/export/ai-dataset-<token>-merged-<ts>-part*.jsonl | tail -n 500 > "$tmp"
-TMP_PATH="$tmp" node --input-type=commonjs <<'NODE'
-// read only TMP_PATH, reconstruct signal from row.payload,
-// use buildAiPayload / runAiPromptLocal from packages/node/dist/ai.js,
-// cluster FP / FN / approved pockets by deterministic context fields
-NODE
-rc=$?
-rm -f "$tmp"
-exit $rc
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
+  --file data/ai/export/ai-dataset-<token>-merged-<ts>-part1.jsonl \
+  --variant 'name::filter::additionalIndicators.baseContext.<path> <= <value>' \
+  --featurePattern '<field-regex>' \
+  --output data/ai/output/<strategy>-gate-ablation.md
 ```
 
-Important custom-script correctness rules:
-
-- Do not treat saved strategy context in the dataset as current gate truth after adapter changes. Fields such as `payload.additionalIndicators.adaptiveMomentumRibbonContext`, `trendLineContext`, `reverseTrendlineContext`, etc. may be stale snapshots from export time.
-- If a custom script needs current deterministic gate fields, reconstruct the `Signal` from the dataset row, call the current `buildAiPayload(signal)`, then read the freshly built context from that payload.
-- When importing from `packages/node/dist/ai.mjs` or `packages/node/dist/ai.js`, always call `ensureAiStrategyPluginsLoaded()` before `buildAiPayload`, `getDeterministicAiGateContext`, or `runAiPromptLocal`. Without plugin registration the default/base adapter may be used and the script may silently read stale context from the dataset.
-- If strategy adapter code was changed after the last build, run the relevant build before importing from `dist`, for example `yarn workspace @tradejs/strategies build` and the package that provides the imported helper. Otherwise use the checked-in CLI flow (`yarn ai-train`) as the authoritative replay path.
-- Keep outcome fields separate from decision fields. `profit`, `tradeResult`, delayed execution fields, exit reason, and final result are labels/diagnostics only; they must not be used to decide approval for the same signal.
-- Any custom rule search must print the baseline from the same script and compare it against `yarn ai-train --localOnly --json`. If they differ materially, stop and fix the script before interpreting hypotheses.
-- Be careful with shell/JQ precedence when inspecting JSON. Prefer a tiny Node snippet that parses one row and prints explicit keys over complex one-line `jq` expressions.
-
-ESM custom-script skeleton:
-
-```bash
-node --input-type=module <<'NODE'
-import fs from 'node:fs';
-import readline from 'node:readline';
-import {
-  buildAiPayload,
-  ensureAiStrategyPluginsLoaded,
-  getDeterministicAiGateContext,
-} from './packages/node/dist/ai.mjs';
-
-await ensureAiStrategyPluginsLoaded();
-
-const signalFromRow = (row) => ({
-  ...row.payload.signal,
-  strategy: row.payload.signal.strategy,
-  figures: row.payload.figures ?? {},
-  indicators: row.payload.indicators ?? {},
-  additionalIndicators: row.payload.additionalIndicators ?? {},
-  prices: row.payload.signal.prices,
-});
-
-for (const filePath of process.argv.slice(2)) {
-  const reader = readline.createInterface({
-    input: fs.createReadStream(filePath),
-    crlfDelay: Infinity,
-  });
-  for await (const line of reader) {
-    if (!line.trim()) continue;
-    const row = JSON.parse(line);
-    const signal = signalFromRow(row);
-    const payload = buildAiPayload(signal);
-    const gateContext = getDeterministicAiGateContext(payload);
-    // Use gateContext for current gate decision features.
-    // Use row.profit/tradeResult only as labels for evaluation.
-  }
-}
-NODE
-```
+- It streams shards in part order, rebuilds the current payload after plugin
+  registration, and keeps outcome labels separate from decision features.
+- Use repeated `--variant` arguments or a JSON `--spec` to compare hypotheses
+  in one pass.
+- Use `filter`, `exclude`, `add@quality`, or `replace@quality` according to the
+  ablation semantics documented in `references/gate-ablation.md`.
+- Do not use `--includeGateContext` for discovery; it is audit-only.
+- If its baseline differs materially from `ai-train`, stop and fix the permanent
+  tool before interpreting hypotheses.
 
 8. For strategy AI investigations, always look for these questions:
 

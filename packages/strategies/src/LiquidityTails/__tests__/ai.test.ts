@@ -2,6 +2,34 @@
 
 import { liquidityTailsAiAdapter } from '../adapters/ai';
 
+const withApprovalContextDefaults = (baseContext: Record<string, unknown>) => {
+  const regime = (baseContext.regime ?? {}) as Record<string, unknown>;
+  const trend = (regime.trend ?? {}) as Record<string, unknown>;
+  const structure = (baseContext.structure ?? {}) as Record<string, unknown>;
+  const liquidityZones = (structure.liquidityZones ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  return {
+    ...baseContext,
+    regime: {
+      ...regime,
+      trend: {
+        priceDistanceToMaSlowAtr: 0,
+        ...trend,
+      },
+    },
+    structure: {
+      ...structure,
+      liquidityZones: {
+        activeCount: 1,
+        ...liquidityZones,
+      },
+    },
+  };
+};
+
 const makePayload = (
   context: Record<string, unknown>,
   baseContext: Record<string, unknown> = {},
@@ -24,7 +52,7 @@ const makePayload = (
     indicators: {},
     additionalIndicators: {
       liquidityTailsContext: context,
-      baseContext,
+      baseContext: withApprovalContextDefaults(baseContext),
     },
   }) as any;
 
@@ -169,6 +197,7 @@ describe('liquidityTailsAiAdapter', () => {
             trend: {
               bias: 'bear',
               adx: { adx: 35, strength: 'strong' },
+              priceDistanceToMaSlowAtr: 1.2,
             },
             momentum: { roc1h: 1.4, roc4h: 0.8 },
           },
@@ -198,6 +227,115 @@ describe('liquidityTailsAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects otherwise approved retests beyond the slow MA distance limit', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          reactionCloseDistancePct: 2.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+              priceDistanceToMaSlowAtr: 1.200_001,
+            },
+            momentum: { bodyStrength: 0.4, roc4h: 0.8 },
+          },
+          relative: { cmcFearGreed: { value: 39 } },
+        },
+      ),
+      analysis: { direction: 'LONG', quality: 5 },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('price_overextended_from_ma_slow');
+  });
+
+  it('rejects otherwise approved retests without slow MA distance data', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          reactionCloseDistancePct: 2.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+              priceDistanceToMaSlowAtr: null,
+            },
+            momentum: { bodyStrength: 0.4, roc4h: 0.8 },
+          },
+          relative: { cmcFearGreed: { value: 39 } },
+        },
+      ),
+      analysis: { direction: 'LONG', quality: 5 },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('price_distance_to_ma_slow_unavailable');
+  });
+
+  it('rejects otherwise approved retests without an active liquidity zone', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          reactionCloseDistancePct: 2.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+              priceDistanceToMaSlowAtr: 1.2,
+            },
+            momentum: { bodyStrength: 0.4, roc4h: 0.8 },
+          },
+          structure: { liquidityZones: { activeCount: 0 } },
+          relative: { cmcFearGreed: { value: 39 } },
+        },
+      ),
+      analysis: { direction: 'LONG', quality: 5 },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('liquidity_zone_confirmation_missing');
   });
 
   it('rejects shallow wick-only retests without close-away impulse', () => {
