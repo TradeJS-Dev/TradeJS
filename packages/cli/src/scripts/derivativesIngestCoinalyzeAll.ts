@@ -10,11 +10,17 @@ import {
   getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
   normalizeDerivativesIntervals,
+  resolveCoinalyzeConfirmedIntradayCoverage,
+  toCoinalyzeTimestampMs,
 } from '@tradejs/core/indicators';
 import { delay } from '@tradejs/core/async';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getTickers } from '@tradejs/node/cli';
-import { upsertDerivatives, waitForDbReady } from '@tradejs/infra/timescale';
+import {
+  applyDerivativesMetricCoverage,
+  upsertDerivatives,
+  waitForDbReady,
+} from '@tradejs/infra/timescale';
 import type { DerivativesInterval } from '@tradejs/types';
 
 type CoinalyzeMarket = {
@@ -473,6 +479,41 @@ export const main = async () => {
           if (rows.length) {
             await upsertDerivatives(rows);
             totalRows += rows.length;
+          }
+          const confirmedLiquidationWindow =
+            resolveCoinalyzeConfirmedIntradayCoverage({
+              interval,
+              fromMs: cursor,
+              toMs,
+              nowMs: now,
+            });
+          if (confirmedLiquidationWindow) {
+            await applyDerivativesMetricCoverage(
+              batch.map((item) => {
+                const marketSymbol = item.marketSymbol.toUpperCase();
+                const eventRowsCount = (liqMap.get(marketSymbol) ?? []).filter(
+                  (point) => {
+                    const timestamp = toCoinalyzeTimestampMs(
+                      point.t ?? point.ts ?? point.time ?? point.timestamp,
+                    );
+                    return (
+                      timestamp != null &&
+                      timestamp >= confirmedLiquidationWindow.fromMs &&
+                      timestamp <= confirmedLiquidationWindow.toMs
+                    );
+                  },
+                ).length;
+                return {
+                  source: 'coinalyze' as const,
+                  metric: 'liquidation' as const,
+                  symbol: item.symbol,
+                  interval,
+                  fromMs: confirmedLiquidationWindow.fromMs,
+                  toMs: confirmedLiquidationWindow.toMs,
+                  eventRowsCount,
+                };
+              }),
+            );
           }
         } catch (error) {
           failedWindows += 1;

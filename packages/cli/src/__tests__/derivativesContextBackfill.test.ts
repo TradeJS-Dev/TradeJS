@@ -4,6 +4,7 @@ import {
   resolveDerivativesContextFetchFromMs,
   resolveDerivativesContextMissingFetchFromMs,
   resolveDerivativesContextMissingCoverageFetchFromMs,
+  resolveDerivativesContextRequiredFetchFromMs,
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
   groupDerivativesContextMissingFetchRanges,
@@ -451,6 +452,69 @@ describe('resolveDerivativesContextFetchFromMs', () => {
         fromMs: 1_000,
         toMs: 20_000,
         intervalMs: 1_000,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('resolveDerivativesContextRequiredFetchFromMs', () => {
+  const intervalMs = 15 * 60 * 1000;
+  const nowMs = Date.parse('2026-07-20T12:07:00.000Z');
+  const toMs = Date.parse('2026-07-20T11:45:00.000Z');
+  const fromMs = toMs - 48 * 60 * 60 * 1000;
+
+  it('refetches confirmed liquidation coverage even when generic data is cached', () => {
+    expect(
+      resolveDerivativesContextRequiredFetchFromMs({
+        mode: 'backtest',
+        interval: '15m',
+        intervalMs,
+        fromMs,
+        toMs,
+        nowMs,
+        dataCoverageKeyExists: true,
+        dataCoverageRanges: [{ fromMs, toMs }],
+        liquidationCoverageRanges: [],
+        edges: { min: fromMs, max: toMs },
+      }),
+    ).toBe(fromMs);
+  });
+
+  it('keeps fully covered data and liquidation windows cached', () => {
+    expect(
+      resolveDerivativesContextRequiredFetchFromMs({
+        mode: 'backtest',
+        interval: '15m',
+        intervalMs,
+        fromMs,
+        toMs,
+        nowMs,
+        dataCoverageKeyExists: true,
+        dataCoverageRanges: [{ fromMs, toMs }],
+        liquidationCoverageRanges: [{ fromMs, toMs }],
+        edges: { min: fromMs, max: toMs },
+      }),
+    ).toBeNull();
+  });
+
+  it('does not refetch expired liquidation windows when generic data is cached', () => {
+    const historicalFromMs = Date.parse('2026-03-01T00:00:00.000Z');
+    const historicalToMs = Date.parse('2026-03-02T00:00:00.000Z');
+
+    expect(
+      resolveDerivativesContextRequiredFetchFromMs({
+        mode: 'backtest',
+        interval: '15m',
+        intervalMs,
+        fromMs: historicalFromMs,
+        toMs: historicalToMs,
+        nowMs,
+        dataCoverageKeyExists: true,
+        dataCoverageRanges: [
+          { fromMs: historicalFromMs, toMs: historicalToMs },
+        ],
+        liquidationCoverageRanges: [],
+        edges: { min: historicalFromMs, max: historicalToMs },
       }),
     ).toBeNull();
   });

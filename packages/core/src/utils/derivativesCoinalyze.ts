@@ -19,12 +19,42 @@ const DERIVATIVES_INTERVAL_MS: Record<DerivativesInterval, number> = {
   '1h': 60 * 60 * 1000,
 };
 
+export const COINALYZE_MIN_INTRADAY_RETENTION_POINTS = 1_500;
+
 export const getLastClosedDerivativesBarStartMs = (
   timestamp: number,
   interval: DerivativesInterval,
 ) => {
   const intervalMs = DERIVATIVES_INTERVAL_MS[interval];
   return Math.floor(timestamp / intervalMs) * intervalMs - intervalMs;
+};
+
+export const resolveCoinalyzeConfirmedIntradayCoverage = (params: {
+  interval: DerivativesInterval;
+  fromMs: number;
+  toMs: number;
+  nowMs?: number;
+}) => {
+  const intervalMs = DERIVATIVES_INTERVAL_MS[params.interval];
+  const nowMs = params.nowMs ?? Date.now();
+  const lastClosedStartMs = getLastClosedDerivativesBarStartMs(
+    nowMs,
+    params.interval,
+  );
+  const guaranteedRetentionFromMs =
+    lastClosedStartMs -
+    (COINALYZE_MIN_INTRADAY_RETENTION_POINTS - 1) * intervalMs;
+  const requestedFromMs = Math.ceil(params.fromMs / intervalMs) * intervalMs;
+  const requestedToMs = Math.floor(params.toMs / intervalMs) * intervalMs;
+  const fromMs = Math.max(requestedFromMs, guaranteedRetentionFromMs);
+  const toMs = Math.min(requestedToMs, lastClosedStartMs);
+
+  return fromMs <= toMs
+    ? {
+        fromMs,
+        toMs,
+      }
+    : null;
 };
 
 export const normalizeCoinalyzeSymbols = (input: unknown): string[] =>

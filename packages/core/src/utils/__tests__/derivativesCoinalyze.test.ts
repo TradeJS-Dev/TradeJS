@@ -7,6 +7,7 @@ import {
   mergeCoinalyzeMetrics,
   normalizeCoinalyzeSymbols,
   normalizeDerivativesIntervals,
+  resolveCoinalyzeConfirmedIntradayCoverage,
   toArrayData,
   toCoinalyzeTimestampMs,
   toFiniteNumber,
@@ -104,6 +105,36 @@ describe('derivativesCoinalyze utils', () => {
     expect(getLastClosedDerivativesBarStartMs(boundary + 5_000, '15m')).toBe(
       Date.parse('2026-07-15T12:45:00.000Z'),
     );
+  });
+
+  test('resolveCoinalyzeConfirmedIntradayCoverage keeps only the guaranteed intraday retention tail', () => {
+    const nowMs = Date.parse('2026-07-20T12:07:00.000Z');
+    const lastClosedStartMs = Date.parse('2026-07-20T11:45:00.000Z');
+
+    expect(
+      resolveCoinalyzeConfirmedIntradayCoverage({
+        interval: '15m',
+        fromMs: Date.parse('2026-01-01T00:00:00.000Z'),
+        toMs: nowMs,
+        nowMs,
+      }),
+    ).toEqual({
+      fromMs: lastClosedStartMs - 1_499 * 15 * 60 * 1000,
+      toMs: lastClosedStartMs,
+    });
+  });
+
+  test('resolveCoinalyzeConfirmedIntradayCoverage does not claim expired historical windows', () => {
+    const nowMs = Date.parse('2026-07-20T12:07:00.000Z');
+
+    expect(
+      resolveCoinalyzeConfirmedIntradayCoverage({
+        interval: '15m',
+        fromMs: Date.parse('2026-03-01T00:00:00.000Z'),
+        toMs: Date.parse('2026-03-02T00:00:00.000Z'),
+        nowMs,
+      }),
+    ).toBeNull();
   });
 
   test('deriveCoinalyzeHourlyRowsFrom15m builds complete hours with metric-aware aggregation', () => {

@@ -349,6 +349,31 @@ const ensureDerivativesSchema = async () => {
         CREATE INDEX IF NOT EXISTS derivatives_backfill_coverage_lookup_idx
         ON derivatives_backfill_coverage (source, symbol, interval, from_ts, to_ts)
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS derivatives_metric_coverage (
+          source text NOT NULL,
+          metric text NOT NULL,
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          from_ts timestamptz NOT NULL,
+          to_ts timestamptz NOT NULL,
+          event_rows_count integer NOT NULL DEFAULT 0,
+          zero_rows_count integer NOT NULL DEFAULT 0,
+          checked_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, metric, symbol, interval, from_ts, to_ts)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS derivatives_metric_coverage_lookup_idx
+        ON derivatives_metric_coverage (
+          source,
+          metric,
+          symbol,
+          interval,
+          from_ts,
+          to_ts
+        )
+      `);
       derivativesSchemaReady = true;
     },
   ).finally(() => {
@@ -961,6 +986,200 @@ export async function upsertDerivativesBackfillCoverage(
     `,
     flat,
   );
+}
+
+export type DerivativesMetricCoverageMetric = 'liquidation';
+
+export async function getDerivativesMetricCoverage(params: {
+  source: string;
+  metric: DerivativesMetricCoverageMetric;
+  symbols: string[];
+  interval: DerivativesInterval;
+  fromMs: number;
+  toMs: number;
+}) {
+  const normalizedSource = String(params.source || '')
+    .trim()
+    .toLowerCase();
+  const normalizedSymbols = [
+    ...new Set(
+      params.symbols
+        .map((symbol) =>
+          String(symbol || '')
+            .trim()
+            .toUpperCase(),
+        )
+        .filter(Boolean),
+    ),
+  ];
+  if (!normalizedSource || !normalizedSymbols.length) {
+    return [] as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      fromMs: number;
+      toMs: number;
+      eventRowsCount: number;
+      zeroRowsCount: number;
+    }>;
+  }
+
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        symbol,
+        interval,
+        extract(epoch from from_ts)*1000 AS from_ms,
+        extract(epoch from to_ts)*1000 AS to_ms,
+        event_rows_count,
+        zero_rows_count
+      FROM derivatives_metric_coverage
+      WHERE source = $1
+        AND metric = $2
+        AND symbol = ANY($3)
+        AND interval = $4
+        AND from_ts <= to_timestamp($6/1000.0)
+        AND to_ts >= to_timestamp($5/1000.0)
+    `,
+    [
+      normalizedSource,
+      params.metric,
+      normalizedSymbols,
+      params.interval,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+
+  return (
+    res.rows as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      from_ms: number | string;
+      to_ms: number | string;
+      event_rows_count: number | string;
+      zero_rows_count: number | string;
+    }>
+  ).map((row) => ({
+    symbol: String(row.symbol).toUpperCase(),
+    interval: row.interval,
+    fromMs: Number(row.from_ms),
+    toMs: Number(row.to_ms),
+    eventRowsCount: Number(row.event_rows_count ?? 0),
+    zeroRowsCount: Number(row.zero_rows_count ?? 0),
+  }));
+}
+
+export async function applyDerivativesMetricCoverage(
+  rows: Array<{
+    source: string;
+    metric: DerivativesMetricCoverageMetric;
+    symbol: string;
+    interval: DerivativesInterval;
+    fromMs: number;
+    toMs: number;
+    eventRowsCount: number;
+  }>,
+) {
+  if (!rows.length)
+    return [] as Array<{ symbol: string; zeroRowsCount: number }>;
+
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const client = await pool.connect();
+  const results: Array<{ symbol: string; zeroRowsCount: number }> = [];
+
+  try {
+    await client.query('BEGIN');
+    for (const row of rows) {
+      const source = String(row.source || '')
+        .trim()
+        .toLowerCase();
+      const symbol = String(row.symbol || '')
+        .trim()
+        .toUpperCase();
+      const fromMs = Math.trunc(row.fromMs);
+      const toMs = Math.trunc(row.toMs);
+      if (!source || !symbol || fromMs > toMs) continue;
+
+      await client.query(
+        `
+          UPDATE derivatives_market
+          SET
+            liq_long = 0,
+            liq_short = 0,
+            liq_total = 0,
+            ingested_at = now()
+          WHERE symbol = $1
+            AND interval = $2
+            AND ts >= to_timestamp($3/1000.0)
+            AND ts <= to_timestamp($4/1000.0)
+            AND liq_long IS NULL
+            AND liq_short IS NULL
+            AND liq_total IS NULL
+        `,
+        [symbol, row.interval, fromMs, toMs],
+      );
+      const zeroCountResult = await client.query(
+        `
+          SELECT COUNT(*)::integer AS count
+          FROM derivatives_market
+          WHERE symbol = $1
+            AND interval = $2
+            AND ts >= to_timestamp($3/1000.0)
+            AND ts <= to_timestamp($4/1000.0)
+            AND liq_long = 0
+            AND liq_short = 0
+            AND liq_total = 0
+        `,
+        [symbol, row.interval, fromMs, toMs],
+      );
+      const zeroRowsCount = Math.max(
+        0,
+        Number(zeroCountResult.rows[0]?.count ?? 0),
+      );
+
+      await client.query(
+        `
+          INSERT INTO derivatives_metric_coverage (
+            source,
+            metric,
+            symbol,
+            interval,
+            from_ts,
+            to_ts,
+            event_rows_count,
+            zero_rows_count
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (source, metric, symbol, interval, from_ts, to_ts)
+          DO UPDATE SET
+            event_rows_count = EXCLUDED.event_rows_count,
+            zero_rows_count = EXCLUDED.zero_rows_count,
+            checked_at = now()
+        `,
+        [
+          source,
+          row.metric,
+          symbol,
+          row.interval,
+          new Date(fromMs),
+          new Date(toMs),
+          Math.max(0, Math.trunc(row.eventRowsCount)),
+          zeroRowsCount,
+        ],
+      );
+      results.push({ symbol, zeroRowsCount });
+    }
+    await client.query('COMMIT');
+    return results;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getDerivativesWindow(params: {

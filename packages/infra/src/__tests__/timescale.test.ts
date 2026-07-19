@@ -388,6 +388,103 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('fills only unknown liquidations and records metric-level coverage atomically', async () => {
+    const client = {
+      query: jest.fn(async (sql: string) =>
+        sql.includes('SELECT COUNT(*)::integer AS count')
+          ? { rows: [{ count: 2 }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+      ),
+      release: jest.fn(),
+    };
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM derivatives_metric_coverage')) {
+        return {
+          rows: [
+            {
+              symbol: 'BTCUSDT',
+              interval: '15m',
+              from_ms: '1000',
+              to_ms: '2000',
+              event_rows_count: '3',
+              zero_rows_count: '2',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue(client),
+        query,
+      })),
+    }));
+
+    const { applyDerivativesMetricCoverage, getDerivativesMetricCoverage } =
+      await import('@tradejs/infra/timescale');
+
+    await expect(
+      applyDerivativesMetricCoverage([
+        {
+          source: 'Coinalyze',
+          metric: 'liquidation',
+          symbol: 'btcusdt',
+          interval: '15m',
+          fromMs: 1_000,
+          toMs: 2_000,
+          eventRowsCount: 3,
+        },
+      ]),
+    ).resolves.toEqual([{ symbol: 'BTCUSDT', zeroRowsCount: 2 }]);
+
+    await expect(
+      getDerivativesMetricCoverage({
+        source: 'coinalyze',
+        metric: 'liquidation',
+        symbols: ['btcusdt'],
+        interval: '15m',
+        fromMs: 1_000,
+        toMs: 2_000,
+      }),
+    ).resolves.toEqual([
+      {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        fromMs: 1_000,
+        toMs: 2_000,
+        eventRowsCount: 3,
+        zeroRowsCount: 2,
+      },
+    ]);
+
+    expect(client.query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('AND liq_long IS NULL'),
+      ['BTCUSDT', '15m', 1_000, 2_000],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO derivatives_metric_coverage'),
+      [
+        'coinalyze',
+        'liquidation',
+        'BTCUSDT',
+        '15m',
+        new Date(1_000),
+        new Date(2_000),
+        3,
+        2,
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM derivatives_metric_coverage'),
+      ['coinalyze', 'liquidation', ['BTCUSDT'], '15m', 1_000, 2_000],
+    );
+  });
+
   it('upserts Binance market feature rows into compact tables', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
 

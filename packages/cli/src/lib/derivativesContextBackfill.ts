@@ -6,10 +6,14 @@ import {
   coinalyzePointsToRows,
   getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
+  resolveCoinalyzeConfirmedIntradayCoverage,
+  toCoinalyzeTimestampMs,
 } from '@tradejs/core/indicators';
 import {
+  applyDerivativesMetricCoverage,
   getDerivativesBackfillCoverage,
   getDerivativesDataEdgesForSymbols,
+  getDerivativesMetricCoverage,
   upsertDerivatives,
   upsertDerivativesBackfillCoverage,
   waitForDbReady,
@@ -249,6 +253,65 @@ export const resolveDerivativesContextFetchFromMs = (params: {
 }) =>
   resolveDerivativesContextMissingFetchFromMs(params) ??
   (params.refreshClosedTail ? params.toMs : null);
+
+export const resolveDerivativesContextRequiredFetchFromMs = (params: {
+  mode: DerivativesContextBackfillMode;
+  interval: DerivativesInterval;
+  intervalMs: number;
+  fromMs: number;
+  toMs: number;
+  nowMs: number;
+  dataCoverageKeyExists: boolean;
+  dataCoverageRanges: Array<{ fromMs: number; toMs: number }> | undefined;
+  liquidationCoverageRanges:
+    | Array<{ fromMs: number; toMs: number }>
+    | undefined;
+  edges?: { min?: number; max?: number };
+}) => {
+  const dataCoverageFromMs = params.dataCoverageKeyExists
+    ? null
+    : params.mode === 'signals'
+      ? params.fromMs
+      : resolveDerivativesContextMissingCoverageFetchFromMs({
+          ranges: params.dataCoverageRanges,
+          fromMs: params.fromMs,
+          toMs: params.toMs,
+          intervalMs: params.intervalMs,
+        });
+  const edgesFromMs =
+    dataCoverageFromMs == null
+      ? null
+      : resolveDerivativesContextFetchFromMs({
+          edges: params.edges,
+          fromMs: params.fromMs,
+          toMs: params.toMs,
+          intervalMs: params.intervalMs,
+          refreshClosedTail: params.mode === 'signals',
+        });
+  const dataFetchFromMs =
+    dataCoverageFromMs != null && edgesFromMs != null
+      ? Math.max(dataCoverageFromMs, edgesFromMs)
+      : null;
+  const confirmedLiquidationWindow = resolveCoinalyzeConfirmedIntradayCoverage({
+    interval: params.interval,
+    fromMs: params.fromMs,
+    toMs: params.toMs,
+    nowMs: params.nowMs,
+  });
+  const liquidationFetchFromMs = confirmedLiquidationWindow
+    ? resolveDerivativesContextMissingCoverageFetchFromMs({
+        ranges: params.liquidationCoverageRanges,
+        fromMs: confirmedLiquidationWindow.fromMs,
+        toMs: confirmedLiquidationWindow.toMs,
+        intervalMs: params.intervalMs,
+      })
+    : null;
+  const fetchStarts = [dataFetchFromMs, liquidationFetchFromMs].filter(
+    (value): value is number => value != null,
+  );
+
+  return fetchStarts.length ? Math.min(...fetchStarts) : null;
+};
 
 const countBackfillWindows = (params: {
   fromMs: number;
@@ -766,6 +829,7 @@ const backfillDerivativesContext = async (
     startMs,
     endMs,
     preloadStartMs: params.preloadStartMs,
+    nowMs: Date.now(),
   });
   if (safeEndMs <= fromMs) {
     return skippedBackfillResult();
@@ -810,15 +874,39 @@ const backfillDerivativesContext = async (
     DerivativesInterval,
     Map<string, Array<{ fromMs: number; toMs: number }>>
   >();
+  const liquidationCoverageRangesByInterval = new Map<
+    DerivativesInterval,
+    Map<string, Array<{ fromMs: number; toMs: number }>>
+  >();
+  const coverageNowMs = Date.now();
   await Promise.all(
     intervalWindows.map(async (window) => {
-      const coverageRows = await getDerivativesBackfillCoverage({
-        source: 'coinalyze',
-        symbols,
-        interval: window.interval,
-        fromMs: window.fromMs,
-        toMs: window.toMs,
-      });
+      const confirmedLiquidationWindow =
+        resolveCoinalyzeConfirmedIntradayCoverage({
+          interval: window.interval,
+          fromMs: window.fromMs,
+          toMs: window.toMs,
+          nowMs: coverageNowMs,
+        });
+      const [coverageRows, liquidationCoverageRows] = await Promise.all([
+        getDerivativesBackfillCoverage({
+          source: 'coinalyze',
+          symbols,
+          interval: window.interval,
+          fromMs: window.fromMs,
+          toMs: window.toMs,
+        }),
+        confirmedLiquidationWindow
+          ? getDerivativesMetricCoverage({
+              source: 'coinalyze',
+              metric: 'liquidation',
+              symbols,
+              interval: window.interval,
+              fromMs: confirmedLiquidationWindow.fromMs,
+              toMs: confirmedLiquidationWindow.toMs,
+            })
+          : Promise.resolve([]),
+      ]);
       coverageKeysByInterval.set(
         window.interval,
         new Set(
@@ -843,6 +931,20 @@ const backfillDerivativesContext = async (
         rangesBySymbol.set(symbol, ranges);
       }
       coverageRangesByInterval.set(window.interval, rangesBySymbol);
+      const liquidationRangesBySymbol = new Map<
+        string,
+        Array<{ fromMs: number; toMs: number }>
+      >();
+      for (const row of liquidationCoverageRows) {
+        const symbol = row.symbol.toUpperCase();
+        const ranges = liquidationRangesBySymbol.get(symbol) ?? [];
+        ranges.push({ fromMs: row.fromMs, toMs: row.toMs });
+        liquidationRangesBySymbol.set(symbol, ranges);
+      }
+      liquidationCoverageRangesByInterval.set(
+        window.interval,
+        liquidationRangesBySymbol,
+      );
     }),
   );
 
@@ -875,7 +977,7 @@ const backfillDerivativesContext = async (
             coverageRangesByInterval
               .get(window.interval)
               ?.get(normalizedSymbol) ?? [];
-          return (
+          const dataCovered =
             hasDerivativesWindowCoverage({
               edges: edgesBySymbol?.get(normalizedSymbol),
               fromMs: backfillWindow.fromMs,
@@ -894,8 +996,26 @@ const backfillDerivativesContext = async (
                 fromMs: backfillWindow.fromMs,
                 toMs: backfillWindow.toMs,
               }),
-            )
-          );
+            );
+          const confirmedLiquidationWindow =
+            resolveCoinalyzeConfirmedIntradayCoverage({
+              interval: window.interval,
+              fromMs: backfillWindow.fromMs,
+              toMs: backfillWindow.toMs,
+              nowMs: coverageNowMs,
+            });
+          const liquidationCovered =
+            confirmedLiquidationWindow == null ||
+            resolveDerivativesContextMissingCoverageFetchFromMs({
+              ranges:
+                liquidationCoverageRangesByInterval
+                  .get(window.interval)
+                  ?.get(normalizedSymbol) ?? [],
+              fromMs: confirmedLiquidationWindow.fromMs,
+              toMs: confirmedLiquidationWindow.toMs,
+              intervalMs: window.intervalMs,
+            }) == null;
+          return dataCovered && liquidationCovered;
         }),
       );
     });
@@ -1002,6 +1122,13 @@ const backfillDerivativesContext = async (
       coverageRangesByInterval.get(interval) ??
       new Map<string, Array<{ fromMs: number; toMs: number }>>();
     coverageRangesByInterval.set(interval, coverageRangesBySymbol);
+    const liquidationCoverageRangesBySymbol =
+      liquidationCoverageRangesByInterval.get(interval) ??
+      new Map<string, Array<{ fromMs: number; toMs: number }>>();
+    liquidationCoverageRangesByInterval.set(
+      interval,
+      liquidationCoverageRangesBySymbol,
+    );
 
     for (let batchIdx = 0; batchIdx < symbolBatches.length; batchIdx += 1) {
       const batch = symbolBatches[batchIdx];
@@ -1017,39 +1144,28 @@ const backfillDerivativesContext = async (
               fromMs: cursor,
               toMs,
             });
-            if (coverageKeys.has(key)) {
-              return null;
-            }
-
             const normalizedSymbol = item.symbol.toUpperCase();
-            const coverageFromMs =
-              mode === 'signals'
-                ? cursor
-                : resolveDerivativesContextMissingCoverageFetchFromMs({
-                    ranges: coverageRangesBySymbol.get(normalizedSymbol),
-                    fromMs: cursor,
-                    toMs,
-                    intervalMs,
-                  });
-            if (coverageFromMs == null) {
-              return null;
-            }
-
-            const edges = edgesBySymbol.get(normalizedSymbol);
-            const edgesFromMs = resolveDerivativesContextFetchFromMs({
-              edges,
-              fromMs: cursor,
-              toMs,
-              intervalMs,
-              refreshClosedTail: mode === 'signals',
-            });
-            if (edgesFromMs == null) {
-              return null;
-            }
+            const requiredFromMs = resolveDerivativesContextRequiredFetchFromMs(
+              {
+                mode,
+                interval,
+                intervalMs,
+                fromMs: cursor,
+                toMs,
+                nowMs: coverageNowMs,
+                dataCoverageKeyExists: coverageKeys.has(key),
+                dataCoverageRanges:
+                  coverageRangesBySymbol.get(normalizedSymbol),
+                liquidationCoverageRanges:
+                  liquidationCoverageRangesBySymbol.get(normalizedSymbol),
+                edges: edgesBySymbol.get(normalizedSymbol),
+              },
+            );
+            if (requiredFromMs == null) return null;
 
             return {
               item,
-              fromMs: Math.max(coverageFromMs, edgesFromMs),
+              fromMs: requiredFromMs,
             };
           })
           .filter(
@@ -1081,6 +1197,10 @@ const backfillDerivativesContext = async (
               );
               let rows: DerivativesRow[] = [];
               let missingClosedSymbols: string[] = [];
+              let liquidationRowsByMarket = new Map<
+                string,
+                CoinalyzeSeriesPoint[]
+              >();
 
               for (
                 let attempt = 1;
@@ -1105,7 +1225,7 @@ const backfillDerivativesContext = async (
                   fromMs: group.fromMs,
                   toMs,
                 });
-                const liqMap = await fetchMetricBatch({
+                liquidationRowsByMarket = await fetchMetricBatch({
                   endpoint: liqPath,
                   metric: 'liq',
                   marketSymbols,
@@ -1121,7 +1241,7 @@ const backfillDerivativesContext = async (
                     symbol: item.symbol,
                     oiRaw: oiMap.get(marketSymbol) ?? [],
                     fundingRaw: fundingMap.get(marketSymbol) ?? [],
-                    liqRaw: liqMap.get(marketSymbol) ?? [],
+                    liqRaw: liquidationRowsByMarket.get(marketSymbol) ?? [],
                   });
                   return coinalyzePointsToRows(points, interval, 'coinalyze');
                 });
@@ -1148,6 +1268,50 @@ const backfillDerivativesContext = async (
               if (rows.length) {
                 await upsertDerivatives(rows);
                 totalRows += rows.length;
+              }
+              const confirmedLiquidationWindow =
+                resolveCoinalyzeConfirmedIntradayCoverage({
+                  interval,
+                  fromMs: group.fromMs,
+                  toMs,
+                  nowMs: coverageNowMs,
+                });
+              if (confirmedLiquidationWindow) {
+                const metricCoverageRows = missingBatch.map((item) => {
+                  const marketSymbol = item.marketSymbol.toUpperCase();
+                  const eventRowsCount = (
+                    liquidationRowsByMarket.get(marketSymbol) ?? []
+                  ).filter((point) => {
+                    const timestamp = toCoinalyzeTimestampMs(
+                      point.t ?? point.ts ?? point.time ?? point.timestamp,
+                    );
+                    return (
+                      timestamp != null &&
+                      timestamp >= confirmedLiquidationWindow.fromMs &&
+                      timestamp <= confirmedLiquidationWindow.toMs
+                    );
+                  }).length;
+                  return {
+                    source: 'coinalyze' as const,
+                    metric: 'liquidation' as const,
+                    symbol: item.symbol,
+                    interval,
+                    fromMs: confirmedLiquidationWindow.fromMs,
+                    toMs: confirmedLiquidationWindow.toMs,
+                    eventRowsCount,
+                  };
+                });
+                await applyDerivativesMetricCoverage(metricCoverageRows);
+                for (const coverageRow of metricCoverageRows) {
+                  const symbol = coverageRow.symbol.toUpperCase();
+                  const ranges =
+                    liquidationCoverageRangesBySymbol.get(symbol) ?? [];
+                  ranges.push({
+                    fromMs: coverageRow.fromMs,
+                    toMs: coverageRow.toMs,
+                  });
+                  liquidationCoverageRangesBySymbol.set(symbol, ranges);
+                }
               }
               if (mode === 'backtest') {
                 const rowsCountBySymbol = new Map<string, number>();
