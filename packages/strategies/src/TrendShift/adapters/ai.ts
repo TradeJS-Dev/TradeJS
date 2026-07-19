@@ -165,6 +165,8 @@ Additional TrendShift context:
 - derivativesDataUnavailableStressRisk=${String(context.derivativesDataUnavailableStressRisk)}
 - longBtcAltRegimeRisk=${String(context.longBtcAltRegimeRisk)}
 - longBroadMarketShortFlushRisk=${String(context.longBroadMarketShortFlushRisk)}
+- bnbReferenceOiChangePct4h=${String(context.bnbReferenceOiChangePct4h ?? 'n/a')}
+- bnbReferenceOiExpansionRisk=${String(context.bnbReferenceOiExpansionRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
@@ -204,6 +206,7 @@ Interpretation rules for TrendShift:
 - For SHORT, Asia-session long-flush setups are watch-only when CMC fear/greed and market breadth are already in capitulation.
 - If benchmark derivatives data is missing or stale while CMC fear/greed is in stress mode, keep the flip in watch mode; neutral/unknown derivatives are not confirmation in that state.
 - The defensive live gate requires rewardToVolatility >= 8 when that field is available.
+- If BNB reference 1h open interest is expanding over the last 4h, keep TrendShift flips in watch mode; this is a defensive cross-market risk cut, not target-symbol evidence.
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
 - For LONG, broad-market squeeze clusters are watch-only when breadth is already extreme, BTC is leading alts, and benchmark derivatives show a short flush.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.

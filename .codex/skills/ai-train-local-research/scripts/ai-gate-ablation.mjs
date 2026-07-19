@@ -8,6 +8,8 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTH_DAYS = 30.4375;
+const YEAR_DAYS = 365;
 const DEFAULT_WINDOWS = [180, 90, 30, 7];
 const DEFAULT_QUALITY_THRESHOLDS = [3, 4, 5];
 const VARIANT_MODES = new Set(['filter', 'exclude', 'add', 'replace']);
@@ -533,6 +535,30 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
     .map(([symbol, value]) => ({ symbol, ...value }))
     .sort((left, right) => right.count - left.count || right.pnl - left.pnl)
     .slice(0, 10);
+  const averageTrade = rows.length ? totalProfit / rows.length : null;
+  const tradeStdDev =
+    averageTrade == null
+      ? null
+      : Math.sqrt(
+          rows.reduce((sum, row) => {
+            const diff = row.profit - averageTrade;
+            return sum + diff * diff;
+          }, 0) / rows.length,
+        );
+  const downsideDeviation = rows.length
+    ? Math.sqrt(
+        rows.reduce(
+          (sum, row) =>
+            row.profit < 0 ? sum + row.profit * row.profit : sum,
+          0,
+        ) / rows.length,
+      )
+    : null;
+  const safeDenominatorDays = Math.max(denominatorDays, 1);
+  const annualizationScale = rows.length
+    ? Math.sqrt((rows.length / safeDenominatorDays) * YEAR_DAYS)
+    : null;
+  const annualizedProfit = (totalProfit / safeDenominatorDays) * YEAR_DAYS;
 
   return {
     trades: rows.length,
@@ -543,7 +569,7 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
     grossProfit,
     grossLoss,
     profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
-    averageTrade: rows.length ? totalProfit / rows.length : null,
+    averageTrade,
     averageWin: wins > 0 ? grossProfit / wins : null,
     averageLoss: losses > 0 ? grossLoss / losses : null,
     payoffRatio:
@@ -555,17 +581,31 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
       grossProfit > 0 ? maxDrawdown / grossProfit : null,
     maxDrawdownPctOfTotalProfit:
       totalProfit > 0 ? maxDrawdown / totalProfit : null,
+    sharpeRatio:
+      tradeStdDev != null &&
+      tradeStdDev > 0 &&
+      annualizationScale != null &&
+      annualizationScale > 0
+        ? (averageTrade / tradeStdDev) * annualizationScale
+        : null,
+    sortinoRatio:
+      downsideDeviation != null &&
+      downsideDeviation > 0 &&
+      annualizationScale != null &&
+      annualizationScale > 0
+        ? (averageTrade / downsideDeviation) * annualizationScale
+        : null,
+    calmarRatio: maxDrawdown > 0 ? annualizedProfit / maxDrawdown : null,
     recoveryFactor: maxDrawdown > 0 ? totalProfit / maxDrawdown : null,
     ulcerIndex: rows.length ? Math.sqrt(drawdownSquares / rows.length) : null,
     largestLoss,
     maxLossStreak,
     losingMonths: losingMonthValues.length,
     losingMonthValues,
-    cadencePerDay: rows.length / Math.max(denominatorDays, 1),
-    cadencePerWeek: (rows.length / Math.max(denominatorDays, 1)) * 7,
-    averageProfitPerDay: totalProfit / Math.max(denominatorDays, 1),
-    averageProfitPerMonth:
-      (totalProfit / Math.max(denominatorDays, 1)) * 30.4375,
+    cadencePerDay: rows.length / safeDenominatorDays,
+    cadencePerWeek: (rows.length / safeDenominatorDays) * 7,
+    averageProfitPerDay: totalProfit / safeDenominatorDays,
+    averageProfitPerMonth: (totalProfit / safeDenominatorDays) * MONTH_DAYS,
     uniqueTimestamps: timestamps.size,
     directionCounts: Object.fromEntries(directions),
     topSymbols,
@@ -1061,6 +1101,9 @@ const formatMetric = (summary) => ({
   wr: formatPct(summary.winRate),
   pnl: formatNumber(summary.totalProfit),
   pf: formatNumber(summary.profitFactor),
+  sharpe: formatNumber(summary.sharpeRatio),
+  sortino: formatNumber(summary.sortinoRatio),
+  calmar: formatNumber(summary.calmarRatio),
   dd: formatNumber(summary.maxDrawdown),
   ddGross: formatPct(summary.maxDrawdownPctOfGrossProfit),
   ddPnl: formatPct(summary.maxDrawdownPctOfTotalProfit),
@@ -1088,6 +1131,9 @@ const comparisonRow = (label, baseline, candidate) => {
     `${left.wr} -> ${right.wr}`,
     `${left.pnl} -> ${right.pnl}`,
     `${left.pf} -> ${right.pf}`,
+    `${left.sharpe} -> ${right.sharpe}`,
+    `${left.sortino} -> ${right.sortino}`,
+    `${left.calmar} -> ${right.calmar}`,
     `${left.dd} -> ${right.dd}`,
     `${left.ddGross} -> ${right.ddGross}`,
     `${left.ddPnl} -> ${right.ddPnl}`,
@@ -1105,6 +1151,9 @@ const summaryRows = (summary) => {
     value.wr,
     value.pnl,
     value.pf,
+    value.sharpe,
+    value.sortino,
+    value.calmar,
     value.dd,
     value.ddGross,
     value.ddPnl,
@@ -1180,6 +1229,9 @@ export const formatMarkdownReport = (report) => {
         'WR',
         'PNL',
         'PF',
+        'Sharpe',
+        'Sortino',
+        'Calmar',
         'MaxDD',
         'DD/Gross',
         'DD/PNL',
@@ -1212,6 +1264,9 @@ export const formatMarkdownReport = (report) => {
           'WR',
           'PNL',
           'PF',
+          'Sharpe',
+          'Sortino',
+          'Calmar',
           'MaxDD',
           'DD/Gross',
           'DD/PNL',
@@ -1238,6 +1293,9 @@ export const formatMarkdownReport = (report) => {
           'WR',
           'PNL',
           'PF',
+          'Sharpe',
+          'Sortino',
+          'Calmar',
           'MaxDD',
           'DD/Gross',
           'DD/PNL',
@@ -1265,6 +1323,9 @@ export const formatMarkdownReport = (report) => {
           'WR',
           'PNL',
           'PF',
+          'Sharpe',
+          'Sortino',
+          'Calmar',
           'MaxDD',
           'DD/Gross',
           'DD/PNL',
@@ -1291,6 +1352,9 @@ export const formatMarkdownReport = (report) => {
           'WR',
           'PNL',
           'PF',
+          'Sharpe',
+          'Sortino',
+          'Calmar',
           'MaxDD',
           'DD/Gross',
           'DD/PNL',
@@ -1317,6 +1381,9 @@ export const formatMarkdownReport = (report) => {
           'WR',
           'PNL',
           'PF',
+          'Sharpe',
+          'Sortino',
+          'Calmar',
           'MaxDD',
           'DD/Gross',
           'DD/PNL',

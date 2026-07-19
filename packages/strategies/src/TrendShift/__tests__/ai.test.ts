@@ -871,6 +871,114 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps BNB reference OI-expansion states in watch mode', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+            referenceContexts: {
+              BNBUSDT: {
+                intervals: {
+                  '1h': {
+                    oiChangePct4h: 0,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'BNB reference 1h open interest is expanding over 4h, a historically fragile cross-market state for TrendShift approvals',
+    });
+  });
+
+  it('keeps q5 approval when BNB reference OI4h is below the expansion threshold', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 9,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+            referenceContexts: {
+              BNBUSDT: {
+                intervals: {
+                  '1h': {
+                    oiChangePct4h: -0.01,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

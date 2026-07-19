@@ -1216,6 +1216,9 @@ export const main = async () => {
           chalk.gray('CALENDAR/D'),
           chalk.gray('WR'),
           chalk.gray('PF'),
+          chalk.gray('SHARPE'),
+          chalk.gray('SORTINO'),
+          chalk.gray('CALMAR'),
           chalk.gray('PNL'),
           chalk.gray('MAX_DD'),
           chalk.gray('TOP REJECT'),
@@ -1230,6 +1233,9 @@ export const main = async () => {
           colorizeMetricNumber(window.approvedPerCalendarDay),
           colorizeRatio(window.outcome.approvedRisk.winRate),
           colorizeMetricNumber(window.outcome.approvedRisk.profitFactor),
+          colorizeMetricNumber(window.outcome.approvedRisk.sharpeRatio),
+          colorizeMetricNumber(window.outcome.approvedRisk.sortinoRatio),
+          colorizeMetricNumber(window.outcome.approvedRisk.calmarRatio),
           colorizeProfit(window.outcome.approvedRisk.totalProfit),
           colorizeProfit(-window.outcome.approvedRisk.maxDrawdown),
           chalk.gray(
@@ -1282,6 +1288,18 @@ export const main = async () => {
         [
           'profit_factor',
           colorizeMetricNumber(summary.approvedRisk.profitFactor),
+        ],
+        [
+          'sharpe_ratio',
+          colorizeMetricNumber(summary.approvedRisk.sharpeRatio),
+        ],
+        [
+          'sortino_ratio',
+          colorizeMetricNumber(summary.approvedRisk.sortinoRatio),
+        ],
+        [
+          'calmar_ratio',
+          colorizeMetricNumber(summary.approvedRisk.calmarRatio),
         ],
         [
           'payoff_ratio',

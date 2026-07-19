@@ -73,6 +73,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   derivativesDataUnavailableStressRisk: boolean;
   lowRewardToVolatilityRisk: boolean;
   defensiveRewardToVolatilityRisk: boolean;
+  bnbReferenceOiExpansionRisk: boolean;
   longBtcAltRegimeRisk: boolean;
   longBroadMarketShortFlushRisk: boolean;
   cmcExchangeLiquidityVolumeChangeRisk: boolean;
@@ -97,6 +98,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   cmcFearGreedValue: number | null;
   cmcFearGreedValueChange24h: number | null;
   derivatives1hLiqShort: number | null;
+  bnbReferenceOiChangePct4h: number | null;
   btcAltRegime: string | null;
   cmcExchangeLiquidityVolumeChange24hPct: number | null;
   trendShiftGateFeatures: TrendShiftGateFeatures;
@@ -130,6 +132,7 @@ const LONG_BROAD_MARKET_SHORT_FLUSH_PCT_ABOVE_MA20_MIN = 0.95;
 const LONG_BROAD_MARKET_SHORT_FLUSH_BTC_VS_ALT_RETURN_24H_MIN = 0;
 const SHORT_ASIA_LONG_FLUSH_LOW_CMC_FEAR_GREED_MAX = 18;
 const SHORT_ASIA_LONG_FLUSH_ADVANCERS_MAX = 2;
+const BNB_REFERENCE_OI_CHANGE_PCT_4H_RISK_MIN = 0;
 const DERIVATIVES_DATA_UNAVAILABLE_STRESS_CMC_FEAR_GREED_MAX = 25;
 
 const toMtfAlignmentForTrendShift = ({
@@ -583,6 +586,10 @@ export const buildTrendShiftGuardrailContext = ({
   const derivatives1hLiqShort = asFiniteNumber(
     baseContext?.derivatives?.intervals?.['1h']?.liqShort,
   );
+  const bnbReferenceOiChangePct4h = asFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.BNBUSDT?.intervals?.['1h']
+      ?.oiChangePct4h,
+  );
   const btcAltRegime =
     typeof gateRelative?.btcAltRegime === 'string'
       ? gateRelative.btcAltRegime
@@ -906,6 +913,9 @@ export const buildTrendShiftGuardrailContext = ({
     rewardToVolatility != null &&
     rewardToVolatility >= 0.25 &&
     rewardToVolatility < 8;
+  const bnbReferenceOiExpansionRisk =
+    bnbReferenceOiChangePct4h != null &&
+    bnbReferenceOiChangePct4h >= BNB_REFERENCE_OI_CHANGE_PCT_4H_RISK_MIN;
   const longBtcAltRegimeRisk =
     signalContext.signalDirection === 'LONG' &&
     btcAltRegimeStale !== true &&
@@ -987,6 +997,11 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 4 && defensiveRewardToVolatilityRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('reward_to_volatility_below_defensive_threshold');
+  }
+
+  if (deterministicQuality >= 5 && bnbReferenceOiExpansionRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('bnb_reference_1h_oi4h_expansion_risk');
   }
 
   if (deterministicQuality >= 4 && longBtcAltRegimeRisk) {
@@ -1117,6 +1132,7 @@ export const buildTrendShiftGuardrailContext = ({
     derivativesDataUnavailableStressRisk,
     lowRewardToVolatilityRisk,
     defensiveRewardToVolatilityRisk,
+    bnbReferenceOiExpansionRisk,
     longBtcAltRegimeRisk,
     longBroadMarketShortFlushRisk,
     cmcExchangeLiquidityVolumeChangeRisk,
@@ -1141,6 +1157,7 @@ export const buildTrendShiftGuardrailContext = ({
     cmcFearGreedValue,
     cmcFearGreedValueChange24h,
     derivatives1hLiqShort,
+    bnbReferenceOiChangePct4h,
     btcAltRegime,
     cmcExchangeLiquidityVolumeChange24hPct,
     trendShiftGateFeatures,
@@ -1215,6 +1232,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     case 'reward_to_volatility_below_defensive_threshold':
       return 'the expected reward is not large enough relative to current volatility for the defensive TrendShift gate after costs';
+    case 'bnb_reference_1h_oi4h_expansion_risk':
+      return 'BNB reference 1h open interest is expanding over 4h, a historically fragile cross-market state for TrendShift approvals';
     case 'long_btc_alt_regime_risk':
       return 'the LONG flip is fighting a BTC-led or risk-off alt regime, so keep it in watch mode';
     case 'long_broad_market_short_flush_risk':

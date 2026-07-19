@@ -408,6 +408,9 @@ Minimum checks:
 - compare q4+ and q5+ separately
 - report winrate as a percentage
 - report max drawdown both as an absolute value and as percentages of gross profit and total profit
+- report Sharpe, Sortino, and Calmar for the approved stream when available,
+  and include a one-sentence conclusion: whether the candidate improved
+  risk-adjusted quality, merely reduced trades, or worsened tail risk
 - always report max consecutive losses / max loss streak for the approved stream
 - always report losing approved months count for the approved stream; when non-zero, include the month ids and monthly approved PnL
 - split by direction
@@ -420,6 +423,17 @@ Minimum checks:
   derivatives lookback, interval selection, target/reference mode, or CMC window
   availability, validate it under the intended live env before recommending code
   changes
+
+Risk-adjusted metric convention:
+
+- `sharpe_ratio` and `sortino_ratio` in TradeJS AI-gate research are computed
+  from approved trade PnL, annualized by approved-trade cadence over the
+  evaluated period. Treat them as PnL-stream quality metrics, not capital-return
+  ratios.
+- `calmar_ratio` is annualized approved PnL divided by approved max drawdown.
+- When comparing gates, prefer candidates where Sharpe/Sortino/Calmar improve
+  together with PF/maxDD. If only Sharpe improves because many trades were
+  removed while 30d/7d tail risk remains, state that explicitly.
 
 ## Notes format
 
@@ -441,6 +455,9 @@ Keep the structure similar:
 5. `q4+` approved cadence/profit metrics:
    - `winrate`
    - `profit_factor`
+   - `sharpe_ratio`
+   - `sortino_ratio`
+   - `calmar_ratio`
    - `max_drawdown`
    - `max_drawdown_pct_of_gross_profit`
    - `max_drawdown_pct_of_total_profit`
@@ -478,6 +495,35 @@ Keep the structure similar:
     - passive rollout or immediate enforcement decision
     - old gate cleanup required
     - remaining blockers before production
+
+Use this stable short notes block for every AI-gate change, so future entries
+remain comparable:
+
+```md
+### YYYY-MM-DD - <Strategy> <short change name>
+
+Export: `<merge_id>` (`<part_count>` parts), rows `<rows>`, window `<min_ts>` .. `<max_ts>`, lag `<data_lag_days>d`.
+Lineage: git `<sha>`, gate `<gate_fingerprint>`, config `<config_ids_fingerprint>`, context `<context_fingerprint>`, `MIN_AI_QUALITY=<n>`, `AI_MODE=<mode>`.
+Change: <one sentence describing the gate/research change and exact causal field paths>.
+
+| Period | Gate | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | before |  |  |  |  |  |  |  |  |  |  |
+| full | after |  |  |  |  |  |  |  |  |  |  |
+| 180d | before |  |  |  |  |  |  |  |  |  |  |
+| 180d | after |  |  |  |  |  |  |  |  |  |  |
+| 90d | before |  |  |  |  |  |  |  |  |  |  |
+| 90d | after |  |  |  |  |  |  |  |  |  |  |
+| 30d | before |  |  |  |  |  |  |  |  |  |  |
+| 30d | after |  |  |  |  |  |  |  |  |  |  |
+| 7d | before |  |  |  |  |  |  |  |  |  |  |
+| 7d | after |  |  |  |  |  |  |  |  |  |  |
+
+Risk-adjusted read: <one sentence on Sharpe/Sortino/Calmar vs PF/maxDD and tail windows>.
+Decision: <implement / research-only / rollback / observe>, because <short evidence>.
+Residual risk: <tail window, support/cadence, env-sensitive fields, or validation gap>.
+Next check: <specific next export/replay/check>.
+```
 
 ## Current repo conventions
 

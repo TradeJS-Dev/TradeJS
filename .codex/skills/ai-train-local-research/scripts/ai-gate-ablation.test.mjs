@@ -130,6 +130,9 @@ test('calculates required profit, drawdown, strict-loss, and cadence metrics', (
   assert.equal(summary.totalProfit, 4);
   assert.equal(summary.winRate, 0.5);
   assert.equal(summary.profitFactor, 15 / 11);
+  assert.equal(typeof summary.sharpeRatio, 'number');
+  assert.equal(typeof summary.sortinoRatio, 'number');
+  assert.equal(summary.calmarRatio, (4 / 31) * 365 / 11);
   assert.equal(summary.maxDrawdown, 11);
   assert.equal(summary.largestLoss, -7);
   assert.equal(summary.maxLossStreak, 2);

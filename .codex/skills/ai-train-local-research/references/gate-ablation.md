@@ -108,12 +108,13 @@ Every report contains:
 - time-ordered train/trailing-validation split;
 - direction and monthly stability;
 - matched, removed, and added slices;
-- PnL, winrate, PF, max drawdown, DD ratios, strict loss, max loss streak,
-  losing months, cadence, and symbol concentration.
+- PnL, winrate, PF, Sharpe, Sortino, Calmar, max drawdown, DD ratios, strict
+  loss, max loss streak, losing months, cadence, and symbol concentration.
 
 The JSON report also carries average trade, payoff ratio, recovery factor,
-ulcer index, profit per day/month, and cadence per week. Use `--json` or an
-`.json` output path when downstream analysis needs those fields.
+ulcer index, profit per day/month, cadence per week, and risk-adjusted ratios.
+Use `--json` or an `.json` output path when downstream analysis needs those
+fields.
 
 ## Maintenance Rule
 

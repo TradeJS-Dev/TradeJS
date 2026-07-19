@@ -31,6 +31,9 @@ export type AiTrainRiskSummary = {
   maxDrawdown: number;
   maxDrawdownPctOfGrossProfit: number | null;
   maxDrawdownPctOfTotalProfit: number | null;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  calmarRatio: number | null;
   recoveryFactor: number | null;
   ulcerIndex: number | null;
   maxConsecutiveWins: number;
@@ -88,6 +91,7 @@ const divideOrNull = (num: number, denom: number) => {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAYS_PER_WEEK = 7;
 const DAYS_PER_MONTH = 30.4375;
+const DAYS_PER_YEAR = 365;
 
 const getEvaluationPeriodDays = (evaluations: AiTrainEvaluation[]) => {
   let minTimestamp: number | null = null;
@@ -121,6 +125,61 @@ const getEvaluationPeriodDays = (evaluations: AiTrainEvaluation[]) => {
 const qualitySortKey = (quality: number | null) =>
   quality == null ? Number.POSITIVE_INFINITY : quality;
 
+const calculateTradePnlRiskRatios = ({
+  profits,
+  totalProfit,
+  maxDrawdown,
+  periodDays,
+}: {
+  profits: number[];
+  totalProfit: number;
+  maxDrawdown: number;
+  periodDays: number | null;
+}): Pick<
+  AiTrainRiskSummary,
+  'sharpeRatio' | 'sortinoRatio' | 'calmarRatio'
+> => {
+  if (!profits.length || periodDays == null || periodDays <= 0) {
+    return {
+      sharpeRatio: null,
+      sortinoRatio: null,
+      calmarRatio: null,
+    };
+  }
+
+  const meanProfit = totalProfit / profits.length;
+  const variance =
+    profits.reduce((sum, profit) => {
+      const diff = profit - meanProfit;
+      return sum + diff * diff;
+    }, 0) / profits.length;
+  const stdDev = Math.sqrt(variance);
+  const downsideDeviation = Math.sqrt(
+    profits.reduce(
+      (sum, profit) => (profit < 0 ? sum + profit * profit : sum),
+      0,
+    ) / profits.length,
+  );
+  const annualizationScale = Math.sqrt(
+    (profits.length / periodDays) * DAYS_PER_YEAR,
+  );
+
+  return {
+    sharpeRatio:
+      stdDev > 0 && annualizationScale > 0
+        ? (meanProfit / stdDev) * annualizationScale
+        : null,
+    sortinoRatio:
+      downsideDeviation > 0 && annualizationScale > 0
+        ? (meanProfit / downsideDeviation) * annualizationScale
+        : null,
+    calmarRatio:
+      maxDrawdown > 0
+        ? ((totalProfit / periodDays) * DAYS_PER_YEAR) / maxDrawdown
+        : null,
+  };
+};
+
 const emptyRiskSummary = (): AiTrainRiskSummary => ({
   trades: 0,
   totalProfit: 0,
@@ -136,6 +195,9 @@ const emptyRiskSummary = (): AiTrainRiskSummary => ({
   maxDrawdown: 0,
   maxDrawdownPctOfGrossProfit: null,
   maxDrawdownPctOfTotalProfit: null,
+  sharpeRatio: null,
+  sortinoRatio: null,
+  calmarRatio: null,
   recoveryFactor: null,
   ulcerIndex: null,
   maxConsecutiveWins: 0,
@@ -144,6 +206,7 @@ const emptyRiskSummary = (): AiTrainRiskSummary => ({
 
 const summarizeApprovedRisk = (
   evaluations: AiTrainEvaluation[],
+  periodDays = getEvaluationPeriodDays(evaluations),
 ): AiTrainRiskSummary => {
   const approvedEvaluations = evaluations
     .filter((evaluation) => evaluation.aiApproved)
@@ -177,9 +240,11 @@ const summarizeApprovedRisk = (
   let currentLossStreak = 0;
   let maxConsecutiveWins = 0;
   let maxConsecutiveLosses = 0;
+  const approvedProfits: number[] = [];
 
   for (const evaluation of approvedEvaluations) {
     const profit = evaluation.profit;
+    approvedProfits.push(profit);
 
     if (profit > 0) {
       grossProfit += profit;
@@ -212,6 +277,12 @@ const summarizeApprovedRisk = (
   const totalProfit = grossProfit - grossLoss;
   const avgWin = divideOrNull(grossProfit, wins);
   const avgLoss = divideOrNull(grossLoss, losses);
+  const riskRatios = calculateTradePnlRiskRatios({
+    profits: approvedProfits,
+    totalProfit,
+    maxDrawdown,
+    periodDays,
+  });
 
   return {
     trades: approvedEvaluations.length,
@@ -233,6 +304,7 @@ const summarizeApprovedRisk = (
       grossProfit > 0 ? maxDrawdown / grossProfit : null,
     maxDrawdownPctOfTotalProfit:
       totalProfit > 0 ? maxDrawdown / totalProfit : null,
+    ...riskRatios,
     recoveryFactor: maxDrawdown > 0 ? totalProfit / maxDrawdown : null,
     ulcerIndex: Math.sqrt(drawdownSquares / approvedEvaluations.length),
     maxConsecutiveWins,
@@ -355,7 +427,7 @@ export const summarizeAiTrainEvaluations = (
     avgApprovedTradesPerDay,
     avgApprovedTradesPerWeek,
     expectancyDelta,
-    approvedRisk: summarizeApprovedRisk(evaluations),
+    approvedRisk: summarizeApprovedRisk(evaluations, periodDays),
     qualityBuckets: [...bucketMap.values()].sort(
       (a, b) => qualitySortKey(a.quality) - qualitySortKey(b.quality),
     ),

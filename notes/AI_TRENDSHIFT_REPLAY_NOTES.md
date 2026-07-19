@@ -1,6 +1,39 @@
 # AI TrendShift Replay Notes
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
+
+### 2026-07-19 - TrendShift BNB 1h OI4h Risk Block
+
+Export: `1784479077281` (`7` parts), rows `2504`, window `2025-07-22T04:30:00.000Z` .. `2026-07-18T06:00:00.000Z`, lag `1.53d`.
+Lineage: git `4718ee59a1d457912e3fb7267dae8f595bf7a8cd`, gate `516d10da72adbb08` after / `e2d6b73417827a69` before, config `33cceb0134b5566b`, context `4186a11d2ef809af`, command `MIN_AI_QUALITY=4`, effective approvals q5-only, `AI_MODE=local-deterministic`.
+Change: added a defensive watch-mode block when causal BNB reference derivatives show `baseContext.derivatives.referenceContexts.BNBUSDT.intervals["1h"].oiChangePct4h >= 0`; missing BNB data does not block.
+
+| Period | Gate | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | before | 306 | 78.1% | 7.71 | 15.51 | 45.09 | 34.44 | 2199.09 | 64.54 | 10 | 0.847 |
+| full | after | 251 | 82.9% | 12.18 | 16.68 | 56.77 | 64.21 | 1961.93 | 30.89 | 4 | 0.695 |
+| 180d | before | 162 | 76.5% | 6.46 | 14.27 | 38.16 | 33.22 | 1056.33 | 64.54 | 10 | 0.900 |
+| 180d | after | 147 | 82.3% | 11.62 | 17.48 | 56.83 | 73.95 | 1125.34 | 30.89 | 4 | 0.817 |
+| 90d | before | 99 | 85.9% | 11.19 | 23.31 | 66.37 | 56.90 | 900.73 | 64.54 | 10 | 1.100 |
+| 90d | after | 87 | 96.6% | 83.05 | 37.64 | 185.24 | 376.04 | 973.94 | 10.56 | 1 | 0.967 |
+| 30d | before | 14 | 21.4% | 0.43 | -4.98 | -6.08 | -8.10 | -42.91 | 64.54 | 10 | 0.467 |
+| 30d | after | 3 | 66.7% | 2.74 | 3.14 | 6.06 | 21.17 | 18.34 | 10.56 | 1 | 0.100 |
+| 7d | before | 10 | 10.0% | 0.06 | -31.60 | -18.75 | -49.47 | -56.05 | 59.34 | 9 | 1.429 |
+| 7d | after | 0 | n/a | n/a | n/a | n/a | n/a | 0.00 | 0.00 | 0 | 0.000 |
+
+Risk-adjusted read: Sharpe/Sortino/Calmar improved together with PF and maxDD on full/180d/90d/30d, and the 7d loss cluster was removed rather than made smaller.
+Decision: implement, because it fixes the bad 30d/7d tail and halves full maxDD (`64.54 -> 30.89`) with q5-only approvals still trading at `0.695/day`.
+Residual risk: total full-history PnL drops (`2199.09 -> 1961.93`) and the last `7d` has zero approvals, so the next export must validate that this is a risk block and not a persistent cadence stall.
+Next check: rerun `ai-train --localOnly --terminalWindows=180,90,30,7` on the next TrendShift export and inspect direction split, especially SHORT where PF changed `6.45 -> 6.15`.
+
+Verification commands:
+
+```bash
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1784479077281-part1.jsonl --localOnly --json -n 0 --terminalWindows=180,90,30,7
+yarn jest packages/strategies/src/TrendShift/__tests__/ai.test.ts packages/cli/src/__tests__/aiTrainMetrics.test.ts --runInBand
+node --test .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.test.mjs
+yarn workspace @tradejs/strategies build && yarn workspace @tradejs/node build && yarn workspace @tradejs/cli build
+```
 
 ## Derivatives Data-Quality Repair (`2026-07-18`, export `1784399805532`)
 
