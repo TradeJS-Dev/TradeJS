@@ -30,6 +30,13 @@ const RESEARCH_CONTEXT_ENV_KEYS = [
   'COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS',
 ] as const;
 
+const DERIVATIVES_CONTEXT_DATA_MODEL = {
+  derivativesSourceIntervals: '15m',
+  derivativesDerivedIntervals: '1h',
+  derivativesHourlyFallback: 'stored-1h',
+  derivativesDataModelVersion: 2,
+} as const;
+
 type ResearchEvaluation = AiTrainEvaluation & {
   rejectReason?: string | null;
 };
@@ -290,6 +297,7 @@ export const buildAiTrainLineage = async ({
       RESEARCH_CONTEXT_ENV_KEYS.map((key) => [key, env[key] ?? null]),
     ),
     ...runContext,
+    ...DERIVATIVES_CONTEXT_DATA_MODEL,
   };
 
   return {

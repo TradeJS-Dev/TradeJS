@@ -127,6 +127,7 @@ describe('aiTrainResearch', () => {
       runContext: { mode: 'local-deterministic', minQuality: 4 },
       env: {
         AI_MODE: 'gate',
+        DERIVATIVES_CONTEXT_INTERVALS: '15m,1h',
         DERIVATIVES_CONTEXT_TARGET_ENABLED: 'false',
         OPENROUTER_API_KEY: 'must-not-leak',
       },
@@ -137,10 +138,15 @@ describe('aiTrainResearch', () => {
       expect.objectContaining({
         AI_MODE: 'gate',
         DERIVATIVES_CONTEXT_TARGET_ENABLED: 'false',
+        derivativesSourceIntervals: '15m',
+        derivativesDerivedIntervals: '1h',
+        derivativesHourlyFallback: 'stored-1h',
+        derivativesDataModelVersion: 2,
         mode: 'local-deterministic',
         minQuality: 4,
       }),
     );
+    expect(lineage.context).not.toHaveProperty('DERIVATIVES_CONTEXT_INTERVALS');
     expect(lineage.context).not.toHaveProperty('OPENROUTER_API_KEY');
     expect(lineage.gateFingerprint).toMatch(/^[a-f0-9]{16}$/);
     expect(lineage.contextFingerprint).toMatch(/^[a-f0-9]{16}$/);
