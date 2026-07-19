@@ -94,7 +94,7 @@ describe('strategyHelpers/derivativesContext', () => {
     },
   } as any;
 
-  it('loads only 15m derivatives source rows with a 48h lookback', async () => {
+  it('loads 15m rows plus stored 1h fallback with a 48h lookback', async () => {
     expect(isDerivativesContextEnabled('BACKTEST')).toBe(true);
 
     const enrichedSignal = { ...signal };
@@ -107,13 +107,13 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
-      intervals: ['15m'],
+      intervals: ['15m', '1h'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(2, {
       symbol: 'ETHUSDT',
-      intervals: ['15m'],
+      intervals: ['15m', '1h'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
@@ -174,13 +174,13 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
       symbol: 'BTCUSDT',
-      intervals: ['15m'],
+      intervals: ['15m', '1h'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
     expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(2, {
       symbol: 'ETHUSDT',
-      intervals: ['15m'],
+      intervals: ['15m', '1h'],
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
@@ -259,12 +259,171 @@ describe('strategyHelpers/derivativesContext', () => {
       ],
     ).toEqual(
       expect.objectContaining({
-        asOfTs: hourStart,
+        asOfTs: hourStart + 45 * 60 * 1000,
         openInterest: 103,
         fundingRate: 0.0004,
         liqLong: 46,
         liqShort: 86,
         liqTotal: 132,
+      }),
+    );
+  });
+
+  it('uses legacy 1h with its old timestamp semantics when rolling 15m is unavailable', async () => {
+    const previousHourStart = Date.UTC(2026, 0, 1, 11, 0, 0);
+    const currentHourStart = Date.UTC(2026, 0, 1, 12, 0, 0);
+    mockGetDerivativesWindow.mockImplementation(({ symbol }: any) => ({
+      '1h': [
+        {
+          symbol,
+          interval: '1h',
+          ts: new Date(previousHourStart),
+          openInterest: 100,
+          fundingRate: 0.0001,
+          liqLong: 10,
+          liqShort: 20,
+          liqTotal: 30,
+          source: 'coinalyze',
+        },
+        {
+          symbol,
+          interval: '1h',
+          ts: new Date(currentHourStart),
+          openInterest: 200,
+          fundingRate: 0.0002,
+          liqLong: 40,
+          liqShort: 50,
+          liqTotal: 90,
+          source: 'coinalyze',
+        },
+      ],
+    }));
+    const enrichedSignal = {
+      ...signal,
+      timestamp: Date.UTC(2026, 0, 1, 12, 30, 0),
+    };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: enrichedSignal,
+        env: 'BACKTEST',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      enrichedSignal.additionalIndicators.baseContext.derivatives.intervals[
+        '1h'
+      ],
+    ).toEqual(
+      expect.objectContaining({
+        asOfTs: currentHourStart,
+        openInterest: 200,
+      }),
+    );
+  });
+
+  it('uses the rolling trailing hour available at a :30 decision', async () => {
+    const end = Date.UTC(2026, 0, 1, 12, 30, 0);
+    mockGetDerivativesWindow.mockImplementation(({ symbol }: any) => ({
+      '15m': [-3, -2, -1, 0].map((offset) => ({
+        symbol,
+        interval: '15m',
+        ts: new Date(end + offset * 15 * 60 * 1000),
+        openInterest: 200 + offset,
+        fundingRate: 0.0002,
+        liqLong: 10 + offset,
+        liqShort: 20 + offset,
+        liqTotal: 30 + 2 * offset,
+      })),
+      '1h': [
+        {
+          symbol,
+          interval: '1h',
+          ts: new Date(Date.UTC(2026, 0, 1, 12, 0, 0)),
+          openInterest: 999,
+          fundingRate: 9,
+          liqLong: 999,
+          liqShort: 999,
+          liqTotal: 1998,
+        },
+      ],
+    }));
+    const enrichedSignal = {
+      ...signal,
+      timestamp: end,
+    };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: enrichedSignal,
+        env: 'BACKTEST',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      enrichedSignal.additionalIndicators.baseContext.derivatives.intervals[
+        '1h'
+      ],
+    ).toEqual(
+      expect.objectContaining({
+        asOfTs: end,
+        openInterest: 200,
+        liqLong: 34,
+        liqShort: 74,
+        liqTotal: 108,
+      }),
+    );
+  });
+
+  it('reads derivatives through the last closed 15m bar for a 1h signal', async () => {
+    const hourStart = Date.UTC(2026, 0, 1, 12, 0, 0);
+    mockGetDerivativesWindow.mockImplementation(({ symbol }: any) => ({
+      '15m': [0, 1, 2, 3].map((offset) => ({
+        symbol,
+        interval: '15m',
+        ts: new Date(hourStart + offset * 15 * 60 * 1000),
+        openInterest: 100 + offset,
+        fundingRate: 0.0001,
+        liqLong: 10,
+        liqShort: 20,
+        liqTotal: 30,
+      })),
+    }));
+    const hourlySignal = {
+      ...signal,
+      interval: '60',
+      timestamp: hourStart,
+    };
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: hourlySignal,
+        env: 'BACKTEST',
+      }),
+    ).resolves.toBe(true);
+
+    expect(mockGetDerivativesWindow).toHaveBeenNthCalledWith(1, {
+      symbol: 'BTCUSDT',
+      intervals: ['15m', '1h'],
+      endMs: hourStart + 45 * 60 * 1000,
+      lookbackMs: 48 * 60 * 60 * 1000,
+    });
+    expect(
+      hourlySignal.additionalIndicators.baseContext.derivatives.intervals[
+        '15m'
+      ],
+    ).toEqual(
+      expect.objectContaining({
+        asOfTs: hourStart + 45 * 60 * 1000,
+        openInterest: 103,
+      }),
+    );
+    expect(
+      hourlySignal.additionalIndicators.baseContext.derivatives.intervals['1h'],
+    ).toEqual(
+      expect.objectContaining({
+        asOfTs: hourStart + 45 * 60 * 1000,
+        openInterest: 103,
       }),
     );
   });

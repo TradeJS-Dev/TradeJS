@@ -1,6 +1,8 @@
 import {
+  buildCoinalyzeHourlyRowsWithFallback,
   coinalyzePointsToRows,
   deriveCoinalyzeHourlyRowsFrom15m,
+  deriveCoinalyzeRollingHourlyRowsFrom15m,
   getLastClosedDerivativesBarStartMs,
   mergeCoinalyzeMetrics,
   normalizeCoinalyzeSymbols,
@@ -144,5 +146,115 @@ describe('derivativesCoinalyze utils', () => {
     }));
 
     expect(deriveCoinalyzeHourlyRowsFrom15m(rows)).toEqual([]);
+  });
+
+  test('deriveCoinalyzeRollingHourlyRowsFrom15m builds a trailing hour at every 15m point', () => {
+    const hourStart = Date.parse('2026-07-15T12:00:00.000Z');
+    const rows: DerivativesRow[] = [-3, -2, -1, 0, 1, 2, 3].map((offset) => ({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      ts: new Date(hourStart + offset * 15 * 60 * 1000),
+      openInterest: 100 + offset,
+      fundingRate: 0.0001 * (offset + 4),
+      liqLong: 10 + offset,
+      liqShort: 20 + offset,
+      liqTotal: 30 + 2 * offset,
+      source: 'coinalyze',
+    }));
+
+    expect(deriveCoinalyzeRollingHourlyRowsFrom15m(rows)).toEqual(
+      [0, 1, 2, 3].map((offset) => ({
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        ts: new Date(hourStart + offset * 15 * 60 * 1000),
+        openInterest: 100 + offset,
+        fundingRate: 0.0001 * (offset + 4),
+        liqLong: 34 + 4 * offset,
+        liqShort: 74 + 4 * offset,
+        liqTotal: 108 + 8 * offset,
+        source: 'coinalyze:rolling_15m',
+      })),
+    );
+  });
+
+  test('buildCoinalyzeHourlyRowsWithFallback keeps legacy 1h when no rolling 15m window exists', () => {
+    const hourStart = Date.parse('2026-07-15T12:00:00.000Z');
+    const fallback: DerivativesRow = {
+      symbol: 'BTCUSDT',
+      interval: '1h',
+      ts: new Date(hourStart),
+      openInterest: 200,
+      source: 'coinalyze',
+    };
+
+    expect(
+      buildCoinalyzeHourlyRowsWithFallback({
+        rows15m: [],
+        fallbackRows1h: [fallback],
+      }),
+    ).toEqual([
+      {
+        ...fallback,
+        source: 'coinalyze:legacy_1h_fallback',
+      },
+    ]);
+  });
+
+  test('buildCoinalyzeHourlyRowsWithFallback prefers rolling 15m without mixing legacy metrics', () => {
+    const hourStart = Date.parse('2026-07-15T12:00:00.000Z');
+    const rows15m: DerivativesRow[] = [0, 1, 2, 3].map((offset) => ({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      ts: new Date(hourStart + offset * 15 * 60 * 1000),
+      openInterest: offset === 3 ? null : 100 + offset,
+      fundingRate: 0.0001 * (offset + 1),
+      liqLong: 10 + offset,
+      liqShort: 20 + offset,
+      liqTotal: 30 + 2 * offset,
+      source: 'coinalyze',
+    }));
+    const fallbackRows: DerivativesRow[] = [
+      {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        ts: new Date(hourStart - 60 * 60 * 1000),
+        openInterest: 500,
+        source: 'coinalyze',
+      },
+      {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        ts: new Date(hourStart),
+        openInterest: 999,
+        fundingRate: 9,
+        liqLong: 999,
+        liqShort: 999,
+        liqTotal: 1998,
+        source: 'coinalyze',
+      },
+    ];
+
+    expect(
+      buildCoinalyzeHourlyRowsWithFallback({
+        rows15m,
+        fallbackRows1h: fallbackRows,
+      }),
+    ).toEqual([
+      {
+        ...fallbackRows[0],
+        source: 'coinalyze:legacy_1h_fallback',
+      },
+      {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        ts: new Date(hourStart + 45 * 60 * 1000),
+        openInterest: null,
+        fundingRate: 0.0004,
+        liqLong: 46,
+        liqShort: 86,
+        liqTotal: 132,
+        source: 'coinalyze:rolling_15m',
+      },
+    ]);
   });
 });

@@ -196,3 +196,77 @@ export const deriveCoinalyzeHourlyRowsFrom15m = (
 
   return hourlyRows;
 };
+
+export const deriveCoinalyzeRollingHourlyRowsFrom15m = (
+  rows: DerivativesRow[] | undefined,
+): DerivativesRow[] => {
+  const quarterHourMs = DERIVATIVES_INTERVAL_MS['15m'];
+  const rowsByTimestamp = new Map<number, DerivativesRow>();
+
+  for (const row of rows ?? []) {
+    const timestamp = row.ts.getTime();
+    if (
+      row.interval !== '15m' ||
+      !Number.isFinite(timestamp) ||
+      timestamp % quarterHourMs !== 0
+    ) {
+      continue;
+    }
+    rowsByTimestamp.set(timestamp, row);
+  }
+
+  const rollingRows: DerivativesRow[] = [];
+  for (const timestamp of [...rowsByTimestamp.keys()].sort(
+    (left, right) => left - right,
+  )) {
+    const expectedRows = [3, 2, 1, 0].map((offset) =>
+      rowsByTimestamp.get(timestamp - offset * quarterHourMs),
+    );
+    if (expectedRows.some((row) => row == null)) continue;
+
+    const completeRows = expectedRows as DerivativesRow[];
+    const latest = completeRows[completeRows.length - 1];
+    rollingRows.push({
+      symbol: latest.symbol,
+      interval: '1h',
+      ts: new Date(timestamp),
+      openInterest: latest.openInterest ?? null,
+      fundingRate: latest.fundingRate ?? null,
+      liqLong: sumAvailable(completeRows.map((row) => row.liqLong)),
+      liqShort: sumAvailable(completeRows.map((row) => row.liqShort)),
+      liqTotal: sumAvailable(completeRows.map(getLiquidationTotal)),
+      source: `${latest.source ?? 'coinalyze'}:rolling_15m`,
+    });
+  }
+
+  return rollingRows;
+};
+
+export const buildCoinalyzeHourlyRowsWithFallback = (params: {
+  rows15m: DerivativesRow[] | undefined;
+  fallbackRows1h: DerivativesRow[] | undefined;
+}): DerivativesRow[] => {
+  const hourMs = DERIVATIVES_INTERVAL_MS['1h'];
+  const rollingRows = deriveCoinalyzeRollingHourlyRowsFrom15m(params.rows15m);
+  const rollingHours = new Set(
+    rollingRows.map((row) => Math.floor(row.ts.getTime() / hourMs) * hourMs),
+  );
+  const fallbackRows = (params.fallbackRows1h ?? [])
+    .filter((row) => {
+      const timestamp = row.ts.getTime();
+      return (
+        row.interval === '1h' &&
+        Number.isFinite(timestamp) &&
+        timestamp % hourMs === 0 &&
+        !rollingHours.has(timestamp)
+      );
+    })
+    .map((row) => ({
+      ...row,
+      source: `${row.source ?? 'coinalyze'}:legacy_1h_fallback`,
+    }));
+
+  return [...fallbackRows, ...rollingRows].sort(
+    (left, right) => left.ts.getTime() - right.ts.getTime(),
+  );
+};

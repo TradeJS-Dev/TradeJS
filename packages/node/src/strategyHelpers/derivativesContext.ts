@@ -1,7 +1,9 @@
 import {
   buildDerivativesContext,
-  deriveCoinalyzeHourlyRowsFrom15m,
+  buildCoinalyzeHourlyRowsWithFallback,
+  getLastClosedDerivativesBarStartMs,
 } from '@tradejs/core/indicators';
+import { intervalToMs } from '@tradejs/core/data';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import {
   DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS,
@@ -19,7 +21,7 @@ import type {
   Signal,
 } from '@tradejs/types';
 
-const SOURCE_INTERVALS: DerivativesInterval[] = ['15m'];
+const STORED_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 const CONTEXT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 const DEFAULT_LOOKBACK_HOURS = 48;
 const PRIMARY_DERIVATIVES_REFERENCE_SYMBOL =
@@ -57,11 +59,14 @@ const parseLookbackMs = () => {
   return normalizedHours * 60 * 60 * 1000;
 };
 
-const withDerivedHourlyRows = (
+const withHourlyFallbackRows = (
   rowsByInterval: Partial<Record<DerivativesInterval, DerivativesRow[]>>,
 ): Partial<Record<DerivativesInterval, DerivativesRow[]>> => ({
   '15m': rowsByInterval['15m'] ?? [],
-  '1h': deriveCoinalyzeHourlyRowsFrom15m(rowsByInterval['15m']),
+  '1h': buildCoinalyzeHourlyRowsWithFallback({
+    rows15m: rowsByInterval['15m'],
+    fallbackRows1h: rowsByInterval['1h'],
+  }),
 });
 
 export const getDerivativesContextReferenceSymbols = () => [
@@ -280,12 +285,17 @@ export const enrichSignalWithDerivativesContext = async (params: {
     const referenceSymbols = getDerivativesContextReferenceSymbols();
     const targetSymbol = normalizeSymbol(signal.symbol);
     const lookbackMs = parseLookbackMs();
+    const decisionTimeMs = signal.timestamp + intervalToMs(signal.interval);
+    const derivativesEndMs = getLastClosedDerivativesBarStartMs(
+      decisionTimeMs,
+      '15m',
+    );
     const contexts = await Promise.all(
       referenceSymbols.map(async (symbol) => {
         const rowsByInterval = await getDerivativesWindow({
           symbol,
-          intervals: SOURCE_INTERVALS,
-          endMs: signal.timestamp,
+          intervals: STORED_INTERVALS,
+          endMs: derivativesEndMs,
           lookbackMs,
         });
 
@@ -294,8 +304,8 @@ export const enrichSignalWithDerivativesContext = async (params: {
           buildDerivativesContext({
             symbol,
             direction: signal.direction,
-            timestamp: signal.timestamp,
-            rowsByInterval: withDerivedHourlyRows(rowsByInterval),
+            timestamp: derivativesEndMs,
+            rowsByInterval: withHourlyFallbackRows(rowsByInterval),
             priceChangePct1h: getSignalPriceChangePct1h(signal),
             intervals: CONTEXT_INTERVALS,
           }),
@@ -323,15 +333,15 @@ export const enrichSignalWithDerivativesContext = async (params: {
       ? await (async () => {
           const rowsByInterval = await getDerivativesWindow({
             symbol: targetSymbol,
-            intervals: SOURCE_INTERVALS,
-            endMs: signal.timestamp,
+            intervals: STORED_INTERVALS,
+            endMs: derivativesEndMs,
             lookbackMs,
           });
           const context = buildDerivativesContext({
             symbol: targetSymbol,
             direction: signal.direction,
-            timestamp: signal.timestamp,
-            rowsByInterval: withDerivedHourlyRows(rowsByInterval),
+            timestamp: derivativesEndMs,
+            rowsByInterval: withHourlyFallbackRows(rowsByInterval),
             priceChangePct1h: getSignalPriceChangePct1h(signal),
             intervals: CONTEXT_INTERVALS,
           });
