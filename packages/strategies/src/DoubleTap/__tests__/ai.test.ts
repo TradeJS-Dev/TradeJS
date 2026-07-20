@@ -286,8 +286,145 @@ describe('doubleTapAiAdapter', () => {
       defaultApprovalAllowed: true,
       q4DerivativesPocket: true,
       q4DerivativesCmcRiskOk: true,
+      q4DerivativesDirectionSessionOk: true,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
+    });
+  });
+
+  it('approves long q4 derivatives reference pockets during the Europe session', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.5,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+              },
+              momentum: {
+                roc1d: -8,
+              },
+            },
+            relative: {
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: 0,
+              },
+              btcAltRegime: {
+                btcVsAltReturn24h: -0.009,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: 0.2,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(4);
+    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.q4DerivativesDirectionSessionOk).toBe(true);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'q4_derivatives',
+      defaultApprovalAllowed: true,
+      q4DerivativesPocket: true,
+      q4DerivativesCmcRiskOk: true,
+      q4DerivativesDirectionSessionOk: true,
+      strictMomentumApproved: false,
+      strictMomentumRoc1dOk: false,
+    });
+  });
+
+  it('blocks long q4 derivatives reference pockets outside the Europe session', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.5,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              momentum: {
+                roc1d: -8,
+              },
+            },
+            relative: {
+              cmcIndexes: {
+                cmc20ToCmc100RatioChange24hPct: 0,
+              },
+              btcAltRegime: {
+                btcVsAltReturn24h: -0.009,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  summary: {
+                    crowdingPersistenceBars: 140,
+                  },
+                },
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      fundingZScore: 0.2,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.q4DerivativesDirectionSessionOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'long_q4_derivatives_outside_europe_session',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'q4_derivatives_blocked',
+      defaultApprovalAllowed: false,
+      q4DerivativesPocket: true,
+      q4DerivativesCmcRiskOk: true,
+      q4DerivativesDirectionSessionOk: false,
     });
   });
 

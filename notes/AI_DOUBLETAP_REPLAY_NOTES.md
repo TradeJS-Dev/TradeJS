@@ -1,8 +1,129 @@
 # DoubleTap AI Replay Notes
 
-Last updated: 2026-07-18.
+Last updated: 2026-07-20.
 
 This file keeps internal notes for `ai-train` replay windows and DoubleTap AI gate analysis.
+
+## Post-Refactor Gate Rebuild (`2026-07-20`)
+
+Latest logical export:
+
+```bash
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part1.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part2.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part3.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part4.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part5.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part6.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1784540416971-part7.jsonl
+```
+
+Research artifacts:
+
+```bash
+data/ai/output/ai-pocket-search-doubletap-merged-1784540416971-all-2026-07-20T09-40-37Z.md
+data/ai/output/doubletap-ai-train-1784540416971-current.json
+data/ai/output/doubletap-evals-1784540416971-current.jsonl
+data/ai/output/doubletap-gate-commit-comparison-1784540416971.json
+data/ai/output/doubletap-ablation-1784540416971-current-filters.md
+data/ai/output/doubletap-ablation-1784540416971-long-filters.md
+data/ai/output/doubletap-ai-train-1784540416971-final.json
+data/ai/output/doubletap-evals-1784540416971-final.jsonl
+data/ai/output/doubletap-ablation-1784540416971-final.md
+```
+
+Replay mode:
+
+```bash
+yarn ai-train --file data/ai/export/ai-dataset-doubletap-merged-1784540416971-part1.jsonl --localOnly --json -n 0 --minQuality 4 --terminalWindows=180,90,30,7 --dumpEvaluations data/ai/output/doubletap-evals-1784540416971-final.jsonl --dumpFeatures baseContext
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs --file data/ai/export/ai-dataset-doubletap-merged-1784540416971-part1.jsonl --minQuality 4 --terminalWindows=365,180,90,30,7 --includeGateContext --featurePattern 'approvalPocket|q4DerivativesPocket|q4DerivativesCmcRiskOk|q4DerivativesDirectionSessionOk|signalDirection|primarySession|roc1d|btcVsAltReturn24h|cmc20ToCmc100RatioChange24hPct|solFundingZScore15m|ethCrowdingPersistenceBars|targetVsEth|targetVsBtc|marketBreadth|btcAltRegime.regime' --output data/ai/output/doubletap-ablation-1784540416971-final.md
+```
+
+Interpretation:
+
+- deterministic `AI_MODE=gate` research only; this does not measure provider/LLM behavior
+- `MIN_AI_QUALITY=4`
+- export period: `2025-07-19T20:30:00.000Z` -> `2026-07-19T12:00:00.000Z`
+- rows: `5953`; shards: `7`; duplicates: `0`; span: `364.65d`
+- raw candidate stream is still losing: all-row average PNL `-0.78` per row in the final run
+- final gate keeps q5 high precision unchanged and narrows only q4 derivatives LONG approvals
+
+Previous gate/commit audit:
+
+- current cleanup before this change was profitable full-history but had a bad fresh tail: last 7d `10` approvals, WR `30.0%`, PF `0.71`, PNL `-17.77`, maxDD `44.90`, max loss streak `4`
+- commit `0ea7449b` had higher full PNL (`+787.33`) but worse tail and risk: last 7d `12` approvals, WR `25.0%`, PF `0.52`, PNL `-39.12`, maxDD `66.25`, loss streak `6`
+- older stricter gates (`6de18017`, `bb656e19`, `caa1e029`, `9bbaa719`, `f64d45bd`) either had very low cadence or negative 90d/30d/7d windows on this export
+- simple rollback was rejected; the stable fix was LONG-side cleanup on the current derivatives pocket
+
+Implemented gate decision:
+
+- keep q5 high-precision CMC pocket unchanged
+- keep q4 derivatives SHORT approvals unchanged
+- keep q4 derivatives CMC/BTC loss blocker unchanged
+- add `q4DerivativesDirectionSessionOk`
+- approve q4 derivatives LONG only when `primarySession === 'europe'`
+- block q4 derivatives LONG outside Europe with `long_q4_derivatives_outside_europe_session`
+
+Before/after on merge `1784540416971`, q4+:
+
+| Window | Before N | Before WR | Before PF | Before PNL | Before DD | Before LS | Before Trades/Day | After N | After WR | After PF | After PNL | After DD | After LS | After Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full / ~365d | 151 | 57.0% | 1.93 | +628.38 | 95.57 | 6 | 0.414 | 98 | 64.3% | 2.61 | +577.63 | 32.18 | 3 | 0.269 |
+| 180d | 143 | 55.9% | 1.87 | +564.74 | 95.57 | 6 | 0.796 | 90 | 63.3% | 2.52 | +513.99 | 32.18 | 3 | 0.501 |
+| 90d | 127 | 53.5% | 1.70 | +422.74 | 95.57 | 6 | 1.411 | 84 | 61.9% | 2.37 | +448.11 | 32.18 | 3 | 0.933 |
+| 30d | 64 | 56.3% | 1.86 | +246.38 | 66.98 | 6 | 2.137 | 45 | 60.0% | 2.21 | +214.11 | 22.78 | 2 | 1.503 |
+| 7d | 10 | 30.0% | 0.71 | -17.77 | 44.90 | 4 | 1.477 | 5 | 60.0% | 8.07 | +37.52 | 5.31 | 2 | 0.739 |
+
+Final q4+ metrics:
+
+- approved: `98`
+- WR: `64.3%`
+- PNL: `+577.63`
+- PF: `2.61`
+- max DD: `32.18`
+- max DD / gross profit: `3.4%`
+- max DD / total profit: `5.6%`
+- max loss streak: `3`
+- approved trades/day: `0.269` full, `1.503` last 30d, `0.739` last 7d
+- losing approved months: `0`
+
+Final direction split:
+
+- LONG: `15` approved, WR `53.3%`, PF `1.66`, PNL `+49.47`, maxDD `46.78`, maxLS `4`, trades/day `0.041`
+- SHORT: `83` approved, WR `66.3%`, PF `2.86`, PNL `+528.16`, maxDD `39.93`, maxLS `3`, trades/day `0.228`
+- SHORT remains the main edge; LONG is now a small positive contributor rather than the drawdown source
+
+Final feature inventory highlights:
+
+- `q4DerivativesPocket`: `196` true rows
+- `q4DerivativesDirectionSessionOk`: `124` true, `72` false, `5757` null
+- `approvalPocket`: `q4_derivatives:88`, `q4_derivatives_blocked:106`, `high_precision:15`, `high_precision_blocked:40`, `q4_blocked:179`, `watch:5525`
+- SOL 15m funding remains sparse: `2396` numeric rows, `3557` null rows
+- ETH crowding persistence is present in `2628` rows
+- `additionalIndicators.marketContext.relative.*` is present and mirrors the causal relative fields available through `baseContext`
+
+Rejected follow-ups from this pass:
+
+- `short-only` was safer than the old cleanup but lost useful LONG Europe rows: full `83` approvals, WR `66.3%`, PF `2.86`, PNL `+528.16`, last 30d PNL `+137.32`
+- `short-or-long-high-precision` was close to short-only: full `84` approvals, PNL `+544.00`, last 30d PNL `+137.32`
+- `short-or-long-offhours` made the 7d tail positive but had weaker full/30d metrics than Europe-only LONG q4 derivatives
+- absolute OI/liquidation pockets from the pocket report were not promoted because they are market-size-level sensitive and did not beat the final tail/risk tradeoff
+
+Code and tests:
+
+- adapter: `packages/strategies/src/DoubleTap/adapters/ai.ts`
+- tests: `packages/strategies/src/DoubleTap/__tests__/ai.test.ts`
+- targeted verification:
+  - `yarn workspace @tradejs/strategies build`
+  - `yarn workspace @tradejs/node build`
+  - `yarn workspace @tradejs/cli build`
+  - `yarn jest packages/strategies/src/DoubleTap/__tests__/ai.test.ts --runInBand`
+
+Remaining concerns / next tuning:
+
+- last 7d is profitable but only `5` approvals; cadence is acceptable for 30d but thin for the newest week
+- if we need more approved trades later, research should focus on normalized LONG recovery pockets, not absolute open-interest/liquidation thresholds
+- keep monitoring SOL reference funding coverage because missing SOL blocks the derivatives pocket by design
 
 ## Post-Refactor Gate Cleanup (`2026-07-18`)
 
