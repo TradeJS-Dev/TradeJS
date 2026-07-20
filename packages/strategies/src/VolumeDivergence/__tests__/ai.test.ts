@@ -154,6 +154,60 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
     },
   } as any);
 
+const buildPayload = (signal: any) =>
+  volumeDivergenceAiAdapter.buildPayload?.({
+    signal,
+    basePayload: {
+      signal: {
+        symbol: signal.symbol,
+        signalId: signal.signalId,
+        interval: signal.interval,
+        direction: signal.direction,
+        timestamp: signal.timestamp,
+        strategy: signal.strategy,
+        prices: {
+          currentPrice: signal.prices.currentPrice,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
+        },
+      },
+      figures: {},
+      indicators: signal.indicators,
+      additionalIndicators: signal.additionalIndicators,
+    },
+  }) as any;
+
+const derivativesRegimePocket = (overrides: Record<string, any> = {}) => ({
+  intervals: {
+    ...overrides.intervals,
+    '15m': {
+      oiChangePct1h: -0.32,
+      ...overrides.intervals?.['15m'],
+    },
+  },
+  referenceContexts: {
+    SOLUSDT: {
+      intervals: {
+        '15m': {
+          openInterest: 10_100_000,
+          ...overrides.referenceContexts?.SOLUSDT?.intervals?.['15m'],
+        },
+        ...overrides.referenceContexts?.SOLUSDT?.intervals,
+      },
+    },
+    XRPUSDT: {
+      intervals: {
+        '15m': {
+          fundingZScore: -1.2,
+          ...overrides.referenceContexts?.XRPUSDT?.intervals?.['15m'],
+        },
+        ...overrides.referenceContexts?.XRPUSDT?.intervals,
+      },
+    },
+    ...overrides.referenceContexts,
+  },
+});
+
 describe('volumeDivergenceAiAdapter', () => {
   it('builds strategy-specific volume divergence context into payload', () => {
     const signal = makeSignal();
@@ -477,7 +531,7 @@ describe('volumeDivergenceAiAdapter', () => {
       payload,
       analysis: {
         direction: 'LONG',
-        quality: 5,
+        quality: 3,
       },
     });
 
@@ -571,7 +625,7 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
-  it('allows long confirmations when venue spread strongly supports the reversal', () => {
+  it('keeps venue-spread-only long confirmations in watch mode', () => {
     const signal = makeSignal({
       additionalIndicators: {
         volumeDivergenceSetup: {
@@ -637,7 +691,8 @@ describe('volumeDivergenceAiAdapter', () => {
         venueSpreadZScore: 1.7,
         volumeRel20: 1.2,
         deterministicQuality: 4,
-        approvalAllowedNow: true,
+        derivativesRegimePocket: false,
+        approvalAllowedNow: false,
       }),
     );
 
@@ -652,12 +707,12 @@ describe('volumeDivergenceAiAdapter', () => {
 
     expect(analysis).toEqual(
       expect.objectContaining({
-        direction: 'LONG',
+        direction: null,
         quality: 4,
-        needRetest: false,
-        retestPrice: null,
-        takeProfitPrice: 104,
-        stopLossPrice: 98,
+        needRetest: true,
+        retestPrice: 100,
+        takeProfitPrice: null,
+        stopLossPrice: null,
       }),
     );
   });
@@ -1213,6 +1268,23 @@ describe('volumeDivergenceAiAdapter', () => {
           intervals: {
             '15m': {
               liqSpikeRatio: 1.4,
+              oiChangePct1h: -0.32,
+            },
+          },
+          referenceContexts: {
+            SOLUSDT: {
+              intervals: {
+                '15m': {
+                  openInterest: 10_100_000,
+                },
+              },
+            },
+            XRPUSDT: {
+              intervals: {
+                '15m': {
+                  fundingZScore: -1.2,
+                },
+              },
             },
           },
         },
@@ -1283,9 +1355,123 @@ describe('volumeDivergenceAiAdapter', () => {
         derivativesLiqSpikeRatio: 1.4,
         venueSpreadZScore: -0.4,
         rangePosition20: 0.1,
+        btcOiChangePct1h15m: -0.32,
+        solOpenInterest15m: 10_100_000,
+        xrpFundingZScore15m: -1.2,
+        derivativesRegimePocket: true,
         reclaimPct: 165,
         deterministicQuality: 4,
+        maxAllowedQuality: 4,
         approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('lifts q3 confirmation-ready setups to q4 inside the derivatives regime pocket', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.85,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: derivativesRegimePocket(),
+        divergence: {
+          currentPivot: {
+            volumeNorm: 118,
+          },
+          previousPivot: {
+            volumeNorm: 82,
+          },
+        },
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        deterministicQuality: 3,
+        derivativesRegimePocket: true,
+        maxAllowedQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        quality: 4,
+        needRetest: false,
+        retestPrice: null,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+      }),
+    );
+  });
+
+  it('blocks the derivatives regime pocket when XRP funding z-score is above threshold', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.85,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: derivativesRegimePocket({
+          referenceContexts: {
+            XRPUSDT: {
+              intervals: {
+                '15m': {
+                  fundingZScore: -1.19,
+                },
+              },
+            },
+          },
+        }),
+        divergence: {
+          currentPivot: {
+            volumeNorm: 118,
+          },
+          previousPivot: {
+            volumeNorm: 82,
+          },
+        },
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        deterministicQuality: 3,
+        xrpFundingZScore15m: -1.19,
+        derivativesRegimePocket: false,
+        maxAllowedQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
