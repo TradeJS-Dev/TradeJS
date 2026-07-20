@@ -2180,6 +2180,140 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('approves SHORT CMC low-cap benchmark OI contraction pockets', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            cmcGlobal: {
+              totalMarketCapUsd: 2_280_000_000_000,
+            },
+            referenceTradeFlow: {
+              tradeFlowBySymbol: {
+                BTCUSDT: {
+                  netBaseDelta: -10,
+                },
+              },
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          derivatives: {
+            intervals: {
+              '1h': {
+                oiChangePct24h: -4,
+              },
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        cmcTotalMarketCapUsd: 2_280_000_000_000,
+        benchmarkOiChangePct24h1h: -4,
+        btcReferenceTradeFlowNetBaseDelta: -10,
+        shortBreadthShockPocket: false,
+        shortBreadthNeutralPocket: false,
+        shortCmcBenchmarkContractionPocket: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('does not let LONG reference-derivatives rotation bypass the target alpha chase cap', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 2.6,
+              alphaVsBtc4h: 3.4,
+              alphaVsBtc24h: 5,
+              ratioTrend: 'up',
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              XRPUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: 1.6,
+                  },
+                },
+              },
+              TRXUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: -0.2,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'LONG',
+        targetVsBtcAlpha1h: 2.6,
+        referenceDerivativesRotationPocket: true,
+        q4TargetAlpha1Allowed: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        approvalBlockReasons: expect.arrayContaining([
+          'target_vs_btc_alpha_1h_chase',
+        ]),
+      }),
+    );
+  });
+
   it('approves reference-derivatives rotation shorts at the rounded boundary', () => {
     const signal = makeSignal({
       direction: 'SHORT',
