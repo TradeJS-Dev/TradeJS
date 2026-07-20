@@ -57,6 +57,10 @@ const TRENDLINE_PAYLOAD_PROMPT = `
 - If 'payload.additionalIndicators.baseContext.derivatives' exists, it contains Coinalyze-derived open interest, funding, and liquidation fields for the signal moment; do not treat 'stale' or 'missing_derivatives' as confirmation or conflict.
 `;
 
+const MARKET_CONTEXT_PRIMARY_ISSUE = 'market_context_against';
+const MARKET_CONTEXT_TOTAL_MARKET_CAP_USD_MIN = 2_330_000_000_000;
+const MARKET_CONTEXT_TREND_PERSISTENCE_MAX = 0.77;
+
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -263,6 +267,25 @@ const buildTrendlineContext = (signal: {
   const volumeStructurePocIndex = toFiniteNumberOrNull(
     participationVolumeStructure?.pocIndex,
   );
+  const gateDecisionHints = getNestedRecord(baseContext, [
+    'gateFeatures',
+    'decisionHints',
+  ]);
+  const gatePrimaryIssue =
+    typeof gateDecisionHints?.primaryIssue === 'string'
+      ? gateDecisionHints.primaryIssue
+      : null;
+  const cmcGlobalContext = getNestedRecord(baseContext, [
+    'relative',
+    'cmcGlobal',
+  ]);
+  const cmcTotalMarketCapUsd = toFiniteNumberOrNull(
+    cmcGlobalContext?.totalMarketCapUsd,
+  );
+  const trendRegimeContext = getNestedRecord(baseContext, ['regime', 'trend']);
+  const trendPersistence = toFiniteNumberOrNull(
+    trendRegimeContext?.persistence,
+  );
   const benchmarkTrendAlignment =
     typeof benchmarkContext?.trendAlignment === 'string'
       ? benchmarkContext.trendAlignment
@@ -414,7 +437,7 @@ const buildTrendlineContext = (signal: {
     hardBlockReasons.push('short_session_risk');
   }
 
-  const deterministicQuality = getDeterministicTrendlineQuality({
+  const baseDeterministicQuality = getDeterministicTrendlineQuality({
     signalDirection: structural.signalDirection,
     clearBreak: structural.clearBreak,
     nearLineNoise: structural.nearLineNoise,
@@ -429,6 +452,15 @@ const buildTrendlineContext = (signal: {
     entryTiming,
     coinMaSpreadPct,
   });
+  const marketContextApprovalPocket =
+    gatePrimaryIssue === MARKET_CONTEXT_PRIMARY_ISSUE &&
+    cmcTotalMarketCapUsd != null &&
+    cmcTotalMarketCapUsd >= MARKET_CONTEXT_TOTAL_MARKET_CAP_USD_MIN &&
+    trendPersistence != null &&
+    trendPersistence <= MARKET_CONTEXT_TREND_PERSISTENCE_MAX;
+  const deterministicQuality = marketContextApprovalPocket
+    ? 4
+    : baseDeterministicQuality;
   const maxAllowedQuality = deterministicQuality;
   const longUsLowVolumeCrowdedShortSqueeze =
     structural.signalDirection === 'LONG' &&
@@ -451,14 +483,14 @@ const buildTrendlineContext = (signal: {
       volumeRel20 >= 0.8 &&
       benchmarkTrendAlignment !== 'against_benchmark');
   const longHighQualitySessionApproval =
-    deterministicQuality >= 5 && sessionPrimary !== 'asia';
+    baseDeterministicQuality >= 5 && sessionPrimary !== 'asia';
   const longStrongDerivativesAlignedApproval =
     volumeRel20 != null &&
     volumeRel20 >= 1.5 &&
     derivativesDirectionAligned === true;
   const longModerateRetestLiquidSessionApproval =
     structural.signalDirection === 'LONG' &&
-    deterministicQuality === 4 &&
+    baseDeterministicQuality === 4 &&
     entryTiming === 'ready_retest' &&
     (sessionPrimary === 'us' || sessionPrimary === 'europe') &&
     volumeRel20 != null &&
@@ -479,16 +511,12 @@ const buildTrendlineContext = (signal: {
     volumeRel20 < 0.8 &&
     benchmarkTrendAlignment === 'neutral';
   const q4ReferenceOiPocApproval =
-    deterministicQuality === 4 &&
+    baseDeterministicQuality === 4 &&
     volumeStructurePocIndex != null &&
     volumeStructurePocIndex >= 5 &&
     ethReferenceOiAcceleration != null &&
     ethReferenceOiAcceleration <= -0.5906;
-  const approvalAllowedNow =
-    deterministicQuality >= 4 &&
-    longBaseContextApprovalPocket &&
-    !shortThinNeutralBenchmarkRisk &&
-    (deterministicQuality >= 5 || q4ReferenceOiPocApproval);
+  const approvalAllowedNow = marketContextApprovalPocket;
   const trendLineGateFeatures = buildTrendLineGateFeatures({
     structural,
     entryTiming,
@@ -525,6 +553,11 @@ const buildTrendlineContext = (signal: {
     derivativesRiskFlags,
     ethReferenceOiAcceleration,
     oiNotConfirming,
+    gatePrimaryIssue,
+    cmcTotalMarketCapUsd,
+    trendPersistence,
+    marketContextApprovalPocket,
+    baseDeterministicQuality,
     longUsLowVolumeCrowdedShortSqueeze,
     longHighQualitySessionApproval,
     longStrongDerivativesAlignedApproval,
@@ -970,6 +1003,11 @@ Additional TrendLine context:
 - trendline.volumeStructurePocIndex=${formatPromptNumber(trendlineContext.volumeStructurePocIndex, 0)}
 - trendline.ethReferenceOiAcceleration=${formatPromptNumber(trendlineContext.ethReferenceOiAcceleration, 3)}
 - trendline.q4ReferenceOiPocApproval=${String(trendlineContext.q4ReferenceOiPocApproval)}
+- trendline.gatePrimaryIssue=${trendlineContext.gatePrimaryIssue ?? 'n/a'}
+- trendline.cmcTotalMarketCapUsd=${formatPromptNumber(trendlineContext.cmcTotalMarketCapUsd, 0)}
+- trendline.trendPersistence=${formatPromptNumber(trendlineContext.trendPersistence, 3)}
+- trendline.marketContextApprovalPocket=${String(trendlineContext.marketContextApprovalPocket)}
+- trendline.baseDeterministicQuality=${String(trendlineContext.baseDeterministicQuality)}
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}

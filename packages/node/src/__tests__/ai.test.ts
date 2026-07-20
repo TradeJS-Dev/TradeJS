@@ -238,6 +238,44 @@ const withTrendlineQ4ReferenceConfirmation = (signal: any) => {
   return signal;
 };
 
+const withTrendlineMarketContextApproval = (signal: any) => {
+  const additionalIndicators = signal.additionalIndicators ?? {};
+  const baseContext = additionalIndicators.baseContext ?? {};
+  const regime = baseContext.regime ?? {};
+  const relative = baseContext.relative ?? {};
+  const gateFeatures = baseContext.gateFeatures ?? {};
+
+  signal.additionalIndicators = {
+    ...additionalIndicators,
+    baseContext: {
+      ...baseContext,
+      regime: {
+        ...regime,
+        trend: {
+          ...(regime.trend ?? {}),
+          persistence: 0.7,
+        },
+      },
+      relative: {
+        ...relative,
+        cmcGlobal: {
+          ...(relative.cmcGlobal ?? {}),
+          totalMarketCapUsd: 2_330_000_000_000,
+        },
+      },
+      gateFeatures: {
+        ...gateFeatures,
+        decisionHints: {
+          ...(gateFeatures.decisionHints ?? {}),
+          primaryIssue: 'market_context_against',
+        },
+      },
+    },
+  };
+
+  return signal;
+};
+
 const makeSignal = () =>
   withBaseContext({
     signalId: 'sig-1',
@@ -1911,6 +1949,8 @@ describe('ai helpers', () => {
       expect(prompt).toContain('trendline.breakVsAtrRatio=');
       expect(prompt).toContain('trendline.strongNearBreakPressure=');
       expect(prompt).toContain('trendline.entryTiming=');
+      expect(prompt).toContain('trendline.marketContextApprovalPocket=');
+      expect(prompt).toContain('trendline.gatePrimaryIssue=');
       expect(prompt).toContain('trendline.weakCleanBreak=');
       expect(prompt).toContain('trendline.weakBtcLedBreak=');
       expect(prompt).toContain('trendline.weakLongFarBreak=');
@@ -2242,7 +2282,7 @@ describe('ai helpers', () => {
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
-    it('uses deterministic q5 for top-tier long breakouts even if model quality is lower', async () => {
+    it('keeps top-tier TrendLine long breakouts in watch mode without the market-context pocket', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2271,17 +2311,16 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 5,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104.5,
-          stopLossPrice: 98.9,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });
 
-    it('uses deterministic q4 for clean moderate short breakouts', async () => {
+    it('keeps clean moderate TrendLine short breakouts in watch mode without the market-context pocket', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2312,12 +2351,11 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 96,
-          stopLossPrice: 101.2,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });
@@ -2400,7 +2438,7 @@ describe('ai helpers', () => {
       expect(result.comment).toContain('deterministic quality');
     });
 
-    it('upgrades strong ready-breakout shorts back to deterministic quality 4', async () => {
+    it('keeps strong ready-breakout shorts in watch mode without the market-context pocket', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: 'SHORT',
@@ -2431,11 +2469,11 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 92,
-          stopLossPrice: 101.2,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });
@@ -3013,7 +3051,7 @@ describe('ai helpers', () => {
       expect(result.qualityReason).toContain('ReverseTrendLine guardrail');
     });
 
-    it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {
+    it('keeps aggressive pre-break pressure setups in watch mode without the market-context pocket', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -3044,16 +3082,17 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          takeProfitPrice: 96,
-          stopLossPrice: 101.3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toBe('Сильное давление вниз');
+      expect(result.qualityReason).toContain('TrendLine guardrail');
     });
 
-    it('allows strong near-break pressure setups but caps quality to 4', async () => {
+    it('keeps strong near-break pressure setups in watch mode without the market-context pocket', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -3084,13 +3123,14 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          takeProfitPrice: 96,
-          stopLossPrice: 101.3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toBe('Сильное давление вниз у линии');
+      expect(result.qualityReason).toContain('TrendLine guardrail');
     });
 
     it('keeps TrendLine short approvals in watch mode during off-hours local replay', async () => {
@@ -3128,7 +3168,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('promotes aligned recent TrendLine long follow-through setups into q4 during local replay', async () => {
+    it('keeps aligned recent TrendLine long follow-through setups in watch mode without the market-context pocket', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.baseContext = {
         ...signal.additionalIndicators.baseContext,
@@ -3156,10 +3196,11 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
           hardBlockReasons: [],
           longStrongDerivativesAlignedApproval: true,
+          marketContextApprovalPocket: false,
           q4ReferenceOiPocApproval: true,
         }),
       );
@@ -3168,11 +3209,11 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 104.5,
-          stopLossPrice: 98.9,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
@@ -3240,7 +3281,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('allows moderate TrendLine long retests in liquid sessions with neutral derivatives context', async () => {
+    it('keeps moderate TrendLine long retests in watch mode without the market-context pocket', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.trendlineTiming = {
         ...signal.additionalIndicators.trendlineTiming,
@@ -3283,10 +3324,11 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
           hardBlockReasons: [],
           longModerateRetestLiquidSessionApproval: true,
+          marketContextApprovalPocket: false,
           q4ReferenceOiPocApproval: true,
         }),
       );
@@ -3295,11 +3337,11 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 104.5,
-          stopLossPrice: 98.9,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
@@ -3377,9 +3419,10 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('promotes moderate TrendLine short ready-breakout setups into q4 during local replay', async () => {
-      const signal = makeModerateReadyBreakoutShortTrendlineSignal();
-      withTrendlineQ4ReferenceConfirmation(signal);
+    it('approves TrendLine market-context pocket during local replay', async () => {
+      const signal = withTrendlineMarketContextApproval(
+        makeModerateReadyBreakoutShortTrendlineSignal(),
+      );
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -3387,7 +3430,10 @@ describe('ai helpers', () => {
           approvalAllowedNow: true,
           deterministicQuality: 4,
           hardBlockReasons: [],
-          q4ReferenceOiPocApproval: true,
+          gatePrimaryIssue: 'market_context_against',
+          cmcTotalMarketCapUsd: 2_330_000_000_000,
+          trendPersistence: 0.7,
+          marketContextApprovalPocket: true,
         }),
       );
 
@@ -3400,6 +3446,36 @@ describe('ai helpers', () => {
           needRetest: false,
           takeProfitPrice: 96,
           stopLossPrice: 101.2,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps moderate TrendLine short ready-breakout setups in watch mode without the market-context pocket', async () => {
+      const signal = makeModerateReadyBreakoutShortTrendlineSignal();
+      withTrendlineQ4ReferenceConfirmation(signal);
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+          marketContextApprovalPocket: false,
+          q4ReferenceOiPocApproval: true,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
