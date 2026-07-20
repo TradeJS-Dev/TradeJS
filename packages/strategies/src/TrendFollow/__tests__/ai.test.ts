@@ -255,7 +255,7 @@ const makeReferencePocketPayload = ({
   );
 
 describe('trendFollowAiAdapter', () => {
-  it('approves high-conviction short flush breakouts', () => {
+  it('keeps BTC short-flush breakouts in watch mode', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -311,10 +311,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects signals without a valid trailing stop', () => {
@@ -523,7 +526,7 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
-  it('approves short derivatives flush/OI cadence pockets', () => {
+  it('keeps short derivatives flush/OI cadence pockets in watch mode', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
@@ -586,13 +589,16 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
-  it('approves q4 soft-blocked derivatives flush/OI cadence pockets', () => {
+  it('rejects q4 soft-blocked derivatives flush/OI cadence pockets', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
@@ -651,10 +657,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
+      direction: null,
       quality: 4,
-      approved: true,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects long relative beta continuation pockets', () => {
@@ -904,7 +913,7 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
-  it('approves the tuned short flush pocket at the new liquidation threshold', () => {
+  it('rejects the tuned short flush pocket at the liquidation threshold', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makeShortFlushPayload({
@@ -920,10 +929,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects short derivatives pockets outside normal volatility', () => {
@@ -965,6 +977,35 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
+  it('rejects reference OI compression when BTC short-flush is active', () => {
+    const payload = makeReferencePocketPayload();
+    (payload.additionalIndicators.baseContext as any).derivatives.intervals[
+      '1h'
+    ] = {
+      oiChangePct24h: 2.1,
+      liqLong: 13,
+      liqImbalance: -0.8,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
   it('rejects the reference OI compression pocket above the BNB OI-change cap', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -987,7 +1028,7 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
-  it('approves the rounded opening-session XRP/BNB reference pocket', () => {
+  it('keeps the rounded opening-session XRP/BNB reference pocket in watch mode', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makeReferencePocketPayload({
@@ -1005,10 +1046,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects the opening-session reference pocket below the XRP 1h OI-change floor', () => {
@@ -1058,7 +1102,7 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
-  it('keeps the opening-session reference pocket outside the crowded ETH/SOL loss block', () => {
+  it('rejects the opening-session reference pocket outside the crowded ETH/SOL loss block', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makeReferencePocketPayload({
@@ -1078,10 +1122,13 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 
   it('rejects short derivatives pockets above the shared participation score cap', () => {
@@ -1305,7 +1352,7 @@ describe('trendFollowAiAdapter', () => {
     expect((result as any)?.rejectReason).toContain('weak_volume_structure');
   });
 
-  it('uses tuned strategy context instead of conflicting shared trend-follow context', () => {
+  it('keeps BTC short-flush watch mode independent of shared trend-follow context', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -1363,9 +1410,12 @@ describe('trendFollowAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
   });
 });

@@ -79,6 +79,7 @@ export type TrendFollowGateFeatures = {
   referenceDerivativesSolFlushPocket: boolean;
   referenceDerivativesLossBlock: boolean;
   referenceDerivativesCadencePocket: boolean;
+  referenceDerivativesCleanCadencePocket: boolean;
   referenceDerivativesOpeningPocket: boolean;
   normalVolatilityCadencePocket: boolean;
   highQualityCadencePocket: boolean;
@@ -494,6 +495,8 @@ const buildTrendFollowGateFeatures = ({
       TREND_FOLLOW_OPENING_REF_XRP_OI_CHANGE_1H_MIN &&
     referenceBnb15mOpenInterest != null &&
     referenceBnb15mOpenInterest >= TREND_FOLLOW_OPENING_REF_BNB_OI_MIN;
+  const referenceDerivativesCleanCadencePocket =
+    referenceDerivativesCadencePocket && !derivativesShortFlushOiPocket;
   const normalVolatilityCadencePocket =
     marketVolatilityState === TREND_FOLLOW_ALLOWED_VOLATILITY_STATE;
 
@@ -538,11 +541,11 @@ const buildTrendFollowGateFeatures = ({
     referenceDerivativesSolFlushPocket,
     referenceDerivativesLossBlock,
     referenceDerivativesCadencePocket,
+    referenceDerivativesCleanCadencePocket,
     referenceDerivativesOpeningPocket,
     normalVolatilityCadencePocket,
     highQualityCadencePocket:
-      normalVolatilityCadencePocket &&
-      (referenceDerivativesCadencePocket || referenceDerivativesOpeningPocket),
+      normalVolatilityCadencePocket && referenceDerivativesCleanCadencePocket,
   };
 };
 

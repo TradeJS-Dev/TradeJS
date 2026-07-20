@@ -132,6 +132,7 @@ Additional TrendFollow context:
 - trendFollowGateReferenceDerivativesSolFlushPocket=${String(context.trendFollowGateFeatures.referenceDerivativesSolFlushPocket)}
 - trendFollowGateReferenceDerivativesLossBlock=${String(context.trendFollowGateFeatures.referenceDerivativesLossBlock)}
 - trendFollowGateReferenceDerivativesCadencePocket=${String(context.trendFollowGateFeatures.referenceDerivativesCadencePocket)}
+- trendFollowGateReferenceDerivativesCleanCadencePocket=${String(context.trendFollowGateFeatures.referenceDerivativesCleanCadencePocket)}
 - trendFollowGateReferenceDerivativesOpeningPocket=${String(context.trendFollowGateFeatures.referenceDerivativesOpeningPocket)}
 - trendFollowGateNormalVolatilityCadencePocket=${String(context.trendFollowGateFeatures.normalVolatilityCadencePocket)}
 - trendFollowGateHighQualityCadencePocket=${String(context.trendFollowGateFeatures.highQualityCadencePocket)}
@@ -151,7 +152,7 @@ Interpretation rules for TrendFollow:
 - The ATR trailing stop is the structural invalidation line and also updates while a position is open.
 - Prefer breakouts aligned with shared market context and backed by participation.
 - Late, thin, crowded, inside-range, adverse-delta, weak-momentum, or weak-volume-structure breakouts should be downgraded even if the pivot cross is valid.
-- Live approval is reserved for calibrated SHORT derivatives pockets in normal volatility: the legacy BTC benchmark long-liquidation flush, guarded extra-reference XRP/SOL/BNB/TRX continuation pockets, or the narrow opening-session XRP/BNB reference pocket; other structurally valid breakouts remain watch mode.
+- Live approval is reserved for calibrated SHORT extra-reference derivatives pockets in normal volatility when the BTC benchmark short-flush/OI pocket is not active; legacy BTC benchmark flush and opening-session recovery remain watch mode.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
