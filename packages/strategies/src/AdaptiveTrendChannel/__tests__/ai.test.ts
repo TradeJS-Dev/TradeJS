@@ -186,6 +186,63 @@ const makeXrpEthShortRecoveryBaseContext = ({
   },
 });
 
+const makeXrpOiReferenceRecoveryBaseContext = ({
+  approveBias = 'reject',
+  xrpOpenInterest15m = 250_000_000,
+  volatilityState = 'expanded',
+  cmcBtcDominancePct = 58.45,
+  marketBreadthSymbolsCount = 27,
+  bnbFundingChange1h = 0,
+}: {
+  approveBias?: 'support' | 'neutral' | 'reject';
+  xrpOpenInterest15m?: number | null;
+  volatilityState?: string | null;
+  cmcBtcDominancePct?: number | null;
+  marketBreadthSymbolsCount?: number | null;
+  bnbFundingChange1h?: number | null;
+} = {}) => ({
+  regime: {
+    trend: { trendFollow: { state: 'neutral' } },
+    volatility: { state: volatilityState },
+  },
+  relative: {
+    cmcGlobal: {
+      btcDominancePct: cmcBtcDominancePct,
+    },
+    marketBreadth: {
+      symbolsCount: marketBreadthSymbolsCount,
+    },
+  },
+  derivatives: {
+    referenceContexts: {
+      BNBUSDT: {
+        summary: {
+          fundingChange1h: bnbFundingChange1h,
+        },
+      },
+      XRPUSDT: {
+        intervals: {
+          '15m': {
+            openInterest: xrpOpenInterest15m,
+          },
+        },
+      },
+    },
+  },
+  gateFeatures: {
+    decisionHints: {
+      approveBias,
+      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+      needsExtraConfirmation: approveBias === 'reject',
+      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    },
+    relative: {
+      cmcExchangeLiquidityAligned: false,
+      cmcExchangeLiquidityStale: false,
+    },
+  },
+});
+
 describe('adaptiveTrendChannelAiAdapter', () => {
   it('approves clean adaptive channel flips', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
@@ -207,7 +264,10 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           regime: {
             trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
-            volatility: { percentiles: { bbWidthRank100: 80 } },
+            volatility: {
+              state: 'expanded',
+              percentiles: { bbWidthRank100: 80 },
+            },
           },
           participation: {
             volume: { volumeRel20: 10 },
@@ -427,6 +487,86 @@ describe('adaptiveTrendChannelAiAdapter', () => {
         ),
         analysis: {
           direction: 'SHORT',
+          quality: 5,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+      });
+      expect(
+        (result as { rejectReason?: string } | undefined)?.rejectReason,
+      ).toContain('xrp_oi_reject_bias');
+    },
+  );
+
+  it.each(['LONG', 'SHORT'] as const)(
+    'allows the rounded XRP-OI CMC/BNB/breadth recovery pocket for %s',
+    (direction) => {
+      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload(
+          {
+            signalDirection: direction,
+            regime: direction === 'LONG' ? 1 : -1,
+            centerline: 100,
+            roof: 103,
+            floor: 97,
+            halfChannel: 3,
+            atr: 3,
+            breakoutDistancePct: 0.5,
+            channelWidthPct: 6,
+            currentPrice: direction === 'LONG' ? 100.5 : 99.5,
+          },
+          makeXrpOiReferenceRecoveryBaseContext(),
+        ),
+        analysis: {
+          direction,
+          quality: 1,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction,
+        quality: 4,
+        approved: true,
+      });
+      expect(
+        (result as { rejectReason?: string } | undefined)?.rejectReason,
+      ).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['BTC dominance is too high', { cmcBtcDominancePct: 58.46 }],
+    ['market breadth is too narrow', { marketBreadthSymbolsCount: 26 }],
+    ['BNB funding change is negative', { bnbFundingChange1h: -0.000001 }],
+    ['BNB funding change is missing', { bnbFundingChange1h: null }],
+    ['volatility is not expanded', { volatilityState: 'normal' }],
+  ])(
+    'keeps high-XRP reject bias blocked when the CMC/BNB/breadth recovery pocket misses: %s',
+    (_label, overrides) => {
+      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload(
+          {
+            signalDirection: 'LONG',
+            regime: 1,
+            centerline: 100,
+            roof: 103,
+            floor: 97,
+            halfChannel: 3,
+            atr: 3,
+            breakoutDistancePct: 0.5,
+            channelWidthPct: 6,
+            currentPrice: 100.5,
+          },
+          makeXrpOiReferenceRecoveryBaseContext(overrides),
+        ),
+        analysis: {
+          direction: 'LONG',
           quality: 5,
         },
       });
@@ -786,7 +926,10 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           regime: {
             trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
-            volatility: { percentiles: { bbWidthRank100: 80 } },
+            volatility: {
+              state: 'expanded',
+              percentiles: { bbWidthRank100: 80 },
+            },
           },
           participation: {
             volume: { volumeRel20: 10 },
@@ -811,6 +954,11 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               riskFlags: ['short_liquidation_spike'],
             },
             referenceContexts: {
+              BNBUSDT: {
+                summary: {
+                  fundingChange1h: 0,
+                },
+              },
               ETHUSDT: {
                 intervals: {
                   '1h': {
@@ -841,6 +989,14 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               cmcExchangeLiquidityStale: false,
             },
           },
+          relative: {
+            cmcGlobal: {
+              btcDominancePct: 58.45,
+            },
+            marketBreadth: {
+              symbolsCount: 27,
+            },
+          },
         },
       ),
     });
@@ -854,6 +1010,10 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(prompt).toContain('xrpPriceOiDivergenceType=price_down_oi_up');
     expect(prompt).toContain('xrpFundingZScore1h=-1.8');
     expect(prompt).toContain('btcVsAltReturn24h=-0.03');
+    expect(prompt).toContain('volatilityState=expanded');
+    expect(prompt).toContain('cmcBtcDominancePct=58.45');
+    expect(prompt).toContain('marketBreadthSymbolsCount=27');
+    expect(prompt).toContain('bnbFundingChange1h=0');
     expect(prompt).not.toContain('derivativesPressure');
     expect(prompt).not.toContain('derivativesDirectionAligned');
     expect(prompt).not.toContain('derivativesRiskFlags');

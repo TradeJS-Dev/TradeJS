@@ -12,15 +12,19 @@ export type AdaptiveTrendChannelGuardrailContext =
     rsi: number | null;
     bbWidthRank100: number | null;
     trendFollowState: string | null;
+    volatilityState: string | null;
     h4VolatilityState: string | null;
     benchmarkTrendAlignment: string | null;
     cmcExchangeLiquidityAligned: boolean | null;
     cmcExchangeLiquidityStale: boolean | null;
+    cmcBtcDominancePct: number | null;
+    marketBreadthSymbolsCount: number | null;
     targetLiqImbalance1h: number | null;
     targetLiqSpikeRatio1h: number | null;
     targetLiqTotal1h: number | null;
     ethLiqImbalance1h: number | null;
     ethFundingRate1h: number | null;
+    bnbFundingChange1h: number | null;
     xrpOpenInterest15m: number | null;
     xrpPriceOiDivergenceType: string | null;
     xrpFundingZScore1h: number | null;
@@ -69,6 +73,9 @@ const MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H = -0.99;
 const MAX_XRP_SHORT_RECOVERY_BTC_VS_ALT_RETURN_24H = -0.03;
 const MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H = -1.8;
 const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
+const MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT = 58.45;
+const MIN_XRP_OI_RECOVERY_MARKET_BREADTH_SYMBOLS = 27;
+const MIN_XRP_OI_RECOVERY_BNB_FUNDING_CHANGE_1H = 0;
 const MAX_APPROVAL_RSI = 75;
 const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
@@ -82,6 +89,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const targetDerivatives1h = baseContext?.derivatives?.intervals?.['1h'];
   const ethDerivatives1h =
     baseContext?.derivatives?.referenceContexts?.['ETHUSDT']?.intervals?.['1h'];
+  const bnbDerivativesSummary =
+    baseContext?.derivatives?.referenceContexts?.['BNBUSDT']?.summary;
   const xrpDerivatives15m =
     baseContext?.derivatives?.referenceContexts?.['XRPUSDT']?.intervals?.[
       '15m'
@@ -110,6 +119,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   );
   const trendFollowState =
     baseContext?.regime?.trend?.trendFollow?.state ?? null;
+  const volatilityState = baseContext?.regime?.volatility?.state ?? null;
   const h4VolatilityState =
     baseContext?.mtf?.summary?.h4VolatilityState ?? null;
   const benchmarkTrendAlignment =
@@ -124,6 +134,12 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     'boolean'
       ? baseContext.gateFeatures.relative.cmcExchangeLiquidityStale
       : null;
+  const cmcBtcDominancePct = asFiniteNumber(
+    baseContext?.relative?.cmcGlobal?.btcDominancePct,
+  );
+  const marketBreadthSymbolsCount = asFiniteNumber(
+    baseContext?.relative?.marketBreadth?.symbolsCount,
+  );
   const baseApproveBias =
     baseContext?.gateFeatures?.decisionHints?.approveBias ?? null;
   const targetLiqImbalance1h = asFiniteNumber(
@@ -135,6 +151,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const targetLiqTotal1h = asFiniteNumber(targetDerivatives1h?.liqTotal);
   const ethLiqImbalance1h = asFiniteNumber(ethDerivatives1h?.liqImbalance);
   const ethFundingRate1h = asFiniteNumber(ethDerivatives1h?.fundingRate);
+  const bnbFundingChange1h = asFiniteNumber(
+    bnbDerivativesSummary?.fundingChange1h,
+  );
   const xrpOpenInterest15m = asFiniteNumber(xrpDerivatives15m?.openInterest);
   const xrpPriceOiDivergenceType =
     baseContext?.derivatives?.referenceContexts?.['XRPUSDT']?.summary
@@ -216,17 +235,30 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     ethLiqImbalance1h <= MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H;
   const xrpShortRecoverySetup =
     xrpBtcShortRecoverySetup || xrpEthShortRecoverySetup;
+  const xrpOiReferenceRecoverySetup =
+    xrpOpenInterest15m != null &&
+    xrpOpenInterest15m >= MIN_XRP_OI_REJECT_BIAS_BLOCK_15M &&
+    baseApproveBias === 'reject' &&
+    volatilityState === 'expanded' &&
+    cmcBtcDominancePct != null &&
+    cmcBtcDominancePct <= MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT &&
+    marketBreadthSymbolsCount != null &&
+    marketBreadthSymbolsCount >= MIN_XRP_OI_RECOVERY_MARKET_BREADTH_SYMBOLS &&
+    bnbFundingChange1h != null &&
+    bnbFundingChange1h >= MIN_XRP_OI_RECOVERY_BNB_FUNDING_CHANGE_1H;
 
   if (
     xrpOpenInterest15m != null &&
     xrpOpenInterest15m >= MIN_XRP_OI_REJECT_BIAS_BLOCK_15M &&
     baseApproveBias === 'reject' &&
-    !xrpShortRecoverySetup
+    !xrpShortRecoverySetup &&
+    !xrpOiReferenceRecoverySetup
   ) {
     hardBlockReasons.push('xrp_oi_reject_bias');
   }
 
-  const approvalSetup = longApprovalSetup || xrpShortRecoverySetup;
+  const approvalSetup =
+    longApprovalSetup || xrpShortRecoverySetup || xrpOiReferenceRecoverySetup;
   const highConfidenceSetup =
     longApprovalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
@@ -290,15 +322,19 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     rsi,
     bbWidthRank100,
     trendFollowState,
+    volatilityState,
     h4VolatilityState,
     benchmarkTrendAlignment,
     cmcExchangeLiquidityAligned,
     cmcExchangeLiquidityStale,
+    cmcBtcDominancePct,
+    marketBreadthSymbolsCount,
     targetLiqImbalance1h,
     targetLiqSpikeRatio1h,
     targetLiqTotal1h,
     ethLiqImbalance1h,
     ethFundingRate1h,
+    bnbFundingChange1h,
     xrpOpenInterest15m,
     xrpPriceOiDivergenceType,
     xrpFundingZScore1h,

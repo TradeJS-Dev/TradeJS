@@ -88,13 +88,17 @@ Additional AdaptiveTrendChannel context:
 - rsi=${String(context.rsi ?? 'n/a')}
 - bbWidthRank100=${String(context.bbWidthRank100 ?? 'n/a')}
 - trendFollowState=${context.trendFollowState ?? 'n/a'}
+- volatilityState=${context.volatilityState ?? 'n/a'}
 - h4VolatilityState=${context.h4VolatilityState ?? 'n/a'}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- cmcBtcDominancePct=${String(context.cmcBtcDominancePct ?? 'n/a')}
+- marketBreadthSymbolsCount=${String(context.marketBreadthSymbolsCount ?? 'n/a')}
 - targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
 - targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
 - targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}
 - ethLiqImbalance1h=${String(context.ethLiqImbalance1h ?? 'n/a')}
 - ethFundingRate1h=${String(context.ethFundingRate1h ?? 'n/a')}
+- bnbFundingChange1h=${String(context.bnbFundingChange1h ?? 'n/a')}
 - xrpOpenInterest15m=${String(context.xrpOpenInterest15m ?? 'n/a')}
 - xrpPriceOiDivergenceType=${context.xrpPriceOiDivergenceType ?? 'n/a'}
 - xrpFundingZScore1h=${String(context.xrpFundingZScore1h ?? 'n/a')}
@@ -112,7 +116,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
 - Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
 - Thin participation, missing shared-context confirmation, or missing liquidation-shock recovery evidence should downgrade the setup.
-- A high-XRP-OI reject bias should remain blocked unless a narrow XRP reference SHORT recovery setup is present.
+- A high-XRP-OI reject bias should remain blocked unless a narrow XRP reference SHORT recovery setup or expanded CMC/BNB/breadth recovery setup is present.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
