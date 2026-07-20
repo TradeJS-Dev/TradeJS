@@ -180,6 +180,16 @@ const makeCalibratedMarketFlushBaseContext = () => {
     ethVsBtcVolumeRatio: 0.54,
   };
   baseContext.mtf.summary.h1RangePosition = 0.2;
+  baseContext.relative.cmcIndexes = {
+    indexRegime: 'risk_off',
+    stale: false,
+  };
+  baseContext.regime.momentum.rsiState = 'oversold';
+  baseContext.gateFeatures = {
+    setup: {
+      stopDistanceAtr: 24,
+    },
+  };
   return baseContext;
 };
 
@@ -421,7 +431,7 @@ describe('context strategies', () => {
     );
   });
 
-  it('approves MarketFlushReversal gate on calibrated broad-market long rebound', () => {
+  it('approves MarketFlushReversal gate on the validated risk-off oversold pocket', () => {
     const baseContext = makeCalibratedMarketFlushBaseContext();
     const context = buildMarketFlushReversalGuardrailContext({
       signalContext: {
@@ -451,6 +461,11 @@ describe('context strategies', () => {
         targetVsBtcRatioReturn24h: -3.3,
         ethVsBtcVolumeRatio: 0.54,
         calibratedLongRebound: true,
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: false,
+        rsiState: 'oversold',
+        validatedAiLongPocket: true,
       }),
     );
   });
@@ -486,31 +501,64 @@ describe('context strategies', () => {
     );
   });
 
-  it('blocks MarketFlushReversal gate outside calibrated rebound boundaries', () => {
+  it('blocks MarketFlushReversal gate outside validated AI pocket boundaries', () => {
     const cases = [
       {
-        ratioReturn24h: -3.29,
-        ethVsBtcVolumeRatio: 0.54,
-        h1RangePosition: 0.08,
+        stopDistanceAtr: 23.999,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: false,
+        rsiState: 'oversold',
       },
       {
-        ratioReturn24h: -3.3,
-        ethVsBtcVolumeRatio: 0.53,
-        h1RangePosition: 0.081,
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'top20_led',
+        cmcIndexStale: false,
+        rsiState: 'oversold',
       },
       {
-        ratioReturn24h: null,
-        ethVsBtcVolumeRatio: 0.54,
-        h1RangePosition: 0.08,
+        stopDistanceAtr: 24,
+        cmcIndexRegime: null,
+        cmcIndexStale: false,
+        rsiState: 'oversold',
+      },
+      {
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: null,
+        rsiState: 'oversold',
+      },
+      {
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: false,
+        rsiState: null,
+      },
+      {
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: true,
+        rsiState: 'oversold',
+      },
+      {
+        stopDistanceAtr: 24,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: false,
+        rsiState: 'neutral',
+      },
+      {
+        stopDistanceAtr: null,
+        cmcIndexRegime: 'risk_off',
+        cmcIndexStale: false,
+        rsiState: 'oversold',
       },
     ];
 
     for (const item of cases) {
       const baseContext = makeCalibratedMarketFlushBaseContext();
-      baseContext.relative.targetVsBtc.ratioReturn24h = item.ratioReturn24h;
-      baseContext.relative.cmcReferenceAssets.ethVsBtcVolumeRatio =
-        item.ethVsBtcVolumeRatio;
-      baseContext.mtf.summary.h1RangePosition = item.h1RangePosition;
+      baseContext.gateFeatures.setup.stopDistanceAtr = item.stopDistanceAtr;
+      baseContext.relative.cmcIndexes.indexRegime = item.cmcIndexRegime;
+      baseContext.relative.cmcIndexes.stale = item.cmcIndexStale;
+      baseContext.regime.momentum.rsiState = item.rsiState;
 
       const context = buildMarketFlushReversalGuardrailContext({
         signalContext: {
@@ -527,13 +575,13 @@ describe('context strategies', () => {
           approvalAllowedNow: false,
           deterministicQuality: 3,
           approvalBlockReasons: expect.arrayContaining([
-            'calibrated_long_rebound_missing',
+            'validated_long_ai_pocket_missing',
           ]),
         }),
       );
       expect(context.marketFlushReversalGateFeatures).toEqual(
         expect.objectContaining({
-          calibratedLongRebound: false,
+          validatedAiLongPocket: false,
         }),
       );
     }
@@ -567,8 +615,9 @@ describe('context strategies', () => {
     );
   });
 
-  it('blocks MarketFlushReversal gate without broad-market derivatives', () => {
-    const baseContext = makeBaseContext({ derivatives: undefined });
+  it('keeps broad-market derivative outages as annotations for a validated pocket', () => {
+    const baseContext = makeCalibratedMarketFlushBaseContext();
+    baseContext.derivatives = undefined;
     const context = buildMarketFlushReversalGuardrailContext({
       signalContext: {
         signalDirection: 'LONG',
@@ -583,10 +632,11 @@ describe('context strategies', () => {
 
     expect(context).toEqual(
       expect.objectContaining({
-        approvalAllowedNow: false,
-        deterministicQuality: 2,
+        approvalAllowedNow: true,
+        deterministicQuality: 5,
         marketFlushConfirmed: false,
-        approvalBlockReasons: expect.arrayContaining([
+        approvalBlockReasons: [],
+        riskAnnotations: expect.arrayContaining([
           'missing_broad_market_derivatives',
         ]),
       }),

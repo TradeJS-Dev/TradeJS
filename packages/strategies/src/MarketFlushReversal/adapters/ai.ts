@@ -115,6 +115,11 @@ Additional Market Flush Reversal context:
 - ethVsBtcVolumeRatio=${String(context.marketFlushReversalGateFeatures.ethVsBtcVolumeRatio ?? 'n/a')}
 - h1RangePosition=${String(context.marketFlushReversalGateFeatures.h1RangePosition ?? 'n/a')}
 - calibratedLongRebound=${String(context.marketFlushReversalGateFeatures.calibratedLongRebound)}
+- stopDistanceAtr=${String(context.marketFlushReversalGateFeatures.stopDistanceAtr ?? 'n/a')}
+- cmcIndexRegime=${context.marketFlushReversalGateFeatures.cmcIndexRegime ?? 'n/a'}
+- cmcIndexStale=${String(context.marketFlushReversalGateFeatures.cmcIndexStale ?? 'n/a')}
+- rsiState=${context.marketFlushReversalGateFeatures.rsiState ?? 'n/a'}
+- validatedAiLongPocket=${String(context.marketFlushReversalGateFeatures.validatedAiLongPocket)}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - deterministicQuality=${String(context.deterministicQuality)}
 - approvalBlockReasons=${context.approvalBlockReasons.join(',') || 'none'}

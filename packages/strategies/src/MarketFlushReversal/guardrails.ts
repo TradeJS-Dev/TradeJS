@@ -1,8 +1,10 @@
 import type { BaseStrategyContextSnapshot, Direction } from '@tradejs/types';
 import type { MarketFlushReversalSignalContext } from './core';
 import {
+  getMarketFlushReversalAiLongPocketFeatures,
   getMarketFlushReversalLongReboundPocketFeatures,
   isMarketFlushReversalCalibratedLongReboundPocket,
+  isMarketFlushReversalValidatedAiLongPocket,
 } from './pockets';
 
 export type MarketFlushReversalGateFeatures = {
@@ -23,6 +25,11 @@ export type MarketFlushReversalGateFeatures = {
   ethVsBtcVolumeRatio: number | null;
   h1RangePosition: number | null;
   calibratedLongRebound: boolean;
+  stopDistanceAtr: number | null;
+  cmcIndexRegime: string | null;
+  cmcIndexStale: boolean | null;
+  rsiState: string | null;
+  validatedAiLongPocket: boolean;
 };
 
 export type MarketFlushReversalGuardrailContext =
@@ -198,6 +205,14 @@ export const buildMarketFlushReversalGuardrailContext = ({
     });
   const { targetVsBtcRatioReturn24h, ethVsBtcVolumeRatio, h1RangePosition } =
     longReboundPocketFeatures;
+  const aiLongPocketFeatures =
+    getMarketFlushReversalAiLongPocketFeatures(baseContext);
+  const validatedAiLongPocket = isMarketFlushReversalValidatedAiLongPocket({
+    ...aiLongPocketFeatures,
+    direction,
+  });
+  const { stopDistanceAtr, cmcIndexRegime, cmcIndexStale, rsiState } =
+    aiLongPocketFeatures;
   const approvalBlockReasons: string[] = [];
   const riskAnnotations: string[] = [];
 
@@ -209,26 +224,26 @@ export const buildMarketFlushReversalGuardrailContext = ({
     approvalBlockReasons.push('local_participation_not_confirmed');
   }
   if (!marketContextAvailable) {
-    approvalBlockReasons.push('missing_broad_market_derivatives');
+    riskAnnotations.push('missing_broad_market_derivatives');
   }
   if (marketRiskFlags.includes('stale_derivatives')) {
-    approvalBlockReasons.push('stale_broad_market_derivatives');
+    riskAnnotations.push('stale_broad_market_derivatives');
   }
   if (marketContextAvailable && broadMarketFlushDirection == null) {
-    approvalBlockReasons.push('no_broad_market_flush');
+    riskAnnotations.push('no_broad_market_flush');
   }
   if (
     direction != null &&
     broadMarketFlushDirection != null &&
     broadMarketFlushDirection !== direction
   ) {
-    approvalBlockReasons.push('broad_market_flush_direction_mismatch');
+    riskAnnotations.push('broad_market_flush_direction_mismatch');
   }
   if (direction === 'SHORT') {
     approvalBlockReasons.push('short_flush_rebound_pocket_not_validated');
   }
-  if (direction === 'LONG' && !calibratedLongRebound) {
-    approvalBlockReasons.push('calibrated_long_rebound_missing');
+  if (direction === 'LONG' && !validatedAiLongPocket) {
+    approvalBlockReasons.push('validated_long_ai_pocket_missing');
   }
 
   if (signalContext.marketFlushConfirmed !== true) {
@@ -262,6 +277,11 @@ export const buildMarketFlushReversalGuardrailContext = ({
     ethVsBtcVolumeRatio,
     h1RangePosition,
     calibratedLongRebound,
+    stopDistanceAtr,
+    cmcIndexRegime,
+    cmcIndexStale,
+    rsiState,
+    validatedAiLongPocket,
   };
 
   return {

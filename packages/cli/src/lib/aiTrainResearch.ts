@@ -238,6 +238,7 @@ const resolveGateFingerprint = async (
   const relativeCandidates = [
     `packages/strategies/src/${strategyName}/adapters/ai.ts`,
     `packages/strategies/src/${strategyName}/guardrails.ts`,
+    `packages/strategies/src/${strategyName}/pockets.ts`,
     `packages/strategies/src/${strategyName}/config.ts`,
     'packages/node/src/ai.ts',
   ];
