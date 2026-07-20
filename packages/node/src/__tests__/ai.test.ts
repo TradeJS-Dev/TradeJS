@@ -2592,7 +2592,7 @@ describe('ai helpers', () => {
       );
     });
 
-    it('approves strong conflict-only support bounces for ReverseTrendLine', async () => {
+    it('keeps lower-score conflict-only support bounces on watch for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2621,13 +2621,14 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 102.4,
-          stopLossPrice: 99.1,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
+      expect(result.qualityReason).toContain('rejection score');
     });
 
     it('approves scored both-conflict support bounces for ReverseTrendLine', async () => {
@@ -2668,7 +2669,7 @@ describe('ai helpers', () => {
       );
     });
 
-    it('approves strong conflict-only resistance bounces for ReverseTrendLine', async () => {
+    it('keeps lower-score conflict-only resistance bounces on watch for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2697,13 +2698,14 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 97.5,
-          stopLossPrice: 100.8,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
+      expect(result.qualityReason).toContain('rejection score');
     });
 
     it('keeps shallow short conflict-only resistance bounces on watch quality for ReverseTrendLine', async () => {
@@ -2782,7 +2784,7 @@ describe('ai helpers', () => {
       );
     });
 
-    it('approves elite SHORT btc-only rejection bounces for ReverseTrendLine', async () => {
+    it('keeps elite but lower-score SHORT btc-only rejection bounces on watch for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2811,13 +2813,14 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          takeProfitPrice: 97.2,
-          stopLossPrice: 100.82,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
+      expect(result.qualityReason).toContain('rejection score');
     });
 
     it('approves scored aligned resistance bounces for ReverseTrendLine', async () => {
@@ -2858,7 +2861,81 @@ describe('ai helpers', () => {
       );
     });
 
-    it('approves aligned follow-through support bounces for ReverseTrendLine', async () => {
+    it('approves narrowed extreme-volatility recovery pockets for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок от линии поддержки',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вниз',
+          comment: 'ok',
+        },
+      });
+
+      const signal = makeReverseSupportBounceLongSignal();
+      signal.additionalIndicators = {
+        ...signal.additionalIndicators,
+        baseContext: {
+          ...signal.additionalIndicators.baseContext,
+          gateFeatures: {
+            decisionHints: {
+              approveBias: 'reject',
+              primaryIssue: 'extreme_volatility',
+            },
+          },
+          regime: {
+            ...signal.additionalIndicators.baseContext.regime,
+            momentum: {
+              upCloseStreak: 2,
+            },
+            trend: {
+              adaptiveChannel: {
+                flipUp: false,
+              },
+            },
+            volatility: {
+              atrPctZScore: 3,
+              percentiles: {
+                atrPctRank100: 99,
+              },
+            },
+          },
+          derivatives: {
+            summary: {
+              riskFlags: [],
+            },
+          },
+        },
+      };
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal,
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 102.4,
+          stopLossPrice: 99.1,
+        }),
+      );
+    });
+
+    it('keeps aligned follow-through support bounces on watch without the strict lane for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -2887,13 +2964,14 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 5,
-          needRetest: false,
-          takeProfitPrice: 102.6,
-          stopLossPrice: 99.2,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
+      expect(result.qualityReason).toContain('rejection score');
     });
 
     it('blocks failed bounce breaks for ReverseTrendLine', async () => {

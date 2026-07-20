@@ -75,6 +75,8 @@ type ReverseTrendLineGateFeatures = {
   volatilityState: 'normal' | 'elevated' | 'extreme' | 'unknown';
   rangePositionState: 'low' | 'middle' | 'high' | 'unknown';
   highQualityBouncePocket: boolean;
+  extremeVolatilityRecoveryPocket: boolean;
+  approvalLane: 'high_score_bounce' | 'extreme_volatility_recovery' | 'watch';
   deterministicRejectionScore: number | null;
 };
 
@@ -150,6 +152,19 @@ const getNestedString = (value: unknown, path: string[]) => {
   return typeof current === 'string' ? current : null;
 };
 
+const getNestedBoolean = (value: unknown, path: string[]) => {
+  let current = value;
+
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+
+  return typeof current === 'boolean' ? current : null;
+};
+
 const isShortBtcOnlyRecoveryLane = (
   context: ReverseTrendlineQualityContext & {
     deterministicRejectionScore: number | null;
@@ -199,6 +214,63 @@ const isShortBtcOnlyRecoveryLane = (
   );
 };
 
+const hasMissingDerivativesRisk = (baseContext: Record<string, unknown>) => {
+  const riskFlags = getNestedRecord(baseContext, [
+    'derivatives',
+    'summary',
+  ])?.riskFlags;
+
+  return Array.isArray(riskFlags) && riskFlags.includes('missing_derivatives');
+};
+
+const isExtremeVolatilityRecoveryLane = (
+  context: Pick<ReverseTrendlineQualityContext, 'hardBlockReasons'>,
+  baseContext: Record<string, unknown>,
+) => {
+  if (context.hardBlockReasons.length > 0) {
+    return false;
+  }
+
+  const primaryIssue = getNestedString(baseContext, [
+    'gateFeatures',
+    'decisionHints',
+    'primaryIssue',
+  ]);
+  const approveBias = getNestedString(baseContext, [
+    'gateFeatures',
+    'decisionHints',
+    'approveBias',
+  ]);
+  const upCloseStreak = getNestedNumber(baseContext, [
+    'regime',
+    'momentum',
+    'upCloseStreak',
+  ]);
+  const adaptiveChannelFlipUp = getNestedBoolean(baseContext, [
+    'regime',
+    'trend',
+    'adaptiveChannel',
+    'flipUp',
+  ]);
+  const atrPctRank100 = getNestedNumber(baseContext, [
+    'regime',
+    'volatility',
+    'percentiles',
+    'atrPctRank100',
+  ]);
+
+  return (
+    primaryIssue === 'extreme_volatility' &&
+    approveBias === 'reject' &&
+    upCloseStreak != null &&
+    upCloseStreak <= 2 &&
+    adaptiveChannelFlipUp === false &&
+    atrPctRank100 != null &&
+    atrPctRank100 <= 99 &&
+    !hasMissingDerivativesRisk(baseContext)
+  );
+};
+
 const getBaseContextQualityPromotion = (
   context: ReverseTrendlineQualityContext & {
     deterministicRejectionScore: number | null;
@@ -212,7 +284,10 @@ const getBaseContextQualityPromotion = (
     return null;
   }
 
-  return isShortBtcOnlyRecoveryLane(context, baseContext) ? 4 : null;
+  return isShortBtcOnlyRecoveryLane(context, baseContext) ||
+    isExtremeVolatilityRecoveryLane(context, baseContext)
+    ? 4
+    : null;
 };
 
 const getBaseContextApprovalBlockReasons = (
@@ -229,12 +304,7 @@ const getBaseContextApprovalBlockReasons = (
     return [];
   }
 
-  const riskFlags = getNestedRecord(baseContext, [
-    'derivatives',
-    'summary',
-  ])?.riskFlags;
-  const hasMissingDerivatives =
-    Array.isArray(riskFlags) && riskFlags.includes('missing_derivatives');
+  const hasMissingDerivatives = hasMissingDerivativesRisk(baseContext);
   const volumeRel20 = getNestedNumber(baseContext, [
     'participation',
     'volume',
@@ -267,6 +337,10 @@ const getBaseContextApprovalBlockReasons = (
   ]);
   const biasConflictState = getReverseTrendlineBiasConflictState(context);
   const shortBtcOnlyRecoveryLane = isShortBtcOnlyRecoveryLane(
+    context,
+    baseContext,
+  );
+  const extremeVolatilityRecoveryLane = isExtremeVolatilityRecoveryLane(
     context,
     baseContext,
   );
@@ -307,7 +381,8 @@ const getBaseContextApprovalBlockReasons = (
     context.signalDirection === 'SHORT' &&
     atrPctZScore != null &&
     atrPctZScore >= 2 &&
-    !shortBtcOnlyRecoveryLane
+    !shortBtcOnlyRecoveryLane &&
+    !extremeVolatilityRecoveryLane
   ) {
     reasons.push('short_extreme_volatility');
   }
@@ -349,11 +424,15 @@ const buildReverseTrendLineGateFeatures = ({
   signal,
   approvalBlockReasons,
   deterministicRejectionScore,
+  approvalLane,
+  extremeVolatilityRecoveryPocket,
 }: {
   context: ReverseTrendlineQualityContext & { deterministicQuality: number };
   signal: Parameters<typeof buildReverseTrendlineAiContext>[0];
   approvalBlockReasons: string[];
   deterministicRejectionScore: number | null;
+  approvalLane: ReverseTrendLineGateFeatures['approvalLane'];
+  extremeVolatilityRecoveryPocket: boolean;
 }): ReverseTrendLineGateFeatures => {
   const baseContext = isRecord(signal.additionalIndicators?.baseContext)
     ? signal.additionalIndicators.baseContext
@@ -448,6 +527,8 @@ const buildReverseTrendLineGateFeatures = ({
       approvalBlockReasons.length === 0 &&
       (bounceAcceptance === 'rejection' ||
         bounceAcceptance === 'follow_through'),
+    extremeVolatilityRecoveryPocket,
+    approvalLane,
     deterministicRejectionScore,
   };
 };
@@ -677,7 +758,19 @@ const buildReverseTrendlineAiContext = (signal: {
     },
     signal,
   );
-  const reverseTrendLineGateFeatures = buildReverseTrendLineGateFeatures({
+  const baseContext = isRecord(signal.additionalIndicators?.baseContext)
+    ? signal.additionalIndicators.baseContext
+    : null;
+  const extremeVolatilityRecoveryPocket =
+    baseContext != null
+      ? isExtremeVolatilityRecoveryLane(
+          {
+            hardBlockReasons,
+          },
+          baseContext,
+        )
+      : false;
+  const baseReverseTrendLineGateFeatures = buildReverseTrendLineGateFeatures({
     context: {
       ...structural,
       ...timing,
@@ -687,18 +780,43 @@ const buildReverseTrendlineAiContext = (signal: {
     signal,
     approvalBlockReasons,
     deterministicRejectionScore,
+    approvalLane: 'watch',
+    extremeVolatilityRecoveryPocket,
   });
+  const highScoreBouncePocket =
+    baseReverseTrendLineGateFeatures.highQualityBouncePocket &&
+    deterministicRejectionScore != null &&
+    deterministicRejectionScore >= 7;
+  const approvalLane: ReverseTrendLineGateFeatures['approvalLane'] =
+    highScoreBouncePocket
+      ? 'high_score_bounce'
+      : extremeVolatilityRecoveryPocket
+        ? 'extreme_volatility_recovery'
+        : 'watch';
+  const approvalAllowedNow = approvalLane !== 'watch';
+  const finalApprovalBlockReasons =
+    !approvalAllowedNow &&
+    promotedDeterministicQuality >= 4 &&
+    approvalBlockReasons.length === 0
+      ? [...approvalBlockReasons, 'rejection_score_below_gate']
+      : approvalBlockReasons;
+  const finalDeterministicQuality = approvalAllowedNow
+    ? Math.max(promotedDeterministicQuality, 4)
+    : promotedDeterministicQuality;
+  const reverseTrendLineGateFeatures = {
+    ...baseReverseTrendLineGateFeatures,
+    approvalLane,
+  };
 
   return {
     ...structural,
     ...timing,
     reverseTrendLineGateFeatures,
-    deterministicQuality: promotedDeterministicQuality,
+    deterministicQuality: finalDeterministicQuality,
     deterministicRejectionScore,
-    approvalAllowedNow:
-      promotedDeterministicQuality >= 4 && approvalBlockReasons.length === 0,
+    approvalAllowedNow,
     hardBlockReasons,
-    approvalBlockReasons,
+    approvalBlockReasons: finalApprovalBlockReasons,
   };
 };
 
@@ -762,6 +880,8 @@ const getHardBlockReasonText = (reason: string) => {
       return 'LONG bounce distance sits in a weak mid-distance pocket';
     case 'short_follow_through_overrated':
       return 'SHORT follow-through bounce is not reliable enough for quality 5';
+    case 'rejection_score_below_gate':
+      return 'deterministic rejection score is below the current strict gate';
     default:
       return reason;
   }
@@ -886,6 +1006,8 @@ Additional ReverseTrendLine context:
 - reverseTrendLineGateVolatilityState=${context.reverseTrendLineGateFeatures.volatilityState}
 - reverseTrendLineGateRangePositionState=${context.reverseTrendLineGateFeatures.rangePositionState}
 - reverseTrendLineGateHighQualityBouncePocket=${String(context.reverseTrendLineGateFeatures.highQualityBouncePocket)}
+- reverseTrendLineGateExtremeVolatilityRecoveryPocket=${String(context.reverseTrendLineGateFeatures.extremeVolatilityRecoveryPocket)}
+- reverseTrendLineGateApprovalLane=${context.reverseTrendLineGateFeatures.approvalLane}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 - approvalBlockReasons=${context.approvalBlockReasons.join(', ') || 'none'}
