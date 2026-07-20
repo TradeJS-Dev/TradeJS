@@ -31,6 +31,7 @@ export type LiquidityTailsGuardrailContext =
     derivativesRiskFlags: string[];
     cadenceUpgradePocket: boolean;
     derivativesRiskOffLongRecoveryPocket: boolean;
+    benchmarkFlowOiExpansionRecoveryPocket: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -84,6 +85,8 @@ const MAX_APPROVAL_PRICE_DISTANCE_TO_MA_SLOW_ATR = 1.2;
 const MIN_APPROVAL_ACTIVE_LIQUIDITY_ZONES = 1;
 const MAX_DERIVATIVES_RISK_OFF_ALT_BASKET_RETURN_24H = -0.035;
 const MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H = -1.8;
+const MIN_BENCHMARK_FLOW_BUY_PRESSURE_PCT = 0.61;
+const MIN_BENCHMARK_OI_ACCELERATION = 0.55;
 const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
 
 const buildLiquidityTailsGateFeatures = ({
@@ -325,18 +328,33 @@ export const buildLiquidityTailsGuardrailContext = ({
     referenceTrx1hOiChangePct4h != null &&
     referenceTrx1hOiChangePct4h <=
       MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H;
+  const referenceTradeFlowBuyPressurePct = asFiniteNumber(
+    baseContext?.gateFeatures?.participation?.referenceTradeFlowBuyPressurePct,
+  );
+  const benchmarkOiAcceleration = asFiniteNumber(
+    derivativesSummary?.oiAcceleration,
+  );
+  const benchmarkFlowOiExpansionRecoveryPocket =
+    (direction === 'LONG' || direction === 'SHORT') &&
+    q4AtrRankEligible &&
+    referenceTradeFlowBuyPressurePct != null &&
+    referenceTradeFlowBuyPressurePct >= MIN_BENCHMARK_FLOW_BUY_PRESSURE_PCT &&
+    benchmarkOiAcceleration != null &&
+    benchmarkOiAcceleration >= MIN_BENCHMARK_OI_ACCELERATION;
 
   if (
     derivativesDirectionAligned === true &&
     !flushSupport &&
-    !derivativesRiskOffLongRecoveryPocket
+    !derivativesRiskOffLongRecoveryPocket &&
+    !benchmarkFlowOiExpansionRecoveryPocket
   ) {
     hardBlockReasons.push('derivatives_reversal_aligned');
   }
   if (
     derivativesDirectionAligned === false &&
     !flushSupport &&
-    !derivativesRiskOffLongRecoveryPocket
+    !derivativesRiskOffLongRecoveryPocket &&
+    !benchmarkFlowOiExpansionRecoveryPocket
   ) {
     hardBlockReasons.push('derivatives_reversal_conflict');
   }
@@ -466,6 +484,13 @@ export const buildLiquidityTailsGuardrailContext = ({
       softBlockReasons.push(...approvalContextReasons);
     }
   }
+  if (
+    deterministicQuality < 4 &&
+    hardBlockReasons.length === 0 &&
+    benchmarkFlowOiExpansionRecoveryPocket
+  ) {
+    deterministicQuality = 4;
+  }
 
   return {
     ...signalContext,
@@ -497,6 +522,7 @@ export const buildLiquidityTailsGuardrailContext = ({
     derivativesRiskFlags,
     cadenceUpgradePocket,
     derivativesRiskOffLongRecoveryPocket,
+    benchmarkFlowOiExpansionRecoveryPocket,
     liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,

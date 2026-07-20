@@ -118,6 +118,53 @@ const makeRiskOffRecoveryPayload = ({
     },
   );
 
+const makeFlowOiRecoveryPayload = ({
+  buyPressurePct = 0.61,
+  oiAcceleration = 0.55,
+  atrPctRankBucket = 'high',
+  reactionBodyAligned = true,
+}: {
+  buyPressurePct?: number;
+  oiAcceleration?: number;
+  atrPctRankBucket?: string;
+  reactionBodyAligned?: boolean;
+} = {}) =>
+  makePayload(
+    {
+      signalDirection: 'LONG',
+      zoneKind: 'buy_pressure',
+      zoneHeight: 5,
+      reactionCloseDistancePct: 0.2,
+      reactionBodyAligned,
+    },
+    {
+      regime: {
+        trend: {
+          bias: 'neutral',
+          adx: { adx: 20, strength: 'developing' },
+          priceDistanceToMaSlowAtr: 4,
+        },
+        momentum: { bodyStrength: 0.2, roc1h: 0.1, roc4h: 0.1 },
+      },
+      relative: {
+        cmcFearGreed: { value: 75 },
+      },
+      gateFeatures: {
+        participation: { referenceTradeFlowBuyPressurePct: buyPressurePct },
+        risk: { liquidityRisk: 'high' },
+        volatility: { atrPctRankBucket },
+      },
+      derivatives: {
+        summary: {
+          pressure: 'crowded_long',
+          directionAligned: true,
+          riskFlags: ['crowded_long'],
+          oiAcceleration,
+        },
+      },
+    },
+  );
+
 describe('liquidityTailsAiAdapter', () => {
   it('copies LiquidityTails gate features into strategy and base contexts', () => {
     const result = liquidityTailsAiAdapter.buildPayload?.({
@@ -971,6 +1018,67 @@ describe('liquidityTailsAiAdapter', () => {
       quality: 1,
       approved: false,
     });
+  });
+
+  it('recovers high-volatility retests with benchmark flow and OI expansion', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeFlowOiRecoveryPayload(),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it.each([
+    ['buy pressure', { buyPressurePct: 0.6099 }],
+    ['OI acceleration', { oiAcceleration: 0.5499 }],
+    ['ATR rank', { atrPctRankBucket: 'normal' }],
+  ])(
+    'does not recover retests below the benchmark %s boundary',
+    (_, options) => {
+      const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makeFlowOiRecoveryPayload(options),
+        analysis: {
+          direction: 'LONG',
+          quality: 1,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+      });
+    },
+  );
+
+  it('keeps malformed retests blocked inside the flow and OI pocket', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makeFlowOiRecoveryPayload({ reactionBodyAligned: false }),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('reaction_body_not_aligned');
   });
 
   it('does not upgrade q3 retests with higher-timeframe conflict', () => {
