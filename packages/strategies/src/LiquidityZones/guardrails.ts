@@ -47,6 +47,8 @@ export type LiquidityZonesGuardrailContext =
     transitionStructureExpansionPocket: boolean;
     ethReferenceStressPocket: boolean;
     solReferenceStressPocket: boolean;
+    ethReferenceWeakNonStressPocket: boolean;
+    longDirectIndicatorSupportConfirmed: boolean | null;
     hardBlockReasons: string[];
     softBlockReasons: string[];
     deterministicQuality: number;
@@ -113,6 +115,10 @@ const isDirectionalPriceAboveLevel = ({
     : direction === 'SHORT'
       ? price != null && level != null && price < level
       : null;
+
+const TRANSITION_LOW_TOUCH_COUNT_MAX = 2;
+const ETH_REFERENCE_WEAK_NON_STRESS_OI_CHANGE_PCT_24H_MAX = -2.5;
+const LONG_DIRECT_INDICATOR_SUPPORT_MIN = 2;
 
 export const buildLiquidityZonesGuardrailContext = ({
   signalContext,
@@ -334,14 +340,6 @@ export const buildLiquidityZonesGuardrailContext = ({
     retestPenetrationPct <= 90;
   const ethReferenceOiWeakPocket =
     ethReferenceOiChangePct4h != null && ethReferenceOiChangePct4h <= -0.8;
-  const transitionStructureExpansionPocket =
-    hasBaseRetestConfirmation &&
-    structureZoneState === 'transition' &&
-    structureScore != null &&
-    structureScore >= 17 &&
-    adaptiveChannelFlipDown === false &&
-    !directionalCrowding &&
-    !ethReferenceOiWeakPocket;
   const ethReferenceStressPocket =
     hasBaseRetestConfirmation &&
     lowTouchCount20 != null &&
@@ -350,6 +348,16 @@ export const buildLiquidityZonesGuardrailContext = ({
     ethReferenceOiChangePct24h <= -5.8 &&
     ethReferenceFundingZScore != null &&
     ethReferenceFundingZScore <= -1.05;
+  const transitionStructureExpansionPocket =
+    hasBaseRetestConfirmation &&
+    lowTouchCount20 != null &&
+    lowTouchCount20 <= TRANSITION_LOW_TOUCH_COUNT_MAX &&
+    structureZoneState === 'transition' &&
+    structureScore != null &&
+    structureScore >= 17 &&
+    adaptiveChannelFlipDown === false &&
+    !directionalCrowding &&
+    !ethReferenceOiWeakPocket;
   const solReferenceStressPocket =
     hasBaseRetestConfirmation &&
     lowTouchCount20 != null &&
@@ -362,14 +370,28 @@ export const buildLiquidityZonesGuardrailContext = ({
     transitionStructureExpansionPocket ||
     ethReferenceStressPocket ||
     solReferenceStressPocket;
+  const ethReferenceWeakNonStressPocket =
+    ethReferenceOiChangePct24h != null &&
+    ethReferenceOiChangePct24h <=
+      ETH_REFERENCE_WEAK_NON_STRESS_OI_CHANGE_PCT_24H_MAX &&
+    !ethReferenceStressPocket;
+  const longDirectIndicatorSupportConfirmed =
+    direction === 'LONG'
+      ? directIndicatorSupportCount != null &&
+        directIndicatorSupportCount >= LONG_DIRECT_INDICATOR_SUPPORT_MIN
+      : null;
   const longRequiresCalibratedExpansion =
     direction === 'LONG' && !calibratedExpansionPocket;
+  const longDirectIndicatorSupportMissing =
+    longDirectIndicatorSupportConfirmed === false;
   const approvalDisqualifiedByCalibration =
-    !calibratedExpansionPocket &&
-    (longRequiresCalibratedExpansion ||
-      isContinuationBreakoutRetest ||
-      hasOverextendedVolumeConfirmation ||
-      hasIsolatedIndicatorSupport);
+    (!calibratedExpansionPocket &&
+      (longRequiresCalibratedExpansion ||
+        isContinuationBreakoutRetest ||
+        hasOverextendedVolumeConfirmation ||
+        hasIsolatedIndicatorSupport)) ||
+    ethReferenceWeakNonStressPocket ||
+    longDirectIndicatorSupportMissing;
 
   if (longRequiresCalibratedExpansion) {
     softBlockReasons.push('long_liquidity_retest_requires_recalibration');
@@ -382,6 +404,12 @@ export const buildLiquidityZonesGuardrailContext = ({
   }
   if (hasIsolatedIndicatorSupport) {
     softBlockReasons.push('isolated_indicator_support');
+  }
+  if (ethReferenceWeakNonStressPocket) {
+    softBlockReasons.push('eth_reference_oi_weak_without_stress');
+  }
+  if (longDirectIndicatorSupportMissing) {
+    softBlockReasons.push('long_direct_indicator_support_missing');
   }
 
   const hasLongBreakoutConfirmation =
@@ -468,6 +496,8 @@ export const buildLiquidityZonesGuardrailContext = ({
     transitionStructureExpansionPocket,
     ethReferenceStressPocket,
     solReferenceStressPocket,
+    ethReferenceWeakNonStressPocket,
+    longDirectIndicatorSupportConfirmed,
     hardBlockReasons,
     softBlockReasons,
     deterministicQuality,

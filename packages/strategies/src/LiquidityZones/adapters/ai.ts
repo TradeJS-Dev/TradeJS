@@ -111,6 +111,7 @@ Additional Liquidity Zones context:
 - obvLevelAligned=${String(context.obvLevelAligned ?? 'n/a')}
 - obvSlopeAligned=${String(context.obvSlopeAligned ?? 'n/a')}
 - directIndicatorSupportCount=${String(context.directIndicatorSupportCount ?? 'n/a')}
+- longDirectIndicatorSupportConfirmed=${String(context.longDirectIndicatorSupportConfirmed ?? 'n/a')}
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - btcCorrelation=${String(context.btcCorrelation ?? 'n/a')}
@@ -129,6 +130,7 @@ Additional Liquidity Zones context:
 - transitionStructureExpansionPocket=${String(context.transitionStructureExpansionPocket)}
 - ethReferenceStressPocket=${String(context.ethReferenceStressPocket)}
 - solReferenceStressPocket=${String(context.solReferenceStressPocket)}
+- ethReferenceWeakNonStressPocket=${String(context.ethReferenceWeakNonStressPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
@@ -144,6 +146,8 @@ Interpretation rules for Liquidity Zones:
 - Top-level derivatives context is BTC benchmark evidence; target-symbol derivatives require targetContext/targetDerived.
 - Do not treat derivatives points, rows, or loaded-history size as approval evidence.
 - A calibrated transition-structure pocket, ETH reference stress pocket, or SOL reference stress pocket can approve a structurally valid retest.
+- LONG approvals need at least two direct MA/MACD/OBV alignments after calibration.
+- Moderate ETH reference OI weakness blocks approval unless the deeper ETH reference stress pocket is active.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

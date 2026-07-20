@@ -28,6 +28,41 @@ const makePayload = (
     },
   }) as any;
 
+const withLongDirectSupport = (baseContext: Record<string, any> = {}) => ({
+  ...baseContext,
+  raw: {
+    ...(baseContext.raw ?? {}),
+    trend: {
+      ...(baseContext.raw?.trend ?? {}),
+      maFast: 95,
+      maSlow: 90,
+    },
+    momentum: {
+      ...(baseContext.raw?.momentum ?? {}),
+      macdHistogram: 0.5,
+    },
+    volume: {
+      ...(baseContext.raw?.volume ?? {}),
+      obv: 120,
+      obvSma: 100,
+    },
+  },
+  regime: {
+    ...(baseContext.regime ?? {}),
+    momentum: {
+      ...(baseContext.regime?.momentum ?? {}),
+      macdHistogramSlope: 0.1,
+    },
+  },
+  participation: {
+    ...(baseContext.participation ?? {}),
+    volume: {
+      ...(baseContext.participation?.volume ?? {}),
+      obvSlope: 1,
+    },
+  },
+});
+
 describe('liquidityZonesAiAdapter', () => {
   it('approves clean pivot-zone retests', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
@@ -290,6 +325,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -298,7 +334,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withLongDirectSupport({
           regime: {
             trend: {
               adaptiveChannel: {
@@ -309,6 +345,139 @@ describe('liquidityZonesAiAdapter', () => {
           structure: {
             structureZones: {
               state: 'transition',
+            },
+            levels: {
+              lowTouchCount20: 2,
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 17,
+            },
+          },
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects transition-structure retests above the low-touch boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          currentPrice: 100,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withLongDirectSupport({
+          regime: {
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+            levels: {
+              lowTouchCount20: 3,
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 17,
+            },
+          },
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
+    });
+  });
+
+  it('requires at least two direct indicator supports for calibrated longs', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          currentPrice: 100,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          raw: {
+            trend: {
+              maFast: 95,
+              maSlow: 110,
+            },
+            momentum: {
+              macdHistogram: -0.5,
+            },
+            volume: {
+              obv: 80,
+              obvSma: 100,
+            },
+          },
+          regime: {
+            momentum: {
+              macdHistogramSlope: -0.1,
+            },
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          participation: {
+            volume: {
+              obvSlope: -1,
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+            levels: {
+              lowTouchCount20: 2,
             },
           },
           gateFeatures: {
@@ -325,9 +494,12 @@ describe('liquidityZonesAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 4,
-      approved: true,
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_direct_indicator_support_missing',
+      ),
     });
   });
 
@@ -339,6 +511,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -347,7 +520,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withLongDirectSupport({
           regime: {
             trend: {
               adaptiveChannel: {
@@ -365,7 +538,7 @@ describe('liquidityZonesAiAdapter', () => {
               structure: 16.99,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -391,6 +564,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -399,7 +573,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withLongDirectSupport({
           regime: {
             trend: {
               adaptiveChannel: {
@@ -410,6 +584,9 @@ describe('liquidityZonesAiAdapter', () => {
           structure: {
             structureZones: {
               state: 'transition',
+            },
+            levels: {
+              lowTouchCount20: 2,
             },
           },
           derivatives: {
@@ -428,7 +605,7 @@ describe('liquidityZonesAiAdapter', () => {
               structure: 17,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -446,7 +623,7 @@ describe('liquidityZonesAiAdapter', () => {
     });
   });
 
-  it('approves the rounded ETH reference stress pocket', () => {
+  it('blocks moderate ETH reference OI weakness outside the stress pocket', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -454,6 +631,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -462,7 +640,76 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
+        withLongDirectSupport({
+          regime: {
+            trend: {
+              adaptiveChannel: {
+                flipDown: false,
+              },
+            },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+            },
+            levels: {
+              lowTouchCount20: 2,
+            },
+          },
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct4h: 0,
+                    oiChangePct24h: -2.5,
+                    fundingZScore: -0.5,
+                  },
+                },
+              },
+            },
+          },
+          gateFeatures: {
+            scores: {
+              structure: 17,
+            },
+          },
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'eth_reference_oi_weak_without_stress',
+      ),
+    });
+  });
+
+  it('approves the rounded ETH reference stress pocket', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
         {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          currentPrice: 100,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withLongDirectSupport({
           structure: {
             levels: {
               lowTouchCount20: 3,
@@ -480,7 +727,7 @@ describe('liquidityZonesAiAdapter', () => {
               },
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -503,6 +750,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -511,7 +759,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withLongDirectSupport({
           structure: {
             levels: {
               lowTouchCount20: 3,
@@ -529,7 +777,7 @@ describe('liquidityZonesAiAdapter', () => {
               },
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -555,6 +803,7 @@ describe('liquidityZonesAiAdapter', () => {
           signalDirection: 'LONG',
           zoneKind: 'swing_low_liquidity',
           zoneHeight: 8,
+          currentPrice: 100,
           hitCount: 3,
           hitVolume: 4_000,
           filterMode: 'count',
@@ -563,7 +812,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withLongDirectSupport({
           structure: {
             levels: {
               lowTouchCount20: 3,
@@ -581,7 +830,7 @@ describe('liquidityZonesAiAdapter', () => {
               },
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
