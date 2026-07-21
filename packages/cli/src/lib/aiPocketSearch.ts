@@ -570,6 +570,40 @@ const addDirectionalDerivedFeatures = (features: AiPocketFeatureMap) => {
   features['derived.directIndicatorSupportCount'] = supportCount;
 };
 
+const addSignalRiskDistanceFeatures = ({
+  features,
+  signal,
+}: {
+  features: AiPocketFeatureMap;
+  signal: NonNullable<AiPayload['signal']>;
+}) => {
+  const currentPrice = isFiniteNumber(signal.prices?.currentPrice)
+    ? signal.prices.currentPrice
+    : null;
+  const stopLossPrice = isFiniteNumber(signal.prices?.stopLossPrice)
+    ? signal.prices.stopLossPrice
+    : null;
+  const takeProfitPrice = isFiniteNumber(signal.prices?.takeProfitPrice)
+    ? signal.prices.takeProfitPrice
+    : null;
+
+  if (currentPrice == null || currentPrice === 0) {
+    return;
+  }
+
+  if (stopLossPrice != null) {
+    features['derived.stopDistanceBps'] =
+      (Math.abs(currentPrice - stopLossPrice) / Math.abs(currentPrice)) *
+      10_000;
+  }
+
+  if (takeProfitPrice != null) {
+    features['derived.takeProfitDistanceBps'] =
+      (Math.abs(takeProfitPrice - currentPrice) / Math.abs(currentPrice)) *
+      10_000;
+  }
+};
+
 export const collectAiPocketFeatures = ({
   payload,
   gateContext,
@@ -602,6 +636,7 @@ export const collectAiPocketFeatures = ({
     shouldSkipPath:
       featureProfile === 'compact' ? isCompactFeaturePathSkipped : undefined,
   });
+  addSignalRiskDistanceFeatures({ features, signal });
   addDirectionalDerivedFeatures(features);
 
   return features;

@@ -130,6 +130,8 @@ describe('aiPocketSearch', () => {
     expect(features['derived.macdHistogramAligned']).toBe(true);
     expect(features['derived.obvSlopeAligned']).toBe(true);
     expect(features['derived.directIndicatorSupportCount']).toBe(6);
+    expect(features['derived.stopDistanceBps']).toBe(500);
+    expect(features['derived.takeProfitDistanceBps']).toBe(1000);
 
     const broadFeatures = collectAiPocketFeatures({
       payload,

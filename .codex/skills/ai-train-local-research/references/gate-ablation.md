@@ -95,6 +95,16 @@ strings such as `LONG`, `high`, and `aligned`. Missing features never match a
 predicate, including `!=`; test availability separately through the feature
 inventory instead of treating missing data as approval evidence.
 
+The shared pocket feature collector also exposes causal signal-risk distances
+computed from the requested signal prices:
+
+- `derived.stopDistanceBps`
+- `derived.takeProfitDistanceBps`
+
+Both are absolute distances from `signal.prices.currentPrice` in basis points.
+They describe the signal-time order plan and do not use execution or outcome
+fields.
+
 Use `--featurePattern '<regex>'` to print matching causal paths, availability,
 ranges, and categories. Do not use `--includeGateContext` for discovery; it is
 only for auditing current gate output fields.
