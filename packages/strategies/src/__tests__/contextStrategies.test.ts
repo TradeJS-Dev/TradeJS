@@ -679,6 +679,9 @@ describe('context strategies', () => {
 
   it('opens RelativeRotation long on positive target-vs-BTC alpha', async () => {
     const baseContext = makeBaseContext();
+    baseContext.relative.targetVsBtc.ratioReturn1h = 4.2;
+    baseContext.relative.targetVsBtc.ratioReturn24h = 1.2;
+    baseContext.relative.targetVsBtc.alphaVsBtc24h = 4.2;
     const { strategyApi } = makeStrategyApi(101);
     const core = await createRelativeRotationCore(
       makeCoreParams({
@@ -709,5 +712,23 @@ describe('context strategies', () => {
       }),
     );
     expect((result as any).orderPlan.stopLossPrice).toBeLessThan(101);
+  });
+
+  it('uses target-vs-BTC 1h return for RelativeRotation strength', async () => {
+    const baseContext = makeBaseContext();
+    baseContext.relative.benchmark.relativeStrength1h = 10_000;
+    baseContext.relative.targetVsBtc.ratioReturn1h = 0.1;
+    const { strategyApi } = makeStrategyApi(101);
+    const core = await createRelativeRotationCore(
+      makeCoreParams({
+        config: RR_DEFAULT_CONFIG,
+        strategyApi,
+        baseContext,
+      }),
+    );
+
+    const result = await core(baseContext.candle, baseContext.candle);
+
+    expect(result).toEqual({ kind: 'skip', code: 'NO_RELATIVE_ROTATION' });
   });
 });

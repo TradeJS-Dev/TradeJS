@@ -88,9 +88,7 @@ const buildDirectionCandidate = ({
   const ratioReturn24h = toFiniteNumberOrNull(targetVsBtc.ratioReturn24h);
   const ethAlpha24h = toFiniteNumberOrNull(targetVsEth?.alphaVsEth24h);
   const ethRatioReturn24h = toFiniteNumberOrNull(targetVsEth?.ratioReturn24h);
-  const relativeStrength1h = toFiniteNumberOrNull(
-    baseContext.relative?.benchmark?.relativeStrength1h,
-  );
+  const relativeStrength1h = toFiniteNumberOrNull(targetVsBtc.ratioReturn1h);
   const marketBreadthReturn = toFiniteNumberOrNull(
     baseContext.relative?.marketBreadth?.equalWeightedReturn,
   );
