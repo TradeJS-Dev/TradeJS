@@ -15,7 +15,8 @@ const SCREENSHOT_NAVIGATION_RETRY_DELAY_MS = 2_000;
 const SCREENSHOT_CAPTURE_ATTEMPTS = 2;
 const SCREENSHOT_CAPTURE_RETRY_DELAY_MS = 2_000;
 const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 30_000;
-const SCREENSHOT_RENDER_DELAY_MS = 10_000;
+const SCREENSHOT_READY_TIMEOUT_MS = 30_000;
+const SCREENSHOT_READY_SELECTOR = '[data-screenshot-ready="true"]';
 const SCREENSHOT_CONSOLE_LOG_LIMIT = 20;
 const SCREENSHOT_CONSOLE_TEXT_LIMIT = 500;
 const SCREENSHOT_BROWSER_STDERR = process.env.SCREENSHOT_BROWSER_STDERR === '1';
@@ -439,7 +440,17 @@ export const screenDashboard = async (
           );
         }
 
-        await delay(SCREENSHOT_RENDER_DELAY_MS);
+        await page.waitForSelector(SCREENSHOT_READY_SELECTOR, {
+          timeout: SCREENSHOT_READY_TIMEOUT_MS,
+        });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve()),
+              );
+            }),
+        );
         await fs.mkdir(getScreenshotsDir(projectRoot), { recursive: true });
         await page.screenshot({
           path: screenshotPath,

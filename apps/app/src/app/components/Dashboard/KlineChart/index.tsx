@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import {
   init,
@@ -20,11 +21,12 @@ import {
   useBtcIndicator,
   useBtcCorrelation,
   useSpreadIndicator,
-  useSignal,
+  useDashboardSignal,
+  useSignalFigures,
   useBacktest,
   useSupportResistanceLines,
   useResize,
-  useSetup,
+  useTradeSetup,
 } from './hooks';
 import { usePluginIndicators } from './hooks/usePluginIndicators';
 import { IndicatorRendererConfig, useData } from '#store';
@@ -45,31 +47,49 @@ export const KlineChart = ({
   indicatorRenderers,
   live = true,
 }: KlineChartProps) => {
-  const chartRef = useRef<Chart | null>(null);
+  const [chart, setChart] = useState<Chart | null>(null);
+  const [initializedHistory, setInitializedHistory] = useState<{
+    chart: Chart;
+    key: string;
+  } | null>(null);
   const { data, key, fulfilled } = useData(filters, live);
+  const searchParams = useSearchParams();
+  const signalId = searchParams.get('signalId');
+  const autoZoom = searchParams.get('autoZoom') === 'true';
+  const dashboardSignal = useDashboardSignal({
+    symbol: filters.symbol,
+    signalId,
+  });
   const updateDataCallback = useRef<
     DataLoaderSubscribeBarParams['callback'] | null
   >(null);
   const RIGHT_EDGE_EPSILON_BARS = 1;
+  const historyKey = `${id}:${key}:${filters.symbol}:${filters.interval}`;
+  const historyReady = Boolean(
+    chart &&
+      fulfilled &&
+      !_.isEmpty(data) &&
+      initializedHistory?.chart === chart &&
+      initializedHistory.key === historyKey,
+  );
 
   useEffect(() => {
-    const chart = init(id) as Chart;
-    chartRef.current = chart;
+    const nextChart = init(id) as Chart;
+    setChart(nextChart);
 
-    darkTheme(chart);
+    darkTheme(nextChart);
 
     return () => {
       dispose(id);
-      chartRef.current = null;
+      setChart((current) => (current === nextChart ? null : current));
     };
   }, [id]);
 
   useEffect(() => {
-    if (!chartRef.current || !fulfilled || _.isEmpty(data)) {
+    if (!chart || !fulfilled || _.isEmpty(data)) {
       return;
     }
 
-    const chart = chartRef.current;
     const currentSymbol = chart.getSymbol()?.ticker;
     const currentInterval = chart.getPeriod()?.span;
     const nextInterval = parseInt(filters.interval, 10);
@@ -77,15 +97,20 @@ export const KlineChart = ({
     const intervalChanged = currentInterval !== nextInterval;
 
     if (symbolChanged || intervalChanged) {
-      chartRef.current.setSymbol({ ticker: filters.symbol, pricePrecision: 9 });
-      chartRef.current.setPeriod({
+      chart.setSymbol({ ticker: filters.symbol, pricePrecision: 9 });
+      chart.setPeriod({
         span: nextInterval,
         type: 'minute',
       });
 
-      chartRef.current.setDataLoader({
+      chart.setDataLoader({
         getBars: ({ callback }) => {
           callback(data);
+          setInitializedHistory((current) =>
+            current?.chart === chart && current.key === historyKey
+              ? current
+              : { chart, key: historyKey },
+          );
         },
         subscribeBar: ({ callback }) => {
           updateDataCallback.current = callback;
@@ -142,9 +167,12 @@ export const KlineChart = ({
     if (!wasPinnedToRightEdge) {
       chart.scrollToDataIndex(dataIndexToKeepVisible);
     }
-  }, [data, filters.interval, filters.symbol, fulfilled, key]);
-
-  const chart = chartRef.current;
+    setInitializedHistory((current) =>
+      current?.chart === chart && current.key === historyKey
+        ? current
+        : { chart, key: historyKey },
+    );
+  }, [chart, data, filters.interval, filters.symbol, fulfilled, historyKey]);
 
   useResize(chart, id);
   useAtrIndicator(chart, indicators.atr.enabled, indicators.atr.periods || []);
@@ -166,16 +194,34 @@ export const KlineChart = ({
   );
   useBacktest(chart, filters.backtestId || undefined);
   useSupportResistanceLines(chart, indicators.resistant?.enabled);
-  useSignal(chart, true);
-  useSetup(chart, true);
+  const signalReady =
+    dashboardSignal.status === 'loaded' && dashboardSignal.signal != null;
+  const signalFiguresReady = useSignalFigures({
+    chart,
+    lastDataTimestamp: data.at(-1)?.timestamp ?? null,
+    enabled: historyReady && signalReady,
+    signal: dashboardSignal.signal,
+    autoZoom,
+  });
+  const tradeSetupReady = useTradeSetup({
+    chart,
+    enabled: historyReady && signalReady,
+    signal: dashboardSignal.signal,
+  });
   usePluginIndicators(chart, indicators, indicatorRenderers, data);
+
+  const screenshotReady = signalId
+    ? historyReady && signalReady && signalFiguresReady && tradeSetupReady
+    : historyReady;
 
   return (
     <>
       <div
         id={id}
         data-testid="market-chart"
-        data-chart-ready={fulfilled && !_.isEmpty(data) ? 'true' : 'false'}
+        data-chart-ready={historyReady ? 'true' : 'false'}
+        data-signal-status={dashboardSignal.status}
+        data-screenshot-ready={screenshotReady ? 'true' : 'false'}
       />
       {!fulfilled && <OverlaySpinner />}
     </>

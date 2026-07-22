@@ -1,11 +1,7 @@
-'use client';
-
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Chart, registerOverlay } from 'klinecharts';
-import { getSignal } from '#actions/signal';
 import { toMs } from '@tradejs/core/time';
-import { Signal } from '@tradejs/types';
+import type { Signal } from '@tradejs/types';
 import { createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
 
 const SETUP = 'Setup';
@@ -15,20 +11,21 @@ const FALLBACK_WIDTH_MS = 24 * 60 * 60_000;
 
 type Point = { timestamp: number; value: number };
 
-export const useSetup = (chart: Chart | null, enabled: boolean) => {
-  const [signal, setSignal] = useState<Signal | null>(null);
-  const searchParams = useSearchParams();
-  const signalId = searchParams.get('signalId');
+type RenderedTradeSetup = {
+  chart: Chart;
+  signalId: string;
+};
 
-  const symbol = chart?.getSymbol()?.ticker || '';
-
-  useEffect(() => {
-    if (!signalId || !symbol) {
-      setSignal(null);
-      return;
-    }
-    getSignal(symbol, signalId).then(setSignal);
-  }, [symbol, signalId]);
+export const useTradeSetup = ({
+  chart,
+  enabled,
+  signal,
+}: {
+  chart: Chart | null;
+  enabled: boolean;
+  signal: Signal | null;
+}) => {
+  const [rendered, setRendered] = useState<RenderedTradeSetup | null>(null);
 
   useEffect(() => {
     registerOverlay({
@@ -80,10 +77,16 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
   }, [signal]);
 
   useEffect(() => {
-    if (!chart || !enabled || !signalId || !signal || !setupPoints) return;
+    if (!chart || !enabled || !signal || !setupPoints) {
+      setRendered(null);
+      return;
+    }
 
     const currentSymbol = chart.getSymbol()?.ticker;
-    if (signal.symbol !== currentSymbol) return;
+    if (signal.symbol !== currentSymbol) {
+      setRendered(null);
+      return;
+    }
 
     const tpId = `${signal.signalId}-tp`;
     const slId = `${signal.signalId}-sl`;
@@ -111,12 +114,24 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
       points: [setupPoints.start],
     });
 
+    setRendered((current) =>
+      current?.chart === chart && current.signalId === signal.signalId
+        ? current
+        : { chart, signalId: signal.signalId },
+    );
+
     return () => {
       chart.removeOverlay({ id: tpId, name: SETUP });
       chart.removeOverlay({ id: slId, name: SETUP });
       chart.removeOverlay({ name: SETUP_START });
     };
-  }, [chart, enabled, signalId, signal, setupPoints]);
+  }, [chart, enabled, signal, setupPoints]);
 
-  return { signal };
+  return Boolean(
+    enabled &&
+      chart &&
+      signal &&
+      rendered?.chart === chart &&
+      rendered.signalId === signal.signalId,
+  );
 };

@@ -1,8 +1,12 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { KlineChart } from '..';
 
 const useDataMock = jest.fn();
+const useDashboardSignalMock = jest.fn();
+const useSignalFiguresMock = jest.fn();
+const useTradeSetupMock = jest.fn();
+const searchParamsGetMock = jest.fn();
 const setDataLoaderMock = jest.fn();
 const setSymbolMock = jest.fn();
 const setPeriodMock = jest.fn();
@@ -23,6 +27,10 @@ jest.mock('klinecharts', () => ({
   dispose: jest.fn(),
 }));
 
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => ({ get: searchParamsGetMock }),
+}));
+
 jest.mock('#store', () => ({
   useData: (...args: unknown[]) => useDataMock(...args),
 }));
@@ -36,8 +44,9 @@ jest.mock('../hooks', () => ({
   useEmaIndicator: jest.fn(),
   useMaIndicator: jest.fn(),
   useResize: jest.fn(),
-  useSetup: jest.fn(),
-  useSignal: jest.fn(),
+  useDashboardSignal: (...args: unknown[]) => useDashboardSignalMock(...args),
+  useSignalFigures: (...args: unknown[]) => useSignalFiguresMock(...args),
+  useTradeSetup: (...args: unknown[]) => useTradeSetupMock(...args),
   useSpreadIndicator: jest.fn(),
   useSupportResistanceLines: jest.fn(),
   useVolIndicator: jest.fn(),
@@ -93,6 +102,32 @@ const indicators = {
 describe('Dashboard/KlineChart', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    let currentSymbol: string | undefined;
+    let currentInterval: number | undefined;
+
+    chartMock.getSymbol.mockImplementation(() =>
+      currentSymbol ? { ticker: currentSymbol } : undefined,
+    );
+    chartMock.getPeriod.mockImplementation(() =>
+      currentInterval ? { span: currentInterval } : undefined,
+    );
+    setSymbolMock.mockImplementation(({ ticker }) => {
+      currentSymbol = ticker;
+    });
+    setPeriodMock.mockImplementation(({ span }) => {
+      currentInterval = span;
+    });
+    setDataLoaderMock.mockImplementation(({ getBars }) => {
+      getBars({ callback: jest.fn() });
+    });
+    searchParamsGetMock.mockReturnValue(null);
+    useDashboardSignalMock.mockReturnValue({
+      queryKey: null,
+      signal: null,
+      status: 'idle',
+    });
+    useSignalFiguresMock.mockImplementation(({ enabled }) => enabled);
+    useTradeSetupMock.mockImplementation(({ enabled }) => enabled);
   });
 
   it('waits for REST history before initializing the chart after an early websocket candle', () => {
@@ -135,7 +170,80 @@ describe('Dashboard/KlineChart', () => {
     ).toBe('true');
     const [{ getBars }] = setDataLoaderMock.mock.calls[0];
     const callback = jest.fn();
-    getBars({ callback });
+    act(() => getBars({ callback }));
     expect(callback).toHaveBeenCalledWith(history);
+  });
+
+  it('loads one declarative signal and marks a cold screenshot ready after overlays render', async () => {
+    const history = [makeCandle(1, 101), makeCandle(2, 102)];
+    const signal = {
+      signalId: 'signal-1',
+      strategy: 'DoubleTap',
+      symbol: 'BTCUSDT',
+      interval: '15',
+      direction: 'LONG',
+      timestamp: 2,
+      figures: { lines: [] },
+      indicators: {},
+      prices: {
+        currentPrice: 102,
+        takeProfitPrice: 110,
+        stopLossPrice: 98,
+        riskRatio: 2,
+      },
+    };
+    searchParamsGetMock.mockImplementation((key: string) => {
+      if (key === 'signalId') return 'signal-1';
+      if (key === 'autoZoom') return 'true';
+      return null;
+    });
+    useDashboardSignalMock.mockReturnValue({
+      queryKey: 'BTCUSDT:signal-1',
+      signal,
+      status: 'loaded',
+    });
+    useDataMock.mockReturnValue({
+      data: history,
+      key: 'bybit_crypto_BTCUSDT_15',
+      fulfilled: true,
+    });
+
+    render(
+      <KlineChart
+        id="test-chart"
+        filters={filters as never}
+        indicators={indicators as never}
+        indicatorRenderers={{}}
+        live={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId('market-chart')
+          .getAttribute('data-screenshot-ready'),
+      ).toBe('true');
+    });
+    expect(useDashboardSignalMock).toHaveBeenCalledWith({
+      symbol: 'BTCUSDT',
+      signalId: 'signal-1',
+    });
+    expect(useSignalFiguresMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        chart: chartMock,
+        lastDataTimestamp: 2,
+        enabled: true,
+        signal,
+        autoZoom: true,
+      }),
+    );
+    expect(useTradeSetupMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        chart: chartMock,
+        enabled: true,
+        signal,
+      }),
+    );
   });
 });

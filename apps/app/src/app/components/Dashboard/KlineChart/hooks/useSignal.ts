@@ -1,11 +1,6 @@
-'use client';
-
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import _ from 'lodash';
 import { Chart } from 'klinecharts';
-import { getSignal } from '#actions/signal';
-import { Signal } from '@tradejs/types';
+import type { Signal } from '@tradejs/types';
 import {
   drawSignalFigures,
   ensureBaseFigureOverlaysRegistered,
@@ -37,49 +32,74 @@ const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   chart.setOffsetRightDistance?.(rightOffsetPx);
 };
 
-export const useSignal = (chart: Chart | null, enabled: boolean) => {
-  const [signal, setSignal] = useState<Signal | null>(null);
-  const searchParams = useSearchParams();
-  const signalId = searchParams.get('signalId');
-  const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
+type RenderedSignalFigures = {
+  chart: Chart;
+  signalId: string;
+};
 
-  const data = chart?.getDataList();
-  const symbol = chart?.getSymbol()?.ticker || '';
+export const useSignalFigures = ({
+  chart,
+  lastDataTimestamp,
+  enabled,
+  signal,
+  autoZoom,
+}: {
+  chart: Chart | null;
+  lastDataTimestamp: number | null;
+  enabled: boolean;
+  signal: Signal | null;
+  autoZoom: boolean;
+}) => {
+  const [rendered, setRendered] = useState<RenderedSignalFigures | null>(null);
 
   useEffect(() => {
-    if (!signalId || !symbol) {
-      setSignal(null);
+    if (!chart || !enabled || lastDataTimestamp == null || !signal) {
+      setRendered(null);
       return;
     }
-    getSignal(symbol, signalId).then(setSignal);
-  }, [signalId, symbol]);
-
-  useEffect(() => {
-    if (!chart || !enabled || !data || _.isEmpty(data) || !signal) return;
 
     const currentSymbol = chart.getSymbol()?.ticker;
-    if (signal.symbol !== currentSymbol) return;
+    if (signal.symbol !== currentSymbol) {
+      setRendered(null);
+      return;
+    }
 
     const normalized = normalizeSignalFigures(signal);
-    if (!normalized) return;
+    const overlays = normalized
+      ? (() => {
+          ensureBaseFigureOverlaysRegistered();
 
-    ensureBaseFigureOverlaysRegistered();
-
-    const overlays = drawSignalFigures({
-      chart,
-      idPrefix: `signal-${signal.signalId}`,
-      figures: normalized,
-    });
+          return drawSignalFigures({
+            chart,
+            idPrefix: `signal-${signal.signalId}`,
+            figures: normalized,
+          });
+        })()
+      : [];
 
     if (autoZoom) {
-      const lastDataTsMs = toMs(data[data.length - 1].timestamp);
+      const lastDataTsMs = toMs(lastDataTimestamp);
       if (Number.isFinite(lastDataTsMs)) {
         fitKeepRightZoom(chart, lastDataTsMs);
       }
     }
 
+    setRendered((current) =>
+      current?.chart === chart && current.signalId === signal.signalId
+        ? current
+        : { chart, signalId: signal.signalId },
+    );
+
     return () => {
       removeSignalFigures(chart, overlays);
     };
-  }, [autoZoom, chart, data, enabled, signal]);
+  }, [autoZoom, chart, enabled, lastDataTimestamp, signal]);
+
+  return Boolean(
+    enabled &&
+      chart &&
+      signal &&
+      rendered?.chart === chart &&
+      rendered.signalId === signal.signalId,
+  );
 };
