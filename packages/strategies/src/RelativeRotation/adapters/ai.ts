@@ -80,6 +80,11 @@ Additional RelativeRotation context:
 - trendBias=${context.trendBias ?? 'n/a'}
 - distanceToLowLevelAtr=${String(context.distanceToLowLevelAtr ?? 'n/a')}
 - adxDiMinus=${String(context.adxDiMinus ?? 'n/a')}
+- price1hPct=${String(context.price1hPct ?? 'n/a')}
+- marketBreadthDispersion=${String(context.marketBreadthDispersion ?? 'n/a')}
+- altBasketReturn1h=${String(context.altBasketReturn1h ?? 'n/a')}
+- cmcFearGreedValueChange7d=${String(context.cmcFearGreedValueChange7d ?? 'n/a')}
+- cmcFearGreedStale=${String(context.cmcFearGreedStale ?? 'n/a')}
 - contextConflictCount=${String(context.contextConflictCount ?? 'n/a')}
 - totalContextScore=${String(context.totalContextScore ?? 'n/a')}
 - deterministicQuality=${context.deterministicQuality}
@@ -90,8 +95,9 @@ Additional RelativeRotation context:
 Interpretation rules for RelativeRotation:
 - The strategy trades target-symbol strength or weakness relative to BTC.
 - Treat target-vs-BTC 1h return as the signal-time relative-strength field; do not use the legacy benchmark ratio metric.
-- The validated deterministic pocket only approves SHORT signals at least 2.75 ATR below the local low while ADX DI- is at most 50.
-- distanceToLowLevelAtr and adxDiMinus are signal-time causal fields, not trade outcomes.
+- The primary deterministic pocket approves SHORT signals at least 2.75 ATR below the local low, with ADX DI- at most 50, a 1h price move of at most -5%, and a non-stale CMC Fear & Greed 7d change of at least -12.
+- The validated recovery pocket may also approve such a downside impulse when market breadth dispersion is at least 0.0085 and the 1h alt-basket return is at least -0.015.
+- distanceToLowLevelAtr, adxDiMinus, price1hPct, marketBreadthDispersion, altBasketReturn1h, and CMC Fear & Greed context are signal-time causal fields, not trade outcomes.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

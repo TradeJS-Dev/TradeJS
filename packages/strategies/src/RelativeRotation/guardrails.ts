@@ -13,6 +13,11 @@ export type RelativeRotationGuardrailContext = Omit<
   trendBias: string | null;
   distanceToLowLevelAtr: number | null;
   adxDiMinus: number | null;
+  price1hPct: number | null;
+  marketBreadthDispersion: number | null;
+  altBasketReturn1h: number | null;
+  cmcFearGreedValueChange7d: number | null;
+  cmcFearGreedStale: boolean | null;
   contextConflictCount: number | null;
   totalContextScore: number | null;
   hardBlockReasons: string[];
@@ -28,6 +33,13 @@ const asFiniteNumber = (value: unknown): number | null => {
 
 const asDirection = (value: unknown): Direction | null =>
   value === 'LONG' || value === 'SHORT' ? value : null;
+
+const SHORT_BREAKDOWN_DISTANCE_TO_LOW_MAX_ATR = -2.75;
+const SHORT_ADX_DI_MINUS_MAX = 50;
+const SHORT_HOURLY_PRICE_CHANGE_MAX_PCT = -5;
+const SHORT_BREADTH_RECOVERY_DISPERSION_MIN = 0.0085;
+const SHORT_BREADTH_RECOVERY_ALT_RETURN_1H_MIN = -0.015;
+const SHORT_FEAR_GREED_CHANGE_7D_MIN = -12;
 
 const isTrendAligned = ({
   direction,
@@ -88,6 +100,20 @@ export const buildRelativeRotationGuardrailContext = ({
     baseContext?.structure?.localRange?.distanceToLowLevelAtr,
   );
   const adxDiMinus = asFiniteNumber(baseContext?.regime?.trend?.adx?.diMinus);
+  const price1hPct = asFiniteNumber(baseContext?.raw?.price?.price1hPct);
+  const marketBreadthDispersion = asFiniteNumber(
+    baseContext?.relative?.marketBreadth?.dispersion,
+  );
+  const altBasketReturn1h = asFiniteNumber(
+    baseContext?.relative?.btcAltRegime?.altBasketReturn1h,
+  );
+  const cmcFearGreedValueChange7d = asFiniteNumber(
+    baseContext?.relative?.cmcFearGreed?.valueChange7d,
+  );
+  const cmcFearGreedStale =
+    typeof baseContext?.relative?.cmcFearGreed?.stale === 'boolean'
+      ? baseContext.relative.cmcFearGreed.stale
+      : null;
   const contextConflictCount = asFiniteNumber(
     baseContext?.gateFeatures?.conflicts?.count,
   );
@@ -113,24 +139,70 @@ export const buildRelativeRotationGuardrailContext = ({
   if (adxDiMinus == null) {
     hardBlockReasons.push('missing_adx_di_minus');
   }
+  if (price1hPct == null) {
+    hardBlockReasons.push('missing_price_1h_pct');
+  }
+  if (cmcFearGreedValueChange7d == null) {
+    hardBlockReasons.push('missing_cmc_fear_greed_change_7d');
+  }
+  if (cmcFearGreedStale == null) {
+    hardBlockReasons.push('missing_cmc_fear_greed_freshness');
+  } else if (cmcFearGreedStale) {
+    hardBlockReasons.push('stale_cmc_fear_greed_context');
+  }
   if (signalDirection && signalDirection !== 'SHORT') {
     softBlockReasons.push('long_direction_not_validated');
   }
-  if (distanceToLowLevelAtr != null && distanceToLowLevelAtr > -2.75) {
+  if (
+    distanceToLowLevelAtr != null &&
+    distanceToLowLevelAtr > SHORT_BREAKDOWN_DISTANCE_TO_LOW_MAX_ATR
+  ) {
     softBlockReasons.push('insufficient_breakdown_distance');
   }
-  if (adxDiMinus != null && adxDiMinus > 50) {
+  if (adxDiMinus != null && adxDiMinus > SHORT_ADX_DI_MINUS_MAX) {
     softBlockReasons.push('adx_di_minus_above_stable_range');
+  }
+  if (price1hPct != null && price1hPct > SHORT_HOURLY_PRICE_CHANGE_MAX_PCT) {
+    softBlockReasons.push('insufficient_hourly_downside_impulse');
+  }
+  if (
+    cmcFearGreedValueChange7d != null &&
+    cmcFearGreedValueChange7d < SHORT_FEAR_GREED_CHANGE_7D_MIN
+  ) {
+    softBlockReasons.push('fear_greed_7d_drop_below_stable_range');
   }
 
   const stableShortBreakdown =
     signalDirection === 'SHORT' &&
     distanceToLowLevelAtr != null &&
-    distanceToLowLevelAtr <= -2.75 &&
+    distanceToLowLevelAtr <= SHORT_BREAKDOWN_DISTANCE_TO_LOW_MAX_ATR &&
     adxDiMinus != null &&
-    adxDiMinus <= 50;
+    adxDiMinus <= SHORT_ADX_DI_MINUS_MAX &&
+    price1hPct != null &&
+    price1hPct <= SHORT_HOURLY_PRICE_CHANGE_MAX_PCT &&
+    cmcFearGreedValueChange7d != null &&
+    cmcFearGreedValueChange7d >= SHORT_FEAR_GREED_CHANGE_7D_MIN &&
+    cmcFearGreedStale === false;
+  const stableBreadthRecovery =
+    signalDirection === 'SHORT' &&
+    marketBreadthDispersion != null &&
+    marketBreadthDispersion >= SHORT_BREADTH_RECOVERY_DISPERSION_MIN &&
+    price1hPct != null &&
+    price1hPct <= SHORT_HOURLY_PRICE_CHANGE_MAX_PCT &&
+    altBasketReturn1h != null &&
+    altBasketReturn1h >= SHORT_BREADTH_RECOVERY_ALT_RETURN_1H_MIN &&
+    cmcFearGreedValueChange7d != null &&
+    cmcFearGreedValueChange7d >= SHORT_FEAR_GREED_CHANGE_7D_MIN &&
+    cmcFearGreedStale === false;
+  if (stableBreadthRecovery) {
+    softBlockReasons.length = 0;
+  }
   const deterministicQuality =
-    hardBlockReasons.length > 0 ? 1 : stableShortBreakdown ? 4 : 3;
+    hardBlockReasons.length > 0
+      ? 1
+      : stableShortBreakdown || stableBreadthRecovery
+        ? 4
+        : 3;
 
   return {
     ...signalContext,
@@ -150,6 +222,11 @@ export const buildRelativeRotationGuardrailContext = ({
     trendBias,
     distanceToLowLevelAtr,
     adxDiMinus,
+    price1hPct,
+    marketBreadthDispersion,
+    altBasketReturn1h,
+    cmcFearGreedValueChange7d,
+    cmcFearGreedStale,
     contextConflictCount,
     totalContextScore,
     hardBlockReasons,

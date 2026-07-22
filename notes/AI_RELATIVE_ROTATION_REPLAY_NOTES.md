@@ -214,3 +214,195 @@ gate disables LONG. This research validates local deterministic
 `AI_MODE=gate`, not `AI_MODE=llm`, and does not claim live-runtime parity until
 the same SHA, gate fingerprint, config id, context fingerprint, and
 `MIN_AI_QUALITY=4` are deployed together.
+
+## Immediate q4 Momentum And Sentiment Filter (`2026-07-21`)
+
+The user explicitly selected immediate enforcement instead of the preferred
+passive q5 rollout. The existing SHORT breakdown pocket remains the base rule,
+but q4 approval now additionally requires:
+
+```ts
+additionalIndicators.baseContext.raw.price.price1hPct <= -5 &&
+additionalIndicators.baseContext.relative.cmcFearGreed.valueChange7d >= -12 &&
+additionalIndicators.baseContext.relative.cmcFearGreed.stale === false
+```
+
+The raw pocket-search boundary for the hourly price move was approximately
+`-4.80752%`; implementation rounds it in the stricter direction to `-5%`.
+Fear & Greed uses the already discrete `-12` point boundary. Both rounded
+conditions were rerun over the complete export and through a trailing 25%
+validation split. Missing hourly price, missing CMC context, missing freshness,
+or stale CMC context now hard-block q4 approval.
+
+Export: `1784639149857` (`7` parts), rows `22,101`, window
+`2025-07-21T12:00:00.000Z .. 2026-07-19T14:30:00.000Z`, lag `2.13d`.
+Lineage: git `1cb91ea7a83adb1d146c38dd583c1df3e7415ba6` (dirty gate change plus unrelated worktree changes), gate
+`24d94c8c46eae0a5`, config `6587d6b2e6300a8e`, context
+`4186a11d2ef809af`, `MIN_AI_QUALITY=4`, `AI_MODE=local-deterministic`.
+
+| Period | Gate | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | before | 582 | 50.3% | 1.25 | 2.73 | 4.33 | 4.35 | 823.53 | 190.37 | 7 | 1.603 |
+| full | after | 387 | 56.8% | 1.67 | 5.06 | 8.63 | 15.21 | 1,228.63 | 81.19 | 6 | 1.066 |
+| 180d | before | 294 | 46.6% | 1.08 | 0.93 | 1.42 | 1.49 | 139.78 | 190.37 | 7 | 1.633 |
+| 180d | after | 186 | 53.8% | 1.47 | 3.76 | 6.25 | 11.22 | 449.05 | 81.19 | 6 | 1.033 |
+| 90d | before | 152 | 50.7% | 1.27 | 2.93 | 4.66 | 9.42 | 225.10 | 96.96 | 7 | 1.689 |
+| 90d | after | 103 | 57.3% | 1.70 | 5.42 | 9.28 | 33.17 | 338.07 | 41.34 | 3 | 1.144 |
+| 30d | before | 51 | 49.0% | 1.18 | 2.04 | 3.19 | 6.57 | 52.34 | 96.96 | 4 | 1.700 |
+| 30d | after | 36 | 52.8% | 1.41 | 3.60 | 5.93 | 22.72 | 77.19 | 41.34 | 3 | 1.200 |
+| 7d | before | 7 | 57.1% | 1.63 | 4.68 | 7.87 | 92.14 | 21.24 | 12.02 | 1 | 1.000 |
+| 7d | after | 5 | 60.0% | 1.93 | 5.35 | 9.46 | 48.35 | 20.10 | 21.71 | 2 | 0.714 |
+
+Full q4+ risk metrics after enforcement:
+
+- gross profit / loss: `3,072.08 / 1,843.45`
+- average approved trade: `3.17`
+- average win / loss: `13.96 / 11.04`
+- payoff ratio: `1.27`
+- largest win / loss: `14.96 / -11.66`
+- maxDD / gross profit: `2.64%`
+- maxDD / total profit: `6.61%`
+- recovery factor: `15.13`
+- ulcer index: `25.29`
+- maximum win / loss streak: `17 / 6`
+- average PnL: `3.38/day`, `102.99/month`
+- cadence: `1.07/day`, `7.46/week`
+- losing months: `2025-09 -34.72`, `2026-02 -26.56`
+
+Time-ordered split:
+
+| Split | N | WR | PnL | PF | MaxDD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train | 286 | 56.6% | 893.43 | 1.65 | 81.19 |
+| validation | 101 | 57.4% | 335.20 | 1.71 | 41.34 |
+
+The largest full-period symbol contributes `9 / 387` approvals and `52.93`
+PnL, so the implemented pocket does not depend on a symbol allowlist or one
+dominant symbol. The validation support of `101` exceeds the default minimum of
+`25`.
+
+Feature provenance and parity:
+
+- `raw.price.price1hPct` is a causal signal-time market-state feature derived
+  from the strategy indicator snapshot on the evaluated candle.
+- `relative.cmcFearGreed.valueChange7d` is a causal daily CMC market-state
+  feature calculated from the latest row at or before signal time and the
+  latest row at or before signal time minus seven days.
+- `relative.cmcFearGreed.stale` is used only as a data-quality blocker, never as
+  positive approval evidence.
+- the replay uses strategy interval `15`, local deterministic gate mode,
+  `MIN_AI_QUALITY=4`, config id `q7r9bb`, and a complete non-stale CMC context
+  on all `22,101` rows. Runtime must keep the same CMC source/freshness behavior;
+  otherwise the new hard block intentionally produces no q4 approval.
+
+Sensitivity remained positive around `price1hPct <= -4.5 / -5 / -5.5` and Fear
+& Greed boundaries `-15 / -12 / -10`. The stricter implemented `-5 / -12`
+variant was preferred over the relaxed `-4.5 / -12` alternative because it
+improved PF and preserved the stricter rounding rule.
+
+Negative controls based on absolute token price also improved this one export,
+which indicates residual cohort bias. The normalized hourly move and causal CMC
+regime features are more defensible, and train/validation plus all terminal
+windows stayed profitable, but live performance remains unverified. Immediate
+enforcement was chosen explicitly despite that residual risk. The main tail
+risk is the small last-7d sample: cadence falls to `0.71/day`, PnL is slightly
+lower than before, and maxDD rises from `12.02` to `21.71`.
+
+Post-change authoritative replay completed with `0` errors and exactly matched
+the pre-implementation ablation (`387` approvals, PnL `1,228.63`, PF `1.6665`,
+maxDD `81.19`). q5+ remains empty; this is an enforced q4 rule, not a watch-only
+quality tier.
+
+## Post-refactor q4 Breadth Recovery (`2026-07-22`)
+
+The strategy, node runtime, and CLI packages were rebuilt after the refactor,
+then the deterministic gate was replayed over export `1784733615297` (`7`
+parts). The export contains `22,047` rows covering
+`2025-07-22T10:15:00.000Z .. 2026-07-19T14:30:00.000Z` (`362.18d`) with a
+`3.09d` terminal lag at research time.
+
+Lineage of the authoritative post-change run:
+
+- git: `640959ee4d9982cae8419a4ff2dfcfe177857f7d` (`dirty`; this gate change and
+  unrelated worktree changes were present)
+- gate fingerprint: `3813701afec6daca`
+- config fingerprint / id: `6587d6b2e6300a8e` / `q7r9bb`
+- context fingerprint: `4186a11d2ef809af`
+- mode: `local-deterministic`, `MIN_AI_QUALITY=4`
+- result: `22,047` selected, `0` failed rows
+
+The previously enforced primary q4 SHORT pocket remains unchanged. A second,
+immediately active recovery pocket was added:
+
+```ts
+signalDirection === 'SHORT' &&
+marketBreadthDispersion >= 0.0085 &&
+price1hPct <= -5 &&
+altBasketReturn1h >= -0.015 &&
+cmcFearGreedValueChange7d >= -12 &&
+cmcFearGreedStale === false
+```
+
+The source pocket discovered on the time-ordered train partition used
+`dispersion >= 0.00732447`, `price1hPct <= -4.93151`, and
+`altBasketReturn1h >= -0.0171107`. The production boundaries are rounded in a
+stricter direction and were selected from a small stability grid. The recovery
+fields are optional for the primary breakdown pocket, but both must be present
+to activate recovery. Existing causal-context, price, Fear & Greed freshness,
+distance, and DI data-quality hard blocks remain in force.
+
+### Authoritative q4+ metrics
+
+| Period | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | 490 | 57.3% | 1.71 | 6.01 | 10.36 | 17.26 | 1,640.98 | 95.82 | 6 | 1.353 |
+| 180d | 278 | 55.4% | 1.59 | 5.52 | 9.37 | 20.08 | 804.16 | 81.19 | 6 | 1.544 |
+| 90d | 190 | 57.4% | 1.73 | 7.64 | 13.22 | 39.14 | 647.56 | 67.11 | 5 | 2.111 |
+| 30d | 76 | 61.8% | 2.10 | 11.42 | 20.59 | 62.77 | 346.22 | 67.11 | 5 | 2.533 |
+| 7d | 13 | 76.9% | 4.34 | 20.67 | 41.75 | 257.95 | 107.24 | 21.71 | 2 | 1.857 |
+
+Full-period risk and cadence details:
+
+- approved wins / losses: `281 / 209`
+- gross profit / loss: `3,939.74 / 2,298.76`
+- average trade: `3.35`
+- average win / loss: `14.02 / 11.00`
+- payoff ratio: `1.27`
+- largest win / loss: `14.96 / -12.28`
+- maxDD / gross profit: `2.43%`
+- maxDD / total profit: `5.84%`
+- recovery factor: `17.13`
+- ulcer index: `27.05`
+- maximum win / loss streak: `17 / 6`
+- average PnL: `4.53/day`, `137.91/month`
+- cadence: `1.35/day`, `9.47/week`
+- losing months: `2025-09 -54.37`, `2026-02 -11.94`
+
+### Time split and incremental slice
+
+| Slice | N | WR | PnL | PF | MaxDD | Loss Streak | Losing Months |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train candidate | 308 | 57.1% | 1,007.45 | 1.69 | 95.82 | 6 | 2 |
+| validation candidate | 182 | 57.7% | 633.53 | 1.75 | 67.11 | 5 | 0 |
+| recovery-only additions | 104 | 58.7% | 401.28 | 1.86 | 57.66 | 4 | 2 |
+
+Compared with the primary pocket alone, full q4+ changes from `386` to `490`
+trades, PnL from `1,239.70` to `1,640.98`, PF from `1.68` to `1.71`, and
+cadence from `1.07/day` to `1.35/day`. Absolute full maxDD rises from `81.19`
+to `95.82`, while maxDD/PnL improves from `6.55%` to `5.84%` and the maximum
+full-period loss streak remains `6`. All terminal windows remain profitable;
+the largest relative evidence gain is in the last `30d` and `7d`, so live
+behavior still needs lineage-matched monitoring.
+
+The broad absolute-token-price negative control was rejected. Although it was
+profitable in-sample, its validation result was `-39.50`, PF `0.99`, maxDD
+`469.20`; the last `90d` and `7d` were also negative (`-82.09` and `-40.99`).
+This confirms that simply widening SHORT approvals does not survive the holdout.
+
+`marketBreadth.dispersion`, `btcAltRegime.altBasketReturn1h`, `price1hPct`, and
+CMC Fear & Greed are normalized market-state features resolved at or before the
+signal candle. No execution, delayed-fill, exit, or outcome field participates
+in approval. The authoritative replay exactly matched the chosen pre-change
+ablation (`490` approvals, PnL `1,640.98`, PF `1.7139`, maxDD `95.82`). This is
+an active q4 gate change, not watch mode. It validates `AI_MODE=gate` only and
+does not establish `AI_MODE=llm` or live-runtime parity.
