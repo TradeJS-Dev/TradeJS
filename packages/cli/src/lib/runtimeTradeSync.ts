@@ -16,7 +16,16 @@ type ClosedPnlLoadCallbacks = {
 };
 
 const CLOSED_PNL_LIMIT = 100;
+const CLOSED_PNL_RECONCILIATION_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 export const EXCHANGE_HISTORY_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const isRuntimeTradeSyncFallbackClose = (trade: RuntimeTradeRecord) =>
+  trade.status === 'closed' &&
+  trade.exitTimestamp === trade.lastSyncedAt &&
+  trade.exitPrice == null &&
+  trade.actualExitPrice == null &&
+  trade.closeFee == null &&
+  trade.fundingFee == null;
 
 export const splitExchangeHistoryTimeRange = ({
   startTime,
@@ -219,7 +228,7 @@ export const syncRuntimeTrades = async ({
 
   const closedPnlRows = await loadClosedPnlRows({
     connector,
-    startTime,
+    startTime: Math.max(0, startTime - CLOSED_PNL_RECONCILIATION_LOOKBACK_MS),
     endTime,
     callbacks: closedPnlCallbacks,
   });
@@ -234,7 +243,7 @@ export const syncRuntimeTrades = async ({
   const syncedTrades: RuntimeTradeRecord[] = [];
 
   for (const trade of trades) {
-    if (trade.status !== 'active') {
+    if (trade.status !== 'active' && !isRuntimeTradeSyncFallbackClose(trade)) {
       syncedTrades.push(trade);
       continue;
     }
@@ -243,7 +252,7 @@ export const syncRuntimeTrades = async ({
     const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
     const isCurrentActiveTrade = activeOrderId === trade.orderId;
 
-    if (!openPositionsReliable) {
+    if (trade.status === 'active' && !openPositionsReliable) {
       syncedTrades.push({
         ...trade,
         status: 'active',
@@ -253,6 +262,7 @@ export const syncRuntimeTrades = async ({
     }
 
     if (
+      trade.status === 'active' &&
       isCurrentActiveTrade &&
       openPosition &&
       openPosition.direction === trade.direction
@@ -286,32 +296,27 @@ export const syncRuntimeTrades = async ({
     }
 
     const matchedClosedPnl = consumeClosedPnlMatch(closedPnlBuckets, trade);
+    if (!matchedClosedPnl) {
+      continue;
+    }
+
     const nextTrade: RuntimeTradeRecord = {
       ...trade,
       status: 'closed',
-      currentPrice: matchedClosedPnl?.exitPrice ?? trade.currentPrice ?? null,
-      currentPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      closedPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
+      currentPrice: matchedClosedPnl.exitPrice ?? trade.currentPrice ?? null,
+      currentPnl: matchedClosedPnl.closedPnl,
+      closedPnl: matchedClosedPnl.closedPnl,
       actualEntryPrice:
-        matchedClosedPnl?.entryPrice ?? trade.actualEntryPrice ?? null,
-      exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
+        matchedClosedPnl.entryPrice ?? trade.actualEntryPrice ?? null,
+      exitPrice: matchedClosedPnl.exitPrice ?? trade.exitPrice ?? null,
       actualExitPrice:
-        matchedClosedPnl?.exitPrice ?? trade.actualExitPrice ?? null,
-      exitTimestamp:
-        matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
+        matchedClosedPnl.exitPrice ?? trade.actualExitPrice ?? null,
+      exitTimestamp: matchedClosedPnl.closedAt,
       exitType: trade.exitType ?? null,
-      openFee: matchedClosedPnl?.openFee ?? trade.openFee ?? null,
-      closeFee: matchedClosedPnl?.closeFee ?? trade.closeFee ?? null,
-      fundingFee: matchedClosedPnl?.fundingFee ?? trade.fundingFee ?? null,
-      totalFee: matchedClosedPnl?.totalFee ?? trade.totalFee ?? null,
+      openFee: matchedClosedPnl.openFee ?? trade.openFee ?? null,
+      closeFee: matchedClosedPnl.closeFee ?? trade.closeFee ?? null,
+      fundingFee: matchedClosedPnl.fundingFee ?? trade.fundingFee ?? null,
+      totalFee: matchedClosedPnl.totalFee ?? trade.totalFee ?? null,
       lastSyncedAt: endTime,
     };
 

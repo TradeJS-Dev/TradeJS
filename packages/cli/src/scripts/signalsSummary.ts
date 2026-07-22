@@ -12,6 +12,7 @@ import {
 } from '../lib/runtimeRedis';
 import {
   formatRuntimeTradeSyncError,
+  isRuntimeTradeSyncFallbackClose,
   syncRuntimeTrades,
 } from '../lib/runtimeTradeSync';
 import {
@@ -309,15 +310,7 @@ const isRuntimeTradeClosedInWindow = (
     return false;
   }
 
-  const looksLikeSyncFallbackClose =
-    trade.exitTimestamp === trade.lastSyncedAt &&
-    trade.exitPrice == null &&
-    trade.actualExitPrice == null &&
-    trade.closeFee == null &&
-    trade.fundingFee == null &&
-    trade.totalFee == null;
-
-  return !looksLikeSyncFallbackClose;
+  return !isRuntimeTradeSyncFallbackClose(trade);
 };
 
 const buildSummaryMessages = ({
