@@ -741,6 +741,25 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('forwards explicit position increase intent to entry execution', async () => {
+    const decision = makeDecisionEntry({
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 105 }],
+        positionIntent: 'increase',
+      },
+      runtime: { ml: { enabled: false }, ai: { enabled: false } },
+    });
+    const { strategy } = await makeRuntime(() => decision);
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ positionIntent: 'increase' }),
+    );
+  });
+
   it('fills delayed BACKTEST entries at the next primary candle open for any interval', async () => {
     const decision = makeDecisionEntry({
       entryContext: {
@@ -1342,6 +1361,10 @@ describe('strategyRuntime', () => {
       makeDecisionEntry({
         signal: undefined,
         runtime: { beforePlaceOrder },
+        orderPlan: {
+          ...makeDecisionEntry().orderPlan,
+          positionIntent: 'increase',
+        },
       }),
     );
 
@@ -1374,6 +1397,7 @@ describe('strategyRuntime', () => {
         timestamp: 1_700_000_123_000,
         direction: 'SHORT',
         qty: 3,
+        positionIntent: 'increase',
       }),
     );
     expect(mockUpdatePositionProtection).toHaveBeenCalledWith({

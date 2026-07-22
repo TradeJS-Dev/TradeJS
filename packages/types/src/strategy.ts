@@ -14,6 +14,7 @@ import {
   CmcFearGreedRegime,
   DerivativesContext,
   MarketFeatureInterval,
+  OrderPositionIntent,
 } from './trade';
 import { StrategyConfig, StrategyCreator } from './backtest';
 import { StrategyManifest } from './strategyAdapters';
@@ -1225,6 +1226,7 @@ export interface StrategyEntryOrderPlan {
   qty: number;
   stopLossPrice: number;
   takeProfits: Tp[];
+  positionIntent?: OrderPositionIntent;
 }
 
 export interface StrategyClosePlan {

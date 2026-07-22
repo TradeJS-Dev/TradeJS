@@ -343,10 +343,12 @@ export type Sl = number | null;
 
 export type Direction = 'LONG' | 'SHORT';
 export type Trend = 'BULL' | 'BEAR';
+export type OrderPositionIntent = 'open' | 'increase';
 
 export type Order = {
   symbol: string;
   isLimit?: boolean;
+  positionIntent?: OrderPositionIntent;
   qty: number;
   price: number;
   timestamp: number;
@@ -361,6 +363,8 @@ export type Position = {
   qty: number;
   price: number;
   direction: Direction;
+  slPrice?: number;
+  tpPrice?: number;
 };
 
 export interface PositionPnlSnapshot extends Position {
@@ -795,6 +799,10 @@ export interface RuntimeTradeRecord {
   direction: Direction;
   qty: number;
   entryPrice: number;
+  entryCount?: number;
+  lastEntryPrice?: number | null;
+  lastEntryQty?: number | null;
+  lastEntryTimestamp?: number | null;
   actualEntryPrice?: number | null;
   entryTimestamp: number;
   signalTimestamp?: number | null;

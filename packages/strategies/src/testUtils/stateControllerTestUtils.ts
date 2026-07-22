@@ -22,10 +22,11 @@ export const createTestStateController = () => {
         return nextState;
       }),
       update: jest.fn((updater: (state: unknown) => unknown) => {
-        const nextState = updater(stores.get(stateKey));
-        stores.set(stateKey, nextState);
+        const currentState = stores.get(stateKey);
+        updater(currentState);
+        stores.set(stateKey, currentState);
         lastResults.delete(stateKey);
-        return nextState;
+        return currentState;
       }),
       oncePerTimestamp: jest.fn(
         (timestamp: number, compute: (state: unknown) => unknown) => {

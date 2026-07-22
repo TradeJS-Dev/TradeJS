@@ -1229,6 +1229,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       qty,
       direction,
       isLimit,
+      positionIntent,
       orderId,
       signal,
       leverage,
@@ -1245,6 +1246,32 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
 
       const isLong = direction === 'LONG';
+
+      if (positionIntent === 'increase') {
+        const currentPosition = await getPositionSnapshot(symbol);
+        if (!currentPosition || currentPosition.direction !== direction) {
+          const failureReason = currentPosition
+            ? 'POSITION_DIRECTION_MISMATCH'
+            : 'POSITION_NOT_FOUND';
+          if (signal) {
+            signal.orderFailureReason = failureReason;
+          }
+          logger.log(
+            'warn',
+            'placeOrder: rejected position increase: %s',
+            toJson(
+              {
+                symbol,
+                direction,
+                currentDirection: currentPosition?.direction ?? null,
+                failureReason,
+              },
+              true,
+            ),
+          );
+          return false;
+        }
+      }
 
       const meta = await getSymbolMeta(marketDataClient, symbol);
 

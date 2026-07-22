@@ -152,6 +152,202 @@ describe('testConnector', () => {
     expect(shortOrders[1].price).toBeCloseTo(90 * (1 + backtestSlippageRate));
   });
 
+  it('aggregates explicit same-direction grid increases at weighted average price', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      executionCostModel: {
+        fees: { makerRate: 0, takerRate: 0, source: 'config' },
+        funding: { enabled: false, source: 'disabled', points: 0 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+    });
+
+    await expect(
+      connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        timestamp: 1,
+        direction: 'LONG',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 90,
+        timestamp: 2,
+        direction: 'LONG',
+        positionIntent: 'increase',
+      }),
+    ).resolves.toBe(true);
+
+    await expect(connector.getPosition('ETHUSDT')).resolves.toEqual(
+      expect.objectContaining({ qty: 2, price: 95, direction: 'LONG' }),
+    );
+    await connector.setTakeProfits({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [{ price: 100, rate: 1 }],
+    });
+    await connector.checkExits({
+      timestamp: 3,
+      open: 95,
+      high: 101,
+      low: 94,
+      close: 100,
+      volume: 1,
+      turnover: 100,
+    });
+
+    const result = await connector.getResult();
+    expect(result.stat).toEqual({
+      amount: INITIAL_BACKTEST_AMOUNT + 10,
+      profit: 10,
+      orders: 1,
+    });
+    expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([
+      'OPEN_LONG',
+      'OPEN_LONG',
+      'TAKE_PROFIT_LONG',
+    ]);
+    expect(result.inlinePositionLog).toHaveLength(1);
+  });
+
+  it('closes the full unequal-size short basket and aggregates its trade telemetry', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      mlEnabled: true,
+      executionCostModel: {
+        fees: { makerRate: 0, takerRate: 0, source: 'config' },
+        funding: { enabled: false, source: 'disabled', points: 0 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 2,
+      price: 100,
+      timestamp: 1,
+      direction: 'SHORT',
+      signal: { signalId: 'grid-short' } as any,
+    });
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 110,
+      timestamp: 2,
+      direction: 'SHORT',
+      positionIntent: 'increase',
+    });
+    await connector.setStopLoss({
+      symbol: 'ETHUSDT',
+      direction: 'SHORT',
+      stopLossPrice: 120,
+    });
+
+    await expect(connector.getPosition('ETHUSDT')).resolves.toEqual(
+      expect.objectContaining({
+        qty: 3,
+        price: expect.closeTo(103.333333, 5),
+        slPrice: 120,
+        direction: 'SHORT',
+      }),
+    );
+    await connector.checkSl({
+      timestamp: 3,
+      open: 110,
+      high: 121,
+      low: 109,
+      close: 120,
+      volume: 1,
+      turnover: 120,
+    });
+
+    const batch = await connector.drainMlResultsBatch();
+    expect(batch).toHaveLength(1);
+    expect(batch[0]).toEqual(
+      expect.objectContaining({
+        signalId: 'grid-short',
+        profit: -50,
+        tradeResult: expect.objectContaining({
+          direction: 'SHORT',
+          qty: 3,
+          closedQty: 3,
+          entryPrice: expect.closeTo(103.333333, 5),
+          exitPrice: 120,
+          exitReason: 'stop_loss',
+          grossProfit: -50,
+          netProfit: -50,
+        }),
+      }),
+    );
+    const result = await connector.getResult();
+    expect(result.stat).toEqual({
+      amount: INITIAL_BACKTEST_AMOUNT - 50,
+      profit: -50,
+      orders: 1,
+    });
+    expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([
+      'OPEN_SHORT',
+      'OPEN_SHORT',
+      'STOP_LOSS_SHORT',
+    ]);
+    expect(result.inlinePositionLog).toHaveLength(1);
+  });
+
+  it('rejects accidental or opposite-direction increases while a position exists', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+
+    await expect(
+      connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 99,
+        timestamp: 2,
+        direction: 'LONG',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 99,
+        timestamp: 2,
+        direction: 'SHORT',
+        positionIntent: 'increase',
+      }),
+    ).resolves.toBe(false);
+  });
+
   it('adds signal execution spread and market impact to slippage', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',

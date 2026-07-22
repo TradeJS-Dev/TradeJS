@@ -4,6 +4,8 @@ import { createHash } from 'crypto';
 import { Candle } from '@tradejs/types';
 import { config as DOUBLE_TAP_CONFIG } from '../DoubleTap/config';
 import { createDoubleTapEngine } from '../DoubleTap/engine';
+import { config as GRID_CONFIG } from '../Grid/config';
+import { createGridEngine } from '../Grid/engine';
 import { config as LIQUIDITY_ZONES_CONFIG } from '../LiquidityZones/config';
 import { createLiquidityZonesEngine } from '../LiquidityZones/engine';
 import { config as STRUCTURE_ZONES_CONFIG } from '../StructureZones/config';
@@ -176,6 +178,26 @@ const scenarios = [
       },
     ],
   },
+  {
+    strategyName: 'Grid',
+    createEngine: createGridEngine,
+    baseConfig: GRID_CONFIG,
+    variants: [
+      {},
+      {
+        GRID_FAST_EMA: 8,
+        GRID_SLOW_EMA: 21,
+        GRID_ATR_PERIOD: 7,
+        GRID_TREND_SLOPE_BARS: 3,
+      },
+      {
+        GRID_FAST_EMA: 34,
+        GRID_SLOW_EMA: 89,
+        GRID_STEP_ATR_MULT: 1.2,
+        GRID_MAX_FIGURE_POINTS: 80,
+      },
+    ],
+  },
 ] as const;
 
 describe('bounded strategy engine history parity', () => {
@@ -183,7 +205,7 @@ describe('bounded strategy engine history parity', () => {
     const summaries = scenarios.flatMap((scenario) =>
       scenario.variants.flatMap((variant, variantIndex) =>
         datasets.map(([datasetName, candles]) => {
-          const engine = scenario.createEngine({
+          const engine = (scenario.createEngine as any)({
             config: { ...scenario.baseConfig, ...variant } as any,
           });
           const states = candles.map((candle) =>

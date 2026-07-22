@@ -1070,6 +1070,7 @@ const executeEntryDecision = async ({
         timestamp: decision.entryContext.timestamp,
         takeProfits: decision.orderPlan.takeProfits,
         stopLossPrice: decision.orderPlan.stopLossPrice,
+        positionIntent: decision.orderPlan.positionIntent,
         ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
           ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
           : {}),
@@ -1104,6 +1105,7 @@ const executeEntryDecision = async ({
       price: decision.entryContext.prices.currentPrice,
       timestamp: decision.entryContext.timestamp,
       direction: decision.entryContext.direction,
+      positionIntent: decision.orderPlan.positionIntent,
       ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
         ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
         : {}),

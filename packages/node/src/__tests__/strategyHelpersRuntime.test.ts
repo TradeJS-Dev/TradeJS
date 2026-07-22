@@ -7,6 +7,7 @@ const mockRunAiPromptLocal = jest.fn();
 const mockSetData = jest.fn();
 const mockCreateRuntimeOrderId = jest.fn();
 const mockRecordRuntimeTradeOpen = jest.fn();
+const mockRecordRuntimeTradeIncrease = jest.fn();
 const mockEnrichSignalWithDerivativesContext = jest.fn<
   Promise<boolean>,
   [unknown]
@@ -53,6 +54,8 @@ jest.mock('../runtimeJournal', () => ({
     mockCreateRuntimeOrderId(...args),
   recordRuntimeTradeOpen: (...args: unknown[]) =>
     mockRecordRuntimeTradeOpen(...args),
+  recordRuntimeTradeIncrease: (...args: unknown[]) =>
+    mockRecordRuntimeTradeIncrease(...args),
 }));
 
 jest.mock('../strategyHelpers/derivativesContext', () => ({
@@ -491,6 +494,117 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
         entryPrice: 101,
       }),
     );
+  });
+
+  it('uses a conservative projected aggregate when an increase position snapshot is stale', async () => {
+    const existingPosition = {
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'LONG',
+    };
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => existingPosition),
+    } as any;
+    const placedSignal = { ...signal };
+
+    const price = await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 90,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 97, rate: 1 }],
+      stopLossPrice: 80,
+      positionIntent: 'increase',
+      signal: placedSignal,
+    });
+
+    expect(connector.placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ positionIntent: 'increase' }),
+    );
+    expect(connector.setTakeProfits).toHaveBeenCalledWith(
+      expect.objectContaining({ qty: 2 }),
+    );
+    expect(placedSignal.orderQty).toBe(1);
+    expect(placedSignal.orderValue).toBe(90);
+    expect(mockRecordRuntimeTradeOpen).not.toHaveBeenCalled();
+    expect(mockRecordRuntimeTradeIncrease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultingQty: 2,
+        resultingEntryPrice: 95,
+        addedQty: 1,
+        addedEntryPrice: 90,
+      }),
+    );
+    expect(price).toBe(95);
+  });
+
+  it('uses the refreshed aggregate to journal a partial grid increase fill', async () => {
+    const previousPosition = {
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'LONG',
+    };
+    const refreshedPosition = {
+      symbol: 'ETHUSDT',
+      qty: 1.5,
+      price: 96,
+      direction: 'LONG',
+    };
+    const connector = {
+      placeOrder: jest.fn(async (order: any) => {
+        order.signal.orderQty = 0.5;
+        return true;
+      }),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest
+        .fn()
+        .mockResolvedValueOnce(previousPosition)
+        .mockResolvedValueOnce(refreshedPosition),
+    } as any;
+    const placedSignal = { ...signal };
+
+    const price = await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 90,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 97, rate: 1 }],
+      stopLossPrice: 80,
+      positionIntent: 'increase',
+      signal: placedSignal,
+    });
+
+    expect(connector.setTakeProfits).toHaveBeenCalledWith(
+      expect.objectContaining({ qty: 1.5 }),
+    );
+    expect(connector.setStopLoss).toHaveBeenCalled();
+    expect(placedSignal.orderQty).toBe(0.5);
+    expect(placedSignal.orderValue).toBe(44);
+    expect(placedSignal.prices.currentPrice).toBe(88);
+    expect(mockRecordRuntimeTradeIncrease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultingQty: 1.5,
+        resultingEntryPrice: 96,
+        addedQty: 0.5,
+        addedEntryPrice: 88,
+        fee: 0.044,
+      }),
+    );
+    expect(price).toBe(96);
   });
 
   it('records partial fill telemetry when top-of-book is unavailable', async () => {

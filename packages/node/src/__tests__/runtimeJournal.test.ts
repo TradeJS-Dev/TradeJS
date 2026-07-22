@@ -31,6 +31,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
+  recordRuntimeTradeIncrease,
   recordRuntimeTradeOpen,
 } from '../runtimeJournal';
 
@@ -134,6 +135,10 @@ describe('runtimeJournal', () => {
         fee: 0.201,
         openFee: 0.201,
         totalFee: 0.201,
+        entryCount: 1,
+        lastEntryPrice: 100.5,
+        lastEntryQty: 2,
+        lastEntryTimestamp: Date.parse('2026-05-31T12:00:00.000Z'),
       }),
     );
     expect(mockSetData).toHaveBeenCalledWith(
@@ -149,6 +154,127 @@ describe('runtimeJournal', () => {
       { expire: 0 },
     );
   });
+
+  it('aggregates a grid increase into the active runtime trade', async () => {
+    const existingTrade = {
+      orderId: 'ord-grid',
+      signalId: 'sig-grid',
+      strategy: 'Grid',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: Date.parse('2026-05-31T12:00:00.000Z'),
+      entryCount: 1,
+      fee: 0.1,
+      openFee: 0.1,
+      totalFee: 0.1,
+      status: 'active',
+    };
+    mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:runtime:active:BTCUSDT') {
+        return { orderId: 'ord-grid' };
+      }
+      if (key === 'users:root:runtime:trade:ord-grid') {
+        return existingTrade;
+      }
+      return fallback;
+    });
+
+    await expect(
+      recordRuntimeTradeIncrease({
+        userName: 'root',
+        strategy: 'Grid',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        resultingQty: 2,
+        resultingEntryPrice: 95,
+        addedQty: 1,
+        addedEntryPrice: 90,
+        entryTimestamp: Date.parse('2026-05-31T12:15:00.000Z'),
+        fee: 0.09,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        orderId: 'ord-grid',
+        qty: 2,
+        entryPrice: 95,
+        entryCount: 2,
+        lastEntryPrice: 90,
+        lastEntryQty: 1,
+        openFee: 0.19,
+        totalFee: 0.19,
+      }),
+    );
+    expect(mockSetData).toHaveBeenCalledWith(
+      'users:root:runtime:trade:ord-grid',
+      expect.objectContaining({ qty: 2, entryCount: 2 }),
+      { expire: 0 },
+    );
+  });
+
+  it('does not create an increase journal entry without a runtime user', async () => {
+    await expect(
+      recordRuntimeTradeIncrease({
+        strategy: 'Grid',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        resultingQty: 2,
+        resultingEntryPrice: 95,
+        addedQty: 1,
+        addedEntryPrice: 90,
+        entryTimestamp: 2,
+      }),
+    ).resolves.toBeNull();
+
+    expect(mockGetData).not.toHaveBeenCalled();
+    expect(mockSetData).not.toHaveBeenCalled();
+    expect(mockSetHashJsonField).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { strategy: 'TrendLine', direction: 'LONG' as const },
+    { strategy: 'Grid', direction: 'SHORT' as const },
+  ])(
+    'rejects an increase when the active trade identity does not match: %o',
+    async ({ strategy, direction }) => {
+      mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+        if (key === 'users:root:runtime:active:BTCUSDT') {
+          return { orderId: 'ord-grid' };
+        }
+        if (key === 'users:root:runtime:trade:ord-grid') {
+          return {
+            orderId: 'ord-grid',
+            strategy,
+            symbol: 'BTCUSDT',
+            direction,
+            qty: 1,
+            entryPrice: 100,
+            entryTimestamp: 1,
+            status: 'active',
+          };
+        }
+        return fallback;
+      });
+
+      await expect(
+        recordRuntimeTradeIncrease({
+          userName: 'root',
+          strategy: 'Grid',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          resultingQty: 2,
+          resultingEntryPrice: 95,
+          addedQty: 1,
+          addedEntryPrice: 90,
+          entryTimestamp: 2,
+        }),
+      ).resolves.toBeNull();
+
+      expect(mockSetData).not.toHaveBeenCalled();
+      expect(mockSetHashJsonField).not.toHaveBeenCalled();
+    },
+  );
 
   it('isolates active trade refs and metadata by deployment', async () => {
     const opened = await recordRuntimeTradeOpen({

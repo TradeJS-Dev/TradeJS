@@ -23,6 +23,7 @@ import { buildMlPayload } from '../mlPayload';
 import { getTradejsProjectCwd } from '../tradejsConfig';
 import {
   createRuntimeOrderId,
+  recordRuntimeTradeIncrease,
   recordRuntimeTradeOpen,
 } from '../runtimeJournal';
 import { enrichSignalWithDerivativesContext } from './derivativesContext';
@@ -234,6 +235,7 @@ interface ExecuteEntryOrderParams {
   timestamp: number;
   takeProfits: Tp[];
   stopLossPrice: number | null;
+  positionIntent?: 'open' | 'increase';
   leverage?: number;
   signal: Signal;
   beforePlaceOrder?: () => Promise<void>;
@@ -385,12 +387,15 @@ export const executeEntryOrder = async ({
   timestamp,
   takeProfits,
   stopLossPrice,
+  positionIntent = 'open',
   signal,
   beforePlaceOrder,
   recordRuntimeTrade = true,
   leverage,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
+  const previousPosition =
+    positionIntent === 'increase' ? await connector.getPosition(symbol) : null;
   const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
   const signalTimestamp = signal.timestamp;
   const signalClosePrice = currentPrice;
@@ -406,6 +411,7 @@ export const executeEntryOrder = async ({
     qty,
     price: currentPrice,
     isLimit: false,
+    positionIntent,
     timestamp,
     direction,
     ...(typeof leverage === 'number' && Number.isFinite(leverage)
@@ -423,25 +429,64 @@ export const executeEntryOrder = async ({
       : qty;
   const currentPosition = await connector.getPosition(symbol);
   const fillTime = Date.now();
-  const entryPrice =
-    currentPosition?.price && Number.isFinite(currentPosition.price)
+  const isPositionIncrease =
+    positionIntent === 'increase' &&
+    previousPosition?.direction === direction &&
+    Number.isFinite(previousPosition.qty) &&
+    previousPosition.qty > 0;
+  const hasRefreshedIncreasedPosition = Boolean(
+    isPositionIncrease &&
+      previousPosition &&
+      currentPosition?.qty &&
+      currentPosition.qty > previousPosition.qty,
+  );
+  const hasUsableCurrentPosition = Boolean(
+    currentPosition &&
+      Number.isFinite(currentPosition.price) &&
+      Number.isFinite(currentPosition.qty) &&
+      (!isPositionIncrease || hasRefreshedIncreasedPosition),
+  );
+  const resultingEntryPrice =
+    hasUsableCurrentPosition && currentPosition
       ? currentPosition.price
-      : currentPrice;
-  const fillSource: RuntimeTradeFillSource =
-    currentPosition?.price && Number.isFinite(currentPosition.price)
-      ? 'exchange_position'
-      : orderPlaced
-        ? 'requested_price'
-        : 'unknown';
-  const entryQty =
-    currentPosition?.qty && Number.isFinite(currentPosition.qty)
+      : isPositionIncrease && previousPosition
+        ? (previousPosition.price * previousPosition.qty +
+            currentPrice * placedQty) /
+          (previousPosition.qty + placedQty)
+        : currentPrice;
+  const resultingQty =
+    hasUsableCurrentPosition && currentPosition
       ? currentPosition.qty
-      : placedQty;
-  const estimatedOpenFee = entryPrice * entryQty * FEE_PERCENT;
+      : isPositionIncrease && previousPosition
+        ? previousPosition.qty + placedQty
+        : placedQty;
+  const filledQty =
+    isPositionIncrease && previousPosition
+      ? hasRefreshedIncreasedPosition && currentPosition
+        ? currentPosition.qty - previousPosition.qty
+        : placedQty
+      : resultingQty;
+  const fillPrice =
+    isPositionIncrease &&
+    previousPosition &&
+    hasRefreshedIncreasedPosition &&
+    currentPosition
+      ? (resultingEntryPrice * currentPosition.qty -
+          previousPosition.price * previousPosition.qty) /
+        (currentPosition.qty - previousPosition.qty)
+      : isPositionIncrease
+        ? currentPrice
+        : resultingEntryPrice;
+  const fillSource: RuntimeTradeFillSource = hasUsableCurrentPosition
+    ? 'exchange_position'
+    : orderPlaced
+      ? 'requested_price'
+      : 'unknown';
+  const estimatedOpenFee = fillPrice * filledQty * FEE_PERCENT;
 
-  signal.prices.currentPrice = entryPrice;
-  signal.orderQty = entryQty;
-  signal.orderValue = entryQty * entryPrice;
+  signal.prices.currentPrice = fillPrice;
+  signal.orderQty = filledQty;
+  signal.orderValue = filledQty * fillPrice;
 
   if (orderPlaced) {
     try {
@@ -449,14 +494,14 @@ export const executeEntryOrder = async ({
         connector,
         symbol,
         direction,
-        qty: entryQty,
+        qty: resultingQty,
         takeProfits,
         stopLossPrice,
       });
     } catch (error) {
       await connector.closePosition({
         symbol,
-        price: entryPrice,
+        price: resultingEntryPrice,
         timestamp,
         direction,
         signal,
@@ -471,7 +516,7 @@ export const executeEntryOrder = async ({
     signal.orderFailureReason = undefined;
   }
 
-  if (orderPlaced && recordRuntimeTrade) {
+  if (orderPlaced && recordRuntimeTrade && !isPositionIncrease) {
     await recordRuntimeTradeOpen({
       userName,
       orderId,
@@ -480,8 +525,8 @@ export const executeEntryOrder = async ({
       symbol,
       interval: signal.interval,
       direction,
-      qty: entryQty,
-      entryPrice,
+      qty: resultingQty,
+      entryPrice: resultingEntryPrice,
       signalTimestamp,
       signalClosePrice,
       arrivalSnapshotTime: arrivalSnapshot.arrivalSnapshotTime,
@@ -492,7 +537,7 @@ export const executeEntryOrder = async ({
       spreadBps: arrivalSnapshot.spreadBps,
       orderSubmitTime,
       orderAckTime,
-      fillAvgPrice: entryPrice,
+      fillAvgPrice: fillPrice,
       fillSource,
       fillTime,
       telemetryQuality: resolveRuntimeTelemetryQuality({
@@ -500,7 +545,7 @@ export const executeEntryOrder = async ({
         arrivalMid: arrivalSnapshot.arrivalMid,
         orderSubmitTime,
         orderAckTime,
-        fillAvgPrice: entryPrice,
+        fillAvgPrice: fillPrice,
         fillTime,
       }),
       fee: estimatedOpenFee,
@@ -517,11 +562,28 @@ export const executeEntryOrder = async ({
     });
   }
 
-  if (currentPosition?.price) {
+  if (orderPlaced && recordRuntimeTrade && isPositionIncrease) {
+    await recordRuntimeTradeIncrease({
+      userName,
+      strategy: signal.strategy,
+      symbol,
+      direction,
+      resultingQty,
+      resultingEntryPrice,
+      addedQty: filledQty,
+      addedEntryPrice: fillPrice,
+      entryTimestamp: timestamp,
+      fee: estimatedOpenFee,
+      accountId: signal.accountId,
+      deploymentId: signal.deploymentId,
+    });
+  }
+
+  if (hasUsableCurrentPosition && currentPosition?.price) {
     return currentPosition.price;
   }
 
-  return entryPrice;
+  return resultingEntryPrice;
 };
 
 export const updatePositionProtection = async ({

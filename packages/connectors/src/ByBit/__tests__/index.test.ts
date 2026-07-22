@@ -1162,6 +1162,114 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('allows an explicit same-direction position increase', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ symbol: 'BTCUSDT' }] },
+      }),
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([
+      {
+        symbol: 'BTCUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+      },
+    ]);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 99,
+      qty: 0.5,
+      direction: 'LONG',
+      positionIntent: 'increase',
+      timestamp: Date.now(),
+    });
+
+    expect(ok).toBe(true);
+    expect(client.getPositionInfo).toHaveBeenCalled();
+    expect(client.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ side: 'Buy', qty: '0.500' }),
+    );
+  });
+
+  it('rejects a grid increase when the exchange position direction differs', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ symbol: 'BTCUSDT' }] },
+      }),
+      setLeverage: jest.fn(),
+      submitOrder: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([
+      {
+        symbol: 'BTCUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'SHORT',
+      },
+    ]);
+    const signal = {} as any;
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 99,
+      qty: 0.5,
+      direction: 'LONG',
+      positionIntent: 'increase',
+      timestamp: Date.now(),
+      signal,
+    });
+
+    expect(ok).toBe(false);
+    expect(signal.orderFailureReason).toBe('POSITION_DIRECTION_MISMATCH');
+    expect(client.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects a grid increase when no exchange position exists', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [] },
+      }),
+      setLeverage: jest.fn(),
+      submitOrder: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([]);
+    const signal = {} as any;
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 99,
+      qty: 0.5,
+      direction: 'LONG',
+      positionIntent: 'increase',
+      timestamp: Date.now(),
+      signal,
+    });
+
+    expect(ok).toBe(false);
+    expect(signal.orderFailureReason).toBe('POSITION_NOT_FOUND');
+    expect(client.submitOrder).not.toHaveBeenCalled();
+  });
+
   it('uses full TP mode for single take-profit with rate=1', async () => {
     const client = {
       setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),

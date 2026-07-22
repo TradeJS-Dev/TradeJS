@@ -146,6 +146,7 @@ export const mapPositionData = (data: PositionV5[]): Position[] => {
       symbol: item.symbol,
       price: parseFloat(item.avgPrice),
       slPrice: parseFloat(item.stopLoss || ''),
+      tpPrice: parseFloat(item.takeProfit || ''),
       qty: parseFloat(item.size),
       direction: (item.side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
     }));

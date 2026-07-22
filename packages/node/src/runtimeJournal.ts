@@ -95,6 +95,10 @@ export const recordRuntimeTradeOpen = async (params: {
 
   const record: RuntimeTradeRecord = {
     ...params,
+    entryCount: 1,
+    lastEntryPrice: params.entryPrice,
+    lastEntryQty: params.qty,
+    lastEntryTimestamp: params.entryTimestamp,
     status: 'active',
     currentPrice: params.entryPrice,
     currentPnl: 0,
@@ -132,6 +136,95 @@ export const recordRuntimeTradeOpen = async (params: {
   }
 
   return record;
+};
+
+export const recordRuntimeTradeIncrease = async (params: {
+  userName?: string;
+  strategy: string;
+  symbol: string;
+  direction: Direction;
+  resultingQty: number;
+  resultingEntryPrice: number;
+  addedQty: number;
+  addedEntryPrice: number;
+  entryTimestamp: number;
+  fee?: number | null;
+  accountId?: string;
+  deploymentId?: string;
+}) => {
+  const {
+    userName,
+    strategy,
+    symbol,
+    direction,
+    resultingQty,
+    resultingEntryPrice,
+    addedQty,
+    addedEntryPrice,
+    entryTimestamp,
+    fee,
+    accountId,
+    deploymentId,
+  } = params;
+  if (!userName) {
+    return null;
+  }
+
+  const existing = await getActiveRuntimeTrade({
+    userName,
+    symbol,
+    accountId,
+    deploymentId,
+  });
+  if (
+    !existing ||
+    existing.strategy !== strategy ||
+    existing.direction !== direction
+  ) {
+    return null;
+  }
+
+  const addedFee = typeof fee === 'number' && Number.isFinite(fee) ? fee : 0;
+  const openFee = (existing.openFee ?? existing.fee ?? 0) + addedFee;
+  const totalFee = (existing.totalFee ?? existing.fee ?? 0) + addedFee;
+  const next: RuntimeTradeRecord = {
+    ...existing,
+    qty: resultingQty,
+    entryPrice: resultingEntryPrice,
+    entryCount: Math.max(1, existing.entryCount ?? 1) + 1,
+    lastEntryPrice: addedEntryPrice,
+    lastEntryQty: addedQty,
+    lastEntryTimestamp: entryTimestamp,
+    currentPrice: resultingEntryPrice,
+    currentPnl: 0,
+    fee: openFee,
+    openFee,
+    totalFee,
+    lastSyncedAt: now(),
+  };
+  const dayKey = getRuntimeStorageDayKey(existing.entryTimestamp);
+
+  try {
+    await Promise.all([
+      setData(redisKeys.runtimeTrade(userName, existing.orderId), next, {
+        expire: 0,
+      }),
+      setHashJsonField(
+        redisKeys.runtimeTradeBucket(userName, dayKey),
+        existing.orderId,
+        next,
+        { expire: 0 },
+      ),
+    ]);
+  } catch (error) {
+    logger.error(
+      'runtime trade increase journal failed: %s %s',
+      symbol,
+      (error as Error)?.message || String(error),
+    );
+  }
+
+  return next;
 };
 
 export const getActiveRuntimeTrade = async (params: {
