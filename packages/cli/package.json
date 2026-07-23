@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/cli",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Official CLI for the TradeJS TypeScript framework: infra setup, backtests, signals, bots, and ML workflows.",
   "keywords": [
     "tradejs",
