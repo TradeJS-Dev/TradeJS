@@ -7,12 +7,19 @@ It supports two first-class authoring paths:
 - TypeScript strategies built with `StrategyAPI`
 - Pine Script strategies embedded as standalone strategy modules (with a separate `.pine` source file)
 
+## TradeJS in Action
+
+[![TradeJS chart with strategy entries, exits, take profit, stop loss, and trend lines](.github/assets/strategy-chart.webp)](https://tradejs.dev)
+
+[![TradeJS runtime dashboard with strategy performance, drawdown, orders, and win rate](.github/assets/runtime-performance.webp)](https://tradejs.dev)
+
 ## Public Resources
 
 ### Web
 
 - Site: [tradejs.dev](https://tradejs.dev)
 - Documentation: [docs.tradejs.dev](https://docs.tradejs.dev)
+- Questions and feedback: [t.me/aleksnick](https://t.me/aleksnick)
 - Site repo: [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
 - Docs repo: [TradeJS-Dev/TradeJS-Docs](https://github.com/TradeJS-Dev/TradeJS-Docs)
 - Discussions: [GitHub Discussions](https://github.com/TradeJS-Dev/TradeJS/discussions)
