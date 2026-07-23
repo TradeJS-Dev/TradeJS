@@ -8,6 +8,13 @@
   "engines": {
     "node": "24.x"
   },
+  "resolutions": {
+    "form-data@npm:^4.0.5": "4.0.6",
+    "ws@npm:^7.3.1": "7.5.11",
+    "ws@npm:^7.4.0": "7.5.11",
+    "ws@npm:^8.18.0": "8.21.1",
+    "ws@npm:^8.18.3": "8.21.1"
+  },
   "dependencies": {
     "@tradejs/cli": "2.0.4",
     "@tradejs/core": "2.0.4",

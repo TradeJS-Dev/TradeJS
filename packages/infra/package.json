@@ -92,7 +92,7 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.4",
-    "@grpc/proto-loader": "^0.8.0",
+    "@grpc/proto-loader": "^0.8.1",
     "@tradejs/types": "workspace:^",
     "chalk": "4.1.2",
     "ioredis": "5.8.0",
