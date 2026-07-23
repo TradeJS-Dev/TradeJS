@@ -101,14 +101,14 @@
   },
   "dependencies": {
     "@tradejs/types": "workspace:^",
-    "date-fns": "^3.3.1",
+    "date-fns": "^3.6.0",
     "fast-technical-indicators": "^1.1.4",
     "klinecharts": "10.0.0-alpha9",
     "lodash": "^4.18.1"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",

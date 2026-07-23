@@ -19,15 +19,15 @@
     "@tradejs/cli": "2.0.5",
     "@tradejs/core": "2.0.5",
     "@tradejs/types": "2.0.5",
-    "ioredis": "5.8.0"
+    "ioredis": "5.11.1"
   },
   "devDependencies": {
     "@types/node": "^24",
-    "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^8.57.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",
