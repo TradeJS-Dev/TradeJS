@@ -65,23 +65,23 @@
     }
   },
   "dependencies": {
-    "@langchain/core": "^1.1.42",
-    "@langchain/openai": "^1.4.5",
+    "@langchain/core": "^1.2.3",
+    "@langchain/openai": "^1.5.5",
     "@tradejs/core": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/types": "workspace:^",
     "chalk": "4.1.2",
-    "ioredis": "5.8.0",
+    "ioredis": "5.11.1",
     "pinets": "0.8.12",
     "progress": "^2.0.3",
-    "puppeteer": "24.15.0",
+    "puppeteer": "24.43.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^24",
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",

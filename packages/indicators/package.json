@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",
