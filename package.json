@@ -19,6 +19,7 @@
     "backtest": "yarn cli:backtest backtest",
     "bot": "yarn cli:node8g bot",
     "bot:cron": "yarn cli:node8g bot",
+    "breadth:universes:update": "yarn cli:node8g binance:breadth-universes:update",
     "build": "turbo run build",
     "build:ci": "bash -lc 'rm -rf .turbo apps/*/.next apps/*/build apps/*/.turbo packages/*/dist packages/*/build packages/*/.turbo && yarn build'",
     "candles:migrate-provider": "yarn cli:node8g candles:migrate-provider",

@@ -1,5 +1,9 @@
-import { TTL_3D } from '@tradejs/core/constants';
-import { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
+import { TTL_1M, TTL_3D } from '@tradejs/core/constants';
+import {
+  RuntimeLineage,
+  RuntimeSignalEvaluationRecord,
+  Signal,
+} from '@tradejs/types';
 import {
   getRuntimeStorageDayKey,
   getRuntimeStorageDayKeys,
@@ -32,11 +36,21 @@ export type RuntimeSignalStatsBucket = {
   reasonGroups: Map<string, Map<string, number>>;
 };
 
+export type RuntimeLineageScopeRecord = {
+  strategy: string;
+  symbol: string;
+  runtimeConfigId?: string;
+  lineage: RuntimeLineage;
+  firstTimestamp: number;
+  lastTimestamp: number;
+};
+
 const SECONDS_PER_DAY = 86_400;
 
 export const RUNTIME_SIGNAL_RETENTION_DAYS_ENV =
   'RUNTIME_SIGNAL_RETENTION_DAYS';
 export const DEFAULT_RUNTIME_SIGNAL_RETENTION_TTL_SECONDS = TTL_3D;
+export const RUNTIME_LINEAGE_SCOPE_RETENTION_TTL_SECONDS = TTL_1M;
 
 // Runtime summary cron runs at 21:00 Europe/Moscow. Shift the logical
 // bucket boundary so one stored "day" maps to exactly one summary window.

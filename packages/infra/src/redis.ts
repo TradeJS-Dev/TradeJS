@@ -662,6 +662,8 @@ export const redisKeys = {
     strategyName: string,
   ) =>
     `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
+  runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
+    `users:${userName}:runtime:lineage-scopes:days:${dayKey}`,
   runtimeTrades: (userName: string) =>
     `users:${userName}:runtime:trade-records:`,
   runtimeTrade: (userName: string, orderId: string) =>

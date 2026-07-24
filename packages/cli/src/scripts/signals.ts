@@ -79,6 +79,7 @@ import {
 } from '../lib/signals/evaluations';
 import { getTelegramDeliverableSignals } from '../lib/signals/telegram';
 import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
+import { buildRuntimeLineage } from '../lib/runtimeLineage';
 import {
   buildSignalsStrategyLifecycleKey,
   createSignalsStrategyLifecycle,
@@ -409,6 +410,20 @@ const findSignals = async (
       interval,
       makeOrders: flags.makeOrders,
     });
+    const runtimeLineage = await buildRuntimeLineage({
+      projectRoot,
+      strategyName,
+      config: {
+        configId,
+        strategyConfig,
+        symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
+      },
+      runContext: {
+        connectorName: connectorName.toLowerCase(),
+        interval: String(interval),
+        universe,
+      },
+    });
     const lifecycleKey = buildSignalsStrategyLifecycleKey({
       connectorName,
       universe: runtimeScopeUniverse,
@@ -498,6 +513,7 @@ const findSignals = async (
         userName: flags.user,
         strategy: strategyName,
         runtimeConfigId: configId,
+        runtimeLineage,
         symbol,
         interval,
         universe,
@@ -517,6 +533,7 @@ const findSignals = async (
       stats.signals += 1;
     }
     signal.runtimeConfigId = configId;
+    signal.runtimeLineage = runtimeLineage;
     if (
       configId &&
       configId !== 'config' &&
@@ -574,6 +591,7 @@ const findSignals = async (
       userName: flags.user,
       strategy: strategyName,
       runtimeConfigId: configId,
+      runtimeLineage,
       symbol,
       interval,
       universe,

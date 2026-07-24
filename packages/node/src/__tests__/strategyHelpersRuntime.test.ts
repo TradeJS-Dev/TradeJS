@@ -449,6 +449,77 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     expect(mockRecordRuntimeTradeOpen).not.toHaveBeenCalled();
   });
 
+  it('does not place a long order after the market crosses its take profit', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        bidPrice: 110,
+        askPrice: 111,
+      })),
+      getPosition: jest.fn(async () => null),
+    } as any;
+    const failedSignal = { ...signal };
+
+    await expect(
+      executeEntryOrder({
+        connector,
+        userName: 'root',
+        symbol: 'ETHUSDT',
+        direction: 'LONG',
+        qty: 1,
+        currentPrice: 100,
+        timestamp: 1_700_000_000_000,
+        takeProfits: [{ price: 110, rate: 1 }],
+        stopLossPrice: 95,
+        signal: failedSignal,
+      }),
+    ).rejects.toThrow('TAKE_PROFIT_CROSSED_BEFORE_ENTRY');
+
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(failedSignal.orderStatus).toBe('failed');
+    expect(failedSignal.orderFailureReason).toBe(
+      'TAKE_PROFIT_CROSSED_BEFORE_ENTRY',
+    );
+  });
+
+  it('does not place a short order after the market crosses its stop loss', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        bidPrice: 105,
+        askPrice: 106,
+      })),
+      getPosition: jest.fn(async () => null),
+    } as any;
+    const failedSignal = {
+      ...signal,
+      direction: 'SHORT',
+    };
+
+    await expect(
+      executeEntryOrder({
+        connector,
+        userName: 'root',
+        symbol: 'ETHUSDT',
+        direction: 'SHORT',
+        qty: 1,
+        currentPrice: 100,
+        timestamp: 1_700_000_000_000,
+        takeProfits: [{ price: 90, rate: 1 }],
+        stopLossPrice: 105,
+        signal: failedSignal,
+      }),
+    ).rejects.toThrow('STOP_LOSS_CROSSED_BEFORE_ENTRY');
+
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(failedSignal.orderStatus).toBe('failed');
+    expect(failedSignal.orderFailureReason).toBe(
+      'STOP_LOSS_CROSSED_BEFORE_ENTRY',
+    );
+  });
+
   it('uses connector-adjusted order qty for protection, signal value and journal', async () => {
     const connector = {
       placeOrder: jest.fn(async (order: any) => {

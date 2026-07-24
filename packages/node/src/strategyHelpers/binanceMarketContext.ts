@@ -5,11 +5,16 @@ import {
 import { logger } from '@tradejs/infra/logger';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import type {
+  BaseMarketBreadthContext,
   BaseStrategyContextSnapshot,
   MarketFeatureInterval,
   MarketTradeFlowRow,
   Signal,
 } from '@tradejs/types';
+import {
+  getBinanceBreadthUniverses,
+  type BinanceBreadthUniverseKey,
+} from '../binanceBreadthUniverses';
 
 const DEFAULT_MAX_AGE_BY_INTERVAL: Record<MarketFeatureInterval, number> = {
   '1m': 3 * 60_000,
@@ -68,11 +73,6 @@ const resolveMarketInterval = (
   signal: Signal,
   override?: MarketFeatureInterval,
 ) => override ?? signalIntervalToMarketInterval(signal.interval);
-
-const resolveBreadthUniverse = () =>
-  (process.env.BINANCE_MARKET_CONTEXT_BREADTH_UNIVERSE || 'binance_top30_usdt')
-    .trim()
-    .toLowerCase();
 
 const getReferenceSymbols = () => {
   const symbols = (
@@ -192,6 +192,28 @@ const getCachedBreadth = ({
   return promise;
 };
 
+const toMarketBreadthContext = (
+  breadth: NonNullable<Awaited<ReturnType<typeof getLatestMarketBreadth>>>,
+  interval: MarketFeatureInterval,
+): BaseMarketBreadthContext => ({
+  source: 'binance_klines',
+  universe: breadth.universe,
+  interval,
+  asOfTs: breadth.ts.getTime(),
+  ageMs: breadth.ageMs,
+  stale: breadth.stale,
+  symbolsCount: toFiniteNumberOrNull(breadth.symbolsCount),
+  advancers: toFiniteNumberOrNull(breadth.advancers),
+  decliners: toFiniteNumberOrNull(breadth.decliners),
+  unchanged: toFiniteNumberOrNull(breadth.unchanged),
+  advanceDeclineRatio: toFiniteNumberOrNull(breadth.advanceDeclineRatio),
+  pctAboveMa20: toFiniteNumberOrNull(breadth.pctAboveMa20),
+  pctAboveMa50: toFiniteNumberOrNull(breadth.pctAboveMa50),
+  equalWeightedReturn: toFiniteNumberOrNull(breadth.equalWeightedReturn),
+  volumeWeightedReturn: toFiniteNumberOrNull(breadth.volumeWeightedReturn),
+  dispersion: toFiniteNumberOrNull(breadth.dispersion),
+});
+
 export const enrichSignalWithBinanceMarketContext = async (params: {
   signal: Signal;
   env: string;
@@ -205,7 +227,6 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
     env,
     enabled = isBinanceMarketContextEnabled(env),
     interval = resolveMarketInterval(signal, params.interval),
-    breadthUniverse = resolveBreadthUniverse(),
     maxAgeMs = DEFAULT_MAX_AGE_BY_INTERVAL[interval],
   } = params;
   if (
@@ -220,20 +241,50 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
   try {
     const referenceSymbols = getReferenceSymbols();
     const primaryReferenceSymbol = resolvePrimaryReferenceSymbol(signal.symbol);
-    const [referenceRows, breadth] = await Promise.all([
+    const breadthUniverses = params.breadthUniverse
+      ? [
+          {
+            key: 'top30' as const,
+            universe: params.breadthUniverse,
+          },
+        ]
+      : getBinanceBreadthUniverses();
+    const [referenceRows, breadthRows] = await Promise.all([
       getCachedReferenceRows({
         referenceSymbols,
         interval,
         timestamp: signal.timestamp,
         maxAgeMs,
       }),
-      getCachedBreadth({
-        breadthUniverse,
-        interval,
-        timestamp: signal.timestamp,
-        maxAgeMs,
-      }),
+      Promise.all(
+        breadthUniverses.map(async ({ key, universe }) => ({
+          key,
+          breadth: await getCachedBreadth({
+            breadthUniverse: universe,
+            interval,
+            timestamp: signal.timestamp,
+            maxAgeMs,
+          }),
+        })),
+      ),
     ]);
+    const availableBreadths = breadthRows.filter(
+      (
+        row,
+      ): row is {
+        key: BinanceBreadthUniverseKey;
+        breadth: NonNullable<typeof row.breadth>;
+      } => row.breadth != null,
+    );
+    const marketBreadths = Object.fromEntries(
+      availableBreadths.map(({ key, breadth }) => [
+        key,
+        toMarketBreadthContext(breadth, interval),
+      ]),
+    );
+    const primaryBreadth = availableBreadths.find(
+      ({ key }) => key === 'top30',
+    )?.breadth;
 
     const tradeFlowBySymbol = Object.fromEntries(
       referenceRows
@@ -243,7 +294,7 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
     const targetReferenceSymbol = signal.symbol.trim().toUpperCase();
     const targetTradeFlow = tradeFlowBySymbol[targetReferenceSymbol];
 
-    if (!Object.keys(tradeFlowBySymbol).length && !breadth) {
+    if (!Object.keys(tradeFlowBySymbol).length && !availableBreadths.length) {
       return false;
     }
 
@@ -276,77 +327,68 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
                 },
               }
             : {}),
-          ...(breadth
+          ...(availableBreadths.length
             ? {
-                marketBreadth: {
-                  source: 'binance_klines' as const,
-                  universe: breadth.universe,
-                  interval,
-                  asOfTs: breadth.ts.getTime(),
-                  ageMs: breadth.ageMs,
-                  stale: breadth.stale,
-                  symbolsCount: toFiniteNumberOrNull(breadth.symbolsCount),
-                  advancers: toFiniteNumberOrNull(breadth.advancers),
-                  decliners: toFiniteNumberOrNull(breadth.decliners),
-                  unchanged: toFiniteNumberOrNull(breadth.unchanged),
-                  advanceDeclineRatio: toFiniteNumberOrNull(
-                    breadth.advanceDeclineRatio,
-                  ),
-                  pctAboveMa20: toFiniteNumberOrNull(breadth.pctAboveMa20),
-                  pctAboveMa50: toFiniteNumberOrNull(breadth.pctAboveMa50),
-                  equalWeightedReturn: toFiniteNumberOrNull(
-                    breadth.equalWeightedReturn,
-                  ),
-                  volumeWeightedReturn: toFiniteNumberOrNull(
-                    breadth.volumeWeightedReturn,
-                  ),
-                  dispersion: toFiniteNumberOrNull(breadth.dispersion),
-                },
-                btcAltRegime: {
-                  source: 'binance_klines' as const,
-                  universe: breadth.universe,
-                  interval,
-                  asOfTs: breadth.ts.getTime(),
-                  ageMs: breadth.ageMs,
-                  stale: breadth.stale,
-                  btcReturn1h: toFiniteNumberOrNull(breadth.btcReturn1h),
-                  btcReturn4h: toFiniteNumberOrNull(breadth.btcReturn4h),
-                  btcReturn24h: toFiniteNumberOrNull(breadth.btcReturn24h),
-                  altBasketReturn1h: toFiniteNumberOrNull(
-                    breadth.altBasketReturn1h,
-                  ),
-                  altBasketReturn4h: toFiniteNumberOrNull(
-                    breadth.altBasketReturn4h,
-                  ),
-                  altBasketReturn24h: toFiniteNumberOrNull(
-                    breadth.altBasketReturn24h,
-                  ),
-                  btcVsAltReturn1h: toFiniteNumberOrNull(
-                    breadth.btcVsAltReturn1h,
-                  ),
-                  btcVsAltReturn4h: toFiniteNumberOrNull(
-                    breadth.btcVsAltReturn4h,
-                  ),
-                  btcVsAltReturn24h: toFiniteNumberOrNull(
-                    breadth.btcVsAltReturn24h,
-                  ),
-                  btcTurnoverShare1h: toFiniteNumberOrNull(
-                    breadth.btcTurnoverShare1h,
-                  ),
-                  btcTurnoverShare24h: toFiniteNumberOrNull(
-                    breadth.btcTurnoverShare24h,
-                  ),
-                  btcTurnoverShareChange24h: toFiniteNumberOrNull(
-                    breadth.btcTurnoverShareChange24h,
-                  ),
-                  altVolToBtcVol24h: toFiniteNumberOrNull(
-                    breadth.altVolToBtcVol24h,
-                  ),
-                  altDispersion24h: toFiniteNumberOrNull(
-                    breadth.altDispersion24h,
-                  ),
-                  regime: breadth.btcAltRegime ?? 'unknown',
-                },
+                marketBreadths,
+                ...(primaryBreadth
+                  ? {
+                      marketBreadth: toMarketBreadthContext(
+                        primaryBreadth,
+                        interval,
+                      ),
+                      btcAltRegime: {
+                        source: 'binance_klines' as const,
+                        universe: primaryBreadth.universe,
+                        interval,
+                        asOfTs: primaryBreadth.ts.getTime(),
+                        ageMs: primaryBreadth.ageMs,
+                        stale: primaryBreadth.stale,
+                        btcReturn1h: toFiniteNumberOrNull(
+                          primaryBreadth.btcReturn1h,
+                        ),
+                        btcReturn4h: toFiniteNumberOrNull(
+                          primaryBreadth.btcReturn4h,
+                        ),
+                        btcReturn24h: toFiniteNumberOrNull(
+                          primaryBreadth.btcReturn24h,
+                        ),
+                        altBasketReturn1h: toFiniteNumberOrNull(
+                          primaryBreadth.altBasketReturn1h,
+                        ),
+                        altBasketReturn4h: toFiniteNumberOrNull(
+                          primaryBreadth.altBasketReturn4h,
+                        ),
+                        altBasketReturn24h: toFiniteNumberOrNull(
+                          primaryBreadth.altBasketReturn24h,
+                        ),
+                        btcVsAltReturn1h: toFiniteNumberOrNull(
+                          primaryBreadth.btcVsAltReturn1h,
+                        ),
+                        btcVsAltReturn4h: toFiniteNumberOrNull(
+                          primaryBreadth.btcVsAltReturn4h,
+                        ),
+                        btcVsAltReturn24h: toFiniteNumberOrNull(
+                          primaryBreadth.btcVsAltReturn24h,
+                        ),
+                        btcTurnoverShare1h: toFiniteNumberOrNull(
+                          primaryBreadth.btcTurnoverShare1h,
+                        ),
+                        btcTurnoverShare24h: toFiniteNumberOrNull(
+                          primaryBreadth.btcTurnoverShare24h,
+                        ),
+                        btcTurnoverShareChange24h: toFiniteNumberOrNull(
+                          primaryBreadth.btcTurnoverShareChange24h,
+                        ),
+                        altVolToBtcVol24h: toFiniteNumberOrNull(
+                          primaryBreadth.altVolToBtcVol24h,
+                        ),
+                        altDispersion24h: toFiniteNumberOrNull(
+                          primaryBreadth.altDispersion24h,
+                        ),
+                        regime: primaryBreadth.btcAltRegime ?? 'unknown',
+                      },
+                    }
+                  : {}),
               }
             : {}),
         },

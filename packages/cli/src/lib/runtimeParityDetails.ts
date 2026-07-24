@@ -28,6 +28,10 @@ export type ExchangeMatchedBacktestEntry = {
   priceDeltaPct: number | null;
 };
 
+export type ExchangeOrderFailedBacktestEntry = ExchangeMatchedBacktestEntry & {
+  reason: string;
+};
+
 const DEFAULT_REPLAY_PARITY_DETAILS_LIMIT = 500;
 const DEFAULT_REPLAY_PARITY_ARTIFACT_LIMIT = 100;
 
@@ -923,6 +927,7 @@ export const buildReplayRuntimeComparisonDetails = ({
       ),
       limit,
     ),
+    orderFailed: [],
     runtimeOnly: cappedRuntimeOnlyDetails,
     backtestOnly: cappedBacktestOnlyDetails,
     nearestCandidates: cappedNearestCandidates,
@@ -943,6 +948,7 @@ export const buildReplayRuntimeComparisonDetails = ({
 
 export const buildReplayExchangeComparisonDetails = ({
   matched,
+  orderFailed = [],
   exchangeOnly,
   backtestOnly,
   exchangeEntries,
@@ -957,6 +963,7 @@ export const buildReplayExchangeComparisonDetails = ({
   replaySignalEvaluations,
 }: {
   matched: ExchangeMatchedBacktestEntry[];
+  orderFailed?: ExchangeOrderFailedBacktestEntry[];
   exchangeOnly: ExchangeEntryRecord[];
   backtestOnly: TradeParityEntry[];
   exchangeEntries: ExchangeEntryRecord[];
@@ -1012,6 +1019,7 @@ export const buildReplayExchangeComparisonDetails = ({
   return {
     capped:
       matched.length > limit ||
+      orderFailed.length > limit ||
       exchangeOnlyDetails.length > limit ||
       backtestOnlyDetails.length > limit ||
       nearestCandidates.length > limit,
@@ -1028,6 +1036,27 @@ export const buildReplayExchangeComparisonDetails = ({
           priceDeltaPct: item.priceDeltaPct,
         }),
       ),
+      limit,
+    ),
+    orderFailed: capReplayDetails(
+      orderFailed.map((item) => {
+        const detail = buildMatchedReplayDetail({
+          runtime: toExchangeDetail(item.exchange),
+          backtest: toBacktestParityDetail(
+            item.backtest,
+            backtestTimestampOffsetMs,
+          ),
+          timestampDiffMs: item.timestampDiffMs,
+          priceDeltaPct: item.priceDeltaPct,
+        });
+        return {
+          runtime: detail.runtime,
+          backtest: detail.backtest,
+          timestampDiffMs: detail.timestampDiffMs,
+          priceDeltaPct: detail.priceDeltaPct,
+          reason: item.reason,
+        };
+      }),
       limit,
     ),
     runtimeOnly: cappedExchangeOnlyDetails,

@@ -7,6 +7,7 @@ import {
 } from '@tradejs/core/strategies';
 import { formatUnix } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import {
   getConnectorCreatorByName,
   DEFAULT_CONNECTOR_NAME,
@@ -26,6 +27,7 @@ import {
   KlineChartItem,
   OrderLogData,
   PositionLogData,
+  RuntimeLineage,
   Signal,
   StrategyConfig,
   StrategyCreator,
@@ -46,11 +48,22 @@ import {
   invokeAfterSignalsHooks,
   invokeBeforeSignalsHooks,
 } from '../signals/hooks';
+import { buildRuntimeLineage } from '../runtimeLineage';
 
 type ReplayRuntimeStrategy = {
   strategyName: string;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
+  strategyResults: Record<
+    string,
+    { config?: Record<string, unknown> | null } | undefined
+  >;
+};
+
+export type ReplayRuntimeLineageRecord = {
+  strategy: string;
+  symbol: string;
+  lineage: RuntimeLineage;
 };
 
 type SymbolPreparedData = {
@@ -73,6 +86,7 @@ type SymbolReplayRuntime = {
   strategies: Array<{
     strategyName: string;
     strategyConfig: StrategyConfig;
+    runtimeLineage: RuntimeLineage;
     run: (
       candle: KlineChartItem,
       btcCandle: KlineChartItem,
@@ -96,6 +110,7 @@ export type HistoricalSignalsReplayResult = {
   positionLog: PositionLogData;
   cycleCount: number;
   abortedCycles: number;
+  runtimeLineages: ReplayRuntimeLineageRecord[];
 };
 
 const loadRuntimeStrategies = async (
@@ -114,10 +129,16 @@ const loadRuntimeStrategies = async (
         throw new Error(`Unknown strategy: ${strategyName}`);
       }
 
+      const strategyResults = (await getData(
+        redisKeys.strategyResults(replayUserName, strategyName),
+        {},
+      )) as ReplayRuntimeStrategy['strategyResults'];
+
       return {
         strategyName,
         strategyCreator,
         strategyConfig,
+        strategyResults,
       };
     }),
   );
@@ -261,6 +282,7 @@ export const runHistoricalSignalsReplay = async ({
 }): Promise<HistoricalSignalsReplayResult> => {
   const startedAt = Date.now();
   const signals: Signal[] = [];
+  const runtimeLineages: ReplayRuntimeLineageRecord[] = [];
   const projectConfig = await loadTradejsConfig(replayProjectRoot);
   const projectHooks = projectConfig.hooks;
   const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
@@ -362,26 +384,54 @@ export const runHistoricalSignalsReplay = async ({
 
     const strategiesForSymbol = await Promise.all(
       loadedStrategies.map(
-        async ({ strategyName, strategyCreator, strategyConfig }) => ({
+        async ({
           strategyName,
+          strategyCreator,
           strategyConfig,
-          run: await strategyCreator({
-            userName: replayUserName,
-            connectorName,
-            config: buildReplayStrategyConfig({
+          strategyResults,
+        }) => {
+          const runtimeLineage = await buildRuntimeLineage({
+            projectRoot: replayProjectRoot,
+            strategyName,
+            config: {
+              configId: 'config',
               strategyConfig,
-              interval: interval as any,
-            }),
+              symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
+            },
+            runContext: {
+              connectorName: connectorName.toLowerCase(),
+              interval: String(interval),
+              universe: preparedRun.universe ?? null,
+            },
+          });
+          runtimeLineages.push({
+            strategy: strategyName,
             symbol,
-            data: preparedData.prevData,
-            btcData: preparedData.btcPrevData,
-            ethData: preparedData.ethPrevData,
-            btcBinanceData: preparedData.btcBinancePrevData,
-            btcCoinbaseData: preparedData.btcCoinbasePrevData,
-            connector: replayConnector,
-            sharedIndicatorsReplayKey,
-          }),
-        }),
+            lineage: runtimeLineage,
+          });
+          return {
+            strategyName,
+            strategyConfig,
+            runtimeLineage,
+            run: await strategyCreator({
+              userName: replayUserName,
+              connectorName,
+              runtimeConfigId: 'config',
+              config: buildReplayStrategyConfig({
+                strategyConfig,
+                interval: interval as any,
+              }),
+              symbol,
+              data: preparedData.prevData,
+              btcData: preparedData.btcPrevData,
+              ethData: preparedData.ethPrevData,
+              btcBinanceData: preparedData.btcBinancePrevData,
+              btcCoinbaseData: preparedData.btcCoinbasePrevData,
+              connector: replayConnector,
+              sharedIndicatorsReplayKey,
+            }),
+          };
+        },
       ),
     );
 
@@ -493,6 +543,7 @@ export const runHistoricalSignalsReplay = async ({
             ethCandle?.timestamp === timestamp ? ethCandle : undefined,
           );
           if (result && typeof result !== 'string') {
+            result.runtimeLineage = strategyRuntime.runtimeLineage;
             await enrichSignalWithBinanceMarketContext({
               signal: result,
               env: 'PARITY',
@@ -561,5 +612,6 @@ export const runHistoricalSignalsReplay = async ({
     positionLog: artifacts.positionLog,
     cycleCount: orderedTimestamps.length,
     abortedCycles,
+    runtimeLineages,
   };
 };

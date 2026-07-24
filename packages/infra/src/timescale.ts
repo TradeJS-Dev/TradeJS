@@ -2289,7 +2289,10 @@ export async function getLatestMarketGlobalContext(params: {
         market_cap_change_pct_24h_usd AS "marketCapChangePct24hUsd"
       FROM market_global_context
       WHERE source = $1
-        AND ts <= to_timestamp($2/1000.0)
+        AND ts + CASE
+          WHEN source = 'coinmarketcap_global' THEN interval '1 day'
+          ELSE interval '0 seconds'
+        END <= to_timestamp($2/1000.0)
       ORDER BY ts DESC
       LIMIT 1
     `,
@@ -2502,7 +2505,11 @@ export async function getLatestMarketReferenceAssetContexts(params: {
       WHERE source = $1
         AND symbol = ANY($2)
         AND interval = $3
-        AND ts <= to_timestamp($4/1000.0)
+        AND ts + CASE interval
+          WHEN '1d' THEN interval '1 day'
+          WHEN '1h' THEN interval '1 hour'
+          ELSE interval '0 seconds'
+        END <= to_timestamp($4/1000.0)
       ORDER BY symbol ASC, ts DESC
     `,
     [source, symbols, interval, params.atMs],
@@ -2551,7 +2558,11 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
       FROM market_cmc_exchange_liquidity_context
       WHERE source = $1
         AND interval = $2
-        AND ts <= to_timestamp($3/1000.0)
+        AND ts + CASE interval
+          WHEN '1d' THEN interval '1 day'
+          WHEN '1h' THEN interval '1 hour'
+          ELSE interval '0 seconds'
+        END <= to_timestamp($3/1000.0)
       ORDER BY ts DESC
       LIMIT 1
     `,
@@ -2643,7 +2654,11 @@ export async function getLatestMarketCmcIndexContexts(params: {
       WHERE source = $1
         AND index_slug = ANY($2)
         AND interval = $3
-        AND ts <= to_timestamp($4/1000.0)
+        AND ts + CASE interval
+          WHEN '1d' THEN interval '1 day'
+          WHEN '1h' THEN interval '1 hour'
+          ELSE interval '0 seconds'
+        END <= to_timestamp($4/1000.0)
       ORDER BY index_slug ASC, ts DESC
     `,
     [source, indexSlugs, interval, params.atMs],
@@ -2712,7 +2727,11 @@ export async function getLatestMarketCmcFearGreedContext(params: {
       FROM market_cmc_fear_greed_context
       WHERE source = $1
         AND interval = $2
-        AND ts <= to_timestamp($3/1000.0)
+        AND ts + CASE interval
+          WHEN '1d' THEN interval '1 day'
+          WHEN '1h' THEN interval '1 hour'
+          ELSE interval '0 seconds'
+        END <= to_timestamp($3/1000.0)
       ORDER BY ts DESC
       LIMIT 1
     `,

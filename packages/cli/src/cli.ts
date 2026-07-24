@@ -16,6 +16,8 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ai-pocket-search': () => import('./scripts/aiPocketSearch'),
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
+  'binance:breadth-universes:update': () =>
+    import('./scripts/binanceBreadthUniversesUpdate'),
   'binance:market-ingest': () => import('./scripts/binanceMarketIngest'),
   bot: () => import('./scripts/bot'),
   'candles:migrate-provider': () => import('./scripts/candlesMigrateProvider'),

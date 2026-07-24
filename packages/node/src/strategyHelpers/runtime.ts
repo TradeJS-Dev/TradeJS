@@ -245,7 +245,7 @@ interface ExecuteEntryOrderParams {
 const toFiniteNumberOrNull = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
 
-const getArrivalSnapshot = async ({
+export const getOrderArrivalSnapshot = async ({
   connector,
   symbol,
 }: {
@@ -296,6 +296,64 @@ const getArrivalSnapshot = async ({
       arrivalMid: null,
       spreadBps: null,
     };
+  }
+};
+
+export const validateEntryProtectionAtArrival = ({
+  direction,
+  signalPrice,
+  bid,
+  ask,
+  arrivalMid,
+  takeProfits,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  signalPrice: number;
+  bid: number | null;
+  ask: number | null;
+  arrivalMid: number | null;
+  takeProfits: Tp[];
+  stopLossPrice: number | null;
+}) => {
+  const entryReference =
+    direction === 'LONG'
+      ? ask ?? arrivalMid ?? signalPrice
+      : bid ?? arrivalMid ?? signalPrice;
+  const stopReference =
+    direction === 'LONG'
+      ? bid ?? arrivalMid ?? signalPrice
+      : ask ?? arrivalMid ?? signalPrice;
+  if (
+    !Number.isFinite(entryReference) ||
+    entryReference <= 0 ||
+    !Number.isFinite(stopReference) ||
+    stopReference <= 0
+  ) {
+    throw new Error('INVALID_ENTRY_REFERENCE_AT_ARRIVAL');
+  }
+
+  for (const takeProfit of takeProfits) {
+    if (
+      !Number.isFinite(takeProfit.price) ||
+      takeProfit.price <= 0 ||
+      (direction === 'LONG'
+        ? takeProfit.price <= entryReference
+        : takeProfit.price >= entryReference)
+    ) {
+      throw new Error('TAKE_PROFIT_CROSSED_BEFORE_ENTRY');
+    }
+  }
+
+  if (
+    stopLossPrice != null &&
+    (!Number.isFinite(stopLossPrice) ||
+      stopLossPrice <= 0 ||
+      (direction === 'LONG'
+        ? stopLossPrice >= stopReference
+        : stopLossPrice <= stopReference))
+  ) {
+    throw new Error('STOP_LOSS_CROSSED_BEFORE_ENTRY');
   }
 };
 
@@ -404,7 +462,22 @@ export const executeEntryOrder = async ({
   signal.orderValue = qty * currentPrice;
   signal.orderFailureReason = undefined;
 
-  const arrivalSnapshot = await getArrivalSnapshot({ connector, symbol });
+  const arrivalSnapshot = await getOrderArrivalSnapshot({ connector, symbol });
+  try {
+    validateEntryProtectionAtArrival({
+      direction,
+      signalPrice: currentPrice,
+      bid: arrivalSnapshot.bid,
+      ask: arrivalSnapshot.ask,
+      arrivalMid: arrivalSnapshot.arrivalMid,
+      takeProfits,
+      stopLossPrice,
+    });
+  } catch (error) {
+    signal.orderStatus = 'failed';
+    signal.orderFailureReason = (error as Error).message;
+    throw error;
+  }
   const orderSubmitTime = Date.now();
   const orderPlaced = await connector.placeOrder({
     symbol,

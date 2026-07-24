@@ -128,6 +128,7 @@ export const prepareRunEnvironment = async ({
   deploymentId,
   assetClasses,
   deployment,
+  closedIntervalMs,
 }: {
   connector: unknown;
   userName: string;
@@ -146,6 +147,7 @@ export const prepareRunEnvironment = async ({
   deploymentId?: string;
   assetClasses?: AssetClass[];
   deployment?: RuntimeDeployment | null;
+  closedIntervalMs?: number;
 }): Promise<PreparedRunEnvironment | null> => {
   const connectorName = await resolveRunConnectorName({
     value: connector,
@@ -222,6 +224,7 @@ export const prepareRunEnvironment = async ({
     endTime,
     defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
     defaultEndMs: getTimestamp(),
+    closedIntervalMs,
   });
   const preloadStart = getBacktestPreloadStart(
     window.start,

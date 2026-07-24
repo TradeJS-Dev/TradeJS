@@ -222,7 +222,7 @@ Input payload structure:
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
   • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.
   • \`marketContext.participation.tradeFlow\`: Binance aggTrades buy/sell pressure buckets when available.
-  • \`marketContext.relative.marketBreadth\`: equal/volume-weighted alt-basket return, advance/decline ratio, and MA breadth for the configured Binance breadth universe.
+  • \`marketContext.relative.marketBreadths.top5|top10|top30|top50|top100\`: equal/volume-weighted alt-basket return, advance/decline ratio, and MA breadth for the five versioned Binance breadth universes. \`marketBreadth\` remains the top30 primary view used by existing gates.
   • \`marketContext.relative.targetVsBtc\`: target/BTC ratio returns, alpha, beta, and short-window correlation; use it to decide whether the target is leading or lagging BTC in the signal direction.
   • \`marketContext.relative.btcAltRegime\`: Binance-derived BTC-vs-alt basket regime, BTC/alt 24h returns, BTC turnover share, and alt dispersion; use it as a broad alt-market risk pocket.
   • \`marketContext.relative.cmcGlobal\`: historical CoinMarketCap global market metrics: total/alt market cap, total/alt volume, BTC/ETH dominance and 24h changes, active markets, \`interval\`, and \`altLiquidityRegime\`.

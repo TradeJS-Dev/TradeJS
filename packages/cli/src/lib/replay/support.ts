@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import {
   Interval,
+  RuntimeLineage,
   RuntimeSignalEvaluationRecord,
   Signal,
   StrategyConfig,
@@ -24,8 +25,10 @@ export const REPLAY_RUNTIME_COMPARISON_HEADERS = [
   chalk.yellow('RT TRADES'),
   chalk.yellow('RT PNL'),
   chalk.green('MATCHED'),
+  chalk.red('ORDER FAILED'),
   chalk.yellow('RT ONLY'),
   chalk.magenta('BT ONLY'),
+  chalk.red('UNMATCHED'),
 ];
 
 export const REPLAY_RESULTS_CONFIG = 'replay';
@@ -58,9 +61,17 @@ export type ReplayRuntimeParityRow = {
   runtimeTrades: number;
   runtimePnl: number;
   matched: number;
+  orderFailed: number;
   runtimeOnly: number;
   backtestOnly: number;
 };
+
+export const getReplayRuntimeUnmatchedCount = (
+  row: Pick<
+    ReplayRuntimeParityRow,
+    'orderFailed' | 'runtimeOnly' | 'backtestOnly'
+  >,
+) => row.orderFailed + row.runtimeOnly + row.backtestOnly;
 
 export type ReplayParityEntryDetail = {
   source: 'runtime' | 'exchange' | 'backtest';
@@ -206,10 +217,35 @@ export type ReplayRuntimeComparisonDetails = {
     pnl: ReplayParityMatchedPnlComparison;
     slippage: ReplayParityMatchedSlippage;
   }>;
+  orderFailed: Array<{
+    runtime: ReplayParityEntryDetail;
+    backtest: ReplayParityEntryDetail;
+    timestampDiffMs: number;
+    priceDeltaPct: number | null;
+    reason: string;
+  }>;
   runtimeOnly: ReplayParityEntryDetail[];
   backtestOnly: ReplayParityEntryDetail[];
   nearestCandidates: ReplayParityNearestCandidate[];
   mismatchDrilldown?: ReplayMismatchDrilldown;
+};
+
+export type ReplayLineageComparisonSummary = {
+  enforced: true;
+  replayScopes: number;
+  comparableScopes: number;
+  excludedRuntimeTrades: number;
+  excludedRuntimeSignals: number;
+  excludedRuntimeEvaluations: number;
+  excludedRuntimeLineageScopes: number;
+  excludedExchangeEntries: number;
+  excludedBacktestEntries: number;
+  reason: string | null;
+  replay: Array<{
+    strategy: string;
+    symbol: string;
+    lineage: RuntimeLineage;
+  }>;
 };
 
 export type ReplayRuntimeComparisonSummary = {
@@ -219,9 +255,11 @@ export type ReplayRuntimeComparisonSummary = {
   runtimeEntriesCount: number;
   backtestEntriesCount: number;
   matchedCount: number;
+  orderFailedCount: number;
   runtimeOnlyCount: number;
   backtestOnlyCount: number;
   rows: ReplayRuntimeParityRow[];
+  lineage: ReplayLineageComparisonSummary;
   details?: ReplayRuntimeComparisonDetails;
 };
 

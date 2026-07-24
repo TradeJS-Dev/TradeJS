@@ -76,6 +76,8 @@ const makeRedisKeys = () => ({
     strategyName: string,
   ) =>
     `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
+  runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
+    `users:${userName}:runtime:lineage-scopes:days:${dayKey}`,
 });
 
 const makeCandle = (timestamp: number, close: number) => ({
@@ -120,6 +122,7 @@ const loadScript = async (scenario: Scenario) => {
     return fallback;
   });
   const setData = jest.fn(async () => null);
+  const getHashJsonField = jest.fn(async () => null);
   const setHashJsonField = jest.fn(async () => null);
   const incrHashFields = jest.fn(async () => null);
   const releaseStrategyReplayCache = jest.fn();
@@ -372,6 +375,7 @@ const loadScript = async (scenario: Scenario) => {
   jest.doMock('@tradejs/infra/redis', () => ({
     getData,
     getKeys,
+    getHashJsonField,
     incrHashFields,
     redisKeys,
     setData,
@@ -1111,7 +1115,11 @@ describe('signals script', () => {
 
     await signals();
 
-    expect(mocks.setHashJsonField).not.toHaveBeenCalled();
+    expect(
+      (mocks.setHashJsonField.mock.calls as unknown[][]).filter(([key]) =>
+        String(key).includes(':runtime:signal-evaluations:'),
+      ),
+    ).toHaveLength(0);
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
         'root',
@@ -1145,7 +1153,11 @@ describe('signals script', () => {
 
     await signals();
 
-    expect(mocks.setHashJsonField).not.toHaveBeenCalled();
+    expect(
+      (mocks.setHashJsonField.mock.calls as unknown[][]).filter(([key]) =>
+        String(key).includes(':runtime:signal-evaluations:'),
+      ),
+    ).toHaveLength(0);
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
         'root',

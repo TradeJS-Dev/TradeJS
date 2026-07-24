@@ -2,6 +2,7 @@ import 'dotenv/config';
 import args from 'args';
 import chalk from 'chalk';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
+import { getBinanceBreadthUniverses } from '@tradejs/node/strategies';
 import {
   upsertMarketBreadthRows,
   upsertMarketTradeFlowRows,
@@ -19,7 +20,6 @@ import {
   MARKET_FEATURE_INTERVAL_MS,
   normalizeBinanceSymbols,
   normalizeMarketFeatureInterval,
-  selectBreadthUniverseFromTickers,
 } from '../lib/binanceMarketData';
 
 args.example(
@@ -44,11 +44,6 @@ args.option(['A', 'all'], 'Enable aggTrades and breadth');
 args.option(
   ['w', 'write'],
   'Write rows to Timescale; without this flag only estimate',
-);
-args.option(
-  ['B', 'breadthLimit'],
-  'Top USDT symbols used for breadth universe',
-  30,
 );
 args.option(
   ['M', 'batchMinutes'],
@@ -156,7 +151,7 @@ export const main = async () => {
   const interval = normalizeMarketFeatureInterval(flags.interval);
   const hours = flags.hours == null ? null : asFloat(flags.hours, 0);
   const days = hours != null && hours > 0 ? hours / 24 : asFloat(flags.days, 1);
-  const breadthLimit = asInt(flags.breadthLimit, 30);
+  const breadthUniverses = getBinanceBreadthUniverses();
   const batchMinutes = asInt(flags.batchMinutes, 15);
   const requestDelayMs = asInt(flags.requestDelayMs, 75);
   const includeAll = Boolean(flags.all);
@@ -176,7 +171,7 @@ export const main = async () => {
     interval,
     includeAggTrades: modes.includeAggTrades,
     includeBreadth: modes.includeBreadth,
-    breadthLimit,
+    breadthSizes: breadthUniverses.map(({ size }) => size),
   });
   printEstimate(estimate);
 
@@ -221,11 +216,7 @@ export const main = async () => {
   }
 
   if (modes.includeBreadth) {
-    const tickers = await connector.getTickers();
-    const breadthSymbols = selectBreadthUniverseFromTickers(
-      tickers,
-      breadthLimit,
-    );
+    const breadthSymbols = breadthUniverses.at(-1)?.symbols ?? [];
     const connectorInterval = intervalToConnectorInterval(interval);
     const candlesBySymbol: Record<string, KlineChartData> = {};
 
@@ -243,14 +234,29 @@ export const main = async () => {
       process.stdout.write(`${candles.length}\n`);
     }
 
-    const universe = `binance_top${breadthSymbols.length}_usdt`;
-    const rows = buildMarketBreadthRows({
-      universe,
-      interval,
-      candlesBySymbol,
+    const btcCandles = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: connectorInterval as any,
+      start: fromMs,
+      end: toMs,
+      silent: true,
     });
-    await upsertMarketBreadthRows(rows);
-    breadthRows += rows.length;
+    for (const definition of breadthUniverses) {
+      const symbolSet = new Set(definition.symbols);
+      const universeCandles = Object.fromEntries(
+        Object.entries(candlesBySymbol).filter(([symbol]) =>
+          symbolSet.has(symbol),
+        ),
+      );
+      const rows = buildMarketBreadthRows({
+        universe: definition.universe,
+        interval,
+        candlesBySymbol: universeCandles,
+        btcCandles,
+      });
+      await upsertMarketBreadthRows(rows);
+      breadthRows += rows.length;
+    }
   }
 
   console.log(chalk.green('Binance market ingest done'));

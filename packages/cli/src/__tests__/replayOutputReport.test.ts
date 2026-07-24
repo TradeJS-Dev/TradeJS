@@ -2,14 +2,33 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { writeReplayOutputReport } from '../lib/replay/outputReport';
+import { getReplayRuntimeUnmatchedCount } from '../lib/replay/support';
 
 describe('writeReplayOutputReport', () => {
+  it('counts every non-matched runtime comparison outcome', () => {
+    expect(
+      getReplayRuntimeUnmatchedCount({
+        orderFailed: 2,
+        runtimeOnly: 3,
+        backtestOnly: 4,
+      }),
+    ).toBe(9);
+  });
+
   it('writes markdown and json replay reports with per-trade analysis', async () => {
     const projectRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), 'tradejs-replay-report-'),
     );
 
     try {
+      const runtimeLineage = {
+        schemaVersion: 1 as const,
+        gitSha: 'abc123',
+        gitDirty: false,
+        gateFingerprint: 'gate123',
+        configFingerprint: 'config123',
+        contextFingerprint: 'context123',
+      };
       const runtimeEntry = {
         source: 'runtime' as const,
         strategy: 'TestStrategy',
@@ -71,6 +90,13 @@ describe('writeReplayOutputReport', () => {
           positionLog: [],
           cycleCount: 96,
           abortedCycles: 0,
+          runtimeLineages: [
+            {
+              strategy: 'TestStrategy',
+              symbol: 'ABCUSDT',
+              lineage: runtimeLineage,
+            },
+          ],
         },
         strategySnapshot: {
           summaries: [
@@ -106,6 +132,7 @@ describe('writeReplayOutputReport', () => {
               runtimeTrades: 1,
               runtimePnl: 0.25,
               matched: 1,
+              orderFailed: 0,
               runtimeOnly: 0,
               backtestOnly: 1,
             },
@@ -140,6 +167,7 @@ describe('writeReplayOutputReport', () => {
                 },
               },
             ],
+            orderFailed: [],
             runtimeOnly: [],
             backtestOnly: [backtestOnlyEntry],
             nearestCandidates: [],
@@ -159,6 +187,26 @@ describe('writeReplayOutputReport', () => {
                 },
               },
             },
+          },
+          orderFailedCount: 0,
+          lineage: {
+            enforced: true,
+            replayScopes: 1,
+            comparableScopes: 1,
+            excludedRuntimeTrades: 0,
+            excludedRuntimeSignals: 0,
+            excludedRuntimeEvaluations: 0,
+            excludedRuntimeLineageScopes: 0,
+            excludedExchangeEntries: 0,
+            excludedBacktestEntries: 0,
+            reason: null,
+            replay: [
+              {
+                strategy: 'TestStrategy',
+                symbol: 'ABCUSDT',
+                lineage: runtimeLineage,
+              },
+            ],
           },
         },
       });
@@ -181,6 +229,7 @@ describe('writeReplayOutputReport', () => {
       expect(markdown).toContain('ABCUSDT');
       expect(markdown).toContain('XYZUSDT');
       expect(markdown).toContain('no_runtime_signal_or_evaluation');
+      expect(markdown).toContain('| Unmatched |');
 
       const json = JSON.parse(await fs.readFile(paths.jsonPath, 'utf8'));
       expect(json.reportType).toBe('replay-output');

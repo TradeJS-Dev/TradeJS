@@ -695,6 +695,7 @@ export interface Signal {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
+  runtimeLineage?: RuntimeLineage;
   direction: Direction;
   timestamp: number;
   orderStatus?: SignalOrderStatus;
@@ -739,6 +740,7 @@ export interface RuntimeSignalEvaluationRecord {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
+  runtimeLineage?: RuntimeLineage;
   symbol: string;
   interval: Interval;
   timestamp: number;
@@ -784,6 +786,15 @@ export interface RuntimeAiAnalysisSnapshot {
 }
 
 export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
+
+export interface RuntimeLineage {
+  schemaVersion: 1;
+  gitSha: string | null;
+  gitDirty: boolean | null;
+  gateFingerprint: string;
+  configFingerprint: string;
+  contextFingerprint: string;
+}
 
 export type RuntimeTradeStatus = 'active' | 'closed';
 export type RuntimeTradeExitType = 'exit' | 'tp' | 'sl' | 'unknown';

@@ -257,15 +257,15 @@ describe('binanceMarketData helpers', () => {
         interval: '15m',
         includeAggTrades: true,
         includeBreadth: true,
-        breadthLimit: 30,
+        breadthSizes: [5, 10, 30, 50, 100],
       }),
     ).toMatchObject({
       bucketRowsPerSymbol: 96,
       aggTradeBucketRows: 192,
-      breadthSymbols: 30,
-      breadthCandleRows: 2880,
-      breadthRows: 96,
-      estimatedStoredRows: 288,
+      breadthSymbols: 100,
+      breadthCandleRows: 9600,
+      breadthRows: 480,
+      estimatedStoredRows: 672,
     });
   });
 });

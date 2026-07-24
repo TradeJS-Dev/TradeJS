@@ -720,6 +720,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const {
+      getLatestMarketGlobalContext,
       getLatestMarketCmcExchangeLiquidityContext,
       getLatestMarketCmcFearGreedContext,
       getLatestMarketCmcIndexContexts,
@@ -730,6 +731,12 @@ describe('timescale candle helpers', () => {
       upsertMarketCmcIndexContextRows,
       upsertMarketContextBackfillCoverage,
     } = await import('@tradejs/infra/timescale');
+
+    await getLatestMarketGlobalContext({
+      source: 'coinmarketcap_global',
+      atMs,
+      maxAgeMs: 2_000,
+    });
 
     await upsertMarketCmcExchangeLiquidityContextRows([
       {
@@ -833,6 +840,32 @@ describe('timescale candle helpers', () => {
       topConstituentSymbol: 'BTC',
       valueChange24hPct: (200 - 195) / 195,
     });
+    const causalSelectionQueries = query.mock.calls
+      .map(([sql]) => String(sql))
+      .filter(
+        (sql) =>
+          sql.includes('to_timestamp') &&
+          (sql.includes('FROM market_cmc_exchange_liquidity_context') ||
+            sql.includes('FROM market_cmc_fear_greed_context') ||
+            sql.includes('FROM market_cmc_index_context')),
+      );
+    expect(causalSelectionQueries).toHaveLength(3);
+    for (const sql of causalSelectionQueries) {
+      expect(sql).toContain('ts + CASE interval');
+      expect(sql).toContain("WHEN '1d' THEN interval '1 day'");
+      expect(sql).toContain('END <= to_timestamp');
+    }
+    const globalCausalSelectionQuery = query.mock.calls
+      .map(([sql]) => String(sql))
+      .find(
+        (sql) =>
+          sql.includes('FROM market_global_context') &&
+          sql.includes('to_timestamp'),
+      );
+    expect(globalCausalSelectionQuery).toContain(
+      "WHEN source = 'coinmarketcap_global' THEN interval '1 day'",
+    );
+    expect(globalCausalSelectionQuery).toContain('END <= to_timestamp');
     await expect(
       getMarketCmcIndexContextCoverage({
         source: 'coinmarketcap_index',

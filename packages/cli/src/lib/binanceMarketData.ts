@@ -146,23 +146,30 @@ export const estimateBinanceMarketDataVolume = ({
   interval,
   includeAggTrades,
   includeBreadth,
-  breadthLimit,
+  breadthSizes,
 }: {
   symbols: string[];
   days: number;
   interval: MarketFeatureInterval;
   includeAggTrades: boolean;
   includeBreadth: boolean;
-  breadthLimit: number;
+  breadthSizes: number[];
 }) => {
   const intervalMs = MARKET_FEATURE_INTERVAL_MS[interval];
   const bucketRowsPerSymbol = Math.ceil((days * 86_400_000) / intervalMs);
   const aggTradeBucketRows = includeAggTrades
     ? symbols.length * bucketRowsPerSymbol
     : 0;
-  const breadthSymbols = includeBreadth ? Math.max(0, breadthLimit) : 0;
+  const normalizedBreadthSizes = breadthSizes.filter(
+    (size) => Number.isFinite(size) && size > 0,
+  );
+  const breadthSymbols = includeBreadth
+    ? Math.max(0, ...normalizedBreadthSizes)
+    : 0;
   const breadthCandleRows = breadthSymbols * bucketRowsPerSymbol;
-  const breadthRows = includeBreadth ? bucketRowsPerSymbol : 0;
+  const breadthRows = includeBreadth
+    ? bucketRowsPerSymbol * normalizedBreadthSizes.length
+    : 0;
 
   return {
     interval,

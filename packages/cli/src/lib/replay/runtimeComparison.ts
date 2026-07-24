@@ -3,6 +3,8 @@ import { formatUnix } from '@tradejs/core/time';
 import type {
   Connector,
   ExchangeEntryRecord,
+  RuntimeLineage,
+  RuntimeTradeRecord,
   RuntimeSignalEvaluationRecord,
   Signal,
 } from '@tradejs/types';
@@ -19,9 +21,11 @@ import {
 } from '../paritySummary';
 import { loadRuntimeTrades } from '../runtimeRedis';
 import {
+  loadRuntimeLineageScopes,
   loadRuntimeSignalEvaluations,
   loadRuntimeSignals,
 } from '../runtimeSignalsLoader';
+import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import {
   formatRuntimeTradeSyncError,
   loadClosedPnlRows,
@@ -35,6 +39,7 @@ import {
   buildStrategyNameByOrderLinkKey,
   resolveReplayStrategyNameFromExchangeEntry,
   type ExchangeMatchedBacktestEntry,
+  type ExchangeOrderFailedBacktestEntry,
 } from '../runtimeParityDetails';
 import { getRuntimeCompareContext } from '../backtest/runState';
 import { replayInterval, replayUserName } from './cliConfig';
@@ -42,10 +47,13 @@ import {
   REPLAY_RUNTIME_COMPARISON_HEADERS,
   REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
   formatReplayRuntimeCompareTolerance,
+  getReplayRuntimeUnmatchedCount,
   type ReplayRuntimeComparisonSummary,
   type ReplayRuntimeParityRow,
   type ReplayStrategySummary,
 } from './support';
+import { runtimeLineagesMatch, runtimeLineageKey } from '../runtimeLineage';
+import type { ReplayRuntimeLineageRecord } from './historicalSignalsReplay';
 
 const getReplayEntryTimestampCompareOffsetMs = () => {
   const intervalMinutes = Number(replayInterval);
@@ -69,11 +77,218 @@ const buildReplaySignalEvaluations = (
     reason: signal.orderSkipReason || signal.orderStatus || 'SIGNAL',
     signalId: signal.signalId,
     direction: signal.direction,
+    runtimeLineage: signal.runtimeLineage,
     orderStatus: signal.orderStatus,
     orderSkipReason: signal.orderSkipReason,
     ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     ...(signal.ml ? { ml: signal.ml } : {}),
   }));
+
+const lineageScopeKey = (strategy: string, symbol: string) =>
+  `${strategy}::${symbol}`;
+
+type ComparableLineageArtifacts = {
+  runtimeTrades: RuntimeTradeRecord[];
+  runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  backtestEntries: TradeParityEntry[];
+  lineage: ReplayRuntimeComparisonSummary['lineage'];
+};
+
+const buildExpectedLineageByScope = (
+  replayLineages: ReplayRuntimeLineageRecord[],
+) =>
+  new Map(
+    replayLineages.map((record) => [
+      lineageScopeKey(record.strategy, record.symbol),
+      record.lineage,
+    ]),
+  );
+
+const hasExpectedLineage = ({
+  strategy,
+  symbol,
+  lineage,
+  expectedByScope,
+}: {
+  strategy: string;
+  symbol: string;
+  lineage?: RuntimeLineage;
+  expectedByScope: Map<string, RuntimeLineage>;
+}) =>
+  runtimeLineagesMatch(
+    lineage,
+    expectedByScope.get(lineageScopeKey(strategy, symbol)),
+  );
+
+export const filterReplayComparisonByLineage = ({
+  replayLineages,
+  runtimeTrades,
+  runtimeSignals,
+  runtimeSignalEvaluations,
+  runtimeLineageScopes,
+  backtestEntries,
+}: {
+  replayLineages: ReplayRuntimeLineageRecord[];
+  runtimeTrades: RuntimeTradeRecord[];
+  runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  runtimeLineageScopes: RuntimeLineageScopeRecord[];
+  backtestEntries: TradeParityEntry[];
+}): ComparableLineageArtifacts => {
+  const expectedByScope = buildExpectedLineageByScope(replayLineages);
+  const comparableRuntimeSignals = runtimeSignals.filter((signal) =>
+    hasExpectedLineage({
+      strategy: signal.strategy,
+      symbol: signal.symbol,
+      lineage: signal.runtimeLineage,
+      expectedByScope,
+    }),
+  );
+  const comparableRuntimeEvaluations = runtimeSignalEvaluations.filter(
+    (evaluation) =>
+      hasExpectedLineage({
+        strategy: evaluation.strategy,
+        symbol: evaluation.symbol,
+        lineage: evaluation.runtimeLineage,
+        expectedByScope,
+      }),
+  );
+  const comparableRuntimeLineageScopes = runtimeLineageScopes.filter((scope) =>
+    hasExpectedLineage({
+      strategy: scope.strategy,
+      symbol: scope.symbol,
+      lineage: scope.lineage,
+      expectedByScope,
+    }),
+  );
+  const deploymentWindows = new Map<
+    string,
+    { firstTimestamp: number; lastTimestamp: number }
+  >();
+  for (const scope of comparableRuntimeLineageScopes) {
+    const key = lineageScopeKey(scope.strategy, scope.symbol);
+    const existing = deploymentWindows.get(key);
+    deploymentWindows.set(key, {
+      firstTimestamp:
+        existing == null
+          ? scope.firstTimestamp
+          : Math.min(existing.firstTimestamp, scope.firstTimestamp),
+      lastTimestamp:
+        existing == null
+          ? scope.lastTimestamp
+          : Math.max(existing.lastTimestamp, scope.lastTimestamp),
+    });
+  }
+  const lineageBySignalId = new Map<string, RuntimeLineage>();
+  for (const signal of runtimeSignals) {
+    if (signal.runtimeLineage) {
+      lineageBySignalId.set(signal.signalId, signal.runtimeLineage);
+    }
+  }
+  for (const evaluation of runtimeSignalEvaluations) {
+    if (evaluation.signalId && evaluation.runtimeLineage) {
+      lineageBySignalId.set(evaluation.signalId, evaluation.runtimeLineage);
+    }
+  }
+  const comparableRuntimeTrades = runtimeTrades.filter((trade) => {
+    const lineage = trade.signalId
+      ? lineageBySignalId.get(trade.signalId)
+      : undefined;
+    if (lineage) {
+      return hasExpectedLineage({
+        strategy: trade.strategy,
+        symbol: trade.symbol,
+        lineage,
+        expectedByScope,
+      });
+    }
+    const window = deploymentWindows.get(
+      lineageScopeKey(trade.strategy, trade.symbol),
+    );
+    const signalTimestamp = trade.signalTimestamp ?? trade.entryTimestamp;
+    return (
+      window != null &&
+      signalTimestamp >= window.firstTimestamp &&
+      signalTimestamp <= window.lastTimestamp
+    );
+  });
+
+  for (const artifact of [
+    ...comparableRuntimeSignals,
+    ...comparableRuntimeEvaluations,
+  ]) {
+    const key = lineageScopeKey(artifact.strategy, artifact.symbol);
+    const existing = deploymentWindows.get(key);
+    deploymentWindows.set(key, {
+      firstTimestamp:
+        existing == null
+          ? artifact.timestamp
+          : Math.min(existing.firstTimestamp, artifact.timestamp),
+      lastTimestamp:
+        existing == null
+          ? artifact.timestamp
+          : Math.max(existing.lastTimestamp, artifact.timestamp),
+    });
+  }
+
+  const comparableBacktestEntries = backtestEntries.filter((entry) => {
+    const window = deploymentWindows.get(
+      lineageScopeKey(entry.strategy, entry.symbol),
+    );
+    const signalTimestamp = entry.signalTimestamp ?? entry.timestamp;
+    return (
+      window != null &&
+      signalTimestamp >= window.firstTimestamp &&
+      signalTimestamp <= window.lastTimestamp
+    );
+  });
+  const comparableScopeKeys = new Set(deploymentWindows.keys());
+
+  return {
+    runtimeTrades: comparableRuntimeTrades,
+    runtimeSignals: comparableRuntimeSignals,
+    runtimeSignalEvaluations: comparableRuntimeEvaluations,
+    backtestEntries: comparableBacktestEntries,
+    lineage: {
+      enforced: true,
+      replayScopes: expectedByScope.size,
+      comparableScopes: comparableScopeKeys.size,
+      excludedRuntimeTrades:
+        runtimeTrades.length - comparableRuntimeTrades.length,
+      excludedRuntimeSignals:
+        runtimeSignals.length - comparableRuntimeSignals.length,
+      excludedRuntimeEvaluations:
+        runtimeSignalEvaluations.length - comparableRuntimeEvaluations.length,
+      excludedRuntimeLineageScopes:
+        runtimeLineageScopes.length - comparableRuntimeLineageScopes.length,
+      excludedExchangeEntries: 0,
+      excludedBacktestEntries:
+        backtestEntries.length - comparableBacktestEntries.length,
+      reason:
+        comparableScopeKeys.size > 0
+          ? null
+          : 'no_runtime_artifacts_with_matching_lineage',
+      replay: [...expectedByScope.entries()]
+        .map(([scope, lineage]) => {
+          const separator = scope.indexOf('::');
+          return {
+            strategy: scope.slice(0, separator),
+            symbol: scope.slice(separator + 2),
+            lineage,
+          };
+        })
+        .sort(
+          (left, right) =>
+            left.strategy.localeCompare(right.strategy) ||
+            left.symbol.localeCompare(right.symbol) ||
+            runtimeLineageKey(left.lineage).localeCompare(
+              runtimeLineageKey(right.lineage),
+            ),
+        ),
+    },
+  };
+};
 
 const formatDrilldownSummary = (summary: Record<string, number>) =>
   Object.entries(summary)
@@ -111,6 +326,19 @@ const firstFiniteNumber = (values: Array<number | null | undefined>) => {
 
 const firstString = (values: Array<string | undefined>) =>
   values.find((value) => typeof value === 'string' && value.trim());
+
+const summarizeBacktestPnlByStrategy = (entries: TradeParityEntry[]) => {
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    const pnl =
+      typeof entry.expectedPnl === 'number' &&
+      Number.isFinite(entry.expectedPnl)
+        ? entry.expectedPnl
+        : 0;
+    totals.set(entry.strategy, (totals.get(entry.strategy) ?? 0) + pnl);
+  }
+  return totals;
+};
 
 const getExchangeExecutionMergeKey = (entry: ExchangeEntryRecord) => {
   const orderId = firstString([entry.orderId, entry.orderLinkId]);
@@ -464,6 +692,125 @@ export const compareExchangeEntriesToBacktest = ({
   };
 };
 
+const findExchangeRuntimeOutcome = ({
+  exchangeEntry,
+  strategyName,
+  runtimeSignals,
+  runtimeSignalEvaluations,
+  toleranceMs,
+  signalTimestampOffsetMs,
+}: {
+  exchangeEntry: ExchangeEntryRecord;
+  strategyName: string;
+  runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+  signalTimestampOffsetMs: number;
+}) => {
+  const candidates: Array<{
+    timestamp: number;
+    orderStatus?: string;
+    reason?: string;
+  }> = [];
+  for (const signal of runtimeSignals) {
+    if (
+      signal.strategy === strategyName &&
+      signal.symbol === exchangeEntry.symbol &&
+      signal.direction === exchangeEntry.direction
+    ) {
+      candidates.push({
+        timestamp: signal.timestamp,
+        orderStatus: signal.orderStatus,
+        reason:
+          signal.orderFailureReason ||
+          signal.orderSkipReason ||
+          signal.orderStatus,
+      });
+    }
+  }
+  for (const evaluation of runtimeSignalEvaluations) {
+    if (
+      evaluation.strategy === strategyName &&
+      evaluation.symbol === exchangeEntry.symbol &&
+      (evaluation.direction == null ||
+        evaluation.direction === exchangeEntry.direction)
+    ) {
+      candidates.push({
+        timestamp: evaluation.timestamp,
+        orderStatus: evaluation.orderStatus,
+        reason:
+          evaluation.orderSkipReason ||
+          evaluation.reason ||
+          evaluation.orderStatus,
+      });
+    }
+  }
+
+  return (
+    candidates
+      .map((candidate) => ({
+        ...candidate,
+        timestampDiffMs: Math.abs(
+          candidate.timestamp +
+            signalTimestampOffsetMs -
+            exchangeEntry.entryTimestamp,
+        ),
+      }))
+      .filter((candidate) => candidate.timestampDiffMs <= toleranceMs)
+      .sort(
+        (left, right) =>
+          left.timestampDiffMs - right.timestampDiffMs ||
+          Number(right.orderStatus === 'failed') -
+            Number(left.orderStatus === 'failed'),
+      )[0] ?? null
+  );
+};
+
+export const splitExchangeMatchesByRuntimeOrderStatus = ({
+  matched,
+  strategyNameByOrderLinkKey,
+  runtimeSignals,
+  runtimeSignalEvaluations,
+  toleranceMs,
+  signalTimestampOffsetMs,
+}: {
+  matched: ExchangeMatchedBacktestEntry[];
+  strategyNameByOrderLinkKey: Map<string, string>;
+  runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+  signalTimestampOffsetMs: number;
+}) => {
+  const orderFailed: ExchangeOrderFailedBacktestEntry[] = [];
+  const completed = matched.filter((item) => {
+    const strategyName = resolveReplayStrategyNameFromExchangeEntry({
+      exchangeEntry: item.exchange,
+      strategyNameByOrderLinkKey,
+    });
+    if (!strategyName) {
+      return true;
+    }
+    const outcome = findExchangeRuntimeOutcome({
+      exchangeEntry: item.exchange,
+      strategyName,
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      toleranceMs,
+      signalTimestampOffsetMs,
+    });
+    if (outcome?.orderStatus !== 'failed') {
+      return true;
+    }
+    orderFailed.push({
+      ...item,
+      reason: outcome.reason || 'orderStatus=failed',
+    });
+    return false;
+  });
+
+  return { completed, orderFailed };
+};
+
 const saveAndPrintReplayExchangeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
@@ -471,6 +818,7 @@ const saveAndPrintReplayExchangeComparison = async ({
   replaySignalEvaluations,
   runtimeSignals,
   runtimeSignalEvaluations,
+  lineage,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
@@ -478,9 +826,10 @@ const saveAndPrintReplayExchangeComparison = async ({
   replaySignalEvaluations: RuntimeSignalEvaluationRecord[];
   runtimeSignals: Signal[];
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  lineage: ReplayRuntimeComparisonSummary['lineage'];
 }): Promise<ReplayRuntimeComparisonSummary> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
-  const exchangeEntries = await loadExchangeEntriesForComparison({
+  const rawExchangeEntries = await loadExchangeEntriesForComparison({
     connector: connector!,
     startTime: window!.start,
     endTime: window!.end,
@@ -488,12 +837,43 @@ const saveAndPrintReplayExchangeComparison = async ({
   const strategyNameByOrderLinkKey = buildStrategyNameByOrderLinkKey(
     liveStrategySummaries.map((summary) => summary.strategyName),
   );
+  const exchangeOutcomeByEntry = new Map<
+    ExchangeEntryRecord,
+    ReturnType<typeof findExchangeRuntimeOutcome>
+  >();
+  const exchangeEntries = rawExchangeEntries.filter((entry) => {
+    const strategyName = resolveReplayStrategyNameFromExchangeEntry({
+      exchangeEntry: entry,
+      strategyNameByOrderLinkKey,
+    });
+    if (!strategyName) {
+      return false;
+    }
+    const outcome = findExchangeRuntimeOutcome({
+      exchangeEntry: entry,
+      strategyName,
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+      signalTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    });
+    exchangeOutcomeByEntry.set(entry, outcome);
+    return outcome != null;
+  });
+  const comparisonLineage = {
+    ...lineage,
+    excludedExchangeEntries:
+      lineage.excludedExchangeEntries +
+      rawExchangeEntries.length -
+      exchangeEntries.length,
+  };
+  const backtestPnlByStrategy = summarizeBacktestPnlByStrategy(backtestEntries);
 
   if (!exchangeEntries.length) {
     console.log('');
     console.log(
       chalk.yellow(
-        `SIGNALS REPLAY VS EXCHANGE: no exchange entry executions found for ${connectorName} in ${formatUnix(
+        `SIGNALS REPLAY VS EXCHANGE: no lineage-linked exchange entry executions found for ${connectorName} in ${formatUnix(
           window!.start,
         )} -> ${formatUnix(window!.end)}`,
       ),
@@ -522,18 +902,21 @@ const saveAndPrintReplayExchangeComparison = async ({
       runtimeEntriesCount: 0,
       backtestEntriesCount: backtestEntries.length,
       matchedCount: 0,
+      orderFailedCount: 0,
       runtimeOnlyCount: 0,
       backtestOnlyCount: backtestEntries.length,
       details,
+      lineage: comparisonLineage,
       rows: liveStrategySummaries.map((summary) => ({
         strategyName: summary.strategyName,
         backtestEntries: backtestEntries.filter(
           (entry) => entry.strategy === summary.strategyName,
         ).length,
-        backtestNetProfit: summary.netProfit,
+        backtestNetProfit: backtestPnlByStrategy.get(summary.strategyName) ?? 0,
         runtimeTrades: 0,
         runtimePnl: 0,
         matched: 0,
+        orderFailed: 0,
         runtimeOnly: 0,
         backtestOnly: backtestEntries.filter(
           (entry) => entry.strategy === summary.strategyName,
@@ -548,6 +931,15 @@ const saveAndPrintReplayExchangeComparison = async ({
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
     backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
   });
+  const { completed: matched, orderFailed } =
+    splitExchangeMatchesByRuntimeOrderStatus({
+      matched: comparison.matched,
+      strategyNameByOrderLinkKey,
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+      signalTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    });
   const liveSummaryByStrategy = new Map(
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
   );
@@ -561,11 +953,11 @@ const saveAndPrintReplayExchangeComparison = async ({
     const next: ReplayRuntimeParityRow = {
       strategyName,
       backtestEntries: 0,
-      backtestNetProfit:
-        liveSummaryByStrategy.get(strategyName)?.netProfit ?? 0,
+      backtestNetProfit: backtestPnlByStrategy.get(strategyName) ?? 0,
       runtimeTrades: 0,
       runtimePnl: 0,
       matched: 0,
+      orderFailed: 0,
       runtimeOnly: 0,
       backtestOnly: 0,
     };
@@ -581,7 +973,7 @@ const saveAndPrintReplayExchangeComparison = async ({
     ensureRow(entry.strategy).backtestEntries += 1;
   }
 
-  for (const item of comparison.matched) {
+  for (const item of matched) {
     const row = ensureRow(item.backtest.strategy);
     row.runtimeTrades += 1;
     row.matched += 1;
@@ -591,6 +983,11 @@ const saveAndPrintReplayExchangeComparison = async ({
     ) {
       row.runtimePnl += item.exchange.closedPnl;
     }
+  }
+  for (const item of orderFailed) {
+    const row = ensureRow(item.backtest.strategy);
+    row.runtimeTrades += 1;
+    row.orderFailed += 1;
   }
 
   for (const entry of comparison.backtestOnly) {
@@ -617,7 +1014,8 @@ const saveAndPrintReplayExchangeComparison = async ({
   }
 
   const details = buildReplayExchangeComparisonDetails({
-    matched: comparison.matched,
+    matched,
+    orderFailed,
     exchangeOnly: comparison.exchangeOnly,
     backtestOnly: comparison.backtestOnly,
     exchangeEntries,
@@ -659,8 +1057,10 @@ const saveAndPrintReplayExchangeComparison = async ({
       chalk.yellow(String(row.runtimeTrades)),
       rtPnlColor(`${row.runtimePnl.toFixed(2)}$`),
       chalk.green(String(row.matched)),
+      chalk.red(String(row.orderFailed)),
       chalk.yellow(String(row.runtimeOnly)),
       chalk.magenta(String(row.backtestOnly)),
+      chalk.red(String(getReplayRuntimeUnmatchedCount(row))),
     ];
   });
 
@@ -690,11 +1090,13 @@ const saveAndPrintReplayExchangeComparison = async ({
     windowTradesCount: exchangeEntries.length,
     runtimeEntriesCount: exchangeEntries.length,
     backtestEntriesCount: backtestEntries.length,
-    matchedCount: comparison.matched.length,
+    matchedCount: matched.length,
+    orderFailedCount: orderFailed.length,
     runtimeOnlyCount: comparison.exchangeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
     details,
+    lineage: comparisonLineage,
   };
 };
 
@@ -702,10 +1104,12 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
   replaySignals,
+  replayLineages,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
   replaySignals: Signal[];
+  replayLineages: ReplayRuntimeLineageRecord[];
 }): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   if (!connector || !window) {
@@ -716,18 +1120,29 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     liveStrategySummaries.map((summary) => summary.strategyName),
   );
   const replaySignalEvaluations = buildReplaySignalEvaluations(replaySignals);
-  const [rawRuntimeTrades, runtimeSignals, runtimeSignalEvaluations] =
-    await Promise.all([
-      loadRuntimeTrades(replayUserName),
-      loadRuntimeSignals(replayUserName, {
-        startTime: window.start,
-        endTime: window.end,
-      }),
-      loadRuntimeSignalEvaluations(replayUserName, {
-        startTime: window.start,
-        endTime: window.end,
-      }),
-    ]);
+  const [
+    rawRuntimeTrades,
+    runtimeSignals,
+    runtimeSignalEvaluations,
+    runtimeLineageScopes,
+  ] = await Promise.all([
+    loadRuntimeTrades(replayUserName, {
+      startTime: window.start,
+      endTime: window.end,
+    }),
+    loadRuntimeSignals(replayUserName, {
+      startTime: window.start,
+      endTime: window.end,
+    }),
+    loadRuntimeSignalEvaluations(replayUserName, {
+      startTime: window.start,
+      endTime: window.end,
+    }),
+    loadRuntimeLineageScopes(replayUserName, {
+      startTime: window.start,
+      endTime: window.end,
+    }),
+  ]);
   const syncedRuntimeTrades = await syncRuntimeTrades({
     userName: replayUserName,
     connector,
@@ -767,7 +1182,16 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       },
     },
   });
-  const windowRuntimeTrades = syncedRuntimeTrades.filter(
+  const comparable = filterReplayComparisonByLineage({
+    replayLineages,
+    runtimeTrades: syncedRuntimeTrades,
+    runtimeSignals,
+    runtimeSignalEvaluations,
+    runtimeLineageScopes,
+    backtestEntries,
+  });
+  const comparableBacktestEntries = comparable.backtestEntries;
+  const windowRuntimeTrades = comparable.runtimeTrades.filter(
     (trade) =>
       trade.entryTimestamp >= window.start &&
       trade.entryTimestamp < window.end &&
@@ -780,17 +1204,18 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       chalk.yellow(
         `SIGNALS REPLAY VS RUNTIME: no local runtime trades found for ${connectorName} in ${formatUnix(
           window.start,
-        )} -> ${formatUnix(window.end)}; falling back to direct exchange comparison`,
+        )} -> ${formatUnix(window.end)} with matching lineage; checking lineage-linked exchange executions`,
       ),
     );
     console.log('');
     return saveAndPrintReplayExchangeComparison({
       liveStrategySummaries,
-      backtestEntries,
+      backtestEntries: comparableBacktestEntries,
       replaySignals,
       replaySignalEvaluations,
-      runtimeSignals,
-      runtimeSignalEvaluations,
+      runtimeSignals: comparable.runtimeSignals,
+      runtimeSignalEvaluations: comparable.runtimeSignalEvaluations,
+      lineage: comparable.lineage,
     });
   }
 
@@ -803,7 +1228,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   const runtimeDedupe = dedupeRuntimeParityEntries(rawRuntimeEntries);
   const comparison = compareTradeParityEntries({
     runtimeEntries: runtimeDedupe.entries,
-    backtestEntries,
+    backtestEntries: comparableBacktestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
     backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
   });
@@ -812,18 +1237,18 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     runtimeOnly: comparison.runtimeOnly,
     backtestOnly: comparison.backtestOnly,
     runtimeEntries: runtimeDedupe.entries,
-    backtestEntries,
+    backtestEntries: comparableBacktestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
     backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
-    runtimeSignals,
-    runtimeSignalEvaluations,
+    runtimeSignals: comparable.runtimeSignals,
+    runtimeSignalEvaluations: comparable.runtimeSignalEvaluations,
     replaySignals,
     replaySignalEvaluations,
   });
   const parityRows = summarizeTradeParityByStrategy({
     runtimeEntries: runtimeDedupe.entries,
     runtimeDuplicateEntries: runtimeDedupe.duplicateEntries,
-    backtestEntries,
+    backtestEntries: comparableBacktestEntries,
     matchedEntries: comparison.matched,
     runtimeOnlyEntries: comparison.runtimeOnly,
     backtestOnlyEntries: comparison.backtestOnly,
@@ -831,6 +1256,9 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   const parityByStrategy = new Map(parityRows);
   const liveSummaryByStrategy = new Map(
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
+  );
+  const backtestPnlByStrategy = summarizeBacktestPnlByStrategy(
+    comparableBacktestEntries,
   );
 
   const strategyNames = new Set<string>([
@@ -841,17 +1269,17 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   const rows = [...strategyNames]
     .sort((left, right) => left.localeCompare(right))
     .map((strategyName) => {
-      const liveSummary = liveSummaryByStrategy.get(strategyName);
       const runtimeSummary = runtimeSummaryByStrategy.get(strategyName);
       const parity = parityByStrategy.get(strategyName);
 
       return {
         strategyName,
         backtestEntries: parity?.backtest ?? 0,
-        backtestNetProfit: liveSummary?.netProfit ?? 0,
+        backtestNetProfit: backtestPnlByStrategy.get(strategyName) ?? 0,
         runtimeTrades: runtimeSummary?.trades ?? 0,
         runtimePnl: runtimeSummary?.totalPnl ?? 0,
         matched: parity?.matched ?? 0,
+        orderFailed: 0,
         runtimeOnly: parity?.runtimeOnly ?? 0,
         backtestOnly: parity?.backtestOnly ?? 0,
       };
@@ -878,8 +1306,10 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       chalk.yellow(String(row.runtimeTrades)),
       rtPnlColor(`${row.runtimePnl.toFixed(2)}$`),
       chalk.green(String(row.matched)),
+      chalk.red(String(row.orderFailed)),
       chalk.yellow(String(row.runtimeOnly)),
       chalk.magenta(String(row.backtestOnly)),
+      chalk.red(String(getReplayRuntimeUnmatchedCount(row))),
     ];
   });
 
@@ -908,11 +1338,13 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     syncedTradesCount: syncedRuntimeTrades.length,
     windowTradesCount: windowRuntimeTrades.length,
     runtimeEntriesCount: runtimeDedupe.entries.length,
-    backtestEntriesCount: backtestEntries.length,
+    backtestEntriesCount: comparableBacktestEntries.length,
     matchedCount: comparison.matched.length,
+    orderFailedCount: 0,
     runtimeOnlyCount: comparison.runtimeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
     details,
+    lineage: comparable.lineage,
   };
 };

@@ -70,6 +70,7 @@
     "ai-pocket-search": "yarn run run:dist ai-pocket-search",
     "ai-train": "yarn run run:dist ai-train",
     "backtest": "yarn run run:dist backtest",
+    "breadth:universes:update": "yarn run run:dist binance:breadth-universes:update",
     "bot": "yarn run run:dist bot",
     "candles:migrate-provider": "yarn run run:dist candles:migrate-provider",
     "signals": "yarn run run:dist signals",

@@ -7,6 +7,21 @@ import type {
 type SpreadBias = 'coinbase_premium' | 'binance_premium' | 'flat';
 type SpreadSeverity = 'normal' | 'elevated' | 'wide';
 
+type AiMarketBreadthContext = {
+  source: string | null;
+  available: boolean;
+  universe: string | null;
+  interval: string | null;
+  stale: boolean | null;
+  symbolsCount: number | null;
+  advanceDeclineRatio: number | null;
+  pctAboveMa20: number | null;
+  pctAboveMa50: number | null;
+  equalWeightedReturn: number | null;
+  volumeWeightedReturn: number | null;
+  dispersion: number | null;
+};
+
 type BinanceCoinbaseSpreadContext = {
   source: 'payload.additionalIndicators.baseContext.relative.execution.venueSpread';
   indicatorKey: 'payload.additionalIndicators.baseContext.relative.execution.venueSpread';
@@ -46,19 +61,13 @@ export type AiMarketContext = {
     };
   };
   relative: {
-    marketBreadth: {
-      source: string | null;
-      available: boolean;
-      universe: string | null;
-      interval: string | null;
-      stale: boolean | null;
-      symbolsCount: number | null;
-      advanceDeclineRatio: number | null;
-      pctAboveMa20: number | null;
-      pctAboveMa50: number | null;
-      equalWeightedReturn: number | null;
-      volumeWeightedReturn: number | null;
-      dispersion: number | null;
+    marketBreadth: AiMarketBreadthContext;
+    marketBreadths: {
+      top5: AiMarketBreadthContext;
+      top10: AiMarketBreadthContext;
+      top30: AiMarketBreadthContext;
+      top50: AiMarketBreadthContext;
+      top100: AiMarketBreadthContext;
     };
     targetVsBtc: {
       source: string | null;
@@ -391,6 +400,53 @@ const buildMarketBreadthContextFromSignal = (signal: Signal) => {
     equalWeightedReturn: toFiniteNumber(breadth.equalWeightedReturn),
     volumeWeightedReturn: toFiniteNumber(breadth.volumeWeightedReturn),
     dispersion: toFiniteNumber(breadth.dispersion),
+  };
+};
+
+const buildMarketBreadthsContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const breadths = toRecord(relative?.marketBreadths);
+  const build = (key: 'top5' | 'top10' | 'top30' | 'top50' | 'top100') => {
+    const breadth = toRecord(breadths?.[key]);
+    if (!breadth) {
+      return {
+        source: null,
+        available: false,
+        universe: null,
+        interval: null,
+        stale: null,
+        symbolsCount: null,
+        advanceDeclineRatio: null,
+        pctAboveMa20: null,
+        pctAboveMa50: null,
+        equalWeightedReturn: null,
+        volumeWeightedReturn: null,
+        dispersion: null,
+      };
+    }
+    return {
+      source: String(breadth.source ?? ''),
+      available: true,
+      universe: String(breadth.universe ?? ''),
+      interval: String(breadth.interval ?? ''),
+      stale: typeof breadth.stale === 'boolean' ? breadth.stale : null,
+      symbolsCount: toFiniteNumber(breadth.symbolsCount),
+      advanceDeclineRatio: toFiniteNumber(breadth.advanceDeclineRatio),
+      pctAboveMa20: toFiniteNumber(breadth.pctAboveMa20),
+      pctAboveMa50: toFiniteNumber(breadth.pctAboveMa50),
+      equalWeightedReturn: toFiniteNumber(breadth.equalWeightedReturn),
+      volumeWeightedReturn: toFiniteNumber(breadth.volumeWeightedReturn),
+      dispersion: toFiniteNumber(breadth.dispersion),
+    };
+  };
+
+  return {
+    top5: build('top5'),
+    top10: build('top10'),
+    top30: build('top30'),
+    top50: build('top50'),
+    top100: build('top100'),
   };
 };
 
@@ -840,6 +896,7 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
   },
   relative: {
     marketBreadth: buildMarketBreadthContextFromSignal(signal),
+    marketBreadths: buildMarketBreadthsContextFromSignal(signal),
     targetVsBtc: buildTargetVsBtcContextFromSignal(signal),
     btcAltRegime: buildBtcAltRegimeContextFromSignal(signal),
     cmcGlobal: buildCmcGlobalContextFromSignal(signal),

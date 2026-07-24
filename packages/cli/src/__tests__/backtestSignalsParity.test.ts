@@ -475,6 +475,7 @@ const runSignalsPath = async () => {
     ),
   };
   const setDataMock = jest.fn(async () => null);
+  const getHashJsonField = jest.fn(async () => null);
   const setHashJsonField = jest.fn(async () => null);
 
   jest.doMock('args', () => ({
@@ -503,6 +504,7 @@ const runSignalsPath = async () => {
     __esModule: true,
     default: {
       yellow: (value: string) => value,
+      red: (value: string) => value,
       cyan: (value: string | number) => String(value),
       gray: (value: string) => value,
     },
@@ -566,6 +568,7 @@ const runSignalsPath = async () => {
   jest.doMock('@tradejs/infra/redis', () => ({
     getData: jest.fn(),
     getKeys: jest.fn(),
+    getHashJsonField,
     incrHashFields: jest.fn(),
     redisKeys: {
       strategyResults: (userName: string, strategyName: string) =>
@@ -589,6 +592,8 @@ const runSignalsPath = async () => {
         strategyName: string,
       ) =>
         `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
+      runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:lineage-scopes:days:${dayKey}`,
     },
     setData: setDataMock,
     setHashJsonField,
@@ -684,6 +689,7 @@ const runReplayPath = async () => {
       yellow: (value: string | number) => String(value),
       cyan: (value: string | number) => String(value),
       green: (value: string | number) => String(value),
+      red: (value: string | number) => String(value),
       magenta: (value: string | number) => String(value),
       gray: (value: string | number) => String(value),
     },

@@ -26,7 +26,9 @@ import {
   enrichSignalWithAi,
   enrichSignalWithMl,
   executeEntryOrder,
+  getOrderArrivalSnapshot,
   updatePositionProtection,
+  validateEntryProtectionAtArrival,
 } from './strategyHelpers/runtime';
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
@@ -1099,6 +1101,19 @@ const executeEntryDecision = async ({
     }
 
     await beforePlaceOrder();
+    const arrivalSnapshot = await getOrderArrivalSnapshot({
+      connector,
+      symbol,
+    });
+    validateEntryProtectionAtArrival({
+      direction: decision.entryContext.direction,
+      signalPrice: decision.entryContext.prices.currentPrice,
+      bid: arrivalSnapshot.bid,
+      ask: arrivalSnapshot.ask,
+      arrivalMid: arrivalSnapshot.arrivalMid,
+      takeProfits: decision.orderPlan.takeProfits,
+      stopLossPrice: decision.orderPlan.stopLossPrice,
+    });
     const orderPlaced = await connector.placeOrder({
       symbol,
       qty: decision.orderPlan.qty,

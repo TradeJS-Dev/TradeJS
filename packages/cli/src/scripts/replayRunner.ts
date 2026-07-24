@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { TTL_1M } from '@tradejs/core/constants';
+import { intervalToMs } from '@tradejs/core/data';
 import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import { createTimestamp } from '../lib/runFormatting';
@@ -87,6 +88,7 @@ const finishReplay = async ({
     liveStrategySummaries: replayStrategySnapshot.summaries,
     backtestEntries: replayStrategySnapshot.backtestEntries,
     replaySignals: replayResult.signals,
+    replayLineages: replayResult.runtimeLineages,
   });
 
   const finishedAt = new Date();
@@ -149,6 +151,7 @@ const finishReplay = async ({
       cycleCount: replayResult.cycleCount,
       abortedCycles: replayResult.abortedCycles,
       signalsCount: replayResult.signals.length,
+      replayLineage: replayResult.runtimeLineages,
       strategyCharts: replayChartSnapshot,
       outputReport,
     },
@@ -189,6 +192,7 @@ export const replayBacktest = async () => {
     cacheOnly: replayFlags.cacheOnly,
     interval: replayInterval,
     projectRoot: replayProjectRoot,
+    closedIntervalMs: intervalToMs(replayInterval),
   });
   if (!preparedRun || isReplayUpdateOnlyRun) {
     return;

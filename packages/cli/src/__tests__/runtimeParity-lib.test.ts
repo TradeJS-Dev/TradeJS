@@ -100,6 +100,42 @@ describe('resolveTimeWindow', () => {
       source: 'explicit',
     });
   });
+
+  it('ends replay windows before the currently forming candle', () => {
+    const intervalMs = 15 * 60_000;
+    const rawEnd = 20 * 60 * 60_000 + 11 * 60_000;
+
+    expect(
+      resolveTimeWindow({
+        days: 1,
+        defaultStartMs: rawEnd - 24 * 60 * 60_000,
+        defaultEndMs: rawEnd,
+        closedIntervalMs: intervalMs,
+      }),
+    ).toEqual({
+      start: 19 * 60 * 60_000 + 59 * 60_000 + 59_999 - 24 * 60 * 60_000,
+      end: 19 * 60 * 60_000 + 59 * 60_000 + 59_999,
+      source: 'days',
+    });
+  });
+
+  it('includes a candle that closes exactly at an explicit boundary', () => {
+    const intervalMs = 15 * 60_000;
+    const boundary = 1_800_000_000_000;
+
+    expect(
+      resolveTimeWindow({
+        startTime: boundary - 60 * 60_000,
+        endTime: boundary,
+        defaultStartMs: 0,
+        closedIntervalMs: intervalMs,
+      }),
+    ).toEqual({
+      start: boundary - 60 * 60_000,
+      end: boundary - 1,
+      source: 'explicit',
+    });
+  });
 });
 
 describe('runtime parity helpers', () => {

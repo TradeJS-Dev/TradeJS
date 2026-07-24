@@ -5,6 +5,7 @@ export interface ResolveTimeWindowParams {
   nowMs?: number;
   defaultStartMs: number;
   defaultEndMs?: number;
+  closedIntervalMs?: number;
 }
 
 export interface ResolvedTimeWindow {
@@ -48,10 +49,40 @@ export const resolveTimeWindow = ({
   nowMs = Date.now(),
   defaultStartMs,
   defaultEndMs,
+  closedIntervalMs,
 }: ResolveTimeWindowParams): ResolvedTimeWindow => {
   const explicitStart = toEpochMs(startTime);
   const explicitEnd = toEpochMs(endTime);
   const resolvedDays = toPositiveNumber(days);
+
+  const alignToLastClosedInterval = (
+    window: ResolvedTimeWindow,
+    preserveDuration: boolean,
+  ): ResolvedTimeWindow => {
+    if (
+      typeof closedIntervalMs !== 'number' ||
+      !Number.isFinite(closedIntervalMs) ||
+      closedIntervalMs <= 0
+    ) {
+      return window;
+    }
+
+    const alignedEnd =
+      Math.floor(window.end / closedIntervalMs) * closedIntervalMs - 1;
+    const delta = window.end - alignedEnd;
+    const alignedStart = preserveDuration ? window.start - delta : window.start;
+    if (alignedStart >= alignedEnd) {
+      throw new Error(
+        `Invalid closed-candle window: start (${alignedStart}) must be less than end (${alignedEnd})`,
+      );
+    }
+
+    return {
+      ...window,
+      start: Math.trunc(alignedStart),
+      end: Math.trunc(alignedEnd),
+    };
+  };
 
   if (explicitStart != null || explicitEnd != null) {
     const resolvedStart =
@@ -71,11 +102,14 @@ export const resolveTimeWindow = ({
       );
     }
 
-    return {
-      start: resolvedStart,
-      end: resolvedEnd,
-      source: 'explicit',
-    };
+    return alignToLastClosedInterval(
+      {
+        start: resolvedStart,
+        end: resolvedEnd,
+        source: 'explicit',
+      },
+      explicitStart == null && resolvedDays != null,
+    );
   }
 
   if (resolvedDays != null) {
@@ -88,11 +122,14 @@ export const resolveTimeWindow = ({
       );
     }
 
-    return {
-      start: Math.trunc(resolvedStart),
-      end: Math.trunc(resolvedEnd),
-      source: 'days',
-    };
+    return alignToLastClosedInterval(
+      {
+        start: Math.trunc(resolvedStart),
+        end: Math.trunc(resolvedEnd),
+        source: 'days',
+      },
+      true,
+    );
   }
 
   const resolvedEnd = defaultEndMs ?? nowMs;
@@ -102,9 +139,12 @@ export const resolveTimeWindow = ({
     );
   }
 
-  return {
-    start: Math.trunc(defaultStartMs),
-    end: Math.trunc(resolvedEnd),
-    source: 'default',
-  };
+  return alignToLastClosedInterval(
+    {
+      start: Math.trunc(defaultStartMs),
+      end: Math.trunc(resolvedEnd),
+      source: 'default',
+    },
+    true,
+  );
 };

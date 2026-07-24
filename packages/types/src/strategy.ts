@@ -550,6 +550,33 @@ export interface BaseParticipationContext {
   tradeFlow?: BaseMarketTradeFlowContext;
 }
 
+export type BaseMarketBreadthContext = {
+  source: 'binance_klines';
+  universe: string;
+  interval: MarketFeatureInterval;
+  asOfTs: number | null;
+  ageMs: number | null;
+  stale: boolean;
+  symbolsCount: number | null;
+  advancers: number | null;
+  decliners: number | null;
+  unchanged: number | null;
+  advanceDeclineRatio: number | null;
+  pctAboveMa20: number | null;
+  pctAboveMa50: number | null;
+  equalWeightedReturn: number | null;
+  volumeWeightedReturn: number | null;
+  dispersion: number | null;
+};
+
+export type BaseMarketBreadthsContext = {
+  top5?: BaseMarketBreadthContext;
+  top10?: BaseMarketBreadthContext;
+  top30?: BaseMarketBreadthContext;
+  top50?: BaseMarketBreadthContext;
+  top100?: BaseMarketBreadthContext;
+};
+
 export interface BaseRelativeContext {
   benchmark: {
     maFast: number | null;
@@ -593,24 +620,8 @@ export interface BaseRelativeContext {
     correlationToEth20: number | null;
     ratioTrend: 'up' | 'down' | 'flat' | 'unknown';
   };
-  marketBreadth?: {
-    source: 'binance_klines';
-    universe: string;
-    interval: MarketFeatureInterval;
-    asOfTs: number | null;
-    ageMs: number | null;
-    stale: boolean;
-    symbolsCount: number | null;
-    advancers: number | null;
-    decliners: number | null;
-    unchanged: number | null;
-    advanceDeclineRatio: number | null;
-    pctAboveMa20: number | null;
-    pctAboveMa50: number | null;
-    equalWeightedReturn: number | null;
-    volumeWeightedReturn: number | null;
-    dispersion: number | null;
-  };
+  marketBreadth?: BaseMarketBreadthContext;
+  marketBreadths?: BaseMarketBreadthsContext;
   btcAltRegime?: {
     source: 'binance_klines';
     universe: string;

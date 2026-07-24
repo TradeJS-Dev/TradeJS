@@ -20,8 +20,20 @@ export {
   enrichSignalWithMl,
   enrichSignalWithMlAi,
   executeEntryOrder,
+  getOrderArrivalSnapshot,
+  validateEntryProtectionAtArrival,
 } from './strategyHelpers/runtime';
 export { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
+export {
+  BINANCE_BREADTH_UNIVERSE_KEYS,
+  buildBinanceBreadthUniverseSnapshot,
+  getBinanceBreadthUniverseSnapshot,
+  getBinanceBreadthUniverses,
+  getPrimaryBinanceBreadthUniverse,
+  type BinanceBreadthUniverseDefinition,
+  type BinanceBreadthUniverseKey,
+  type BinanceBreadthUniverseSnapshot,
+} from './binanceBreadthUniverses';
 export { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
 export {
   closeOppositePositionsBeforeOpen,

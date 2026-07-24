@@ -7,6 +7,7 @@ import type {
   ReplayRuntimeComparisonSummary,
   ReplayStrategyResultsSnapshot,
 } from './support';
+import { getReplayRuntimeUnmatchedCount } from './support';
 import type { HistoricalSignalsReplayResult } from './historicalSignalsReplay';
 
 type ReplayOutputWindow = {
@@ -99,6 +100,7 @@ const buildPerTradeAnalysis = (
   if (!details) {
     return {
       matched: [],
+      orderFailed: [],
       runtimeOnly: [],
       backtestOnly: [],
     };
@@ -128,6 +130,17 @@ const buildPerTradeAnalysis = (
         pnl: item.pnl,
         slippage: item.slippage,
       },
+    })),
+    orderFailed: details.orderFailed.map((item) => ({
+      status: 'orderFailed',
+      strategy: entryStrategy(item.backtest),
+      symbol: item.backtest.symbol,
+      direction: item.backtest.direction,
+      runtime: item.runtime,
+      backtest: item.backtest,
+      reason: item.reason,
+      timestampDiffMs: item.timestampDiffMs,
+      entryPriceDeltaPct: item.priceDeltaPct,
     })),
     runtimeOnly: details.runtimeOnly.map((entry) => ({
       status: 'runtimeOnly',
@@ -227,6 +240,32 @@ const renderRuntimeOnlyRows = (
       )
     : '_No runtime-only trades._';
 
+const renderOrderFailedRows = (
+  perTrade: ReturnType<typeof buildPerTradeAnalysis>['orderFailed'],
+) =>
+  perTrade.length
+    ? createMarkdownTable(
+        [
+          'Strategy',
+          'Symbol',
+          'Dir',
+          'BT time',
+          'RT time',
+          'Entry delta',
+          'Reason',
+        ],
+        perTrade.map((item) => [
+          item.strategy,
+          item.symbol,
+          item.direction,
+          formatMsk(item.backtest.timestamp),
+          formatMsk(item.runtime.timestamp),
+          formatPct(item.entryPriceDeltaPct),
+          item.reason,
+        ]),
+      )
+    : '_No failed runtime orders._';
+
 const renderBacktestOnlyRows = (
   perTrade: ReturnType<typeof buildPerTradeAnalysis>['backtestOnly'],
 ) =>
@@ -276,8 +315,10 @@ const renderStrategyRows = (
           'RT trades',
           'RT PnL',
           'Matched',
+          'Order failed',
           'RT only',
           'BT only',
+          'Unmatched',
         ],
         runtimeComparison.rows.map((row) => [
           row.strategyName,
@@ -286,11 +327,93 @@ const renderStrategyRows = (
           row.runtimeTrades,
           formatMoney(row.runtimePnl),
           row.matched,
+          row.orderFailed,
           row.runtimeOnly,
           row.backtestOnly,
+          getReplayRuntimeUnmatchedCount(row),
         ]),
       )
     : '_No runtime comparison rows._';
+
+const renderLineageRows = (
+  runtimeComparison: ReplayRuntimeComparisonSummary | null,
+) => {
+  const grouped = new Map<
+    string,
+    {
+      strategy: string;
+      scopes: number;
+      gitShas: Set<string>;
+      dirty: Set<string>;
+      gates: Set<string>;
+      configs: Set<string>;
+      contexts: Set<string>;
+    }
+  >();
+  for (const record of runtimeComparison?.lineage.replay ?? []) {
+    const existing = grouped.get(record.strategy) ?? {
+      strategy: record.strategy,
+      scopes: 0,
+      gitShas: new Set<string>(),
+      dirty: new Set<string>(),
+      gates: new Set<string>(),
+      configs: new Set<string>(),
+      contexts: new Set<string>(),
+    };
+    existing.scopes += 1;
+    existing.gitShas.add(record.lineage.gitSha ?? 'unknown');
+    existing.dirty.add(
+      record.lineage.gitDirty == null
+        ? 'unknown'
+        : String(record.lineage.gitDirty),
+    );
+    existing.gates.add(record.lineage.gateFingerprint);
+    existing.configs.add(record.lineage.configFingerprint);
+    existing.contexts.add(record.lineage.contextFingerprint);
+    grouped.set(record.strategy, existing);
+  }
+  const formatSet = (values: Set<string>) => {
+    const sorted = [...values].sort();
+    return sorted.length <= 3
+      ? sorted.join(', ')
+      : `${sorted.slice(0, 3).join(', ')} … (+${sorted.length - 3})`;
+  };
+
+  return grouped.size
+    ? createMarkdownTable(
+        [
+          'Strategy',
+          'Scopes',
+          'Git SHA',
+          'Dirty',
+          'Gate',
+          'Config variants',
+          'Context',
+        ],
+        [...grouped.values()]
+          .sort((left, right) => left.strategy.localeCompare(right.strategy))
+          .map(
+            ({
+              strategy,
+              scopes,
+              gitShas,
+              dirty,
+              gates,
+              configs,
+              contexts,
+            }) => [
+              strategy,
+              scopes,
+              formatSet(gitShas),
+              formatSet(dirty),
+              formatSet(gates),
+              `${configs.size}: ${formatSet(configs)}`,
+              formatSet(contexts),
+            ],
+          ),
+      )
+    : '_No replay lineage records._';
+};
 
 export const writeReplayOutputReport = async ({
   projectRoot,
@@ -334,10 +457,12 @@ export const writeReplayOutputReport = async ({
       cycleCount: replayResult.cycleCount,
       abortedCycles: replayResult.abortedCycles,
       matched: runtimeComparison?.matchedCount ?? 0,
+      orderFailed: runtimeComparison?.orderFailedCount ?? 0,
       runtimeOnly: runtimeComparison?.runtimeOnlyCount ?? 0,
       backtestOnly: runtimeComparison?.backtestOnlyCount ?? 0,
     },
     resultsByStrategies: strategySnapshot.summaries,
+    replayLineage: replayResult.runtimeLineages,
     runtimeComparison,
     perTradeAnalysis,
   };
@@ -363,12 +488,29 @@ export const writeReplayOutputReport = async ({
         ['Window', `${formatMsk(window.start)} - ${formatMsk(window.end)} MSK`],
         ['Runtime compare mode', runtimeComparison?.mode ?? 'none'],
         ['Matched', runtimeComparison?.matchedCount ?? 0],
+        ['Order failed', runtimeComparison?.orderFailedCount ?? 0],
         ['Runtime-only', runtimeComparison?.runtimeOnlyCount ?? 0],
         ['Backtest-only', runtimeComparison?.backtestOnlyCount ?? 0],
+        [
+          'Comparable lineage scopes',
+          runtimeComparison
+            ? `${runtimeComparison.lineage.comparableScopes}/${runtimeComparison.lineage.replayScopes}`
+            : '0/0',
+        ],
+        [
+          'Lineage exclusions',
+          runtimeComparison
+            ? `runtime=${runtimeComparison.lineage.excludedRuntimeTrades}, exchange=${runtimeComparison.lineage.excludedExchangeEntries}, backtest=${runtimeComparison.lineage.excludedBacktestEntries}`
+            : '',
+        ],
         ['Command', `\`${process.argv.join(' ')}\``],
         ['JSON report', jsonPath],
       ],
     ),
+    '',
+    '## Replay Lineage',
+    '',
+    renderLineageRows(runtimeComparison),
     '',
     '## Strategy Comparison',
     '',
@@ -377,6 +519,10 @@ export const writeReplayOutputReport = async ({
     '## Matched Trades',
     '',
     renderMatchedRows(perTradeAnalysis.matched),
+    '',
+    '## Failed Runtime Orders',
+    '',
+    renderOrderFailedRows(perTradeAnalysis.orderFailed),
     '',
     '## Runtime-Only Trades',
     '',

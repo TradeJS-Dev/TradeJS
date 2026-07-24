@@ -107,6 +107,15 @@ jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
   enrichSignalWithAi: (...args: unknown[]) => mockEnrichSignalWithAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
+  getOrderArrivalSnapshot: jest.fn(async () => ({
+    arrivalSnapshotTime: Date.now(),
+    arrivalSource: 'unavailable',
+    bid: null,
+    ask: null,
+    arrivalMid: null,
+    spreadBps: null,
+  })),
+  validateEntryProtectionAtArrival: jest.fn(),
   updatePositionProtection: (...args: unknown[]) =>
     mockUpdatePositionProtection(...args),
 }));

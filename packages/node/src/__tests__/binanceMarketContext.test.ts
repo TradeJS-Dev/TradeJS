@@ -82,24 +82,26 @@ describe('strategyHelpers/binanceMarketContext', () => {
       buyPressurePct: '0.6666667',
       source: 'binance_agg_trades',
     });
-    mockGetLatestMarketBreadth.mockResolvedValue({
-      universe: 'binance_top30_usdt',
-      interval: '15m',
-      ts: new Date(timestamp),
-      ageMs: 0,
-      stale: false,
-      symbolsCount: 30,
-      advancers: 20,
-      decliners: 8,
-      unchanged: 2,
-      advanceDeclineRatio: '2.5',
-      pctAboveMa20: '0.6',
-      pctAboveMa50: '0.5',
-      equalWeightedReturn: '0.01',
-      volumeWeightedReturn: '0.02',
-      dispersion: '0.03',
-      source: 'binance_klines',
-    });
+    mockGetLatestMarketBreadth.mockImplementation(
+      async ({ universe }: { universe: string }) => ({
+        universe,
+        interval: '15m',
+        ts: new Date(timestamp),
+        ageMs: 0,
+        stale: false,
+        symbolsCount: Number(universe.match(/top(100|50|30|10|5)_/)?.[1] ?? 0),
+        advancers: 20,
+        decliners: 8,
+        unchanged: 2,
+        advanceDeclineRatio: '2.5',
+        pctAboveMa20: '0.6',
+        pctAboveMa50: '0.5',
+        equalWeightedReturn: '0.01',
+        volumeWeightedReturn: '0.02',
+        dispersion: '0.03',
+        source: 'binance_klines',
+      }),
+    );
   });
 
   it('is enabled by default for backtest and signals environments', () => {
@@ -155,9 +157,16 @@ describe('strategyHelpers/binanceMarketContext', () => {
         },
         marketBreadth: {
           source: 'binance_klines',
-          universe: 'binance_top30_usdt',
+          universe: expect.stringMatching(/^binance_top30_usdt_[a-f0-9]{12}$/),
           stale: false,
           equalWeightedReturn: 0.01,
+        },
+        marketBreadths: {
+          top5: expect.objectContaining({ symbolsCount: 5 }),
+          top10: expect.objectContaining({ symbolsCount: 10 }),
+          top30: expect.objectContaining({ symbolsCount: 30 }),
+          top50: expect.objectContaining({ symbolsCount: 50 }),
+          top100: expect.objectContaining({ symbolsCount: 100 }),
         },
       },
       gateFeatures: expect.objectContaining({
@@ -198,7 +207,7 @@ describe('strategyHelpers/binanceMarketContext', () => {
       signal.additionalIndicators.baseContext.relative.marketBreadth,
     ).toMatchObject({
       source: 'binance_klines',
-      universe: 'binance_top30_usdt',
+      universe: expect.stringMatching(/^binance_top30_usdt_[a-f0-9]{12}$/),
       stale: false,
     });
   });

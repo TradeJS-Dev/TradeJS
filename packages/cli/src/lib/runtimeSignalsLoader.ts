@@ -11,6 +11,7 @@ import {
   getRuntimeStorageDayKeys,
   parseRuntimeSignalStatsBucket,
   RuntimeSignalStatsBucket,
+  RuntimeLineageScopeRecord,
 } from './runtimeSignalsStorage';
 
 export const isSignalRecord = (value: unknown): value is Signal => {
@@ -153,6 +154,44 @@ export const loadRuntimeSignalEvaluations = async (
   }
 
   return sortByTimestamp([...deduped.values()]);
+};
+
+export const loadRuntimeLineageScopes = async (
+  userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime: number;
+    endTime: number;
+  },
+): Promise<RuntimeLineageScopeRecord[]> => {
+  const records = (
+    await Promise.all(
+      getRuntimeStorageDayKeys(startTime, endTime).map((dayKey) =>
+        getHashJsonValues<RuntimeLineageScopeRecord>(
+          redisKeys.runtimeLineageScopeBucket(userName, dayKey),
+        ),
+      ),
+    )
+  )
+    .flat()
+    .filter(
+      (record) =>
+        record != null &&
+        typeof record.strategy === 'string' &&
+        typeof record.symbol === 'string' &&
+        typeof record.firstTimestamp === 'number' &&
+        typeof record.lastTimestamp === 'number' &&
+        record.lineage != null,
+    );
+
+  return records.sort(
+    (left, right) =>
+      left.firstTimestamp - right.firstTimestamp ||
+      left.strategy.localeCompare(right.strategy) ||
+      left.symbol.localeCompare(right.symbol),
+  );
 };
 
 export type RuntimeSignalStatsBucketEntry = {
