@@ -1,8 +1,50 @@
+import { createEntryAnnotationPointFigure } from '../entryAnnotationPointFigure';
 import { createEntryLinePointFigure } from '../entryLinePointFigure';
 import { createEntryPointsPointFigure } from '../entryPointsPointFigure';
 import { createEntryZonePointFigure } from '../entryZonePointFigure';
 
 describe('kline chart entry figures', () => {
+  it('creates a readable entry evidence annotation anchored to price', () => {
+    const empty = createEntryAnnotationPointFigure({
+      coordinates: [],
+      overlay: {},
+    });
+    expect(empty).toEqual([]);
+
+    const annotation = createEntryAnnotationPointFigure({
+      coordinates: [{ x: 120, y: 80 }],
+      overlay: {
+        extendData: {
+          annotation: {
+            point: { timestamp: 1, value: 100 },
+            title: 'Breakout LONG',
+            items: ['Score: 4 / 3', 'Active: close above high'],
+            color: '#22c55e',
+          },
+        },
+      },
+    });
+
+    expect(annotation).toHaveLength(3);
+    expect(annotation[0]).toEqual(
+      expect.objectContaining({
+        type: 'text',
+        key: 'entry_annotation_0',
+        attrs: expect.objectContaining({
+          x: 110,
+          y: 92,
+          text: 'Breakout LONG',
+          align: 'right',
+        }),
+        styles: expect.objectContaining({
+          color: '#22c55e',
+          backgroundColor: 'rgba(15,23,42,0.88)',
+        }),
+      }),
+    );
+    expect(annotation[2].attrs.text).toBe('Active: close above high');
+  });
+
   it('creates entry line figure with defaults and custom style', () => {
     const empty = createEntryLinePointFigure({
       coordinates: [{ x: 1, y: 2 }],
@@ -34,6 +76,7 @@ describe('kline chart entry figures', () => {
         attrs: {
           coordinates: [
             { x: 1, y: 2 },
+            { x: 3, y: 4 },
             { x: 5, y: 6 },
           ],
         },

@@ -53,7 +53,7 @@ describe('signalFiguresPipeline', () => {
     ensureBaseFigureOverlaysRegistered();
     ensureBaseFigureOverlaysRegistered();
 
-    expect(mockRegisterOverlay).toHaveBeenCalledTimes(3);
+    expect(mockRegisterOverlay).toHaveBeenCalledTimes(4);
   });
 
   it('converts legacy trendLine figure to base lines/points', () => {
@@ -82,6 +82,25 @@ describe('signalFiguresPipeline', () => {
     const normalized = normalizeSignalFigures(signal);
     expect(normalized?.lines).toHaveLength(1);
     expect(normalized?.points).toBeUndefined();
+  });
+
+  it('normalizes entry evidence annotations', () => {
+    const signal = makeSignal({
+      figures: {
+        annotations: [
+          {
+            id: 'evidence',
+            point: { timestamp: 2, value: 101 },
+            title: 'Relative rotation LONG',
+            items: ['Alpha 24h: 1.2%'],
+          },
+        ],
+      },
+    });
+
+    const normalized = normalizeSignalFigures(signal);
+    expect(normalized?.annotations).toEqual(signal.figures.annotations);
+    expect(normalized?.lines).toBeUndefined();
   });
 
   it('normalizes legacy trendLine figure', () => {
@@ -210,12 +229,65 @@ describe('signalFiguresPipeline', () => {
             end: { timestamp: 2, value: 2 },
           },
         ],
+        annotations: [
+          {
+            id: 'a1',
+            point: { timestamp: 2, value: 2 },
+            title: 'Entry evidence',
+            items: ['Momentum crossed zero'],
+          },
+        ],
       },
     });
 
-    expect(chart.createOverlay).toHaveBeenCalledTimes(3);
+    expect(chart.createOverlay).toHaveBeenCalledTimes(4);
+    expect(chart.createOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'BacktestEntryAnnotation',
+        id: 'id1-annotation-a1',
+      }),
+    );
     removeSignalFigures(chart, overlays);
-    expect(chart.removeOverlay).toHaveBeenCalledTimes(3);
+    expect(chart.removeOverlay).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps every point of multi-point pattern lines', () => {
+    const chart = {
+      createOverlay: jest.fn(),
+      removeOverlay: jest.fn(),
+    } as any;
+    const patternPoints = [
+      { timestamp: 1, value: 10 },
+      { timestamp: 2, value: 8 },
+      { timestamp: 3, value: 11 },
+      { timestamp: 4, value: 9 },
+      { timestamp: 5, value: 12 },
+    ];
+
+    const overlays = drawSignalFigures({
+      chart,
+      idPrefix: 'doubletap',
+      figures: {
+        lines: [
+          {
+            id: 'pattern',
+            kind: 'doubletap_double_bottom_pattern',
+            points: patternPoints,
+          },
+        ],
+      },
+    });
+
+    expect(chart.createOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'BacktestEntryLine',
+        id: 'doubletap-line-pattern',
+        points: patternPoints,
+      }),
+    );
+    expect(overlays).toEqual([
+      { name: 'BacktestEntryLine', id: 'doubletap-line-pattern' },
+    ]);
   });
 
   it('skips invalid line/point overlays and uses index fallback ids', () => {

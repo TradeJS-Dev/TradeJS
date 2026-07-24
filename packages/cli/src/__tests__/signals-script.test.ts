@@ -1259,9 +1259,29 @@ describe('signals script', () => {
             timestamp: CLOSED_2_TS,
             orderStatus: 'completed',
             prices: { currentPrice: 11 },
-            figures: {},
-            indicators: {},
-            additionalIndicators: {},
+            figures: {
+              lines: [
+                {
+                  id: 'trade-pattern',
+                  points: [
+                    { timestamp: CLOSED_1_TS, value: 10 },
+                    { timestamp: CLOSED_2_TS, value: 11 },
+                  ],
+                },
+              ],
+              annotations: [
+                {
+                  id: 'trade-evidence',
+                  point: { timestamp: CLOSED_2_TS, value: 11 },
+                  title: 'Breakout LONG',
+                  items: ['Score: 4 / 3'],
+                },
+              ],
+            },
+            indicators: { maFast: [10, 11] },
+            additionalIndicators: {
+              patternContext: { confirmed: true },
+            },
           },
         },
       ],
@@ -1279,6 +1299,36 @@ describe('signals script', () => {
       ],
       '15',
       'root',
+    );
+    const storedTradeSignal = (mocks.setData.mock.calls as unknown[][]).find(
+      ([key]) => key === mocks.redisKeys.storeSignal('ETHUSDT', 'trend-sig'),
+    )?.[1];
+    expect(storedTradeSignal).toEqual(
+      expect.objectContaining({
+        figures: {
+          lines: [
+            {
+              id: 'trade-pattern',
+              points: [
+                { timestamp: CLOSED_1_TS, value: 10 },
+                { timestamp: CLOSED_2_TS, value: 11 },
+              ],
+            },
+          ],
+          annotations: [
+            {
+              id: 'trade-evidence',
+              point: { timestamp: CLOSED_2_TS, value: 11 },
+              title: 'Breakout LONG',
+              items: ['Score: 4 / 3'],
+            },
+          ],
+        },
+        indicators: { maFast: [10, 11] },
+        additionalIndicators: expect.objectContaining({
+          patternContext: { confirmed: true },
+        }),
+      }),
     );
     expect(mocks.sendToTG).toHaveBeenCalledWith(
       [

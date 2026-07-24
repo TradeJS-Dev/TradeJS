@@ -3,6 +3,7 @@ import type {
   Direction,
   Position,
   StrategyEntryModelFigures,
+  StrategyFigureAnnotation,
   StrategyFigureLine,
   StrategyFigurePoints,
 } from '@tradejs/types';
@@ -24,6 +25,47 @@ export const toFiniteNumberOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+export const formatFigureMetric = (
+  value: number | null | undefined,
+  digits = 2,
+  suffix = '',
+) => (isFiniteNumber(value) ? `${value.toFixed(digits)}${suffix}` : 'n/a');
+
+export const formatFigureRatioAsPercent = (
+  value: number | null | undefined,
+  digits = 0,
+) => (isFiniteNumber(value) ? `${(value * 100).toFixed(digits)}%` : 'n/a');
+
+export const buildEntryEvidenceAnnotation = ({
+  idPrefix,
+  kind,
+  direction,
+  entryTimestamp,
+  entryPrice,
+  title,
+  items,
+}: {
+  idPrefix: string;
+  kind: string;
+  direction: Direction;
+  entryTimestamp: number;
+  entryPrice: number;
+  title: string;
+  items: Array<string | null | undefined>;
+}): StrategyFigureAnnotation => ({
+  id: `${idPrefix}-evidence-${entryTimestamp}`,
+  kind,
+  point: {
+    timestamp: entryTimestamp,
+    value: entryPrice,
+  },
+  title,
+  items: items
+    .filter((item): item is string => Boolean(item?.trim()))
+    .slice(0, 6),
+  color: direction === 'LONG' ? '#4ade80' : '#f87171',
+});
 
 export const isOpenPosition = (
   position: Position | null,

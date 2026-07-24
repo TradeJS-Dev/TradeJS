@@ -546,6 +546,10 @@ const buildEntryPayloadFromPendingCandidate = ({
       previousPivotHigh: candidate.previousPivotHigh,
       currentPivotLow: candidate.currentPivotLow,
       currentPivotHigh: candidate.currentPivotHigh,
+      previousPivotVolumeNorm: candidate.previousPivotVolumeNorm,
+      currentPivotVolumeNorm: candidate.currentPivotVolumeNorm,
+      barsBetweenPivotConfirmations: candidate.barsBetweenPivotConfirmations,
+      entryTiming,
       candleWindow,
     }),
     additionalIndicators: {

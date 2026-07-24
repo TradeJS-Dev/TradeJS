@@ -3,17 +3,23 @@ import {
   OrderLogData,
   Signal,
   StrategyEntryModelFigures,
+  StrategyFigureAnnotation,
   StrategyFigureLine,
   StrategyFigurePoints,
   StrategyFigureZone,
   TrendLine,
 } from '@tradejs/types';
+import { createEntryAnnotationPointFigure } from './entryAnnotationPointFigure';
 import { createEntryLinePointFigure } from './entryLinePointFigure';
 import { createEntryPointsPointFigure } from './entryPointsPointFigure';
 import { createEntryZonePointFigure } from './entryZonePointFigure';
 
 export type FigureOverlayRef = {
-  name: 'BacktestEntryLine' | 'BacktestEntryPoints' | 'BacktestEntryZone';
+  name:
+    | 'BacktestEntryLine'
+    | 'BacktestEntryPoints'
+    | 'BacktestEntryZone'
+    | 'BacktestEntryAnnotation';
   id: string;
 };
 
@@ -46,6 +52,14 @@ export const ensureBaseFigureOverlaysRegistered = () => {
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
     createPointFigures: createEntryZonePointFigure,
+  });
+
+  registerOverlay({
+    name: 'BacktestEntryAnnotation',
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: createEntryAnnotationPointFigure,
   });
 
   baseFiguresRegistered = true;
@@ -90,11 +104,15 @@ export const normalizeSignalFigures = (
   const lines = [...(figures.lines ?? [])] as StrategyFigureLine[];
   const points = [...(figures.points ?? [])] as StrategyFigurePoints[];
   const zones = [...(figures.zones ?? [])] as StrategyFigureZone[];
+  const annotations = [
+    ...(figures.annotations ?? []),
+  ] as StrategyFigureAnnotation[];
 
   let merged: StrategyEntryModelFigures = {
     lines,
     points,
     zones,
+    annotations,
   };
 
   if (figures.trendLine) {
@@ -103,13 +121,18 @@ export const normalizeSignalFigures = (
       lines: [...(merged.lines ?? []), ...(fromTrendLine.lines ?? [])],
       points: [...(merged.points ?? []), ...(fromTrendLine.points ?? [])],
       zones: [...(merged.zones ?? []), ...(fromTrendLine.zones ?? [])],
+      annotations: [
+        ...(merged.annotations ?? []),
+        ...(fromTrendLine.annotations ?? []),
+      ],
     };
   }
 
   if (
     !merged.lines?.length &&
     !merged.points?.length &&
-    !merged.zones?.length
+    !merged.zones?.length &&
+    !merged.annotations?.length
   ) {
     return undefined;
   }
@@ -118,6 +141,7 @@ export const normalizeSignalFigures = (
     ...(merged.lines?.length ? { lines: merged.lines } : {}),
     ...(merged.points?.length ? { points: merged.points } : {}),
     ...(merged.zones?.length ? { zones: merged.zones } : {}),
+    ...(merged.annotations?.length ? { annotations: merged.annotations } : {}),
   };
 };
 
@@ -170,6 +194,7 @@ export const drawSignalFigures = ({
   const lines = figures.lines ?? [];
   const points = figures.points ?? [];
   const zones = figures.zones ?? [];
+  const annotations = figures.annotations ?? [];
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
@@ -180,7 +205,7 @@ export const drawSignalFigures = ({
     chart.createOverlay({
       name: 'BacktestEntryLine',
       id,
-      points: [linePoints[0], linePoints[linePoints.length - 1]],
+      points: linePoints,
       zLevel: 10,
       extendData: { line },
     });
@@ -214,6 +239,31 @@ export const drawSignalFigures = ({
       extendData: { zone },
     });
     created.push({ name: 'BacktestEntryZone', id });
+  }
+
+  for (
+    let annotationIndex = 0;
+    annotationIndex < annotations.length;
+    annotationIndex++
+  ) {
+    const annotation = annotations[annotationIndex];
+    if (
+      !Number.isFinite(annotation.point?.timestamp) ||
+      !Number.isFinite(annotation.point?.value) ||
+      !annotation.title.trim()
+    ) {
+      continue;
+    }
+
+    const id = `${idPrefix}-annotation-${annotation.id ?? annotationIndex}`;
+    chart.createOverlay({
+      name: 'BacktestEntryAnnotation',
+      id,
+      points: [annotation.point],
+      zLevel: 14,
+      extendData: { annotation },
+    });
+    created.push({ name: 'BacktestEntryAnnotation', id });
   }
 
   return created;

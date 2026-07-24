@@ -1,4 +1,5 @@
 export type {
+  EntryAnnotationExtendData,
   EntryLineExtendData,
   EntryPointsExtendData,
   EntryZoneExtendData,

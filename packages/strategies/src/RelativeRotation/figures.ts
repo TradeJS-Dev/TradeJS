@@ -1,5 +1,10 @@
 import type { Direction, StrategyEntryModelFigures } from '@tradejs/types';
-import { buildEntryStopTargetFigures } from '../shared/contextStrategy';
+import type { RelativeRotationSignalContext } from './core';
+import {
+  buildEntryEvidenceAnnotation,
+  buildEntryStopTargetFigures,
+  formatFigureMetric,
+} from '../shared/contextStrategy';
 
 export const buildRelativeRotationFigures = ({
   direction,
@@ -7,14 +12,16 @@ export const buildRelativeRotationFigures = ({
   entryPrice,
   stopLossPrice,
   takeProfitPrice,
+  context,
 }: {
   direction: Direction;
   entryTimestamp: number;
   entryPrice: number;
   stopLossPrice: number;
   takeProfitPrice: number;
-}): StrategyEntryModelFigures =>
-  buildEntryStopTargetFigures({
+  context: RelativeRotationSignalContext;
+}): StrategyEntryModelFigures => {
+  const figures = buildEntryStopTargetFigures({
     idPrefix: 'rr',
     direction,
     entryTimestamp,
@@ -22,3 +29,26 @@ export const buildRelativeRotationFigures = ({
     stopLossPrice,
     takeProfitPrice,
   });
+
+  return {
+    ...figures,
+    annotations: [
+      buildEntryEvidenceAnnotation({
+        idPrefix: 'rr',
+        kind: 'relative_rotation_entry_evidence',
+        direction,
+        entryTimestamp,
+        entryPrice,
+        title: `Relative rotation ${direction}`,
+        items: [
+          `BTC ratio: ${context.targetVsBtcRatioTrend ?? 'n/a'}`,
+          `Alpha 24h: ${formatFigureMetric(context.targetVsBtcAlpha24h, 2, '%')}`,
+          `Ratio return 24h: ${formatFigureMetric(context.targetVsBtcRatioReturn24h, 2, '%')}`,
+          `Relative strength 1h: ${formatFigureMetric(context.relativeStrength1h, 2, '%')}`,
+          `Rotation score: ${formatFigureMetric(context.rotationScore)}`,
+          `Regime: ${context.btcAltRegime ?? 'n/a'}; volume rel20: ${formatFigureMetric(context.volumeRel20)}`,
+        ],
+      }),
+    ],
+  };
+};

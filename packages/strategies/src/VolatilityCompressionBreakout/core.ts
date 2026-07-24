@@ -354,6 +354,7 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
           direction: modeConfig.direction,
           currentPrice,
         }),
+        context: signal,
       }),
       orderPlan: {
         qty: riskPlan.qty,

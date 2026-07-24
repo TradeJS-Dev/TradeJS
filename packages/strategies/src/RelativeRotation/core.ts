@@ -304,6 +304,7 @@ export const createRelativeRotationCore: CreateStrategyCore<
         entryPrice: currentPrice,
         stopLossPrice,
         takeProfitPrice: riskPlan.takeProfitPrice,
+        context: signal,
       }),
       orderPlan: {
         qty: riskPlan.qty,

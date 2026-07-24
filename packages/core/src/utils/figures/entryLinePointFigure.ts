@@ -24,7 +24,7 @@ export const createEntryLinePointFigure = ({
     {
       type: 'line',
       attrs: {
-        coordinates: [coordinates[0], coordinates[coordinates.length - 1]],
+        coordinates,
       },
       styles: { color, size, style },
     },

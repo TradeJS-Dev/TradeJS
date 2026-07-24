@@ -1,6 +1,7 @@
 import type {
   AdaptiveMomentumRibbonPlotName,
   AdaptiveMomentumRibbonPlotPoint,
+  AdaptiveMomentumRibbonSnapshot,
 } from './engine';
 import {
   Direction,
@@ -8,6 +9,10 @@ import {
   StrategyFigureLine,
   StrategyFigurePoint,
 } from '@tradejs/types';
+import {
+  buildEntryEvidenceAnnotation,
+  formatFigureMetric,
+} from '../shared/contextStrategy';
 
 interface BuildAdaptiveMomentumRibbonFiguresParams {
   plotSeries: Partial<
@@ -17,6 +22,7 @@ interface BuildAdaptiveMomentumRibbonFiguresParams {
   direction: Direction;
   entryTimestamp: number;
   entryPrice: number;
+  snapshot: AdaptiveMomentumRibbonSnapshot;
   maxPoints?: number;
 }
 
@@ -78,6 +84,7 @@ export const buildAdaptiveMomentumRibbonFigures = ({
   direction,
   entryTimestamp,
   entryPrice,
+  snapshot,
   maxPoints = 180,
 }: BuildAdaptiveMomentumRibbonFiguresParams): StrategyEntryModelFigures => {
   const lines = linePlots
@@ -116,6 +123,23 @@ export const buildAdaptiveMomentumRibbonFigures = ({
         color: direction === 'LONG' ? '#22c55e' : '#ef4444',
         radius: 4,
       },
+    ],
+    annotations: [
+      buildEntryEvidenceAnnotation({
+        idPrefix: 'amr',
+        kind: 'adaptive_momentum_ribbon_entry_evidence',
+        direction,
+        entryTimestamp,
+        entryPrice,
+        title: `Momentum ribbon ${direction}`,
+        items: [
+          `Signal oscillator: ${formatFigureMetric(snapshot.signalOsc, 3)}`,
+          `Zero cross: ${direction === 'LONG' ? 'above' : 'below'} 0`,
+          `Active state: ${snapshot.activeBuy ? 'buy' : snapshot.activeSell ? 'sell' : 'transition'}`,
+          `Keltner: ${formatFigureMetric(snapshot.kcLower)} / ${formatFigureMetric(snapshot.kcMidline)} / ${formatFigureMetric(snapshot.kcUpper)}`,
+          `Invalidation: ${formatFigureMetric(snapshot.invalidationLevel)}`,
+        ],
+      }),
     ],
   };
 };

@@ -640,10 +640,22 @@ export interface StrategyFigureZone {
   borderColor?: string;
 }
 
+export interface StrategyFigureAnnotation {
+  id?: string;
+  kind?: string;
+  point: StrategyFigurePoint;
+  title: string;
+  items: string[];
+  color?: string;
+  textColor?: string;
+  backgroundColor?: string;
+}
+
 export interface StrategyEntryModelFigures {
   lines?: StrategyFigureLine[];
   points?: StrategyFigurePoints[];
   zones?: StrategyFigureZone[];
+  annotations?: StrategyFigureAnnotation[];
 }
 
 export interface TrendLineOptions {
@@ -702,6 +714,7 @@ export interface Signal {
     lines?: StrategyFigureLine[];
     points?: StrategyFigurePoints[];
     zones?: StrategyFigureZone[];
+    annotations?: StrategyFigureAnnotation[];
     [key: string]: any;
   };
   prices: {

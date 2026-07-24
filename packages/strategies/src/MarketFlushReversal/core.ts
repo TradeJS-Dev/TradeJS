@@ -466,6 +466,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
           modeConfig.direction === 'LONG'
             ? baseContext.raw?.levels?.lowLevel
             : baseContext.raw?.levels?.highLevel,
+        context: signal,
       }),
       orderPlan: {
         qty: riskPlan.qty,

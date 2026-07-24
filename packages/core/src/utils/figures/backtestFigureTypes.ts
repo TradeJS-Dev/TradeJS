@@ -1,4 +1,5 @@
 import {
+  StrategyFigureAnnotation,
   StrategyFigureLine,
   StrategyFigurePoints,
   StrategyFigureZone,
@@ -33,4 +34,8 @@ export interface EntryPointsExtendData {
 
 export interface EntryZoneExtendData {
   zone: StrategyFigureZone;
+}
+
+export interface EntryAnnotationExtendData {
+  annotation: StrategyFigureAnnotation;
 }

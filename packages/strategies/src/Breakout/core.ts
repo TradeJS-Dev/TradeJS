@@ -202,7 +202,8 @@ export const createBreakoutCore: CreateStrategyCore<
 
     if (!positionExists || !position) {
       if (shouldOpenLong) {
-        const { currentPrice } = await strategyApi.getDecisionPriceContext();
+        const { currentPrice, timestamp } =
+          await strategyApi.getDecisionPriceContext();
         const qty = config.LIMIT / currentPrice;
         const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
@@ -216,7 +217,19 @@ export const createBreakoutCore: CreateStrategyCore<
         return strategyApi.entry({
           code: 'OPEN_LONG',
           direction: 'LONG',
-          figures: buildBreakoutFigures(),
+          figures: buildBreakoutFigures({
+            direction: 'LONG',
+            entryTimestamp: timestamp,
+            entryPrice: currentPrice,
+            stopLossPrice,
+            takeProfitPrice,
+            referenceTimestamp: indicatorValues.prevCandle.timestamp,
+            breakoutLevel: highLevel,
+            volatilityBand: bbUpper,
+            signals,
+            signalRules: config.SIGNALS_LONG,
+            requiredScore: config.REQUIRED_SCORE_LONG,
+          }),
           indicators: {
             maFast,
             maSlow,
@@ -248,7 +261,8 @@ export const createBreakoutCore: CreateStrategyCore<
       }
 
       if (shouldOpenShort) {
-        const { currentPrice } = await strategyApi.getDecisionPriceContext();
+        const { currentPrice, timestamp } =
+          await strategyApi.getDecisionPriceContext();
         const qty = config.LIMIT / currentPrice;
         const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
@@ -262,7 +276,19 @@ export const createBreakoutCore: CreateStrategyCore<
         return strategyApi.entry({
           code: 'OPEN_SHORT',
           direction: 'SHORT',
-          figures: buildBreakoutFigures(),
+          figures: buildBreakoutFigures({
+            direction: 'SHORT',
+            entryTimestamp: timestamp,
+            entryPrice: currentPrice,
+            stopLossPrice,
+            takeProfitPrice,
+            referenceTimestamp: indicatorValues.prevCandle.timestamp,
+            breakoutLevel: lowLevel,
+            volatilityBand: bbLower,
+            signals,
+            signalRules: config.SIGNALS_SHORT,
+            requiredScore: config.REQUIRED_SCORE_SHORT,
+          }),
           indicators: {
             maFast,
             maSlow,

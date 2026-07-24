@@ -1,5 +1,15 @@
-import type { Direction, StrategyEntryModelFigures } from '@tradejs/types';
-import { buildEntryStopTargetFigures } from '../shared/contextStrategy';
+import type {
+  Direction,
+  StrategyEntryModelFigures,
+  StrategyFigurePoints,
+} from '@tradejs/types';
+import type { MarketFlushReversalSignalContext } from './core';
+import {
+  buildEntryEvidenceAnnotation,
+  buildEntryStopTargetFigures,
+  formatFigureMetric,
+  formatFigureRatioAsPercent,
+} from '../shared/contextStrategy';
 
 export const buildMarketFlushReversalFigures = ({
   direction,
@@ -9,6 +19,7 @@ export const buildMarketFlushReversalFigures = ({
   takeProfitPrice,
   referenceTimestamp,
   referencePrice,
+  context,
 }: {
   direction: Direction;
   entryTimestamp: number;
@@ -17,8 +28,9 @@ export const buildMarketFlushReversalFigures = ({
   takeProfitPrice: number;
   referenceTimestamp?: number | null;
   referencePrice?: number | null;
-}): StrategyEntryModelFigures =>
-  buildEntryStopTargetFigures({
+  context: MarketFlushReversalSignalContext;
+}): StrategyEntryModelFigures => {
+  const figures = buildEntryStopTargetFigures({
     idPrefix: 'mfr',
     direction,
     entryTimestamp,
@@ -29,3 +41,43 @@ export const buildMarketFlushReversalFigures = ({
     referencePrice,
     referenceKind: 'flush_level',
   });
+
+  const flushPoint: StrategyFigurePoints | null =
+    referenceTimestamp != null &&
+    referencePrice != null &&
+    Number.isFinite(referencePrice)
+      ? {
+          id: `mfr-flush-point-${entryTimestamp}`,
+          kind: 'mfr_flush_reference',
+          points: [{ timestamp: referenceTimestamp, value: referencePrice }],
+          color: '#facc15',
+          radius: 5,
+        }
+      : null;
+
+  return {
+    ...figures,
+    points: [
+      ...(figures.points ?? []),
+      ...(flushPoint == null ? [] : [flushPoint]),
+    ],
+    annotations: [
+      buildEntryEvidenceAnnotation({
+        idPrefix: 'mfr',
+        kind: 'market_flush_reversal_entry_evidence',
+        direction,
+        entryTimestamp,
+        entryPrice,
+        title: `Market flush reversal ${direction}`,
+        items: [
+          `Pressure: ${context.marketPressure ?? 'n/a'}; liq spike: ${formatFigureMetric(context.marketLiqSpikeRatio)}`,
+          `Liq imbalance: ${formatFigureMetric(context.marketLiqImbalance)}; funding z: ${formatFigureMetric(context.marketFundingZScore)}`,
+          `Structure: ${context.sweepState ?? 'no sweep'} / ${context.breakoutState ?? 'no breakout'}`,
+          `Tail: ${context.tailSide ?? 'n/a'}; wick: ${formatFigureRatioAsPercent(context.sweepWickPct)}`,
+          `Volume rel20: ${formatFigureMetric(context.volumeRel20)}; buy pressure: ${formatFigureRatioAsPercent(context.buyPressurePct)}`,
+          `Delta divergence: ${context.deltaDivergenceVsPrice ?? 'n/a'}; flags: ${context.marketRiskFlags.join(', ') || 'none'}`,
+        ],
+      }),
+    ],
+  };
+};

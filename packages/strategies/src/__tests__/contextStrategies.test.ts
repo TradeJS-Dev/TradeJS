@@ -337,7 +337,13 @@ describe('context strategies', () => {
       }),
     );
     expect((result as any).orderPlan.stopLossPrice).toBeLessThan(101);
-    expect((result as any).figures.points).toHaveLength(1);
+    expect((result as any).figures.points).toHaveLength(2);
+    expect((result as any).figures.annotations[0]).toEqual(
+      expect.objectContaining({
+        kind: 'market_flush_reversal_entry_evidence',
+        title: 'Market flush reversal LONG',
+      }),
+    );
     expect(lastTradeController.markTrade).toHaveBeenCalledWith(
       baseContext.candle.timestamp,
     );

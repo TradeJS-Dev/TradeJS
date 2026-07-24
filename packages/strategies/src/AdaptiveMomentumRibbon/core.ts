@@ -312,6 +312,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         direction: modeConfig.direction,
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
+        snapshot: amr,
       }),
       indicators: indicators ?? {},
       additionalIndicators: {
