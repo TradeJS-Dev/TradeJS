@@ -1,4 +1,14 @@
-import { resolveExportStrategy } from '../resolveExportStrategy';
+import { selectStrategy } from '../selectStrategy';
+import {
+  ALL_EXPORT_STRATEGIES,
+  resolveExportStrategy,
+} from '../resolveExportStrategy';
+
+jest.mock('../selectStrategy', () => ({
+  selectStrategy: jest.fn(),
+}));
+
+const selectStrategyMock = jest.mocked(selectStrategy);
 
 describe('resolveExportStrategy', () => {
   const originalIsTTY = process.stdin.isTTY;
@@ -8,6 +18,7 @@ describe('resolveExportStrategy', () => {
       configurable: true,
       value: originalIsTTY,
     });
+    selectStrategyMock.mockReset();
     jest.restoreAllMocks();
   });
 
@@ -63,6 +74,31 @@ describe('resolveExportStrategy', () => {
       }),
     ).rejects.toThrow(
       'Multiple ML chunk strategies found in data/ml/export: trendline, volumedivergence. Pass --strategy.',
+    );
+  });
+
+  it('adds all as the final interactive AI export option', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      value: true,
+    });
+    selectStrategyMock.mockResolvedValue(ALL_EXPORT_STRATEGIES);
+
+    await expect(
+      resolveExportStrategy({
+        outDir: 'data/ai/export',
+        datasetLabel: 'AI',
+        promptLabel: 'Select AI export strategy',
+        listStrategies: async () => ['trendline', 'volumedivergence'],
+        includeAllOption: true,
+      }),
+    ).resolves.toBe(ALL_EXPORT_STRATEGIES);
+    expect(selectStrategyMock).toHaveBeenCalledWith(
+      'Select AI export strategy',
+      {
+        strategies: ['trendline', 'volumedivergence', 'all'],
+        defaultStrategy: 'trendline',
+      },
     );
   });
 });

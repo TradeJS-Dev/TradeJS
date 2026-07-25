@@ -6,7 +6,10 @@ type ResolveExportStrategyParams = {
   datasetLabel: string;
   promptLabel: string;
   listStrategies: (params: { outDir: string }) => Promise<string[]>;
+  includeAllOption?: boolean;
 };
+
+export const ALL_EXPORT_STRATEGIES = 'all';
 
 export const resolveExportStrategy = async ({
   explicitStrategy,
@@ -14,6 +17,7 @@ export const resolveExportStrategy = async ({
   datasetLabel,
   promptLabel,
   listStrategies,
+  includeAllOption = false,
 }: ResolveExportStrategyParams): Promise<string | null> => {
   const raw = String(explicitStrategy || '').trim();
   if (raw) {
@@ -35,8 +39,12 @@ export const resolveExportStrategy = async ({
     );
   }
 
+  const promptStrategies = includeAllOption
+    ? [...availableStrategies, ALL_EXPORT_STRATEGIES]
+    : availableStrategies;
+
   return selectStrategy(promptLabel, {
-    strategies: availableStrategies,
+    strategies: promptStrategies,
     defaultStrategy: availableStrategies[0],
   });
 };
