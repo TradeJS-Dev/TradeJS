@@ -12,6 +12,7 @@ import {
   GridSnapshot,
 } from './engine';
 import { buildGridFigures } from './figures';
+import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
 
 interface PendingGridEntry {
   kind: 'open' | 'increase';
@@ -131,12 +132,38 @@ const isDirectionalStopValid = (
     ? stopLossPrice < referencePrice
     : stopLossPrice > referencePrice;
 
+const isRangeActionBlocked = ({
+  direction,
+  geometry,
+  mode,
+  action,
+  edgeFraction,
+}: {
+  direction: Direction;
+  geometry: GridRangeGeometry;
+  mode: GridRangeFilterMode;
+  action: 'open' | 'increase';
+  edgeFraction: number;
+}) => {
+  if (mode === 'off' || !geometry.detected) return false;
+  if (mode === 'block_entries') return action === 'open';
+  if (mode === 'block_all') return true;
+
+  const position = geometry.position;
+  if (position == null || !Number.isFinite(position)) return true;
+  return direction === 'LONG'
+    ? position < 0 || position > edgeFraction
+    : position < 1 - edgeFraction || position > 1;
+};
+
 const buildExecutionStateKey = (config: GridConfig) =>
   JSON.stringify({
     detector: buildGridDetectorKey(config),
     maxLossValue: config.MAX_LOSS_VALUE,
     maxLevels: config.GRID_MAX_LEVELS,
     feePercent: config.FEE_PERCENT,
+    rangeFilterMode: config.GRID_RANGE_FILTER_MODE,
+    rangeEdgeFraction: config.GRID_RANGE_EDGE_FRACTION,
   });
 
 const buildRecoveredCycle = ({
@@ -230,6 +257,17 @@ export const createGridCore: CreateStrategyCore<
   const cooldownMs =
     Math.max(0, Number(config.GRID_ENTRY_COOLDOWN_BARS ?? 0)) *
     getIntervalMs(config.INTERVAL);
+  const rangeFilterMode = (
+    ['off', 'block_entries', 'block_all', 'edge_all'].includes(
+      String(config.GRID_RANGE_FILTER_MODE),
+    )
+      ? config.GRID_RANGE_FILTER_MODE
+      : 'off'
+  ) as GridRangeFilterMode;
+  const rangeEdgeFraction = Math.min(
+    0.5,
+    Math.max(0, Number(config.GRID_RANGE_EDGE_FRACTION ?? 0.35)),
+  );
 
   return async (candle) => {
     const runtimeState = nextDetectorState(candle);
@@ -343,8 +381,17 @@ export const createGridCore: CreateStrategyCore<
         adverseLevelReached &&
         cycle.levelsFilled < maxLevels &&
         snapshot.regimeDirection === direction;
+      const rangeBlocksIncrease =
+        canIncrease &&
+        isRangeActionBlocked({
+          direction,
+          geometry: snapshot.rangeGeometry,
+          mode: rangeFilterMode,
+          action: 'increase',
+          edgeFraction: rangeEdgeFraction,
+        });
 
-      if (canIncrease) {
+      if (canIncrease && !rangeBlocksIncrease) {
         const existingRisk = calculateWorstCaseLoss({
           qty: position.qty,
           entryPrice: position.price,
@@ -414,6 +461,7 @@ export const createGridCore: CreateStrategyCore<
             maxLevels,
             stopLossPrice,
             takeProfitPrice: projectedTargetPrice,
+            rangeGeometry: snapshot.rangeGeometry,
           }),
           orderPlan: {
             qty,
@@ -444,6 +492,9 @@ export const createGridCore: CreateStrategyCore<
           },
         });
       }
+      if (rangeBlocksIncrease) {
+        return strategyApi.skip('GRID_RANGE_SCALE_IN_BLOCKED');
+      }
 
       return strategyApi.skip('GRID_WAIT_NEXT_LEVEL');
     }
@@ -465,6 +516,17 @@ export const createGridCore: CreateStrategyCore<
     }
     if (maxLossValue <= 0) {
       return strategyApi.skip('GRID_INVALID_MAX_LOSS_VALUE');
+    }
+    if (
+      isRangeActionBlocked({
+        direction,
+        geometry: snapshot.rangeGeometry,
+        mode: rangeFilterMode,
+        action: 'open',
+        edgeFraction: rangeEdgeFraction,
+      })
+    ) {
+      return strategyApi.skip('GRID_RANGE_ENTRY_BLOCKED');
     }
 
     const stopLossPrice = getDirectionalPrice(
@@ -535,6 +597,7 @@ export const createGridCore: CreateStrategyCore<
         maxLevels,
         stopLossPrice,
         takeProfitPrice,
+        rangeGeometry: snapshot.rangeGeometry,
       }),
       orderPlan: {
         qty,

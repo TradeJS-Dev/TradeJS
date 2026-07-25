@@ -5,6 +5,7 @@ import {
   Interval,
   StrategyConfig,
 } from '@tradejs/types';
+import type { GridRangeFilterMode } from './rangeGeometry';
 
 export interface GridSideConfig {
   enable: boolean;
@@ -57,6 +58,18 @@ export const config = {
   GRID_ENTRY_COOLDOWN_BARS: 8,
   GRID_PROTECTION_REPRICE_ATR: 0.15,
   GRID_MAX_FIGURE_POINTS: 160,
+  GRID_RANGE_FILTER_MODE: 'off' as GridRangeFilterMode,
+  GRID_RANGE_PIVOT_LEFT_BARS: 3,
+  GRID_RANGE_PIVOT_RIGHT_BARS: 3,
+  GRID_RANGE_LOOKBACK_BARS: 96,
+  GRID_RANGE_MIN_PIVOTS_PER_SIDE: 2,
+  GRID_RANGE_MIN_WIDTH_ATR: 3,
+  GRID_RANGE_MAX_WIDTH_ATR: 18,
+  GRID_RANGE_MAX_CENTER_SLOPE_ATR_PER_BAR: 0.03,
+  GRID_RANGE_MAX_BOUNDARY_DIVERGENCE_ATR: 1,
+  GRID_RANGE_MIN_CONTAINMENT_RATIO: 0.75,
+  GRID_RANGE_CONTAINMENT_TOLERANCE_ATR: 0.2,
+  GRID_RANGE_EDGE_FRACTION: 0.35,
   LONG: {
     enable: true,
     direction: 'LONG',

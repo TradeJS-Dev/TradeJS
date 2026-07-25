@@ -3,6 +3,7 @@
 import { config as DEFAULT_CONFIG, GridConfig } from '../config';
 import { createGridCore } from '../core';
 import { createGridEngine, GridRuntimeState } from '../engine';
+import { getEmptyGridRangeGeometry, GridRangeGeometry } from '../rangeGeometry';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 jest.mock('../engine', () => {
@@ -30,12 +31,14 @@ const makeRuntimeState = ({
   entryDirection = null,
   regimeDirection = 'LONG',
   volatilityShock = false,
+  rangeGeometry = getEmptyGridRangeGeometry(),
 }: {
   timestamp: number;
   close: number;
   entryDirection?: 'LONG' | 'SHORT' | null;
   regimeDirection?: 'LONG' | 'SHORT' | null;
   volatilityShock?: boolean;
+  rangeGeometry?: GridRangeGeometry;
 }): GridRuntimeState => ({
   snapshot: {
     timestamp,
@@ -55,6 +58,7 @@ const makeRuntimeState = ({
     stopDistance: 10,
     takeProfitDistance: 2,
     volatilityShock,
+    rangeGeometry,
   },
   series: {
     emaFast: [{ timestamp, value: close }],
@@ -582,6 +586,111 @@ describe('Grid core', () => {
     await expect(core(makeCandle(1, 100) as any, {} as any)).resolves.toEqual({
       kind: 'skip',
       code: 'GRID_INVALID_QTY',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { mode: 'block_entries', position: 0.2 },
+    { mode: 'block_all', position: 0.2 },
+    { mode: 'edge_all', position: 0.8 },
+  ])(
+    'blocks a long entry in detected range for $mode at position $position',
+    async ({ mode, position }) => {
+      const state = makeRuntimeState({
+        timestamp: 1,
+        close: 100,
+        entryDirection: 'LONG',
+        rangeGeometry: {
+          ...getEmptyGridRangeGeometry(),
+          ready: true,
+          detected: true,
+          position,
+        },
+      });
+      mockRuntimeStates([state]);
+      const strategyApi = makeStrategyApi(() => null);
+      const core = await createGridCore({
+        config: {
+          ...DEFAULT_CONFIG,
+          GRID_RANGE_FILTER_MODE: mode,
+        } as GridConfig,
+        data: [],
+        strategyApi,
+      } as any);
+
+      await expect(core(makeCandle(1, 100) as any, {} as any)).resolves.toEqual(
+        {
+          kind: 'skip',
+          code: 'GRID_RANGE_ENTRY_BLOCKED',
+        },
+      );
+      expect(strategyApi.entry).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows an edge-mode long entry near the detected lower boundary', async () => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      rangeGeometry: {
+        ...getEmptyGridRangeGeometry(),
+        ready: true,
+        detected: true,
+        position: 0.2,
+      },
+    });
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => null);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_RANGE_FILTER_MODE: 'edge_all',
+      } as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    await expect(core(makeCandle(1, 100) as any, {} as any)).resolves.toEqual(
+      expect.objectContaining({ kind: 'entry' }),
+    );
+  });
+
+  it('blocks an adverse scale-in when the whole detected range is guarded', async () => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 97.5,
+      rangeGeometry: {
+        ...getEmptyGridRangeGeometry(),
+        ready: true,
+        detected: true,
+        position: 0.2,
+      },
+    });
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => ({
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: 0.25,
+      slPrice: 90,
+      tpPrice: 102,
+    }));
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_RANGE_FILTER_MODE: 'block_all',
+        GRID_MAX_LEVELS: 4,
+        FEE_PERCENT: 0,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    await expect(core(makeCandle(1, 97.5) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRID_RANGE_SCALE_IN_BLOCKED',
     });
     expect(strategyApi.entry).not.toHaveBeenCalled();
   });

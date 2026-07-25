@@ -8,6 +8,7 @@ const statefulStrategyCores = [
   'AdaptiveTrendChannel',
   'DoubleTap',
   'Grid',
+  'GridClassic',
   'LiquidityTails',
   'LiquidityZones',
   'ReverseTrendLine',

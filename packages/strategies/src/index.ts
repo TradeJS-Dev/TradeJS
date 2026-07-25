@@ -6,6 +6,7 @@ import { breakoutManifest } from './Breakout/manifest';
 import { marketFlushReversalManifest } from './MarketFlushReversal/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { gridManifest } from './Grid/manifest';
+import { gridClassicManifest } from './GridClassic/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { relativeRotationManifest } from './RelativeRotation/manifest';
 import { liquidityTailsManifest } from './LiquidityTails/manifest';
@@ -29,6 +30,8 @@ import { config as doubleTapDefaultConfig } from './DoubleTap/config';
 import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
 import { config as gridDefaultConfig } from './Grid/config';
 import { GridStrategyCreator } from './Grid/strategy';
+import { config as gridClassicDefaultConfig } from './GridClassic/config';
+import { GridClassicStrategyCreator } from './GridClassic/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { MaStrategyCreator } from './MaStrategy/strategy';
 import { config as relativeRotationDefaultConfig } from './RelativeRotation/config';
@@ -87,6 +90,10 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: GridStrategyCreator,
   },
   {
+    manifest: gridClassicManifest,
+    creator: GridClassicStrategyCreator,
+  },
+  {
     manifest: liquidityTailsManifest,
     creator: LiquidityTailsStrategyCreator,
   },
@@ -133,6 +140,7 @@ const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   TrendShift: trendShiftDefaultConfig,
   DoubleTap: doubleTapDefaultConfig,
   Grid: gridDefaultConfig,
+  GridClassic: gridClassicDefaultConfig,
   LiquidityTails: liquidityTailsDefaultConfig,
   LiquidityZones: liquidityZonesDefaultConfig,
   TrendFollow: trendFollowDefaultConfig,
@@ -158,6 +166,7 @@ export { trendLineDefaultConfig };
 export { trendShiftDefaultConfig };
 export { doubleTapDefaultConfig };
 export { gridDefaultConfig };
+export { gridClassicDefaultConfig };
 export { liquidityTailsDefaultConfig };
 export { liquidityZonesDefaultConfig };
 export { trendFollowDefaultConfig };
@@ -176,6 +185,7 @@ export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
 export { doubleTapAiAdapter } from './DoubleTap/adapters/ai';
 export { gridAiAdapter } from './Grid/adapters/ai';
+export { gridClassicAiAdapter } from './GridClassic/adapters/ai';
 export { liquidityTailsAiAdapter } from './LiquidityTails/adapters/ai';
 export { liquidityZonesAiAdapter } from './LiquidityZones/adapters/ai';
 export { structureZonesAiAdapter } from './StructureZones/adapters/ai';

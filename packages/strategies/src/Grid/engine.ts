@@ -1,5 +1,11 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import { GridConfig } from './config';
+import {
+  buildGridRangeGeometryKey,
+  createGridRangeGeometryEngine,
+  getGridRangeGeometryOptions,
+  GridRangeGeometry,
+} from './rangeGeometry';
 
 export interface GridSnapshot {
   timestamp: number;
@@ -19,6 +25,7 @@ export interface GridSnapshot {
   stopDistance: number;
   takeProfitDistance: number;
   volatilityShock: boolean;
+  rangeGeometry: GridRangeGeometry;
 }
 
 export interface GridFigureSeries {
@@ -99,7 +106,10 @@ const getConfig = (config: GridConfig) => ({
 });
 
 export const buildGridDetectorKey = (config: GridConfig) =>
-  JSON.stringify(getConfig(config));
+  JSON.stringify({
+    detector: getConfig(config),
+    rangeGeometry: buildGridRangeGeometryKey(config),
+  });
 
 export const buildGridSignalContext = ({
   snapshot,
@@ -147,6 +157,7 @@ export const buildGridSignalContext = ({
   stopDistance: snapshot.stopDistance,
   takeProfitDistance: snapshot.takeProfitDistance,
   volatilityShock: snapshot.volatilityShock,
+  rangeGeometry: snapshot.rangeGeometry,
 });
 
 export type GridSignalContext = ReturnType<typeof buildGridSignalContext>;
@@ -159,6 +170,9 @@ export const createGridEngine = ({
   initialCandles?: Candle[];
 }) => {
   const options = getConfig(config);
+  const rangeGeometryEngine = createGridRangeGeometryEngine({
+    options: getGridRangeGeometryOptions(config),
+  });
   const candleLimit = Math.max(options.slowPeriod, options.atrPeriod, 20);
   const slowHistoryLimit = options.slopeBars + 1;
   const state: EngineState = {
@@ -285,6 +299,7 @@ export const createGridEngine = ({
     const takeProfitDistance = stepDistance * options.takeProfitStepMult;
     const recentHigh = Math.max(...state.candles.map((item) => item.high));
     const recentLow = Math.min(...state.candles.map((item) => item.low));
+    const rangeGeometry = rangeGeometryEngine.next(candle, atr);
 
     state.snapshot = {
       timestamp: candle.timestamp,
@@ -304,6 +319,7 @@ export const createGridEngine = ({
       stopDistance,
       takeProfitDistance,
       volatilityShock,
+      rangeGeometry,
     };
 
     return {

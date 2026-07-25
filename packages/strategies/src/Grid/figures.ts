@@ -5,6 +5,7 @@ import {
   StrategyFigurePoints,
 } from '@tradejs/types';
 import { GridFigureSeries } from './engine';
+import type { GridRangeGeometry } from './rangeGeometry';
 
 export const buildGridFigures = ({
   direction,
@@ -15,6 +16,7 @@ export const buildGridFigures = ({
   maxLevels,
   stopLossPrice,
   takeProfitPrice,
+  rangeGeometry,
 }: {
   direction: Direction;
   series: GridFigureSeries;
@@ -24,6 +26,7 @@ export const buildGridFigures = ({
   maxLevels: number;
   stopLossPrice: number;
   takeProfitPrice: number;
+  rangeGeometry?: GridRangeGeometry;
 }): StrategyEntryModelFigures => {
   const startTimestamp =
     series.emaSlow[0]?.timestamp ??
@@ -65,6 +68,43 @@ export const buildGridFigures = ({
       width: 2,
       style: 'solid' as const,
     },
+    ...(rangeGeometry?.ready &&
+    rangeGeometry.startTimestamp != null &&
+    rangeGeometry.upperStartPrice != null &&
+    rangeGeometry.lowerStartPrice != null &&
+    rangeGeometry.upperPrice != null &&
+    rangeGeometry.lowerPrice != null
+      ? [
+          {
+            id: `grid-range-upper-${entryTimestamp}`,
+            kind: 'grid_range_upper',
+            points: [
+              {
+                timestamp: rangeGeometry.startTimestamp,
+                value: rangeGeometry.upperStartPrice,
+              },
+              { timestamp: entryTimestamp, value: rangeGeometry.upperPrice },
+            ],
+            color: '#a78bfa',
+            width: 1,
+            style: 'dashed' as const,
+          },
+          {
+            id: `grid-range-lower-${entryTimestamp}`,
+            kind: 'grid_range_lower',
+            points: [
+              {
+                timestamp: rangeGeometry.startTimestamp,
+                value: rangeGeometry.lowerStartPrice,
+              },
+              { timestamp: entryTimestamp, value: rangeGeometry.lowerPrice },
+            ],
+            color: '#a78bfa',
+            width: 1,
+            style: 'dashed' as const,
+          },
+        ]
+      : []),
     ...levelLines,
     {
       id: `grid-target-${entryTimestamp}`,

@@ -77,4 +77,54 @@ describe('Grid figures', () => {
     );
     expect(figures.points?.[0]?.color).toBe('#f67171');
   });
+
+  it('draws confirmed range boundaries when geometry is ready', () => {
+    const figures = buildGridFigures({
+      direction: 'LONG',
+      series,
+      entryTimestamp: 20,
+      entryPrice: 100,
+      stepDistance: 2,
+      maxLevels: 3,
+      stopLossPrice: 90,
+      takeProfitPrice: 106,
+      rangeGeometry: {
+        ready: true,
+        detected: true,
+        upperPrice: 108,
+        lowerPrice: 94,
+        position: 0.43,
+        widthAtr: 7,
+        centerSlopeAtrPerBar: 0,
+        boundaryDivergenceAtr: 0.2,
+        containmentRatio: 0.8,
+        highPivotCount: 3,
+        lowPivotCount: 3,
+        startTimestamp: 5,
+        upperStartPrice: 107,
+        lowerStartPrice: 93,
+      },
+    });
+
+    expect(
+      figures.lines
+        ?.filter(({ kind }) => kind?.startsWith('grid_range_'))
+        .map(({ kind, points }) => ({ kind, points })),
+    ).toEqual([
+      {
+        kind: 'grid_range_upper',
+        points: [
+          { timestamp: 5, value: 107 },
+          { timestamp: 20, value: 108 },
+        ],
+      },
+      {
+        kind: 'grid_range_lower',
+        points: [
+          { timestamp: 5, value: 93 },
+          { timestamp: 20, value: 94 },
+        ],
+      },
+    ]);
+  });
 });
