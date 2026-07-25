@@ -1,5 +1,7 @@
 FROM node:24-alpine
 
+ARG TRADEJS_GIT_SHA=unknown
+
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
       org.opencontainers.image.description="TradeJS research and automation agent" \
       org.opencontainers.image.licenses="BUSL-1.1"
@@ -13,6 +15,8 @@ RUN apk add --no-cache \
     ca-certificates
 
 WORKDIR /app
+
+ENV TRADEJS_GIT_SHA=${TRADEJS_GIT_SHA}
 
 COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tsconfig.base.json tsconfig.packages.json tradejs.config.ts ./
 COPY .yarn ./.yarn

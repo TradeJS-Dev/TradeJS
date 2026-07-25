@@ -51,6 +51,8 @@ RUN rm -rf apps/app/node_modules packages/cli/node_modules
 
 FROM node:24-alpine AS runner
 
+ARG TRADEJS_GIT_SHA=unknown
+
 RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
@@ -71,6 +73,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 ENV NODE_ENV=production \
+    TRADEJS_GIT_SHA=${TRADEJS_GIT_SHA} \
     PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
