@@ -26,8 +26,19 @@ npx tradejs-app dev
 ```
 
 Use matching versions for all `@tradejs/*` packages. The installable launcher
-requires `@tradejs/app@1.0.10` or newer.
+is included in current `@tradejs/app` releases.
 
 The launcher reads env and `tradejs.config.ts` from the caller project directory
 via `PROJECT_CWD`. When it runs from `node_modules`, it creates a generated
 `.tradejs/app` working copy and runs Next.js there.
+
+## Anonymous Onboarding Telemetry
+
+The Web UI reports only the anonymous Yandex Metrica goal names
+`scaffold_success` and `first_backtest`. It does not include strategy
+configuration, symbols, credentials, or backtest results. Disable these events
+before starting or building the app with:
+
+```bash
+NEXT_PUBLIC_TRADEJS_TELEMETRY_DISABLED=1
+```

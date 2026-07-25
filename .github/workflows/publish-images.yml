@@ -22,16 +22,40 @@ jobs:
       app_changed: ${{ steps.resolve.outputs.app_changed }}
       agent_changed: ${{ steps.resolve.outputs.agent_changed }}
       ml_infer_changed: ${{ steps.resolve.outputs.ml_infer_changed }}
+      npm_release_changed: ${{ steps.resolve.outputs.npm_release_changed }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Detect changed image inputs
+      - name: Detect changed release inputs
         id: filter
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            npm_release:
+              - 'apps/app/**'
+              - 'packages/base/**'
+              - 'packages/cli/**'
+              - 'packages/connectors/**'
+              - 'packages/core/**'
+              - 'packages/create-tradejs/**'
+              - 'packages/indicators/**'
+              - 'packages/infra/**'
+              - 'packages/node/**'
+              - 'packages/strategies/**'
+              - 'packages/types/**'
+              - 'proto/**'
+              - 'bin/**'
+              - 'package.json'
+              - 'yarn.lock'
+              - '.yarn/**'
+              - '.yarnrc.yml'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'tsconfig.packages.json'
+              - 'tradejs.config.ts'
             app:
               - 'Dockerfile'
               - 'apps/**'
@@ -78,21 +102,28 @@ jobs:
           APP_FILTER: ${{ steps.filter.outputs.app }}
           AGENT_FILTER: ${{ steps.filter.outputs.agent }}
           ML_INFER_FILTER: ${{ steps.filter.outputs.ml_infer }}
+          NPM_RELEASE_FILTER: ${{ steps.filter.outputs.npm_release }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_changed=true" >> "$GITHUB_OUTPUT"
             echo "ml_infer_changed=true" >> "$GITHUB_OUTPUT"
+            echo "npm_release_changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "app_changed=${APP_FILTER}" >> "$GITHUB_OUTPUT"
           echo "agent_changed=${AGENT_FILTER}" >> "$GITHUB_OUTPUT"
           echo "ml_infer_changed=${ML_INFER_FILTER}" >> "$GITHUB_OUTPUT"
+          echo "npm_release_changed=${NPM_RELEASE_FILTER}" >> "$GITHUB_OUTPUT"
 
   release:
     needs: changes
-    if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
+    if: >-
+      ${{
+        needs.changes.outputs.npm_release_changed == 'true' &&
+        (github.event.act || github.repository == 'tradejs-dev/tradejs')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -288,6 +319,17 @@ jobs:
     needs:
       - changes
       - release
+    if: >-
+      ${{
+        always() &&
+        needs.changes.result == 'success' &&
+        (needs.release.result == 'success' || needs.release.result == 'skipped') &&
+        (
+          needs.changes.outputs.app_changed == 'true' ||
+          needs.changes.outputs.agent_changed == 'true' ||
+          needs.changes.outputs.ml_infer_changed == 'true'
+        )
+      }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -296,13 +338,13 @@ jobs:
       APP_CHANGED: ${{ needs.changes.outputs.app_changed }}
       AGENT_CHANGED: ${{ needs.changes.outputs.agent_changed }}
       ML_INFER_CHANGED: ${{ needs.changes.outputs.ml_infer_changed }}
-      IMAGE_TAG: ${{ needs.release.outputs.release_sha }}
+      IMAGE_TAG: ${{ needs.release.outputs.release_sha || github.sha }}
 
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release.outputs.release_sha }}
+          ref: ${{ needs.release.outputs.release_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -324,6 +366,8 @@ jobs:
           tags: |
             ghcr.io/tradejs-dev/tradejs-app:${{ env.IMAGE_TAG }}
             ghcr.io/tradejs-dev/tradejs-app:latest
+          build-args: |
+            TRADEJS_GIT_SHA=${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app,ignore-error=true
 
@@ -337,6 +381,8 @@ jobs:
           tags: |
             ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
             ghcr.io/tradejs-dev/tradejs-agent:latest
+          build-args: |
+            TRADEJS_GIT_SHA=${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent,ignore-error=true
 
