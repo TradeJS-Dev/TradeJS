@@ -320,6 +320,30 @@ describe('ByBitConnectorCreator', () => {
     ]);
   });
 
+  it('rejects open position pnl when Bybit returns an error', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 10001,
+        retMsg: 'request failed',
+        result: { list: [] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    let caughtError: unknown;
+
+    try {
+      await connector.getOpenPositionPnl?.();
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect((caughtError as Error)?.message).toBe(
+      'Bybit positions request failed: 10001 request failed',
+    );
+  });
+
   it('paginates entry executions and attaches funding fees', async () => {
     const client = {
       getExecutionList: jest

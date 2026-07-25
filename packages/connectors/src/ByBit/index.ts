@@ -928,7 +928,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       const client = await getPrivateClient();
 
       if (!client) {
-        return [];
+        throw new Error('Bybit private client is unavailable');
       }
 
       const positionRes = await client.getPositionInfo({
@@ -942,7 +942,9 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           'positions pnl retCode: %s, %s',
           positionRes.retCode,
         );
-        return [];
+        throw new Error(
+          `Bybit positions request failed: ${positionRes.retCode} ${positionRes.retMsg ?? ''}`.trim(),
+        );
       }
 
       return (

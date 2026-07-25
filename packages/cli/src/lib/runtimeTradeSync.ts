@@ -177,6 +177,27 @@ export const consumeClosedPnlMatch = (
   return row ?? null;
 };
 
+const isRuntimeTradeInConnectorScope = (
+  trade: RuntimeTradeRecord,
+  connector: Connector,
+) => {
+  if (trade.deploymentId && trade.deploymentId !== connector.deploymentId) {
+    return false;
+  }
+  if (trade.accountId && trade.accountId !== connector.accountId) {
+    return false;
+  }
+  if (
+    trade.universe &&
+    connector.universe &&
+    trade.universe !== connector.universe
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 export const syncRuntimeTrades = async ({
   userName,
   connector,
@@ -210,17 +231,28 @@ export const syncRuntimeTrades = async ({
   const openPositionsBySymbol = new Map(
     openPositions.map((position) => [position.symbol, position]),
   );
-  const activeOrderIdBySymbol = new Map<string, string | null>();
-  const symbols = [...new Set(trades.map((trade) => trade.symbol))];
+  const activeOrderIdByKey = new Map<string, string | null>();
+  const activeTradeKeys = [
+    ...new Set(
+      trades
+        .filter((trade) => isRuntimeTradeInConnectorScope(trade, connector))
+        .map((trade) =>
+          redisKeys.runtimeActiveTrade(
+            userName,
+            trade.symbol,
+            trade.deploymentId ?? trade.accountId,
+          ),
+        ),
+    ),
+  ];
 
   await Promise.all(
-    symbols.map(async (symbol) => {
-      const activeRef = (await getData(
-        redisKeys.runtimeActiveTrade(userName, symbol),
-        null,
-      )) as { orderId?: string } | null;
-      activeOrderIdBySymbol.set(
-        symbol,
+    activeTradeKeys.map(async (key) => {
+      const activeRef = (await getData(key, null)) as {
+        orderId?: string;
+      } | null;
+      activeOrderIdByKey.set(
+        key,
         typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
       );
     }),
@@ -243,13 +275,23 @@ export const syncRuntimeTrades = async ({
   const syncedTrades: RuntimeTradeRecord[] = [];
 
   for (const trade of trades) {
+    if (!isRuntimeTradeInConnectorScope(trade, connector)) {
+      syncedTrades.push(trade);
+      continue;
+    }
+
     if (trade.status !== 'active' && !isRuntimeTradeSyncFallbackClose(trade)) {
       syncedTrades.push(trade);
       continue;
     }
 
+    const activeTradeKey = redisKeys.runtimeActiveTrade(
+      userName,
+      trade.symbol,
+      trade.deploymentId ?? trade.accountId,
+    );
     const openPosition = openPositionsBySymbol.get(trade.symbol);
-    const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
+    const activeOrderId = activeOrderIdByKey.get(activeTradeKey);
     const isCurrentActiveTrade = activeOrderId === trade.orderId;
 
     if (trade.status === 'active' && !openPositionsReliable) {
@@ -297,6 +339,7 @@ export const syncRuntimeTrades = async ({
 
     const matchedClosedPnl = consumeClosedPnlMatch(closedPnlBuckets, trade);
     if (!matchedClosedPnl) {
+      syncedTrades.push(trade);
       continue;
     }
 
@@ -333,9 +376,7 @@ export const syncRuntimeTrades = async ({
         nextTrade,
         { expire: TTL_1M },
       ),
-      ...(isCurrentActiveTrade
-        ? [delKey(redisKeys.runtimeActiveTrade(userName, trade.symbol))]
-        : []),
+      ...(isCurrentActiveTrade ? [delKey(activeTradeKey)] : []),
     ]);
     syncedTrades.push(nextTrade);
   }

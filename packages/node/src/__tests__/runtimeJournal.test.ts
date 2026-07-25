@@ -82,6 +82,39 @@ describe('runtimeJournal', () => {
     );
   });
 
+  it('clears an active ref that points to a closed trade record', async () => {
+    mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:runtime:active:bybit-default:MANTAUSDT') {
+        return { orderId: 'ord-manta' };
+      }
+      if (key === 'users:root:runtime:trade:ord-manta') {
+        return {
+          orderId: 'ord-manta',
+          strategy: 'LiquidityTails',
+          symbol: 'MANTAUSDT',
+          direction: 'SHORT',
+          qty: 733.4,
+          entryPrice: 0.06527,
+          entryTimestamp: 1,
+          status: 'closed',
+          closedPnl: 1.57741941,
+        };
+      }
+      return fallback;
+    });
+
+    await expect(
+      getActiveRuntimeTrade({
+        userName: 'root',
+        symbol: 'MANTAUSDT',
+        accountId: 'bybit-default',
+      }),
+    ).resolves.toBeNull();
+    expect(mockDelKey).toHaveBeenCalledWith(
+      'users:root:runtime:active:bybit-default:MANTAUSDT',
+    );
+  });
+
   it('stores live execution telemetry when a runtime trade is opened', async () => {
     const opened = await recordRuntimeTradeOpen({
       userName: 'root',

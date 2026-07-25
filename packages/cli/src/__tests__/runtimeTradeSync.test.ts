@@ -199,7 +199,7 @@ describe('runtimeTradeSync', () => {
       endTime,
     });
 
-    expect(synced).toEqual([]);
+    expect(synced).toEqual([trade]);
     expect(getClosedPnl).toHaveBeenCalledWith({
       startTime: startTime - 24 * 60 * 60_000,
       endTime,
@@ -208,6 +208,82 @@ describe('runtimeTradeSync', () => {
     expect(setData).not.toHaveBeenCalled();
     expect(setHashJsonField).not.toHaveBeenCalled();
     expect(delKey).not.toHaveBeenCalled();
+  });
+
+  it('uses the account-scoped active trade ref for reconciliation', async () => {
+    const getData = jest.fn(async () => ({ orderId: 'ord-scoped' }));
+    const setData = jest.fn(async () => null);
+    const setHashJsonField = jest.fn(async () => null);
+    const delKey = jest.fn(async () => true);
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      delKey,
+      getData,
+      redisKeys: {
+        runtimeActiveTrade: (
+          userName: string,
+          symbol: string,
+          scopeId?: string,
+        ) =>
+          `users:${userName}:runtime:active-trades:${scopeId ? `${scopeId}:` : ''}${symbol}`,
+        runtimeTrade: (userName: string, orderId: string) =>
+          `users:${userName}:runtime:trade-records:${orderId}`,
+        runtimeTradeBucket: (userName: string, dayKey: string) =>
+          `users:${userName}:runtime:trade-records:days:${dayKey}`,
+      },
+      setData,
+      setHashJsonField,
+    }));
+
+    const { syncRuntimeTrades } = await import('../lib/runtimeTradeSync');
+    const trade: RuntimeTradeRecord = {
+      orderId: 'ord-scoped',
+      strategy: 'LiquidityTails',
+      symbol: 'GENIUSUSDT',
+      direction: 'SHORT',
+      qty: 111,
+      entryPrice: 0.36835315,
+      entryTimestamp: Date.parse('2026-07-25T01:15:00.000Z'),
+      status: 'active',
+      currentPrice: 0.36835315,
+      currentPnl: 0,
+      accountId: 'bybit-default',
+    };
+    const connector = {
+      accountId: 'bybit-default',
+      universe: 'crypto',
+      getOpenPositionPnl: jest.fn(async () => [
+        {
+          symbol: 'GENIUSUSDT',
+          qty: 111,
+          price: trade.entryPrice,
+          currentPrice: 0.36,
+          unrealizedPnl: 0.92,
+          direction: 'SHORT',
+        },
+      ]),
+      getClosedPnl: jest.fn(async () => []),
+    } as unknown as Connector;
+
+    const synced = await syncRuntimeTrades({
+      userName: 'root',
+      connector,
+      trades: [trade],
+      startTime: trade.entryTimestamp,
+      endTime: trade.entryTimestamp + 60_000,
+    });
+
+    expect(getData).toHaveBeenCalledWith(
+      'users:root:runtime:active-trades:bybit-default:GENIUSUSDT',
+      null,
+    );
+    expect(synced).toEqual([
+      expect.objectContaining({
+        status: 'active',
+        currentPrice: 0.36,
+        currentPnl: 0.92,
+      }),
+    ]);
   });
 
   it('reconciles a persisted fallback close even when it carries the open fee', async () => {

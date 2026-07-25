@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TTL_1M } from '@tradejs/core/constants';
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -9,17 +8,14 @@ import {
 } from '@tradejs/infra/tradingAccounts';
 import { strategyEntries } from '@tradejs/strategies';
 import {
-  delKey,
   getData,
   getHashJsonValues,
   getKeys,
   redisKeys,
-  setData,
 } from '@tradejs/infra/redis';
 import type {
   Connector,
   ConnectorCreator,
-  PositionPnlSnapshot,
   RuntimeTradeRecord,
   Interval,
   StrategyConfig,
@@ -39,15 +35,12 @@ import {
   resolveStrategyConfigIdentityByKey,
   RuntimeStrategiesResponse,
   selectTradesForWindow,
-  takeClosedPnlMatch,
   toRuntimeTradeView,
 } from '#app/lib/runtimeStrategies';
-
-type ClosedPnlRecordWithOrderLinkId = Awaited<
-  ReturnType<NonNullable<Connector['getClosedPnl']>>
->[number] & {
-  orderLinkId?: string;
-};
+import {
+  isRuntimeTradeInConnectorScope,
+  syncRuntimeTrades,
+} from '#app/lib/runtimeTradeSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -322,207 +315,25 @@ const loadExchangeEntryRows = async ({
 const loadOpenPositions = async (
   connector: Connector,
   errors?: string[],
-): Promise<PositionPnlSnapshot[]> => {
+): Promise<{
+  positions: Awaited<ReturnType<NonNullable<Connector['getOpenPositionPnl']>>>;
+  reliable: boolean;
+}> => {
   if (typeof connector.getOpenPositionPnl !== 'function') {
-    return [];
+    return { positions: [], reliable: false };
   }
 
   try {
-    return await connector.getOpenPositionPnl();
+    return {
+      positions: await connector.getOpenPositionPnl(),
+      reliable: true,
+    };
   } catch (error) {
     const message = (error as Error)?.message || String(error);
     errors?.push(`getOpenPositionPnl: ${message}`);
     logger.warn('strategies runtime: getOpenPositionPnl failed: %s', message);
-    return [];
+    return { positions: [], reliable: false };
   }
-};
-
-const buildRiskLevelsAnalysis = (position: PositionPnlSnapshot) => {
-  const takeProfitPrice =
-    typeof position.takeProfitPrice === 'number' &&
-    Number.isFinite(position.takeProfitPrice)
-      ? position.takeProfitPrice
-      : null;
-  const stopLossPrice =
-    typeof position.stopLossPrice === 'number' &&
-    Number.isFinite(position.stopLossPrice)
-      ? position.stopLossPrice
-      : null;
-
-  if (takeProfitPrice == null && stopLossPrice == null) {
-    return null;
-  }
-
-  return {
-    ...(takeProfitPrice != null ? { takeProfitPrice } : {}),
-    ...(stopLossPrice != null ? { stopLossPrice } : {}),
-  };
-};
-
-const syncRuntimeTrades = async ({
-  userName,
-  trades,
-  endTime,
-  openPositions,
-  closedPnlRows,
-}: {
-  userName: string;
-  trades: RuntimeTradeRecord[];
-  endTime: number;
-  openPositions: PositionPnlSnapshot[];
-  closedPnlRows: ClosedPnlRecordWithOrderLinkId[];
-}) => {
-  const openPositionsBySymbol = new Map(
-    openPositions.map((position) => [position.symbol, position]),
-  );
-  const activeOrderIdBySymbol = new Map<string, string | null>();
-  const symbols = [...new Set(trades.map((trade) => trade.symbol))];
-
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      const activeRef = (await getData(
-        redisKeys.runtimeActiveTrade(userName, symbol),
-        null,
-      )) as { orderId?: string } | null;
-      activeOrderIdBySymbol.set(
-        symbol,
-        typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
-      );
-    }),
-  );
-
-  const closedPnlRowsWithOrderLinkId =
-    closedPnlRows as ClosedPnlRecordWithOrderLinkId[];
-  const exactByOrderLinkId = new Map(
-    closedPnlRowsWithOrderLinkId
-      .filter(
-        (row): row is typeof row & { orderLinkId: string } =>
-          typeof row.orderLinkId === 'string' && row.orderLinkId.length > 0,
-      )
-      .map((row) => [row.orderLinkId, row]),
-  );
-  const exactByOrderId = new Map(
-    closedPnlRowsWithOrderLinkId
-      .filter(
-        (row): row is typeof row & { orderId: string } =>
-          typeof row.orderId === 'string' && row.orderId.length > 0,
-      )
-      .map((row) => [row.orderId, row]),
-  );
-  const symbolBuckets = new Map<string, ClosedPnlRecordWithOrderLinkId[]>();
-
-  for (const row of closedPnlRowsWithOrderLinkId) {
-    const bucket = symbolBuckets.get(row.symbol) ?? [];
-    bucket.push(row);
-    symbolBuckets.set(row.symbol, bucket);
-  }
-
-  const syncedTrades: RuntimeTradeRecord[] = [];
-
-  for (const trade of trades) {
-    const closedTradeHasExchangeDetails =
-      trade.status === 'closed' &&
-      typeof trade.exitPrice === 'number' &&
-      Number.isFinite(trade.exitPrice) &&
-      typeof trade.actualExitPrice === 'number' &&
-      Number.isFinite(trade.actualExitPrice) &&
-      typeof trade.closedPnl === 'number' &&
-      Number.isFinite(trade.closedPnl) &&
-      typeof trade.openFee === 'number' &&
-      Number.isFinite(trade.openFee) &&
-      typeof trade.closeFee === 'number' &&
-      Number.isFinite(trade.closeFee);
-
-    if (trade.status !== 'active' && closedTradeHasExchangeDetails) {
-      syncedTrades.push(trade);
-      continue;
-    }
-
-    const openPosition = openPositionsBySymbol.get(trade.symbol);
-    const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
-    const isCurrentActiveTrade = activeOrderId === trade.orderId;
-
-    if (
-      isCurrentActiveTrade &&
-      openPosition &&
-      openPosition.direction === trade.direction
-    ) {
-      const riskLevelsAnalysis = buildRiskLevelsAnalysis(openPosition);
-      const nextTrade: RuntimeTradeRecord = {
-        ...trade,
-        status: 'active',
-        currentPrice: openPosition.currentPrice,
-        currentPnl: openPosition.unrealizedPnl,
-        aiAnalysis: riskLevelsAnalysis
-          ? { ...(trade.aiAnalysis ?? {}), ...riskLevelsAnalysis }
-          : trade.aiAnalysis,
-        lastSyncedAt: endTime,
-      };
-
-      await setData(
-        redisKeys.runtimeTrade(userName, trade.orderId),
-        nextTrade,
-        {
-          expire: 0,
-        },
-      );
-      syncedTrades.push(nextTrade);
-      continue;
-    }
-
-    const matchedClosedPnl = takeClosedPnlMatch({
-      exactByOrderLinkId,
-      exactByOrderId,
-      symbolBuckets,
-      trade,
-    });
-
-    if (trade.status === 'closed' && !matchedClosedPnl) {
-      syncedTrades.push(trade);
-      continue;
-    }
-
-    const nextTrade: RuntimeTradeRecord = {
-      ...trade,
-      status: 'closed',
-      currentPrice: matchedClosedPnl?.exitPrice ?? trade.currentPrice ?? null,
-      currentPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      closedPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      actualEntryPrice:
-        matchedClosedPnl?.entryPrice ?? trade.actualEntryPrice ?? null,
-      exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
-      actualExitPrice:
-        matchedClosedPnl?.exitPrice ?? trade.actualExitPrice ?? null,
-      exitTimestamp:
-        matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
-      exitType: trade.exitType ?? null,
-      openFee: matchedClosedPnl?.openFee ?? trade.openFee ?? null,
-      closeFee: matchedClosedPnl?.closeFee ?? trade.closeFee ?? null,
-      fundingFee: matchedClosedPnl?.fundingFee ?? trade.fundingFee ?? null,
-      totalFee: matchedClosedPnl?.totalFee ?? trade.totalFee ?? null,
-      lastSyncedAt: endTime,
-    };
-
-    await Promise.all([
-      setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
-        expire: TTL_1M,
-      }),
-      ...(isCurrentActiveTrade
-        ? [delKey(redisKeys.runtimeActiveTrade(userName, trade.symbol))]
-        : []),
-    ]);
-    syncedTrades.push(nextTrade);
-  }
-
-  return syncedTrades;
 };
 
 export const GET = async (request: NextRequest) => {
@@ -559,7 +370,7 @@ export const GET = async (request: NextRequest) => {
       activeOrderIds,
       closedPnlRows,
       entryRows,
-      openPositions,
+      openPositionsSnapshot,
       runtimeDeployments,
       tradingAccounts,
     ] = await Promise.all([
@@ -588,20 +399,22 @@ export const GET = async (request: NextRequest) => {
       startTime,
       activeOrderIds,
     );
-    const scopedTrades = relevantTrades.filter((trade) =>
-      Boolean(trade.accountId || trade.deploymentId),
+    const syncableTrades = relevantTrades.filter((trade) =>
+      isRuntimeTradeInConnectorScope(trade, connector),
     );
-    const defaultAccountTrades = relevantTrades.filter(
-      (trade) => !trade.accountId && !trade.deploymentId,
+    const unsyncedTrades = relevantTrades.filter(
+      (trade) => !isRuntimeTradeInConnectorScope(trade, connector),
     );
-    const syncedDefaultAccountTrades = await syncRuntimeTrades({
+    const syncedConnectorTrades = await syncRuntimeTrades({
       userName,
-      trades: defaultAccountTrades,
+      connector,
+      trades: syncableTrades,
       endTime,
-      openPositions,
+      openPositions: openPositionsSnapshot.positions,
+      openPositionsReliable: openPositionsSnapshot.reliable,
       closedPnlRows,
     });
-    const syncedTrades = [...scopedTrades, ...syncedDefaultAccountTrades];
+    const syncedTrades = [...unsyncedTrades, ...syncedConnectorTrades];
     const fallbackStrategyNames = [
       ...new Set([
         ...runtimeStrategyConfigs.map(({ strategyName }) => strategyName),
@@ -611,7 +424,7 @@ export const GET = async (request: NextRequest) => {
     const fallbackTrades = buildExchangeFallbackRuntimeTrades({
       entryRows,
       closedPnlRows,
-      openPositions,
+      openPositions: openPositionsSnapshot.positions,
       strategyNames: fallbackStrategyNames,
       existingTrades: syncedTrades,
       endTime,

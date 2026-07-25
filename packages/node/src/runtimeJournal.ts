@@ -251,7 +251,7 @@ export const getActiveRuntimeTrade = async (params: {
     redisKeys.runtimeTrade(userName, orderId),
     null,
   )) as RuntimeTradeRecord | null;
-  if (!existing) {
+  if (!existing || existing.status !== 'active') {
     await delKey(
       redisKeys.runtimeActiveTrade(userName, symbol, deploymentId ?? accountId),
     );
