@@ -12,6 +12,7 @@ import {
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import { getRuntimeDeployment } from '@tradejs/infra/tradingAccounts';
 import {
+  BACKTEST_WARNING_CODES,
   Item,
   OrderLog,
   PositionLogData,
@@ -623,9 +624,16 @@ export const printRunOutro = () => {
     chalk.gray(`backtest total: done in ${formatDuration(getRunStartedAt())}`),
   );
   console.log('');
-  const { successTests, errorTests } = getRunCounters();
+  const { successTests, errorTests, warningCounts } = getRunCounters();
   console.log(`${chalk.green('SUCCESS TESTS')}: ${successTests}`);
   console.log(`${chalk.red('ERRORS')}: ${errorTests}`);
+  const takeProfitCrossedWarnings =
+    warningCounts[BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY] ?? 0;
+  console.log(
+    chalk.yellow(
+      `WARNINGS (${BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY}): ${takeProfitCrossedWarnings}`,
+    ),
+  );
   console.log('');
 };
 

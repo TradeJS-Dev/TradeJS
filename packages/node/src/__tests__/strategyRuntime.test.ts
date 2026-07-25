@@ -159,6 +159,7 @@ import { createStrategyRuntime } from '../strategyRuntime';
 import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
+import { BACKTEST_WARNING_CODES } from '@tradejs/types';
 import { resetDerivativesContextRuntimeState } from '../strategyHelpers/derivativesContext';
 
 const realGetStrategyManifest = (
@@ -2613,6 +2614,35 @@ describe('strategyRuntime', () => {
           cause: orderError,
         }),
       }),
+    );
+  });
+
+  it('logs a crossed take profit order failure as a warning', async () => {
+    const orderWarning = new Error(
+      BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY,
+    );
+    mockExecuteEntryOrder.mockRejectedValueOnce(orderWarning);
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect((result as any).orderStatus).toBe('failed');
+    expect((result as any).orderFailureReason).toBe(
+      BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY,
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'order warning: %s %s',
+      'ETHUSDT',
+      orderWarning,
+    );
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'order error: %s %s',
+      'ETHUSDT',
+      orderWarning,
     );
   });
 

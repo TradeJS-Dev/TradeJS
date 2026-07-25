@@ -152,6 +152,7 @@ import {
 } from '../scripts/backtest';
 import {
   buildPreparedTestSuite,
+  printRunOutro,
   updateBestTickerResult,
   validateBacktestRuntimeDeployment,
 } from '../lib/backtest/runnerCore';
@@ -160,10 +161,12 @@ import {
   getAggregateAverageProfit,
   getAggregateWinRate,
   getProgressStats,
+  getRunCounters,
   getTopConfigResultBuckets,
   recordResultAggregates,
   resetRunState,
 } from '../lib/backtest/runState';
+import { BACKTEST_WARNING_CODES } from '@tradejs/types';
 import {
   buildReplayExchangeComparisonDetails,
   buildReplayRuntimeComparisonDetails,
@@ -371,6 +374,9 @@ describe('backtest script helpers', () => {
         strategyConfig: cfgLow,
       },
       stat: { netProfit: 100, orders: 2, wins: 1, losses: 1, winRate: 50 },
+      warningCounts: {
+        [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 2,
+      },
     } as any);
     recordResultAggregates({
       test: {
@@ -380,6 +386,9 @@ describe('backtest script helpers', () => {
         strategyConfig: cfgLow,
       },
       stat: { netProfit: -50, orders: 1, wins: 0, losses: 1, winRate: 0 },
+      warningCounts: {
+        [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 1,
+      },
     } as any);
     recordResultAggregates({
       test: {
@@ -413,6 +422,34 @@ describe('backtest script helpers', () => {
     expect(topConfigs[1]?.configId).toBe('cfg-low');
     expect(getAggregateAverageProfit(topConfigs[1]!)).toBe(25);
     expect(topConfigs[1]?.ordersSum).toBe(3);
+    expect(
+      getRunCounters().warningCounts[
+        BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+      ],
+    ).toBe(3);
+  });
+
+  it('prints take profit crossed warning count in the run outro', () => {
+    recordResultAggregates({
+      test: {
+        name: 'BTCUSDT_suite_1',
+        symbol: 'BTCUSDT',
+        configId: 'cfg',
+        strategyConfig: {},
+      },
+      stat: { profit: 0, amount: 100, orders: 0 },
+      warningCounts: {
+        [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 4,
+      },
+    } as any);
+
+    printRunOutro();
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `WARNINGS (${BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY}): 4`,
+      ),
+    );
   });
 
   it('parses runtime strategy config keys and rejects unrelated keys', () => {

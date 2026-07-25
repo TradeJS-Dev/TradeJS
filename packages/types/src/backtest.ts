@@ -199,6 +199,17 @@ export interface MinimalStat {
   orders: number;
 }
 
+export const BACKTEST_WARNING_CODES = {
+  TAKE_PROFIT_CROSSED_BEFORE_ENTRY: 'TAKE_PROFIT_CROSSED_BEFORE_ENTRY',
+} as const;
+
+export type BacktestWarningCode =
+  (typeof BACKTEST_WARNING_CODES)[keyof typeof BACKTEST_WARNING_CODES];
+
+export type BacktestWarningCounts = Partial<
+  Record<BacktestWarningCode, number>
+>;
+
 export interface TestingBoxResult {
   orderLogId: string;
   stat: MinimalStat;
@@ -206,6 +217,7 @@ export interface TestingBoxResult {
   inlinePositionLog?: PositionLogData;
   inlineReplaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
   executionCostModel?: ExecutionCostModel;
+  warningCounts?: BacktestWarningCounts;
 }
 
 export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;

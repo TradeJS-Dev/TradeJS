@@ -1,4 +1,4 @@
-import { Test } from '@tradejs/types';
+import { BACKTEST_WARNING_CODES, Test } from '@tradejs/types';
 
 const mockByBitConnector = {
   kline: jest.fn(),
@@ -246,6 +246,28 @@ describe('testing backtest flow', () => {
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
+  it('counts take profit crossed order warnings in the test result', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        orderStatus: 'failed',
+        orderFailureReason:
+          BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY,
+      })
+      .mockResolvedValue('HOLD');
+
+    const result = await testing(createTest());
+
+    expect(
+      result?.warningCounts?.[
+        BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+      ],
+    ).toBe(1);
+  });
+
   it('does not discover instruments inside a backtest worker', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
@@ -305,7 +327,14 @@ describe('testing backtest flow', () => {
   it('runs compatible configs in one candle loop with a shared indicators replay key', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     const strategies = [
-      jest.fn(async () => 'HOLD'),
+      jest
+        .fn()
+        .mockResolvedValueOnce({
+          orderStatus: 'failed',
+          orderFailureReason:
+            BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY,
+        })
+        .mockResolvedValue('HOLD'),
       jest.fn(async () => 'HOLD'),
     ];
     const receivedSharedKeys: Array<string | undefined> = [];
@@ -336,6 +365,16 @@ describe('testing backtest flow', () => {
     expect(receivedSharedKeys[0]).toBeTruthy();
     expect(receivedSharedKeys[1]).toBe(receivedSharedKeys[0]);
     expect(mockByBitConnector.listInstruments).not.toHaveBeenCalled();
+    expect(
+      results[0]?.result.warningCounts?.[
+        BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+      ],
+    ).toBe(1);
+    expect(
+      results[1]?.result.warningCounts?.[
+        BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+      ],
+    ).toBe(0);
   });
 
   it('fans out detector no-signal skips without re-running strategy core for matching detector keys', async () => {

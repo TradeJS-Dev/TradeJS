@@ -43,6 +43,7 @@ import { resolveStrategyPolicyProfile } from './strategy/policyProfiles';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
+  BACKTEST_WARNING_CODES,
   CreateStrategyCore,
   CreateStrategyCoreParams,
   KlineChartData,
@@ -1187,7 +1188,14 @@ const executeEntryDecision = async ({
       entry,
       market,
     });
-    logger.error('order error: %s %s', symbol, err);
+    if (
+      (err as Error)?.message ===
+      BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+    ) {
+      logger.warn('order warning: %s %s', symbol, err);
+    } else {
+      logger.error('order error: %s %s', symbol, err);
+    }
     return signal ?? 'ORDER_ERROR';
   }
 

@@ -1,4 +1,10 @@
-import { Connector, Item, TestWorkerResult } from '@tradejs/types';
+import {
+  BACKTEST_WARNING_CODES,
+  BacktestWarningCounts,
+  Connector,
+  Item,
+  TestWorkerResult,
+} from '@tradejs/types';
 
 export type ErrorMessage = { id?: number; error?: unknown; payload?: any };
 
@@ -9,6 +15,9 @@ type RuntimeCompareWindow = {
 
 let successTests = 0;
 let errorTests = 0;
+const warningCounts: BacktestWarningCounts = {
+  [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 0,
+};
 const errorMessages: ErrorMessage[] = [];
 let topResults: TestWorkerResult[] = [];
 const bestTickerResults = new Map<string, TestWorkerResult>();
@@ -88,6 +97,15 @@ const addResultToAggregate = (
   }
 };
 
+const addResultWarnings = (result: TestWorkerResult) => {
+  for (const code of Object.values(BACKTEST_WARNING_CODES)) {
+    const count = Number(result.warningCounts?.[code] ?? 0);
+    if (Number.isFinite(count) && count > 0) {
+      warningCounts[code] = (warningCounts[code] ?? 0) + count;
+    }
+  }
+};
+
 export const getAggregateAverageProfit = (aggregate: AggregateBacktestStats) =>
   aggregate.count > 0 ? aggregate.netProfitSum / aggregate.count : 0;
 
@@ -124,6 +142,7 @@ export const markTestsStarted = () => {
 export const getRunCounters = () => ({
   successTests,
   errorTests,
+  warningCounts: { ...warningCounts },
   errors: [...errorMessages],
 });
 
@@ -148,6 +167,7 @@ export const setBestTickerResultForSymbol = (
 
 export const recordResultAggregates = (result: TestWorkerResult) => {
   addResultToAggregate(progressStats, result);
+  addResultWarnings(result);
 
   const configId = result.test.configId || result.test.name;
   const existing = configResultBuckets.get(configId);
@@ -234,6 +254,9 @@ export const getRuntimeCompareContext = () => ({
 export const resetRunState = () => {
   successTests = 0;
   errorTests = 0;
+  for (const code of Object.values(BACKTEST_WARNING_CODES)) {
+    warningCounts[code] = 0;
+  }
   errorMessages.length = 0;
   topResults = [];
   bestTickerResults.clear();

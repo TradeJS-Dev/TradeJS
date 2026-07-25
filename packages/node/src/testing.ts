@@ -1,5 +1,7 @@
 import {
   AiDatasetRow,
+  BACKTEST_WARNING_CODES,
+  BacktestWarningCounts,
   BacktestDetectorOptimizedStrategy,
   Candle,
   Connector,
@@ -104,6 +106,28 @@ const isBacktestEntryDelayControlCode = (value: unknown) =>
 
 const CLOSED_RESULT_FLUSH_INTERVAL = 500;
 const DEFAULT_STRATEGY_CANDLE_TIMEOUT_MS = 60_000;
+
+const createBacktestWarningCounts = (): BacktestWarningCounts => ({
+  [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 0,
+});
+
+const recordBacktestSignalWarning = (
+  warningCounts: BacktestWarningCounts,
+  signal: string | Signal | undefined,
+) => {
+  if (
+    !signal ||
+    typeof signal === 'string' ||
+    signal.orderStatus !== 'failed' ||
+    signal.orderFailureReason !==
+      BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
+  ) {
+    return;
+  }
+
+  const code = BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY;
+  warningCounts[code] = (warningCounts[code] ?? 0) + 1;
+};
 
 const resolvePositiveInt = (value: unknown, fallback: number) => {
   const parsed = parseInt(String(value ?? ''), 10);
@@ -1241,6 +1265,7 @@ export const testing: TestingBox = async ({
     ReturnType<typeof buildMlPayload>
   >();
   const pendingAiRowBySignalId = new Map<string, PendingAiDatasetRow>();
+  const warningCounts = createBacktestWarningCounts();
   const replaySignalEvaluations = collectReplaySignalEvaluations
     ? ([] as RuntimeSignalEvaluationRecord[])
     : null;
@@ -1294,6 +1319,8 @@ export const testing: TestingBox = async ({
     signal: string | Signal | undefined,
     candle: Candle,
   ) => {
+    recordBacktestSignalWarning(warningCounts, signal);
+
     if (isBacktestEntryDelayControlCode(signal)) {
       return;
     }
@@ -1417,13 +1444,17 @@ export const testing: TestingBox = async ({
   await withTimeout('flush closed results', flushClosedResultsBatch());
 
   const result = await withTimeout('collect result', testConnector.getResult());
+  const resultWithWarnings = {
+    ...result,
+    warningCounts,
+  };
 
   return replaySignalEvaluations
     ? {
-        ...result,
+        ...resultWithWarnings,
         inlineReplaySignalEvaluations: replaySignalEvaluations,
       }
-    : result;
+    : resultWithWarnings;
 };
 
 export const testingGroupInSharedCandleLoop = async (
@@ -1661,6 +1692,7 @@ export const testingGroupInSharedCandleLoop = async (
     testConnector: ReturnType<typeof createTestConnector>;
     pendingMlPayloadBySignalId: Map<string, ReturnType<typeof buildMlPayload>>;
     pendingAiRowBySignalId: Map<string, PendingAiDatasetRow>;
+    warningCounts: BacktestWarningCounts;
     replaySignalEvaluations: RuntimeSignalEvaluationRecord[] | null;
   };
 
@@ -1724,6 +1756,7 @@ export const testingGroupInSharedCandleLoop = async (
         testConnector,
         pendingMlPayloadBySignalId: new Map(),
         pendingAiRowBySignalId: new Map(),
+        warningCounts: createBacktestWarningCounts(),
         replaySignalEvaluations: collectReplaySignalEvaluations ? [] : null,
       });
     }
@@ -1784,6 +1817,8 @@ export const testingGroupInSharedCandleLoop = async (
       signal: string | Signal | undefined,
       candle: Candle,
     ) => {
+      recordBacktestSignalWarning(runner.warningCounts, signal);
+
       if (isBacktestEntryDelayControlCode(signal)) {
         return;
       }
@@ -1957,9 +1992,13 @@ export const testingGroupInSharedCandleLoop = async (
         result: runner.replaySignalEvaluations
           ? {
               ...result,
+              warningCounts: runner.warningCounts,
               inlineReplaySignalEvaluations: runner.replaySignalEvaluations,
             }
-          : result,
+          : {
+              ...result,
+              warningCounts: runner.warningCounts,
+            },
       });
     }
 
