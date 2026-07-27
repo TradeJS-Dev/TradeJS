@@ -70,7 +70,6 @@ const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 10;
 const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
 const MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H = -0.99;
-const MAX_XRP_SHORT_RECOVERY_BTC_VS_ALT_RETURN_24H = -0.03;
 const MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H = -1.8;
 const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
 const MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT = 58.45;
@@ -216,14 +215,6 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     (volumeRel20 ?? 0) >= minApprovalVolumeRel20 &&
     (rsi ?? Number.POSITIVE_INFINITY) <= MAX_APPROVAL_RSI &&
     (bbWidthRank100 ?? 0) >= MIN_APPROVAL_BB_WIDTH_RANK_100;
-  const xrpBtcShortRecoverySetup =
-    direction === 'SHORT' &&
-    xrpDerivatives1hStale !== true &&
-    xrpPriceOiDivergenceType === 'price_down_oi_up' &&
-    btcVsAltReturn24h != null &&
-    btcVsAltReturn24h <= MAX_XRP_SHORT_RECOVERY_BTC_VS_ALT_RETURN_24H &&
-    xrpFundingZScore1h != null &&
-    xrpFundingZScore1h <= MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H;
   const xrpEthShortRecoverySetup =
     direction === 'SHORT' &&
     xrpDerivatives1hStale !== true &&
@@ -233,9 +224,9 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     xrpFundingZScore1h <= MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H &&
     ethLiqImbalance1h != null &&
     ethLiqImbalance1h <= MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H;
-  const xrpShortRecoverySetup =
-    xrpBtcShortRecoverySetup || xrpEthShortRecoverySetup;
+  const xrpShortRecoverySetup = xrpEthShortRecoverySetup;
   const xrpOiReferenceRecoverySetup =
+    direction === 'LONG' &&
     xrpOpenInterest15m != null &&
     xrpOpenInterest15m >= MIN_XRP_OI_REJECT_BIAS_BLOCK_15M &&
     baseApproveBias === 'reject' &&

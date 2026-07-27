@@ -343,7 +343,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toContain('xrp_oi_reject_bias');
   });
 
-  it('allows the rounded XRP/BTC reference short recovery pocket through high-XRP reject bias', () => {
+  it('keeps the rounded XRP/BTC-only short recovery pocket blocked after refactor', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -368,13 +368,13 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 4,
-      approved: true,
+      direction: null,
+      quality: 1,
+      approved: false,
     });
     expect(
       (result as { rejectReason?: string } | undefined)?.rejectReason,
-    ).toBeUndefined();
+    ).toContain('xrp_oi_reject_bias');
   });
 
   it('allows the rounded XRP/ETH reference short recovery pocket through high-XRP reject bias', () => {
@@ -412,15 +412,15 @@ describe('adaptiveTrendChannelAiAdapter', () => {
   });
 
   it.each([
-    ['BTC-vs-alt weakness is too shallow', { btcVsAltReturn24h: -0.029 }],
-    ['XRP funding z-score is too shallow', { xrpFundingZScore1h: -1.79 }],
+    ['BTC-vs-alt weakness is deeply negative', { btcVsAltReturn24h: -0.03 }],
+    ['XRP funding z-score is deeply negative', { xrpFundingZScore1h: -1.8 }],
     [
-      'XRP price/OI divergence is missing',
-      { xrpPriceOiDivergenceType: 'unknown' },
+      'XRP price/OI divergence is present',
+      { xrpPriceOiDivergenceType: 'price_down_oi_up' },
     ],
-    ['XRP 1h derivatives are stale', { xrpDerivatives1hStale: true }],
+    ['XRP 1h derivatives are fresh', { xrpDerivatives1hStale: false }],
   ])(
-    'keeps high-XRP reject bias blocked when the short recovery pocket misses: %s',
+    'keeps high-XRP reject bias blocked for XRP/BTC-only recovery evidence: %s',
     (_label, overrides) => {
       const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
         signal: {} as any,
@@ -502,42 +502,73 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     },
   );
 
-  it.each(['LONG', 'SHORT'] as const)(
-    'allows the rounded XRP-OI CMC/BNB/breadth recovery pocket for %s',
-    (direction) => {
-      const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
-        signal: {} as any,
-        payload: makePayload(
-          {
-            signalDirection: direction,
-            regime: direction === 'LONG' ? 1 : -1,
-            centerline: 100,
-            roof: 103,
-            floor: 97,
-            halfChannel: 3,
-            atr: 3,
-            breakoutDistancePct: 0.5,
-            channelWidthPct: 6,
-            currentPrice: direction === 'LONG' ? 100.5 : 99.5,
-          },
-          makeXrpOiReferenceRecoveryBaseContext(),
-        ),
-        analysis: {
-          direction,
-          quality: 1,
+  it('allows the rounded XRP-OI CMC/BNB/breadth recovery pocket for LONG', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 0.5,
+          channelWidthPct: 6,
+          currentPrice: 100.5,
         },
-      });
+        makeXrpOiReferenceRecoveryBaseContext(),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
 
-      expect(result).toMatchObject({
-        direction,
-        quality: 4,
-        approved: true,
-      });
-      expect(
-        (result as { rejectReason?: string } | undefined)?.rejectReason,
-      ).toBeUndefined();
-    },
-  );
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toBeUndefined();
+  });
+
+  it('keeps the rounded XRP-OI CMC/BNB/breadth recovery pocket blocked for SHORT', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 0.5,
+          channelWidthPct: 6,
+          currentPrice: 99.5,
+        },
+        makeXrpOiReferenceRecoveryBaseContext(),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('xrp_oi_reject_bias');
+  });
 
   it.each([
     ['BTC dominance is too high', { cmcBtcDominancePct: 58.46 }],

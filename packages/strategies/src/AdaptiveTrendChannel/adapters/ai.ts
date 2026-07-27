@@ -116,7 +116,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
 - Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
 - Thin participation, missing shared-context confirmation, or missing liquidation-shock recovery evidence should downgrade the setup.
-- A high-XRP-OI reject bias should remain blocked unless a narrow XRP reference SHORT recovery setup or expanded CMC/BNB/breadth recovery setup is present.
+- A high-XRP-OI reject bias should remain blocked unless a narrow XRP/ETH reference SHORT recovery setup or expanded LONG-only CMC/BNB/breadth recovery setup is present.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
