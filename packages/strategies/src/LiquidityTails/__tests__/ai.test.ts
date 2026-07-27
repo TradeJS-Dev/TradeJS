@@ -632,7 +632,7 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('upgrades conservative q3 retests when MTF and benchmark context are clean', () => {
+  it('does not upgrade medium close-away q3 retests from clean MTF context', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -675,9 +675,9 @@ describe('liquidityTailsAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 4,
-      approved: true,
+      direction: null,
+      quality: 3,
+      approved: false,
     });
   });
 
@@ -693,14 +693,14 @@ describe('liquidityTailsAiAdapter', () => {
           wickBodyRatio: 2.5,
           wickDominanceRatio: 2,
           retestPenetrationPct: 30,
-          reactionCloseDistancePct: 1.6,
+          reactionCloseDistancePct: 2.1,
           reactionBodyAligned: true,
         },
         {
           regime: {
             trend: {
               bias: 'bear',
-              adx: { adx: 35, strength: 'strong' },
+              adx: { adx: 20, strength: 'developing' },
             },
             momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
           },

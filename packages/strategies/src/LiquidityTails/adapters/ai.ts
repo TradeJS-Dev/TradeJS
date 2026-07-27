@@ -138,8 +138,8 @@ Additional Liquidity Tails context:
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
-- cadenceUpgradePocket=${String(context.cadenceUpgradePocket)}
 - derivativesRiskOffLongRecoveryPocket=${String(context.derivativesRiskOffLongRecoveryPocket)}
+- benchmarkFlowOiExpansionRecoveryPocket=${String(context.benchmarkFlowOiExpansionRecoveryPocket)}
 - liquidityTailsGateZoneQuality=${context.liquidityTailsGateFeatures.zoneQuality}
 - liquidityTailsGateRetestAcceptance=${context.liquidityTailsGateFeatures.retestAcceptance}
 - liquidityTailsGateReactionMomentum=${context.liquidityTailsGateFeatures.reactionMomentum}

@@ -29,7 +29,6 @@ export type LiquidityTailsGuardrailContext =
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
-    cadenceUpgradePocket: boolean;
     derivativesRiskOffLongRecoveryPocket: boolean;
     benchmarkFlowOiExpansionRecoveryPocket: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
@@ -77,9 +76,6 @@ const asStringArray = (value: unknown): string[] =>
     : [];
 
 const MIN_APPROVAL_BODY_STRENGTH = 0.4;
-const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
-const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
-const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
 const MAX_APPROVAL_CMC_FEAR_GREED_VALUE = 39;
 const MAX_APPROVAL_PRICE_DISTANCE_TO_MA_SLOW_ATR = 1.2;
 const MIN_APPROVAL_ACTIVE_LIQUIDITY_ZONES = 1;
@@ -392,16 +388,6 @@ export const buildLiquidityTailsGuardrailContext = ({
     strongCloseAwayReaction &&
     nonBullTrendContext &&
     (strongAdxExpansion || momentumExpansion);
-  const cadenceUpgradePocket =
-    reactionCloseDistancePct >= MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT &&
-    bodyStrength != null &&
-    bodyStrength >= MIN_Q3_UPGRADE_BODY_STRENGTH &&
-    volumeRel20 != null &&
-    volumeRel20 >= MIN_Q3_UPGRADE_VOLUME_REL20 &&
-    !higherTimeframeConflict &&
-    !benchmarkConflict &&
-    nonBullTrendContext &&
-    (strongAdxExpansion || momentumExpansion);
   const liquidityTailsGateFeatures = buildLiquidityTailsGateFeatures({
     signalContext,
     trendBias,
@@ -423,8 +409,6 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 1;
   } else if (actionableCloseAwayReaction) {
     deterministicQuality = adxStrength === 'strong' ? 5 : 4;
-  } else if (cadenceUpgradePocket) {
-    deterministicQuality = 4;
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -520,7 +504,6 @@ export const buildLiquidityTailsGuardrailContext = ({
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
-    cadenceUpgradePocket,
     derivativesRiskOffLongRecoveryPocket,
     benchmarkFlowOiExpansionRecoveryPocket,
     liquidityTailsGateFeatures,
