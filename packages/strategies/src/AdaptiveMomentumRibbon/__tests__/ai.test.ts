@@ -1735,7 +1735,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('keeps strong aligned short setups in watch mode while short gate is disabled', () => {
+  it('keeps strong aligned short setups in watch mode during off hours', () => {
     const signal = makeSignal({
       direction: 'SHORT',
       prices: {
@@ -1815,9 +1815,10 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         btcBiasAligned: true,
         primarySession: 'off_hours',
         sessionAllowsApproval: true,
+        shortOffHoursBlocked: true,
         deterministicQuality: 3,
         approvalAllowedNow: false,
-        approvalBlockReasons: ['short_disabled'],
+        approvalBlockReasons: ['short_off_hours'],
       }),
     );
 
@@ -1858,6 +1859,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           gateFeatures: {
             relative: {
               marketBreadthReturn: -0.011,
@@ -1940,6 +1947,83 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('blocks calibrated market-breadth shock shorts during off hours', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 98.9,
+        takeProfitPrice: 96.6,
+        stopLossPrice: 99.9,
+      },
+      indicators: {
+        maFast: [100.2, 99.8, 99.3],
+        maSlow: [100.1, 100.0, 99.8],
+        btcMaFast: [50.2, 49.9, 49.4],
+        btcMaSlow: [50.1, 50.0, 49.8],
+      },
+      additionalIndicators: {
+        baseContext: {
+          gateFeatures: {
+            relative: {
+              marketBreadthReturn: -0.011,
+            },
+          },
+          relative: {
+            cmcGlobal: {
+              altLiquidityRegime: 'btc_favored',
+            },
+            marketBreadth: {
+              advanceDeclineRatio: 0,
+              equalWeightedReturn: -0.011,
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        amr: {
+          entryLong: 0,
+          entryShort: 1,
+          invalidated: 0,
+          activeBuy: 0,
+          activeSell: 1,
+          signalOsc: -1.6,
+          kcMidline: 99.5,
+          kcUpper: 100.1,
+          kcLower: 99.0,
+          invalidationLevel: 99.8,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        primarySession: 'off_hours',
+        shortBreadthShockPocket: true,
+        shortOffHoursBlocked: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        approvalBlockReasons: ['short_off_hours'],
+      }),
+    );
+  });
+
   it('approves neutral market-breadth exhaustion shorts without target derivatives', () => {
     const signal = makeSignal({
       direction: 'SHORT',
@@ -1956,6 +2040,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           gateFeatures: {
             decisionHints: {
               approveBias: 'neutral',
@@ -2037,6 +2127,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           gateFeatures: {
             decisionHints: {
               approveBias: 'neutral',
@@ -2118,6 +2214,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           gateFeatures: {
             relative: {
               marketBreadthReturn: -0.007,
@@ -2196,6 +2298,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           relative: {
             cmcGlobal: {
               totalMarketCapUsd: 2_280_000_000_000,
@@ -2328,6 +2436,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           candle: {
             high: 100.4,
             low: 100,
@@ -2484,6 +2598,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              fundingWindowNearby: false,
+            },
+          },
           gateFeatures: {
             setup: {
               stopDistanceAtr: 5,

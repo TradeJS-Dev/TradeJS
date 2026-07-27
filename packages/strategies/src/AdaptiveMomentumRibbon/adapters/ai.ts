@@ -28,6 +28,7 @@ AdaptiveMomentumRibbon addon:
 - If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
 - The local deterministic gate approves LONG by default. SHORT stays in watch mode except for separately calibrated market-breadth shock pockets.
 - SHORT watch-mode approvals use three calibrated pockets: BTC-favored breadth shock, neutral shared-context breadth exhaustion with marketBreadth.advancers <= 0 and effortVsResult <= 800, or low-CMC benchmark OI contraction with BTC net flow <= 0.
+- SHORT approvals are disabled during the off_hours session, even when a calibrated SHORT pocket is present.
 - A reference-derivatives rotation pocket can approve q4 when XRP 15m OI 4h change >= 1.6 and TRX 15m OI 4h change <= -0.2. It may override weak signal range and the default SHORT watch mode, but never hard signal invalidation.
 - Non-derivatives approvals are demoted when stopDistanceAtr > 4.5 and breakoutBodyAtr > 2.25, because that combination behaves like a chase entry.
 - All live approvals require a calibrated market-regime floor: tpDistanceAtr >= 2.9, trendAdx >= 15, and benchmarkRelativeStrength1d <= 4 when available.
@@ -40,7 +41,7 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / stopDistanceAtr / tpDistanceAtr / breakoutBodyAtr / trendAdx / benchmarkRelativeStrength1d / chaseRiskBlocked / approvalRegimeAllowed / approvalRegimeBlockReasons / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcTotalMarketCapUsd / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / benchmarkOiChangePct24h1h / btcReferenceTradeFlowNetBaseDelta / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / shortCmcBenchmarkContractionPocket / referenceDerivativesRotationPocket / referenceXrpOiChangePct4h15m / referenceTrxOiChangePct4h15m / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / approvalBlockReasons / riskAnnotations.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / stopDistanceAtr / tpDistanceAtr / breakoutBodyAtr / trendAdx / benchmarkRelativeStrength1d / chaseRiskBlocked / approvalRegimeAllowed / approvalRegimeBlockReasons / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha1h / targetVsBtcAlpha4h / spreadBps / cmcAltLiquidityRegime / cmcTotalMarketCapUsd / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / benchmarkOiChangePct24h1h / btcReferenceTradeFlowNetBaseDelta / baseDecisionApproveBias / marketBreadthAdvancers / marketBreadthAdvanceDeclineRatio / marketBreadthReturn / shortBreadthShockPocket / shortBreadthNeutralPocket / shortCmcBenchmarkContractionPocket / shortOffHoursBlocked / referenceDerivativesRotationPocket / referenceXrpOiChangePct4h15m / referenceTrxOiChangePct4h15m / q4TargetAlpha1Allowed / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / approvalBlockReasons / riskAnnotations.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -92,6 +93,7 @@ type AmrApprovalBlockReason =
   | AmrApprovalRegimeBlockReason
   | 'target_vs_btc_alpha_1h_chase'
   | 'short_disabled'
+  | 'short_off_hours'
   | 'cmc_alt_liquidity_btc_favored';
 type AmrRiskAnnotation =
   | 'session_thin'
@@ -183,6 +185,7 @@ type AdaptiveMomentumRibbonAiContext = {
   shortBreadthShockPocket: boolean;
   shortBreadthNeutralPocket: boolean;
   shortCmcBenchmarkContractionPocket: boolean;
+  shortOffHoursBlocked: boolean;
   referenceDerivativesRotationPocket: boolean;
   referenceXrpOiChangePct4h15m: number | null;
   referenceTrxOiChangePct4h15m: number | null;
@@ -599,6 +602,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   }
 
   if (context.signalDirection === 'SHORT') {
+    if (context.shortOffHoursBlocked) {
+      return 3;
+    }
+
     return context.shortBreadthShockPocket ||
       context.shortBreadthNeutralPocket ||
       context.shortCmcBenchmarkContractionPocket ||
@@ -954,6 +961,8 @@ const buildAdaptiveMomentumRibbonContext = (
     btcReferenceTradeFlowNetBaseDelta != null &&
     btcReferenceTradeFlowNetBaseDelta <=
       SHORT_BTC_REFERENCE_TRADE_FLOW_NET_BASE_DELTA_MAX;
+  const shortOffHoursBlocked =
+    signalDirection === 'SHORT' && primarySession === 'off_hours';
   const q4TargetAlpha1Allowed =
     targetVsBtcAlpha1h == null ||
     targetVsBtcAlpha1h <= Q4_TARGET_VS_BTC_ALPHA_1H_MAX;
@@ -1082,7 +1091,9 @@ const buildAdaptiveMomentumRibbonContext = (
     riskAnnotations.push('derivatives_pressure_conflict');
   }
 
-  if (
+  if (signalDirection === 'SHORT' && shortOffHoursBlocked) {
+    approvalBlockReasons.push('short_off_hours');
+  } else if (
     signalDirection === 'SHORT' &&
     !(
       shortBreadthShockPocket ||
@@ -1166,6 +1177,7 @@ const buildAdaptiveMomentumRibbonContext = (
     shortBreadthShockPocket,
     shortBreadthNeutralPocket,
     shortCmcBenchmarkContractionPocket,
+    shortOffHoursBlocked,
     referenceDerivativesRotationPocket,
     referenceXrpOiChangePct4h15m,
     referenceTrxOiChangePct4h15m,
@@ -1257,6 +1269,7 @@ const buildAdaptiveMomentumRibbonContext = (
     shortBreadthShockPocket,
     shortBreadthNeutralPocket,
     shortCmcBenchmarkContractionPocket,
+    shortOffHoursBlocked,
     referenceDerivativesRotationPocket,
     referenceXrpOiChangePct4h15m,
     referenceTrxOiChangePct4h15m,
@@ -1458,6 +1471,7 @@ Additional AdaptiveMomentumRibbon context:
 - shortBreadthShockPocket=${context.shortBreadthShockPocket}
 - shortBreadthNeutralPocket=${context.shortBreadthNeutralPocket}
 - shortCmcBenchmarkContractionPocket=${context.shortCmcBenchmarkContractionPocket}
+- shortOffHoursBlocked=${context.shortOffHoursBlocked}
 - referenceDerivativesRotationPocket=${context.referenceDerivativesRotationPocket}
 - referenceXrpOiChangePct4h15m=${context.referenceXrpOiChangePct4h15m?.toFixed?.(3) ?? 'n/a'}
 - referenceTrxOiChangePct4h15m=${context.referenceTrxOiChangePct4h15m?.toFixed?.(3) ?? 'n/a'}
