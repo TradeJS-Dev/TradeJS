@@ -15,7 +15,6 @@ import {
 } from '@tradejs/infra/redis';
 import type {
   Connector,
-  ConnectorCreator,
   RuntimeTradeRecord,
   Interval,
   StrategyConfig,
@@ -23,6 +22,7 @@ import type {
 import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 import {
   DEFAULT_CONNECTOR_PROVIDER,
+  resolveConnectorAccountId,
   resolveConnectorCreatorByProvider,
 } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
@@ -359,8 +359,15 @@ export const GET = async (request: NextRequest) => {
       throw new Error(`No connector available for provider "${provider}"`);
     }
 
-    const connector = await (connectorCreator as ConnectorCreator)({
+    const connectorAccountId = await resolveConnectorAccountId({
       userName,
+      provider,
+      universe: 'crypto',
+    });
+    const connector = await connectorCreator({
+      userName,
+      accountId: connectorAccountId,
+      universe: 'crypto',
     });
 
     const [

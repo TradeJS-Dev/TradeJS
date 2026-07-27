@@ -1,5 +1,6 @@
 const mockGetRegisteredConnectorCreatorByProvider = jest.fn();
 const mockGetBuiltinConnectorCreatorByProvider = jest.fn();
+const mockResolveTradingAccount = jest.fn();
 
 jest.mock('@tradejs/node/connectors', () => ({
   getConnectorCreatorByProvider: (...args: unknown[]) =>
@@ -11,8 +12,14 @@ jest.mock('@tradejs/connectors', () => ({
     mockGetBuiltinConnectorCreatorByProvider(...args),
 }));
 
+jest.mock('@tradejs/infra/tradingAccounts', () => ({
+  resolveTradingAccount: (...args: unknown[]) =>
+    mockResolveTradingAccount(...args),
+}));
+
 import {
   DEFAULT_CONNECTOR_PROVIDER,
+  resolveConnectorAccountId,
   resolveConnectorCreatorByProvider,
 } from '../connectorCreator';
 
@@ -80,5 +87,30 @@ describe('resolveConnectorCreatorByProvider', () => {
     await expect(
       resolveConnectorCreatorByProvider('unknown-provider', '/tmp/project'),
     ).resolves.toBeNull();
+  });
+});
+
+describe('resolveConnectorAccountId', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns the effective default account id for connector scope', async () => {
+    mockResolveTradingAccount.mockResolvedValue({
+      id: 'bybit-default',
+    });
+
+    await expect(
+      resolveConnectorAccountId({
+        userName: 'root',
+        provider: 'bybit',
+        universe: 'crypto',
+      }),
+    ).resolves.toBe('bybit-default');
+    expect(mockResolveTradingAccount).toHaveBeenCalledWith({
+      userName: 'root',
+      provider: 'bybit',
+      universe: 'crypto',
+    });
   });
 });
