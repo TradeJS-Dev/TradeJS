@@ -48,6 +48,8 @@ const makeCleanBaseContext = () => ({
     btcAltRegime: {
       regime: 'alt_lead',
       altBasketReturn1h: -0.02,
+      btcVsAltReturn1h: -0.001,
+      btcTurnoverShare24h: 0.25,
     },
     marketBreadth: {
       equalWeightedReturn: 0.02,
@@ -301,6 +303,112 @@ describe('relativeRotationAiAdapter', () => {
       quality: 4,
       approved: true,
     });
+  });
+
+  it('rejects SHORT below the validated BTC-vs-alt 1h boundary', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.relative.btcAltRegime.btcVsAltReturn1h = -0.00101;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: 'btc_vs_alt_return_1h_below_stable_range',
+    });
+  });
+
+  it('rejects SHORT below the validated BTC turnover-share boundary', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.relative.btcAltRegime.btcTurnoverShare24h = 0.2499;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: 'btc_turnover_share_24h_below_stable_range',
+    });
+  });
+
+  it('does not let the recovery pocket bypass BTC market leadership', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.structure.localRange.distanceToLowLevelAtr = -2.74;
+    baseContext.regime.trend.adx.diMinus = 50.01;
+    baseContext.relative.marketBreadth.dispersion = 0.0085;
+    baseContext.relative.btcAltRegime.altBasketReturn1h = -0.015;
+    baseContext.relative.btcAltRegime.btcVsAltReturn1h = -0.00101;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: 'btc_vs_alt_return_1h_below_stable_range',
+    });
+  });
+
+  it('hard-blocks missing or null BTC market leadership inputs', () => {
+    const baseContext = makeCleanBaseContext();
+    delete (baseContext as any).relative.btcAltRegime.btcVsAltReturn1h;
+    baseContext.relative.btcAltRegime.btcTurnoverShare24h = null as any;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'missing_btc_vs_alt_return_1h',
+    );
+    expect((result as any)?.rejectReason).toContain(
+      'missing_btc_turnover_share_24h',
+    );
   });
 
   it('hard-blocks stale Fear & Greed context', () => {

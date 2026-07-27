@@ -16,6 +16,8 @@ export type RelativeRotationGuardrailContext = Omit<
   price1hPct: number | null;
   marketBreadthDispersion: number | null;
   altBasketReturn1h: number | null;
+  btcVsAltReturn1h: number | null;
+  btcTurnoverShare24h: number | null;
   cmcFearGreedValueChange7d: number | null;
   cmcFearGreedStale: boolean | null;
   contextConflictCount: number | null;
@@ -27,6 +29,10 @@ export type RelativeRotationGuardrailContext = Omit<
 };
 
 const asFiniteNumber = (value: unknown): number | null => {
+  if (value == null || value === '') {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -39,6 +45,8 @@ const SHORT_ADX_DI_MINUS_MAX = 50;
 const SHORT_HOURLY_PRICE_CHANGE_MAX_PCT = -5;
 const SHORT_BREADTH_RECOVERY_DISPERSION_MIN = 0.0085;
 const SHORT_BREADTH_RECOVERY_ALT_RETURN_1H_MIN = -0.015;
+const SHORT_BTC_VS_ALT_RETURN_1H_MIN = -0.001;
+const SHORT_BTC_TURNOVER_SHARE_24H_MIN = 0.25;
 const SHORT_FEAR_GREED_CHANGE_7D_MIN = -12;
 
 const isTrendAligned = ({
@@ -107,6 +115,12 @@ export const buildRelativeRotationGuardrailContext = ({
   const altBasketReturn1h = asFiniteNumber(
     baseContext?.relative?.btcAltRegime?.altBasketReturn1h,
   );
+  const btcVsAltReturn1h = asFiniteNumber(
+    baseContext?.relative?.btcAltRegime?.btcVsAltReturn1h,
+  );
+  const btcTurnoverShare24h = asFiniteNumber(
+    baseContext?.relative?.btcAltRegime?.btcTurnoverShare24h,
+  );
   const cmcFearGreedValueChange7d = asFiniteNumber(
     baseContext?.relative?.cmcFearGreed?.valueChange7d,
   );
@@ -141,6 +155,12 @@ export const buildRelativeRotationGuardrailContext = ({
   }
   if (price1hPct == null) {
     hardBlockReasons.push('missing_price_1h_pct');
+  }
+  if (btcVsAltReturn1h == null) {
+    hardBlockReasons.push('missing_btc_vs_alt_return_1h');
+  }
+  if (btcTurnoverShare24h == null) {
+    hardBlockReasons.push('missing_btc_turnover_share_24h');
   }
   if (cmcFearGreedValueChange7d == null) {
     hardBlockReasons.push('missing_cmc_fear_greed_change_7d');
@@ -197,10 +217,28 @@ export const buildRelativeRotationGuardrailContext = ({
   if (stableBreadthRecovery) {
     softBlockReasons.length = 0;
   }
+  const stableBtcMarketLeadership =
+    btcVsAltReturn1h != null &&
+    btcVsAltReturn1h >= SHORT_BTC_VS_ALT_RETURN_1H_MIN &&
+    btcTurnoverShare24h != null &&
+    btcTurnoverShare24h >= SHORT_BTC_TURNOVER_SHARE_24H_MIN;
+  if (
+    btcVsAltReturn1h != null &&
+    btcVsAltReturn1h < SHORT_BTC_VS_ALT_RETURN_1H_MIN
+  ) {
+    softBlockReasons.push('btc_vs_alt_return_1h_below_stable_range');
+  }
+  if (
+    btcTurnoverShare24h != null &&
+    btcTurnoverShare24h < SHORT_BTC_TURNOVER_SHARE_24H_MIN
+  ) {
+    softBlockReasons.push('btc_turnover_share_24h_below_stable_range');
+  }
   const deterministicQuality =
     hardBlockReasons.length > 0
       ? 1
-      : stableShortBreakdown || stableBreadthRecovery
+      : (stableShortBreakdown || stableBreadthRecovery) &&
+          stableBtcMarketLeadership
         ? 4
         : 3;
 
@@ -225,6 +263,8 @@ export const buildRelativeRotationGuardrailContext = ({
     price1hPct,
     marketBreadthDispersion,
     altBasketReturn1h,
+    btcVsAltReturn1h,
+    btcTurnoverShare24h,
     cmcFearGreedValueChange7d,
     cmcFearGreedStale,
     contextConflictCount,

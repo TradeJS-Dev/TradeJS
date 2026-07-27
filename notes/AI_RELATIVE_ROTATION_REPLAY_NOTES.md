@@ -1,6 +1,6 @@
 # RelativeRotation AI Replay Notes
 
-Last updated: 2026-07-21.
+Last updated: 2026-07-26.
 
 This file tracks deterministic `AI_MODE=gate` / `yarn ai-train --localOnly`
 research for RelativeRotation.
@@ -406,3 +406,154 @@ in approval. The authoritative replay exactly matched the chosen pre-change
 ablation (`490` approvals, PnL `1,640.98`, PF `1.7139`, maxDD `95.82`). This is
 an active q4 gate change, not watch mode. It validates `AI_MODE=gate` only and
 does not establish `AI_MODE=llm` or live-runtime parity.
+
+## Post-refactor BTC Leadership Filter (`2026-07-26`)
+
+The strategy, Node runtime, and CLI packages were rebuilt before and after the
+gate change. The authoritative replay used all seven parts of export
+`1785011628197`:
+
+```text
+data/ai/export/ai-dataset-relativerotation-merged-1785011628197-part1.jsonl
+...
+data/ai/export/ai-dataset-relativerotation-merged-1785011628197-part7.jsonl
+```
+
+- rows: `21,983`
+- timestamp range:
+  `2025-07-25T18:15:00.000Z .. 2026-07-24T13:45:00.000Z`
+- span: `363.81d`
+- data lag at final replay: `1.34d`
+- config fingerprint / id: `6587d6b2e6300a8e` / `q7r9bb`
+- context fingerprint: `4186a11d2ef809af`
+- git SHA: `67ab05ba0df329af277341664258c30c0de01cbd`
+- dirty: `true` because the new gate was under test
+- final gate fingerprint: `f44bda9a4742cb61`
+- mode: `local-deterministic`, `MIN_AI_QUALITY=4`
+- selected / failed: `21,983 / 0`
+
+### Existing-gate audit
+
+The pre-change combined gate still made trades and was profitable over the full
+export, but its terminal regime had deteriorated:
+
+| Period | N | WR | PF | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | 509 | 53.4% | 1.46 | 1,205.62 | 91.06 | 7 | 1.399 |
+| 180d | 295 | 49.5% | 1.25 | 414.66 | 91.06 | 7 | 1.639 |
+| 90d | 191 | 50.3% | 1.30 | 310.96 | 91.06 | 7 | 2.122 |
+| 30d | 78 | 48.7% | 1.22 | 95.20 | 91.06 | 7 | 2.600 |
+| 7d | 28 | 39.3% | 0.82 | -34.32 | 91.06 | 7 | 4.000 |
+
+The primary breakdown pocket alone remained profitable (`383` trades,
+PnL `1,121.41`, PF `1.60`) but had only four last-7d trades and lost `19.28`.
+The unfiltered breadth-recovery pocket was materially weaker (`137` trades,
+PnL `86.30`, PF `1.11`, maxDD `103.79`) and also lost `26.37` in the last 7d.
+The recovery pocket was therefore retained only behind the new common market
+filter; it is no longer able to bypass that filter.
+
+### Research and implemented rule
+
+Pocket discovery was used only to generate hypotheses. Threshold selection was
+then rerun with the reusable ablation tool using a trailing `25%` time-ordered
+holdout, terminal windows, threshold sensitivity, pocket decomposition, symbol
+concentration, and negative controls. Artifacts:
+
+```text
+data/ai/output/ai-pocket-search-relativerotation-merged-1785011628197-approved-2026-07-25T21-36-51Z.md
+data/ai/output/ai-pocket-search-relativerotation-merged-1785011628197-all-2026-07-25T21-38-08Z.md
+data/ai/output/relative-rotation-post-refactor-filter-ablation-1785011628197.json
+data/ai/output/relative-rotation-post-refactor-stability-ablation-1785011628197.json
+```
+
+Both existing SHORT pockets now additionally require:
+
+```ts
+baseContext.relative.btcAltRegime.btcVsAltReturn1h >= -0.001 &&
+baseContext.relative.btcAltRegime.btcTurnoverShare24h >= 0.25
+```
+
+Missing or null inputs hard-block approval. Values below either boundary
+produce q3. The exact rounded boundaries remain q4. LONG remains disabled.
+
+Sensitivity stayed profitable around the selected rule:
+
+| BTC-vs-alt 1h min | BTC turnover share min | N | PnL | PF | Validation PnL | Validation PF | Last-7d PnL |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| -0.0012 | 0.25 | 382 | 1,472.43 | 1.86 | 428.79 | 1.69 | 12.87 |
+| **-0.0010** | **0.25** | **377** | **1,478.83** | **1.89** | **440.31** | **1.72** | **24.39** |
+| -0.0008 | 0.25 | 372 | 1,458.98 | 1.89 | 426.48 | 1.70 | 24.39 |
+| -0.0005 | 0.25 | 355 | 1,395.54 | 1.89 | 429.78 | 1.76 | 24.39 |
+| -0.0010 | 0.24 | 383 | 1,460.38 | 1.85 | 429.06 | 1.69 | 24.39 |
+| -0.0010 | 0.26 | 374 | 1,511.75 | 1.92 | 440.31 | 1.72 | 24.39 |
+
+The `0.25` turnover boundary was preferred over the marginally better
+full-sample `0.26` result because it preserves more trades and the holdout and
+terminal results are identical. The rounded BTC-vs-alt boundary is inside a
+profitable neighbourhood rather than at an isolated optimum.
+
+Feature provenance:
+
+- `btcVsAltReturn1h` is BTC's causal 1h return minus the aligned mean 1h return
+  of the alt basket.
+- `btcTurnoverShare24h` is BTC 24h turnover divided by BTC-plus-alt-basket 24h
+  turnover.
+- both are normalized signal-time market-state fields produced by the shared
+  Binance market context and were numeric on all `21,983` rows.
+- no execution, delayed-fill, exit, outcome, symbol allowlist, or current gate
+  output participates in the rule.
+
+The inverse BTC-relative condition was a strong negative control: `104` trades,
+PnL `-237.30`, PF `0.68`, validation PnL `-118.10`, and last-7d PnL `-58.71`.
+The inverse turnover condition was also negative (`22` trades, PnL `-46.12`,
+PF `0.71`). An absolute-token-price control did not repair the last-7d loss and
+was rejected as cohort-sensitive.
+
+### Authoritative q4+ metrics after implementation
+
+| Period | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | 377 | 59.7% | 1.89 | 6.22 | 10.93 | 27.52 | 1,478.83 | 53.92 | 5 | 1.036 |
+| 180d | 210 | 56.7% | 1.67 | 5.31 | 9.11 | 25.20 | 670.14 | 53.92 | 5 | 1.167 |
+| 90d | 131 | 57.3% | 1.72 | 6.26 | 10.82 | 33.12 | 440.31 | 53.92 | 5 | 1.456 |
+| 30d | 49 | 57.1% | 1.72 | 6.61 | 11.42 | 45.34 | 164.94 | 44.26 | 4 | 1.633 |
+| 7d | 16 | 50.0% | 1.27 | 3.49 | 5.61 | 28.73 | 24.39 | 44.26 | 4 | 2.286 |
+
+Full-period risk and cadence details:
+
+- wins / losses: `225 / 152`
+- gross profit / loss: `3,149.52 / 1,670.69`
+- average trade: `3.92`
+- average win / loss: `14.00 / 10.99`
+- payoff ratio: `1.27`
+- largest win / loss: `14.96 / -11.91`
+- maxDD / gross profit: `1.71%`
+- maxDD / total profit: `3.65%`
+- recovery factor: `27.43`
+- ulcer index: `17.36`
+- maximum win / loss streak: `17 / 5`
+- average PnL: `4.06/day`, `123.72/month`
+- cadence: `1.04/day`, `7.25/week`
+- active losing months: `0`
+- direction split: `377 SHORT`, `0 LONG`
+
+Time-ordered split:
+
+| Split | N | WR | PnL | PF | MaxDD | Loss Streak | Losing Months |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 246 | 61.0% | 1,038.52 | 1.98 | 52.38 | 4 | 0 |
+| validation | 131 | 57.3% | 440.31 | 1.72 | 53.92 | 5 | 0 |
+
+Every active calendar month is profitable; the weakest is April 2026 at
+`+18.08`. The largest symbol contributes only `7 / 377` approvals, so no
+single-symbol concentration explains the result. Compared with the pre-change
+gate, full PnL rises from `1,205.62` to `1,478.83`, PF from `1.46` to `1.89`,
+maxDD falls from `91.06` to `53.92`, the loss streak falls from `7` to `5`, and
+the last 7d changes from `-34.32` to `+24.39` while preserving
+`2.29 trades/day`.
+
+This is an immediately enforced q4 gate change, not watch mode. It validates
+the local deterministic `AI_MODE=gate` replay only; live profitability remains
+unverified until the same SHA, gate fingerprint, config id, context
+fingerprint, market-context environment, and `MIN_AI_QUALITY=4` are deployed
+together.
