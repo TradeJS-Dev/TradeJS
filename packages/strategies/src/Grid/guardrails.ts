@@ -4,6 +4,7 @@ import type { GridSignalContext } from './engine';
 export const GRID_AI_GATE_THRESHOLDS = {
   maxNegativeVenueSpread: -0.0012,
   minBenchmarkLiquidations15m: 2,
+  minShortSolOiChangePct1h: 0.3,
 } as const;
 
 export type GridGateFeatures = {
@@ -14,11 +15,13 @@ export type GridGateFeatures = {
   venueSpread: number | null;
   benchmarkLiquidations15m: number | null;
   benchmarkDerivativesFresh15m: boolean;
+  solOiChangePct1h: number | null;
+  solDerivativesFresh15m: boolean;
   bnbDirectionAligned: boolean | null;
-  bnbPriceOiDivergenceType: string | null;
   bnbDerivativesFresh15m: boolean;
-  liquidationDislocationPocket: boolean;
-  bnbExpansionConfirmation: boolean;
+  longLiquidationDislocationPocket: boolean;
+  shortSolOiExpansionPocket: boolean;
+  shortBnbDirectionAlignmentPocket: boolean;
 };
 
 export type GridGuardrailContext = Partial<GridSignalContext> & {
@@ -114,27 +117,35 @@ export const buildGridGuardrailContext = ({
   const benchmark15m = baseContext?.derivatives?.intervals?.['15m'];
   const benchmarkLiquidations15m = toFiniteNumberOrNull(benchmark15m?.liqTotal);
   const benchmarkDerivativesFresh15m = benchmark15m?.stale === false;
+  const sol15m =
+    baseContext?.derivatives?.referenceContexts?.SOLUSDT?.intervals?.['15m'];
+  const solOiChangePct1h = toFiniteNumberOrNull(sol15m?.oiChangePct1h);
+  const solDerivativesFresh15m = sol15m?.stale === false;
   const bnbContext =
     baseContext?.derivatives?.referenceContexts?.BNBUSDT ?? null;
   const bnbDirectionAligned =
     typeof bnbContext?.summary?.directionAligned === 'boolean'
       ? bnbContext.summary.directionAligned
       : null;
-  const bnbPriceOiDivergenceType =
-    bnbContext?.summary?.priceOiDivergenceType ?? null;
   const bnbDerivativesFresh15m =
     bnbContext?.intervals?.['15m']?.stale === false;
 
-  const liquidationDislocationPocket =
+  const longLiquidationDislocationPocket =
+    signalDirection === 'LONG' &&
     venueSpread != null &&
     venueSpread <= GRID_AI_GATE_THRESHOLDS.maxNegativeVenueSpread &&
     benchmarkLiquidations15m != null &&
     benchmarkLiquidations15m >=
       GRID_AI_GATE_THRESHOLDS.minBenchmarkLiquidations15m &&
     benchmarkDerivativesFresh15m;
-  const bnbExpansionConfirmation =
+  const shortSolOiExpansionPocket =
+    signalDirection === 'SHORT' &&
+    solOiChangePct1h != null &&
+    solOiChangePct1h >= GRID_AI_GATE_THRESHOLDS.minShortSolOiChangePct1h &&
+    solDerivativesFresh15m;
+  const shortBnbDirectionAlignmentPocket =
+    signalDirection === 'SHORT' &&
     bnbDirectionAligned === true &&
-    bnbPriceOiDivergenceType === 'price_up_oi_up' &&
     bnbDerivativesFresh15m;
   const structuralHardBlockReasons = getStructuralHardBlockReasons({
     signalContext,
@@ -148,6 +159,9 @@ export const buildGridGuardrailContext = ({
   if (!benchmarkDerivativesFresh15m) {
     riskAnnotations.push('benchmark_derivatives_15m_unavailable_or_stale');
   }
+  if (!solDerivativesFresh15m) {
+    riskAnnotations.push('sol_derivatives_15m_unavailable_or_stale');
+  }
   if (!bnbDerivativesFresh15m) {
     riskAnnotations.push('bnb_derivatives_15m_unavailable_or_stale');
   }
@@ -155,14 +169,13 @@ export const buildGridGuardrailContext = ({
   const deterministicQuality =
     structuralHardBlockReasons.length > 0
       ? 2
-      : liquidationDislocationPocket
+      : longLiquidationDislocationPocket || shortSolOiExpansionPocket
         ? 5
-        : 3;
+        : shortBnbDirectionAlignmentPocket
+          ? 4
+          : 3;
   const approvalBlockReasons = [...structuralHardBlockReasons];
-  if (
-    structuralHardBlockReasons.length === 0 &&
-    !liquidationDislocationPocket
-  ) {
+  if (structuralHardBlockReasons.length === 0 && deterministicQuality < 4) {
     approvalBlockReasons.push('validated_market_pocket_missing');
   }
   const approvalAllowedNow =
@@ -178,11 +191,13 @@ export const buildGridGuardrailContext = ({
     venueSpread,
     benchmarkLiquidations15m,
     benchmarkDerivativesFresh15m,
+    solOiChangePct1h,
+    solDerivativesFresh15m,
     bnbDirectionAligned,
-    bnbPriceOiDivergenceType,
     bnbDerivativesFresh15m,
-    liquidationDislocationPocket,
-    bnbExpansionConfirmation,
+    longLiquidationDislocationPocket,
+    shortSolOiExpansionPocket,
+    shortBnbDirectionAlignmentPocket,
   };
 
   return {

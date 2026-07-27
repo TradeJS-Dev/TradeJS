@@ -1,9 +1,202 @@
 # Grid AI Replay Notes
 
-Last updated: 2026-07-22.
+Last updated: 2026-07-26.
 
 This file tracks deterministic `AI_MODE=gate` / `yarn ai-train --localOnly`
 research for Grid.
+
+## Geometry-filtered gate rebuild (`2026-07-26`)
+
+### Source export and lineage
+
+The supplied post-refactor export consists of seven shards:
+
+```text
+data/ai/export/ai-dataset-grid-merged-1785011594102-part1.jsonl
+...
+data/ai/export/ai-dataset-grid-merged-1785011594102-part7.jsonl
+```
+
+- rows: `1,337`
+- timestamp range: `2025-07-26T02:00:00.000Z .. 2026-07-24T01:45:00.000Z`
+- span: `362.99d`
+- data lag at the final replay: `1.83d`
+- duplicate groups: `0`
+- config id: `1r99w6`
+- config fingerprint: `0fca5594623cb1ef`
+- final gate fingerprint: `01eb7cbbbe136a06`
+- q4+ context fingerprint: `37ff63212158a1a1`
+- git SHA: `67ab05ba0df329af277341664258c30c0de01cbd`
+- dirty: `true` (the rebuilt Grid gate and concurrent unrelated worktree
+  changes were uncommitted)
+- derivatives context: enabled, target context disabled, lookback `48h`, extra
+  references `BNB,SOL,TRX,XRP`, source interval `15m`, derived interval `1h`
+
+The export is much smaller than the previous `6,412`-row dataset because it was
+produced after enabling the Grid geometry filter. Every exported row is an
+`open` action; there are no `increase` rows. The replay therefore validates
+initial entries, while scale-in market-pocket performance remains unknown.
+Structural scale-in invariants are still covered by unit tests.
+
+The Redis config was inspected but not changed. It keeps
+`MAX_LOSS_VALUE=10`, `LONG.enable=true`, `SHORT.enable=true`, the `15m`
+interval, and the selected geometry-filtered Grid detector parameters.
+
+Authoritative replays:
+
+```bash
+AI_MODE=gate MIN_AI_QUALITY=4 yarn ai-train --strategy Grid \
+  --file data/ai/export/ai-dataset-grid-merged-1785011594102-part1.jsonl \
+  --localOnly --json -n 0 --terminalWindows=180,90,30,7 \
+  --dumpEvaluations data/ai/output/grid-1785011594102-final-evaluations.jsonl \
+  --dumpFeatures gateFeatures
+
+AI_MODE=gate yarn ai-train --strategy Grid \
+  --file data/ai/export/ai-dataset-grid-merged-1785011594102-part1.jsonl \
+  --localOnly --json -n 0 --minQuality 5 \
+  --terminalWindows=180,90,30,7
+```
+
+### Previous gate audit
+
+Without a gate, all `1,337` geometry-filtered signals lose `441.86`.
+The previous liquidation-dislocation gate still made `13.36` over `50`
+approvals, but it no longer passed a time-ordered stability check:
+
+| slice | approvals | PnL | PF | max DD | loss streak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| train 75% | 21 | -3.43 | 0.86 | 12.32 | 5 |
+| validation 25% | 29 | 16.79 | 1.58 | 10.36 | 3 |
+| full | 50 | 13.36 | 1.25 | 12.45 | 5 |
+
+The old SHORT branch was rejected: `43` approvals made only `4.51` with
+PF `1.09`. The old LONG branch was retained as a q5 compatibility pocket:
+`7` approvals made `8.85` with PF `3.10` on this export, while the prior
+larger export also had a positive LONG slice. Its current support is small, so
+it must not be generalized or loosened without another export.
+
+### Discovery, controls, and threshold stability
+
+Pocket discovery reserved the trailing `25%` (`334` rows) for validation.
+Absolute-price pockets were rejected as scale-dependent. Resistance-age rules
+were rejected because their terminal window lost money and they accumulated
+losing months. The opposite SOL OI direction was a useful negative control:
+`78` SHORT approvals lost `30.92`, PF `0.70`. Applying the positive SOL OI
+condition to LONG also failed: `31` approvals lost `20.06`, PF `0.57`.
+
+The selected causal SHORT evidence is:
+
+```ts
+fresh SOLUSDT 15m oiChangePct1h >= 0.30
+// or
+fresh BNBUSDT 15m summary.directionAligned === true
+```
+
+The SOL threshold is inside a profitable rounded neighbourhood:
+
+| SOL OI 1h min | approvals | PnL | PF | max DD | last7d PnL |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.20 | 88 | 56.10 | 1.96 | 11.33 | -2.98 |
+| 0.25 | 80 | 67.11 | 2.65 | 7.93 | 3.96 |
+| **0.30** | **71** | **73.87** | **3.53** | **5.59** | **2.94** |
+| 0.35 | 60 | 57.07 | 3.17 | 5.59 | 2.94 |
+| 0.40 | 47 | 54.61 | 5.07 | 3.54 | 2.94 |
+
+`0.30` was selected over `0.25` because it improves full PnL, PF, drawdown,
+loss streak, and month stability while giving up only nine q5 approvals.
+The BNB q4 lane independently remained positive on train (`31`, `+17.49`,
+PF `1.79`) and validation (`39`, `+32.17`, PF `2.31`).
+
+Both features are signal-time causal. Reference derivative rows are resolved
+at or before the last closed `15m` derivatives bar for the signal decision.
+SOL `oiChangePct1h` is the raw reference interval feature. BNB
+`directionAligned` is computed from the signal direction and fresh BNB
+derivatives pressure/OI state. Missing or stale reference context cannot
+approve an entry. No outcome, execution-delay, symbol allowlist, availability
+count, or sample-count feature is used.
+
+Research artifacts:
+
+```text
+data/ai/output/ai-pocket-search-grid-merged-1785011594102-all-2026-07-25T21-37-20Z.md
+data/ai/output/ai-pocket-search-grid-merged-1785011594102-approved-2026-07-25T21-37-36Z.md
+data/ai/output/grid-gate-ablation-round1-2026-07-26.json
+data/ai/output/grid-gate-ablation-round2-2026-07-26.json
+data/ai/output/grid-gate-ablation-round3-2026-07-26.json
+data/ai/output/grid-gate-final-implemented-2026-07-26.json
+data/ai/output/grid-1785011594102-final-evaluations.jsonl
+```
+
+### Implemented deterministic gate
+
+- q5 LONG: fresh BTC benchmark liquidation total `>=2` while venue spread is
+  `<=-0.0012`.
+- q5 SHORT: fresh SOL `15m` OI growth over one hour is `>=0.30`.
+- q4 SHORT: fresh BNB reference derivatives are aligned with the SHORT signal.
+- q3: structurally valid signal outside the validated market pockets.
+- q2: structural hard block.
+
+The adapter pins approval and direction to the deterministic result. Existing
+hard blocks still reject missing/mismatched signal and regime direction,
+volatility shock, invalid open state, and invalid non-martingale increase
+state.
+
+### Final q4+ and q5+ metrics
+
+The q4+ train/validation split is positive on both sides:
+
+| slice | approvals | WR | PnL | PF | max DD | loss streak | losing months |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train 75% | 51 | 68.6% | 27.69 | 1.82 | 5.35 | 2 | 0 |
+| validation 25% | 79 | 72.2% | 76.28 | 2.86 | 7.44 | 3 | 0 |
+
+Terminal metrics:
+
+| stream | window | approvals | approvals/day | WR | PnL | PF | max DD | loss streak | losing months |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| q4+ | full | 130 | 0.36 | 70.8% | 103.97 | 2.39 | 7.44 | 3 | 0 |
+| q4+ | 180d | 127 | 0.71 | 70.9% | 105.43 | 2.48 | 7.44 | 3 | 0 |
+| q4+ | 90d | 76 | 0.84 | 72.4% | 71.59 | 2.79 | 7.44 | 3 | 0 |
+| q4+ | 30d | 25 | 0.83 | 68.0% | 16.97 | 1.99 | 5.95 | 2 | 0 |
+| q4+ | 7d | 3 | 0.43 | 66.7% | 1.98 | 3.06 | 0.96 | 1 | 0 |
+| q5+ | full | 78 | 0.21 | 75.6% | 82.72 | 3.48 | 5.59 | 2 | 0 |
+| q5+ | 180d | 77 | 0.43 | 75.3% | 82.37 | 3.47 | 5.59 | 2 | 0 |
+| q5+ | 90d | 53 | 0.59 | 77.4% | 70.27 | 5.11 | 3.47 | 2 | 0 |
+| q5+ | 30d | 15 | 0.50 | 66.7% | 14.13 | 2.53 | 3.43 | 2 | 0 |
+| q5+ | 7d | 2 | 0.29 | 100.0% | 2.94 | n/a | 0.00 | 0 | 0 |
+
+Direction split for q4+:
+
+- LONG: `7`, PnL `+8.85`, PF `3.10`
+- SHORT: `123`, PnL `+95.12`, PF `2.35`
+
+Symbol concentration remains low: the largest symbol has `3` of `130`
+approvals (`2.31%`). The q4+ stream is below the ideal `2-3` approvals/day
+and slightly below the practical `1/day` target, but relaxing it with
+resistance-age or lower SOL thresholds worsened terminal robustness. It now
+does trade in the last `7d`, unlike the previous gate. Expected live cadence
+remains unknown until a runtime with matching lineage is observed.
+
+### Runtime contract
+
+```text
+AI_ENABLED=true
+AI_MODE=gate
+MIN_AI_QUALITY=4
+INTERVAL=15
+DERIVATIVES_CONTEXT_ENABLED=true
+DERIVATIVES_CONTEXT_TARGET_ENABLED=false
+DERIVATIVES_CONTEXT_LOOKBACK_HOURS=48
+DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS=BNB,SOL,TRX,XRP
+MAX_LOSS_VALUE=10
+LONG.enable=true
+SHORT.enable=true
+```
+
+`MIN_AI_QUALITY=5` selects the stricter q5 stream and excludes the BNB q4
+lane. These results describe local deterministic `AI_MODE=gate`, not
+`AI_MODE=llm`. Live parity additionally requires matching git SHA, gate
+fingerprint, config id/fingerprint, context fingerprint, and environment.
 
 ## Post-refactor gate rebuild (`2026-07-22`)
 

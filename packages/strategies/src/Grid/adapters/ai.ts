@@ -111,10 +111,13 @@ Additional adaptive directional Grid context:
 - takeProfitPrice=${String(context.takeProfitPrice ?? 'n/a')}
 - venueSpread=${String(context.gridGateFeatures.venueSpread ?? 'n/a')}
 - benchmarkLiquidations15m=${String(context.gridGateFeatures.benchmarkLiquidations15m ?? 'n/a')}
-- liquidationDislocationPocket=${String(context.gridGateFeatures.liquidationDislocationPocket)}
+- longLiquidationDislocationPocket=${String(context.gridGateFeatures.longLiquidationDislocationPocket)}
+- solOiChangePct1h=${String(context.gridGateFeatures.solOiChangePct1h ?? 'n/a')}
+- solDerivativesFresh15m=${String(context.gridGateFeatures.solDerivativesFresh15m)}
+- shortSolOiExpansionPocket=${String(context.gridGateFeatures.shortSolOiExpansionPocket)}
 - bnbDirectionAligned=${String(context.gridGateFeatures.bnbDirectionAligned ?? 'n/a')}
-- bnbPriceOiDivergenceType=${String(context.gridGateFeatures.bnbPriceOiDivergenceType ?? 'n/a')}
-- bnbExpansionConfirmation=${String(context.gridGateFeatures.bnbExpansionConfirmation)}
+- bnbDerivativesFresh15m=${String(context.gridGateFeatures.bnbDerivativesFresh15m)}
+- shortBnbDirectionAlignmentPocket=${String(context.gridGateFeatures.shortBnbDirectionAlignmentPocket)}
 - deterministicQuality=${String(context.deterministicQuality)}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - approvalBlockReasons=${context.approvalBlockReasons.join(',') || 'none'}
@@ -122,7 +125,8 @@ Additional adaptive directional Grid context:
 Interpretation rules:
 - This is a non-martingale directional grid. An increase adds the same configured level size or less when the remaining MAX_LOSS_VALUE budget is smaller.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
-- Approve only when the direction still matches the causal trend regime, volatility is not shocked, and the validated liquidation-dislocation pocket is active.
+- Approve only when the direction still matches the causal trend regime, volatility is not shocked, and a validated direction-specific market pocket is active.
+- SHORT approvals require fresh SOL open-interest expansion or fresh BNB derivatives alignment. The legacy liquidation-dislocation pocket is valid only for LONG.
 - Treat the hard stop and aggregate risk budget as immutable constraints.
 `.trim();
   },

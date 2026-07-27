@@ -29,15 +29,17 @@ const buildBaseContext = ({
   venueSpread = 0,
   benchmarkLiquidations15m = 0,
   benchmarkStale = false,
+  solOiChangePct1h = null,
+  solStale = false,
   bnbDirectionAligned = false,
-  bnbPriceOiDivergenceType = 'none',
   bnbStale = false,
 }: {
   venueSpread?: number;
   benchmarkLiquidations15m?: number;
   benchmarkStale?: boolean;
+  solOiChangePct1h?: number | null;
+  solStale?: boolean;
   bnbDirectionAligned?: boolean;
-  bnbPriceOiDivergenceType?: string;
   bnbStale?: boolean;
 } = {}) =>
   ({
@@ -51,11 +53,19 @@ const buildBaseContext = ({
         },
       },
       referenceContexts: {
+        SOLUSDT: {
+          intervals: {
+            '15m': {
+              stale: solStale,
+              oiChangePct1h: solOiChangePct1h,
+            },
+          },
+          summary: {},
+        },
         BNBUSDT: {
           intervals: { '15m': { stale: bnbStale } },
           summary: {
             directionAligned: bnbDirectionAligned,
-            priceOiDivergenceType: bnbPriceOiDivergenceType,
           },
         },
       },
@@ -98,8 +108,7 @@ describe('Grid AI adapter', () => {
     const payload = buildPayload({
       gridContext,
       baseContext: buildBaseContext({
-        venueSpread: -0.0012,
-        benchmarkLiquidations15m: 2,
+        solOiChangePct1h: 0.3,
       }),
     });
 
@@ -108,9 +117,8 @@ describe('Grid AI adapter', () => {
         regime: { trend: { bias: 'bear' } },
         gridGateFeatures: expect.objectContaining({
           signalDirection: 'SHORT',
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
-          liquidationDislocationPocket: true,
+          solOiChangePct1h: 0.3,
+          shortSolOiExpansionPocket: true,
         }),
       }),
     );
@@ -136,10 +144,8 @@ describe('Grid AI adapter', () => {
           projectedAveragePrice: 96,
         }),
         baseContext: buildBaseContext({
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
+          solOiChangePct1h: 0.3,
           bnbDirectionAligned: true,
-          bnbPriceOiDivergenceType: 'price_up_oi_up',
         }),
       }),
     });
@@ -148,7 +154,8 @@ describe('Grid AI adapter', () => {
     expect(prompt).toContain('level=3');
     expect(prompt).toContain('regimeDirection=SHORT');
     expect(prompt).toContain('projectedAveragePrice=96');
-    expect(prompt).toContain('bnbExpansionConfirmation=true');
+    expect(prompt).toContain('shortSolOiExpansionPocket=true');
+    expect(prompt).toContain('shortBnbDirectionAlignmentPocket=true');
     expect(prompt).toContain('deterministicQuality=5');
     expect(prompt).toContain('non-martingale directional grid');
     expect(prompt).toContain('MAX_LOSS_VALUE');
@@ -182,12 +189,11 @@ describe('Grid AI adapter', () => {
     expect(prompt).toContain('takeProfitPrice=n/a');
   });
 
-  it('assigns q5 at the inclusive liquidation-dislocation boundaries', () => {
+  it('assigns q5 at the inclusive SHORT SOL OI-growth boundary', () => {
     const result = postProcess(
       buildPayload({
         baseContext: buildBaseContext({
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
+          solOiChangePct1h: 0.3,
         }),
       }),
     );
@@ -203,16 +209,17 @@ describe('Grid AI adapter', () => {
   });
 
   it.each([
-    { venueSpread: -0.001199, benchmarkLiquidations15m: 2 },
-    { venueSpread: -0.0012, benchmarkLiquidations15m: 1.999 },
+    { solOiChangePct1h: 0.2999, solStale: false },
+    { solOiChangePct1h: 0.3, solStale: true },
+    { solOiChangePct1h: null, solStale: false },
   ])(
-    'keeps near-miss liquidation dislocation outside q4+',
-    ({ venueSpread, benchmarkLiquidations15m }) => {
+    'keeps missing, stale, or near-miss SOL expansion outside q5',
+    ({ solOiChangePct1h, solStale }) => {
       const result = postProcess(
         buildPayload({
           baseContext: buildBaseContext({
-            venueSpread,
-            benchmarkLiquidations15m,
+            solOiChangePct1h,
+            solStale,
           }),
         }),
       );
@@ -228,21 +235,20 @@ describe('Grid AI adapter', () => {
     },
   );
 
-  it('does not promote direction-aligned BNB expansion without the validated liquidation pocket', () => {
+  it('assigns q4 to a fresh direction-aligned BNB context for SHORT', () => {
     const result = postProcess(
       buildPayload({
         baseContext: buildBaseContext({
           bnbDirectionAligned: true,
-          bnbPriceOiDivergenceType: 'price_up_oi_up',
         }),
       }),
     );
 
     expect(result).toEqual(
       expect.objectContaining({
-        direction: null,
-        quality: 3,
-        approved: false,
+        direction: 'SHORT',
+        quality: 4,
+        approved: true,
       }),
     );
   });
@@ -251,13 +257,12 @@ describe('Grid AI adapter', () => {
     { bnbDirectionAligned: false, bnbStale: false },
     { bnbDirectionAligned: true, bnbStale: true },
   ])(
-    'rejects misaligned or stale BNB expansion context',
+    'rejects misaligned or stale BNB context',
     ({ bnbDirectionAligned, bnbStale }) => {
       const result = postProcess(
         buildPayload({
           baseContext: buildBaseContext({
             bnbDirectionAligned,
-            bnbPriceOiDivergenceType: 'price_up_oi_up',
             bnbStale,
           }),
         }),
@@ -272,6 +277,63 @@ describe('Grid AI adapter', () => {
       );
     },
   );
+
+  it('keeps the legacy liquidation-dislocation pocket only for LONG', () => {
+    const marketContext = buildBaseContext({
+      venueSpread: -0.0012,
+      benchmarkLiquidations15m: 2,
+    });
+    const longResult = postProcess(
+      buildPayload({
+        gridContext: buildGridContext({
+          entryDirection: 'LONG',
+          regimeDirection: 'LONG',
+        }),
+        baseContext: marketContext,
+      }),
+    );
+    const shortResult = postProcess(
+      buildPayload({ baseContext: marketContext }),
+    );
+
+    expect(longResult).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        quality: 5,
+        approved: true,
+      }),
+    );
+    expect(shortResult).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 3,
+        approved: false,
+      }),
+    );
+  });
+
+  it('does not promote LONG from the SHORT-only SOL and BNB pockets', () => {
+    const result = postProcess(
+      buildPayload({
+        gridContext: buildGridContext({
+          entryDirection: 'LONG',
+          regimeDirection: 'LONG',
+        }),
+        baseContext: buildBaseContext({
+          solOiChangePct1h: 1,
+          bnbDirectionAligned: true,
+        }),
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 3,
+        approved: false,
+      }),
+    );
+  });
 
   it.each([
     {
@@ -288,8 +350,7 @@ describe('Grid AI adapter', () => {
       const payload = buildPayload({
         gridContext,
         baseContext: buildBaseContext({
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
+          solOiChangePct1h: 0.3,
         }),
       });
       const result = postProcess(payload);
@@ -322,8 +383,7 @@ describe('Grid AI adapter', () => {
           projectedQty: 3,
         }),
         baseContext: buildBaseContext({
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
+          solOiChangePct1h: 0.3,
         }),
       }),
     );
@@ -348,8 +408,7 @@ describe('Grid AI adapter', () => {
           projectedQty: 2,
         }),
         baseContext: buildBaseContext({
-          venueSpread: -0.0012,
-          benchmarkLiquidations15m: 2,
+          solOiChangePct1h: 0.3,
         }),
       }),
     );
