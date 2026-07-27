@@ -8,19 +8,26 @@
   "engines": {
     "node": "24.x"
   },
+  "resolutions": {
+    "form-data@npm:^4.0.5": "4.0.6",
+    "ws@npm:^7.3.1": "7.5.11",
+    "ws@npm:^7.4.0": "7.5.11",
+    "ws@npm:^8.18.0": "8.21.1",
+    "ws@npm:^8.18.3": "8.21.1"
+  },
   "dependencies": {
-    "@tradejs/cli": "2.0.2",
-    "@tradejs/core": "2.0.2",
-    "@tradejs/types": "2.0.2",
-    "ioredis": "5.8.0"
+    "@tradejs/cli": "2.0.6",
+    "@tradejs/core": "2.0.6",
+    "@tradejs/types": "2.0.6",
+    "ioredis": "5.11.1"
   },
   "devDependencies": {
     "@types/node": "^24",
-    "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^8.57.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",

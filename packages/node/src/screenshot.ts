@@ -294,7 +294,7 @@ export const screenDashboard = async (
             'screenshot page error: %s %sm (%s)',
             symbol,
             interval,
-            error.message || String(error),
+            error instanceof Error ? error.message : String(error),
           );
         });
         page.on('error', (error) => {

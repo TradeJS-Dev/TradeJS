@@ -12,6 +12,7 @@ interface JsonCodeBlockProps {
 const JsonCodeBlock = ({ code, tab }: JsonCodeBlockProps) => {
   const adapter = useMemo(() => {
     return createShikiAdapter<HighlighterGeneric<any, any>>({
+      theme: 'github-dark',
       async load() {
         const { createHighlighter } = await import('shiki');
         return createHighlighter({

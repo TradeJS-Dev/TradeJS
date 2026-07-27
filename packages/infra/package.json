@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/infra",
-  "version": "2.0.2",
+  "version": "2.0.6",
   "description": "MIT-licensed server infrastructure adapters for TradeJS: Redis, Timescale, ML, logging, and IO.",
   "keywords": [
     "tradejs",
@@ -91,17 +91,17 @@
     }
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.10.7",
-    "@grpc/proto-loader": "^0.8.0",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "@tradejs/types": "workspace:^",
     "chalk": "4.1.2",
-    "ioredis": "5.8.0",
-    "pg": "8.16.3",
-    "winston": "3.17.0"
+    "ioredis": "5.11.1",
+    "pg": "8.22.0",
+    "winston": "3.19.0"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",

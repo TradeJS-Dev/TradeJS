@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/connectors",
-  "version": "2.0.2",
+  "version": "2.0.6",
   "description": "MIT-licensed exchange connectors and market data providers for the TradeJS framework.",
   "keywords": [
     "tradejs",
@@ -37,13 +37,13 @@
     "@tradejs/infra": "workspace:^",
     "@tradejs/node": "workspace:^",
     "@tradejs/types": "workspace:^",
-    "bybit-api": "^4.6.2",
+    "bybit-api": "^4.7.1",
     "chalk": "4.1.2",
     "lodash": "^4.18.1"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",

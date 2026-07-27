@@ -1,6 +1,6 @@
 {
   "name": "create-tradejs",
-  "version": "2.0.2",
+  "version": "2.0.6",
   "description": "Create a ready-to-run TradeJS project with local infrastructure and the Web UI.",
   "keywords": [
     "tradejs",
@@ -36,7 +36,7 @@
   "devDependencies": {
     "@types/node": "^24",
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "license": "MIT",
   "author": "aleksnick (https://github.com/aleksnick)"

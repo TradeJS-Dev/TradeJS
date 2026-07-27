@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/types",
-  "version": "2.0.2",
+  "version": "2.0.6",
   "description": "MIT-licensed shared TypeScript contracts for the TradeJS framework.",
   "keywords": [
     "tradejs",
@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",

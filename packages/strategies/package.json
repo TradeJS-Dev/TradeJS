@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/strategies",
-  "version": "2.0.2",
+  "version": "2.0.6",
   "description": "Built-in strategy plugin catalog for the TradeJS TypeScript framework.",
   "keywords": [
     "tradejs",
@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^5.1"
+    "typescript": "^5.9"
   },
   "scripts": {
     "build": "tsup",
