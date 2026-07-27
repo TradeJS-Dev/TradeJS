@@ -20,6 +20,8 @@ const Q4_DERIVATIVES_ETH_CROWDING_PERSISTENCE_MIN = 140;
 const Q4_DERIVATIVES_SOL_FUNDING_Z_SCORE_15M_MAX = 0.2;
 const Q4_DERIVATIVES_BAD_BTC_VS_ALT_RETURN_24H_MAX = -0.014;
 const Q4_DERIVATIVES_BAD_CMC20_TO_CMC100_CHANGE_24H_MAX = -0.0007;
+const BNB_OI_ROTATION_CHANGE_24H_15M_MIN = 0.65;
+const BNB_OI_ROTATION_CHANGE_1H_1H_MAX = -0.28;
 const STRICT_MOMENTUM_ROC1D_MIN = -5.25;
 
 type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
@@ -49,6 +51,8 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   btcVsAltReturn24h: number | null;
   ethCrowdingPersistenceBars: number | null;
   solFundingZScore15m: number | null;
+  bnbOiChangePct24h15m: number | null;
+  bnbOiChangePct1h1h: number | null;
   altDispersion24h: number | null;
   q4DerivativesDirectionSessionOk: boolean | null;
   doubleTapGateFeatures: DoubleTapGateFeatures;
@@ -74,6 +78,8 @@ type DoubleTapGateFeatures = {
   derivativesState: 'aligned' | 'crowded' | 'conflict' | 'neutral' | 'unknown';
   executionSpreadState: 'supportive' | 'neutral' | 'adverse' | 'unknown';
   approvalPocket:
+    | 'bnb_oi_rotation'
+    | 'bnb_oi_rotation_blocked'
     | 'high_precision'
     | 'high_precision_blocked'
     | 'q4_derivatives'
@@ -87,6 +93,8 @@ type DoubleTapGateFeatures = {
   q4DerivativesPocket: boolean;
   q4DerivativesCmcRiskOk: boolean | null;
   q4DerivativesDirectionSessionOk: boolean | null;
+  bnbOiRotationPocket: boolean;
+  bnbOiRotationContextAvailable: boolean;
   strictMomentumApproved: boolean;
   strictMomentumRoc1dOk: boolean | null;
 };
@@ -215,6 +223,8 @@ const buildDoubleTapGateFeatures = ({
   venueSpreadZScore,
   directionalCrowding,
   approvalPocket,
+  bnbOiRotationPocket,
+  bnbOiRotationBlocked,
   highPrecisionPocket,
   highPrecisionApprovalBlocked,
   q4DerivativesPocket,
@@ -224,6 +234,7 @@ const buildDoubleTapGateFeatures = ({
   q4AltDispersionOk,
   q4DerivativesCmcRiskOk,
   q4DerivativesDirectionSessionOk,
+  bnbOiRotationContextAvailable,
   strictMomentumApproved,
   strictMomentumRoc1dOk,
 }: {
@@ -238,6 +249,8 @@ const buildDoubleTapGateFeatures = ({
   venueSpreadZScore: number | null;
   directionalCrowding: boolean;
   approvalPocket: boolean;
+  bnbOiRotationPocket: boolean;
+  bnbOiRotationBlocked: boolean;
   highPrecisionPocket: boolean;
   highPrecisionApprovalBlocked: boolean;
   q4DerivativesPocket: boolean;
@@ -247,6 +260,7 @@ const buildDoubleTapGateFeatures = ({
   q4AltDispersionOk: boolean | null;
   q4DerivativesCmcRiskOk: boolean | null;
   q4DerivativesDirectionSessionOk: boolean | null;
+  bnbOiRotationContextAvailable: boolean;
   strictMomentumApproved: boolean;
   strictMomentumRoc1dOk: boolean | null;
 }): DoubleTapGateFeatures => {
@@ -308,25 +322,31 @@ const buildDoubleTapGateFeatures = ({
     participationState,
     derivativesState,
     executionSpreadState,
-    approvalPocket: highPrecisionPocket
-      ? highPrecisionApprovalBlocked
-        ? 'high_precision_blocked'
-        : 'high_precision'
-      : q4DerivativesPocket
-        ? q4DerivativesApprovalBlocked
-          ? 'q4_derivatives_blocked'
-          : 'q4_derivatives'
-        : approvalPocket && q4ApprovalBlocked
-          ? 'q4_blocked'
-          : approvalPocket
-            ? 'q4'
-            : 'watch',
-    highQualityCadencePocket: highPrecisionPocket,
+    approvalPocket: bnbOiRotationPocket
+      ? bnbOiRotationBlocked
+        ? 'bnb_oi_rotation_blocked'
+        : 'bnb_oi_rotation'
+      : highPrecisionPocket
+        ? highPrecisionApprovalBlocked
+          ? 'high_precision_blocked'
+          : 'high_precision'
+        : q4DerivativesPocket
+          ? q4DerivativesApprovalBlocked
+            ? 'q4_derivatives_blocked'
+            : 'q4_derivatives'
+          : approvalPocket && q4ApprovalBlocked
+            ? 'q4_blocked'
+            : approvalPocket
+              ? 'q4'
+              : 'watch',
+    highQualityCadencePocket: bnbOiRotationPocket,
     defaultApprovalAllowed,
     q4AltDispersionOk,
     q4DerivativesPocket,
     q4DerivativesCmcRiskOk,
     q4DerivativesDirectionSessionOk,
+    bnbOiRotationPocket,
+    bnbOiRotationContextAvailable,
     strictMomentumApproved,
     strictMomentumRoc1dOk,
   };
@@ -476,6 +496,22 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     '15m',
     'fundingZScore',
   ]);
+  const bnbOiChangePct24h15m = getNestedNumber(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'BNBUSDT',
+    'intervals',
+    '15m',
+    'oiChangePct24h',
+  ]);
+  const bnbOiChangePct1h1h = getNestedNumber(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'BNBUSDT',
+    'intervals',
+    '1h',
+    'oiChangePct1h',
+  ]);
   const altDispersion24h = getNestedNumber(baseContext, [
     'relative',
     'btcAltRegime',
@@ -573,13 +609,6 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     executionScore >= MIN_EXECUTION_SCORE_FOR_AI_GATE &&
     lowTouchCount20 != null &&
     lowTouchCount20 >= MIN_LOW_TOUCH_COUNT20_FOR_AI_GATE;
-  const highPrecisionCmcApproval =
-    legacyHighPrecisionShapeCandidate &&
-    baseIndicatorCandidate &&
-    volumeStructureAligned === true &&
-    benchmarkConflict === false &&
-    cmcAltVolumeChange24hPct != null &&
-    cmcAltVolumeChange24hPct <= HIGH_PRECISION_CMC_ALT_VOLUME_CHANGE_MAX;
   const q4CmcApproval =
     legacyShapeCandidate &&
     !legacyHighPrecisionShapeCandidate &&
@@ -610,11 +639,21 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
         ? true
         : false
     : null;
-  const q4DerivativesApproval =
-    q4DerivativesPocket &&
-    q4DerivativesDirectionSessionOk === true &&
-    !q4DerivativesBadCmcPocket;
+  const bnbOiRotationContextAvailable =
+    bnbOiChangePct24h15m != null && bnbOiChangePct1h1h != null;
+  const bnbOiRotationPocket =
+    baseContextAvailable &&
+    bnbOiChangePct24h15m != null &&
+    bnbOiChangePct1h1h != null &&
+    bnbOiChangePct24h15m >= BNB_OI_ROTATION_CHANGE_24H_15M_MIN &&
+    bnbOiChangePct1h1h <= BNB_OI_ROTATION_CHANGE_1H_1H_MAX;
   const softBlockReasons = [
+    ...(!bnbOiRotationContextAvailable
+      ? ['missing_bnb_oi_rotation_context']
+      : []),
+    ...(bnbOiRotationContextAvailable && !bnbOiRotationPocket
+      ? ['bnb_oi_rotation_outside_gate']
+      : []),
     ...(legacyShapeCandidate && sessionWindowPhase !== 'active'
       ? ['inactive_session_window']
       : []),
@@ -678,17 +717,14 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
       : []),
   ];
   const highPrecisionApprovalBlocked =
-    legacyHighPrecisionShapeCandidate &&
-    !highPrecisionCmcApproval &&
-    !q4DerivativesApproval;
+    legacyHighPrecisionShapeCandidate && !bnbOiRotationPocket;
   const q4DerivativesApprovalBlocked =
-    q4DerivativesPocket && !q4DerivativesApproval && !highPrecisionCmcApproval;
+    q4DerivativesPocket && !bnbOiRotationPocket;
   const q4ApprovalBlocked =
     legacyShapeCandidate &&
     !legacyHighPrecisionShapeCandidate &&
-    !q4DerivativesApproval;
-  const approvalSourceAllowed =
-    highPrecisionCmcApproval || q4DerivativesApproval;
+    !bnbOiRotationPocket;
+  const approvalSourceAllowed = bnbOiRotationPocket;
   const approvalBlocked =
     !approvalSourceAllowed &&
     (highPrecisionApprovalBlocked ||
@@ -698,25 +734,14 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     structuralHardBlockReasons.length === 0 &&
     approvalSourceAllowed &&
     !approvalBlocked;
+  const bnbOiRotationBlocked =
+    bnbOiRotationPocket && structuralHardBlockReasons.length > 0;
   const strictMomentumRoc1dOk =
     roc1d == null ? null : roc1d >= STRICT_MOMENTUM_ROC1D_MIN;
-  const strictMomentumRequired =
-    defaultApprovalAllowed && !q4DerivativesApproval;
-  const strictMomentumBlockReasons = [
-    ...(strictMomentumRequired && roc1d == null
-      ? ['missing_roc1d_for_strict_momentum']
-      : []),
-    ...(strictMomentumRequired &&
-    roc1d != null &&
-    roc1d < STRICT_MOMENTUM_ROC1D_MIN
-      ? ['roc1d_below_strict_momentum_gate']
-      : []),
-  ];
+  const strictMomentumBlockReasons: string[] = [];
   const strictMomentumApprovalAllowedNow =
     defaultApprovalAllowed && strictMomentumRoc1dOk === true;
-  const approvalAllowedNow =
-    defaultApprovalAllowed &&
-    (q4DerivativesApproval || strictMomentumApprovalAllowedNow);
+  const approvalAllowedNow = defaultApprovalAllowed;
   const doubleTapGateFeatures = buildDoubleTapGateFeatures({
     signalDirection,
     height,
@@ -729,6 +754,8 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     venueSpreadZScore,
     directionalCrowding,
     approvalPocket: legacyShapeCandidate,
+    bnbOiRotationPocket,
+    bnbOiRotationBlocked,
     highPrecisionPocket: legacyHighPrecisionShapeCandidate,
     highPrecisionApprovalBlocked,
     q4DerivativesPocket,
@@ -744,6 +771,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
         ? null
         : !q4DerivativesBadCmcPocket,
     q4DerivativesDirectionSessionOk,
+    bnbOiRotationContextAvailable,
     strictMomentumApproved: strictMomentumApprovalAllowedNow,
     strictMomentumRoc1dOk,
   });
@@ -751,11 +779,9 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const deterministicQuality =
     structuralHardBlockReasons.length > 0
       ? Math.min(geometryQuality, 2)
-      : highPrecisionCmcApproval
-        ? 5
-        : q4DerivativesApproval
-          ? 4
-          : Math.min(geometryQuality, 3);
+      : bnbOiRotationPocket
+        ? 4
+        : Math.min(geometryQuality, 3);
 
   return {
     ...context,
@@ -785,6 +811,8 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     btcVsAltReturn24h,
     ethCrowdingPersistenceBars,
     solFundingZScore15m,
+    bnbOiChangePct24h15m,
+    bnbOiChangePct1h1h,
     altDispersion24h,
     q4DerivativesDirectionSessionOk,
     doubleTapGateFeatures,
@@ -899,6 +927,8 @@ Additional DoubleTap context:
 - btcVsAltReturn24h=${String(context.btcVsAltReturn24h ?? 'n/a')}
 - ethCrowdingPersistenceBars=${String(context.ethCrowdingPersistenceBars ?? 'n/a')}
 - solFundingZScore15m=${String(context.solFundingZScore15m ?? 'n/a')}
+- bnbOiChangePct24h15m=${String(context.bnbOiChangePct24h15m ?? 'n/a')}
+- bnbOiChangePct1h1h=${String(context.bnbOiChangePct1h1h ?? 'n/a')}
 - altDispersion24h=${String(context.altDispersion24h ?? 'n/a')}
 - doubleTapGatePatternGeometry=${context.doubleTapGateFeatures.patternGeometry}
 - doubleTapGateNecklineBreakout=${context.doubleTapGateFeatures.necklineBreakout}
@@ -913,6 +943,8 @@ Additional DoubleTap context:
 - doubleTapGateQ4DerivativesPocket=${String(context.doubleTapGateFeatures.q4DerivativesPocket)}
 - doubleTapGateQ4DerivativesCmcRiskOk=${String(context.doubleTapGateFeatures.q4DerivativesCmcRiskOk ?? 'n/a')}
 - doubleTapGateQ4DerivativesDirectionSessionOk=${String(context.doubleTapGateFeatures.q4DerivativesDirectionSessionOk ?? 'n/a')}
+- doubleTapGateBnbOiRotationPocket=${String(context.doubleTapGateFeatures.bnbOiRotationPocket)}
+- doubleTapGateBnbOiRotationContextAvailable=${String(context.doubleTapGateFeatures.bnbOiRotationContextAvailable)}
 - doubleTapGateStrictMomentumApproved=${String(context.doubleTapGateFeatures.strictMomentumApproved)}
 - doubleTapGateStrictMomentumRoc1dOk=${String(context.doubleTapGateFeatures.strictMomentumRoc1dOk ?? 'n/a')}
 - deterministicQuality=${String(context.deterministicQuality)}
@@ -928,10 +960,8 @@ Interpretation rules for DoubleTap:
 - Prefer compact breaks close to the neckline; late/extended breaks should be downgraded.
 - Extremely tiny breaks can still be early noise; live approval needs support from baseContext.
 - Treat deterministicQuality and approvalAllowedNow as the normalized local gate result.
-- Local q5 approval needs the high-precision pocket plus active session window, execution score >= 35, lowTouchCount20 >= 1, aligned volume structure, no benchmark conflict, and CMC alt volume change <= 0.5.
-- The legacy structural q4 CMC pocket is retained only as observation context and should not be treated as local approval.
-- Local q4 approval comes from the derivatives reference pocket: BTC underperforms alts by at least 0.9%, ETH crowding persistence >= 140, SOL 15m funding z-score <= 0.2, unless BTC underperforms alts by at least 1.4% while CMC20/CMC100 ratio change <= -0.0007; LONG q4 derivatives approval additionally requires the Europe session, while SHORT q4 derivatives approval has no session-side restriction.
-- Main local approval additionally needs strict momentum confirmation with ROC1D >= -5.25 for q5 approval; the derivatives reference q4 pocket is already momentum/positioning filtered and does not require that ROC gate.
+- Local q4 approval now comes only from the BNB reference OI rotation pocket: BNB 15m oiChangePct24h >= 0.65 and BNB 1h oiChangePct1h <= -0.28.
+- Legacy high-precision CMC, structural q4 CMC, strict ROC1D, and old BTC/ETH/SOL derivatives pockets are retained only as observation context and should not be treated as local approval.
 - A good long has two comparable lows and a clean close above the neckline.
 - A good short has two comparable highs and a clean close below the neckline.
 - Venue spread, trend bias, body strength, and reward-to-volatility are diagnostics for this gate, not strict local blockers.

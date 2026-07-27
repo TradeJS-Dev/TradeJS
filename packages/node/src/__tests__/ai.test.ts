@@ -3831,7 +3831,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          approvalBlockReasons: ['short_disabled'],
+          approvalBlockReasons: ['short_off_hours'],
         }),
       );
 

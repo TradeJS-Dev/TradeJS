@@ -7,13 +7,7 @@
     "top5": {
       "size": 5,
       "fingerprint": "ba5b73456b18",
-      "symbols": [
-        "ETHUSDT",
-        "USD1USDT",
-        "SOLUSDT",
-        "OPNUSDT",
-        "VANAUSDT"
-      ]
+      "symbols": ["ETHUSDT", "USD1USDT", "SOLUSDT", "OPNUSDT", "VANAUSDT"]
     },
     "top10": {
       "size": 10,

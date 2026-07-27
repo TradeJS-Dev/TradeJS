@@ -95,6 +95,31 @@ const baseContext = {
 const createBaseContext = (overrides: Record<string, unknown> = {}) =>
   mergeRecord(baseContext, overrides);
 
+const createBnbOiRotationBaseContext = (
+  overrides: Record<string, unknown> = {},
+) =>
+  createBaseContext(
+    mergeRecord(
+      {
+        derivatives: {
+          referenceContexts: {
+            BNBUSDT: {
+              intervals: {
+                '15m': {
+                  oiChangePct24h: 0.65,
+                },
+                '1h': {
+                  oiChangePct1h: -0.28,
+                },
+              },
+            },
+          },
+        },
+      },
+      overrides,
+    ),
+  );
+
 describe('doubleTapAiAdapter', () => {
   it('copies DoubleTap context into AI payload', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
@@ -134,11 +159,11 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
-  it('approves high precision breakouts when CMC and baseContext support the gate', () => {
+  it('approves the BNB OI rotation pocket', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
-          baseContext: createBaseContext({
+          baseContext: createBnbOiRotationBaseContext({
             regime: {
               session: {
                 sessionPhase: 'off_hours',
@@ -165,7 +190,7 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(5);
+    expect(result?.quality).toBe(4);
     expect(result?.direction).toBe('LONG');
   });
 
@@ -204,7 +229,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
-  it('approves q4 derivatives reference pockets without requiring the strict ROC gate', () => {
+  it('keeps old q4 derivatives reference pockets as observation without BNB rotation', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -277,22 +302,27 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.deterministicQuality).toBe(4);
-    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
     expect(context.strictMomentumBlockReasons).toEqual([]);
+    expect(context.softBlockReasons).toContain(
+      'missing_bnb_oi_rotation_context',
+    );
     expect(context.doubleTapGateFeatures).toMatchObject({
-      approvalPocket: 'q4_derivatives',
-      defaultApprovalAllowed: true,
+      approvalPocket: 'q4_derivatives_blocked',
+      defaultApprovalAllowed: false,
       q4DerivativesPocket: true,
       q4DerivativesCmcRiskOk: true,
       q4DerivativesDirectionSessionOk: true,
+      bnbOiRotationPocket: false,
+      bnbOiRotationContextAvailable: false,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
     });
   });
 
-  it('approves long q4 derivatives reference pockets during the Europe session', () => {
+  it('keeps old long q4 derivatives reference pockets as observation during the Europe session', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -345,16 +375,21 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.deterministicQuality).toBe(4);
-    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
     expect(context.q4DerivativesDirectionSessionOk).toBe(true);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'missing_bnb_oi_rotation_context',
+    );
     expect(context.doubleTapGateFeatures).toMatchObject({
-      approvalPocket: 'q4_derivatives',
-      defaultApprovalAllowed: true,
+      approvalPocket: 'q4_derivatives_blocked',
+      defaultApprovalAllowed: false,
       q4DerivativesPocket: true,
       q4DerivativesCmcRiskOk: true,
       q4DerivativesDirectionSessionOk: true,
+      bnbOiRotationPocket: false,
+      bnbOiRotationContextAvailable: false,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
     });
@@ -706,7 +741,7 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
-  it('keeps q5 high precision pockets when alt dispersion is above the q4 gate', () => {
+  it('downgrades legacy high precision pockets without BNB rotation', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -739,11 +774,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(5);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
-  it('marks strict momentum approval when approved pockets have ROC1D above the strict gate', () => {
+  it('marks strict momentum diagnostics when BNB rotation is approved', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -756,7 +791,7 @@ describe('doubleTapAiAdapter', () => {
       } as any,
       basePayload: {
         additionalIndicators: {
-          baseContext: createBaseContext({
+          baseContext: createBnbOiRotationBaseContext({
             regime: {
               momentum: {
                 roc1d: -5.25,
@@ -769,19 +804,22 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
+    expect(context.deterministicQuality).toBe(4);
     expect(context.approvalAllowedNow).toBe(true);
     expect(context.strictMomentumApprovalAllowedNow).toBe(true);
     expect(context.strictMomentumBlockReasons).toEqual([]);
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
-      approvalPocket: 'high_precision',
+      approvalPocket: 'bnb_oi_rotation',
+      bnbOiRotationPocket: true,
+      bnbOiRotationContextAvailable: true,
       q4AltDispersionOk: true,
       strictMomentumApproved: true,
       strictMomentumRoc1dOk: true,
     });
   });
 
-  it('blocks main approval below the strict ROC1D gate', () => {
+  it('keeps BNB rotation approval below the old strict ROC1D gate', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -794,7 +832,7 @@ describe('doubleTapAiAdapter', () => {
       } as any,
       basePayload: {
         additionalIndicators: {
-          baseContext: createBaseContext({
+          baseContext: createBnbOiRotationBaseContext({
             regime: {
               momentum: {
                 roc1d: -5.26,
@@ -807,20 +845,20 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.deterministicQuality).toBe(4);
+    expect(context.approvalAllowedNow).toBe(true);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
-    expect(context.strictMomentumBlockReasons).toContain(
-      'roc1d_below_strict_momentum_gate',
-    );
+    expect(context.strictMomentumBlockReasons).toEqual([]);
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
-      approvalPocket: 'high_precision',
+      approvalPocket: 'bnb_oi_rotation',
+      bnbOiRotationPocket: true,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
     });
   });
 
-  it('blocks main approval when strict ROC1D is missing', () => {
+  it('keeps BNB rotation approval when strict ROC1D is missing', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -833,7 +871,7 @@ describe('doubleTapAiAdapter', () => {
       } as any,
       basePayload: {
         additionalIndicators: {
-          baseContext: createBaseContext({
+          baseContext: createBnbOiRotationBaseContext({
             regime: {
               momentum: {
                 roc1d: undefined,
@@ -846,14 +884,14 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.deterministicQuality).toBe(4);
+    expect(context.approvalAllowedNow).toBe(true);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
-    expect(context.strictMomentumBlockReasons).toContain(
-      'missing_roc1d_for_strict_momentum',
-    );
+    expect(context.strictMomentumBlockReasons).toEqual([]);
     expect(context.doubleTapGateFeatures).toMatchObject({
       defaultApprovalAllowed: true,
-      approvalPocket: 'high_precision',
+      approvalPocket: 'bnb_oi_rotation',
+      bnbOiRotationPocket: true,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: null,
     });
@@ -1003,7 +1041,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
-  it('keeps high precision pockets when volume is below the old strict threshold', () => {
+  it('downgrades legacy high precision pockets when volume is below the old strict threshold', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -1039,11 +1077,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(5);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
-  it('keeps high precision pockets when reward-to-volatility is below the old strict threshold', () => {
+  it('downgrades legacy high precision pockets when reward-to-volatility is below the old strict threshold', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -1079,11 +1117,11 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(5);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
-  it('keeps q5 high precision pockets despite neutral venue spread', () => {
+  it('downgrades legacy high precision pockets despite neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -1123,8 +1161,8 @@ describe('doubleTapAiAdapter', () => {
       },
     } as any);
 
-    expect(result?.quality).toBe(5);
-    expect(result?.direction).toBe('LONG');
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
   it('downgrades high precision pockets when volume structure is not aligned', () => {

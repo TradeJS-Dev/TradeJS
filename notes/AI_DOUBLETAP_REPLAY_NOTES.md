@@ -1,8 +1,117 @@
 # DoubleTap AI Replay Notes
 
-Last updated: 2026-07-20.
+Last updated: 2026-07-26.
 
 This file keeps internal notes for `ai-train` replay windows and DoubleTap AI gate analysis.
+
+## Post-Refactor BNB OI Gate Rebuild (`2026-07-26`)
+
+Latest logical export:
+
+```bash
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part1.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part2.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part3.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part4.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part5.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part6.jsonl
+data/ai/export/ai-dataset-doubletap-merged-1785011589866-part7.jsonl
+```
+
+Research artifacts:
+
+```bash
+data/ai/output/ai-pocket-search-doubletap-merged-1785011589866-candidates.md
+data/ai/output/ai-pocket-search-doubletap-merged-1785011589866-all-2026-07-25T21-37-18Z.md
+data/ai/output/doubletap-ablation-1785011589866-current.md
+data/ai/output/doubletap-ablation-1785011589866-candidates.md
+data/ai/output/doubletap-ablation-1785011589866-bnb-sensitivity.md
+data/ai/output/doubletap-ablation-1785011589866-bnb-geometry.md
+data/ai/output/doubletap-ai-train-1785011589866-current.json
+data/ai/output/doubletap-evals-1785011589866-current.jsonl
+data/ai/output/doubletap-ai-train-1785011589866-final.json
+data/ai/output/doubletap-evals-1785011589866-final.jsonl
+```
+
+Replay mode:
+
+```bash
+yarn ai-train --file data/ai/export/ai-dataset-doubletap-merged-1785011589866-part1.jsonl --localOnly --json -n 0 --minQuality 4 --terminalWindows=180,90,30,7 --dumpEvaluations data/ai/output/doubletap-evals-1785011589866-current.jsonl --dumpFeatures baseContext
+yarn ai-train --file data/ai/export/ai-dataset-doubletap-merged-1785011589866-part1.jsonl --localOnly --json -n 0 --minQuality 4 --terminalWindows=180,90,30,7 --dumpEvaluations data/ai/output/doubletap-evals-1785011589866-final.jsonl --dumpFeatures baseContext
+```
+
+Interpretation:
+
+- deterministic `AI_MODE=gate` research only; this does not measure provider/LLM behavior
+- `MIN_AI_QUALITY=4`
+- export period: `2025-07-25T15:30:00.000Z` -> `2026-07-24T03:45:00.000Z`
+- rows: `5906`; shards: `7`; `ai-train` source/scanned rows: `5906`; eval dump rows: `5906`; no shard row-loss evidence at this level
+- lineage before: git `67ab05ba0df329af277341664258c30c0de01cbd`, gate `22fe3b7e6fec295b`, config `2a4b21413cd8817b`, context `4186a11d2ef809af`
+- lineage after implementation: git `67ab05ba0df329af277341664258c30c0de01cbd` with local dirty gate changes, gate `eaf408d2beab34d8`, config `2a4b21413cd8817b`, context `4186a11d2ef809af`
+- raw candidate stream remains losing: all-row average PNL `-0.91` per row
+
+Implemented gate decision:
+
+- replace the old live q5/q4 approval sources with one q4 BNB reference OI rotation pocket
+- approve when `baseContext.derivatives.referenceContexts.BNBUSDT.intervals.15m.oiChangePct24h >= 0.65`
+- and `baseContext.derivatives.referenceContexts.BNBUSDT.intervals.1h.oiChangePct1h <= -0.28`
+- keep legacy high-precision CMC, structural q4 CMC, strict ROC1D, and old BTC/ETH/SOL derivatives features only as observation context
+- `q5+` is intentionally empty for this gate; runtime threshold should remain `MIN_AI_QUALITY=4`
+
+Before/after on merge `1785011589866`, q4+:
+
+| Window | Before N | Before WR | Before PF | Before PNL | Before DD | Before LS | Before Trades/Day | After N | After WR | After PF | After PNL | After DD | After LS | After Trades/Day |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full / ~365d | 84 | 45.2% | 1.11 | +48.52 | 151.16 | 8 | 0.231 | 130 | 60.8% | 2.34 | +683.91 | 58.56 | 5 | 0.358 |
+| 180d | 76 | 44.7% | 1.07 | +29.94 | 151.16 | 8 | 0.422 | 130 | 60.8% | 2.34 | +683.91 | 58.56 | 5 | 0.722 |
+| 90d | 72 | 47.2% | 1.20 | +74.35 | 106.75 | 5 | 0.800 | 78 | 59.0% | 2.16 | +371.17 | 57.28 | 5 | 0.867 |
+| 30d | 17 | 47.1% | 1.31 | +21.33 | 41.65 | 2 | 0.570 | 17 | 58.8% | 2.14 | +82.80 | 37.67 | 3 | 0.570 |
+| 7d | 0 | n/a | n/a | +0.00 | 0.00 | 0 | 0.000 | 2 | 50.0% | 1.27 | +3.10 | 11.40 | 1 | 0.302 |
+
+Final q4+ metrics:
+
+- approved: `130`
+- WR: `60.8%`
+- PNL: `+683.91`
+- PF: `2.34`
+- max DD: `58.56`
+- max DD / gross profit: `4.9%`
+- max DD / total profit: `8.6%`
+- max loss streak: `5`
+- approved trades/day: `0.358` full, `0.570` last 30d, `0.302` last 7d
+- losing approved months: `0`
+
+Final direction split:
+
+- LONG: `67` approved, WR `59.7%`, PF `2.35`, PNL `+357.90`, maxDD `41.98`, maxLS `4`, trades/day `0.184`
+- SHORT: `63` approved, WR `61.9%`, PF `2.32`, PNL `+326.01`, maxDD `72.56`, maxLS `7`, trades/day `0.173`
+- unlike the previous gate, LONG is no longer the drawdown source on this export
+
+Sensitivity checks:
+
+- `bnb-065-028` was selected because it kept the strongest risk-adjusted full metrics among rounded BNB candidates: N `130`, WR `60.8%`, PF `2.34`, PNL `+683.91`, DD `58.56`, no losing months
+- `bnb-065-030` was more conservative on the 1h pullback but weaker: N `121`, PNL `+621.59`, DD `71.90`
+- `bnb-080-035` under-traded and introduced a losing month: N `88`, PNL `+434.85`, DD `99.19`
+- XRP/BTC-XRP pockets had attractive full-history metrics but failed the fresh 30d/7d tail, so they were rejected
+- adding the deterministic geometry guard (`height > 0` and `breakoutDistancePct <= 1.4`) did not change BNB metrics; all selected rows already had valid DoubleTap geometry
+
+Code and tests:
+
+- adapter: `packages/strategies/src/DoubleTap/adapters/ai.ts`
+- tests: `packages/strategies/src/DoubleTap/__tests__/ai.test.ts`
+- targeted verification:
+  - `yarn jest packages/strategies/src/DoubleTap/__tests__/ai.test.ts --runInBand`
+  - `yarn workspace @tradejs/strategies build`
+  - `yarn workspace @tradejs/node build`
+  - `yarn workspace @tradejs/cli build`
+  - `yarn jest packages/node/src/__tests__/ai.test.ts --runInBand`
+  - `yarn checks`
+
+Remaining concerns / next tuning:
+
+- last 7d is now positive and non-empty, but only `2` approvals; treat the latest-week cadence as thin
+- `q5+` is empty by design; if a stricter mode is needed later, research should build a new q5 tier rather than raising `MIN_AI_QUALITY`
+- the BNB reference context is now a live dependency for DoubleTap approval, so runtime must keep `DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS=BNB,SOL,TRX,XRP` or another config that includes BNB
 
 ## Post-Refactor Gate Rebuild (`2026-07-20`)
 
