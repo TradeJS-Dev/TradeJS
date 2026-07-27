@@ -76,9 +76,19 @@ type ReverseTrendLineGateFeatures = {
   rangePositionState: 'low' | 'middle' | 'high' | 'unknown';
   highQualityBouncePocket: boolean;
   extremeVolatilityRecoveryPocket: boolean;
-  approvalLane: 'high_score_bounce' | 'extreme_volatility_recovery' | 'watch';
+  derivativesRecoveryPocket: boolean;
+  approvalLane:
+    | 'high_score_bounce'
+    | 'extreme_volatility_recovery'
+    | 'derivatives_recovery'
+    | 'watch';
   deterministicRejectionScore: number | null;
 };
+
+const DERIVATIVES_RECOVERY_SOL_OI_1H_MIN = 0.35;
+const DERIVATIVES_RECOVERY_SOL_OI_4H_MIN = 0.8;
+const DERIVATIVES_RECOVERY_BTC_LIQ_TOTAL_MIN = 5;
+const DERIVATIVES_RECOVERY_XRP_FUNDING_RATE_MIN = 0.0035;
 
 const getReverseTrendlineBiasConflictState = (
   context: Pick<
@@ -271,6 +281,68 @@ const isExtremeVolatilityRecoveryLane = (
   );
 };
 
+const isDerivativesRecoveryLane = (
+  context: Pick<ReverseTrendlineQualityContext, 'hardBlockReasons'> & {
+    approvalBlockReasons: string[];
+    deterministicRejectionScore: number | null;
+  },
+  baseContext: Record<string, unknown>,
+) => {
+  if (
+    context.hardBlockReasons.length > 0 ||
+    context.approvalBlockReasons.length > 0 ||
+    context.deterministicRejectionScore == null ||
+    context.deterministicRejectionScore < 4 ||
+    hasMissingDerivativesRisk(baseContext)
+  ) {
+    return false;
+  }
+
+  const solOiChangePct1h = getNestedNumber(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'SOLUSDT',
+    'intervals',
+    '15m',
+    'oiChangePct1h',
+  ]);
+  const solOiChangePct4h = getNestedNumber(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'SOLUSDT',
+    'intervals',
+    '15m',
+    'oiChangePct4h',
+  ]);
+  const xrpFundingRate = getNestedNumber(baseContext, [
+    'derivatives',
+    'referenceContexts',
+    'XRPUSDT',
+    'intervals',
+    '15m',
+    'fundingRate',
+  ]);
+  const benchmarkLiqTotal = getNestedNumber(baseContext, [
+    'derivatives',
+    'intervals',
+    '15m',
+    'liqTotal',
+  ]);
+
+  const solXrpRecovery =
+    solOiChangePct4h != null &&
+    solOiChangePct4h >= DERIVATIVES_RECOVERY_SOL_OI_4H_MIN &&
+    xrpFundingRate != null &&
+    xrpFundingRate >= DERIVATIVES_RECOVERY_XRP_FUNDING_RATE_MIN;
+  const solBenchmarkLiquidationRecovery =
+    solOiChangePct1h != null &&
+    solOiChangePct1h >= DERIVATIVES_RECOVERY_SOL_OI_1H_MIN &&
+    benchmarkLiqTotal != null &&
+    benchmarkLiqTotal >= DERIVATIVES_RECOVERY_BTC_LIQ_TOTAL_MIN;
+
+  return solXrpRecovery || solBenchmarkLiquidationRecovery;
+};
+
 const getBaseContextQualityPromotion = (
   context: ReverseTrendlineQualityContext & {
     deterministicRejectionScore: number | null;
@@ -426,6 +498,7 @@ const buildReverseTrendLineGateFeatures = ({
   deterministicRejectionScore,
   approvalLane,
   extremeVolatilityRecoveryPocket,
+  derivativesRecoveryPocket,
 }: {
   context: ReverseTrendlineQualityContext & { deterministicQuality: number };
   signal: Parameters<typeof buildReverseTrendlineAiContext>[0];
@@ -433,6 +506,7 @@ const buildReverseTrendLineGateFeatures = ({
   deterministicRejectionScore: number | null;
   approvalLane: ReverseTrendLineGateFeatures['approvalLane'];
   extremeVolatilityRecoveryPocket: boolean;
+  derivativesRecoveryPocket: boolean;
 }): ReverseTrendLineGateFeatures => {
   const baseContext = isRecord(signal.additionalIndicators?.baseContext)
     ? signal.additionalIndicators.baseContext
@@ -528,6 +602,7 @@ const buildReverseTrendLineGateFeatures = ({
       (bounceAcceptance === 'rejection' ||
         bounceAcceptance === 'follow_through'),
     extremeVolatilityRecoveryPocket,
+    derivativesRecoveryPocket,
     approvalLane,
     deterministicRejectionScore,
   };
@@ -770,6 +845,17 @@ const buildReverseTrendlineAiContext = (signal: {
           baseContext,
         )
       : false;
+  const derivativesRecoveryPocket =
+    baseContext != null
+      ? isDerivativesRecoveryLane(
+          {
+            hardBlockReasons,
+            approvalBlockReasons,
+            deterministicRejectionScore,
+          },
+          baseContext,
+        )
+      : false;
   const baseReverseTrendLineGateFeatures = buildReverseTrendLineGateFeatures({
     context: {
       ...structural,
@@ -782,6 +868,7 @@ const buildReverseTrendlineAiContext = (signal: {
     deterministicRejectionScore,
     approvalLane: 'watch',
     extremeVolatilityRecoveryPocket,
+    derivativesRecoveryPocket,
   });
   const highScoreBouncePocket =
     baseReverseTrendLineGateFeatures.highQualityBouncePocket &&
@@ -792,7 +879,9 @@ const buildReverseTrendlineAiContext = (signal: {
       ? 'high_score_bounce'
       : extremeVolatilityRecoveryPocket
         ? 'extreme_volatility_recovery'
-        : 'watch';
+        : derivativesRecoveryPocket
+          ? 'derivatives_recovery'
+          : 'watch';
   const approvalAllowedNow = approvalLane !== 'watch';
   const finalApprovalBlockReasons =
     !approvalAllowedNow &&
@@ -1007,6 +1096,7 @@ Additional ReverseTrendLine context:
 - reverseTrendLineGateRangePositionState=${context.reverseTrendLineGateFeatures.rangePositionState}
 - reverseTrendLineGateHighQualityBouncePocket=${String(context.reverseTrendLineGateFeatures.highQualityBouncePocket)}
 - reverseTrendLineGateExtremeVolatilityRecoveryPocket=${String(context.reverseTrendLineGateFeatures.extremeVolatilityRecoveryPocket)}
+- reverseTrendLineGateDerivativesRecoveryPocket=${String(context.reverseTrendLineGateFeatures.derivativesRecoveryPocket)}
 - reverseTrendLineGateApprovalLane=${context.reverseTrendLineGateFeatures.approvalLane}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}

@@ -232,6 +232,87 @@ describe('reverseTrendLineAiAdapter', () => {
     });
   });
 
+  it('approves clean confirmed derivative-recovery bounce pockets below the strict high-score lane', () => {
+    const result = reverseTrendLineAiAdapter.buildPayload?.({
+      signal: {
+        direction: 'LONG',
+        prices: {
+          currentPrice: 100.3,
+        },
+        additionalIndicators: {
+          touches: 4,
+          distance: 120,
+          currentCandle: {
+            timestamp: 1_700_000_000_000,
+            open: 99.8,
+            close: 100.3,
+            high: 100.5,
+            low: 99.5,
+          },
+          reverseTrendlineTiming: {
+            entryTiming: 'ready_rejection',
+          },
+          trendLine: {
+            mode: 'lows',
+            points: [
+              { timestamp: 1_699_999_100_000, value: 100 },
+              { timestamp: 1_700_000_000_000, value: 100 },
+            ],
+          },
+        },
+      } as any,
+      basePayload: buildBasePayload(
+        buildBaseContext({
+          derivatives: {
+            summary: {
+              pressure: 'neutral',
+              riskFlags: [],
+            },
+            intervals: {
+              '15m': {
+                liqTotal: 6,
+              },
+            },
+            referenceContexts: {
+              SOLUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct1h: 0.4,
+                    oiChangePct4h: 0.9,
+                  },
+                },
+              },
+              XRPUSDT: {
+                intervals: {
+                  '15m': {
+                    fundingRate: 0.004,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+    } as any);
+
+    expect(
+      (result as any).additionalIndicators.reverseTrendlineContext,
+    ).toMatchObject({
+      approvalAllowedNow: true,
+      deterministicQuality: 4,
+      deterministicRejectionScore: 4,
+      approvalBlockReasons: [],
+    });
+    expect(
+      (result as any).additionalIndicators.reverseTrendlineContext
+        .reverseTrendLineGateFeatures,
+    ).toMatchObject({
+      approvalLane: 'derivatives_recovery',
+      derivativesRecoveryPocket: true,
+      highQualityBouncePocket: false,
+    });
+  });
+
   it('recovers the narrowed base-context extreme-volatility pocket', () => {
     const result = reverseTrendLineAiAdapter.buildPayload?.({
       signal: {
