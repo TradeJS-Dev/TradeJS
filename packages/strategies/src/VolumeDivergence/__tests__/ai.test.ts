@@ -1426,6 +1426,101 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('allows weak divergence amplitude only inside the derivatives regime pocket', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.3,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: derivativesRegimePocket(),
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        deterministicQuality: 2,
+        derivativesRegimePocket: true,
+        structuralHardBlockReasons: ['weak_divergence_amplitude'],
+        maxAllowedQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 4,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        quality: 4,
+        needRetest: false,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+      }),
+    );
+  });
+
+  it('does not let the derivatives regime pocket override missing rebound', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 94,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+        riskRatio: 2,
+      },
+      additionalIndicators: {
+        derivativesContext: derivativesRegimePocket(),
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        derivativesRegimePocket: true,
+        structuralHardBlockReasons: ['no_rebound_from_pivot'],
+        approvalAllowedNow: false,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 4,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 4,
+        needRetest: true,
+        takeProfitPrice: null,
+        stopLossPrice: null,
+      }),
+    );
+  });
+
   it('blocks the derivatives regime pocket when XRP funding z-score is above threshold', () => {
     const signal = makeSignal({
       additionalIndicators: {
@@ -1469,6 +1564,44 @@ describe('volumeDivergenceAiAdapter', () => {
       expect.objectContaining({
         deterministicQuality: 3,
         xrpFundingZScore15m: -1.19,
+        derivativesRegimePocket: false,
+        maxAllowedQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('blocks the derivatives regime pocket when BTC open-interest flush is too weak', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.85,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: derivativesRegimePocket({
+          intervals: {
+            '15m': {
+              oiChangePct1h: -0.24,
+            },
+          },
+        }),
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        deterministicQuality: 3,
+        btcOiChangePct1h15m: -0.24,
         derivativesRegimePocket: false,
         maxAllowedQuality: 3,
         approvalAllowedNow: false,

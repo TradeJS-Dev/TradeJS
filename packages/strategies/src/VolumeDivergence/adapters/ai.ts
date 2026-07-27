@@ -44,7 +44,7 @@ const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - If \`payload.additionalIndicators.baseContext.derivatives\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
 
-const BTC_OI_CHANGE_PCT_1H_15M_MAX = -0.32;
+const BTC_OI_CHANGE_PCT_1H_15M_MAX = -0.25;
 const SOL_OPEN_INTEREST_15M_MIN = 10_100_000;
 const XRP_FUNDING_Z_SCORE_15M_MAX = -1.2;
 
@@ -246,6 +246,10 @@ const isAtMost = (value: number | null, threshold: number) =>
 
 const isInRange = (value: number | null, min: number, max: number) =>
   value != null && value >= min && value <= max;
+
+const hasOnlyWeakAmplitudeBlock = (reasons: HardBlockReason[]) =>
+  reasons.length > 0 &&
+  reasons.every((reason) => reason === 'weak_divergence_amplitude');
 
 const getNestedRecord = (
   source: Record<string, unknown> | null,
@@ -1117,10 +1121,13 @@ const getVolumeDivergenceContext = (
   const maxAllowedQuality = derivativesRegimePocket
     ? Math.max(deterministicQuality, 4)
     : deterministicQuality;
+  const derivativesPocketBlockAllowed =
+    hardBlockReasons.length === 0 ||
+    hasOnlyWeakAmplitudeBlock(hardBlockReasons);
   const approvalAllowedNow =
-    hardBlockReasons.length === 0 &&
     confirmationReady &&
     derivativesRegimePocket &&
+    derivativesPocketBlockAllowed &&
     maxAllowedQuality >= 4;
 
   return {
