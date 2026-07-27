@@ -808,7 +808,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('keeps q5 Asia SHORT approval above the CMC capitulation threshold', () => {
+  it('keeps q5 Asia SHORT approval above the defensive CMC floor', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -829,7 +829,7 @@ describe('trendShiftAiAdapter', () => {
                 rewardToVolatility: 9,
               },
               relative: {
-                cmcFearGreedValue: 19,
+                cmcFearGreedValue: 29,
                 cmcFearGreedStale: false,
                 marketBreadthStale: false,
               },
@@ -844,7 +844,7 @@ describe('trendShiftAiAdapter', () => {
                 advancers: 2,
               },
               cmcFearGreed: {
-                value: 19,
+                value: 29,
                 stale: false,
               },
             },
@@ -977,6 +977,231 @@ describe('trendShiftAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('keeps q5 approval in watch mode when CMC fear/greed is below the defensive floor', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            relative: {
+              cmcFearGreed: {
+                value: 28,
+                valueChange7d: 0,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'CMC fear/greed is below the defensive TrendShift approval floor, so keep the flip in watch mode',
+    });
+  });
+
+  it('keeps q5 approval in watch mode when CMC fear/greed deteriorates over 7d', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            relative: {
+              cmcFearGreed: {
+                value: 29,
+                valueChange7d: -1,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'CMC fear/greed is deteriorating over 7d, so keep the flip in watch mode',
+    });
+  });
+
+  it('recovers narrow neutral-context SHORT CMC liquidity-chop pockets', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              trend: {
+                contextMa: {
+                  contextBias: 'neutral',
+                },
+              },
+            },
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 5,
+              },
+              relative: {
+                cmcExchangeLiquidityVolumeChange24hPct: -0.05,
+                cmcExchangeLiquidityStale: false,
+              },
+            },
+            relative: {
+              cmcFearGreed: {
+                value: 45,
+                valueChange7d: 0,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'flat_or_mixed',
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('does not let neutral-context SHORT CMC liquidity recovery override deteriorating fear/greed', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              trend: {
+                contextMa: {
+                  contextBias: 'neutral',
+                },
+              },
+            },
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 5,
+              },
+              relative: {
+                cmcExchangeLiquidityVolumeChange24hPct: -0.05,
+                cmcExchangeLiquidityStale: false,
+              },
+            },
+            relative: {
+              cmcFearGreed: {
+                value: 45,
+                valueChange7d: -1,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'flat_or_mixed',
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect(getRejectReason(result)).toContain(
+      'CMC fear/greed is deteriorating over 7d',
+    );
   });
 
   it('approves strong confirmed flips', () => {

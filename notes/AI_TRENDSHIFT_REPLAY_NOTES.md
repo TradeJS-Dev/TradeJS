@@ -1,6 +1,50 @@
 # AI TrendShift Replay Notes
 
-Last updated: 2026-07-19
+Last updated: 2026-07-26
+
+### 2026-07-26 - TrendShift CMC Fear/Greed Cut + Neutral SHORT Recovery
+
+Export: `1785011733587` (`7` parts), rows `2524`, window `2025-07-25T08:30:00.000Z` .. `2026-07-24T10:00:00.000Z`, lag `1.82d`.
+Lineage: git `67ab05ba0df329af277341664258c30c0de01cbd` dirty, gate `6f51ed88d28f53eb` after / `b53194c26d787379` before, config `33cceb0134b5566b`, context `4186a11d2ef809af`, command `MIN_AI_QUALITY=4`, effective approvals q5-only, `AI_MODE=local-deterministic`.
+Change: added a CMC Fear&Greed defensive watch-mode cut when `baseContext.relative.cmcFearGreed.value < 29` or `valueChange7d < 0`; missing/stale Fear&Greed does not block. Added a narrow SHORT neutral-context recovery only when CMC exchange-liquidity is in the tested choppy band, `rewardToVolatility >= 0.25`, and the only blockers are mixed/neutral OI, defensive reward-to-volatility, and CMC exchange-liquidity chop. It does not override low Fear&Greed, negative 7d Fear&Greed change, crowded-long pressure, extreme ATR/high-BB, low-BB, BNB OI, or other hard blockers.
+
+| Period | Gate | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full | before | 210 | 47.1% | 1.10 | 0.62 | 0.96 | 0.13 | 91.42 | 688.81 | 25 | 0.58 |
+| full | after | 139 | 74.1% | 6.67 | 9.20 | 26.88 | 30.89 | 865.47 | 28.09 | 4 | 0.38 |
+| 180d | before | 119 | 25.2% | 0.31 | -8.63 | -8.79 | -1.70 | -578.88 | 688.81 | 25 | 0.66 |
+| 180d | after | 55 | 58.2% | 2.82 | 4.15 | 9.80 | 12.34 | 170.85 | 28.09 | 4 | 0.31 |
+| 90d | before | 8 | 50.0% | 1.36 | 0.84 | 1.41 | 1.80 | 13.56 | 30.62 | 3 | 0.09 |
+| 90d | after | 13 | 76.9% | 4.17 | 4.44 | 10.91 | 18.36 | 76.46 | 16.92 | 2 | 0.14 |
+| 30d | before | 3 | 0.0% | 0.00 | -49.67 | -6.00 | -12.18 | -30.62 | 30.62 | 3 | 0.10 |
+| 30d | after | 6 | 100.0% | inf | 15.91 | n/a | n/a | 67.52 | 0.00 | 0 | 0.20 |
+| 7d | before | 0 | n/a | n/a | n/a | n/a | n/a | 0.00 | 0.00 | 0 | 0.00 |
+| 7d | after | 2 | 100.0% | inf | 11.28 | n/a | n/a | 16.30 | 0.00 | 0 | 0.30 |
+
+Direction split after the change:
+
+| Direction | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| LONG | 52 | 90.4% | 20.49 | 10.00 | 40.11 | 44.03 | 470.78 | 10.88 | 2 |
+| SHORT | 87 | 64.4% | 4.07 | 5.12 | 13.18 | 14.09 | 394.69 | 28.09 | 4 |
+
+Monthly read: the approved stream has no February or June approvals; July improves from `3 / -30.62` to `6 / +67.52`. Worst remaining approved month is small (`2026-05: 7 / +8.94`; no negative approved month in this export after the cut).
+
+Previous-commit gate check: tested `f4112a0b`, `cfadbe10`, `02f9cab4`, `24129a3e`, `41434aac`, `405dc40e`, `0c46be17`, and `96aeef0e` on the same export. The best old full-history gate was `96aeef0e` (`176` approvals, WR `63.1%`, PF `3.72`, PnL `861.89`, MaxDD `145.61`), but it still had `180d -23.51`, `90d -83.98`, and `30d -128.16`, so reverting to an old gate does not solve the refactored tail.
+
+Risk-adjusted read: Sharpe, Sortino, and Calmar all move from weak/negative to strongly positive on full/180d/90d, while maxDD collapses from `688.81` to `28.09`. The 30d/7d windows have no losses, so PF is reported as `inf` and Sortino/Calmar are not meaningful there.
+Decision: implement. Recommended runtime threshold remains `MIN_AI_QUALITY=5`; q3+/q4+/q5+ are identical in local deterministic output because live approvals are intentionally q5-only.
+Residual risk: the recovery pocket adds recent trades but its standalone full-history edge is modest, so the next export must revalidate the SHORT neutral-context CMC-liquidity recovery separately from the broader CMC Fear&Greed cut.
+Next check: rerun `ai-train --localOnly --terminalWindows=180,90,30,7` on the next TrendShift export and compare the recovery-added rows against strict CMC-cut-only rows.
+
+Verification commands:
+
+```bash
+yarn unit packages/strategies/src/TrendShift/__tests__/ai.test.ts --runInBand
+yarn workspace @tradejs/strategies build && yarn workspace @tradejs/node build && yarn workspace @tradejs/cli build
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1785011733587-part1.jsonl --localOnly --json -n 0 --terminalWindows=180,90,30,7 --dumpEvaluations /tmp/trendshift-1785011733587-final-evals.jsonl --dumpFeatures baseContext
+yarn checks
+```
 
 ### 2026-07-19 - TrendShift BNB 1h OI4h Risk Block
 

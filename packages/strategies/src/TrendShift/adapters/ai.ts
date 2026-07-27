@@ -134,6 +134,7 @@ Additional TrendShift context:
 - btcVsAltReturn1h=${String(context.btcVsAltReturn1h ?? 'n/a')}
 - cmcFearGreedValue=${String(context.cmcFearGreedValue ?? 'n/a')}
 - cmcFearGreedValueChange24h=${String(context.cmcFearGreedValueChange24h ?? 'n/a')}
+- cmcFearGreedValueChange7d=${String(context.cmcFearGreedValueChange7d ?? 'n/a')}
 - derivatives1hLiqShort=${String(context.derivatives1hLiqShort ?? 'n/a')}
 - btcAltRegime=${context.btcAltRegime ?? 'n/a'}
 - cmcExchangeLiquidityVolumeChange24hPct=${String(context.cmcExchangeLiquidityVolumeChange24hPct ?? 'n/a')}
@@ -168,10 +169,13 @@ Additional TrendShift context:
 - bnbReferenceOiChangePct4h=${String(context.bnbReferenceOiChangePct4h ?? 'n/a')}
 - bnbReferenceOiExpansionRisk=${String(context.bnbReferenceOiExpansionRisk)}
 - cmcExchangeLiquidityVolumeChangeRisk=${String(context.cmcExchangeLiquidityVolumeChangeRisk)}
+- cmcFearGreedLowValueRisk=${String(context.cmcFearGreedLowValueRisk)}
+- cmcFearGreedWeeklyDeteriorationRisk=${String(context.cmcFearGreedWeeklyDeteriorationRisk)}
 - q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - q4UsClosingOiConfirmationRecoveryCandidate=${String(context.q4UsClosingOiConfirmationRecoveryCandidate)}
 - q4ShortBreadthShockLiquidationRecoveryCandidate=${String(context.q4ShortBreadthShockLiquidationRecoveryCandidate)}
 - q4LongAltLeadershipRecoveryCandidate=${String(context.q4LongAltLeadershipRecoveryCandidate)}
+- q4ShortCmcLiquidityNeutralContextRecoveryCandidate=${String(context.q4ShortCmcLiquidityNeutralContextRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -210,9 +214,11 @@ Interpretation rules for TrendShift:
 - For LONG, BTC-led or risk-off BTC/alt regime is watch-only even when flip geometry is q5-strong.
 - For LONG, broad-market squeeze clusters are watch-only when breadth is already extreme, BTC is leading alts, and benchmark derivatives show a short flush.
 - If CMC major-exchange liquidity 24h change is in the historically choppy bands (-0.1, 0) or [0.1, 0.3), keep the flip in watch mode.
+- If CMC fear/greed is below 29 or its 7d change is negative, keep the flip in watch mode; this is a broad market-sentiment risk cut.
 - A narrow q4 recovery is allowed during the US closing window only when the sole blocker is missing OI expansion on an otherwise liquidation-supported US-session flush.
 - A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override existing hard blockers or the low-Bollinger-width defensive cut.
 - A narrow LONG q4 recovery may pass only when alt leadership is clear (btcVsAltReturn24h <= -0.00503054 and btcVsAltReturn1h <= -0.00581403), fear/greed is not falling hard, and the only blockers are the tested OI/benchmark-derivatives or defensive reward-to-volatility blockers.
+- A narrow SHORT q4 recovery may pass in neutral context when the only blockers are mixed/neutral OI, defensive reward-to-volatility, and CMC exchange-liquidity chop, but it must not override low Fear&Greed, weekly Fear&Greed deterioration, crowded-long pressure, extreme ATR/high-BB, or low-Bollinger-width cuts.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

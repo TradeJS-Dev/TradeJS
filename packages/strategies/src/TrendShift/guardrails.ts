@@ -77,10 +77,13 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   longBtcAltRegimeRisk: boolean;
   longBroadMarketShortFlushRisk: boolean;
   cmcExchangeLiquidityVolumeChangeRisk: boolean;
+  cmcFearGreedLowValueRisk: boolean;
+  cmcFearGreedWeeklyDeteriorationRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   q4UsClosingOiConfirmationRecoveryCandidate: boolean;
   q4ShortBreadthShockLiquidationRecoveryCandidate: boolean;
   q4LongAltLeadershipRecoveryCandidate: boolean;
+  q4ShortCmcLiquidityNeutralContextRecoveryCandidate: boolean;
   breakoutState: string | null;
   swingBias: string | null;
   volumeRel20: number | null;
@@ -97,6 +100,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   btcVsAltReturn1h: number | null;
   cmcFearGreedValue: number | null;
   cmcFearGreedValueChange24h: number | null;
+  cmcFearGreedValueChange7d: number | null;
   derivatives1hLiqShort: number | null;
   bnbReferenceOiChangePct4h: number | null;
   btcAltRegime: string | null;
@@ -134,6 +138,8 @@ const SHORT_ASIA_LONG_FLUSH_LOW_CMC_FEAR_GREED_MAX = 18;
 const SHORT_ASIA_LONG_FLUSH_ADVANCERS_MAX = 2;
 const BNB_REFERENCE_OI_CHANGE_PCT_4H_RISK_MIN = 0;
 const DERIVATIVES_DATA_UNAVAILABLE_STRESS_CMC_FEAR_GREED_MAX = 25;
+const CMC_FEAR_GREED_APPROVAL_MIN = 29;
+const CMC_FEAR_GREED_VALUE_CHANGE_7D_APPROVAL_MIN = 0;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -572,6 +578,9 @@ export const buildTrendShiftGuardrailContext = ({
     gateRelative?.cmcFearGreedValueChange24h ??
       baseCmcFearGreed?.valueChange24h,
   );
+  const cmcFearGreedValueChange7d = asFiniteNumber(
+    baseCmcFearGreed?.valueChange7d,
+  );
   const cmcFearGreedStale =
     gateRelative?.cmcFearGreedStale === true ||
     baseCmcFearGreed?.stale === true;
@@ -938,6 +947,14 @@ export const buildTrendShiftGuardrailContext = ({
       cmcExchangeLiquidityVolumeChange24hPct < 0) ||
       (cmcExchangeLiquidityVolumeChange24hPct >= 0.1 &&
         cmcExchangeLiquidityVolumeChange24hPct < 0.3));
+  const cmcFearGreedLowValueRisk =
+    cmcFearGreedStale !== true &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue < CMC_FEAR_GREED_APPROVAL_MIN;
+  const cmcFearGreedWeeklyDeteriorationRisk =
+    cmcFearGreedStale !== true &&
+    cmcFearGreedValueChange7d != null &&
+    cmcFearGreedValueChange7d < CMC_FEAR_GREED_VALUE_CHANGE_7D_APPROVAL_MIN;
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -1019,6 +1036,21 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('cmc_exchange_liquidity_volume_change_risk');
   }
 
+  if (
+    deterministicQuality >= 4 &&
+    cmcFearGreedLowValueRisk &&
+    !shortAsiaLongFlushLowCmcBreadthRisk &&
+    !derivativesDataUnavailableStressRisk
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('cmc_fear_greed_low_value_risk');
+  }
+
+  if (deterministicQuality >= 4 && cmcFearGreedWeeklyDeteriorationRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('cmc_fear_greed_weekly_deterioration_risk');
+  }
+
   const trendShiftGateFeaturesRecoveryAllowedReasons = [
     'neutral_derivatives_pressure',
     'us_short_oi_not_expanding',
@@ -1085,12 +1117,34 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.every((reason) =>
       q4LongAltLeadershipRecoveryAllowedReasons.includes(reason),
     );
+  const q4ShortCmcLiquidityNeutralContextRecoveryAllowedReasons = [
+    'flat_or_mixed_oi',
+    'neutral_derivatives_pressure',
+    'reward_to_volatility_below_defensive_threshold',
+    'cmc_exchange_liquidity_volume_change_risk',
+  ];
+  const q4ShortCmcLiquidityNeutralContextRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.signalDirection === 'SHORT' &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    baseContext?.regime?.trend?.contextMa?.contextBias === 'neutral' &&
+    cmcExchangeLiquidityVolumeChangeRisk &&
+    !cmcFearGreedLowValueRisk &&
+    !cmcFearGreedWeeklyDeteriorationRisk &&
+    rewardToVolatility != null &&
+    rewardToVolatility >= 0.25 &&
+    hardBlockReasons.length > 0 &&
+    hardBlockReasons.every((reason) =>
+      q4ShortCmcLiquidityNeutralContextRecoveryAllowedReasons.includes(reason),
+    );
 
   if (
     q4TrendShiftGateFeaturesRecoveryCandidate ||
     q4UsClosingOiConfirmationRecoveryCandidate ||
     q4ShortBreadthShockLiquidationRecoveryCandidate ||
-    q4LongAltLeadershipRecoveryCandidate
+    q4LongAltLeadershipRecoveryCandidate ||
+    q4ShortCmcLiquidityNeutralContextRecoveryCandidate
   ) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
@@ -1136,10 +1190,13 @@ export const buildTrendShiftGuardrailContext = ({
     longBtcAltRegimeRisk,
     longBroadMarketShortFlushRisk,
     cmcExchangeLiquidityVolumeChangeRisk,
+    cmcFearGreedLowValueRisk,
+    cmcFearGreedWeeklyDeteriorationRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     q4UsClosingOiConfirmationRecoveryCandidate,
     q4ShortBreadthShockLiquidationRecoveryCandidate,
     q4LongAltLeadershipRecoveryCandidate,
+    q4ShortCmcLiquidityNeutralContextRecoveryCandidate,
     breakoutState,
     swingBias,
     volumeRel20,
@@ -1156,6 +1213,7 @@ export const buildTrendShiftGuardrailContext = ({
     btcVsAltReturn1h,
     cmcFearGreedValue,
     cmcFearGreedValueChange24h,
+    cmcFearGreedValueChange7d,
     derivatives1hLiqShort,
     bnbReferenceOiChangePct4h,
     btcAltRegime,
@@ -1240,6 +1298,10 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the LONG flip is chasing a broad-market squeeze while BTC is leading alts and benchmark derivatives show a short flush, so keep it in watch mode';
     case 'cmc_exchange_liquidity_volume_change_risk':
       return 'major-exchange liquidity change is in a historically choppy CMC band, so keep the flip in watch mode';
+    case 'cmc_fear_greed_low_value_risk':
+      return 'CMC fear/greed is below the defensive TrendShift approval floor, so keep the flip in watch mode';
+    case 'cmc_fear_greed_weekly_deterioration_risk':
+      return 'CMC fear/greed is deteriorating over 7d, so keep the flip in watch mode';
     default:
       return reason;
   }
