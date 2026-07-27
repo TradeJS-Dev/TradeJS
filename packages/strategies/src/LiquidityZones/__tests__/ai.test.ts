@@ -63,6 +63,45 @@ const withLongDirectSupport = (baseContext: Record<string, any> = {}) => ({
   },
 });
 
+const withShortReferenceOiRotation = (
+  baseContext: Record<string, any> = {},
+  {
+    trxOiAcceleration = -0.3,
+    bnbOiChangePct24h = 1.8,
+  }: {
+    trxOiAcceleration?: number;
+    bnbOiChangePct24h?: number;
+  } = {},
+) => ({
+  ...baseContext,
+  derivatives: {
+    ...(baseContext.derivatives ?? {}),
+    referenceContexts: {
+      ...(baseContext.derivatives?.referenceContexts ?? {}),
+      TRXUSDT: {
+        ...(baseContext.derivatives?.referenceContexts?.TRXUSDT ?? {}),
+        summary: {
+          ...(baseContext.derivatives?.referenceContexts?.TRXUSDT?.summary ??
+            {}),
+          oiAcceleration: trxOiAcceleration,
+        },
+      },
+      BNBUSDT: {
+        ...(baseContext.derivatives?.referenceContexts?.BNBUSDT ?? {}),
+        intervals: {
+          ...(baseContext.derivatives?.referenceContexts?.BNBUSDT?.intervals ??
+            {}),
+          '15m': {
+            ...(baseContext.derivatives?.referenceContexts?.BNBUSDT
+              ?.intervals?.['15m'] ?? {}),
+            oiChangePct24h: bnbOiChangePct24h,
+          },
+        },
+      },
+    },
+  },
+});
+
 describe('liquidityZonesAiAdapter', () => {
   it('approves clean pivot-zone retests', () => {
     const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
@@ -216,6 +255,197 @@ describe('liquidityZonesAiAdapter', () => {
       direction: null,
       quality: 3,
       approved: false,
+    });
+  });
+
+  it('approves rounded SHORT reference OI rotation pocket', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withShortReferenceOiRotation({
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    oiChangePct24h: -2.5,
+                    fundingZScore: -0.5,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects SHORT reference OI rotation above the TRX acceleration boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withShortReferenceOiRotation(
+          {},
+          {
+            trxOiAcceleration: -0.29,
+          },
+        ),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('rejects SHORT reference OI rotation below the BNB OI boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withShortReferenceOiRotation(
+          {},
+          {
+            bnbOiChangePct24h: 1.79,
+          },
+        ),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('rejects SHORT reference OI rotation when BNB reference is missing', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          derivatives: {
+            referenceContexts: {
+              TRXUSDT: {
+                summary: {
+                  oiAcceleration: -0.3,
+                },
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('does not apply SHORT reference OI rotation to long retests', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withShortReferenceOiRotation(),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'long_liquidity_retest_requires_recalibration',
+      ),
     });
   });
 

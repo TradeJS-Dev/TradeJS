@@ -125,11 +125,14 @@ Additional Liquidity Zones context:
 - ethReferenceOiChangePct4h=${String(context.ethReferenceOiChangePct4h ?? 'n/a')}
 - ethReferenceOiChangePct24h=${String(context.ethReferenceOiChangePct24h ?? 'n/a')}
 - ethReferenceFundingZScore=${String(context.ethReferenceFundingZScore ?? 'n/a')}
+- trxReferenceOiAcceleration=${String(context.trxReferenceOiAcceleration ?? 'n/a')}
+- bnbReferenceOiChangePct24h=${String(context.bnbReferenceOiChangePct24h ?? 'n/a')}
 - solReferenceOiChangePct24h=${String(context.solReferenceOiChangePct24h ?? 'n/a')}
 - solReferenceFundingZScore=${String(context.solReferenceFundingZScore ?? 'n/a')}
 - transitionStructureExpansionPocket=${String(context.transitionStructureExpansionPocket)}
 - ethReferenceStressPocket=${String(context.ethReferenceStressPocket)}
 - solReferenceStressPocket=${String(context.solReferenceStressPocket)}
+- shortReferenceOiRotationPocket=${String(context.shortReferenceOiRotationPocket)}
 - ethReferenceWeakNonStressPocket=${String(context.ethReferenceWeakNonStressPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
@@ -145,7 +148,7 @@ Interpretation rules for Liquidity Zones:
 - A close fully through the level marks the zone crossed; crossed zones are not live-entry candidates.
 - Top-level derivatives context is BTC benchmark evidence; target-symbol derivatives require targetContext/targetDerived.
 - Do not treat derivatives points, rows, or loaded-history size as approval evidence.
-- A calibrated transition-structure pocket, ETH reference stress pocket, or SOL reference stress pocket can approve a structurally valid retest.
+- A calibrated transition-structure pocket, ETH reference stress pocket, SOL reference stress pocket, or SHORT reference OI rotation pocket can approve a structurally valid retest.
 - LONG approvals need at least two direct MA/MACD/OBV alignments after calibration.
 - Moderate ETH reference OI weakness blocks approval unless the deeper ETH reference stress pocket is active.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.

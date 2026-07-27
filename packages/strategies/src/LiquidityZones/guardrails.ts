@@ -42,11 +42,14 @@ export type LiquidityZonesGuardrailContext =
     ethReferenceOiChangePct4h: number | null;
     ethReferenceOiChangePct24h: number | null;
     ethReferenceFundingZScore: number | null;
+    trxReferenceOiAcceleration: number | null;
+    bnbReferenceOiChangePct24h: number | null;
     solReferenceOiChangePct24h: number | null;
     solReferenceFundingZScore: number | null;
     transitionStructureExpansionPocket: boolean;
     ethReferenceStressPocket: boolean;
     solReferenceStressPocket: boolean;
+    shortReferenceOiRotationPocket: boolean;
     ethReferenceWeakNonStressPocket: boolean;
     longDirectIndicatorSupportConfirmed: boolean | null;
     hardBlockReasons: string[];
@@ -119,6 +122,8 @@ const isDirectionalPriceAboveLevel = ({
 const TRANSITION_LOW_TOUCH_COUNT_MAX = 2;
 const ETH_REFERENCE_WEAK_NON_STRESS_OI_CHANGE_PCT_24H_MAX = -2.5;
 const LONG_DIRECT_INDICATOR_SUPPORT_MIN = 2;
+const SHORT_REFERENCE_TRX_OI_ACCELERATION_MAX = -0.3;
+const SHORT_REFERENCE_BNB_OI_CHANGE_PCT_24H_MIN = 1.8;
 
 export const buildLiquidityZonesGuardrailContext = ({
   signalContext,
@@ -198,6 +203,14 @@ export const buildLiquidityZonesGuardrailContext = ({
   );
   const ethReferenceFundingZScore = asPresentFiniteNumber(
     ethReferenceDerivatives15m?.fundingZScore,
+  );
+  const trxReferenceOiAcceleration = asPresentFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.TRXUSDT?.summary
+      ?.oiAcceleration,
+  );
+  const bnbReferenceOiChangePct24h = asPresentFiniteNumber(
+    baseContext?.derivatives?.referenceContexts?.BNBUSDT?.intervals?.['15m']
+      ?.oiChangePct24h,
   );
   const solReferenceOiChangePct24h = asPresentFiniteNumber(
     baseContext?.derivatives?.referenceContexts?.SOLUSDT?.intervals?.['15m']
@@ -366,10 +379,17 @@ export const buildLiquidityZonesGuardrailContext = ({
     solReferenceOiChangePct24h <= -4.2 &&
     solReferenceFundingZScore != null &&
     solReferenceFundingZScore <= -1.2;
+  const shortReferenceOiRotationPocket =
+    direction === 'SHORT' &&
+    trxReferenceOiAcceleration != null &&
+    trxReferenceOiAcceleration <= SHORT_REFERENCE_TRX_OI_ACCELERATION_MAX &&
+    bnbReferenceOiChangePct24h != null &&
+    bnbReferenceOiChangePct24h >= SHORT_REFERENCE_BNB_OI_CHANGE_PCT_24H_MIN;
   const calibratedExpansionPocket =
     transitionStructureExpansionPocket ||
     ethReferenceStressPocket ||
-    solReferenceStressPocket;
+    solReferenceStressPocket ||
+    shortReferenceOiRotationPocket;
   const ethReferenceWeakNonStressPocket =
     ethReferenceOiChangePct24h != null &&
     ethReferenceOiChangePct24h <=
@@ -390,7 +410,7 @@ export const buildLiquidityZonesGuardrailContext = ({
         isContinuationBreakoutRetest ||
         hasOverextendedVolumeConfirmation ||
         hasIsolatedIndicatorSupport)) ||
-    ethReferenceWeakNonStressPocket ||
+    (ethReferenceWeakNonStressPocket && !shortReferenceOiRotationPocket) ||
     longDirectIndicatorSupportMissing;
 
   if (longRequiresCalibratedExpansion) {
@@ -491,11 +511,14 @@ export const buildLiquidityZonesGuardrailContext = ({
     ethReferenceOiChangePct4h,
     ethReferenceOiChangePct24h,
     ethReferenceFundingZScore,
+    trxReferenceOiAcceleration,
+    bnbReferenceOiChangePct24h,
     solReferenceOiChangePct24h,
     solReferenceFundingZScore,
     transitionStructureExpansionPocket,
     ethReferenceStressPocket,
     solReferenceStressPocket,
+    shortReferenceOiRotationPocket,
     ethReferenceWeakNonStressPocket,
     longDirectIndicatorSupportConfirmed,
     hardBlockReasons,
