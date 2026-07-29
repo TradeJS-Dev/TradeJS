@@ -40,6 +40,14 @@ Mandatory rule:
   do not interpret variants until baseline qN+ support, PnL, PF, max drawdown,
   strict loss, and loss streak match.
 
+## Mandatory reporting contract
+
+Before returning AI-gate metrics in chat or writing a dated notes entry, read
+`references/reporting.md` and follow its section order, metric names, windows,
+rounding, and `n/a` rules exactly. Use the full contract unless the user
+explicitly asks for one narrow metric. Do not improvise a shorter alternative
+or silently omit unavailable metrics.
+
 ## AI Gate Pocket Hygiene
 
 Do not move a discovered pocket into a deterministic AI gate just because it
@@ -64,6 +72,13 @@ Hard rule:
   market-state fields when present and may be used for deterministic AI-gate
   approval after validation. Treat missing/stale interval data as a quality
   guard, not as approval evidence.
+- Treat independent decision timestamps or documented market episodes as the
+  support unit for gate selection. Rows and symbols sharing one timestamp are
+  correlated fan-out, not independent observations.
+- Keep every timestamp group wholly inside one partition. Never split rows from
+  the same timestamp across train, tuning, validation, or test.
+- Treat any partition used to rank, select, or refine a pocket as tuning data.
+  Production readiness requires a later untouched chronological test.
 
 Before implementing a pocket:
 
@@ -78,10 +93,17 @@ Before implementing a pocket:
 - For each existing pocket, classify it as `keep`, `round`, `replace`,
   `disable`, or `needs-more-data`, and explain why.
 - Require time-ordered validation, not only full-sample or train metrics.
-- Check train and validation support separately. A profitable pocket with tiny
-  validation support is a hypothesis, not a gate rule.
+- Require at least `25` independent approved events in train and `25` in the
+  untouched test, with support across at least two folds or calendar months.
+  If support is lower, classify the pocket as `needs-more-data` and
+  `research-only` / passive-only regardless of row count or aggregate PnL.
 - Check stability by direction, month/quarter, and symbol. Avoid rules where the
   result depends on one short period, one side, or a few symbols.
+- Record each pocket field's scope as `target`, `benchmark`, or `global`.
+  Benchmark/global approval pockets require a fan-out stress test plus either a
+  target-specific discriminator or an enforced portfolio throttle.
+- Treat a new export as revalidation only for independent timestamps after the
+  prior selection cutoff. Overlapping historical rows are not new evidence.
 - Compare q4+ and q5+ streams before and after the rule. A pocket that improves
   total PnL but worsens drawdown, loss streak, or losing months usually should
   not become live approval logic.
@@ -113,8 +135,14 @@ Threshold implementation rules:
 Documentation requirement for any new AI-gate pocket:
 
 - Report the exact export/merge id and shard count.
-- Report train and validation metrics, support, direction split, month/quarter
-  split, symbol concentration, PF, drawdown, and max loss streak.
+- Report train, tuning, and untouched-test metrics; independent-event support;
+  direction and month/quarter splits; symbol and event concentration; PF;
+  drawdown; and max loss streak.
+- Report trades and events per day, active-day ratio, trades per event, p95/max
+  batch size, and the largest event's shares of approved count and PnL.
+- Report capacity stress at the real production cap or, when unknown, at
+  capacities `1`, `3`, and `5`, including rejected overflow and simultaneous
+  stop-risk using the intended `MAX_LOSS_VALUE`.
 - State the raw discovered threshold and the rounded implemented threshold.
 - State whether the rounded rule was rerun and whether it stayed stable.
 - If the rule uses a context field whose semantics can change with env settings
@@ -154,20 +182,21 @@ Mandatory validation sections for gate work:
   production.
 - **Feature provenance**: for every field used by an old or new pocket, list
   the source path, whether it is causal at signal time, whether it is
-  market-state, setup-event-count, or data-availability, and whether it depends
-  on lookback/window/cache/provider settings.
+  market-state, setup-event-count, or data-availability, whether its scope is
+  target/benchmark/global, and whether it depends on
+  lookback/window/cache/provider settings.
 - **Walk-forward validation**: when the export spans enough history, validate
   across multiple chronological folds or at least month/quarter buckets. Prefer
   pockets that survive changing market regimes over pockets that win only in a
   single terminal validation split.
 - **Acceptance gates**: define minimum validation support, maximum symbol
-  concentration, acceptable losing months, max loss streak, PF/drawdown
-  improvement, and cadence bounds before recommending implementation. If a
-  candidate misses any gate, classify it as research-only. Default gates unless
-  strategy evidence justifies otherwise: validation support `>= 25`, no single
-  symbol provides more than about one third of approved profit or count, no new
-  losing-month cluster, no worse max loss streak, and cadence remains within the
-  target live range.
+  and event concentration, acceptable losing months, max loss streak,
+  PF/drawdown improvement, and cadence/capacity bounds before recommending
+  implementation. Require `>=25` independent events in both train and untouched
+  test; no symbol or timestamp may provide more than one third of approved count
+  or PnL; no batch may exceed the declared live capacity; no new losing-month
+  cluster or worse loss streak is allowed. A miss is unconditionally
+  `research-only` / passive-only until new evidence resolves it.
 - **Negative control**: for suspiciously strong or highly specific pockets, run
   a sanity check such as shuffled labels/profits or a nearby nonsense feature.
   A pocket that still looks good under a negative control is overfit or the
@@ -175,10 +204,10 @@ Mandatory validation sections for gate work:
 - **Boundary tests**: require unit tests for implemented gate changes at the
   threshold boundary, just above/below it, with missing/null fields, and with
   rounded thresholds rather than raw optimizer cutoffs.
-- **Passive rollout**: prefer adding new or changed gate logic in observation
-  mode first. Log old decision, new decision, and reason deltas for a live
-  comparison window before enforcing approvals, unless the user explicitly asks
-  for immediate enforcement and accepts the risk.
+- **Passive rollout**: add new or changed gate logic in observation mode first.
+  Log old decision, new decision, reason deltas, and per-timestamp fan-out. Do
+  not enforce a candidate that fails independent-event support or capacity
+  gates.
 - **Old-gate cleanup**: when an old pocket is replaced or disabled, remove dead
   constants/prompt fields/tests, update notes, and explain the migration path.
 
@@ -261,7 +290,9 @@ Before stating expected production cadence:
   terminal-window metrics as a comparison table for every row (`full`, `180d`,
   `90d`, `30d`, `7d`) rather than only the candidate values. Include baseline
   and candidate N, WR, PF, PnL, Max DD, max loss streak, losing months, and
-  trades/day; include deltas where they make the table easier to scan.
+  trades/day
+- for the same terminal rows, include events/day, active-day ratio, unique
+  events, trades/event, p95/max batch, and largest-event count/PnL shares
 - use terminal `approvedPerCalendarDay`, not the full-history average, as the
   current cadence evidence
 - record git SHA, dirty state, gate fingerprint, config-id fingerprint, and
@@ -305,7 +336,12 @@ Interpretation:
   options rather than assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
-- `ai-pocket-search` uses time-ordered holdout validation by default (`--validationSplit 0.25`). Treat train-only pockets as hypotheses; prefer pockets with enough validation support and acceptable validation PnL/PF/drawdown. Use `--validationSplit 0` only for legacy full-sample exploration.
+- `ai-pocket-search` uses a time-ordered row holdout by default
+  (`--validationSplit 0.25`) and ranks candidates on that holdout. Treat it as
+  tuning evidence, not an untouched test. A production-ready workflow must keep
+  timestamp groups intact and evaluate the selected rule on a later untouched
+  chronological test. Use `--validationSplit 0` only for legacy full-sample
+  exploration.
 - use `--includeGateContext` only for auditing existing gate output fields, not for discovering new future approval rules
 - use `--scope approved` with a smaller `--minSupport` to find sub-pockets inside the current qN+ approved stream; use `--scope all` or `--scope candidates` to look for expansion candidates
 - when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows
@@ -346,6 +382,10 @@ For the default `q4+` approved stream, report:
 - `avg_profit_approved_per_month`
 - `avg_approved_trades_per_day`
 - `avg_approved_trades_per_week`
+- unique approved event timestamps
+- approved events per day and active-day ratio
+- trades per event, p95/max approved batch size
+- largest-event shares of approved count and PnL
 
 Use the same period logic as `packages/cli/src/lib/aiTrainMetrics.ts`: `(max timestamp - min timestamp) / 1 day`, with a minimum of `1` day. If useful, also mention the full-window normalization separately, but the required table is for the default approved stream named in `qN+` notation. If `q5+` or another threshold is important for the strategy, include it too. If the user explicitly asks for isolated `q1` / `q2` / `q3` / `q4` / `q5`, report those separately and label them clearly.
 
@@ -399,7 +439,12 @@ Minimum checks:
   defensible value and replayed again
 - run sensitivity checks around each proposed numeric threshold
 - report train and validation support separately when using `ai-pocket-search`
-  or a custom split
+  or a custom split, but label any partition used for selection as tuning
+- group partitions by timestamp and report independent-event support separately
+  for train, tuning, and untouched test
+- report event clustering and capacity stress for every terminal window
+- require a target-specific discriminator or portfolio throttle for
+  benchmark/global pockets that can approve many symbols on one timestamp
 - include an ablation table: baseline, pocket-only when applicable, and final
   gate
 - require boundary tests and a passive-rollout plan for implemented gate changes
@@ -437,93 +482,10 @@ Risk-adjusted metric convention:
 
 ## Notes format
 
-Write results to:
-
-- `notes/AI_TRENDLINE_REPLAY_NOTES.md`
-- `notes/AI_REVERSE_TRENDLINE_REPLAY_NOTES.md`
-- `notes/AI_VOLUME_DIVERGENCE_REPLAY_NOTES.md`
-- or the matching new file for the strategy under review
-
-Keep the structure similar:
-
-1. strategy intent
-2. current export and config
-3. replay mode used
-4. latest window metrics
-   - period comparison table with the full export, `180d`, `90d`, `30d`, and
-     `7d`
-5. `q4+` approved cadence/profit metrics:
-   - `winrate`
-   - `profit_factor`
-   - `sharpe_ratio`
-   - `sortino_ratio`
-   - `calmar_ratio`
-   - `max_drawdown`
-   - `max_drawdown_pct_of_gross_profit`
-   - `max_drawdown_pct_of_total_profit`
-   - `max_consecutive_losses` / `max loss streak`
-   - losing approved months count, with month ids and monthly approved PnL when non-zero
-   - `avg_profit_approved_per_day`
-   - `avg_profit_approved_per_month`
-   - `avg_approved_trades_per_day`
-   - `avg_approved_trades_per_week`
-6. main discoveries
-7. best and worst pockets
-8. concrete next improvements for:
-   - strategy core
-   - backtest config
-   - AI adapter
-9. existing gate audit:
-   - current pockets and thresholds
-   - classification: `keep`, `round`, `replace`, `disable`, `needs-more-data`
-   - old high-precision and data-count conditions
-10. live-env parity and feature provenance:
-    - live env assumptions vs export/replay assumptions
-    - source, causality, field type, and env sensitivity for every pocket field
-11. validation evidence:
-    - train vs validation support
-    - walk-forward or month/quarter split
-    - symbol concentration
-    - ablation table
-    - negative-control result when applicable
-12. threshold implementation:
-    - raw discovered thresholds
-    - rounded implemented thresholds
-    - sensitivity results
-    - boundary tests added or still missing
-13. rollout and cleanup:
-    - passive rollout or immediate enforcement decision
-    - old gate cleanup required
-    - remaining blockers before production
-
-Use this stable short notes block for every AI-gate change, so future entries
-remain comparable:
-
-```md
-### YYYY-MM-DD - <Strategy> <short change name>
-
-Export: `<merge_id>` (`<part_count>` parts), rows `<rows>`, window `<min_ts>` .. `<max_ts>`, lag `<data_lag_days>d`.
-Lineage: git `<sha>`, gate `<gate_fingerprint>`, config `<config_ids_fingerprint>`, context `<context_fingerprint>`, `MIN_AI_QUALITY=<n>`, `AI_MODE=<mode>`.
-Change: <one sentence describing the gate/research change and exact causal field paths>.
-
-| Period | Gate | N | WR | PF | Sharpe | Sortino | Calmar | PnL | MaxDD | Loss Streak | Trades/Day |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| full | before |  |  |  |  |  |  |  |  |  |  |
-| full | after |  |  |  |  |  |  |  |  |  |  |
-| 180d | before |  |  |  |  |  |  |  |  |  |  |
-| 180d | after |  |  |  |  |  |  |  |  |  |  |
-| 90d | before |  |  |  |  |  |  |  |  |  |  |
-| 90d | after |  |  |  |  |  |  |  |  |  |  |
-| 30d | before |  |  |  |  |  |  |  |  |  |  |
-| 30d | after |  |  |  |  |  |  |  |  |  |  |
-| 7d | before |  |  |  |  |  |  |  |  |  |  |
-| 7d | after |  |  |  |  |  |  |  |  |  |  |
-
-Risk-adjusted read: <one sentence on Sharpe/Sortino/Calmar vs PF/maxDD and tail windows>.
-Decision: <implement / research-only / rollback / observe>, because <short evidence>.
-Residual risk: <tail window, support/cadence, env-sensitive fields, or validation gap>.
-Next check: <specific next export/replay/check>.
-```
+Read `references/reporting.md`. New dated notes entries must begin with the same
+fixed report used in chat, then append the detailed audit, validation,
+threshold, rollout, and cleanup sections defined there. Historical notes are
+content references, not formatting authority.
 
 ## Current repo conventions
 
@@ -534,11 +496,3 @@ Next check: <specific next export/replay/check>.
   - `structuralHardBlockReasons`
     local replay is the preferred research mode.
 - If these fields are missing, add them before trusting `--localOnly`.
-
-## Existing examples
-
-Use these files as style references:
-
-- `notes/AI_TRENDLINE_REPLAY_NOTES.md`
-- `notes/AI_REVERSE_TRENDLINE_REPLAY_NOTES.md`
-- `notes/AI_VOLUME_DIVERGENCE_REPLAY_NOTES.md`
