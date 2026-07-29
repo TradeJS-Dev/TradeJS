@@ -120,6 +120,52 @@ const createBnbOiRotationBaseContext = (
     ),
   );
 
+const createXrpOiShortNoHtfBaseContext = (
+  overrides: Record<string, unknown> = {},
+) =>
+  createBaseContext(
+    mergeRecord(
+      {
+        regime: {
+          trend: {
+            bias: 'bear',
+          },
+        },
+        structure: {
+          swing: {
+            bias: 'bear',
+          },
+          localRange: {
+            breakoutState: 'below_low_level',
+          },
+        },
+        relative: {
+          benchmark: {
+            trendAlignment: 'aligned_bear',
+            bias: 'bear',
+          },
+        },
+        derivatives: {
+          referenceContexts: {
+            XRPUSDT: {
+              intervals: {
+                '15m': {
+                  oiChangePct1h: 0.32,
+                },
+              },
+            },
+          },
+        },
+        gateFeatures: {
+          mtf: {
+            higherTimeframeConflict: false,
+          },
+        },
+      },
+      overrides,
+    ),
+  );
+
 describe('doubleTapAiAdapter', () => {
   it('copies DoubleTap context into AI payload', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
@@ -819,7 +865,7 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
-  it('keeps BNB rotation approval below the old strict ROC1D gate', () => {
+  it('blocks BNB rotation approval below the ROC1D gate', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -845,20 +891,24 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.deterministicQuality).toBe(4);
-    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
     expect(context.strictMomentumBlockReasons).toEqual([]);
+    expect(context.softBlockReasons).toContain(
+      'bnb_oi_rotation_roc1d_below_gate',
+    );
     expect(context.doubleTapGateFeatures).toMatchObject({
-      defaultApprovalAllowed: true,
-      approvalPocket: 'bnb_oi_rotation',
+      defaultApprovalAllowed: false,
+      approvalPocket: 'bnb_oi_rotation_blocked',
       bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: false,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: false,
     });
   });
 
-  it('keeps BNB rotation approval when strict ROC1D is missing', () => {
+  it('blocks BNB rotation approval when ROC1D is missing', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -884,16 +934,134 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.deterministicQuality).toBe(4);
-    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
     expect(context.strictMomentumApprovalAllowedNow).toBe(false);
     expect(context.strictMomentumBlockReasons).toEqual([]);
+    expect(context.softBlockReasons).toContain(
+      'missing_roc1d_for_bnb_oi_rotation',
+    );
     expect(context.doubleTapGateFeatures).toMatchObject({
-      defaultApprovalAllowed: true,
-      approvalPocket: 'bnb_oi_rotation',
+      defaultApprovalAllowed: false,
+      approvalPocket: 'bnb_oi_rotation_blocked',
       bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: false,
       strictMomentumApproved: false,
       strictMomentumRoc1dOk: null,
+    });
+  });
+
+  it('approves the XRP OI short pocket when HTF conflict is absent', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createXrpOiShortNoHtfBaseContext(),
+          doubleTapContext: {
+            signalDirection: 'SHORT',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(4);
+    expect(result?.direction).toBe('SHORT');
+  });
+
+  it('blocks the XRP OI short pocket when HTF conflict is present', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'SHORT',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createXrpOiShortNoHtfBaseContext({
+            gateFeatures: {
+              mtf: {
+                higherTimeframeConflict: true,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'xrp_oi_short_no_htf_higher_timeframe_conflict',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'high_precision_blocked',
+      defaultApprovalAllowed: false,
+      xrpOiShortNoHtfPocket: false,
+      xrpOiShortNoHtfContextAvailable: true,
+    });
+  });
+
+  it('blocks the XRP OI pocket for long signals', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createXrpOiShortNoHtfBaseContext({
+            regime: {
+              trend: {
+                bias: 'bull',
+              },
+            },
+            structure: {
+              swing: {
+                bias: 'bull',
+              },
+              localRange: {
+                breakoutState: 'above_high_level',
+              },
+            },
+            relative: {
+              benchmark: {
+                trendAlignment: 'aligned_bull',
+                bias: 'bull',
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'xrp_oi_short_no_htf_requires_short_signal',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: false,
+      xrpOiShortNoHtfPocket: false,
+      xrpOiShortNoHtfContextAvailable: true,
     });
   });
 
