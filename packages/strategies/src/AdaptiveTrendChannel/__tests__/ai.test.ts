@@ -29,54 +29,95 @@ const makePayload = (
     },
   }) as any;
 
-const makeCleanLongBaseContext = ({
-  approveBias = 'neutral',
-  xrpOpenInterest15m,
-}: {
-  approveBias?: 'support' | 'neutral' | 'reject';
-  xrpOpenInterest15m?: number | null;
-} = {}) => ({
-  regime: {
-    trend: { bias: 'bull', trendFollow: { state: 'bull' } },
-    momentum: { rsi: 72 },
-    volatility: { percentiles: { bbWidthRank100: 80 } },
-  },
-  participation: {
-    volume: { volumeRel20: 10 },
-  },
+const withApprovalBreadthContext = <T extends Record<string, any>>(
+  baseContext: T,
+  {
+    marketBreadthTop5Unchanged = 1,
+    sweepHigh20 = false,
+  }: {
+    marketBreadthTop5Unchanged?: number | null;
+    sweepHigh20?: boolean | null;
+  } = {},
+): T => ({
+  ...baseContext,
   structure: {
-    localRange: { breakoutState: 'above_high_level' },
-  },
-  mtf: {
-    summary: { h4VolatilityState: 'expanded' },
-  },
-  derivatives:
-    xrpOpenInterest15m === undefined
-      ? {}
-      : {
-          referenceContexts: {
-            XRPUSDT: {
-              intervals: {
-                '15m': {
-                  openInterest: xrpOpenInterest15m,
-                },
-              },
-            },
-          },
-        },
-  gateFeatures: {
-    decisionHints: {
-      approveBias,
-      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
-      needsExtraConfirmation: approveBias === 'reject',
-      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    ...(baseContext.structure ?? {}),
+    liquidity: {
+      ...(baseContext.structure?.liquidity ?? {}),
+      sweepHigh20,
     },
-    relative: {
-      cmcExchangeLiquidityAligned: true,
-      cmcExchangeLiquidityStale: false,
+  },
+  relative: {
+    ...(baseContext.relative ?? {}),
+    marketBreadths: {
+      ...(baseContext.relative?.marketBreadths ?? {}),
+      top5: {
+        ...(baseContext.relative?.marketBreadths?.top5 ?? {}),
+        unchanged: marketBreadthTop5Unchanged,
+      },
     },
   },
 });
+
+const makeCleanLongBaseContext = ({
+  approveBias = 'neutral',
+  xrpOpenInterest15m,
+  marketBreadthTop5Unchanged = 1,
+  sweepHigh20 = false,
+}: {
+  approveBias?: 'support' | 'neutral' | 'reject';
+  xrpOpenInterest15m?: number | null;
+  marketBreadthTop5Unchanged?: number | null;
+  sweepHigh20?: boolean | null;
+} = {}) =>
+  withApprovalBreadthContext(
+    {
+      regime: {
+        trend: { bias: 'bull', trendFollow: { state: 'bull' } },
+        momentum: { rsi: 72 },
+        volatility: { percentiles: { bbWidthRank100: 80 } },
+      },
+      participation: {
+        volume: { volumeRel20: 10 },
+      },
+      structure: {
+        localRange: { breakoutState: 'above_high_level' },
+      },
+      mtf: {
+        summary: { h4VolatilityState: 'expanded' },
+      },
+      derivatives:
+        xrpOpenInterest15m === undefined
+          ? {}
+          : {
+              referenceContexts: {
+                XRPUSDT: {
+                  intervals: {
+                    '15m': {
+                      openInterest: xrpOpenInterest15m,
+                    },
+                  },
+                },
+              },
+            },
+      gateFeatures: {
+        decisionHints: {
+          approveBias,
+          maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+          needsExtraConfirmation: approveBias === 'reject',
+          primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+        },
+        relative: {
+          cmcExchangeLiquidityAligned: true,
+          cmcExchangeLiquidityStale: false,
+        },
+      },
+    },
+    {
+      marketBreadthTop5Unchanged,
+      sweepHigh20,
+    },
+  );
 
 const makeXrpShortRecoveryBaseContext = ({
   approveBias = 'reject',
@@ -92,39 +133,40 @@ const makeXrpShortRecoveryBaseContext = ({
   xrpFundingZScore1h?: number | null;
   btcVsAltReturn24h?: number | null;
   xrpDerivatives1hStale?: boolean;
-} = {}) => ({
-  derivatives: {
-    referenceContexts: {
-      XRPUSDT: {
-        summary: {
-          priceOiDivergenceType: xrpPriceOiDivergenceType,
-        },
-        intervals: {
-          '15m': {
-            openInterest: xrpOpenInterest15m,
+} = {}) =>
+  withApprovalBreadthContext({
+    derivatives: {
+      referenceContexts: {
+        XRPUSDT: {
+          summary: {
+            priceOiDivergenceType: xrpPriceOiDivergenceType,
           },
-          '1h': {
-            fundingZScore: xrpFundingZScore1h,
-            stale: xrpDerivatives1hStale,
+          intervals: {
+            '15m': {
+              openInterest: xrpOpenInterest15m,
+            },
+            '1h': {
+              fundingZScore: xrpFundingZScore1h,
+              stale: xrpDerivatives1hStale,
+            },
           },
         },
       },
     },
-  },
-  gateFeatures: {
-    decisionHints: {
-      approveBias,
-      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
-      needsExtraConfirmation: approveBias === 'reject',
-      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    gateFeatures: {
+      decisionHints: {
+        approveBias,
+        maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+        needsExtraConfirmation: approveBias === 'reject',
+        primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+      },
+      relative: {
+        btcVsAltReturn24h,
+        cmcExchangeLiquidityAligned: false,
+        cmcExchangeLiquidityStale: false,
+      },
     },
-    relative: {
-      btcVsAltReturn24h,
-      cmcExchangeLiquidityAligned: false,
-      cmcExchangeLiquidityStale: false,
-    },
-  },
-});
+  });
 
 const makeXrpEthShortRecoveryBaseContext = ({
   approveBias = 'reject',
@@ -144,47 +186,48 @@ const makeXrpEthShortRecoveryBaseContext = ({
   ethLiqImbalance1h?: number | null;
   ethDerivatives1hStale?: boolean;
   btcVsAltReturn24h?: number | null;
-} = {}) => ({
-  derivatives: {
-    referenceContexts: {
-      ETHUSDT: {
-        intervals: {
-          '1h': {
-            liqImbalance: ethLiqImbalance1h,
-            stale: ethDerivatives1hStale,
+} = {}) =>
+  withApprovalBreadthContext({
+    derivatives: {
+      referenceContexts: {
+        ETHUSDT: {
+          intervals: {
+            '1h': {
+              liqImbalance: ethLiqImbalance1h,
+              stale: ethDerivatives1hStale,
+            },
+          },
+        },
+        XRPUSDT: {
+          summary: {
+            priceOiDivergenceType: xrpPriceOiDivergenceType,
+          },
+          intervals: {
+            '15m': {
+              openInterest: xrpOpenInterest15m,
+            },
+            '1h': {
+              fundingZScore: xrpFundingZScore1h,
+              stale: xrpDerivatives1hStale,
+            },
           },
         },
       },
-      XRPUSDT: {
-        summary: {
-          priceOiDivergenceType: xrpPriceOiDivergenceType,
-        },
-        intervals: {
-          '15m': {
-            openInterest: xrpOpenInterest15m,
-          },
-          '1h': {
-            fundingZScore: xrpFundingZScore1h,
-            stale: xrpDerivatives1hStale,
-          },
-        },
+    },
+    gateFeatures: {
+      decisionHints: {
+        approveBias,
+        maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+        needsExtraConfirmation: approveBias === 'reject',
+        primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+      },
+      relative: {
+        btcVsAltReturn24h,
+        cmcExchangeLiquidityAligned: false,
+        cmcExchangeLiquidityStale: false,
       },
     },
-  },
-  gateFeatures: {
-    decisionHints: {
-      approveBias,
-      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
-      needsExtraConfirmation: approveBias === 'reject',
-      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
-    },
-    relative: {
-      btcVsAltReturn24h,
-      cmcExchangeLiquidityAligned: false,
-      cmcExchangeLiquidityStale: false,
-    },
-  },
-});
+  });
 
 const makeXrpOiReferenceRecoveryBaseContext = ({
   approveBias = 'reject',
@@ -200,48 +243,49 @@ const makeXrpOiReferenceRecoveryBaseContext = ({
   cmcBtcDominancePct?: number | null;
   marketBreadthSymbolsCount?: number | null;
   bnbFundingChange1h?: number | null;
-} = {}) => ({
-  regime: {
-    trend: { trendFollow: { state: 'neutral' } },
-    volatility: { state: volatilityState },
-  },
-  relative: {
-    cmcGlobal: {
-      btcDominancePct: cmcBtcDominancePct,
+} = {}) =>
+  withApprovalBreadthContext({
+    regime: {
+      trend: { trendFollow: { state: 'neutral' } },
+      volatility: { state: volatilityState },
     },
-    marketBreadth: {
-      symbolsCount: marketBreadthSymbolsCount,
-    },
-  },
-  derivatives: {
-    referenceContexts: {
-      BNBUSDT: {
-        summary: {
-          fundingChange1h: bnbFundingChange1h,
-        },
+    relative: {
+      cmcGlobal: {
+        btcDominancePct: cmcBtcDominancePct,
       },
-      XRPUSDT: {
-        intervals: {
-          '15m': {
-            openInterest: xrpOpenInterest15m,
+      marketBreadth: {
+        symbolsCount: marketBreadthSymbolsCount,
+      },
+    },
+    derivatives: {
+      referenceContexts: {
+        BNBUSDT: {
+          summary: {
+            fundingChange1h: bnbFundingChange1h,
+          },
+        },
+        XRPUSDT: {
+          intervals: {
+            '15m': {
+              openInterest: xrpOpenInterest15m,
+            },
           },
         },
       },
     },
-  },
-  gateFeatures: {
-    decisionHints: {
-      approveBias,
-      maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
-      needsExtraConfirmation: approveBias === 'reject',
-      primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+    gateFeatures: {
+      decisionHints: {
+        approveBias,
+        maxReasonableQuality: approveBias === 'reject' ? 2 : 5,
+        needsExtraConfirmation: approveBias === 'reject',
+        primaryIssue: approveBias === 'reject' ? 'mtf_conflict' : 'none',
+      },
+      relative: {
+        cmcExchangeLiquidityAligned: false,
+        cmcExchangeLiquidityStale: false,
+      },
     },
-    relative: {
-      cmcExchangeLiquidityAligned: false,
-      cmcExchangeLiquidityStale: false,
-    },
-  },
-});
+  });
 
 describe('adaptiveTrendChannelAiAdapter', () => {
   it('approves clean adaptive channel flips', () => {
@@ -260,7 +304,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 104.2,
         },
-        {
+        withApprovalBreadthContext({
           regime: {
             trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
@@ -291,7 +335,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               cmcExchangeLiquidityStale: false,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -304,6 +348,78 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects otherwise clean flips when top-5 market breadth is not decisive', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        makeCleanLongBaseContext({
+          marketBreadthTop5Unchanged: 2,
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('top5_breadth_not_decisive');
+  });
+
+  it('rejects otherwise clean flips after a high-side liquidity sweep', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 104.2,
+        },
+        makeCleanLongBaseContext({
+          sweepHigh20: true,
+        }),
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('sweep_high_liquidity_risk');
   });
 
   it('blocks clean flips when XRP open interest is high and base approve bias rejects', () => {
@@ -656,7 +772,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
 
   it('keeps gate approval stable without reading lazy indicator snapshot fields', () => {
     let lazyReads = 0;
-    const approvingBaseContext = {
+    const approvingBaseContext = withApprovalBreadthContext({
       regime: {
         trend: { bias: 'bull', trendFollow: { state: 'bull' } },
         momentum: { rsi: 72 },
@@ -684,7 +800,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           stale: false,
         },
       },
-    };
+    });
     const indicators = new Proxy(
       {
         baseContext: approvingBaseContext,
@@ -953,7 +1069,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 104.2,
         },
-        {
+        withApprovalBreadthContext({
           regime: {
             trend: { bias: 'bull', trendFollow: { state: 'bull' } },
             momentum: { rsi: 72 },
@@ -1028,7 +1144,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               symbolsCount: 27,
             },
           },
-        },
+        }),
       ),
     });
 
@@ -1044,6 +1160,8 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(prompt).toContain('volatilityState=expanded');
     expect(prompt).toContain('cmcBtcDominancePct=58.45');
     expect(prompt).toContain('marketBreadthSymbolsCount=27');
+    expect(prompt).toContain('marketBreadthTop5Unchanged=1');
+    expect(prompt).toContain('sweepHigh20=false');
     expect(prompt).toContain('bnbFundingChange1h=0');
     expect(prompt).not.toContain('derivativesPressure');
     expect(prompt).not.toContain('derivativesDirectionAligned');
@@ -1185,7 +1303,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 100.2,
         },
-        {
+        withApprovalBreadthContext({
           regime: {
             trend: {
               adaptiveChannel: { regime: 'bear' },
@@ -1209,7 +1327,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               cmcExchangeLiquidityStale: false,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',
@@ -1240,7 +1358,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 104.2,
         },
-        {
+        withApprovalBreadthContext({
           regime: {
             trend: {
               adaptiveChannel: { regime: 'bear' },
@@ -1264,7 +1382,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
               cmcExchangeLiquidityStale: false,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'LONG',

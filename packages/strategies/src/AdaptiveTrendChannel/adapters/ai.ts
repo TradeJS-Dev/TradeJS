@@ -93,6 +93,8 @@ Additional AdaptiveTrendChannel context:
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - cmcBtcDominancePct=${String(context.cmcBtcDominancePct ?? 'n/a')}
 - marketBreadthSymbolsCount=${String(context.marketBreadthSymbolsCount ?? 'n/a')}
+- marketBreadthTop5Unchanged=${String(context.marketBreadthTop5Unchanged ?? 'n/a')}
+- sweepHigh20=${String(context.sweepHigh20 ?? 'n/a')}
 - targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
 - targetLiqSpikeRatio1h=${String(context.targetLiqSpikeRatio1h ?? 'n/a')}
 - targetLiqTotal1h=${String(context.targetLiqTotal1h ?? 'n/a')}

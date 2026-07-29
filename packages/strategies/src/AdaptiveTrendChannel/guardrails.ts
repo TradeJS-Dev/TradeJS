@@ -19,6 +19,8 @@ export type AdaptiveTrendChannelGuardrailContext =
     cmcExchangeLiquidityStale: boolean | null;
     cmcBtcDominancePct: number | null;
     marketBreadthSymbolsCount: number | null;
+    marketBreadthTop5Unchanged: number | null;
+    sweepHigh20: boolean | null;
     targetLiqImbalance1h: number | null;
     targetLiqSpikeRatio1h: number | null;
     targetLiqTotal1h: number | null;
@@ -75,6 +77,7 @@ const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
 const MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT = 58.45;
 const MIN_XRP_OI_RECOVERY_MARKET_BREADTH_SYMBOLS = 27;
 const MIN_XRP_OI_RECOVERY_BNB_FUNDING_CHANGE_1H = 0;
+const MAX_APPROVAL_MARKET_BREADTH_TOP5_UNCHANGED = 1;
 const MAX_APPROVAL_RSI = 75;
 const MIN_APPROVAL_BB_WIDTH_RANK_100 = 50;
 
@@ -139,6 +142,13 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const marketBreadthSymbolsCount = asFiniteNumber(
     baseContext?.relative?.marketBreadth?.symbolsCount,
   );
+  const marketBreadthTop5Unchanged = asFiniteNumber(
+    baseContext?.relative?.marketBreadths?.top5?.unchanged,
+  );
+  const sweepHigh20 =
+    typeof baseContext?.structure?.liquidity?.sweepHigh20 === 'boolean'
+      ? baseContext.structure.liquidity.sweepHigh20
+      : null;
   const baseApproveBias =
     baseContext?.gateFeatures?.decisionHints?.approveBias ?? null;
   const targetLiqImbalance1h = asFiniteNumber(
@@ -254,6 +264,19 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     longApprovalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
     channelWidthPct >= MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT;
+
+  if (approvalSetup) {
+    if (
+      marketBreadthTop5Unchanged == null ||
+      marketBreadthTop5Unchanged > MAX_APPROVAL_MARKET_BREADTH_TOP5_UNCHANGED
+    ) {
+      hardBlockReasons.push('top5_breadth_not_decisive');
+    }
+    if (sweepHigh20 === true) {
+      hardBlockReasons.push('sweep_high_liquidity_risk');
+    }
+  }
+
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
@@ -320,6 +343,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     cmcExchangeLiquidityStale,
     cmcBtcDominancePct,
     marketBreadthSymbolsCount,
+    marketBreadthTop5Unchanged,
+    sweepHigh20,
     targetLiqImbalance1h,
     targetLiqSpikeRatio1h,
     targetLiqTotal1h,
