@@ -115,6 +115,8 @@ Additional Liquidity Zones context:
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - btcCorrelation=${String(context.btcCorrelation ?? 'n/a')}
+- sharedGateConflictCount=${String(context.sharedGateConflictCount ?? 'n/a')}
+- btcVsAltReturn1h=${String(context.btcVsAltReturn1h ?? 'n/a')}
 - benchmarkDerivativesPressure=${context.benchmarkDerivativesPressure ?? 'n/a'}
 - benchmarkDerivativesDirectionAligned=${String(context.benchmarkDerivativesDirectionAligned ?? 'n/a')}
 - benchmarkDerivativesRiskFlags=${JSON.stringify(context.benchmarkDerivativesRiskFlags)}
@@ -133,6 +135,7 @@ Additional Liquidity Zones context:
 - ethReferenceStressPocket=${String(context.ethReferenceStressPocket)}
 - solReferenceStressPocket=${String(context.solReferenceStressPocket)}
 - shortReferenceOiRotationPocket=${String(context.shortReferenceOiRotationPocket)}
+- sharedCounterPressureFilterConfirmed=${String(context.sharedCounterPressureFilterConfirmed)}
 - ethReferenceWeakNonStressPocket=${String(context.ethReferenceWeakNonStressPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
@@ -149,6 +152,7 @@ Interpretation rules for Liquidity Zones:
 - Top-level derivatives context is BTC benchmark evidence; target-symbol derivatives require targetContext/targetDerived.
 - Do not treat derivatives points, rows, or loaded-history size as approval evidence.
 - A calibrated transition-structure pocket, ETH reference stress pocket, SOL reference stress pocket, or SHORT reference OI rotation pocket can approve a structurally valid retest.
+- q4+ approvals require the shared counter-pressure filter: at least three direction-aware shared conflicts and BTC-vs-alt 1h return no worse than -0.4%.
 - LONG approvals need at least two direct MA/MACD/OBV alignments after calibration.
 - Moderate ETH reference OI weakness blocks approval unless the deeper ETH reference stress pocket is active.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.

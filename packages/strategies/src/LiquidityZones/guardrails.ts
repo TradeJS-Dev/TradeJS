@@ -32,6 +32,8 @@ export type LiquidityZonesGuardrailContext =
     venueSpreadZScore: number | null;
     benchmarkTrendAlignment: string | null;
     btcCorrelation: number | null;
+    sharedGateConflictCount: number | null;
+    btcVsAltReturn1h: number | null;
     benchmarkDerivativesPressure: string | null;
     benchmarkDerivativesDirectionAligned: boolean | null;
     benchmarkDerivativesRiskFlags: string[];
@@ -50,6 +52,7 @@ export type LiquidityZonesGuardrailContext =
     ethReferenceStressPocket: boolean;
     solReferenceStressPocket: boolean;
     shortReferenceOiRotationPocket: boolean;
+    sharedCounterPressureFilterConfirmed: boolean;
     ethReferenceWeakNonStressPocket: boolean;
     longDirectIndicatorSupportConfirmed: boolean | null;
     hardBlockReasons: string[];
@@ -124,6 +127,8 @@ const ETH_REFERENCE_WEAK_NON_STRESS_OI_CHANGE_PCT_24H_MAX = -2.5;
 const LONG_DIRECT_INDICATOR_SUPPORT_MIN = 2;
 const SHORT_REFERENCE_TRX_OI_ACCELERATION_MAX = -0.3;
 const SHORT_REFERENCE_BNB_OI_CHANGE_PCT_24H_MIN = 1.8;
+const SHARED_COUNTER_PRESSURE_CONFLICT_COUNT_MIN = 3;
+const SHARED_COUNTER_PRESSURE_BTC_VS_ALT_RETURN_1H_MIN = -0.004;
 
 export const buildLiquidityZonesGuardrailContext = ({
   signalContext,
@@ -169,6 +174,12 @@ export const buildLiquidityZonesGuardrailContext = ({
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
   const btcCorrelation = asPresentFiniteNumber(
     baseContext?.raw?.crossAsset?.btcCorrelation,
+  );
+  const sharedGateConflictCount = asPresentFiniteNumber(
+    baseContext?.gateFeatures?.conflicts?.count,
+  );
+  const btcVsAltReturn1h = asPresentFiniteNumber(
+    baseContext?.relative?.btcAltRegime?.btcVsAltReturn1h,
   );
   const benchmarkDerivativesPressure =
     typeof benchmarkDerivativesSummary?.pressure === 'string'
@@ -385,6 +396,11 @@ export const buildLiquidityZonesGuardrailContext = ({
     trxReferenceOiAcceleration <= SHORT_REFERENCE_TRX_OI_ACCELERATION_MAX &&
     bnbReferenceOiChangePct24h != null &&
     bnbReferenceOiChangePct24h >= SHORT_REFERENCE_BNB_OI_CHANGE_PCT_24H_MIN;
+  const sharedCounterPressureFilterConfirmed =
+    sharedGateConflictCount != null &&
+    sharedGateConflictCount >= SHARED_COUNTER_PRESSURE_CONFLICT_COUNT_MIN &&
+    btcVsAltReturn1h != null &&
+    btcVsAltReturn1h >= SHARED_COUNTER_PRESSURE_BTC_VS_ALT_RETURN_1H_MIN;
   const calibratedExpansionPocket =
     transitionStructureExpansionPocket ||
     ethReferenceStressPocket ||
@@ -469,6 +485,10 @@ export const buildLiquidityZonesGuardrailContext = ({
   if (deterministicQuality >= 4 && approvalDisqualifiedByCalibration) {
     deterministicQuality = 3;
   }
+  if (deterministicQuality >= 4 && !sharedCounterPressureFilterConfirmed) {
+    softBlockReasons.push('shared_counterpressure_filter_missing');
+    deterministicQuality = 3;
+  }
 
   return {
     ...signalContext,
@@ -501,6 +521,8 @@ export const buildLiquidityZonesGuardrailContext = ({
     venueSpreadZScore,
     benchmarkTrendAlignment,
     btcCorrelation,
+    sharedGateConflictCount,
+    btcVsAltReturn1h,
     benchmarkDerivativesPressure,
     benchmarkDerivativesDirectionAligned,
     benchmarkDerivativesRiskFlags,
@@ -519,6 +541,7 @@ export const buildLiquidityZonesGuardrailContext = ({
     ethReferenceStressPocket,
     solReferenceStressPocket,
     shortReferenceOiRotationPocket,
+    sharedCounterPressureFilterConfirmed,
     ethReferenceWeakNonStressPocket,
     longDirectIndicatorSupportConfirmed,
     hardBlockReasons,

@@ -63,6 +63,33 @@ const withLongDirectSupport = (baseContext: Record<string, any> = {}) => ({
   },
 });
 
+const withSharedCounterPressure = (
+  baseContext: Record<string, any> = {},
+  {
+    conflictCount = 3,
+    btcVsAltReturn1h = -0.004,
+  }: {
+    conflictCount?: number;
+    btcVsAltReturn1h?: number;
+  } = {},
+) => ({
+  ...baseContext,
+  relative: {
+    ...(baseContext.relative ?? {}),
+    btcAltRegime: {
+      ...(baseContext.relative?.btcAltRegime ?? {}),
+      btcVsAltReturn1h,
+    },
+  },
+  gateFeatures: {
+    ...(baseContext.gateFeatures ?? {}),
+    conflicts: {
+      ...(baseContext.gateFeatures?.conflicts ?? {}),
+      count: conflictCount,
+    },
+  },
+});
+
 const withShortReferenceOiRotation = (
   baseContext: Record<string, any> = {},
   {
@@ -119,7 +146,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withSharedCounterPressure({
           regime: {
             trend: { bias: 'bear' },
           },
@@ -136,7 +163,7 @@ describe('liquidityZonesAiAdapter', () => {
               riskFlags: ['long_liquidation_spike'],
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'SHORT',
@@ -148,6 +175,139 @@ describe('liquidityZonesAiAdapter', () => {
       direction: 'SHORT',
       quality: 5,
       approved: true,
+    });
+  });
+
+  it('rejects q4+ candidates below the shared counter-pressure conflict boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withSharedCounterPressure(
+          {
+            participation: {
+              volume: {
+                volumeRel20: 1.6,
+                effortVsResult: 80,
+              },
+            },
+          },
+          {
+            conflictCount: 2,
+          },
+        ),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'shared_counterpressure_filter_missing',
+      ),
+    });
+  });
+
+  it('rejects q4+ candidates below the rounded BTC-vs-alt boundary', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        withSharedCounterPressure(
+          {
+            participation: {
+              volume: {
+                volumeRel20: 1.6,
+                effortVsResult: 80,
+              },
+            },
+          },
+          {
+            btcVsAltReturn1h: -0.0041,
+          },
+        ),
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'shared_counterpressure_filter_missing',
+      ),
+    });
+  });
+
+  it('rejects q4+ candidates when shared counter-pressure fields are missing', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          participation: {
+            volume: {
+              volumeRel20: 1.6,
+              effortVsResult: 80,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: expect.stringContaining(
+        'shared_counterpressure_filter_missing',
+      ),
     });
   });
 
@@ -192,7 +352,7 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        {
+        withSharedCounterPressure({
           structure: {
             liquidityZones: { activeRetestDirection: 'LONG' },
           },
@@ -202,7 +362,7 @@ describe('liquidityZonesAiAdapter', () => {
               effortVsResult: 80,
             },
           },
-        },
+        }),
       ),
       analysis: {
         direction: 'SHORT',
@@ -274,20 +434,22 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        withShortReferenceOiRotation({
-          derivatives: {
-            referenceContexts: {
-              ETHUSDT: {
-                intervals: {
-                  '15m': {
-                    oiChangePct24h: -2.5,
-                    fundingZScore: -0.5,
+        withSharedCounterPressure(
+          withShortReferenceOiRotation({
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  intervals: {
+                    '15m': {
+                      oiChangePct24h: -2.5,
+                      fundingZScore: -0.5,
+                    },
                   },
                 },
               },
             },
-          },
-        }),
+          }),
+        ),
       ),
       analysis: {
         direction: 'SHORT',
@@ -564,28 +726,30 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        withLongDirectSupport({
-          regime: {
-            trend: {
-              adaptiveChannel: {
-                flipDown: false,
+        withSharedCounterPressure(
+          withLongDirectSupport({
+            regime: {
+              trend: {
+                adaptiveChannel: {
+                  flipDown: false,
+                },
               },
             },
-          },
-          structure: {
-            structureZones: {
-              state: 'transition',
+            structure: {
+              structureZones: {
+                state: 'transition',
+              },
+              levels: {
+                lowTouchCount20: 2,
+              },
             },
-            levels: {
-              lowTouchCount20: 2,
+            gateFeatures: {
+              scores: {
+                structure: 17,
+              },
             },
-          },
-          gateFeatures: {
-            scores: {
-              structure: 17,
-            },
-          },
-        }),
+          }),
+        ),
       ),
       analysis: {
         direction: 'LONG',
@@ -939,25 +1103,27 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        withLongDirectSupport({
-          structure: {
-            levels: {
-              lowTouchCount20: 3,
+        withSharedCounterPressure(
+          withLongDirectSupport({
+            structure: {
+              levels: {
+                lowTouchCount20: 3,
+              },
             },
-          },
-          derivatives: {
-            referenceContexts: {
-              ETHUSDT: {
-                intervals: {
-                  '15m': {
-                    oiChangePct24h: -5.8,
-                    fundingZScore: -1.05,
+            derivatives: {
+              referenceContexts: {
+                ETHUSDT: {
+                  intervals: {
+                    '15m': {
+                      oiChangePct24h: -5.8,
+                      fundingZScore: -1.05,
+                    },
                   },
                 },
               },
             },
-          },
-        }),
+          }),
+        ),
       ),
       analysis: {
         direction: 'LONG',
@@ -1042,25 +1208,27 @@ describe('liquidityZonesAiAdapter', () => {
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
-        withLongDirectSupport({
-          structure: {
-            levels: {
-              lowTouchCount20: 3,
+        withSharedCounterPressure(
+          withLongDirectSupport({
+            structure: {
+              levels: {
+                lowTouchCount20: 3,
+              },
             },
-          },
-          derivatives: {
-            referenceContexts: {
-              SOLUSDT: {
-                intervals: {
-                  '15m': {
-                    oiChangePct24h: -4.2,
-                    fundingZScore: -1.2,
+            derivatives: {
+              referenceContexts: {
+                SOLUSDT: {
+                  intervals: {
+                    '15m': {
+                      oiChangePct24h: -4.2,
+                      fundingZScore: -1.2,
+                    },
                   },
                 },
               },
             },
-          },
-        }),
+          }),
+        ),
       ),
       analysis: {
         direction: 'LONG',
