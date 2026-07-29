@@ -36,6 +36,10 @@ import {
   type AiPocketSearchRow,
   type AiPocketSummary,
 } from '../lib/aiPocketSearch';
+import {
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS,
+  readAiPocketSearchCliOption,
+} from '../lib/aiPocketSearchCli';
 
 args.example(
   'yarn ai-pocket-search --strategy LiquidityZones -n 0 --maxDepth 2 --minSupport 25',
@@ -90,17 +94,17 @@ args.option(['m', 'minSupport'], 'Minimum rows required for a pocket', 20);
 args.option(
   ['F', 'minProfitFactor'],
   'Minimum profit factor required for positive pockets',
-  1.2,
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.minProfitFactor,
 );
 args.option(
   ['W', 'minWinRate'],
   'Minimum win rate required for positive pockets',
-  0,
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.minWinRate,
 );
 args.option(
   ['R', 'minTotalProfit'],
   'Minimum total PnL required for positive pockets',
-  0,
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.minTotalProfit,
 );
 args.option(
   ['a', 'maxAtomicPredicates'],
@@ -115,7 +119,7 @@ args.option(
 args.option(
   ['V', 'validationSplit'],
   'Trailing time-ordered scope share reserved for validation (0 disables)',
-  0.25,
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.validationSplit,
 );
 args.option(
   ['N', 'minValidationSupport'],
@@ -694,12 +698,29 @@ export const main = async () => {
   const maxDepth = normalizePositiveInt(flags.maxDepth, 2);
   const minSupport = normalizePositiveInt(flags.minSupport, 20);
   const minProfitFactor = normalizeNonNegativeNumber(
-    flags.minProfitFactor,
+    readAiPocketSearchCliOption({
+      argv: process.argv,
+      longName: 'minProfitFactor',
+      shortName: 'F',
+    }) ?? flags.minProfitFactor,
     1.2,
   );
-  const minWinRate = normalizeNonNegativeNumber(flags.minWinRate, 0);
-  const minTotalProfit = Number.isFinite(Number(flags.minTotalProfit))
-    ? Number(flags.minTotalProfit)
+  const minWinRate = normalizeNonNegativeNumber(
+    readAiPocketSearchCliOption({
+      argv: process.argv,
+      longName: 'minWinRate',
+      shortName: 'W',
+    }) ?? flags.minWinRate,
+    0,
+  );
+  const minTotalProfitValue =
+    readAiPocketSearchCliOption({
+      argv: process.argv,
+      longName: 'minTotalProfit',
+      shortName: 'R',
+    }) ?? flags.minTotalProfit;
+  const minTotalProfit = Number.isFinite(Number(minTotalProfitValue))
+    ? Number(minTotalProfitValue)
     : 0;
   const maxAtomicPredicates = normalizePositiveInt(
     flags.maxAtomicPredicates,
@@ -707,7 +728,14 @@ export const main = async () => {
   );
   const maxCombinations = normalizePositiveInt(flags.maxCombinations, 60_000);
   const validationSplit = hasCliOption('validationSplit', 'V')
-    ? normalizeRatio(flags.validationSplit, 0.25)
+    ? normalizeRatio(
+        readAiPocketSearchCliOption({
+          argv: process.argv,
+          longName: 'validationSplit',
+          shortName: 'V',
+        }) ?? flags.validationSplit,
+        0.25,
+      )
     : 0.25;
   const explicitMinValidationSupport = normalizeInt(
     flags.minValidationSupport,

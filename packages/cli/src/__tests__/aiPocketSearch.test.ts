@@ -5,8 +5,38 @@ import {
   searchAiPockets,
   type AiPocketSearchRow,
 } from '../lib/aiPocketSearch';
+import { readAiPocketSearchCliOption } from '../lib/aiPocketSearchCli';
 
 describe('aiPocketSearch', () => {
+  it('preserves fractional research thresholds passed through the CLI parser', () => {
+    const argv = [
+      'node',
+      'ai-pocket-search',
+      '--minProfitFactor=1.35',
+      '-V',
+      '0.2',
+    ];
+
+    expect(
+      Number(
+        readAiPocketSearchCliOption({
+          argv,
+          longName: 'minProfitFactor',
+          shortName: 'F',
+        }),
+      ),
+    ).toBe(1.35);
+    expect(
+      Number(
+        readAiPocketSearchCliOption({
+          argv,
+          longName: 'validationSplit',
+          shortName: 'V',
+        }),
+      ),
+    ).toBe(0.2);
+  });
+
   it('collects causal payload fields and derived directional indicator support', () => {
     const payload = {
       signal: {
