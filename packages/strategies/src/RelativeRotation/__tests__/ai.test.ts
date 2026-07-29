@@ -71,6 +71,9 @@ const makeCleanBaseContext = () => ({
     },
   },
   regime: {
+    session: {
+      minutesToFundingWindow: 435,
+    },
     trend: {
       bias: 'bear',
       adx: {
@@ -119,6 +122,84 @@ describe('relativeRotationAiAdapter', () => {
       approved: true,
     });
   });
+
+  it('approves SHORT just inside the post-funding cooldown boundary', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.regime.session.minutesToFundingWindow = 434.99;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('rejects SHORT just outside the post-funding cooldown boundary', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.regime.session.minutesToFundingWindow = 435.01;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: 'post_funding_cooldown_active',
+    });
+  });
+
+  it.each(['missing', 'null'] as const)(
+    'hard-blocks a %s funding-window value',
+    (value) => {
+      const baseContext = makeCleanBaseContext();
+      if (value === 'missing') {
+        delete (baseContext.regime.session as any).minutesToFundingWindow;
+      } else {
+        baseContext.regime.session.minutesToFundingWindow = null as any;
+      }
+
+      const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload: makePayload({
+          signalContext: { signalDirection: 'SHORT' },
+          baseContext,
+        }),
+        analysis: {
+          direction: 'SHORT',
+          quality: 5,
+        },
+      });
+
+      expect(result).toMatchObject({
+        direction: null,
+        quality: 1,
+        approved: false,
+        rejectReason: 'missing_minutes_to_funding_window',
+      });
+    },
+  );
 
   it('rejects a SHORT signal inside the validated breakdown boundary', () => {
     const baseContext = makeCleanBaseContext();
@@ -378,6 +459,34 @@ describe('relativeRotationAiAdapter', () => {
       quality: 3,
       approved: false,
       rejectReason: 'btc_vs_alt_return_1h_below_stable_range',
+    });
+  });
+
+  it('does not let the recovery pocket bypass the post-funding cooldown', () => {
+    const baseContext = makeCleanBaseContext();
+    baseContext.structure.localRange.distanceToLowLevelAtr = -2.74;
+    baseContext.regime.trend.adx.diMinus = 50.01;
+    baseContext.relative.marketBreadth.dispersion = 0.0085;
+    baseContext.relative.btcAltRegime.altBasketReturn1h = -0.015;
+    baseContext.regime.session.minutesToFundingWindow = 450;
+
+    const result = relativeRotationAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalContext: { signalDirection: 'SHORT' },
+        baseContext,
+      }),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+      rejectReason: 'post_funding_cooldown_active',
     });
   });
 

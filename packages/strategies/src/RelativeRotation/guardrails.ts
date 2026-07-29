@@ -20,6 +20,7 @@ export type RelativeRotationGuardrailContext = Omit<
   btcTurnoverShare24h: number | null;
   cmcFearGreedValueChange7d: number | null;
   cmcFearGreedStale: boolean | null;
+  minutesToFundingWindow: number | null;
   contextConflictCount: number | null;
   totalContextScore: number | null;
   hardBlockReasons: string[];
@@ -48,6 +49,7 @@ const SHORT_BREADTH_RECOVERY_ALT_RETURN_1H_MIN = -0.015;
 const SHORT_BTC_VS_ALT_RETURN_1H_MIN = -0.001;
 const SHORT_BTC_TURNOVER_SHARE_24H_MIN = 0.25;
 const SHORT_FEAR_GREED_CHANGE_7D_MIN = -12;
+const SHORT_MINUTES_TO_NEXT_FUNDING_MAX = 435;
 
 const isTrendAligned = ({
   direction,
@@ -128,6 +130,9 @@ export const buildRelativeRotationGuardrailContext = ({
     typeof baseContext?.relative?.cmcFearGreed?.stale === 'boolean'
       ? baseContext.relative.cmcFearGreed.stale
       : null;
+  const minutesToFundingWindow = asFiniteNumber(
+    baseContext?.regime?.session?.minutesToFundingWindow,
+  );
   const contextConflictCount = asFiniteNumber(
     baseContext?.gateFeatures?.conflicts?.count,
   );
@@ -169,6 +174,9 @@ export const buildRelativeRotationGuardrailContext = ({
     hardBlockReasons.push('missing_cmc_fear_greed_freshness');
   } else if (cmcFearGreedStale) {
     hardBlockReasons.push('stale_cmc_fear_greed_context');
+  }
+  if (minutesToFundingWindow == null) {
+    hardBlockReasons.push('missing_minutes_to_funding_window');
   }
   if (signalDirection && signalDirection !== 'SHORT') {
     softBlockReasons.push('long_direction_not_validated');
@@ -222,6 +230,9 @@ export const buildRelativeRotationGuardrailContext = ({
     btcVsAltReturn1h >= SHORT_BTC_VS_ALT_RETURN_1H_MIN &&
     btcTurnoverShare24h != null &&
     btcTurnoverShare24h >= SHORT_BTC_TURNOVER_SHARE_24H_MIN;
+  const outsidePostFundingCooldown =
+    minutesToFundingWindow != null &&
+    minutesToFundingWindow <= SHORT_MINUTES_TO_NEXT_FUNDING_MAX;
   if (
     btcVsAltReturn1h != null &&
     btcVsAltReturn1h < SHORT_BTC_VS_ALT_RETURN_1H_MIN
@@ -234,11 +245,18 @@ export const buildRelativeRotationGuardrailContext = ({
   ) {
     softBlockReasons.push('btc_turnover_share_24h_below_stable_range');
   }
+  if (
+    minutesToFundingWindow != null &&
+    minutesToFundingWindow > SHORT_MINUTES_TO_NEXT_FUNDING_MAX
+  ) {
+    softBlockReasons.push('post_funding_cooldown_active');
+  }
   const deterministicQuality =
     hardBlockReasons.length > 0
       ? 1
       : (stableShortBreakdown || stableBreadthRecovery) &&
-          stableBtcMarketLeadership
+          stableBtcMarketLeadership &&
+          outsidePostFundingCooldown
         ? 4
         : 3;
 
@@ -267,6 +285,7 @@ export const buildRelativeRotationGuardrailContext = ({
     btcTurnoverShare24h,
     cmcFearGreedValueChange7d,
     cmcFearGreedStale,
+    minutesToFundingWindow,
     contextConflictCount,
     totalContextScore,
     hardBlockReasons,

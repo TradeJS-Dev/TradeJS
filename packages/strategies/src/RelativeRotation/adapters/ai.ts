@@ -87,6 +87,7 @@ Additional RelativeRotation context:
 - btcTurnoverShare24h=${String(context.btcTurnoverShare24h ?? 'n/a')}
 - cmcFearGreedValueChange7d=${String(context.cmcFearGreedValueChange7d ?? 'n/a')}
 - cmcFearGreedStale=${String(context.cmcFearGreedStale ?? 'n/a')}
+- minutesToFundingWindow=${String(context.minutesToFundingWindow ?? 'n/a')}
 - contextConflictCount=${String(context.contextConflictCount ?? 'n/a')}
 - totalContextScore=${String(context.totalContextScore ?? 'n/a')}
 - deterministicQuality=${context.deterministicQuality}
@@ -100,7 +101,8 @@ Interpretation rules for RelativeRotation:
 - The primary deterministic pocket approves SHORT signals at least 2.75 ATR below the local low, with ADX DI- at most 50, a 1h price move of at most -5%, and a non-stale CMC Fear & Greed 7d change of at least -12.
 - The validated recovery pocket may also approve such a downside impulse when market breadth dispersion is at least 0.0085 and the 1h alt-basket return is at least -0.015.
 - Both SHORT pockets additionally require BTC to outperform the alt basket by at least -0.001 over 1h and BTC to hold at least 0.25 of BTC-plus-alt 24h turnover.
-- distanceToLowLevelAtr, adxDiMinus, price1hPct, marketBreadthDispersion, altBasketReturn1h, btcVsAltReturn1h, btcTurnoverShare24h, and CMC Fear & Greed context are signal-time causal fields, not trade outcomes.
+- Both SHORT pockets are disabled during the first 30 minutes after an 8-hour funding timestamp; minutesToFundingWindow must be at most 435.
+- distanceToLowLevelAtr, adxDiMinus, price1hPct, marketBreadthDispersion, altBasketReturn1h, btcVsAltReturn1h, btcTurnoverShare24h, minutesToFundingWindow, and CMC Fear & Greed context are signal-time causal fields, not trade outcomes.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
