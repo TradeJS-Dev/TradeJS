@@ -476,7 +476,21 @@ const runSignalsPath = async () => {
   };
   const setDataMock = jest.fn(async () => null);
   const getHashJsonField = jest.fn(async () => null);
-  const setHashJsonField = jest.fn(async () => null);
+  const setHashJsonField = jest.fn(
+    async (_key: string, _field: string, _data: unknown, _options?: unknown) =>
+      null,
+  );
+  const setHashJsonFields = jest.fn(
+    async (
+      key: string,
+      entries: Array<{ field: string; data: unknown }>,
+      options: unknown,
+    ) => {
+      for (const { field, data } of entries) {
+        await setHashJsonField(key, field, data, options);
+      }
+    },
+  );
 
   jest.doMock('args', () => ({
     __esModule: true,
@@ -569,6 +583,7 @@ const runSignalsPath = async () => {
     getData: jest.fn(),
     getKeys: jest.fn(),
     getHashJsonField,
+    getHashJsonValues: jest.fn(async () => []),
     incrHashFields: jest.fn(),
     redisKeys: {
       strategyResults: (userName: string, strategyName: string) =>
@@ -597,6 +612,7 @@ const runSignalsPath = async () => {
     },
     setData: setDataMock,
     setHashJsonField,
+    setHashJsonFields,
   }));
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
     getRuntimeDeployment: jest.fn(async () => null),

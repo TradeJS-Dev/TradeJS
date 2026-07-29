@@ -1,10 +1,10 @@
-const getHashJsonField = jest.fn();
-const setHashJsonField = jest.fn();
+const getHashJsonValues = jest.fn();
+const setHashJsonFields = jest.fn();
 const incrHashFields = jest.fn();
 
 jest.mock('@tradejs/infra/redis', () => ({
-  getHashJsonField: (...args: unknown[]) => getHashJsonField(...args),
-  setHashJsonField: (...args: unknown[]) => setHashJsonField(...args),
+  getHashJsonValues: (...args: unknown[]) => getHashJsonValues(...args),
+  setHashJsonFields: (...args: unknown[]) => setHashJsonFields(...args),
   incrHashFields: (...args: unknown[]) => incrHashFields(...args),
   redisKeys: {
     runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
@@ -22,16 +22,16 @@ jest.mock('@tradejs/infra/redis', () => ({
   },
 }));
 
-describe('saveRuntimeSignalEvaluation lineage scope', () => {
+describe('runtime signal evaluation buffering', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    getHashJsonField.mockResolvedValue(null);
-    setHashJsonField.mockResolvedValue(undefined);
+    getHashJsonValues.mockResolvedValue([]);
+    setHashJsonFields.mockResolvedValue(undefined);
     incrHashFields.mockResolvedValue(undefined);
   });
 
-  it('persists bounded first/last timestamps for every evaluated scope', async () => {
-    const { saveRuntimeSignalEvaluation } = await import(
+  it('batches lineage and stats while preserving bounded timestamps', async () => {
+    const { createRuntimeSignalEvaluationBuffer } = await import(
       '../lib/signals/evaluations'
     );
     const runtimeLineage = {
@@ -55,23 +55,28 @@ describe('saveRuntimeSignalEvaluation lineage scope', () => {
       runtimeConfigId: 'config',
       runtimeLineage,
     };
+    const buffer = createRuntimeSignalEvaluationBuffer();
 
-    await saveRuntimeSignalEvaluation({
+    await buffer.save({
       ...base,
       evaluationId: 'first',
       timestamp: firstTimestamp,
     });
-    await saveRuntimeSignalEvaluation({
+    await buffer.save({
       ...base,
       evaluationId: 'second',
       timestamp: secondTimestamp,
     });
+    expect(setHashJsonFields).not.toHaveBeenCalled();
+    expect(incrHashFields).not.toHaveBeenCalled();
 
-    const lineageWrites = setHashJsonField.mock.calls.filter(([key]) =>
-      String(key).startsWith('lineage:root:'),
-    );
-    expect(lineageWrites).toHaveLength(2);
-    expect(lineageWrites[1][2]).toMatchObject({
+    await buffer.flush();
+
+    expect(getHashJsonValues).toHaveBeenCalledTimes(1);
+    expect(setHashJsonFields).toHaveBeenCalledTimes(1);
+    const lineageEntries = setHashJsonFields.mock.calls[0][1];
+    expect(lineageEntries).toHaveLength(1);
+    expect(lineageEntries[0].data).toMatchObject({
       strategy: 'TrendShift',
       symbol: 'BTCUSDT',
       runtimeConfigId: 'config',
@@ -79,6 +84,60 @@ describe('saveRuntimeSignalEvaluation lineage scope', () => {
       firstTimestamp,
       lastTimestamp: secondTimestamp,
     });
-    expect(getHashJsonField).toHaveBeenCalledTimes(1);
+    expect(incrHashFields).toHaveBeenCalledWith(
+      expect.stringContaining('stats:root:'),
+      {
+        evaluated: 2,
+        'reason:skip from core:NO_SIGNAL': 2,
+      },
+      { expire: 259_200 },
+    );
+  });
+
+  it('batches detailed signal records by strategy bucket', async () => {
+    const { createRuntimeSignalEvaluationBuffer } = await import(
+      '../lib/signals/evaluations'
+    );
+    const timestamp = Date.UTC(2026, 6, 24, 10, 0);
+    const buffer = createRuntimeSignalEvaluationBuffer();
+    const base = {
+      userName: 'root',
+      strategy: 'TrendLine',
+      interval: '15' as const,
+      evaluatedAt: timestamp,
+      status: 'signal' as const,
+      reason: 'SIGNAL',
+      timestamp,
+      direction: 'LONG' as const,
+    };
+
+    await buffer.save({
+      ...base,
+      evaluationId: 'ETH',
+      symbol: 'ETHUSDT',
+      signalId: 'signal-eth',
+    });
+    await buffer.save({
+      ...base,
+      evaluationId: 'SOL',
+      symbol: 'SOLUSDT',
+      signalId: 'signal-sol',
+    });
+    await buffer.flush();
+
+    expect(setHashJsonFields).toHaveBeenCalledTimes(1);
+    expect(setHashJsonFields).toHaveBeenCalledWith(
+      expect.stringContaining('evaluations:root:'),
+      [
+        expect.objectContaining({ field: 'ETH' }),
+        expect.objectContaining({ field: 'SOL' }),
+      ],
+      { expire: 259_200 },
+    );
+    expect(incrHashFields).toHaveBeenCalledWith(
+      expect.stringContaining('stats:root:'),
+      { evaluated: 2, signals: 2 },
+      { expire: 259_200 },
+    );
   });
 });

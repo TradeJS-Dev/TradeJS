@@ -323,6 +323,25 @@ describe('redis utils', () => {
     );
     expect(redisClient.expire).toHaveBeenCalledWith('bucket:1', 86400);
 
+    redisClient.call.mockResolvedValueOnce(2);
+    await redisModule.setHashJsonFields(
+      'bucket:batch',
+      [
+        { field: 'field-1', data: { x: 1 } },
+        { field: 'field-2', data: { y: 2 } },
+      ],
+      { expire: 30 },
+    );
+    expect(redisClient.call).toHaveBeenCalledWith(
+      'HSET',
+      'bucket:batch',
+      'field-1',
+      '{"x":1}',
+      'field-2',
+      '{"y":2}',
+    );
+    expect(redisClient.expire).toHaveBeenCalledWith('bucket:batch', 30);
+
     redisClient.call.mockResolvedValueOnce({
       'field-1': '{"x":1}',
       'field-2': '{"y":2}',
@@ -345,14 +364,14 @@ describe('redis utils', () => {
       { expire: 10 },
     );
     expect(redisClient.call).toHaveBeenNthCalledWith(
-      4,
+      5,
       'HINCRBY',
       'bucket:stats',
       'evaluated',
       2,
     );
     expect(redisClient.call).toHaveBeenNthCalledWith(
-      5,
+      6,
       'HINCRBY',
       'bucket:stats',
       'signals',

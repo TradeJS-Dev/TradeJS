@@ -1248,6 +1248,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     deploymentId: requestedDeploymentId,
     policyProfileId,
     runtimeConfigId,
+    runtimeConfigSnapshot,
     data,
     btcData,
     ethData = [],
@@ -1266,6 +1267,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       baseConfig,
       defaults,
       runtimeConfigId,
+      runtimeConfigSnapshot,
     });
     const universe = requestedUniverse ?? connector.universe;
     const accountId = requestedAccountId ?? connector.accountId;

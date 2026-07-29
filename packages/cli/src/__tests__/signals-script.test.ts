@@ -32,6 +32,8 @@ type Scenario = {
   binanceMarketContextBackfillEnabled?: boolean;
   coinMarketCapContextBackfillEnabled?: boolean;
   includeOpenCandle?: boolean;
+  simulateRuntimeAppend?: boolean;
+  tickers?: string[];
   strategyConfig?: Record<string, unknown>;
   strategyResult?: unknown;
   projectHooks?: {
@@ -123,7 +125,22 @@ const loadScript = async (scenario: Scenario) => {
   });
   const setData = jest.fn(async () => null);
   const getHashJsonField = jest.fn(async () => null);
-  const setHashJsonField = jest.fn(async () => null);
+  const getHashJsonValues = jest.fn(async () => []);
+  const setHashJsonField = jest.fn(
+    async (_key: string, _field: string, _data: unknown, _options?: unknown) =>
+      null,
+  );
+  const setHashJsonFields = jest.fn(
+    async (
+      key: string,
+      entries: Array<{ field: string; data: unknown }>,
+      options: unknown,
+    ) => {
+      for (const { field, data } of entries) {
+        await setHashJsonField(key, field, data, options);
+      }
+    },
+  );
   const incrHashFields = jest.fn(async () => null);
   const releaseStrategyReplayCache = jest.fn();
   const logger = {
@@ -143,12 +160,20 @@ const loadScript = async (scenario: Scenario) => {
       },
     ],
   );
+  let cycleTimestampOffset = 0;
   const connector = {
     kline: jest.fn(async ({ symbol }: { symbol: string }) => {
       const timestamps =
         scenario.includeOpenCandle === false
-          ? [CLOSED_1_TS, CLOSED_2_TS]
-          : [CLOSED_1_TS, CLOSED_2_TS, CURRENT_OPEN_TS];
+          ? [
+              CLOSED_1_TS + cycleTimestampOffset,
+              CLOSED_2_TS + cycleTimestampOffset,
+            ]
+          : [
+              CLOSED_1_TS + cycleTimestampOffset,
+              CLOSED_2_TS + cycleTimestampOffset,
+              CURRENT_OPEN_TS + cycleTimestampOffset,
+            ];
       if (symbol === 'BTCUSDT') {
         return timestamps.map((timestamp, index) =>
           makeCandle(timestamp, 100 + index),
@@ -174,6 +199,10 @@ const loadScript = async (scenario: Scenario) => {
   const saveRuntimeDeploymentHeartbeat = jest.fn(async () => undefined);
   const strategyCreatorMap = new Map<string, jest.Mock>();
   const strategyFnMap = new Map<string, jest.Mock>();
+  const strategyHistoryLengths = new Map<
+    string,
+    Array<{ data: number; btcData: number; ethData: number }>
+  >();
 
   for (const { strategyName, result, runtimeCloseEvents } of strategyEntries) {
     const strategySignal = {
@@ -189,12 +218,26 @@ const loadScript = async (scenario: Scenario) => {
       additionalIndicators: {},
     };
     let strategyCreatorParams: any;
-    const strategyFn = jest.fn(async () => {
-      for (const event of runtimeCloseEvents ?? []) {
-        strategyCreatorParams?.onRuntimeClose?.(event);
-      }
-      return result ?? strategySignal;
-    });
+    const strategyFn = jest.fn(
+      async (candle: any, btcCandle: any, ethCandle: any) => {
+        const historyLengths = strategyHistoryLengths.get(strategyName) ?? [];
+        historyLengths.push({
+          data: strategyCreatorParams?.data?.length ?? 0,
+          btcData: strategyCreatorParams?.btcData?.length ?? 0,
+          ethData: strategyCreatorParams?.ethData?.length ?? 0,
+        });
+        strategyHistoryLengths.set(strategyName, historyLengths);
+        if (scenario.simulateRuntimeAppend) {
+          strategyCreatorParams?.data?.push(candle);
+          strategyCreatorParams?.btcData?.push(btcCandle);
+          strategyCreatorParams?.ethData?.push(ethCandle);
+        }
+        for (const event of runtimeCloseEvents ?? []) {
+          strategyCreatorParams?.onRuntimeClose?.(event);
+        }
+        return result ?? strategySignal;
+      },
+    );
     const strategyCreator = jest.fn(async (params: any) => {
       strategyCreatorParams = params;
       return strategyFn;
@@ -206,7 +249,7 @@ const loadScript = async (scenario: Scenario) => {
   const getStrategyCreator = jest.fn(async (strategyName: string) =>
     strategyCreatorMap.get(strategyName),
   );
-  const getTickers = jest.fn(async () => ['ETHUSDT']);
+  const getTickers = jest.fn(async () => scenario.tickers ?? ['ETHUSDT']);
   const update = jest.fn(async () => null);
   const makeScreenshots = jest.fn(async () => null);
   const sendToTG = jest.fn(async () => null);
@@ -216,11 +259,24 @@ const loadScript = async (scenario: Scenario) => {
     hooks: scenario.projectHooks ?? {},
   }));
   const runWithConcurrency = jest.fn(
-    async <T>(items: T[], _limit: number, worker: (item: T) => Promise<void>) =>
-      Promise.all(items.map(worker)),
+    async <T>(
+      items: T[],
+      limit: number,
+      worker: (item: T) => Promise<void>,
+    ) => {
+      if (limit === 1) {
+        for (const item of items) {
+          await worker(item);
+        }
+        return;
+      }
+      await Promise.all(items.map(worker));
+    },
   );
   const getTimestamp = jest.fn((days?: number) =>
-    typeof days === 'number' && days > 0 ? PRELOAD_TS : CURRENT_TS,
+    typeof days === 'number' && days > 0
+      ? PRELOAD_TS + cycleTimestampOffset
+      : CURRENT_TS + cycleTimestampOffset,
   );
   const getRuntimeStorageDayKey = jest.fn(() => '1970-01-01');
   const progressTick = jest.fn();
@@ -376,10 +432,12 @@ const loadScript = async (scenario: Scenario) => {
     getData,
     getKeys,
     getHashJsonField,
+    getHashJsonValues,
     incrHashFields,
     redisKeys,
     setData,
     setHashJsonField,
+    setHashJsonFields,
   }));
 
   jest.doMock('../lib/derivativesContextBackfill', () => ({
@@ -423,6 +481,7 @@ const loadScript = async (scenario: Scenario) => {
       getRuntimeDeployment,
       getData,
       getKeys,
+      getHashJsonValues,
       getTimestamp,
       getStrategyCreator,
       getTickers,
@@ -441,11 +500,17 @@ const loadScript = async (scenario: Scenario) => {
       saveRuntimeDeploymentHeartbeat,
       setData,
       setHashJsonField,
+      setHashJsonFields,
       shouldBackfillBinanceMarketContextForSignals,
       shouldBackfillCoinMarketCapContextForSignals,
       shouldBackfillDerivativesContextForSignals,
       strategyCreatorMap,
+      strategyConfigMap,
       strategyFnMap,
+      strategyHistoryLengths,
+      advanceCycle: () => {
+        cycleTimestampOffset += INTERVAL_MS;
+      },
       update,
     },
   };
@@ -724,6 +789,153 @@ describe('signals script', () => {
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
+    );
+  });
+
+  it('loads primary BTC/ETH history once per cycle and reuses warmup arrays across strategies', async () => {
+    const { signals, mocks } = await loadScript({
+      tickers: ['SOLUSDT', 'XRPUSDT'],
+      flags: {
+        timeframe: 15,
+        parallel: 1,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        { strategyName: 'TrendLine' },
+        { strategyName: 'TrendShift' },
+      ],
+      simulateRuntimeAppend: true,
+    });
+
+    await signals();
+
+    const loadedSymbols = (
+      mocks.connector.kline.mock.calls as Array<[{ symbol: string }]>
+    ).map(([params]) => params.symbol);
+    expect(loadedSymbols.filter((symbol) => symbol === 'BTCUSDT')).toHaveLength(
+      3,
+    );
+    expect(loadedSymbols.filter((symbol) => symbol === 'ETHUSDT')).toHaveLength(
+      1,
+    );
+    expect(loadedSymbols.filter((symbol) => symbol === 'SOLUSDT')).toHaveLength(
+      1,
+    );
+    expect(loadedSymbols.filter((symbol) => symbol === 'XRPUSDT')).toHaveLength(
+      1,
+    );
+
+    const trendLineParams =
+      mocks.strategyCreatorMap.get('TrendLine')?.mock.calls[0]?.[0];
+    const trendShiftParams =
+      mocks.strategyCreatorMap.get('TrendShift')?.mock.calls[0]?.[0];
+    expect(trendLineParams.data).toBe(trendShiftParams.data);
+    expect(trendLineParams.btcData).toBe(trendShiftParams.btcData);
+    expect(trendLineParams.ethData).toBe(trendShiftParams.ethData);
+    expect(mocks.strategyHistoryLengths.get('TrendLine')?.[0]).toEqual({
+      data: 1,
+      btcData: 1,
+      ethData: 1,
+    });
+    expect(mocks.strategyHistoryLengths.get('TrendShift')?.[0]).toEqual({
+      data: 1,
+      btcData: 1,
+      ethData: 1,
+    });
+    expect(trendLineParams.data).toEqual([makeCandle(CLOSED_1_TS, 10)]);
+    expect(trendLineParams.btcData).toEqual([makeCandle(CLOSED_1_TS, 100)]);
+  });
+
+  it('uses one config snapshot per cycle and applies changes on the next candle', async () => {
+    const { createSignalsSession, signals, mocks } = await loadScript({
+      tickers: ['SOLUSDT', 'XRPUSDT'],
+      strategyConfig: { INTERVAL: '15', CUSTOM_THRESHOLD: 1 },
+      deployment: {
+        id: 'crypto-live',
+        label: 'Crypto live',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        interval: '15',
+        enabled: true,
+        tickers: ['SOLUSDT', 'XRPUSDT'],
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            policyProfileId: 'default',
+            enabled: true,
+            config: { CUSTOM_THRESHOLD: 99 },
+          },
+        ],
+      },
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: 'crypto-live',
+      },
+    });
+    const lifecycle = createSignalsStrategyLifecycle({
+      intervalMs: INTERVAL_MS,
+      maxLiveBars: 100,
+      releaseState: mocks.releaseStrategyReplayCache,
+    });
+    const session = await createSignalsSession(lifecycle);
+
+    await signals({ session });
+
+    const strategyConfigKey = 'users:root:strategies:TrendLine:config';
+    expect(
+      mocks.getData.mock.calls.filter(([key]) => key === strategyConfigKey),
+    ).toHaveLength(1);
+    for (const [params] of mocks.strategyCreatorMap.get('TrendLine')!.mock
+      .calls) {
+      expect(params.runtimeConfigSnapshot.userConfig).toEqual({
+        INTERVAL: '15',
+        CUSTOM_THRESHOLD: 1,
+      });
+    }
+
+    mocks.strategyConfigMap.set(strategyConfigKey, {
+      INTERVAL: '15',
+      CUSTOM_THRESHOLD: 2,
+    });
+    mocks.advanceCycle();
+    await signals({ session });
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        runtimeConfigSnapshot: {
+          userConfig: {
+            INTERVAL: '15',
+            CUSTOM_THRESHOLD: 2,
+          },
+          symbolResultConfig: null,
+        },
+        config: expect.objectContaining({ CUSTOM_THRESHOLD: 99 }),
+      }),
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'Rebuilt signals strategy state (%s): %s %s',
+      'config',
+      'TrendLine',
+      expect.any(String),
     );
   });
 
@@ -1569,14 +1781,14 @@ describe('signals script', () => {
       interval: '15',
       startMs: CURRENT_TS,
       endMs: CURRENT_TS,
-      preloadStartMs: PRELOAD_TS,
+      preloadStartMs: undefined,
     });
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^binance market context backfill: done in /),
     );
   });
 
-  it('prepares CMC context for signals without execution-candle preload', async () => {
+  it('prepares CMC context for signals with its bounded live warmup', async () => {
     const { signals, mocks } = await loadScript({
       coinMarketCapContextBackfillEnabled: true,
       flags: {
@@ -1604,7 +1816,7 @@ describe('signals script', () => {
       userName: 'root',
       startMs: CURRENT_TS,
       endMs: CURRENT_TS,
-      preloadStartMs: PRELOAD_TS,
+      preloadStartMs: undefined,
     });
     expect(mocks.update).toHaveBeenCalledWith(
       expect.any(Object),

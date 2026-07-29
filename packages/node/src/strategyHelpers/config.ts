@@ -1,6 +1,10 @@
 import _ from 'lodash';
 import { getData, redisKeys } from '@tradejs/infra/redis';
-import { StrategyConfig, StrategyResults } from '@tradejs/types';
+import {
+  RuntimeStrategyConfigSnapshot,
+  StrategyConfig,
+  StrategyResults,
+} from '@tradejs/types';
 
 interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
   strategyName: string;
@@ -9,6 +13,7 @@ interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
   baseConfig: Record<string, any>;
   defaults: TConfig;
   runtimeConfigId?: string;
+  runtimeConfigSnapshot?: RuntimeStrategyConfigSnapshot;
 }
 
 export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
@@ -18,6 +23,7 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   baseConfig,
   defaults,
   runtimeConfigId,
+  runtimeConfigSnapshot,
 }: ResolveStrategyConfigParams<TConfig>): Promise<{
   config: TConfig;
   isConfigFromBacktest: boolean;
@@ -41,25 +47,35 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   let isConfigFromBacktest = false;
 
   if (config.ENV !== 'BACKTEST') {
-    const userConfig = (await getData(
-      runtimeConfigId
-        ? redisKeys.strategyConfig(userName, strategyName, runtimeConfigId)
-        : redisKeys.strategyConfig(userName, strategyName),
-      {},
-    )) as TConfig;
+    const userConfig = (
+      runtimeConfigSnapshot
+        ? runtimeConfigSnapshot.userConfig
+        : await getData(
+            runtimeConfigId
+              ? redisKeys.strategyConfig(
+                  userName,
+                  strategyName,
+                  runtimeConfigId,
+                )
+              : redisKeys.strategyConfig(userName, strategyName),
+            {},
+          )
+    ) as TConfig;
     config = mergeIfNotEmpty(config, userConfig);
 
     if (!runtimeConfigId || runtimeConfigId === 'config') {
-      const results = (await getData(
-        redisKeys.strategyResults(userName, strategyName),
-        {},
-      )) as StrategyResults;
-
-      const backtestResult = results?.[symbol];
-      if (backtestResult && !_.isEmpty(backtestResult.config)) {
+      const symbolResultConfig = runtimeConfigSnapshot
+        ? runtimeConfigSnapshot.symbolResultConfig
+        : (
+            (await getData(
+              redisKeys.strategyResults(userName, strategyName),
+              {},
+            )) as StrategyResults
+          )?.[symbol]?.config;
+      if (symbolResultConfig && !_.isEmpty(symbolResultConfig)) {
         config = mergeIfNotEmpty(
           config,
-          backtestResult.config as Partial<TConfig>,
+          symbolResultConfig as Partial<TConfig>,
         );
         isConfigFromBacktest = true;
       }

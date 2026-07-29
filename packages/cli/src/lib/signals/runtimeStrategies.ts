@@ -22,6 +22,7 @@ export interface StrategyRuntimeConfig {
   universe: MarketUniverse;
   accountId?: string;
   strategyCreator: StrategyCreator;
+  sourceStrategyConfig: StrategyConfig;
   strategyConfig: StrategyConfig;
   strategyResults: StrategyResults;
 }
@@ -102,6 +103,7 @@ export const loadRuntimeStrategies = async ({
           universe: configUniverse,
           accountId: effectiveAccountId,
           strategyCreator,
+          sourceStrategyConfig: strategyConfig,
           strategyConfig: {
             ...strategyConfig,
             ...deploymentStrategy?.config,

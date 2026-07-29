@@ -110,6 +110,11 @@ export interface StrategyConfig {
 export type StrategyResultConfig = StrategyConfig;
 export type StrategyConfigGrid = Record<string, unknown[]>;
 
+export interface RuntimeStrategyConfigSnapshot {
+  userConfig: StrategyConfig;
+  symbolResultConfig?: StrategyConfig | null;
+}
+
 export interface StrategyCreatorParams {
   userName: string;
   connectorName: string;
@@ -121,6 +126,7 @@ export interface StrategyCreatorParams {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
+  runtimeConfigSnapshot?: RuntimeStrategyConfigSnapshot;
   config: StrategyConfig;
   connector: Connector;
   data: KlineChartData;

@@ -381,12 +381,17 @@ describe('strategyRuntime', () => {
       { timestamp: 3, close: 203 },
       { timestamp: 4, close: 204 },
     ] as any;
+    const runtimeConfigSnapshot = {
+      userConfig: { INTERVAL: '15' },
+      symbolResultConfig: { THRESHOLD: 2 },
+    };
 
     const strategy = await strategyCreator({
       userName: 'root',
       connectorName: 'ByBit',
       symbol: 'ETHUSDT',
       config: {},
+      runtimeConfigSnapshot,
       data,
       btcData,
       connector: {
@@ -397,6 +402,9 @@ describe('strategyRuntime', () => {
       },
     } as any);
 
+    expect(mockResolveStrategyConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeConfigSnapshot }),
+    );
     expect(createStrategyIndicatorsStateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data,

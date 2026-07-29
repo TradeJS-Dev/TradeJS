@@ -172,8 +172,8 @@ export const createSignalsStrategyLifecycle = ({
 
     try {
       const strategy = await create({
-        btcBinanceData: [...(btcBinanceData ?? [])],
-        btcCoinbaseData: [...(btcCoinbaseData ?? [])],
+        btcBinanceData: btcBinanceData ?? [],
+        btcCoinbaseData: btcCoinbaseData ?? [],
         onRuntimeClose,
       });
       (strategy as ReferenceAwareStrategy).__tradejsUpdateReferenceData?.({

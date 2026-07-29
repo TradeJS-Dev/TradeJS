@@ -411,6 +411,37 @@ export const setHashJsonField = async <T>(
   }
 };
 
+export const setHashJsonFields = async <T>(
+  key: string,
+  entries: ReadonlyArray<{ field: string; data: T }>,
+  options: Options = {},
+): Promise<void> => {
+  if (redisUnavailable || entries.length === 0) return;
+
+  const { expire } = { ...DEFAULT_OPTIONS, ...options };
+  const redis = await getReadyRedis();
+  if (!redis) return;
+
+  try {
+    const chunkSize = 500;
+    for (let offset = 0; offset < entries.length; offset += chunkSize) {
+      const args = entries
+        .slice(offset, offset + chunkSize)
+        .flatMap(({ field, data }) => [field, toJson(data)]);
+      await redis.call('HSET', key, ...args);
+    }
+    if (expire) {
+      await redis.expire(key, expire);
+    }
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return;
+    }
+    logger.log('error', 'failed batched HSET %s: %s', key, String(e));
+  }
+};
+
 export const getHashJsonField = async <T>(
   key: string,
   field: string,

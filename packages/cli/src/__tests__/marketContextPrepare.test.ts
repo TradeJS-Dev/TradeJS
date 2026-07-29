@@ -155,7 +155,15 @@ describe('prepareMarketContextForRun', () => {
       endMs: 1_000,
       preloadStartMs: undefined,
     });
-    expect(mockBackfillBinanceMarketContextForSignals).toHaveBeenCalled();
+    expect(mockBackfillBinanceMarketContextForSignals).toHaveBeenCalledWith({
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['ETHUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 1_000,
+      preloadStartMs: undefined,
+    });
     expect(
       mockShouldBackfillCoinMarketCapContextForSignals,
     ).toHaveBeenCalledWith({
@@ -165,7 +173,7 @@ describe('prepareMarketContextForRun', () => {
       userName: 'root',
       startMs: 1_000,
       endMs: 1_000,
-      preloadStartMs: 0,
+      preloadStartMs: undefined,
     });
     expect(mockBackfillCoinMarketCapContextForBacktest).not.toHaveBeenCalled();
     expect(mockBackfillCoinMarketCapContextForReplay).not.toHaveBeenCalled();

@@ -71,6 +71,27 @@ describe('signals strategy runtime lifecycle', () => {
     expect(lifecycle.size()).toBe(1);
   });
 
+  it('passes immutable reference histories through without per-runtime copies', async () => {
+    const lifecycle = makeLifecycle();
+    const btcBinanceData = [{ timestamp: 1_000_000, close: 100 }] as any;
+    const btcCoinbaseData = [{ timestamp: 1_000_000, close: 101 }] as any;
+    const create = jest.fn(
+      async (_params: { btcBinanceData: unknown; btcCoinbaseData: unknown }) =>
+        jest.fn() as unknown as Strategy,
+    );
+    const run = jest.fn(async () => 'NO_SIGNAL');
+
+    await lifecycle.evaluate({
+      ...makeParams({ timestamp: 1_000_000, create, run }),
+      btcBinanceData,
+      btcCoinbaseData,
+    });
+
+    const createParams = create.mock.calls[0]?.[0];
+    expect(createParams?.btcBinanceData).toBe(btcBinanceData);
+    expect(createParams?.btcCoinbaseData).toBe(btcCoinbaseData);
+  });
+
   it('does not evaluate duplicate or stale candles', async () => {
     const lifecycle = makeLifecycle();
     const create = jest.fn(async () => jest.fn() as unknown as Strategy);

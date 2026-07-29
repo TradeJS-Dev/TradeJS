@@ -124,19 +124,20 @@ const resolveCoinMarketCapBackfillForMode = (mode: MarketContextRunMode) =>
 const buildCoinMarketCapBackfillParams = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'userName' | 'startMs' | 'endMs' | 'preloadStartMs'
+    'mode' | 'userName' | 'startMs' | 'endMs' | 'preloadStartMs'
   >,
 ) => ({
   userName: params.userName,
   startMs: params.startMs,
   endMs: params.endMs,
-  preloadStartMs: params.preloadStartMs,
+  preloadStartMs: params.mode === 'signals' ? undefined : params.preloadStartMs,
 });
 
 const buildBinanceMarketBackfillParams = (
   params: Pick<
     PrepareMarketContextForRunParams,
     | 'userName'
+    | 'mode'
     | 'projectRoot'
     | 'symbols'
     | 'interval'
@@ -151,7 +152,7 @@ const buildBinanceMarketBackfillParams = (
   interval: params.interval,
   startMs: params.startMs,
   endMs: params.endMs,
-  preloadStartMs: params.preloadStartMs,
+  preloadStartMs: params.mode === 'signals' ? undefined : params.preloadStartMs,
 });
 
 const buildDerivativesBackfillParams = (
