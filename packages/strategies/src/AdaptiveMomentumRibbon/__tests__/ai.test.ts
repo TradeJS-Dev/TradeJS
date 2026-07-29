@@ -448,6 +448,76 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('demotes strong setups when reported alt volume is too thin', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            cmcGlobal: {
+              altVolumeReportedUsd: 249_000_000_000,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        cmcAltVolumeReportedUsd: 249_000_000_000,
+        approvalRegimeAllowed: false,
+        approvalRegimeBlockReasons: ['low_cmc_alt_reported_volume'],
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        approvalBlockReasons: ['low_cmc_alt_reported_volume'],
+      }),
+    );
+  });
+
+  it('demotes strong setups when target lags BTC too far over four hours', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc4h: -2.6,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        targetVsBtcAlpha4h: -2.6,
+        approvalRegimeAllowed: false,
+        approvalRegimeBlockReasons: ['target_vs_btc_alpha_4h_lag'],
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        approvalBlockReasons: ['target_vs_btc_alpha_4h_lag'],
+      }),
+    );
+  });
+
   it('keeps strong low-effort setups in watch mode when signal range is below 1.05 ATR', () => {
     const signal = makeSignal({
       additionalIndicators: {
@@ -1754,7 +1824,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
           relative: {
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -1880,7 +1950,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -1978,7 +2048,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -2062,7 +2132,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -2149,7 +2219,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -2235,7 +2305,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },
@@ -2317,7 +2387,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             },
             targetVsBtc: {
               alphaVsBtc1h: -3.4,
-              alphaVsBtc4h: -4.2,
+              alphaVsBtc4h: -2.4,
               alphaVsBtc24h: -8,
               ratioTrend: 'down',
             },

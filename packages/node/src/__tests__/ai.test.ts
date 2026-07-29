@@ -3805,7 +3805,7 @@ describe('ai helpers', () => {
             relative: {
               targetVsBtc: {
                 alphaVsBtc1h: -3.4,
-                alphaVsBtc4h: -4.2,
+                alphaVsBtc4h: -2.4,
                 alphaVsBtc24h: -8,
                 ratioTrend: 'down',
               },
