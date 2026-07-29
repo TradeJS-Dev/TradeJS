@@ -208,6 +208,26 @@ const derivativesRegimePocket = (overrides: Record<string, any> = {}) => ({
   },
 });
 
+const xrpOiShortPocket = (overrides: Record<string, any> = {}) => ({
+  ...overrides,
+  referenceContexts: {
+    XRPUSDT: {
+      intervals: {
+        '15m': {
+          oiChangePct4h: 1.2,
+          ...overrides.referenceContexts?.XRPUSDT?.intervals?.['15m'],
+        },
+        '1h': {
+          oiChangePct24h: 4.1,
+          ...overrides.referenceContexts?.XRPUSDT?.intervals?.['1h'],
+        },
+        ...overrides.referenceContexts?.XRPUSDT?.intervals,
+      },
+    },
+    ...overrides.referenceContexts,
+  },
+});
+
 describe('volumeDivergenceAiAdapter', () => {
   it('builds strategy-specific volume divergence context into payload', () => {
     const signal = makeSignal();
@@ -1603,6 +1623,135 @@ describe('volumeDivergenceAiAdapter', () => {
         deterministicQuality: 3,
         btcOiChangePct1h15m: -0.24,
         derivativesRegimePocket: false,
+        maxAllowedQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('lifts short confirmations to q4 inside the XRP open-interest pocket', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 99.5,
+        takeProfitPrice: 96,
+        stopLossPrice: 101.5,
+        riskRatio: 2,
+      },
+      indicators: {
+        maFast: [100, 99.6, 99.2],
+        maSlow: [100, 99.9, 99.7],
+        btcMaFast: [50, 50.1, 50.2],
+        btcMaSlow: [50, 50, 49.9],
+      },
+      additionalIndicators: {
+        deltaAtPivot: 120,
+        volumeDivergenceSetup: {
+          atrPct: 1.1,
+          divergenceAmplitudeAtrRatio: 1.6,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: xrpOiShortPocket(),
+        divergence: {
+          kind: 'bearish',
+          pivotLookbackLeft: 2,
+          pivotLookbackRight: 1,
+          barsBetweenPivotConfirmations: 4,
+          currentPivot: {
+            index: 6,
+            timestamp: 6,
+            priceLow: 100,
+            priceHigh: 105,
+            volumeNorm: 40,
+          },
+          previousPivot: {
+            index: 4,
+            timestamp: 4,
+            priceLow: 98,
+            priceHigh: 103,
+            volumeNorm: 100,
+          },
+        },
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        xrpOiChangePct4h15m: 1.2,
+        xrpOiChangePct24h1h: 4.1,
+        derivativesRegimePocket: false,
+        xrpOiShortPocket: true,
+        maxAllowedQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'SHORT',
+        quality: 4,
+        needRetest: false,
+        takeProfitPrice: 96,
+        stopLossPrice: 101.5,
+      }),
+    );
+  });
+
+  it('does not use the XRP open-interest pocket for long approvals', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.85,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        derivativesContext: xrpOiShortPocket(),
+        divergence: {
+          currentPivot: {
+            volumeNorm: 118,
+          },
+          previousPivot: {
+            volumeNorm: 82,
+          },
+        },
+      },
+    });
+    const payload = buildPayload(signal);
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        signalDirection: 'LONG',
+        xrpOiChangePct4h15m: 1.2,
+        xrpOiChangePct24h1h: 4.1,
+        derivativesRegimePocket: false,
+        xrpOiShortPocket: false,
         maxAllowedQuality: 3,
         approvalAllowedNow: false,
       }),

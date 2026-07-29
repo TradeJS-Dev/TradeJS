@@ -39,7 +39,7 @@ VolumeDivergence addon:
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.volumeDivergenceContext\` contains a compact divergence-strength summary:
-  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / venueSpreadZScore / volumeRel20 / rangePosition20 / btcOiChangePct1h15m / solOpenInterest15m / xrpFundingZScore15m / derivativesRegimePocket / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
+  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / venueSpreadZScore / volumeRel20 / rangePosition20 / btcOiChangePct1h15m / solOpenInterest15m / xrpFundingZScore15m / xrpOiChangePct4h15m / xrpOiChangePct24h1h / derivativesRegimePocket / xrpOiShortPocket / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Use this context as the explicit strategy-specific summary instead of trying to derive the same conclusion again only from generic candles.
 - If \`payload.additionalIndicators.baseContext.derivatives\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
@@ -47,6 +47,8 @@ const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 const BTC_OI_CHANGE_PCT_1H_15M_MAX = -0.25;
 const SOL_OPEN_INTEREST_15M_MIN = 10_100_000;
 const XRP_FUNDING_Z_SCORE_15M_MAX = -1.2;
+const XRP_OI_CHANGE_PCT_4H_15M_MIN = 1.2;
+const XRP_OI_CHANGE_PCT_24H_1H_MIN = 4.1;
 
 type Direction = 'LONG' | 'SHORT';
 type Bias = 'bullish' | 'bearish' | null;
@@ -110,7 +112,10 @@ type VolumeDivergenceAiContext = {
   btcOiChangePct1h15m: number | null;
   solOpenInterest15m: number | null;
   xrpFundingZScore15m: number | null;
+  xrpOiChangePct4h15m: number | null;
+  xrpOiChangePct24h1h: number | null;
   derivativesRegimePocket: boolean;
+  xrpOiShortPocket: boolean;
   sessionPhase: string | null;
   hardBlockReasons: HardBlockReason[];
   structuralHardBlockReasons: string[];
@@ -897,6 +902,20 @@ const getVolumeDivergenceContext = (
     '15m',
     'fundingZScore',
   ]);
+  const xrpOiChangePct4h15m = getNestedNumber(derivativesContext, [
+    'referenceContexts',
+    'XRPUSDT',
+    'intervals',
+    '15m',
+    'oiChangePct4h',
+  ]);
+  const xrpOiChangePct24h1h = getNestedNumber(derivativesContext, [
+    'referenceContexts',
+    'XRPUSDT',
+    'intervals',
+    '1h',
+    'oiChangePct24h',
+  ]);
   const marketContext = getRecord(additional?.marketContext);
   const venueSpreadZScore =
     getNestedNumber(marketContext, [
@@ -1118,7 +1137,12 @@ const getVolumeDivergenceContext = (
     isAtMost(btcOiChangePct1h15m, BTC_OI_CHANGE_PCT_1H_15M_MAX) &&
     isAtLeast(solOpenInterest15m, SOL_OPEN_INTEREST_15M_MIN) &&
     isAtMost(xrpFundingZScore15m, XRP_FUNDING_Z_SCORE_15M_MAX);
-  const maxAllowedQuality = derivativesRegimePocket
+  const xrpOiShortPocket =
+    signalDirection === 'SHORT' &&
+    isAtLeast(xrpOiChangePct4h15m, XRP_OI_CHANGE_PCT_4H_15M_MIN) &&
+    isAtLeast(xrpOiChangePct24h1h, XRP_OI_CHANGE_PCT_24H_1H_MIN);
+  const derivativesApprovalPocket = derivativesRegimePocket || xrpOiShortPocket;
+  const maxAllowedQuality = derivativesApprovalPocket
     ? Math.max(deterministicQuality, 4)
     : deterministicQuality;
   const derivativesPocketBlockAllowed =
@@ -1126,7 +1150,7 @@ const getVolumeDivergenceContext = (
     hasOnlyWeakAmplitudeBlock(hardBlockReasons);
   const approvalAllowedNow =
     confirmationReady &&
-    derivativesRegimePocket &&
+    derivativesApprovalPocket &&
     derivativesPocketBlockAllowed &&
     maxAllowedQuality >= 4;
 
@@ -1165,7 +1189,10 @@ const getVolumeDivergenceContext = (
     btcOiChangePct1h15m,
     solOpenInterest15m,
     xrpFundingZScore15m,
+    xrpOiChangePct4h15m,
+    xrpOiChangePct24h1h,
     derivativesRegimePocket,
+    xrpOiShortPocket,
     sessionPhase,
     hardBlockReasons,
     structuralHardBlockReasons: [...hardBlockReasons],
@@ -1334,7 +1361,10 @@ Additional VolumeDivergence context:
 - btcOiChangePct1h15m=${context.btcOiChangePct1h15m?.toFixed?.(3) ?? 'n/a'}
 - solOpenInterest15m=${context.solOpenInterest15m?.toFixed?.(0) ?? 'n/a'}
 - xrpFundingZScore15m=${context.xrpFundingZScore15m?.toFixed?.(3) ?? 'n/a'}
+- xrpOiChangePct4h15m=${context.xrpOiChangePct4h15m?.toFixed?.(3) ?? 'n/a'}
+- xrpOiChangePct24h1h=${context.xrpOiChangePct24h1h?.toFixed?.(3) ?? 'n/a'}
 - derivativesRegimePocket=${context.derivativesRegimePocket}
+- xrpOiShortPocket=${context.xrpOiShortPocket}
 - barsSincePivot=${context.barsSincePivot ?? 'n/a'}
 - barsBetweenPivotConfirmations=${context.barsBetweenPivotConfirmations ?? 'n/a'}
 - entryTiming=${context.entryTiming ?? 'n/a'}
