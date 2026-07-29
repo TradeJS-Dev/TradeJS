@@ -26,32 +26,22 @@ const buildGridContext = (
 });
 
 const buildBaseContext = ({
-  venueSpread = 0,
-  benchmarkLiquidations15m = 0,
-  benchmarkStale = false,
   solOiChangePct1h = null,
   solStale = false,
-  bnbDirectionAligned = false,
-  bnbStale = false,
+  targetPocUpVolumeShare = null,
 }: {
-  venueSpread?: number;
-  benchmarkLiquidations15m?: number;
-  benchmarkStale?: boolean;
   solOiChangePct1h?: number | null;
   solStale?: boolean;
-  bnbDirectionAligned?: boolean;
-  bnbStale?: boolean;
+  targetPocUpVolumeShare?: number | null;
 } = {}) =>
   ({
     regime: { trend: { bias: 'bear' } },
-    relative: { execution: { venueSpread } },
-    derivatives: {
-      intervals: {
-        '15m': {
-          stale: benchmarkStale,
-          liqTotal: benchmarkLiquidations15m,
-        },
+    participation: {
+      volumeStructure: {
+        pocUpVolumeShare: targetPocUpVolumeShare,
       },
+    },
+    derivatives: {
       referenceContexts: {
         SOLUSDT: {
           intervals: {
@@ -61,12 +51,6 @@ const buildBaseContext = ({
             },
           },
           summary: {},
-        },
-        BNBUSDT: {
-          intervals: { '15m': { stale: bnbStale } },
-          summary: {
-            directionAligned: bnbDirectionAligned,
-          },
         },
       },
     },
@@ -109,6 +93,7 @@ describe('Grid AI adapter', () => {
       gridContext,
       baseContext: buildBaseContext({
         solOiChangePct1h: 0.3,
+        targetPocUpVolumeShare: 0.45,
       }),
     });
 
@@ -119,6 +104,8 @@ describe('Grid AI adapter', () => {
           signalDirection: 'SHORT',
           solOiChangePct1h: 0.3,
           shortSolOiExpansionPocket: true,
+          targetPocUpVolumeShare: 0.45,
+          shortSolTargetParticipationPocket: true,
         }),
       }),
     );
@@ -145,7 +132,7 @@ describe('Grid AI adapter', () => {
         }),
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
-          bnbDirectionAligned: true,
+          targetPocUpVolumeShare: 0.45,
         }),
       }),
     });
@@ -155,8 +142,11 @@ describe('Grid AI adapter', () => {
     expect(prompt).toContain('regimeDirection=SHORT');
     expect(prompt).toContain('projectedAveragePrice=96');
     expect(prompt).toContain('shortSolOiExpansionPocket=true');
-    expect(prompt).toContain('shortBnbDirectionAlignmentPocket=true');
+    expect(prompt).toContain('targetPocUpVolumeShare=0.45');
+    expect(prompt).toContain('shortSolTargetParticipationPocket=true');
     expect(prompt).toContain('deterministicQuality=5');
+    expect(prompt).toContain('approvalAllowedNow=true');
+    expect(prompt).toContain('only executable market pocket is SHORT');
     expect(prompt).toContain('non-martingale directional grid');
     expect(prompt).toContain('MAX_LOSS_VALUE');
   });
@@ -189,11 +179,12 @@ describe('Grid AI adapter', () => {
     expect(prompt).toContain('takeProfitPrice=n/a');
   });
 
-  it('assigns q5 at the inclusive SHORT SOL OI-growth boundary', () => {
+  it('assigns q5 at the inclusive SHORT SOL and target POC boundaries', () => {
     const result = postProcess(
       buildPayload({
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
+          targetPocUpVolumeShare: 0.45,
         }),
       }),
     );
@@ -209,6 +200,49 @@ describe('Grid AI adapter', () => {
   });
 
   it.each([
+    {
+      targetPocUpVolumeShare: 0.45,
+      approvalAllowedNow: true,
+      deterministicQuality: 5,
+    },
+    {
+      targetPocUpVolumeShare: 0.4499,
+      approvalAllowedNow: false,
+      deterministicQuality: 3,
+    },
+    {
+      targetPocUpVolumeShare: null,
+      approvalAllowedNow: false,
+      deterministicQuality: 3,
+    },
+  ])(
+    'enforces the rounded target POC confirmation boundary',
+    ({ targetPocUpVolumeShare, approvalAllowedNow, deterministicQuality }) => {
+      const payload = buildPayload({
+        baseContext: buildBaseContext({
+          solOiChangePct1h: 0.3,
+          targetPocUpVolumeShare,
+        }),
+      });
+      const result = postProcess(payload);
+
+      expect(payload.additionalIndicators.gridContext).toEqual(
+        expect.objectContaining({
+          deterministicQuality,
+          approvalAllowedNow,
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: approvalAllowedNow ? 'SHORT' : null,
+          quality: deterministicQuality,
+          approved: approvalAllowedNow,
+        }),
+      );
+    },
+  );
+
+  it.each([
     { solOiChangePct1h: 0.2999, solStale: false },
     { solOiChangePct1h: 0.3, solStale: true },
     { solOiChangePct1h: null, solStale: false },
@@ -220,6 +254,7 @@ describe('Grid AI adapter', () => {
           baseContext: buildBaseContext({
             solOiChangePct1h,
             solStale,
+            targetPocUpVolumeShare: 0.45,
           }),
         }),
       );
@@ -229,90 +264,13 @@ describe('Grid AI adapter', () => {
           direction: null,
           quality: 3,
           approved: false,
-          rejectReason: 'validated_market_pocket_missing',
+          rejectReason: 'target_confirmed_sol_pocket_missing',
         }),
       );
     },
   );
 
-  it('assigns q4 to a fresh direction-aligned BNB context for SHORT', () => {
-    const result = postProcess(
-      buildPayload({
-        baseContext: buildBaseContext({
-          bnbDirectionAligned: true,
-        }),
-      }),
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        direction: 'SHORT',
-        quality: 4,
-        approved: true,
-      }),
-    );
-  });
-
-  it.each([
-    { bnbDirectionAligned: false, bnbStale: false },
-    { bnbDirectionAligned: true, bnbStale: true },
-  ])(
-    'rejects misaligned or stale BNB context',
-    ({ bnbDirectionAligned, bnbStale }) => {
-      const result = postProcess(
-        buildPayload({
-          baseContext: buildBaseContext({
-            bnbDirectionAligned,
-            bnbStale,
-          }),
-        }),
-      );
-
-      expect(result).toEqual(
-        expect.objectContaining({
-          direction: null,
-          quality: 3,
-          approved: false,
-        }),
-      );
-    },
-  );
-
-  it('keeps the legacy liquidation-dislocation pocket only for LONG', () => {
-    const marketContext = buildBaseContext({
-      venueSpread: -0.0012,
-      benchmarkLiquidations15m: 2,
-    });
-    const longResult = postProcess(
-      buildPayload({
-        gridContext: buildGridContext({
-          entryDirection: 'LONG',
-          regimeDirection: 'LONG',
-        }),
-        baseContext: marketContext,
-      }),
-    );
-    const shortResult = postProcess(
-      buildPayload({ baseContext: marketContext }),
-    );
-
-    expect(longResult).toEqual(
-      expect.objectContaining({
-        direction: 'LONG',
-        quality: 5,
-        approved: true,
-      }),
-    );
-    expect(shortResult).toEqual(
-      expect.objectContaining({
-        direction: null,
-        quality: 3,
-        approved: false,
-      }),
-    );
-  });
-
-  it('does not promote LONG from the SHORT-only SOL and BNB pockets', () => {
+  it('does not promote LONG from the SHORT-only target-confirmed SOL pocket', () => {
     const result = postProcess(
       buildPayload({
         gridContext: buildGridContext({
@@ -321,7 +279,7 @@ describe('Grid AI adapter', () => {
         }),
         baseContext: buildBaseContext({
           solOiChangePct1h: 1,
-          bnbDirectionAligned: true,
+          targetPocUpVolumeShare: 1,
         }),
       }),
     );
@@ -351,6 +309,7 @@ describe('Grid AI adapter', () => {
         gridContext,
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
+          targetPocUpVolumeShare: 0.45,
         }),
       });
       const result = postProcess(payload);
@@ -384,6 +343,7 @@ describe('Grid AI adapter', () => {
         }),
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
+          targetPocUpVolumeShare: 0.45,
         }),
       }),
     );
@@ -409,6 +369,7 @@ describe('Grid AI adapter', () => {
         }),
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
+          targetPocUpVolumeShare: 0.45,
         }),
       }),
     );
