@@ -12,6 +12,7 @@ const MONTH_DAYS = 30.4375;
 const YEAR_DAYS = 365;
 const DEFAULT_WINDOWS = [180, 90, 30, 7];
 const DEFAULT_QUALITY_THRESHOLDS = [3, 4, 5];
+const DEFAULT_CAPACITIES = [1, 3, 5];
 const VARIANT_MODES = new Set(['filter', 'exclude', 'add', 'replace']);
 
 const usage = `Usage:
@@ -26,7 +27,10 @@ Options:
   --minQuality <n>             Main baseline threshold (default: 4)
   --qualityThresholds <list>   qN+ summaries (default: 3,4,5)
   --terminalWindows <list>     Terminal windows in days (default: 180,90,30,7)
-  --validationSplit <ratio>    Trailing time holdout (default: 0.25)
+  --validationSplit <ratio>    Trailing timestamp-grouped tuning share (default: 0.25)
+  --testSplit <ratio>          Later timestamp-grouped test share (default: 0)
+  --capacities <list>          Capacity stress limits (default: 1,3,5)
+  --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
   --includeGateContext         Include current gate output fields for audits only
   --output <path>              Write Markdown, or JSON when extension is .json
@@ -59,6 +63,9 @@ export const parseCliArgs = (argv) => {
     qualityThresholds: DEFAULT_QUALITY_THRESHOLDS,
     terminalWindows: DEFAULT_WINDOWS,
     validationSplit: 0.25,
+    testSplit: 0,
+    capacities: DEFAULT_CAPACITIES,
+    maxLossValue: null,
     variants: [],
     includeGateContext: false,
     json: false,
@@ -104,6 +111,17 @@ export const parseCliArgs = (argv) => {
       options.validationSplit = Number.isFinite(parsed)
         ? Math.max(0, Math.min(0.9, parsed))
         : 0.25;
+    } else if (name === 'testSplit') {
+      const parsed = Number(value);
+      options.testSplit = Number.isFinite(parsed)
+        ? Math.max(0, Math.min(0.9, parsed))
+        : 0;
+    } else if (name === 'capacities') {
+      options.capacities = parseNumberList(value, DEFAULT_CAPACITIES);
+    } else if (name === 'maxLossValue') {
+      const parsed = Number(value);
+      options.maxLossValue =
+        Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
     } else if (
       [
         'file',
@@ -479,7 +497,106 @@ const getPeriodDays = (rows) => {
   return Math.max((rows.at(-1).timestamp - rows[0].timestamp) / DAY_MS, 1);
 };
 
-export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
+const getCalendarDays = (rows) => {
+  if (!rows.length) return 1;
+  const toUtcDay = (timestamp) => {
+    const date = new Date(timestamp);
+    return Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+    );
+  };
+  return Math.max(
+    1,
+    Math.round(
+      (toUtcDay(rows.at(-1).timestamp) - toUtcDay(rows[0].timestamp)) / DAY_MS,
+    ) + 1,
+  );
+};
+
+const percentileNearestRank = (values, percentile) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(percentile * sorted.length) - 1)];
+};
+
+const summarizeEvents = (
+  rows,
+  denominatorDays,
+  {
+    capacities = DEFAULT_CAPACITIES,
+    maxLossValue = null,
+    calendarDays = null,
+  } = {},
+) => {
+  const events = new Map();
+  const activeDays = new Set();
+  for (const row of rows) {
+    const event = events.get(row.timestamp) ?? { trades: 0, pnl: 0 };
+    event.trades += 1;
+    event.pnl += row.profit;
+    events.set(row.timestamp, event);
+    activeDays.add(new Date(row.timestamp).toISOString().slice(0, 10));
+  }
+  const values = [...events.values()];
+  const topEvent = [...values].sort(
+    (left, right) =>
+      right.trades - left.trades || Math.abs(right.pnl) - Math.abs(left.pnl),
+  )[0];
+  const safeDenominatorDays = Math.max(denominatorDays, 1);
+  const totalProfit = rows.reduce((sum, row) => sum + row.profit, 0);
+  const maxBatch = values.length
+    ? Math.max(...values.map((event) => event.trades))
+    : 0;
+  return {
+    events: values.length,
+    eventsPerDay: values.length / safeDenominatorDays,
+    activeDays: activeDays.size,
+    activeDayRatio:
+      activeDays.size /
+      Math.max(1, calendarDays ?? Math.ceil(safeDenominatorDays)),
+    tradesPerEvent: values.length ? rows.length / values.length : null,
+    p95Batch: percentileNearestRank(
+      values.map((event) => event.trades),
+      0.95,
+    ),
+    maxBatch,
+    topEventCountShare:
+      rows.length && topEvent ? topEvent.trades / rows.length : null,
+    topEventPnlShare:
+      totalProfit !== 0 && topEvent ? topEvent.pnl / totalProfit : null,
+    capacityStress: Object.fromEntries(
+      capacities.map((capacityValue) => {
+        const capacity = Math.max(1, Math.trunc(capacityValue));
+        const accepted = values.reduce(
+          (sum, event) => sum + Math.min(event.trades, capacity),
+          0,
+        );
+        return [
+          String(capacity),
+          {
+            capacity,
+            accepted,
+            overflow: rows.length - accepted,
+            overflowEvents: values.filter((event) => event.trades > capacity)
+              .length,
+            maxSimultaneousStopRisk:
+              maxLossValue == null
+                ? null
+                : Math.min(maxBatch, capacity) * maxLossValue,
+          },
+        ];
+      }),
+    ),
+  };
+};
+
+export const summarizeRows = (
+  rows,
+  denominatorDays = getPeriodDays(rows),
+  summaryOptions = {},
+) => {
   let totalProfit = 0;
   let grossProfit = 0;
   let grossLoss = 0;
@@ -495,7 +612,6 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
   const months = new Map();
   const symbols = new Map();
   const directions = new Map();
-  const timestamps = new Set();
 
   for (const row of rows) {
     totalProfit += row.profit;
@@ -525,7 +641,6 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
     symbol.pnl += row.profit;
     symbols.set(row.symbol, symbol);
     directions.set(row.direction, (directions.get(row.direction) ?? 0) + 1);
-    timestamps.add(row.timestamp);
   }
 
   const losingMonthValues = [...months.entries()]
@@ -548,8 +663,7 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
   const downsideDeviation = rows.length
     ? Math.sqrt(
         rows.reduce(
-          (sum, row) =>
-            row.profit < 0 ? sum + row.profit * row.profit : sum,
+          (sum, row) => (row.profit < 0 ? sum + row.profit * row.profit : sum),
           0,
         ) / rows.length,
       )
@@ -559,6 +673,11 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
     ? Math.sqrt((rows.length / safeDenominatorDays) * YEAR_DAYS)
     : null;
   const annualizedProfit = (totalProfit / safeDenominatorDays) * YEAR_DAYS;
+  const eventSummary = summarizeEvents(
+    rows,
+    safeDenominatorDays,
+    summaryOptions,
+  );
 
   return {
     trades: rows.length,
@@ -606,7 +725,8 @@ export const summarizeRows = (rows, denominatorDays = getPeriodDays(rows)) => {
     cadencePerWeek: (rows.length / safeDenominatorDays) * 7,
     averageProfitPerDay: totalProfit / safeDenominatorDays,
     averageProfitPerMonth: (totalProfit / safeDenominatorDays) * MONTH_DAYS,
-    uniqueTimestamps: timestamps.size,
+    uniqueTimestamps: eventSummary.events,
+    ...eventSummary,
     directionCounts: Object.fromEntries(directions),
     topSymbols,
   };
@@ -653,52 +773,82 @@ const buildPeriodSummaries = ({
   windows,
   minTimestamp,
   maxTimestamp,
+  summaryOptions,
 }) => {
+  const withCalendarDays = (periodRows) => ({
+    ...summaryOptions,
+    calendarDays: getCalendarDays(periodRows),
+  });
   const result = {
     full: summarizeRows(
       selectRows(rows, selector),
       Math.max((maxTimestamp - minTimestamp) / DAY_MS, 1),
+      withCalendarDays(rows),
     ),
   };
   for (const days of windows) {
     const from = maxTimestamp - days * DAY_MS;
+    const periodRows = selectRows(rows, (row) => row.timestamp >= from);
     result[`${days}d`] = summarizeRows(
-      selectRows(rows, (row) => row.timestamp >= from && selector(row)),
+      selectRows(periodRows, selector),
       days,
+      withCalendarDays(periodRows),
     );
   }
   return result;
 };
 
-const splitRows = (rows, validationSplit) => {
-  if (validationSplit <= 0 || rows.length < 2) {
-    return { train: rows, validation: [] };
+export const splitRowsByTimestamp = (rows, validationSplit, testSplit = 0) => {
+  const timestamps = [...new Set(rows.map((row) => row.timestamp))];
+  if (timestamps.length < 2) {
+    return { train: rows, tuning: [], test: [] };
   }
-  const validationCount = Math.max(
-    1,
-    Math.min(rows.length - 1, Math.floor(rows.length * validationSplit)),
-  );
+  const getSplitCount = (ratio) =>
+    ratio > 0 ? Math.max(1, Math.floor(timestamps.length * ratio)) : 0;
+  let testEvents = getSplitCount(testSplit);
+  let tuningEvents = getSplitCount(validationSplit);
+  const maximumHeldOut = timestamps.length - 1;
+  if (testEvents + tuningEvents > maximumHeldOut) {
+    const overflow = testEvents + tuningEvents - maximumHeldOut;
+    tuningEvents = Math.max(0, tuningEvents - overflow);
+  }
+  if (testEvents + tuningEvents > maximumHeldOut) {
+    testEvents = Math.max(0, maximumHeldOut - tuningEvents);
+  }
+  const testStart = timestamps.length - testEvents;
+  const tuningStart = testStart - tuningEvents;
+  const tuningTimestamps = new Set(timestamps.slice(tuningStart, testStart));
+  const testTimestamps = new Set(timestamps.slice(testStart));
   return {
-    train: rows.slice(0, rows.length - validationCount),
-    validation: rows.slice(rows.length - validationCount),
+    train: rows.filter(
+      (row) =>
+        !tuningTimestamps.has(row.timestamp) &&
+        !testTimestamps.has(row.timestamp),
+    ),
+    tuning: rows.filter((row) => tuningTimestamps.has(row.timestamp)),
+    test: rows.filter((row) => testTimestamps.has(row.timestamp)),
   };
 };
 
-const summarizeSplit = (rows, selector) =>
-  summarizeRows(selectRows(rows, selector), getPeriodDays(rows));
+const summarizeSplit = (rows, selector, summaryOptions) =>
+  summarizeRows(selectRows(rows, selector), getPeriodDays(rows), {
+    ...summaryOptions,
+    calendarDays: getCalendarDays(rows),
+  });
 
-const summarizeDirections = (rows, selector) =>
+const summarizeDirections = (rows, selector, summaryOptions) =>
   Object.fromEntries(
     [...new Set(rows.map((row) => row.direction))].sort().map((direction) => [
       direction,
       summarizeRows(
         selectRows(rows, (row) => row.direction === direction && selector(row)),
         getPeriodDays(rows),
+        summaryOptions,
       ),
     ]),
   );
 
-const summarizeMonths = (rows, selector) => {
+const summarizeMonths = (rows, selector, summaryOptions) => {
   const months = [
     ...new Set(
       rows.map((row) => new Date(row.timestamp).toISOString().slice(0, 7)),
@@ -715,6 +865,7 @@ const summarizeMonths = (rows, selector) => {
             selector(row),
         ),
         30.4375,
+        summaryOptions,
       ),
     ]),
   );
@@ -981,6 +1132,9 @@ export const buildAblationReport = ({
   qualityThresholds,
   terminalWindows,
   validationSplit,
+  testSplit = 0,
+  capacities = DEFAULT_CAPACITIES,
+  maxLossValue = null,
   filePaths,
   failed = 0,
   featureInventory = [],
@@ -988,7 +1142,8 @@ export const buildAblationReport = ({
   if (!rows.length) throw new Error('No rows were evaluated');
   const minTimestamp = rows[0].timestamp;
   const maxTimestamp = rows.at(-1).timestamp;
-  const split = splitRows(rows, validationSplit);
+  const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  const summaryOptions = { capacities, maxLossValue };
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
   const baseline = {
     periods: buildPeriodSummaries({
@@ -997,20 +1152,23 @@ export const buildAblationReport = ({
       windows: terminalWindows,
       minTimestamp,
       maxTimestamp,
+      summaryOptions,
     }),
-    train: summarizeSplit(split.train, baselineSelector),
-    validation: summarizeSplit(split.validation, baselineSelector),
+    train: summarizeSplit(split.train, baselineSelector, summaryOptions),
+    tuning: summarizeSplit(split.tuning, baselineSelector, summaryOptions),
+    test: summarizeSplit(split.test, baselineSelector, summaryOptions),
     qualityThresholds: Object.fromEntries(
       qualityThresholds.map((threshold) => [
         `q${threshold}+`,
         summarizeRows(
           selectRows(rows, (row) => baselineSelectedAt(row, threshold)),
           getPeriodDays(rows),
+          summaryOptions,
         ),
       ]),
     ),
-    directions: summarizeDirections(rows, baselineSelector),
-    months: summarizeMonths(rows, baselineSelector),
+    directions: summarizeDirections(rows, baselineSelector, summaryOptions),
+    months: summarizeMonths(rows, baselineSelector, summaryOptions),
   };
   const variantReports = variants.map((variant, variantIndex) => {
     const candidateSelector = (row) =>
@@ -1031,9 +1189,11 @@ export const buildAblationReport = ({
         windows: terminalWindows,
         minTimestamp,
         maxTimestamp,
+        summaryOptions,
       }),
-      train: summarizeSplit(split.train, candidateSelector),
-      validation: summarizeSplit(split.validation, candidateSelector),
+      train: summarizeSplit(split.train, candidateSelector, summaryOptions),
+      tuning: summarizeSplit(split.tuning, candidateSelector, summaryOptions),
+      test: summarizeSplit(split.test, candidateSelector, summaryOptions),
       qualityThresholds: Object.fromEntries(
         qualityThresholds.map((threshold) => [
           `q${threshold}+`,
@@ -1048,22 +1208,26 @@ export const buildAblationReport = ({
               ),
             ),
             getPeriodDays(rows),
+            summaryOptions,
           ),
         ]),
       ),
-      directions: summarizeDirections(rows, candidateSelector),
-      months: summarizeMonths(rows, candidateSelector),
+      directions: summarizeDirections(rows, candidateSelector, summaryOptions),
+      months: summarizeMonths(rows, candidateSelector, summaryOptions),
       matchedAll: summarizeRows(
         selectRows(rows, matchedSelector),
         getPeriodDays(rows),
+        summaryOptions,
       ),
       removed: summarizeRows(
         selectRows(rows, removedSelector),
         getPeriodDays(rows),
+        summaryOptions,
       ),
       added: summarizeRows(
         selectRows(rows, addedSelector),
         getPeriodDays(rows),
+        summaryOptions,
       ),
     };
   });
@@ -1078,8 +1242,15 @@ export const buildAblationReport = ({
       qualityThresholds,
       terminalWindows,
       validationSplit,
+      testSplit,
+      capacities,
+      maxLossValue,
       trainRows: split.train.length,
-      validationRows: split.validation.length,
+      tuningRows: split.tuning.length,
+      testRows: split.test.length,
+      trainEvents: new Set(split.train.map((row) => row.timestamp)).size,
+      tuningEvents: new Set(split.tuning.map((row) => row.timestamp)).size,
+      testEvents: new Set(split.test.map((row) => row.timestamp)).size,
       minTimestamp: new Date(minTimestamp).toISOString(),
       maxTimestamp: new Date(maxTimestamp).toISOString(),
       spanDays: (maxTimestamp - minTimestamp) / DAY_MS,
@@ -1165,6 +1336,85 @@ const summaryRows = (summary) => {
   ];
 };
 
+const fanoutRows = (periods) =>
+  Object.entries(periods).map(([period, summary]) => [
+    period,
+    formatNumber(summary.cadencePerDay, 3),
+    formatNumber(summary.eventsPerDay, 3),
+    formatPct(summary.activeDayRatio),
+    summary.events,
+    formatNumber(summary.tradesPerEvent, 2),
+    summary.p95Batch ?? 0,
+    summary.maxBatch,
+    formatPct(summary.topEventCountShare),
+    formatPct(summary.topEventPnlShare),
+  ]);
+
+const capacityRows = (periods) =>
+  Object.entries(periods).flatMap(([period, summary]) =>
+    Object.values(summary.capacityStress).map((stress) => [
+      period,
+      stress.capacity,
+      stress.accepted,
+      stress.overflow,
+      stress.overflowEvents,
+      formatNumber(stress.maxSimultaneousStopRisk),
+    ]),
+  );
+
+const fanoutComparisonRow = (label, baseline, candidate) => [
+  label,
+  `${formatNumber(baseline.cadencePerDay, 3)} -> ${formatNumber(candidate.cadencePerDay, 3)}`,
+  `${formatNumber(baseline.eventsPerDay, 3)} -> ${formatNumber(candidate.eventsPerDay, 3)}`,
+  `${formatPct(baseline.activeDayRatio)} -> ${formatPct(candidate.activeDayRatio)}`,
+  `${baseline.events} -> ${candidate.events}`,
+  `${formatNumber(baseline.tradesPerEvent)} -> ${formatNumber(candidate.tradesPerEvent)}`,
+  `${baseline.p95Batch ?? 0} -> ${candidate.p95Batch ?? 0}`,
+  `${baseline.maxBatch} -> ${candidate.maxBatch}`,
+  `${formatPct(baseline.topEventCountShare)} -> ${formatPct(candidate.topEventCountShare)}`,
+  `${formatPct(baseline.topEventPnlShare)} -> ${formatPct(candidate.topEventPnlShare)}`,
+];
+
+const validationSummaryRow = (label, sourceRows, sourceEvents, summary) => {
+  const value = formatMetric(summary);
+  return [
+    label,
+    sourceRows,
+    sourceEvents,
+    value.n,
+    summary.events,
+    value.wr,
+    value.pnl,
+    value.pf,
+    value.dd,
+    summary.maxBatch,
+  ];
+};
+
+const validationComparisonRow = (label, baseline, candidate) => {
+  const left = formatMetric(baseline);
+  const right = formatMetric(candidate);
+  return [
+    label,
+    `${left.n} -> ${right.n}`,
+    `${baseline.events} -> ${candidate.events}`,
+    `${left.wr} -> ${right.wr}`,
+    `${left.pnl} -> ${right.pnl}`,
+    `${left.pf} -> ${right.pf}`,
+    `${left.sharpe} -> ${right.sharpe}`,
+    `${left.sortino} -> ${right.sortino}`,
+    `${left.calmar} -> ${right.calmar}`,
+    `${left.dd} -> ${right.dd}`,
+    `${left.ddGross} -> ${right.ddGross}`,
+    `${left.ddPnl} -> ${right.ddPnl}`,
+    `${left.strict} -> ${right.strict}`,
+    `${left.streak} -> ${right.streak}`,
+    `${left.losing} -> ${right.losing}`,
+    `${left.cadence} -> ${right.cadence}`,
+    `${baseline.maxBatch} -> ${candidate.maxBatch}`,
+  ];
+};
+
 export const formatMarkdownReport = (report) => {
   const lines = [
     '# AI Gate Ablation Report',
@@ -1181,9 +1431,16 @@ export const formatMarkdownReport = (report) => {
         ['range', `${report.run.minTimestamp} .. ${report.run.maxTimestamp}`],
         ['span_days', formatNumber(report.run.spanDays)],
         ['min_quality', report.run.minQuality],
-        ['validation_split', formatPct(report.run.validationSplit)],
+        ['tuning_split', formatPct(report.run.validationSplit)],
+        ['test_split', formatPct(report.run.testSplit)],
         ['train_rows', report.run.trainRows],
-        ['validation_rows', report.run.validationRows],
+        ['tuning_rows', report.run.tuningRows],
+        ['test_rows', report.run.testRows],
+        ['train_events', report.run.trainEvents],
+        ['tuning_events', report.run.tuningEvents],
+        ['test_events', report.run.testEvents],
+        ['capacities', report.run.capacities.join(',')],
+        ['max_loss_value', formatNumber(report.run.maxLossValue)],
         [
           'terminal_windows',
           report.run.terminalWindows.map((value) => `${value}d`).join(','),
@@ -1246,6 +1503,75 @@ export const formatMarkdownReport = (report) => {
       ]),
     ),
     '',
+    '### Baseline Cadence and Fan-out',
+    '',
+    markdownTable(
+      [
+        'Period',
+        'Trades/D',
+        'Events/D',
+        'Active Days',
+        'Events',
+        'Trades/Event',
+        'p95 Batch',
+        'Max Batch',
+        'Top Event Count',
+        'Top Event PNL',
+      ],
+      fanoutRows(report.baseline.periods),
+    ),
+    '',
+    '### Baseline Capacity Stress',
+    '',
+    markdownTable(
+      [
+        'Period',
+        'Cap',
+        'Accepted',
+        'Overflow',
+        'Overflow Events',
+        'Max Stop Risk',
+      ],
+      capacityRows(report.baseline.periods),
+    ),
+    '',
+    '### Baseline Validation',
+    '',
+    markdownTable(
+      [
+        'Partition',
+        'Source Rows',
+        'Source Events',
+        'Approved N',
+        'Approved Events',
+        'WR',
+        'PNL',
+        'PF',
+        'MaxDD',
+        'Max Batch',
+      ],
+      [
+        validationSummaryRow(
+          'train',
+          report.run.trainRows,
+          report.run.trainEvents,
+          report.baseline.train,
+        ),
+        validationSummaryRow(
+          'tuning',
+          report.run.tuningRows,
+          report.run.tuningEvents,
+          report.baseline.tuning,
+        ),
+        validationSummaryRow(
+          'untouched test',
+          report.run.testRows,
+          report.run.testEvents,
+          report.baseline.test,
+        ),
+      ],
+    ),
+    '',
   );
 
   for (const variant of report.variants) {
@@ -1284,12 +1610,51 @@ export const formatMarkdownReport = (report) => {
         ),
       ),
       '',
+      '### Cadence and Fan-out Comparison',
+      '',
+      markdownTable(
+        [
+          'Period',
+          'Trades/D',
+          'Events/D',
+          'Active Days',
+          'Events',
+          'Trades/Event',
+          'p95 Batch',
+          'Max Batch',
+          'Top Event Count',
+          'Top Event PNL',
+        ],
+        Object.keys(variant.periods).map((period) =>
+          fanoutComparisonRow(
+            period,
+            report.baseline.periods[period],
+            variant.periods[period],
+          ),
+        ),
+      ),
+      '',
+      '### Capacity Stress',
+      '',
+      markdownTable(
+        [
+          'Period',
+          'Cap',
+          'Accepted',
+          'Overflow',
+          'Overflow Events',
+          'Max Stop Risk',
+        ],
+        capacityRows(variant.periods),
+      ),
+      '',
       '### Time Split',
       '',
       markdownTable(
         [
           'Split',
           'N',
+          'Events',
           'WR',
           'PNL',
           'PF',
@@ -1303,13 +1668,23 @@ export const formatMarkdownReport = (report) => {
           'Loss Streak',
           'Losing Months',
           'Cadence/D',
+          'Max Batch',
         ],
         [
-          comparisonRow('train', report.baseline.train, variant.train),
-          comparisonRow(
-            'validation',
-            report.baseline.validation,
-            variant.validation,
+          validationComparisonRow(
+            'train',
+            report.baseline.train,
+            variant.train,
+          ),
+          validationComparisonRow(
+            'tuning',
+            report.baseline.tuning,
+            variant.tuning,
+          ),
+          validationComparisonRow(
+            'untouched test',
+            report.baseline.test,
+            variant.test,
           ),
         ],
       ),
@@ -1502,6 +1877,9 @@ export const main = async () => {
     qualityThresholds: options.qualityThresholds,
     terminalWindows: options.terminalWindows,
     validationSplit: options.validationSplit,
+    testSplit: options.testSplit,
+    capacities: options.capacities,
+    maxLossValue: options.maxLossValue,
     filePaths: filePaths.map((filePath) =>
       path.relative(projectRoot, filePath),
     ),

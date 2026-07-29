@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { liquidityTailsAiAdapter } from '../adapters/ai';
+import { buildLiquidityTailsGuardrailContext } from '../guardrails';
 
 const withApprovalContextDefaults = (baseContext: Record<string, unknown>) => {
   const regime = (baseContext.regime ?? {}) as Record<string, unknown>;
@@ -164,6 +165,12 @@ const makeFlowOiRecoveryPayload = ({
       },
     },
   );
+
+const getGuardrailContext = (payload: ReturnType<typeof makePayload>) =>
+  buildLiquidityTailsGuardrailContext({
+    signalContext: payload.additionalIndicators.liquidityTailsContext,
+    baseContext: payload.additionalIndicators.baseContext,
+  });
 
 describe('liquidityTailsAiAdapter', () => {
   it('copies LiquidityTails gate features into strategy and base contexts', () => {
@@ -929,33 +936,20 @@ describe('liquidityTailsAiAdapter', () => {
     ).toContain('cmc_fear_greed_unavailable');
   });
 
-  it('upgrades risk-off long retests at the rounded derivatives boundaries', () => {
+  it('observes risk-off long candidates without approving them', () => {
+    const payload = makeRiskOffRecoveryPayload();
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makeRiskOffRecoveryPayload(),
+      payload,
       analysis: {
         direction: 'LONG',
         quality: 1,
       },
     });
 
-    expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 4,
-      approved: true,
-    });
-  });
-
-  it('does not upgrade risk-off long retests above the alt-return boundary', () => {
-    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
-      signal: {} as any,
-      payload: makeRiskOffRecoveryPayload({ altBasketReturn24h: -0.0349 }),
-      analysis: {
-        direction: 'LONG',
-        quality: 1,
-      },
-    });
-
+    expect(
+      getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
+    ).toBe(true);
     expect(result).toMatchObject({
       direction: null,
       quality: 1,
@@ -963,16 +957,43 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('does not upgrade risk-off long retests above the TRX OI boundary', () => {
+  it('does not observe risk-off long candidates above the alt-return boundary', () => {
+    const payload = makeRiskOffRecoveryPayload({
+      altBasketReturn24h: -0.0349,
+    });
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makeRiskOffRecoveryPayload({ trxOiChangePct4h: -1.79 }),
+      payload,
       analysis: {
         direction: 'LONG',
         quality: 1,
       },
     });
 
+    expect(
+      getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
+    ).toBe(false);
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+  });
+
+  it('does not observe risk-off long candidates above the TRX OI boundary', () => {
+    const payload = makeRiskOffRecoveryPayload({ trxOiChangePct4h: -1.79 });
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(
+      getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
+    ).toBe(false);
     expect(result).toMatchObject({
       direction: null,
       quality: 1,
@@ -984,17 +1005,21 @@ describe('liquidityTailsAiAdapter', () => {
     ['stale', { trxStale: true }],
     ['missing', { includeTrx: false }],
   ])(
-    'does not upgrade risk-off long retests with %s TRX context',
+    'does not observe risk-off long candidates with %s TRX context',
     (_, options) => {
+      const payload = makeRiskOffRecoveryPayload(options);
       const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
         signal: {} as any,
-        payload: makeRiskOffRecoveryPayload(options),
+        payload,
         analysis: {
           direction: 'LONG',
           quality: 1,
         },
       });
 
+      expect(
+        getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
+      ).toBe(false);
       expect(result).toMatchObject({
         direction: null,
         quality: 1,
@@ -1003,16 +1028,20 @@ describe('liquidityTailsAiAdapter', () => {
     },
   );
 
-  it('does not upgrade short retests in the risk-off long recovery pocket', () => {
+  it('does not observe short retests as risk-off long candidates', () => {
+    const payload = makeRiskOffRecoveryPayload({ direction: 'SHORT' });
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makeRiskOffRecoveryPayload({ direction: 'SHORT' }),
+      payload,
       analysis: {
         direction: 'SHORT',
         quality: 1,
       },
     });
 
+    expect(
+      getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
+    ).toBe(false);
     expect(result).toMatchObject({
       direction: null,
       quality: 1,
@@ -1020,20 +1049,24 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('recovers high-volatility retests with benchmark flow and OI expansion', () => {
+  it('observes benchmark flow and OI candidates without approving them', () => {
+    const payload = makeFlowOiRecoveryPayload();
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makeFlowOiRecoveryPayload(),
+      payload,
       analysis: {
         direction: 'LONG',
         quality: 1,
       },
     });
 
+    expect(
+      getGuardrailContext(payload).benchmarkFlowOiExpansionRecoveryCandidate,
+    ).toBe(true);
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 4,
-      approved: true,
+      direction: null,
+      quality: 1,
+      approved: false,
     });
   });
 
@@ -1042,17 +1075,21 @@ describe('liquidityTailsAiAdapter', () => {
     ['OI acceleration', { oiAcceleration: 0.5499 }],
     ['ATR rank', { atrPctRankBucket: 'normal' }],
   ])(
-    'does not recover retests below the benchmark %s boundary',
+    'does not observe retests below the benchmark %s boundary',
     (_, options) => {
+      const payload = makeFlowOiRecoveryPayload(options);
       const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
         signal: {} as any,
-        payload: makeFlowOiRecoveryPayload(options),
+        payload,
         analysis: {
           direction: 'LONG',
           quality: 1,
         },
       });
 
+      expect(
+        getGuardrailContext(payload).benchmarkFlowOiExpansionRecoveryCandidate,
+      ).toBe(false);
       expect(result).toMatchObject({
         direction: null,
         quality: 1,

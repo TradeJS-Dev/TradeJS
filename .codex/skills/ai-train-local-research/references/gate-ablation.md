@@ -58,6 +58,8 @@ node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
   --file data/ai/export/ai-dataset-liquiditytails-merged-1784296244106-part1.jsonl \
   --variant 'near-ma-and-zone::filter::additionalIndicators.baseContext.regime.trend.priceDistanceToMaSlowAtr <= 1.2 && additionalIndicators.baseContext.structure.liquidityZones.activeCount >= 1' \
   --featurePattern 'priceDistanceToMaSlowAtr|liquidityZones.activeCount' \
+  --validationSplit 0.2 \
+  --testSplit 0.2 \
   --output data/ai/output/liquiditytails-near-ma-and-zone.md
 ```
 
@@ -115,16 +117,29 @@ Every report contains:
 
 - baseline and candidate tables for full history, `180d`, `90d`, `30d`, `7d`;
 - q3+/q4+/q5+ summaries, configurable with `--qualityThresholds`;
-- time-ordered train/trailing-validation split;
+- timestamp-grouped, time-ordered train/tuning/untouched-test splits;
 - direction and monthly stability;
 - matched, removed, and added slices;
 - PnL, winrate, PF, Sharpe, Sortino, Calmar, max drawdown, DD ratios, strict
   loss, max loss streak, losing months, cadence, and symbol concentration.
+- decision-event cadence, active-day share, trades per event, p95/max batch,
+  top-event concentration, and capacity stress at caps `1,3,5`.
 
 The JSON report also carries average trade, payoff ratio, recovery factor,
 ulcer index, profit per day/month, cadence per week, and risk-adjusted ratios.
 Use `--json` or an `.json` output path when downstream analysis needs those
 fields.
+
+Use `--maxLossValue` to turn batch capacity into maximum simultaneous stop-risk
+only after resolving the historical effective `MAX_LOSS_VALUE` for the
+backtest that produced the export. Prefer a config snapshot embedded in the
+export or the archived checkpoint addressed by `backtestRunId` and
+`backtestTestKey`. The current named Redis config, current strategy default,
+and current production value are not valid substitutes without matching
+lineage. Omit `--maxLossValue` and report stop-risk as `n/a` when the historical
+value is unavailable. Set `--capacities` when the intended portfolio cap is
+known; otherwise keep the default `1,3,5` stress grid. Timestamp groups are
+never split between train/tuning/test.
 
 ## Maintenance Rule
 

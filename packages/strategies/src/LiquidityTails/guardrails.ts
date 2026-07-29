@@ -29,8 +29,8 @@ export type LiquidityTailsGuardrailContext =
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
-    derivativesRiskOffLongRecoveryPocket: boolean;
-    benchmarkFlowOiExpansionRecoveryPocket: boolean;
+    derivativesRiskOffLongRecoveryCandidate: boolean;
+    benchmarkFlowOiExpansionRecoveryCandidate: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -314,7 +314,7 @@ export const buildLiquidityTailsGuardrailContext = ({
       : direction === 'SHORT'
         ? derivativesRiskFlags.includes('crowded_short')
         : false;
-  const derivativesRiskOffLongRecoveryPocket =
+  const derivativesRiskOffLongRecoveryCandidate =
     direction === 'LONG' &&
     cmcFearGreedValue != null &&
     cmcFearGreedValue <= MAX_APPROVAL_CMC_FEAR_GREED_VALUE &&
@@ -330,7 +330,7 @@ export const buildLiquidityTailsGuardrailContext = ({
   const benchmarkOiAcceleration = asFiniteNumber(
     derivativesSummary?.oiAcceleration,
   );
-  const benchmarkFlowOiExpansionRecoveryPocket =
+  const benchmarkFlowOiExpansionRecoveryCandidate =
     (direction === 'LONG' || direction === 'SHORT') &&
     q4AtrRankEligible &&
     referenceTradeFlowBuyPressurePct != null &&
@@ -338,20 +338,10 @@ export const buildLiquidityTailsGuardrailContext = ({
     benchmarkOiAcceleration != null &&
     benchmarkOiAcceleration >= MIN_BENCHMARK_OI_ACCELERATION;
 
-  if (
-    derivativesDirectionAligned === true &&
-    !flushSupport &&
-    !derivativesRiskOffLongRecoveryPocket &&
-    !benchmarkFlowOiExpansionRecoveryPocket
-  ) {
+  if (derivativesDirectionAligned === true && !flushSupport) {
     hardBlockReasons.push('derivatives_reversal_aligned');
   }
-  if (
-    derivativesDirectionAligned === false &&
-    !flushSupport &&
-    !derivativesRiskOffLongRecoveryPocket &&
-    !benchmarkFlowOiExpansionRecoveryPocket
-  ) {
+  if (derivativesDirectionAligned === false && !flushSupport) {
     hardBlockReasons.push('derivatives_reversal_conflict');
   }
   if (volumeRel20 != null && volumeRel20 < 0.75) {
@@ -441,13 +431,6 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 3;
     softBlockReasons.push('cmc_fear_greed_above_approval_max');
   }
-  if (
-    deterministicQuality === 3 &&
-    hardBlockReasons.length === 0 &&
-    derivativesRiskOffLongRecoveryPocket
-  ) {
-    deterministicQuality = 4;
-  }
   if (deterministicQuality >= 4) {
     const approvalContextReasons: string[] = [];
     if (priceDistanceToMaSlowAtr == null) {
@@ -468,14 +451,6 @@ export const buildLiquidityTailsGuardrailContext = ({
       softBlockReasons.push(...approvalContextReasons);
     }
   }
-  if (
-    deterministicQuality < 4 &&
-    hardBlockReasons.length === 0 &&
-    benchmarkFlowOiExpansionRecoveryPocket
-  ) {
-    deterministicQuality = 4;
-  }
-
   return {
     ...signalContext,
     baseContextAvailable: Boolean(baseContext),
@@ -504,8 +479,8 @@ export const buildLiquidityTailsGuardrailContext = ({
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
-    derivativesRiskOffLongRecoveryPocket,
-    benchmarkFlowOiExpansionRecoveryPocket,
+    derivativesRiskOffLongRecoveryCandidate,
+    benchmarkFlowOiExpansionRecoveryCandidate,
     liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,

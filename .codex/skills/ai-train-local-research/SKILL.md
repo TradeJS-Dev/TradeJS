@@ -141,8 +141,14 @@ Documentation requirement for any new AI-gate pocket:
 - Report trades and events per day, active-day ratio, trades per event, p95/max
   batch size, and the largest event's shares of approved count and PnL.
 - Report capacity stress at the real production cap or, when unknown, at
-  capacities `1`, `3`, and `5`, including rejected overflow and simultaneous
-  stop-risk using the intended `MAX_LOSS_VALUE`.
+  capacities `1`, `3`, and `5`, including rejected overflow. Calculate
+  simultaneous stop-risk only from the historical effective `MAX_LOSS_VALUE`
+  used by the backtest that produced the export. Prefer an immutable resolved
+  config snapshot or archived backtest checkpoint referenced by
+  `backtestRunId`/`backtestTestKey`. Do not substitute the current named Redis
+  config, a current strategy default, or a production value unless lineage
+  proves it matches the export. When the historical value cannot be recovered,
+  report stop-risk as `unknown`/`n/a`.
 - State the raw discovered threshold and the rounded implemented threshold.
 - State whether the rounded rule was rerun and whether it stayed stable.
 - If the rule uses a context field whose semantics can change with env settings
