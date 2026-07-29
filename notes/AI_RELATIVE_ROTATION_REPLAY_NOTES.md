@@ -1,6 +1,6 @@
 # RelativeRotation AI Replay Notes
 
-Last updated: 2026-07-26.
+Last updated: 2026-07-29.
 
 This file tracks deterministic `AI_MODE=gate` / `yarn ai-train --localOnly`
 research for RelativeRotation.
@@ -557,3 +557,263 @@ the local deterministic `AI_MODE=gate` replay only; live profitability remains
 unverified until the same SHA, gate fingerprint, config id, context
 fingerprint, market-context environment, and `MIN_AI_QUALITY=4` are deployed
 together.
+
+## RelativeRotation — AI gate report (`q4+`) (`2026-07-29`)
+
+Decision: `observe` — keep the already-active profitable gate unchanged, but do
+not add another enforced filter until a fresh untouched export and live
+portfolio capacity are available.
+
+Dataset: `1785011628197` (`7` parts), rows `21,983`,
+`2025-07-25T18:15:00.000Z .. 2026-07-24T13:45:00.000Z`, lag `4.81d`.
+Lineage: git `9f27c152b61bf8e096c0d5be592c406c5c8e21ca dirty`, gate
+`f44bda9a4742cb61`, config `6587d6b2e6300a8e`, context
+`4186a11d2ef809af`, `AI_MODE=gate`, `MIN_AI_QUALITY=4`.
+Runtime comparison: `not checked` — local Redis has matching gate mode and
+quality threshold, but remote runtime lineage and execution evidence were not
+available.
+
+### Outcome and tail risk
+
+| Window | Gate | N | WR | PF | PnL | MaxDD | Loss streak | Losing months |
+| ------ | ---- | --: | --: | --: | --: | ----: | ----------: | ------------- |
+| full | current | 377 | 59.7% | 1.89 | 1478.83 | 53.92 | 5 | 0 |
+| 180d | current | 210 | 56.7% | 1.67 | 670.14 | 53.92 | 5 | 0 |
+| 90d | current | 131 | 57.3% | 1.72 | 440.31 | 53.92 | 5 | 0 |
+| 30d | current | 49 | 57.1% | 1.72 | 164.94 | 44.26 | 4 | 0 |
+| 7d | current | 16 | 50.0% | 1.27 | 24.39 | 44.26 | 4 | 0 |
+
+### Cadence and fan-out
+
+| Window | Gate | Trades/day | Events/day | Active days | Events | Trades/event | p95 batch | Max batch | Top event count | Top event PnL |
+| ------ | ---- | ---------: | ---------: | ----------: | -----: | -----------: | --------: | --------: | --------------: | ------------: |
+| full | current | 1.036 | 0.745 | 42.5% | 271 | 1.39 | 3.00 | 29 | 7.7% | 25.5% |
+| 180d | current | 1.167 | 0.961 | 53.0% | 173 | 1.21 | 2.00 | 9 | 4.3% | 15.4% |
+| 90d | current | 1.456 | 1.178 | 57.1% | 106 | 1.24 | 2.00 | 9 | 6.9% | 23.4% |
+| 30d | current | 1.633 | 1.333 | 74.2% | 40 | 1.23 | 1.00 | 9 | 18.4% | 62.5% |
+| 7d | current | 2.286 | 2.143 | 100.0% | 15 | 1.07 | 2.00 | 2 | 12.5% | 10.3% |
+
+### Risk-adjusted metrics
+
+| Window | Gate | Sharpe | Sortino | Calmar | DD/gross | DD/PnL | Profit/day | Profit/month | Trades/week |
+| ------ | ---- | -----: | ------: | -----: | -------: | -----: | ---------: | -----------: | ----------: |
+| full | current | 6.22 | 10.93 | 27.52 | 1.7% | 3.6% | 4.06 | 123.72 | 7.254 |
+| 180d | current | 5.31 | 9.11 | 25.20 | 3.2% | 8.0% | 3.72 | 113.32 | 8.167 |
+| 90d | current | 6.26 | 10.82 | 33.12 | 5.1% | 12.2% | 4.89 | 148.91 | 10.189 |
+| 30d | current | 6.61 | 11.42 | 45.34 | 11.2% | 26.8% | 5.50 | 167.35 | 11.433 |
+| 7d | current | 3.49 | 5.61 | 28.73 | 39.1% | 181.5% | 3.48 | 106.05 | 16.000 |
+
+### Quality and direction
+
+| Slice | Gate | N | Events | WR | PF | PnL | MaxDD | Max batch |
+| ----- | ---- | --: | -----: | --: | --: | --: | ----: | --------: |
+| q4+ total | current | 377 | 271 | 59.7% | 1.89 | 1478.83 | 53.92 | 29 |
+| q5+ | current | 0 | 0 | n/a | n/a | 0.00 | 0.00 | 0 |
+| LONG q4+ | current | 0 | 0 | n/a | n/a | 0.00 | 0.00 | 0 |
+| SHORT q4+ | current | 377 | 271 | 59.7% | 1.89 | 1478.83 | 53.92 | 29 |
+
+### Runtime execution bridge
+
+| Scope | Window | Approved | Attempts | Filled | Balance rejects | Other rejects | Requested notional | Max simultaneous stop-risk |
+| ----- | ------ | -------: | -------: | -----: | --------------: | ------------: | -----------------: | -------------------------: |
+| runtime | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+
+### Validation
+
+| Partition | Rows | Events | Approved N | WR | PF | PnL | MaxDD | Max batch |
+| -------------- | ---: | -----: | ---------: | --: | --: | --: | ----: | --------: |
+| train | 13634 | 132 | 213 | 62.9% | 2.15 | 1001.81 | 52.38 | 29 |
+| tuning | 4087 | 52 | 58 | 53.4% | 1.46 | 135.39 | 37.93 | 6 |
+| untouched test | 4262 | 87 | 106 | 56.6% | 1.68 | 341.63 | 53.92 | 9 |
+
+The timestamp-grouped partition mechanically contains `87` approved events in
+the final split. It is not genuinely untouched evidence because this exact
+merge was already used to select the BTC leadership rule on 2026-07-26.
+
+### Acceptance checks
+
+| Check | Status | Evidence |
+| ------------------------- | ------ | -------- |
+| Freshness | FAIL | Export tail is 4.81d behind research time. |
+| Runtime lineage parity | UNKNOWN | Remote runtime SHA, gate/config/context fingerprints, and fills were not checked. |
+| Independent-event support | PASS | 132 approved train events and 87 chronological final-split events. |
+| Event concentration | FAIL | One 30d event contributes 62.5% of approved PnL, above the one-third limit. |
+| Portfolio capacity | UNKNOWN | Live cap is undeclared; cap=5 stress overflows 44 full-history approvals and max batch is 29. |
+| Symbol concentration | PASS | Largest symbol has 7/377 approvals (1.9%); no symbol can approach one-third of PnL at the observed trade count. |
+| Temporal stability | PASS | All active months and all required terminal windows are profitable. |
+| Untouched test | FAIL | The full merge was already used during prior gate selection. |
+
+### Top reject reasons (30d)
+
+| Rank | Reason | N | Share |
+| ---: | ------ | --: | ----: |
+| 1 | `insufficient_breakdown_distance` | 1563 | 92.4% |
+| 2 | `insufficient_hourly_downside_impulse` | 1438 | 85.0% |
+| 3 | `long_direction_not_validated` | 1202 | 71.1% |
+| 4 | `btc_vs_alt_return_1h_below_stable_range` | 677 | 40.0% |
+| 5 | `adx_di_minus_above_stable_range` | 112 | 6.6% |
+
+Reject reasons overlap, so their shares are independently calculated against
+the `1,691` rejected rows and do not sum to 100%.
+
+### Conclusion
+
+- Why: the current q4+ stream remains profitable in every required window,
+  preserves 377 trades and 271 independent events, and has no losing active
+  months.
+- Residual risk: the export is stale, the 30d result is event-concentrated,
+  live capacity is unknown, and the chronological final split is contaminated
+  by prior selection.
+- Next check: build a fresh RelativeRotation export containing at least 25 new
+  post-2026-07-24 independent approval events, then rerun the same gate
+  fingerprint with the real production position cap.
+
+### Strategy-specific findings
+
+#### Strategy intent and causal paths
+
+RelativeRotation enters target symbols that materially rotate against BTC.
+The core detector remains unchanged and both LONG and SHORT stay enabled in the
+strategy configuration; the deterministic gate currently approves SHORT only.
+No delayed execution, exit, order result, or outcome field participates in
+approval.
+
+#### Existing Gate Audit
+
+| Pocket / group | Location | Classification | Evidence |
+| --- | --- | --- | --- |
+| Causal-context and freshness hard blocks | `guardrails.ts:140-171` | `keep` | Missing target/BTC, target structure, price, global leadership, or CMC freshness cannot approve. No row-count field promotes quality. |
+| Primary SHORT breakdown | `guardrails.ts:195-204` | `keep` | 306 trades, 217 events, PnL 1272.45, PF 1.96, no losing months. Removing recovery lowers full cadence to 0.841/day and leaves one 7d trade. |
+| Breadth recovery additions | `guardrails.ts:205-219` | `needs-more-data` | 71 trades/56 events overall, but only 14 train events and 6 tuning events; tuning PnL -15.43, PF 0.64. Keep unchanged only inside the observed combined gate; do not widen it. |
+| BTC leadership filter | `guardrails.ts:220-244` | `keep` | Combined gate has 132 train and 87 final-split approved events with positive PnL, but needs genuinely new untouched evidence. |
+| LONG downgrade | `guardrails.ts:173-175` | `keep` | LONG q4+ remains empty; no validated profitable LONG approval pocket was found. |
+
+All implemented cutoffs are already rounded human-scale values. There are no
+high-precision optimizer constants or data-availability counts in the current
+approval logic.
+
+#### Live-env parity and feature provenance
+
+| Setting | Export/replay | Intended local runtime | Status |
+| --- | --- | --- | --- |
+| AI mode / quality | local deterministic / 4 | `gate` / 4 | matching approval semantics |
+| Interval | 15m | strategy default 15m | matching locally |
+| Strategy config | `q7r9bb`, backtest `MAX_LOSS_VALUE=10` | same detector values, `MAX_LOSS_VALUE=0.2` | gate inputs match; PnL/risk sizing differs |
+| Derivatives | enabled, 48h, source 15m, derived 1h, target mode off, refs BNB/SOL/TRX/XRP | production server not checked | not used by this gate |
+| CMC Fear & Greed | daily, complete/non-stale in all rows; default max age 48h | local env overrides unset | remote provider/cache parity unknown |
+| Binance market context | aligned 15m context; BTC/ETH references | local env overrides unset | remote universe/cache parity unknown |
+
+| Field path | Scope | Type | Causal | Environment dependency |
+| --- | --- | --- | --- | --- |
+| `structure.localRange.distanceToLowLevelAtr` | target | market/setup state | yes | target candles, ATR and level lookback |
+| `regime.trend.adx.diMinus` | target | market state | yes | target candles and ADX window |
+| `raw.price.price1hPct` | target | market state | yes | aligned target 1h window |
+| `relative.marketBreadth.dispersion` | global | market state | yes | Binance breadth universe/provider |
+| `relative.btcAltRegime.altBasketReturn1h` | global | market state | yes | aligned alt basket and 1h window |
+| `relative.btcAltRegime.btcVsAltReturn1h` | global | market state | yes | BTC/alt universe and aligned 1h window |
+| `relative.btcAltRegime.btcTurnoverShare24h` | global | market state | yes | Binance turnover provider and 24h window |
+| `relative.cmcFearGreed.valueChange7d` | global | market state | yes | CMC daily provider/cache and 7d window |
+| `relative.cmcFearGreed.stale` | global | data-quality guard | yes | CMC max-age policy; never promotes approval |
+| `relative.targetVsBtc.*` | target vs benchmark | market state | yes | aligned target/BTC OHLCV |
+| `regime.session.minutesToFundingWindow` | global | deterministic session state | yes | UTC timestamp and fixed 8h funding schedule; no provider dependency |
+
+The global BTC/alt and CMC fields are combined with target-specific price,
+structure, ADX, and target-vs-BTC evidence. The required fan-out stress was run
+at capacities 1, 3, and 5 with runtime `MAX_LOSS_VALUE=0.2`.
+
+#### Walk-forward, concentration, ablation, and negative control
+
+| Gate / slice | N | Events | WR | PF | PnL | MaxDD | Trades/day | Max batch |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| current combined | 377 | 271 | 59.7% | 1.89 | 1478.83 | 53.92 | 1.036 | 29 |
+| primary only | 306 | 217 | 60.8% | 1.96 | 1272.45 | 59.56 | 0.841 | 29 |
+| recovery additions only | 71 | 56 | 54.9% | 1.59 | 206.38 | 60.89 | 0.195 | 8 |
+| price floor -8 | 296 | 205 | 64.9% | 2.32 | 1520.27 | 57.06 | 0.814 | 28 |
+| price -8 / ETH beta <= 2.8 | 273 | 189 | 67.0% | 2.55 | 1550.00 | 57.06 | 0.750 | 28 |
+| exclude first 30m after funding | 346 | 243 | 61.6% | 2.04 | 1518.01 | 53.92 | 0.951 | 29 |
+
+The new target filters improve full PF but fail the implementation decision:
+they do not solve historical fan-out, reduce cadence below the practical
+one-trade/day bound, increase maxDD, and leave last-7d PF at only `1.04` with
+PnL `2.52`. They remain research-only.
+
+The smallest promising cadence reduction is the causal session filter
+`minutesToFundingWindow <= 435`, which excludes the first two 15-minute
+decision slots after each 8-hour funding timestamp. Compared with the current
+gate, it lowers full cadence by `8.2%` (`1.036 -> 0.951` trades/day) and raises
+WR from `59.7%` to `61.6%`, PF from `1.89` to `2.04`, and PnL from `1478.83` to
+`1518.01`. The 30d slice improves from WR `57.1%`, PF `1.72`, PnL `164.94`,
+MaxDD `44.26`, and loss streak `4` to WR `64.3%`, PF `2.31`, PnL `215.97`,
+MaxDD `32.86`, and loss streak `3`. The 7d slice improves from WR `50.0%` and
+PF `1.27` to WR `57.1%` and PF `1.70`.
+
+Timestamp-grouped partitions remain positive: train has 119 events, WR `64.1%`,
+PF `2.27`; tuning has 48 events, WR `57.4%`, PF `1.71`; and the mechanically
+chronological final split has 76 events, WR `58.5%`, PF `1.82`. The final split
+is tuning evidence now because the same export was inspected to choose this
+rule; it is not a new untouched test.
+
+The prior inverse BTC-leadership negative control remains strongly negative:
+104 trades, PnL `-237.30`, PF `0.68`, final-split PnL `-118.10`, and last-7d
+PnL `-58.71`. A newly inspected liquidity-tail filter was also rejected:
+although it improved aggregate PF, `nearestSellPressure.touches` is missing on
+9,852 rows, so enforcement would conflate context availability with market
+state.
+
+The funding-window negative control supports the market interpretation rather
+than an arbitrary time filter. The two excluded post-funding slots are weak
+separately: `minutesToFundingWindow=465` has 21 trades, WR `42.9%`, PF `0.98`,
+PnL `-2.46`; `minutesToFundingWindow=450` has 10 trades, WR `30.0%`, PF `0.53`,
+PnL `-36.72`. Control exclusions at 240 and 15 minutes remove profitable
+trades and worsen the gate. Excluding the exact funding timestamp improves
+aggregate WR but worsens MaxDD and the max loss streak.
+
+The largest full-history event contributes `7.7%` of count and `25.5%` of PnL,
+but the largest 30d event contributes `62.5%` of PnL. The largest symbol
+contributes `7/377` approvals. Capacity stress at cap `1/3/5` rejects
+`106/63/44` full-history overflow approvals, with maximum simultaneous stop
+risk `0.20/0.60/1.00`.
+
+#### Thresholds, sensitivity, and boundary tests
+
+| Field | Raw discovery | Implemented | Rounding / status |
+| --- | ---: | ---: | --- |
+| breakdown distance | around -2.75 ATR | `<= -2.75` | retained and rerun |
+| DI- | around 50 | `<= 50` | retained and rerun |
+| hourly price impulse | -4.80752% / -4.93151% | `<= -5%` | rounded stricter |
+| recovery dispersion | 0.00732447 | `>= 0.0085` | rounded stricter |
+| recovery alt return | -0.0171107 | `>= -0.015` | rounded stricter |
+| Fear & Greed 7d change | -12 | `>= -12` | discrete boundary |
+| BTC-vs-alt 1h | -0.00124625 | `>= -0.001` | rounded stricter |
+| BTC turnover share 24h | 0.262606 | `>= 0.25` | explicitly relaxed for cadence; adjacent 0.24/0.25/0.26 stayed profitable |
+| minutes to next funding | 435 minutes | not implemented | 420/435/450 sensitivity rerun; 435 best balances cadence and terminal quality |
+
+The existing 16 RelativeRotation AI tests pass and cover exact boundaries,
+just-above/below cases, recovery bypass prevention, missing/null inputs, and
+stale CMC context. The updated ablation tool also has eight passing tests,
+including the UTC-calendar active-day regression.
+
+#### Rollout, cleanup, and blockers
+
+No RelativeRotation gate source was changed in this revalidation: the
+post-refactor rebuild reproduced gate fingerprint `f44bda9a4742cb61` and the
+authoritative `ai-train` baseline exactly. No dead constants or prompt fields
+were introduced.
+
+The gate remains active because it is already profitable and removing the
+recovery lane worsens combined risk-adjusted quality and current cadence.
+However, all new candidate filters stay observation-only. Production promotion
+or further enforcement is blocked on a fresh post-selection export, a declared
+portfolio capacity/throttle, and lineage-matched remote runtime evidence.
+
+Research artifacts:
+
+```text
+data/ai/output/relative-rotation-updated-skill-baseline-1785011628197.json
+data/ai/output/relative-rotation-updated-skill-audit-1785011628197.json
+data/ai/output/ai-pocket-search-relativerotation-merged-1785011628197-approved-2026-07-29T09-11-53Z.md
+data/ai/output/relative-rotation-cadence-winrate-sweep-1785011628197.json
+data/ai/output/relative-rotation-cadence-winrate-sensitivity-1785011628197.json
+data/ai/output/relative-rotation-funding-window-sweep-1785011628197.json
+data/ai/output/relative-rotation-funding-negative-control-1785011628197.json
+```
