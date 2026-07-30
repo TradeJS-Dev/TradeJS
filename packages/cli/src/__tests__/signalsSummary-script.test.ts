@@ -142,8 +142,12 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeTradeBuckets: (userName: string) =>
         `users:${userName}:runtime:trade-records:days:`,
-      runtimeActiveTrade: (userName: string, symbol: string) =>
-        `users:${userName}:runtime:active-trades:${symbol}`,
+      runtimeActiveTrade: (
+        userName: string,
+        symbol: string,
+        scopeId?: string,
+      ) =>
+        `users:${userName}:runtime:active-trades:${scopeId ? `${scopeId}:` : ''}${symbol}`,
       runtimeActiveTrades: (userName: string) =>
         `users:${userName}:runtime:active-trades:`,
       storeSignal: (symbol: string, signalId: string) =>
@@ -167,6 +171,7 @@ describe('signals summary script', () => {
       redisKeys.runtimeTrades('root') + 'ord-1',
       redisKeys.runtimeTrades('root') + 'ord-2',
       redisKeys.runtimeTrades('root') + 'ord-3',
+      redisKeys.runtimeTrades('root') + 'ord-stale',
     ];
     const strategyConfigKeys = [
       `${redisKeys.strategies('root')}:TrendLine:config`,
@@ -185,6 +190,8 @@ describe('signals summary script', () => {
           entryPrice: 100,
           entryTimestamp: now - 60_000,
           status: 'active',
+          universe: 'crypto',
+          accountId: 'bybit-default',
         },
       ],
       [
@@ -199,6 +206,8 @@ describe('signals summary script', () => {
           entryPrice: 50,
           entryTimestamp: now - 120_000,
           status: 'active',
+          universe: 'crypto',
+          accountId: 'bybit-default',
         },
       ],
       [
@@ -216,10 +225,35 @@ describe('signals summary script', () => {
           closedPnl: 7,
           currentPnl: 7,
           exitTimestamp: now - 15_000,
+          universe: 'crypto',
+          accountId: 'bybit-default',
         },
       ],
-      [redisKeys.runtimeActiveTrade('root', 'BTCUSDT'), { orderId: 'ord-1' }],
-      [redisKeys.runtimeActiveTrade('root', 'ETHUSDT'), { orderId: 'ord-2' }],
+      [
+        runtimeTradeKeys[3],
+        {
+          orderId: 'ord-stale',
+          signalId: 'sig-stale',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 99,
+          entryTimestamp: now - 180_000,
+          status: 'active',
+          currentPnl: 0,
+          universe: 'crypto',
+          accountId: 'bybit-default',
+        },
+      ],
+      [
+        redisKeys.runtimeActiveTrade('root', 'BTCUSDT', 'bybit-default'),
+        { orderId: 'ord-1' },
+      ],
+      [
+        redisKeys.runtimeActiveTrade('root', 'ETHUSDT', 'bybit-default'),
+        { orderId: 'ord-2' },
+      ],
     ]);
     const getKeys = jest.fn(async (prefix: string) => {
       if (prefix === `${redisKeys.strategies('root')}:`) {
@@ -227,6 +261,12 @@ describe('signals summary script', () => {
       }
       if (prefix === redisKeys.runtimeTrades('root')) {
         return runtimeTradeKeys;
+      }
+      if (prefix === redisKeys.runtimeActiveTrades('root')) {
+        return [
+          redisKeys.runtimeActiveTrade('root', 'BTCUSDT', 'bybit-default'),
+          redisKeys.runtimeActiveTrade('root', 'ETHUSDT', 'bybit-default'),
+        ];
       }
       return [];
     });
@@ -315,6 +355,10 @@ describe('signals summary script', () => {
       logger,
     }));
 
+    jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+      listRuntimeDeployments: jest.fn(async () => []),
+    }));
+
     jest.doMock('@tradejs/infra/redis', () => ({
       delKey,
       getData,
@@ -337,9 +381,21 @@ describe('signals summary script', () => {
       sendTextToTG,
     }));
 
+    const createConnector = jest.fn(
+      async (config: {
+        accountId?: string;
+        deploymentId?: string;
+        universe?: string;
+      }) => ({
+        ...connector,
+        accountId: config.accountId,
+        deploymentId: config.deploymentId,
+        universe: config.universe,
+      }),
+    );
     jest.doMock('@tradejs/node/connectors', () => ({
       DEFAULT_CONNECTOR_NAME: 'bybit',
-      getConnectorCreatorByName: jest.fn(async () => async () => connector),
+      getConnectorCreatorByName: jest.fn(async () => createConnector),
       resolveConnectorName: jest.fn(async () => 'bybit'),
     }));
 
@@ -392,7 +448,7 @@ describe('signals summary script', () => {
     );
     expect(btcDebugTrade?.redisDebug).toMatchObject({
       trade: 'users:root:runtime:trade-records:ord-1',
-      activeTrade: 'users:root:runtime:active-trades:BTCUSDT',
+      activeTrade: 'users:root:runtime:active-trades:bybit-default:BTCUSDT',
       signal: 'store:signals:BTCUSDT:sig-1',
     });
     const tradesMessage = sendTextToTG.mock.calls[0]?.[0];
@@ -449,6 +505,13 @@ describe('signals summary script', () => {
     expect(tradesMessage).toContain(
       '<b>TrendLine</b> (<b>1</b>)\nUnrealized PnL: <b>-12.00$</b> (<b>1</b>)\n- BTCUSDT: PnL <b>-12.00$</b> 🔴',
     );
+    expect(tradesMessage.match(/- BTCUSDT:/g)).toHaveLength(1);
+    expect(createConnector).toHaveBeenCalledWith({
+      userName: 'root',
+      universe: 'crypto',
+      accountId: 'bybit-default',
+      deploymentId: undefined,
+    });
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
       expect.objectContaining({
@@ -459,7 +522,7 @@ describe('signals summary script', () => {
       { expire: 2_600_000 },
     );
     expect(delKey).toHaveBeenCalledWith(
-      redisKeys.runtimeActiveTrade('root', 'ETHUSDT'),
+      redisKeys.runtimeActiveTrade('root', 'ETHUSDT', 'bybit-default'),
     );
   });
 
@@ -528,8 +591,12 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeTradeBuckets: (userName: string) =>
         `users:${userName}:runtime:trade-records:days:`,
-      runtimeActiveTrade: (userName: string, symbol: string) =>
-        `users:${userName}:runtime:active-trades:${symbol}`,
+      runtimeActiveTrade: (
+        userName: string,
+        symbol: string,
+        scopeId?: string,
+      ) =>
+        `users:${userName}:runtime:active-trades:${scopeId ? `${scopeId}:` : ''}${symbol}`,
       runtimeActiveTrades: (userName: string) =>
         `users:${userName}:runtime:active-trades:`,
       storeSignal: (symbol: string, signalId: string) =>
@@ -595,6 +662,10 @@ describe('signals summary script', () => {
 
     jest.doMock('@tradejs/infra/logger', () => ({
       logger,
+    }));
+
+    jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+      listRuntimeDeployments: jest.fn(async () => []),
     }));
 
     jest.doMock('@tradejs/infra/redis', () => ({

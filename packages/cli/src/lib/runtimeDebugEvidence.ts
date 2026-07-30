@@ -199,6 +199,7 @@ export const buildRuntimeDebugReportPayload = async ({
       const activeTradeKey = redisKeys.runtimeActiveTrade(
         userName,
         trade.symbol,
+        trade.deploymentId ?? trade.accountId,
       );
       const signalKey =
         trade.signalId != null

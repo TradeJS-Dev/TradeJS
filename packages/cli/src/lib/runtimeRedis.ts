@@ -201,6 +201,27 @@ export const loadRuntimeTrades = async (
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
+export const loadRuntimeActiveTradeOrderIds = async (
+  userName: string,
+): Promise<Set<string>> => {
+  const keys = await getKeys(redisKeys.runtimeActiveTrades(userName));
+  const refs = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return new Set(
+    refs
+      .map((ref) =>
+        ref &&
+        typeof ref === 'object' &&
+        'orderId' in ref &&
+        typeof ref.orderId === 'string' &&
+        ref.orderId.trim()
+          ? ref.orderId.trim()
+          : null,
+      )
+      .filter((orderId): orderId is string => orderId != null),
+  );
+};
+
 export const loadStrategyResultSymbols = async ({
   userName,
   strategy,

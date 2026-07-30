@@ -7,6 +7,7 @@ import {
   resolveConnectorName,
 } from '@tradejs/node/connectors';
 import {
+  loadRuntimeActiveTradeOrderIds,
   loadRuntimeStrategyNames,
   loadRuntimeTrades,
 } from '../lib/runtimeRedis';
@@ -28,9 +29,11 @@ import {
   RuntimeSignalStatsBucket,
 } from '../lib/runtimeSignalsStorage';
 import { buildRuntimeDebugReportAttachment } from '../lib/runtimeDebugEvidence';
+import { listRuntimeDeployments } from '@tradejs/infra/tradingAccounts';
 import {
-  Connector,
   ConnectorCreator,
+  MarketUniverse,
+  RuntimeDeployment,
   RuntimeTradeRecord,
   Signal,
   SignalOrderStatus,
@@ -204,6 +207,139 @@ const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
     DEFAULT_CONNECTOR_NAME,
   );
   return DEFAULT_CONNECTOR_NAME;
+};
+
+type RuntimeTradeConnectorScope = {
+  connectorName: string;
+  universe: MarketUniverse;
+  accountId?: string;
+  deploymentId?: string;
+  trades: RuntimeTradeRecord[];
+};
+
+const groupRuntimeTradesByConnectorScope = ({
+  trades,
+  deployments,
+  fallbackConnectorName,
+}: {
+  trades: RuntimeTradeRecord[];
+  deployments: RuntimeDeployment[];
+  fallbackConnectorName: string;
+}): RuntimeTradeConnectorScope[] => {
+  const deploymentById = new Map(
+    deployments.map((deployment) => [deployment.id, deployment]),
+  );
+  const scopes = new Map<string, RuntimeTradeConnectorScope>();
+
+  for (const trade of trades) {
+    const deployment = trade.deploymentId
+      ? deploymentById.get(trade.deploymentId)
+      : undefined;
+    const connectorName = deployment?.connectorName ?? fallbackConnectorName;
+    const universe = (trade.universe ??
+      deployment?.universe ??
+      'crypto') as MarketUniverse;
+    const accountId = trade.accountId ?? deployment?.accountId;
+    const deploymentId = trade.deploymentId;
+    const scopeKey = JSON.stringify([
+      connectorName,
+      universe,
+      accountId ?? null,
+      deploymentId ?? null,
+    ]);
+    const scope = scopes.get(scopeKey) ?? {
+      connectorName,
+      universe,
+      ...(accountId ? { accountId } : {}),
+      ...(deploymentId ? { deploymentId } : {}),
+      trades: [],
+    };
+    scope.trades.push(trade);
+    scopes.set(scopeKey, scope);
+  }
+
+  return [...scopes.values()];
+};
+
+const syncRuntimeTradeScopes = async ({
+  userName,
+  startTime,
+  endTime,
+  fallbackConnectorName,
+  trades,
+  deployments,
+}: {
+  userName: string;
+  startTime: number;
+  endTime: number;
+  fallbackConnectorName: string;
+  trades: RuntimeTradeRecord[];
+  deployments: RuntimeDeployment[];
+}) => {
+  const scopes = groupRuntimeTradesByConnectorScope({
+    trades,
+    deployments,
+    fallbackConnectorName,
+  });
+  const syncedTrades: RuntimeTradeRecord[] = [];
+  const connectorNames = new Set<string>();
+
+  for (const scope of scopes) {
+    const connectorName = await resolveSummaryConnectorName(
+      scope.connectorName,
+    );
+    const connectorFactory = await getConnectorCreatorByName(
+      connectorName,
+      projectRoot,
+    );
+
+    if (!connectorFactory) {
+      throw new Error(`Connector "${connectorName}" is not registered`);
+    }
+
+    const connector = await (connectorFactory as ConnectorCreator)({
+      userName,
+      universe: scope.universe,
+      accountId: scope.accountId,
+      deploymentId: scope.deploymentId,
+    });
+    connectorNames.add(connectorName);
+    syncedTrades.push(
+      ...(await syncRuntimeTrades({
+        userName,
+        connector,
+        trades: scope.trades,
+        startTime,
+        endTime,
+        openPositionCallbacks: {
+          onError: (error) => {
+            logger.warn(
+              'signals summary: getOpenPositionPnl failed for scope account=%s deployment=%s: %s',
+              scope.accountId ?? 'default',
+              scope.deploymentId ?? 'default',
+              formatRuntimeTradeSyncError(error),
+            );
+          },
+        },
+        closedPnlCallbacks: {
+          onError: (error) => {
+            logger.warn(
+              'signals summary: getClosedPnl failed for scope account=%s deployment=%s: %s',
+              scope.accountId ?? 'default',
+              scope.deploymentId ?? 'default',
+              formatRuntimeTradeSyncError(error),
+            );
+          },
+        },
+      })),
+    );
+  }
+
+  return {
+    trades: syncedTrades,
+    connectorNames: [...connectorNames].sort(),
+    scopesCount: scopes.length,
+  };
 };
 
 const createRuntimeSignalStats = (): RuntimeSignalStatsBucket => ({
@@ -653,49 +789,35 @@ export const signalsSummary = async () => {
   );
   const endTime = Date.now();
   const startTime = endTime - hours * 60 * 60 * 1000;
-  const connectorName = await resolveSummaryConnectorName(flags.connector);
-  const connectorFactory = await getConnectorCreatorByName(
-    connectorName,
-    projectRoot,
+  const fallbackConnectorName = await resolveSummaryConnectorName(
+    flags.connector,
   );
-
-  if (!connectorFactory) {
-    throw new Error(`Connector "${connectorName}" is not registered`);
-  }
-
-  const connector = await (connectorFactory as ConnectorCreator)({
-    userName: flags.user,
-  });
-  const [configuredStrategyNames, signals, evaluationStatsBuckets, trades] =
-    await Promise.all([
-      loadRuntimeStrategyNames(flags.user),
-      loadRuntimeSignals(flags.user, { startTime, endTime }),
-      loadRuntimeSignalEvaluationStatsBuckets(flags.user),
-      loadRuntimeTrades(flags.user),
-    ]);
-  const syncedTrades = await syncRuntimeTrades({
-    userName: flags.user,
-    connector,
+  const [
+    configuredStrategyNames,
+    signals,
+    evaluationStatsBuckets,
     trades,
+    runtimeDeployments,
+  ] = await Promise.all([
+    loadRuntimeStrategyNames(flags.user),
+    loadRuntimeSignals(flags.user, { startTime, endTime }),
+    loadRuntimeSignalEvaluationStatsBuckets(flags.user),
+    loadRuntimeTrades(flags.user),
+    listRuntimeDeployments(flags.user),
+  ]);
+  const {
+    trades: syncedTrades,
+    connectorNames,
+    scopesCount,
+  } = await syncRuntimeTradeScopes({
+    userName: flags.user,
     startTime,
     endTime,
-    openPositionCallbacks: {
-      onError: (error) => {
-        logger.warn(
-          'signals summary: getOpenPositionPnl failed: %s',
-          formatRuntimeTradeSyncError(error),
-        );
-      },
-    },
-    closedPnlCallbacks: {
-      onError: (error) => {
-        logger.warn(
-          'signals summary: getClosedPnl failed: %s',
-          formatRuntimeTradeSyncError(error),
-        );
-      },
-    },
+    fallbackConnectorName,
+    trades,
+    deployments: runtimeDeployments,
   });
+  const activeTradeOrderIds = await loadRuntimeActiveTradeOrderIds(flags.user);
   const windowSignals = signals.filter(
     (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,
   );
@@ -717,6 +839,7 @@ export const signalsSummary = async () => {
   const openSnapshotTrades = syncedTrades.filter(
     (trade) =>
       trade.status === 'active' &&
+      activeTradeOrderIds.has(trade.orderId) &&
       typeof trade.entryTimestamp === 'number' &&
       Number.isFinite(trade.entryTimestamp) &&
       trade.entryTimestamp < endTime,
@@ -745,12 +868,13 @@ export const signalsSummary = async () => {
   );
 
   logger.info(
-    'signals summary window=%sh signals=%s evaluations=%s trades=%s connector=%s user=%s',
+    'signals summary window=%sh signals=%s evaluations=%s trades=%s connectors=%s scopes=%s user=%s',
     hours,
     windowSignals.length,
     windowEvaluationsCount,
     windowClosedTrades.length,
-    connectorName,
+    connectorNames.join(',') || fallbackConnectorName,
+    scopesCount,
     flags.user,
   );
   const debugAttachment = shouldAttachDebugReport(flags.debugAttachment)
