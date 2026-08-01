@@ -15,20 +15,16 @@ import { buildGridFigures } from './figures';
 import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
 
 interface PendingGridEntry {
-  kind: 'open' | 'increase';
   timestamp: number;
   observedQty: number;
-  requestedQty: number;
-  price: number;
 }
 
 interface GridCycle {
   direction: Direction;
-  anchorPrice: number;
   stopLossPrice: number;
   levelQty: number;
   levelsFilled: number;
-  lastEntryPrice: number;
+  levelReferencePrice: number;
   pending: PendingGridEntry | null;
 }
 
@@ -102,7 +98,9 @@ const calculateWorstCaseLoss = ({
   feeRate: number;
 }) =>
   qty *
-  (Math.abs(entryPrice - stopLossPrice) + Math.abs(stopLossPrice) * feeRate);
+  (Math.abs(entryPrice - stopLossPrice) +
+    Math.abs(entryPrice) * feeRate +
+    Math.abs(stopLossPrice) * feeRate);
 
 const getProjectedAverage = ({
   position,
@@ -204,16 +202,48 @@ const buildRecoveredCycle = ({
 
   return {
     direction: position.direction,
-    anchorPrice: position.price,
     stopLossPrice,
     levelQty,
     levelsFilled: Math.min(
       maxLevels,
       Math.max(1, Math.round(position.qty / levelQty)),
     ),
-    lastEntryPrice: position.price,
+    levelReferencePrice: position.price,
     pending: null,
   };
+};
+
+const synchronizeCycleWithPosition = ({
+  cycle,
+  position,
+  maxLossValue,
+  maxLevels,
+  feeRate,
+}: {
+  cycle: GridCycle;
+  position: Position;
+  maxLossValue: number;
+  maxLevels: number;
+  feeRate: number;
+}) => {
+  const calculatedLevelQty = calculateLevelQty({
+    maxLossValue,
+    maxLevels,
+    entryPrice: position.price,
+    stopLossPrice: cycle.stopLossPrice,
+    feeRate,
+  });
+  const levelQty = Math.max(
+    Number.EPSILON,
+    Math.min(position.qty, calculatedLevelQty || position.qty),
+  );
+
+  cycle.levelQty = levelQty;
+  cycle.levelsFilled = Math.min(
+    maxLevels,
+    Math.max(1, Math.round(position.qty / levelQty)),
+  );
+  cycle.levelReferencePrice = position.price;
 };
 
 export const createGridCore: CreateStrategyCore<
@@ -297,11 +327,13 @@ export const createGridCore: CreateStrategyCore<
         if (increaseConfirmed) {
           executionState.update((draft) => {
             if (!draft.cycle) return;
-            draft.cycle.levelsFilled = Math.min(
+            synchronizeCycleWithPosition({
+              cycle: draft.cycle,
+              position,
+              maxLossValue,
               maxLevels,
-              pending.kind === 'open' ? 1 : draft.cycle.levelsFilled + 1,
-            );
-            draft.cycle.lastEntryPrice = pending.price;
+              feeRate,
+            });
             draft.cycle.pending = null;
           });
         } else if (candle.timestamp > pending.timestamp) {
@@ -309,6 +341,17 @@ export const createGridCore: CreateStrategyCore<
             if (draft.cycle) draft.cycle.pending = null;
           });
         }
+      } else {
+        executionState.update((draft) => {
+          if (!draft.cycle) return;
+          synchronizeCycleWithPosition({
+            cycle: draft.cycle,
+            position,
+            maxLossValue,
+            maxLevels,
+            feeRate,
+          });
+        });
       }
     } else if (state.cycle) {
       const pendingOnCurrentBar =
@@ -375,8 +418,22 @@ export const createGridCore: CreateStrategyCore<
       );
       const adverseLevelReached =
         direction === 'LONG'
-          ? snapshot.close <= cycle.lastEntryPrice - snapshot.stepDistance
-          : snapshot.close >= cycle.lastEntryPrice + snapshot.stepDistance;
+          ? snapshot.close <= cycle.levelReferencePrice - snapshot.stepDistance
+          : snapshot.close >= cycle.levelReferencePrice + snapshot.stepDistance;
+      const existingRisk = calculateWorstCaseLoss({
+        qty: position.qty,
+        entryPrice: position.price,
+        stopLossPrice,
+        feeRate,
+      });
+      const remainingRisk = Math.max(0, maxLossValue - existingRisk);
+      if (
+        adverseLevelReached &&
+        snapshot.regimeDirection === direction &&
+        remainingRisk <= Number.EPSILON
+      ) {
+        return strategyApi.skip('GRID_RISK_BUDGET_EXHAUSTED');
+      }
       const canIncrease =
         adverseLevelReached &&
         cycle.levelsFilled < maxLevels &&
@@ -392,13 +449,6 @@ export const createGridCore: CreateStrategyCore<
         });
 
       if (canIncrease && !rangeBlocksIncrease) {
-        const existingRisk = calculateWorstCaseLoss({
-          qty: position.qty,
-          entryPrice: position.price,
-          stopLossPrice,
-          feeRate,
-        });
-        const remainingRisk = Math.max(0, maxLossValue - existingRisk);
         const nextUnitRisk =
           Math.abs(snapshot.close - stopLossPrice) +
           Math.abs(snapshot.close) * feeRate +
@@ -426,11 +476,8 @@ export const createGridCore: CreateStrategyCore<
         executionState.update((draft) => {
           if (!draft.cycle) return;
           draft.cycle.pending = {
-            kind: 'increase',
             timestamp: candle.timestamp,
             observedQty: position.qty,
-            requestedQty: qty,
-            price: snapshot.close,
           };
         });
         const { indicators } = strategyApi.getCurrentIndicatorsContext();
@@ -555,17 +602,13 @@ export const createGridCore: CreateStrategyCore<
     executionState.update((draft) => {
       draft.cycle = {
         direction,
-        anchorPrice: snapshot.close,
         stopLossPrice,
         levelQty: qty,
         levelsFilled: 0,
-        lastEntryPrice: snapshot.close,
+        levelReferencePrice: snapshot.close,
         pending: {
-          kind: 'open',
           timestamp: candle.timestamp,
           observedQty: 0,
-          requestedQty: qty,
-          price: snapshot.close,
         },
       };
     });

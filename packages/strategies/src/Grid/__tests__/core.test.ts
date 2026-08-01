@@ -167,6 +167,86 @@ describe('Grid core', () => {
     );
   });
 
+  it('rebuilds the same next grid level from the exchange basket after restart', async () => {
+    mockedCreateGridEngine.mockImplementation(
+      () =>
+        ({
+          next: jest.fn((candle) =>
+            makeRuntimeState({
+              timestamp: candle.timestamp,
+              close: candle.close,
+              entryDirection: candle.timestamp === 1 ? 'LONG' : null,
+            }),
+          ),
+          getState: jest.fn(),
+        }) as any,
+    );
+    const config = {
+      ...DEFAULT_CONFIG,
+      MAX_LOSS_VALUE: 10,
+      GRID_MAX_LEVELS: 4,
+      FEE_PERCENT: 0,
+    } as unknown as GridConfig;
+    let position: any = null;
+    const continuousApi = makeStrategyApi(() => position);
+    const continuousCore = await createGridCore({
+      config,
+      data: [],
+      strategyApi: continuousApi,
+    } as any);
+
+    const opened = (await continuousCore(
+      makeCandle(1, 100) as any,
+      {} as any,
+    )) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: opened.orderPlan.qty,
+      slPrice: 90,
+      tpPrice: 102,
+    };
+    const increased = (await continuousCore(
+      makeCandle(2, 97.5) as any,
+      {} as any,
+    )) as any;
+    position = {
+      ...position,
+      price:
+        (position.price * position.qty + 97.5 * increased.orderPlan.qty) /
+        (position.qty + increased.orderPlan.qty),
+      qty: position.qty + increased.orderPlan.qty,
+      tpPrice: increased.orderPlan.takeProfits[0].price,
+    };
+
+    const continuousNext = (await continuousCore(
+      makeCandle(3, 96.5) as any,
+      {} as any,
+    )) as any;
+    const restartedApi = makeStrategyApi(() => position);
+    const restartedCore = await createGridCore({
+      config,
+      data: [],
+      strategyApi: restartedApi,
+    } as any);
+    const restartedNext = (await restartedCore(
+      makeCandle(3, 96.5) as any,
+      {} as any,
+    )) as any;
+
+    expect(continuousNext).toEqual(
+      expect.objectContaining({ kind: 'entry', code: 'GRID_SCALE_IN_3' }),
+    );
+    expect(restartedNext).toEqual(
+      expect.objectContaining({ kind: 'entry', code: 'GRID_SCALE_IN_3' }),
+    );
+    expect(restartedNext.orderPlan).toEqual(continuousNext.orderPlan);
+    expect(restartedNext.signal.additionalIndicators.gridContext).toEqual(
+      continuousNext.signal.additionalIndicators.gridContext,
+    );
+  });
+
   it('exits an open grid when the causal trend regime flips', async () => {
     const state = makeRuntimeState({
       timestamp: 1,
@@ -415,7 +495,7 @@ describe('Grid core', () => {
     expect(strategyApi.entry).toHaveBeenCalledTimes(3);
   });
 
-  it('refuses a scale-in when the observed position already consumes the loss budget', async () => {
+  it('counts paid entry fees when the observed position consumes the loss budget', async () => {
     const openState = makeRuntimeState({
       timestamp: 1,
       close: 100,
@@ -430,7 +510,7 @@ describe('Grid core', () => {
         ...DEFAULT_CONFIG,
         MAX_LOSS_VALUE: 10,
         GRID_MAX_LEVELS: 4,
-        FEE_PERCENT: 0,
+        FEE_PERCENT: 0.01,
       } as unknown as GridConfig,
       data: [],
       strategyApi,
@@ -441,7 +521,7 @@ describe('Grid core', () => {
       symbol: 'TESTUSDT',
       direction: 'LONG',
       price: 100,
-      qty: 100,
+      qty: 0.85,
       slPrice: 90,
       tpPrice: 102,
     };

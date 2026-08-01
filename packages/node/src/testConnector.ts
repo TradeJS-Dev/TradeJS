@@ -10,6 +10,7 @@ import {
 } from '@tradejs/core/trade';
 import {
   Candle,
+  InstrumentDescriptor,
   Sl,
   Tp,
   Order,
@@ -46,6 +47,36 @@ type ExecutionSlippageBreakdown = ReturnType<
   typeof calculateExecutionSlippageBreakdown
 >;
 
+const normalizeInstrumentOrderQty = ({
+  qty,
+  symbol,
+  instrument,
+}: {
+  qty: number;
+  symbol: string;
+  instrument?: InstrumentDescriptor;
+}) => {
+  if (
+    !instrument ||
+    instrument.symbol.trim().toUpperCase() !== symbol.trim().toUpperCase()
+  ) {
+    return { qty, minOrderQty: null };
+  }
+
+  const qtyStep = Number(instrument.venueMetadata?.qtyStep);
+  const minOrderQty = Number(instrument.venueMetadata?.minOrderQty);
+  const normalizedQty =
+    Number.isFinite(qtyStep) && qtyStep > 0
+      ? Number((Math.floor(qty / qtyStep) * qtyStep).toFixed(12))
+      : qty;
+
+  return {
+    qty: normalizedQty,
+    minOrderQty:
+      Number.isFinite(minOrderQty) && minOrderQty > 0 ? minOrderQty : null,
+  };
+};
+
 export const createTestConnector: TestConnectorCreator = (
   connector,
   context,
@@ -71,6 +102,7 @@ export const createTestConnector: TestConnectorCreator = (
   let takeProfits: Tp[] = [];
   let stopLossPrice: Sl = null;
   let currentTradeResult: OpenTradeResult | null = null;
+  let currentEntryLegResults: OpenTradeResult[] = [];
   const closedSignalResults: TestClosedSignalResult[] = [];
 
   const logOrder = (data: Partial<OrderLog>) => {
@@ -147,6 +179,63 @@ export const createTestConnector: TestConnectorCreator = (
     );
   };
 
+  const createOpenTradeResult = ({
+    signalId,
+    direction,
+    qty,
+    timestamp,
+    requestedEntryPrice,
+    entryPrice,
+    fee,
+    slippageBreakdown,
+    entrySlippageCost,
+  }: {
+    signalId: string;
+    direction: 'LONG' | 'SHORT';
+    qty: number;
+    timestamp: number;
+    requestedEntryPrice: number;
+    entryPrice: number;
+    fee: number;
+    slippageBreakdown: ExecutionSlippageBreakdown;
+    entrySlippageCost: number;
+  }): OpenTradeResult => ({
+    signalId,
+    direction,
+    qty,
+    closedQty: 0,
+    entryTimestamp: timestamp,
+    exitTimestamp: null,
+    exitReason: null,
+    requestedEntryPrice,
+    entryPrice,
+    requestedExitPrice: null,
+    exitPrice: null,
+    grossProfit: 0,
+    netProfit: -fee,
+    openFee: fee,
+    closeFee: 0,
+    fundingFee: executionCostModel?.funding.enabled ? 0 : null,
+    totalFee: fee,
+    entrySlippagePrice: entryPrice - requestedEntryPrice,
+    entrySlippageBps: getSlippageBps(requestedEntryPrice, entryPrice),
+    entryBaseSlippageBps: slippageBreakdown.baseSlippageBps,
+    entrySpreadBps: slippageBreakdown.spreadBps,
+    entrySpreadSlippageBps: slippageBreakdown.spreadSlippageBps,
+    entryMarketImpactBps: slippageBreakdown.marketImpactBps,
+    entryDelayRiskBps: slippageBreakdown.delayRiskBps,
+    entrySlippageCost,
+    exitSlippagePrice: null,
+    exitSlippageBps: null,
+    exitBaseSlippageBps: null,
+    exitSpreadBps: null,
+    exitSpreadSlippageBps: null,
+    exitMarketImpactBps: null,
+    exitDelayRiskBps: null,
+    exitSlippageCost: 0,
+    totalSlippageCost: entrySlippageCost,
+  });
+
   const finalizeTradeResult = (
     tradeResult: OpenTradeResult,
     timestamp: number,
@@ -191,6 +280,104 @@ export const createTestConnector: TestConnectorCreator = (
     };
   };
 
+  const appendExitToTradeResult = ({
+    tradeResult,
+    direction,
+    timestamp,
+    reason,
+    requestedPrice,
+    executionPrice,
+    qty,
+    grossProfit,
+    fee,
+    slippageBreakdown,
+  }: {
+    tradeResult: OpenTradeResult;
+    direction: 'LONG' | 'SHORT';
+    timestamp: number;
+    reason: TestTradeExitReason;
+    requestedPrice: number;
+    executionPrice: number;
+    qty: number;
+    grossProfit: number;
+    fee: number;
+    slippageBreakdown: ExecutionSlippageBreakdown;
+  }): OpenTradeResult => {
+    const previousClosedQty = tradeResult.closedQty;
+    const requestedExitPrice = getWeightedAverage(
+      tradeResult.requestedExitPrice,
+      previousClosedQty,
+      requestedPrice,
+      qty,
+    );
+    const exitPrice = getWeightedAverage(
+      tradeResult.exitPrice,
+      previousClosedQty,
+      executionPrice,
+      qty,
+    );
+    const exitBaseSlippageBps = getWeightedAverage(
+      tradeResult.exitBaseSlippageBps,
+      previousClosedQty,
+      slippageBreakdown.baseSlippageBps,
+      qty,
+    );
+    const exitSpreadBps = getWeightedAverage(
+      tradeResult.exitSpreadBps,
+      previousClosedQty,
+      slippageBreakdown.spreadBps,
+      qty,
+    );
+    const exitSpreadSlippageBps = getWeightedAverage(
+      tradeResult.exitSpreadSlippageBps,
+      previousClosedQty,
+      slippageBreakdown.spreadSlippageBps,
+      qty,
+    );
+    const exitMarketImpactBps = getWeightedAverage(
+      tradeResult.exitMarketImpactBps,
+      previousClosedQty,
+      slippageBreakdown.marketImpactBps,
+      qty,
+    );
+    const exitDelayRiskBps = null;
+    const exitSlippageCost =
+      tradeResult.exitSlippageCost +
+      getSlippageCost({
+        requestedPrice,
+        executionPrice,
+        direction,
+        stage: 'exit',
+        qty,
+      });
+
+    return {
+      ...tradeResult,
+      closedQty: previousClosedQty + qty,
+      exitTimestamp: timestamp,
+      exitReason: reason,
+      requestedExitPrice,
+      exitPrice,
+      grossProfit: tradeResult.grossProfit + grossProfit,
+      netProfit: tradeResult.netProfit + grossProfit - fee,
+      closeFee: tradeResult.closeFee + fee,
+      totalFee:
+        tradeResult.openFee +
+        tradeResult.closeFee +
+        fee +
+        (tradeResult.fundingFee ?? 0),
+      exitSlippagePrice: exitPrice - requestedExitPrice,
+      exitSlippageBps: getSlippageBps(requestedExitPrice, exitPrice),
+      exitBaseSlippageBps,
+      exitSpreadBps,
+      exitSpreadSlippageBps,
+      exitMarketImpactBps,
+      exitDelayRiskBps,
+      exitSlippageCost,
+      totalSlippageCost: tradeResult.entrySlippageCost + exitSlippageCost,
+    };
+  };
+
   const recordExitResult = ({
     timestamp,
     reason,
@@ -210,84 +397,70 @@ export const createTestConnector: TestConnectorCreator = (
     fee: number;
     slippageBreakdown: ExecutionSlippageBreakdown;
   }) => {
-    if (!currentTradeResult || !currentPosition) {
+    if (!currentPosition) {
       return;
     }
 
-    const previousClosedQty = currentTradeResult.closedQty;
-    const requestedExitPrice = getWeightedAverage(
-      currentTradeResult.requestedExitPrice,
-      previousClosedQty,
-      requestedPrice,
-      qty,
-    );
-    const exitPrice = getWeightedAverage(
-      currentTradeResult.exitPrice,
-      previousClosedQty,
-      executionPrice,
-      qty,
-    );
-    const exitBaseSlippageBps = getWeightedAverage(
-      currentTradeResult.exitBaseSlippageBps,
-      previousClosedQty,
-      slippageBreakdown.baseSlippageBps,
-      qty,
-    );
-    const exitSpreadBps = getWeightedAverage(
-      currentTradeResult.exitSpreadBps,
-      previousClosedQty,
-      slippageBreakdown.spreadBps,
-      qty,
-    );
-    const exitSpreadSlippageBps = getWeightedAverage(
-      currentTradeResult.exitSpreadSlippageBps,
-      previousClosedQty,
-      slippageBreakdown.spreadSlippageBps,
-      qty,
-    );
-    const exitMarketImpactBps = getWeightedAverage(
-      currentTradeResult.exitMarketImpactBps,
-      previousClosedQty,
-      slippageBreakdown.marketImpactBps,
-      qty,
-    );
-    const exitDelayRiskBps = null;
-    const exitSlippageCost =
-      currentTradeResult.exitSlippageCost +
-      getSlippageCost({
+    if (currentTradeResult) {
+      currentTradeResult = appendExitToTradeResult({
+        tradeResult: currentTradeResult,
+        direction: currentPosition.direction,
+        timestamp,
+        reason,
         requestedPrice,
         executionPrice,
-        direction: currentPosition.direction,
-        stage: 'exit',
         qty,
+        grossProfit,
+        fee,
+        slippageBreakdown,
       });
+    }
 
-    currentTradeResult = {
-      ...currentTradeResult,
-      closedQty: previousClosedQty + qty,
-      exitTimestamp: timestamp,
-      exitReason: reason,
-      requestedExitPrice,
-      exitPrice,
-      grossProfit: currentTradeResult.grossProfit + grossProfit,
-      netProfit: currentTradeResult.netProfit + grossProfit - fee,
-      closeFee: currentTradeResult.closeFee + fee,
-      totalFee:
-        currentTradeResult.openFee +
-        currentTradeResult.closeFee +
-        fee +
-        (currentTradeResult.fundingFee ?? 0),
-      exitSlippagePrice: exitPrice - requestedExitPrice,
-      exitSlippageBps: getSlippageBps(requestedExitPrice, exitPrice),
-      exitBaseSlippageBps,
-      exitSpreadBps,
-      exitSpreadSlippageBps,
-      exitMarketImpactBps,
-      exitDelayRiskBps,
-      exitSlippageCost,
-      totalSlippageCost:
-        currentTradeResult.entrySlippageCost + exitSlippageCost,
-    };
+    const remainingQtyByLeg = currentEntryLegResults.map((tradeResult) =>
+      Math.max(0, tradeResult.qty - tradeResult.closedQty),
+    );
+    const totalRemainingQty = remainingQtyByLeg.reduce(
+      (total, remainingQty) => total + remainingQty,
+      0,
+    );
+    if (totalRemainingQty <= 0) {
+      return;
+    }
+
+    let allocatedQty = 0;
+    const activeLegIndexes = remainingQtyByLeg
+      .map((remainingQty, index) => ({ remainingQty, index }))
+      .filter(({ remainingQty }) => remainingQty > 0);
+    for (const [activeIndex, leg] of activeLegIndexes.entries()) {
+      const isLast = activeIndex === activeLegIndexes.length - 1;
+      const legExitQty = Math.min(
+        leg.remainingQty,
+        isLast
+          ? Math.max(0, qty - allocatedQty)
+          : qty * (leg.remainingQty / totalRemainingQty),
+      );
+      if (legExitQty <= 0) continue;
+      allocatedQty += legExitQty;
+
+      const legResult = currentEntryLegResults[leg.index];
+      const legGrossProfit =
+        currentPosition.direction === 'LONG'
+          ? (executionPrice - legResult.entryPrice) * legExitQty
+          : (legResult.entryPrice - executionPrice) * legExitQty;
+      const legFee = executionPrice * legExitQty * takerFeeRate;
+      currentEntryLegResults[leg.index] = appendExitToTradeResult({
+        tradeResult: legResult,
+        direction: currentPosition.direction,
+        timestamp,
+        reason,
+        requestedPrice,
+        executionPrice,
+        qty: legExitQty,
+        grossProfit: legGrossProfit,
+        fee: legFee,
+        slippageBreakdown,
+      });
+    }
   };
 
   const clearPosition = (timestamp: number) => {
@@ -300,7 +473,21 @@ export const createTestConnector: TestConnectorCreator = (
     }
 
     if (context?.mlEnabled || context?.aiEnabled) {
-      if (currentSignalId) {
+      const attributedResults = currentEntryLegResults
+        .filter(({ signalId }) => signalId)
+        .map((tradeResult) => finalizeTradeResult(tradeResult, timestamp))
+        .filter((tradeResult): tradeResult is TestTradeResult =>
+          Boolean(tradeResult),
+        );
+      if (attributedResults.length) {
+        for (const tradeResult of attributedResults) {
+          closedSignalResults.push({
+            signalId: tradeResult.signalId,
+            profit: round(tradeResult.netProfit),
+            tradeResult,
+          });
+        }
+      } else if (currentSignalId) {
         const tradeResult = currentTradeResult
           ? finalizeTradeResult(currentTradeResult, timestamp)
           : undefined;
@@ -327,6 +514,7 @@ export const createTestConnector: TestConnectorCreator = (
     currentPosition = null;
     currentSignalId = null;
     currentTradeResult = null;
+    currentEntryLegResults = [];
     currentPositionProfit = 0;
   };
 
@@ -373,6 +561,29 @@ export const createTestConnector: TestConnectorCreator = (
           (currentTradeResult.fundingFee ?? 0) + fundingCost;
         currentTradeResult.netProfit -= fundingCost;
         currentTradeResult.totalFee += fundingCost;
+      }
+      const remainingLegQty = currentEntryLegResults.reduce(
+        (total, tradeResult) =>
+          total + Math.max(0, tradeResult.qty - tradeResult.closedQty),
+        0,
+      );
+      if (remainingLegQty > 0) {
+        currentEntryLegResults = currentEntryLegResults.map((tradeResult) => {
+          const activeQty = Math.max(
+            0,
+            tradeResult.qty - tradeResult.closedQty,
+          );
+          const legFundingCost = fundingCost * (activeQty / remainingLegQty);
+          return {
+            ...tradeResult,
+            fundingFee:
+              tradeResult.fundingFee == null
+                ? null
+                : tradeResult.fundingFee + legFundingCost,
+            netProfit: tradeResult.netProfit - legFundingCost,
+            totalFee: tradeResult.totalFee + legFundingCost,
+          };
+        });
       }
     }
   };
@@ -807,6 +1018,29 @@ export const createTestConnector: TestConnectorCreator = (
         return false;
       }
 
+      const normalizedOrder = normalizeInstrumentOrderQty({
+        qty: order.qty,
+        symbol: order.symbol,
+        instrument: context?.instrument,
+      });
+      const orderQty = normalizedOrder.qty;
+      if (
+        orderQty <= 0 ||
+        (normalizedOrder.minOrderQty != null &&
+          orderQty < normalizedOrder.minOrderQty)
+      ) {
+        if (order.signal) {
+          order.signal.orderQty = orderQty;
+          order.signal.orderValue = orderQty * order.price;
+          order.signal.orderFailureReason = 'QTY_BELOW_MIN_ORDER';
+        }
+        return false;
+      }
+      if (order.signal) {
+        order.signal.orderQty = orderQty;
+        order.signal.orderValue = orderQty * order.price;
+      }
+
       const isLong = order.direction === 'LONG';
 
       const entrySlippageBreakdown = getExecutionSlippageBreakdown({
@@ -821,13 +1055,13 @@ export const createTestConnector: TestConnectorCreator = (
       });
       const previousPosition = currentPosition;
       const previousQty = previousPosition?.qty ?? 0;
-      const resultingQty = previousQty + order.qty;
+      const resultingQty = previousQty + orderQty;
       const resultingEntryPrice = previousPosition
         ? getWeightedAverage(
             previousPosition.price,
             previousQty,
             entryPrice,
-            order.qty,
+            orderQty,
           )
         : entryPrice;
       currentPosition = previousPosition
@@ -836,14 +1070,14 @@ export const createTestConnector: TestConnectorCreator = (
             qty: resultingQty,
             price: resultingEntryPrice,
           }
-        : { ...order, price: entryPrice, amount };
+        : { ...order, qty: orderQty, price: entryPrice, amount };
       originalQty = resultingQty;
 
       if (isPositionIncrease) {
         const { fee, profit } = getNetProfit({
           grossProfit: 0,
           price: entryPrice,
-          qty: order.qty,
+          qty: orderQty,
           feeRate: order.isLimit ? makerFeeRate : takerFeeRate,
         });
         const entrySlippageCost = getSlippageCost({
@@ -851,60 +1085,77 @@ export const createTestConnector: TestConnectorCreator = (
           executionPrice: entryPrice,
           direction: order.direction,
           stage: 'entry',
-          qty: order.qty,
+          qty: orderQty,
         });
+        const increaseSignalId =
+          typeof order.signal?.signalId === 'string' && order.signal.signalId
+            ? order.signal.signalId
+            : '';
 
         amount += profit;
         currentPositionProfit += profit;
+        currentEntryLegResults.push(
+          createOpenTradeResult({
+            signalId: increaseSignalId,
+            direction: order.direction,
+            qty: orderQty,
+            timestamp: order.timestamp,
+            requestedEntryPrice: order.price,
+            entryPrice,
+            fee,
+            slippageBreakdown: entrySlippageBreakdown,
+            entrySlippageCost,
+          }),
+        );
         if (currentTradeResult) {
           const requestedEntryPrice = getWeightedAverage(
             currentTradeResult.requestedEntryPrice,
             currentTradeResult.qty,
             order.price,
-            order.qty,
+            orderQty,
           );
           const weightedEntryPrice = getWeightedAverage(
             currentTradeResult.entryPrice,
             currentTradeResult.qty,
             entryPrice,
-            order.qty,
+            orderQty,
           );
           const entryBaseSlippageBps = getWeightedAverage(
             currentTradeResult.entryBaseSlippageBps,
             currentTradeResult.qty,
             entrySlippageBreakdown.baseSlippageBps,
-            order.qty,
+            orderQty,
           );
           const entrySpreadBps = getWeightedAverage(
             currentTradeResult.entrySpreadBps,
             currentTradeResult.qty,
             entrySlippageBreakdown.spreadBps,
-            order.qty,
+            orderQty,
           );
           const entrySpreadSlippageBps = getWeightedAverage(
             currentTradeResult.entrySpreadSlippageBps,
             currentTradeResult.qty,
             entrySlippageBreakdown.spreadSlippageBps,
-            order.qty,
+            orderQty,
           );
           const entryMarketImpactBps = getWeightedAverage(
             currentTradeResult.entryMarketImpactBps,
             currentTradeResult.qty,
             entrySlippageBreakdown.marketImpactBps,
-            order.qty,
+            orderQty,
           );
           const entryDelayRiskBps = getWeightedAverage(
             currentTradeResult.entryDelayRiskBps,
             currentTradeResult.qty,
             entrySlippageBreakdown.delayRiskBps,
-            order.qty,
+            orderQty,
           );
           const totalEntrySlippageCost =
             currentTradeResult.entrySlippageCost + entrySlippageCost;
 
           currentTradeResult = {
             ...currentTradeResult,
-            qty: currentTradeResult.qty + order.qty,
+            qty: currentTradeResult.qty + orderQty,
             requestedEntryPrice,
             entryPrice: weightedEntryPrice,
             netProfit: currentTradeResult.netProfit + profit,
@@ -928,6 +1179,7 @@ export const createTestConnector: TestConnectorCreator = (
 
         logOrder({
           ...order,
+          qty: orderQty,
           price: entryPrice,
           profit,
           fee,
@@ -946,7 +1198,7 @@ export const createTestConnector: TestConnectorCreator = (
       const { fee, profit } = getNetProfit({
         grossProfit: 0,
         price: entryPrice,
-        qty: order.qty,
+        qty: orderQty,
         feeRate: order.isLimit ? makerFeeRate : takerFeeRate,
       });
       const entrySlippageCost = getSlippageCost({
@@ -954,52 +1206,30 @@ export const createTestConnector: TestConnectorCreator = (
         executionPrice: entryPrice,
         direction: order.direction,
         stage: 'entry',
-        qty: order.qty,
+        qty: orderQty,
       });
 
       amount += profit;
       currentPositionProfit = profit;
+      const openTradeResult = createOpenTradeResult({
+        signalId: currentSignalId ?? '',
+        direction: order.direction,
+        qty: orderQty,
+        timestamp: order.timestamp,
+        requestedEntryPrice: order.price,
+        entryPrice,
+        fee,
+        slippageBreakdown: entrySlippageBreakdown,
+        entrySlippageCost,
+      });
+      currentEntryLegResults = [openTradeResult];
       currentTradeResult = currentSignalId
-        ? {
-            signalId: currentSignalId,
-            direction: order.direction,
-            qty: order.qty,
-            closedQty: 0,
-            entryTimestamp: order.timestamp,
-            exitTimestamp: null,
-            exitReason: null,
-            requestedEntryPrice: order.price,
-            entryPrice,
-            requestedExitPrice: null,
-            exitPrice: null,
-            grossProfit: 0,
-            netProfit: profit,
-            openFee: fee,
-            closeFee: 0,
-            fundingFee: executionCostModel?.funding.enabled ? 0 : null,
-            totalFee: fee,
-            entrySlippagePrice: entryPrice - order.price,
-            entrySlippageBps: getSlippageBps(order.price, entryPrice),
-            entryBaseSlippageBps: entrySlippageBreakdown.baseSlippageBps,
-            entrySpreadBps: entrySlippageBreakdown.spreadBps,
-            entrySpreadSlippageBps: entrySlippageBreakdown.spreadSlippageBps,
-            entryMarketImpactBps: entrySlippageBreakdown.marketImpactBps,
-            entryDelayRiskBps: entrySlippageBreakdown.delayRiskBps,
-            entrySlippageCost,
-            exitSlippagePrice: null,
-            exitSlippageBps: null,
-            exitBaseSlippageBps: null,
-            exitSpreadBps: null,
-            exitSpreadSlippageBps: null,
-            exitMarketImpactBps: null,
-            exitDelayRiskBps: null,
-            exitSlippageCost: 0,
-            totalSlippageCost: entrySlippageCost,
-          }
+        ? { ...openTradeResult, signalId: currentSignalId }
         : null;
 
       logOrder({
         ...order,
+        qty: orderQty,
         price: entryPrice,
         profit,
         fee,

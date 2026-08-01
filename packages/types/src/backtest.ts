@@ -329,6 +329,7 @@ export interface TestConnectorContext {
   mlEnabled?: boolean;
   aiEnabled?: boolean;
   fastMode?: boolean;
+  instrument?: InstrumentDescriptor;
   executionCostModel?: ExecutionCostModel;
   fundingRates?: FundingRatePoint[];
 }

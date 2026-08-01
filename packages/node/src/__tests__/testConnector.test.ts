@@ -223,6 +223,59 @@ describe('testConnector', () => {
     expect(result.inlinePositionLog).toHaveLength(1);
   });
 
+  it('matches instrument qty-step normalization and minimum-order rejection in backtests', async () => {
+    const instrument = {
+      provider: 'bybit',
+      symbol: 'ETHUSDT',
+      kind: 'perpetual',
+      assetClass: 'crypto',
+      universe: 'crypto',
+      status: 'trading',
+      venueMetadata: { qtyStep: 0.01, minOrderQty: 0.01 },
+    } as const;
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      instrument,
+    });
+    const normalizedSignal = {} as any;
+
+    await expect(
+      connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 0.056,
+        price: 100,
+        timestamp: 1,
+        direction: 'LONG',
+        signal: normalizedSignal,
+      }),
+    ).resolves.toBe(true);
+    await expect(connector.getPosition('ETHUSDT')).resolves.toEqual(
+      expect.objectContaining({ qty: 0.05 }),
+    );
+    expect(normalizedSignal.orderQty).toBe(0.05);
+    expect(normalizedSignal.orderValue).toBe(5);
+
+    const rejectedConnector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      instrument,
+    });
+    const rejectedSignal = {} as any;
+    await expect(
+      rejectedConnector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 0.009,
+        price: 100,
+        timestamp: 1,
+        direction: 'LONG',
+        signal: rejectedSignal,
+      }),
+    ).resolves.toBe(false);
+    await expect(rejectedConnector.getPosition('ETHUSDT')).resolves.toBeNull();
+    expect(rejectedSignal.orderQty).toBe(0);
+    expect(rejectedSignal.orderValue).toBe(0);
+    expect(rejectedSignal.orderFailureReason).toBe('QTY_BELOW_MIN_ORDER');
+  });
+
   it('closes the full unequal-size short basket and aggregates its trade telemetry', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',
@@ -258,6 +311,7 @@ describe('testConnector', () => {
       timestamp: 2,
       direction: 'SHORT',
       positionIntent: 'increase',
+      signal: { signalId: 'grid-short-increase-2' } as any,
     });
     await connector.setStopLoss({
       symbol: 'ETHUSDT',
@@ -284,23 +338,42 @@ describe('testConnector', () => {
     });
 
     const batch = await connector.drainMlResultsBatch();
-    expect(batch).toHaveLength(1);
+    expect(batch).toHaveLength(2);
     expect(batch[0]).toEqual(
       expect.objectContaining({
         signalId: 'grid-short',
-        profit: -50,
+        profit: -40,
         tradeResult: expect.objectContaining({
+          signalId: 'grid-short',
           direction: 'SHORT',
-          qty: 3,
-          closedQty: 3,
-          entryPrice: expect.closeTo(103.333333, 5),
+          qty: 2,
+          closedQty: 2,
+          entryPrice: 100,
           exitPrice: 120,
           exitReason: 'stop_loss',
-          grossProfit: -50,
-          netProfit: -50,
+          grossProfit: -40,
+          netProfit: -40,
         }),
       }),
     );
+    expect(batch[1]).toEqual(
+      expect.objectContaining({
+        signalId: 'grid-short-increase-2',
+        profit: -10,
+        tradeResult: expect.objectContaining({
+          signalId: 'grid-short-increase-2',
+          direction: 'SHORT',
+          qty: 1,
+          closedQty: 1,
+          entryPrice: 110,
+          exitPrice: 120,
+          exitReason: 'stop_loss',
+          grossProfit: -10,
+          netProfit: -10,
+        }),
+      }),
+    );
+    expect(batch.reduce((total, row) => total + row.profit, 0)).toBe(-50);
     const result = await connector.getResult();
     expect(result.stat).toEqual({
       amount: INITIAL_BACKTEST_AMOUNT - 50,
@@ -313,6 +386,181 @@ describe('testConnector', () => {
       'STOP_LOSS_SHORT',
     ]);
     expect(result.inlinePositionLog).toHaveLength(1);
+  });
+
+  it('attributes fees and funding to every exported grid entry leg without duplicating basket PnL', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      aiEnabled: true,
+      executionCostModel: {
+        fees: { makerRate: 0.001, takerRate: 0.001, source: 'config' },
+        funding: { enabled: true, source: 'historical', points: 1 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+      fundingRates: [{ symbol: 'ETHUSDT', timestamp: 5, rate: 0.01 }],
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: { signalId: 'grid-open' } as any,
+    });
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 3,
+      price: 80,
+      timestamp: 2,
+      direction: 'LONG',
+      positionIntent: 'increase',
+      signal: { signalId: 'grid-increase' } as any,
+    });
+    await connector.checkExits({
+      timestamp: 10,
+      open: 90,
+      high: 90,
+      low: 90,
+      close: 90,
+      volume: 1,
+      turnover: 90,
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 90,
+      timestamp: 11,
+      direction: 'LONG',
+    });
+
+    const batch = await connector.drainMlResultsBatch();
+    expect(batch).toEqual([
+      expect.objectContaining({
+        signalId: 'grid-open',
+        profit: -11.09,
+        tradeResult: expect.objectContaining({
+          qty: 1,
+          openFee: 0.1,
+          closeFee: 0.09,
+          fundingFee: 0.9,
+          netProfit: -11.09,
+        }),
+      }),
+      expect.objectContaining({
+        signalId: 'grid-increase',
+        profit: 26.79,
+        tradeResult: expect.objectContaining({
+          qty: 3,
+          openFee: 0.24,
+          closeFee: 0.27,
+          fundingFee: 2.7,
+          netProfit: 26.79,
+        }),
+      }),
+    ]);
+    const result = await connector.getResult();
+    expect(round(batch.reduce((total, row) => total + row.profit, 0))).toBe(
+      result.stat.profit,
+    );
+  });
+
+  it('attributes partial take profits pro rata across exported grid entry legs', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      aiEnabled: true,
+      executionCostModel: {
+        fees: { makerRate: 0, takerRate: 0, source: 'config' },
+        funding: { enabled: false, source: 'disabled', points: 0 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: { signalId: 'grid-open' } as any,
+    });
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 3,
+      price: 80,
+      timestamp: 2,
+      direction: 'LONG',
+      positionIntent: 'increase',
+      signal: { signalId: 'grid-increase' } as any,
+    });
+    await connector.setTakeProfits({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [
+        { price: 90, rate: 0.5 },
+        { price: 100, rate: 0.5 },
+      ],
+    });
+    await connector.checkExits({
+      timestamp: 3,
+      open: 85,
+      high: 91,
+      low: 84,
+      close: 90,
+      volume: 1,
+      turnover: 90,
+    });
+    await connector.checkExits({
+      timestamp: 4,
+      open: 90,
+      high: 101,
+      low: 89,
+      close: 100,
+      volume: 1,
+      turnover: 100,
+    });
+
+    const batch = await connector.drainMlResultsBatch();
+    expect(batch).toEqual([
+      expect.objectContaining({
+        signalId: 'grid-open',
+        profit: -5,
+        tradeResult: expect.objectContaining({
+          qty: 1,
+          closedQty: 1,
+          requestedExitPrice: 95,
+          grossProfit: -5,
+        }),
+      }),
+      expect.objectContaining({
+        signalId: 'grid-increase',
+        profit: 45,
+        tradeResult: expect.objectContaining({
+          qty: 3,
+          closedQty: 3,
+          requestedExitPrice: 95,
+          grossProfit: 45,
+        }),
+      }),
+    ]);
+    expect((await connector.getResult()).stat.profit).toBe(40);
   });
 
   it('rejects accidental or opposite-direction increases while a position exists', async () => {

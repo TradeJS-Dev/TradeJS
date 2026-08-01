@@ -117,6 +117,8 @@ const mapBybitInstrument = (
       contractType: String(item.contractType ?? ''),
       fundingInterval: Number(item.fundingInterval ?? Number.NaN),
       maxLeverage: Number(item.leverageFilter?.maxLeverage ?? Number.NaN),
+      qtyStep: Number(item.lotSizeFilter?.qtyStep ?? Number.NaN),
+      minOrderQty: Number(item.lotSizeFilter?.minOrderQty ?? Number.NaN),
     },
   };
 };
@@ -1278,31 +1280,31 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       const meta = await getSymbolMeta(marketDataClient, symbol);
 
       const normalizedQty = normalizeQty(qty, meta);
-      const minNormalizedQty = normalizeQty(meta.minOrderQty, meta);
       const isQtyBelowMin = normalizedQty.qtyNum < meta.minOrderQty;
-      const orderQty = isQtyBelowMin
-        ? Math.max(minNormalizedQty.qtyNum, meta.minOrderQty)
-        : normalizedQty.qtyNum;
-      const orderQtyStr = isQtyBelowMin
-        ? orderQty.toFixed(meta.qtyPrecision)
-        : normalizedQty.qtyStr;
 
       if (isQtyBelowMin) {
+        if (signal) {
+          signal.orderQty = normalizedQty.qtyNum;
+          signal.orderValue = normalizedQty.qtyNum * price;
+          signal.orderFailureReason = 'QTY_BELOW_MIN_ORDER';
+        }
         logger.log(
           'warn',
-          'placeOrder: qty below min, using minOrderQty: %s',
+          'placeOrder: rejected qty below minOrderQty: %s',
           toJson(
             {
               symbol,
               qty,
-              requestedOrderQty: normalizedQty.qtyNum,
-              orderQty,
+              normalizedOrderQty: normalizedQty.qtyNum,
               minOrderQty: meta.minOrderQty,
             },
             true,
           ),
         );
+        return false;
       }
+      const orderQty = normalizedQty.qtyNum;
+      const orderQtyStr = normalizedQty.qtyStr;
       if (signal) {
         signal.orderQty = orderQty;
         signal.orderValue = orderQty * price;

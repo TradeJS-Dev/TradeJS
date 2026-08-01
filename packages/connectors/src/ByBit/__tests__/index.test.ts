@@ -621,7 +621,7 @@ describe('ByBitConnectorCreator', () => {
     ]);
   });
 
-  it('uses minOrderQty in placeOrder when normalized qty is below min', async () => {
+  it('rejects an order below minOrderQty without silently increasing risk', async () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
@@ -650,21 +650,15 @@ describe('ByBitConnectorCreator', () => {
       signal,
     } as any);
 
-    expect(ok).toBe(true);
-    expect(client.setLeverage).toHaveBeenCalledTimes(1);
-    expect(client.submitOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        symbol: 'BTCUSDT',
-        side: 'Buy',
-        qty: '0.010',
-      }),
-    );
-    expect(signal.orderQty).toBe(0.01);
-    expect(signal.orderValue).toBe(1);
-    expect(signal.orderFailureReason).toBeUndefined();
+    expect(ok).toBe(false);
+    expect(client.setLeverage).not.toHaveBeenCalled();
+    expect(client.submitOrder).not.toHaveBeenCalled();
+    expect(signal.orderQty).toBe(0.005);
+    expect(signal.orderValue).toBe(0.5);
+    expect(signal.orderFailureReason).toBe('QTY_BELOW_MIN_ORDER');
     expect(mockedLoggerLog).toHaveBeenCalledWith(
       'warn',
-      'placeOrder: qty below min, using minOrderQty: %s',
+      'placeOrder: rejected qty below minOrderQty: %s',
       expect.stringContaining('"minOrderQty": 0.01'),
     );
   });
@@ -1528,6 +1522,7 @@ describe('ByBitConnectorCreator', () => {
             status: 'Trading',
             contractType: 'LinearPerpetual',
             leverageFilter: { maxLeverage: '5' },
+            lotSizeFilter: { qtyStep: '0.01', minOrderQty: '0.1' },
           },
         ],
         nextPageCursor: '',
@@ -1550,6 +1545,12 @@ describe('ByBitConnectorCreator', () => {
       'forex',
     ]);
     expect(instruments.every(({ kind }) => kind === 'perpetual')).toBe(true);
+    expect(
+      instruments.every(
+        ({ venueMetadata }) =>
+          venueMetadata?.qtyStep === 0.01 && venueMetadata?.minOrderQty === 0.1,
+      ),
+    ).toBe(true);
 
     await expect(
       connector.listInstruments({

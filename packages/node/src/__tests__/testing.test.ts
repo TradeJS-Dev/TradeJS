@@ -853,6 +853,79 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('writes separately attributed AI rows for grid open and increase signals', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 'grid-open',
+        symbol: 'ETHUSDT',
+        strategy: 'Grid',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+        additionalIndicators: {
+          gridContext: { action: 'open', level: 1 },
+        },
+      })
+      .mockResolvedValueOnce({
+        signalId: 'grid-increase-2',
+        symbol: 'ETHUSDT',
+        strategy: 'Grid',
+        direction: 'LONG',
+        timestamp: 1_000_250,
+        additionalIndicators: {
+          gridContext: { action: 'increase', level: 2 },
+        },
+      });
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 'grid-open', profit: 1.25 },
+      { signalId: 'grid-increase-2', profit: 2.75 },
+    ]);
+    mockBuildAiPayload
+      .mockImplementationOnce((signal: unknown) => ({ signal }))
+      .mockImplementationOnce((signal: unknown) => ({ signal }));
+
+    await testing(createTest({ ai: true }));
+
+    expect(mockAppendAiDatasetRow).toHaveBeenCalledTimes(2);
+    expect(mockAppendAiDatasetRow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        row: expect.objectContaining({
+          signalId: 'grid-open',
+          profit: 1.25,
+          payload: expect.objectContaining({
+            signal: expect.objectContaining({
+              additionalIndicators: expect.objectContaining({
+                gridContext: expect.objectContaining({ action: 'open' }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(mockAppendAiDatasetRow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        row: expect.objectContaining({
+          signalId: 'grid-increase-2',
+          profit: 2.75,
+          payload: expect.objectContaining({
+            signal: expect.objectContaining({
+              additionalIndicators: expect.objectContaining({
+                gridContext: expect.objectContaining({ action: 'increase' }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('does not write ml row when strategy returns string', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);

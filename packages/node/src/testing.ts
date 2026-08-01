@@ -1224,6 +1224,7 @@ export const testing: TestingBox = async ({
     mlEnabled: ml,
     aiEnabled: ai,
     fastMode: fast,
+    instrument,
     executionCostModel,
     fundingRates,
   });
@@ -1714,6 +1715,7 @@ export const testingGroupInSharedCandleLoop = async (
         mlEnabled: test.ml,
         aiEnabled: test.ai,
         fastMode: test.fast,
+        instrument,
         executionCostModel,
         fundingRates,
       });
