@@ -16,22 +16,25 @@ import {
 import { format } from 'date-fns';
 import { getFormatted } from '@tradejs/core/backtest';
 import type { SimpleOrderLogData, TestStat } from '@tradejs/types';
+import type { RuntimeStrategyAiGateChange } from '#app/lib/runtimeStrategies';
 
 interface RuntimeStrategyChartProps {
   orderLog: SimpleOrderLogData;
   stat: TestStat;
+  aiGateChanges: RuntimeStrategyAiGateChange[];
   height?: string | number;
 }
 
 export const RuntimeStrategyChart = ({
   orderLog,
   stat,
+  aiGateChanges,
   height = '350px',
 }: RuntimeStrategyChartProps) => {
   const chartData = useMemo(
     () => ({
       data: orderLog.map(([timestamp, amount]) => ({
-        timestamp: format(timestamp, 'dd.MM'),
+        timestamp,
         equity: amount,
       })),
       series: [
@@ -47,6 +50,7 @@ export const RuntimeStrategyChart = ({
   const chart = useChart(chartData as any);
   const { formatted: maxAmount } = getFormatted(stat, 'maxAmount');
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
+  const gateChangeColor = chart.color('purple.400');
 
   if (!orderLog.length) {
     return (
@@ -96,12 +100,40 @@ export const RuntimeStrategyChart = ({
                 position: 'bottom',
               }}
             />
-            <XAxis dataKey="timestamp" />
+            {aiGateChanges.map((change) => (
+              <ReferenceLine
+                key={`${change.timestamp}:${change.fingerprint}`}
+                x={change.timestamp}
+                stroke={gateChangeColor}
+                strokeDasharray="3 5"
+                strokeWidth={1.5}
+                label={{
+                  value: `AI-gate ${change.fingerprint.slice(0, 7)}`,
+                  fill: gateChangeColor,
+                  fontSize: 10,
+                  offset: 6,
+                  position: 'insideTopRight',
+                }}
+              />
+            ))}
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(timestamp) => format(timestamp, 'dd.MM')}
+            />
             <YAxis tickCount={10} domain={[stat.minAmount - 10, 'auto']} />
             <Tooltip
               animationDuration={100}
               cursor={false}
-              content={<Chart.Tooltip />}
+              content={
+                <Chart.Tooltip
+                  labelFormatter={(timestamp) =>
+                    format(Number(timestamp), 'dd.MM.yyyy HH:mm')
+                  }
+                />
+              }
             />
             {chart.series.map((item) => (
               <Line
@@ -111,6 +143,7 @@ export const RuntimeStrategyChart = ({
                 stroke={chart.color(item.color)}
                 strokeWidth={2}
                 dot={false}
+                activeDot={{ r: 5, strokeWidth: 2 }}
               />
             ))}
           </LineChart>

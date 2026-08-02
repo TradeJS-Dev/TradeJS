@@ -9,6 +9,7 @@ import type {
   ExchangeEntryRecord,
   PositionPnlSnapshot,
   RuntimeTradeRecord,
+  RuntimeLineage,
   SimpleOrderLogData,
   StrategyConfig,
   TestStat,
@@ -72,6 +73,21 @@ export interface RuntimeStrategyTradeView {
   lastSyncedAt: number | null;
 }
 
+export interface RuntimeStrategyLineageScope {
+  strategy: string;
+  symbol: string;
+  runtimeConfigId?: string;
+  lineage: RuntimeLineage;
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+export interface RuntimeStrategyAiGateChange {
+  timestamp: number;
+  previousFingerprint: string;
+  fingerprint: string;
+}
+
 export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
@@ -89,6 +105,7 @@ export interface RuntimeStrategyView {
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
+  aiGateChanges: RuntimeStrategyAiGateChange[];
   recentTrades: RuntimeStrategyTradeView[];
   orders: RuntimeStrategyTradeView[];
 }
@@ -163,6 +180,104 @@ export interface RuntimeStrategiesResponse {
   };
   strategies: RuntimeStrategyView[];
 }
+
+export const isRuntimeStrategyLineageScope = (
+  value: unknown,
+): value is RuntimeStrategyLineageScope => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  const lineage = record.lineage as Record<string, unknown> | undefined;
+
+  return (
+    typeof record.strategy === 'string' &&
+    typeof record.symbol === 'string' &&
+    typeof record.firstTimestamp === 'number' &&
+    Number.isFinite(record.firstTimestamp) &&
+    typeof record.lastTimestamp === 'number' &&
+    Number.isFinite(record.lastTimestamp) &&
+    lineage != null &&
+    typeof lineage.gateFingerprint === 'string' &&
+    lineage.gateFingerprint.trim().length > 0
+  );
+};
+
+export const buildRuntimeStrategyAiGateChanges = ({
+  scopes,
+  strategyName,
+  configId,
+  startTime,
+  endTime,
+}: {
+  scopes: RuntimeStrategyLineageScope[];
+  strategyName: string;
+  configId?: string;
+  startTime: number;
+  endTime: number;
+}): RuntimeStrategyAiGateChange[] => {
+  const normalizedConfigId = configId ?? 'config';
+  const observationsByTimestamp = new Map<
+    number,
+    { fingerprint: string; lastTimestamp: number }
+  >();
+
+  for (const scope of scopes) {
+    if (
+      scope.strategy !== strategyName ||
+      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
+      scope.firstTimestamp > endTime
+    ) {
+      continue;
+    }
+
+    const fingerprint = scope.lineage.gateFingerprint.trim();
+    const existing = observationsByTimestamp.get(scope.firstTimestamp);
+
+    // Multiple symbols are evaluated for the same strategy timestamp. If a
+    // deploy happens during that cycle, prefer the lineage that kept running
+    // afterwards instead of making the marker order depend on the symbol name.
+    if (
+      !existing ||
+      scope.lastTimestamp > existing.lastTimestamp ||
+      (scope.lastTimestamp === existing.lastTimestamp &&
+        fingerprint > existing.fingerprint)
+    ) {
+      observationsByTimestamp.set(scope.firstTimestamp, {
+        fingerprint,
+        lastTimestamp: scope.lastTimestamp,
+      });
+    }
+  }
+
+  const observations = [...observationsByTimestamp.entries()].sort(
+    ([leftTimestamp], [rightTimestamp]) => leftTimestamp - rightTimestamp,
+  );
+  const changes: RuntimeStrategyAiGateChange[] = [];
+  let currentFingerprint: string | null = null;
+
+  for (const [timestamp, observation] of observations) {
+    if (currentFingerprint == null) {
+      currentFingerprint = observation.fingerprint;
+      continue;
+    }
+    if (observation.fingerprint === currentFingerprint) {
+      continue;
+    }
+
+    if (timestamp >= startTime) {
+      changes.push({
+        timestamp,
+        previousFingerprint: currentFingerprint,
+        fingerprint: observation.fingerprint,
+      });
+    }
+    currentFingerprint = observation.fingerprint;
+  }
+
+  return changes;
+};
 
 const roundValue = (value: number, digits = 2) => {
   if (!Number.isFinite(value)) {

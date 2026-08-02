@@ -3,6 +3,7 @@ import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import {
   assignLegacyRuntimeTradeAccountScopes,
   buildExchangeFallbackRuntimeTrades,
+  buildRuntimeStrategyAiGateChanges,
   buildRuntimeStrategyIdentityKey,
   buildRuntimeStrategyAnalytics,
   resolveStrategyNameByConfigKey,
@@ -248,6 +249,83 @@ describe('runtimeStrategies helpers', () => {
       symbolConcentrationTop1: 80,
       symbolConcentrationTop5: 100,
     });
+  });
+
+  it('builds deduplicated AI-gate change markers from runtime lineage', () => {
+    const lineage = (gateFingerprint: string) => ({
+      schemaVersion: 1 as const,
+      gitSha: 'sha',
+      gitDirty: false,
+      gateFingerprint,
+      configFingerprint: 'config-fingerprint',
+      contextFingerprint: 'context-fingerprint',
+    });
+    const scopes = [
+      {
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        runtimeConfigId: 'config',
+        lineage: lineage('gate-old'),
+        firstTimestamp: 50,
+        lastTimestamp: 150,
+      },
+      {
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        runtimeConfigId: 'config',
+        lineage: lineage('gate-old'),
+        firstTimestamp: 50,
+        lastTimestamp: 150,
+      },
+      {
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        runtimeConfigId: 'config',
+        lineage: lineage('gate-new'),
+        firstTimestamp: 200,
+        lastTimestamp: 300,
+      },
+      {
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        runtimeConfigId: 'config',
+        lineage: lineage('gate-new'),
+        firstTimestamp: 200,
+        lastTimestamp: 300,
+      },
+      {
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        runtimeConfigId: 'config',
+        lineage: lineage('gate-new'),
+        firstTimestamp: 350,
+        lastTimestamp: 400,
+      },
+      {
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        runtimeConfigId: 'other-config',
+        lineage: lineage('unrelated-gate'),
+        firstTimestamp: 250,
+        lastTimestamp: 450,
+      },
+    ];
+
+    expect(
+      buildRuntimeStrategyAiGateChanges({
+        scopes,
+        strategyName: 'TrendLine',
+        configId: 'config',
+        startTime: 100,
+        endTime: 500,
+      }),
+    ).toEqual([
+      {
+        timestamp: 200,
+        previousFingerprint: 'gate-old',
+        fingerprint: 'gate-new',
+      },
+    ]);
   });
 
   it('maps runtime trade take-profit and stop-loss percentages', () => {

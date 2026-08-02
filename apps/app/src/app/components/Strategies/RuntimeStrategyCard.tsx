@@ -2175,7 +2175,11 @@ export const RuntimeStrategyCard = ({
         </Portal>
       </Drawer.Root>
 
-      <RuntimeStrategyChart orderLog={strategy.orderLog} stat={strategy.stat} />
+      <RuntimeStrategyChart
+        orderLog={strategy.orderLog}
+        stat={strategy.stat}
+        aiGateChanges={strategy.aiGateChanges}
+      />
 
       <SimpleGrid columns={{ base: 4, md: 8 }} p={4}>
         <StatItem stat={strategy.stat} id="netProfit" title="P&L" />

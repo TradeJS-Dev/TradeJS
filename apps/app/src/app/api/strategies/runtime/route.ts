@@ -29,10 +29,13 @@ import { getCurrentUserName } from '#app/lib/currentUser';
 import {
   assignLegacyRuntimeTradeAccountScopes,
   buildRuntimeStrategyAnalytics,
+  buildRuntimeStrategyAiGateChanges,
   buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
   isRuntimeTradeRecord,
+  isRuntimeStrategyLineageScope,
   resolveStrategyConfigIdentityByKey,
+  RuntimeStrategyLineageScope,
   RuntimeStrategiesResponse,
   selectTradesForWindow,
   toRuntimeTradeView,
@@ -52,6 +55,7 @@ const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 90;
 const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
 const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
+const RUNTIME_LINEAGE_BASELINE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const coerceHours = (value: string | null) => {
   const parsed = Number(value ?? Number.NaN);
@@ -161,6 +165,26 @@ const loadRuntimeTrades = async (
     .filter(filterByWindow)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
+
+const loadRuntimeLineageScopes = async (
+  userName: string,
+  startTime: number,
+  endTime: number,
+): Promise<RuntimeStrategyLineageScope[]> =>
+  (
+    await Promise.all(
+      getRuntimeStorageDayKeys(
+        Math.max(0, startTime - RUNTIME_LINEAGE_BASELINE_MS),
+        endTime,
+      ).map((dayKey) =>
+        getHashJsonValues<RuntimeStrategyLineageScope>(
+          redisKeys.runtimeLineageScopeBucket(userName, dayKey),
+        ),
+      ),
+    )
+  )
+    .flat()
+    .filter(isRuntimeStrategyLineageScope);
 
 const buildExchangeTimeRanges = (startTime: number, endTime: number) => {
   const ranges: Array<{ startTime: number; endTime: number }> = [];
@@ -380,6 +404,7 @@ export const GET = async (request: NextRequest) => {
       openPositionsSnapshot,
       runtimeDeployments,
       tradingAccounts,
+      runtimeLineageScopes,
     ] = await Promise.all([
       loadRuntimeStrategyConfigs(userName),
       loadConfiguredStrategyNames(),
@@ -400,6 +425,7 @@ export const GET = async (request: NextRequest) => {
       loadOpenPositions(connector, exchangeErrors),
       listRuntimeDeployments(userName),
       listTradingAccounts(userName),
+      loadRuntimeLineageScopes(userName, startTime, endTime),
     ]);
     const relevantTrades = selectTradesForWindow(
       runtimeTrades,
@@ -607,6 +633,13 @@ export const GET = async (request: NextRequest) => {
           stat: analytics.stat,
           summary: analytics.summary,
           orderLog: analytics.orderLog,
+          aiGateChanges: buildRuntimeStrategyAiGateChanges({
+            scopes: runtimeLineageScopes,
+            strategyName,
+            configId: identity.configId,
+            startTime,
+            endTime,
+          }),
           recentTrades: strategyTrades
             .slice(0, 8)
             .map((trade) => toRuntimeTradeView(trade, endTime)),
