@@ -131,9 +131,11 @@ export type AiPocketSearchRunReport = {
   selectedRows: number;
   evaluatedRows: number;
   scope: string;
+  direction: string | null;
   scopeRows: number;
   trainRows: number;
   validationRows: number;
+  testRows: number;
   scanned: number;
   dateSkipped: number;
   failed: number;
@@ -148,6 +150,7 @@ export type AiPocketSearchRunReport = {
   includeGateContext: boolean;
   featureProfile?: 'compact' | 'all';
   validationSplit: number;
+  testSplit: number;
   minValidationSupport: number;
   reportPath: string;
   search: {
@@ -1801,10 +1804,13 @@ export const buildAiPocketMarkdownReport = ({
         ['selected_rows', run.selectedRows],
         ['evaluated_rows', run.evaluatedRows],
         ['scope', run.scope],
+        ['direction', run.direction ?? 'all'],
         ['scope_rows', run.scopeRows],
         ['train_rows', run.trainRows],
         ['validation_rows', run.validationRows],
+        ['test_rows', run.testRows],
         ['validation_split', formatMdPercent(run.validationSplit)],
+        ['test_split', formatMdPercent(run.testSplit)],
         ['min_validation_support', run.minValidationSupport],
         ['failed', run.failed],
         ['recent', run.recent === 0 ? 'all' : run.recent],

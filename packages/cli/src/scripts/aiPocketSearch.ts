@@ -39,6 +39,7 @@ import {
 import {
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS,
   readAiPocketSearchCliOption,
+  splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
 
 args.example(
@@ -89,6 +90,11 @@ args.option(
   'Search scope: all, approved, rejected, or candidates',
   'all',
 );
+args.option(
+  ['I', 'direction'],
+  'Only search rows with this signal direction: LONG or SHORT',
+  '',
+);
 args.option(['d', 'maxDepth'], 'Maximum predicate-combination depth', 2);
 args.option(['m', 'minSupport'], 'Minimum rows required for a pocket', 20);
 args.option(
@@ -120,6 +126,11 @@ args.option(
   ['V', 'validationSplit'],
   'Trailing time-ordered scope share reserved for validation (0 disables)',
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.validationSplit,
+);
+args.option(
+  ['T', 'testSplit'],
+  'Trailing timestamp-grouped scope share withheld as untouched test',
+  AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.testSplit,
 );
 args.option(
   ['N', 'minValidationSupport'],
@@ -526,42 +537,6 @@ const resolveScopeRows = (
   return rows;
 };
 
-const splitValidationRows = (
-  rows: AiPocketSearchRow[],
-  validationSplit: number,
-) => {
-  if (validationSplit <= 0 || rows.length < 2) {
-    return {
-      trainRows: rows,
-      validationRows: [] as AiPocketSearchRow[],
-    };
-  }
-
-  const sortedRows = [...rows].sort((left, right) => {
-    const leftTimestamp =
-      typeof left.timestamp === 'number' && Number.isFinite(left.timestamp)
-        ? left.timestamp
-        : Number.POSITIVE_INFINITY;
-    const rightTimestamp =
-      typeof right.timestamp === 'number' && Number.isFinite(right.timestamp)
-        ? right.timestamp
-        : Number.POSITIVE_INFINITY;
-    return leftTimestamp - rightTimestamp;
-  });
-  const validationCount = Math.max(
-    1,
-    Math.min(
-      sortedRows.length - 1,
-      Math.floor(sortedRows.length * validationSplit),
-    ),
-  );
-  const splitIndex = sortedRows.length - validationCount;
-  return {
-    trainRows: sortedRows.slice(0, splitIndex),
-    validationRows: sortedRows.slice(splitIndex),
-  };
-};
-
 const printSection = (title: string, table: string) => {
   console.log(chalk.gray(`${title}:`));
   console.log(table);
@@ -695,6 +670,14 @@ export const main = async () => {
       `Unsupported --scope "${scope}". Use all, approved, rejected, or candidates.`,
     );
   }
+  const direction = String(flags.direction || '')
+    .trim()
+    .toUpperCase();
+  if (direction && !['LONG', 'SHORT'].includes(direction)) {
+    throw new Error(
+      `Unsupported --direction "${direction}". Use LONG or SHORT.`,
+    );
+  }
   const maxDepth = normalizePositiveInt(flags.maxDepth, 2);
   const minSupport = normalizePositiveInt(flags.minSupport, 20);
   const minProfitFactor = normalizeNonNegativeNumber(
@@ -737,6 +720,16 @@ export const main = async () => {
         0.25,
       )
     : 0.25;
+  const testSplit = hasCliOption('testSplit', 'T')
+    ? normalizeRatio(
+        readAiPocketSearchCliOption({
+          argv: process.argv,
+          longName: 'testSplit',
+          shortName: 'T',
+        }) ?? flags.testSplit,
+        0,
+      )
+    : 0;
   const explicitMinValidationSupport = normalizeInt(
     flags.minValidationSupport,
     0,
@@ -903,11 +896,12 @@ export const main = async () => {
     },
   });
 
-  const scopeRows = resolveScopeRows(rows, scope);
-  const { trainRows, validationRows } = splitValidationRows(
-    scopeRows,
-    validationSplit,
-  );
+  const scopedRows = resolveScopeRows(rows, scope);
+  const scopeRows = direction
+    ? scopedRows.filter((row) => row.direction === direction)
+    : scopedRows;
+  const { trainRows, validationRows, testRows } =
+    splitAiPocketResearchRowsByTimestamp(scopeRows, validationSplit, testSplit);
   const minValidationSupport =
     explicitMinValidationSupport > 0
       ? explicitMinValidationSupport
@@ -978,9 +972,11 @@ export const main = async () => {
       selectedRows,
       evaluatedRows: rows.length,
       scope,
+      direction: direction || null,
       scopeRows: scopeRows.length,
       trainRows: trainRows.length,
       validationRows: validationRows.length,
+      testRows: testRows.length,
       scanned,
       dateSkipped,
       failed,
@@ -995,6 +991,7 @@ export const main = async () => {
       includeGateContext,
       featureProfile,
       validationSplit,
+      testSplit,
       minValidationSupport,
       reportPath,
       search: {
@@ -1006,6 +1003,7 @@ export const main = async () => {
         maxAtomicPredicates,
         maxCombinations,
         validationSplit,
+        testSplit,
         minValidationSupport,
         dedupeEquivalentSelections,
         top,
@@ -1051,9 +1049,11 @@ export const main = async () => {
         ['selected', chalk.blue(String(selectedRows))],
         ['evaluated', chalk.blue(String(rows.length))],
         ['scope', chalk.yellow(scope)],
+        ['direction', direction ? chalk.yellow(direction) : chalk.gray('all')],
         ['scope_rows', chalk.blue(String(scopeRows.length))],
         ['train_rows', chalk.blue(String(trainRows.length))],
         ['validation_rows', chalk.blue(String(validationRows.length))],
+        ['test_rows', chalk.blue(String(testRows.length))],
         ['source_rows', chalk.blue(String(totalRows))],
         ['date_skipped', chalk.blue(String(dateSkipped))],
         [
@@ -1084,6 +1084,7 @@ export const main = async () => {
         ['max_atomic_predicates', chalk.magenta(String(maxAtomicPredicates))],
         ['max_combinations', chalk.magenta(String(maxCombinations))],
         ['validation_split', chalk.magenta(formatRatio(validationSplit))],
+        ['test_split', chalk.magenta(formatRatio(testSplit))],
         ['min_validation_support', chalk.magenta(String(minValidationSupport))],
         [
           'dedupe_equivalent',

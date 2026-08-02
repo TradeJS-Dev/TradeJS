@@ -344,10 +344,11 @@ Interpretation:
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
 - `ai-pocket-search` uses a time-ordered row holdout by default
   (`--validationSplit 0.25`) and ranks candidates on that holdout. Treat it as
-  tuning evidence, not an untouched test. A production-ready workflow must keep
-  timestamp groups intact and evaluate the selected rule on a later untouched
-  chronological test. Use `--validationSplit 0` only for legacy full-sample
-  exploration.
+  tuning evidence, not an untouched test. For direction-specific discovery use
+  `--direction LONG` or `--direction SHORT`. Reserve a timestamp-grouped tail
+  with `--testSplit`; the search excludes it from candidate ranking so it can be
+  opened later by a fixed-rule ablation. Use `--validationSplit 0` only for
+  legacy full-sample exploration.
 - use `--includeGateContext` only for auditing existing gate output fields, not for discovering new future approval rules
 - use `--scope approved` with a smaller `--minSupport` to find sub-pockets inside the current qN+ approved stream; use `--scope all` or `--scope candidates` to look for expansion candidates
 - when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows

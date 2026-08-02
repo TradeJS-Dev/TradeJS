@@ -111,6 +111,12 @@ Use `--featurePattern '<regex>'` to print matching causal paths, availability,
 ranges, and categories. Do not use `--includeGateContext` for discovery; it is
 only for auditing current gate output fields.
 
+For direction-specific discovery, use `yarn ai-pocket-search --direction LONG`
+or `--direction SHORT`. Reserve an untouched chronological tail with
+`--testSplit`; the search ranks pockets using only the preceding train and
+validation rows, and the withheld rows remain available for the later fixed-rule
+ablation.
+
 ## Report Contract
 
 Every report contains:

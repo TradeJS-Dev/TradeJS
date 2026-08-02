@@ -5,7 +5,10 @@ import {
   searchAiPockets,
   type AiPocketSearchRow,
 } from '../lib/aiPocketSearch';
-import { readAiPocketSearchCliOption } from '../lib/aiPocketSearchCli';
+import {
+  readAiPocketSearchCliOption,
+  splitAiPocketResearchRowsByTimestamp,
+} from '../lib/aiPocketSearchCli';
 
 describe('aiPocketSearch', () => {
   it('preserves fractional research thresholds passed through the CLI parser', () => {
@@ -35,6 +38,28 @@ describe('aiPocketSearch', () => {
         }),
       ),
     ).toBe(0.2);
+  });
+
+  it('keeps timestamp groups intact across train, tuning, and untouched test', () => {
+    const rows = [
+      { id: 'a1', timestamp: 1 },
+      { id: 'a2', timestamp: 1 },
+      { id: 'b', timestamp: 2 },
+      { id: 'c', timestamp: 3 },
+      { id: 'd', timestamp: 4 },
+      { id: 'e', timestamp: 5 },
+    ];
+
+    const split = splitAiPocketResearchRowsByTimestamp(rows, 0.2, 0.2);
+
+    expect(split.trainRows.map((row) => row.id)).toEqual([
+      'a1',
+      'a2',
+      'b',
+      'c',
+    ]);
+    expect(split.validationRows.map((row) => row.id)).toEqual(['d']);
+    expect(split.testRows.map((row) => row.id)).toEqual(['e']);
   });
 
   it('collects causal payload fields and derived directional indicator support', () => {
@@ -505,9 +530,11 @@ describe('aiPocketSearch', () => {
         selectedRows: 2,
         evaluatedRows: 2,
         scope: 'all',
+        direction: null,
         scopeRows: 2,
         trainRows: 2,
         validationRows: 0,
+        testRows: 0,
         scanned: 2,
         dateSkipped: 0,
         failed: 0,
@@ -521,6 +548,7 @@ describe('aiPocketSearch', () => {
         includeSymbol: false,
         includeGateContext: false,
         validationSplit: 0,
+        testSplit: 0,
         minValidationSupport: 0,
         reportPath: 'data/ai/output/report.md',
         search: {
