@@ -29,13 +29,22 @@ const buildBaseContext = ({
   solOiChangePct1h = null,
   solStale = false,
   targetPocUpVolumeShare = null,
+  nearestResistanceAgeBars = null,
+  totalContextScore = null,
 }: {
   solOiChangePct1h?: number | null;
   solStale?: boolean;
   targetPocUpVolumeShare?: number | null;
+  nearestResistanceAgeBars?: number | null;
+  totalContextScore?: number | null;
 } = {}) =>
   ({
     regime: { trend: { bias: 'bear' } },
+    structure: {
+      liquidityZones: {
+        nearestResistance: { ageBars: nearestResistanceAgeBars },
+      },
+    },
     participation: {
       volumeStructure: {
         pocUpVolumeShare: targetPocUpVolumeShare,
@@ -54,18 +63,24 @@ const buildBaseContext = ({
         },
       },
     },
+    gateFeatures: {
+      scores: { totalContext: totalContextScore },
+    },
   }) as any;
 
 const buildPayload = ({
   gridContext = buildGridContext(),
   baseContext = buildBaseContext(),
+  signalDirection = gridContext.entryDirection,
 }: {
   gridContext?: Record<string, unknown>;
   baseContext?: unknown;
+  signalDirection?: unknown;
 } = {}) =>
   gridAiAdapter.buildPayload?.({
     signal: {
       strategy: 'Grid',
+      direction: signalDirection,
       additionalIndicators: { gridContext },
     } as any,
     basePayload: {
@@ -335,12 +350,14 @@ describe('Grid AI adapter', () => {
     const result = postProcess(
       buildPayload({
         gridContext: buildGridContext({
+          entryDirection: null,
           action: 'increase',
           level: 2,
           levelsFilled: 1,
           positionQty: 2,
           projectedQty: 3,
         }),
+        signalDirection: 'SHORT',
         baseContext: buildBaseContext({
           solOiChangePct1h: 0.3,
           targetPocUpVolumeShare: 0.45,
@@ -356,6 +373,83 @@ describe('Grid AI adapter', () => {
       }),
     );
   });
+
+  it('uses canonical signal direction when Grid context has a conflicting direction', () => {
+    const result = postProcess(
+      buildPayload({
+        gridContext: buildGridContext({
+          entryDirection: 'SHORT',
+          regimeDirection: 'LONG',
+        }),
+        signalDirection: 'LONG',
+        baseContext: buildBaseContext({
+          solOiChangePct1h: 1,
+          targetPocUpVolumeShare: 1,
+        }),
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 3,
+        approved: false,
+      }),
+    );
+  });
+
+  it.each([
+    {
+      nearestResistanceAgeBars: 106,
+      totalContextScore: 45,
+      observed: true,
+    },
+    {
+      nearestResistanceAgeBars: 105,
+      totalContextScore: 45,
+      observed: false,
+    },
+    {
+      nearestResistanceAgeBars: 106,
+      totalContextScore: 44,
+      observed: false,
+    },
+    {
+      nearestResistanceAgeBars: null,
+      totalContextScore: null,
+      observed: false,
+    },
+  ])(
+    'records the rounded SHORT resistance candidate passively without changing approval',
+    ({ nearestResistanceAgeBars, totalContextScore, observed }) => {
+      const payload = buildPayload({
+        baseContext: buildBaseContext({
+          nearestResistanceAgeBars,
+          totalContextScore,
+        }),
+      });
+      const result = postProcess(payload);
+
+      expect(payload.additionalIndicators.gridContext).toEqual(
+        expect.objectContaining({
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+          gridGateFeatures: expect.objectContaining({
+            nearestResistanceAgeBars,
+            totalContextScore,
+            shortResistanceContextObservation: observed,
+          }),
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          approved: false,
+        }),
+      );
+    },
+  );
 
   it('rejects an increase whose projected quantity does not grow', () => {
     const result = postProcess(

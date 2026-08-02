@@ -2,6 +2,7 @@ import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import type {
   AiPayload,
   BaseStrategyContextSnapshot,
+  Direction,
   StrategyAiAdapter,
 } from '@tradejs/types';
 import type { GridConfig } from '../config';
@@ -16,10 +17,19 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const getGridContext = (payload: AiPayload) =>
-  asRecord(
+const toDirection = (value: unknown): Direction | undefined =>
+  value === 'LONG' || value === 'SHORT' ? value : undefined;
+
+const getGridContext = (payload: AiPayload) => {
+  const gridContext = asRecord(
     asRecord(payload.additionalIndicators).gridContext,
   ) as Partial<GridSignalContext>;
+  const signalDirection = toDirection(payload.signal?.direction);
+
+  return signalDirection == null
+    ? gridContext
+    : { ...gridContext, entryDirection: signalDirection };
+};
 
 const getGridGuardrailContext = (payload: AiPayload) => {
   const additional = asRecord(payload.additionalIndicators);
@@ -51,11 +61,19 @@ export const gridAiAdapter: StrategyAiAdapter = {
     const baseAdditional = asRecord(basePayload.additionalIndicators);
     const baseContext = (baseAdditional.baseContext ??
       null) as BaseStrategyContextSnapshot | null;
+    const sourceGridContext = asRecord(
+      asRecord(signal.additionalIndicators).gridContext,
+    );
+    const signalDirection = toDirection(signal.direction);
+    const gridContext =
+      signalDirection == null
+        ? sourceGridContext
+        : { ...sourceGridContext, entryDirection: signalDirection };
     const payload = {
       ...basePayload,
       additionalIndicators: {
         ...baseAdditional,
-        gridContext: asRecord(signal.additionalIndicators).gridContext,
+        gridContext,
       },
     };
     const context = getGridGuardrailContext(payload);
@@ -114,6 +132,9 @@ Additional adaptive directional Grid context:
 - shortSolOiExpansionPocket=${String(context.gridGateFeatures.shortSolOiExpansionPocket)}
 - targetPocUpVolumeShare=${String(context.gridGateFeatures.targetPocUpVolumeShare ?? 'n/a')}
 - shortSolTargetParticipationPocket=${String(context.gridGateFeatures.shortSolTargetParticipationPocket)}
+- nearestResistanceAgeBars=${String(context.gridGateFeatures.nearestResistanceAgeBars ?? 'n/a')}
+- totalContextScore=${String(context.gridGateFeatures.totalContextScore ?? 'n/a')}
+- shortResistanceContextObservation=${String(context.gridGateFeatures.shortResistanceContextObservation)}
 - deterministicQuality=${String(context.deterministicQuality)}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - approvalBlockReasons=${context.approvalBlockReasons.join(',') || 'none'}
@@ -124,6 +145,7 @@ Interpretation rules:
 - Approve only when the direction still matches the causal trend regime, volatility is not shocked, and a validated direction-specific market pocket is active.
 - The only executable market pocket is SHORT with fresh SOL open-interest expansion and target-symbol POC up-volume confirmation.
 - LONG signals and SHORT signals missing either confirmation are rejected.
+- shortResistanceContextObservation is passive research telemetry only and must not affect approval or quality.
 - Treat the hard stop and aggregate risk budget as immutable constraints.
 `.trim();
   },

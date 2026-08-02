@@ -6,6 +6,11 @@ export const GRID_AI_GATE_THRESHOLDS = {
   minShortSolTargetPocUpVolumeShare: 0.45,
 } as const;
 
+export const GRID_AI_OBSERVATION_THRESHOLDS = {
+  minShortResistanceAgeBars: 106,
+  minShortTotalContextScore: 45,
+} as const;
+
 export type GridGateFeatures = {
   signalDirection: Direction | null;
   action: 'open' | 'increase' | null;
@@ -16,6 +21,9 @@ export type GridGateFeatures = {
   targetPocUpVolumeShare: number | null;
   shortSolOiExpansionPocket: boolean;
   shortSolTargetParticipationPocket: boolean;
+  nearestResistanceAgeBars: number | null;
+  totalContextScore: number | null;
+  shortResistanceContextObservation: boolean;
 };
 
 export type GridGuardrailContext = Partial<GridSignalContext> & {
@@ -112,6 +120,12 @@ export const buildGridGuardrailContext = ({
   const targetPocUpVolumeShare = toFiniteNumberOrNull(
     baseContext?.participation?.volumeStructure?.pocUpVolumeShare,
   );
+  const nearestResistanceAgeBars = toFiniteNumberOrNull(
+    baseContext?.structure?.liquidityZones?.nearestResistance?.ageBars,
+  );
+  const totalContextScore = toFiniteNumberOrNull(
+    baseContext?.gateFeatures?.scores?.totalContext,
+  );
 
   const shortSolOiExpansionPocket =
     signalDirection === 'SHORT' &&
@@ -123,6 +137,14 @@ export const buildGridGuardrailContext = ({
     targetPocUpVolumeShare != null &&
     targetPocUpVolumeShare >=
       GRID_AI_GATE_THRESHOLDS.minShortSolTargetPocUpVolumeShare;
+  const shortResistanceContextObservation =
+    signalDirection === 'SHORT' &&
+    nearestResistanceAgeBars != null &&
+    nearestResistanceAgeBars >=
+      GRID_AI_OBSERVATION_THRESHOLDS.minShortResistanceAgeBars &&
+    totalContextScore != null &&
+    totalContextScore >=
+      GRID_AI_OBSERVATION_THRESHOLDS.minShortTotalContextScore;
   const structuralHardBlockReasons = getStructuralHardBlockReasons({
     signalContext,
     signalDirection,
@@ -164,6 +186,9 @@ export const buildGridGuardrailContext = ({
     targetPocUpVolumeShare,
     shortSolOiExpansionPocket,
     shortSolTargetParticipationPocket,
+    nearestResistanceAgeBars,
+    totalContextScore,
+    shortResistanceContextObservation,
   };
 
   return {
