@@ -30,8 +30,10 @@ import {
   assignLegacyRuntimeTradeAccountScopes,
   buildRuntimeStrategyAnalytics,
   buildRuntimeStrategyAiGateChanges,
+  buildRuntimeStrategyMaxLossValueTimeline,
   buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
+  getRuntimeStrategyAiGateObservedFrom,
   isRuntimeTradeRecord,
   isRuntimeStrategyLineageScope,
   resolveStrategyConfigIdentityByKey,
@@ -55,7 +57,7 @@ const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 90;
 const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
 const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
-const RUNTIME_LINEAGE_BASELINE_MS = 7 * 24 * 60 * 60 * 1000;
+const RUNTIME_LINEAGE_HISTORY_MS = 30 * 24 * 60 * 60 * 1000;
 
 const coerceHours = (value: string | null) => {
   const parsed = Number(value ?? Number.NaN);
@@ -168,13 +170,12 @@ const loadRuntimeTrades = async (
 
 const loadRuntimeLineageScopes = async (
   userName: string,
-  startTime: number,
   endTime: number,
 ): Promise<RuntimeStrategyLineageScope[]> =>
   (
     await Promise.all(
       getRuntimeStorageDayKeys(
-        Math.max(0, startTime - RUNTIME_LINEAGE_BASELINE_MS),
+        Math.max(0, endTime - RUNTIME_LINEAGE_HISTORY_MS),
         endTime,
       ).map((dayKey) =>
         getHashJsonValues<RuntimeStrategyLineageScope>(
@@ -425,7 +426,7 @@ export const GET = async (request: NextRequest) => {
       loadOpenPositions(connector, exchangeErrors),
       listRuntimeDeployments(userName),
       listTradingAccounts(userName),
-      loadRuntimeLineageScopes(userName, startTime, endTime),
+      loadRuntimeLineageScopes(userName, endTime),
     ]);
     const relevantTrades = selectTradesForWindow(
       runtimeTrades,
@@ -610,6 +611,13 @@ export const GET = async (request: NextRequest) => {
           startTime,
           endTime,
         });
+        const maxLossValueTimeline = buildRuntimeStrategyMaxLossValueTimeline({
+          scopes: runtimeLineageScopes,
+          strategyName,
+          configId: identity.configId,
+          startTime,
+          endTime,
+        });
         const effectiveStrategyConfig = identity.config ?? null;
 
         return {
@@ -633,6 +641,12 @@ export const GET = async (request: NextRequest) => {
           stat: analytics.stat,
           summary: analytics.summary,
           orderLog: analytics.orderLog,
+          aiGateObservedFrom: getRuntimeStrategyAiGateObservedFrom({
+            scopes: runtimeLineageScopes,
+            strategyName,
+            configId: identity.configId,
+            endTime,
+          }),
           aiGateChanges: buildRuntimeStrategyAiGateChanges({
             scopes: runtimeLineageScopes,
             strategyName,
@@ -640,6 +654,7 @@ export const GET = async (request: NextRequest) => {
             startTime,
             endTime,
           }),
+          maxLossValueTimeline,
           recentTrades: strategyTrades
             .slice(0, 8)
             .map((trade) => toRuntimeTradeView(trade, endTime)),

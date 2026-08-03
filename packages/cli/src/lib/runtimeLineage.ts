@@ -49,6 +49,26 @@ const normalizeForStableJson = (value: unknown): unknown => {
   return value;
 };
 
+const resolveRuntimeMaxLossValue = (config: unknown) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return null;
+  }
+
+  const strategyConfig = (config as Record<string, unknown>).strategyConfig;
+  if (
+    !strategyConfig ||
+    typeof strategyConfig !== 'object' ||
+    Array.isArray(strategyConfig)
+  ) {
+    return null;
+  }
+
+  const maxLossValue = Number(
+    (strategyConfig as Record<string, unknown>).MAX_LOSS_VALUE,
+  );
+  return Number.isFinite(maxLossValue) ? maxLossValue : null;
+};
+
 export const fingerprintRuntimeValue = (value: unknown) =>
   createHash('sha256')
     .update(JSON.stringify(normalizeForStableJson(value)))
@@ -234,6 +254,7 @@ export const buildRuntimeLineage = async ({
     }),
     configFingerprint: fingerprintRuntimeValue(config),
     contextFingerprint: fingerprintRuntimeValue(context),
+    maxLossValue: resolveRuntimeMaxLossValue(config),
   };
 };
 

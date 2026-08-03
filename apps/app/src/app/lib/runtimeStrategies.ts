@@ -77,7 +77,9 @@ export interface RuntimeStrategyLineageScope {
   strategy: string;
   symbol: string;
   runtimeConfigId?: string;
-  lineage: RuntimeLineage;
+  lineage: RuntimeLineage & {
+    maxLossValue?: number | null;
+  };
   firstTimestamp: number;
   lastTimestamp: number;
 }
@@ -86,6 +88,18 @@ export interface RuntimeStrategyAiGateChange {
   timestamp: number;
   previousFingerprint: string;
   fingerprint: string;
+}
+
+export interface RuntimeStrategyMaxLossValueChange {
+  timestamp: number;
+  previousValue: number;
+  value: number;
+}
+
+export interface RuntimeStrategyMaxLossValueTimeline {
+  observedFrom: number | null;
+  initialValue: number | null;
+  changes: RuntimeStrategyMaxLossValueChange[];
 }
 
 export interface RuntimeStrategyView {
@@ -105,7 +119,9 @@ export interface RuntimeStrategyView {
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
+  aiGateObservedFrom: number | null;
   aiGateChanges: RuntimeStrategyAiGateChange[];
+  maxLossValueTimeline: RuntimeStrategyMaxLossValueTimeline;
   recentTrades: RuntimeStrategyTradeView[];
   orders: RuntimeStrategyTradeView[];
 }
@@ -180,6 +196,114 @@ export interface RuntimeStrategiesResponse {
   };
   strategies: RuntimeStrategyView[];
 }
+
+export const getRuntimeStrategyAiGateObservedFrom = ({
+  scopes,
+  strategyName,
+  configId,
+  endTime,
+}: {
+  scopes: RuntimeStrategyLineageScope[];
+  strategyName: string;
+  configId?: string;
+  endTime: number;
+}) => {
+  const normalizedConfigId = configId ?? 'config';
+  let observedFrom: number | null = null;
+
+  for (const scope of scopes) {
+    if (
+      scope.strategy !== strategyName ||
+      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
+      scope.firstTimestamp > endTime
+    ) {
+      continue;
+    }
+
+    observedFrom =
+      observedFrom == null
+        ? scope.firstTimestamp
+        : Math.min(observedFrom, scope.firstTimestamp);
+  }
+
+  return observedFrom;
+};
+
+export const buildRuntimeStrategyMaxLossValueTimeline = ({
+  scopes,
+  strategyName,
+  configId,
+  startTime,
+  endTime,
+}: {
+  scopes: RuntimeStrategyLineageScope[];
+  strategyName: string;
+  configId?: string;
+  startTime: number;
+  endTime: number;
+}): RuntimeStrategyMaxLossValueTimeline => {
+  const normalizedConfigId = configId ?? 'config';
+  const observationsByTimestamp = new Map<
+    number,
+    { value: number; lastTimestamp: number }
+  >();
+
+  for (const scope of scopes) {
+    const value = scope.lineage.maxLossValue;
+    if (
+      scope.strategy !== strategyName ||
+      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
+      scope.firstTimestamp > endTime ||
+      typeof value !== 'number' ||
+      !Number.isFinite(value)
+    ) {
+      continue;
+    }
+
+    const existing = observationsByTimestamp.get(scope.firstTimestamp);
+    if (
+      !existing ||
+      scope.lastTimestamp > existing.lastTimestamp ||
+      (scope.lastTimestamp === existing.lastTimestamp && value > existing.value)
+    ) {
+      observationsByTimestamp.set(scope.firstTimestamp, {
+        value,
+        lastTimestamp: scope.lastTimestamp,
+      });
+    }
+  }
+
+  const observations = [...observationsByTimestamp.entries()].sort(
+    ([leftTimestamp], [rightTimestamp]) => leftTimestamp - rightTimestamp,
+  );
+  const changes: RuntimeStrategyMaxLossValueChange[] = [];
+  let observedFrom: number | null = null;
+  let initialValue: number | null = null;
+  let currentValue: number | null = null;
+
+  for (const [timestamp, observation] of observations) {
+    if (currentValue == null) {
+      observedFrom = timestamp;
+      initialValue = observation.value;
+      currentValue = observation.value;
+      continue;
+    }
+    if (observation.value === currentValue) {
+      continue;
+    }
+
+    if (timestamp >= startTime) {
+      changes.push({
+        timestamp,
+        previousValue: currentValue,
+        value: observation.value,
+      });
+    }
+    currentValue = observation.value;
+  }
+
+  return { observedFrom, initialValue, changes };
+};
 
 export const isRuntimeStrategyLineageScope = (
   value: unknown,

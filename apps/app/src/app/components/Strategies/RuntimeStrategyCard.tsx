@@ -2182,7 +2182,9 @@ export const RuntimeStrategyCard = ({
       <RuntimeStrategyChart
         orderLog={strategy.orderLog}
         stat={strategy.stat}
+        aiGateObservedFrom={strategy.aiGateObservedFrom}
         aiGateChanges={strategy.aiGateChanges}
+        maxLossValueTimeline={strategy.maxLossValueTimeline}
         startTimestamp={startTimestamp}
         endTimestamp={endTimestamp}
       />

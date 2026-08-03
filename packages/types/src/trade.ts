@@ -794,6 +794,7 @@ export interface RuntimeLineage {
   gateFingerprint: string;
   configFingerprint: string;
   contextFingerprint: string;
+  maxLossValue?: number | null;
 }
 
 export type RuntimeTradeStatus = 'active' | 'closed';

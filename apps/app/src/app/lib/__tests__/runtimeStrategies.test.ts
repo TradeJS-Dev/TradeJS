@@ -6,6 +6,8 @@ import {
   buildRuntimeStrategyAiGateChanges,
   buildRuntimeStrategyIdentityKey,
   buildRuntimeStrategyAnalytics,
+  buildRuntimeStrategyMaxLossValueTimeline,
+  getRuntimeStrategyAiGateObservedFrom,
   resolveStrategyNameByConfigKey,
   resolveStrategyNameByOrderLinkId,
   selectTradesForWindow,
@@ -252,20 +254,21 @@ describe('runtimeStrategies helpers', () => {
   });
 
   it('builds deduplicated AI-gate change markers from runtime lineage', () => {
-    const lineage = (gateFingerprint: string) => ({
+    const lineage = (gateFingerprint: string, maxLossValue?: number) => ({
       schemaVersion: 1 as const,
       gitSha: 'sha',
       gitDirty: false,
       gateFingerprint,
       configFingerprint: 'config-fingerprint',
       contextFingerprint: 'context-fingerprint',
+      ...(maxLossValue === undefined ? {} : { maxLossValue }),
     });
     const scopes = [
       {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         runtimeConfigId: 'config',
-        lineage: lineage('gate-old'),
+        lineage: lineage('gate-old', 10),
         firstTimestamp: 50,
         lastTimestamp: 150,
       },
@@ -273,7 +276,7 @@ describe('runtimeStrategies helpers', () => {
         strategy: 'TrendLine',
         symbol: 'ETHUSDT',
         runtimeConfigId: 'config',
-        lineage: lineage('gate-old'),
+        lineage: lineage('gate-old', 10),
         firstTimestamp: 50,
         lastTimestamp: 150,
       },
@@ -281,7 +284,7 @@ describe('runtimeStrategies helpers', () => {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         runtimeConfigId: 'config',
-        lineage: lineage('gate-new'),
+        lineage: lineage('gate-new', 5),
         firstTimestamp: 200,
         lastTimestamp: 300,
       },
@@ -289,7 +292,7 @@ describe('runtimeStrategies helpers', () => {
         strategy: 'TrendLine',
         symbol: 'ETHUSDT',
         runtimeConfigId: 'config',
-        lineage: lineage('gate-new'),
+        lineage: lineage('gate-new', 5),
         firstTimestamp: 200,
         lastTimestamp: 300,
       },
@@ -297,7 +300,7 @@ describe('runtimeStrategies helpers', () => {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         runtimeConfigId: 'config',
-        lineage: lineage('gate-new'),
+        lineage: lineage('gate-new', 5),
         firstTimestamp: 350,
         lastTimestamp: 400,
       },
@@ -305,7 +308,7 @@ describe('runtimeStrategies helpers', () => {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         runtimeConfigId: 'other-config',
-        lineage: lineage('unrelated-gate'),
+        lineage: lineage('unrelated-gate', 99),
         firstTimestamp: 250,
         lastTimestamp: 450,
       },
@@ -326,6 +329,34 @@ describe('runtimeStrategies helpers', () => {
         fingerprint: 'gate-new',
       },
     ]);
+    expect(
+      getRuntimeStrategyAiGateObservedFrom({
+        scopes,
+        strategyName: 'TrendLine',
+        configId: 'config',
+        endTime: 500,
+      }),
+    ).toBe(50);
+    expect(
+      getRuntimeStrategyAiGateObservedFrom({
+        scopes,
+        strategyName: 'MissingStrategy',
+        endTime: 500,
+      }),
+    ).toBeNull();
+    expect(
+      buildRuntimeStrategyMaxLossValueTimeline({
+        scopes,
+        strategyName: 'TrendLine',
+        configId: 'config',
+        startTime: 100,
+        endTime: 500,
+      }),
+    ).toEqual({
+      observedFrom: 50,
+      initialValue: 10,
+      changes: [{ timestamp: 200, previousValue: 10, value: 5 }],
+    });
   });
 
   it('maps runtime trade take-profit and stop-loss percentages', () => {
