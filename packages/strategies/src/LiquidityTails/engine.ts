@@ -36,6 +36,22 @@ export interface LiquidityTailsSignal {
   reactionBodyAligned: boolean;
 }
 
+export interface LiquidityTailsExecutionContext {
+  action: 'open' | 'increase';
+  level: 1 | 2;
+  levelsFilled: number;
+  positionQty: number;
+  projectedQty: number;
+  projectedAveragePrice: number;
+  stopLossPrice: number;
+  takeProfitPrice: number;
+  existingRiskValue: number;
+  remainingRiskValue: number;
+  projectedRiskValue: number;
+  riskBudgetUsedPct: number;
+  initialRiskFraction: number;
+}
+
 export interface LiquidityTailsRuntimeState {
   signal: LiquidityTailsSignal | null;
   zones: LiquidityTailsZone[];
@@ -223,8 +239,10 @@ const buildRetestSignal = ({
 
 export const buildLiquidityTailsSignalContext = (
   signal: LiquidityTailsSignal,
+  executionContext?: LiquidityTailsExecutionContext,
 ) => ({
   signalDirection: signal.direction,
+  zoneId: signal.zone.id,
   zoneKind: signal.zone.kind,
   zoneTop: signal.zone.top,
   zoneBottom: signal.zone.bottom,
@@ -240,6 +258,20 @@ export const buildLiquidityTailsSignalContext = (
   retestPenetrationPct: signal.retestPenetrationPct,
   reactionCloseDistancePct: signal.reactionCloseDistancePct,
   reactionBodyAligned: signal.reactionBodyAligned,
+  action: executionContext?.action ?? 'open',
+  level: executionContext?.level ?? 1,
+  levelsFilled: executionContext?.levelsFilled ?? 0,
+  positionQty: executionContext?.positionQty ?? 0,
+  projectedQty: executionContext?.projectedQty ?? 0,
+  projectedAveragePrice:
+    executionContext?.projectedAveragePrice ?? signal.close,
+  stopLossPrice: executionContext?.stopLossPrice ?? null,
+  takeProfitPrice: executionContext?.takeProfitPrice ?? null,
+  existingRiskValue: executionContext?.existingRiskValue ?? 0,
+  remainingRiskValue: executionContext?.remainingRiskValue ?? null,
+  projectedRiskValue: executionContext?.projectedRiskValue ?? null,
+  riskBudgetUsedPct: executionContext?.riskBudgetUsedPct ?? null,
+  initialRiskFraction: executionContext?.initialRiskFraction ?? 1,
 });
 
 export type LiquidityTailsSignalContext = ReturnType<

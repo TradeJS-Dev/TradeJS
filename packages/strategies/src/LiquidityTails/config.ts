@@ -51,6 +51,8 @@ export const config = {
   LIQUIDITY_TAILS_STOP_BUFFER_PCT: 0.03,
   LIQUIDITY_TAILS_TARGET_R_MULT: 2,
   LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST: true,
+  LIQUIDITY_TAILS_SCALE_IN_ENABLED: true,
+  LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 0.7,
   LIQUIDITY_TAILS_MAX_FIGURE_ZONES: 24,
   LONG: {
     enable: true,
@@ -65,8 +67,19 @@ export const config = {
 } as const;
 
 export type LiquidityTailsConfig = StrategyConfig &
-  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
+  Omit<
+    typeof config,
+    | 'BACKTEST_PRICE_MODE'
+    | 'LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST'
+    | 'LIQUIDITY_TAILS_INITIAL_RISK_FRACTION'
+    | 'LIQUIDITY_TAILS_SCALE_IN_ENABLED'
+    | 'LONG'
+    | 'SHORT'
+  > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
+    LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST: boolean;
+    LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: number;
+    LIQUIDITY_TAILS_SCALE_IN_ENABLED: boolean;
     LONG: LiquidityTailsSideConfig;
     SHORT: LiquidityTailsSideConfig;
   };

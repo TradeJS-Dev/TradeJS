@@ -297,6 +297,26 @@ export const buildLiquidityTailsGuardrailContext = ({
   if ((signalContext.reactionCloseDistancePct ?? 0) <= 0) {
     hardBlockReasons.push('weak_reaction_close');
   }
+  if (signalContext.action === 'increase') {
+    const level = asFiniteNumber(signalContext.level);
+    const levelsFilled = asFiniteNumber(signalContext.levelsFilled);
+    const positionQty = asFiniteNumber(signalContext.positionQty);
+    const projectedQty = asFiniteNumber(signalContext.projectedQty);
+    const riskBudgetUsedPct = asFiniteNumber(signalContext.riskBudgetUsedPct);
+    if (
+      level !== 2 ||
+      levelsFilled !== 1 ||
+      positionQty == null ||
+      positionQty <= 0 ||
+      projectedQty == null ||
+      projectedQty <= positionQty
+    ) {
+      hardBlockReasons.push('invalid_scale_in_state');
+    }
+    if (riskBudgetUsedPct == null || riskBudgetUsedPct > 100.01) {
+      hardBlockReasons.push('scale_in_risk_budget_exceeded');
+    }
+  }
 
   const direction = signalContext.signalDirection;
   const flushSupport =

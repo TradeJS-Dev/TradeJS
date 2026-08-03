@@ -2,6 +2,7 @@ import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import {
   AiPayload,
   BaseStrategyContextSnapshot,
+  Direction,
   StrategyAiAdapter,
 } from '@tradejs/types';
 import { LiquidityTailsConfig } from '../config';
@@ -13,10 +14,18 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
+const toDirection = (value: unknown): Direction | undefined =>
+  value === 'LONG' || value === 'SHORT' ? value : undefined;
+
 const getLiquidityTailsContext = (payload: AiPayload) => {
   const additional = asRecord(payload.additionalIndicators);
-  const signalContext = ((additional?.liquidityTailsContext ?? {}) ||
+  const sourceSignalContext = ((additional?.liquidityTailsContext ?? {}) ||
     {}) as Partial<LiquidityTailsSignalContext>;
+  const signalDirection = toDirection(payload.signal?.direction);
+  const signalContext =
+    signalDirection == null
+      ? sourceSignalContext
+      : { ...sourceSignalContext, signalDirection };
   const baseContext = (additional?.baseContext ??
     null) as BaseStrategyContextSnapshot | null;
 
@@ -48,13 +57,20 @@ export const liquidityTailsAiAdapter: StrategyAiAdapter = {
       (basePayload.additionalIndicators as
         | Record<string, unknown>
         | undefined) ?? {};
+    const sourceSignalContext =
+      (asRecord(signal.additionalIndicators)?.liquidityTailsContext as
+        | Partial<LiquidityTailsSignalContext>
+        | undefined) ?? {};
+    const signalDirection = toDirection(signal.direction);
+    const signalContext =
+      signalDirection == null
+        ? sourceSignalContext
+        : { ...sourceSignalContext, signalDirection };
     const payload = {
       ...basePayload,
       additionalIndicators: {
         ...baseAdditional,
-        liquidityTailsContext: (
-          signal.additionalIndicators as Record<string, unknown> | undefined
-        )?.liquidityTailsContext,
+        liquidityTailsContext: signalContext,
       },
     };
     const context = getLiquidityTailsContext(payload);
@@ -75,16 +91,12 @@ export const liquidityTailsAiAdapter: StrategyAiAdapter = {
   },
   postProcessAnalysis: ({ payload, analysis }) => {
     const context = getLiquidityTailsContext(payload);
-    const requestedDirection =
-      analysis.direction === 'LONG' || analysis.direction === 'SHORT'
-        ? analysis.direction
-        : context.signalDirection;
     const approved =
-      context.approvalAllowedNow === true && requestedDirection != null;
+      context.approvalAllowedNow === true && context.signalDirection != null;
 
     return {
       ...analysis,
-      direction: approved ? requestedDirection : null,
+      direction: approved ? context.signalDirection : null,
       quality: context.deterministicQuality,
       approved,
       rejectReason: approved
@@ -99,6 +111,19 @@ export const liquidityTailsAiAdapter: StrategyAiAdapter = {
     return `
 Additional Liquidity Tails context:
 - signalDirection=${context.signalDirection ?? 'n/a'}
+- action=${context.action ?? 'n/a'}
+- level=${String(context.level ?? 'n/a')}
+- levelsFilled=${String(context.levelsFilled ?? 'n/a')}
+- positionQty=${String(context.positionQty ?? 'n/a')}
+- projectedQty=${String(context.projectedQty ?? 'n/a')}
+- projectedAveragePrice=${String(context.projectedAveragePrice ?? 'n/a')}
+- stopLossPrice=${String(context.stopLossPrice ?? 'n/a')}
+- takeProfitPrice=${String(context.takeProfitPrice ?? 'n/a')}
+- existingRiskValue=${String(context.existingRiskValue ?? 'n/a')}
+- remainingRiskValue=${String(context.remainingRiskValue ?? 'n/a')}
+- projectedRiskValue=${String(context.projectedRiskValue ?? 'n/a')}
+- riskBudgetUsedPct=${String(context.riskBudgetUsedPct ?? 'n/a')}
+- initialRiskFraction=${String(context.initialRiskFraction ?? 'n/a')}
 - zoneKind=${context.zoneKind ?? 'n/a'}
 - zoneTop=${String(context.zoneTop ?? 'n/a')}
 - zoneBottom=${String(context.zoneBottom ?? 'n/a')}
@@ -154,6 +179,8 @@ Additional Liquidity Tails context:
 
 Interpretation rules for Liquidity Tails:
 - This is a liquidity-rejection retest strategy, not a breakout-following strategy.
+- action=increase is one risk-capped second entry into an existing same-direction basket, not a new independent position.
+- For increase, evaluate the fresh retest itself; do not inherit approval from the original open signal.
 - LONG comes from an active green buy-pressure lower-wick zone retest that holds and closes back above the zone.
 - SHORT comes from an active red sell-pressure upper-wick zone retest that holds and closes back below the zone.
 - Prefer clean pin-bar origins with high wick/body ratio and dominant active wick.

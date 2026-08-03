@@ -1408,4 +1408,103 @@ describe('liquidityTailsAiAdapter', () => {
       approved: true,
     });
   });
+
+  it('exports scale-in execution context and preserves the strategy direction', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        action: 'increase',
+        level: 2,
+        levelsFilled: 1,
+        positionQty: 0.7,
+        projectedQty: 1.3,
+        projectedAveragePrice: 97.69,
+        stopLossPrice: 90,
+        takeProfitPrice: 110,
+        riskBudgetUsedPct: 100,
+        zoneKind: 'buy_pressure',
+        zoneHeight: 5,
+        zoneTouches: 2,
+        wickBodyRatio: 2.5,
+        wickDominanceRatio: 2,
+        retestPenetrationPct: 30,
+        reactionCloseDistancePct: 2.1,
+        reactionBodyAligned: true,
+      },
+      {
+        regime: {
+          trend: {
+            bias: 'neutral',
+            adx: { adx: 35, strength: 'strong' },
+          },
+          momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+        },
+        structure: { liquidityZones: { activeCount: 1 } },
+        relative: { cmcFearGreed: { value: 39 } },
+        gateFeatures: {
+          risk: { liquidityRisk: 'low' },
+          volatility: { atrPctRankBucket: 'high' },
+        },
+        derivatives: {
+          summary: {
+            pressure: 'short_flush',
+            directionAligned: true,
+            riskFlags: ['short_liquidation_spike'],
+          },
+        },
+      },
+    );
+    payload.signal.direction = 'LONG';
+
+    const result = liquidityTailsAiAdapter.buildPayload?.({
+      signal: {
+        direction: 'LONG',
+        additionalIndicators: payload.additionalIndicators,
+      } as any,
+      basePayload: payload,
+    } as any) as any;
+    const analysis = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: result,
+      analysis: { direction: 'SHORT', quality: 1 },
+    });
+
+    expect(result.additionalIndicators.liquidityTailsContext).toMatchObject({
+      signalDirection: 'LONG',
+      action: 'increase',
+      level: 2,
+      levelsFilled: 1,
+      positionQty: 0.7,
+      projectedQty: 1.3,
+      riskBudgetUsedPct: 100,
+    });
+    expect(analysis).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('hard-blocks malformed scale-in execution state', () => {
+    const context = getGuardrailContext(
+      makePayload({
+        signalDirection: 'LONG',
+        action: 'increase',
+        zoneKind: 'buy_pressure',
+        zoneHeight: 5,
+        wickBodyRatio: 2.5,
+        wickDominanceRatio: 2,
+        reactionCloseDistancePct: 2.1,
+        reactionBodyAligned: true,
+      }),
+    );
+
+    expect(context.deterministicQuality).toBe(1);
+    expect(context.hardBlockReasons).toEqual(
+      expect.arrayContaining([
+        'invalid_scale_in_state',
+        'scale_in_risk_budget_exceeded',
+      ]),
+    );
+  });
 });
