@@ -1,4 +1,171 @@
-import type { Direction } from '@tradejs/types';
+import type { BaseStrategyContextSnapshot, Direction } from '@tradejs/types';
+import type { GridClassicSignalContext } from './engine';
+
+export type GridClassicGateFeatures = {
+  signalDirection: Direction | null;
+  action: 'open' | 'increase' | null;
+  gridLevel: number | null;
+  filledLevels: number | null;
+  remainingLevels: number | null;
+  rangeReady: boolean | null;
+  rangeDetected: boolean | null;
+  rangeQualityAccepted: boolean | null;
+  breakoutDirection: Direction | null;
+  volatilityShock: boolean | null;
+  entrySignalStage: string | null;
+  rejectionConfirmed: boolean;
+  targetDistanceBps: number | null;
+  netRiskRatio: number | null;
+  widthAtr: number | null;
+  containmentRatio: number | null;
+};
+
+export type GridClassicGuardrailContext = Partial<GridClassicSignalContext> & {
+  signalDirection: Direction | null;
+  baseContextAvailable: boolean;
+  gridClassicGateFeatures: GridClassicGateFeatures;
+  approvalBlockReasons: string[];
+  structuralHardBlockReasons: string[];
+  riskAnnotations: string[];
+  deterministicQuality: number;
+  approvalAllowedNow: boolean;
+};
+
+const toFiniteNumberOrNull = (value: unknown): number | null => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toDirectionOrNull = (value: unknown): Direction | null =>
+  value === 'LONG' || value === 'SHORT' ? value : null;
+
+const toBooleanOrNull = (value: unknown): boolean | null =>
+  typeof value === 'boolean' ? value : null;
+
+export const buildGridClassicGuardrailContext = ({
+  signalContext,
+  baseContext,
+}: {
+  signalContext: Partial<GridClassicSignalContext>;
+  baseContext?: BaseStrategyContextSnapshot | null;
+}): GridClassicGuardrailContext => {
+  const signalDirection = toDirectionOrNull(signalContext.direction);
+  const gridLevel = toFiniteNumberOrNull(signalContext.gridLevel);
+  const filledLevels = toFiniteNumberOrNull(signalContext.filledLevels);
+  const remainingLevels = toFiniteNumberOrNull(signalContext.remainingLevels);
+  const action =
+    gridLevel === 1
+      ? 'open'
+      : gridLevel != null && gridLevel > 1
+        ? 'increase'
+        : null;
+  const breakoutDirection = toDirectionOrNull(signalContext.breakoutDirection);
+  const entrySignalStage =
+    typeof signalContext.entrySignalStage === 'string'
+      ? signalContext.entrySignalStage
+      : null;
+  const rejectionConfirmed =
+    signalDirection === 'LONG'
+      ? signalContext.longRejection === true ||
+        signalContext.longCloseInside === true
+      : signalDirection === 'SHORT'
+        ? signalContext.shortRejection === true ||
+          signalContext.shortCloseInside === true
+        : false;
+  const structuralHardBlockReasons: string[] = [];
+
+  if (signalDirection == null) {
+    structuralHardBlockReasons.push('missing_signal_direction');
+  }
+  if (
+    action == null ||
+    gridLevel == null ||
+    !Number.isInteger(gridLevel) ||
+    filledLevels == null ||
+    !Number.isInteger(filledLevels) ||
+    filledLevels !== gridLevel - 1 ||
+    remainingLevels == null ||
+    !Number.isInteger(remainingLevels) ||
+    remainingLevels < 0
+  ) {
+    structuralHardBlockReasons.push('invalid_grid_level_state');
+  }
+  if (
+    signalContext.rangeReady !== true ||
+    signalContext.rangeDetected !== true
+  ) {
+    structuralHardBlockReasons.push('range_not_ready');
+  }
+  if (signalContext.rangeQualityAccepted !== true) {
+    structuralHardBlockReasons.push('range_quality_rejected');
+  }
+  if (breakoutDirection != null) {
+    structuralHardBlockReasons.push('range_breakout');
+  }
+  if (signalContext.volatilityShock === true) {
+    structuralHardBlockReasons.push('volatility_shock');
+  }
+  if (action === 'open') {
+    if (entrySignalStage !== 'confirmed' && entrySignalStage !== 'immediate') {
+      structuralHardBlockReasons.push('entry_not_confirmed');
+    }
+  }
+
+  const targetDistanceBps = toFiniteNumberOrNull(
+    signalContext.targetDistanceBps,
+  );
+  const netRiskRatio = toFiniteNumberOrNull(signalContext.netRiskRatio);
+  if (
+    targetDistanceBps == null ||
+    targetDistanceBps <= 0 ||
+    netRiskRatio == null ||
+    netRiskRatio <= 0
+  ) {
+    structuralHardBlockReasons.push('invalid_entry_economics');
+  }
+
+  const riskAnnotations: string[] = [];
+  if (baseContext == null) riskAnnotations.push('missing_base_context');
+
+  const deterministicQuality = structuralHardBlockReasons.length === 0 ? 3 : 2;
+  const approvalBlockReasons = [...structuralHardBlockReasons];
+  if (structuralHardBlockReasons.length === 0) {
+    approvalBlockReasons.push('validated_market_pocket_missing');
+  }
+  const approvalAllowedNow =
+    deterministicQuality >= 4 && structuralHardBlockReasons.length === 0;
+  const gridClassicGateFeatures: GridClassicGateFeatures = {
+    signalDirection,
+    action,
+    gridLevel,
+    filledLevels,
+    remainingLevels,
+    rangeReady: toBooleanOrNull(signalContext.rangeReady),
+    rangeDetected: toBooleanOrNull(signalContext.rangeDetected),
+    rangeQualityAccepted: toBooleanOrNull(signalContext.rangeQualityAccepted),
+    breakoutDirection,
+    volatilityShock: toBooleanOrNull(signalContext.volatilityShock),
+    entrySignalStage,
+    rejectionConfirmed,
+    targetDistanceBps,
+    netRiskRatio,
+    widthAtr: toFiniteNumberOrNull(signalContext.widthAtr),
+    containmentRatio: toFiniteNumberOrNull(signalContext.containmentRatio),
+  };
+
+  return {
+    ...signalContext,
+    signalDirection,
+    baseContextAvailable: baseContext != null,
+    gridClassicGateFeatures,
+    approvalBlockReasons,
+    structuralHardBlockReasons,
+    riskAnnotations,
+    deterministicQuality,
+    approvalAllowedNow,
+  };
+};
 
 export interface GridClassicPlannedLevel {
   level: number;
@@ -13,6 +180,21 @@ export interface GridClassicGridPlan {
   stepDistance: number;
   levels: GridClassicPlannedLevel[];
   worstCaseLoss: number;
+}
+
+export type GridClassicEconomicsRejectReason =
+  | 'target_distance'
+  | 'net_risk_ratio';
+
+export interface GridClassicEntryEconomics {
+  accepted: boolean;
+  rejectReason: GridClassicEconomicsRejectReason | null;
+  targetDistanceBps: number;
+  grossReward: number;
+  executionCosts: number;
+  netReward: number;
+  netRisk: number;
+  netRiskRatio: number;
 }
 
 export const calculateGridClassicUnitLoss = ({
@@ -54,6 +236,95 @@ export const calculateGridClassicPositionLoss = ({
     feeRate,
     slippageRate,
   });
+
+export const calculateGridClassicBreakEvenPrice = ({
+  direction,
+  entryPrice,
+  feeRate,
+  slippageRate,
+  offsetBps,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  feeRate: number;
+  slippageRate: number;
+  offsetBps: number;
+}) => {
+  const executionCostRate = Math.min(
+    0.49,
+    Math.max(0, feeRate) + Math.max(0, slippageRate),
+  );
+  const offsetRate = Math.max(0, Number(offsetBps) || 0) / 10_000;
+  return direction === 'LONG'
+    ? ((entryPrice * (1 + executionCostRate)) / (1 - executionCostRate)) *
+        (1 + offsetRate)
+    : Math.max(
+        Number.EPSILON,
+        ((entryPrice * (1 - executionCostRate)) / (1 + executionCostRate)) *
+          (1 - offsetRate),
+      );
+};
+
+export const evaluateGridClassicEntryEconomics = ({
+  entryPrice,
+  plan,
+  feeRate,
+  slippageRate,
+  minTargetDistanceBps,
+  minNetRiskRatio,
+}: {
+  entryPrice: number;
+  plan: GridClassicGridPlan;
+  feeRate: number;
+  slippageRate: number;
+  minTargetDistanceBps: number;
+  minNetRiskRatio: number;
+}): GridClassicEntryEconomics => {
+  const targetDistanceBps =
+    entryPrice > 0
+      ? (Math.abs(plan.takeProfitPrice - entryPrice) / entryPrice) * 10_000
+      : 0;
+  const executionCostRate = Math.max(0, feeRate) + Math.max(0, slippageRate);
+  const grossReward = plan.levels.reduce(
+    (sum, level) =>
+      sum + level.qty * Math.abs(plan.takeProfitPrice - level.price),
+    0,
+  );
+  const executionCosts = plan.levels.reduce(
+    (sum, level) =>
+      sum +
+      level.qty *
+        (Math.abs(level.price) + Math.abs(plan.takeProfitPrice)) *
+        executionCostRate,
+    0,
+  );
+  const netReward = Math.max(0, grossReward - executionCosts);
+  const netRisk = Math.max(0, plan.worstCaseLoss);
+  const netRiskRatio =
+    netRisk > Number.EPSILON ? netReward / netRisk : Number.POSITIVE_INFINITY;
+  const normalizedMinTargetDistanceBps = Math.max(
+    0,
+    Number(minTargetDistanceBps) || 0,
+  );
+  const normalizedMinNetRiskRatio = Math.max(0, Number(minNetRiskRatio) || 0);
+  const rejectReason =
+    targetDistanceBps < normalizedMinTargetDistanceBps
+      ? 'target_distance'
+      : netRiskRatio < normalizedMinNetRiskRatio
+        ? 'net_risk_ratio'
+        : null;
+
+  return {
+    accepted: rejectReason == null,
+    rejectReason,
+    targetDistanceBps,
+    grossReward,
+    executionCosts,
+    netReward,
+    netRisk,
+    netRiskRatio,
+  };
+};
 
 export const buildGridClassicGridPlan = ({
   direction,

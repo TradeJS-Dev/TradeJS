@@ -20,6 +20,21 @@ const mockedCreateGridClassicEngine =
     typeof createGridClassicEngine
   >;
 
+const BASE_TEST_CONFIG = {
+  ...DEFAULT_CONFIG,
+  GRIDCLASSIC_ENTRY_CONFIRMATION_BARS: 0,
+  GRIDCLASSIC_MAX_PIVOT_AGE_BARS: 0,
+  GRIDCLASSIC_MIN_ALTERNATING_PIVOTS: 0,
+  GRIDCLASSIC_RECENT_CONTAINMENT_BARS: 0,
+  GRIDCLASSIC_MIN_RECENT_CONTAINMENT_RATIO: 0,
+  GRIDCLASSIC_MIN_TARGET_DISTANCE_BPS: 0,
+  GRIDCLASSIC_MIN_NET_RISK_RATIO: 0,
+  GRIDCLASSIC_LEVELS: 4,
+  GRIDCLASSIC_REQUIRE_REJECTION_FOR_ADD: false,
+  GRIDCLASSIC_FAILED_REJECTION_EXIT_BARS: 0,
+  GRIDCLASSIC_BREAKEVEN_TRIGGER_FRACTION: 0,
+} as GridClassicConfig;
+
 const geometry = (
   overrides: Partial<CausalRangeGeometry> = {},
 ): CausalRangeGeometry => ({
@@ -90,6 +105,14 @@ const runtimeState = ({
     shortRejection: entryDirection === 'SHORT',
     longCloseInside: entryDirection === 'LONG',
     shortCloseInside: entryDirection === 'SHORT',
+    latestHighPivotAgeBars: 4,
+    latestLowPivotAgeBars: 2,
+    alternatingPivotCount: 6,
+    recentContainmentRatio: 1,
+    recentOutsideCloseCount: 0,
+    rangeQualityAccepted: true,
+    entrySignalStage: entryDirection ? 'immediate' : 'none',
+    entryConfirmationAgeBars: entryDirection ? 0 : null,
     entryDirection,
   },
   closeSeries: [{ timestamp, value: close }],
@@ -208,7 +231,7 @@ describe('GridClassic core', () => {
       });
       const core = await createGridClassicCore({
         config: {
-          ...DEFAULT_CONFIG,
+          ...BASE_TEST_CONFIG,
           FEE_PERCENT: 0,
           GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
         } as GridClassicConfig,
@@ -264,7 +287,7 @@ describe('GridClassic core', () => {
     });
     const core = await createGridClassicCore({
       config: {
-        ...DEFAULT_CONFIG,
+        ...BASE_TEST_CONFIG,
         FEE_PERCENT: 0,
         GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
       } as GridClassicConfig,
@@ -290,6 +313,67 @@ describe('GridClassic core', () => {
       kind: 'skip',
       code: 'GRIDCLASSIC_ORDER_PENDING',
     });
+  });
+
+  it('waits for a new frozen-boundary rejection before adding', async () => {
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 95.5,
+        entryDirection: 'LONG',
+      }),
+      runtimeState({ timestamp: 2, close: 94.9 }),
+      runtimeState({ timestamp: 3, close: 95.1 }),
+    ]);
+    let position: Position | null = null;
+    let currentPrice = 95.5;
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getCurrentPrice: () => currentPrice,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        FEE_PERCENT: 0,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+        GRIDCLASSIC_REQUIRE_REJECTION_FOR_ADD: true,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+    const first = (await core(candle(1, 95.5) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 95.5,
+      qty: first.orderPlan.qty,
+      slPrice: first.orderPlan.stopLossPrice,
+      tpPrice: first.orderPlan.takeProfits[0].price,
+    };
+    currentPrice = 94.9;
+
+    await expect(core(candle(2, 94.9) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRIDCLASSIC_SCALE_IN_WAIT_REJECTION',
+    });
+
+    currentPrice = 95.1;
+    const rejection = candle(3, 95.1);
+    const addition = (await core(
+      {
+        ...rejection,
+        open: 94.8,
+        high: 95.3,
+        low: 94.3,
+      } as any,
+      {} as any,
+    )) as any;
+    expect(addition).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRIDCLASSIC_SCALE_IN_2',
+      }),
+    );
   });
 
   it('freezes entry geometry and does not widen its stop after range drift', async () => {
@@ -325,7 +409,7 @@ describe('GridClassic core', () => {
     });
     const core = await createGridClassicCore({
       config: {
-        ...DEFAULT_CONFIG,
+        ...BASE_TEST_CONFIG,
         FEE_PERCENT: 0,
         GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
       } as GridClassicConfig,
@@ -372,7 +456,7 @@ describe('GridClassic core', () => {
     });
     const core = await createGridClassicCore({
       config: {
-        ...DEFAULT_CONFIG,
+        ...BASE_TEST_CONFIG,
         FEE_PERCENT: 0,
         GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
         GRIDCLASSIC_BREAKOUT_CONFIRM_BARS: 2,
@@ -414,6 +498,128 @@ describe('GridClassic core', () => {
     });
   });
 
+  it('exits before the breakout buffer when a rejection immediately fails', async () => {
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 95.5,
+        entryDirection: 'LONG',
+      }),
+      runtimeState({ timestamp: 2, close: 94.9 }),
+    ]);
+    let position: Position | null = null;
+    let currentPrice = 95.5;
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getCurrentPrice: () => currentPrice,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        FEE_PERCENT: 0,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+        GRIDCLASSIC_BREAKOUT_CONFIRM_BARS: 2,
+        GRIDCLASSIC_FAILED_REJECTION_EXIT_BARS: 1,
+        GRIDCLASSIC_FAILED_REJECTION_TOLERANCE_ATR: 0,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+    const first = (await core(candle(1, 95.5) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 95.5,
+      qty: first.orderPlan.qty,
+      slPrice: first.orderPlan.stopLossPrice,
+      tpPrice: first.orderPlan.takeProfits[0].price,
+    };
+    currentPrice = 94.9;
+
+    await expect(core(candle(2, 94.9) as any, {} as any)).resolves.toEqual(
+      expect.objectContaining({
+        kind: 'exit',
+        code: 'GRIDCLASSIC_FAILED_REJECTION_EXIT',
+      }),
+    );
+  });
+
+  it('protects recovered profit with a cost-adjusted break-even stop', async () => {
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 95.5,
+        entryDirection: 'LONG',
+      }),
+      runtimeState({ timestamp: 2, close: 98 }),
+    ]);
+    let position: Position | null = null;
+    let currentPrice = 95.5;
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getCurrentPrice: () => currentPrice,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_LEVELS: 1,
+        GRIDCLASSIC_BREAKEVEN_TRIGGER_FRACTION: 0.5,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+    const first = (await core(candle(1, 95.5) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 95.5,
+      qty: first.orderPlan.qty,
+      slPrice: first.orderPlan.stopLossPrice,
+      tpPrice: first.orderPlan.takeProfits[0].price,
+    };
+    currentPrice = 98;
+
+    const protection = (await core(candle(2, 98) as any, {} as any)) as any;
+    expect(protection).toEqual(
+      expect.objectContaining({
+        kind: 'protect',
+        code: 'GRIDCLASSIC_REFRESH_PROTECTION',
+      }),
+    );
+    expect(protection.protectPlan.stopLossPrice).toBeGreaterThan(
+      position.price,
+    );
+    expect(protection.protectPlan.stopLossPrice).toBeLessThan(currentPrice);
+  });
+
+  it('rejects an entry whose target is too close after execution costs', async () => {
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 95.5,
+        entryDirection: 'LONG',
+      }),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 95.5,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MIN_TARGET_DISTANCE_BPS: 1_000,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    await expect(core(candle(1, 95.5) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRIDCLASSIC_TARGET_DISTANCE_REJECTED',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['center', 100],
     ['opposite_edge', 105],
@@ -431,7 +637,7 @@ describe('GridClassic core', () => {
     });
     const core = await createGridClassicCore({
       config: {
-        ...DEFAULT_CONFIG,
+        ...BASE_TEST_CONFIG,
         GRIDCLASSIC_TP_MODE: mode,
       } as GridClassicConfig,
       data: [],
@@ -464,7 +670,7 @@ describe('GridClassic core', () => {
       getCurrentPrice: () => 95.5,
     });
     const core = await createGridClassicCore({
-      config: DEFAULT_CONFIG as GridClassicConfig,
+      config: BASE_TEST_CONFIG,
       data: [],
       strategyApi,
     } as any);

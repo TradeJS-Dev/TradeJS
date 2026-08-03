@@ -2,7 +2,9 @@
 
 import {
   buildGridClassicGridPlan,
+  calculateGridClassicBreakEvenPrice,
   calculateGridClassicPositionLoss,
+  evaluateGridClassicEntryEconomics,
 } from '../guardrails';
 
 const buildPlan = (direction: 'LONG' | 'SHORT', takeProfitMode = 'center') =>
@@ -70,5 +72,56 @@ describe('GridClassic risk guardrails', () => {
 
     expect(gross).toBe(5);
     expect(net).toBeGreaterThan(gross);
+  });
+
+  it('evaluates target distance and net reward against the full grid risk', () => {
+    const plan = buildPlan('LONG');
+    const accepted = evaluateGridClassicEntryEconomics({
+      entryPrice: 96,
+      plan,
+      feeRate: 0.001,
+      slippageRate: 0.001,
+      minTargetDistanceBps: 400,
+      minNetRiskRatio: 0.5,
+    });
+    const rejected = evaluateGridClassicEntryEconomics({
+      entryPrice: 96,
+      plan,
+      feeRate: 0.001,
+      slippageRate: 0.001,
+      minTargetDistanceBps: 500,
+      minNetRiskRatio: 0,
+    });
+
+    expect(accepted.targetDistanceBps).toBeCloseTo(416.67, 1);
+    expect(accepted.executionCosts).toBeGreaterThan(0);
+    expect(accepted.netReward).toBeLessThan(accepted.grossReward);
+    expect(accepted.accepted).toBe(true);
+    expect(rejected).toEqual(
+      expect.objectContaining({
+        accepted: false,
+        rejectReason: 'target_distance',
+      }),
+    );
+  });
+
+  it('moves break-even beyond round-trip execution costs symmetrically', () => {
+    const long = calculateGridClassicBreakEvenPrice({
+      direction: 'LONG',
+      entryPrice: 100,
+      feeRate: 0.001,
+      slippageRate: 0.001,
+      offsetBps: 0,
+    });
+    const short = calculateGridClassicBreakEvenPrice({
+      direction: 'SHORT',
+      entryPrice: 100,
+      feeRate: 0.001,
+      slippageRate: 0.001,
+      offsetBps: 0,
+    });
+
+    expect(long).toBeCloseTo(100.4008, 3);
+    expect(short).toBeCloseTo(99.6008, 3);
   });
 });

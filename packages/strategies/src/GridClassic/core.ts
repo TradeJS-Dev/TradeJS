@@ -18,8 +18,11 @@ import {
 } from './figures';
 import {
   buildGridClassicGridPlan,
+  calculateGridClassicBreakEvenPrice,
   calculateGridClassicPositionLoss,
   calculateGridClassicUnitLoss,
+  evaluateGridClassicEntryEconomics,
+  type GridClassicEntryEconomics,
   type GridClassicGridPlan,
 } from './guardrails';
 
@@ -45,10 +48,13 @@ interface GridClassicCycle {
   recovered: boolean;
   adverseBreakoutBars: number;
   invalidRangeBars: number;
+  failedRejectionBars: number;
   holdBars: number;
   lastProcessedTimestamp: number | null;
   pending: PendingGridClassicEntry | null;
   exitCode: string | null;
+  entryEconomics: GridClassicEntryEconomics | null;
+  breakevenActivated: boolean;
 }
 
 interface GridClassicExecutionState {
@@ -120,15 +126,23 @@ const buildExecutionStateKey = (config: GridClassicConfig) =>
     detector: buildGridClassicDetectorKey(config),
     maxLossValue: config.MAX_LOSS_VALUE,
     levels: config.GRIDCLASSIC_LEVELS,
+    requireRejectionForAdd: config.GRIDCLASSIC_REQUIRE_REJECTION_FOR_ADD,
     stepAtr: config.GRIDCLASSIC_GRID_STEP_ATR,
     stepRangeFraction: config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION,
     levelSizeDecay: config.GRIDCLASSIC_LEVEL_SIZE_DECAY,
     stopAtrBuffer: config.GRIDCLASSIC_STOP_ATR_BUFFER,
     takeProfitMode: config.GRIDCLASSIC_TP_MODE,
     breakoutConfirmBars: config.GRIDCLASSIC_BREAKOUT_CONFIRM_BARS,
+    failedRejectionExitBars: config.GRIDCLASSIC_FAILED_REJECTION_EXIT_BARS,
+    failedRejectionToleranceAtr:
+      config.GRIDCLASSIC_FAILED_REJECTION_TOLERANCE_ATR,
     invalidationBars: config.GRIDCLASSIC_INVALIDATION_BARS,
     maxHoldBars: config.GRIDCLASSIC_MAX_HOLD_BARS,
     cooldownBars: config.GRIDCLASSIC_COOLDOWN_BARS,
+    minTargetDistanceBps: config.GRIDCLASSIC_MIN_TARGET_DISTANCE_BPS,
+    minNetRiskRatio: config.GRIDCLASSIC_MIN_NET_RISK_RATIO,
+    breakevenTriggerFraction: config.GRIDCLASSIC_BREAKEVEN_TRIGGER_FRACTION,
+    breakevenOffsetBps: config.GRIDCLASSIC_BREAKEVEN_OFFSET_BPS,
     ...getRiskRates(config),
   });
 
@@ -136,11 +150,13 @@ const freezeCycle = ({
   direction,
   snapshot,
   plan,
+  economics,
   timestamp,
 }: {
   direction: Direction;
   snapshot: GridClassicSnapshot;
   plan: GridClassicGridPlan;
+  economics: GridClassicEntryEconomics;
   timestamp: number;
 }): GridClassicCycle => ({
   direction,
@@ -158,10 +174,13 @@ const freezeCycle = ({
   recovered: false,
   adverseBreakoutBars: 0,
   invalidRangeBars: 0,
+  failedRejectionBars: 0,
   holdBars: 0,
   lastProcessedTimestamp: null,
   pending: null,
   exitCode: null,
+  entryEconomics: economics,
+  breakevenActivated: false,
 });
 
 const recoverCycle = ({
@@ -242,10 +261,13 @@ const recoverCycle = ({
     recovered: true,
     adverseBreakoutBars: 0,
     invalidRangeBars: 0,
+    failedRejectionBars: 0,
     holdBars: 0,
     lastProcessedTimestamp: null,
     pending: null,
     exitCode: null,
+    entryEconomics: null,
+    breakevenActivated: false,
   };
 };
 
@@ -267,10 +289,57 @@ const getExitCooldownTimestamp = ({
   cooldownMs: number;
 }) =>
   code != null &&
-  (code.includes('STOP') || code.includes('BREAKOUT')) &&
+  (code.includes('STOP') ||
+    code.includes('BREAKOUT') ||
+    code.includes('FAILED_REJECTION')) &&
   cooldownMs > 0
     ? candleTimestamp + cooldownMs
     : null;
+
+const hasFrozenBoundaryRejection = ({
+  direction,
+  candle,
+  snapshot,
+  cycle,
+  minWickRatio,
+}: {
+  direction: Direction;
+  candle: Parameters<ReturnType<typeof createGridClassicEngine>['next']>[0];
+  snapshot: GridClassicSnapshot;
+  cycle: GridClassicCycle;
+  minWickRatio: number;
+}) => {
+  const body = Math.max(
+    Math.abs(candle.close - candle.open),
+    snapshot.atr * 0.01,
+  );
+  if (direction === 'LONG') {
+    const boundary = cycle.geometry.lowerPrice;
+    const lowerWick = Math.max(
+      0,
+      Math.min(candle.open, candle.close) - candle.low,
+    );
+    return (
+      boundary != null &&
+      candle.low <= boundary + snapshot.atr * 0.1 &&
+      candle.close >= boundary &&
+      candle.close > candle.open &&
+      lowerWick / body >= minWickRatio
+    );
+  }
+  const boundary = cycle.geometry.upperPrice;
+  const upperWick = Math.max(
+    0,
+    candle.high - Math.max(candle.open, candle.close),
+  );
+  return (
+    boundary != null &&
+    candle.high >= boundary - snapshot.atr * 0.1 &&
+    candle.close <= boundary &&
+    candle.close < candle.open &&
+    upperWick / body >= minWickRatio
+  );
+};
 
 export const createGridClassicCore: CreateStrategyCore<
   GridClassicConfig,
@@ -317,6 +386,14 @@ export const createGridClassicCore: CreateStrategyCore<
     1,
     Math.floor(Number(config.GRIDCLASSIC_INVALIDATION_BARS ?? 1)),
   );
+  const failedRejectionExitBars = Math.max(
+    0,
+    Math.floor(Number(config.GRIDCLASSIC_FAILED_REJECTION_EXIT_BARS ?? 0)),
+  );
+  const failedRejectionToleranceAtr = Math.max(
+    0,
+    Number(config.GRIDCLASSIC_FAILED_REJECTION_TOLERANCE_ATR ?? 0),
+  );
   const maxHoldBars = Math.max(
     1,
     Math.floor(Number(config.GRIDCLASSIC_MAX_HOLD_BARS ?? 1)),
@@ -329,6 +406,21 @@ export const createGridClassicCore: CreateStrategyCore<
     Math.max(0.01, Number(config.GRIDCLASSIC_EDGE_ZONE_FRACTION ?? 0.22)),
   );
   const { feeRate, slippageRate } = getRiskRates(config);
+  const breakevenTriggerFraction = Math.min(
+    1,
+    Math.max(0, Number(config.GRIDCLASSIC_BREAKEVEN_TRIGGER_FRACTION ?? 0)),
+  );
+  const breakevenOffsetBps = Math.max(
+    0,
+    Number(config.GRIDCLASSIC_BREAKEVEN_OFFSET_BPS ?? 0),
+  );
+  const requireRejectionForAdd = Boolean(
+    config.GRIDCLASSIC_REQUIRE_REJECTION_FOR_ADD,
+  );
+  const minRejectionWickRatio = Math.max(
+    0,
+    Number(config.GRIDCLASSIC_MIN_REJECTION_WICK_RATIO ?? 0),
+  );
 
   return async (candle) => {
     const runtimeState = nextDetectorState(candle);
@@ -431,6 +523,14 @@ export const createGridClassicCore: CreateStrategyCore<
             : snapshot.close >
               (cycle.geometry.upperPrice ?? cycle.stopLossPrice) +
                 breakoutBuffer;
+        const failedRejection =
+          cycle.direction === 'LONG'
+            ? snapshot.close <
+              (cycle.geometry.lowerPrice ?? cycle.stopLossPrice) -
+                snapshot.atr * failedRejectionToleranceAtr
+            : snapshot.close >
+              (cycle.geometry.upperPrice ?? cycle.stopLossPrice) +
+                snapshot.atr * failedRejectionToleranceAtr;
         executionState.update((draft) => {
           if (!draft.cycle) return;
           draft.cycle.lastProcessedTimestamp = candle.timestamp;
@@ -441,6 +541,9 @@ export const createGridClassicCore: CreateStrategyCore<
           draft.cycle.invalidRangeBars = snapshot.geometry.detected
             ? 0
             : draft.cycle.invalidRangeBars + 1;
+          draft.cycle.failedRejectionBars = failedRejection
+            ? draft.cycle.failedRejectionBars + 1
+            : 0;
           if (
             adverseBreakout ||
             !snapshot.geometry.detected ||
@@ -449,6 +552,52 @@ export const createGridClassicCore: CreateStrategyCore<
             draft.cycle.additionsStopped = true;
           }
         });
+      }
+
+      const cycleAfterTransition = executionState.get().cycle;
+      if (
+        cycleAfterTransition &&
+        breakevenTriggerFraction > 0 &&
+        !cycleAfterTransition.breakevenActivated
+      ) {
+        const targetDistance = Math.abs(
+          cycleAfterTransition.takeProfitPrice - position.price,
+        );
+        const favorableDistance =
+          cycleAfterTransition.direction === 'LONG'
+            ? snapshot.close - position.price
+            : position.price - snapshot.close;
+        const favorableProgress =
+          targetDistance > Number.EPSILON
+            ? favorableDistance / targetDistance
+            : 0;
+        const breakevenPrice = calculateGridClassicBreakEvenPrice({
+          direction: cycleAfterTransition.direction,
+          entryPrice: position.price,
+          feeRate,
+          slippageRate,
+          offsetBps: breakevenOffsetBps,
+        });
+        const tighterStop =
+          cycleAfterTransition.direction === 'LONG'
+            ? breakevenPrice > cycleAfterTransition.stopLossPrice
+            : breakevenPrice < cycleAfterTransition.stopLossPrice;
+        if (
+          favorableProgress >= breakevenTriggerFraction &&
+          tighterStop &&
+          isDirectionalStop(
+            cycleAfterTransition.direction,
+            breakevenPrice,
+            snapshot.close,
+          )
+        ) {
+          executionState.update((draft) => {
+            if (!draft.cycle) return;
+            draft.cycle.stopLossPrice = breakevenPrice;
+            draft.cycle.breakevenActivated = true;
+            draft.cycle.additionsStopped = true;
+          });
+        }
       }
 
       const currentCycle = executionState.get().cycle;
@@ -465,6 +614,20 @@ export const createGridClassicCore: CreateStrategyCore<
         });
         return strategyApi.exit({
           code: 'GRIDCLASSIC_STOP_EXIT',
+          direction: currentCycle.direction,
+        });
+      }
+      if (
+        failedRejectionExitBars > 0 &&
+        currentCycle.failedRejectionBars >= failedRejectionExitBars
+      ) {
+        executionState.update((draft) => {
+          if (draft.cycle) {
+            draft.cycle.exitCode = 'GRIDCLASSIC_FAILED_REJECTION_EXIT';
+          }
+        });
+        return strategyApi.exit({
+          code: 'GRIDCLASSIC_FAILED_REJECTION_EXIT',
           direction: currentCycle.direction,
         });
       }
@@ -531,11 +694,34 @@ export const createGridClassicCore: CreateStrategyCore<
       const nextLevelReached =
         nextLevel != null &&
         (currentCycle.direction === 'LONG'
-          ? snapshot.close <= nextLevel.price
-          : snapshot.close >= nextLevel.price);
+          ? requireRejectionForAdd
+            ? candle.low <= nextLevel.price
+            : snapshot.close <= nextLevel.price
+          : requireRejectionForAdd
+            ? candle.high >= nextLevel.price
+            : snapshot.close >= nextLevel.price);
+      const additionRejectionConfirmed =
+        !requireRejectionForAdd ||
+        hasFrozenBoundaryRejection({
+          direction: currentCycle.direction,
+          candle,
+          snapshot,
+          cycle: currentCycle,
+          minWickRatio: minRejectionWickRatio,
+        });
       if (
         nextLevel &&
         nextLevelReached &&
+        !additionRejectionConfirmed &&
+        !currentCycle.additionsStopped &&
+        !currentCycle.recovered
+      ) {
+        return strategyApi.skip('GRIDCLASSIC_SCALE_IN_WAIT_REJECTION');
+      }
+      if (
+        nextLevel &&
+        nextLevelReached &&
+        additionRejectionConfirmed &&
         !currentCycle.additionsStopped &&
         !currentCycle.recovered
       ) {
@@ -633,6 +819,7 @@ export const createGridClassicCore: CreateStrategyCore<
               remainingLevels:
                 currentCycle.plan.levels.length - nextLevel.level,
               stopLossPrice: currentCycle.stopLossPrice,
+              economics: currentCycle.entryEconomics,
             }),
           },
           figures: buildGridClassicFigures({
@@ -753,7 +940,31 @@ export const createGridClassicCore: CreateStrategyCore<
       return strategyApi.skip('GRIDCLASSIC_INVALID_GRID_PLAN');
     }
 
-    const cycle = freezeCycle({ direction, snapshot, plan, timestamp });
+    const economics = evaluateGridClassicEntryEconomics({
+      entryPrice: currentPrice,
+      plan,
+      feeRate,
+      slippageRate,
+      minTargetDistanceBps: Number(
+        config.GRIDCLASSIC_MIN_TARGET_DISTANCE_BPS ?? 0,
+      ),
+      minNetRiskRatio: Number(config.GRIDCLASSIC_MIN_NET_RISK_RATIO ?? 0),
+    });
+    if (!economics.accepted) {
+      return strategyApi.skip(
+        economics.rejectReason === 'target_distance'
+          ? 'GRIDCLASSIC_TARGET_DISTANCE_REJECTED'
+          : 'GRIDCLASSIC_NET_RISK_RATIO_REJECTED',
+      );
+    }
+
+    const cycle = freezeCycle({
+      direction,
+      snapshot,
+      plan,
+      economics,
+      timestamp,
+    });
     cycle.pending = {
       kind: 'open',
       timestamp: candle.timestamp,
@@ -783,6 +994,7 @@ export const createGridClassicCore: CreateStrategyCore<
           filledLevels: 0,
           remainingLevels: plan.levels.length - 1,
           stopLossPrice: plan.stopLossPrice,
+          economics,
         }),
       },
       figures: buildGridClassicFigures({

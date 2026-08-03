@@ -1,10 +1,19 @@
 import type { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import type { GridClassicConfig } from './config';
+import type { GridClassicEntryEconomics } from './guardrails';
 import {
   createCausalRangeGeometryEngine,
   type CausalRangeGeometry,
+  type CausalRangeLine,
   type CausalRangeGeometryOptions,
 } from '../shared/causalRangeGeometry';
+
+export type GridClassicEntrySignalStage =
+  | 'none'
+  | 'candidate'
+  | 'waiting'
+  | 'confirmed'
+  | 'immediate';
 
 export interface GridClassicSnapshot {
   timestamp: number;
@@ -17,6 +26,14 @@ export interface GridClassicSnapshot {
   shortRejection: boolean;
   longCloseInside: boolean;
   shortCloseInside: boolean;
+  latestHighPivotAgeBars: number | null;
+  latestLowPivotAgeBars: number | null;
+  alternatingPivotCount: number;
+  recentContainmentRatio: number | null;
+  recentOutsideCloseCount: number;
+  rangeQualityAccepted: boolean;
+  entrySignalStage: GridClassicEntrySignalStage;
+  entryConfirmationAgeBars: number | null;
   entryDirection: Direction | null;
 }
 
@@ -31,6 +48,12 @@ type AtrState = {
   previousClose: number | null;
 };
 
+type PendingEntryConfirmation = {
+  direction: Direction;
+  barIndex: number;
+  midpoint: number;
+};
+
 const finite = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -38,6 +61,9 @@ const finite = (value: unknown, fallback: number) => {
 
 const positiveInteger = (value: unknown, fallback: number) =>
   Math.max(1, Math.floor(finite(value, fallback)));
+
+const nonNegativeInteger = (value: unknown, fallback: number) =>
+  Math.max(0, Math.floor(finite(value, fallback)));
 
 export const getGridClassicGeometryOptions = (
   config: GridClassicConfig,
@@ -91,6 +117,23 @@ const getEngineOptions = (config: GridClassicConfig) => ({
     finite(config.GRIDCLASSIC_MAX_CANDLE_RANGE_ATR, 3),
   ),
   maxFigurePoints: positiveInteger(config.GRIDCLASSIC_MAX_FIGURE_POINTS, 180),
+  entryConfirmationBars: nonNegativeInteger(
+    config.GRIDCLASSIC_ENTRY_CONFIRMATION_BARS,
+    0,
+  ),
+  maxPivotAgeBars: nonNegativeInteger(config.GRIDCLASSIC_MAX_PIVOT_AGE_BARS, 0),
+  minAlternatingPivots: nonNegativeInteger(
+    config.GRIDCLASSIC_MIN_ALTERNATING_PIVOTS,
+    0,
+  ),
+  recentContainmentBars: nonNegativeInteger(
+    config.GRIDCLASSIC_RECENT_CONTAINMENT_BARS,
+    0,
+  ),
+  minRecentContainmentRatio: Math.min(
+    1,
+    Math.max(0, finite(config.GRIDCLASSIC_MIN_RECENT_CONTAINMENT_RATIO, 0)),
+  ),
 });
 
 export const buildGridClassicDetectorKey = (config: GridClassicConfig) =>
@@ -134,6 +177,106 @@ const hasConfirmation = ({
       ? closeInside
       : rejection || closeInside;
 
+const projectLine = (line: CausalRangeLine, timestamp: number) => {
+  const duration = line.endTimestamp - line.startTimestamp;
+  if (Math.abs(duration) <= Number.EPSILON) return line.endPrice;
+  const progress = (timestamp - line.startTimestamp) / duration;
+  return line.startPrice + (line.endPrice - line.startPrice) * progress;
+};
+
+const countAlternatingPivots = (geometry: CausalRangeGeometry) => {
+  const sorted = geometry.pivots
+    .slice()
+    .sort((left, right) => left.barIndex - right.barIndex);
+  let count = 0;
+  let previousKind: 'high' | 'low' | null = null;
+  for (const pivot of sorted) {
+    if (pivot.kind !== previousKind) {
+      count += 1;
+      previousKind = pivot.kind;
+    }
+  }
+  return count;
+};
+
+const evaluateRangeQuality = ({
+  geometry,
+  candles,
+  currentBarIndex,
+  atr,
+  maxPivotAgeBars,
+  minAlternatingPivots,
+  recentContainmentBars,
+  minRecentContainmentRatio,
+  containmentToleranceAtr,
+}: {
+  geometry: CausalRangeGeometry;
+  candles: Candle[];
+  currentBarIndex: number;
+  atr: number;
+  maxPivotAgeBars: number;
+  minAlternatingPivots: number;
+  recentContainmentBars: number;
+  minRecentContainmentRatio: number;
+  containmentToleranceAtr: number;
+}) => {
+  const highPivots = geometry.pivots.filter((pivot) => pivot.kind === 'high');
+  const lowPivots = geometry.pivots.filter((pivot) => pivot.kind === 'low');
+  const latestHighPivot = highPivots.at(-1);
+  const latestLowPivot = lowPivots.at(-1);
+  const latestHighPivotAgeBars = latestHighPivot
+    ? Math.max(0, currentBarIndex - latestHighPivot.barIndex)
+    : null;
+  const latestLowPivotAgeBars = latestLowPivot
+    ? Math.max(0, currentBarIndex - latestLowPivot.barIndex)
+    : null;
+  const alternatingPivotCount = countAlternatingPivots(geometry);
+  const recentCandles =
+    recentContainmentBars > 0 ? candles.slice(-recentContainmentBars) : [];
+  let recentOutsideCloseCount = 0;
+  let recentContainmentRatio: number | null = null;
+  if (recentCandles.length > 0 && geometry.upperLine && geometry.lowerLine) {
+    const tolerance = atr * Math.max(0, containmentToleranceAtr);
+    for (const candle of recentCandles) {
+      const upper = projectLine(geometry.upperLine, candle.timestamp);
+      const lower = projectLine(geometry.lowerLine, candle.timestamp);
+      if (
+        candle.close > upper + tolerance ||
+        candle.close < lower - tolerance
+      ) {
+        recentOutsideCloseCount += 1;
+      }
+    }
+    recentContainmentRatio =
+      (recentCandles.length - recentOutsideCloseCount) / recentCandles.length;
+  }
+  const pivotAgeAccepted =
+    maxPivotAgeBars <= 0 ||
+    (latestHighPivotAgeBars != null &&
+      latestLowPivotAgeBars != null &&
+      latestHighPivotAgeBars <= maxPivotAgeBars &&
+      latestLowPivotAgeBars <= maxPivotAgeBars);
+  const alternationAccepted =
+    minAlternatingPivots <= 0 || alternatingPivotCount >= minAlternatingPivots;
+  const recentContainmentAccepted =
+    minRecentContainmentRatio <= 0 ||
+    (recentContainmentRatio != null &&
+      recentContainmentRatio >= minRecentContainmentRatio);
+
+  return {
+    latestHighPivotAgeBars,
+    latestLowPivotAgeBars,
+    alternatingPivotCount,
+    recentContainmentRatio,
+    recentOutsideCloseCount,
+    rangeQualityAccepted:
+      geometry.detected &&
+      pivotAgeAccepted &&
+      alternationAccepted &&
+      recentContainmentAccepted,
+  };
+};
+
 export const buildGridClassicSignalContext = ({
   snapshot,
   direction,
@@ -141,6 +284,7 @@ export const buildGridClassicSignalContext = ({
   filledLevels,
   remainingLevels,
   stopLossPrice,
+  economics = null,
 }: {
   snapshot: GridClassicSnapshot;
   direction: Direction;
@@ -148,6 +292,7 @@ export const buildGridClassicSignalContext = ({
   filledLevels: number;
   remainingLevels: number;
   stopLossPrice: number;
+  economics?: GridClassicEntryEconomics | null;
 }) => {
   const { geometry } = snapshot;
   return {
@@ -178,6 +323,20 @@ export const buildGridClassicSignalContext = ({
     shortRejection: snapshot.shortRejection,
     longCloseInside: snapshot.longCloseInside,
     shortCloseInside: snapshot.shortCloseInside,
+    latestHighPivotAgeBars: snapshot.latestHighPivotAgeBars,
+    latestLowPivotAgeBars: snapshot.latestLowPivotAgeBars,
+    alternatingPivotCount: snapshot.alternatingPivotCount,
+    recentContainmentRatio: snapshot.recentContainmentRatio,
+    recentOutsideCloseCount: snapshot.recentOutsideCloseCount,
+    rangeQualityAccepted: snapshot.rangeQualityAccepted,
+    entrySignalStage: snapshot.entrySignalStage,
+    entryConfirmationAgeBars: snapshot.entryConfirmationAgeBars,
+    targetDistanceBps: economics?.targetDistanceBps ?? null,
+    grossReward: economics?.grossReward ?? null,
+    executionCosts: economics?.executionCosts ?? null,
+    netReward: economics?.netReward ?? null,
+    netRisk: economics?.netRisk ?? null,
+    netRiskRatio: economics?.netRiskRatio ?? null,
     distanceToLower:
       geometry.lowerPrice == null ? null : snapshot.close - geometry.lowerPrice,
     distanceToUpper:
@@ -211,8 +370,15 @@ export const createGridClassicEngine = ({
     previousClose: null,
   };
   const closeSeries: StrategyFigurePoint[] = [];
+  const recentCandles: Candle[] = [];
+  const recentCandleLimit = Math.max(
+    getGridClassicGeometryOptions(config).lookbackBars,
+    engineOptions.recentContainmentBars,
+  );
+  let barIndex = -1;
   let lastTimestamp: number | null = null;
   let snapshot: GridClassicSnapshot | null = null;
+  let pendingEntryConfirmation: PendingEntryConfirmation | null = null;
 
   const next = (candle: Candle): GridClassicRuntimeState => {
     if (
@@ -230,6 +396,11 @@ export const createGridClassicEngine = ({
       return { snapshot, closeSeries: closeSeries.slice() };
     }
     lastTimestamp = candle.timestamp;
+    barIndex += 1;
+    recentCandles.push({ ...candle });
+    if (recentCandles.length > recentCandleLimit) {
+      recentCandles.splice(0, recentCandles.length - recentCandleLimit);
+    }
 
     const atr = updateAtr(atrState, candle, engineOptions.atrPeriod);
     const geometry = geometryEngine.next(candle, atr);
@@ -288,20 +459,81 @@ export const createGridClassicEngine = ({
       rejection: shortRejection,
       closeInside: shortCloseInside,
     });
-    const entryDirection =
+    const quality = evaluateRangeQuality({
+      geometry,
+      candles: recentCandles,
+      currentBarIndex: barIndex,
+      atr,
+      maxPivotAgeBars: engineOptions.maxPivotAgeBars,
+      minAlternatingPivots: engineOptions.minAlternatingPivots,
+      recentContainmentBars: engineOptions.recentContainmentBars,
+      minRecentContainmentRatio: engineOptions.minRecentContainmentRatio,
+      containmentToleranceAtr:
+        getGridClassicGeometryOptions(config).containmentToleranceAtr,
+    });
+    const signalBaseAccepted =
       geometry.detected &&
       geometry.breakoutDirection == null &&
       !volatilityShock &&
-      longInEdge &&
-      longConfirmed
-        ? 'LONG'
-        : geometry.detected &&
-            geometry.breakoutDirection == null &&
-            !volatilityShock &&
-            shortInEdge &&
-            shortConfirmed
-          ? 'SHORT'
+      quality.rangeQualityAccepted;
+    const immediateCandidate =
+      signalBaseAccepted && longInEdge && longConfirmed
+        ? ('LONG' as const)
+        : signalBaseAccepted && shortInEdge && shortConfirmed
+          ? ('SHORT' as const)
           : null;
+    let entryDirection: Direction | null = null;
+    let entrySignalStage: GridClassicEntrySignalStage = 'none';
+    let entryConfirmationAgeBars: number | null = null;
+
+    if (engineOptions.entryConfirmationBars > 0 && pendingEntryConfirmation) {
+      const pending = pendingEntryConfirmation;
+      const ageBars = barIndex - pending.barIndex;
+      entryConfirmationAgeBars = ageBars;
+      const confirmationInside =
+        pending.direction === 'LONG'
+          ? lower != null &&
+            candle.close >= lower &&
+            candle.close >= pending.midpoint &&
+            longInEdge
+          : upper != null &&
+            candle.close <= upper &&
+            candle.close <= pending.midpoint &&
+            shortInEdge;
+      if (
+        ageBars >= 1 &&
+        ageBars <= engineOptions.entryConfirmationBars &&
+        signalBaseAccepted &&
+        confirmationInside
+      ) {
+        entryDirection = pending.direction;
+        entrySignalStage = 'confirmed';
+        pendingEntryConfirmation = null;
+      } else if (
+        ageBars > engineOptions.entryConfirmationBars ||
+        !signalBaseAccepted
+      ) {
+        pendingEntryConfirmation = null;
+      } else {
+        entrySignalStage = 'waiting';
+      }
+    }
+
+    if (entryDirection == null && immediateCandidate) {
+      if (engineOptions.entryConfirmationBars <= 0) {
+        entryDirection = immediateCandidate;
+        entrySignalStage = 'immediate';
+        entryConfirmationAgeBars = 0;
+      } else {
+        pendingEntryConfirmation = {
+          direction: immediateCandidate,
+          barIndex,
+          midpoint: (candle.high + candle.low) / 2,
+        };
+        entrySignalStage = 'candidate';
+        entryConfirmationAgeBars = 0;
+      }
+    }
 
     closeSeries.push({ timestamp: candle.timestamp, value: candle.close });
     if (closeSeries.length > engineOptions.maxFigurePoints) {
@@ -318,6 +550,9 @@ export const createGridClassicEngine = ({
       shortRejection,
       longCloseInside,
       shortCloseInside,
+      ...quality,
+      entrySignalStage,
+      entryConfirmationAgeBars,
       entryDirection,
     };
     return { snapshot, closeSeries: closeSeries.slice() };
