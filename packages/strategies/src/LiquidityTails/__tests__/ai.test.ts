@@ -179,6 +179,64 @@ const makeTargetLongRecoveryPayload = ({
     },
   );
 
+const makeShortBreadthRecoveryPayload = ({
+  direction = 'SHORT',
+  dispersion = 0.0065,
+  pctAboveMa20 = 0.08,
+  breadthStale = false,
+  benchmarkConflict = false,
+  reactionCloseDistancePct = 1.5,
+  bodyStrength = 0.4,
+}: {
+  direction?: 'LONG' | 'SHORT';
+  dispersion?: number | null;
+  pctAboveMa20?: number | null;
+  breadthStale?: boolean | null;
+  benchmarkConflict?: boolean | null;
+  reactionCloseDistancePct?: number;
+  bodyStrength?: number | null;
+} = {}) =>
+  makePayload(
+    {
+      signalDirection: direction,
+      zoneKind: direction === 'LONG' ? 'buy_pressure' : 'sell_pressure',
+      zoneHeight: 5,
+      zoneTouches: 2,
+      wickBodyRatio: 2.5,
+      wickDominanceRatio: 2,
+      reactionCloseDistancePct,
+      reactionBodyAligned: true,
+    },
+    {
+      regime: {
+        trend: {
+          bias: 'neutral',
+          adx: { adx: 20, strength: 'developing' },
+        },
+        momentum: { bodyStrength, roc1h: 0.1, roc4h: 0.1 },
+      },
+      relative: {
+        marketBreadths: {
+          top100: {
+            stale: breadthStale,
+            dispersion,
+            pctAboveMa20,
+          },
+        },
+      },
+      gateFeatures: {
+        relative: { benchmarkConflict },
+      },
+      derivatives: {
+        summary: {
+          pressure: 'neutral',
+          directionAligned: false,
+          riskFlags: [],
+        },
+      },
+    },
+  );
+
 const getGuardrailContext = (payload: ReturnType<typeof makePayload>) =>
   buildLiquidityTailsGuardrailContext({
     signalContext: payload.additionalIndicators.liquidityTailsContext,
@@ -949,7 +1007,7 @@ describe('liquidityTailsAiAdapter', () => {
     ).toContain('cmc_fear_greed_unavailable');
   });
 
-  it('observes risk-off long candidates without approving them', () => {
+  it('approves risk-off long recovery candidates at the calibrated boundaries', () => {
     const payload = makeRiskOffRecoveryPayload();
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -964,9 +1022,9 @@ describe('liquidityTailsAiAdapter', () => {
       getGuardrailContext(payload).derivativesRiskOffLongRecoveryCandidate,
     ).toBe(true);
     expect(result).toMatchObject({
-      direction: null,
-      quality: 1,
-      approved: false,
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
     });
   });
 
@@ -1062,7 +1120,69 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('observes target-confirmed long recovery candidates without approving them', () => {
+  it('approves short breadth-stress recovery candidates at the rounded boundaries', () => {
+    const payload = makeShortBreadthRecoveryPayload();
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(getGuardrailContext(payload)).toMatchObject({
+      top100MarketBreadthDispersion: 0.0065,
+      top100MarketBreadthPctAboveMa20: 0.08,
+      top100MarketBreadthStale: false,
+      benchmarkConflict: false,
+      benchmarkConflictAvailable: true,
+      shortBreadthStressRecoveryCandidate: true,
+    });
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it.each([
+    ['dispersion', { dispersion: 0.006_499 }],
+    ['missing dispersion', { dispersion: null }],
+    ['breadth participation', { pctAboveMa20: 0.080_001 }],
+    ['missing breadth participation', { pctAboveMa20: null }],
+    ['stale breadth', { breadthStale: true }],
+    ['missing breadth freshness', { breadthStale: null }],
+    ['benchmark conflict', { benchmarkConflict: true }],
+    ['missing benchmark context', { benchmarkConflict: null }],
+    ['reaction distance', { reactionCloseDistancePct: 1.4999 }],
+    ['body strength', { bodyStrength: 0.3999 }],
+    ['missing body strength', { bodyStrength: null }],
+    ['direction', { direction: 'LONG' as const }],
+  ])(
+    'does not approve short breadth-stress recovery outside the %s boundary',
+    (_, options) => {
+      const payload = makeShortBreadthRecoveryPayload(options);
+      const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+        signal: {} as any,
+        payload,
+        analysis: {
+          direction: 'SHORT',
+          quality: 1,
+        },
+      });
+
+      expect(
+        getGuardrailContext(payload).shortBreadthStressRecoveryCandidate,
+      ).toBe(false);
+      expect(result).toMatchObject({
+        direction: null,
+        approved: false,
+      });
+    },
+  );
+
+  it('approves target-confirmed long derivatives recovery at q4', () => {
     const payload = makeTargetLongRecoveryPayload();
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -1077,9 +1197,9 @@ describe('liquidityTailsAiAdapter', () => {
       true,
     );
     expect(result).toMatchObject({
-      direction: null,
-      quality: 1,
-      approved: false,
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
     });
   });
 

@@ -22,14 +22,19 @@ export type LiquidityTailsGuardrailContext =
     liquidityRisk: string | null;
     cmcFearGreedValue: number | null;
     altBasketReturn24h: number | null;
+    top100MarketBreadthDispersion: number | null;
+    top100MarketBreadthPctAboveMa20: number | null;
+    top100MarketBreadthStale: boolean | null;
     referenceTrx1hOiChangePct4h: number | null;
     referenceTrx1hStale: boolean | null;
     higherTimeframeConflict: boolean;
     benchmarkConflict: boolean;
+    benchmarkConflictAvailable: boolean;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
     derivativesRiskOffLongRecoveryCandidate: boolean;
+    shortBreadthStressRecoveryCandidate: boolean;
     targetLongRetestRecoveryCandidate: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
@@ -81,6 +86,9 @@ const MAX_APPROVAL_PRICE_DISTANCE_TO_MA_SLOW_ATR = 1.2;
 const MIN_APPROVAL_ACTIVE_LIQUIDITY_ZONES = 1;
 const MAX_DERIVATIVES_RISK_OFF_ALT_BASKET_RETURN_24H = -0.035;
 const MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H = -1.8;
+const MIN_SHORT_BREADTH_STRESS_DISPERSION = 0.0065;
+const MAX_SHORT_BREADTH_STRESS_PCT_ABOVE_MA20 = 0.08;
+const MIN_SHORT_BREADTH_STRESS_REACTION_CLOSE_DISTANCE_PCT = 1.5;
 const MIN_TARGET_LONG_RECOVERY_BODY_STRENGTH = 0.65;
 const Q4_APPROVAL_ATR_RANK_BUCKETS = new Set(['high', 'extreme']);
 
@@ -259,6 +267,18 @@ export const buildLiquidityTailsGuardrailContext = ({
   const altBasketReturn24h = asFiniteNumber(
     baseContext?.relative?.btcAltRegime?.altBasketReturn24h,
   );
+  const top100MarketBreadth =
+    baseContext?.relative?.marketBreadths?.top100 ?? null;
+  const top100MarketBreadthDispersion = asNullableFiniteNumber(
+    top100MarketBreadth?.dispersion,
+  );
+  const top100MarketBreadthPctAboveMa20 = asNullableFiniteNumber(
+    top100MarketBreadth?.pctAboveMa20,
+  );
+  const top100MarketBreadthStale =
+    typeof top100MarketBreadth?.stale === 'boolean'
+      ? top100MarketBreadth.stale
+      : null;
   const referenceTrx1h =
     baseContext?.derivatives?.referenceContexts?.TRXUSDT?.intervals?.['1h'];
   const referenceTrx1hOiChangePct4h = asFiniteNumber(
@@ -268,8 +288,11 @@ export const buildLiquidityTailsGuardrailContext = ({
     typeof referenceTrx1h?.stale === 'boolean' ? referenceTrx1h.stale : null;
   const higherTimeframeConflict =
     baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
-  const benchmarkConflict =
-    baseContext?.gateFeatures?.relative?.benchmarkConflict === true;
+  const benchmarkConflictValue =
+    baseContext?.gateFeatures?.relative?.benchmarkConflict;
+  const benchmarkConflictAvailable =
+    typeof benchmarkConflictValue === 'boolean';
+  const benchmarkConflict = benchmarkConflictValue === true;
   const derivativesPressure =
     typeof derivativesSummary?.pressure === 'string'
       ? derivativesSummary.pressure
@@ -343,12 +366,20 @@ export const buildLiquidityTailsGuardrailContext = ({
     referenceTrx1hOiChangePct4h != null &&
     referenceTrx1hOiChangePct4h <=
       MAX_DERIVATIVES_RISK_OFF_TRX_OI_CHANGE_PCT_4H;
-  if (derivativesDirectionAligned === true && !flushSupport) {
-    hardBlockReasons.push('derivatives_reversal_aligned');
-  }
-  if (derivativesDirectionAligned === false && !flushSupport) {
-    hardBlockReasons.push('derivatives_reversal_conflict');
-  }
+  const shortBreadthStressRecoveryCandidate =
+    direction === 'SHORT' &&
+    benchmarkConflictAvailable &&
+    !benchmarkConflict &&
+    top100MarketBreadthStale === false &&
+    top100MarketBreadthDispersion != null &&
+    top100MarketBreadthDispersion >= MIN_SHORT_BREADTH_STRESS_DISPERSION &&
+    top100MarketBreadthPctAboveMa20 != null &&
+    top100MarketBreadthPctAboveMa20 <=
+      MAX_SHORT_BREADTH_STRESS_PCT_ABOVE_MA20 &&
+    (signalContext.reactionCloseDistancePct ?? 0) >=
+      MIN_SHORT_BREADTH_STRESS_REACTION_CLOSE_DISTANCE_PCT &&
+    bodyStrength != null &&
+    bodyStrength >= MIN_APPROVAL_BODY_STRENGTH;
   if (volumeRel20 != null && volumeRel20 < 0.75) {
     softBlockReasons.push('thin_participation');
   }
@@ -411,6 +442,24 @@ export const buildLiquidityTailsGuardrailContext = ({
     cmcFearGreedValue <= MAX_APPROVAL_CMC_FEAR_GREED_VALUE &&
     liquidityRisk !== 'high' &&
     q4AtrRankEligible;
+  if (
+    derivativesDirectionAligned === true &&
+    !flushSupport &&
+    !derivativesRiskOffLongRecoveryCandidate &&
+    !shortBreadthStressRecoveryCandidate &&
+    !targetLongRetestRecoveryCandidate
+  ) {
+    hardBlockReasons.push('derivatives_reversal_aligned');
+  }
+  if (
+    derivativesDirectionAligned === false &&
+    !flushSupport &&
+    !derivativesRiskOffLongRecoveryCandidate &&
+    !shortBreadthStressRecoveryCandidate &&
+    !targetLongRetestRecoveryCandidate
+  ) {
+    hardBlockReasons.push('derivatives_reversal_conflict');
+  }
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
@@ -449,6 +498,13 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 3;
     softBlockReasons.push('cmc_fear_greed_above_approval_max');
   }
+  if (
+    deterministicQuality === 3 &&
+    hardBlockReasons.length === 0 &&
+    derivativesRiskOffLongRecoveryCandidate
+  ) {
+    deterministicQuality = 4;
+  }
   if (deterministicQuality >= 4) {
     const approvalContextReasons: string[] = [];
     if (priceDistanceToMaSlowAtr == null) {
@@ -468,6 +524,21 @@ export const buildLiquidityTailsGuardrailContext = ({
       deterministicQuality = 3;
       softBlockReasons.push(...approvalContextReasons);
     }
+  }
+  if (
+    deterministicQuality === 3 &&
+    hardBlockReasons.length === 0 &&
+    shortBreadthStressRecoveryCandidate
+  ) {
+    deterministicQuality = 4;
+  }
+  if (
+    targetLongRetestRecoveryCandidate &&
+    derivativesDirectionAligned != null &&
+    !flushSupport &&
+    hardBlockReasons.length === 0
+  ) {
+    deterministicQuality = 4;
   }
   return {
     ...signalContext,
@@ -490,14 +561,19 @@ export const buildLiquidityTailsGuardrailContext = ({
     liquidityRisk,
     cmcFearGreedValue,
     altBasketReturn24h,
+    top100MarketBreadthDispersion,
+    top100MarketBreadthPctAboveMa20,
+    top100MarketBreadthStale,
     referenceTrx1hOiChangePct4h,
     referenceTrx1hStale,
     higherTimeframeConflict,
     benchmarkConflict,
+    benchmarkConflictAvailable,
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
     derivativesRiskOffLongRecoveryCandidate,
+    shortBreadthStressRecoveryCandidate,
     targetLongRetestRecoveryCandidate,
     liquidityTailsGateFeatures,
     hardBlockReasons,
