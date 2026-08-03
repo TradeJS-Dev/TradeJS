@@ -1434,10 +1434,14 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
 export const RuntimeStrategyCard = ({
   strategy,
   provider,
+  startTimestamp,
+  endTimestamp,
   onUpdated,
 }: {
   strategy: RuntimeStrategyView;
   provider: string;
+  startTimestamp: number;
+  endTimestamp: number;
   onUpdated: () => Promise<void> | void;
 }) => {
   const [configOpen, setConfigOpen] = useState(false);
@@ -2179,6 +2183,8 @@ export const RuntimeStrategyCard = ({
         orderLog={strategy.orderLog}
         stat={strategy.stat}
         aiGateChanges={strategy.aiGateChanges}
+        startTimestamp={startTimestamp}
+        endTimestamp={endTimestamp}
       />
 
       <SimpleGrid columns={{ base: 4, md: 8 }} p={4}>

@@ -89,6 +89,17 @@ const RuntimeStrategiesContent = () => {
   const isSnapshotMode = mode === 'replay' || mode === 'ai';
   const snapshotModeLabel = mode === 'replay' ? 'Replay' : 'AI';
   const snapshotModeLabelLower = snapshotModeLabel.toLowerCase();
+  const runtimeChartWindow = useMemo(() => {
+    if (!runtimeData) {
+      return null;
+    }
+
+    return {
+      startTimestamp:
+        runtimeData.generatedAt - runtimeData.hours * 60 * 60 * 1000,
+      endTimestamp: runtimeData.generatedAt,
+    };
+  }, [runtimeData]);
 
   useEffect(() => {
     setMode(routeMode);
@@ -557,11 +568,14 @@ const RuntimeStrategiesContent = () => {
 
               {!loading &&
                 mode === 'runtime' &&
+                runtimeChartWindow &&
                 filteredRuntimeStrategies.map((strategy) => (
                   <RuntimeStrategyCard
                     key={strategy.runtimeKey}
                     strategy={strategy}
                     provider={runtimeData?.provider || 'bybit'}
+                    startTimestamp={runtimeChartWindow.startTimestamp}
+                    endTimestamp={runtimeChartWindow.endTimestamp}
                     onUpdated={load}
                   />
                 ))}

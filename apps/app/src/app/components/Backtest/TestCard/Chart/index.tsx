@@ -7,7 +7,6 @@ import {
   LineChart,
   CartesianGrid,
   Line,
-  XAxis,
   YAxis,
   Tooltip,
   ReferenceLine,
@@ -18,6 +17,8 @@ import { useTestContext } from '../context';
 import { TestCompareList } from '@tradejs/types';
 import { mapOrderLogToChartData, getChartData } from './utils';
 import { getFormatted, getTimeline } from '@tradejs/core/backtest';
+import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
+import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 
 interface TestCardChartProps {
   height?: string | number;
@@ -58,6 +59,9 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
 
   const { formatted: maxAmount } = getFormatted(stat, 'maxAmount');
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
+  const startTimestamp = test.options.start ?? testResult.orderLog[0]?.[0] ?? 0;
+  const endTimestamp =
+    test.options.end ?? testResult.orderLog.at(-1)?.[0] ?? startTimestamp;
 
   return (
     <Box w="100%" minW="600px" h={height} pr={2}>
@@ -92,12 +96,19 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
                 position: 'bottom',
               }}
             />
-            <XAxis dataKey="timestamp" />
+            <TimeSeriesXAxis
+              startTimestamp={startTimestamp}
+              endTimestamp={endTimestamp}
+            />
             <YAxis tickCount={10} domain={[stat.minAmount - 10, 'auto']} />
             <Tooltip
               animationDuration={100}
               cursor={false}
-              content={<Chart.Tooltip />}
+              content={
+                <Chart.Tooltip
+                  labelFormatter={formatTimeSeriesTooltipTimestamp}
+                />
+              }
             />
 
             {chart.series.map((item) => (
@@ -108,6 +119,7 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
                 stroke={chart.color(item.color)}
                 strokeWidth={2}
                 dot={false}
+                activeDot={{ r: 5, strokeWidth: 2 }}
               />
             ))}
           </LineChart>

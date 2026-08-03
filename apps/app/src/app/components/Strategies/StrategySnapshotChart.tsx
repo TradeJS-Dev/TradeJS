@@ -9,11 +9,11 @@ import {
   LineChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
   YAxis,
 } from 'recharts';
-import { format } from 'date-fns';
 import type { SimpleOrderLogData } from '@tradejs/types';
+import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
+import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 
 export const StrategySnapshotChart = ({
   orderLog,
@@ -27,7 +27,7 @@ export const StrategySnapshotChart = ({
   const chartData = useMemo(
     () => ({
       data: orderLog.map(([timestamp, amount]) => ({
-        timestamp: format(timestamp, 'dd.MM'),
+        timestamp,
         equity: amount,
       })),
       series: [
@@ -59,6 +59,8 @@ export const StrategySnapshotChart = ({
 
   const values = orderLog.map(([, amount]) => amount);
   const minValue = Math.min(...values);
+  const startTimestamp = orderLog[0][0];
+  const endTimestamp = orderLog[orderLog.length - 1][0];
 
   return (
     <Box w="100%" minW="600px" h={height} pr={2}>
@@ -66,7 +68,10 @@ export const StrategySnapshotChart = ({
         <Chart.Root maxH="md" chart={chart}>
           <LineChart data={chart.data}>
             <CartesianGrid stroke={chart.color('border')} vertical={false} />
-            <XAxis dataKey="timestamp" />
+            <TimeSeriesXAxis
+              startTimestamp={startTimestamp}
+              endTimestamp={endTimestamp}
+            />
             <YAxis
               tickCount={10}
               domain={[Math.min(minValue - 10, 0), 'auto']}
@@ -74,7 +79,11 @@ export const StrategySnapshotChart = ({
             <Tooltip
               animationDuration={100}
               cursor={false}
-              content={<Chart.Tooltip />}
+              content={
+                <Chart.Tooltip
+                  labelFormatter={formatTimeSeriesTooltipTimestamp}
+                />
+              }
             />
             {chart.series.map((item) => (
               <Line
@@ -84,6 +93,7 @@ export const StrategySnapshotChart = ({
                 stroke={chart.color(item.color)}
                 strokeWidth={2}
                 dot={false}
+                activeDot={{ r: 5, strokeWidth: 2 }}
               />
             ))}
           </LineChart>

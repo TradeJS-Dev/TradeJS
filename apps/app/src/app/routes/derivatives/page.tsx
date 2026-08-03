@@ -33,13 +33,14 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
   YAxis,
 } from 'recharts';
 import { format } from 'date-fns';
 import { FiBarChart2 } from 'react-icons/fi';
 import { API } from '@tradejs/core/api';
 import { buildKlinePath } from '#app/lib/marketRoutes';
+import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
+import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
 type SummaryItem = {
@@ -89,6 +90,11 @@ type PriceRow = {
 
 type PriceResponse = {
   data?: PriceRow[];
+};
+
+type ChartWindow = {
+  startTimestamp: number;
+  endTimestamp: number;
 };
 
 type BiasTone = 'teal' | 'green' | 'red' | 'orange' | 'gray';
@@ -222,12 +228,6 @@ const getChartDomain = (
       : Math.max(Math.abs(max || min || 1) * paddingPct, 1e-6);
 
   return [min - basePadding, max + basePadding];
-};
-
-const formatTimeLabel = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return format(parsed, 'dd.MM HH:mm');
 };
 
 const formatFullTime = (value: string | null | undefined) => {
@@ -572,7 +572,7 @@ const ChartCard = ({
 
 const mapRowsToChartRows = (rows: DetailRow[]) =>
   rows.map((row) => ({
-    timestamp: formatTimeLabel(row.ts),
+    timestamp: new Date(row.ts).getTime(),
     openInterest: toFiniteNumber(row.open_interest) ?? 0,
     funding: (toFiniteNumber(row.funding_rate) ?? 0) * 10_000,
     longLiquidations: -(toFiniteNumber(row.liq_long) ?? 0),
@@ -582,15 +582,17 @@ const mapRowsToChartRows = (rows: DetailRow[]) =>
 const mapPriceRowsToChartRows = (rows: PriceRow[]) =>
   rows.map((row) => ({
     price: toFiniteNumber(row.close) ?? 0,
-    timestamp: formatTimeLabel(new Date(row.timestamp).toISOString()),
+    timestamp: row.timestamp,
   }));
 
 const SymbolPriceCard = ({
   symbol,
   rows,
+  window,
 }: {
   symbol: string;
   rows: PriceRow[];
+  window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
@@ -644,9 +646,21 @@ const SymbolPriceCard = ({
                 stroke={priceChart.color('border')}
                 vertical={false}
               />
-              <XAxis dataKey="timestamp" minTickGap={36} />
+              <TimeSeriesXAxis
+                startTimestamp={window.startTimestamp}
+                endTimestamp={window.endTimestamp}
+                tickCount={5}
+                minTickGap={36}
+              />
               <YAxis domain={priceDomain} tickFormatter={formatPrice} />
-              <Tooltip cursor={false} content={<Chart.Tooltip />} />
+              <Tooltip
+                cursor={false}
+                content={
+                  <Chart.Tooltip
+                    labelFormatter={formatTimeSeriesTooltipTimestamp}
+                  />
+                }
+              />
               <Area
                 type="monotone"
                 dataKey={priceChart.key('price') as string}
@@ -667,9 +681,11 @@ const SymbolPriceCard = ({
 const SymbolOpenInterestCard = ({
   symbol,
   rows,
+  window,
 }: {
   symbol: string;
   rows: DetailRow[];
+  window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
@@ -722,9 +738,21 @@ const SymbolOpenInterestCard = ({
                 stroke={oiChart.color('border')}
                 vertical={false}
               />
-              <XAxis dataKey="timestamp" minTickGap={36} />
+              <TimeSeriesXAxis
+                startTimestamp={window.startTimestamp}
+                endTimestamp={window.endTimestamp}
+                tickCount={5}
+                minTickGap={36}
+              />
               <YAxis domain={oiDomain} tickFormatter={formatAxisCompact} />
-              <Tooltip cursor={false} content={<Chart.Tooltip />} />
+              <Tooltip
+                cursor={false}
+                content={
+                  <Chart.Tooltip
+                    labelFormatter={formatTimeSeriesTooltipTimestamp}
+                  />
+                }
+              />
               <Area
                 type="monotone"
                 dataKey={oiChart.key('openInterest') as string}
@@ -745,9 +773,11 @@ const SymbolOpenInterestCard = ({
 const SymbolFundingCard = ({
   symbol,
   rows,
+  window,
 }: {
   symbol: string;
   rows: DetailRow[];
+  window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
@@ -781,9 +811,21 @@ const SymbolFundingCard = ({
                 stroke={fundingChart.color('gray.600')}
                 strokeDasharray="4 4"
               />
-              <XAxis dataKey="timestamp" minTickGap={36} />
+              <TimeSeriesXAxis
+                startTimestamp={window.startTimestamp}
+                endTimestamp={window.endTimestamp}
+                tickCount={5}
+                minTickGap={36}
+              />
               <YAxis tickFormatter={(value) => `${value} bps`} />
-              <Tooltip cursor={false} content={<Chart.Tooltip />} />
+              <Tooltip
+                cursor={false}
+                content={
+                  <Chart.Tooltip
+                    labelFormatter={formatTimeSeriesTooltipTimestamp}
+                  />
+                }
+              />
               <Bar
                 dataKey={fundingChart.key('funding') as string}
                 isAnimationActive={false}
@@ -810,9 +852,11 @@ const SymbolFundingCard = ({
 const SymbolLiquidationCard = ({
   symbol,
   rows,
+  window,
 }: {
   symbol: string;
   rows: DetailRow[];
+  window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
@@ -849,9 +893,21 @@ const SymbolLiquidationCard = ({
                 stroke={liquidationChart.color('gray.600')}
                 strokeDasharray="4 4"
               />
-              <XAxis dataKey="timestamp" minTickGap={28} />
+              <TimeSeriesXAxis
+                startTimestamp={window.startTimestamp}
+                endTimestamp={window.endTimestamp}
+                tickCount={5}
+                minTickGap={28}
+              />
               <YAxis tickFormatter={formatAxisCompact} />
-              <Tooltip cursor={false} content={<Chart.Tooltip />} />
+              <Tooltip
+                cursor={false}
+                content={
+                  <Chart.Tooltip
+                    labelFormatter={formatTimeSeriesTooltipTimestamp}
+                  />
+                }
+              />
               <Legend />
               <Bar
                 dataKey={liquidationChart.key('longLiquidations') as string}
@@ -883,6 +939,13 @@ const DerivativesPage = () => {
   const [pricesBySymbol, setPricesBySymbol] = useState<
     Record<string, PriceRow[]>
   >({});
+  const [chartWindow, setChartWindow] = useState<ChartWindow>(() => {
+    const endTimestamp = Date.now();
+    return {
+      startTimestamp: endTimestamp - 24 * 60 * 60 * 1000,
+      endTimestamp,
+    };
+  });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
@@ -959,6 +1022,7 @@ const DerivativesPage = () => {
           responses.map(([symbol, payload]) => [symbol, payload.priceRows]),
         ),
       );
+      setChartWindow({ startTimestamp: from, endTimestamp: now });
     } catch (err) {
       const message =
         (err as Error)?.message ||
@@ -1101,6 +1165,7 @@ const DerivativesPage = () => {
                         key={`${symbol}:price`}
                         symbol={symbol}
                         rows={pricesBySymbol[symbol] ?? []}
+                        window={chartWindow}
                       />
                     ))}
                   </SimpleGrid>
@@ -1111,6 +1176,7 @@ const DerivativesPage = () => {
                         key={`${symbol}:oi`}
                         symbol={symbol}
                         rows={detailsBySymbol[symbol] ?? []}
+                        window={chartWindow}
                       />
                     ))}
                   </SimpleGrid>
@@ -1121,6 +1187,7 @@ const DerivativesPage = () => {
                         key={`${symbol}:funding`}
                         symbol={symbol}
                         rows={detailsBySymbol[symbol] ?? []}
+                        window={chartWindow}
                       />
                     ))}
                   </SimpleGrid>
@@ -1131,6 +1198,7 @@ const DerivativesPage = () => {
                         key={`${symbol}:liq`}
                         symbol={symbol}
                         rows={detailsBySymbol[symbol] ?? []}
+                        window={chartWindow}
                       />
                     ))}
                   </SimpleGrid>

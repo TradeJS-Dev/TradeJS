@@ -10,18 +10,20 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
   YAxis,
 } from 'recharts';
-import { format } from 'date-fns';
 import { getFormatted } from '@tradejs/core/backtest';
 import type { SimpleOrderLogData, TestStat } from '@tradejs/types';
 import type { RuntimeStrategyAiGateChange } from '#app/lib/runtimeStrategies';
+import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
+import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 
 interface RuntimeStrategyChartProps {
   orderLog: SimpleOrderLogData;
   stat: TestStat;
   aiGateChanges: RuntimeStrategyAiGateChange[];
+  startTimestamp: number;
+  endTimestamp: number;
   height?: string | number;
 }
 
@@ -29,6 +31,8 @@ export const RuntimeStrategyChart = ({
   orderLog,
   stat,
   aiGateChanges,
+  startTimestamp,
+  endTimestamp,
   height = '350px',
 }: RuntimeStrategyChartProps) => {
   const chartData = useMemo(
@@ -116,12 +120,9 @@ export const RuntimeStrategyChart = ({
                 }}
               />
             ))}
-            <XAxis
-              dataKey="timestamp"
-              type="number"
-              scale="time"
-              domain={['dataMin', 'dataMax']}
-              tickFormatter={(timestamp) => format(timestamp, 'dd.MM')}
+            <TimeSeriesXAxis
+              startTimestamp={startTimestamp}
+              endTimestamp={endTimestamp}
             />
             <YAxis tickCount={10} domain={[stat.minAmount - 10, 'auto']} />
             <Tooltip
@@ -129,9 +130,7 @@ export const RuntimeStrategyChart = ({
               cursor={false}
               content={
                 <Chart.Tooltip
-                  labelFormatter={(timestamp) =>
-                    format(Number(timestamp), 'dd.MM.yyyy HH:mm')
-                  }
+                  labelFormatter={formatTimeSeriesTooltipTimestamp}
                 />
               }
             />

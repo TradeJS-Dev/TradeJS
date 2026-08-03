@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import {
   SimpleOrderLogData,
   TestResult,
@@ -11,7 +10,7 @@ const getLineName = (testResult: TestResult) =>
 export const mapOrderLogToChartData = (testResult: TestResult) => {
   const data = testResult.orderLog.map(([timestamp, amount]) => ({
     [getLineName(testResult)]: amount,
-    timestamp: format(timestamp, 'dd.MM'),
+    timestamp,
   }));
 
   const series = [
@@ -52,8 +51,6 @@ export const getChartData = (testList: TestCompareList, timeline: number[]) => {
   const values: Record<string, number> = {};
 
   const data = timeline.map((timestamp, ind) => {
-    const formattedTimestamp = format(timestamp, 'dd.MM');
-
     testList.forEach(({ testResult }) => {
       values[getLineName(testResult)] = getAmountFromOrderLog(
         ind,
@@ -65,7 +62,7 @@ export const getChartData = (testList: TestCompareList, timeline: number[]) => {
 
     return {
       ...values,
-      timestamp: formattedTimestamp,
+      timestamp,
     };
   });
 
