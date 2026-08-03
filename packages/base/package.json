@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/base",
-  "version": "2.0.12",
+  "version": "2.0.13",
   "description": "Default preset for the TradeJS TypeScript framework, wiring the built-in strategies, indicators, and connectors.",
   "keywords": [
     "tradejs",
