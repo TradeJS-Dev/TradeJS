@@ -90,7 +90,33 @@ describe('prepareMarketContextForRun', () => {
     delete process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED;
   });
 
-  it('backfills Hyperliquid whales by default for AI/ML history', async () => {
+  it('does not backfill Hyperliquid whales by default', async () => {
+    expect(
+      shouldPrepareHyperliquidWhaleContextForRun({
+        mode: 'backtest',
+        cacheOnly: false,
+        aiEnabled: true,
+        mlEnabled: false,
+      }),
+    ).toBe(false);
+    await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      preloadStartMs: 500,
+      cacheOnly: false,
+      aiEnabled: true,
+      log: jest.fn(),
+    });
+    expect(mockBackfillHyperliquidWhaleContext).not.toHaveBeenCalled();
+  });
+
+  it('allows Hyperliquid whale backfill to be enabled explicitly', async () => {
+    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'true';
     expect(
       shouldPrepareHyperliquidWhaleContextForRun({
         mode: 'backtest',
@@ -134,6 +160,7 @@ describe('prepareMarketContextForRun', () => {
   });
 
   it('backfills Hyperliquid whales for the standalone consensus strategy', async () => {
+    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'true';
     expect(
       shouldPrepareHyperliquidWhaleContextForRun({
         mode: 'backtest',

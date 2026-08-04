@@ -143,7 +143,7 @@ export const shouldPrepareHyperliquidWhaleContextForRun = (
   )
     .trim()
     .toLowerCase();
-  return configured === '' || ['1', 'true', 'yes', 'on'].includes(configured);
+  return ['1', 'true', 'yes', 'on'].includes(configured);
 };
 
 const resolveCoinMarketCapBackfillForMode = (mode: MarketContextRunMode) =>
