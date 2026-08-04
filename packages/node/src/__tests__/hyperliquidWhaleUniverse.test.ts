@@ -16,9 +16,20 @@ describe('hyperliquidWhaleUniverse', () => {
 
   it('loads exactly 100 valid and unique whale addresses', () => {
     const snapshot = getHyperliquidWhaleRegistrySnapshot();
+    expect(snapshot.source).toBe('hyperliquid_structural_fills_snapshot');
+    expect(snapshot.selection.forbiddenSelectionMetrics).toEqual([
+      'pnl',
+      'roi',
+      'winRate',
+      'closedPnl',
+    ]);
+    expect(snapshot.selection.maximumRawFillsPerDay).toBe(20);
     expect(snapshot.addresses).toHaveLength(100);
     expect(new Set(snapshot.addresses).size).toBe(100);
     expect(snapshot.addresses.every(isTrackedHyperliquidWhale)).toBe(true);
+    expect(snapshot.addresses).not.toContain(
+      '0x856c35038594767646266bc7fd68dc26480e910d',
+    );
   });
 
   it('maps connector symbols and unit-prefixed aliases deterministically', () => {

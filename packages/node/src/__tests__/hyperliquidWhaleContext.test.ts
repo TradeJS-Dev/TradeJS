@@ -56,6 +56,7 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.HYPERLIQUID_WHALE_CONTEXT_ENABLED;
+    delete process.env.HYPERLIQUID_WHALE_MIN_COVERAGE_PCT;
     resetHyperliquidWhaleContextRuntimeState();
     const universe = getHyperliquidPerpUniverseSnapshot();
     const whales = getHyperliquidWhaleRegistrySnapshot();
@@ -67,13 +68,28 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       trades: 4,
       whaleSides: 5,
       uniqueWhales: 3,
+      coveredWhales: 90,
+      expectedWhales: 100,
+      coveragePct: 0.9,
       buyNotionalUsd: 800_000,
       sellNotionalUsd: 200_000,
       netNotionalUsd: 600_000,
       buySharePct: 0.8,
+      positionAwareWhaleSides: 5,
+      positionAwarePct: 1,
+      longEntryWhales: 3,
+      shortEntryWhales: 1,
+      longExitWhales: 1,
+      shortExitWhales: 0,
+      longEntryNotionalUsd: 700_000,
+      shortEntryNotionalUsd: 100_000,
+      longExitNotionalUsd: 100_000,
+      shortExitNotionalUsd: 0,
+      entryNetNotionalUsd: 600_000,
+      entryLongSharePct: 0.875,
       universeFingerprint: universe.fingerprint,
       whaleRegistryFingerprint: whales.fingerprint,
-      source: 'hyperliquid_trades',
+      source: 'hyperliquid_user_fills',
       ageMs: 0,
       stale: false,
     });
@@ -98,10 +114,12 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
     expect(
       signal.additionalIndicators.baseContext.participation.hyperliquidWhales,
     ).toMatchObject({
-      source: 'hyperliquid_trades',
+      source: 'hyperliquid_user_fills',
       windowEndTs: decisionTimeMs,
       netNotionalUsd: 600_000,
       buySharePct: 0.8,
+      entryNetNotionalUsd: 600_000,
+      entryLongSharePct: 0.875,
     });
     expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({
       confirmations: { items: ['hyperliquid_whales_aligned'] },
@@ -122,6 +140,29 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       env: 'BACKTEST',
     });
     expect(mockGetHyperliquidWhaleFlowAggregate).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches partial coverage for diagnostics but marks it unusable by the gate', async () => {
+    mockGetHyperliquidWhaleFlowAggregate.mockResolvedValueOnce({
+      ...(await mockGetHyperliquidWhaleFlowAggregate()),
+      coveragePct: 0.79,
+      coveredWhales: 79,
+    });
+    const signal = makeSignal();
+    await expect(
+      enrichSignalWithHyperliquidWhaleContext({ signal, env: 'BACKTEST' }),
+    ).resolves.toBe(true);
+
+    expect(
+      signal.additionalIndicators.baseContext.participation.hyperliquidWhales,
+    ).toMatchObject({ coveragePct: 0.79, coverageSufficient: false });
+    expect(
+      signal.additionalIndicators.baseContext.gateFeatures?.participation,
+    ).toMatchObject({
+      hyperliquidWhaleCoverageSufficient: false,
+      hyperliquidWhaleFlowAligned: null,
+      hyperliquidWhaleNotionalUsd: null,
+    });
   });
 
   it('does not attach context outside the fixed top-30 universe', async () => {

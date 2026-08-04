@@ -1,10 +1,10 @@
 import {
-  getHyperliquidWhaleBackfillFailure,
+  getHyperliquidWhaleWalletCoverage,
   hasHyperliquidWhaleBackfillCoverage,
+  rebuildHyperliquidWhaleCoverageRows,
   rebuildHyperliquidWhaleFlowRows,
-  upsertHyperliquidWhaleBackfillCoverage,
-  upsertHyperliquidWhaleBackfillFailure,
   upsertHyperliquidWhaleTradeEvents,
+  upsertHyperliquidWhaleWalletCoverage,
 } from '@tradejs/infra/timescale';
 import {
   getHyperliquidPerpUniverseSnapshot,
@@ -16,20 +16,17 @@ import {
   normalizeHyperliquidUserFill,
   type HyperliquidUserFill,
 } from './hyperliquidWhaleData';
+import {
+  HyperliquidInfoRateLimiter,
+  hyperliquidInfoResponseWeight,
+} from './hyperliquidRateLimiter';
 
 const DEFAULT_BASE_URL = 'https://api.hyperliquid.xyz';
-const DEFAULT_REQUEST_DELAY_MS = 1_200;
+const DEFAULT_CONCURRENCY = 2;
+const DEFAULT_RATE_LIMIT_WEIGHT = 1_000;
 const MAX_PAGE_SIZE = 2_000;
 const MAX_PAGES_PER_WHALE = 5;
-
-export class HyperliquidWhaleHistoryLimitError extends Error {
-  constructor(readonly address: string) {
-    super(
-      `Hyperliquid fills exceeded ${MAX_PAGES_PER_WHALE * MAX_PAGE_SIZE} rows for ${address}; use an S3 node_fills export for this range`,
-    );
-    this.name = 'HyperliquidWhaleHistoryLimitError';
-  }
-}
+const REQUEST_WEIGHT = 20;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
@@ -39,14 +36,17 @@ const positiveInt = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const getRequestDelayMs = (responseItems: number) => {
-  const configured = positiveInt(
-    process.env.HYPERLIQUID_WHALE_REQUEST_DELAY_MS,
-    DEFAULT_REQUEST_DELAY_MS,
-  );
-  const estimatedWeight = 20 + Math.ceil(responseItems / 20);
-  const rateSafeDelay = Math.ceil(estimatedWeight / 20) * 1_000;
-  return Math.max(configured, rateSafeDelay);
+const minuteCeil = (value: number) =>
+  Math.ceil(value / HYPERLIQUID_WHALE_BUCKET_MS) * HYPERLIQUID_WHALE_BUCKET_MS;
+
+const nextMinute = (value: number) =>
+  (Math.floor(value / HYPERLIQUID_WHALE_BUCKET_MS) + 1) *
+  HYPERLIQUID_WHALE_BUCKET_MS;
+
+export type HyperliquidUserFillsFetchResult = {
+  fills: HyperliquidUserFill[];
+  truncated: boolean;
+  coveredFromMs: number;
 };
 
 export const fetchHyperliquidUserFillsByTime = async (params: {
@@ -54,18 +54,30 @@ export const fetchHyperliquidUserFillsByTime = async (params: {
   startTime: number;
   endTime: number;
   fetchImpl?: typeof fetch;
+  rateLimiter?: HyperliquidInfoRateLimiter;
   wait?: (ms: number) => Promise<void>;
-}): Promise<HyperliquidUserFill[]> => {
+  maxPages?: number;
+}): Promise<HyperliquidUserFillsFetchResult> => {
   const fetchImpl = params.fetchImpl ?? fetch;
-  const wait = params.wait ?? sleep;
-  const rows: HyperliquidUserFill[] = [];
+  const limiter =
+    params.rateLimiter ??
+    new HyperliquidInfoRateLimiter(
+      positiveInt(
+        process.env.HYPERLIQUID_WHALE_RATE_LIMIT_WEIGHT,
+        DEFAULT_RATE_LIMIT_WEIGHT,
+      ),
+      Date.now,
+      params.wait ?? sleep,
+    );
+  const fills: HyperliquidUserFill[] = [];
   let cursor = params.startTime;
 
   for (
     let page = 0;
-    page < MAX_PAGES_PER_WHALE && cursor <= params.endTime;
+    page < (params.maxPages ?? MAX_PAGES_PER_WHALE) && cursor <= params.endTime;
     page += 1
   ) {
+    await limiter.reserve(REQUEST_WEIGHT);
     const response = await fetchImpl(
       `${process.env.HYPERLIQUID_API_BASE_URL?.trim() || DEFAULT_BASE_URL}/info`,
       {
@@ -76,7 +88,7 @@ export const fetchHyperliquidUserFillsByTime = async (params: {
           user: params.address,
           startTime: cursor,
           endTime: params.endTime,
-          aggregateByTime: false,
+          aggregateByTime: true,
         }),
       },
     );
@@ -87,9 +99,12 @@ export const fetchHyperliquidUserFillsByTime = async (params: {
     }
     const raw = await response.json();
     const pageRows = Array.isArray(raw) ? (raw as HyperliquidUserFill[]) : [];
-    rows.push(...pageRows);
-    await wait(getRequestDelayMs(pageRows.length));
-    if (pageRows.length < MAX_PAGE_SIZE) return rows;
+    const responseWeight = hyperliquidInfoResponseWeight(pageRows.length);
+    if (responseWeight > 0) await limiter.reserve(responseWeight);
+    fills.push(...pageRows);
+    if (pageRows.length < MAX_PAGE_SIZE) {
+      return { fills, truncated: false, coveredFromMs: params.startTime };
+    }
 
     const lastTime = Math.max(
       ...pageRows.map((row) => Number(row.time)).filter(Number.isFinite),
@@ -102,10 +117,38 @@ export const fetchHyperliquidUserFillsByTime = async (params: {
     cursor = lastTime + 1;
   }
 
-  if (cursor <= params.endTime) {
-    throw new HyperliquidWhaleHistoryLimitError(params.address);
+  if (cursor > params.endTime) {
+    return { fills, truncated: false, coveredFromMs: params.startTime };
   }
-  return rows;
+  const firstAvailableTime = Math.min(
+    ...fills.map((fill) => Number(fill.time)).filter(Number.isFinite),
+  );
+  return {
+    fills,
+    truncated: true,
+    coveredFromMs: Math.min(params.endTime + 1, nextMinute(firstAvailableTime)),
+  };
+};
+
+const runConcurrent = async <T>(params: {
+  items: T[];
+  concurrency: number;
+  worker: (item: T, index: number) => Promise<void>;
+}) => {
+  let nextIndex = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(params.concurrency, params.items.length) },
+      async () => {
+        for (;;) {
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= params.items.length) return;
+          await params.worker(params.items[index], index);
+        }
+      },
+    ),
+  );
 };
 
 export type HyperliquidWhaleBackfillResult = {
@@ -114,9 +157,13 @@ export type HyperliquidWhaleBackfillResult = {
   fills: number;
   events: number;
   buckets: number;
+  coverageBuckets: number;
   complete: boolean;
-  failureCached: boolean;
-  skippedReason?: string;
+  walletsProcessed: number;
+  walletsCached: number;
+  completeWallets: number;
+  truncatedWallets: number;
+  failedWallets: number;
   fromMs: number;
   toMs: number;
 };
@@ -128,6 +175,7 @@ export const backfillHyperliquidWhaleContext = async (params: {
   strict?: boolean;
   fetchImpl?: typeof fetch;
   wait?: (ms: number) => Promise<void>;
+  concurrency?: number;
   log?: (message: string) => void;
 }): Promise<HyperliquidWhaleBackfillResult> => {
   const universe = getHyperliquidPerpUniverseSnapshot();
@@ -140,129 +188,159 @@ export const backfillHyperliquidWhaleContext = async (params: {
   const fromMs =
     Math.floor(params.startMs / HYPERLIQUID_WHALE_BUCKET_MS) *
     HYPERLIQUID_WHALE_BUCKET_MS;
-  const toMs =
-    Math.ceil(params.endMs / HYPERLIQUID_WHALE_BUCKET_MS) *
-    HYPERLIQUID_WHALE_BUCKET_MS;
+  const toMs = minuteCeil(params.endMs);
   const cached = await hasHyperliquidWhaleBackfillCoverage({
     fromMs,
     toMs,
     ...identity,
   });
-  if (cached || params.cacheOnly) {
-    return {
-      cached,
-      cacheOnly: params.cacheOnly,
-      fills: 0,
-      events: 0,
-      buckets: 0,
-      complete: cached,
-      failureCached: false,
-      fromMs,
-      toMs,
-    };
-  }
+  const emptyResult = (): HyperliquidWhaleBackfillResult => ({
+    cached,
+    cacheOnly: params.cacheOnly,
+    fills: 0,
+    events: 0,
+    buckets: 0,
+    coverageBuckets: 0,
+    complete: cached,
+    walletsProcessed: 0,
+    walletsCached: 0,
+    completeWallets: 0,
+    truncatedWallets: 0,
+    failedWallets: 0,
+    fromMs,
+    toMs,
+  });
+  if (cached || params.cacheOnly) return emptyResult();
 
-  if (params.strict === false) {
-    const previousFailure = await getHyperliquidWhaleBackfillFailure({
-      fromMs,
-      toMs,
-      ...identity,
-    });
-    if (previousFailure) {
-      params.log?.(
-        `Hyperliquid whale history skipped: REST-unavailable range cached (${previousFailure.reason})`,
-      );
-      return {
-        cached: false,
-        cacheOnly: false,
-        fills: 0,
-        events: 0,
-        buckets: 0,
-        complete: false,
-        failureCached: true,
-        skippedReason: previousFailure.reason,
-        fromMs,
-        toMs,
-      };
-    }
-  }
-
+  const limiter = new HyperliquidInfoRateLimiter(
+    positiveInt(
+      process.env.HYPERLIQUID_WHALE_RATE_LIMIT_WEIGHT,
+      DEFAULT_RATE_LIMIT_WEIGHT,
+    ),
+    Date.now,
+    params.wait ?? sleep,
+  );
+  const concurrency = Math.min(
+    4,
+    positiveInt(
+      params.concurrency ?? process.env.HYPERLIQUID_WHALE_CONCURRENCY,
+      DEFAULT_CONCURRENCY,
+    ),
+  );
   let fills = 0;
   let events = 0;
-  for (let index = 0; index < whales.addresses.length; index += 1) {
-    const address = whales.addresses[index];
-    let addressFills: HyperliquidUserFill[];
-    try {
-      addressFills = await fetchHyperliquidUserFillsByTime({
+  let walletsProcessed = 0;
+  let walletsCached = 0;
+  let completeWallets = 0;
+  let truncatedWallets = 0;
+  let failedWallets = 0;
+  const failures: Error[] = [];
+
+  await runConcurrent({
+    items: whales.addresses,
+    concurrency,
+    worker: async (address) => {
+      const previous = await getHyperliquidWhaleWalletCoverage({
         address,
-        startTime: fromMs,
-        endTime: toMs - 1,
-        fetchImpl: params.fetchImpl,
-        wait: params.wait,
-      });
-    } catch (error) {
-      if (!(error instanceof HyperliquidWhaleHistoryLimitError)) throw error;
-      await upsertHyperliquidWhaleBackfillFailure({
         fromMs,
         toMs,
-        reason: error.message,
         ...identity,
       });
-      if (params.strict !== false) throw error;
+      if (previous && previous.status !== 'failed') {
+        walletsCached += 1;
+        if (previous.status === 'complete') completeWallets += 1;
+        else truncatedWallets += 1;
+      } else {
+        try {
+          const result = await fetchHyperliquidUserFillsByTime({
+            address,
+            startTime: fromMs,
+            endTime: toMs - 1,
+            fetchImpl: params.fetchImpl,
+            rateLimiter: limiter,
+          });
+          const addressEvents = result.fills
+            .map((fill) =>
+              normalizeHyperliquidUserFill({
+                fill,
+                address,
+                trackedSymbols,
+                identity,
+              }),
+            )
+            .filter((row): row is HyperliquidWhaleTradeEventRow => row != null);
+          await upsertHyperliquidWhaleTradeEvents(addressEvents);
+          await upsertHyperliquidWhaleWalletCoverage({
+            address,
+            fromMs,
+            toMs,
+            coveredFromMs: result.coveredFromMs,
+            coveredToMs: toMs,
+            status: result.truncated ? 'truncated' : 'complete',
+            fillsCount: result.fills.length,
+            ...identity,
+          });
+          fills += result.fills.length;
+          events += addressEvents.length;
+          if (result.truncated) truncatedWallets += 1;
+          else completeWallets += 1;
+        } catch (error) {
+          const normalizedError =
+            error instanceof Error ? error : new Error(String(error));
+          failures.push(normalizedError);
+          failedWallets += 1;
+          await upsertHyperliquidWhaleWalletCoverage({
+            address,
+            fromMs,
+            toMs,
+            coveredFromMs: null,
+            coveredToMs: null,
+            status: 'failed',
+            fillsCount: 0,
+            error: normalizedError.message,
+            ...identity,
+          });
+        }
+      }
+      walletsProcessed += 1;
       params.log?.(
-        `Hyperliquid whale history unavailable via REST; continuing without incomplete context: ${error.message}`,
+        `Hyperliquid whales ${walletsProcessed}/${whales.addresses.length}: complete=${completeWallets}, truncated=${truncatedWallets}, failed=${failedWallets}, fills=${fills}, events=${events}`,
       );
-      return {
-        cached: false,
-        cacheOnly: false,
-        fills,
-        events,
-        buckets: 0,
-        complete: false,
-        failureCached: false,
-        skippedReason: error.message,
-        fromMs,
-        toMs,
-      };
-    }
-    const addressEvents = addressFills
-      .map((fill) =>
-        normalizeHyperliquidUserFill({
-          fill,
-          address,
-          trackedSymbols,
-          identity,
-        }),
-      )
-      .filter((row): row is HyperliquidWhaleTradeEventRow => row != null);
-    await upsertHyperliquidWhaleTradeEvents(addressEvents);
-    fills += addressFills.length;
-    events += addressEvents.length;
-    params.log?.(
-      `Hyperliquid whales ${index + 1}/${whales.addresses.length}: fills=${fills}, events=${events}`,
-    );
-  }
+    },
+  });
 
   const buckets = await rebuildHyperliquidWhaleFlowRows({
     fromMs,
     toMs,
     ...identity,
   });
-  await upsertHyperliquidWhaleBackfillCoverage({
+  const coverageBuckets = await rebuildHyperliquidWhaleCoverageRows({
     fromMs,
     toMs,
-    rowsCount: buckets,
+    expectedWhales: whales.addresses.length,
     ...identity,
   });
-  return {
+  const result: HyperliquidWhaleBackfillResult = {
     cached: false,
     cacheOnly: false,
     fills,
     events,
     buckets,
-    complete: true,
-    failureCached: false,
+    coverageBuckets,
+    complete: truncatedWallets === 0 && failedWallets === 0,
+    walletsProcessed,
+    walletsCached,
+    completeWallets,
+    truncatedWallets,
+    failedWallets,
     fromMs,
     toMs,
   };
+  if (params.strict !== false && failures.length) {
+    throw new AggregateError(
+      failures,
+      `Hyperliquid whale backfill failed for ${failures.length}/${whales.addresses.length} wallets`,
+    );
+  }
+  return result;
 };

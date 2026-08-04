@@ -134,6 +134,70 @@ describe('createStrategyAPI', () => {
     expect(indicatorsState.snapshot).toHaveBeenCalledTimes(2);
   });
 
+  it('loads and caches the decision base context once per closed candle', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const baseContext = {
+      candle,
+      prevCandle: null,
+      raw: {},
+      regime: {},
+      structure: {},
+      participation: {},
+      relative: {},
+      mtf: {},
+    };
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({ baseContext })),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+    const loadDecisionBaseContext = jest.fn(async ({ baseContext: value }) => ({
+      ...value,
+      participation: { external: true },
+    }));
+    const strategyApi = createStrategyAPI({
+      strategy: 'HyperliquidConsensus' as any,
+      symbol: 'BTCUSDT',
+      interval: '5' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+      loadDecisionBaseContext,
+    });
+
+    const first = await strategyApi.getDecisionBaseContext();
+    const second = await strategyApi.getDecisionBaseContext();
+
+    expect(first).toMatchObject({ participation: { external: true } });
+    expect(second).toBe(first);
+    expect(loadDecisionBaseContext).toHaveBeenCalledTimes(1);
+    expect(loadDecisionBaseContext).toHaveBeenCalledWith({
+      baseContext,
+      candle,
+      symbol: 'BTCUSDT',
+      interval: '5',
+    });
+
+    const nextCandle = makeCandle(1_700_000_300_000, 101);
+    data.push(nextCandle);
+    indicatorsState.snapshot.mockReturnValue({
+      baseContext: { ...baseContext, candle: nextCandle, prevCandle: candle },
+    });
+
+    await strategyApi.getDecisionBaseContext();
+    expect(loadDecisionBaseContext).toHaveBeenCalledTimes(2);
+  });
+
   it('getDecisionPriceContext rejects when no current closed candle exists', async () => {
     const data: any[] = [];
     const connector = {

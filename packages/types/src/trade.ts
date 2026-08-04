@@ -344,10 +344,27 @@ export type HyperliquidWhaleTradeEventRow = {
   sellerAddress?: string | null;
   buyerTracked: boolean;
   sellerTracked: boolean;
+  buyerStartPosition?: number | null;
+  buyerEndPosition?: number | null;
+  buyerPositionAction?: HyperliquidPositionAction | null;
+  buyerClosedPnl?: number | null;
+  buyerLiquidation?: boolean | null;
+  sellerStartPosition?: number | null;
+  sellerEndPosition?: number | null;
+  sellerPositionAction?: HyperliquidPositionAction | null;
+  sellerClosedPnl?: number | null;
+  sellerLiquidation?: boolean | null;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
   source?: string | null;
 };
+
+export type HyperliquidPositionAction =
+  | 'open'
+  | 'increase'
+  | 'reduce'
+  | 'close'
+  | 'flip';
 
 export type HyperliquidWhaleFlowRow = {
   symbol: string;
@@ -361,6 +378,30 @@ export type HyperliquidWhaleFlowRow = {
   sellNotionalUsd: number;
   netNotionalUsd: number;
   buySharePct?: number | null;
+  positionAwareWhaleSides: number;
+  longEntryWhaleAddresses?: string[];
+  shortEntryWhaleAddresses?: string[];
+  longExitWhaleAddresses?: string[];
+  shortExitWhaleAddresses?: string[];
+  longEntryNotionalUsd: number;
+  shortEntryNotionalUsd: number;
+  longExitNotionalUsd: number;
+  shortExitNotionalUsd: number;
+  entryNetNotionalUsd: number;
+  entryLongSharePct?: number | null;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  source?: string | null;
+};
+
+export const HYPERLIQUID_WHALE_DATA_MODEL_VERSION = 3;
+
+export type HyperliquidWhaleCoverageRow = {
+  ts: Date;
+  coveredWhales: number;
+  expectedWhales: number;
+  coveragePct: number;
+  dataModelVersion?: number;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
   source?: string | null;

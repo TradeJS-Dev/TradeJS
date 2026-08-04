@@ -1,4 +1,7 @@
-import { buildStrategySignal } from '../signalBuilders';
+import {
+  buildBaseContextGateFeatures,
+  buildStrategySignal,
+} from '../signalBuilders';
 import { BaseStrategyContextSnapshot } from '@tradejs/types';
 
 const baseContext: BaseStrategyContextSnapshot = {
@@ -166,10 +169,26 @@ describe('buildStrategySignal', () => {
               trades: 3,
               whaleSides: 3,
               uniqueWhales: 2,
+              coveredWhales: 90,
+              expectedWhales: 100,
+              coveragePct: 0.9,
+              coverageSufficient: true,
               buyNotionalUsd: 800_000,
               sellNotionalUsd: 200_000,
               netNotionalUsd: 600_000,
               buySharePct: 0.8,
+              positionAwareWhaleSides: 3,
+              positionAwarePct: 1,
+              longEntryWhales: 2,
+              shortEntryWhales: 0,
+              longExitWhales: 0,
+              shortExitWhales: 0,
+              longEntryNotionalUsd: 800_000,
+              shortEntryNotionalUsd: 0,
+              longExitNotionalUsd: 0,
+              shortExitNotionalUsd: 0,
+              entryNetNotionalUsd: 800_000,
+              entryLongSharePct: 1,
               universeFingerprint: 'universe-v1',
               whaleRegistryFingerprint: 'whales-v1',
             },
@@ -265,6 +284,10 @@ describe('buildStrategySignal', () => {
         hyperliquidWhaleBuySharePct: 0.8,
         hyperliquidWhaleNetNotionalUsd: 600_000,
         hyperliquidWhaleUniqueCount: 2,
+        hyperliquidWhaleCoveredCount: 90,
+        hyperliquidWhaleExpectedCount: 100,
+        hyperliquidWhaleCoveragePct: 0.9,
+        hyperliquidWhaleCoverageSufficient: true,
         hyperliquidWhaleNotionalUsd: 1_000_000,
         hyperliquidWhaleSufficientActivity: true,
         hyperliquidWhaleFlowAligned: true,
@@ -275,6 +298,63 @@ describe('buildStrategySignal', () => {
         marketBreadthAligned: true,
         marketBreadthStale: false,
       },
+    });
+  });
+
+  it('keeps insufficient Hyperliquid coverage out of AI-gate flow features', () => {
+    const gateFeatures = buildBaseContextGateFeatures({
+      baseContext: {
+        ...baseContext,
+        participation: {
+          ...baseContext.participation,
+          hyperliquidWhales: {
+            source: 'hyperliquid_trades',
+            interval: '15m',
+            asOfTs: 1,
+            windowEndTs: 2,
+            ageMs: 0,
+            stale: false,
+            symbol: 'BTC',
+            trades: 3,
+            whaleSides: 3,
+            uniqueWhales: 2,
+            coveredWhales: 40,
+            expectedWhales: 100,
+            coveragePct: 0.4,
+            coverageSufficient: false,
+            buyNotionalUsd: 800_000,
+            sellNotionalUsd: 200_000,
+            netNotionalUsd: 600_000,
+            buySharePct: 0.8,
+            positionAwareWhaleSides: 3,
+            positionAwarePct: 1,
+            longEntryWhales: 2,
+            shortEntryWhales: 0,
+            longExitWhales: 0,
+            shortExitWhales: 0,
+            longEntryNotionalUsd: 800_000,
+            shortEntryNotionalUsd: 0,
+            longExitNotionalUsd: 0,
+            shortExitNotionalUsd: 0,
+            entryNetNotionalUsd: 800_000,
+            entryLongSharePct: 1,
+            universeFingerprint: 'universe-v1',
+            whaleRegistryFingerprint: 'whales-v1',
+          },
+        },
+      },
+      direction: 'LONG',
+    });
+
+    expect(gateFeatures.participation).toMatchObject({
+      hyperliquidWhaleCoveragePct: 0.4,
+      hyperliquidWhaleCoverageSufficient: false,
+      hyperliquidWhaleBuySharePct: null,
+      hyperliquidWhaleNetNotionalUsd: null,
+      hyperliquidWhaleUniqueCount: null,
+      hyperliquidWhaleNotionalUsd: null,
+      hyperliquidWhaleSufficientActivity: null,
+      hyperliquidWhaleFlowAligned: null,
     });
   });
 

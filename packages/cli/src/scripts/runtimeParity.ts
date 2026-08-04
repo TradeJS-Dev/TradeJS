@@ -1426,6 +1426,7 @@ export const runtimeParity = async () => {
       cacheOnly: Boolean(flags.cacheOnly),
       aiEnabled: hasParityAiTargets,
       mlEnabled: hasParityMlTargets,
+      strategyNames: replayTargets.map((target) => target.strategy),
       log: (message) => console.log(chalk.gray(message)),
     });
 

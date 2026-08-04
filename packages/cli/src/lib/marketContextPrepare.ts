@@ -40,6 +40,7 @@ export type PrepareMarketContextForRunParams = {
   cacheOnly: boolean;
   aiEnabled?: boolean;
   mlEnabled?: boolean;
+  strategyNames?: string[];
   log?: (message: string) => void;
 };
 
@@ -118,14 +119,22 @@ export const shouldPrepareCoinMarketCapContextForRun = (
 export const shouldPrepareHyperliquidWhaleContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
-    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled' | 'universe'
+    | 'mode'
+    | 'cacheOnly'
+    | 'aiEnabled'
+    | 'mlEnabled'
+    | 'universe'
+    | 'strategyNames'
   >,
 ) => {
+  const strategyRequiresContext = params.strategyNames?.includes(
+    'HyperliquidConsensus',
+  );
   if (
     params.universe === 'tradfi' ||
     params.mode === 'signals' ||
     params.cacheOnly ||
-    (!params.aiEnabled && !params.mlEnabled)
+    (!params.aiEnabled && !params.mlEnabled && !strategyRequiresContext)
   ) {
     return false;
   }

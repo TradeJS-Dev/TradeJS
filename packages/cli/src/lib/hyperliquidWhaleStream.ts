@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import {
   rebuildHyperliquidWhaleFlowRows,
+  upsertHyperliquidWhaleCoverageRows,
   upsertHyperliquidWhaleTradeEvents,
 } from '@tradejs/infra/timescale';
 import {
@@ -10,8 +11,9 @@ import {
 import type { HyperliquidWhaleTradeEventRow } from '@tradejs/types';
 import {
   HYPERLIQUID_WHALE_BUCKET_MS,
-  normalizeHyperliquidWsTrade,
+  normalizeHyperliquidUserFill,
   type HyperliquidWsTrade,
+  type HyperliquidUserFill,
 } from './hyperliquidWhaleData';
 
 const DEFAULT_WS_URL = 'wss://api.hyperliquid.xyz/ws';
@@ -49,6 +51,43 @@ export const parseHyperliquidTradesMessage = (
   }
 };
 
+export type HyperliquidUserFillsMessage = {
+  address: string;
+  isSnapshot: boolean;
+  fills: HyperliquidUserFill[];
+};
+
+export const parseHyperliquidUserFillsMessage = (
+  raw: string,
+): HyperliquidUserFillsMessage | null => {
+  try {
+    const message = JSON.parse(raw) as { channel?: unknown; data?: unknown };
+    if (
+      message.channel !== 'userFills' ||
+      !message.data ||
+      typeof message.data !== 'object' ||
+      Array.isArray(message.data)
+    ) {
+      return null;
+    }
+    const data = message.data as {
+      user?: unknown;
+      isSnapshot?: unknown;
+      fills?: unknown;
+    };
+    if (typeof data.user !== 'string' || !Array.isArray(data.fills)) {
+      return null;
+    }
+    return {
+      address: data.user,
+      isSnapshot: data.isSnapshot === true,
+      fills: data.fills as HyperliquidUserFill[],
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const runHyperliquidWhaleStream = async (params: {
   signal: AbortSignal;
   log?: (message: string) => void;
@@ -56,13 +95,14 @@ export const runHyperliquidWhaleStream = async (params: {
   const universe = getHyperliquidPerpUniverseSnapshot();
   const whales = getHyperliquidWhaleRegistrySnapshot();
   const trackedSymbols = new Set(universe.symbols);
-  const trackedWhales = new Set(whales.addresses);
   const identity = {
     universeFingerprint: universe.fingerprint,
     whaleRegistryFingerprint: whales.fingerprint,
   };
   const buffer: HyperliquidWhaleTradeEventRow[] = [];
   let writes = Promise.resolve();
+  let streamCoverageFromMs: number | null = null;
+  let streamCoverageToMs = 0;
 
   const flush = () => {
     if (!buffer.length) return writes;
@@ -70,11 +110,31 @@ export const runHyperliquidWhaleStream = async (params: {
     writes = writes.then(() => upsertHyperliquidWhaleTradeEvents(batch));
     return writes;
   };
+  const recordStreamCoverage = (toMs: number) => {
+    if (streamCoverageFromMs == null) return writes;
+    const fromMs = Math.max(streamCoverageFromMs, streamCoverageToMs);
+    if (toMs <= fromMs) return writes;
+    const rows = Array.from(
+      { length: Math.floor((toMs - fromMs) / HYPERLIQUID_WHALE_BUCKET_MS) },
+      (_, index) => ({
+        ts: new Date(fromMs + index * HYPERLIQUID_WHALE_BUCKET_MS),
+        coveredWhales: whales.addresses.length,
+        expectedWhales: whales.addresses.length,
+        coveragePct: 1,
+        source: 'hyperliquid_user_fills_ws',
+        ...identity,
+      }),
+    );
+    streamCoverageToMs = toMs;
+    writes = writes.then(() => upsertHyperliquidWhaleCoverageRows(rows));
+    return writes;
+  };
   const finalize = () => {
     const toMs =
       Math.floor((Date.now() - FINALIZE_LAG_MS) / HYPERLIQUID_WHALE_BUCKET_MS) *
       HYPERLIQUID_WHALE_BUCKET_MS;
     const fromMs = Math.max(0, toMs - REBUILD_LOOKBACK_MS);
+    recordStreamCoverage(toMs);
     writes = writes.then(() =>
       rebuildHyperliquidWhaleFlowRows({
         fromMs,
@@ -121,24 +181,30 @@ export const runHyperliquidWhaleStream = async (params: {
         params.signal.addEventListener('abort', close, { once: true });
         ws.on('open', () => {
           reconnectDelayMs = 1_000;
-          for (const coin of universe.symbols) {
+          streamCoverageFromMs =
+            Math.ceil(Date.now() / HYPERLIQUID_WHALE_BUCKET_MS) *
+            HYPERLIQUID_WHALE_BUCKET_MS;
+          streamCoverageToMs = streamCoverageFromMs;
+          for (const address of whales.addresses) {
             ws.send(
               JSON.stringify({
                 method: 'subscribe',
-                subscription: { type: 'trades', coin },
+                subscription: { type: 'userFills', user: address },
               }),
             );
           }
           params.log?.(
-            `Hyperliquid whale stream connected subscriptions=${universe.symbols.length}`,
+            `Hyperliquid whale stream connected userFills subscriptions=${whales.addresses.length}`,
           );
         });
         ws.on('message', (data) => {
-          for (const trade of parseHyperliquidTradesMessage(data.toString())) {
-            const event = normalizeHyperliquidWsTrade({
-              trade,
+          const message = parseHyperliquidUserFillsMessage(data.toString());
+          if (!message) return;
+          for (const fill of message.fills) {
+            const event = normalizeHyperliquidUserFill({
+              fill,
+              address: message.address,
               trackedSymbols,
-              trackedWhales,
               identity,
             });
             if (event) buffer.push(event);
@@ -150,6 +216,11 @@ export const runHyperliquidWhaleStream = async (params: {
           close();
         });
         ws.on('close', () => {
+          recordStreamCoverage(
+            Math.floor(Date.now() / HYPERLIQUID_WHALE_BUCKET_MS) *
+              HYPERLIQUID_WHALE_BUCKET_MS,
+          );
+          streamCoverageFromMs = null;
           clearInterval(pingTimer);
           params.signal.removeEventListener('abort', close);
           finish();

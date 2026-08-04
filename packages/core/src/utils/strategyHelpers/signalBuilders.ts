@@ -400,22 +400,52 @@ export const buildBaseContextGateFeatures = ({
   const referenceTradeFlowBuyPressurePct = asFiniteNumberOrNull(
     primaryReferenceTradeFlow?.buyPressurePct,
   );
-  const hyperliquidWhaleBuySharePct = asFiniteNumberOrNull(
+  const rawHyperliquidWhaleBuySharePct = asFiniteNumberOrNull(
     hyperliquidWhales?.buySharePct,
   );
-  const hyperliquidWhaleNetNotionalUsd = asFiniteNumberOrNull(
+  const rawHyperliquidWhaleNetNotionalUsd = asFiniteNumberOrNull(
     hyperliquidWhales?.netNotionalUsd,
   );
-  const hyperliquidWhaleUniqueCount = asFiniteNumberOrNull(
+  const rawHyperliquidWhaleUniqueCount = asFiniteNumberOrNull(
     hyperliquidWhales?.uniqueWhales,
   );
+  const hyperliquidWhaleCoveredCount = asFiniteNumberOrNull(
+    hyperliquidWhales?.coveredWhales,
+  );
+  const hyperliquidWhaleExpectedCount = asFiniteNumberOrNull(
+    hyperliquidWhales?.expectedWhales,
+  );
+  const hyperliquidWhaleCoveragePct = asFiniteNumberOrNull(
+    hyperliquidWhales?.coveragePct,
+  );
+  const hyperliquidWhaleCoverageSufficient =
+    typeof hyperliquidWhales?.coverageSufficient === 'boolean'
+      ? hyperliquidWhales.coverageSufficient
+      : null;
+  const hyperliquidWhaleBuySharePct =
+    hyperliquidWhaleCoverageSufficient === true
+      ? rawHyperliquidWhaleBuySharePct
+      : null;
+  const hyperliquidWhaleNetNotionalUsd =
+    hyperliquidWhaleCoverageSufficient === true
+      ? rawHyperliquidWhaleNetNotionalUsd
+      : null;
+  const hyperliquidWhaleUniqueCount =
+    hyperliquidWhaleCoverageSufficient === true
+      ? rawHyperliquidWhaleUniqueCount
+      : null;
   const hyperliquidWhaleNotionalUsd =
-    (asFiniteNumberOrNull(hyperliquidWhales?.buyNotionalUsd) ?? 0) +
-    (asFiniteNumberOrNull(hyperliquidWhales?.sellNotionalUsd) ?? 0);
+    hyperliquidWhaleCoverageSufficient === true
+      ? (asFiniteNumberOrNull(hyperliquidWhales?.buyNotionalUsd) ?? 0) +
+        (asFiniteNumberOrNull(hyperliquidWhales?.sellNotionalUsd) ?? 0)
+      : null;
   const hyperliquidWhaleSufficientActivity =
-    hyperliquidWhales == null || hyperliquidWhales.stale
+    hyperliquidWhales == null ||
+    hyperliquidWhales.stale ||
+    hyperliquidWhaleCoverageSufficient !== true
       ? null
-      : hyperliquidWhaleNotionalUsd >= HYPERLIQUID_WHALE_GATE_MIN_NOTIONAL_USD;
+      : (hyperliquidWhaleNotionalUsd ?? 0) >=
+        HYPERLIQUID_WHALE_GATE_MIN_NOTIONAL_USD;
   const deltaDivergenceVsPrice = asStringOrNull(delta?.deltaDivergenceVsPrice);
   const deltaBias =
     deltaDivergenceVsPrice === 'bullish' || deltaDivergenceVsPrice === 'bearish'
@@ -1000,6 +1030,10 @@ export const buildBaseContextGateFeatures = ({
       hyperliquidWhaleBuySharePct,
       hyperliquidWhaleNetNotionalUsd,
       hyperliquidWhaleUniqueCount,
+      hyperliquidWhaleCoveredCount,
+      hyperliquidWhaleExpectedCount,
+      hyperliquidWhaleCoveragePct,
+      hyperliquidWhaleCoverageSufficient,
       hyperliquidWhaleNotionalUsd,
       hyperliquidWhaleSufficientActivity,
       hyperliquidWhaleFlowAligned,
@@ -1281,6 +1315,12 @@ interface CreateStrategyAPIParams {
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
   sharedReplayKey?: string;
   getSharedReplayState?: StrategySharedReplayStateGetter;
+  loadDecisionBaseContext?: (params: {
+    baseContext: BaseStrategyContextSnapshot | undefined;
+    candle: KlineChartData[number];
+    symbol: Signal['symbol'];
+    interval: Signal['interval'];
+  }) => Promise<BaseStrategyContextSnapshot | undefined>;
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -1339,6 +1379,7 @@ export const createStrategyAPI = <
   isConfigFromBacktest,
   sharedReplayKey,
   getSharedReplayState,
+  loadDecisionBaseContext,
 }: CreateStrategyAPIParams): StrategyAPI<TIndicators> => {
   const isBacktestEnv = env === 'BACKTEST';
   const barCache = {
@@ -1351,6 +1392,12 @@ export const createStrategyAPI = <
     | {
         key: string;
         context: StrategyIndicatorsContext<unknown>;
+      }
+    | undefined;
+  let decisionBaseContextCache:
+    | {
+        key: string;
+        context: Promise<BaseStrategyContextSnapshot | undefined>;
       }
     | undefined;
   const getCurrentBarTimestamp = () => {
@@ -1389,6 +1436,7 @@ export const createStrategyAPI = <
     barCache.timestamp = currentBarTimestamp;
     barCache.currentPosition = undefined;
     currentIndicatorsContextCache = undefined;
+    decisionBaseContextCache = undefined;
   };
   const getCurrentPosition = () => {
     if (!isBacktestEnv) {
@@ -1437,6 +1485,34 @@ export const createStrategyAPI = <
       return context;
     };
   const getBaseContext = () => getCurrentIndicatorsContext().baseContext;
+
+  const getDecisionBaseContext = () => {
+    ensureBarCache();
+
+    const baseContext = getBaseContext();
+    if (!loadDecisionBaseContext) {
+      return Promise.resolve(baseContext);
+    }
+
+    const candle = cachedData[cachedData.length - 1];
+    if (!candle) {
+      return Promise.resolve(baseContext);
+    }
+
+    const cacheKey = getCurrentIndicatorsCacheKey();
+    if (decisionBaseContextCache?.key === cacheKey) {
+      return decisionBaseContextCache.context;
+    }
+
+    const context = loadDecisionBaseContext({
+      baseContext,
+      candle,
+      symbol,
+      interval,
+    });
+    decisionBaseContextCache = { key: cacheKey, context };
+    return context;
+  };
 
   const resolveDecisionPriceContext = (): StrategyDecisionPriceContext => {
     const candle = cachedData[cachedData.length - 1];
@@ -1539,6 +1615,7 @@ export const createStrategyAPI = <
       }) as Extract<StrategyDecision, { kind: 'protect' }>,
     getCurrentIndicatorsContext,
     getBaseContext,
+    getDecisionBaseContext,
     getDecisionPriceContext,
     getCurrentPosition,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),

@@ -85,6 +85,7 @@
     "market-ws": "yarn run run:dist market-ws",
     "hyperliquid:whale-backfill": "yarn run run:dist hyperliquid:whale-backfill",
     "hyperliquid:whale-ingest": "yarn run run:dist hyperliquid:whale-ingest",
+    "hyperliquid:whales:update": "yarn run run:dist hyperliquid:whales:update",
     "infra-down": "yarn run run:dist infra-down",
     "spread:ingest": "yarn run run:dist spread:ingest",
     "migration": "yarn run run:dist migration",

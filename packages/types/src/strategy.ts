@@ -508,7 +508,7 @@ export interface BaseMarketTradeFlowContext {
 }
 
 export interface BaseHyperliquidWhaleFlowContext {
-  source: 'hyperliquid_trades';
+  source: 'hyperliquid_trades' | 'hyperliquid_user_fills';
   interval: MarketFeatureInterval;
   asOfTs: number | null;
   windowEndTs: number;
@@ -518,10 +518,26 @@ export interface BaseHyperliquidWhaleFlowContext {
   trades: number;
   whaleSides: number;
   uniqueWhales: number;
+  coveredWhales: number;
+  expectedWhales: number;
+  coveragePct: number;
+  coverageSufficient: boolean;
   buyNotionalUsd: number;
   sellNotionalUsd: number;
   netNotionalUsd: number;
   buySharePct: number | null;
+  positionAwareWhaleSides: number;
+  positionAwarePct: number;
+  longEntryWhales: number;
+  shortEntryWhales: number;
+  longExitWhales: number;
+  shortExitWhales: number;
+  longEntryNotionalUsd: number;
+  shortEntryNotionalUsd: number;
+  longExitNotionalUsd: number;
+  shortExitNotionalUsd: number;
+  entryNetNotionalUsd: number;
+  entryLongSharePct: number | null;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
 }
@@ -977,7 +993,11 @@ export interface BaseContextGateFeatures {
     hyperliquidWhaleBuySharePct: number | null;
     hyperliquidWhaleNetNotionalUsd: number | null;
     hyperliquidWhaleUniqueCount: number | null;
-    hyperliquidWhaleNotionalUsd: number;
+    hyperliquidWhaleCoveredCount: number | null;
+    hyperliquidWhaleExpectedCount: number | null;
+    hyperliquidWhaleCoveragePct: number | null;
+    hyperliquidWhaleCoverageSufficient: boolean | null;
+    hyperliquidWhaleNotionalUsd: number | null;
     hyperliquidWhaleSufficientActivity: boolean | null;
     hyperliquidWhaleFlowAligned: boolean | null;
     hyperliquidWhaleFlowStale: boolean | null;
@@ -1214,6 +1234,9 @@ export interface StrategyAPI<
   ) => Extract<StrategyDecision, { kind: 'protect' }>;
   getCurrentIndicatorsContext: () => StrategyIndicatorsContext<TIndicators>;
   getBaseContext: () => BaseStrategyContextSnapshot | undefined;
+  getDecisionBaseContext: () => Promise<
+    BaseStrategyContextSnapshot | undefined
+  >;
   getDecisionPriceContext: () => Promise<StrategyDecisionPriceContext>;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   getDirectionalTpSlPrices: (

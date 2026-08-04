@@ -1,4 +1,7 @@
-import { parseHyperliquidTradesMessage } from '../lib/hyperliquidWhaleStream';
+import {
+  parseHyperliquidTradesMessage,
+  parseHyperliquidUserFillsMessage,
+} from '../lib/hyperliquidWhaleStream';
 
 describe('hyperliquidWhaleStream', () => {
   it('accepts only trade channel payloads', () => {
@@ -16,5 +19,32 @@ describe('hyperliquidWhaleStream', () => {
       ),
     ).toEqual([]);
     expect(parseHyperliquidTradesMessage('{broken')).toEqual([]);
+  });
+
+  it('parses position-aware userFills payloads', () => {
+    expect(
+      parseHyperliquidUserFillsMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            user: '0x1111111111111111111111111111111111111111',
+            isSnapshot: false,
+            fills: [
+              {
+                coin: 'BTC',
+                tid: 1,
+                side: 'B',
+                startPosition: '0',
+              },
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({
+      address: '0x1111111111111111111111111111111111111111',
+      isSnapshot: false,
+      fills: [{ startPosition: '0' }],
+    });
+    expect(parseHyperliquidUserFillsMessage('{broken')).toBeNull();
   });
 });

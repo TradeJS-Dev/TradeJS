@@ -411,6 +411,12 @@ const runBacktestPath = async () => {
   jest.doMock('../../../node/src/strategyHelpers/coinMarketCapContext', () => ({
     enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
   }));
+  jest.doMock(
+    '../../../node/src/strategyHelpers/hyperliquidWhaleContext',
+    () => ({
+      enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
+    }),
+  );
   jest.doMock('../../../node/src/ai', () => ({
     buildAiPayload,
   }));
@@ -546,6 +552,7 @@ const runSignalsPath = async () => {
       attachBinanceParityBaseContext,
     ),
     enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
+    enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/async', () => ({
@@ -722,6 +729,7 @@ const runReplayPath = async () => {
       attachBinanceParityBaseContext,
     ),
     enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
+    enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/backtest', () => ({

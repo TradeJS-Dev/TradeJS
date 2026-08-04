@@ -1,4 +1,5 @@
 import type {
+  HyperliquidPositionAction,
   HyperliquidWhaleFlowRow,
   HyperliquidWhaleTradeEventRow,
 } from '@tradejs/types';
@@ -22,6 +23,10 @@ export type HyperliquidUserFill = {
   sz?: unknown;
   time?: unknown;
   tid?: unknown;
+  startPosition?: unknown;
+  dir?: unknown;
+  closedPnl?: unknown;
+  liquidation?: unknown;
 };
 
 type SnapshotIdentity = {
@@ -32,6 +37,70 @@ type SnapshotIdentity = {
 const finiteNumber = (value: unknown) => {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+};
+
+const POSITION_EPSILON = 1e-12;
+
+const normalizePosition = (value: number) =>
+  Math.abs(value) <= POSITION_EPSILON ? 0 : value;
+
+export type HyperliquidPositionChange = {
+  startPosition: number;
+  endPosition: number;
+  action: HyperliquidPositionAction;
+  longEntrySize: number;
+  shortEntrySize: number;
+  longExitSize: number;
+  shortExitSize: number;
+};
+
+export const classifyHyperliquidPositionChange = (params: {
+  startPosition: unknown;
+  side: unknown;
+  size: unknown;
+}): HyperliquidPositionChange | null => {
+  const startValue = finiteNumber(params.startPosition);
+  const size = finiteNumber(params.size);
+  const side = String(params.side ?? '').toUpperCase();
+  if (startValue == null || size == null || size <= 0) return null;
+  if (side !== 'B' && side !== 'A') return null;
+
+  const startPosition = normalizePosition(startValue);
+  const endPosition = normalizePosition(
+    startPosition + (side === 'B' ? size : -size),
+  );
+  const startLong = Math.max(startPosition, 0);
+  const endLong = Math.max(endPosition, 0);
+  const startShort = Math.max(-startPosition, 0);
+  const endShort = Math.max(-endPosition, 0);
+  const longEntrySize = Math.max(0, endLong - startLong);
+  const shortEntrySize = Math.max(0, endShort - startShort);
+  const longExitSize = Math.max(0, startLong - endLong);
+  const shortExitSize = Math.max(0, startShort - endShort);
+  const flipped = startPosition * endPosition < 0;
+  const opened = startPosition === 0;
+  const closed = endPosition === 0;
+  const increased =
+    Math.sign(startPosition) === Math.sign(endPosition) &&
+    Math.abs(endPosition) > Math.abs(startPosition);
+
+  return {
+    startPosition,
+    endPosition,
+    action: flipped
+      ? 'flip'
+      : opened
+        ? 'open'
+        : closed
+          ? 'close'
+          : increased
+            ? 'increase'
+            : 'reduce',
+    longEntrySize,
+    shortEntrySize,
+    longExitSize,
+    shortExitSize,
+  };
 };
 
 const normalizeAddress = (value: unknown) =>
@@ -115,6 +184,32 @@ export const normalizeHyperliquidUserFill = (params: {
   if (!address) return null;
   const side = String(params.fill.side ?? '').toUpperCase();
   if (side !== 'B' && side !== 'A') return null;
+  const positionChange = classifyHyperliquidPositionChange({
+    startPosition: params.fill.startPosition,
+    side,
+    size: normalized.size,
+  });
+  const closedPnl = finiteNumber(params.fill.closedPnl);
+  const liquidation =
+    params.fill.liquidation != null &&
+    typeof params.fill.liquidation === 'object';
+  const positionFields: Partial<HyperliquidWhaleTradeEventRow> = positionChange
+    ? side === 'B'
+      ? {
+          buyerStartPosition: positionChange.startPosition,
+          buyerEndPosition: positionChange.endPosition,
+          buyerPositionAction: positionChange.action,
+          buyerClosedPnl: closedPnl,
+          buyerLiquidation: liquidation,
+        }
+      : {
+          sellerStartPosition: positionChange.startPosition,
+          sellerEndPosition: positionChange.endPosition,
+          sellerPositionAction: positionChange.action,
+          sellerClosedPnl: closedPnl,
+          sellerLiquidation: liquidation,
+        }
+    : {};
   return {
     symbol: normalized.symbol,
     ts: new Date(normalized.timestamp),
@@ -126,6 +221,7 @@ export const normalizeHyperliquidUserFill = (params: {
     sellerAddress: side === 'A' ? address : null,
     buyerTracked: side === 'B',
     sellerTracked: side === 'A',
+    ...positionFields,
     ...params.identity,
     source: 'hyperliquid_user_fills',
   };
@@ -143,6 +239,16 @@ const mergeEvent = (
   sellerAddress: left.sellerAddress ?? right.sellerAddress,
   buyerTracked: left.buyerTracked || right.buyerTracked,
   sellerTracked: left.sellerTracked || right.sellerTracked,
+  buyerStartPosition: left.buyerStartPosition ?? right.buyerStartPosition,
+  buyerEndPosition: left.buyerEndPosition ?? right.buyerEndPosition,
+  buyerPositionAction: left.buyerPositionAction ?? right.buyerPositionAction,
+  buyerClosedPnl: left.buyerClosedPnl ?? right.buyerClosedPnl,
+  buyerLiquidation: left.buyerLiquidation ?? right.buyerLiquidation,
+  sellerStartPosition: left.sellerStartPosition ?? right.sellerStartPosition,
+  sellerEndPosition: left.sellerEndPosition ?? right.sellerEndPosition,
+  sellerPositionAction: left.sellerPositionAction ?? right.sellerPositionAction,
+  sellerClosedPnl: left.sellerClosedPnl ?? right.sellerClosedPnl,
+  sellerLiquidation: left.sellerLiquidation ?? right.sellerLiquidation,
 });
 
 export const aggregateHyperliquidWhaleEvents = (
@@ -155,8 +261,19 @@ export const aggregateHyperliquidWhaleEvents = (
     deduplicated.set(key, previous ? mergeEvent(previous, event) : event);
   }
 
-  type MutableWhaleFlowRow = Omit<HyperliquidWhaleFlowRow, 'whaleAddresses'> & {
+  type MutableWhaleFlowRow = Omit<
+    HyperliquidWhaleFlowRow,
+    | 'whaleAddresses'
+    | 'longEntryWhaleAddresses'
+    | 'shortEntryWhaleAddresses'
+    | 'longExitWhaleAddresses'
+    | 'shortExitWhaleAddresses'
+  > & {
     whaleAddresses: Set<string>;
+    longEntryWhaleAddresses: Set<string>;
+    shortEntryWhaleAddresses: Set<string>;
+    longExitWhaleAddresses: Set<string>;
+    shortExitWhaleAddresses: Set<string>;
   };
   const buckets = new Map<string, MutableWhaleFlowRow>();
   for (const event of deduplicated.values()) {
@@ -177,6 +294,17 @@ export const aggregateHyperliquidWhaleEvents = (
         sellNotionalUsd: 0,
         netNotionalUsd: 0,
         buySharePct: null,
+        positionAwareWhaleSides: 0,
+        longEntryWhaleAddresses: new Set<string>(),
+        shortEntryWhaleAddresses: new Set<string>(),
+        longExitWhaleAddresses: new Set<string>(),
+        shortExitWhaleAddresses: new Set<string>(),
+        longEntryNotionalUsd: 0,
+        shortEntryNotionalUsd: 0,
+        longExitNotionalUsd: 0,
+        shortExitNotionalUsd: 0,
+        entryNetNotionalUsd: 0,
+        entryLongSharePct: null,
         universeFingerprint: event.universeFingerprint,
         whaleRegistryFingerprint: event.whaleRegistryFingerprint,
         source: 'hyperliquid_trades',
@@ -194,18 +322,94 @@ export const aggregateHyperliquidWhaleEvents = (
       row.sellNotionalUsd += event.notionalUsd;
       if (event.sellerAddress) row.whaleAddresses.add(event.sellerAddress);
     }
+
+    const applyPositionLeg = (params: {
+      address: string | null | undefined;
+      startPosition: number | null | undefined;
+      endPosition: number | null | undefined;
+    }) => {
+      if (
+        !params.address ||
+        !Number.isFinite(params.startPosition) ||
+        !Number.isFinite(params.endPosition)
+      ) {
+        return;
+      }
+      const startPosition = Number(params.startPosition);
+      const endPosition = Number(params.endPosition);
+      const longEntrySize = Math.max(
+        0,
+        Math.max(endPosition, 0) - Math.max(startPosition, 0),
+      );
+      const shortEntrySize = Math.max(
+        0,
+        Math.max(-endPosition, 0) - Math.max(-startPosition, 0),
+      );
+      const longExitSize = Math.max(
+        0,
+        Math.max(startPosition, 0) - Math.max(endPosition, 0),
+      );
+      const shortExitSize = Math.max(
+        0,
+        Math.max(-startPosition, 0) - Math.max(-endPosition, 0),
+      );
+      row.positionAwareWhaleSides += 1;
+      row.longEntryNotionalUsd += longEntrySize * event.price;
+      row.shortEntryNotionalUsd += shortEntrySize * event.price;
+      row.longExitNotionalUsd += longExitSize * event.price;
+      row.shortExitNotionalUsd += shortExitSize * event.price;
+      if (longEntrySize > 0) row.longEntryWhaleAddresses.add(params.address);
+      if (shortEntrySize > 0) row.shortEntryWhaleAddresses.add(params.address);
+      if (longExitSize > 0) row.longExitWhaleAddresses.add(params.address);
+      if (shortExitSize > 0) row.shortExitWhaleAddresses.add(params.address);
+    };
+    if (event.buyerTracked) {
+      applyPositionLeg({
+        address: event.buyerAddress,
+        startPosition: event.buyerStartPosition,
+        endPosition: event.buyerEndPosition,
+      });
+    }
+    if (event.sellerTracked) {
+      applyPositionLeg({
+        address: event.sellerAddress,
+        startPosition: event.sellerStartPosition,
+        endPosition: event.sellerEndPosition,
+      });
+    }
     row.uniqueWhales = row.whaleAddresses.size;
     row.netNotionalUsd = row.buyNotionalUsd - row.sellNotionalUsd;
     const total = row.buyNotionalUsd + row.sellNotionalUsd;
     row.buySharePct = total > 0 ? row.buyNotionalUsd / total : null;
+    row.entryNetNotionalUsd =
+      row.longEntryNotionalUsd - row.shortEntryNotionalUsd;
+    const entryTotal = row.longEntryNotionalUsd + row.shortEntryNotionalUsd;
+    row.entryLongSharePct =
+      entryTotal > 0 ? row.longEntryNotionalUsd / entryTotal : null;
+    if (row.positionAwareWhaleSides > 0) {
+      row.source = 'hyperliquid_user_fills';
+    }
     buckets.set(key, row);
   }
 
   return [...buckets.values()]
-    .map(({ whaleAddresses, ...row }) => ({
-      ...row,
-      whaleAddresses: [...whaleAddresses].sort(),
-    }))
+    .map(
+      ({
+        whaleAddresses,
+        longEntryWhaleAddresses,
+        shortEntryWhaleAddresses,
+        longExitWhaleAddresses,
+        shortExitWhaleAddresses,
+        ...row
+      }) => ({
+        ...row,
+        whaleAddresses: [...whaleAddresses].sort(),
+        longEntryWhaleAddresses: [...longEntryWhaleAddresses].sort(),
+        shortEntryWhaleAddresses: [...shortEntryWhaleAddresses].sort(),
+        longExitWhaleAddresses: [...longExitWhaleAddresses].sort(),
+        shortExitWhaleAddresses: [...shortExitWhaleAddresses].sort(),
+      }),
+    )
     .sort(
       (left, right) =>
         left.ts.getTime() - right.ts.getTime() ||

@@ -1050,6 +1050,9 @@ describe('timescale candle helpers', () => {
         sellerAddress: null,
         buyerTracked: true,
         sellerTracked: false,
+        buyerStartPosition: 0,
+        buyerEndPosition: 2,
+        buyerPositionAction: 'open',
         universeFingerprint: 'universe-v1',
         whaleRegistryFingerprint: 'whales-v1',
         source: 'hyperliquid_trades',
@@ -1076,13 +1079,16 @@ describe('timescale candle helpers', () => {
   it('aggregates Hyperliquid whale buckets strictly before decision time', async () => {
     const decisionTimeMs = 15 * 60_000;
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('WITH window_rows AS')) {
+      if (sql.includes('WITH coverage_rows AS')) {
         return {
           rows: [
             {
               symbol: 'BTC',
               as_of_ts: new Date(decisionTimeMs - 60_000),
-              buckets: 15,
+              coverage_buckets: 15,
+              covered_whales: 90,
+              expected_whales: 100,
+              coverage_pct: '0.9',
               trades: 10,
               whale_sides: 12,
               unique_whales: 4,
@@ -1090,6 +1096,18 @@ describe('timescale candle helpers', () => {
               sell_notional_usd: '200',
               net_notional_usd: '600',
               buy_share_pct: '0.8',
+              position_aware_whale_sides: 12,
+              position_aware_pct: '1',
+              long_entry_whales: 4,
+              short_entry_whales: 1,
+              long_exit_whales: 2,
+              short_exit_whales: 0,
+              long_entry_notional_usd: '700',
+              short_entry_notional_usd: '100',
+              long_exit_notional_usd: '100',
+              short_exit_notional_usd: '0',
+              entry_net_notional_usd: '600',
+              entry_long_share_pct: '0.875',
               source: 'hyperliquid_trades',
             },
           ],
@@ -1115,21 +1133,38 @@ describe('timescale candle helpers', () => {
     ).resolves.toMatchObject({
       netNotionalUsd: 600,
       buySharePct: 0.8,
+      positionAwarePct: 1,
+      longEntryWhales: 4,
+      shortEntryWhales: 1,
+      entryNetNotionalUsd: 600,
+      entryLongSharePct: 0.875,
+      coveredWhales: 90,
+      expectedWhales: 100,
+      coveragePct: 0.9,
       ageMs: 0,
       stale: false,
     });
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('AND ts < to_timestamp($4/1000.0)'),
-      ['BTC', 'universe-v1', 'whales-v1', decisionTimeMs, 15 * 60_000],
+      ['BTC', 'universe-v1', 'whales-v1', decisionTimeMs, 15 * 60_000, 3],
     );
   });
 
-  it('persists and reads REST-unavailable Hyperliquid whale ranges separately from coverage', async () => {
-    const failedAt = new Date(2_000);
+  it('persists and reads per-wallet truncated Hyperliquid coverage', async () => {
+    const checkedAt = new Date(2_000);
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('SELECT reason, failed_at')) {
+      if (sql.includes('SELECT\n        status')) {
         return {
-          rows: [{ reason: 'history limit', failed_at: failedAt }],
+          rows: [
+            {
+              status: 'truncated',
+              covered_from_ts: new Date(90_000),
+              covered_to_ts: new Date(120_000),
+              fills_count: 10_000,
+              error: null,
+              checked_at: checkedAt,
+            },
+          ],
         };
       }
       return { rows: [] };
@@ -1138,35 +1173,78 @@ describe('timescale candle helpers', () => {
       Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
     }));
     const {
-      getHyperliquidWhaleBackfillFailure,
-      upsertHyperliquidWhaleBackfillFailure,
+      getHyperliquidWhaleWalletCoverage,
+      upsertHyperliquidWhaleWalletCoverage,
     } = await import('@tradejs/infra/timescale');
     const identity = {
+      address: '0x1111111111111111111111111111111111111111',
       fromMs: 60_000,
       toMs: 120_000,
       universeFingerprint: 'universe-v1',
       whaleRegistryFingerprint: 'whales-v1',
     };
 
-    await upsertHyperliquidWhaleBackfillFailure({
+    await upsertHyperliquidWhaleWalletCoverage({
       ...identity,
-      reason: 'history limit',
+      coveredFromMs: 90_000,
+      coveredToMs: 120_000,
+      status: 'truncated',
+      fillsCount: 10_000,
     });
-    await expect(getHyperliquidWhaleBackfillFailure(identity)).resolves.toEqual(
-      {
-        reason: 'history limit',
-        failedAt,
-      },
+    await expect(getHyperliquidWhaleWalletCoverage(identity)).resolves.toEqual({
+      status: 'truncated',
+      coveredFromMs: 90_000,
+      coveredToMs: 120_000,
+      fillsCount: 10_000,
+      error: null,
+      checkedAt,
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO hyperliquid_whale_wallet_coverage'),
+      [
+        'universe-v1',
+        'whales-v1',
+        identity.address,
+        60_000,
+        120_000,
+        90_000,
+        120_000,
+        'truncated',
+        10_000,
+        null,
+        3,
+      ],
     );
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'INSERT INTO hyperliquid_whale_backfill_failures',
-      ),
-      ['universe-v1', 'whales-v1', 60_000, 120_000, 'history limit'],
+      expect.stringContaining('FROM hyperliquid_whale_wallet_coverage'),
+      ['universe-v1', 'whales-v1', identity.address, 60_000, 120_000, 3],
     );
+  });
+
+  it('materializes one coverage row per minute from wallet ranges', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('RETURNING 1'))
+        return { rows: [{ '?column?': 1 }], rowCount: 3 };
+      return { rows: [] };
+    });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+    }));
+    const { rebuildHyperliquidWhaleCoverageRows } = await import(
+      '@tradejs/infra/timescale'
+    );
+    await expect(
+      rebuildHyperliquidWhaleCoverageRows({
+        fromMs: 60_000,
+        toMs: 240_000,
+        expectedWhales: 100,
+        universeFingerprint: 'universe-v1',
+        whaleRegistryFingerprint: 'whales-v1',
+      }),
+    ).resolves.toBe(3);
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('FROM hyperliquid_whale_backfill_failures'),
-      ['universe-v1', 'whales-v1', 60_000, 120_000],
+      expect.stringContaining('COUNT(DISTINCT wallets.address)'),
+      ['universe-v1', 'whales-v1', 60_000, 240_000, 100, 3],
     );
   });
 

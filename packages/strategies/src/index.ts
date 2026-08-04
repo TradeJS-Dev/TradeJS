@@ -7,6 +7,7 @@ import { marketFlushReversalManifest } from './MarketFlushReversal/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { gridManifest } from './Grid/manifest';
 import { gridClassicManifest } from './GridClassic/manifest';
+import { hyperliquidConsensusManifest } from './HyperliquidConsensus/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { relativeRotationManifest } from './RelativeRotation/manifest';
 import { liquidityTailsManifest } from './LiquidityTails/manifest';
@@ -32,6 +33,8 @@ import { config as gridDefaultConfig } from './Grid/config';
 import { GridStrategyCreator } from './Grid/strategy';
 import { config as gridClassicDefaultConfig } from './GridClassic/config';
 import { GridClassicStrategyCreator } from './GridClassic/strategy';
+import { config as hyperliquidConsensusDefaultConfig } from './HyperliquidConsensus/config';
+import { HyperliquidConsensusStrategyCreator } from './HyperliquidConsensus/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { MaStrategyCreator } from './MaStrategy/strategy';
 import { config as relativeRotationDefaultConfig } from './RelativeRotation/config';
@@ -94,6 +97,10 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: GridClassicStrategyCreator,
   },
   {
+    manifest: hyperliquidConsensusManifest,
+    creator: HyperliquidConsensusStrategyCreator,
+  },
+  {
     manifest: liquidityTailsManifest,
     creator: LiquidityTailsStrategyCreator,
   },
@@ -141,6 +148,7 @@ const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   DoubleTap: doubleTapDefaultConfig,
   Grid: gridDefaultConfig,
   GridClassic: gridClassicDefaultConfig,
+  HyperliquidConsensus: hyperliquidConsensusDefaultConfig,
   LiquidityTails: liquidityTailsDefaultConfig,
   LiquidityZones: liquidityZonesDefaultConfig,
   TrendFollow: trendFollowDefaultConfig,
@@ -167,6 +175,7 @@ export { trendShiftDefaultConfig };
 export { doubleTapDefaultConfig };
 export { gridDefaultConfig };
 export { gridClassicDefaultConfig };
+export { hyperliquidConsensusDefaultConfig };
 export { liquidityTailsDefaultConfig };
 export { liquidityZonesDefaultConfig };
 export { trendFollowDefaultConfig };
@@ -177,6 +186,7 @@ export { volatilityCompressionBreakoutDefaultConfig };
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
 export { adaptiveMomentumRibbonMlAdapter } from './AdaptiveMomentumRibbon/adapters/ml';
 export { adaptiveTrendChannelAiAdapter } from './AdaptiveTrendChannel/adapters/ai';
+export { hyperliquidConsensusAiAdapter } from './HyperliquidConsensus/adapters/ai';
 export { marketFlushReversalAiAdapter } from './MarketFlushReversal/adapters/ai';
 export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
 export { relativeRotationAiAdapter } from './RelativeRotation/adapters/ai';

@@ -12,16 +12,25 @@ export type HyperliquidPerpUniverseSnapshot = {
 };
 
 export type HyperliquidWhaleRegistrySnapshot = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: string;
-  source: 'hyperliquid_stats_leaderboard';
+  source: 'hyperliquid_structural_fills_snapshot';
   selection: {
-    window: 'week';
+    calibrationFrom: string;
+    calibrationTo: string;
+    effectiveFrom: string;
+    candidateLimit: number;
     minimumAccountValueUsd: number;
-    minimumVolumeUsd: number;
-    minimumAbsoluteRoi: number;
+    minimumActiveDays: number;
+    maximumRawFillsPerDay: number;
+    maximumDirectionalExecutionsPerDay: number;
+    minimumMedianNotionalUsd: number;
+    minimumMedianInterExecutionMinutes: number;
+    minimumTop30NotionalShare: number;
+    minimumTurnoverToEquity: number;
     maximumTurnoverToEquity: number;
     score: string;
+    forbiddenSelectionMetrics: readonly string[];
   };
   fingerprint: string;
   size: 100;
@@ -60,8 +69,8 @@ const validateWhaleSnapshot = (
   const addresses = value.addresses.map((address) => address.toLowerCase());
   validateUnique(addresses, 'whale registry');
   if (
-    value.schemaVersion !== 1 ||
-    value.source !== 'hyperliquid_stats_leaderboard' ||
+    value.schemaVersion !== 2 ||
+    value.source !== 'hyperliquid_structural_fills_snapshot' ||
     value.size !== 100 ||
     addresses.length !== 100 ||
     addresses.some((address) => !/^0x[0-9a-f]{40}$/.test(address)) ||

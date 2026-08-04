@@ -467,6 +467,9 @@ export const buildPreparedTestSuite = async ({
     cacheOnly: Boolean(flags.cacheOnly),
     aiEnabled,
     mlEnabled,
+    strategyNames: Array.from(
+      new Set(preparedSuite.map((test) => test.strategyName)),
+    ),
     log: (message) => console.log(chalk.gray(message)),
   });
 

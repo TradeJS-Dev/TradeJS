@@ -11,6 +11,7 @@ import {
   getHyperliquidPerpUniverseSnapshot,
   getHyperliquidWhaleRegistrySnapshot,
 } from '@tradejs/node/strategies';
+import { HYPERLIQUID_WHALE_DATA_MODEL_VERSION } from '@tradejs/types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -34,6 +35,9 @@ const RESEARCH_CONTEXT_ENV_KEYS = [
   'COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS',
   'HYPERLIQUID_WHALE_CONTEXT_ENABLED',
   'HYPERLIQUID_WHALE_BACKFILL_ENABLED',
+  'HYPERLIQUID_WHALE_MIN_COVERAGE_PCT',
+  'HYPERLIQUID_WHALE_CONCURRENCY',
+  'HYPERLIQUID_WHALE_RATE_LIMIT_WEIGHT',
 ] as const;
 
 const DERIVATIVES_CONTEXT_DATA_MODEL = {
@@ -43,7 +47,8 @@ const DERIVATIVES_CONTEXT_DATA_MODEL = {
   derivativesDataModelVersion: 2,
   hyperliquidWhaleCanonicalInterval: '1m',
   hyperliquidWhaleGateMinNotionalUsd: 50_000,
-  hyperliquidWhaleDataModelVersion: 1,
+  hyperliquidWhaleMinCoveragePct: 0.8,
+  hyperliquidWhaleDataModelVersion: HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
 } as const;
 
 type ResearchEvaluation = AiTrainEvaluation & {

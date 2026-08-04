@@ -52,6 +52,7 @@ export const prepareReplayBinanceMarketContext = async (preparedRun: {
   preloadStart: number;
   aiEnabled?: boolean;
   mlEnabled?: boolean;
+  strategyNames?: string[];
 }) => {
   await prepareMarketContextForRun({
     mode: 'replay',
@@ -65,6 +66,7 @@ export const prepareReplayBinanceMarketContext = async (preparedRun: {
     cacheOnly: Boolean(replayFlags.cacheOnly),
     aiEnabled: preparedRun.aiEnabled,
     mlEnabled: preparedRun.mlEnabled,
+    strategyNames: preparedRun.strategyNames,
     log: (message) => console.log(chalk.gray(message)),
   });
 };
@@ -218,6 +220,7 @@ export const replayBacktest = async () => {
     mlEnabled: replayStrategies.some(({ strategyConfig }) =>
       Boolean(strategyConfig.ML_ENABLED),
     ),
+    strategyNames: replayStrategies.map(({ strategyName }) => strategyName),
   });
 
   console.log(chalk.yellow(`tickers: ${preparedRun.tickers.length}`));

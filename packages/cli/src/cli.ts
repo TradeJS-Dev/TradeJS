@@ -40,6 +40,8 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'hyperliquid:whale-backfill': () =>
     import('./scripts/hyperliquidWhaleBackfill'),
   'hyperliquid:whale-ingest': () => import('./scripts/hyperliquidWhaleIngest'),
+  'hyperliquid:whales:update': () =>
+    import('./scripts/hyperliquidWhalesUpdate'),
   'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),

@@ -591,6 +591,9 @@ const prepareContinuedBacktestMarketContext = async ({
     cacheOnly: manifest.flags.cacheOnly,
     aiEnabled: manifest.flags.ai,
     mlEnabled: manifest.flags.ml,
+    strategyNames: Array.from(
+      new Set(remainingSuite.map((test) => test.strategyName)),
+    ),
     log: (message) => console.log(chalk.gray(message)),
   });
 };
@@ -655,7 +658,7 @@ export const backtest = async () => {
       config.strategyConfigGrid,
       preparedRun.connectorName,
       interval,
-    ).map((test) => {
+    ).map((test: TestSuite[number]) => {
       const deploymentStrategy = preparedRun.deployment?.strategies.find(
         ({ strategyName }) => strategyName === config.strategyName,
       );

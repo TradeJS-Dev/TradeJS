@@ -33,6 +33,7 @@ import {
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
+import { loadHyperliquidWhaleFlowContext } from './strategyHelpers/hyperliquidWhaleContext';
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
@@ -1675,6 +1676,29 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       isConfigFromBacktest,
       sharedReplayKey: strategySharedReplayKey,
       getSharedReplayState: getSharedStrategyReplayState,
+      loadDecisionBaseContext: async ({
+        baseContext,
+        candle,
+        symbol: decisionSymbol,
+        interval: decisionInterval,
+      }) => {
+        if (!baseContext) return undefined;
+        const hyperliquidWhales = await loadHyperliquidWhaleFlowContext({
+          symbol: decisionSymbol,
+          interval: decisionInterval,
+          timestamp: candle.timestamp,
+          env,
+        });
+        if (!hyperliquidWhales) return baseContext;
+
+        return {
+          ...baseContext,
+          participation: {
+            ...baseContext.participation,
+            hyperliquidWhales,
+          },
+        };
+      },
     });
 
     const core = await createCore({

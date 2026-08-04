@@ -1,24 +1,30 @@
 const mockHasHyperliquidWhaleBackfillCoverage = jest.fn();
-const mockGetHyperliquidWhaleBackfillFailure = jest.fn();
-const mockUpsertHyperliquidWhaleBackfillFailure = jest.fn();
+const mockGetHyperliquidWhaleWalletCoverage = jest.fn();
+const mockUpsertHyperliquidWhaleWalletCoverage = jest.fn();
 const mockUpsertHyperliquidWhaleTradeEvents = jest.fn();
 const mockRebuildHyperliquidWhaleFlowRows = jest.fn();
-const mockUpsertHyperliquidWhaleBackfillCoverage = jest.fn();
+const mockRebuildHyperliquidWhaleCoverageRows = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
   hasHyperliquidWhaleBackfillCoverage: (...args: unknown[]) =>
     mockHasHyperliquidWhaleBackfillCoverage(...args),
-  getHyperliquidWhaleBackfillFailure: (...args: unknown[]) =>
-    mockGetHyperliquidWhaleBackfillFailure(...args),
-  upsertHyperliquidWhaleBackfillFailure: (...args: unknown[]) =>
-    mockUpsertHyperliquidWhaleBackfillFailure(...args),
+  getHyperliquidWhaleWalletCoverage: (...args: unknown[]) =>
+    mockGetHyperliquidWhaleWalletCoverage(...args),
+  upsertHyperliquidWhaleWalletCoverage: (...args: unknown[]) =>
+    mockUpsertHyperliquidWhaleWalletCoverage(...args),
   upsertHyperliquidWhaleTradeEvents: (...args: unknown[]) =>
     mockUpsertHyperliquidWhaleTradeEvents(...args),
   rebuildHyperliquidWhaleFlowRows: (...args: unknown[]) =>
     mockRebuildHyperliquidWhaleFlowRows(...args),
-  upsertHyperliquidWhaleBackfillCoverage: (...args: unknown[]) =>
-    mockUpsertHyperliquidWhaleBackfillCoverage(...args),
+  rebuildHyperliquidWhaleCoverageRows: (...args: unknown[]) =>
+    mockRebuildHyperliquidWhaleCoverageRows(...args),
 }));
+
+const addresses = [
+  '0x1111111111111111111111111111111111111111',
+  '0x2222222222222222222222222222222222222222',
+  '0x3333333333333333333333333333333333333333',
+];
 
 jest.mock('@tradejs/node/strategies', () => ({
   getHyperliquidPerpUniverseSnapshot: () => ({
@@ -27,7 +33,7 @@ jest.mock('@tradejs/node/strategies', () => ({
   }),
   getHyperliquidWhaleRegistrySnapshot: () => ({
     fingerprint: 'whales-v1',
-    addresses: ['0x1111111111111111111111111111111111111111'],
+    addresses,
   }),
 }));
 
@@ -35,47 +41,59 @@ import {
   backfillHyperliquidWhaleContext,
   fetchHyperliquidUserFillsByTime,
 } from '../lib/hyperliquidWhaleBackfill';
+import { HyperliquidInfoRateLimiter } from '../lib/hyperliquidRateLimiter';
 
 describe('hyperliquidWhaleBackfill', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHasHyperliquidWhaleBackfillCoverage.mockResolvedValue(false);
-    mockGetHyperliquidWhaleBackfillFailure.mockResolvedValue(null);
-    mockUpsertHyperliquidWhaleBackfillFailure.mockResolvedValue(undefined);
+    mockGetHyperliquidWhaleWalletCoverage.mockResolvedValue(null);
+    mockUpsertHyperliquidWhaleWalletCoverage.mockResolvedValue(undefined);
     mockUpsertHyperliquidWhaleTradeEvents.mockResolvedValue(undefined);
-    mockRebuildHyperliquidWhaleFlowRows.mockResolvedValue(0);
-    mockUpsertHyperliquidWhaleBackfillCoverage.mockResolvedValue(undefined);
+    mockRebuildHyperliquidWhaleFlowRows.mockResolvedValue(12);
+    mockRebuildHyperliquidWhaleCoverageRows.mockResolvedValue(20);
   });
 
-  it('uses the public info endpoint without credentials and applies adaptive pacing', async () => {
-    const wait = jest.fn().mockResolvedValue(undefined);
+  it('uses the public info endpoint without credentials and aggregateByTime', async () => {
+    const limiter = { reserve: jest.fn().mockResolvedValue(undefined) };
     const fetchImpl = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => [
-        { coin: 'BTC', px: '100', sz: '1', time: 10, tid: 1, side: 'B' },
+        {
+          coin: 'BTC',
+          px: '100',
+          sz: '1',
+          time: 10,
+          tid: 1,
+          side: 'B',
+          startPosition: '0',
+          dir: 'Open Long',
+          closedPnl: '0',
+        },
       ],
       text: async () => '',
     });
-    const rows = await fetchHyperliquidUserFillsByTime({
-      address: '0x1111111111111111111111111111111111111111',
+    const result = await fetchHyperliquidUserFillsByTime({
+      address: addresses[0],
       startTime: 1,
       endTime: 100,
       fetchImpl: fetchImpl as typeof fetch,
-      wait,
+      rateLimiter: limiter as unknown as HyperliquidInfoRateLimiter,
     });
-    expect(rows).toHaveLength(1);
+    expect(result).toMatchObject({ truncated: false, coveredFromMs: 1 });
+    expect(result.fills).toHaveLength(1);
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.hyperliquid.xyz/info',
       expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"type":"userFillsByTime"'),
+        body: expect.stringContaining('"aggregateByTime":true'),
       }),
     );
-    expect(wait).toHaveBeenCalledWith(expect.any(Number));
+    expect(limiter.reserve).toHaveBeenCalledTimes(2);
   });
 
-  it('fails closed instead of marking truncated history as complete', async () => {
+  it('returns and preserves the available 10000 fills when history is truncated', async () => {
     const fetchImpl = jest
       .fn()
       .mockImplementation(async (_url: string, init: { body: string }) => {
@@ -91,75 +109,109 @@ describe('hyperliquidWhaleBackfill', () => {
               time: startTime + index,
               tid: startTime + index,
               side: 'B',
+              startPosition: '0',
             })),
           text: async () => '',
         };
       });
-    await expect(
-      fetchHyperliquidUserFillsByTime({
-        address: '0x1111111111111111111111111111111111111111',
-        startTime: 1,
-        endTime: 1_000_000,
-        fetchImpl: fetchImpl as typeof fetch,
-        wait: async () => undefined,
-      }),
-    ).rejects.toThrow('use an S3 node_fills export');
+    const result = await fetchHyperliquidUserFillsByTime({
+      address: addresses[0],
+      startTime: 1,
+      endTime: 1_000_000,
+      fetchImpl: fetchImpl as typeof fetch,
+      rateLimiter: {
+        reserve: jest.fn().mockResolvedValue(undefined),
+      } as unknown as HyperliquidInfoRateLimiter,
+    });
+    expect(result).toMatchObject({ truncated: true, coveredFromMs: 60_000 });
+    expect(result.fills).toHaveLength(10_000);
     expect(fetchImpl).toHaveBeenCalledTimes(5);
   });
 
-  it('keeps an automatic backtest running and caches an unavailable REST range', async () => {
+  it('continues remaining wallets, stores truncated fills, and materializes coverage', async () => {
+    const pageByAddress = new Map<string, number>();
     const fetchImpl = jest
       .fn()
       .mockImplementation(async (_url: string, init: { body: string }) => {
-        const startTime = Number(JSON.parse(init.body).startTime);
+        const body = JSON.parse(init.body) as {
+          user: string;
+          startTime: number;
+        };
+        if (body.user === addresses[2]) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({}),
+            text: async () => 'unavailable',
+          };
+        }
+        const page = pageByAddress.get(body.user) ?? 0;
+        pageByAddress.set(body.user, page + 1);
+        const count = body.user === addresses[0] ? 2_000 : 1;
         return {
           ok: true,
           status: 200,
           json: async () =>
-            Array.from({ length: 2_000 }, (_, index) => ({
+            Array.from({ length: count }, (_, index) => ({
               coin: 'BTC',
               px: '100',
               sz: '1',
-              time: startTime + index,
-              tid: startTime + index,
+              time: body.startTime + index,
+              tid: `${body.user}-${page}-${index}`,
               side: 'B',
+              startPosition: '0',
             })),
           text: async () => '',
         };
       });
-    const log = jest.fn();
     const result = await backfillHyperliquidWhaleContext({
       startMs: 1,
       endMs: 1_000_000,
       cacheOnly: false,
       strict: false,
+      concurrency: 2,
       fetchImpl: fetchImpl as typeof fetch,
       wait: async () => undefined,
-      log,
     });
 
     expect(result).toMatchObject({
       complete: false,
-      failureCached: false,
-      buckets: 0,
+      walletsProcessed: 3,
+      completeWallets: 1,
+      truncatedWallets: 1,
+      failedWallets: 1,
+      fills: 10_001,
+      coverageBuckets: 20,
     });
-    expect(mockUpsertHyperliquidWhaleBackfillFailure).toHaveBeenCalledWith(
+    expect(mockUpsertHyperliquidWhaleTradeEvents).toHaveBeenCalledTimes(2);
+    expect(mockUpsertHyperliquidWhaleTradeEvents).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          buyerStartPosition: 0,
+          buyerEndPosition: 1,
+          buyerPositionAction: 'open',
+        }),
+      ]),
+    );
+    expect(mockUpsertHyperliquidWhaleWalletCoverage).toHaveBeenCalledWith(
       expect.objectContaining({
-        universeFingerprint: 'universe-v1',
-        whaleRegistryFingerprint: 'whales-v1',
+        address: addresses[0],
+        status: 'truncated',
+        fillsCount: 10_000,
       }),
     );
-    expect(mockRebuildHyperliquidWhaleFlowRows).not.toHaveBeenCalled();
-    expect(mockUpsertHyperliquidWhaleBackfillCoverage).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith(
-      expect.stringContaining('continuing without incomplete context'),
+    expect(mockUpsertHyperliquidWhaleWalletCoverage).toHaveBeenCalledWith(
+      expect.objectContaining({ address: addresses[2], status: 'failed' }),
+    );
+    expect(mockRebuildHyperliquidWhaleFlowRows).toHaveBeenCalled();
+    expect(mockRebuildHyperliquidWhaleCoverageRows).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedWhales: 3 }),
     );
   });
 
-  it('skips a previously failed automatic range without another API request', async () => {
-    mockGetHyperliquidWhaleBackfillFailure.mockResolvedValue({
-      reason: 'history limit',
-      failedAt: new Date(1_000),
+  it('reuses complete/truncated wallet coverage without requesting those wallets again', async () => {
+    mockGetHyperliquidWhaleWalletCoverage.mockResolvedValue({
+      status: 'truncated',
     });
     const fetchImpl = jest.fn();
     const result = await backfillHyperliquidWhaleContext({
@@ -168,14 +220,14 @@ describe('hyperliquidWhaleBackfill', () => {
       cacheOnly: false,
       strict: false,
       fetchImpl: fetchImpl as typeof fetch,
-      wait: async () => undefined,
     });
 
     expect(result).toMatchObject({
-      complete: false,
-      failureCached: true,
-      skippedReason: 'history limit',
+      walletsCached: 3,
+      truncatedWallets: 3,
+      failedWallets: 0,
     });
     expect(fetchImpl).not.toHaveBeenCalled();
+    expect(mockRebuildHyperliquidWhaleCoverageRows).toHaveBeenCalled();
   });
 });
