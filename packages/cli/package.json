@@ -83,6 +83,8 @@
     "infra-init": "yarn run run:dist infra-init",
     "infra-up": "yarn run run:dist infra-up",
     "market-ws": "yarn run run:dist market-ws",
+    "hyperliquid:whale-backfill": "yarn run run:dist hyperliquid:whale-backfill",
+    "hyperliquid:whale-ingest": "yarn run run:dist hyperliquid:whale-ingest",
     "infra-down": "yarn run run:dist infra-down",
     "spread:ingest": "yarn run run:dist spread:ingest",
     "migration": "yarn run run:dist migration",

@@ -3,6 +3,8 @@ import {
   KlineChartData,
   DerivativesInterval,
   DerivativesRow,
+  HyperliquidWhaleFlowRow,
+  HyperliquidWhaleTradeEventRow,
   MarketCmcExchangeLiquidityContextRow,
   MarketCmcFearGreedContextRow,
   MarketCmcIndexContextRow,
@@ -70,10 +72,12 @@ let candlesSchemaReady = false;
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let binanceMarketSchemaReady = false;
+let hyperliquidWhaleSchemaReady = false;
 let candlesSchemaReadyPromise: Promise<void> | null = null;
 let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
 let binanceMarketSchemaReadyPromise: Promise<void> | null = null;
+let hyperliquidWhaleSchemaReadyPromise: Promise<void> | null = null;
 
 export const closeTimescalePool = async (): Promise<void> => {
   const pool = global.__pgPool__;
@@ -86,10 +90,12 @@ export const closeTimescalePool = async (): Promise<void> => {
   derivativesSchemaReady = false;
   spreadSchemaReady = false;
   binanceMarketSchemaReady = false;
+  hyperliquidWhaleSchemaReady = false;
   candlesSchemaReadyPromise = null;
   derivativesSchemaReadyPromise = null;
   spreadSchemaReadyPromise = null;
   binanceMarketSchemaReadyPromise = null;
+  hyperliquidWhaleSchemaReadyPromise = null;
   await pool.end();
 };
 
@@ -97,6 +103,7 @@ const CANDLES_SCHEMA_LOCK_KEY = 610000;
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
+const HYPERLIQUID_WHALE_SCHEMA_LOCK_KEY = 610004;
 const PG_SAFE_MAX_BIND_PARAMS = 30_000;
 
 const normalizeCandleProvider = (provider: string) =>
@@ -719,6 +726,146 @@ const ensureBinanceMarketSchema = async () => {
   });
 
   await binanceMarketSchemaReadyPromise;
+};
+
+const ensureHyperliquidWhaleSchema = async () => {
+  if (hyperliquidWhaleSchemaReady) return;
+  if (hyperliquidWhaleSchemaReadyPromise) {
+    await hyperliquidWhaleSchemaReadyPromise;
+    return;
+  }
+
+  hyperliquidWhaleSchemaReadyPromise = withSchemaLock(
+    HYPERLIQUID_WHALE_SCHEMA_LOCK_KEY,
+    async () => {
+      if (hyperliquidWhaleSchemaReady) return;
+      const pool = getPool();
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS hyperliquid_whale_trade_events (
+          symbol text NOT NULL,
+          ts timestamptz NOT NULL,
+          tid text NOT NULL,
+          price double precision NOT NULL,
+          size double precision NOT NULL,
+          notional_usd double precision NOT NULL,
+          buyer_address text,
+          seller_address text,
+          buyer_tracked boolean NOT NULL,
+          seller_tracked boolean NOT NULL,
+          universe_fingerprint text NOT NULL,
+          whale_registry_fingerprint text NOT NULL,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (
+            universe_fingerprint,
+            whale_registry_fingerprint,
+            symbol,
+            ts,
+            tid
+          )
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'hyperliquid_whale_trade_events',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '1 day'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS hyperliquid_whale_events_lookup_idx
+        ON hyperliquid_whale_trade_events (
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          symbol,
+          ts DESC
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS hyperliquid_whale_flow (
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          trades integer NOT NULL,
+          whale_sides integer NOT NULL,
+          unique_whales integer NOT NULL,
+          whale_addresses text[] NOT NULL DEFAULT '{}',
+          buy_notional_usd double precision NOT NULL,
+          sell_notional_usd double precision NOT NULL,
+          net_notional_usd double precision NOT NULL,
+          buy_share_pct double precision,
+          universe_fingerprint text NOT NULL,
+          whale_registry_fingerprint text NOT NULL,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (
+            universe_fingerprint,
+            whale_registry_fingerprint,
+            symbol,
+            interval,
+            ts
+          )
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'hyperliquid_whale_flow',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '7 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS hyperliquid_whale_flow_lookup_idx
+        ON hyperliquid_whale_flow (
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          symbol,
+          interval,
+          ts DESC
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS hyperliquid_whale_backfill_coverage (
+          universe_fingerprint text NOT NULL,
+          whale_registry_fingerprint text NOT NULL,
+          from_ts timestamptz NOT NULL,
+          to_ts timestamptz NOT NULL,
+          rows_count integer NOT NULL,
+          checked_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (
+            universe_fingerprint,
+            whale_registry_fingerprint,
+            from_ts,
+            to_ts
+          )
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS hyperliquid_whale_backfill_failures (
+          universe_fingerprint text NOT NULL,
+          whale_registry_fingerprint text NOT NULL,
+          from_ts timestamptz NOT NULL,
+          to_ts timestamptz NOT NULL,
+          reason text NOT NULL,
+          failed_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (
+            universe_fingerprint,
+            whale_registry_fingerprint,
+            from_ts,
+            to_ts
+          )
+        )
+      `);
+      hyperliquidWhaleSchemaReady = true;
+    },
+  ).finally(() => {
+    hyperliquidWhaleSchemaReadyPromise = null;
+  });
+
+  await hyperliquidWhaleSchemaReadyPromise;
 };
 
 export async function upsertDerivatives(rows: DerivativesRow[]) {
@@ -1531,6 +1678,298 @@ export async function upsertMarketTradeFlowRows(rows: MarketTradeFlowRow[]) {
   );
 }
 
+export async function upsertHyperliquidWhaleTradeEvents(
+  rows: HyperliquidWhaleTradeEventRow[],
+) {
+  if (!rows.length) return;
+  await ensureHyperliquidWhaleSchema();
+  const cols = [
+    'symbol',
+    'ts',
+    'tid',
+    'price',
+    'size',
+    'notional_usd',
+    'buyer_address',
+    'seller_address',
+    'buyer_tracked',
+    'seller_tracked',
+    'universe_fingerprint',
+    'whale_registry_fingerprint',
+    'source',
+  ] as const;
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let index = 0; index < rows.length; index += maxRows) {
+      await upsertHyperliquidWhaleTradeEvents(
+        rows.slice(index, index + maxRows),
+      );
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, rowIndex) =>
+        `(${cols
+          .map((__, colIndex) => `$${rowIndex * cols.length + colIndex + 1}`)
+          .join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.symbol,
+    row.ts,
+    row.tid,
+    row.price,
+    row.size,
+    row.notionalUsd,
+    row.buyerAddress ?? null,
+    row.sellerAddress ?? null,
+    row.buyerTracked,
+    row.sellerTracked,
+    row.universeFingerprint,
+    row.whaleRegistryFingerprint,
+    row.source ?? null,
+  ]);
+  await getPool().query(
+    `
+      INSERT INTO hyperliquid_whale_trade_events (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        symbol,
+        ts,
+        tid
+      ) DO UPDATE SET
+        buyer_address = COALESCE(
+          hyperliquid_whale_trade_events.buyer_address,
+          EXCLUDED.buyer_address
+        ),
+        seller_address = COALESCE(
+          hyperliquid_whale_trade_events.seller_address,
+          EXCLUDED.seller_address
+        ),
+        buyer_tracked = hyperliquid_whale_trade_events.buyer_tracked OR EXCLUDED.buyer_tracked,
+        seller_tracked = hyperliquid_whale_trade_events.seller_tracked OR EXCLUDED.seller_tracked,
+        source = EXCLUDED.source,
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function upsertHyperliquidWhaleFlowRows(
+  rows: HyperliquidWhaleFlowRow[],
+) {
+  if (!rows.length) return;
+  await ensureHyperliquidWhaleSchema();
+  const cols = [
+    'symbol',
+    'interval',
+    'ts',
+    'trades',
+    'whale_sides',
+    'unique_whales',
+    'whale_addresses',
+    'buy_notional_usd',
+    'sell_notional_usd',
+    'net_notional_usd',
+    'buy_share_pct',
+    'universe_fingerprint',
+    'whale_registry_fingerprint',
+    'source',
+  ] as const;
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let index = 0; index < rows.length; index += maxRows) {
+      await upsertHyperliquidWhaleFlowRows(rows.slice(index, index + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, rowIndex) =>
+        `(${cols
+          .map((__, colIndex) => `$${rowIndex * cols.length + colIndex + 1}`)
+          .join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.symbol,
+    row.interval,
+    row.ts,
+    row.trades,
+    row.whaleSides,
+    row.uniqueWhales,
+    row.whaleAddresses ?? [],
+    row.buyNotionalUsd,
+    row.sellNotionalUsd,
+    row.netNotionalUsd,
+    row.buySharePct ?? null,
+    row.universeFingerprint,
+    row.whaleRegistryFingerprint,
+    row.source ?? null,
+  ]);
+  await getPool().query(
+    `
+      INSERT INTO hyperliquid_whale_flow (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        symbol,
+        interval,
+        ts
+      ) DO UPDATE SET
+        trades = EXCLUDED.trades,
+        whale_sides = EXCLUDED.whale_sides,
+        unique_whales = EXCLUDED.unique_whales,
+        whale_addresses = EXCLUDED.whale_addresses,
+        buy_notional_usd = EXCLUDED.buy_notional_usd,
+        sell_notional_usd = EXCLUDED.sell_notional_usd,
+        net_notional_usd = EXCLUDED.net_notional_usd,
+        buy_share_pct = EXCLUDED.buy_share_pct,
+        source = EXCLUDED.source,
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function rebuildHyperliquidWhaleFlowRows(params: {
+  fromMs: number;
+  toMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  deleteEventsBeforeMs?: number;
+}) {
+  await ensureHyperliquidWhaleSchema();
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `
+        WITH source_events AS (
+          SELECT *
+          FROM hyperliquid_whale_trade_events
+          WHERE universe_fingerprint = $1
+            AND whale_registry_fingerprint = $2
+            AND ts >= to_timestamp($3/1000.0)
+            AND ts < to_timestamp($4/1000.0)
+        ), metrics AS (
+          SELECT
+            symbol,
+            date_trunc('minute', ts) AS bucket_ts,
+            COUNT(*)::int AS trades,
+            SUM(buyer_tracked::int + seller_tracked::int)::int AS whale_sides,
+            SUM(CASE WHEN buyer_tracked THEN notional_usd ELSE 0 END) AS buy_notional_usd,
+            SUM(CASE WHEN seller_tracked THEN notional_usd ELSE 0 END) AS sell_notional_usd
+          FROM source_events
+          GROUP BY symbol, date_trunc('minute', ts)
+        ), addresses AS (
+          SELECT
+            symbol,
+            date_trunc('minute', ts) AS bucket_ts,
+            ARRAY_AGG(DISTINCT whale_address ORDER BY whale_address) AS whale_addresses
+          FROM source_events
+          CROSS JOIN LATERAL UNNEST(ARRAY[
+            CASE WHEN buyer_tracked THEN buyer_address END,
+            CASE WHEN seller_tracked THEN seller_address END
+          ]) AS expanded(whale_address)
+          WHERE whale_address IS NOT NULL
+          GROUP BY symbol, date_trunc('minute', ts)
+        )
+        INSERT INTO hyperliquid_whale_flow (
+          symbol,
+          interval,
+          ts,
+          trades,
+          whale_sides,
+          unique_whales,
+          whale_addresses,
+          buy_notional_usd,
+          sell_notional_usd,
+          net_notional_usd,
+          buy_share_pct,
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          source
+        )
+        SELECT
+          metrics.symbol,
+          '1m',
+          metrics.bucket_ts,
+          metrics.trades,
+          metrics.whale_sides,
+          COALESCE(CARDINALITY(addresses.whale_addresses), 0),
+          COALESCE(addresses.whale_addresses, '{}'),
+          metrics.buy_notional_usd,
+          metrics.sell_notional_usd,
+          metrics.buy_notional_usd - metrics.sell_notional_usd,
+          CASE
+            WHEN metrics.buy_notional_usd + metrics.sell_notional_usd > 0
+            THEN metrics.buy_notional_usd /
+              (metrics.buy_notional_usd + metrics.sell_notional_usd)
+            ELSE NULL
+          END,
+          $1,
+          $2,
+          'hyperliquid_trades'
+        FROM metrics
+        LEFT JOIN addresses USING (symbol, bucket_ts)
+        ON CONFLICT (
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          symbol,
+          interval,
+          ts
+        ) DO UPDATE SET
+          trades = EXCLUDED.trades,
+          whale_sides = EXCLUDED.whale_sides,
+          unique_whales = EXCLUDED.unique_whales,
+          whale_addresses = EXCLUDED.whale_addresses,
+          buy_notional_usd = EXCLUDED.buy_notional_usd,
+          sell_notional_usd = EXCLUDED.sell_notional_usd,
+          net_notional_usd = EXCLUDED.net_notional_usd,
+          buy_share_pct = EXCLUDED.buy_share_pct,
+          source = EXCLUDED.source,
+          ingested_at = now()
+        RETURNING 1
+      `,
+      [
+        params.universeFingerprint,
+        params.whaleRegistryFingerprint,
+        params.fromMs,
+        params.toMs,
+      ],
+    );
+    if (params.deleteEventsBeforeMs != null) {
+      await client.query(
+        `
+          DELETE FROM hyperliquid_whale_trade_events
+          WHERE universe_fingerprint = $1
+            AND whale_registry_fingerprint = $2
+            AND ts < to_timestamp($3/1000.0)
+        `,
+        [
+          params.universeFingerprint,
+          params.whaleRegistryFingerprint,
+          params.deleteEventsBeforeMs,
+        ],
+      );
+    }
+    await client.query('COMMIT');
+    return result.rowCount ?? 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
   if (!rows.length) return;
   await ensureBinanceMarketSchema();
@@ -2189,6 +2628,245 @@ export async function getLatestMarketTradeFlow(params: {
     stale:
       ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
   };
+}
+
+const HYPERLIQUID_CONTEXT_INTERVAL_MS: Record<MarketFeatureInterval, number> = {
+  '1m': 60_000,
+  '5m': 5 * 60_000,
+  '15m': 15 * 60_000,
+  '1h': 60 * 60_000,
+};
+
+export type HyperliquidWhaleFlowAggregate = {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  asOfTs: Date;
+  windowEndTs: Date;
+  trades: number;
+  whaleSides: number;
+  uniqueWhales: number;
+  buyNotionalUsd: number;
+  sellNotionalUsd: number;
+  netNotionalUsd: number;
+  buySharePct: number | null;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  source: string | null;
+  ageMs: number;
+  stale: boolean;
+};
+
+export async function getHyperliquidWhaleFlowAggregate(params: {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  decisionTimeMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  maxAgeMs?: number;
+}): Promise<HyperliquidWhaleFlowAggregate | null> {
+  await ensureHyperliquidWhaleSchema();
+  const intervalMs = HYPERLIQUID_CONTEXT_INTERVAL_MS[params.interval];
+  const res = await getPool().query(
+    `
+      WITH window_rows AS (
+        SELECT *
+        FROM hyperliquid_whale_flow
+        WHERE symbol = $1
+          AND interval = '1m'
+          AND universe_fingerprint = $2
+          AND whale_registry_fingerprint = $3
+          AND ts >= to_timestamp(($4 - $5)/1000.0)
+          AND ts < to_timestamp($4/1000.0)
+      ), unique_addresses AS (
+        SELECT COUNT(DISTINCT address)::int AS unique_whales
+        FROM window_rows
+        CROSS JOIN LATERAL UNNEST(whale_addresses) AS expanded(address)
+      )
+      SELECT
+        $1::text AS symbol,
+        MAX(ts) AS as_of_ts,
+        COUNT(*)::int AS buckets,
+        COALESCE(SUM(trades), 0)::int AS trades,
+        COALESCE(SUM(whale_sides), 0)::int AS whale_sides,
+        COALESCE((SELECT unique_whales FROM unique_addresses), 0)::int AS unique_whales,
+        COALESCE(SUM(buy_notional_usd), 0) AS buy_notional_usd,
+        COALESCE(SUM(sell_notional_usd), 0) AS sell_notional_usd,
+        COALESCE(SUM(net_notional_usd), 0) AS net_notional_usd,
+        CASE
+          WHEN COALESCE(SUM(buy_notional_usd + sell_notional_usd), 0) > 0
+          THEN SUM(buy_notional_usd) /
+            SUM(buy_notional_usd + sell_notional_usd)
+          ELSE NULL
+        END AS buy_share_pct,
+        MAX(source) AS source
+      FROM window_rows
+    `,
+    [
+      params.symbol,
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.decisionTimeMs,
+      intervalMs,
+    ],
+  );
+  const row = res.rows[0];
+  if (!row?.as_of_ts || Number(row.buckets) === 0) return null;
+  const asOfTs = new Date(row.as_of_ts);
+  const ageMs = params.decisionTimeMs - (asOfTs.getTime() + 60_000);
+  return {
+    symbol: params.symbol,
+    interval: params.interval,
+    asOfTs,
+    windowEndTs: new Date(params.decisionTimeMs),
+    trades: Number(row.trades) || 0,
+    whaleSides: Number(row.whale_sides) || 0,
+    uniqueWhales: Number(row.unique_whales) || 0,
+    buyNotionalUsd: Number(row.buy_notional_usd) || 0,
+    sellNotionalUsd: Number(row.sell_notional_usd) || 0,
+    netNotionalUsd: Number(row.net_notional_usd) || 0,
+    buySharePct:
+      row.buy_share_pct == null ? null : Number(row.buy_share_pct) || 0,
+    universeFingerprint: params.universeFingerprint,
+    whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+    source: row.source == null ? null : String(row.source),
+    ageMs,
+    stale:
+      ageMs < 0 ||
+      (params.maxAgeMs != null && Number.isFinite(params.maxAgeMs)
+        ? ageMs > params.maxAgeMs
+        : false),
+  };
+}
+
+export async function hasHyperliquidWhaleBackfillCoverage(params: {
+  fromMs: number;
+  toMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}) {
+  await ensureHyperliquidWhaleSchema();
+  const result = await getPool().query(
+    `
+      SELECT 1
+      FROM hyperliquid_whale_backfill_coverage
+      WHERE universe_fingerprint = $1
+        AND whale_registry_fingerprint = $2
+        AND from_ts <= to_timestamp($3/1000.0)
+        AND to_ts >= to_timestamp($4/1000.0)
+      LIMIT 1
+    `,
+    [
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+  return result.rows.length > 0;
+}
+
+export async function upsertHyperliquidWhaleBackfillCoverage(params: {
+  fromMs: number;
+  toMs: number;
+  rowsCount: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}) {
+  await ensureHyperliquidWhaleSchema();
+  await getPool().query(
+    `
+      INSERT INTO hyperliquid_whale_backfill_coverage (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        from_ts,
+        to_ts,
+        rows_count
+      ) VALUES ($1, $2, to_timestamp($3/1000.0), to_timestamp($4/1000.0), $5)
+      ON CONFLICT (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        from_ts,
+        to_ts
+      ) DO UPDATE SET
+        rows_count = EXCLUDED.rows_count,
+        checked_at = now()
+    `,
+    [
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.fromMs,
+      params.toMs,
+      params.rowsCount,
+    ],
+  );
+}
+
+export async function getHyperliquidWhaleBackfillFailure(params: {
+  fromMs: number;
+  toMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}) {
+  await ensureHyperliquidWhaleSchema();
+  const result = await getPool().query(
+    `
+      SELECT reason, failed_at
+      FROM hyperliquid_whale_backfill_failures
+      WHERE universe_fingerprint = $1
+        AND whale_registry_fingerprint = $2
+        AND from_ts = to_timestamp($3/1000.0)
+        AND to_ts = to_timestamp($4/1000.0)
+      LIMIT 1
+    `,
+    [
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    reason: String(row.reason),
+    failedAt: new Date(row.failed_at),
+  };
+}
+
+export async function upsertHyperliquidWhaleBackfillFailure(params: {
+  fromMs: number;
+  toMs: number;
+  reason: string;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}) {
+  await ensureHyperliquidWhaleSchema();
+  await getPool().query(
+    `
+      INSERT INTO hyperliquid_whale_backfill_failures (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        from_ts,
+        to_ts,
+        reason
+      ) VALUES ($1, $2, to_timestamp($3/1000.0), to_timestamp($4/1000.0), $5)
+      ON CONFLICT (
+        universe_fingerprint,
+        whale_registry_fingerprint,
+        from_ts,
+        to_ts
+      ) DO UPDATE SET
+        reason = EXCLUDED.reason,
+        failed_at = now()
+    `,
+    [
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.fromMs,
+      params.toMs,
+      params.reason,
+    ],
+  );
 }
 
 export async function getLatestMarketBreadth(params: {

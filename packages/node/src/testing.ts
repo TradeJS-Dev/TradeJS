@@ -37,6 +37,7 @@ import { buildAiPayload } from './ai';
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
+import { enrichSignalWithHyperliquidWhaleContext } from './strategyHelpers/hyperliquidWhaleContext';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -1364,6 +1365,13 @@ export const testing: TestingBox = async ({
           env: 'BACKTEST',
         }),
       );
+      await withTimeout(
+        'hyperliquid whale context',
+        enrichSignalWithHyperliquidWhaleContext({
+          signal: signal as Signal,
+          env: 'BACKTEST',
+        }),
+      );
     }
     if (ml && signal && typeof signal !== 'string' && signal.signalId) {
       const payload = buildMlPayload({
@@ -1864,6 +1872,13 @@ export const testingGroupInSharedCandleLoop = async (
         await withTimeout(
           'derivatives context',
           enrichSignalWithDerivativesContext({
+            signal: signal as Signal,
+            env: 'BACKTEST',
+          }),
+        );
+        await withTimeout(
+          'hyperliquid whale context',
+          enrichSignalWithHyperliquidWhaleContext({
             signal: signal as Signal,
             env: 'BACKTEST',
           }),

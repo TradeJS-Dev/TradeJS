@@ -320,6 +320,8 @@ const pushWhen = <T>(items: T[], condition: boolean, item: T) => {
   }
 };
 
+const HYPERLIQUID_WHALE_GATE_MIN_NOTIONAL_USD = 50_000;
+
 export const buildBaseContextGateFeatures = ({
   baseContext,
   direction,
@@ -341,6 +343,7 @@ export const buildBaseContextGateFeatures = ({
   const volume = baseContext.participation?.volume;
   const delta = baseContext.participation?.delta;
   const tradeFlow = baseContext.participation?.tradeFlow;
+  const hyperliquidWhales = baseContext.participation?.hyperliquidWhales;
   const volumeStructure = baseContext.participation?.volumeStructure;
   const relative = baseContext.relative?.benchmark;
   const marketBreadth = baseContext.relative?.marketBreadth;
@@ -397,6 +400,22 @@ export const buildBaseContextGateFeatures = ({
   const referenceTradeFlowBuyPressurePct = asFiniteNumberOrNull(
     primaryReferenceTradeFlow?.buyPressurePct,
   );
+  const hyperliquidWhaleBuySharePct = asFiniteNumberOrNull(
+    hyperliquidWhales?.buySharePct,
+  );
+  const hyperliquidWhaleNetNotionalUsd = asFiniteNumberOrNull(
+    hyperliquidWhales?.netNotionalUsd,
+  );
+  const hyperliquidWhaleUniqueCount = asFiniteNumberOrNull(
+    hyperliquidWhales?.uniqueWhales,
+  );
+  const hyperliquidWhaleNotionalUsd =
+    (asFiniteNumberOrNull(hyperliquidWhales?.buyNotionalUsd) ?? 0) +
+    (asFiniteNumberOrNull(hyperliquidWhales?.sellNotionalUsd) ?? 0);
+  const hyperliquidWhaleSufficientActivity =
+    hyperliquidWhales == null || hyperliquidWhales.stale
+      ? null
+      : hyperliquidWhaleNotionalUsd >= HYPERLIQUID_WHALE_GATE_MIN_NOTIONAL_USD;
   const deltaDivergenceVsPrice = asStringOrNull(delta?.deltaDivergenceVsPrice);
   const deltaBias =
     deltaDivergenceVsPrice === 'bullish' || deltaDivergenceVsPrice === 'bearish'
@@ -410,6 +429,14 @@ export const buildBaseContextGateFeatures = ({
   const referenceTradeFlowBias = primaryReferenceTradeFlow?.stale
     ? 'unknown'
     : toPressureBias(referenceTradeFlowBuyPressurePct);
+  const hyperliquidWhaleFlowStale =
+    typeof hyperliquidWhales?.stale === 'boolean'
+      ? hyperliquidWhales.stale
+      : null;
+  const hyperliquidWhaleFlowBias =
+    hyperliquidWhaleSufficientActivity !== true
+      ? 'unknown'
+      : toPressureBias(hyperliquidWhaleBuySharePct);
   const deltaAligned = toBiasAligned({ direction, bias: deltaBias });
   const tradeFlowAligned = toBiasAligned({
     direction,
@@ -418,6 +445,10 @@ export const buildBaseContextGateFeatures = ({
   const referenceTradeFlowAligned = toBiasAligned({
     direction,
     bias: referenceTradeFlowBias,
+  });
+  const hyperliquidWhaleFlowAligned = toBiasAligned({
+    direction,
+    bias: hyperliquidWhaleFlowBias,
   });
   const benchmarkTrendAlignment = relative?.trendAlignment ?? 'unknown';
   const relativeStrength1h = asFiniteNumberOrNull(relative?.relativeStrength1h);
@@ -667,6 +698,11 @@ export const buildBaseContextGateFeatures = ({
   pushWhen(confirmations, tradeFlowAligned === true, 'trade_flow_aligned');
   pushWhen(
     confirmations,
+    hyperliquidWhaleFlowAligned === true,
+    'hyperliquid_whales_aligned',
+  );
+  pushWhen(
+    confirmations,
     referenceTradeFlowAligned === true,
     'reference_trade_flow_aligned',
   );
@@ -741,6 +777,11 @@ export const buildBaseContextGateFeatures = ({
   pushWhen(conflicts, tradeFlowAligned === false, 'trade_flow_against');
   pushWhen(
     conflicts,
+    hyperliquidWhaleFlowAligned === false,
+    'hyperliquid_whales_against',
+  );
+  pushWhen(
+    conflicts,
     referenceTradeFlowAligned === false,
     'reference_trade_flow_against',
   );
@@ -766,6 +807,7 @@ export const buildBaseContextGateFeatures = ({
       volumeRel20 == null ? null : volumeRel20 >= 1.5,
       deltaAligned,
       tradeFlowAligned,
+      hyperliquidWhaleFlowAligned,
       referenceTradeFlowAligned,
       volumeStructureAligned,
     ]),
@@ -955,6 +997,13 @@ export const buildBaseContextGateFeatures = ({
       deltaAligned,
       tradeFlowBuyPressurePct,
       tradeFlowAligned,
+      hyperliquidWhaleBuySharePct,
+      hyperliquidWhaleNetNotionalUsd,
+      hyperliquidWhaleUniqueCount,
+      hyperliquidWhaleNotionalUsd,
+      hyperliquidWhaleSufficientActivity,
+      hyperliquidWhaleFlowAligned,
+      hyperliquidWhaleFlowStale,
       referenceTradeFlowBuyPressurePct,
       referenceTradeFlowAligned,
       volumeStructureAligned,

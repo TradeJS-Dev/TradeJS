@@ -1030,6 +1030,146 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('upserts idempotent Hyperliquid whale events with snapshot identities', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+    }));
+    const { upsertHyperliquidWhaleTradeEvents } = await import(
+      '@tradejs/infra/timescale'
+    );
+    await upsertHyperliquidWhaleTradeEvents([
+      {
+        symbol: 'BTC',
+        ts: new Date(1_000),
+        tid: '7',
+        price: 100,
+        size: 2,
+        notionalUsd: 200,
+        buyerAddress: '0x1111111111111111111111111111111111111111',
+        sellerAddress: null,
+        buyerTracked: true,
+        sellerTracked: false,
+        universeFingerprint: 'universe-v1',
+        whaleRegistryFingerprint: 'whales-v1',
+        source: 'hyperliquid_trades',
+      },
+    ]);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO hyperliquid_whale_trade_events'),
+      expect.arrayContaining([
+        'BTC',
+        new Date(1_000),
+        '7',
+        'universe-v1',
+        'whales-v1',
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'buyer_tracked = hyperliquid_whale_trade_events.buyer_tracked OR EXCLUDED.buyer_tracked',
+      ),
+      expect.any(Array),
+    );
+  });
+
+  it('aggregates Hyperliquid whale buckets strictly before decision time', async () => {
+    const decisionTimeMs = 15 * 60_000;
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('WITH window_rows AS')) {
+        return {
+          rows: [
+            {
+              symbol: 'BTC',
+              as_of_ts: new Date(decisionTimeMs - 60_000),
+              buckets: 15,
+              trades: 10,
+              whale_sides: 12,
+              unique_whales: 4,
+              buy_notional_usd: '800',
+              sell_notional_usd: '200',
+              net_notional_usd: '600',
+              buy_share_pct: '0.8',
+              source: 'hyperliquid_trades',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+    }));
+    const { getHyperliquidWhaleFlowAggregate } = await import(
+      '@tradejs/infra/timescale'
+    );
+    await expect(
+      getHyperliquidWhaleFlowAggregate({
+        symbol: 'BTC',
+        interval: '15m',
+        decisionTimeMs,
+        universeFingerprint: 'universe-v1',
+        whaleRegistryFingerprint: 'whales-v1',
+        maxAgeMs: 60_000,
+      }),
+    ).resolves.toMatchObject({
+      netNotionalUsd: 600,
+      buySharePct: 0.8,
+      ageMs: 0,
+      stale: false,
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('AND ts < to_timestamp($4/1000.0)'),
+      ['BTC', 'universe-v1', 'whales-v1', decisionTimeMs, 15 * 60_000],
+    );
+  });
+
+  it('persists and reads REST-unavailable Hyperliquid whale ranges separately from coverage', async () => {
+    const failedAt = new Date(2_000);
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('SELECT reason, failed_at')) {
+        return {
+          rows: [{ reason: 'history limit', failed_at: failedAt }],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+    }));
+    const {
+      getHyperliquidWhaleBackfillFailure,
+      upsertHyperliquidWhaleBackfillFailure,
+    } = await import('@tradejs/infra/timescale');
+    const identity = {
+      fromMs: 60_000,
+      toMs: 120_000,
+      universeFingerprint: 'universe-v1',
+      whaleRegistryFingerprint: 'whales-v1',
+    };
+
+    await upsertHyperliquidWhaleBackfillFailure({
+      ...identity,
+      reason: 'history limit',
+    });
+    await expect(getHyperliquidWhaleBackfillFailure(identity)).resolves.toEqual(
+      {
+        reason: 'history limit',
+        failedAt,
+      },
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'INSERT INTO hyperliquid_whale_backfill_failures',
+      ),
+      ['universe-v1', 'whales-v1', 60_000, 120_000, 'history limit'],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM hyperliquid_whale_backfill_failures'),
+      ['universe-v1', 'whales-v1', 60_000, 120_000],
+    );
+  });
+
   it('dry-runs and applies deprecated market context cleanup', async () => {
     const query = jest.fn(async (sql: string, params?: unknown[]) => {
       if (sql === 'SELECT to_regclass($1) AS name') {

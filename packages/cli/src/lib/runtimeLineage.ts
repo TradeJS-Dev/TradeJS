@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { RuntimeLineage } from '@tradejs/types';
+import {
+  getHyperliquidPerpUniverseSnapshot,
+  getHyperliquidWhaleRegistrySnapshot,
+} from '@tradejs/node/strategies';
 
 const RUNTIME_CONTEXT_ENV_KEYS = [
   'AI_MODE',
@@ -22,6 +26,8 @@ const RUNTIME_CONTEXT_ENV_KEYS = [
   'COINMARKETCAP_CONTEXT_BACKFILL_ENABLED',
   'COINMARKETCAP_CONTEXT_BACKFILL_MAX_DAYS',
   'COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS',
+  'HYPERLIQUID_WHALE_CONTEXT_ENABLED',
+  'HYPERLIQUID_WHALE_BACKFILL_ENABLED',
 ] as const;
 
 const RUNTIME_CONTEXT_DATA_MODEL = {
@@ -33,6 +39,9 @@ const RUNTIME_CONTEXT_DATA_MODEL = {
   coinMarketCapDataModelVersion: 3,
   binanceBreadthUniverseModel: 'fixed-versioned-top5-top10-top30-top50-top100',
   binanceBreadthDataModelVersion: 2,
+  hyperliquidWhaleCanonicalInterval: '1m',
+  hyperliquidWhaleGateMinNotionalUsd: 50_000,
+  hyperliquidWhaleDataModelVersion: 1,
 } as const;
 
 const normalizeForStableJson = (value: unknown): unknown => {
@@ -81,6 +90,7 @@ const gitLineageCache = new Map<
 >();
 const gateFingerprintCache = new Map<string, string>();
 const binanceBreadthFingerprintCache = new Map<string, string | null>();
+const snapshotFingerprintCache = new Map<string, string | null>();
 
 const resolveGitLineage = (
   projectRoot: string,
@@ -167,6 +177,33 @@ const resolveBinanceBreadthFingerprint = async (projectRoot: string) => {
   return result;
 };
 
+const resolveSnapshotFingerprint = async (
+  projectRoot: string,
+  relativePath: string,
+) => {
+  const cacheKey = `${projectRoot}:${relativePath}`;
+  if (snapshotFingerprintCache.has(cacheKey)) {
+    return snapshotFingerprintCache.get(cacheKey) ?? null;
+  }
+  const content = await readOptionalFile(path.join(projectRoot, relativePath));
+  let result: string | null = null;
+  if (content) {
+    try {
+      const parsed = JSON.parse(content.toString('utf8')) as {
+        fingerprint?: unknown;
+      };
+      result =
+        typeof parsed.fingerprint === 'string' && parsed.fingerprint.trim()
+          ? parsed.fingerprint.trim()
+          : null;
+    } catch {
+      result = null;
+    }
+  }
+  snapshotFingerprintCache.set(cacheKey, result);
+  return result;
+};
+
 const resolveGateFingerprint = async ({
   projectRoot,
   strategyName,
@@ -188,6 +225,7 @@ const resolveGateFingerprint = async ({
     `packages/strategies/src/${strategyName}/pockets.ts`,
     `packages/strategies/src/${strategyName}/config.ts`,
     'packages/node/src/ai.ts',
+    'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
   ];
   const optionalEntries = await Promise.all(
     relativeCandidates.map(async (relativePath) => {
@@ -234,6 +272,20 @@ export const buildRuntimeLineage = async ({
   env?: NodeJS.ProcessEnv;
 }): Promise<RuntimeLineage> => {
   const git = resolveGitLineage(projectRoot);
+  const hyperliquidPerpUniverseFingerprint =
+    typeof getHyperliquidPerpUniverseSnapshot === 'function'
+      ? getHyperliquidPerpUniverseSnapshot().fingerprint
+      : await resolveSnapshotFingerprint(
+          projectRoot,
+          'packages/node/src/config/hyperliquidPerpUniverse.json',
+        );
+  const hyperliquidWhaleRegistryFingerprint =
+    typeof getHyperliquidWhaleRegistrySnapshot === 'function'
+      ? getHyperliquidWhaleRegistrySnapshot().fingerprint
+      : await resolveSnapshotFingerprint(
+          projectRoot,
+          'packages/node/src/config/hyperliquidWhales.json',
+        );
   const context = {
     ...Object.fromEntries(
       RUNTIME_CONTEXT_ENV_KEYS.map((key) => [key, env[key] ?? null]),
@@ -241,6 +293,8 @@ export const buildRuntimeLineage = async ({
     ...RUNTIME_CONTEXT_DATA_MODEL,
     binanceBreadthUniverseFingerprint:
       await resolveBinanceBreadthFingerprint(projectRoot),
+    hyperliquidPerpUniverseFingerprint,
+    hyperliquidWhaleRegistryFingerprint,
     ...runContext,
   };
 
@@ -280,4 +334,5 @@ export const resetRuntimeLineageCachesForTests = () => {
   gitLineageCache.clear();
   gateFingerprintCache.clear();
   binanceBreadthFingerprintCache.clear();
+  snapshotFingerprintCache.clear();
 };

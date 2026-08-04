@@ -23,6 +23,7 @@ import {
   shouldBackfillCoinMarketCapContextForSignals,
 } from './coinMarketCapContextBackfill';
 import { timeOperation as runTimedOperation } from './runFormatting';
+import { backfillHyperliquidWhaleContext } from './hyperliquidWhaleBackfill';
 
 export type MarketContextRunMode = 'backtest' | 'signals' | 'replay' | 'parity';
 
@@ -114,6 +115,28 @@ export const shouldPrepareCoinMarketCapContextForRun = (
   });
 };
 
+export const shouldPrepareHyperliquidWhaleContextForRun = (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled' | 'universe'
+  >,
+) => {
+  if (
+    params.universe === 'tradfi' ||
+    params.mode === 'signals' ||
+    params.cacheOnly ||
+    (!params.aiEnabled && !params.mlEnabled)
+  ) {
+    return false;
+  }
+  const configured = String(
+    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED ?? '',
+  )
+    .trim()
+    .toLowerCase();
+  return configured === '' || ['1', 'true', 'yes', 'on'].includes(configured);
+};
+
 const resolveCoinMarketCapBackfillForMode = (mode: MarketContextRunMode) =>
   mode === 'backtest'
     ? backfillCoinMarketCapContextForBacktest
@@ -186,6 +209,18 @@ export const prepareMarketContextForRun = async (
         : backfillDerivativesContextForBacktest)(
         buildDerivativesBackfillParams(params),
       ),
+    );
+  }
+
+  if (shouldPrepareHyperliquidWhaleContextForRun(params)) {
+    await timeOperation('hyperliquid whale context backfill', () =>
+      backfillHyperliquidWhaleContext({
+        startMs: params.preloadStartMs ?? params.startMs,
+        endMs: params.endMs,
+        cacheOnly: params.cacheOnly,
+        strict: false,
+        log,
+      }),
     );
   }
 

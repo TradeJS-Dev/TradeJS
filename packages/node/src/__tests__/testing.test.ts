@@ -126,6 +126,10 @@ jest.mock('../strategyHelpers/coinMarketCapContext', () => ({
   enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
 }));
 
+jest.mock('../strategyHelpers/hyperliquidWhaleContext', () => ({
+  enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
+}));
+
 jest.mock('@tradejs/infra/ai', () => ({
   appendAiDatasetRow: (params: unknown) => mockAppendAiDatasetRow(params),
 }));

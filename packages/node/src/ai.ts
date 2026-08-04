@@ -213,7 +213,7 @@ Input payload structure:
   • \`baseContext.raw\`: current MA, ATR, BB, OBV, price stats, levels, BTC correlation.
   • \`baseContext.regime\`: derived trend / volatility / momentum / session regime fields.
   • \`baseContext.structure\`: local range position, breakout freshness/quality, level-touch counts, rejection wick context.
-  • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, and Binance aggTrades trade-flow when available.
+  • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, Binance aggTrades, and fingerprinted Hyperliquid whale-flow when available.
   • \`baseContext.relative\`: BTC/ETH relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinMarketCap historical global/exchange/index context when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.

@@ -155,6 +155,24 @@ describe('buildStrategySignal', () => {
           ...baseContext,
           participation: {
             ...baseContext.participation,
+            hyperliquidWhales: {
+              source: 'hyperliquid_trades',
+              interval: '15m',
+              asOfTs: 1,
+              windowEndTs: 2,
+              ageMs: 0,
+              stale: false,
+              symbol: 'BTC',
+              trades: 3,
+              whaleSides: 3,
+              uniqueWhales: 2,
+              buyNotionalUsd: 800_000,
+              sellNotionalUsd: 200_000,
+              netNotionalUsd: 600_000,
+              buySharePct: 0.8,
+              universeFingerprint: 'universe-v1',
+              whaleRegistryFingerprint: 'whales-v1',
+            },
             tradeFlow: {
               source: 'binance_agg_trades',
               interval: '15m',
@@ -207,9 +225,10 @@ describe('buildStrategySignal', () => {
         entryLocation: 'mid_range',
       },
       confirmations: {
-        count: 3,
+        count: 4,
         items: [
           'trade_flow_aligned',
+          'hyperliquid_whales_aligned',
           'market_breadth_aligned',
           'benchmark_aligned',
         ],
@@ -220,12 +239,12 @@ describe('buildStrategySignal', () => {
       },
       scores: {
         structure: 47,
-        participation: 47,
+        participation: 59,
         relative: 86,
         mtf: null,
         execution: 62,
         derivatives: null,
-        totalContext: 61,
+        totalContext: 64,
       },
       risk: {
         regimeRisk: 'medium',
@@ -243,6 +262,13 @@ describe('buildStrategySignal', () => {
       participation: {
         tradeFlowBuyPressurePct: 0.7,
         tradeFlowAligned: true,
+        hyperliquidWhaleBuySharePct: 0.8,
+        hyperliquidWhaleNetNotionalUsd: 600_000,
+        hyperliquidWhaleUniqueCount: 2,
+        hyperliquidWhaleNotionalUsd: 1_000_000,
+        hyperliquidWhaleSufficientActivity: true,
+        hyperliquidWhaleFlowAligned: true,
+        hyperliquidWhaleFlowStale: false,
       },
       relative: {
         marketBreadthReturn: 0.01,

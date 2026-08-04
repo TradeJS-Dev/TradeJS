@@ -48,6 +48,8 @@
     "lint": "turbo run lint",
     "migration": "yarn cli:node8g migration",
     "market:ws": "yarn cli:node8g market-ws",
+    "hyperliquid:whale-backfill": "yarn cli:node8g hyperliquid:whale-backfill",
+    "hyperliquid:whale-ingest": "yarn cli:node8g hyperliquid:whale-ingest",
     "ml-build": "docker compose -f docker-compose.ml.yml build",
     "ml-build:profile": "docker compose -f docker-compose.ml.yml build ml-profile",
     "ml-export": "yarn cli:node8g ml-export",

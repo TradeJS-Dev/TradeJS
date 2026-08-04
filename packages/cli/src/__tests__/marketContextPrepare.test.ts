@@ -14,6 +14,7 @@ const mockBackfillCoinMarketCapContextForSignals = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForBacktest = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForReplay = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForSignals = jest.fn();
+const mockBackfillHyperliquidWhaleContext = jest.fn();
 
 jest.mock('../lib/derivativesContextBackfill', () => ({
   backfillDerivativesContextForBacktest: (...args: unknown[]) =>
@@ -56,7 +57,15 @@ jest.mock('../lib/coinMarketCapContextBackfill', () => ({
     mockShouldBackfillCoinMarketCapContextForSignals(...args),
 }));
 
-import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
+jest.mock('../lib/hyperliquidWhaleBackfill', () => ({
+  backfillHyperliquidWhaleContext: (...args: unknown[]) =>
+    mockBackfillHyperliquidWhaleContext(...args),
+}));
+
+import {
+  prepareMarketContextForRun,
+  shouldPrepareHyperliquidWhaleContextForRun,
+} from '../lib/marketContextPrepare';
 
 describe('prepareMarketContextForRun', () => {
   beforeEach(() => {
@@ -77,6 +86,51 @@ describe('prepareMarketContextForRun', () => {
     mockShouldBackfillCoinMarketCapContextForBacktest.mockReturnValue(false);
     mockShouldBackfillCoinMarketCapContextForReplay.mockReturnValue(false);
     mockShouldBackfillCoinMarketCapContextForSignals.mockReturnValue(false);
+    mockBackfillHyperliquidWhaleContext.mockResolvedValue({});
+    delete process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED;
+  });
+
+  it('backfills Hyperliquid whales by default for AI/ML history', async () => {
+    expect(
+      shouldPrepareHyperliquidWhaleContextForRun({
+        mode: 'backtest',
+        cacheOnly: false,
+        aiEnabled: true,
+        mlEnabled: false,
+      }),
+    ).toBe(true);
+    await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      preloadStartMs: 500,
+      cacheOnly: false,
+      aiEnabled: true,
+      log: jest.fn(),
+    });
+    expect(mockBackfillHyperliquidWhaleContext).toHaveBeenCalledWith({
+      startMs: 500,
+      endMs: 2_000,
+      cacheOnly: false,
+      strict: false,
+      log: expect.any(Function),
+    });
+  });
+
+  it('allows the default Hyperliquid whale backfill to be disabled', () => {
+    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'false';
+    expect(
+      shouldPrepareHyperliquidWhaleContextForRun({
+        mode: 'backtest',
+        cacheOnly: false,
+        aiEnabled: true,
+        mlEnabled: false,
+      }),
+    ).toBe(false);
   });
 
   it('routes backtest context through AI/ML-aware backfill policies', async () => {

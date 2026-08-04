@@ -7,6 +7,10 @@ import {
   AiTrainSummary,
   summarizeAiTrainEvaluations,
 } from './aiTrainMetrics';
+import {
+  getHyperliquidPerpUniverseSnapshot,
+  getHyperliquidWhaleRegistrySnapshot,
+} from '@tradejs/node/strategies';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -28,6 +32,8 @@ const RESEARCH_CONTEXT_ENV_KEYS = [
   'COINMARKETCAP_CONTEXT_BACKFILL_ENABLED',
   'COINMARKETCAP_CONTEXT_BACKFILL_MAX_DAYS',
   'COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS',
+  'HYPERLIQUID_WHALE_CONTEXT_ENABLED',
+  'HYPERLIQUID_WHALE_BACKFILL_ENABLED',
 ] as const;
 
 const DERIVATIVES_CONTEXT_DATA_MODEL = {
@@ -35,6 +41,9 @@ const DERIVATIVES_CONTEXT_DATA_MODEL = {
   derivativesDerivedIntervals: '1h',
   derivativesHourlyFallback: 'stored-1h',
   derivativesDataModelVersion: 2,
+  hyperliquidWhaleCanonicalInterval: '1m',
+  hyperliquidWhaleGateMinNotionalUsd: 50_000,
+  hyperliquidWhaleDataModelVersion: 1,
 } as const;
 
 type ResearchEvaluation = AiTrainEvaluation & {
@@ -293,12 +302,22 @@ export const buildAiTrainLineage = async ({
   const { gitSha, gitDirty } = getGitLineage(projectRoot);
   const gate = await resolveGateFingerprint(projectRoot, strategyName, gitSha);
   const normalizedConfigIds = [...new Set(configIds.filter(Boolean))].sort();
+  const hyperliquidPerpUniverseFingerprint =
+    typeof getHyperliquidPerpUniverseSnapshot === 'function'
+      ? getHyperliquidPerpUniverseSnapshot().fingerprint
+      : null;
+  const hyperliquidWhaleRegistryFingerprint =
+    typeof getHyperliquidWhaleRegistrySnapshot === 'function'
+      ? getHyperliquidWhaleRegistrySnapshot().fingerprint
+      : null;
   const context = {
     ...Object.fromEntries(
       RESEARCH_CONTEXT_ENV_KEYS.map((key) => [key, env[key] ?? null]),
     ),
     ...runContext,
     ...DERIVATIVES_CONTEXT_DATA_MODEL,
+    hyperliquidPerpUniverseFingerprint,
+    hyperliquidWhaleRegistryFingerprint,
   };
 
   return {

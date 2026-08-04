@@ -507,6 +507,25 @@ export interface BaseMarketTradeFlowContext {
   netQuoteDelta: number | null;
 }
 
+export interface BaseHyperliquidWhaleFlowContext {
+  source: 'hyperliquid_trades';
+  interval: MarketFeatureInterval;
+  asOfTs: number | null;
+  windowEndTs: number;
+  ageMs: number | null;
+  stale: boolean;
+  symbol: string;
+  trades: number;
+  whaleSides: number;
+  uniqueWhales: number;
+  buyNotionalUsd: number;
+  sellNotionalUsd: number;
+  netNotionalUsd: number;
+  buySharePct: number | null;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}
+
 export interface BaseParticipationContext {
   volume: {
     volumeRel20: number | null;
@@ -548,6 +567,7 @@ export interface BaseParticipationContext {
     deltaDivergenceVsPrice: 'bullish' | 'bearish' | 'none' | 'unknown';
   };
   tradeFlow?: BaseMarketTradeFlowContext;
+  hyperliquidWhales?: BaseHyperliquidWhaleFlowContext;
 }
 
 export type BaseMarketBreadthContext = {
@@ -832,6 +852,7 @@ export type BaseGateFeatureConfirmation =
   | 'volume_expansion'
   | 'delta_aligned'
   | 'trade_flow_aligned'
+  | 'hyperliquid_whales_aligned'
   | 'reference_trade_flow_aligned'
   | 'market_breadth_aligned'
   | 'cmc_alt_liquidity_aligned'
@@ -863,6 +884,7 @@ export type BaseGateFeatureConflict =
   | 'btc_alt_regime_against'
   | 'delta_against'
   | 'trade_flow_against'
+  | 'hyperliquid_whales_against'
   | 'reference_trade_flow_against'
   | 'failed_breakout'
   | 'extreme_volatility'
@@ -952,6 +974,13 @@ export interface BaseContextGateFeatures {
     deltaAligned: boolean | null;
     tradeFlowBuyPressurePct: number | null;
     tradeFlowAligned: boolean | null;
+    hyperliquidWhaleBuySharePct: number | null;
+    hyperliquidWhaleNetNotionalUsd: number | null;
+    hyperliquidWhaleUniqueCount: number | null;
+    hyperliquidWhaleNotionalUsd: number;
+    hyperliquidWhaleSufficientActivity: boolean | null;
+    hyperliquidWhaleFlowAligned: boolean | null;
+    hyperliquidWhaleFlowStale: boolean | null;
     referenceTradeFlowBuyPressurePct: number | null;
     referenceTradeFlowAligned: boolean | null;
     volumeStructureAligned: boolean | null;

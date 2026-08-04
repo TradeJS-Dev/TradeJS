@@ -34,7 +34,19 @@ export {
   type BinanceBreadthUniverseKey,
   type BinanceBreadthUniverseSnapshot,
 } from './binanceBreadthUniverses';
+export {
+  getHyperliquidPerpSymbols,
+  getHyperliquidPerpUniverseSnapshot,
+  getHyperliquidWhaleAddresses,
+  getHyperliquidWhaleRegistrySnapshot,
+  isTrackedHyperliquidPerp,
+  isTrackedHyperliquidWhale,
+  resolveHyperliquidPerpFromSignalSymbol,
+  type HyperliquidPerpUniverseSnapshot,
+  type HyperliquidWhaleRegistrySnapshot,
+} from './hyperliquidWhaleUniverse';
 export { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
+export { enrichSignalWithHyperliquidWhaleContext } from './strategyHelpers/hyperliquidWhaleContext';
 export {
   closeOppositePositionsBeforeOpen,
   createCloseOppositeBeforePlaceOrderHook,

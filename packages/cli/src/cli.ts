@@ -37,6 +37,9 @@ const scriptLoaders: Record<string, ScriptLoader> = {
     import('./scripts/cleanupMarketContext'),
   migration: () => import('./scripts/migration'),
   'market-ws': () => import('./scripts/marketWs'),
+  'hyperliquid:whale-backfill': () =>
+    import('./scripts/hyperliquidWhaleBackfill'),
+  'hyperliquid:whale-ingest': () => import('./scripts/hyperliquidWhaleIngest'),
   'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),

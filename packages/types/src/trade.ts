@@ -333,6 +333,39 @@ export type MarketTradeFlowRow = {
   source?: string | null;
 };
 
+export type HyperliquidWhaleTradeEventRow = {
+  symbol: string;
+  ts: Date;
+  tid: string;
+  price: number;
+  size: number;
+  notionalUsd: number;
+  buyerAddress?: string | null;
+  sellerAddress?: string | null;
+  buyerTracked: boolean;
+  sellerTracked: boolean;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  source?: string | null;
+};
+
+export type HyperliquidWhaleFlowRow = {
+  symbol: string;
+  interval: '1m';
+  ts: Date;
+  trades: number;
+  whaleSides: number;
+  uniqueWhales: number;
+  whaleAddresses?: string[];
+  buyNotionalUsd: number;
+  sellNotionalUsd: number;
+  netNotionalUsd: number;
+  buySharePct?: number | null;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  source?: string | null;
+};
+
 export interface Tp {
   price: number;
   rate: number;
