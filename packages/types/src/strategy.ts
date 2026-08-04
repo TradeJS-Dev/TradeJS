@@ -577,6 +577,24 @@ export type BaseMarketBreadthsContext = {
   top100?: BaseMarketBreadthContext;
 };
 
+export interface BasePsychologicalLevelWindowContext {
+  crossed: boolean | null;
+  direction: 'up' | 'down' | 'none' | 'unknown';
+  level: number | null;
+  levelsCrossed: number | null;
+  distanceBeyondLevelBps: number | null;
+}
+
+export interface BasePsychologicalLevelAssetContext {
+  source: 'aligned_15m_ohlcv';
+  stepUsd: number;
+  windows: {
+    m15: BasePsychologicalLevelWindowContext;
+    h1: BasePsychologicalLevelWindowContext;
+    h4: BasePsychologicalLevelWindowContext;
+  };
+}
+
 export interface BaseRelativeContext {
   benchmark: {
     maFast: number | null;
@@ -619,6 +637,10 @@ export interface BaseRelativeContext {
     betaToEth20: number | null;
     correlationToEth20: number | null;
     ratioTrend: 'up' | 'down' | 'flat' | 'unknown';
+  };
+  referencePsychologicalLevels?: {
+    BTCUSDT?: BasePsychologicalLevelAssetContext;
+    ETHUSDT?: BasePsychologicalLevelAssetContext;
   };
   marketBreadth?: BaseMarketBreadthContext;
   marketBreadths?: BaseMarketBreadthsContext;

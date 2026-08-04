@@ -6,6 +6,7 @@ import {
 } from '../indicators';
 import {
   buildBaseContextMtfSnapshot,
+  buildPsychologicalLevelAssetContext,
   buildSessionContext,
   buildTargetVsBtcContext,
   buildTargetVsEthContext,
@@ -167,6 +168,157 @@ describe('buildSessionContext', () => {
   });
 });
 
+describe('buildPsychologicalLevelAssetContext', () => {
+  it('detects causal BTC close crossings over 15m, 1h, and 4h windows', () => {
+    const closes = Array.from({ length: 17 }, () => 62_456);
+    closes[12] = 61_950;
+    closes[15] = 62_456;
+    closes[16] = 61_897;
+    const candles = closes.map((close, index) =>
+      makeCandle(index * INTERVAL_15M_MS, close),
+    );
+
+    expect(buildPsychologicalLevelAssetContext(candles, 1_000)).toEqual({
+      source: 'aligned_15m_ohlcv',
+      stepUsd: 1_000,
+      windows: {
+        m15: {
+          crossed: true,
+          direction: 'down',
+          level: 62_000,
+          levelsCrossed: 1,
+          distanceBeyondLevelBps: expect.closeTo(16.612903225806452),
+        },
+        h1: {
+          crossed: false,
+          direction: 'none',
+          level: null,
+          levelsCrossed: 0,
+          distanceBeyondLevelBps: null,
+        },
+        h4: {
+          crossed: true,
+          direction: 'down',
+          level: 62_000,
+          levelsCrossed: 1,
+          distanceBeyondLevelBps: expect.closeTo(16.612903225806452),
+        },
+      },
+    });
+  });
+
+  it('uses the ETH step and reports unavailable windows without exact causal history', () => {
+    const candles = [makeCandle(0, 3_950), makeCandle(INTERVAL_15M_MS, 4_125)];
+
+    expect(buildPsychologicalLevelAssetContext(candles, 100)).toMatchObject({
+      stepUsd: 100,
+      windows: {
+        m15: {
+          crossed: true,
+          direction: 'up',
+          level: 4_100,
+          levelsCrossed: 2,
+          distanceBeyondLevelBps: expect.closeTo(60.97560975609756),
+        },
+        h1: { crossed: null, direction: 'unknown' },
+        h4: { crossed: null, direction: 'unknown' },
+      },
+    });
+  });
+
+  it('preserves BTC and ETH windows after compact checkpoint restore', () => {
+    const periods = {
+      maFast: 3,
+      maMedium: 3,
+      maSlow: 3,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const coinData = Array.from({ length: 40 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+    const btcCloses = Array.from({ length: 40 }, () => 62_100);
+    btcCloses[23] = 63_500;
+    btcCloses[35] = 61_500;
+    btcCloses[38] = 62_456;
+    btcCloses[39] = 61_897;
+    const btcData = btcCloses.map((close, index) =>
+      makeCandle(index * INTERVAL_15M_MS, close),
+    );
+    const ethCloses = Array.from({ length: 40 }, () => 4_050);
+    ethCloses[23] = 3_850;
+    ethCloses[35] = 4_250;
+    ethCloses[38] = 4_050;
+    ethCloses[39] = 4_125;
+    const ethData = ethCloses.map((close, index) =>
+      makeCandle(index * INTERVAL_15M_MS, close),
+    );
+
+    const full = createIndicators(coinData, btcData, {
+      periods,
+      ethData,
+      includeMlPayload: false,
+    });
+    const prefix = createIndicators(
+      coinData.slice(0, -1),
+      btcData.slice(0, -1),
+      {
+        periods,
+        ethData: ethData.slice(0, -1),
+        includeMlPayload: false,
+      },
+    );
+    const checkpoint = prefix.checkpointRuntimeState();
+    const restored = createIndicators(coinData.slice(-1), btcData.slice(-1), {
+      periods,
+      ethData: ethData.slice(-1),
+      includeMlPayload: false,
+      initialRuntimeState: checkpoint,
+    });
+
+    const fullContext =
+      full.latestSnapshot()?.baseContext?.relative.referencePsychologicalLevels;
+    const restoredContext =
+      restored.latestSnapshot()?.baseContext?.relative
+        .referencePsychologicalLevels;
+
+    expect(restoredContext).toEqual(fullContext);
+    expect(restoredContext).toMatchObject({
+      BTCUSDT: {
+        windows: {
+          m15: { crossed: true, direction: 'down', level: 62_000 },
+          h1: { crossed: false, direction: 'none', level: null },
+          h4: {
+            crossed: true,
+            direction: 'down',
+            level: 62_000,
+            levelsCrossed: 2,
+          },
+        },
+      },
+      ETHUSDT: {
+        windows: {
+          m15: { crossed: true, direction: 'up', level: 4_100 },
+          h1: { crossed: true, direction: 'down', level: 4_200 },
+          h4: {
+            crossed: true,
+            direction: 'up',
+            level: 4_100,
+            levelsCrossed: 3,
+          },
+        },
+      },
+    });
+  });
+});
+
 describe('baseContext ETH reference propagation', () => {
   it('builds targetVsEth from ETH candles passed to createIndicators', () => {
     const periods = {
@@ -209,6 +361,16 @@ describe('baseContext ETH reference propagation', () => {
     expect(
       baseContext?.relative.targetVsEth?.correlationToEth20,
     ).toBeGreaterThan(0.99);
+    expect(baseContext?.relative.referencePsychologicalLevels).toMatchObject({
+      BTCUSDT: {
+        source: 'aligned_15m_ohlcv',
+        stepUsd: 1_000,
+      },
+      ETHUSDT: {
+        source: 'aligned_15m_ohlcv',
+        stepUsd: 100,
+      },
+    });
   });
 });
 

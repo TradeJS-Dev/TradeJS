@@ -55,7 +55,14 @@ describe('aiTrainEvaluationDump', () => {
           regime: { trend: { bias: 'bear' } },
           structure: { localRange: { breakoutState: 'inside_range' } },
           participation: { volume: { volumeRel20: 1.2 } },
-          relative: { cmcFearGreedRegime: 'risk_off' },
+          relative: {
+            cmcFearGreedRegime: 'risk_off',
+            referencePsychologicalLevels: {
+              BTCUSDT: {
+                windows: { m15: { crossed: true, direction: 'down' } },
+              },
+            },
+          },
           derivatives: { summary: { pressure: 'short_flush' } },
           mtf: { summary: { mtfAlignment: 'bearish' } },
           gateFeatures: { volatility: { atrPctRankBucket: 'high' } },
@@ -70,7 +77,14 @@ describe('aiTrainEvaluationDump', () => {
         regime: { trend: { bias: 'bear' } },
         structure: { localRange: { breakoutState: 'inside_range' } },
         participation: { volume: { volumeRel20: 1.2 } },
-        relative: { cmcFearGreedRegime: 'risk_off' },
+        relative: {
+          cmcFearGreedRegime: 'risk_off',
+          referencePsychologicalLevels: {
+            BTCUSDT: {
+              windows: { m15: { crossed: true, direction: 'down' } },
+            },
+          },
+        },
         derivatives: { summary: { pressure: 'short_flush' } },
         mtf: { summary: { mtfAlignment: 'bearish' } },
         gateFeatures: { volatility: { atrPctRankBucket: 'high' } },

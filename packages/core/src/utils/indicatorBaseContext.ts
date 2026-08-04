@@ -54,6 +54,13 @@ const SESSION_WINDOWS: Array<{
 const FUNDING_WINDOW_STEP_MINUTES = 8 * 60;
 const FUNDING_WINDOW_NEARBY_MINUTES = 60;
 const SESSION_WINDOW_EDGE_MINUTES = 60;
+const BASE_INTERVAL_MS = 15 * 60_000;
+
+const PSYCHOLOGICAL_LEVEL_WINDOWS = {
+  m15: BASE_INTERVAL_MS,
+  h1: 60 * 60_000,
+  h4: 4 * 60 * 60_000,
+} as const;
 
 const isInsideSession = (
   minuteUtc: number,
@@ -114,6 +121,126 @@ export const buildSessionContext = (timestamp: number) => {
     dayOfWeekUtc,
     isWeekdayUtc: dayOfWeekUtc <= 5,
     isWeekendUtc: dayOfWeekUtc >= 6,
+  };
+};
+
+type PsychologicalLevelWindowContext = NonNullable<
+  NonNullable<
+    BaseStrategyContextSnapshot['relative']['referencePsychologicalLevels']
+  >['BTCUSDT']
+>['windows']['m15'];
+
+type PsychologicalLevelAssetContext = NonNullable<
+  NonNullable<
+    BaseStrategyContextSnapshot['relative']['referencePsychologicalLevels']
+  >['BTCUSDT']
+>;
+
+const buildUnavailablePsychologicalLevelWindow =
+  (): PsychologicalLevelWindowContext => ({
+    crossed: null,
+    direction: 'unknown',
+    level: null,
+    levelsCrossed: null,
+    distanceBeyondLevelBps: null,
+  });
+
+const buildPsychologicalLevelWindow = (
+  startPrice: number,
+  endPrice: number,
+  stepUsd: number,
+): PsychologicalLevelWindowContext => {
+  if (
+    !Number.isFinite(startPrice) ||
+    !Number.isFinite(endPrice) ||
+    !Number.isFinite(stepUsd) ||
+    startPrice <= 0 ||
+    endPrice <= 0 ||
+    stepUsd <= 0
+  ) {
+    return buildUnavailablePsychologicalLevelWindow();
+  }
+
+  if (endPrice === startPrice) {
+    return {
+      crossed: false,
+      direction: 'none',
+      level: null,
+      levelsCrossed: 0,
+      distanceBeyondLevelBps: null,
+    };
+  }
+
+  const movingUp = endPrice > startPrice;
+  const firstCrossedLevel = movingUp
+    ? (Math.floor(startPrice / stepUsd) + 1) * stepUsd
+    : (Math.ceil(startPrice / stepUsd) - 1) * stepUsd;
+  const lastCrossedLevel = movingUp
+    ? Math.floor(endPrice / stepUsd) * stepUsd
+    : Math.ceil(endPrice / stepUsd) * stepUsd;
+  const crossed = movingUp
+    ? firstCrossedLevel <= lastCrossedLevel
+    : firstCrossedLevel >= lastCrossedLevel;
+
+  if (!crossed) {
+    return {
+      crossed: false,
+      direction: 'none',
+      level: null,
+      levelsCrossed: 0,
+      distanceBeyondLevelBps: null,
+    };
+  }
+
+  const levelsCrossed =
+    Math.round(Math.abs(lastCrossedLevel - firstCrossedLevel) / stepUsd) + 1;
+  const distanceBeyondLevelBps =
+    (Math.abs(endPrice - lastCrossedLevel) / lastCrossedLevel) * 10_000;
+
+  return {
+    crossed: true,
+    direction: movingUp ? 'up' : 'down',
+    level: lastCrossedLevel,
+    levelsCrossed,
+    distanceBeyondLevelBps,
+  };
+};
+
+export const buildPsychologicalLevelAssetContext = (
+  candles: Candle[],
+  stepUsd: number,
+): PsychologicalLevelAssetContext | null => {
+  const endCandle = candles[candles.length - 1];
+  if (!endCandle) {
+    return null;
+  }
+
+  const candlesByTimestamp = new Map(
+    candles.map((item) => [item.timestamp, item] as const),
+  );
+  const windows = Object.fromEntries(
+    Object.entries(PSYCHOLOGICAL_LEVEL_WINDOWS).map(([window, durationMs]) => {
+      const startCandle = candlesByTimestamp.get(
+        endCandle.timestamp - durationMs,
+      );
+
+      return [
+        window,
+        startCandle
+          ? buildPsychologicalLevelWindow(
+              startCandle.close,
+              endCandle.close,
+              stepUsd,
+            )
+          : buildUnavailablePsychologicalLevelWindow(),
+      ];
+    }),
+  ) as PsychologicalLevelAssetContext['windows'];
+
+  return {
+    source: 'aligned_15m_ohlcv',
+    stepUsd,
+    windows,
   };
 };
 
@@ -2714,6 +2841,25 @@ export const buildBaseContextSnapshot = ({
           ethCandles: ethCandlesHistory,
         })
       : null;
+  const btcPsychologicalLevels = buildPsychologicalLevelAssetContext(
+    btcCandlesHistory,
+    1_000,
+  );
+  const ethPsychologicalLevels = buildPsychologicalLevelAssetContext(
+    ethCandlesHistory,
+    100,
+  );
+  const referencePsychologicalLevels =
+    btcPsychologicalLevels != null || ethPsychologicalLevels != null
+      ? {
+          ...(btcPsychologicalLevels != null
+            ? { BTCUSDT: btcPsychologicalLevels }
+            : {}),
+          ...(ethPsychologicalLevels != null
+            ? { ETHUSDT: ethPsychologicalLevels }
+            : {}),
+        }
+      : null;
   const relativeStrength1h = getRelativeChange(
     baseResult.price1hPcnt,
     btc1h.length >= 2
@@ -3202,6 +3348,9 @@ export const buildBaseContextSnapshot = ({
       },
       targetVsBtc,
       ...(targetVsEth != null ? { targetVsEth } : {}),
+      ...(referencePsychologicalLevels != null
+        ? { referencePsychologicalLevels }
+        : {}),
     },
   } as Omit<BaseStrategyContextSnapshot, 'mtf'> & {
     mtf?: BaseStrategyContextSnapshot['mtf'];
