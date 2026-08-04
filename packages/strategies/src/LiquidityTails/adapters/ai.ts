@@ -115,6 +115,8 @@ Additional Liquidity Tails context:
 - level=${String(context.level ?? 'n/a')}
 - levelsFilled=${String(context.levelsFilled ?? 'n/a')}
 - positionQty=${String(context.positionQty ?? 'n/a')}
+- positionAveragePrice=${String(context.positionAveragePrice ?? 'n/a')}
+- priceImprovementAtr=${String(context.priceImprovementAtr ?? 'n/a')}
 - projectedQty=${String(context.projectedQty ?? 'n/a')}
 - projectedAveragePrice=${String(context.projectedAveragePrice ?? 'n/a')}
 - stopLossPrice=${String(context.stopLossPrice ?? 'n/a')}

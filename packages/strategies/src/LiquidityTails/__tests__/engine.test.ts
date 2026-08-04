@@ -49,6 +49,7 @@ describe('Liquidity Tails engine', () => {
     expect(signal?.zone.top).toBe(100);
     expect(signal?.zone.bottom).toBe(95);
     expect(signal?.reactionBodyAligned).toBe(true);
+    expect(signal?.retestOrdinal).toBe(1);
   });
 
   it('detects sell pressure zone retests with bearish reaction', () => {
@@ -68,5 +69,96 @@ describe('Liquidity Tails engine', () => {
     expect(signal?.zone.top).toBe(107);
     expect(signal?.zone.bottom).toBe(101);
     expect(signal?.reactionBodyAligned).toBe(true);
+    expect(signal?.retestOrdinal).toBe(1);
+  });
+
+  it('emits one separated secondary retest when scale-in is enabled', () => {
+    const engine = createLiquidityTailsEngine({ config: makeConfig() });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 102, 102.5, 101.5, 102),
+      makeCandle(6, 99.5, 102, 99, 101),
+    ];
+
+    const signals = candles
+      .map((candle) => engine.next(candle as any).signal)
+      .filter(Boolean);
+
+    expect(signals).toHaveLength(2);
+    expect(signals.map((signal) => signal?.retestOrdinal)).toEqual([1, 2]);
+    expect(signals[0]?.zone.id).toBe(signals[1]?.zone.id);
+  });
+
+  it('does not emit a secondary retest when scale-in is disabled', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({ LIQUIDITY_TAILS_SCALE_IN_ENABLED: false }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 102, 102.5, 101.5, 102),
+      makeCandle(6, 99.5, 102, 99, 101),
+    ];
+
+    const signals = candles
+      .map((candle) => engine.next(candle as any).signal)
+      .filter(Boolean);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.retestOrdinal).toBe(1);
+  });
+
+  it('emits a secondary retest for the early-exit policy', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({
+        LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST: true,
+        LIQUIDITY_TAILS_SCALE_IN_ENABLED: false,
+      }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 102, 102.5, 101.5, 102),
+      makeCandle(6, 99.5, 102, 99, 101),
+    ];
+
+    const signals = candles
+      .map((candle) => engine.next(candle as any).signal)
+      .filter(Boolean);
+
+    expect(signals.map((signal) => signal?.retestOrdinal)).toEqual([1, 2]);
+  });
+
+  it('replays secondary-retest state identically from initial candles', () => {
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 102, 102.5, 101.5, 102),
+      makeCandle(6, 99.5, 102, 99, 101),
+    ];
+    const continuous = createLiquidityTailsEngine({ config: makeConfig() });
+    const expected = candles.reduce(
+      (_, candle) => continuous.next(candle as any),
+      continuous.getState(),
+    );
+    const resumed = createLiquidityTailsEngine({
+      config: makeConfig(),
+      initialCandles: candles.slice(0, -1) as any,
+    });
+
+    expect(resumed.next(candles.at(-1) as any)).toEqual(expected);
   });
 });

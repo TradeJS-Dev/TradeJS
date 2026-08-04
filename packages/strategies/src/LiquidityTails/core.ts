@@ -22,6 +22,7 @@ interface PendingLiquidityTailsEntry {
 interface LiquidityTailsCycle {
   direction: Direction;
   stopLossPrice: number;
+  invalidationPrice: number | null;
   targetR: number;
   entriesFilled: number;
   pending: PendingLiquidityTailsEntry | null;
@@ -151,6 +152,10 @@ const buildExecutionStateKey = (config: LiquidityTailsConfig) =>
     targetR: config.LIQUIDITY_TAILS_TARGET_R_MULT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     initialRiskFraction: config.LIQUIDITY_TAILS_INITIAL_RISK_FRACTION,
+    scaleInMinImprovementAtr:
+      config.LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR,
+    exitOnInvalidation: config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION,
+    exitOnScaleInRetest: config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
   });
 
 const buildRecoveredCycle = ({
@@ -186,6 +191,7 @@ const buildRecoveredCycle = ({
   return {
     direction: position.direction,
     stopLossPrice,
+    invalidationPrice: null,
     targetR,
     entriesFilled: existingRisk > increasedRiskThreshold ? 2 : 1,
     pending: null,
@@ -197,6 +203,8 @@ const buildExecutionContext = ({
   level,
   levelsFilled,
   positionQty,
+  positionAveragePrice,
+  priceImprovementAtr,
   projectedQty,
   projectedAveragePrice,
   stopLossPrice,
@@ -213,6 +221,8 @@ const buildExecutionContext = ({
   level,
   levelsFilled,
   positionQty,
+  positionAveragePrice,
+  priceImprovementAtr,
   projectedQty,
   projectedAveragePrice,
   stopLossPrice,
@@ -237,6 +247,7 @@ const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
     reactionCloseBeyondZone: config.LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE,
     requireReactionBody: config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY,
     maxRetestDistancePct: config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT,
+    scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
   });
 
 export const createLiquidityTailsCore: CreateStrategyCore<
@@ -279,20 +290,25 @@ export const createLiquidityTailsCore: CreateStrategyCore<
   const maxLossValue = Math.max(0, Number(config.MAX_LOSS_VALUE ?? 0));
   const feeRate = Math.max(0, Number(config.FEE_PERCENT ?? 0));
   const scaleInEnabled = Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED);
+  const exitOnScaleInRetest = Boolean(
+    config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
+  );
   const configuredInitialRiskFraction = Number(
     config.LIQUIDITY_TAILS_INITIAL_RISK_FRACTION ?? 0.7,
   );
-  const initialRiskFraction = scaleInEnabled
-    ? Math.min(
-        0.95,
-        Math.max(
-          0.05,
-          Number.isFinite(configuredInitialRiskFraction)
-            ? configuredInitialRiskFraction
-            : 0.7,
-        ),
-      )
-    : 1;
+  const initialRiskFraction = Math.min(
+    1,
+    Math.max(
+      0.05,
+      Number.isFinite(configuredInitialRiskFraction)
+        ? configuredInitialRiskFraction
+        : 0.7,
+    ),
+  );
+  const scaleInMinImprovementAtr = Math.max(
+    0,
+    Number(config.LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR ?? 1),
+  );
   const targetR = Math.max(
     0,
     Number(config.LIQUIDITY_TAILS_TARGET_R_MULT ?? 2),
@@ -348,6 +364,19 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         signal != null && signal.direction !== position.direction;
 
       if (
+        Boolean(config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION) &&
+        cycle?.invalidationPrice != null &&
+        (position.direction === 'LONG'
+          ? Number(candle.close) < cycle.invalidationPrice
+          : Number(candle.close) > cycle.invalidationPrice)
+      ) {
+        return strategyApi.exit({
+          code: 'LIQUIDITY_TAILS_INVALIDATION_EXIT',
+          direction: position.direction,
+        });
+      }
+
+      if (
         Boolean(config.LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST) &&
         oppositeSignal
       ) {
@@ -357,7 +386,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         });
       }
 
-      if (!signal || !scaleInEnabled) {
+      if (!signal || (!scaleInEnabled && !exitOnScaleInRetest)) {
         return strategyApi.skip('POSITION_EXISTS');
       }
       if (oppositeSignal) {
@@ -374,10 +403,19 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       }
 
       const { currentPrice } = await strategyApi.getDecisionPriceContext();
+      const improvement =
+        position.direction === 'LONG'
+          ? position.price - currentPrice
+          : currentPrice - position.price;
       if (
         !isPriceImprovement(position.direction, currentPrice, position.price)
       ) {
         return strategyApi.skip('LIQUIDITY_TAILS_SCALE_IN_PRICE_NOT_IMPROVED');
+      }
+      if (improvement < signal.atr * scaleInMinImprovementAtr) {
+        return strategyApi.skip(
+          'LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_NOT_MET',
+        );
       }
       if (
         !isDirectionalStopValid(
@@ -387,6 +425,13 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         )
       ) {
         return strategyApi.skip('LIQUIDITY_TAILS_SCALE_IN_STOP_REACHED');
+      }
+
+      if (exitOnScaleInRetest) {
+        return strategyApi.exit({
+          code: 'LIQUIDITY_TAILS_SCALE_IN_RETEST_EXIT',
+          direction: position.direction,
+        });
       }
 
       const existingRiskValue = calculateWorstCaseLoss({
@@ -431,6 +476,8 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         level: 2,
         levelsFilled: cycle.entriesFilled,
         positionQty: position.qty,
+        positionAveragePrice: position.price,
+        priceImprovementAtr: signal.atr > 0 ? improvement / signal.atr : null,
         projectedQty,
         projectedAveragePrice,
         stopLossPrice: cycle.stopLossPrice,
@@ -488,6 +535,11 @@ export const createLiquidityTailsCore: CreateStrategyCore<
     if (!signal) {
       return strategyApi.skip('NO_LIQUIDITY_TAIL_RETEST');
     }
+    if (signal.retestOrdinal > 1) {
+      return strategyApi.skip(
+        'LIQUIDITY_TAILS_SECONDARY_RETEST_WITHOUT_POSITION',
+      );
+    }
 
     if (lastTradeController.isInCooldown(candle.timestamp)) {
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
@@ -518,18 +570,12 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         : currentPrice - riskDistance * targetR;
     const riskRatio = riskDistance > 0 ? targetR : 0;
     const initialRiskValue = maxLossValue * initialRiskFraction;
-    const qty = scaleInEnabled
-      ? calculateRiskSizedQty({
-          riskBudget: initialRiskValue,
-          entryPrice: currentPrice,
-          stopLossPrice,
-          feeRate,
-        })
-      : riskDistance > 0
-        ? maxLossValue /
-          riskDistance /
-          (1 + Math.max(0, Number(config.FEE_PERCENT ?? 0)) / 100)
-        : 0;
+    const qty = calculateRiskSizedQty({
+      riskBudget: initialRiskValue,
+      entryPrice: currentPrice,
+      stopLossPrice,
+      feeRate,
+    });
 
     if (
       (signal.direction === 'LONG' && stopLossPrice >= currentPrice) ||
@@ -557,6 +603,8 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       level: 1,
       levelsFilled: 0,
       positionQty: 0,
+      positionAveragePrice: null,
+      priceImprovementAtr: null,
       projectedQty: qty,
       projectedAveragePrice: currentPrice,
       stopLossPrice,
@@ -567,21 +615,23 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       maxLossValue,
       initialRiskFraction,
     });
-    if (scaleInEnabled) {
-      executionState.update((draft) => {
-        draft.cycle = {
-          direction: signal.direction,
-          stopLossPrice,
-          targetR,
-          entriesFilled: 0,
-          pending: {
-            timestamp: candle.timestamp,
-            observedQty: 0,
-            level: 1,
-          },
-        };
-      });
-    }
+    executionState.update((draft) => {
+      draft.cycle = {
+        direction: signal.direction,
+        stopLossPrice,
+        invalidationPrice:
+          signal.direction === 'LONG' ? signal.zone.bottom : signal.zone.top,
+        targetR,
+        entriesFilled: scaleInEnabled ? 0 : 1,
+        pending: scaleInEnabled
+          ? {
+              timestamp: candle.timestamp,
+              observedQty: 0,
+              level: 1,
+            }
+          : null,
+      };
+    });
     lastTradeController.markTrade(timestamp);
 
     return strategyApi.entry({

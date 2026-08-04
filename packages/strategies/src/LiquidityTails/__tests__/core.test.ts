@@ -60,6 +60,8 @@ const makeSignal = ({
       originVolume: 1_000,
       spent: false,
       traded: true,
+      signalsEmitted: 1,
+      lastSignalIndex: 1,
     },
     timestamp,
     close,
@@ -73,6 +75,7 @@ const makeSignal = ({
     retestPenetrationPct: 20,
     reactionCloseDistancePct: 2,
     reactionBodyAligned: true,
+    retestOrdinal: 1,
   };
 };
 
@@ -134,6 +137,7 @@ const makeCoreConfig = (overrides: Partial<LiquidityTailsConfig> = {}) =>
     LIQUIDITY_TAILS_TARGET_R_MULT: 1.6,
     LIQUIDITY_TAILS_SCALE_IN_ENABLED: true,
     LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 0.7,
+    LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR: 1,
     LONG: { ...DEFAULT_CONFIG.LONG, minRiskRatio: 1 },
     SHORT: { ...DEFAULT_CONFIG.SHORT, minRiskRatio: 1 },
     ...overrides,
@@ -174,6 +178,8 @@ describe('LiquidityTails core scale-in cycle', () => {
         levelsFilled: 0,
         riskBudgetUsedPct: 70,
         initialRiskFraction: 0.7,
+        positionAveragePrice: null,
+        priceImprovementAtr: null,
       }),
     );
 
@@ -201,6 +207,8 @@ describe('LiquidityTails core scale-in cycle', () => {
         level: 2,
         levelsFilled: 1,
         positionQty: 0.7,
+        positionAveragePrice: 100,
+        priceImprovementAtr: 2.5,
       }),
     );
     expect(increaseContext.projectedQty).toBeCloseTo(1.3);
@@ -260,7 +268,7 @@ describe('LiquidityTails core scale-in cycle', () => {
     expect(increased.orderPlan.qty).toBeCloseTo(0.6);
   });
 
-  it('keeps the current full-risk single-entry behavior when scale-in is disabled', async () => {
+  it('keeps a 70% initial risk allocation when scale-in is disabled', async () => {
     mockRuntimeStates([
       makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
       makeRuntimeState(makeSignal({ timestamp: 2, close: 95 })),
@@ -281,7 +289,7 @@ describe('LiquidityTails core scale-in cycle', () => {
     } as any);
 
     const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
-    expect(opened.orderPlan.qty).toBeCloseTo(1);
+    expect(opened.orderPlan.qty).toBeCloseTo(0.7);
 
     position = {
       symbol: 'TESTUSDT',
@@ -296,6 +304,201 @@ describe('LiquidityTails core scale-in cycle', () => {
 
     expect(next).toEqual(
       expect.objectContaining({ kind: 'skip', code: 'POSITION_EXISTS' }),
+    );
+  });
+
+  it('uses the same fee-aware sizing for a full-risk single entry', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getDecision: () => ({ timestamp: 1, currentPrice: 100 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        FEE_PERCENT: 0.001,
+        LIQUIDITY_TAILS_SCALE_IN_ENABLED: false,
+        LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 1,
+      }),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+
+    expect(opened.orderPlan.qty).toBeCloseTo(10 / (10 + 0.1 + 0.09));
+    expect(
+      opened.signal.additionalIndicators.liquidityTailsContext
+        .projectedRiskValue,
+    ).toBeCloseTo(10);
+  });
+
+  it('requires at least the configured ATR improvement for scale-in', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 2, close: 98.1 })),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => ({
+        symbol: 'TESTUSDT',
+        direction: 'LONG',
+        price: 100,
+        qty: 0.7,
+        slPrice: 90,
+        tpPrice: 116,
+      }),
+      getDecision: () => ({ timestamp: 2, currentPrice: 98.1 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig(),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const result = (await core(makeCandle(2, 98.1) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'skip',
+        code: 'LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_NOT_MET',
+      }),
+    );
+  });
+
+  it('allows scale-in at exactly the configured ATR improvement', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 2, close: 98 })),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => ({
+        symbol: 'TESTUSDT',
+        direction: 'LONG',
+        price: 100,
+        qty: 0.7,
+        slPrice: 90,
+        tpPrice: 116,
+      }),
+      getDecision: () => ({ timestamp: 2, currentPrice: 98 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig(),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const result = (await core(makeCandle(2, 98) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'LIQUIDITY_TAILS_BUY_PRESSURE_SCALE_IN',
+      }),
+    );
+  });
+
+  it('exits instead of increasing on a qualifying follow-up retest', async () => {
+    const signal = makeSignal({ timestamp: 2, close: 98 });
+    signal.retestOrdinal = 2;
+    mockRuntimeStates([makeRuntimeState(signal)]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => ({
+        symbol: 'TESTUSDT',
+        direction: 'LONG',
+        price: 100,
+        qty: 0.7,
+        slPrice: 90,
+        tpPrice: 116,
+      }),
+      getDecision: () => ({ timestamp: 2, currentPrice: 98 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST: true,
+        LIQUIDITY_TAILS_SCALE_IN_ENABLED: false,
+      }),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const result = (await core(makeCandle(2, 98) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'exit',
+        code: 'LIQUIDITY_TAILS_SCALE_IN_RETEST_EXIT',
+      }),
+    );
+  });
+
+  it('does not use a secondary zone retest as a new primary entry', async () => {
+    const signal = makeSignal({ timestamp: 2, close: 98 });
+    signal.retestOrdinal = 2;
+    mockRuntimeStates([makeRuntimeState(signal)]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getDecision: () => ({ timestamp: 2, currentPrice: 98 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig(),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const result = (await core(makeCandle(2, 98) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'skip',
+        code: 'LIQUIDITY_TAILS_SECONDARY_RETEST_WITHOUT_POSITION',
+      }),
+    );
+  });
+
+  it('exits after the original zone is invalidated before the buffered stop', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
+      makeRuntimeState(null),
+    ]);
+    let position: any = null;
+    let decision = { timestamp: 1, currentPrice: 100 };
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getDecision: () => decision,
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_EXIT_ON_INVALIDATION: true,
+        LIQUIDITY_TAILS_STOP_ATR_BUFFER_MULT: 1,
+      } as unknown as Partial<LiquidityTailsConfig>),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: opened.orderPlan.qty,
+      slPrice: opened.orderPlan.stopLossPrice,
+      tpPrice: opened.orderPlan.takeProfits[0].price,
+    };
+    decision = { timestamp: 2, currentPrice: 89.5 };
+
+    const result = (await core(makeCandle(2, 89.5) as any, {} as any)) as any;
+
+    expect(opened.orderPlan.stopLossPrice).toBe(88);
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'exit',
+        code: 'LIQUIDITY_TAILS_INVALIDATION_EXIT',
+      }),
     );
   });
 
