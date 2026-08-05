@@ -31,7 +31,7 @@ managed_pids+=("$cron_pid")
   set -o pipefail
   PROJECT_CWD=/app \
     DOTENV_CONFIG_PATH=/app/.env \
-    NODE_OPTIONS="--max-old-space-size=${SIGNALS_DAEMON_HEAP_MB:-2048}" \
+    NODE_OPTIONS="--max-old-space-size=${SIGNALS_DAEMON_HEAP_MB:-4096}" \
     bash ./bin/run-cli-runtime.sh \
       signals-daemon \
       --timeframe 15 \
