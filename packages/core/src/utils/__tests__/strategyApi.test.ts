@@ -198,6 +198,51 @@ describe('createStrategyAPI', () => {
     expect(loadDecisionBaseContext).toHaveBeenCalledTimes(2);
   });
 
+  it('reads decision base context from the latest snapshot without cloning indicator history', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const data: any[] = [candle];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+    const baseContext = {
+      candle,
+      prevCandle: null,
+      raw: {},
+      regime: {},
+      structure: {},
+      participation: {},
+      relative: {},
+      mtf: {},
+    };
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({ baseContext, atr: [1] })),
+      latestSnapshot: jest.fn(() => ({ baseContext, atr: 1 })),
+      latestNumber: jest.fn(() => undefined),
+      isInitialized: jest.fn(() => true),
+    } as any;
+    const strategyApi = createStrategyAPI({
+      strategy: 'HyperliquidConsensus' as any,
+      symbol: 'BTCUSDT',
+      interval: '5' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      indicatorsState,
+    });
+
+    await expect(strategyApi.getDecisionBaseContext()).resolves.toBe(
+      baseContext,
+    );
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.latestSnapshot).toHaveBeenCalledTimes(1);
+    expect(indicatorsState.snapshot).not.toHaveBeenCalled();
+  });
+
   it('getDecisionPriceContext rejects when no current closed candle exists', async () => {
     const data: any[] = [];
     const connector = {

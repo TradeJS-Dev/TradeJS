@@ -1688,6 +1688,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           interval: decisionInterval,
           timestamp: candle.timestamp,
           env,
+          useSeriesCache: env === 'BACKTEST' || env === 'PARITY',
         });
         if (!hyperliquidWhales) return baseContext;
 

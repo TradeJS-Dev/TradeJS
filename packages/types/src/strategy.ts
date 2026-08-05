@@ -1280,6 +1280,7 @@ export interface StrategyIndicatorsState<
     snapshot: (options?: { compact?: boolean; limit?: number }) => TSnapshot;
   };
   snapshot: (options?: { compact?: boolean; limit?: number }) => TSnapshot;
+  latestSnapshot?: () => TNext;
   latestNumber: <K extends Extract<keyof NonNullable<TSnapshot>, string>>(
     key: K,
   ) => number | undefined;

@@ -1,6 +1,13 @@
 import { intervalToMs } from '@tradejs/core/data';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
-import { getHyperliquidWhaleFlowAggregate } from '@tradejs/infra/timescale';
+import {
+  getHyperliquidWhaleCoverageSeriesRows,
+  getHyperliquidWhaleFlowAggregate,
+  getHyperliquidWhaleFlowSeriesRows,
+  type HyperliquidWhaleCoverageSeriesRow,
+  type HyperliquidWhaleFlowAggregate,
+  type HyperliquidWhaleFlowSeriesRow,
+} from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
 import type {
   BaseHyperliquidWhaleFlowContext,
@@ -15,7 +22,17 @@ import {
 } from '../hyperliquidWhaleUniverse';
 
 const MAX_CACHE_ENTRIES = 2_048;
+const MAX_COVERAGE_SERIES_CACHE_ENTRIES = 20;
+const MAX_FLOW_SERIES_CACHE_ENTRIES = 64;
+const SERIES_CHUNK_MS = 30 * 24 * 60 * 60_000;
+const MAX_SERIES_LOOKBACK_MS = 60 * 60_000;
 const DEFAULT_MIN_COVERAGE_PCT = 0.8;
+const INTERVAL_MS: Record<MarketFeatureInterval, number> = {
+  '1m': 60_000,
+  '5m': 5 * 60_000,
+  '15m': 15 * 60_000,
+  '1h': 60 * 60_000,
+};
 const DEFAULT_MAX_AGE_BY_INTERVAL: Record<MarketFeatureInterval, number> = {
   '1m': 2 * 60_000,
   '5m': 10 * 60_000,
@@ -27,6 +44,14 @@ let hyperliquidWhaleContextUnavailable = false;
 const contextCache = new Map<
   string,
   ReturnType<typeof getHyperliquidWhaleFlowAggregate>
+>();
+const coverageSeriesCache = new Map<
+  string,
+  ReturnType<typeof getHyperliquidWhaleCoverageSeriesRows>
+>();
+const flowSeriesCache = new Map<
+  string,
+  ReturnType<typeof getHyperliquidWhaleFlowSeriesRows>
 >();
 
 const parseEnabledFlag = (value: unknown, env: string) => {
@@ -82,12 +107,279 @@ const setBoundedCache = (
   contextCache.set(key, value);
 };
 
+const setBoundedSeriesCache = <T>(
+  cache: Map<string, Promise<T>>,
+  maxEntries: number,
+  key: string,
+  value: Promise<T>,
+) => {
+  if (cache.size >= maxEntries) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey != null) cache.delete(oldestKey);
+  }
+  cache.set(key, value);
+};
+
+const uniqueAddressCount = (
+  rows: HyperliquidWhaleFlowSeriesRow[],
+  field:
+    | 'whaleAddresses'
+    | 'longEntryWhaleAddresses'
+    | 'shortEntryWhaleAddresses'
+    | 'longExitWhaleAddresses'
+    | 'shortExitWhaleAddresses',
+) => {
+  const addresses = new Set<string>();
+  for (const row of rows) {
+    for (const address of row[field]) addresses.add(address);
+  }
+  return addresses.size;
+};
+
+const sumFlowField = (
+  rows: HyperliquidWhaleFlowSeriesRow[],
+  field:
+    | 'trades'
+    | 'whaleSides'
+    | 'buyNotionalUsd'
+    | 'sellNotionalUsd'
+    | 'positionAwareWhaleSides'
+    | 'longEntryNotionalUsd'
+    | 'shortEntryNotionalUsd'
+    | 'longExitNotionalUsd'
+    | 'shortExitNotionalUsd',
+) => rows.reduce((sum, row) => sum + row[field], 0);
+
+const sliceSeriesWindow = <T extends { ts: Date }>(
+  rows: T[],
+  fromMs: number,
+  toMs: number,
+) => {
+  const lowerBound = (timestamp: number) => {
+    let low = 0;
+    let high = rows.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (rows[middle].ts.getTime() < timestamp) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  return rows.slice(lowerBound(fromMs), lowerBound(toMs));
+};
+
+export const aggregateHyperliquidWhaleFlowSeries = (params: {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  decisionTimeMs: number;
+  maxAgeMs?: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+  coverageRows: HyperliquidWhaleCoverageSeriesRow[];
+  flowRows: HyperliquidWhaleFlowSeriesRow[];
+}): HyperliquidWhaleFlowAggregate | null => {
+  const intervalMs = INTERVAL_MS[params.interval];
+  const windowStartMs = params.decisionTimeMs - intervalMs;
+  const coverageRows = sliceSeriesWindow(
+    params.coverageRows,
+    windowStartMs,
+    params.decisionTimeMs,
+  );
+  const expectedBuckets = Math.ceil(intervalMs / 60_000);
+  if (
+    coverageRows.length !== expectedBuckets ||
+    coverageRows.some((row) => row.coveredWhales <= 0)
+  ) {
+    return null;
+  }
+
+  const flowRows = sliceSeriesWindow(
+    params.flowRows,
+    windowStartMs,
+    params.decisionTimeMs,
+  );
+  const asOfTs = new Date(
+    Math.max(...coverageRows.map((row) => row.ts.getTime())),
+  );
+  const coveredWhales = Math.min(
+    ...coverageRows.map((row) => row.coveredWhales),
+  );
+  const expectedWhales = Math.max(
+    ...coverageRows.map((row) => row.expectedWhales),
+  );
+  const coveragePct = Math.min(...coverageRows.map((row) => row.coveragePct));
+  const trades = sumFlowField(flowRows, 'trades');
+  const whaleSides = sumFlowField(flowRows, 'whaleSides');
+  const buyNotionalUsd = sumFlowField(flowRows, 'buyNotionalUsd');
+  const sellNotionalUsd = sumFlowField(flowRows, 'sellNotionalUsd');
+  const positionAwareWhaleSides = sumFlowField(
+    flowRows,
+    'positionAwareWhaleSides',
+  );
+  const longEntryNotionalUsd = sumFlowField(flowRows, 'longEntryNotionalUsd');
+  const shortEntryNotionalUsd = sumFlowField(flowRows, 'shortEntryNotionalUsd');
+  const longExitNotionalUsd = sumFlowField(flowRows, 'longExitNotionalUsd');
+  const shortExitNotionalUsd = sumFlowField(flowRows, 'shortExitNotionalUsd');
+  const totalNotionalUsd = buyNotionalUsd + sellNotionalUsd;
+  const totalEntryNotionalUsd = longEntryNotionalUsd + shortEntryNotionalUsd;
+  const ageMs = params.decisionTimeMs - (asOfTs.getTime() + 60_000);
+
+  return {
+    symbol: params.symbol,
+    interval: params.interval,
+    asOfTs,
+    windowEndTs: new Date(params.decisionTimeMs),
+    trades,
+    whaleSides,
+    uniqueWhales: uniqueAddressCount(flowRows, 'whaleAddresses'),
+    coveredWhales,
+    expectedWhales,
+    coveragePct,
+    buyNotionalUsd,
+    sellNotionalUsd,
+    netNotionalUsd: buyNotionalUsd - sellNotionalUsd,
+    buySharePct:
+      totalNotionalUsd > 0 ? buyNotionalUsd / totalNotionalUsd : null,
+    positionAwareWhaleSides,
+    positionAwarePct: whaleSides > 0 ? positionAwareWhaleSides / whaleSides : 0,
+    longEntryWhales: uniqueAddressCount(flowRows, 'longEntryWhaleAddresses'),
+    shortEntryWhales: uniqueAddressCount(flowRows, 'shortEntryWhaleAddresses'),
+    longExitWhales: uniqueAddressCount(flowRows, 'longExitWhaleAddresses'),
+    shortExitWhales: uniqueAddressCount(flowRows, 'shortExitWhaleAddresses'),
+    longEntryNotionalUsd,
+    shortEntryNotionalUsd,
+    longExitNotionalUsd,
+    shortExitNotionalUsd,
+    entryNetNotionalUsd: longEntryNotionalUsd - shortEntryNotionalUsd,
+    entryLongSharePct:
+      totalEntryNotionalUsd > 0
+        ? longEntryNotionalUsd / totalEntryNotionalUsd
+        : null,
+    universeFingerprint: params.universeFingerprint,
+    whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+    source: positionAwareWhaleSides > 0 ? 'hyperliquid_user_fills' : null,
+    ageMs,
+    stale:
+      ageMs < 0 ||
+      (params.maxAgeMs != null && Number.isFinite(params.maxAgeMs)
+        ? ageMs > params.maxAgeMs
+        : false),
+  };
+};
+
+const loadHyperliquidWhaleFlowAggregateFromSeries = async (params: {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  decisionTimeMs: number;
+  maxAgeMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}) => {
+  const chunkStartMs =
+    Math.floor(params.decisionTimeMs / SERIES_CHUNK_MS) * SERIES_CHUNK_MS;
+  const fromMs = chunkStartMs - MAX_SERIES_LOOKBACK_MS;
+  const toMs = chunkStartMs + SERIES_CHUNK_MS;
+  const sharedKey = [
+    fromMs,
+    toMs,
+    params.universeFingerprint,
+    params.whaleRegistryFingerprint,
+  ].join(':');
+
+  let pendingCoverage = coverageSeriesCache.get(sharedKey);
+  if (!pendingCoverage) {
+    pendingCoverage = getHyperliquidWhaleCoverageSeriesRows({
+      fromMs,
+      toMs,
+      universeFingerprint: params.universeFingerprint,
+      whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+    });
+    setBoundedSeriesCache(
+      coverageSeriesCache,
+      MAX_COVERAGE_SERIES_CACHE_ENTRIES,
+      sharedKey,
+      pendingCoverage,
+    );
+  }
+
+  const flowKey = `${params.symbol}:${sharedKey}`;
+  let pendingFlow = flowSeriesCache.get(flowKey);
+  if (!pendingFlow) {
+    pendingFlow = getHyperliquidWhaleFlowSeriesRows({
+      symbol: params.symbol,
+      fromMs,
+      toMs,
+      universeFingerprint: params.universeFingerprint,
+      whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+    });
+    setBoundedSeriesCache(
+      flowSeriesCache,
+      MAX_FLOW_SERIES_CACHE_ENTRIES,
+      flowKey,
+      pendingFlow,
+    );
+  }
+
+  const [coverageRows, flowRows] = await Promise.all([
+    pendingCoverage,
+    pendingFlow,
+  ]);
+  return aggregateHyperliquidWhaleFlowSeries({
+    ...params,
+    coverageRows,
+    flowRows,
+  });
+};
+
+const toBaseHyperliquidWhaleFlowContext = (
+  row: HyperliquidWhaleFlowAggregate,
+  minimumCoveragePct: number,
+): BaseHyperliquidWhaleFlowContext => ({
+  source:
+    row.positionAwareWhaleSides > 0
+      ? 'hyperliquid_user_fills'
+      : 'hyperliquid_trades',
+  interval: row.interval,
+  asOfTs: row.asOfTs.getTime(),
+  windowEndTs: row.windowEndTs.getTime(),
+  ageMs: row.ageMs,
+  stale: row.stale,
+  symbol: row.symbol,
+  trades: row.trades,
+  whaleSides: row.whaleSides,
+  uniqueWhales: row.uniqueWhales,
+  coveredWhales: row.coveredWhales,
+  expectedWhales: row.expectedWhales,
+  coveragePct: row.coveragePct,
+  coverageSufficient: row.coveragePct >= minimumCoveragePct,
+  buyNotionalUsd: row.buyNotionalUsd,
+  sellNotionalUsd: row.sellNotionalUsd,
+  netNotionalUsd: row.netNotionalUsd,
+  buySharePct: row.buySharePct,
+  positionAwareWhaleSides: row.positionAwareWhaleSides,
+  positionAwarePct: row.positionAwarePct,
+  longEntryWhales: row.longEntryWhales,
+  shortEntryWhales: row.shortEntryWhales,
+  longExitWhales: row.longExitWhales,
+  shortExitWhales: row.shortExitWhales,
+  longEntryNotionalUsd: row.longEntryNotionalUsd,
+  shortEntryNotionalUsd: row.shortEntryNotionalUsd,
+  longExitNotionalUsd: row.longExitNotionalUsd,
+  shortExitNotionalUsd: row.shortExitNotionalUsd,
+  entryNetNotionalUsd: row.entryNetNotionalUsd,
+  entryLongSharePct: row.entryLongSharePct,
+  universeFingerprint: row.universeFingerprint,
+  whaleRegistryFingerprint: row.whaleRegistryFingerprint,
+});
+
 export const isHyperliquidWhaleContextEnabled = (env: string) =>
   parseEnabledFlag(process.env.HYPERLIQUID_WHALE_CONTEXT_ENABLED, env);
 
 export const resetHyperliquidWhaleContextRuntimeState = () => {
   hyperliquidWhaleContextUnavailable = false;
   contextCache.clear();
+  coverageSeriesCache.clear();
+  flowSeriesCache.clear();
 };
 
 export const loadHyperliquidWhaleFlowContext = async (params: {
@@ -98,6 +390,7 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
   enabled?: boolean;
   marketInterval?: MarketFeatureInterval;
   maxAgeMs?: number;
+  useSeriesCache?: boolean;
 }): Promise<BaseHyperliquidWhaleFlowContext | null> => {
   if (
     !(params.enabled ?? isHyperliquidWhaleContextEnabled(params.env)) ||
@@ -127,9 +420,9 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
   ].join(':');
 
   try {
-    let pending = contextCache.get(cacheKey);
-    if (!pending) {
-      pending = getHyperliquidWhaleFlowAggregate({
+    let row: HyperliquidWhaleFlowAggregate | null;
+    if (params.useSeriesCache) {
+      row = await loadHyperliquidWhaleFlowAggregateFromSeries({
         symbol,
         interval,
         decisionTimeMs,
@@ -137,48 +430,23 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
         universeFingerprint: universe.fingerprint,
         whaleRegistryFingerprint: whales.fingerprint,
       });
-      setBoundedCache(cacheKey, pending);
+    } else {
+      let pending = contextCache.get(cacheKey);
+      if (!pending) {
+        pending = getHyperliquidWhaleFlowAggregate({
+          symbol,
+          interval,
+          decisionTimeMs,
+          maxAgeMs,
+          universeFingerprint: universe.fingerprint,
+          whaleRegistryFingerprint: whales.fingerprint,
+        });
+        setBoundedCache(cacheKey, pending);
+      }
+      row = await pending;
     }
-    const row = await pending;
     if (!row) return null;
-
-    return {
-      source:
-        row.positionAwareWhaleSides > 0
-          ? 'hyperliquid_user_fills'
-          : 'hyperliquid_trades',
-      interval,
-      asOfTs: row.asOfTs.getTime(),
-      windowEndTs: row.windowEndTs.getTime(),
-      ageMs: row.ageMs,
-      stale: row.stale,
-      symbol: row.symbol,
-      trades: row.trades,
-      whaleSides: row.whaleSides,
-      uniqueWhales: row.uniqueWhales,
-      coveredWhales: row.coveredWhales,
-      expectedWhales: row.expectedWhales,
-      coveragePct: row.coveragePct,
-      coverageSufficient: row.coveragePct >= minimumCoveragePct,
-      buyNotionalUsd: row.buyNotionalUsd,
-      sellNotionalUsd: row.sellNotionalUsd,
-      netNotionalUsd: row.netNotionalUsd,
-      buySharePct: row.buySharePct,
-      positionAwareWhaleSides: row.positionAwareWhaleSides,
-      positionAwarePct: row.positionAwarePct,
-      longEntryWhales: row.longEntryWhales,
-      shortEntryWhales: row.shortEntryWhales,
-      longExitWhales: row.longExitWhales,
-      shortExitWhales: row.shortExitWhales,
-      longEntryNotionalUsd: row.longEntryNotionalUsd,
-      shortEntryNotionalUsd: row.shortEntryNotionalUsd,
-      longExitNotionalUsd: row.longExitNotionalUsd,
-      shortExitNotionalUsd: row.shortExitNotionalUsd,
-      entryNetNotionalUsd: row.entryNetNotionalUsd,
-      entryLongSharePct: row.entryLongSharePct,
-      universeFingerprint: row.universeFingerprint,
-      whaleRegistryFingerprint: row.whaleRegistryFingerprint,
-    };
+    return toBaseHyperliquidWhaleFlowContext(row, minimumCoveragePct);
   } catch (error) {
     hyperliquidWhaleContextUnavailable = true;
     logger.warn(

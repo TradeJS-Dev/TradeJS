@@ -1148,6 +1148,102 @@ describe('timescale candle helpers', () => {
       expect.stringContaining('AND ts < to_timestamp($4/1000.0)'),
       ['BTC', 'universe-v1', 'whales-v1', decisionTimeMs, 15 * 60_000, 3],
     );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '($4::double precision - $5::double precision) / 1000.0',
+      ),
+      expect.any(Array),
+    );
+  });
+
+  it('loads reusable Hyperliquid whale coverage and flow series', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM hyperliquid_whale_coverage_1m')) {
+        return {
+          rows: [
+            {
+              ts: new Date(60_000),
+              covered_whales: 90,
+              expected_whales: 100,
+              coverage_pct: '0.9',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM hyperliquid_whale_flow')) {
+        return {
+          rows: [
+            {
+              ts: new Date(60_000),
+              trades: 2,
+              whale_sides: 3,
+              whale_addresses: ['0x1', '0x2'],
+              buy_notional_usd: '800',
+              sell_notional_usd: '200',
+              position_aware_whale_sides: 3,
+              long_entry_whale_addresses: ['0x1'],
+              short_entry_whale_addresses: ['0x2'],
+              long_exit_whale_addresses: [],
+              short_exit_whale_addresses: ['0x1'],
+              long_entry_notional_usd: '700',
+              short_entry_notional_usd: '100',
+              long_exit_notional_usd: '0',
+              short_exit_notional_usd: '100',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+    }));
+    const {
+      getHyperliquidWhaleCoverageSeriesRows,
+      getHyperliquidWhaleFlowSeriesRows,
+    } = await import('@tradejs/infra/timescale');
+
+    await expect(
+      getHyperliquidWhaleCoverageSeriesRows({
+        fromMs: 0,
+        toMs: 120_000,
+        universeFingerprint: 'universe-v1',
+        whaleRegistryFingerprint: 'whales-v1',
+      }),
+    ).resolves.toEqual([
+      {
+        ts: new Date(60_000),
+        coveredWhales: 90,
+        expectedWhales: 100,
+        coveragePct: 0.9,
+      },
+    ]);
+    await expect(
+      getHyperliquidWhaleFlowSeriesRows({
+        symbol: 'BTC',
+        fromMs: 0,
+        toMs: 120_000,
+        universeFingerprint: 'universe-v1',
+        whaleRegistryFingerprint: 'whales-v1',
+      }),
+    ).resolves.toMatchObject([
+      {
+        trades: 2,
+        whaleSides: 3,
+        whaleAddresses: ['0x1', '0x2'],
+        positionAwareWhaleSides: 3,
+        longEntryWhaleAddresses: ['0x1'],
+        shortEntryWhaleAddresses: ['0x2'],
+      },
+    ]);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('AND data_model_version = $3'),
+      ['universe-v1', 'whales-v1', 3, 0, 120_000],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("AND interval = '1m'"),
+      ['BTC', 'universe-v1', 'whales-v1', 0, 120_000],
+    );
   });
 
   it('persists and reads per-wallet truncated Hyperliquid coverage', async () => {

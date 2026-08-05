@@ -1,9 +1,15 @@
 const mockGetHyperliquidWhaleFlowAggregate = jest.fn();
+const mockGetHyperliquidWhaleCoverageSeriesRows = jest.fn();
+const mockGetHyperliquidWhaleFlowSeriesRows = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
   getHyperliquidWhaleFlowAggregate: (...args: unknown[]) =>
     mockGetHyperliquidWhaleFlowAggregate(...args),
+  getHyperliquidWhaleCoverageSeriesRows: (...args: unknown[]) =>
+    mockGetHyperliquidWhaleCoverageSeriesRows(...args),
+  getHyperliquidWhaleFlowSeriesRows: (...args: unknown[]) =>
+    mockGetHyperliquidWhaleFlowSeriesRows(...args),
 }));
 
 jest.mock('@tradejs/infra/logger', () => ({
@@ -12,6 +18,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 import {
   enrichSignalWithHyperliquidWhaleContext,
+  loadHyperliquidWhaleFlowContext,
   resetHyperliquidWhaleContextRuntimeState,
 } from '../strategyHelpers/hyperliquidWhaleContext';
 import {
@@ -93,6 +100,33 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       ageMs: 0,
       stale: false,
     });
+    mockGetHyperliquidWhaleCoverageSeriesRows.mockResolvedValue(
+      Array.from({ length: 15 }, (_, index) => ({
+        ts: new Date(timestamp + index * 60_000),
+        coveredWhales: 90,
+        expectedWhales: 100,
+        coveragePct: 0.9,
+      })),
+    );
+    mockGetHyperliquidWhaleFlowSeriesRows.mockResolvedValue([
+      {
+        ts: new Date(timestamp + 5 * 60_000),
+        trades: 4,
+        whaleSides: 5,
+        whaleAddresses: ['0x1', '0x2', '0x3'],
+        buyNotionalUsd: 800_000,
+        sellNotionalUsd: 200_000,
+        positionAwareWhaleSides: 5,
+        longEntryWhaleAddresses: ['0x1', '0x2', '0x3'],
+        shortEntryWhaleAddresses: ['0x2'],
+        longExitWhaleAddresses: ['0x1'],
+        shortExitWhaleAddresses: [],
+        longEntryNotionalUsd: 700_000,
+        shortEntryNotionalUsd: 100_000,
+        longExitNotionalUsd: 100_000,
+        shortExitNotionalUsd: 0,
+      },
+    ]);
   });
 
   it('reads only through the signal candle decision time and refreshes gate features', async () => {
@@ -140,6 +174,37 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       env: 'BACKTEST',
     });
     expect(mockGetHyperliquidWhaleFlowAggregate).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads replay context in cached time-series chunks', async () => {
+    const params = {
+      symbol: 'BTCUSDT',
+      interval: '15' as const,
+      timestamp,
+      env: 'BACKTEST',
+      useSeriesCache: true,
+    };
+
+    await expect(
+      loadHyperliquidWhaleFlowContext(params),
+    ).resolves.toMatchObject({
+      source: 'hyperliquid_user_fills',
+      interval: '15m',
+      trades: 4,
+      uniqueWhales: 3,
+      netNotionalUsd: 600_000,
+      buySharePct: 0.8,
+      longEntryWhales: 3,
+      shortEntryWhales: 1,
+      entryNetNotionalUsd: 600_000,
+      entryLongSharePct: 0.875,
+      coverageSufficient: true,
+    });
+    await loadHyperliquidWhaleFlowContext(params);
+
+    expect(mockGetHyperliquidWhaleFlowAggregate).not.toHaveBeenCalled();
+    expect(mockGetHyperliquidWhaleCoverageSeriesRows).toHaveBeenCalledTimes(1);
+    expect(mockGetHyperliquidWhaleFlowSeriesRows).toHaveBeenCalledTimes(1);
   });
 
   it('attaches partial coverage for diagnostics but marks it unusable by the gate', async () => {

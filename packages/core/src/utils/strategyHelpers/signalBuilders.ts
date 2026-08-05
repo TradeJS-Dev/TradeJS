@@ -1484,7 +1484,21 @@ export const createStrategyAPI = <
 
       return context;
     };
-  const getBaseContext = () => getCurrentIndicatorsContext().baseContext;
+  const getBaseContext = () => {
+    ensureBarCache();
+    const cacheKey = getCurrentIndicatorsCacheKey();
+    if (currentIndicatorsContextCache?.key === cacheKey) {
+      return currentIndicatorsContextCache.context.baseContext;
+    }
+    if (!indicatorsState?.latestSnapshot) {
+      return getCurrentIndicatorsContext().baseContext;
+    }
+    indicatorsState?.onBar();
+    const latestBaseContext = getBaseContextFromIndicators(
+      indicatorsState.latestSnapshot(),
+    );
+    return latestBaseContext ?? getCurrentIndicatorsContext().baseContext;
+  };
 
   const getDecisionBaseContext = () => {
     ensureBarCache();

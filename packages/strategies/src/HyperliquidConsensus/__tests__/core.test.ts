@@ -155,6 +155,7 @@ describe('createHyperliquidConsensusCore', () => {
       'hyperliquid_consensus_entry_evidence',
     );
     expect(lastTradeController.markTrade).toHaveBeenCalledWith(timestamp);
+    expect(strategyApi.getCurrentIndicatorsContext).toHaveBeenCalledTimes(1);
   });
 
   it('exits a LONG when fresh consensus reverses to SHORT', async () => {
@@ -212,6 +213,7 @@ describe('createHyperliquidConsensusCore', () => {
       kind: 'skip',
       code: 'HLC_NO_CONTEXT',
     });
+    expect(strategyApi.getCurrentIndicatorsContext).not.toHaveBeenCalled();
   });
 
   it('honors side enablement', async () => {

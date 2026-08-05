@@ -290,6 +290,7 @@ type PriceZone = {
 };
 
 const STRUCTURE_LOOKBACK = 80;
+const BASE_CONTEXT_CANDLE_WINDOW = 256;
 const PIVOT_LEFT_RIGHT = 2;
 const ZONE_ATR_FACTOR = 0.5;
 const PROFILE_BIN_COUNT = 24;
@@ -2550,12 +2551,12 @@ export const buildBaseContextSnapshot = ({
   candle,
   prevCandle,
   baseResult,
-  candlesHistory,
-  btcCandlesHistory,
-  ethCandlesHistory = [],
-  closeSeries,
-  volumeSeries,
-  btcCloseSeries,
+  candlesHistory: fullCandlesHistory,
+  btcCandlesHistory: fullBtcCandlesHistory,
+  ethCandlesHistory: fullEthCandlesHistory = [],
+  closeSeries: fullCloseSeries,
+  volumeSeries: fullVolumeSeries,
+  btcCloseSeries: fullBtcCloseSeries,
   coinResampledCandles,
   btcResampledCandles,
   ethResampledCandles,
@@ -2570,6 +2571,16 @@ export const buildBaseContextSnapshot = ({
   adaptiveChannel: precomputedAdaptiveChannel,
   psar: precomputedPsar,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
+  const candlesHistory = fullCandlesHistory.slice(-BASE_CONTEXT_CANDLE_WINDOW);
+  const btcCandlesHistory = fullBtcCandlesHistory.slice(
+    -BASE_CONTEXT_CANDLE_WINDOW,
+  );
+  const ethCandlesHistory = fullEthCandlesHistory.slice(
+    -BASE_CONTEXT_CANDLE_WINDOW,
+  );
+  const closeSeries = fullCloseSeries.slice(-BASE_CONTEXT_CANDLE_WINDOW);
+  const volumeSeries = fullVolumeSeries.slice(-BASE_CONTEXT_CANDLE_WINDOW);
+  const btcCloseSeries = fullBtcCloseSeries.slice(-BASE_CONTEXT_CANDLE_WINDOW);
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
     baseResult.bbUpper != null &&

@@ -160,7 +160,6 @@ describe('prepareMarketContextForRun', () => {
   });
 
   it('backfills Hyperliquid whales for the standalone consensus strategy', async () => {
-    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'true';
     expect(
       shouldPrepareHyperliquidWhaleContextForRun({
         mode: 'backtest',
@@ -194,6 +193,19 @@ describe('prepareMarketContextForRun', () => {
       strict: false,
       log: expect.any(Function),
     });
+  });
+
+  it('allows standalone consensus backfill to be explicitly disabled', () => {
+    process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'false';
+    expect(
+      shouldPrepareHyperliquidWhaleContextForRun({
+        mode: 'backtest',
+        cacheOnly: false,
+        aiEnabled: false,
+        mlEnabled: false,
+        strategyNames: ['HyperliquidConsensus'],
+      }),
+    ).toBe(false);
   });
 
   it('routes backtest context through AI/ML-aware backfill policies', async () => {

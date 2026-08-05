@@ -478,6 +478,8 @@ export const createStrategyIndicatorsState = ({
 
     snapshot: (options) => ensureControllerInitialized().snapshot(options),
 
+    latestSnapshot: () => ensureControllerInitialized().latestSnapshot(),
+
     latestNumber: (key) => ensureControllerInitialized().latestNumber(key),
   };
 };

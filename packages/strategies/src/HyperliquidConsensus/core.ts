@@ -21,7 +21,6 @@ export const createHyperliquidConsensusCore: CreateStrategyCore<
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async () => {
-    const { indicators } = strategyApi.getCurrentIndicatorsContext();
     const baseContext = await strategyApi.getDecisionBaseContext();
     if (!baseContext) {
       return strategyApi.skip('HLC_NO_BASE_CONTEXT');
@@ -101,6 +100,7 @@ export const createHyperliquidConsensusCore: CreateStrategyCore<
 
     const riskPlan = riskOrder.plan;
     lastTradeController.markTrade(timestamp);
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     return strategyApi.entry({
       code:

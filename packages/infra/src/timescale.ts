@@ -3225,6 +3225,141 @@ export async function upsertHyperliquidWhaleCoverageRows(
   );
 }
 
+export type HyperliquidWhaleCoverageSeriesRow = {
+  ts: Date;
+  coveredWhales: number;
+  expectedWhales: number;
+  coveragePct: number;
+};
+
+export async function getHyperliquidWhaleCoverageSeriesRows(params: {
+  fromMs: number;
+  toMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}): Promise<HyperliquidWhaleCoverageSeriesRow[]> {
+  await ensureHyperliquidWhaleSchema();
+  const result = await getPool().query(
+    `
+      SELECT
+        ts,
+        covered_whales,
+        expected_whales,
+        coverage_pct
+      FROM hyperliquid_whale_coverage_1m
+      WHERE universe_fingerprint = $1
+        AND whale_registry_fingerprint = $2
+        AND data_model_version = $3
+        AND ts >= to_timestamp($4/1000.0)
+        AND ts < to_timestamp($5/1000.0)
+      ORDER BY ts
+    `,
+    [
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+  return result.rows.map((row) => ({
+    ts: new Date(row.ts),
+    coveredWhales: Number(row.covered_whales) || 0,
+    expectedWhales: Number(row.expected_whales) || 0,
+    coveragePct: Number(row.coverage_pct) || 0,
+  }));
+}
+
+export type HyperliquidWhaleFlowSeriesRow = {
+  ts: Date;
+  trades: number;
+  whaleSides: number;
+  whaleAddresses: string[];
+  buyNotionalUsd: number;
+  sellNotionalUsd: number;
+  positionAwareWhaleSides: number;
+  longEntryWhaleAddresses: string[];
+  shortEntryWhaleAddresses: string[];
+  longExitWhaleAddresses: string[];
+  shortExitWhaleAddresses: string[];
+  longEntryNotionalUsd: number;
+  shortEntryNotionalUsd: number;
+  longExitNotionalUsd: number;
+  shortExitNotionalUsd: number;
+};
+
+export async function getHyperliquidWhaleFlowSeriesRows(params: {
+  symbol: string;
+  fromMs: number;
+  toMs: number;
+  universeFingerprint: string;
+  whaleRegistryFingerprint: string;
+}): Promise<HyperliquidWhaleFlowSeriesRow[]> {
+  await ensureHyperliquidWhaleSchema();
+  const result = await getPool().query(
+    `
+      SELECT
+        ts,
+        trades,
+        whale_sides,
+        whale_addresses,
+        buy_notional_usd,
+        sell_notional_usd,
+        position_aware_whale_sides,
+        long_entry_whale_addresses,
+        short_entry_whale_addresses,
+        long_exit_whale_addresses,
+        short_exit_whale_addresses,
+        long_entry_notional_usd,
+        short_entry_notional_usd,
+        long_exit_notional_usd,
+        short_exit_notional_usd
+      FROM hyperliquid_whale_flow
+      WHERE symbol = $1
+        AND interval = '1m'
+        AND universe_fingerprint = $2
+        AND whale_registry_fingerprint = $3
+        AND ts >= to_timestamp($4/1000.0)
+        AND ts < to_timestamp($5/1000.0)
+      ORDER BY ts
+    `,
+    [
+      params.symbol,
+      params.universeFingerprint,
+      params.whaleRegistryFingerprint,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+  return result.rows.map((row) => ({
+    ts: new Date(row.ts),
+    trades: Number(row.trades) || 0,
+    whaleSides: Number(row.whale_sides) || 0,
+    whaleAddresses: Array.isArray(row.whale_addresses)
+      ? row.whale_addresses.map(String)
+      : [],
+    buyNotionalUsd: Number(row.buy_notional_usd) || 0,
+    sellNotionalUsd: Number(row.sell_notional_usd) || 0,
+    positionAwareWhaleSides: Number(row.position_aware_whale_sides) || 0,
+    longEntryWhaleAddresses: Array.isArray(row.long_entry_whale_addresses)
+      ? row.long_entry_whale_addresses.map(String)
+      : [],
+    shortEntryWhaleAddresses: Array.isArray(row.short_entry_whale_addresses)
+      ? row.short_entry_whale_addresses.map(String)
+      : [],
+    longExitWhaleAddresses: Array.isArray(row.long_exit_whale_addresses)
+      ? row.long_exit_whale_addresses.map(String)
+      : [],
+    shortExitWhaleAddresses: Array.isArray(row.short_exit_whale_addresses)
+      ? row.short_exit_whale_addresses.map(String)
+      : [],
+    longEntryNotionalUsd: Number(row.long_entry_notional_usd) || 0,
+    shortEntryNotionalUsd: Number(row.short_entry_notional_usd) || 0,
+    longExitNotionalUsd: Number(row.long_exit_notional_usd) || 0,
+    shortExitNotionalUsd: Number(row.short_exit_notional_usd) || 0,
+  }));
+}
+
 export type HyperliquidWhaleFlowAggregate = {
   symbol: string;
   interval: MarketFeatureInterval;
@@ -3278,7 +3413,9 @@ export async function getHyperliquidWhaleFlowAggregate(params: {
         WHERE universe_fingerprint = $2
           AND whale_registry_fingerprint = $3
           AND data_model_version = $6
-          AND ts >= to_timestamp(($4 - $5)/1000.0)
+          AND ts >= to_timestamp(
+            ($4::double precision - $5::double precision) / 1000.0
+          )
           AND ts < to_timestamp($4/1000.0)
       ), coverage_summary AS (
         SELECT
@@ -3295,7 +3432,9 @@ export async function getHyperliquidWhaleFlowAggregate(params: {
           AND interval = '1m'
           AND universe_fingerprint = $2
           AND whale_registry_fingerprint = $3
-          AND ts >= to_timestamp(($4 - $5)/1000.0)
+          AND ts >= to_timestamp(
+            ($4::double precision - $5::double precision) / 1000.0
+          )
           AND ts < to_timestamp($4/1000.0)
       ), unique_addresses AS (
         SELECT COUNT(DISTINCT address)::int AS unique_whales

@@ -143,6 +143,8 @@ export const shouldPrepareHyperliquidWhaleContextForRun = (
   )
     .trim()
     .toLowerCase();
+  if (['0', 'false', 'no', 'off'].includes(configured)) return false;
+  if (strategyRequiresContext) return true;
   return ['1', 'true', 'yes', 'on'].includes(configured);
 };
 

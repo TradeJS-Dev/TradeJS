@@ -97,6 +97,8 @@ export const isTrackedHyperliquidWhale = (address: string) =>
 
 const SIGNAL_TO_HYPERLIQUID_ALIASES: Record<string, string> = {
   PEPE: 'kPEPE',
+  '1000PEPE': 'kPEPE',
+  PUMPFUN: 'PUMP',
   SHIB: 'kSHIB',
   BONK: 'kBONK',
 };

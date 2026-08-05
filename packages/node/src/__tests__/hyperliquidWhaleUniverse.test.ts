@@ -35,6 +35,10 @@ describe('hyperliquidWhaleUniverse', () => {
   it('maps connector symbols and unit-prefixed aliases deterministically', () => {
     expect(resolveHyperliquidPerpFromSignalSymbol('BTCUSDT')).toBe('BTC');
     expect(resolveHyperliquidPerpFromSignalSymbol('PEPEUSDT')).toBe('kPEPE');
+    expect(resolveHyperliquidPerpFromSignalSymbol('1000PEPEUSDT')).toBe(
+      'kPEPE',
+    );
+    expect(resolveHyperliquidPerpFromSignalSymbol('PUMPFUNUSDT')).toBe('PUMP');
     expect(resolveHyperliquidPerpFromSignalSymbol('SHIBUSDT')).toBeNull();
     expect(resolveHyperliquidPerpFromSignalSymbol('UNKNOWNUSDT')).toBeNull();
   });
