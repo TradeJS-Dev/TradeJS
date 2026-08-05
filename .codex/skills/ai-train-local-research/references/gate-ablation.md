@@ -117,6 +117,103 @@ or `--direction SHORT`. Reserve an untouched chronological tail with
 validation rows, and the withheld rows remain available for the later fixed-rule
 ablation.
 
+## Cross-Strategy Feasibility
+
+Use `--crossStrategy` to test whether the latest merged export for every
+available strategy contains shared LONG or SHORT approval/block pockets:
+
+```bash
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
+  --crossStrategy \
+  --validationSplit 0.2 \
+  --testSplit 0.2 \
+  --portfolioCapacity 5 \
+  --output data/ai/output/cross-strategy-shared-pockets.md
+```
+
+This mode intentionally does not reconstruct current strategy gates. It reads
+the causal payload snapshots saved in the exports and classifies every supported
+`additionalIndicators.baseContext` primitive by provenance. It runs two
+independent searches:
+
+- `universal` — normalized target/setup state such as ATR/BPS distances,
+  ratios, ranks, target-relative state, structure events, and directional
+  derivatives;
+- `benchmarkReference` — normalized BTC/ETH/reference/global state, including
+  causal `derivatives.referenceContexts` OI changes, funding z-scores,
+  liquidation imbalance/spike ratios, pressure/divergence, breadth, and CMC
+  regimes.
+
+Top-level `baseContext.derivatives` is the primary BTC benchmark. Only
+`targetContext` / `targetDerived` is target derivatives evidence. Never relabel
+a configured `referenceContexts.<symbol>` branch as target evidence merely
+because the symbol happens to match a traded target.
+
+The mode:
+
+- selects the latest merge independently for each strategy;
+- restricts every strategy to their common chronological overlap;
+- keeps each decision timestamp wholly in global train, tuning, or held-out
+  historical test;
+- determines the eligible feature universe from train only, so tuning/test
+  availability cannot select a feature;
+- requires a feature to cover at least `--minFeatureStrategies` strategies;
+- uses `--minFeatureCoverage` for the universal profile (default `0.5`) and
+  `--minBenchmarkFeatureCoverage` for partial benchmark/reference history
+  (default `0.1`);
+- balances discovery with `--maxRowsPerStrategy` and
+  `--maxRowsPerEvent` caps;
+- builds each benchmark/reference snapshot by taking within-strategy consensus
+  first and then consensus across strategies, so symbol fan-out cannot outvote
+  other strategies;
+- deduplicates benchmark/reference discovery to one timestamp-direction event,
+  scores macro-average normalized LU across strategies, and applies that same
+  event snapshot to every signal row during acceptance evaluation;
+- searches LONG and SHORT separately for both profitable approval slices and
+  losing block slices;
+- normalizes search PnL by each strategy's median absolute train loss, so one
+  strategy's currency scale cannot dominate;
+- reports per-strategy historical-test behavior, strategy/symbol/event
+  concentration, temporal stability, benchmark snapshot consistency, and five
+  deterministic fixed-pocket circular-shift diagnostics that rotate whole
+  strategy/timestamp outcome blocks rather than individual signal rows;
+- requires a shared pocket to have support in at least 60% of the configured
+  feature-strategy floor (minimum 5, capped by available strategies), with the
+  expected sign in at least 60% of those strategies in every partition;
+- rejects approval pockets whose maximum simultaneous batch exceeds
+  `--portfolioCapacity` (default `5`) in train, tuning, or historical test, and
+  applies symbol concentration checks to all three partitions;
+- accepts a block hypothesis only when the blocked slice is at most 80% of the
+  flow and its kept complement improves LU/event and PF in train, tuning, and
+  historical test.
+
+The report does not silently drop the disputed fields. It emits separate audit
+buckets:
+
+- `dataQuality` — `stale`, availability, coverage, points, rows, and calculation
+  history. These fields can make a market feature ineligible, but never approve
+  a trade or act as bearish market evidence by themselves;
+- `rawNonstationary` — absolute price/OI/liquidation/volume/market-cap/notional
+  levels and raw-unit slopes. They remain visible with the required causal
+  transform (return, BPS/ATR distance, pct-change, ratio, share, or z-score),
+  but absolute pooled thresholds are not searched;
+- `derivedPolicy` — existing gate scores, risks, confirmations/conflicts, and
+  decision hints. They are causal but excluded from discovery to avoid merely
+  rediscovering the current hard-coded heuristic;
+- `metadata` — source, provider, symbol, interval, and universe lineage.
+
+Do not calculate rolling normalizations from the sparse export signal rows.
+Such features must be produced at signal time from the full causal market
+history and exported, or discovery/inference parity is broken.
+
+`--crossStrategy` requires positive `--validationSplit` and `--testSplit`.
+Opening the historical test tail makes it exposed evidence. Re-running the tool
+on the same cutoff does not make it untouched again. Every candidate remains
+research-only until the exact frozen rule survives timestamps strictly after
+the report cutoff and live-env lineage validation. The five shifts are
+fixed-pocket diagnostics, not a family-wise permutation test. Cross-strategy LU
+metrics are discovery units, not qN+ gate metrics or production PnL.
+
 ## Report Contract
 
 Every report contains:

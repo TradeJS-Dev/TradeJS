@@ -33,6 +33,20 @@ Options:
   --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
   --includeGateContext         Include current gate output fields for audits only
+  --crossStrategy             Search latest exports for shared LONG/SHORT pockets
+  --maxDepth <n>              Cross-strategy pocket depth (default: 2)
+  --minSupport <n>            Cross-strategy discovery support (default: 100)
+  --minValidationSupport <n>  Cross-strategy tuning support (default: 50)
+  --maxAtomicPredicates <n>   Cross-strategy predicate pool (default: 160)
+  --maxCombinations <n>       Cross-strategy combinations (default: 60000)
+  --top <n>                   Cross-strategy candidates per side (default: 10)
+  --maxRowsPerStrategy <n>    Balanced discovery cap per strategy (default: 2500)
+  --maxRowsPerEvent <n>       Discovery rows per strategy/timestamp (default: 1)
+  --minFeatureStrategies <n>  Required strategy coverage per feature (default: 8)
+  --minFeatureCoverage <r>    Required row coverage inside a strategy (default: 0.5)
+  --minBenchmarkFeatureCoverage <r>
+                               Benchmark/reference row coverage (default: 0.1)
+  --portfolioCapacity <n>     Maximum simultaneous approval fan-out (default: 5)
   --output <path>              Write Markdown, or JSON when extension is .json
   --json                       Print JSON instead of Markdown
   --list                       List merged export groups and exit
@@ -68,12 +82,26 @@ export const parseCliArgs = (argv) => {
     maxLossValue: null,
     variants: [],
     includeGateContext: false,
+    crossStrategy: false,
+    maxDepth: 2,
+    minSupport: 100,
+    minValidationSupport: 50,
+    maxAtomicPredicates: 160,
+    maxCombinations: 60_000,
+    top: 10,
+    maxRowsPerStrategy: 2_500,
+    maxRowsPerEvent: 1,
+    minFeatureStrategies: 8,
+    minFeatureCoverage: 0.5,
+    minBenchmarkFeatureCoverage: 0.1,
+    portfolioCapacity: 5,
     json: false,
     list: false,
     help: false,
   };
   const booleanOptions = new Set([
     'includeGateContext',
+    'crossStrategy',
     'json',
     'list',
     'help',
@@ -122,6 +150,33 @@ export const parseCliArgs = (argv) => {
       const parsed = Number(value);
       options.maxLossValue =
         Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } else if (
+      ['minFeatureCoverage', 'minBenchmarkFeatureCoverage'].includes(name)
+    ) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+        throw new Error(`Invalid ratio for --${name}: ${value}`);
+      }
+      options[name] = parsed;
+    } else if (
+      [
+        'maxDepth',
+        'minSupport',
+        'minValidationSupport',
+        'maxAtomicPredicates',
+        'maxCombinations',
+        'top',
+        'maxRowsPerStrategy',
+        'maxRowsPerEvent',
+        'minFeatureStrategies',
+        'portfolioCapacity',
+      ].includes(name)
+    ) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`Invalid positive integer for --${name}: ${value}`);
+      }
+      options[name] = Math.trunc(parsed);
     } else if (
       [
         'file',
@@ -220,6 +275,20 @@ export const listDatasetGroups = async (outDir) => {
         compareMergeIds(left.mergeId, right.mergeId) ||
         left.strategyToken.localeCompare(right.strategyToken),
     );
+};
+
+export const latestDatasetGroupsByStrategy = (groups) => {
+  const latest = new Map();
+  for (const group of groups) {
+    const key = normalizeStrategyToken(group.strategyToken);
+    const current = latest.get(key);
+    if (!current || compareMergeIds(current.mergeId, group.mergeId) < 0) {
+      latest.set(key, group);
+    }
+  }
+  return [...latest.values()].sort((left, right) =>
+    left.strategyToken.localeCompare(right.strategyToken),
+  );
 };
 
 const normalizeStrategyToken = (value) =>
@@ -1125,6 +1194,1904 @@ const loadResearchRows = async ({
   };
 };
 
+const CROSS_BASE_PREFIX = 'additionalIndicators.baseContext.';
+const CROSS_BASE_SECTIONS = new Set([
+  'derivatives',
+  'gateFeatures',
+  'mtf',
+  'participation',
+  'raw',
+  'regime',
+  'relative',
+  'structure',
+]);
+const CROSS_DERIVED_FEATURES = new Set([
+  'derived.maFastAligned',
+  'derived.maSlowAligned',
+  'derived.maStackAligned',
+  'derived.macdHistogramAligned',
+  'derived.macdHistogramSlopeAligned',
+  'derived.obvSlopeAligned',
+  'derived.obvTrendAligned',
+  'derived.priceMaFastDistanceBps',
+  'derived.priceMaSlowDistanceBps',
+  'derived.stopDistanceBps',
+  'derived.takeProfitDistanceBps',
+]);
+const CROSS_DATA_QUALITY_LEAVES = new Set([
+  'available',
+  'availablecount',
+  'agems',
+  'asofts',
+  'coverage',
+  'coveragecount',
+  'coveragepct',
+  'coverageratio',
+  'coveragesufficient',
+  'coveredcount',
+  'coveredwhales',
+  'expectedcount',
+  'expectedwhales',
+  'intervalcount',
+  'latestindex',
+  'length',
+  'loadedcount',
+  'points',
+  'present',
+  'rowcount',
+  'rows',
+  'shardcount',
+  'sourcecount',
+  'stale',
+  'symbolscount',
+  'timestamp',
+  'windowendts',
+]);
+const CROSS_METADATA_LEAVES = new Set([
+  'compact',
+  'interval',
+  'primaryreferencesymbol',
+  'provider',
+  'referencesymbol',
+  'secondaryreferencesymbol',
+  'source',
+  'sourcesymbol',
+  'symbol',
+  'targetsymbol',
+  'universe',
+  'universefingerprint',
+  'whaleregistryfingerprint',
+]);
+const CROSS_RAW_VALUE_LEAVES = new Set([
+  'atr',
+  'atrslope',
+  'baseline',
+  'bbbasis',
+  'bblower',
+  'bbmiddle',
+  'bbupper',
+  'bottom',
+  'buybasevolume',
+  'buyquotevolume',
+  'buyvolume',
+  'centerline',
+  'centerlineslope',
+  'close',
+  'current',
+  'currentprice',
+  'deltaslope',
+  'emafilter',
+  'fastma',
+  'floor',
+  'high',
+  'highlevel',
+  'highprice1h',
+  'highprice24h',
+  'last',
+  'lastpivothigh',
+  'lastpivotlow',
+  'lastprice',
+  'lastswinghigh',
+  'lastswinglow',
+  'level',
+  'liqlong',
+  'liqshort',
+  'liqtotal',
+  'low',
+  'lower',
+  'lowerboundary',
+  'lowlevel',
+  'lowprice1h',
+  'lowprice24h',
+  'mafast',
+  'mamedium',
+  'maslow',
+  'macd',
+  'macdhistogram',
+  'macdhistogramslope',
+  'macdsignal',
+  'mid',
+  'netbasedelta',
+  'open',
+  'openinterest',
+  'netdelta',
+  'netquotedelta',
+  'obv',
+  'obvslope',
+  'obvsma',
+  'pointofcontrol',
+  'pocindex',
+  'prevclose',
+  'price',
+  'roof',
+  'sellbasevolume',
+  'sellquotevolume',
+  'sellvolume',
+  'signedvolume',
+  'slowma',
+  'stepusd',
+  'top',
+  'totalmarketcapusd',
+  'trailstop',
+  'turnover',
+  'upper',
+  'upperboundary',
+  'volume',
+  'volume1h',
+  'volume24h',
+  'volumetrendslope',
+]);
+const CROSS_RAW_ACTIVITY_COUNT_LEAVES = new Set([
+  'activecryptocurrencies',
+  'activeexchanges',
+  'activemarketpairs',
+  'advancers',
+  'decliners',
+  'exchangescount',
+  'positionawarewhalesides',
+  'trades',
+  'unchanged',
+  'uniquewhales',
+  'whalesides',
+]);
+const CROSS_SEARCH_PROFILE_NAMES = ['universal', 'benchmarkReference'];
+const CROSS_AUDIT_PROFILE_NAMES = [
+  'dataQuality',
+  'rawNonstationary',
+  'derivedPolicy',
+  'metadata',
+];
+const CROSS_OUTCOME_SEGMENTS = new Set([
+  'actual',
+  'aiapproved',
+  'approvalallowednow',
+  'backtestexecution',
+  'closedat',
+  'closedpnl',
+  'deterministicquality',
+  'entrydelaybars',
+  'entrydelaymovebps',
+  'executionprice',
+  'exitprice',
+  'exitreason',
+  'exittimestamp',
+  'fillprice',
+  'future',
+  'futuremove',
+  'futureprofit',
+  'hardblockreasons',
+  'label',
+  'maxallowedquality',
+  'maxquality',
+  'modeldirection',
+  'modeldirectionmatches',
+  'outcome',
+  'pnl',
+  'profit',
+  'profitabletrade',
+  'quality',
+  'rawaiapproved',
+  'rejectreason',
+  'result',
+  'traderesult',
+]);
+
+const inferCrossFeatureScope = (feature) => {
+  const normalized = feature.toLowerCase();
+  if (normalized.startsWith('derived.')) return 'target-setup';
+  if (normalized.includes('.derivatives.targetcontext.')) return 'target';
+  if (normalized.includes('.derivatives.targetderived.')) {
+    return /referencepressure|referencedirectionaligned/.test(normalized)
+      ? 'benchmark'
+      : 'target-vs-benchmark';
+  }
+  if (
+    /\.relative\.(?:cmc|marketbreadth|marketbreadths|btcaltregime)/.test(
+      normalized,
+    ) ||
+    /\.gatefeatures\.relative\.(?:cmc|marketbreadth|btcaltregime)/.test(
+      normalized,
+    )
+  ) {
+    return 'global';
+  }
+  if (
+    normalized.includes('.derivatives.') ||
+    normalized.includes('.relative.referencetradeflow.') ||
+    normalized.includes('.relative.referencepsychologicallevels.') ||
+    normalized.includes('.relative.execution.') ||
+    normalized.includes('.gatefeatures.execution.') ||
+    normalized.includes('.participation.referencetradeflow')
+  ) {
+    return 'benchmark';
+  }
+  if (/targetvsbtc|targetvseth|relativestrength/.test(normalized)) {
+    return 'target-vs-benchmark';
+  }
+  return 'target-setup';
+};
+
+const crossRawTransform = (feature) => {
+  const normalized = feature.toLowerCase();
+  if (/openinterest/.test(normalized))
+    return 'pct-change / acceleration / z-score';
+  if (/liq(?:long|short|total)/.test(normalized))
+    return 'imbalance / spike ratio';
+  if (/marketcap|volumeusd|reportedusd/.test(normalized)) {
+    return 'change / dominance / share / ratio';
+  }
+  if (/notionalusd/.test(normalized)) return 'turnover ratio / rolling z-score';
+  if (/volume|delta|obv/.test(normalized))
+    return 'relative share / z-score / direction';
+  if (
+    /price|level|pointofcontrol|boundary|trailstop|pivot|swing/.test(normalized)
+  ) {
+    return 'BPS / ATR distance / return / range position';
+  }
+  if (/cmc(?:20|100)value/.test(normalized))
+    return 'index change / relative ratio';
+  return 'causal normalized sibling computed from full signal-time history';
+};
+
+const isCrossRawNonstationary = (normalizedSegments) => {
+  const section = normalizedSegments[0];
+  const leaf = normalizedSegments.at(-1) ?? '';
+  if (section === 'raw') {
+    return ![
+      'atrpct',
+      'bbwidthpct',
+      'btccorrelation',
+      'price1hpct',
+      'price24hpct',
+    ].includes(leaf);
+  }
+  return (
+    CROSS_RAW_VALUE_LEAVES.has(leaf) ||
+    CROSS_RAW_ACTIVITY_COUNT_LEAVES.has(leaf) ||
+    leaf.endsWith('marketcapusd') ||
+    leaf.endsWith('notionalusd') ||
+    leaf.endsWith('openinterestusd') ||
+    leaf.endsWith('reportedusd') ||
+    leaf.endsWith('volumeusd') ||
+    (normalizedSegments.includes('psar') && leaf === 'value') ||
+    (normalizedSegments.includes('cmcindexes') && leaf.endsWith('value')) ||
+    (leaf.endsWith('price') &&
+      !leaf.endsWith('pricechange') &&
+      !leaf.endsWith('pricechangepct'))
+  );
+};
+
+export const classifyCrossStrategyFeature = (feature) => {
+  if (CROSS_DERIVED_FEATURES.has(feature)) {
+    return {
+      profile: 'universal',
+      scope: 'target-setup',
+      role: 'normalized-derived',
+      searchable: true,
+      reason: 'directional or BPS-normalized signal-time derivative',
+    };
+  }
+  if (!feature.startsWith(CROSS_BASE_PREFIX)) return null;
+  const relativePath = feature.slice(CROSS_BASE_PREFIX.length);
+  const segments = relativePath.split('.');
+  if (!CROSS_BASE_SECTIONS.has(segments[0])) return null;
+  const normalizedSegments = segments.map((segment) => segment.toLowerCase());
+  const normalizedPath = normalizedSegments.join('.');
+  const leaf = normalizedSegments.at(-1) ?? '';
+  const scope = inferCrossFeatureScope(feature);
+
+  if (
+    CROSS_DATA_QUALITY_LEAVES.has(leaf) ||
+    leaf.endsWith('stale') ||
+    leaf.endsWith('coveragepct') ||
+    leaf.endsWith('coveragesufficient') ||
+    leaf.endsWith('coveredcount') ||
+    leaf.endsWith('expectedcount') ||
+    leaf === 'calcbars'
+  ) {
+    return {
+      profile: 'dataQuality',
+      scope,
+      role: 'eligibility-guard',
+      searchable: false,
+      reason: 'freshness, coverage, or calculation-history evidence',
+    };
+  }
+  if (
+    CROSS_METADATA_LEAVES.has(leaf) ||
+    leaf.endsWith('symbol') ||
+    normalizedPath === 'gatefeatures.direction'
+  ) {
+    return {
+      profile: 'metadata',
+      scope,
+      role: 'lineage-metadata',
+      searchable: false,
+      reason: 'provider, symbol, interval, universe, or stratifier metadata',
+    };
+  }
+  if (isCrossRawNonstationary(normalizedSegments)) {
+    return {
+      profile: 'rawNonstationary',
+      scope,
+      role: 'transform-source',
+      searchable: false,
+      reason:
+        'causal but raw, scale-dependent, or slowly drifting absolute value',
+      transform: crossRawTransform(feature),
+    };
+  }
+  if (
+    normalizedSegments[0] === 'gatefeatures' &&
+    ['scores', 'risk', 'decisionhints', 'confirmations', 'conflicts'].includes(
+      normalizedSegments[1],
+    )
+  ) {
+    return {
+      profile: 'derivedPolicy',
+      scope: 'mixed',
+      role: 'existing-policy-composite',
+      searchable: false,
+      reason: 'hard-coded composite can rediscover the current heuristic',
+    };
+  }
+
+  let profile = 'universal';
+  if (normalizedSegments[0] === 'derivatives') {
+    profile =
+      normalizedSegments[1] === 'targetcontext' ||
+      (normalizedSegments[1] === 'targetderived' &&
+        !['referencepressure', 'referencedirectionaligned'].includes(leaf))
+        ? 'universal'
+        : 'benchmarkReference';
+  } else if (normalizedSegments[0] === 'relative') {
+    profile =
+      normalizedSegments[1]?.startsWith('targetvs') ||
+      (normalizedSegments[1] === 'benchmark' &&
+        /relativestrength|trendalignment/.test(leaf))
+        ? 'universal'
+        : 'benchmarkReference';
+  } else if (normalizedSegments[0] === 'gatefeatures') {
+    if (
+      normalizedSegments[1] === 'execution' ||
+      (normalizedSegments[1] === 'participation' &&
+        normalizedSegments[2]?.startsWith('referencetradeflow')) ||
+      (normalizedSegments[1] === 'relative' &&
+        !/targetvsbtc|targetvseth|relativestrength/.test(normalizedPath))
+    ) {
+      profile = 'benchmarkReference';
+    }
+  }
+  return {
+    profile,
+    scope:
+      profile === 'benchmarkReference' && scope === 'target-setup'
+        ? 'benchmark'
+        : scope,
+    role:
+      profile === 'universal'
+        ? 'normalized-target-setup'
+        : 'normalized-benchmark-reference',
+    searchable: true,
+    reason:
+      profile === 'universal'
+        ? 'portable target/setup market state'
+        : 'portable benchmark, reference, or global market state',
+  };
+};
+
+const CROSS_MISSING_VALUE =
+  /^(?:missing(?:[_ -].*)?|n\/a|stale|unavailable|unknown)$/i;
+
+const isCrossSearchValue = (value) =>
+  value != null &&
+  (typeof value !== 'string' || !CROSS_MISSING_VALUE.test(value.trim()));
+
+const isCrossFeatureFresh = (features, feature) => {
+  const segments = feature.split('.');
+  for (let length = segments.length - 1; length >= 3; length -= 1) {
+    const prefix = segments.slice(0, length).join('.');
+    if (features[`${prefix}.stale`] === true) return false;
+    if (features[`${prefix}.available`] === false) return false;
+    if (features[`${prefix}.coverageSufficient`] === false) return false;
+  }
+  const gatePrefix = `${CROSS_BASE_PREFIX}gateFeatures`;
+  const normalized = feature.toLowerCase();
+  const namedGuards = [
+    ['cmcaltliquidity', `${gatePrefix}.relative.cmcAltLiquidityStale`],
+    ['cmcethbtc', `${gatePrefix}.relative.cmcEthBtcStale`],
+    [
+      'cmcexchangeliquidity',
+      `${gatePrefix}.relative.cmcExchangeLiquidityStale`,
+    ],
+    ['cmcfeargreed', `${gatePrefix}.relative.cmcFearGreedStale`],
+    ['cmcindex', `${gatePrefix}.relative.cmcIndexStale`],
+    ['marketbreadth', `${gatePrefix}.relative.marketBreadthStale`],
+    ['btcaltregime', `${gatePrefix}.relative.btcAltRegimeStale`],
+  ];
+  return !namedGuards.some(
+    ([needle, guard]) =>
+      normalized.includes(needle) && features[guard] === true,
+  );
+};
+
+export const partitionCrossStrategyFeatures = (features) => {
+  const profiles = Object.fromEntries(
+    [...CROSS_SEARCH_PROFILE_NAMES, ...CROSS_AUDIT_PROFILE_NAMES].map(
+      (profile) => [profile, {}],
+    ),
+  );
+  for (const [feature, value] of Object.entries(features)) {
+    const classification = classifyCrossStrategyFeature(feature);
+    if (!classification) continue;
+    if (classification.searchable) {
+      if (
+        !isCrossSearchValue(value) ||
+        !isCrossFeatureFresh(features, feature)
+      ) {
+        continue;
+      }
+    }
+    profiles[classification.profile][feature] = value;
+  }
+  return profiles;
+};
+
+export const filterSharedCrossStrategyFeatures = (features) => {
+  const profiles = partitionCrossStrategyFeatures(features);
+  return { ...profiles.universal, ...profiles.benchmarkReference };
+};
+
+const flattenCrossFeatureBranch = ({ output, value, segments }) => {
+  if (
+    segments.length > 10 ||
+    segments.some((segment) =>
+      CROSS_OUTCOME_SEGMENTS.has(segment.toLowerCase()),
+    ) ||
+    Array.isArray(value)
+  ) {
+    return;
+  }
+  if (
+    value == null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  ) {
+    output[segments.join('.')] = value;
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value)) {
+    if (!key || key.startsWith('_')) continue;
+    flattenCrossFeatureBranch({
+      output,
+      value: child,
+      segments: [...segments, key],
+    });
+  }
+};
+
+export const collectSavedCrossStrategyFeatures = (payload) => {
+  const output = {};
+  const baseContext = payload?.additionalIndicators?.baseContext;
+  if (!baseContext || typeof baseContext !== 'object') return output;
+  for (const section of CROSS_BASE_SECTIONS) {
+    if (!(section in baseContext)) continue;
+    flattenCrossFeatureBranch({
+      output,
+      value: baseContext[section],
+      segments: ['additionalIndicators', 'baseContext', section],
+    });
+  }
+
+  const signal = payload.signal ?? {};
+  const finiteNumber = (value) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const currentPrice = finiteNumber(signal.prices?.currentPrice);
+  const stopLossPrice = finiteNumber(signal.prices?.stopLossPrice);
+  const takeProfitPrice = finiteNumber(signal.prices?.takeProfitPrice);
+  const direction = String(signal.direction ?? '').toUpperCase();
+  const directionSign =
+    direction === 'LONG' ? 1 : direction === 'SHORT' ? -1 : 0;
+  if (currentPrice != null && currentPrice !== 0) {
+    if (stopLossPrice != null) {
+      output['derived.stopDistanceBps'] =
+        (Math.abs(currentPrice - stopLossPrice) / Math.abs(currentPrice)) *
+        10_000;
+    }
+    if (takeProfitPrice != null) {
+      output['derived.takeProfitDistanceBps'] =
+        (Math.abs(takeProfitPrice - currentPrice) / Math.abs(currentPrice)) *
+        10_000;
+    }
+    const maFast = finiteNumber(baseContext.raw?.trend?.maFast);
+    const maSlow = finiteNumber(baseContext.raw?.trend?.maSlow);
+    if (directionSign && maFast != null) {
+      const distance =
+        ((currentPrice - maFast) / Math.abs(currentPrice)) *
+        10_000 *
+        directionSign;
+      output['derived.maFastAligned'] = distance >= 0;
+      output['derived.priceMaFastDistanceBps'] = distance;
+    }
+    if (directionSign && maSlow != null) {
+      const distance =
+        ((currentPrice - maSlow) / Math.abs(currentPrice)) *
+        10_000 *
+        directionSign;
+      output['derived.maSlowAligned'] = distance >= 0;
+      output['derived.priceMaSlowDistanceBps'] = distance;
+    }
+    if (directionSign && maFast != null && maSlow != null) {
+      output['derived.maStackAligned'] = (maFast - maSlow) * directionSign >= 0;
+    }
+  }
+  const macdHistogram = finiteNumber(baseContext.raw?.momentum?.macdHistogram);
+  if (directionSign && macdHistogram != null) {
+    output['derived.macdHistogramAligned'] = macdHistogram * directionSign >= 0;
+  }
+  const macdHistogramSlope = finiteNumber(
+    baseContext.regime?.momentum?.macdHistogramSlope,
+  );
+  if (directionSign && macdHistogramSlope != null) {
+    output['derived.macdHistogramSlopeAligned'] =
+      macdHistogramSlope * directionSign >= 0;
+  }
+  const obvSlope = finiteNumber(baseContext.participation?.volume?.obvSlope);
+  if (directionSign && obvSlope != null) {
+    output['derived.obvSlopeAligned'] = obvSlope * directionSign >= 0;
+  }
+  return output;
+};
+
+const readFirstNonEmptyLine = async (filePath) => {
+  const input = fs.createReadStream(filePath);
+  const reader = readline.createInterface({ input, crlfDelay: Infinity });
+  try {
+    for await (const line of reader) {
+      if (line.trim()) return line;
+    }
+  } finally {
+    reader.close();
+    input.destroy();
+  }
+  return null;
+};
+
+const readLastNonEmptyLine = async (filePath) => {
+  const handle = await fsp.open(filePath, 'r');
+  try {
+    const { size } = await handle.stat();
+    const chunkSize = 64 * 1024;
+    let position = size;
+    let suffix = '';
+    while (position > 0) {
+      const bytes = Math.min(chunkSize, position);
+      position -= bytes;
+      const buffer = Buffer.allocUnsafe(bytes);
+      await handle.read(buffer, 0, bytes, position);
+      suffix = `${buffer.toString('utf8')}${suffix}`;
+      const lines = suffix.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length >= 2 || position === 0) return lines.at(-1) ?? null;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+};
+
+const readTimestampBoundary = async (filePath, readLine) => {
+  const line = await readLine(filePath);
+  if (!line) throw new Error(`Empty export shard: ${filePath}`);
+  const timestamp = Number(JSON.parse(line).timestamp);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`No finite timestamp at boundary of ${filePath}`);
+  }
+  return timestamp;
+};
+
+const getCrossDatasetRanges = async (groups) => {
+  const ranges = [];
+  for (const group of groups) {
+    const firstTimestamps = [];
+    const lastTimestamps = [];
+    for (const filePath of group.files) {
+      firstTimestamps.push(
+        await readTimestampBoundary(filePath, readFirstNonEmptyLine),
+      );
+      lastTimestamps.push(
+        await readTimestampBoundary(filePath, readLastNonEmptyLine),
+      );
+    }
+    ranges.push({
+      strategy: group.strategyToken,
+      minTimestamp: Math.min(...firstTimestamps, ...lastTimestamps),
+      maxTimestamp: Math.max(...firstTimestamps, ...lastTimestamps),
+    });
+  }
+  return ranges;
+};
+
+const median = (values) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const getTimestampPartition = (timestamps, validationSplit, testSplit) => {
+  const placeholders = timestamps.map((timestamp) => ({ timestamp }));
+  const split = splitRowsByTimestamp(placeholders, validationSplit, testSplit);
+  return {
+    train: new Set(split.train.map((row) => row.timestamp)),
+    tuning: new Set(split.tuning.map((row) => row.timestamp)),
+    test: new Set(split.test.map((row) => row.timestamp)),
+  };
+};
+
+const getPartitionName = (timestamp, partition) => {
+  if (partition.train.has(timestamp)) return 'train';
+  if (partition.tuning.has(timestamp)) return 'tuning';
+  if (partition.test.has(timestamp)) return 'test';
+  return null;
+};
+
+const evenlySampleRows = (rows, limit) => {
+  if (rows.length <= limit) return rows;
+  const output = [];
+  const selected = new Set();
+  for (let index = 0; index < limit; index += 1) {
+    const sourceIndex = Math.min(
+      rows.length - 1,
+      Math.floor(((index + 0.5) * rows.length) / limit),
+    );
+    if (!selected.has(sourceIndex)) {
+      selected.add(sourceIndex);
+      output.push(rows[sourceIndex]);
+    }
+  }
+  return output;
+};
+
+const stableCrossRowHash = (row) => {
+  const input = `${row.timestamp ?? ''}|${row.signalId ?? ''}|${row.symbol ?? ''}|${row.sequence ?? ''}`;
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+export const balanceCrossStrategyRows = (
+  rows,
+  { maxRowsPerStrategy = 2_500, maxRowsPerEvent = 1 } = {},
+) => {
+  const byStrategy = new Map();
+  for (const row of rows) {
+    const strategyRows = byStrategy.get(row.strategy) ?? [];
+    strategyRows.push(row);
+    byStrategy.set(row.strategy, strategyRows);
+  }
+  const output = [];
+  for (const strategyRows of byStrategy.values()) {
+    const byTimestamp = new Map();
+    for (const row of strategyRows) {
+      const eventRows = byTimestamp.get(row.timestamp) ?? [];
+      eventRows.push(row);
+      byTimestamp.set(row.timestamp, eventRows);
+    }
+    const eventCapped = [...byTimestamp.values()]
+      .flatMap((eventRows) =>
+        eventRows
+          .sort(
+            (left, right) =>
+              stableCrossRowHash(left) - stableCrossRowHash(right) ||
+              left.sequence - right.sequence,
+          )
+          .slice(0, maxRowsPerEvent),
+      )
+      .sort(
+        (left, right) =>
+          left.timestamp - right.timestamp || left.sequence - right.sequence,
+      );
+    output.push(...evenlySampleRows(eventCapped, maxRowsPerStrategy));
+  }
+  return output.sort(
+    (left, right) =>
+      left.timestamp - right.timestamp || left.sequence - right.sequence,
+  );
+};
+
+const matchesPocketPredicate = (features, predicate) => {
+  if (!Object.prototype.hasOwnProperty.call(features, predicate.featureKey)) {
+    return false;
+  }
+  const value = features[predicate.featureKey];
+  if (predicate.op === '==') return value === predicate.value;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+  return predicate.op === '<='
+    ? value <= predicate.threshold
+    : value >= predicate.threshold;
+};
+
+export const matchesPocket = (row, predicates) =>
+  predicates.every((predicate) =>
+    matchesPocketPredicate(row.features, predicate),
+  );
+
+const summarizeCrossComparison = (rows, sourceRows) => {
+  const summary = summarizeRows(rows, getPeriodDays(sourceRows), {
+    calendarDays: getCalendarDays(sourceRows),
+  });
+  return {
+    rows: summary.trades,
+    events: summary.events,
+    winRate: summary.winRate,
+    profitFactor: summary.profitFactor,
+    normalizedProfit: summary.totalProfit,
+    profitPerEvent: summary.events
+      ? summary.totalProfit / summary.events
+      : null,
+    maxDrawdown: summary.maxDrawdown,
+    maxLossStreak: summary.maxLossStreak,
+    losingMonths: summary.losingMonths,
+  };
+};
+
+const summarizeCrossSlice = (sourceRows, predicates, expectedSign) => {
+  const rows = sourceRows.filter((row) => matchesPocket(row, predicates));
+  const complementRows = sourceRows.filter(
+    (row) => !matchesPocket(row, predicates),
+  );
+  const summary = summarizeRows(rows, getPeriodDays(sourceRows), {
+    calendarDays: getCalendarDays(sourceRows),
+  });
+  const byStrategy = [...new Set(rows.map((row) => row.strategy))]
+    .sort()
+    .map((strategy) => {
+      const strategyRows = rows.filter((row) => row.strategy === strategy);
+      const strategySummary = summarizeRows(
+        strategyRows,
+        getPeriodDays(sourceRows),
+        { calendarDays: getCalendarDays(sourceRows) },
+      );
+      return {
+        strategy,
+        rows: strategyRows.length,
+        events: new Set(strategyRows.map((row) => row.timestamp)).size,
+        winRate: strategySummary.winRate,
+        profitFactor: strategySummary.profitFactor,
+        normalizedProfit: strategySummary.totalProfit,
+        rawProfit: strategyRows.reduce((sum, row) => sum + row.rawProfit, 0),
+      };
+    });
+  const supportedStrategies = byStrategy.filter((entry) => entry.events >= 5);
+  const signCorrectStrategies = supportedStrategies.filter((entry) =>
+    expectedSign > 0 ? entry.normalizedProfit > 0 : entry.normalizedProfit < 0,
+  );
+  const strategyCounts = byStrategy.map((entry) => entry.rows);
+  const strategyAbsProfits = byStrategy.map((entry) =>
+    Math.abs(entry.normalizedProfit),
+  );
+  const events = new Map();
+  const months = new Map();
+  const symbols = new Map();
+  for (const row of rows) {
+    const event = events.get(row.timestamp) ?? { rows: 0, profit: 0 };
+    event.rows += 1;
+    event.profit += row.profit;
+    events.set(row.timestamp, event);
+    const month = new Date(row.timestamp).toISOString().slice(0, 7);
+    months.set(month, (months.get(month) ?? 0) + row.profit);
+    const symbol = symbols.get(row.symbol) ?? { rows: 0, profit: 0 };
+    symbol.rows += 1;
+    symbol.profit += row.profit;
+    symbols.set(row.symbol, symbol);
+  }
+  const eventValues = [...events.values()];
+  const absoluteEventProfit = eventValues.reduce(
+    (sum, event) => sum + Math.abs(event.profit),
+    0,
+  );
+  const expectedMonths = [...months.values()].filter((profit) =>
+    expectedSign > 0 ? profit > 0 : profit < 0,
+  ).length;
+  const symbolValues = [...symbols.values()];
+  const absoluteSymbolProfit = symbolValues.reduce(
+    (sum, symbol) => sum + Math.abs(symbol.profit),
+    0,
+  );
+  return {
+    ...summary,
+    rawProfit: rows.reduce((sum, row) => sum + row.rawProfit, 0),
+    selectionRatio: sourceRows.length ? rows.length / sourceRows.length : null,
+    baseline: summarizeCrossComparison(sourceRows, sourceRows),
+    complement: summarizeCrossComparison(complementRows, sourceRows),
+    strategies: byStrategy,
+    supportedStrategies: supportedStrategies.length,
+    signCorrectStrategies: signCorrectStrategies.length,
+    signCorrectStrategyRatio: supportedStrategies.length
+      ? signCorrectStrategies.length / supportedStrategies.length
+      : null,
+    topStrategyCountShare: rows.length
+      ? Math.max(0, ...strategyCounts) / rows.length
+      : null,
+    topStrategyAbsProfitShare:
+      strategyAbsProfits.reduce((sum, value) => sum + value, 0) > 0
+        ? Math.max(0, ...strategyAbsProfits) /
+          strategyAbsProfits.reduce((sum, value) => sum + value, 0)
+        : null,
+    topEventAbsProfitShare: absoluteEventProfit
+      ? Math.max(0, ...eventValues.map((event) => Math.abs(event.profit))) /
+        absoluteEventProfit
+      : null,
+    topSymbolCountShare: rows.length
+      ? Math.max(0, ...symbolValues.map((symbol) => symbol.rows)) / rows.length
+      : null,
+    topSymbolAbsProfitShare: absoluteSymbolProfit
+      ? Math.max(0, ...symbolValues.map((symbol) => Math.abs(symbol.profit))) /
+        absoluteSymbolProfit
+      : null,
+    months: months.size,
+    signCorrectMonths: expectedMonths,
+    signCorrectMonthRatio: months.size ? expectedMonths / months.size : null,
+  };
+};
+
+export const buildShiftedProfitLookups = (
+  rows,
+  { offsets = [17, 31, 47, 73, 101] } = {},
+) => {
+  const byStrategy = new Map();
+  for (const row of rows) {
+    const strategyRows = byStrategy.get(row.strategy) ?? [];
+    strategyRows.push(row);
+    byStrategy.set(row.strategy, strategyRows);
+  }
+  return offsets.map((offset) => {
+    const lookup = new Map();
+    for (const strategyRows of byStrategy.values()) {
+      const byTimestamp = new Map();
+      for (const row of strategyRows) {
+        const eventRows = byTimestamp.get(row.timestamp) ?? [];
+        eventRows.push(row);
+        byTimestamp.set(row.timestamp, eventRows);
+      }
+      const events = [...byTimestamp.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([timestamp, eventRows]) => ({
+          timestamp,
+          rows: eventRows.sort((left, right) => left.sequence - right.sequence),
+          profit: eventRows.reduce((sum, row) => sum + row.profit, 0),
+        }));
+      const shift = events.length > 1 ? offset % events.length || 1 : 0;
+      events.forEach((event, index) => {
+        const shiftedProfit = events[(index + shift) % events.length].profit;
+        const profitPerRow = shiftedProfit / event.rows.length;
+        for (const row of event.rows) lookup.set(row.sequence, profitPerRow);
+      });
+    }
+    return lookup;
+  });
+};
+
+const evaluateNegativeControl = (rows, predicates, expectedSign, lookups) => {
+  const selected = rows.filter((row) => matchesPocket(row, predicates));
+  const profits = lookups.map((lookup) =>
+    selected.reduce((sum, row) => sum + (lookup.get(row.sequence) ?? 0), 0),
+  );
+  return {
+    runs: profits.length,
+    medianProfit: median(profits),
+    signCorrectRuns: profits.filter((profit) =>
+      expectedSign > 0 ? profit > 0 : profit < 0,
+    ).length,
+  };
+};
+
+export const evaluateCrossPocket = ({
+  pocket,
+  split,
+  expectedSign,
+  testShiftLookups,
+  minSharedStrategies,
+  portfolioCapacity,
+}) => {
+  const train = summarizeCrossSlice(
+    split.train,
+    pocket.predicates,
+    expectedSign,
+  );
+  const tuning = summarizeCrossSlice(
+    split.tuning,
+    pocket.predicates,
+    expectedSign,
+  );
+  const test = summarizeCrossSlice(split.test, pocket.predicates, expectedSign);
+  const negativeControl = evaluateNegativeControl(
+    split.test,
+    pocket.predicates,
+    expectedSign,
+    testShiftLookups,
+  );
+  const signCorrect = (summary) =>
+    expectedSign > 0 ? summary.totalProfit > 0 : summary.totalProfit < 0;
+  const effectiveProfitFactor = (summary) =>
+    summary.profitFactor ??
+    (summary.normalizedProfit > 0 ? Number.POSITIVE_INFINITY : 0);
+  const hasCrossStrategySupport = (summary) =>
+    summary.supportedStrategies >= minSharedStrategies &&
+    (summary.signCorrectStrategyRatio ?? 0) >= 0.6;
+  const hasConcentrationControl = (summary) =>
+    (summary.topEventCountShare ?? 1) <= 1 / 3 &&
+    (summary.topEventAbsProfitShare ?? 1) <= 1 / 3 &&
+    (summary.topStrategyCountShare ?? 1) <= 1 / 3 &&
+    (summary.topStrategyAbsProfitShare ?? 1) <= 1 / 3;
+  const hasTemporalStability = (summary) =>
+    summary.months >= 2 && (summary.signCorrectMonthRatio ?? 0) >= 0.5;
+  const approvalEdge = (summary) =>
+    summary.events > 0 &&
+    summary.complement.events > 0 &&
+    summary.totalProfit / summary.events >
+      (summary.complement.profitPerEvent ?? Number.NEGATIVE_INFINITY) &&
+    effectiveProfitFactor({
+      profitFactor: summary.profitFactor,
+      normalizedProfit: summary.totalProfit,
+    }) > effectiveProfitFactor(summary.complement);
+  const blockEdge = (summary) =>
+    summary.complement.events >= 25 &&
+    (summary.selectionRatio ?? 1) <= 0.8 &&
+    (summary.complement.profitPerEvent ?? Number.NEGATIVE_INFINITY) >
+      (summary.baseline.profitPerEvent ?? Number.NEGATIVE_INFINITY) &&
+    effectiveProfitFactor(summary.complement) >
+      effectiveProfitFactor(summary.baseline) &&
+    (summary.complement.profitPerEvent ?? Number.NEGATIVE_INFINITY) >
+      (summary.events ? summary.totalProfit / summary.events : 0);
+  const checks = {
+    partitionSign:
+      signCorrect(train) && signCorrect(tuning) && signCorrect(test),
+    independentEventSupport:
+      train.events >= 25 && tuning.events >= 25 && test.events >= 25,
+    crossStrategySupport:
+      hasCrossStrategySupport(train) &&
+      hasCrossStrategySupport(tuning) &&
+      hasCrossStrategySupport(test),
+    eventConcentration:
+      hasConcentrationControl(train) &&
+      hasConcentrationControl(tuning) &&
+      hasConcentrationControl(test),
+    symbolConcentration: [train, tuning, test].every(
+      (summary) =>
+        (summary.topSymbolCountShare ?? 1) <= 1 / 3 &&
+        (summary.topSymbolAbsProfitShare ?? 1) <= 1 / 3,
+    ),
+    temporalStability:
+      hasTemporalStability(train) &&
+      hasTemporalStability(tuning) &&
+      hasTemporalStability(test),
+    discriminatoryEdge:
+      expectedSign > 0
+        ? approvalEdge(train) && approvalEdge(tuning) && approvalEdge(test)
+        : blockEdge(train) && blockEdge(tuning) && blockEdge(test),
+    portfolioFanout:
+      expectedSign < 0 ||
+      [train, tuning, test].every(
+        (summary) => (summary.maxBatch ?? Infinity) <= portfolioCapacity,
+      ),
+    negativeControl: negativeControl.signCorrectRuns < 4,
+  };
+  return {
+    condition: pocket.condition,
+    predicates: pocket.predicates,
+    train,
+    tuning,
+    test,
+    negativeControl,
+    checks,
+    passes: Object.values(checks).every(Boolean),
+  };
+};
+
+const scanCrossDataset = async ({
+  groups,
+  minTimestamp,
+  maxTimestamp,
+  commonFeatures = null,
+  collectFeatures = true,
+  onRow,
+}) => {
+  let scanned = 0;
+  let selected = 0;
+  let failed = 0;
+  for (const group of groups) {
+    for (const filePath of group.files) {
+      console.error(
+        `cross scan ${group.strategyToken}: ${path.basename(filePath)}`,
+      );
+      const reader = readline.createInterface({
+        input: fs.createReadStream(filePath),
+        crlfDelay: Infinity,
+      });
+      for await (const line of reader) {
+        if (!line.trim()) continue;
+        scanned += 1;
+        try {
+          const source = JSON.parse(line);
+          const timestamp = Number(source.timestamp);
+          const rawProfit = Number(source.profit);
+          const direction = String(source.direction ?? '').toUpperCase();
+          if (
+            !Number.isFinite(timestamp) ||
+            !Number.isFinite(rawProfit) ||
+            !['LONG', 'SHORT'].includes(direction) ||
+            timestamp < minTimestamp ||
+            timestamp > maxTimestamp ||
+            !source.payload
+          ) {
+            continue;
+          }
+          const shared = collectFeatures
+            ? collectSavedCrossStrategyFeatures(source.payload)
+            : null;
+          const profiles = shared
+            ? partitionCrossStrategyFeatures(shared)
+            : null;
+          const features =
+            shared && commonFeatures
+              ? Object.fromEntries(
+                  Object.entries({
+                    ...profiles.universal,
+                    ...profiles.benchmarkReference,
+                  }).filter(([key]) => commonFeatures.has(key)),
+                )
+              : shared;
+          onRow({
+            source,
+            timestamp,
+            rawProfit,
+            direction,
+            strategy: group.strategyToken,
+            features,
+            profiles,
+            scanned,
+          });
+          selected += 1;
+        } catch (error) {
+          failed += 1;
+          if (failed <= 5) {
+            console.error(
+              `cross row error: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+        if (scanned % 25_000 === 0) {
+          console.error(`cross scanned ${scanned} rows, selected ${selected}`);
+        }
+      }
+    }
+  }
+  return { scanned, selected, failed };
+};
+
+const createCrossCoverageStore = () =>
+  Object.fromEntries(
+    CROSS_SEARCH_PROFILE_NAMES.map((profile) => [
+      profile,
+      Object.fromEntries(
+        ['LONG', 'SHORT'].map((direction) => [
+          direction,
+          Object.fromEntries(
+            ['train', 'tuning', 'test'].map((partition) => [
+              partition,
+              new Map(),
+            ]),
+          ),
+        ]),
+      ),
+    ]),
+  );
+
+const incrementCrossFeatureCoverage = (store, feature, strategy) => {
+  const strategyCounts = store.get(feature) ?? new Map();
+  strategyCounts.set(strategy, (strategyCounts.get(strategy) ?? 0) + 1);
+  store.set(feature, strategyCounts);
+};
+
+const createCrossPartitionRowsStore = () =>
+  Object.fromEntries(
+    ['LONG', 'SHORT'].map((direction) => [
+      direction,
+      Object.fromEntries(
+        ['train', 'tuning', 'test'].map((partition) => [partition, new Map()]),
+      ),
+    ]),
+  );
+
+const incrementCrossStrategyRows = (store, strategy) =>
+  store.set(strategy, (store.get(strategy) ?? 0) + 1);
+
+const createCrossAuditStore = () =>
+  Object.fromEntries(
+    CROSS_AUDIT_PROFILE_NAMES.map((profile) => [profile, new Map()]),
+  );
+
+const accumulateCrossAudit = ({
+  store,
+  profile,
+  feature,
+  value,
+  strategy,
+  partition,
+}) => {
+  const classification = classifyCrossStrategyFeature(feature);
+  if (!classification) return;
+  const entries = store[profile];
+  const entry = entries.get(feature) ?? {
+    feature,
+    profile,
+    scope: classification.scope,
+    role: classification.role,
+    reason: classification.reason,
+    transform: classification.transform ?? null,
+    observedRows: 0,
+    presentRows: 0,
+    nullRows: 0,
+    trueRows: 0,
+    falseRows: 0,
+    numericRows: 0,
+    numericMin: null,
+    numericMax: null,
+    categories: new Map(),
+    strategies: new Map(),
+    partitions: { train: 0, tuning: 0, test: 0 },
+  };
+  entry.observedRows += 1;
+  if (value == null) {
+    entry.nullRows += 1;
+  } else {
+    entry.presentRows += 1;
+    entry.strategies.set(strategy, (entry.strategies.get(strategy) ?? 0) + 1);
+    entry.partitions[partition] += 1;
+    if (value === true) entry.trueRows += 1;
+    else if (value === false) entry.falseRows += 1;
+    else if (typeof value === 'number' && Number.isFinite(value)) {
+      entry.numericRows += 1;
+      entry.numericMin =
+        entry.numericMin == null ? value : Math.min(entry.numericMin, value);
+      entry.numericMax =
+        entry.numericMax == null ? value : Math.max(entry.numericMax, value);
+    } else if (typeof value === 'string') {
+      entry.categories.set(value, (entry.categories.get(value) ?? 0) + 1);
+    }
+  }
+  entries.set(feature, entry);
+};
+
+const finalizeCrossAudit = (store, overlapRows) =>
+  Object.fromEntries(
+    CROSS_AUDIT_PROFILE_NAMES.map((profile) => [
+      profile,
+      [...store[profile].values()]
+        .map((entry) => ({
+          feature: entry.feature,
+          profile: entry.profile,
+          scope: entry.scope,
+          role: entry.role,
+          reason: entry.reason,
+          transform: entry.transform,
+          observedRows: entry.observedRows,
+          presentRows: entry.presentRows,
+          coverage: entry.presentRows / Math.max(1, overlapRows),
+          nullRows: entry.nullRows,
+          trueRows: entry.trueRows,
+          falseRows: entry.falseRows,
+          trueRate:
+            entry.trueRows + entry.falseRows
+              ? entry.trueRows / (entry.trueRows + entry.falseRows)
+              : null,
+          numericRows: entry.numericRows,
+          numericMin: entry.numericMin,
+          numericMax: entry.numericMax,
+          strategies: entry.strategies.size,
+          partitions: entry.partitions,
+          categories: [...entry.categories.entries()]
+            .sort((left, right) => right[1] - left[1])
+            .slice(0, 8)
+            .map(([value, rows]) => ({ value, rows })),
+        }))
+        .sort(
+          (left, right) =>
+            right.strategies - left.strategies ||
+            right.presentRows - left.presentRows ||
+            left.feature.localeCompare(right.feature),
+        ),
+    ]),
+  );
+
+const getCrossFeatureEntries = ({
+  profile,
+  direction,
+  coverageStore,
+  partitionRows,
+  minFeatureStrategies,
+  minCoverage,
+}) => {
+  const trainCoverage = coverageStore[profile][direction].train;
+  return [...trainCoverage.entries()]
+    .map(([feature, strategyCounts]) => {
+      const classification = classifyCrossStrategyFeature(feature);
+      const partitionCoverage = Object.fromEntries(
+        ['train', 'tuning', 'test'].map((partition) => {
+          const coverage =
+            coverageStore[profile][direction][partition].get(feature);
+          const totalRows = [
+            ...partitionRows[direction][partition].values(),
+          ].reduce((sum, rows) => sum + rows, 0);
+          const usableRows = coverage
+            ? [...coverage.values()].reduce((sum, rows) => sum + rows, 0)
+            : 0;
+          return [
+            partition,
+            {
+              usableRows,
+              totalRows,
+              coverage: usableRows / Math.max(1, totalRows),
+            },
+          ];
+        }),
+      );
+      const strategyRatios = [...partitionRows[direction].train.entries()].map(
+        ([strategy, rows]) =>
+          (strategyCounts.get(strategy) ?? 0) / Math.max(1, rows),
+      );
+      const eligibleStrategies = strategyRatios.filter(
+        (ratio) => ratio >= minCoverage,
+      ).length;
+      return {
+        feature,
+        profile,
+        scope: classification?.scope ?? 'unknown',
+        role: classification?.role ?? 'unknown',
+        trainStrategies: eligibleStrategies,
+        trainRows: [...strategyCounts.values()].reduce(
+          (sum, rows) => sum + rows,
+          0,
+        ),
+        minStrategyCoverage: strategyRatios.length
+          ? Math.min(...strategyRatios)
+          : null,
+        medianStrategyCoverage: median(strategyRatios),
+        partitionCoverage,
+      };
+    })
+    .filter((entry) => entry.trainStrategies >= minFeatureStrategies)
+    .sort(
+      (left, right) =>
+        right.trainStrategies - left.trainStrategies ||
+        right.trainRows - left.trainRows ||
+        left.feature.localeCompare(right.feature),
+    );
+};
+
+const pickCrossFeatures = (features, eligibleFeatures) =>
+  Object.fromEntries(
+    Object.entries(features).filter(([feature]) =>
+      eligibleFeatures.has(feature),
+    ),
+  );
+
+const eventWeightCrossRows = (rows) => {
+  const eventCounts = new Map();
+  for (const row of rows) {
+    eventCounts.set(row.timestamp, (eventCounts.get(row.timestamp) ?? 0) + 1);
+  }
+  return rows.map((row) => ({
+    ...row,
+    profit: row.profit / Math.max(1, eventCounts.get(row.timestamp) ?? 1),
+  }));
+};
+
+const crossPrimitiveSignature = (value) => `${typeof value}:${String(value)}`;
+
+const getCrossConsensusFeatures = (
+  rows,
+  { minConsensusRatio, featureKey = 'features' },
+) => {
+  const featureValues = new Map();
+  for (const row of rows) {
+    for (const [feature, value] of Object.entries(row[featureKey] ?? {})) {
+      const signatures = featureValues.get(feature) ?? new Map();
+      const signature = crossPrimitiveSignature(value);
+      const bucket = signatures.get(signature) ?? {
+        signature,
+        value,
+        votes: 0,
+      };
+      bucket.votes += 1;
+      signatures.set(signature, bucket);
+      featureValues.set(feature, signatures);
+    }
+  }
+  const features = {};
+  const results = new Map();
+  for (const [feature, signatures] of featureValues.entries()) {
+    const winner = [...signatures.values()].sort(
+      (left, right) =>
+        right.votes - left.votes ||
+        left.signature.localeCompare(right.signature),
+    )[0];
+    const consensus = winner.votes / rows.length >= minConsensusRatio;
+    if (consensus) features[feature] = winner.value;
+    results.set(feature, {
+      feature,
+      consensus,
+      winnerVotes: winner.votes,
+      totalVotes: rows.length,
+    });
+  }
+  return { features, results };
+};
+
+export const aggregateBenchmarkDiscoveryRows = (
+  rows,
+  { minConsensusRatio = 0.8 } = {},
+) => {
+  const byTimestamp = new Map();
+  for (const row of rows) {
+    const eventRows = byTimestamp.get(row.timestamp) ?? [];
+    eventRows.push(row);
+    byTimestamp.set(row.timestamp, eventRows);
+  }
+  const consistency = new Map();
+  const output = [];
+  for (const eventRows of byTimestamp.values()) {
+    const rowsByStrategy = new Map();
+    for (const row of eventRows) {
+      const strategyEventRows = rowsByStrategy.get(row.strategy) ?? [];
+      strategyEventRows.push(row);
+      rowsByStrategy.set(row.strategy, strategyEventRows);
+    }
+    const strategySnapshots = [];
+    const observedFeatures = new Set();
+    const intraStrategyConflicts = new Set();
+    for (const [strategy, strategyEventRows] of rowsByStrategy.entries()) {
+      const snapshot = getCrossConsensusFeatures(strategyEventRows, {
+        minConsensusRatio,
+      });
+      for (const [feature, result] of snapshot.results.entries()) {
+        observedFeatures.add(feature);
+        if (!result.consensus) intraStrategyConflicts.add(feature);
+      }
+      strategySnapshots.push({
+        strategy,
+        features: snapshot.features,
+        profit:
+          strategyEventRows.reduce((sum, row) => sum + row.profit, 0) /
+          strategyEventRows.length,
+      });
+    }
+    const eventConsensus = getCrossConsensusFeatures(strategySnapshots, {
+      minConsensusRatio,
+    });
+    for (const feature of eventConsensus.results.keys()) {
+      observedFeatures.add(feature);
+    }
+    for (const feature of observedFeatures) {
+      const result = eventConsensus.results.get(feature);
+      const hasIntraStrategyConflict = intraStrategyConflicts.has(feature);
+      const hasCrossStrategyConflict = result != null && !result.consensus;
+      const hasConsensus =
+        result?.consensus === true && !hasIntraStrategyConflict;
+      const stats = consistency.get(feature) ?? {
+        feature,
+        observedEvents: 0,
+        consensusEvents: 0,
+        conflictEvents: 0,
+        intraStrategyConflictEvents: 0,
+        crossStrategyConflictEvents: 0,
+      };
+      stats.observedEvents += 1;
+      if (hasConsensus) {
+        stats.consensusEvents += 1;
+      } else {
+        stats.conflictEvents += 1;
+      }
+      if (hasIntraStrategyConflict) stats.intraStrategyConflictEvents += 1;
+      if (hasCrossStrategyConflict) stats.crossStrategyConflictEvents += 1;
+      consistency.set(feature, stats);
+    }
+    const first = eventRows[0];
+    output.push({
+      ...first,
+      strategy: '__benchmark_event__',
+      symbol: '__benchmark_event__',
+      profit:
+        strategySnapshots.reduce((sum, entry) => sum + entry.profit, 0) /
+        strategySnapshots.length,
+      rawProfit: eventRows.reduce((sum, row) => sum + row.rawProfit, 0),
+      features: eventConsensus.features,
+    });
+  }
+  return {
+    rows: output.sort(
+      (left, right) =>
+        left.timestamp - right.timestamp || left.sequence - right.sequence,
+    ),
+    consistency: [...consistency.values()].sort(
+      (left, right) =>
+        right.conflictEvents - left.conflictEvents ||
+        left.feature.localeCompare(right.feature),
+    ),
+  };
+};
+
+export const applyBenchmarkEventSnapshots = (rows, benchmarkEvents) => {
+  const snapshots = new Map(
+    benchmarkEvents.map((event) => [event.timestamp, event.features]),
+  );
+  return rows.map((row) => ({
+    ...row,
+    features: snapshots.get(row.timestamp) ?? {},
+  }));
+};
+
+const hasValidationSign = (pocket, expectedSign, minValidationSupport) => {
+  const summary = pocket.validationSummary;
+  return (
+    summary != null &&
+    summary.support >= minValidationSupport &&
+    (expectedSign > 0 ? summary.totalProfit > 0 : summary.totalProfit < 0)
+  );
+};
+
+export const buildCrossStrategyReport = async ({
+  projectRoot,
+  groups,
+  validationSplit,
+  testSplit,
+  maxDepth,
+  minSupport,
+  minValidationSupport,
+  maxAtomicPredicates,
+  maxCombinations,
+  top,
+  maxRowsPerStrategy,
+  maxRowsPerEvent,
+  minFeatureStrategies,
+  minFeatureCoverage,
+  minBenchmarkFeatureCoverage,
+  portfolioCapacity = 5,
+}) => {
+  if (groups.length < 2) {
+    throw new Error('Cross-strategy research requires at least two exports');
+  }
+  if (testSplit <= 0 || validationSplit <= 0) {
+    throw new Error(
+      '--crossStrategy requires positive --validationSplit and --testSplit',
+    );
+  }
+  const require = createRequire(import.meta.url);
+  const pocketModulePath = path.join(
+    projectRoot,
+    'packages/cli/dist/lib/aiPocketSearch.js',
+  );
+  await fsp.access(pocketModulePath);
+  const { searchAiPockets } = require(pocketModulePath);
+  const ranges = await getCrossDatasetRanges(groups);
+  const minTimestamp = Math.max(...ranges.map((entry) => entry.minTimestamp));
+  const maxTimestamp = Math.min(...ranges.map((entry) => entry.maxTimestamp));
+  if (!(maxTimestamp > minTimestamp)) {
+    throw new Error('Latest exports have no common chronological overlap');
+  }
+
+  const manifest = new Map();
+  for (const group of groups) {
+    for (const filePath of group.files) {
+      const stat = await fsp.stat(filePath);
+      manifest.set(filePath, { size: stat.size, mtimeMs: stat.mtimeMs });
+    }
+  }
+  const metadata = [];
+  const strategyRows = new Map();
+  const firstPass = await scanCrossDataset({
+    groups,
+    minTimestamp,
+    maxTimestamp,
+    collectFeatures: false,
+    onRow: ({ timestamp, rawProfit, direction, strategy }) => {
+      metadata.push({ timestamp, rawProfit, direction, strategy });
+      strategyRows.set(strategy, (strategyRows.get(strategy) ?? 0) + 1);
+    },
+  });
+  const timestamps = [...new Set(metadata.map((row) => row.timestamp))].sort(
+    (left, right) => left - right,
+  );
+  const partition = getTimestampPartition(
+    timestamps,
+    validationSplit,
+    testSplit,
+  );
+  const lossValues = new Map();
+  for (const row of metadata) {
+    if (!partition.train.has(row.timestamp) || row.rawProfit >= 0) continue;
+    const values = lossValues.get(row.strategy) ?? [];
+    values.push(Math.abs(row.rawProfit));
+    lossValues.set(row.strategy, values);
+  }
+  const lossScale = new Map(
+    groups.map((group) => {
+      const strategy = group.strategyToken;
+      const value = median(lossValues.get(strategy) ?? []) ?? 1;
+      return [strategy, value > 0 ? value : 1];
+    }),
+  );
+
+  metadata.length = 0;
+  const coverageStore = createCrossCoverageStore();
+  const partitionRows = createCrossPartitionRowsStore();
+  const auditStore = createCrossAuditStore();
+  let sequence = 0;
+  const rows = [];
+  const secondPass = await scanCrossDataset({
+    groups,
+    minTimestamp,
+    maxTimestamp,
+    collectFeatures: true,
+    onRow: ({
+      source,
+      timestamp,
+      rawProfit,
+      direction,
+      strategy,
+      profiles,
+    }) => {
+      const partitionName = getPartitionName(timestamp, partition);
+      if (!partitionName || !profiles) return;
+      incrementCrossStrategyRows(
+        partitionRows[direction][partitionName],
+        strategy,
+      );
+      for (const profile of CROSS_SEARCH_PROFILE_NAMES) {
+        for (const feature of Object.keys(profiles[profile])) {
+          incrementCrossFeatureCoverage(
+            coverageStore[profile][direction][partitionName],
+            feature,
+            strategy,
+          );
+        }
+      }
+      for (const profile of CROSS_AUDIT_PROFILE_NAMES) {
+        for (const [feature, value] of Object.entries(profiles[profile])) {
+          accumulateCrossAudit({
+            store: auditStore,
+            profile,
+            feature,
+            value,
+            strategy,
+            partition: partitionName,
+          });
+        }
+      }
+      rows.push({
+        sequence: sequence++,
+        signalId: source.signalId,
+        timestamp,
+        symbol: source.symbol,
+        direction,
+        strategy,
+        rawProfit,
+        profit: rawProfit / (lossScale.get(strategy) ?? 1),
+        profileFeatures: {
+          universal: profiles.universal,
+          benchmarkReference: profiles.benchmarkReference,
+        },
+      });
+    },
+  });
+  for (const [filePath, before] of manifest.entries()) {
+    const after = await fsp.stat(filePath);
+    if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+      throw new Error(`Export changed during cross-strategy scan: ${filePath}`);
+    }
+  }
+  rows.sort(
+    (left, right) =>
+      left.timestamp - right.timestamp || left.sequence - right.sequence,
+  );
+  const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  const minSharedStrategies = Math.min(
+    groups.length,
+    Math.max(5, Math.ceil(minFeatureStrategies * 0.6)),
+  );
+  const profiles = {};
+  for (const profile of CROSS_SEARCH_PROFILE_NAMES) {
+    const minCoverage =
+      profile === 'universal'
+        ? minFeatureCoverage
+        : minBenchmarkFeatureCoverage;
+    const profileDirections = {};
+    for (const direction of ['LONG', 'SHORT']) {
+      const featureEntries = getCrossFeatureEntries({
+        profile,
+        direction,
+        coverageStore,
+        partitionRows,
+        minFeatureStrategies,
+        minCoverage,
+      });
+      const eligibleFeatures = new Set(
+        featureEntries.map((entry) => entry.feature),
+      );
+      const directionSplit = Object.fromEntries(
+        Object.entries(split).map(([name, splitRows]) => [
+          name,
+          splitRows
+            .filter((row) => row.direction === direction)
+            .map((row) => {
+              const { profileFeatures, ...baseRow } = row;
+              return {
+                ...baseRow,
+                features: pickCrossFeatures(
+                  profileFeatures[profile],
+                  eligibleFeatures,
+                ),
+              };
+            }),
+        ]),
+      );
+      let discoveryTrain;
+      let discoveryTuning;
+      let evaluationSplit = directionSplit;
+      let featureConsistency = null;
+      if (profile === 'benchmarkReference') {
+        const trainAggregation = aggregateBenchmarkDiscoveryRows(
+          directionSplit.train,
+        );
+        const tuningAggregation = aggregateBenchmarkDiscoveryRows(
+          directionSplit.tuning,
+        );
+        const testAggregation = aggregateBenchmarkDiscoveryRows(
+          directionSplit.test,
+        );
+        discoveryTrain = trainAggregation.rows;
+        discoveryTuning = tuningAggregation.rows;
+        evaluationSplit = {
+          train: applyBenchmarkEventSnapshots(
+            directionSplit.train,
+            trainAggregation.rows,
+          ),
+          tuning: applyBenchmarkEventSnapshots(
+            directionSplit.tuning,
+            tuningAggregation.rows,
+          ),
+          test: applyBenchmarkEventSnapshots(
+            directionSplit.test,
+            testAggregation.rows,
+          ),
+        };
+        featureConsistency = {
+          train: trainAggregation.consistency,
+          tuning: tuningAggregation.consistency,
+          test: testAggregation.consistency,
+        };
+      } else {
+        discoveryTrain = eventWeightCrossRows(
+          balanceCrossStrategyRows(directionSplit.train, {
+            maxRowsPerStrategy,
+            maxRowsPerEvent,
+          }),
+        );
+        discoveryTuning = eventWeightCrossRows(
+          balanceCrossStrategyRows(directionSplit.tuning, {
+            maxRowsPerStrategy,
+            maxRowsPerEvent,
+          }),
+        );
+      }
+      console.error(
+        `cross search ${profile}/${direction}: features=${eligibleFeatures.size}, train=${discoveryTrain.length}, tuning=${discoveryTuning.length}`,
+      );
+      const candidatePoolSize = Math.max(200, top * 20);
+      const search = searchAiPockets(discoveryTrain, {
+        validationRows: discoveryTuning,
+        minSupport,
+        minValidationSupport,
+        minProfitFactor: 1.05,
+        minTotalProfit: 0,
+        maxDepth,
+        maxAtomicPredicates,
+        maxCombinations,
+        top: candidatePoolSize,
+        progressInterval: 2_500,
+        onProgress: (progress) => {
+          if (progress.done || progress.phase === 'combinations') {
+            console.error(
+              `cross ${profile}/${direction} ${progress.phase} ${progress.current}/${progress.total}${progress.truncated ? ' truncated' : ''}`,
+            );
+          }
+        },
+      });
+      const positivePockets = search.positivePockets
+        .filter((pocket) => hasValidationSign(pocket, 1, minValidationSupport))
+        .slice(0, top);
+      const negativePockets = search.negativePockets
+        .filter((pocket) => hasValidationSign(pocket, -1, minValidationSupport))
+        .slice(0, top);
+      const testShiftLookups = buildShiftedProfitLookups(evaluationSplit.test);
+      profileDirections[direction] = {
+        featureCoverageFloor: minCoverage,
+        features: featureEntries,
+        rows: Object.fromEntries(
+          Object.entries(directionSplit).map(([name, splitRows]) => [
+            name,
+            splitRows.length,
+          ]),
+        ),
+        events: Object.fromEntries(
+          Object.entries(directionSplit).map(([name, splitRows]) => [
+            name,
+            new Set(splitRows.map((row) => row.timestamp)).size,
+          ]),
+        ),
+        discoveryUnit:
+          profile === 'benchmarkReference'
+            ? 'strategy-consensus timestamp-direction benchmark event with macro strategy LU; acceptance selects whole events'
+            : 'balanced signal rows with equal timestamp profit weight',
+        discoveryRows: {
+          train: discoveryTrain.length,
+          tuning: discoveryTuning.length,
+        },
+        featureConsistency,
+        searchStats: {
+          ...search.stats,
+          candidatePoolSize,
+          positiveAfterTuningSign: positivePockets.length,
+          negativeAfterTuningSign: negativePockets.length,
+        },
+        approve: positivePockets.map((pocket) =>
+          evaluateCrossPocket({
+            pocket,
+            split: evaluationSplit,
+            expectedSign: 1,
+            testShiftLookups,
+            minSharedStrategies,
+            portfolioCapacity,
+          }),
+        ),
+        block: negativePockets.map((pocket) =>
+          evaluateCrossPocket({
+            pocket,
+            split: evaluationSplit,
+            expectedSign: -1,
+            testShiftLookups,
+            minSharedStrategies,
+            portfolioCapacity,
+          }),
+        ),
+      };
+    }
+    profiles[profile] = {
+      description:
+        profile === 'universal'
+          ? 'normalized target/setup market state'
+          : 'normalized benchmark, reference, and global market state',
+      directions: profileDirections,
+    };
+  }
+
+  const datasetOverlapRows = groups.reduce(
+    (sum, group) => sum + (strategyRows.get(group.strategyToken) ?? 0),
+    0,
+  );
+  if (datasetOverlapRows !== firstPass.selected) {
+    throw new Error(
+      `Dataset lineage invariant failed: ${datasetOverlapRows} != ${firstPass.selected}`,
+    );
+  }
+  const partitionBoundary = (timestampsForPartition) => {
+    const values = [...timestampsForPartition].sort(
+      (left, right) => left - right,
+    );
+    return values.length
+      ? {
+          minTimestamp: new Date(values[0]).toISOString(),
+          maxTimestamp: new Date(values.at(-1)).toISOString(),
+          events: values.length,
+        }
+      : null;
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    run: {
+      mode: 'profiled cross-strategy saved-snapshot feasibility',
+      evidenceStatus:
+        'retrospective research-only; this report exposes the historical test tail',
+      strategies: groups.length,
+      overlap: {
+        minTimestamp: new Date(minTimestamp).toISOString(),
+        maxTimestamp: new Date(maxTimestamp).toISOString(),
+      },
+      scanned: firstPass.scanned,
+      featureScanRows: secondPass.scanned,
+      overlapRows: firstPass.selected,
+      failed: {
+        metadataPass: firstPass.failed,
+        featurePass: secondPass.failed,
+      },
+      uniqueEvents: timestamps.length,
+      partitions: {
+        train: partitionBoundary(partition.train),
+        tuning: partitionBoundary(partition.tuning),
+        test: partitionBoundary(partition.test),
+      },
+      validationSplit,
+      testSplit,
+      minFeatureStrategies,
+      acceptance: {
+        minSharedStrategies,
+        portfolioCapacity,
+        selectionUnit: {
+          universal: 'signal row',
+          benchmarkReference: 'strategy-consensus timestamp-direction event',
+        },
+      },
+      featureCoverage: {
+        universal: minFeatureCoverage,
+        benchmarkReference: minBenchmarkFeatureCoverage,
+        eligibilityPartition: 'train only',
+      },
+      normalization: 'profit / median absolute train loss per strategy',
+      discoveryBalance: { maxRowsPerStrategy, maxRowsPerEvent },
+      search: {
+        maxDepth,
+        minSupport,
+        minValidationSupport,
+        maxAtomicPredicates,
+        maxCombinations,
+        top,
+      },
+    },
+    datasets: groups.map((group) => ({
+      strategy: group.strategyToken,
+      mergeId: group.mergeId,
+      parts: group.files.length,
+      range: ranges.find((entry) => entry.strategy === group.strategyToken),
+      overlapRows: strategyRows.get(group.strategyToken) ?? 0,
+      trainLossScale: lossScale.get(group.strategyToken) ?? null,
+      files: group.files.map((filePath) =>
+        path.relative(projectRoot, filePath),
+      ),
+    })),
+    profiles,
+    audits: finalizeCrossAudit(auditStore, firstPass.selected),
+  };
+};
+
 export const buildAblationReport = ({
   rows,
   variants,
@@ -1811,6 +3778,407 @@ export const formatMarkdownReport = (report) => {
   return `${lines.join('\n')}\n`;
 };
 
+const crossPartitionCell = (summary) =>
+  `${summary.events}/${formatNumber(summary.totalProfit)}/${formatNumber(summary.profitFactor)}`;
+
+const crossCandidateRows = (candidates) =>
+  candidates
+    .slice(0, 5)
+    .map((candidate, index) => [
+      index + 1,
+      candidate.condition,
+      crossPartitionCell(candidate.train),
+      crossPartitionCell(candidate.tuning),
+      candidate.test.trades,
+      candidate.test.events,
+      formatPct(candidate.test.winRate),
+      formatNumber(candidate.test.profitFactor),
+      formatNumber(candidate.test.totalProfit),
+      formatPct(candidate.test.selectionRatio),
+      `${candidate.test.complement.events}/${formatNumber(candidate.test.complement.normalizedProfit)}/${formatNumber(candidate.test.complement.profitFactor)}`,
+      `${candidate.test.signCorrectStrategies}/${candidate.test.supportedStrategies}`,
+      formatPct(candidate.test.topStrategyCountShare),
+      formatPct(candidate.test.topEventCountShare),
+      `${candidate.negativeControl.signCorrectRuns}/${candidate.negativeControl.runs}`,
+      candidate.passes ? 'PASS' : 'FAIL',
+    ]);
+
+const crossCandidateTable = (candidates) =>
+  candidates.length
+    ? markdownTable(
+        [
+          '#',
+          'Condition',
+          'Train E/LU/PF',
+          'Tuning E/LU/PF',
+          'Test N',
+          'Test events',
+          'Test WR',
+          'Test PF',
+          'Test LU',
+          'Selected',
+          'Kept E/LU/PF',
+          'Good/covered strategies',
+          'Top strategy count',
+          'Top event count',
+          'Shift control',
+          'Checks',
+        ],
+        crossCandidateRows(candidates),
+      )
+    : 'No candidates survived train/tuning search.';
+
+const crossStrategyRows = (candidate) =>
+  candidate.test.strategies.map((entry) => [
+    entry.strategy,
+    entry.rows,
+    entry.events,
+    formatPct(entry.winRate),
+    formatNumber(entry.profitFactor),
+    formatNumber(entry.normalizedProfit),
+    formatNumber(entry.rawProfit),
+  ]);
+
+export const formatCrossStrategyMarkdown = (report) => {
+  const lines = [
+    '# Profiled Cross-Strategy Pocket Feasibility',
+    '',
+    `Generated: ${report.generatedAt}`,
+    '',
+    'This is retrospective saved-snapshot pocket discovery, not a current qN+ gate replay. PnL search values are normalized loss units (LU). The historical test tail is exposed by this report and is not future untouched evidence.',
+    '',
+    '## Run',
+    '',
+    markdownTable(
+      ['Field', 'Value'],
+      [
+        ['strategies', report.run.strategies],
+        [
+          'overlap',
+          `${report.run.overlap.minTimestamp} .. ${report.run.overlap.maxTimestamp}`,
+        ],
+        ['scanned_rows', report.run.scanned],
+        ['feature_scan_rows', report.run.featureScanRows],
+        ['overlap_rows', report.run.overlapRows],
+        ['independent_events', report.run.uniqueEvents],
+        [
+          'failed_rows',
+          `metadata=${report.run.failed.metadataPass}, features=${report.run.failed.featurePass}`,
+        ],
+        ['tuning_split', formatPct(report.run.validationSplit)],
+        ['test_split', formatPct(report.run.testSplit)],
+        ['feature_strategy_floor', report.run.minFeatureStrategies],
+        [
+          'shared_pocket_strategy_floor',
+          report.run.acceptance.minSharedStrategies,
+        ],
+        [
+          'approval_portfolio_capacity',
+          report.run.acceptance.portfolioCapacity,
+        ],
+        [
+          'universal_train_coverage_floor',
+          formatPct(report.run.featureCoverage.universal),
+        ],
+        [
+          'benchmark_train_coverage_floor',
+          formatPct(report.run.featureCoverage.benchmarkReference),
+        ],
+        [
+          'feature_eligibility',
+          report.run.featureCoverage.eligibilityPartition,
+        ],
+        ['normalization', report.run.normalization],
+        [
+          'discovery_balance',
+          `${report.run.discoveryBalance.maxRowsPerStrategy}/strategy, ${report.run.discoveryBalance.maxRowsPerEvent}/strategy-event`,
+        ],
+      ],
+    ),
+    '',
+    '## Dataset Lineage',
+    '',
+    markdownTable(
+      [
+        'Strategy',
+        'Merge',
+        'Parts',
+        'Rows in overlap',
+        'Train loss scale',
+        'Export range',
+      ],
+      report.datasets.map((dataset) => [
+        dataset.strategy,
+        dataset.mergeId,
+        dataset.parts,
+        dataset.overlapRows,
+        formatNumber(dataset.trainLossScale),
+        `${new Date(dataset.range.minTimestamp).toISOString()} .. ${new Date(dataset.range.maxTimestamp).toISOString()}`,
+      ]),
+    ),
+    '',
+    '## Global Time Partitions',
+    '',
+    markdownTable(
+      ['Partition', 'Events', 'Range'],
+      ['train', 'tuning', 'test'].map((partition) => {
+        const value = report.run.partitions[partition];
+        return [
+          partition,
+          value?.events ?? 0,
+          value ? `${value.minTimestamp} .. ${value.maxTimestamp}` : 'n/a',
+        ];
+      }),
+    ),
+    '',
+    '## Feature Policy',
+    '',
+    'Normalized target/setup fields and normalized benchmark/reference/global fields are searched separately. Freshness and coverage fields are eligibility guards only. Raw absolute levels remain visible in the audit with their required causal transform; derived policy composites are audited but not searched.',
+    '',
+    'Benchmark/reference snapshots use within-strategy consensus followed by cross-strategy consensus. Acceptance then applies the same snapshot to every signal in that timestamp-direction event; approval fan-out is capped by the configured portfolio capacity.',
+    '',
+    markdownTable(
+      ['Bucket', 'Features', 'Search'],
+      [
+        ['universal', 'per direction below', 'yes'],
+        ['benchmarkReference', 'per direction below', 'yes, event-level'],
+        ['dataQuality', report.audits.dataQuality.length, 'guard only'],
+        [
+          'rawNonstationary',
+          report.audits.rawNonstationary.length,
+          'audit only',
+        ],
+        ['derivedPolicy', report.audits.derivedPolicy.length, 'audit only'],
+        ['metadata', report.audits.metadata.length, 'lineage only'],
+      ],
+    ),
+    '',
+  ];
+
+  for (const profile of CROSS_SEARCH_PROFILE_NAMES) {
+    const profileResult = report.profiles[profile];
+    lines.push(`## Profile: ${profile}`, '', profileResult.description, '');
+    for (const direction of ['LONG', 'SHORT']) {
+      const result = profileResult.directions[direction];
+      lines.push(
+        `### ${profile} / ${direction}`,
+        '',
+        markdownTable(
+          ['Partition', 'Rows', 'Events'],
+          ['train', 'tuning', 'test'].map((partition) => [
+            partition,
+            result.rows[partition],
+            result.events[partition],
+          ]),
+        ),
+        '',
+        `Eligible train features: ${result.features.length}; discovery unit: ${result.discoveryUnit}. Discovery rows: train ${result.discoveryRows.train}, tuning ${result.discoveryRows.tuning}; predicates ${result.searchStats.predicates}, combinations ${result.searchStats.combinationsEvaluated}${result.searchStats.truncated ? ' (truncated)' : ''}.`,
+        '',
+        markdownTable(
+          [
+            'Feature',
+            'Scope',
+            'Train strategies',
+            'Train rows',
+            'Train coverage',
+            'Tuning coverage',
+            'Test coverage',
+          ],
+          result.features
+            .slice(0, 80)
+            .map((entry) => [
+              entry.feature,
+              entry.scope,
+              entry.trainStrategies,
+              entry.trainRows,
+              formatPct(entry.partitionCoverage.train.coverage),
+              formatPct(entry.partitionCoverage.tuning.coverage),
+              formatPct(entry.partitionCoverage.test.coverage),
+            ]),
+        ),
+        '',
+        `#### ${direction} approval pockets`,
+        '',
+        crossCandidateTable(result.approve),
+        '',
+        `#### ${direction} block pockets`,
+        '',
+        crossCandidateTable(result.block),
+        '',
+      );
+
+      if (result.featureConsistency) {
+        const consistencyRows = Object.entries(
+          result.featureConsistency,
+        ).flatMap(([partition, entries]) =>
+          entries
+            .filter((entry) => entry.conflictEvents > 0)
+            .slice(0, 20)
+            .map((entry) => [
+              partition,
+              entry.feature,
+              entry.observedEvents,
+              entry.consensusEvents,
+              entry.conflictEvents,
+              entry.intraStrategyConflictEvents,
+              entry.crossStrategyConflictEvents,
+            ]),
+        );
+        lines.push(
+          `#### ${direction} benchmark snapshot consistency`,
+          '',
+          markdownTable(
+            [
+              'Partition',
+              'Feature',
+              'Observed events',
+              'Consensus',
+              'Conflicts',
+              'Intra-strategy conflicts',
+              'Cross-strategy conflicts',
+            ],
+            consistencyRows,
+          ),
+          '',
+        );
+      }
+
+      for (const [kind, candidates] of [
+        ['approval', result.approve],
+        ['block', result.block],
+      ]) {
+        const candidate = candidates[0];
+        if (!candidate) continue;
+        lines.push(
+          `#### ${direction} top ${kind}: per-strategy historical test`,
+          '',
+          `Condition: \`${candidate.condition}\``,
+          '',
+          markdownTable(
+            ['Slice', 'Rows', 'Events', 'WR', 'PF', 'LU', 'LU/event'],
+            [
+              [
+                'selected',
+                candidate.test.trades,
+                candidate.test.events,
+                formatPct(candidate.test.winRate),
+                formatNumber(candidate.test.profitFactor),
+                formatNumber(candidate.test.totalProfit),
+                formatNumber(
+                  candidate.test.events
+                    ? candidate.test.totalProfit / candidate.test.events
+                    : null,
+                ),
+              ],
+              [
+                'kept complement',
+                candidate.test.complement.rows,
+                candidate.test.complement.events,
+                formatPct(candidate.test.complement.winRate),
+                formatNumber(candidate.test.complement.profitFactor),
+                formatNumber(candidate.test.complement.normalizedProfit),
+                formatNumber(candidate.test.complement.profitPerEvent),
+              ],
+            ],
+          ),
+          '',
+          markdownTable(
+            ['Strategy', 'N', 'Events', 'WR', 'PF', 'LU', 'Raw PnL'],
+            crossStrategyRows(candidate),
+          ),
+          '',
+          'Acceptance checks:',
+          '',
+          markdownTable(
+            ['Check', 'Status'],
+            Object.entries(candidate.checks).map(([check, passed]) => [
+              check,
+              passed ? 'PASS' : 'FAIL',
+            ]),
+          ),
+          '',
+        );
+      }
+    }
+  }
+
+  lines.push(
+    '## Data-Quality Guard Audit',
+    '',
+    markdownTable(
+      ['Feature', 'Scope', 'Coverage', 'True rate', 'Min', 'Max'],
+      report.audits.dataQuality
+        .slice(0, 100)
+        .map((entry) => [
+          entry.feature,
+          entry.scope,
+          formatPct(entry.coverage),
+          formatPct(entry.trueRate),
+          formatNumber(entry.numericMin),
+          formatNumber(entry.numericMax),
+        ]),
+    ),
+    '',
+    '## Raw / Nonstationary Audit',
+    '',
+    markdownTable(
+      ['Feature', 'Scope', 'Coverage', 'Required transform'],
+      report.audits.rawNonstationary
+        .slice(0, 120)
+        .map((entry) => [
+          entry.feature,
+          entry.scope,
+          formatPct(entry.coverage),
+          entry.transform,
+        ]),
+    ),
+    '',
+    '## Existing Derived-Policy Audit',
+    '',
+    markdownTable(
+      ['Feature', 'Coverage', 'Reason'],
+      report.audits.derivedPolicy
+        .slice(0, 80)
+        .map((entry) => [
+          entry.feature,
+          formatPct(entry.coverage),
+          entry.reason,
+        ]),
+    ),
+    '',
+  );
+
+  const passing = CROSS_SEARCH_PROFILE_NAMES.flatMap((profile) =>
+    ['LONG', 'SHORT'].flatMap((direction) =>
+      ['approve', 'block'].map((kind) => ({
+        profile,
+        direction,
+        kind,
+        count: report.profiles[profile].directions[direction][kind].filter(
+          (candidate) => candidate.passes,
+        ).length,
+      })),
+    ),
+  );
+  lines.push(
+    '## Feasibility Verdict',
+    '',
+    markdownTable(
+      ['Profile', 'Direction', 'Pocket type', 'Passing all checks'],
+      passing.map((entry) => [
+        entry.profile,
+        entry.direction,
+        entry.kind,
+        entry.count,
+      ]),
+    ),
+    '',
+    'The five circular-shift checks are fixed-pocket diagnostics, not family-wise permutation proof. Any PASS remains research-only until the exact rule survives an export strictly after this report cutoff and live-env lineage checks.',
+    '',
+  );
+  return `${lines.join('\n')}\n`;
+};
+
 const printGroups = (groups, projectRoot) => {
   for (const group of groups) {
     console.log(
@@ -1842,6 +4210,47 @@ export const main = async () => {
         : groups,
       projectRoot,
     );
+    return;
+  }
+  if (options.crossStrategy) {
+    const groups = latestDatasetGroupsByStrategy(
+      await listDatasetGroups(outDir),
+    );
+    const report = await buildCrossStrategyReport({
+      projectRoot,
+      groups,
+      validationSplit: options.validationSplit,
+      testSplit: options.testSplit,
+      maxDepth: options.maxDepth,
+      minSupport: options.minSupport,
+      minValidationSupport: options.minValidationSupport,
+      maxAtomicPredicates: options.maxAtomicPredicates,
+      maxCombinations: options.maxCombinations,
+      top: options.top,
+      maxRowsPerStrategy: options.maxRowsPerStrategy,
+      maxRowsPerEvent: options.maxRowsPerEvent,
+      minFeatureStrategies: options.minFeatureStrategies,
+      minFeatureCoverage: options.minFeatureCoverage,
+      minBenchmarkFeatureCoverage: options.minBenchmarkFeatureCoverage,
+      portfolioCapacity: options.portfolioCapacity,
+    });
+    const markdown = formatCrossStrategyMarkdown(report);
+    const output = options.json
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : markdown;
+    if (options.output) {
+      const outputPath = path.resolve(process.cwd(), options.output);
+      await fsp.mkdir(path.dirname(outputPath), { recursive: true });
+      await fsp.writeFile(
+        outputPath,
+        outputPath.endsWith('.json')
+          ? `${JSON.stringify(report, null, 2)}\n`
+          : markdown,
+        'utf8',
+      );
+      console.error(`report: ${path.relative(projectRoot, outputPath)}`);
+    }
+    process.stdout.write(output);
     return;
   }
   const variants = await loadVariants(options.variants, options.spec);

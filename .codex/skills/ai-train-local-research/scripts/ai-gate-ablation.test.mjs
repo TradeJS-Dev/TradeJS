@@ -1,14 +1,30 @@
 import assert from 'node:assert/strict';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
+  aggregateBenchmarkDiscoveryRows,
+  applyBenchmarkEventSnapshots,
+  balanceCrossStrategyRows,
   buildAblationReport,
+  buildCrossStrategyReport,
+  buildShiftedProfitLookups,
+  classifyCrossStrategyFeature,
+  collectSavedCrossStrategyFeatures,
   evaluateRule,
+  evaluateCrossPocket,
+  filterSharedCrossStrategyFeatures,
+  formatCrossStrategyMarkdown,
   formatMarkdownReport,
   isVariantSelected,
+  latestDatasetGroupsByStrategy,
+  matchesPocket,
   parseCliArgs,
   parseRuleExpression,
   parseVariant,
+  partitionCrossStrategyFeatures,
   splitRowsByTimestamp,
   summarizeRows,
 } from './ai-gate-ablation.mjs';
@@ -38,6 +54,535 @@ test('parses repeated variants and research windows', () => {
   assert.equal(options.testSplit, 0.2);
   assert.deepEqual(options.capacities, [1, 3, 5]);
   assert.equal(options.maxLossValue, 0.2);
+});
+
+test('parses cross-strategy discovery limits', () => {
+  const options = parseCliArgs([
+    '--crossStrategy',
+    '--validationSplit=0.2',
+    '--testSplit=0.2',
+    '--maxDepth=2',
+    '--minSupport=80',
+    '--minValidationSupport=40',
+    '--maxRowsPerStrategy=1200',
+    '--maxRowsPerEvent=2',
+    '--minFeatureStrategies=6',
+    '--minFeatureCoverage=0.6',
+    '--minBenchmarkFeatureCoverage=0.15',
+    '--portfolioCapacity=3',
+  ]);
+
+  assert.equal(options.crossStrategy, true);
+  assert.equal(options.validationSplit, 0.2);
+  assert.equal(options.testSplit, 0.2);
+  assert.equal(options.minSupport, 80);
+  assert.equal(options.minValidationSupport, 40);
+  assert.equal(options.maxRowsPerStrategy, 1200);
+  assert.equal(options.maxRowsPerEvent, 2);
+  assert.equal(options.minFeatureStrategies, 6);
+  assert.equal(options.minFeatureCoverage, 0.6);
+  assert.equal(options.minBenchmarkFeatureCoverage, 0.15);
+  assert.equal(options.portfolioCapacity, 3);
+});
+
+test('selects the latest merged export independently per strategy', () => {
+  const groups = [
+    { strategyToken: 'Alpha', mergeId: '10', files: ['old'] },
+    { strategyToken: 'Beta', mergeId: '12', files: ['beta'] },
+    { strategyToken: 'alpha', mergeId: '15', files: ['new'] },
+  ];
+
+  assert.deepEqual(
+    latestDatasetGroupsByStrategy(groups).map((group) => group.files[0]),
+    ['new', 'beta'],
+  );
+});
+
+test('classifies pooled features by provenance instead of a broad blacklist', () => {
+  const source = {
+    'signal.strategy': 'Alpha',
+    'additionalIndicators.baseContext.regime.trend': 'up',
+    'additionalIndicators.baseContext.regime.trend.psar.value': 100,
+    'additionalIndicators.baseContext.structure.liquidityZones.nearestSupport.hitCount': 3,
+    'additionalIndicators.baseContext.derivatives.intervals.15m.stale': true,
+    'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.intervals.1h.oiChangePct24h': 2,
+    'additionalIndicators.baseContext.derivatives.source': 'cache',
+    'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.intervals.1h.openInterest': 100,
+    'additionalIndicators.baseContext.gateFeatures.confirmations.count': 2,
+    'additionalIndicators.baseContext.participation.volumeStructure.rowCount': 180,
+    'additionalIndicators.baseContext.relative.cmcGlobal.totalMarketCapUsd': 1_000,
+    'additionalIndicators.baseContext.relative.cmcGlobal.altMarketCapChange24hPct': 1.2,
+    'additionalIndicators.baseContext.relative.cmcFearGreedValue': 45,
+    'derived.stopDistanceBps': 50,
+  };
+  const profiles = partitionCrossStrategyFeatures(source);
+
+  assert.deepEqual(profiles.universal, {
+    'additionalIndicators.baseContext.regime.trend': 'up',
+    'additionalIndicators.baseContext.structure.liquidityZones.nearestSupport.hitCount': 3,
+    'derived.stopDistanceBps': 50,
+  });
+  assert.equal(
+    profiles.benchmarkReference[
+      'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.intervals.1h.oiChangePct24h'
+    ],
+    2,
+  );
+  assert.equal(
+    profiles.benchmarkReference[
+      'additionalIndicators.baseContext.relative.cmcGlobal.altMarketCapChange24hPct'
+    ],
+    1.2,
+  );
+  assert.equal(
+    profiles.rawNonstationary[
+      'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.intervals.1h.openInterest'
+    ],
+    100,
+  );
+  assert.equal(
+    profiles.rawNonstationary[
+      'additionalIndicators.baseContext.regime.trend.psar.value'
+    ],
+    100,
+  );
+  assert.equal(
+    profiles.dataQuality[
+      'additionalIndicators.baseContext.participation.volumeStructure.rowCount'
+    ],
+    180,
+  );
+  assert.equal(
+    profiles.derivedPolicy[
+      'additionalIndicators.baseContext.gateFeatures.confirmations.count'
+    ],
+    2,
+  );
+  assert.equal(
+    classifyCrossStrategyFeature(
+      'additionalIndicators.baseContext.relative.cmcGlobal.totalMarketCapUsd',
+    ).transform,
+    'change / dominance / share / ratio',
+  );
+  assert.deepEqual(filterSharedCrossStrategyFeatures(source), {
+    'additionalIndicators.baseContext.regime.trend': 'up',
+    'additionalIndicators.baseContext.structure.liquidityZones.nearestSupport.hitCount': 3,
+    'derived.stopDistanceBps': 50,
+    'additionalIndicators.baseContext.derivatives.referenceContexts.BTCUSDT.intervals.1h.oiChangePct24h': 2,
+    'additionalIndicators.baseContext.relative.cmcGlobal.altMarketCapChange24hPct': 1.2,
+    'additionalIndicators.baseContext.relative.cmcFearGreedValue': 45,
+  });
+});
+
+test('collects cross-strategy features without flattening unrelated contexts', () => {
+  const features = collectSavedCrossStrategyFeatures({
+    signal: {
+      direction: 'LONG',
+      prices: {
+        currentPrice: 100,
+        stopLossPrice: 98,
+        takeProfitPrice: 104,
+      },
+    },
+    additionalIndicators: {
+      strategyContext: { specialEdge: 99 },
+      baseContext: {
+        raw: {
+          trend: { maFast: 99, maSlow: 101 },
+          momentum: { macdHistogram: 0.2 },
+        },
+        regime: { trend: { direction: 'up' } },
+        gateFeatures: { quality: 5, confirmations: { count: 2 } },
+      },
+    },
+  });
+
+  assert.equal(
+    features['additionalIndicators.baseContext.regime.trend.direction'],
+    'up',
+  );
+  assert.equal(
+    features[
+      'additionalIndicators.baseContext.gateFeatures.confirmations.count'
+    ],
+    2,
+  );
+  assert.equal(
+    'additionalIndicators.strategyContext.specialEdge' in features,
+    false,
+  );
+  assert.equal(
+    'additionalIndicators.baseContext.gateFeatures.quality' in features,
+    false,
+  );
+  assert.equal(features['derived.stopDistanceBps'], 200);
+  assert.equal(features['derived.takeProfitDistanceBps'], 400);
+  assert.equal(features['derived.maFastAligned'], true);
+  assert.equal(features['derived.maSlowAligned'], false);
+  assert.equal(features['derived.macdHistogramAligned'], true);
+});
+
+test('balances discovery rows by strategy and timestamp', () => {
+  const rows = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      strategy: 'A',
+      timestamp: index < 3 ? 1 : index,
+      sequence: index,
+      symbol: `A${index}`,
+    })),
+    ...Array.from({ length: 2 }, (_, index) => ({
+      strategy: 'B',
+      timestamp: index + 1,
+      sequence: 10 + index,
+      symbol: `B${index}`,
+    })),
+  ];
+  const balanced = balanceCrossStrategyRows(rows, {
+    maxRowsPerStrategy: 2,
+    maxRowsPerEvent: 1,
+  });
+
+  assert.equal(balanced.filter((row) => row.strategy === 'A').length, 2);
+  assert.equal(balanced.filter((row) => row.strategy === 'B').length, 2);
+  assert.equal(
+    balanced.filter((row) => row.strategy === 'A' && row.timestamp === 1)
+      .length,
+    1,
+  );
+});
+
+test('deduplicates benchmark discovery to timestamp events with macro strategy profit', () => {
+  const aggregation = aggregateBenchmarkDiscoveryRows([
+    {
+      strategy: 'A',
+      timestamp: 1,
+      sequence: 0,
+      direction: 'LONG',
+      profit: 1,
+      rawProfit: 1,
+      features: { shared: 2, conflict: 'a' },
+    },
+    {
+      strategy: 'A',
+      timestamp: 1,
+      sequence: 1,
+      direction: 'LONG',
+      profit: 3,
+      rawProfit: 3,
+      features: { shared: 2, conflict: 'b' },
+    },
+    {
+      strategy: 'B',
+      timestamp: 1,
+      sequence: 2,
+      direction: 'LONG',
+      profit: 5,
+      rawProfit: 5,
+      features: { shared: 2, conflict: 'a' },
+    },
+  ]);
+
+  assert.equal(aggregation.rows.length, 1);
+  assert.equal(aggregation.rows[0].profit, 3.5);
+  assert.deepEqual(aggregation.rows[0].features, { shared: 2 });
+  assert.equal(
+    aggregation.consistency.find((entry) => entry.feature === 'conflict')
+      .conflictEvents,
+    1,
+  );
+});
+
+test('weights benchmark consensus by strategy before symbol fan-out', () => {
+  const rows = [
+    ...Array.from({ length: 5 }, (_, sequence) => ({
+      strategy: 'A',
+      timestamp: 1,
+      sequence,
+      profit: 1,
+      rawProfit: 1,
+      features: { vote: 'fanout' },
+    })),
+    {
+      strategy: 'B',
+      timestamp: 1,
+      sequence: 5,
+      profit: 1,
+      rawProfit: 1,
+      features: { vote: 'majority' },
+    },
+    {
+      strategy: 'C',
+      timestamp: 1,
+      sequence: 6,
+      profit: 1,
+      rawProfit: 1,
+      features: { vote: 'majority' },
+    },
+  ];
+  const aggregation = aggregateBenchmarkDiscoveryRows(rows, {
+    minConsensusRatio: 0.6,
+  });
+
+  assert.equal(aggregation.rows[0].features.vote, 'majority');
+});
+
+test('reports benchmark conflicts that occur inside strategy events', () => {
+  const aggregation = aggregateBenchmarkDiscoveryRows([
+    {
+      strategy: 'A',
+      timestamp: 1,
+      sequence: 0,
+      profit: 1,
+      rawProfit: 1,
+      features: { conflict: 'a' },
+    },
+    {
+      strategy: 'A',
+      timestamp: 1,
+      sequence: 1,
+      profit: 1,
+      rawProfit: 1,
+      features: { conflict: 'b' },
+    },
+    {
+      strategy: 'B',
+      timestamp: 1,
+      sequence: 2,
+      profit: 1,
+      rawProfit: 1,
+      features: { conflict: 'a' },
+    },
+    {
+      strategy: 'B',
+      timestamp: 1,
+      sequence: 3,
+      profit: 1,
+      rawProfit: 1,
+      features: { conflict: 'b' },
+    },
+  ]);
+  const consistency = aggregation.consistency.find(
+    (entry) => entry.feature === 'conflict',
+  );
+
+  assert.deepEqual(aggregation.rows[0].features, {});
+  assert.equal(consistency.observedEvents, 1);
+  assert.equal(consistency.conflictEvents, 1);
+  assert.equal(consistency.intraStrategyConflictEvents, 1);
+  assert.equal(consistency.crossStrategyConflictEvents, 0);
+});
+
+test('circular-shift controls rotate whole strategy timestamp blocks', () => {
+  const [lookup] = buildShiftedProfitLookups(
+    [
+      { strategy: 'A', timestamp: 1, sequence: 0, profit: 1 },
+      { strategy: 'A', timestamp: 1, sequence: 1, profit: 3 },
+      { strategy: 'A', timestamp: 2, sequence: 2, profit: 9 },
+    ],
+    { offsets: [1] },
+  );
+
+  assert.equal(lookup.get(0), 4.5);
+  assert.equal(lookup.get(1), 4.5);
+  assert.equal(lookup.get(2), 4);
+});
+
+test('applies one benchmark snapshot to every signal in an event', () => {
+  const rows = [
+    { timestamp: 1, sequence: 0, features: { shared: 'a' } },
+    { timestamp: 1, sequence: 1, features: { shared: 'b' } },
+    { timestamp: 2, sequence: 2, features: { shared: 'c' } },
+  ];
+  const applied = applyBenchmarkEventSnapshots(rows, [
+    { timestamp: 1, features: { shared: 'consensus' } },
+    { timestamp: 2, features: {} },
+  ]);
+
+  assert.deepEqual(
+    applied.map((row) => row.features),
+    [{ shared: 'consensus' }, { shared: 'consensus' }, {}],
+  );
+  assert.equal(
+    applied.filter((row) =>
+      matchesPocket(row, [
+        { featureKey: 'shared', op: '==', value: 'consensus' },
+      ]),
+    ).length,
+    2,
+  );
+});
+
+test('rejects approval fan-out above configured portfolio capacity', () => {
+  let sequence = 0;
+  const buildPartition = (start) =>
+    Array.from({ length: 25 }, (_, eventIndex) =>
+      Array.from({ length: 6 }, (_, rowIndex) => ({
+        timestamp: start + eventIndex * 24 * 60 * 60 * 1000,
+        sequence: sequence++,
+        strategy: rowIndex < 3 ? 'A' : 'B',
+        symbol: `S${rowIndex}`,
+        direction: 'LONG',
+        profit: 1,
+        rawProfit: 1,
+        features: { keep: true },
+      })),
+    ).flat();
+  const split = {
+    train: buildPartition(Date.UTC(2025, 0, 1)),
+    tuning: buildPartition(Date.UTC(2025, 2, 1)),
+    test: buildPartition(Date.UTC(2025, 4, 1)),
+  };
+  const candidate = evaluateCrossPocket({
+    pocket: {
+      condition: 'keep == true',
+      predicates: [{ featureKey: 'keep', op: '==', value: true }],
+    },
+    split,
+    expectedSign: 1,
+    testShiftLookups: [],
+    minSharedStrategies: 2,
+    portfolioCapacity: 5,
+  });
+
+  assert.equal(candidate.train.maxBatch, 6);
+  assert.equal(candidate.checks.portfolioFanout, false);
+});
+
+test('builds a profiled cross-strategy report from tiny sharded exports', async (t) => {
+  const outDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ai-cross-profile-'));
+  t.after(() => fsp.rm(outDir, { recursive: true, force: true }));
+  const start = Date.UTC(2025, 0, 1);
+  const buildRows = (strategy, offset) =>
+    Array.from({ length: 40 }, (_, index) => {
+      const direction = index % 2 === 0 ? 'LONG' : 'SHORT';
+      const timestamp = start + index * 15 * 60 * 1000;
+      return JSON.stringify({
+        timestamp,
+        direction,
+        profit: (index % 4 < 2 ? 1 : -0.8) + offset,
+        strategyName: strategy,
+        signalId: `${strategy}-${index}`,
+        symbol: index % 3 === 0 ? 'ETHUSDT' : 'SOLUSDT',
+        payload: {
+          signal: {
+            direction,
+            prices: {
+              currentPrice: 100,
+              stopLossPrice: 99,
+              takeProfitPrice: 102,
+            },
+          },
+          additionalIndicators: {
+            baseContext: {
+              raw: {
+                trend: { maFast: 99, maSlow: 101 },
+                volatility: { atrPct: 1.2 },
+              },
+              regime: { trend: { bias: index % 4 ? 'bull' : 'bear' } },
+              structure: {
+                localRange: { rangePosition20: index / 40 },
+                liquidityZones: { activeCount: index % 3 },
+              },
+              derivatives: {
+                source: 'coinalyze',
+                symbol: 'BTCUSDT',
+                intervals: {
+                  '15m': {
+                    stale: false,
+                    points: 100,
+                    openInterest: 1_000_000 + index,
+                    oiChangePct1h: index / 10,
+                    fundingZScore: index % 5,
+                    liqImbalance: 0.1,
+                    liqSpikeRatio: 1.1,
+                  },
+                },
+                summary: { pressure: index % 4 ? 'long' : 'short' },
+              },
+              relative: {
+                cmcGlobal: {
+                  stale: false,
+                  totalMarketCapUsd: 1_000_000_000 + index,
+                  altMarketCapChange24hPct: index / 20,
+                },
+              },
+            },
+          },
+        },
+      });
+    }).join('\n');
+  await Promise.all(
+    [
+      ['Alpha', 0],
+      ['Beta', 0.1],
+    ].map(([strategy, offset]) =>
+      fsp.writeFile(
+        path.join(outDir, `ai-dataset-${strategy}-merged-1.jsonl`),
+        `${buildRows(strategy, offset)}\n`,
+      ),
+    ),
+  );
+  const groups = [
+    {
+      strategyToken: 'Alpha',
+      mergeId: '1',
+      files: [path.join(outDir, 'ai-dataset-Alpha-merged-1.jsonl')],
+    },
+    {
+      strategyToken: 'Beta',
+      mergeId: '1',
+      files: [path.join(outDir, 'ai-dataset-Beta-merged-1.jsonl')],
+    },
+  ];
+  const report = await buildCrossStrategyReport({
+    projectRoot: process.cwd(),
+    groups,
+    validationSplit: 0.2,
+    testSplit: 0.2,
+    maxDepth: 1,
+    minSupport: 1,
+    minValidationSupport: 1,
+    maxAtomicPredicates: 10,
+    maxCombinations: 20,
+    top: 2,
+    maxRowsPerStrategy: 100,
+    maxRowsPerEvent: 1,
+    minFeatureStrategies: 2,
+    minFeatureCoverage: 0.1,
+    minBenchmarkFeatureCoverage: 0.1,
+  });
+
+  assert.equal(report.run.overlapRows, 80);
+  assert.equal(
+    report.datasets.reduce((sum, dataset) => sum + dataset.overlapRows, 0),
+    80,
+  );
+  assert.ok(report.profiles.universal.directions.LONG.features.length > 0);
+  assert.ok(
+    report.profiles.benchmarkReference.directions.SHORT.features.length > 0,
+  );
+  assert.equal(report.run.acceptance.minSharedStrategies, 2);
+  assert.equal(report.run.acceptance.portfolioCapacity, 5);
+  assert.ok(
+    report.profiles.benchmarkReference.directions.SHORT.featureConsistency.test,
+  );
+  assert.ok(report.audits.rawNonstationary.length > 0);
+  assert.match(formatCrossStrategyMarkdown(report), /Data-Quality Guard Audit/);
+});
+
+test('evaluates generated pocket predicates against feature maps', () => {
+  const row = { features: { trend: 'up', distance: 0.4 } };
+  assert.equal(
+    matchesPocket(row, [
+      { featureKey: 'trend', op: '==', value: 'up' },
+      { featureKey: 'distance', op: '<=', threshold: 0.5 },
+    ]),
+    true,
+  );
+  assert.equal(
+    matchesPocket(row, [{ featureKey: 'distance', op: '>=', threshold: 0.5 }]),
+    false,
+  );
 });
 
 test('evaluates numeric, string, boolean, and null predicates with precedence', () => {
