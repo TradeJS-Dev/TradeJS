@@ -299,23 +299,50 @@ describe('strategyHelpers/coinMarketCapContext', () => {
     });
     expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({
       relative: {
-        cmcAltLiquidityAligned: true,
-        cmcEthBtcAligned: null,
         cmcExchangeLiquidityAligned: true,
-        cmcFearGreedAligned: true,
-        cmcIndexRegime: 'top20_led',
-        cmcIndexAligned: true,
-        cmcIndexStale: false,
+        cmcExchangeLiquidityStale: false,
+        cmcFearGreedValue: 62,
+        cmcFearGreedStale: false,
         cmc20ToCmc100RatioChange24hPct: (1 + 0.024) / (1 + 0.01) - 1,
       },
-      confirmations: {
-        items: expect.arrayContaining([
-          'cmc_alt_liquidity_aligned',
-          'cmc_exchange_liquidity_aligned',
-          'cmc_fear_greed_aligned',
-          'cmc_index_aligned',
-        ]),
-      },
     });
+  });
+
+  it('forwards cancellation and retries after a transient SQL timeout', async () => {
+    const controller = new AbortController();
+    const timeoutError = new Error('query timeout');
+    timeoutError.name = 'TimescaleQueryTimeoutError';
+    mockGetLatestMarketGlobalContext.mockRejectedValueOnce(timeoutError);
+
+    await expect(
+      enrichSignalWithCoinMarketCapContext({
+        signal: makeSignal(),
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(timeoutError);
+    await expect(
+      enrichSignalWithCoinMarketCapContext({
+        signal: makeSignal(),
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).resolves.toBe(true);
+
+    for (const mock of [
+      mockGetLatestMarketGlobalContext,
+      mockGetLatestMarketReferenceAssetContexts,
+      mockGetLatestMarketCmcExchangeLiquidityContext,
+      mockGetLatestMarketCmcFearGreedContext,
+      mockGetLatestMarketCmcIndexContexts,
+    ]) {
+      expect(
+        mock.mock.calls.every(
+          ([params]: [{ signal?: AbortSignal }]) =>
+            params.signal === controller.signal,
+        ),
+      ).toBe(true);
+    }
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 });

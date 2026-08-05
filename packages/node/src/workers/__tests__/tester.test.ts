@@ -38,6 +38,7 @@ describe('worker tester', () => {
         path: 'data/backtests/cache/alice/positions/log-1.json',
       },
     }));
+    const configureTimescaleMarketContextSchemaModeMock = jest.fn();
 
     jest.doMock('../../testing', () => ({
       canRunTestsInSharedCandleLoop: canRunTestsInSharedCandleLoopImpl,
@@ -69,6 +70,10 @@ describe('worker tester', () => {
     jest.doMock('@tradejs/infra/ai', () => ({
       closeAllAiDatasetWriters: jest.fn(async () => undefined),
     }));
+    jest.doMock('@tradejs/infra/timescale', () => ({
+      configureTimescaleMarketContextSchemaMode:
+        configureTimescaleMarketContextSchemaModeMock,
+    }));
 
     jest
       .spyOn(process, 'on')
@@ -83,10 +88,25 @@ describe('worker tester', () => {
 
     return {
       calculateStatsFullMock,
+      configureTimescaleMarketContextSchemaModeMock,
       getDataMock,
       writeCachedBacktestArtifactsMock,
     };
   };
+
+  it('switches Timescale market-context access to verify-only before work', async () => {
+    const { configureTimescaleMarketContextSchemaModeMock } = await setup({
+      suite: [],
+      testingImpl: jest.fn(),
+    });
+
+    expect(configureTimescaleMarketContextSchemaModeMock).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(configureTimescaleMarketContextSchemaModeMock).toHaveBeenCalledWith(
+      'verify',
+    );
+  });
 
   afterEach(() => {
     jest.restoreAllMocks();

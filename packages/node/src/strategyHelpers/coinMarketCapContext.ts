@@ -8,6 +8,7 @@ import {
   getLatestMarketReferenceAssetContexts,
 } from '@tradejs/infra/timescale';
 import type { BaseStrategyContextSnapshot, Signal } from '@tradejs/types';
+import { isMarketContextCancellationError } from './marketContextErrors';
 
 const DEFAULT_MAX_AGE_MS = 48 * 60 * 60_000;
 const SOURCE_GLOBAL_DAILY = 'coinmarketcap_global' as const;
@@ -205,9 +206,11 @@ const toIndexRegime = ({
 const getCachedGlobalContext = ({
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${SOURCE_GLOBAL_DAILY}:${timestamp}:${maxAgeMs}`;
   const cached = globalContextCache.get(key);
@@ -217,17 +220,21 @@ const getCachedGlobalContext = ({
     source: SOURCE_GLOBAL_DAILY,
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   globalContextCache.set(key, promise);
+  void promise.catch(() => globalContextCache.delete(key));
   return promise;
 };
 
 const getCachedReferenceContexts = ({
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${SOURCE_REFERENCE}:1d:${timestamp}:${maxAgeMs}`;
   const cached = referenceContextCache.get(key);
@@ -239,17 +246,21 @@ const getCachedReferenceContexts = ({
     interval: '1d',
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   referenceContextCache.set(key, promise);
+  void promise.catch(() => referenceContextCache.delete(key));
   return promise;
 };
 
 const getCachedExchangeLiquidityContext = ({
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${SOURCE_EXCHANGE_LIQUIDITY}:1d:${timestamp}:${maxAgeMs}`;
   const cached = exchangeLiquidityContextCache.get(key);
@@ -260,17 +271,21 @@ const getCachedExchangeLiquidityContext = ({
     interval: '1d',
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   exchangeLiquidityContextCache.set(key, promise);
+  void promise.catch(() => exchangeLiquidityContextCache.delete(key));
   return promise;
 };
 
 const getCachedFearGreedContext = ({
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${SOURCE_FEAR_GREED}:1d:${timestamp}:${maxAgeMs}`;
   const cached = fearGreedContextCache.get(key);
@@ -281,17 +296,21 @@ const getCachedFearGreedContext = ({
     interval: '1d',
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   fearGreedContextCache.set(key, promise);
+  void promise.catch(() => fearGreedContextCache.delete(key));
   return promise;
 };
 
 const getCachedIndexContexts = ({
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${SOURCE_INDEX}:1d:${timestamp}:${maxAgeMs}`;
   const cached = indexContextCache.get(key);
@@ -303,8 +322,10 @@ const getCachedIndexContexts = ({
     interval: '1d',
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   indexContextCache.set(key, promise);
+  void promise.catch(() => indexContextCache.delete(key));
   return promise;
 };
 
@@ -325,6 +346,7 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
   env: string;
   enabled?: boolean;
   maxAgeMs?: number;
+  abortSignal?: AbortSignal;
 }): Promise<boolean> => {
   const {
     signal,
@@ -353,26 +375,32 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
       getCachedGlobalContext({
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
       getCachedReferenceContexts({
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
       getCachedReferenceContexts({
         timestamp: signal.timestamp - DAY_MS,
         maxAgeMs: maxAgeMs + DAY_MS,
+        abortSignal: params.abortSignal,
       }),
       getCachedExchangeLiquidityContext({
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
       getCachedFearGreedContext({
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
       getCachedIndexContexts({
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
     ]);
     const globalRow = globalDailyRow;
@@ -651,6 +679,9 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
     refreshSignalBaseContextGateFeatures(signal);
     return true;
   } catch (error) {
+    if (isMarketContextCancellationError(error, params.abortSignal)) {
+      throw error;
+    }
     coinMarketCapContextUnavailable = true;
     logger.warn(
       'CoinMarketCap context disabled after Timescale read failure: %s',

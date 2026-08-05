@@ -237,68 +237,59 @@ describe('buildStrategySignal', () => {
       signal.additionalIndicators?.baseContext?.gateFeatures,
     ).toMatchObject({
       setup: {
-        riskRatio: 2,
         rewardToVolatility: 10,
         stopDistanceAtr: 5,
         tpDistanceAtr: 10,
         entryLocation: 'mid_range',
       },
-      confirmations: {
-        count: 4,
-        items: [
-          'trade_flow_aligned',
-          'hyperliquid_whales_aligned',
-          'market_breadth_aligned',
-          'benchmark_aligned',
-        ],
-      },
       conflicts: {
         count: 0,
-        items: [],
       },
       scores: {
         structure: 47,
         participation: 59,
-        relative: 86,
-        mtf: null,
         execution: 62,
-        derivatives: null,
         totalContext: 64,
       },
       risk: {
-        regimeRisk: 'medium',
         liquidityRisk: 'low',
-        volatilityRisk: 'unknown',
-        crowdingRisk: 'unknown',
-        chaseRisk: 'low',
       },
       decisionHints: {
         approveBias: 'support',
-        maxReasonableQuality: 5,
-        needsExtraConfirmation: false,
         primaryIssue: 'none',
-      },
-      participation: {
-        tradeFlowBuyPressurePct: 0.7,
-        tradeFlowAligned: true,
-        hyperliquidWhaleBuySharePct: 0.8,
-        hyperliquidWhaleNetNotionalUsd: 600_000,
-        hyperliquidWhaleUniqueCount: 2,
-        hyperliquidWhaleCoveredCount: 90,
-        hyperliquidWhaleExpectedCount: 100,
-        hyperliquidWhaleCoveragePct: 0.9,
-        hyperliquidWhaleCoverageSufficient: true,
-        hyperliquidWhaleNotionalUsd: 1_000_000,
-        hyperliquidWhaleSufficientActivity: true,
-        hyperliquidWhaleFlowAligned: true,
-        hyperliquidWhaleFlowStale: false,
       },
       relative: {
         marketBreadthReturn: 0.01,
-        marketBreadthAligned: true,
         marketBreadthStale: false,
       },
     });
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).not.toHaveProperty('confirmations');
+    const gateFeatures = signal.additionalIndicators?.baseContext?.gateFeatures;
+    expect(Object.keys(gateFeatures ?? {}).sort()).toEqual(
+      [
+        'conflicts',
+        'decisionHints',
+        'mtf',
+        'participation',
+        'relative',
+        'risk',
+        'scores',
+        'setup',
+        'volatility',
+      ].sort(),
+    );
+    expect(gateFeatures).not.toHaveProperty('direction');
+    expect(gateFeatures).not.toHaveProperty('structure');
+    expect(gateFeatures).not.toHaveProperty('execution');
+    expect(gateFeatures?.scores).not.toHaveProperty('relative');
+    expect(gateFeatures?.scores).not.toHaveProperty('mtf');
+    expect(gateFeatures?.scores).not.toHaveProperty('derivatives');
+    expect(gateFeatures?.conflicts).not.toHaveProperty('items');
+    expect(gateFeatures?.decisionHints).not.toHaveProperty(
+      'maxReasonableQuality',
+    );
   });
 
   it('keeps insufficient Hyperliquid coverage out of AI-gate flow features', () => {
@@ -346,15 +337,9 @@ describe('buildStrategySignal', () => {
       direction: 'LONG',
     });
 
-    expect(gateFeatures.participation).toMatchObject({
-      hyperliquidWhaleCoveragePct: 0.4,
-      hyperliquidWhaleCoverageSufficient: false,
-      hyperliquidWhaleBuySharePct: null,
-      hyperliquidWhaleNetNotionalUsd: null,
-      hyperliquidWhaleUniqueCount: null,
-      hyperliquidWhaleNotionalUsd: null,
-      hyperliquidWhaleSufficientActivity: null,
-      hyperliquidWhaleFlowAligned: null,
+    expect(gateFeatures.scores?.participation).toBe(35);
+    expect(gateFeatures.participation).toEqual({
+      volumeStructureAligned: null,
     });
   });
 
@@ -432,33 +417,15 @@ describe('buildStrategySignal', () => {
     expect(
       signal.additionalIndicators?.baseContext?.gateFeatures,
     ).toMatchObject({
-      confirmations: {
-        items: expect.arrayContaining([
-          'target_vs_btc_aligned',
-          'target_vs_eth_aligned',
-          'btc_alt_regime_aligned',
-        ]),
-      },
       relative: {
-        targetVsBtcRatioReturn24h: 2.5,
-        targetVsBtcAlpha24h: 2.5,
-        targetVsBtcBeta20: 1.1,
-        targetVsBtcCorrelation20: 0.8,
-        targetVsBtcRatioTrend: 'up',
-        targetVsBtcAligned: true,
-        targetVsEthRatioReturn24h: 2.2,
-        targetVsEthAlpha24h: 2.2,
-        targetVsEthBeta20: 1.05,
-        targetVsEthCorrelation20: 0.75,
-        targetVsEthRatioTrend: 'up',
-        targetVsEthAligned: true,
         btcAltRegime: 'risk_on',
-        btcAltRegimeAligned: true,
         btcAltRegimeStale: false,
         btcVsAltReturn24h: -0.02,
-        btcTurnoverShare24h: 0.35,
       },
     });
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures?.relative,
+    ).not.toHaveProperty('targetVsBtcRatioReturn24h');
   });
 
   it('derives CMC exchange liquidity and fear-greed gate features', () => {
@@ -532,26 +499,13 @@ describe('buildStrategySignal', () => {
     expect(
       signal.additionalIndicators?.baseContext?.gateFeatures,
     ).toMatchObject({
-      confirmations: {
-        items: expect.arrayContaining([
-          'cmc_exchange_liquidity_aligned',
-          'cmc_fear_greed_aligned',
-          'cmc_index_aligned',
-        ]),
-      },
       relative: {
-        cmcExchangeLiquidityRegime: 'expanding',
         cmcExchangeLiquidityAligned: true,
         cmcExchangeLiquidityStale: false,
         cmcExchangeLiquidityVolumeChange24hPct: 0.18,
         cmcFearGreedValue: 62,
         cmcFearGreedValueChange24h: 8,
-        cmcFearGreedRegime: 'risk_on',
-        cmcFearGreedAligned: true,
         cmcFearGreedStale: false,
-        cmcIndexRegime: 'top20_led',
-        cmcIndexAligned: true,
-        cmcIndexStale: false,
         cmc20ToCmc100RatioChange24hPct: 0.01386138613861387,
       },
       risk: {
@@ -698,35 +652,16 @@ describe('buildStrategySignal', () => {
       signal.additionalIndicators?.baseContext?.gateFeatures,
     ).toMatchObject({
       mtf: {
-        alignmentForDirection: 'against',
         higherTimeframeConflict: true,
       },
       conflicts: {
-        items: expect.arrayContaining([
-          'mtf_against',
-          'benchmark_against',
-          'relative_strength_against',
-          'market_breadth_against',
-          'cmc_index_against',
-          'target_vs_eth_against',
-          'delta_against',
-          'trade_flow_against',
-          'extreme_volatility',
-          'wide_spread',
-          'derivatives_against',
-          'derivatives_crowded',
-        ]),
+        count: 12,
       },
       risk: {
-        regimeRisk: 'high',
         liquidityRisk: 'high',
-        volatilityRisk: 'high',
-        crowdingRisk: 'high',
       },
       decisionHints: {
         approveBias: 'reject',
-        maxReasonableQuality: 2,
-        needsExtraConfirmation: true,
         primaryIssue: 'crowded_derivatives',
       },
     });
@@ -764,12 +699,7 @@ describe('buildStrategySignal', () => {
         benchmarkCandles: baseContext.mtf.benchmarkCandles,
       },
       gateFeatures: expect.objectContaining({
-        direction: 'LONG',
-        mtf: expect.objectContaining({
-          alignmentForDirection: 'unknown',
-        }),
         relative: expect.objectContaining({
-          benchmarkAligned: true,
           benchmarkConflict: false,
         }),
       }),
@@ -869,9 +799,7 @@ describe('buildStrategySignal', () => {
         },
       },
       gateFeatures: {
-        direction: 'SHORT',
         mtf: expect.objectContaining({
-          alignmentForDirection: 'aligned',
           higherTimeframeConflict: false,
         }),
       },
@@ -936,9 +864,11 @@ describe('buildStrategySignal', () => {
           maFast: 100,
         },
       },
-      gateFeatures: {
-        direction: 'LONG',
-      },
+      gateFeatures: expect.objectContaining({
+        setup: expect.objectContaining({
+          rewardToVolatility: 10,
+        }),
+      }),
     });
   });
 });

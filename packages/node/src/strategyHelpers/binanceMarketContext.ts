@@ -15,6 +15,7 @@ import {
   getBinanceBreadthUniverses,
   type BinanceBreadthUniverseKey,
 } from '../binanceBreadthUniverses';
+import { isMarketContextCancellationError } from './marketContextErrors';
 
 const DEFAULT_MAX_AGE_BY_INTERVAL: Record<MarketFeatureInterval, number> = {
   '1m': 3 * 60_000,
@@ -139,11 +140,13 @@ const getCachedReferenceRows = ({
   interval,
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   referenceSymbols: string[];
   interval: MarketFeatureInterval;
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${referenceSymbols.join(',')}:${interval}:${timestamp}:${maxAgeMs}`;
   const cached = referenceRowsCache.get(key);
@@ -156,6 +159,7 @@ const getCachedReferenceRows = ({
         interval,
         atMs: timestamp,
         maxAgeMs,
+        ...(abortSignal ? { signal: abortSignal } : {}),
       });
       return {
         symbol,
@@ -164,6 +168,7 @@ const getCachedReferenceRows = ({
     }),
   );
   referenceRowsCache.set(key, promise);
+  void promise.catch(() => referenceRowsCache.delete(key));
   return promise;
 };
 
@@ -172,11 +177,13 @@ const getCachedBreadth = ({
   interval,
   timestamp,
   maxAgeMs,
+  abortSignal,
 }: {
   breadthUniverse: string;
   interval: MarketFeatureInterval;
   timestamp: number;
   maxAgeMs: number;
+  abortSignal?: AbortSignal;
 }) => {
   const key = `${breadthUniverse}:${interval}:${timestamp}:${maxAgeMs}`;
   const cached = breadthCache.get(key);
@@ -187,8 +194,10 @@ const getCachedBreadth = ({
     interval,
     atMs: timestamp,
     maxAgeMs,
+    ...(abortSignal ? { signal: abortSignal } : {}),
   });
   breadthCache.set(key, promise);
+  void promise.catch(() => breadthCache.delete(key));
   return promise;
 };
 
@@ -221,6 +230,7 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
   interval?: MarketFeatureInterval;
   breadthUniverse?: string;
   maxAgeMs?: number;
+  abortSignal?: AbortSignal;
 }): Promise<boolean> => {
   const {
     signal,
@@ -255,6 +265,7 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
         interval,
         timestamp: signal.timestamp,
         maxAgeMs,
+        abortSignal: params.abortSignal,
       }),
       Promise.all(
         breadthUniverses.map(async ({ key, universe }) => ({
@@ -264,6 +275,7 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
             interval,
             timestamp: signal.timestamp,
             maxAgeMs,
+            abortSignal: params.abortSignal,
           }),
         })),
       ),
@@ -397,6 +409,9 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
     refreshSignalBaseContextGateFeatures(signal);
     return true;
   } catch (error) {
+    if (isMarketContextCancellationError(error, params.abortSignal)) {
+      throw error;
+    }
     binanceMarketContextUnavailable = true;
     logger.warn(
       'Binance market context disabled after Timescale read failure: %s',

@@ -15,6 +15,20 @@ const mockShouldBackfillCoinMarketCapContextForBacktest = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForReplay = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForSignals = jest.fn();
 const mockBackfillHyperliquidWhaleContext = jest.fn();
+const mockEnsureMarketContextSchemas = jest.fn();
+const mockEnsureStrategyPluginsLoaded = jest.fn();
+const mockGetStrategyManifest = jest.fn();
+
+jest.mock('@tradejs/infra/timescale', () => ({
+  ensureMarketContextSchemas: (...args: unknown[]) =>
+    mockEnsureMarketContextSchemas(...args),
+}));
+
+jest.mock('@tradejs/node/registry', () => ({
+  ensureStrategyPluginsLoaded: (...args: unknown[]) =>
+    mockEnsureStrategyPluginsLoaded(...args),
+  getStrategyManifest: (...args: unknown[]) => mockGetStrategyManifest(...args),
+}));
 
 jest.mock('../lib/derivativesContextBackfill', () => ({
   backfillDerivativesContextForBacktest: (...args: unknown[]) =>
@@ -64,6 +78,7 @@ jest.mock('../lib/hyperliquidWhaleBackfill', () => ({
 
 import {
   prepareMarketContextForRun,
+  resolveMarketContextRunRequirements,
   shouldPrepareHyperliquidWhaleContextForRun,
 } from '../lib/marketContextPrepare';
 
@@ -87,6 +102,16 @@ describe('prepareMarketContextForRun', () => {
     mockShouldBackfillCoinMarketCapContextForReplay.mockReturnValue(false);
     mockShouldBackfillCoinMarketCapContextForSignals.mockReturnValue(false);
     mockBackfillHyperliquidWhaleContext.mockResolvedValue({});
+    mockEnsureMarketContextSchemas.mockResolvedValue(undefined);
+    mockEnsureStrategyPluginsLoaded.mockResolvedValue(undefined);
+    mockGetStrategyManifest.mockImplementation((name: string) =>
+      name === 'HyperliquidConsensus'
+        ? {
+            name,
+            contextRequirements: { core: ['hyperliquidWhales'] },
+          }
+        : undefined,
+    );
     delete process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED;
   });
 
@@ -150,24 +175,30 @@ describe('prepareMarketContextForRun', () => {
   it('allows the default Hyperliquid whale backfill to be disabled', () => {
     process.env.HYPERLIQUID_WHALE_BACKFILL_ENABLED = 'false';
     expect(
-      shouldPrepareHyperliquidWhaleContextForRun({
-        mode: 'backtest',
-        cacheOnly: false,
-        aiEnabled: true,
-        mlEnabled: false,
-      }),
+      shouldPrepareHyperliquidWhaleContextForRun(
+        {
+          mode: 'backtest',
+          cacheOnly: false,
+          aiEnabled: true,
+          mlEnabled: false,
+        },
+        ['hyperliquidWhales'],
+      ),
     ).toBe(false);
   });
 
   it('backfills Hyperliquid whales for the standalone consensus strategy', async () => {
     expect(
-      shouldPrepareHyperliquidWhaleContextForRun({
-        mode: 'backtest',
-        cacheOnly: false,
-        aiEnabled: false,
-        mlEnabled: false,
-        strategyNames: ['HyperliquidConsensus'],
-      }),
+      shouldPrepareHyperliquidWhaleContextForRun(
+        {
+          mode: 'backtest',
+          cacheOnly: false,
+          aiEnabled: false,
+          mlEnabled: false,
+          strategyNames: ['HyperliquidConsensus'],
+        },
+        ['hyperliquidWhales'],
+      ),
     ).toBe(true);
 
     await prepareMarketContextForRun({
@@ -257,6 +288,170 @@ describe('prepareMarketContextForRun', () => {
       endMs: 2_000,
       preloadStartMs: 500,
     });
+  });
+
+  it('does not touch market context for a raw context-independent backtest', async () => {
+    mockShouldBackfillDerivativesContextForBacktest.mockReturnValue(true);
+    mockShouldBackfillBinanceMarketContextForBacktest.mockReturnValue(true);
+    mockShouldBackfillCoinMarketCapContextForBacktest.mockReturnValue(true);
+
+    await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+      aiEnabled: false,
+      mlEnabled: false,
+      strategyNames: ['TrendFollow'],
+      log: jest.fn(),
+    });
+
+    expect(mockEnsureMarketContextSchemas).not.toHaveBeenCalled();
+    expect(mockBackfillDerivativesContextForBacktest).not.toHaveBeenCalled();
+    expect(mockBackfillBinanceMarketContextForBacktest).not.toHaveBeenCalled();
+    expect(mockBackfillCoinMarketCapContextForBacktest).not.toHaveBeenCalled();
+  });
+
+  it('returns explicit AI demand and ensures every readable schema in the parent', async () => {
+    const requirements = await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+      aiEnabled: true,
+      mlEnabled: false,
+      log: jest.fn(),
+    });
+
+    expect(requirements).toEqual({
+      binance: { read: true, backfill: false, requiredBy: ['ai'] },
+      coinmarketcap: { read: true, backfill: false, requiredBy: ['ai'] },
+      derivatives: { read: true, backfill: false, requiredBy: ['ai'] },
+      hyperliquidWhales: {
+        read: true,
+        backfill: false,
+        requiredBy: ['ai'],
+      },
+    });
+    expect(mockEnsureMarketContextSchemas).toHaveBeenCalledTimes(1);
+    expect(mockEnsureMarketContextSchemas).toHaveBeenCalledWith([
+      'binance',
+      'coinmarketcap',
+      'derivatives',
+      'hyperliquidWhales',
+    ]);
+    expect(mockEnsureStrategyPluginsLoaded).not.toHaveBeenCalled();
+  });
+
+  it('ensures only a manifest-declared core source for a raw backtest', async () => {
+    const requirements = await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '5',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+      aiEnabled: false,
+      mlEnabled: false,
+      strategyNames: ['HyperliquidConsensus'],
+      log: jest.fn(),
+    });
+
+    expect(requirements.hyperliquidWhales).toEqual({
+      read: true,
+      backfill: true,
+      requiredBy: ['core'],
+    });
+    expect(requirements.binance.read).toBe(false);
+    expect(requirements.coinmarketcap.read).toBe(false);
+    expect(requirements.derivatives.read).toBe(false);
+    expect(mockEnsureMarketContextSchemas).toHaveBeenCalledWith([
+      'hyperliquidWhales',
+    ]);
+  });
+
+  it('unions and de-duplicates manifest core requirements', async () => {
+    mockGetStrategyManifest.mockImplementation((name: string) => ({
+      name,
+      contextRequirements: {
+        core:
+          name === 'CoreA'
+            ? ['binance', 'derivatives']
+            : ['coinmarketcap', 'derivatives'],
+      },
+    }));
+
+    const requirements = await resolveMarketContextRunRequirements({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+      aiEnabled: false,
+      mlEnabled: false,
+      strategyNames: ['CoreA', 'CoreB', 'CoreA'],
+    });
+
+    expect(mockEnsureStrategyPluginsLoaded).toHaveBeenCalledTimes(1);
+    expect(mockGetStrategyManifest).toHaveBeenCalledTimes(2);
+    expect(requirements.binance).toMatchObject({
+      read: true,
+      requiredBy: ['core'],
+    });
+    expect(requirements.coinmarketcap).toMatchObject({
+      read: true,
+      requiredBy: ['core'],
+    });
+    expect(requirements.derivatives).toMatchObject({
+      read: true,
+      requiredBy: ['core'],
+    });
+    expect(requirements.hyperliquidWhales.read).toBe(false);
+  });
+
+  it('lets a core dependency activate the matching standard backfill policy', async () => {
+    mockGetStrategyManifest.mockReturnValue({
+      name: 'CoreDerivatives',
+      contextRequirements: { core: ['derivatives'] },
+    });
+    mockShouldBackfillDerivativesContextForBacktest.mockReturnValue(true);
+
+    await prepareMarketContextForRun({
+      mode: 'backtest',
+      userName: 'root',
+      projectRoot: '/repo',
+      symbols: ['BTCUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      cacheOnly: false,
+      aiEnabled: false,
+      mlEnabled: false,
+      strategyNames: ['CoreDerivatives'],
+      log: jest.fn(),
+    });
+
+    expect(
+      mockShouldBackfillDerivativesContextForBacktest,
+    ).toHaveBeenCalledWith({
+      aiEnabled: true,
+      cacheOnly: false,
+      mlEnabled: false,
+    });
+    expect(mockBackfillDerivativesContextForBacktest).toHaveBeenCalledTimes(1);
   });
 
   it('routes signals context through live-mode policies', async () => {
@@ -381,5 +576,6 @@ describe('prepareMarketContextForRun', () => {
     expect(mockBackfillDerivativesContextForSignals).not.toHaveBeenCalled();
     expect(mockBackfillBinanceMarketContextForSignals).not.toHaveBeenCalled();
     expect(mockBackfillCoinMarketCapContextForSignals).not.toHaveBeenCalled();
+    expect(mockEnsureMarketContextSchemas).not.toHaveBeenCalled();
   });
 });

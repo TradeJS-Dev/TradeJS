@@ -11,9 +11,13 @@ import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { logger } from '@tradejs/infra/logger';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
+import { configureTimescaleMarketContextSchemaMode } from '@tradejs/infra/timescale';
 import { TestSuite } from '@tradejs/types';
 
 let isProcessing = false;
+
+// The parent process owns schema migrations/backfills before workers are forked.
+configureTimescaleMarketContextSchemaMode('verify');
 
 const resolveTestSuite = async ({
   chunk,

@@ -5,6 +5,7 @@ describe('timescale candle helpers', () => {
     jest.restoreAllMocks();
     delete process.env.PG_POOL_MAX;
     delete process.env.PG_CONNECTION_TIMEOUT_MS;
+    delete process.env.MARKET_CONTEXT_SQL_TIMEOUT_MS;
     delete (global as typeof globalThis & { __pgPool__?: unknown }).__pgPool__;
   });
 
@@ -223,7 +224,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -283,7 +284,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -331,7 +332,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -490,7 +491,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -549,7 +550,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -714,7 +715,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -988,7 +989,7 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
         query,
       })),
     }));
@@ -1030,10 +1031,222 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('destroys the checked-out client when a market-context query times out', async () => {
+    process.env.MARKET_CONTEXT_SQL_TIMEOUT_MS = '5';
+    const release = jest.fn();
+    const client = {
+      query: jest.fn(() => new Promise(() => undefined)),
+      release,
+    };
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue(client),
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await expect(
+      getLatestMarketTradeFlow({
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        atMs: 10_000,
+      }),
+    ).rejects.toMatchObject({ name: 'TimescaleQueryTimeoutError' });
+    expect(release).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it('destroys the checked-out client when a running query is aborted', async () => {
+    const controller = new AbortController();
+    let markReadStarted: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    const release = jest.fn();
+    const clientQuery = jest.fn((sql: string) => {
+      if (sql.includes('unnest($1::text[])')) {
+        return Promise.resolve({ rows: [] });
+      }
+      markReadStarted?.();
+      return new Promise(() => undefined);
+    });
+    const client = { query: clientQuery, release };
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue(client),
+        query: jest.fn(),
+      })),
+    }));
+
+    const {
+      configureTimescaleMarketContextSchemaMode,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+    configureTimescaleMarketContextSchemaMode('verify');
+
+    const pending = getLatestMarketTradeFlow({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      atMs: 10_000,
+      signal: controller.signal,
+    });
+    await readStarted;
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(release).toHaveBeenLastCalledWith(expect.any(Error));
+  });
+
+  it('does not start a market-context SQL statement for an already aborted signal', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const release = jest.fn();
+    const clientQuery = jest.fn((sql: string) =>
+      Promise.resolve({
+        rows: sql.includes('unnest($1::text[])') ? [] : [{ unexpected: true }],
+      }),
+    );
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({ query: clientQuery, release }),
+        query: jest.fn(),
+      })),
+    }));
+
+    const {
+      configureTimescaleMarketContextSchemaMode,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+    configureTimescaleMarketContextSchemaMode('verify');
+
+    await expect(
+      getLatestMarketTradeFlow({
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        atMs: 10_000,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenLastCalledWith(expect.any(Error));
+  });
+
+  it('reports missing tables in worker verify mode before reading data', async () => {
+    const clientQuery = jest.fn((sql: string) =>
+      Promise.resolve({
+        rows: sql.includes('unnest($1::text[])')
+          ? [{ tableName: 'market_breadth' }]
+          : [],
+      }),
+    );
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({
+          query: clientQuery,
+          release: jest.fn(),
+        }),
+        query: jest.fn(),
+      })),
+    }));
+
+    const {
+      configureTimescaleMarketContextSchemaMode,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+    configureTimescaleMarketContextSchemaMode('verify');
+
+    await expect(
+      getLatestMarketTradeFlow({
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        atMs: 10_000,
+      }),
+    ).rejects.toThrow(
+      'Timescale binance schema is not prepared; missing: market_breadth',
+    );
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies each worker schema only once per process', async () => {
+    const clientQuery = jest.fn().mockResolvedValue({ rows: [] });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({
+          query: clientQuery,
+          release: jest.fn(),
+        }),
+        query: jest.fn(),
+      })),
+    }));
+
+    const {
+      configureTimescaleMarketContextSchemaMode,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+    configureTimescaleMarketContextSchemaMode('verify');
+
+    await getLatestMarketTradeFlow({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      atMs: 10_000,
+    });
+    await getLatestMarketTradeFlow({
+      symbol: 'ETHUSDT',
+      interval: '15m',
+      atMs: 20_000,
+    });
+
+    expect(
+      clientQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes('unnest($1::text[])'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('keeps worker-style market-context reads free of schema DDL', async () => {
+    const poolQuery = jest.fn();
+    const clientQuery = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const connect = jest.fn().mockImplementation(async () => ({
+      query: clientQuery,
+      release: jest.fn(),
+    }));
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ connect, query: poolQuery })),
+    }));
+
+    const {
+      configureTimescaleMarketContextSchemaMode,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+    configureTimescaleMarketContextSchemaMode('verify');
+
+    await expect(
+      getLatestMarketTradeFlow({
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        atMs: 10_000,
+      }),
+    ).resolves.toBeNull();
+    expect(poolQuery).not.toHaveBeenCalled();
+    expect(clientQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE'),
+      expect.anything(),
+    );
+  });
+
   it('upserts idempotent Hyperliquid whale events with snapshot identities', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
     jest.doMock('pg', () => ({
-      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
+        query,
+      })),
     }));
     const { upsertHyperliquidWhaleTradeEvents } = await import(
       '@tradejs/infra/timescale'
@@ -1116,7 +1329,10 @@ describe('timescale candle helpers', () => {
       return { rows: [] };
     });
     jest.doMock('pg', () => ({
-      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
+        query,
+      })),
     }));
     const { getHyperliquidWhaleFlowAggregate } = await import(
       '@tradejs/infra/timescale'
@@ -1196,7 +1412,10 @@ describe('timescale candle helpers', () => {
       return { rows: [] };
     });
     jest.doMock('pg', () => ({
-      Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({ query, release: jest.fn() }),
+        query,
+      })),
     }));
     const {
       getHyperliquidWhaleCoverageSeriesRows,

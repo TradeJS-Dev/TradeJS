@@ -923,146 +923,48 @@ export type BaseGateFeaturePrimaryIssue =
   | 'crowded_derivatives';
 
 export interface BaseContextGateFeatures {
-  direction: Direction | null;
   setup?: {
-    riskRatio: number | null;
     rewardToVolatility: number | null;
     stopDistanceAtr: number | null;
     tpDistanceAtr: number | null;
     entryLocation: BaseGateFeatureEntryLocation;
   };
-  scores?: Record<BaseGateFeatureScoreKey, number | null>;
-  confirmations?: {
-    count: number;
-    items: BaseGateFeatureConfirmation[];
-  };
+  scores?: Pick<
+    Record<BaseGateFeatureScoreKey, number | null>,
+    'structure' | 'participation' | 'execution' | 'totalContext'
+  >;
   conflicts?: {
     count: number;
-    items: BaseGateFeatureConflict[];
   };
   risk?: {
-    regimeRisk: BaseGateFeatureRiskLevel;
     liquidityRisk: BaseGateFeatureRiskLevel;
-    volatilityRisk: BaseGateFeatureRiskLevel;
-    crowdingRisk: BaseGateFeatureRiskLevel;
-    chaseRisk: BaseGateFeatureRiskLevel;
   };
   decisionHints?: {
     approveBias: BaseGateFeatureApproveBias;
-    maxReasonableQuality: 1 | 2 | 3 | 4 | 5;
-    needsExtraConfirmation: boolean;
     primaryIssue: BaseGateFeaturePrimaryIssue;
   };
   mtf?: {
-    alignmentForDirection:
-      | 'aligned'
-      | 'against'
-      | 'mixed'
-      | 'neutral'
-      | 'unknown';
     higherTimeframeConflict: boolean | null;
-    h1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
-    h4TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
-    d1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
-    h1RangePosition: number | null;
-    h4VolatilityState: 'compressed' | 'normal' | 'expanded' | 'unknown';
   };
-  volatility: {
+  volatility?: {
     state: 'compressed' | 'normal' | 'expanded' | 'unknown';
-    atrPctZScore: number | null;
     atrPctRankBucket: 'low' | 'normal' | 'high' | 'extreme' | 'unknown';
     bbWidthRankBucket: 'low' | 'normal' | 'high' | 'extreme' | 'unknown';
-    extremeVolatilityRisk: boolean;
-    compressionBreakoutSupport: boolean;
   };
-  structure: {
-    breakoutState: BaseStructureContext['localRange']['breakoutState'];
-    rangePositionBucket: 'low' | 'middle' | 'high' | 'unknown';
-    breakoutWithDirection: boolean | null;
-    failedBreakoutForDirection: boolean | null;
-    liquiditySweepForDirection: boolean | null;
-    nearPointOfControl: boolean | null;
-  };
-  participation: {
-    volumeRel20: number | null;
-    volumeBucket: 'thin' | 'normal' | 'elevated' | 'spike' | 'unknown';
-    deltaBias: 'bull' | 'bear' | 'neutral' | 'unknown';
-    deltaAligned: boolean | null;
-    tradeFlowBuyPressurePct: number | null;
-    tradeFlowAligned: boolean | null;
-    hyperliquidWhaleBuySharePct: number | null;
-    hyperliquidWhaleNetNotionalUsd: number | null;
-    hyperliquidWhaleUniqueCount: number | null;
-    hyperliquidWhaleCoveredCount: number | null;
-    hyperliquidWhaleExpectedCount: number | null;
-    hyperliquidWhaleCoveragePct: number | null;
-    hyperliquidWhaleCoverageSufficient: boolean | null;
-    hyperliquidWhaleNotionalUsd: number | null;
-    hyperliquidWhaleSufficientActivity: boolean | null;
-    hyperliquidWhaleFlowAligned: boolean | null;
-    hyperliquidWhaleFlowStale: boolean | null;
-    referenceTradeFlowBuyPressurePct: number | null;
-    referenceTradeFlowAligned: boolean | null;
+  participation?: {
     volumeStructureAligned: boolean | null;
   };
-  relative: {
-    benchmarkTrendAlignment: BaseRelativeContext['benchmark']['trendAlignment'];
-    benchmarkAligned: boolean | null;
+  relative?: {
     benchmarkConflict: boolean;
-    relativeStrength1h: number | null;
-    relativeStrengthBucket:
-      | 'strong_against'
-      | 'mild_against'
-      | 'neutral'
-      | 'mild_with'
-      | 'strong_with'
-      | 'unknown';
     marketBreadthReturn: number | null;
-    marketBreadthAligned: boolean | null;
     marketBreadthStale: boolean | null;
-    cmcAltLiquidityRegime:
-      | 'alt_friendly'
-      | 'btc_favored'
-      | 'risk_off'
-      | 'neutral'
-      | 'unknown';
-    cmcAltLiquidityAligned: boolean | null;
-    cmcAltLiquidityStale: boolean | null;
-    cmcEthBtcReferenceRegime:
-      | 'btc_led'
-      | 'eth_led'
-      | 'balanced'
-      | 'thin'
-      | 'unknown';
-    cmcEthBtcAligned: boolean | null;
-    cmcEthBtcStale: boolean | null;
-    cmcExchangeLiquidityRegime: CmcExchangeLiquidityRegime;
     cmcExchangeLiquidityAligned: boolean | null;
     cmcExchangeLiquidityStale: boolean | null;
     cmcExchangeLiquidityVolumeChange24hPct: number | null;
     cmcFearGreedValue: number | null;
     cmcFearGreedValueChange24h: number | null;
-    cmcFearGreedRegime: CmcFearGreedRegime;
-    cmcFearGreedAligned: boolean | null;
     cmcFearGreedStale: boolean | null;
-    cmcIndexRegime: NonNullable<
-      BaseRelativeContext['cmcIndexes']
-    >['indexRegime'];
-    cmcIndexAligned: boolean | null;
-    cmcIndexStale: boolean | null;
     cmc20ToCmc100RatioChange24hPct: number | null;
-    targetVsBtcRatioReturn24h: number | null;
-    targetVsBtcAlpha24h: number | null;
-    targetVsBtcBeta20: number | null;
-    targetVsBtcCorrelation20: number | null;
-    targetVsBtcRatioTrend: 'up' | 'down' | 'flat' | 'unknown';
-    targetVsBtcAligned: boolean | null;
-    targetVsEthRatioReturn24h: number | null;
-    targetVsEthAlpha24h: number | null;
-    targetVsEthBeta20: number | null;
-    targetVsEthCorrelation20: number | null;
-    targetVsEthRatioTrend: 'up' | 'down' | 'flat' | 'unknown';
-    targetVsEthAligned: boolean | null;
     btcAltRegime:
       | 'btc_lead'
       | 'alt_lead'
@@ -1071,14 +973,8 @@ export interface BaseContextGateFeatures {
       | 'mixed'
       | 'neutral'
       | 'unknown';
-    btcAltRegimeAligned: boolean | null;
     btcAltRegimeStale: boolean | null;
     btcVsAltReturn24h: number | null;
-    btcTurnoverShare24h: number | null;
-  };
-  execution: {
-    venueSpreadZScore: number | null;
-    venueSpreadSeverity: 'normal' | 'elevated' | 'wide' | 'unknown';
   };
 }
 

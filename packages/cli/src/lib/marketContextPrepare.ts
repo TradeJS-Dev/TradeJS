@@ -1,5 +1,14 @@
 import chalk from 'chalk';
-import type { Interval, MarketUniverse } from '@tradejs/types';
+import { ensureMarketContextSchemas } from '@tradejs/infra/timescale';
+import {
+  ensureStrategyPluginsLoaded,
+  getStrategyManifest,
+} from '@tradejs/node/registry';
+import type {
+  Interval,
+  MarketUniverse,
+  StrategyMarketContextSource,
+} from '@tradejs/types';
 import {
   backfillBinanceMarketContextForBacktest,
   backfillBinanceMarketContextForReplay,
@@ -44,6 +53,21 @@ export type PrepareMarketContextForRunParams = {
   log?: (message: string) => void;
 };
 
+export type MarketContextRequirementReason = 'ai' | 'core' | 'ml' | 'runtime';
+
+export type MarketContextRunRequirements = Record<
+  StrategyMarketContextSource,
+  {
+    read: boolean;
+    backfill: boolean;
+    requiredBy: MarketContextRequirementReason[];
+  }
+>;
+
+const uniqueReasons = (reasons: MarketContextRequirementReason[]) => [
+  ...new Set(reasons),
+];
+
 export const shouldPrepareDerivativesContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
@@ -55,6 +79,10 @@ export const shouldPrepareDerivativesContextForRun = (
     return shouldBackfillDerivativesContextForSignals({
       cacheOnly: params.cacheOnly,
     });
+  }
+
+  if (params.mode === 'backtest' && !params.aiEnabled && !params.mlEnabled) {
+    return false;
   }
 
   return shouldBackfillDerivativesContextForBacktest({
@@ -72,6 +100,7 @@ export const shouldPrepareBinanceMarketContextForRun = (
 ) => {
   if (params.universe === 'tradfi') return false;
   if (params.mode === 'backtest') {
+    if (!params.aiEnabled && !params.mlEnabled) return false;
     return shouldBackfillBinanceMarketContextForBacktest({
       aiEnabled: Boolean(params.aiEnabled),
       cacheOnly: params.cacheOnly,
@@ -98,6 +127,7 @@ export const shouldPrepareCoinMarketCapContextForRun = (
 ) => {
   if (params.universe === 'tradfi') return false;
   if (params.mode === 'backtest') {
+    if (!params.aiEnabled && !params.mlEnabled) return false;
     return shouldBackfillCoinMarketCapContextForBacktest({
       aiEnabled: Boolean(params.aiEnabled),
       cacheOnly: params.cacheOnly,
@@ -126,10 +156,10 @@ export const shouldPrepareHyperliquidWhaleContextForRun = (
     | 'universe'
     | 'strategyNames'
   >,
+  coreContextSources: readonly StrategyMarketContextSource[] = [],
 ) => {
-  const strategyRequiresContext = params.strategyNames?.includes(
-    'HyperliquidConsensus',
-  );
+  const strategyRequiresContext =
+    coreContextSources.includes('hyperliquidWhales');
   if (
     params.universe === 'tradfi' ||
     params.mode === 'signals' ||
@@ -146,6 +176,86 @@ export const shouldPrepareHyperliquidWhaleContextForRun = (
   if (['0', 'false', 'no', 'off'].includes(configured)) return false;
   if (strategyRequiresContext) return true;
   return ['1', 'true', 'yes', 'on'].includes(configured);
+};
+
+const resolveCoreContextSources = async (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    'projectRoot' | 'strategyNames'
+  >,
+) => {
+  const strategyNames = [...new Set(params.strategyNames ?? [])];
+  if (!strategyNames.length) return [] as StrategyMarketContextSource[];
+  await ensureStrategyPluginsLoaded(params.projectRoot);
+  return [
+    ...new Set(
+      strategyNames.flatMap(
+        (strategyName) =>
+          getStrategyManifest(strategyName, params.projectRoot)
+            ?.contextRequirements?.core ?? [],
+      ),
+    ),
+  ];
+};
+
+export const resolveMarketContextRunRequirements = async (
+  params: PrepareMarketContextForRunParams,
+): Promise<MarketContextRunRequirements> => {
+  const coreContextSources = await resolveCoreContextSources(params);
+  const paramsWithCoreDemand = (source: StrategyMarketContextSource) =>
+    coreContextSources.includes(source)
+      ? { ...params, aiEnabled: true }
+      : params;
+  const isCrypto = params.universe !== 'tradfi';
+  const capturesPayload = Boolean(params.aiEnabled || params.mlEnabled);
+  const runtimeReadsContext = params.mode !== 'backtest';
+  const reasonsFor = (
+    source: StrategyMarketContextSource,
+  ): MarketContextRequirementReason[] =>
+    uniqueReasons([
+      ...(coreContextSources.includes(source) ? (['core'] as const) : []),
+      ...(params.aiEnabled ? (['ai'] as const) : []),
+      ...(params.mlEnabled ? (['ml'] as const) : []),
+      ...(runtimeReadsContext ? (['runtime'] as const) : []),
+    ]);
+  const readsStandardContext =
+    isCrypto && (capturesPayload || runtimeReadsContext);
+  const readsHyperliquid =
+    isCrypto &&
+    (readsStandardContext || coreContextSources.includes('hyperliquidWhales'));
+
+  return {
+    binance: {
+      read: readsStandardContext || coreContextSources.includes('binance'),
+      backfill: shouldPrepareBinanceMarketContextForRun(
+        paramsWithCoreDemand('binance'),
+      ),
+      requiredBy: reasonsFor('binance'),
+    },
+    coinmarketcap: {
+      read:
+        readsStandardContext || coreContextSources.includes('coinmarketcap'),
+      backfill: shouldPrepareCoinMarketCapContextForRun(
+        paramsWithCoreDemand('coinmarketcap'),
+      ),
+      requiredBy: reasonsFor('coinmarketcap'),
+    },
+    derivatives: {
+      read: readsStandardContext || coreContextSources.includes('derivatives'),
+      backfill: shouldPrepareDerivativesContextForRun(
+        paramsWithCoreDemand('derivatives'),
+      ),
+      requiredBy: reasonsFor('derivatives'),
+    },
+    hyperliquidWhales: {
+      read: readsHyperliquid,
+      backfill: shouldPrepareHyperliquidWhaleContextForRun(
+        params,
+        coreContextSources,
+      ),
+      requiredBy: reasonsFor('hyperliquidWhales'),
+    },
+  };
 };
 
 const resolveCoinMarketCapBackfillForMode = (mode: MarketContextRunMode) =>
@@ -212,8 +322,24 @@ export const prepareMarketContextForRun = async (
     });
   const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
     runTimedOperation(label, operation, log);
+  const requirements = await resolveMarketContextRunRequirements(params);
+  const readableSources = (
+    Object.entries(requirements) as Array<
+      [
+        StrategyMarketContextSource,
+        MarketContextRunRequirements[StrategyMarketContextSource],
+      ]
+    >
+  )
+    .filter(([, requirement]) => requirement.read)
+    .map(([source]) => source);
+  if (readableSources.length) {
+    await timeOperation('market context schema ensure', () =>
+      ensureMarketContextSchemas(readableSources),
+    );
+  }
 
-  if (shouldPrepareDerivativesContextForRun(params)) {
+  if (requirements.derivatives.backfill) {
     await timeOperation('derivatives context backfill', () =>
       (params.mode === 'signals'
         ? backfillDerivativesContextForSignals
@@ -223,7 +349,7 @@ export const prepareMarketContextForRun = async (
     );
   }
 
-  if (shouldPrepareHyperliquidWhaleContextForRun(params)) {
+  if (requirements.hyperliquidWhales.backfill) {
     await timeOperation('hyperliquid whale context backfill', () =>
       backfillHyperliquidWhaleContext({
         startMs: params.preloadStartMs ?? params.startMs,
@@ -235,7 +361,7 @@ export const prepareMarketContextForRun = async (
     );
   }
 
-  if (shouldPrepareBinanceMarketContextForRun(params)) {
+  if (requirements.binance.backfill) {
     await timeOperation('binance market context backfill', () => {
       const backfill =
         params.mode === 'backtest'
@@ -248,11 +374,12 @@ export const prepareMarketContextForRun = async (
     });
   }
 
-  if (shouldPrepareCoinMarketCapContextForRun(params)) {
+  if (requirements.coinmarketcap.backfill) {
     await timeOperation('coinmarketcap historical context backfill', () =>
       resolveCoinMarketCapBackfillForMode(params.mode)(
         buildCoinMarketCapBackfillParams(params),
       ),
     );
   }
+  return requirements;
 };

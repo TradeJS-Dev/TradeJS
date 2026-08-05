@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, QueryResultRow } from 'pg';
 import {
   KlineChartData,
   DerivativesInterval,
@@ -81,6 +81,27 @@ let spreadSchemaReadyPromise: Promise<void> | null = null;
 let binanceMarketSchemaReadyPromise: Promise<void> | null = null;
 let hyperliquidWhaleSchemaReadyPromise: Promise<void> | null = null;
 
+export type TimescaleMarketContextSource =
+  | 'binance'
+  | 'coinmarketcap'
+  | 'derivatives'
+  | 'hyperliquidWhales';
+
+export type TimescaleMarketContextQueryOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+let marketContextSchemaMode: 'ensure' | 'verify' = 'ensure';
+const verifiedMarketContextSchemas = new Set<TimescaleMarketContextSource>();
+
+export const configureTimescaleMarketContextSchemaMode = (
+  mode: 'ensure' | 'verify',
+) => {
+  marketContextSchemaMode = mode;
+  verifiedMarketContextSchemas.clear();
+};
+
 export const closeTimescalePool = async (): Promise<void> => {
   const pool = global.__pgPool__;
   if (!pool) {
@@ -98,6 +119,7 @@ export const closeTimescalePool = async (): Promise<void> => {
   spreadSchemaReadyPromise = null;
   binanceMarketSchemaReadyPromise = null;
   hyperliquidWhaleSchemaReadyPromise = null;
+  verifiedMarketContextSchemas.clear();
   await pool.end();
 };
 
@@ -107,6 +129,86 @@ const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
 const HYPERLIQUID_WHALE_SCHEMA_LOCK_KEY = 610004;
 const PG_SAFE_MAX_BIND_PARAMS = 30_000;
+
+const resolveMarketContextQueryTimeoutMs = (override?: number) => {
+  if (Number.isFinite(override) && Number(override) > 0) {
+    return Math.floor(Number(override));
+  }
+  const configured = Number(process.env.MARKET_CONTEXT_SQL_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : 30_000;
+};
+
+const createMarketContextQueryError = (
+  name: 'AbortError' | 'TimescaleQueryTimeoutError',
+  message: string,
+) => {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+};
+
+const queryMarketContext = async <TRow extends QueryResultRow>(
+  text: string,
+  values: unknown[],
+  options: TimescaleMarketContextQueryOptions = {},
+) => {
+  const pool = getPool();
+  const client = await pool.connect();
+  const timeoutMs = resolveMarketContextQueryTimeoutMs(options.timeoutMs);
+  let released = false;
+  let rejectCancellation: ((error: Error) => void) | undefined;
+
+  const release = (error?: Error) => {
+    if (released) return;
+    released = true;
+    client.release(error);
+  };
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  });
+  const cancel = (error: Error) => {
+    release(error);
+    rejectCancellation?.(error);
+  };
+  const onAbort = () =>
+    cancel(
+      createMarketContextQueryError(
+        'AbortError',
+        'Timescale market-context query aborted',
+      ),
+    );
+  const timer = setTimeout(
+    () =>
+      cancel(
+        createMarketContextQueryError(
+          'TimescaleQueryTimeoutError',
+          `Timescale market-context query exceeded ${timeoutMs}ms`,
+        ),
+      ),
+    timeoutMs,
+  );
+  timer.unref?.();
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    if (options.signal?.aborted) {
+      const error = createMarketContextQueryError(
+        'AbortError',
+        'Timescale market-context query aborted',
+      );
+      release(error);
+      throw error;
+    }
+    const query = client.query<TRow>(text, values);
+    return await Promise.race([query, cancellation]);
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', onAbort);
+    release();
+  }
+};
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -302,7 +404,7 @@ export async function upsertCandles(rows: CandleRow[]) {
   }
 }
 
-const ensureDerivativesSchema = async () => {
+export const ensureDerivativesSchema = async () => {
   if (derivativesSchemaReady) return;
   if (derivativesSchemaReadyPromise) {
     await derivativesSchemaReadyPromise;
@@ -439,7 +541,7 @@ const ensureSpreadSchema = async () => {
   await spreadSchemaReadyPromise;
 };
 
-const ensureBinanceMarketSchema = async () => {
+export const ensureBinanceMarketSchema = async () => {
   if (binanceMarketSchemaReady) return;
   if (binanceMarketSchemaReadyPromise) {
     await binanceMarketSchemaReadyPromise;
@@ -730,7 +832,7 @@ const ensureBinanceMarketSchema = async () => {
   await binanceMarketSchemaReadyPromise;
 };
 
-const ensureHyperliquidWhaleSchema = async () => {
+export const ensureHyperliquidWhaleSchema = async () => {
   if (hyperliquidWhaleSchemaReady) return;
   if (hyperliquidWhaleSchemaReadyPromise) {
     await hyperliquidWhaleSchemaReadyPromise;
@@ -959,6 +1061,87 @@ const ensureHyperliquidWhaleSchema = async () => {
   });
 
   await hyperliquidWhaleSchemaReadyPromise;
+};
+
+/**
+ * CoinMarketCap tables currently share the historical market-context migration
+ * with the Binance tables. Keeping a source-specific entrypoint lets process
+ * composition own schema preparation without exposing that storage detail.
+ */
+export const ensureCoinMarketCapContextSchema = async () =>
+  ensureBinanceMarketSchema();
+
+const ensureMarketContextSchema = async (
+  source: TimescaleMarketContextSource,
+) => {
+  switch (source) {
+    case 'binance':
+      return ensureBinanceMarketSchema();
+    case 'coinmarketcap':
+      return ensureCoinMarketCapContextSchema();
+    case 'derivatives':
+      return ensureDerivativesSchema();
+    case 'hyperliquidWhales':
+      return ensureHyperliquidWhaleSchema();
+  }
+};
+
+const MARKET_CONTEXT_SCHEMA_TABLES: Record<
+  TimescaleMarketContextSource,
+  readonly string[]
+> = {
+  binance: ['market_trade_flow', 'market_breadth'],
+  coinmarketcap: [
+    'market_global_context',
+    'market_reference_asset_context',
+    'market_cmc_exchange_liquidity_context',
+    'market_cmc_fear_greed_context',
+    'market_cmc_index_context',
+  ],
+  derivatives: ['derivatives_market'],
+  hyperliquidWhales: [
+    'hyperliquid_whale_flow',
+    'hyperliquid_whale_coverage_1m',
+  ],
+};
+
+const verifyMarketContextSchema = async (
+  source: TimescaleMarketContextSource,
+) => {
+  if (verifiedMarketContextSchemas.has(source)) return;
+  const tables = MARKET_CONTEXT_SCHEMA_TABLES[source];
+  const result = await queryMarketContext<{ tableName: string | null }>(
+    `
+      SELECT table_name AS "tableName"
+      FROM unnest($1::text[]) AS requested(table_name)
+      WHERE to_regclass(requested.table_name) IS NULL
+    `,
+    [tables],
+  );
+  if (result.rows.length) {
+    throw new Error(
+      `Timescale ${source} schema is not prepared; missing: ${result.rows
+        .map((row) => row.tableName)
+        .filter(Boolean)
+        .join(', ')}`,
+    );
+  }
+  verifiedMarketContextSchemas.add(source);
+};
+
+const prepareMarketContextSchemaForRead = async (
+  source: TimescaleMarketContextSource,
+) =>
+  marketContextSchemaMode === 'verify'
+    ? verifyMarketContextSchema(source)
+    : ensureMarketContextSchema(source);
+
+export const ensureMarketContextSchemas = async (
+  sources: Iterable<TimescaleMarketContextSource>,
+) => {
+  for (const source of new Set(sources)) {
+    await ensureMarketContextSchema(source);
+  }
 };
 
 export async function upsertDerivatives(rows: DerivativesRow[]) {
@@ -1427,6 +1610,8 @@ export async function getDerivativesWindow(params: {
   intervals: DerivativesInterval[];
   endMs: number;
   lookbackMs: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<Partial<Record<DerivativesInterval, DerivativesRow[]>>> {
   const { symbol, intervals, endMs, lookbackMs } = params;
   const normalizedSymbol = String(symbol || '')
@@ -1438,9 +1623,8 @@ export async function getDerivativesWindow(params: {
     return {};
   }
 
-  await ensureDerivativesSchema();
+  await prepareMarketContextSchemaForRead('derivatives');
   const startMs = endMs - Math.max(0, lookbackMs);
-  const pool = getPool();
   const sql = `
     SELECT symbol, interval, ts, open_interest, funding_rate, liq_long, liq_short, liq_total, source
     FROM derivatives_market
@@ -1450,12 +1634,11 @@ export async function getDerivativesWindow(params: {
       AND ts <= to_timestamp($4/1000.0)
     ORDER BY interval ASC, ts ASC
   `;
-  const res = await pool.query(sql, [
-    normalizedSymbol,
-    normalizedIntervals,
-    startMs,
-    endMs,
-  ]);
+  const res = await queryMarketContext(
+    sql,
+    [normalizedSymbol, normalizedIntervals, startMs, endMs],
+    params,
+  );
   const rowsByInterval: Partial<Record<DerivativesInterval, DerivativesRow[]>> =
     {};
 
@@ -2903,10 +3086,11 @@ export async function getLatestMarketTradeFlow(params: {
   interval: MarketFeatureInterval;
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<MarketFeatureAsOf<MarketTradeFlowRow> | null> {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const res = await pool.query(
+  await prepareMarketContextSchemaForRead('binance');
+  const res = await queryMarketContext(
     `
       SELECT
         symbol,
@@ -2929,6 +3113,7 @@ export async function getLatestMarketTradeFlow(params: {
       LIMIT 1
     `,
     [params.symbol.toUpperCase(), params.interval, params.atMs],
+    params,
   );
   const row = res.rows[0] as MarketTradeFlowRow | undefined;
   if (!row) return null;
@@ -3237,9 +3422,11 @@ export async function getHyperliquidWhaleCoverageSeriesRows(params: {
   toMs: number;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<HyperliquidWhaleCoverageSeriesRow[]> {
-  await ensureHyperliquidWhaleSchema();
-  const result = await getPool().query(
+  await prepareMarketContextSchemaForRead('hyperliquidWhales');
+  const result = await queryMarketContext(
     `
       SELECT
         ts,
@@ -3261,6 +3448,7 @@ export async function getHyperliquidWhaleCoverageSeriesRows(params: {
       params.fromMs,
       params.toMs,
     ],
+    params,
   );
   return result.rows.map((row) => ({
     ts: new Date(row.ts),
@@ -3294,9 +3482,11 @@ export async function getHyperliquidWhaleFlowSeriesRows(params: {
   toMs: number;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<HyperliquidWhaleFlowSeriesRow[]> {
-  await ensureHyperliquidWhaleSchema();
-  const result = await getPool().query(
+  await prepareMarketContextSchemaForRead('hyperliquidWhales');
+  const result = await queryMarketContext(
     `
       SELECT
         ts,
@@ -3330,6 +3520,7 @@ export async function getHyperliquidWhaleFlowSeriesRows(params: {
       params.fromMs,
       params.toMs,
     ],
+    params,
   );
   return result.rows.map((row) => ({
     ts: new Date(row.ts),
@@ -3401,11 +3592,13 @@ export async function getHyperliquidWhaleFlowAggregate(params: {
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<HyperliquidWhaleFlowAggregate | null> {
-  await ensureHyperliquidWhaleSchema();
+  await prepareMarketContextSchemaForRead('hyperliquidWhales');
   const intervalMs = HYPERLIQUID_CONTEXT_INTERVAL_MS[params.interval];
   const expectedBuckets = Math.ceil(intervalMs / 60_000);
-  const res = await getPool().query(
+  const res = await queryMarketContext(
     `
       WITH coverage_rows AS (
         SELECT *
@@ -3521,6 +3714,7 @@ export async function getHyperliquidWhaleFlowAggregate(params: {
       intervalMs,
       HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
     ],
+    params,
   );
   const row = res.rows[0];
   if (
@@ -3619,10 +3813,11 @@ export async function getLatestMarketBreadth(params: {
   interval: MarketFeatureInterval;
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<MarketFeatureAsOf<MarketBreadthRow> | null> {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const res = await pool.query(
+  await prepareMarketContextSchemaForRead('binance');
+  const res = await queryMarketContext(
     `
       SELECT
         universe,
@@ -3662,6 +3857,7 @@ export async function getLatestMarketBreadth(params: {
       LIMIT 1
     `,
     [params.universe, params.interval, params.atMs],
+    params,
   );
   const row = res.rows[0] as MarketBreadthRow | undefined;
   if (!row) return null;
@@ -3678,6 +3874,8 @@ export async function getLatestMarketGlobalContext(params: {
   source?: MarketGlobalContextRow['source'];
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<
   | (MarketFeatureAsOf<MarketGlobalContextRow> & {
       btcDominanceChange24hPct: number | null;
@@ -3687,10 +3885,9 @@ export async function getLatestMarketGlobalContext(params: {
     })
   | null
 > {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
+  await prepareMarketContextSchemaForRead('coinmarketcap');
   const source = params.source ?? 'coinmarketcap_global';
-  const res = await pool.query(
+  const res = await queryMarketContext(
     `
       SELECT
         source,
@@ -3720,11 +3917,12 @@ export async function getLatestMarketGlobalContext(params: {
       LIMIT 1
     `,
     [source, params.atMs],
+    params,
   );
   const row = res.rows[0] as MarketGlobalContextRow | undefined;
   if (!row) return null;
 
-  const previousRes = await pool.query(
+  const previousRes = await queryMarketContext(
     `
       SELECT
         btc_dominance_pct AS "btcDominancePct",
@@ -3738,6 +3936,7 @@ export async function getLatestMarketGlobalContext(params: {
       LIMIT 1
     `,
     [source, row.ts],
+    params,
   );
   const previousDominance =
     previousRes.rows[0]?.btcDominancePct == null
@@ -3892,6 +4091,8 @@ export async function getLatestMarketReferenceAssetContexts(params: {
   interval?: MarketReferenceAssetContextRow['interval'];
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<Map<string, MarketFeatureAsOf<MarketReferenceAssetContextRow>>> {
   const source = params.source ?? 'coinmarketcap_reference_asset';
   const interval = params.interval ?? '1d';
@@ -3908,9 +4109,8 @@ export async function getLatestMarketReferenceAssetContexts(params: {
   >();
   if (!symbols.length) return rows;
 
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const res = await pool.query(
+  await prepareMarketContextSchemaForRead('coinmarketcap');
+  const res = await queryMarketContext(
     `
       SELECT DISTINCT ON (symbol)
         source,
@@ -3936,6 +4136,7 @@ export async function getLatestMarketReferenceAssetContexts(params: {
       ORDER BY symbol ASC, ts DESC
     `,
     [source, symbols, interval, params.atMs],
+    params,
   );
 
   for (const row of res.rows as MarketReferenceAssetContextRow[]) {
@@ -3956,17 +4157,18 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
   interval?: MarketCmcExchangeLiquidityContextRow['interval'];
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<
   | (MarketFeatureAsOf<MarketCmcExchangeLiquidityContextRow> & {
       totalVolumeChange24hPct: number | null;
     })
   | null
 > {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
+  await prepareMarketContextSchemaForRead('coinmarketcap');
   const source = params.source ?? 'coinmarketcap_exchange_liquidity';
   const interval = params.interval ?? '1d';
-  const res = await pool.query(
+  const res = await queryMarketContext(
     `
       SELECT
         source,
@@ -3990,11 +4192,12 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
       LIMIT 1
     `,
     [source, interval, params.atMs],
+    params,
   );
   const row = res.rows[0] as MarketCmcExchangeLiquidityContextRow | undefined;
   if (!row) return null;
 
-  const previousRes = await pool.query(
+  const previousRes = await queryMarketContext(
     `
       SELECT total_volume_usd AS "totalVolumeUsd"
       FROM market_cmc_exchange_liquidity_context
@@ -4005,6 +4208,7 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
       LIMIT 1
     `,
     [source, interval, row.ts],
+    params,
   );
   const currentTotal =
     row.totalVolumeUsd == null ? null : Number(row.totalVolumeUsd);
@@ -4032,6 +4236,8 @@ export async function getLatestMarketCmcIndexContexts(params: {
   interval?: MarketCmcIndexContextRow['interval'];
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<
   Map<
     MarketCmcIndexContextRow['indexSlug'],
@@ -4059,9 +4265,8 @@ export async function getLatestMarketCmcIndexContexts(params: {
   >();
   if (!indexSlugs.length) return rows;
 
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
-  const res = await pool.query(
+  await prepareMarketContextSchemaForRead('coinmarketcap');
+  const res = await queryMarketContext(
     `
       SELECT DISTINCT ON (index_slug)
         source,
@@ -4085,10 +4290,11 @@ export async function getLatestMarketCmcIndexContexts(params: {
       ORDER BY index_slug ASC, ts DESC
     `,
     [source, indexSlugs, interval, params.atMs],
+    params,
   );
 
   for (const row of res.rows as MarketCmcIndexContextRow[]) {
-    const previousRes = await pool.query(
+    const previousRes = await queryMarketContext(
       `
         SELECT value
         FROM market_cmc_index_context
@@ -4100,6 +4306,7 @@ export async function getLatestMarketCmcIndexContexts(params: {
         LIMIT 1
       `,
       [source, row.indexSlug, interval, row.ts],
+      params,
     );
     const currentValue = row.value == null ? null : Number(row.value);
     const previousValue =
@@ -4127,6 +4334,8 @@ export async function getLatestMarketCmcFearGreedContext(params: {
   interval?: MarketCmcFearGreedContextRow['interval'];
   atMs: number;
   maxAgeMs?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<
   | (MarketFeatureAsOf<MarketCmcFearGreedContextRow> & {
       valueChange24h: number | null;
@@ -4134,11 +4343,10 @@ export async function getLatestMarketCmcFearGreedContext(params: {
     })
   | null
 > {
-  await ensureBinanceMarketSchema();
-  const pool = getPool();
+  await prepareMarketContextSchemaForRead('coinmarketcap');
   const source = params.source ?? 'coinmarketcap_fear_greed';
   const interval = params.interval ?? '1d';
-  const res = await pool.query(
+  const res = await queryMarketContext(
     `
       SELECT
         source,
@@ -4159,11 +4367,12 @@ export async function getLatestMarketCmcFearGreedContext(params: {
       LIMIT 1
     `,
     [source, interval, params.atMs],
+    params,
   );
   const row = res.rows[0] as MarketCmcFearGreedContextRow | undefined;
   if (!row) return null;
 
-  const previousRes = await pool.query(
+  const previousRes = await queryMarketContext(
     `
       SELECT
         value::int AS value,
@@ -4176,8 +4385,9 @@ export async function getLatestMarketCmcFearGreedContext(params: {
       LIMIT 1
     `,
     [source, interval, row.ts],
+    params,
   );
-  const previous7dRes = await pool.query(
+  const previous7dRes = await queryMarketContext(
     `
       SELECT value::int AS value
       FROM market_cmc_fear_greed_context
@@ -4188,6 +4398,7 @@ export async function getLatestMarketCmcFearGreedContext(params: {
       LIMIT 1
     `,
     [source, interval, row.ts],
+    params,
   );
   const previousValue =
     previousRes.rows[0]?.value == null

@@ -20,6 +20,7 @@ import {
   getHyperliquidWhaleRegistrySnapshot,
   resolveHyperliquidPerpFromSignalSymbol,
 } from '../hyperliquidWhaleUniverse';
+import { isMarketContextCancellationError } from './marketContextErrors';
 
 const MAX_CACHE_ENTRIES = 2_048;
 const MAX_COVERAGE_SERIES_CACHE_ENTRIES = 20;
@@ -105,6 +106,7 @@ const setBoundedCache = (
     if (oldestKey != null) contextCache.delete(oldestKey);
   }
   contextCache.set(key, value);
+  void value.catch(() => contextCache.delete(key));
 };
 
 const setBoundedSeriesCache = <T>(
@@ -118,6 +120,7 @@ const setBoundedSeriesCache = <T>(
     if (oldestKey != null) cache.delete(oldestKey);
   }
   cache.set(key, value);
+  void value.catch(() => cache.delete(key));
 };
 
 const uniqueAddressCount = (
@@ -274,6 +277,7 @@ const loadHyperliquidWhaleFlowAggregateFromSeries = async (params: {
   maxAgeMs: number;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
+  abortSignal?: AbortSignal;
 }) => {
   const chunkStartMs =
     Math.floor(params.decisionTimeMs / SERIES_CHUNK_MS) * SERIES_CHUNK_MS;
@@ -293,6 +297,7 @@ const loadHyperliquidWhaleFlowAggregateFromSeries = async (params: {
       toMs,
       universeFingerprint: params.universeFingerprint,
       whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+      ...(params.abortSignal ? { signal: params.abortSignal } : {}),
     });
     setBoundedSeriesCache(
       coverageSeriesCache,
@@ -311,6 +316,7 @@ const loadHyperliquidWhaleFlowAggregateFromSeries = async (params: {
       toMs,
       universeFingerprint: params.universeFingerprint,
       whaleRegistryFingerprint: params.whaleRegistryFingerprint,
+      ...(params.abortSignal ? { signal: params.abortSignal } : {}),
     });
     setBoundedSeriesCache(
       flowSeriesCache,
@@ -391,6 +397,7 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
   marketInterval?: MarketFeatureInterval;
   maxAgeMs?: number;
   useSeriesCache?: boolean;
+  abortSignal?: AbortSignal;
 }): Promise<BaseHyperliquidWhaleFlowContext | null> => {
   if (
     !(params.enabled ?? isHyperliquidWhaleContextEnabled(params.env)) ||
@@ -429,6 +436,7 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
         maxAgeMs,
         universeFingerprint: universe.fingerprint,
         whaleRegistryFingerprint: whales.fingerprint,
+        abortSignal: params.abortSignal,
       });
     } else {
       let pending = contextCache.get(cacheKey);
@@ -440,6 +448,7 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
           maxAgeMs,
           universeFingerprint: universe.fingerprint,
           whaleRegistryFingerprint: whales.fingerprint,
+          ...(params.abortSignal ? { signal: params.abortSignal } : {}),
         });
         setBoundedCache(cacheKey, pending);
       }
@@ -448,6 +457,9 @@ export const loadHyperliquidWhaleFlowContext = async (params: {
     if (!row) return null;
     return toBaseHyperliquidWhaleFlowContext(row, minimumCoveragePct);
   } catch (error) {
+    if (isMarketContextCancellationError(error, params.abortSignal)) {
+      throw error;
+    }
     hyperliquidWhaleContextUnavailable = true;
     logger.warn(
       'Hyperliquid whale context disabled after Timescale read failure: %s',
@@ -463,6 +475,7 @@ export const enrichSignalWithHyperliquidWhaleContext = async (params: {
   enabled?: boolean;
   interval?: MarketFeatureInterval;
   maxAgeMs?: number;
+  abortSignal?: AbortSignal;
 }): Promise<boolean> => {
   const { signal, env } = params;
   if (
@@ -481,6 +494,7 @@ export const enrichSignalWithHyperliquidWhaleContext = async (params: {
     enabled: params.enabled,
     marketInterval: params.interval,
     maxAgeMs: params.maxAgeMs,
+    abortSignal: params.abortSignal,
   });
   if (!hyperliquidWhales) return false;
 

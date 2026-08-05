@@ -229,19 +229,17 @@ const makeXrpEthShortRecoveryBaseContext = ({
     },
   });
 
-const makeXrpOiReferenceRecoveryBaseContext = ({
+const makeXrpOiMarketStateRecoveryBaseContext = ({
   approveBias = 'reject',
   xrpOpenInterest15m = 250_000_000,
   volatilityState = 'expanded',
   cmcBtcDominancePct = 58.45,
-  marketBreadthSymbolsCount = 27,
   bnbFundingChange1h = 0,
 }: {
   approveBias?: 'support' | 'neutral' | 'reject';
   xrpOpenInterest15m?: number | null;
   volatilityState?: string | null;
   cmcBtcDominancePct?: number | null;
-  marketBreadthSymbolsCount?: number | null;
   bnbFundingChange1h?: number | null;
 } = {}) =>
   withApprovalBreadthContext({
@@ -252,9 +250,6 @@ const makeXrpOiReferenceRecoveryBaseContext = ({
     relative: {
       cmcGlobal: {
         btcDominancePct: cmcBtcDominancePct,
-      },
-      marketBreadth: {
-        symbolsCount: marketBreadthSymbolsCount,
       },
     },
     derivatives: {
@@ -618,7 +613,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     },
   );
 
-  it('allows the rounded XRP-OI CMC/BNB/breadth recovery pocket for LONG', () => {
+  it('allows the XRP-OI CMC/BNB market-state recovery for LONG without using breadth sample count', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -634,7 +629,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 100.5,
         },
-        makeXrpOiReferenceRecoveryBaseContext(),
+        makeXrpOiMarketStateRecoveryBaseContext(),
       ),
       analysis: {
         direction: 'LONG',
@@ -652,7 +647,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     ).toBeUndefined();
   });
 
-  it('keeps the rounded XRP-OI CMC/BNB/breadth recovery pocket blocked for SHORT', () => {
+  it('keeps high-XRP reject bias blocked for SHORT outside the XRP/ETH recovery', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -668,7 +663,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           channelWidthPct: 6,
           currentPrice: 99.5,
         },
-        makeXrpOiReferenceRecoveryBaseContext(),
+        makeXrpOiMarketStateRecoveryBaseContext(),
       ),
       analysis: {
         direction: 'SHORT',
@@ -688,12 +683,11 @@ describe('adaptiveTrendChannelAiAdapter', () => {
 
   it.each([
     ['BTC dominance is too high', { cmcBtcDominancePct: 58.46 }],
-    ['market breadth is too narrow', { marketBreadthSymbolsCount: 26 }],
     ['BNB funding change is negative', { bnbFundingChange1h: -0.000001 }],
     ['BNB funding change is missing', { bnbFundingChange1h: null }],
     ['volatility is not expanded', { volatilityState: 'normal' }],
   ])(
-    'keeps high-XRP reject bias blocked when the CMC/BNB/breadth recovery pocket misses: %s',
+    'keeps high-XRP reject bias blocked when market-state recovery misses: %s',
     (_label, overrides) => {
       const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
         signal: {} as any,
@@ -710,7 +704,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             channelWidthPct: 6,
             currentPrice: 100.5,
           },
-          makeXrpOiReferenceRecoveryBaseContext(overrides),
+          makeXrpOiMarketStateRecoveryBaseContext(overrides),
         ),
         analysis: {
           direction: 'LONG',
@@ -1159,7 +1153,6 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     expect(prompt).toContain('btcVsAltReturn24h=-0.03');
     expect(prompt).toContain('volatilityState=expanded');
     expect(prompt).toContain('cmcBtcDominancePct=58.45');
-    expect(prompt).toContain('marketBreadthSymbolsCount=27');
     expect(prompt).toContain('marketBreadthTop5Unchanged=1');
     expect(prompt).toContain('sweepHigh20=false');
     expect(prompt).toContain('bnbFundingChange1h=0');

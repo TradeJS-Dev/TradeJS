@@ -260,8 +260,18 @@ export interface StrategyHookAfterPlaceOrderContext {
   order: StrategyHookOrderContext;
 }
 
+export type StrategyMarketContextSource =
+  | 'binance'
+  | 'coinmarketcap'
+  | 'derivatives'
+  | 'hyperliquidWhales';
+
 export interface StrategyManifest {
   name: string;
+  contextRequirements?: {
+    /** Market context that must be available before strategy core evaluation. */
+    core?: readonly StrategyMarketContextSource[];
+  };
   policyProfiles?: readonly StrategyPolicyProfile[];
   defaultPolicyProfileId?: string;
   entryRuntimeDefaults?: {

@@ -170,11 +170,9 @@ describe('strategyHelpers/binanceMarketContext', () => {
         },
       },
       gateFeatures: expect.objectContaining({
-        participation: expect.objectContaining({
-          tradeFlowAligned: true,
-        }),
         relative: expect.objectContaining({
-          marketBreadthAligned: true,
+          marketBreadthReturn: 0.01,
+          marketBreadthStale: false,
         }),
       }),
     });
@@ -235,9 +233,42 @@ describe('strategyHelpers/binanceMarketContext', () => {
       },
     });
     expect(
-      signal.additionalIndicators.baseContext.gateFeatures.participation
-        .referenceTradeFlowAligned,
+      signal.additionalIndicators.baseContext.gateFeatures.participation,
+    ).not.toHaveProperty('referenceTradeFlowAligned');
+  });
+
+  it('forwards cancellation and retries after a transient SQL timeout', async () => {
+    const controller = new AbortController();
+    const timeoutError = new Error('query timeout');
+    timeoutError.name = 'TimescaleQueryTimeoutError';
+    mockGetLatestMarketTradeFlow.mockRejectedValueOnce(timeoutError);
+
+    await expect(
+      enrichSignalWithBinanceMarketContext({
+        signal: makeSignal(),
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(timeoutError);
+    await expect(
+      enrichSignalWithBinanceMarketContext({
+        signal: makeSignal(),
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      mockGetLatestMarketTradeFlow.mock.calls.every(
+        ([params]) => params.signal === controller.signal,
+      ),
     ).toBe(true);
+    expect(
+      mockGetLatestMarketBreadth.mock.calls.every(
+        ([params]) => params.signal === controller.signal,
+      ),
+    ).toBe(true);
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 
   it('does not attach rows newer than the signal timestamp', async () => {

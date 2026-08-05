@@ -34,10 +34,7 @@ import {
 } from '@tradejs/infra/ml';
 import { logger } from '@tradejs/infra/logger';
 import { buildAiPayload } from './ai';
-import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
-import { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
-import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
-import { enrichSignalWithHyperliquidWhaleContext } from './strategyHelpers/hyperliquidWhaleContext';
+import { enrichSignalWithMarketContextStages } from './strategyHelpers/marketContextStages';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -1343,35 +1340,15 @@ export const testing: TestingBox = async ({
     const shouldCapturePayload =
       signal && typeof signal !== 'string' && signal.signalId && (ml || ai);
     if (shouldCapturePayload) {
-      await withTimeout(
-        'binance market context',
-        enrichSignalWithBinanceMarketContext({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-        }),
-      );
-      await withTimeout(
-        'coinmarketcap context',
-        enrichSignalWithCoinMarketCapContext({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-          enabled: Boolean(ml || ai),
-        }),
-      );
-      await withTimeout(
-        'derivatives context',
-        enrichSignalWithDerivativesContext({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-        }),
-      );
-      await withTimeout(
-        'hyperliquid whale context',
-        enrichSignalWithHyperliquidWhaleContext({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-        }),
-      );
+      await enrichSignalWithMarketContextStages({
+        signal: signal as Signal,
+        env: 'BACKTEST',
+        coinMarketCapEnabled: true,
+        onStageStart: (stage) => {
+          activeStageStartedAt = Date.now();
+          emitProgress(`${stage} context`, { force: true });
+        },
+      });
     }
     if (ml && signal && typeof signal !== 'string' && signal.signalId) {
       const payload = buildMlPayload({
@@ -1854,35 +1831,15 @@ export const testingGroupInSharedCandleLoop = async (
         signal.signalId &&
         (test.ml || test.ai);
       if (shouldCapturePayload) {
-        await withTimeout(
-          'binance market context',
-          enrichSignalWithBinanceMarketContext({
-            signal: signal as Signal,
-            env: 'BACKTEST',
-          }),
-        );
-        await withTimeout(
-          'coinmarketcap context',
-          enrichSignalWithCoinMarketCapContext({
-            signal: signal as Signal,
-            env: 'BACKTEST',
-            enabled: Boolean(test.ml || test.ai),
-          }),
-        );
-        await withTimeout(
-          'derivatives context',
-          enrichSignalWithDerivativesContext({
-            signal: signal as Signal,
-            env: 'BACKTEST',
-          }),
-        );
-        await withTimeout(
-          'hyperliquid whale context',
-          enrichSignalWithHyperliquidWhaleContext({
-            signal: signal as Signal,
-            env: 'BACKTEST',
-          }),
-        );
+        await enrichSignalWithMarketContextStages({
+          signal: signal as Signal,
+          env: 'BACKTEST',
+          coinMarketCapEnabled: true,
+          onStageStart: (stage) => {
+            activeStageStartedAt = Date.now();
+            emitProgress(`${stage} context`, { force: true });
+          },
+        });
       }
       if (test.ml && signal && typeof signal !== 'string' && signal.signalId) {
         const payload = buildMlPayload({

@@ -849,14 +849,9 @@ const buildAdaptiveMomentumRibbonContext = (
     referenceTradeFlow?.tradeFlowBySymbol,
   );
   const btcReferenceTradeFlow = getRecord(referenceTradeFlowBySymbol?.BTCUSDT);
-  const baseMarketBreadth = getRecord(relative?.marketBreadth);
+  const marketBreadth = getRecord(relative?.marketBreadth);
+  const relativeExecution = getRecord(relative?.execution);
   const structureAcceptance = getRecord(structure?.acceptance);
-  const marketContext = getRecord(additional?.marketContext);
-  const marketContextRelative = getRecord(marketContext?.relative);
-  const marketContextBreadth = getRecord(marketContextRelative?.marketBreadth);
-  const marketBreadth = baseMarketBreadth ?? marketContextBreadth;
-  const marketExecution = getRecord(marketContext?.execution);
-  const spreadContext = getRecord(marketExecution?.binanceCoinbaseSpread);
   const primarySession = getPrimarySession(signal);
   const sessionIsOverlap = regimeSession?.isOverlap === true;
   const fundingWindowNearby = regimeSession?.fundingWindowNearby === true;
@@ -890,19 +885,30 @@ const buildAdaptiveMomentumRibbonContext = (
   );
   const volumeRel20 = toFiniteNumberOrNull(volumeContext?.volumeRel20);
   const effortVsResult = toFiniteNumberOrNull(volumeContext?.effortVsResult);
-  const spreadBps = toFiniteNumberOrNull(spreadContext?.bps);
+  const venueSpread = toFiniteNumberOrNull(relativeExecution?.venueSpread);
+  const spreadBps =
+    venueSpread == null
+      ? null
+      : Math.round(
+          (Math.round(venueSpread * 100_000_000) / 100_000_000) * 1_000_000,
+        ) / 100;
+  const spreadAbsBps = spreadBps == null ? null : Math.abs(spreadBps);
   const spreadBias =
-    spreadContext?.bias === 'coinbase_premium' ||
-    spreadContext?.bias === 'binance_premium' ||
-    spreadContext?.bias === 'flat'
-      ? spreadContext.bias
-      : null;
+    spreadBps == null
+      ? null
+      : spreadAbsBps != null && spreadAbsBps < 1
+        ? 'flat'
+        : spreadBps > 0
+          ? 'coinbase_premium'
+          : 'binance_premium';
   const spreadSeverity =
-    spreadContext?.severity === 'normal' ||
-    spreadContext?.severity === 'elevated' ||
-    spreadContext?.severity === 'wide'
-      ? spreadContext.severity
-      : null;
+    spreadAbsBps == null
+      ? null
+      : spreadAbsBps >= 20
+        ? 'wide'
+        : spreadAbsBps >= 5
+          ? 'elevated'
+          : 'normal';
   const signalRangeAtrRatio = getSignalRangeAtrRatio(candle, raw);
   const stopDistanceAtr = toFiniteNumberOrNull(
     gateFeaturesSetup?.stopDistanceAtr,

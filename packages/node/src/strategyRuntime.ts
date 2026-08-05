@@ -30,10 +30,8 @@ import {
   updatePositionProtection,
   validateEntryProtectionAtArrival,
 } from './strategyHelpers/runtime';
-import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
-import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
-import { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
 import { loadHyperliquidWhaleFlowContext } from './strategyHelpers/hyperliquidWhaleContext';
+import { enrichSignalWithMarketContextStages } from './strategyHelpers/marketContextStages';
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
@@ -1665,6 +1663,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       sharedReplayKey: indicatorSharedReplayKey,
       useBtcReference: universe === 'crypto',
     });
+    const coreContextRequirements = new Set(
+      strategyManifest?.contextRequirements?.core ?? [],
+    );
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,
       symbol,
@@ -1683,6 +1684,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         interval: decisionInterval,
       }) => {
         if (!baseContext) return undefined;
+        if (!coreContextRequirements.has('hyperliquidWhales')) {
+          return baseContext;
+        }
         const hyperliquidWhales = await loadHyperliquidWhaleFlowContext({
           symbol: decisionSymbol,
           interval: decisionInterval,
@@ -2178,17 +2182,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       let ai: StrategyHookAiContext | undefined;
       if (signal) {
         try {
-          await enrichSignalWithBinanceMarketContext({
+          await enrichSignalWithMarketContextStages({
             signal,
             env,
-          });
-          await enrichSignalWithCoinMarketCapContext({
-            signal,
-            env,
-          });
-          await enrichSignalWithDerivativesContext({
-            signal,
-            env,
+            includeHyperliquidWhales: false,
           });
           quality = await enrichSignalWithAi({
             signal,

@@ -30,6 +30,7 @@ const setupRuntimeParityModule = async (
   };
   const getConnectorCreatorByName = jest.fn(async () => async () => connector);
   const logger = {
+    log: jest.fn(),
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
@@ -64,6 +65,11 @@ const setupRuntimeParityModule = async (
   jest.doMock('@tradejs/infra/logger', () => ({
     __esModule: true,
     logger,
+  }));
+
+  jest.doMock('@tradejs/infra/timescale', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale'),
+    ensureMarketContextSchemas: jest.fn(async () => undefined),
   }));
 
   jest.doMock('@tradejs/infra/redis', () => {

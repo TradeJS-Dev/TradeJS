@@ -7,6 +7,7 @@ const mockLoadTradejsConfig = jest.fn();
 const mockGetActiveRuntimeTrade = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
+const mockLoadHyperliquidWhaleFlowContext = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -128,6 +129,11 @@ jest.mock('../strategyHelpers/coinMarketCapContext', () => ({
   enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
 }));
 
+jest.mock('../strategyHelpers/hyperliquidWhaleContext', () => ({
+  loadHyperliquidWhaleFlowContext: (...args: unknown[]) =>
+    mockLoadHyperliquidWhaleFlowContext(...args),
+}));
+
 jest.mock('../runtimeJournal', () => ({
   getActiveRuntimeTrade: (...args: unknown[]) =>
     mockGetActiveRuntimeTrade(...args),
@@ -156,6 +162,7 @@ jest.mock('../strategy/manifests', () => {
 });
 
 import { createStrategyRuntime } from '../strategyRuntime';
+import { createStrategyAPI } from '@tradejs/core/strategies';
 import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
@@ -353,7 +360,96 @@ describe('strategyRuntime', () => {
       status: 'active',
     });
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
+    mockLoadHyperliquidWhaleFlowContext.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
+  });
+
+  it('does not load core market context without a manifest requirement', async () => {
+    await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
+    const createStrategyApiMock = createStrategyAPI as jest.Mock;
+    const loadDecisionBaseContext = createStrategyApiMock.mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext as (params: any) => Promise<any>;
+    const baseContext = { participation: { volume: {} } };
+
+    await expect(
+      loadDecisionBaseContext({
+        baseContext,
+        candle: { timestamp: 1_000 },
+        symbol: 'ETHUSDT',
+        interval: '15',
+      }),
+    ).resolves.toBe(baseContext);
+    expect(mockLoadHyperliquidWhaleFlowContext).not.toHaveBeenCalled();
+  });
+
+  it('loads and merges manifest-required Hyperliquid context before core evaluation', async () => {
+    const hyperliquidWhales = {
+      source: 'hyperliquid_user_fills',
+      interval: '15m',
+      symbol: 'BTC',
+    };
+    mockLoadHyperliquidWhaleFlowContext.mockResolvedValue(hyperliquidWhales);
+
+    await makeRuntime(
+      () => ({ kind: 'skip', code: 'NOOP' }),
+      { ENV: 'BACKTEST' },
+      { strategyName: 'HyperliquidConsensus' },
+    );
+    const createStrategyApiMock = createStrategyAPI as jest.Mock;
+    const loadDecisionBaseContext = createStrategyApiMock.mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext as (params: any) => Promise<any>;
+    const baseContext = { participation: { volume: { volumeRel20: 1 } } };
+
+    await expect(
+      loadDecisionBaseContext({
+        baseContext,
+        candle: { timestamp: 1_000 },
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    ).resolves.toEqual({
+      participation: {
+        volume: { volumeRel20: 1 },
+        hyperliquidWhales,
+      },
+    });
+    expect(mockLoadHyperliquidWhaleFlowContext).toHaveBeenCalledWith({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      timestamp: 1_000,
+      env: 'BACKTEST',
+      useSeriesCache: true,
+    });
+  });
+
+  it('preserves core base context when required external data is absent', async () => {
+    await makeRuntime(
+      () => ({ kind: 'skip', code: 'NOOP' }),
+      {},
+      { strategyName: 'HyperliquidConsensus' },
+    );
+    const createStrategyApiMock = createStrategyAPI as jest.Mock;
+    const loadDecisionBaseContext = createStrategyApiMock.mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext as (params: any) => Promise<any>;
+    const baseContext = { participation: {} };
+
+    await expect(
+      loadDecisionBaseContext({
+        baseContext,
+        candle: { timestamp: 2_000 },
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    ).resolves.toBe(baseContext);
+    await expect(
+      loadDecisionBaseContext({
+        baseContext: undefined,
+        candle: { timestamp: 2_000 },
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    ).resolves.toBeUndefined();
+    expect(mockLoadHyperliquidWhaleFlowContext).toHaveBeenCalledTimes(1);
   });
 
   it('initializes indicators on the fly without cached restore state', async () => {

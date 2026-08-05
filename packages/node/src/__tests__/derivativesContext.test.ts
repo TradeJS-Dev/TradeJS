@@ -216,15 +216,8 @@ describe('strategyHelpers/derivativesContext', () => {
         .priceOiDivergenceType,
     ).toBe('price_up_oi_up');
     expect(
-      enrichedSignal.additionalIndicators.baseContext.gateFeatures,
-    ).toMatchObject({
-      scores: {
-        derivatives: expect.any(Number),
-      },
-      confirmations: {
-        items: expect.arrayContaining(['derivatives_aligned']),
-      },
-    });
+      enrichedSignal.additionalIndicators.baseContext.gateFeatures.scores,
+    ).not.toHaveProperty('derivatives');
   });
 
   it('derives a complete 1h context from four 15m source rows', async () => {
@@ -660,5 +653,34 @@ describe('strategyHelpers/derivativesContext', () => {
 
     expect(mockGetDerivativesWindow).toHaveBeenCalledTimes(6);
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards cancellation and stays available after a transient SQL timeout', async () => {
+    const controller = new AbortController();
+    const timeoutError = new Error('query timeout');
+    timeoutError.name = 'TimescaleQueryTimeoutError';
+    mockGetDerivativesWindow.mockRejectedValueOnce(timeoutError);
+
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: { ...signal },
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(timeoutError);
+    await expect(
+      enrichSignalWithDerivativesContext({
+        signal: { ...signal },
+        env: 'BACKTEST',
+        abortSignal: controller.signal,
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      mockGetDerivativesWindow.mock.calls.every(
+        ([params]) => params.signal === controller.signal,
+      ),
+    ).toBe(true);
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 });

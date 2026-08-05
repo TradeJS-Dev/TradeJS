@@ -92,7 +92,6 @@ Additional AdaptiveTrendChannel context:
 - h4VolatilityState=${context.h4VolatilityState ?? 'n/a'}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - cmcBtcDominancePct=${String(context.cmcBtcDominancePct ?? 'n/a')}
-- marketBreadthSymbolsCount=${String(context.marketBreadthSymbolsCount ?? 'n/a')}
 - marketBreadthTop5Unchanged=${String(context.marketBreadthTop5Unchanged ?? 'n/a')}
 - sweepHigh20=${String(context.sweepHigh20 ?? 'n/a')}
 - targetLiqImbalance1h=${String(context.targetLiqImbalance1h ?? 'n/a')}
@@ -118,7 +117,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
 - Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
 - Thin participation, missing shared-context confirmation, or missing liquidation-shock recovery evidence should downgrade the setup.
-- A high-XRP-OI reject bias should remain blocked unless a narrow XRP/ETH reference SHORT recovery setup or expanded LONG-only CMC/BNB/breadth recovery setup is present.
+- A high-XRP-OI reject bias should remain blocked unless a narrow XRP/ETH reference SHORT recovery or expanded LONG-only CMC/BNB market-state recovery is present.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

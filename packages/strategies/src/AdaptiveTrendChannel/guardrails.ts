@@ -18,7 +18,6 @@ export type AdaptiveTrendChannelGuardrailContext =
     cmcExchangeLiquidityAligned: boolean | null;
     cmcExchangeLiquidityStale: boolean | null;
     cmcBtcDominancePct: number | null;
-    marketBreadthSymbolsCount: number | null;
     marketBreadthTop5Unchanged: number | null;
     sweepHigh20: boolean | null;
     targetLiqImbalance1h: number | null;
@@ -75,7 +74,6 @@ const MAX_REFERENCE_SHORT_RECOVERY_ETH_LIQ_IMBALANCE_1H = -0.99;
 const MAX_XRP_SHORT_RECOVERY_FUNDING_Z_SCORE_1H = -1.8;
 const MIN_XRP_OI_REJECT_BIAS_BLOCK_15M = 250_000_000;
 const MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT = 58.45;
-const MIN_XRP_OI_RECOVERY_MARKET_BREADTH_SYMBOLS = 27;
 const MIN_XRP_OI_RECOVERY_BNB_FUNDING_CHANGE_1H = 0;
 const MAX_APPROVAL_MARKET_BREADTH_TOP5_UNCHANGED = 1;
 const MAX_APPROVAL_RSI = 75;
@@ -138,9 +136,6 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
       : null;
   const cmcBtcDominancePct = asFiniteNumber(
     baseContext?.relative?.cmcGlobal?.btcDominancePct,
-  );
-  const marketBreadthSymbolsCount = asFiniteNumber(
-    baseContext?.relative?.marketBreadth?.symbolsCount,
   );
   const marketBreadthTop5Unchanged = asFiniteNumber(
     baseContext?.relative?.marketBreadths?.top5?.unchanged,
@@ -243,11 +238,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     volatilityState === 'expanded' &&
     cmcBtcDominancePct != null &&
     cmcBtcDominancePct <= MAX_XRP_OI_RECOVERY_BTC_DOMINANCE_PCT &&
-    marketBreadthSymbolsCount != null &&
-    marketBreadthSymbolsCount >= MIN_XRP_OI_RECOVERY_MARKET_BREADTH_SYMBOLS &&
     bnbFundingChange1h != null &&
     bnbFundingChange1h >= MIN_XRP_OI_RECOVERY_BNB_FUNDING_CHANGE_1H;
-
   if (
     xrpOpenInterest15m != null &&
     xrpOpenInterest15m >= MIN_XRP_OI_REJECT_BIAS_BLOCK_15M &&
@@ -342,7 +334,6 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     cmcExchangeLiquidityAligned,
     cmcExchangeLiquidityStale,
     cmcBtcDominancePct,
-    marketBreadthSymbolsCount,
     marketBreadthTop5Unchanged,
     sweepHigh20,
     targetLiqImbalance1h,

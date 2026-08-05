@@ -20,6 +20,7 @@ import type {
   DerivativesTargetDerivedContext,
   Signal,
 } from '@tradejs/types';
+import { isMarketContextCancellationError } from './marketContextErrors';
 
 const STORED_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 const CONTEXT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
@@ -271,6 +272,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
   signal: Signal;
   env: string;
   enabled?: boolean;
+  abortSignal?: AbortSignal;
 }): Promise<boolean> => {
   const { signal, env, enabled = isDerivativesContextEnabled(env) } = params;
   if (
@@ -297,6 +299,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
           intervals: STORED_INTERVALS,
           endMs: derivativesEndMs,
           lookbackMs,
+          ...(params.abortSignal ? { signal: params.abortSignal } : {}),
         });
 
         return [
@@ -336,6 +339,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
             intervals: STORED_INTERVALS,
             endMs: derivativesEndMs,
             lookbackMs,
+            ...(params.abortSignal ? { signal: params.abortSignal } : {}),
           });
           const context = buildDerivativesContext({
             symbol: targetSymbol,
@@ -379,6 +383,9 @@ export const enrichSignalWithDerivativesContext = async (params: {
     refreshSignalBaseContextGateFeatures(signal);
     return true;
   } catch (error) {
+    if (isMarketContextCancellationError(error, params.abortSignal)) {
+      throw error;
+    }
     derivativesContextUnavailable = true;
     logger.warn(
       'Derivatives context disabled after Timescale read failure: %s',

@@ -217,7 +217,7 @@ Input payload structure:
   • \`baseContext.relative\`: BTC/ETH relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinMarketCap historical global/exchange/index context when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
-  • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer \`setup\`, \`scores\`, \`confirmations\`, \`conflicts\`, \`risk\`, and \`decisionHints\` for quick gate checks before inspecting raw nested context.
+  • \`baseContext.gateFeatures\`: compact direction-aware fields derived from baseContext; prefer \`setup\`, \`scores\`, \`conflicts\`, \`risk\`, \`decisionHints\`, \`mtf\`, \`volatility\`, \`participation\`, and \`relative\` for quick gate checks before inspecting raw nested context.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
   • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.

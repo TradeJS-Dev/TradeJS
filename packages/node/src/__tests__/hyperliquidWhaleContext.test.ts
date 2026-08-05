@@ -155,13 +155,9 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       entryNetNotionalUsd: 600_000,
       entryLongSharePct: 0.875,
     });
-    expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({
-      confirmations: { items: ['hyperliquid_whales_aligned'] },
-      participation: {
-        hyperliquidWhaleFlowAligned: true,
-        hyperliquidWhaleBuySharePct: 0.8,
-      },
-    });
+    expect(
+      signal.additionalIndicators.baseContext.gateFeatures,
+    ).not.toHaveProperty('participation.hyperliquidWhaleFlowAligned');
   });
 
   it('coalesces repeated lookups for the same replay candle', async () => {
@@ -174,6 +170,35 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
       env: 'BACKTEST',
     });
     expect(mockGetHyperliquidWhaleFlowAggregate).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards cancellation and retries after a transient SQL timeout', async () => {
+    const controller = new AbortController();
+    const timeoutError = new Error('query timeout');
+    timeoutError.name = 'TimescaleQueryTimeoutError';
+    mockGetHyperliquidWhaleFlowAggregate.mockRejectedValueOnce(timeoutError);
+    const params = {
+      symbol: 'BTCUSDT',
+      interval: '15' as const,
+      timestamp,
+      env: 'BACKTEST',
+      abortSignal: controller.signal,
+    };
+
+    await expect(loadHyperliquidWhaleFlowContext(params)).rejects.toBe(
+      timeoutError,
+    );
+    await expect(
+      loadHyperliquidWhaleFlowContext(params),
+    ).resolves.toMatchObject({ symbol: 'BTC' });
+
+    expect(mockGetHyperliquidWhaleFlowAggregate).toHaveBeenCalledTimes(2);
+    expect(
+      mockGetHyperliquidWhaleFlowAggregate.mock.calls.every(
+        ([callParams]) => callParams.signal === controller.signal,
+      ),
+    ).toBe(true);
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 
   it('loads replay context in cached time-series chunks', async () => {
@@ -223,11 +248,7 @@ describe('strategyHelpers/hyperliquidWhaleContext', () => {
     ).toMatchObject({ coveragePct: 0.79, coverageSufficient: false });
     expect(
       signal.additionalIndicators.baseContext.gateFeatures?.participation,
-    ).toMatchObject({
-      hyperliquidWhaleCoverageSufficient: false,
-      hyperliquidWhaleFlowAligned: null,
-      hyperliquidWhaleNotionalUsd: null,
-    });
+    ).not.toHaveProperty('hyperliquidWhaleCoverageSufficient');
   });
 
   it('does not attach context outside the fixed top-30 universe', async () => {

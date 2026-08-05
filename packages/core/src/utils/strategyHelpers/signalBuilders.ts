@@ -26,6 +26,7 @@ import {
   BaseGateFeatureConfirmation,
   BaseGateFeatureConflict,
   BaseGateFeatureEntryLocation,
+  BaseGateFeatureScoreKey,
   StrategySignalPriceParams,
 } from '@tradejs/types';
 import { calculateRiskRatio, getDirectionalTpSlPrices } from './market';
@@ -173,25 +174,6 @@ const toRankBucket = (
   if (value >= 80) return 'high';
   if (value <= 20) return 'low';
   return 'normal';
-};
-
-const toRangePositionBucket = (
-  value: number | null,
-): 'low' | 'middle' | 'high' | 'unknown' => {
-  if (value == null) return 'unknown';
-  if (value <= 0.2) return 'low';
-  if (value >= 0.8) return 'high';
-  return 'middle';
-};
-
-const toVolumeBucket = (
-  value: number | null,
-): 'thin' | 'normal' | 'elevated' | 'spike' | 'unknown' => {
-  if (value == null) return 'unknown';
-  if (value < 0.8) return 'thin';
-  if (value < 1.5) return 'normal';
-  if (value < 3) return 'elevated';
-  return 'spike';
 };
 
 const toVenueSpreadSeverity = (
@@ -371,7 +353,6 @@ export const buildBaseContextGateFeatures = ({
   const atrPctZScore = asFiniteNumberOrNull(volatility?.atrPctZScore);
   const breakoutState = localRange?.breakoutState ?? 'unknown';
   const rangePosition20 = asFiniteNumberOrNull(localRange?.rangePosition20);
-  const rangePositionBucket = toRangePositionBucket(rangePosition20);
   const breakoutWithDirection = toDirectionalAlignment({
     direction,
     bullValue: 'above_high_level',
@@ -600,11 +581,6 @@ export const buildBaseContextGateFeatures = ({
     targetVsBtc?.ratioReturn24h,
   );
   const targetVsBtcAlpha24h = asFiniteNumberOrNull(targetVsBtc?.alphaVsBtc24h);
-  const targetVsBtcBeta20 = asFiniteNumberOrNull(targetVsBtc?.betaToBtc20);
-  const targetVsBtcCorrelation20 = asFiniteNumberOrNull(
-    targetVsBtc?.correlationToBtc20,
-  );
-  const targetVsBtcRatioTrend = targetVsBtc?.ratioTrend ?? 'unknown';
   const targetVsBtcDirectionValue =
     targetVsBtcRatioReturn24h ?? targetVsBtcAlpha24h;
   const targetVsBtcAligned =
@@ -617,11 +593,6 @@ export const buildBaseContextGateFeatures = ({
     targetVsEth?.ratioReturn24h,
   );
   const targetVsEthAlpha24h = asFiniteNumberOrNull(targetVsEth?.alphaVsEth24h);
-  const targetVsEthBeta20 = asFiniteNumberOrNull(targetVsEth?.betaToEth20);
-  const targetVsEthCorrelation20 = asFiniteNumberOrNull(
-    targetVsEth?.correlationToEth20,
-  );
-  const targetVsEthRatioTrend = targetVsEth?.ratioTrend ?? 'unknown';
   const targetVsEthDirectionValue =
     targetVsEthRatioReturn24h ?? targetVsEthAlpha24h;
   const targetVsEthAligned =
@@ -646,9 +617,6 @@ export const buildBaseContextGateFeatures = ({
   const btcVsAltReturn24h = asFiniteNumberOrNull(
     btcAltRegime?.btcVsAltReturn24h,
   );
-  const btcTurnoverShare24h = asFiniteNumberOrNull(
-    btcAltRegime?.btcTurnoverShare24h,
-  );
   const venueSpreadZScore = asFiniteNumberOrNull(execution?.venueSpreadZScore);
   const venueSpreadSeverity = toVenueSpreadSeverity(venueSpreadZScore);
   const higherTimeframeConflict =
@@ -658,10 +626,6 @@ export const buildBaseContextGateFeatures = ({
         mtfAlignmentForDirection === 'mixed';
   const extremeVolatilityRisk =
     Math.abs(atrPctZScore ?? 0) >= 2 || atrPctRankBucket === 'extreme';
-  const compressionBreakoutSupport =
-    (volatility?.state === 'compressed' || bbWidthRankBucket === 'low') &&
-    breakoutState !== 'inside_range' &&
-    breakoutState !== 'unknown';
   const benchmarkConflict =
     benchmarkAligned === false || relativeStrengthBucket.endsWith('_against');
   const derivativesSummary = baseContext.derivatives?.summary;
@@ -678,9 +642,6 @@ export const buildBaseContextGateFeatures = ({
       : direction === 'SHORT'
         ? derivativesRiskFlags.includes('crowded_short')
         : false;
-  const derivativesCrowdedAny =
-    derivativesRiskFlags.includes('crowded_long') ||
-    derivativesRiskFlags.includes('crowded_short');
   const atr = asFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
   const currentPrice = asFiniteNumberOrNull(prices?.currentPrice);
   const takeProfitPrice = asFiniteNumberOrNull(prices?.takeProfitPrice);
@@ -824,7 +785,7 @@ export const buildBaseContextGateFeatures = ({
     'derivatives_against',
   );
   pushWhen(conflicts, derivativesCrowdedForDirection, 'derivatives_crowded');
-  const scores: NonNullable<BaseContextGateFeatures['scores']> = {
+  const scores: Record<BaseGateFeatureScoreKey, number | null> = {
     structure: scoreEvidence([
       breakoutWithDirection,
       failedBreakoutForDirection == null
@@ -875,13 +836,6 @@ export const buildBaseContextGateFeatures = ({
     scores.execution,
     scores.derivatives,
   ]);
-  const volatilityRisk = extremeVolatilityRisk
-    ? 'high'
-    : atrPctRankBucket === 'high' || bbWidthRankBucket === 'high'
-      ? 'medium'
-      : atrPctRankBucket === 'unknown' && bbWidthRankBucket === 'unknown'
-        ? 'unknown'
-        : 'low';
   const liquidityRisk =
     venueSpreadSeverity === 'wide' || cmcExchangeLiquidityAligned === false
       ? 'high'
@@ -889,35 +843,6 @@ export const buildBaseContextGateFeatures = ({
         ? 'medium'
         : venueSpreadSeverity === 'unknown' &&
             cmcExchangeLiquidityAligned == null
-          ? 'unknown'
-          : 'low';
-  const regimeRisk =
-    higherTimeframeConflict === true
-      ? 'high'
-      : mtfAlignmentForDirection === 'neutral' ||
-          mtfAlignmentForDirection === 'unknown'
-        ? 'medium'
-        : 'low';
-  const crowdingRisk = derivativesCrowdedForDirection
-    ? 'high'
-    : derivativesCrowdedAny
-      ? 'medium'
-      : derivativesSummary
-        ? 'low'
-        : 'unknown';
-  const chaseRisk =
-    (direction === 'LONG' &&
-      rangePositionBucket === 'high' &&
-      breakoutWithDirection !== true) ||
-    (direction === 'SHORT' &&
-      rangePositionBucket === 'low' &&
-      breakoutWithDirection !== true)
-      ? 'high'
-      : (tpDistanceAtr != null && tpDistanceAtr < 1) ||
-          rangePositionBucket === 'high' ||
-          rangePositionBucket === 'low'
-        ? 'medium'
-        : rangePositionBucket === 'unknown'
           ? 'unknown'
           : 'low';
   const primaryIssue = derivativesCrowdedForDirection
@@ -943,9 +868,6 @@ export const buildBaseContextGateFeatures = ({
               : (scores.structure ?? 100) < 45
                 ? 'weak_structure'
                 : 'none';
-  const needsExtraConfirmation =
-    conflicts.length > 0 ||
-    (scores.totalContext != null && scores.totalContext < 60);
   const approveBias =
     conflicts.length >= 3 ||
     primaryIssue === 'crowded_derivatives' ||
@@ -955,143 +877,55 @@ export const buildBaseContextGateFeatures = ({
       : confirmations.length >= 3 && conflicts.length === 0
         ? 'support'
         : 'neutral';
-  const maxReasonableQuality =
-    approveBias === 'reject'
-      ? 2
-      : conflicts.length >= 2 || needsExtraConfirmation
-        ? 3
-        : approveBias === 'support'
-          ? 5
-          : 4;
-
   return {
-    direction,
     setup: {
-      riskRatio: asFiniteNumberOrNull(prices?.riskRatio),
       rewardToVolatility: tpDistanceAtr,
       stopDistanceAtr,
       tpDistanceAtr,
       entryLocation,
     },
-    scores,
-    confirmations: {
-      count: confirmations.length,
-      items: confirmations,
+    scores: {
+      structure: scores.structure,
+      participation: scores.participation,
+      execution: scores.execution,
+      totalContext: scores.totalContext,
     },
     conflicts: {
       count: conflicts.length,
-      items: conflicts,
     },
     risk: {
-      regimeRisk,
       liquidityRisk,
-      volatilityRisk,
-      crowdingRisk,
-      chaseRisk,
     },
     decisionHints: {
       approveBias,
-      maxReasonableQuality,
-      needsExtraConfirmation,
       primaryIssue,
     },
     mtf: {
-      alignmentForDirection: mtfAlignmentForDirection,
       higherTimeframeConflict,
-      h1TrendBias: mtfSummary?.h1TrendBias ?? 'unknown',
-      h4TrendBias: mtfSummary?.h4TrendBias ?? 'unknown',
-      d1TrendBias: mtfSummary?.d1TrendBias ?? 'unknown',
-      h1RangePosition: asFiniteNumberOrNull(mtfSummary?.h1RangePosition),
-      h4VolatilityState: mtfSummary?.h4VolatilityState ?? 'unknown',
     },
     volatility: {
       state: volatility?.state ?? 'unknown',
-      atrPctZScore,
       atrPctRankBucket,
       bbWidthRankBucket,
-      extremeVolatilityRisk,
-      compressionBreakoutSupport,
-    },
-    structure: {
-      breakoutState,
-      rangePositionBucket,
-      breakoutWithDirection,
-      failedBreakoutForDirection,
-      liquiditySweepForDirection,
-      nearPointOfControl,
     },
     participation: {
-      volumeRel20,
-      volumeBucket: toVolumeBucket(volumeRel20),
-      deltaBias,
-      deltaAligned,
-      tradeFlowBuyPressurePct,
-      tradeFlowAligned,
-      hyperliquidWhaleBuySharePct,
-      hyperliquidWhaleNetNotionalUsd,
-      hyperliquidWhaleUniqueCount,
-      hyperliquidWhaleCoveredCount,
-      hyperliquidWhaleExpectedCount,
-      hyperliquidWhaleCoveragePct,
-      hyperliquidWhaleCoverageSufficient,
-      hyperliquidWhaleNotionalUsd,
-      hyperliquidWhaleSufficientActivity,
-      hyperliquidWhaleFlowAligned,
-      hyperliquidWhaleFlowStale,
-      referenceTradeFlowBuyPressurePct,
-      referenceTradeFlowAligned,
       volumeStructureAligned,
     },
     relative: {
-      benchmarkTrendAlignment,
-      benchmarkAligned,
       benchmarkConflict,
-      relativeStrength1h,
-      relativeStrengthBucket,
       marketBreadthReturn,
-      marketBreadthAligned,
       marketBreadthStale:
         typeof marketBreadth?.stale === 'boolean' ? marketBreadth.stale : null,
-      cmcAltLiquidityRegime,
-      cmcAltLiquidityAligned,
-      cmcAltLiquidityStale,
-      cmcEthBtcReferenceRegime,
-      cmcEthBtcAligned,
-      cmcEthBtcStale,
-      cmcExchangeLiquidityRegime,
       cmcExchangeLiquidityAligned,
       cmcExchangeLiquidityStale,
       cmcExchangeLiquidityVolumeChange24hPct,
       cmcFearGreedValue,
       cmcFearGreedValueChange24h,
-      cmcFearGreedRegime,
-      cmcFearGreedAligned,
       cmcFearGreedStale,
-      cmcIndexRegime,
-      cmcIndexAligned,
-      cmcIndexStale,
       cmc20ToCmc100RatioChange24hPct,
-      targetVsBtcRatioReturn24h,
-      targetVsBtcAlpha24h,
-      targetVsBtcBeta20,
-      targetVsBtcCorrelation20,
-      targetVsBtcRatioTrend,
-      targetVsBtcAligned,
-      targetVsEthRatioReturn24h,
-      targetVsEthAlpha24h,
-      targetVsEthBeta20,
-      targetVsEthCorrelation20,
-      targetVsEthRatioTrend,
-      targetVsEthAligned,
       btcAltRegime: btcAltRegimeValue,
-      btcAltRegimeAligned,
       btcAltRegimeStale,
       btcVsAltReturn24h,
-      btcTurnoverShare24h,
-    },
-    execution: {
-      venueSpreadZScore,
-      venueSpreadSeverity,
     },
   };
 };

@@ -571,6 +571,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc1h: 1.4,
               alphaVsBtc4h: 0.8,
             },
+            execution: {
+              venueSpread: -0.0012,
+            },
             cmcFearGreed: {
               valueChange7d: -20,
             },
@@ -579,15 +582,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             volume: {
               volumeRel20: 1.3,
               effortVsResult: 110,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              bps: -12,
-              bias: 'binance_premium',
-              severity: 'elevated',
             },
           },
         },
@@ -628,6 +622,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc1h: 1.4,
               alphaVsBtc4h: 0.8,
             },
+            execution: {
+              venueSpread: -0.0012,
+            },
             cmcGlobal: {
               btcDominanceChange24hPct: -0.2,
             },
@@ -639,15 +636,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             volume: {
               volumeRel20: 1.3,
               effortVsResult: 50,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              bps: -12,
-              bias: 'binance_premium',
-              severity: 'elevated',
             },
           },
         },
@@ -686,6 +674,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc1h: 3.4,
               alphaVsBtc4h: 0.8,
             },
+            execution: {
+              venueSpread: -0.0012,
+            },
             cmcGlobal: {
               btcDominanceChange24hPct: -0.2,
             },
@@ -697,15 +688,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             volume: {
               volumeRel20: 1.3,
               effortVsResult: 50,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              bps: -12,
-              bias: 'binance_premium',
-              severity: 'elevated',
             },
           },
         },
@@ -740,6 +722,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             targetVsBtc: {
               alphaVsBtc4h: 0.8,
             },
+            execution: {
+              venueSpread: -0.0012,
+            },
             cmcFearGreed: {
               valueChange7d: -20,
             },
@@ -748,15 +733,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             volume: {
               volumeRel20: 1,
               effortVsResult: 80,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              bps: -12,
-              bias: 'binance_premium',
-              severity: 'elevated',
             },
           },
         },
@@ -1674,6 +1650,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc24h: 1.2,
               ratioTrend: 'flat',
             },
+            execution: {
+              venueSpread: 0.00084,
+            },
           },
           participation: {
             volume: {
@@ -1684,16 +1663,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
           structure: {
             localRange: {
               breakoutRetestQuality: 0.18,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              available: true,
-              bps: 8.4,
-              bias: 'coinbase_premium',
-              severity: 'elevated',
             },
           },
         },
@@ -1758,6 +1727,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               alphaVsBtc24h: 1.2,
               ratioTrend: 'flat',
             },
+            execution: {
+              venueSpread: 0.00224,
+            },
           },
           participation: {
             volume: {
@@ -1773,16 +1745,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
           intervals: {
             '15m': {
               fundingZScore: 0.2,
-            },
-          },
-        },
-        marketContext: {
-          execution: {
-            binanceCoinbaseSpread: {
-              available: true,
-              bps: 22.4,
-              bias: 'coinbase_premium',
-              severity: 'wide',
             },
           },
         },

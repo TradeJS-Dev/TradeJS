@@ -916,26 +916,12 @@ const getVolumeDivergenceContext = (
     '1h',
     'oiChangePct24h',
   ]);
-  const marketContext = getRecord(additional?.marketContext);
-  const venueSpreadZScore =
-    getNestedNumber(marketContext, [
-      'execution',
-      'binanceCoinbaseSpread',
-      'zScore',
-    ]) ??
-    getNestedNumber(additional, [
-      'baseContext',
-      'relative',
-      'execution',
-      'venueSpreadZScore',
-    ]) ??
-    getNestedNumber(additional, [
-      'baseContext',
-      'relative',
-      'execution',
-      'venueSpread',
-      'zScore',
-    ]);
+  const venueSpreadZScore = getNestedNumber(additional, [
+    'baseContext',
+    'relative',
+    'execution',
+    'venueSpreadZScore',
+  ]);
   const volumeRel20 = getNestedNumber(additional, [
     'baseContext',
     'participation',
