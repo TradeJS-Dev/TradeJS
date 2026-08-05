@@ -58,6 +58,7 @@ const baseContext = {
     benchmark: {
       trendAlignment: 'aligned_bull',
       bias: 'bull',
+      relativeStrength4h: 0,
     },
     execution: {
       venueSpreadZScore: 1.5,
@@ -75,6 +76,13 @@ const baseContext = {
       directionAligned: true,
       riskFlags: [],
     },
+    referenceContexts: {
+      BNBUSDT: {
+        summary: {
+          pressure: 'neutral',
+        },
+      },
+    },
   },
   gateFeatures: {
     setup: {
@@ -88,6 +96,7 @@ const baseContext = {
     },
     relative: {
       benchmarkConflict: false,
+      cmcExchangeLiquidityVolumeChange24hPct: 0,
     },
   },
 };
@@ -238,6 +247,141 @@ describe('doubleTapAiAdapter', () => {
 
     expect(result?.quality).toBe(4);
     expect(result?.direction).toBe('LONG');
+  });
+
+  it('blocks BNB OI rotation when benchmark relative strength is above the protective gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBnbOiRotationBaseContext({
+            relative: {
+              benchmark: {
+                relativeStrength4h: 7.7701,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.protectiveApprovalContextAvailable).toBe(true);
+    expect(context.protectiveApprovalContextOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'relative_strength_4h_above_protective_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'bnb_oi_rotation_blocked',
+      defaultApprovalAllowed: false,
+      bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: true,
+      protectiveApprovalContextAvailable: true,
+      protectiveApprovalContextOk: false,
+    });
+  });
+
+  it('blocks BNB OI rotation when CMC exchange liquidity change is below the protective gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBnbOiRotationBaseContext({
+            gateFeatures: {
+              relative: {
+                cmcExchangeLiquidityVolumeChange24hPct: -0.378663,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.protectiveApprovalContextAvailable).toBe(true);
+    expect(context.protectiveApprovalContextOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'cmc_exchange_liquidity_change_below_protective_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'bnb_oi_rotation_blocked',
+      defaultApprovalAllowed: false,
+      bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: true,
+      protectiveApprovalContextAvailable: true,
+      protectiveApprovalContextOk: false,
+    });
+  });
+
+  it('blocks BNB OI rotation when BNB reference pressure is crowded long', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBnbOiRotationBaseContext({
+            derivatives: {
+              referenceContexts: {
+                BNBUSDT: {
+                  summary: {
+                    pressure: 'crowded_long',
+                  },
+                },
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.protectiveApprovalContextAvailable).toBe(true);
+    expect(context.protectiveApprovalContextOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'bnb_reference_pressure_crowded_long_protective_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'bnb_oi_rotation_blocked',
+      defaultApprovalAllowed: false,
+      highQualityCadencePocket: false,
+      bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: true,
+      protectiveApprovalContextAvailable: true,
+      protectiveApprovalContextOk: false,
+    });
   });
 
   it('downgrades legacy q4 CMC pockets to observation context', () => {
