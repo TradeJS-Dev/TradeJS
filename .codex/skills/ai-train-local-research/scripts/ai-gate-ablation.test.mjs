@@ -10,6 +10,8 @@ import {
   balanceCrossStrategyRows,
   buildAblationReport,
   buildCrossStrategyReport,
+  buildMovingAverageVariants,
+  calculateMovingAverageGrid,
   buildShiftedProfitLookups,
   classifyCrossStrategyFeature,
   collectSavedCrossStrategyFeatures,
@@ -27,6 +29,7 @@ import {
   partitionCrossStrategyFeatures,
   splitRowsByTimestamp,
   summarizeRows,
+  summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
 
 test('parses repeated variants and research windows', () => {
@@ -83,6 +86,84 @@ test('parses cross-strategy discovery limits', () => {
   assert.equal(options.minFeatureCoverage, 0.6);
   assert.equal(options.minBenchmarkFeatureCoverage, 0.15);
   assert.equal(options.portfolioCapacity, 3);
+});
+
+test('parses causal moving-average study options', () => {
+  const options = parseCliArgs([
+    '--movingAverageStudy',
+    '--maPeriods=20,0.5,10,5,15',
+    '--maLookbackBars=400',
+    '--maBatchSize=250',
+    '--maSqlTimeoutMs=120000',
+  ]);
+
+  assert.equal(options.movingAverageStudy, true);
+  assert.deepEqual(options.maPeriods, [5, 10, 15, 20]);
+  assert.equal(options.maLookbackBars, 400);
+  assert.equal(options.maBatchSize, 250);
+  assert.equal(options.maSqlTimeoutMs, 120000);
+});
+
+test('builds side, side-slope, and standalone variants for each MA', () => {
+  const variants = buildMovingAverageVariants([5]);
+  const aligned = {
+    movingAverages: {
+      SMA: {
+        5: { directionalDistanceAtr: 0.1, directionalSlopeAtr5: 0.2 },
+      },
+    },
+  };
+
+  assert.equal(variants.length, 9);
+  assert.deepEqual(
+    variants.slice(0, 3).map((variant) => [variant.name, variant.mode]),
+    [
+      ['SMA5-side', 'filter'],
+      ['SMA5-side-slope', 'filter'],
+      ['SMA5-standalone', 'replace'],
+    ],
+  );
+  assert.equal(variants[0].match(aligned), true);
+  assert.equal(variants[1].match(aligned), true);
+  assert.equal(variants[2].match(aligned), true);
+});
+
+test('calculates causal SMA, EMA, and WMA from newest-first closes', () => {
+  const result = calculateMovingAverageGrid({
+    closes: [6, 5, 4, 3, 2, 1],
+    periods: [3],
+    lookbackBars: 6,
+    slopeBars: 1,
+  });
+
+  assert.equal(result.SMA[3].value, 5);
+  assert.equal(result.SMA[3].previous5, 4);
+  assert.equal(result.WMA[3].value, (6 * 3 + 5 * 2 + 4) / 6);
+  assert.equal(result.WMA[3].previous5, (5 * 3 + 4 * 2 + 3) / 6);
+  assert.ok(result.EMA[3].value > result.SMA[3].value);
+  assert.ok(result.EMA[3].previous5 < result.EMA[3].value);
+});
+
+test('summarizes redundancy across adjacent periods and MA families', () => {
+  const periods = [5, 10];
+  const rows = [1, 2, 3, 4].map((value) => ({
+    movingAverages: Object.fromEntries(
+      ['SMA', 'EMA', 'WMA'].map((family) => [
+        family,
+        {
+          5: { directionalDistanceAtr: value },
+          10: { directionalDistanceAtr: value * 2 },
+        },
+      ]),
+    ),
+  }));
+
+  const result = summarizeMovingAverageRedundancy(rows, periods);
+
+  assert.equal(result.adjacentPeriods.pairs, 3);
+  assert.equal(result.adjacentPeriods.min, 1);
+  assert.equal(result.samePeriodAcrossFamilies.pairs, 6);
+  assert.equal(result.samePeriodAcrossFamilies.median, 1);
 });
 
 test('selects the latest merged export independently per strategy', () => {

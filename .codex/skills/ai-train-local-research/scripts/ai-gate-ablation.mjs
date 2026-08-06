@@ -13,6 +13,10 @@ const YEAR_DAYS = 365;
 const DEFAULT_WINDOWS = [180, 90, 30, 7];
 const DEFAULT_QUALITY_THRESHOLDS = [3, 4, 5];
 const DEFAULT_CAPACITIES = [1, 3, 5];
+const DEFAULT_MA_PERIODS = Array.from(
+  { length: 20 },
+  (_, index) => (index + 1) * 5,
+);
 const VARIANT_MODES = new Set(['filter', 'exclude', 'add', 'replace']);
 
 const usage = `Usage:
@@ -33,6 +37,11 @@ Options:
   --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
   --includeGateContext         Include current gate output fields for audits only
+  --movingAverageStudy        Causal SMA/EMA/WMA grid ablation from candle cache
+  --maPeriods <list>           Moving-average periods (default: 5,10,...,100)
+  --maLookbackBars <n>         EMA approximation history (default: 600)
+  --maBatchSize <n>            Timescale events per query (default: 1000)
+  --maSqlTimeoutMs <n>         Per-batch SQL timeout (default: 600000)
   --crossStrategy             Search latest exports for shared LONG/SHORT pockets
   --maxDepth <n>              Cross-strategy pocket depth (default: 2)
   --minSupport <n>            Cross-strategy discovery support (default: 100)
@@ -65,8 +74,9 @@ const parseNumberList = (input, fallback) => {
   const values = String(input ?? '')
     .split(',')
     .map((value) => Number(value.trim()))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .map((value) => Math.trunc(value));
+    .filter(Number.isFinite)
+    .map((value) => Math.trunc(value))
+    .filter((value) => value > 0);
   return values.length ? [...new Set(values)] : fallback;
 };
 
@@ -82,6 +92,11 @@ export const parseCliArgs = (argv) => {
     maxLossValue: null,
     variants: [],
     includeGateContext: false,
+    movingAverageStudy: false,
+    maPeriods: DEFAULT_MA_PERIODS,
+    maLookbackBars: 600,
+    maBatchSize: 1_000,
+    maSqlTimeoutMs: 600_000,
     crossStrategy: false,
     maxDepth: 2,
     minSupport: 100,
@@ -101,6 +116,7 @@ export const parseCliArgs = (argv) => {
   };
   const booleanOptions = new Set([
     'includeGateContext',
+    'movingAverageStudy',
     'crossStrategy',
     'json',
     'list',
@@ -150,6 +166,10 @@ export const parseCliArgs = (argv) => {
       const parsed = Number(value);
       options.maxLossValue =
         Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } else if (name === 'maPeriods') {
+      options.maPeriods = parseNumberList(value, DEFAULT_MA_PERIODS).sort(
+        (left, right) => left - right,
+      );
     } else if (
       ['minFeatureCoverage', 'minBenchmarkFeatureCoverage'].includes(name)
     ) {
@@ -170,6 +190,9 @@ export const parseCliArgs = (argv) => {
         'maxRowsPerEvent',
         'minFeatureStrategies',
         'portfolioCapacity',
+        'maLookbackBars',
+        'maBatchSize',
+        'maSqlTimeoutMs',
       ].includes(name)
     ) {
       const parsed = Number(value);
@@ -1147,6 +1170,11 @@ const loadResearchRows = async ({
         const quality = Number.isFinite(qualityValue)
           ? Math.round(qualityValue)
           : null;
+        const finiteOrNull = (value) => {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        };
+        const rawContext = payload.additionalIndicators?.baseContext?.raw ?? {};
         rows.push({
           sequence,
           signalId: source.signalId,
@@ -1160,6 +1188,19 @@ const loadResearchRows = async ({
             analysis.direction === source.direction &&
             quality != null &&
             quality >= minQuality,
+          movingAverageSource: {
+            provider: String(source.connectorName ?? '')
+              .trim()
+              .toLowerCase(),
+            interval: finiteOrNull(payload.signal?.interval),
+            currentPrice: finiteOrNull(payload.signal?.prices?.currentPrice),
+            atr: finiteOrNull(rawContext.volatility?.atr),
+            existingSma: {
+              14: finiteOrNull(rawContext.trend?.maFast),
+              49: finiteOrNull(rawContext.trend?.maMedium),
+              50: finiteOrNull(rawContext.trend?.maSlow),
+            },
+          },
           variantMatches: variants.map((variant) =>
             evaluateRule(variant.rule, features),
           ),
@@ -1191,6 +1232,447 @@ const loadResearchRows = async ({
     rows,
     failed,
     featureInventory: finalizeFeatureInventory(featureInventory),
+  };
+};
+
+const MOVING_AVERAGE_FAMILIES = ['SMA', 'EMA', 'WMA'];
+const MOVING_AVERAGE_SLOPE_BARS = 5;
+
+const buildMovingAverageSql = () => {
+  return `
+    SELECT candle.symbol,
+           extract(epoch from candle.ts) * 1000 AS timestamp_ms,
+           candle.close::double precision AS close
+    FROM candles candle
+    WHERE candle.provider = $1
+      AND candle.interval = $2
+      AND candle.symbol = ANY($3::text[])
+      AND candle.ts >= to_timestamp($4::bigint / 1000.0)
+      AND candle.ts <= to_timestamp($5::bigint / 1000.0)
+    ORDER BY candle.symbol ASC, candle.ts ASC
+  `;
+};
+
+const movingAverageConnectionConfig = () => ({
+  host: process.env.PG_HOST || '127.0.0.1',
+  port: Number(process.env.PG_PORT ?? 5432),
+  user: process.env.PG_USER || 'app',
+  password: String(process.env.PG_PASSWORD ?? 'app'),
+  database: process.env.PG_DATABASE || process.env.PG_DB || 'app',
+  application_name: 'tradejs-ai-gate-ma-study',
+});
+
+const finiteArray = (value) =>
+  Array.isArray(value)
+    ? value.map((item) => {
+        if (item == null) return null;
+        const parsed = Number(item);
+        return Number.isFinite(parsed) ? parsed : null;
+      })
+    : [];
+
+const sumRange = (prefix, start, length) =>
+  prefix[start + length] - prefix[start];
+
+const lastIndexAtOrBefore = (candles, timestamp) => {
+  let low = 0;
+  let high = candles.length - 1;
+  let answer = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (candles[middle].timestamp <= timestamp) {
+      answer = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return answer;
+};
+
+export const calculateMovingAverageGrid = ({
+  closes,
+  periods,
+  lookbackBars,
+  slopeBars = MOVING_AVERAGE_SLOPE_BARS,
+}) => {
+  const values = finiteArray(closes);
+  const prefix = [0];
+  const weightedPrefix = [0];
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    prefix.push(prefix[index] + value);
+    weightedPrefix.push(weightedPrefix[index] + value * (index + 1));
+  }
+  const smaAt = (start, period) =>
+    start + period <= values.length
+      ? sumRange(prefix, start, period) / period
+      : null;
+  const wmaAt = (start, period) => {
+    if (start + period > values.length) return null;
+    const sum = sumRange(prefix, start, period);
+    const globalWeighted = sumRange(weightedPrefix, start, period);
+    const localWeighted = globalWeighted - start * sum;
+    return ((period + 1) * sum - localWeighted) / ((period * (period + 1)) / 2);
+  };
+  const emaAt = (start, period) => {
+    const count = Math.min(lookbackBars, values.length - start);
+    if (count < period) return null;
+    const decay = 1 - 2 / (period + 1);
+    let weighted = 0;
+    let weightTotal = 0;
+    let weight = 1;
+    for (let index = 0; index < count; index += 1) {
+      weighted += values[start + index] * weight;
+      weightTotal += weight;
+      weight *= decay;
+    }
+    return weightTotal > 0 ? weighted / weightTotal : null;
+  };
+  return {
+    SMA: Object.fromEntries(
+      periods.map((period) => [
+        period,
+        { value: smaAt(0, period), previous5: smaAt(slopeBars, period) },
+      ]),
+    ),
+    EMA: Object.fromEntries(
+      periods.map((period) => [
+        period,
+        { value: emaAt(0, period), previous5: emaAt(slopeBars, period) },
+      ]),
+    ),
+    WMA: Object.fromEntries(
+      periods.map((period) => [
+        period,
+        { value: wmaAt(0, period), previous5: wmaAt(slopeBars, period) },
+      ]),
+    ),
+  };
+};
+
+export const buildMovingAverageVariants = (periods) =>
+  MOVING_AVERAGE_FAMILIES.flatMap((family) =>
+    periods.flatMap((period) => {
+      const feature = `derived.movingAverage.${family}.${period}`;
+      return [
+        {
+          name: `${family}${period}-side`,
+          mode: 'filter',
+          quality: null,
+          expression: `${feature}.directionalDistanceAtr >= 0`,
+          match: (row) =>
+            row.movingAverages?.[family]?.[period]?.directionalDistanceAtr >= 0,
+        },
+        {
+          name: `${family}${period}-side-slope`,
+          mode: 'filter',
+          quality: null,
+          expression: `${feature}.directionalDistanceAtr >= 0 && ${feature}.directionalSlopeAtr5 >= 0`,
+          match: (row) => {
+            const value = row.movingAverages?.[family]?.[period];
+            return (
+              value?.directionalDistanceAtr >= 0 &&
+              value?.directionalSlopeAtr5 >= 0
+            );
+          },
+        },
+        {
+          name: `${family}${period}-standalone`,
+          mode: 'replace',
+          quality: null,
+          expression: `${feature}.directionalDistanceAtr >= 0 && ${feature}.directionalSlopeAtr5 >= 0`,
+          match: (row) => {
+            const value = row.movingAverages?.[family]?.[period];
+            return (
+              value?.directionalDistanceAtr >= 0 &&
+              value?.directionalSlopeAtr5 >= 0
+            );
+          },
+        },
+      ];
+    }),
+  );
+
+const relativeError = (actual, expected) =>
+  actual == null || expected == null
+    ? null
+    : Math.abs(actual - expected) / Math.max(Math.abs(expected), 1e-12);
+
+const percentileValue = (values, percentile) => {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[
+    Math.min(
+      sorted.length - 1,
+      Math.max(0, Math.ceil(sorted.length * percentile) - 1),
+    )
+  ];
+};
+
+const pearsonCorrelation = (left, right) => {
+  const pairs = left
+    .map((value, index) => [value, right[index]])
+    .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+  if (pairs.length < 2) return null;
+  const leftMean =
+    pairs.reduce((sum, [value]) => sum + value, 0) / pairs.length;
+  const rightMean =
+    pairs.reduce((sum, [, value]) => sum + value, 0) / pairs.length;
+  let covariance = 0;
+  let leftVariance = 0;
+  let rightVariance = 0;
+  for (const [leftValue, rightValue] of pairs) {
+    const leftDiff = leftValue - leftMean;
+    const rightDiff = rightValue - rightMean;
+    covariance += leftDiff * rightDiff;
+    leftVariance += leftDiff * leftDiff;
+    rightVariance += rightDiff * rightDiff;
+  }
+  const denominator = Math.sqrt(leftVariance * rightVariance);
+  return denominator > 0 ? covariance / denominator : null;
+};
+
+const summarizeCorrelations = (values) => ({
+  pairs: values.filter(Number.isFinite).length,
+  min: values.filter(Number.isFinite).length
+    ? Math.min(...values.filter(Number.isFinite))
+    : null,
+  median: percentileValue(values, 0.5),
+  p95: percentileValue(values, 0.95),
+});
+
+export const summarizeMovingAverageRedundancy = (rows, periods) => {
+  const series = (family, period, field = 'directionalDistanceAtr') =>
+    rows.map((row) => row.movingAverages?.[family]?.[period]?.[field] ?? null);
+  const adjacent = [];
+  for (const family of MOVING_AVERAGE_FAMILIES) {
+    for (let index = 1; index < periods.length; index += 1) {
+      adjacent.push(
+        pearsonCorrelation(
+          series(family, periods[index - 1]),
+          series(family, periods[index]),
+        ),
+      );
+    }
+  }
+  const crossFamily = [];
+  for (const period of periods) {
+    crossFamily.push(
+      pearsonCorrelation(series('SMA', period), series('EMA', period)),
+      pearsonCorrelation(series('SMA', period), series('WMA', period)),
+      pearsonCorrelation(series('EMA', period), series('WMA', period)),
+    );
+  }
+  return {
+    adjacentPeriods: summarizeCorrelations(adjacent),
+    samePeriodAcrossFamilies: summarizeCorrelations(crossFamily),
+  };
+};
+
+export const loadMovingAverageStudyFeatures = async ({
+  projectRoot,
+  rows,
+  periods,
+  lookbackBars,
+  batchSize,
+  sqlTimeoutMs,
+}) => {
+  const sources = new Set(
+    rows.map(
+      (row) =>
+        `${row.movingAverageSource?.provider}:${row.movingAverageSource?.interval}`,
+    ),
+  );
+  if (sources.size !== 1) {
+    throw new Error(
+      `Moving-average study requires one provider/interval, got: ${[...sources].join(', ')}`,
+    );
+  }
+  const sample = rows[0].movingAverageSource;
+  if (!sample?.provider || !Number.isFinite(sample.interval)) {
+    throw new Error('Moving-average study source provider/interval is missing');
+  }
+  const maxPeriod = Math.max(...periods);
+  if (lookbackBars < maxPeriod + MOVING_AVERAGE_SLOPE_BARS) {
+    throw new Error(
+      `--maLookbackBars must be at least ${maxPeriod + MOVING_AVERAGE_SLOPE_BARS}`,
+    );
+  }
+  const require = createRequire(import.meta.url);
+  const { Client } = require('pg');
+  const client = new Client(movingAverageConnectionConfig());
+  const query = buildMovingAverageSql();
+  const limit = lookbackBars + MOVING_AVERAGE_SLOPE_BARS;
+  const lookbackMs = limit * sample.interval * 60_000;
+  const parityErrors = { 14: [], 49: [], 50: [] };
+  let covered = 0;
+  let insufficientBars = 0;
+  const attachMovingAverages = (row, closes) => {
+    const bars = closes.length;
+    if (bars < maxPeriod + MOVING_AVERAGE_SLOPE_BARS) {
+      insufficientBars += 1;
+      return;
+    }
+    const currentPrice = row.movingAverageSource.currentPrice;
+    const atr = row.movingAverageSource.atr;
+    if (!Number.isFinite(currentPrice) || !Number.isFinite(atr) || atr <= 0) {
+      return;
+    }
+    const calculated = calculateMovingAverageGrid({
+      closes,
+      periods: [...new Set([...periods, 14, 49, 50])],
+      lookbackBars,
+    });
+    const directionSign = row.direction === 'SHORT' ? -1 : 1;
+    row.movingAverages = Object.fromEntries(
+      MOVING_AVERAGE_FAMILIES.map((family) => [
+        family,
+        Object.fromEntries(
+          periods.map((period) => {
+            const value = calculated[family][period].value;
+            const prior = calculated[family][period].previous5;
+            return [
+              period,
+              {
+                value,
+                previous5: prior,
+                directionalDistanceAtr:
+                  value == null
+                    ? null
+                    : (directionSign * (currentPrice - value)) / atr,
+                directionalSlopeAtr5:
+                  value == null || prior == null
+                    ? null
+                    : (directionSign * (value - prior)) / atr,
+              },
+            ];
+          }),
+        ),
+      ]),
+    );
+    [14, 49, 50].forEach((period) => {
+      const error = relativeError(
+        calculated.SMA[period].value,
+        row.movingAverageSource.existingSma[period],
+      );
+      if (error != null) parityErrors[period].push(error);
+    });
+    covered += 1;
+  };
+  await client.connect();
+  try {
+    await client.query(`SET statement_timeout = ${Math.trunc(sqlTimeoutMs)}`);
+    for (let start = 0; start < rows.length; start += batchSize) {
+      const batch = rows.slice(start, start + batchSize);
+      const symbols = [...new Set(batch.map((row) => row.symbol))];
+      const fromTimestamp = batch[0].timestamp - lookbackMs;
+      const toTimestamp = batch.at(-1).timestamp;
+      const result = await client.query(query, [
+        sample.provider,
+        sample.interval,
+        symbols,
+        fromTimestamp,
+        toTimestamp,
+      ]);
+      const candlesBySymbol = new Map();
+      for (const resultRow of result.rows) {
+        const symbol = String(resultRow.symbol);
+        const candles = candlesBySymbol.get(symbol) ?? [];
+        const timestamp = Number(resultRow.timestamp_ms);
+        const close = Number(resultRow.close);
+        if (Number.isFinite(timestamp) && Number.isFinite(close)) {
+          candles.push({ timestamp, close });
+          candlesBySymbol.set(symbol, candles);
+        }
+      }
+      for (const row of batch) {
+        const candles = candlesBySymbol.get(row.symbol) ?? [];
+        const currentIndex = lastIndexAtOrBefore(candles, row.timestamp);
+        if (currentIndex < 0) {
+          insufficientBars += 1;
+          continue;
+        }
+        const firstIndex = Math.max(0, currentIndex - limit + 1);
+        const closes = [];
+        for (let index = currentIndex; index >= firstIndex; index -= 1) {
+          closes.push(candles[index].close);
+        }
+        attachMovingAverages(row, closes);
+      }
+      console.error(
+        `moving-average candles ${Math.min(start + batch.length, rows.length)}/${rows.length}`,
+      );
+    }
+  } finally {
+    await client.end();
+  }
+  return {
+    provider: sample.provider,
+    interval: sample.interval,
+    rows: rows.length,
+    covered,
+    coverage: covered / Math.max(1, rows.length),
+    insufficientBars,
+    periods,
+    lookbackBars,
+    emaResidualAtMaxPeriod: Math.pow(1 - 2 / (maxPeriod + 1), lookbackBars),
+    parity: Object.fromEntries(
+      [14, 49, 50].map((period) => [
+        period,
+        {
+          samples: parityErrors[period].length,
+          medianRelativeError: percentileValue(parityErrors[period], 0.5),
+          p95RelativeError: percentileValue(parityErrors[period], 0.95),
+          maxRelativeError: parityErrors[period].length
+            ? Math.max(...parityErrors[period])
+            : null,
+        },
+      ]),
+    ),
+    projectRoot,
+  };
+};
+
+export const summarizeMovingAverageStudy = ({
+  rows,
+  periods,
+  variants,
+  report,
+  coverage,
+}) => {
+  const ranked = report.variants
+    .map((variantReport, index) => ({
+      index,
+      name: variantReport.name,
+      mode: variantReport.mode,
+      expression: variantReport.expression,
+      train: variantReport.train,
+      tuning: variantReport.tuning,
+      test: variantReport.test,
+      full: variantReport.periods.full,
+      terminal30d: variantReport.periods['30d'],
+      terminal7d: variantReport.periods['7d'],
+    }))
+    .filter(
+      (candidate) =>
+        candidate.train.events >= 25 && candidate.tuning.events >= 25,
+    )
+    .sort((left, right) => {
+      const leftPf = left.tuning.profitFactor ?? Number.NEGATIVE_INFINITY;
+      const rightPf = right.tuning.profitFactor ?? Number.NEGATIVE_INFINITY;
+      return (
+        rightPf - leftPf ||
+        right.tuning.totalProfit - left.tuning.totalProfit ||
+        right.tuning.events - left.tuning.events
+      );
+    });
+  return {
+    coverage,
+    redundancy: summarizeMovingAverageRedundancy(rows, periods),
+    variants: variants.length,
+    eligibleVariants: ranked.length,
+    topTuningCandidates: ranked.slice(0, 20),
   };
 };
 
@@ -4253,8 +4735,17 @@ export const main = async () => {
     process.stdout.write(output);
     return;
   }
-  const variants = await loadVariants(options.variants, options.spec);
-  if (!variants.length && !options.featurePattern) {
+  let variants = await loadVariants(options.variants, options.spec);
+  if (options.movingAverageStudy && variants.length) {
+    throw new Error(
+      '--movingAverageStudy cannot be combined with --variant or --spec',
+    );
+  }
+  if (
+    !variants.length &&
+    !options.featurePattern &&
+    !options.movingAverageStudy
+  ) {
     console.error('No variants supplied; printing current baseline only.');
   }
   const filePaths = await resolveDatasetFiles({
@@ -4274,11 +4765,26 @@ export const main = async () => {
   const loaded = await loadResearchRows({
     projectRoot,
     filePaths,
-    variants,
+    variants: options.movingAverageStudy ? [] : variants,
     minQuality: options.minQuality,
     includeGateContext: options.includeGateContext,
     featurePattern,
   });
+  let movingAverageCoverage = null;
+  if (options.movingAverageStudy) {
+    movingAverageCoverage = await loadMovingAverageStudyFeatures({
+      projectRoot,
+      rows: loaded.rows,
+      periods: options.maPeriods,
+      lookbackBars: options.maLookbackBars,
+      batchSize: options.maBatchSize,
+      sqlTimeoutMs: options.maSqlTimeoutMs,
+    });
+    variants = buildMovingAverageVariants(options.maPeriods);
+    for (const row of loaded.rows) {
+      row.variantMatches = variants.map((variant) => variant.match(row));
+    }
+  }
   const report = buildAblationReport({
     ...loaded,
     variants,
@@ -4293,6 +4799,15 @@ export const main = async () => {
       path.relative(projectRoot, filePath),
     ),
   });
+  if (options.movingAverageStudy) {
+    report.movingAverageStudy = summarizeMovingAverageStudy({
+      rows: loaded.rows,
+      periods: options.maPeriods,
+      variants,
+      report,
+      coverage: movingAverageCoverage,
+    });
+  }
   const markdown = formatMarkdownReport(report);
   const output = options.json
     ? `${JSON.stringify(report, null, 2)}\n`

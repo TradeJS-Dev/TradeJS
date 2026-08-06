@@ -20,11 +20,11 @@ Do not use this skill for general `ai-train --localOnly` gate research. Use `ai-
 
 When the strategy is `DoubleTap`, `engine.ts` ports the Bjorgum Double Tap pattern mechanics:
 
-  - maintain swing pivots from rolling highest/lowest windows
-  - detect double bottom on close above neckline
-  - detect double top on close below neckline
-  - derive target from `DOUBLETAP_TARGET_FIB_PCT`
-  - derive stop from invalidation pivot and `DOUBLETAP_STOP_FIB_PCT`
+- maintain swing pivots from rolling highest/lowest windows
+- detect double bottom on close above neckline
+- detect double top on close below neckline
+- derive target from `DOUBLETAP_TARGET_FIB_PCT`
+- derive stop from invalidation pivot and `DOUBLETAP_STOP_FIB_PCT`
 - `figures.ts` is required. Include pattern zig-zag, neckline, target, stop, pivot points, and entry marker.
 
 ## Backtest Workflow
@@ -37,15 +37,26 @@ When the strategy is `DoubleTap`, `engine.ts` ports the Bjorgum Double Tap patte
 
 For DoubleTap, prioritize:
 
-   - `DOUBLETAP_PIVOT_LENGTH`
-   - `DOUBLETAP_PIVOT_TOLERANCE_PCT`
-   - `DOUBLETAP_TARGET_FIB_PCT`
-   - `DOUBLETAP_STOP_FIB_PCT`
-   - `DOUBLETAP_MIN_PATTERN_HEIGHT_PCT`
-   - `DOUBLETAP_MAX_BREAKOUT_DISTANCE_PCT`
-   - side `minRiskRatio`
+- `DOUBLETAP_PIVOT_LENGTH`
+- `DOUBLETAP_PIVOT_TOLERANCE_PCT`
+- `DOUBLETAP_TARGET_FIB_PCT`
+- `DOUBLETAP_STOP_FIB_PCT`
+- `DOUBLETAP_MIN_PATTERN_HEIGHT_PCT`
+- `DOUBLETAP_MAX_BREAKOUT_DISTANCE_PCT`
+- side `minRiskRatio`
 
 4. Once a config is stable across 20+ tickers on `-d 30`, use it for year-scale `--ai` exports. Analyze exported local AI gate behavior with `ai-train-local-research`.
+
+For detailed metrics from a non-`--fast` backtest run, use:
+
+```bash
+yarn node -r dotenv/config .codex/skills/strategy-backtest-research/scripts/backtest-run-metrics.mjs --run <run-id>
+```
+
+The report reconstructs completed trades from cached order artifacts and shows
+full/180d/90d/30d/7d metrics where applicable, including PF, drawdown, strict
+loss, loss streak, losing months, cadence, and scale-in levels 2/3/4. Use a
+matching no-scale-in run to separate sizing effects from scale-in effects.
 
 For every AI export handed to gate research, record the merge id, shard count,
 minimum and maximum timestamps, backtest config ids, git SHA, and the context env

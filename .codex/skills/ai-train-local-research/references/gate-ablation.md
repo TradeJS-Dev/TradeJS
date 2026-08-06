@@ -206,6 +206,38 @@ Do not calculate rolling normalizations from the sparse export signal rows.
 Such features must be produced at signal time from the full causal market
 history and exported, or discovery/inference parity is broken.
 
+## Moving-average grid study
+
+Use the dedicated mode when an export needs a causal SMA/EMA/WMA comparison:
+
+```bash
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
+  --strategy LiquidityTails \
+  --movingAverageStudy \
+  --maPeriods 5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100 \
+  --validationSplit 0.2 \
+  --testSplit 0.2 \
+  --json \
+  --output data/ai/output/liquiditytails-ma-grid.json
+```
+
+This mode never rolls over sparse signal rows. It loads closed candles from
+Timescale for the export's provider and interval, bounded at each signal
+timestamp, and calculates:
+
+- SMA, finite-history EMA, and WMA for every requested period;
+- direction-normalized price distance in ATR units;
+- direction-normalized five-bar average slope in ATR units;
+- current-gate filters for direction-side and direction-side-plus-slope;
+- a standalone side-plus-slope negative/control comparison.
+
+`--maLookbackBars` controls the finite EMA history (default `600`). The JSON
+report includes the residual decay at the longest requested period and parity
+against exported SMA14/49/50. Do not interpret the study when candle coverage
+or parity is incomplete. Candidate ranking uses train and tuning only; the
+timestamp-grouped test tail is reported after selection and remains exposed
+historical evidence after the first run.
+
 `--crossStrategy` requires positive `--validationSplit` and `--testSplit`.
 Opening the historical test tail makes it exposed evidence. Re-running the tool
 on the same cutoff does not make it untouched again. Every candidate remains
