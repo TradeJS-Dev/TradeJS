@@ -1,3 +1,4 @@
+import { intervalToMs } from '@tradejs/core/data';
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import {
   AiPayload,
@@ -77,6 +78,8 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
 };
 
 type DoubleTapGateFeatures = {
+  geometry: DoubleTapGeometryFeatures;
+  path: DoubleTapPathFeatures;
   patternGeometry: 'invalid' | 'compact' | 'extended' | 'unknown';
   necklineBreakout:
     | 'missing'
@@ -117,6 +120,28 @@ type DoubleTapGateFeatures = {
   protectiveApprovalContextOk: boolean;
 };
 
+type DoubleTapGeometryFeatures = {
+  patternHeightPct: number | null;
+  breakoutDistanceHeightRatio: number | null;
+  tapPriceDeviationPct: number | null;
+  tapDeviationHeightRatio: number | null;
+  stopDistanceHeightRatio: number | null;
+  targetDistanceHeightRatio: number | null;
+};
+
+type DoubleTapPathFeatures = {
+  leadInBars: number | null;
+  firstLegBars: number | null;
+  secondLegBars: number | null;
+  tapSpacingBars: number | null;
+  breakoutLagBars: number | null;
+  legDurationSymmetryRatio: number | null;
+  firstLegSlopePctPerBar: number | null;
+  secondLegSlopePctPerBar: number | null;
+  legSlopeSymmetryRatio: number | null;
+  breakoutSpeedHeightRatioPerBar: number | null;
+};
+
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -131,6 +156,195 @@ const asNumber = (value: unknown): number | null => {
     return Number.isFinite(numeric) ? numeric : null;
   }
   return null;
+};
+
+const divideFinite = (
+  numerator: number | null,
+  denominator: number | null,
+): number | null =>
+  numerator != null &&
+  denominator != null &&
+  Number.isFinite(numerator) &&
+  Number.isFinite(denominator) &&
+  Math.abs(denominator) > Number.EPSILON
+    ? numerator / Math.abs(denominator)
+    : null;
+
+const resolveIntervalMs = (interval: unknown): number | null => {
+  if (typeof interval !== 'string' || interval.length === 0) {
+    return null;
+  }
+  try {
+    const value = intervalToMs(interval as AiPayload['signal']['interval']);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveElapsedBars = ({
+  from,
+  to,
+  intervalMs,
+}: {
+  from: number | null;
+  to: number | null;
+  intervalMs: number | null;
+}): number | null => {
+  if (from == null || to == null || intervalMs == null || to < from) {
+    return null;
+  }
+  const bars = (to - from) / intervalMs;
+  return Number.isFinite(bars) ? bars : null;
+};
+
+const resolveSlopePctPerBar = ({
+  fromValue,
+  toValue,
+  bars,
+}: {
+  fromValue: number | null;
+  toValue: number | null;
+  bars: number | null;
+}): number | null => {
+  if (
+    fromValue == null ||
+    toValue == null ||
+    bars == null ||
+    bars <= 0 ||
+    Math.abs(fromValue) <= Number.EPSILON
+  ) {
+    return null;
+  }
+  return (Math.abs(toValue - fromValue) / Math.abs(fromValue) / bars) * 100;
+};
+
+export const buildDoubleTapSetupFeatures = ({
+  context,
+  interval,
+  signalTimestamp,
+}: {
+  context: Partial<DoubleTapSignalContext>;
+  interval: unknown;
+  signalTimestamp: unknown;
+}): {
+  geometry: DoubleTapGeometryFeatures;
+  path: DoubleTapPathFeatures;
+} => {
+  const pivots = Array.isArray(context.pivots) ? context.pivots : [];
+  const readPivotNumber = (index: number, key: 'timestamp' | 'value') =>
+    asNumber(asRecord(pivots[index])?.[key]);
+  const p1Timestamp = readPivotNumber(0, 'timestamp');
+  const p2Timestamp = readPivotNumber(1, 'timestamp');
+  const p3Timestamp = readPivotNumber(2, 'timestamp');
+  const p4Timestamp = readPivotNumber(3, 'timestamp');
+  const p2Value = readPivotNumber(1, 'value');
+  const p3Value = readPivotNumber(2, 'value');
+  const p4Value = readPivotNumber(3, 'value');
+  const intervalMs = resolveIntervalMs(interval);
+  const leadInBars = resolveElapsedBars({
+    from: p1Timestamp,
+    to: p2Timestamp,
+    intervalMs,
+  });
+  const firstLegBars = resolveElapsedBars({
+    from: p2Timestamp,
+    to: p3Timestamp,
+    intervalMs,
+  });
+  const secondLegBars = resolveElapsedBars({
+    from: p3Timestamp,
+    to: p4Timestamp,
+    intervalMs,
+  });
+  const tapSpacingBars = resolveElapsedBars({
+    from: p2Timestamp,
+    to: p4Timestamp,
+    intervalMs,
+  });
+  const breakoutLagBars = resolveElapsedBars({
+    from: p4Timestamp,
+    to: asNumber(signalTimestamp),
+    intervalMs,
+  });
+  const heightValue = asNumber(context.height);
+  const height = heightValue == null ? null : Math.abs(heightValue);
+  const neckline = asNumber(context.neckline);
+  const currentPrice = asNumber(context.currentPrice);
+  const stopLossPrice = asNumber(context.stopLossPrice);
+  const targetPrice = asNumber(context.targetPrice);
+  const breakoutDistance =
+    currentPrice == null || neckline == null
+      ? null
+      : Math.abs(currentPrice - neckline);
+  const breakoutDistanceHeightRatio = divideFinite(breakoutDistance, height);
+  const tapPriceDeviation =
+    p2Value == null || p4Value == null ? null : Math.abs(p2Value - p4Value);
+  const averageTapPrice =
+    p2Value == null || p4Value == null
+      ? null
+      : (Math.abs(p2Value) + Math.abs(p4Value)) / 2;
+  const patternHeightPriceRatio = divideFinite(height, neckline);
+  const tapPriceDeviationRatio = divideFinite(
+    tapPriceDeviation,
+    averageTapPrice,
+  );
+  const firstLegSlopePctPerBar = resolveSlopePctPerBar({
+    fromValue: p2Value,
+    toValue: p3Value,
+    bars: firstLegBars,
+  });
+  const secondLegSlopePctPerBar = resolveSlopePctPerBar({
+    fromValue: p3Value,
+    toValue: p4Value,
+    bars: secondLegBars,
+  });
+
+  return {
+    geometry: {
+      patternHeightPct:
+        patternHeightPriceRatio == null ? null : patternHeightPriceRatio * 100,
+      breakoutDistanceHeightRatio,
+      tapPriceDeviationPct:
+        tapPriceDeviationRatio == null ? null : tapPriceDeviationRatio * 100,
+      tapDeviationHeightRatio: divideFinite(tapPriceDeviation, height),
+      stopDistanceHeightRatio:
+        currentPrice == null || stopLossPrice == null
+          ? null
+          : divideFinite(Math.abs(currentPrice - stopLossPrice), height),
+      targetDistanceHeightRatio:
+        currentPrice == null || targetPrice == null
+          ? null
+          : divideFinite(Math.abs(targetPrice - currentPrice), height),
+    },
+    path: {
+      leadInBars,
+      firstLegBars,
+      secondLegBars,
+      tapSpacingBars,
+      breakoutLagBars,
+      legDurationSymmetryRatio:
+        firstLegBars == null || secondLegBars == null
+          ? null
+          : divideFinite(
+              Math.min(firstLegBars, secondLegBars),
+              Math.max(firstLegBars, secondLegBars),
+            ),
+      firstLegSlopePctPerBar,
+      secondLegSlopePctPerBar,
+      legSlopeSymmetryRatio:
+        firstLegSlopePctPerBar == null || secondLegSlopePctPerBar == null
+          ? null
+          : divideFinite(
+              Math.min(firstLegSlopePctPerBar, secondLegSlopePctPerBar),
+              Math.max(firstLegSlopePctPerBar, secondLegSlopePctPerBar),
+            ),
+      breakoutSpeedHeightRatioPerBar:
+        breakoutDistanceHeightRatio == null || breakoutLagBars == null
+          ? null
+          : breakoutDistanceHeightRatio / Math.max(1, breakoutLagBars),
+    },
+  };
 };
 
 const getDoubleTapContext = (payload: AiPayload) => {
@@ -230,6 +444,7 @@ const isBenchmarkAligned = ({
       : false;
 
 const buildDoubleTapGateFeatures = ({
+  setupFeatures,
   signalDirection,
   height,
   breakoutDistancePct,
@@ -262,6 +477,7 @@ const buildDoubleTapGateFeatures = ({
   protectiveApprovalContextAvailable,
   protectiveApprovalContextOk,
 }: {
+  setupFeatures: ReturnType<typeof buildDoubleTapSetupFeatures>;
   signalDirection: Direction | null;
   height: number | null;
   breakoutDistancePct: number | null;
@@ -346,6 +562,7 @@ const buildDoubleTapGateFeatures = ({
           : 'neutral';
 
   return {
+    ...setupFeatures,
     patternGeometry,
     necklineBreakout,
     trendContext,
@@ -915,7 +1132,13 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     protectiveApprovalContextOk &&
     strictMomentumRoc1dOk === true;
   const approvalAllowedNow = defaultApprovalAllowed;
+  const setupFeatures = buildDoubleTapSetupFeatures({
+    context,
+    interval: payload.signal?.interval,
+    signalTimestamp: payload.signal?.timestamp,
+  });
   const doubleTapGateFeatures = buildDoubleTapGateFeatures({
+    setupFeatures,
     signalDirection,
     height,
     breakoutDistancePct,
@@ -1127,6 +1350,8 @@ Additional DoubleTap context:
 - doubleTapGateParticipationState=${context.doubleTapGateFeatures.participationState}
 - doubleTapGateDerivativesState=${context.doubleTapGateFeatures.derivativesState}
 - doubleTapGateExecutionSpreadState=${context.doubleTapGateFeatures.executionSpreadState}
+- doubleTapGateGeometry=${JSON.stringify(context.doubleTapGateFeatures.geometry)}
+- doubleTapGatePath=${JSON.stringify(context.doubleTapGateFeatures.path)}
 - doubleTapGateApprovalPocket=${context.doubleTapGateFeatures.approvalPocket}
 - doubleTapGateHighQualityCadencePocket=${String(context.doubleTapGateFeatures.highQualityCadencePocket)}
 - doubleTapGateDefaultApprovalAllowed=${String(context.doubleTapGateFeatures.defaultApprovalAllowed)}

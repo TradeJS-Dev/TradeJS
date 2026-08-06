@@ -1,7 +1,10 @@
 /** @jest-environment node */
 
 import { liquidityTailsAiAdapter } from '../adapters/ai';
-import { buildLiquidityTailsGuardrailContext } from '../guardrails';
+import {
+  buildLiquidityTailsGuardrailContext,
+  buildLiquidityTailsSetupFeatures,
+} from '../guardrails';
 
 const withApprovalContextDefaults = (baseContext: Record<string, unknown>) => {
   const regime = (baseContext.regime ?? {}) as Record<string, unknown>;
@@ -244,6 +247,47 @@ const getGuardrailContext = (payload: ReturnType<typeof makePayload>) =>
   });
 
 describe('liquidityTailsAiAdapter', () => {
+  it('builds direction-aware normalized zone geometry and retest path features', () => {
+    const features = buildLiquidityTailsSetupFeatures({
+      signalDirection: 'LONG',
+      zoneTop: 100,
+      zoneBottom: 95,
+      zoneMid: 97.5,
+      zoneHeight: 5,
+      zoneAgeBars: 20,
+      zoneTouches: 4,
+      zoneRetestOrdinal: 2,
+      currentPrice: 102,
+      atr: 2,
+      retestPenetrationPct: 40,
+      reactionCloseDistancePct: 2,
+      stopLossPrice: 94,
+      takeProfitPrice: 110,
+      priceImprovementAtr: 0.5,
+    });
+
+    expect(features.geometry).toMatchObject({
+      zoneHeightAtrRatio: 2.5,
+      boundaryHoldDistanceAtr: 1,
+      boundaryHoldZoneRatio: 0.4,
+      midpointHoldDistanceAtr: 2.25,
+      penetrationDepthAtr: 1,
+      reactionDistanceAtr: 1.02,
+      stopDistanceAtr: 4,
+      targetDistanceAtr: 4,
+    });
+    expect(features.geometry.zoneHeightPct).toBeCloseTo(4.90196, 5);
+    expect(features.path).toMatchObject({
+      zoneAgeBars: 20,
+      zoneTouches: 4,
+      zoneTouchDensityPer100Bars: 20,
+      retestOrdinal: 2,
+      retestDepthZoneRatio: 0.4,
+      priceImprovementAtr: 0.5,
+    });
+    expect(features.path.rejectionEfficiencyRatio).toBeCloseTo(1.02, 8);
+  });
+
   it('copies LiquidityTails gate features into strategy and base contexts', () => {
     const result = liquidityTailsAiAdapter.buildPayload?.({
       signal: {
@@ -251,8 +295,15 @@ describe('liquidityTailsAiAdapter', () => {
           liquidityTailsContext: {
             signalDirection: 'LONG',
             zoneKind: 'buy_pressure',
+            zoneTop: 100,
+            zoneBottom: 95,
+            zoneMid: 97.5,
             zoneHeight: 5,
+            zoneAgeBars: 20,
             zoneTouches: 2,
+            zoneRetestOrdinal: 1,
+            currentPrice: 102,
+            atr: 2,
             wickBodyRatio: 2.5,
             wickDominanceRatio: 2,
             reactionCloseDistancePct: 2.1,
@@ -291,6 +342,14 @@ describe('liquidityTailsAiAdapter', () => {
     ).toMatchObject({
       zoneQuality: 'mature',
       retestAcceptance: 'strong',
+      geometry: expect.objectContaining({
+        zoneHeightAtrRatio: 2.5,
+        boundaryHoldDistanceAtr: 1,
+      }),
+      path: expect.objectContaining({
+        zoneAgeBars: 20,
+        retestOrdinal: 1,
+      }),
       highQualityRetestPocket: true,
     });
     expect(
@@ -299,6 +358,8 @@ describe('liquidityTailsAiAdapter', () => {
     ).toMatchObject({
       zoneQuality: 'mature',
       retestAcceptance: 'strong',
+      geometry: expect.objectContaining({ zoneHeightAtrRatio: 2.5 }),
+      path: expect.objectContaining({ zoneAgeBars: 20 }),
     });
   });
 

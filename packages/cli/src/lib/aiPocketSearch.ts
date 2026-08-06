@@ -428,6 +428,19 @@ export const classifyAiPocketFeaturePath = (
   const normalized = segments.map((segment) => segment.toLowerCase());
   const leaf = normalized.at(-1) ?? '';
   const normalizedPath = normalized.join('.');
+  const strategyGateFeaturesIndex = normalized.findIndex(
+    (segment) => segment !== 'gatefeatures' && segment.endsWith('gatefeatures'),
+  );
+  const strategyGateFeaturePath = normalized.slice(
+    strategyGateFeaturesIndex + 1,
+  );
+  const isStrategySetupEvidence =
+    normalized.includes('basecontext') &&
+    strategyGateFeaturesIndex >= 0 &&
+    (strategyGateFeaturePath.length === 0 ||
+      strategyGateFeaturePath.some(
+        (segment) => segment === 'geometry' || segment === 'path',
+      ));
 
   if (
     DATA_QUALITY_LEAVES.has(leaf) ||
@@ -449,8 +462,10 @@ export const classifyAiPocketFeaturePath = (
   }
 
   if (
-    DERIVED_POLICY_FRAGMENTS.some((fragment) =>
-      normalizedPath.includes(fragment),
+    DERIVED_POLICY_FRAGMENTS.some(
+      (fragment) =>
+        !(fragment === 'gatefeature' && isStrategySetupEvidence) &&
+        normalizedPath.includes(fragment),
     )
   ) {
     return 'derived-policy';

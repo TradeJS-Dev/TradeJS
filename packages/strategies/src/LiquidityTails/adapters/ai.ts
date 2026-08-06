@@ -180,6 +180,8 @@ Additional Liquidity Tails context:
 - liquidityTailsGateParticipationState=${context.liquidityTailsGateFeatures.participationState}
 - liquidityTailsGateDerivativesReversal=${context.liquidityTailsGateFeatures.derivativesReversal}
 - liquidityTailsGateTrendContext=${context.liquidityTailsGateFeatures.trendContext}
+- liquidityTailsGateGeometry=${JSON.stringify(context.liquidityTailsGateFeatures.geometry)}
+- liquidityTailsGatePath=${JSON.stringify(context.liquidityTailsGateFeatures.path)}
 - liquidityTailsGateHighQualityRetestPocket=${String(context.liquidityTailsGateFeatures.highQualityRetestPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}

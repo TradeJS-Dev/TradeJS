@@ -1,4 +1,7 @@
-import { doubleTapAiAdapter } from '../adapters/ai';
+import {
+  buildDoubleTapSetupFeatures,
+  doubleTapAiAdapter,
+} from '../adapters/ai';
 
 const mergeRecord = (
   base: Record<string, unknown>,
@@ -176,6 +179,50 @@ const createXrpOiShortNoHtfBaseContext = (
   );
 
 describe('doubleTapAiAdapter', () => {
+  it('builds normalized pattern geometry and pivot-path features', () => {
+    const timestamp = 1_700_000_000_000;
+    const intervalMs = 15 * 60_000;
+    const features = buildDoubleTapSetupFeatures({
+      context: {
+        patternKind: 'double_bottom',
+        signalDirection: 'LONG',
+        neckline: 110,
+        targetPrice: 130,
+        stopLossPrice: 80,
+        height: 20,
+        currentPrice: 112,
+        breakoutDistancePct: 1.8,
+        pivots: [
+          { timestamp: timestamp - 7 * intervalMs, value: 105, kind: 'high' },
+          { timestamp: timestamp - 5 * intervalMs, value: 90, kind: 'low' },
+          { timestamp: timestamp - 2 * intervalMs, value: 110, kind: 'high' },
+          { timestamp: timestamp - intervalMs, value: 91, kind: 'low' },
+        ],
+      },
+      interval: '15',
+      signalTimestamp: timestamp,
+    });
+
+    expect(features.geometry.patternHeightPct).toBeCloseTo(18.181818, 6);
+    expect(features.geometry.breakoutDistanceHeightRatio).toBe(0.1);
+    expect(features.geometry.tapPriceDeviationPct).toBeCloseTo(1.104972, 6);
+    expect(features.geometry.tapDeviationHeightRatio).toBe(0.05);
+    expect(features.geometry.stopDistanceHeightRatio).toBe(1.6);
+    expect(features.geometry.targetDistanceHeightRatio).toBe(0.9);
+    expect(features.path).toMatchObject({
+      leadInBars: 2,
+      firstLegBars: 3,
+      secondLegBars: 1,
+      tapSpacingBars: 4,
+      breakoutLagBars: 1,
+      legDurationSymmetryRatio: 1 / 3,
+      breakoutSpeedHeightRatioPerBar: 0.1,
+    });
+    expect(features.path.firstLegSlopePctPerBar).toBeCloseTo(7.407407, 6);
+    expect(features.path.secondLegSlopePctPerBar).toBeCloseTo(17.272727, 6);
+    expect(features.path.legSlopeSymmetryRatio).toBeCloseTo(0.42885, 5);
+  });
+
   it('copies DoubleTap context into AI payload', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
@@ -199,6 +246,8 @@ describe('doubleTapAiAdapter', () => {
         signalDirection: 'LONG',
         baseContextAvailable: true,
         doubleTapGateFeatures: expect.objectContaining({
+          geometry: expect.any(Object),
+          path: expect.any(Object),
           patternGeometry: 'unknown',
           necklineBreakout: 'missing',
         }),
@@ -211,6 +260,8 @@ describe('doubleTapAiAdapter', () => {
     ).toMatchObject({
       patternGeometry: 'unknown',
       necklineBreakout: 'missing',
+      geometry: expect.any(Object),
+      path: expect.any(Object),
     });
   });
 

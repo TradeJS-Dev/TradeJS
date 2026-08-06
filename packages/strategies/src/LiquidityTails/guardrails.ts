@@ -44,6 +44,8 @@ export type LiquidityTailsGuardrailContext =
   };
 
 export type LiquidityTailsGateFeatures = {
+  geometry: LiquidityTailsGeometryFeatures;
+  path: LiquidityTailsPathFeatures;
   zoneQuality: 'invalid' | 'weak' | 'formed' | 'mature' | 'unknown';
   retestAcceptance:
     | 'reaction_body_conflict'
@@ -64,6 +66,28 @@ export type LiquidityTailsGateFeatures = {
   highQualityRetestPocket: boolean;
 };
 
+export type LiquidityTailsGeometryFeatures = {
+  zoneHeightAtrRatio: number | null;
+  zoneHeightPct: number | null;
+  boundaryHoldDistanceAtr: number | null;
+  boundaryHoldZoneRatio: number | null;
+  midpointHoldDistanceAtr: number | null;
+  penetrationDepthAtr: number | null;
+  reactionDistanceAtr: number | null;
+  stopDistanceAtr: number | null;
+  targetDistanceAtr: number | null;
+};
+
+export type LiquidityTailsPathFeatures = {
+  zoneAgeBars: number | null;
+  zoneTouches: number | null;
+  zoneTouchDensityPer100Bars: number | null;
+  retestOrdinal: number | null;
+  retestDepthZoneRatio: number | null;
+  rejectionEfficiencyRatio: number | null;
+  priceImprovementAtr: number | null;
+};
+
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -71,6 +95,111 @@ const asFiniteNumber = (value: unknown): number | null => {
 
 const asNullableFiniteNumber = (value: unknown): number | null =>
   value == null ? null : asFiniteNumber(value);
+
+const divideFinite = (
+  numerator: number | null,
+  denominator: number | null,
+): number | null =>
+  numerator != null &&
+  denominator != null &&
+  Number.isFinite(numerator) &&
+  Number.isFinite(denominator) &&
+  Math.abs(denominator) > Number.EPSILON
+    ? numerator / Math.abs(denominator)
+    : null;
+
+export const buildLiquidityTailsSetupFeatures = (
+  signalContext: Partial<LiquidityTailsSignalContext>,
+): {
+  geometry: LiquidityTailsGeometryFeatures;
+  path: LiquidityTailsPathFeatures;
+} => {
+  const direction = signalContext.signalDirection;
+  const zoneTop = asNullableFiniteNumber(signalContext.zoneTop);
+  const zoneBottom = asNullableFiniteNumber(signalContext.zoneBottom);
+  const zoneMid = asNullableFiniteNumber(signalContext.zoneMid);
+  const explicitZoneHeight = asNullableFiniteNumber(signalContext.zoneHeight);
+  const zoneHeight =
+    explicitZoneHeight != null
+      ? Math.abs(explicitZoneHeight)
+      : zoneTop != null && zoneBottom != null
+        ? Math.abs(zoneTop - zoneBottom)
+        : null;
+  const currentPrice = asNullableFiniteNumber(signalContext.currentPrice);
+  const atrValue = asNullableFiniteNumber(signalContext.atr);
+  const atr = atrValue != null && atrValue > 0 ? atrValue : null;
+  const boundary =
+    direction === 'LONG' ? zoneTop : direction === 'SHORT' ? zoneBottom : null;
+  const directionalDistance = (level: number | null) =>
+    currentPrice == null || level == null
+      ? null
+      : direction === 'LONG'
+        ? currentPrice - level
+        : direction === 'SHORT'
+          ? level - currentPrice
+          : null;
+  const boundaryHoldDistance = directionalDistance(boundary);
+  const midpointHoldDistance = directionalDistance(zoneMid);
+  const retestPenetrationPct = asNullableFiniteNumber(
+    signalContext.retestPenetrationPct,
+  );
+  const retestDepthZoneRatio =
+    retestPenetrationPct == null ? null : retestPenetrationPct / 100;
+  const penetrationDepth =
+    retestDepthZoneRatio == null || zoneHeight == null
+      ? null
+      : retestDepthZoneRatio * zoneHeight;
+  const reactionCloseDistancePct = asNullableFiniteNumber(
+    signalContext.reactionCloseDistancePct,
+  );
+  const reactionDistance =
+    reactionCloseDistancePct == null || currentPrice == null
+      ? null
+      : (reactionCloseDistancePct / 100) * Math.abs(currentPrice);
+  const stopLossPrice = asNullableFiniteNumber(signalContext.stopLossPrice);
+  const takeProfitPrice = asNullableFiniteNumber(signalContext.takeProfitPrice);
+  const zoneAgeBars = asNullableFiniteNumber(signalContext.zoneAgeBars);
+  const zoneTouches = asNullableFiniteNumber(signalContext.zoneTouches);
+  const zoneHeightPriceRatio = divideFinite(zoneHeight, currentPrice);
+
+  return {
+    geometry: {
+      zoneHeightAtrRatio: divideFinite(zoneHeight, atr),
+      zoneHeightPct:
+        zoneHeightPriceRatio == null ? null : zoneHeightPriceRatio * 100,
+      boundaryHoldDistanceAtr: divideFinite(boundaryHoldDistance, atr),
+      boundaryHoldZoneRatio: divideFinite(boundaryHoldDistance, zoneHeight),
+      midpointHoldDistanceAtr: divideFinite(midpointHoldDistance, atr),
+      penetrationDepthAtr: divideFinite(penetrationDepth, atr),
+      reactionDistanceAtr: divideFinite(reactionDistance, atr),
+      stopDistanceAtr:
+        currentPrice == null || stopLossPrice == null
+          ? null
+          : divideFinite(Math.abs(currentPrice - stopLossPrice), atr),
+      targetDistanceAtr:
+        currentPrice == null || takeProfitPrice == null
+          ? null
+          : divideFinite(Math.abs(takeProfitPrice - currentPrice), atr),
+    },
+    path: {
+      zoneAgeBars,
+      zoneTouches,
+      zoneTouchDensityPer100Bars:
+        zoneTouches == null || zoneAgeBars == null
+          ? null
+          : (zoneTouches / Math.max(1, zoneAgeBars)) * 100,
+      retestOrdinal: asNullableFiniteNumber(signalContext.zoneRetestOrdinal),
+      retestDepthZoneRatio,
+      rejectionEfficiencyRatio: divideFinite(
+        reactionDistance,
+        penetrationDepth,
+      ),
+      priceImprovementAtr: asNullableFiniteNumber(
+        signalContext.priceImprovementAtr,
+      ),
+    },
+  };
+};
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value)
@@ -121,6 +250,7 @@ const buildLiquidityTailsGateFeatures = ({
   directionalCrowding: boolean;
   actionableCloseAwayReaction: boolean;
 }): LiquidityTailsGateFeatures => {
+  const setupFeatures = buildLiquidityTailsSetupFeatures(signalContext);
   const zoneHeight = asFiniteNumber(signalContext.zoneHeight);
   const zoneTouches = asFiniteNumber(signalContext.zoneTouches);
   const wickBodyRatio = asFiniteNumber(signalContext.wickBodyRatio);
@@ -202,6 +332,7 @@ const buildLiquidityTailsGateFeatures = ({
         : 'unknown';
 
   return {
+    ...setupFeatures,
     zoneQuality,
     retestAcceptance,
     reactionMomentum,

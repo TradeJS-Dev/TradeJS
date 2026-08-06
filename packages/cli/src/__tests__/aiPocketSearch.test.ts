@@ -243,6 +243,14 @@ describe('aiPocketSearch', () => {
           },
           doubleTapGateFeatures: {
             setupScore: 4,
+            approvalPocket: 'q4',
+            geometry: {
+              patternHeightPct: 2.5,
+              approvalHint: true,
+            },
+            path: {
+              tapSpacingBars: 18,
+            },
           },
         },
       },
@@ -292,6 +300,26 @@ describe('aiPocketSearch', () => {
         'additionalIndicators.baseContext.doubleTapGateFeatures.setupScore'
       ],
     ).toBeUndefined();
+    expect(
+      features[
+        'additionalIndicators.baseContext.doubleTapGateFeatures.geometry.patternHeightPct'
+      ],
+    ).toBe(2.5);
+    expect(
+      features[
+        'additionalIndicators.baseContext.doubleTapGateFeatures.path.tapSpacingBars'
+      ],
+    ).toBe(18);
+    expect(
+      features[
+        'additionalIndicators.baseContext.doubleTapGateFeatures.approvalPocket'
+      ],
+    ).toBeUndefined();
+    expect(
+      features[
+        'additionalIndicators.baseContext.doubleTapGateFeatures.geometry.approvalHint'
+      ],
+    ).toBeUndefined();
     expect(classifyAiPocketFeaturePath('context.points')).toBe('data-quality');
     expect(classifyAiPocketFeaturePath('context.raw.price.current')).toBe(
       'raw-nonstationary',
@@ -308,6 +336,21 @@ describe('aiPocketSearch', () => {
     expect(classifyAiPocketFeaturePath('context.takerBuyBaseVolume')).toBe(
       'raw-nonstationary',
     );
+    expect(
+      classifyAiPocketFeaturePath(
+        'additionalIndicators.baseContext.doubleTapGateFeatures.geometry.patternHeightPct',
+      ),
+    ).toBe('eligible');
+    expect(
+      classifyAiPocketFeaturePath(
+        'additionalIndicators.baseContext.doubleTapGateFeatures.approvalPocket',
+      ),
+    ).toBe('derived-policy');
+    expect(
+      classifyAiPocketFeaturePath(
+        'additionalIndicators.baseContext.doubleTapGateFeatures.geometry.approvalHint',
+      ),
+    ).toBe('derived-policy');
     expect(exclusions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
