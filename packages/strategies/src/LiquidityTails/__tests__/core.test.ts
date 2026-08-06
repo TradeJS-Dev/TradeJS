@@ -136,6 +136,7 @@ const makeCoreConfig = (overrides: Partial<LiquidityTailsConfig> = {}) =>
     LIQUIDITY_TAILS_STOP_BUFFER_PCT: 0,
     LIQUIDITY_TAILS_TARGET_R_MULT: 1.6,
     LIQUIDITY_TAILS_SCALE_IN_ENABLED: true,
+    LIQUIDITY_TAILS_SCALE_IN_COUNT: 1,
     LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 0.7,
     LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR: 1,
     LONG: { ...DEFAULT_CONFIG.LONG, minRiskRatio: 1 },
@@ -234,6 +235,93 @@ describe('LiquidityTails core scale-in cycle', () => {
     );
   });
 
+  it('splits the remaining risk budget across three improved-price increases', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
+      makeRuntimeState(makeSignal({ timestamp: 2, close: 95 })),
+      makeRuntimeState(makeSignal({ timestamp: 3, close: 94 })),
+      makeRuntimeState(makeSignal({ timestamp: 4, close: 93 })),
+      makeRuntimeState(makeSignal({ timestamp: 5, close: 92 })),
+    ]);
+    let decision = { timestamp: 1, currentPrice: 100 };
+    let position: any = null;
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getDecision: () => decision,
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_SCALE_IN_COUNT: 3,
+        LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 0.4,
+      }),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+    expect(opened.orderPlan.qty).toBeCloseTo(0.4);
+    expect(
+      opened.signal.additionalIndicators.liquidityTailsContext,
+    ).toMatchObject({
+      level: 1,
+      maxLevels: 4,
+      targetRiskBudgetPct: 40,
+      riskBudgetUsedPct: 40,
+    });
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: opened.orderPlan.qty,
+      slPrice: 90,
+      tpPrice: 116,
+    };
+
+    const expectedRiskBudgetPct = [60, 80, 100];
+    for (let index = 0; index < expectedRiskBudgetPct.length; index += 1) {
+      decision = {
+        timestamp: index + 2,
+        currentPrice: [95, 94, 93][index],
+      };
+      const increased = (await core(
+        makeCandle(decision.timestamp, decision.currentPrice) as any,
+        {} as any,
+      )) as any;
+      const context =
+        increased.signal.additionalIndicators.liquidityTailsContext;
+
+      expect(increased.kind).toBe('entry');
+      expect(increased.orderPlan.positionIntent).toBe('increase');
+      expect(context).toMatchObject({
+        action: 'increase',
+        level: index + 2,
+        levelsFilled: index + 1,
+        maxLevels: 4,
+        targetRiskBudgetPct: expectedRiskBudgetPct[index],
+      });
+      expect(context.projectedRiskValue).toBeCloseTo(
+        expectedRiskBudgetPct[index] / 10,
+      );
+
+      position = {
+        ...position,
+        price: context.projectedAveragePrice,
+        qty: context.projectedQty,
+        tpPrice: increased.orderPlan.takeProfits[0].price,
+      };
+    }
+
+    decision = { timestamp: 5, currentPrice: 92 };
+    const complete = (await core(makeCandle(5, 92) as any, {} as any)) as any;
+    expect(complete).toEqual(
+      expect.objectContaining({
+        kind: 'skip',
+        code: 'LIQUIDITY_TAILS_SCALE_IN_COMPLETE',
+      }),
+    );
+  });
+
   it('recovers a 70% initial basket after restart and can place the same second level', async () => {
     const position = {
       symbol: 'TESTUSDT',
@@ -266,6 +354,50 @@ describe('LiquidityTails core scale-in cycle', () => {
       }),
     );
     expect(increased.orderPlan.qty).toBeCloseTo(0.6);
+  });
+
+  it('recovers the third of four levels after restart', async () => {
+    const position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 96,
+      qty: 8 / 6,
+      slPrice: 90,
+      tpPrice: 105.6,
+    };
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 4, close: 93 })),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getDecision: () => ({ timestamp: 4, currentPrice: 93 }),
+    });
+    const core = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_SCALE_IN_COUNT: 3,
+        LIQUIDITY_TAILS_INITIAL_RISK_FRACTION: 0.4,
+      }),
+      data: [],
+      strategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const increased = (await core(makeCandle(4, 93) as any, {} as any)) as any;
+    const context = increased.signal.additionalIndicators.liquidityTailsContext;
+
+    expect(increased).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'LIQUIDITY_TAILS_BUY_PRESSURE_SCALE_IN',
+      }),
+    );
+    expect(context).toMatchObject({
+      level: 4,
+      levelsFilled: 3,
+      maxLevels: 4,
+      targetRiskBudgetPct: 100,
+    });
+    expect(context.projectedRiskValue).toBeCloseTo(10);
   });
 
   it('keeps a 70% initial risk allocation when scale-in is disabled', async () => {

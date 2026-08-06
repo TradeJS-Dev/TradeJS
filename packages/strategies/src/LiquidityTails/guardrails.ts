@@ -323,12 +323,15 @@ export const buildLiquidityTailsGuardrailContext = ({
   if (signalContext.action === 'increase') {
     const level = asFiniteNumber(signalContext.level);
     const levelsFilled = asFiniteNumber(signalContext.levelsFilled);
+    const maxLevels = asFiniteNumber(signalContext.maxLevels) ?? 2;
     const positionQty = asFiniteNumber(signalContext.positionQty);
     const projectedQty = asFiniteNumber(signalContext.projectedQty);
     const riskBudgetUsedPct = asFiniteNumber(signalContext.riskBudgetUsedPct);
     if (
-      level !== 2 ||
-      levelsFilled !== 1 ||
+      level == null ||
+      level < 2 ||
+      level > maxLevels ||
+      levelsFilled !== level - 1 ||
       positionQty == null ||
       positionQty <= 0 ||
       projectedQty == null ||

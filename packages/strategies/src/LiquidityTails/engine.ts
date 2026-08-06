@@ -36,13 +36,15 @@ export interface LiquidityTailsSignal {
   retestPenetrationPct: number;
   reactionCloseDistancePct: number;
   reactionBodyAligned: boolean;
-  retestOrdinal: 1 | 2;
+  retestOrdinal: number;
 }
 
 export interface LiquidityTailsExecutionContext {
   action: 'open' | 'increase';
-  level: 1 | 2;
+  level: number;
   levelsFilled: number;
+  maxLevels: number;
+  targetRiskBudgetPct: number;
   positionQty: number;
   positionAveragePrice: number | null;
   priceImprovementAtr: number | null;
@@ -148,6 +150,10 @@ const getConfigNumbers = (config: LiquidityTailsConfig) => ({
     Number(config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT ?? 1.2),
   ),
   scaleInEnabled: Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED),
+  scaleInCount: Math.max(
+    0,
+    Math.floor(Number(config.LIQUIDITY_TAILS_SCALE_IN_COUNT ?? 1)),
+  ),
   exitOnScaleInRetest: Boolean(config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST),
 });
 
@@ -185,7 +191,7 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone: boolean;
   requireReactionBody: boolean;
   maxRetestDistancePct: number;
-  retestOrdinal: 1 | 2;
+  retestOrdinal: number;
 }): LiquidityTailsSignal | null => {
   const open = Number(candle.open);
   const high = Number(candle.high);
@@ -272,6 +278,8 @@ export const buildLiquidityTailsSignalContext = (
   action: executionContext?.action ?? 'open',
   level: executionContext?.level ?? 1,
   levelsFilled: executionContext?.levelsFilled ?? 0,
+  maxLevels: executionContext?.maxLevels ?? 1,
+  targetRiskBudgetPct: executionContext?.targetRiskBudgetPct ?? 100,
   positionQty: executionContext?.positionQty ?? 0,
   positionAveragePrice: executionContext?.positionAveragePrice ?? null,
   priceImprovementAtr: executionContext?.priceImprovementAtr ?? null,
@@ -313,6 +321,7 @@ export const createLiquidityTailsEngine = ({
     requireReactionBody,
     maxRetestDistancePct,
     scaleInEnabled,
+    scaleInCount,
     exitOnScaleInRetest,
   } = getConfigNumbers(config);
   const state: EngineState = {
@@ -455,7 +464,11 @@ export const createLiquidityTailsEngine = ({
         zone.lastTouchIndex = state.index;
       }
 
-      const maxSignals = scaleInEnabled || exitOnScaleInRetest ? 2 : 1;
+      const maxSignals = scaleInEnabled
+        ? 1 + scaleInCount
+        : exitOnScaleInRetest
+          ? 2
+          : 1;
       const signalSeparated =
         zone.signalsEmitted === 0 || state.index - zone.lastSignalIndex > 2;
       if (
@@ -463,7 +476,7 @@ export const createLiquidityTailsEngine = ({
         signalSeparated &&
         state.signal == null
       ) {
-        const retestOrdinal = zone.signalsEmitted === 0 ? 1 : 2;
+        const retestOrdinal = zone.signalsEmitted + 1;
         const signal = buildRetestSignal({
           zone,
           candle,

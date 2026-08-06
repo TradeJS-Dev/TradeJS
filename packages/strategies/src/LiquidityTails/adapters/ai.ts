@@ -114,6 +114,8 @@ Additional Liquidity Tails context:
 - action=${context.action ?? 'n/a'}
 - level=${String(context.level ?? 'n/a')}
 - levelsFilled=${String(context.levelsFilled ?? 'n/a')}
+- maxLevels=${String(context.maxLevels ?? 'n/a')}
+- targetRiskBudgetPct=${String(context.targetRiskBudgetPct ?? 'n/a')}
 - positionQty=${String(context.positionQty ?? 'n/a')}
 - positionAveragePrice=${String(context.positionAveragePrice ?? 'n/a')}
 - priceImprovementAtr=${String(context.priceImprovementAtr ?? 'n/a')}
@@ -186,7 +188,8 @@ Additional Liquidity Tails context:
 
 Interpretation rules for Liquidity Tails:
 - This is a liquidity-rejection retest strategy, not a breakout-following strategy.
-- action=increase is one risk-capped second entry into an existing same-direction basket, not a new independent position.
+- action=increase is a risk-capped additional entry into an existing same-direction basket, not a new independent position.
+- level/levelsFilled/maxLevels identify the current scale-in step; all levels share one MAX_LOSS_VALUE budget.
 - For increase, evaluate the fresh retest itself; do not inherit approval from the original open signal.
 - LONG comes from an active green buy-pressure lower-wick zone retest that holds and closes back above the zone.
 - SHORT comes from an active red sell-pressure upper-wick zone retest that holds and closes back below the zone.

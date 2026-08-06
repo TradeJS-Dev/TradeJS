@@ -93,6 +93,36 @@ describe('Liquidity Tails engine', () => {
     expect(signals[0]?.zone.id).toBe(signals[1]?.zone.id);
   });
 
+  it('emits three separated secondary retests when configured', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({ LIQUIDITY_TAILS_SCALE_IN_COUNT: 3 }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 102, 102.5, 101.5, 102),
+      makeCandle(6, 99.5, 102, 99, 101),
+      makeCandle(7, 102, 102.5, 101.5, 102),
+      makeCandle(8, 102, 102.5, 101.5, 102),
+      makeCandle(9, 99.5, 102, 99, 101),
+      makeCandle(10, 102, 102.5, 101.5, 102),
+      makeCandle(11, 102, 102.5, 101.5, 102),
+      makeCandle(12, 99.5, 102, 99, 101),
+    ];
+
+    const signals = candles
+      .map((candle) => engine.next(candle as any).signal)
+      .filter(Boolean);
+
+    expect(signals.map((signal) => signal?.retestOrdinal)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(new Set(signals.map((signal) => signal?.zone.id)).size).toBe(1);
+  });
+
   it('does not emit a secondary retest when scale-in is disabled', () => {
     const engine = createLiquidityTailsEngine({
       config: makeConfig({ LIQUIDITY_TAILS_SCALE_IN_ENABLED: false }),

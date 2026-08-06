@@ -1529,13 +1529,15 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
-  it('exports scale-in execution context and preserves the strategy direction', () => {
+  it('exports multi-level scale-in context and preserves the strategy direction', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
         action: 'increase',
-        level: 2,
-        levelsFilled: 1,
+        level: 4,
+        levelsFilled: 3,
+        maxLevels: 4,
+        targetRiskBudgetPct: 100,
         positionQty: 0.7,
         projectedQty: 1.3,
         projectedAveragePrice: 97.69,
@@ -1592,8 +1594,10 @@ describe('liquidityTailsAiAdapter', () => {
     expect(result.additionalIndicators.liquidityTailsContext).toMatchObject({
       signalDirection: 'LONG',
       action: 'increase',
-      level: 2,
-      levelsFilled: 1,
+      level: 4,
+      levelsFilled: 3,
+      maxLevels: 4,
+      targetRiskBudgetPct: 100,
       positionQty: 0.7,
       projectedQty: 1.3,
       riskBudgetUsedPct: 100,

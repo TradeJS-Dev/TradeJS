@@ -16,7 +16,7 @@ import { buildLiquidityTailsFigures } from './figures';
 interface PendingLiquidityTailsEntry {
   timestamp: number;
   observedQty: number;
-  level: 1 | 2;
+  level: number;
 }
 
 interface LiquidityTailsCycle {
@@ -151,6 +151,7 @@ const buildExecutionStateKey = (config: LiquidityTailsConfig) =>
     feePercent: config.FEE_PERCENT,
     targetR: config.LIQUIDITY_TAILS_TARGET_R_MULT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
+    scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
     initialRiskFraction: config.LIQUIDITY_TAILS_INITIAL_RISK_FRACTION,
     scaleInMinImprovementAtr:
       config.LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR,
@@ -164,12 +165,14 @@ const buildRecoveredCycle = ({
   feeRate,
   targetR,
   initialRiskFraction,
+  maxLevels,
 }: {
   position: Position;
   maxLossValue: number;
   feeRate: number;
   targetR: number;
   initialRiskFraction: number;
+  maxLevels: number;
 }): LiquidityTailsCycle | null => {
   const stopLossPrice = finiteNumber(position.slPrice);
   if (
@@ -185,15 +188,26 @@ const buildRecoveredCycle = ({
     stopLossPrice,
     feeRate,
   });
-  const increasedRiskThreshold =
-    maxLossValue * Math.min(1, initialRiskFraction + 0.02);
+  const existingRiskFraction =
+    maxLossValue > 0 ? existingRisk / maxLossValue : 1;
+  const scaleInCount = Math.max(0, maxLevels - 1);
+  const scaleInRiskFraction =
+    scaleInCount > 0 ? (1 - initialRiskFraction) / scaleInCount : 0;
+  let entriesFilled = 1;
+  for (let level = 2; level <= maxLevels; level += 1) {
+    const targetRiskFraction =
+      initialRiskFraction + scaleInRiskFraction * (level - 1);
+    if (existingRiskFraction >= targetRiskFraction - 0.02) {
+      entriesFilled = level;
+    }
+  }
 
   return {
     direction: position.direction,
     stopLossPrice,
     invalidationPrice: null,
     targetR,
-    entriesFilled: existingRisk > increasedRiskThreshold ? 2 : 1,
+    entriesFilled,
     pending: null,
   };
 };
@@ -202,6 +216,8 @@ const buildExecutionContext = ({
   action,
   level,
   levelsFilled,
+  maxLevels,
+  targetRiskBudgetPct,
   positionQty,
   positionAveragePrice,
   priceImprovementAtr,
@@ -220,6 +236,8 @@ const buildExecutionContext = ({
   action,
   level,
   levelsFilled,
+  maxLevels,
+  targetRiskBudgetPct,
   positionQty,
   positionAveragePrice,
   priceImprovementAtr,
@@ -248,6 +266,7 @@ const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
     requireReactionBody: config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY,
     maxRetestDistancePct: config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
+    scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
   });
 
 export const createLiquidityTailsCore: CreateStrategyCore<
@@ -290,6 +309,18 @@ export const createLiquidityTailsCore: CreateStrategyCore<
   const maxLossValue = Math.max(0, Number(config.MAX_LOSS_VALUE ?? 0));
   const feeRate = Math.max(0, Number(config.FEE_PERCENT ?? 0));
   const scaleInEnabled = Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED);
+  const configuredScaleInCount = Number(
+    config.LIQUIDITY_TAILS_SCALE_IN_COUNT ?? 1,
+  );
+  const scaleInCount = scaleInEnabled
+    ? Math.max(
+        0,
+        Number.isFinite(configuredScaleInCount)
+          ? Math.floor(configuredScaleInCount)
+          : 1,
+      )
+    : 0;
+  const maxLevels = 1 + scaleInCount;
   const exitOnScaleInRetest = Boolean(
     config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
   );
@@ -329,6 +360,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
             feeRate,
             targetR,
             initialRiskFraction,
+            maxLevels,
           });
         });
       } else if (state.cycle.pending) {
@@ -398,7 +430,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       if (cycle.pending) {
         return strategyApi.skip('LIQUIDITY_TAILS_ORDER_PENDING');
       }
-      if (cycle.entriesFilled >= 2) {
+      if (scaleInEnabled && cycle.entriesFilled >= maxLevels) {
         return strategyApi.skip('LIQUIDITY_TAILS_SCALE_IN_COMPLETE');
       }
 
@@ -441,8 +473,17 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         feeRate,
       });
       const remainingRiskValue = Math.max(0, maxLossValue - existingRiskValue);
+      const nextLevel = cycle.entriesFilled + 1;
+      const scaleInRiskFraction =
+        scaleInCount > 0 ? (1 - initialRiskFraction) / scaleInCount : 0;
+      const targetRiskFraction = Math.min(
+        1,
+        initialRiskFraction + scaleInRiskFraction * (nextLevel - 1),
+      );
+      const targetRiskValue = maxLossValue * targetRiskFraction;
+      const levelRiskBudget = Math.max(0, targetRiskValue - existingRiskValue);
       const qty = calculateRiskSizedQty({
-        riskBudget: remainingRiskValue,
+        riskBudget: levelRiskBudget,
         entryPrice: currentPrice,
         stopLossPrice: cycle.stopLossPrice,
         feeRate,
@@ -473,8 +514,10 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       });
       const executionContext = buildExecutionContext({
         action: 'increase',
-        level: 2,
+        level: nextLevel,
         levelsFilled: cycle.entriesFilled,
+        maxLevels,
+        targetRiskBudgetPct: targetRiskFraction * 100,
         positionQty: position.qty,
         positionAveragePrice: position.price,
         priceImprovementAtr: signal.atr > 0 ? improvement / signal.atr : null,
@@ -493,7 +536,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         draft.cycle.pending = {
           timestamp: candle.timestamp,
           observedQty: position.qty,
-          level: 2,
+          level: nextLevel,
         };
       });
       const indicators = indicatorsState.snapshot();
@@ -602,6 +645,8 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       action: 'open',
       level: 1,
       levelsFilled: 0,
+      maxLevels,
+      targetRiskBudgetPct: initialRiskFraction * 100,
       positionQty: 0,
       positionAveragePrice: null,
       priceImprovementAtr: null,
