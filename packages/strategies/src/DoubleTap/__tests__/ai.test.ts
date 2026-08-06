@@ -69,6 +69,15 @@ const baseContext = {
     cmcGlobal: {
       altVolumeChange24hPct: 0.2,
       btcDominanceChange24hPct: -0.1,
+      ethDominanceChange24hPct: 0,
+    },
+    cmcReferenceAssets: {
+      ethVsBtcVolumeRatio: 0.5,
+    },
+    marketBreadths: {
+      top5: {
+        dispersion: 0.01,
+      },
     },
     btcAltRegime: {
       altDispersion24h: 0.04,
@@ -171,6 +180,30 @@ const createXrpOiShortNoHtfBaseContext = (
         gateFeatures: {
           mtf: {
             higherTimeframeConflict: false,
+          },
+        },
+      },
+      overrides,
+    ),
+  );
+
+const createEthVolumeBreadthBaseContext = (
+  overrides: Record<string, unknown> = {},
+) =>
+  createBaseContext(
+    mergeRecord(
+      {
+        relative: {
+          cmcGlobal: {
+            ethDominanceChange24hPct: -0.049,
+          },
+          cmcReferenceAssets: {
+            ethVsBtcVolumeRatio: 0.39,
+          },
+          marketBreadths: {
+            top5: {
+              dispersion: 0.0007,
+            },
           },
         },
       },
@@ -1167,6 +1200,97 @@ describe('doubleTapAiAdapter', () => {
 
     expect(result?.quality).toBe(4);
     expect(result?.direction).toBe('SHORT');
+  });
+
+  it('approves the ETH volume/breadth compression pocket without BNB/XRP confirmation', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createEthVolumeBreadthBaseContext({
+            relative: {
+              benchmark: {
+                relativeStrength4h: 12,
+              },
+            },
+            derivatives: {
+              referenceContexts: {
+                BNBUSDT: {
+                  summary: {
+                    pressure: 'crowded_long',
+                  },
+                },
+              },
+            },
+            gateFeatures: {
+              relative: {
+                cmcExchangeLiquidityVolumeChange24hPct: -1,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(4);
+    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.ethVolumeBreadthContextAvailable).toBe(true);
+    expect(context.ethVolumeBreadthCompressionPocket).toBe(true);
+    expect(context.protectiveApprovalContextAvailable).toBe(true);
+    expect(context.protectiveApprovalContextOk).toBe(false);
+    expect(context.softBlockReasons).not.toContain(
+      'bnb_reference_pressure_crowded_long_protective_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      approvalPocket: 'eth_volume_breadth',
+      defaultApprovalAllowed: true,
+      highQualityCadencePocket: true,
+      bnbOiRotationPocket: false,
+      xrpOiShortNoHtfPocket: false,
+      ethVolumeBreadthContextAvailable: true,
+      ethVolumeBreadthCompressionPocket: true,
+      protectiveApprovalContextAvailable: true,
+      protectiveApprovalContextOk: false,
+    });
+  });
+
+  it('blocks the ETH volume/breadth compression pocket at the ETH dominance boundary', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createEthVolumeBreadthBaseContext({
+            relative: {
+              cmcGlobal: {
+                ethDominanceChange24hPct: -0.05,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
   });
 
   it('blocks the XRP OI short pocket when HTF conflict is present', () => {
