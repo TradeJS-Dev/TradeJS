@@ -32,7 +32,10 @@ import {
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketResult,
+  type AiPocketFeaturePolicy,
+  type AiPocketExcludedFeatureClassification,
   type AiPocketSearchProgressPhase,
+  type AiPocketSearchObjective,
   type AiPocketSearchRow,
   type AiPocketSummary,
 } from '../lib/aiPocketSearch';
@@ -138,6 +141,46 @@ args.option(
   0,
 );
 args.option(
+  ['H', 'minEvents'],
+  'Minimum independent timestamp events required (0 = auto)',
+  0,
+);
+args.option(
+  ['J', 'minValidationEvents'],
+  'Minimum validation timestamp events required (0 = auto)',
+  0,
+);
+args.option(
+  ['X', 'maxBatch'],
+  'Maximum selected rows at one timestamp (0 disables)',
+  5,
+);
+args.option(
+  ['U', 'maxEventCountShare'],
+  'Maximum row share contributed by one timestamp event',
+  '0.25',
+);
+args.option(
+  ['Z', 'maxSymbolCountShare'],
+  'Maximum row share contributed by one symbol',
+  '0.5',
+);
+args.option(
+  ['A', 'objective'],
+  'Search objective: auto, standalone, add-to-gate, or filter-gate',
+  'auto',
+);
+args.option(
+  ['G', 'allowRiskRegression'],
+  'Allow incremental pockets to worsen q4+ PF, PnL, drawdown, or loss streak',
+  false,
+);
+args.option(
+  ['L', 'allowValidationRegression'],
+  'Keep train-positive pockets that fail validation PnL/PF thresholds',
+  false,
+);
+args.option(
   ['D', 'dedupeEquivalentSelections'],
   'Collapse pockets that select the same train rows',
   true,
@@ -153,6 +196,11 @@ args.option(
   ['p', 'featureProfile'],
   'Feature extraction profile: compact or all',
   'all',
+);
+args.option(
+  ['K', 'featurePolicy'],
+  'Feature policy: causal-stationary or all',
+  'causal-stationary',
 );
 args.option(
   ['r', 'reportDir'],
@@ -292,11 +340,52 @@ const normalizeRatio = (value: unknown, fallback: number) => {
   return Math.max(0, Math.min(0.9, parsed));
 };
 
+const normalizeUnitRatio = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : fallback;
+};
+
 const normalizeFeatureProfile = (value: unknown): 'compact' | 'all' => {
   const normalized = String(value || 'all')
     .trim()
     .toLowerCase();
   return normalized === 'compact' ? 'compact' : 'all';
+};
+
+const normalizeFeaturePolicy = (value: unknown): AiPocketFeaturePolicy => {
+  const normalized = String(value || 'causal-stationary')
+    .trim()
+    .toLowerCase();
+  if (!['causal-stationary', 'all'].includes(normalized)) {
+    throw new Error(
+      `Unsupported --featurePolicy "${normalized}". Use causal-stationary or all.`,
+    );
+  }
+  return normalized as AiPocketFeaturePolicy;
+};
+
+const normalizeObjective = (
+  value: unknown,
+  scope: string,
+): AiPocketSearchObjective => {
+  const normalized = String(value || 'auto')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'auto') {
+    if (scope === 'approved') {
+      return 'filter-gate';
+    }
+    if (scope === 'rejected' || scope === 'candidates') {
+      return 'add-to-gate';
+    }
+    return 'standalone';
+  }
+  if (!['standalone', 'add-to-gate', 'filter-gate'].includes(normalized)) {
+    throw new Error(
+      `Unsupported --objective "${normalized}". Use auto, standalone, add-to-gate, or filter-gate.`,
+    );
+  }
+  return normalized as AiPocketSearchObjective;
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -532,7 +621,7 @@ const resolveScopeRows = (
     return rows.filter((row) => !row.aiApproved);
   }
   if (scope === 'candidates') {
-    return rows.filter((row) => row.modelCandidate);
+    return rows.filter((row) => row.modelCandidate && !row.aiApproved);
   }
   return rows;
 };
@@ -545,6 +634,13 @@ const printSection = (title: string, table: string) => {
 
 const buildSummaryRows = (summary: AiPocketSummary) => [
   ['rows', chalk.cyan(String(summary.support))],
+  ['events', chalk.cyan(String(summary.events))],
+  ['event_balanced_profit', colorizeProfit(summary.eventBalancedProfit)],
+  ['trades_per_event', colorizeNumber(summary.tradesPerEvent)],
+  ['p95_batch', chalk.cyan(String(summary.p95Batch))],
+  ['max_batch', chalk.cyan(String(summary.maxBatch))],
+  ['top_event_count_share', colorizeRatio(summary.topEventCountShare)],
+  ['top_symbol_count_share', colorizeRatio(summary.topSymbolCountShare)],
   ['win_rate', colorizeRatio(summary.winRate)],
   ['total_profit', colorizeProfit(summary.totalProfit)],
   ['gross_profit', colorizeProfit(summary.grossProfit)],
@@ -577,10 +673,15 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
   pockets.map((pocket, index) => [
     chalk.gray(String(index + 1)),
     chalk.cyan(String(pocket.summary.support)),
+    chalk.cyan(String(pocket.summary.events)),
+    chalk.cyan(String(pocket.summary.maxBatch)),
     colorizeRatio(pocket.summary.supportRatio),
     colorizeRatio(pocket.summary.winRate),
     colorizeNumber(pocket.summary.profitFactor),
     colorizeProfit(pocket.summary.totalProfit),
+    pocket.objectiveSummary
+      ? colorizeProfit(pocket.objectiveSummary.totalProfit)
+      : chalk.gray('n/a'),
     colorizeProfit(-pocket.summary.maxDrawdown),
     pocket.validationSummary
       ? chalk.cyan(String(pocket.validationSummary.support))
@@ -593,6 +694,18 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
       : chalk.gray('n/a'),
     pocket.validationSummary
       ? colorizeProfit(pocket.validationSummary.totalProfit)
+      : chalk.gray('n/a'),
+    pocket.testSummary
+      ? chalk.cyan(String(pocket.testSummary.support))
+      : chalk.gray('n/a'),
+    pocket.testSummary
+      ? colorizeNumber(pocket.testSummary.profitFactor)
+      : chalk.gray('n/a'),
+    pocket.testSummary
+      ? colorizeProfit(pocket.testSummary.totalProfit)
+      : chalk.gray('n/a'),
+    pocket.testObjectiveSummary
+      ? colorizeProfit(pocket.testObjectiveSummary.totalProfit)
       : chalk.gray('n/a'),
     colorizeNumber(pocket.summary.avgTradesPerDay),
     chalk.yellow(String(pocket.summary.losingMonths)),
@@ -734,16 +847,48 @@ export const main = async () => {
     flags.minValidationSupport,
     0,
   );
+  const explicitMinEvents = normalizeInt(flags.minEvents, 0);
+  const explicitMinValidationEvents = normalizeInt(
+    flags.minValidationEvents,
+    0,
+  );
+  const maxBatch = normalizeInt(flags.maxBatch, 5);
+  const maxEventCountShare = normalizeUnitRatio(
+    readAiPocketSearchCliOption({
+      argv: process.argv,
+      longName: 'maxEventCountShare',
+      shortName: 'U',
+    }) ?? flags.maxEventCountShare,
+    0.25,
+  );
+  const maxSymbolCountShare = normalizeUnitRatio(
+    readAiPocketSearchCliOption({
+      argv: process.argv,
+      longName: 'maxSymbolCountShare',
+      shortName: 'Z',
+    }) ?? flags.maxSymbolCountShare,
+    0.5,
+  );
+  const objective = normalizeObjective(flags.objective, scope);
+  const allowRiskRegression = Boolean(flags.allowRiskRegression);
+  const requireValidationEligibility = !Boolean(
+    flags.allowValidationRegression,
+  );
   const dedupeEquivalentSelections = Boolean(flags.dedupeEquivalentSelections);
   const top = normalizePositiveInt(flags.top, 30);
   const includeSymbol = Boolean(flags.includeSymbol);
   const includeGateContext = Boolean(flags.includeGateContext);
   const featureProfile = normalizeFeatureProfile(flags.featureProfile);
+  const featurePolicy = normalizeFeaturePolicy(flags.featurePolicy);
   const jsonOutput = Boolean(flags.json);
   const outputPath = String(flags.output || '').trim();
   const reportDir = String(flags.reportDir || 'data/ai/output').trim();
   const explicitReportFile = String(flags.reportFile || '').trim();
   const generatedAt = Date.now();
+  const excludedFeaturePaths = new Map<
+    AiPocketExcludedFeatureClassification,
+    Set<string>
+  >();
 
   await ensureAiStrategyPluginsLoaded();
   const filePaths = await resolveMergedDatasetFiles({
@@ -873,6 +1018,13 @@ export const main = async () => {
             includeSymbol,
             includeGateContext,
             featureProfile,
+            featurePolicy,
+            onFeatureExcluded: ({ path: featurePath, classification }) => {
+              const paths =
+                excludedFeaturePaths.get(classification) ?? new Set();
+              paths.add(featurePath);
+              excludedFeaturePaths.set(classification, paths);
+            },
           }),
         });
         bar?.tick(1, {
@@ -896,17 +1048,38 @@ export const main = async () => {
     },
   });
 
-  const scopedRows = resolveScopeRows(rows, scope);
-  const scopeRows = direction
-    ? scopedRows.filter((row) => row.direction === direction)
-    : scopedRows;
-  const { trainRows, validationRows, testRows } =
-    splitAiPocketResearchRowsByTimestamp(scopeRows, validationSplit, testSplit);
+  const directionRows = direction
+    ? rows.filter((row) => row.direction === direction)
+    : rows;
+  const scopeRows = resolveScopeRows(directionRows, scope);
+  const split = splitAiPocketResearchRowsByTimestamp(
+    directionRows,
+    validationSplit,
+    testSplit,
+  );
+  const trainRows = resolveScopeRows(split.trainRows, scope);
+  const validationRows = resolveScopeRows(split.validationRows, scope);
+  const testRows = resolveScopeRows(split.testRows, scope);
+  const baselineRows = split.trainRows.filter((row) => row.aiApproved);
+  const validationBaselineRows = split.validationRows.filter(
+    (row) => row.aiApproved,
+  );
+  const testBaselineRows = split.testRows.filter((row) => row.aiApproved);
   const minValidationSupport =
     explicitMinValidationSupport > 0
       ? explicitMinValidationSupport
       : validationRows.length
         ? Math.max(3, Math.ceil(minSupport * validationSplit * 0.5))
+        : 0;
+  const minEvents =
+    explicitMinEvents > 0
+      ? explicitMinEvents
+      : Math.max(5, Math.ceil(minSupport * 0.5));
+  const minValidationEvents =
+    explicitMinValidationEvents > 0
+      ? explicitMinValidationEvents
+      : validationRows.length
+        ? Math.max(2, Math.ceil(minEvents * validationSplit * 0.5))
         : 0;
   const currentGateSummary = summarizeAiTrainEvaluations(rows);
   const currentGateQualityThresholds =
@@ -923,7 +1096,19 @@ export const main = async () => {
     maxCombinations,
     top,
     validationRows,
+    testRows,
     minValidationSupport,
+    minEvents,
+    minValidationEvents,
+    ...(maxBatch > 0 ? { maxBatch } : {}),
+    maxEventCountShare,
+    maxSymbolCountShare,
+    objective,
+    baselineRows,
+    validationBaselineRows,
+    testBaselineRows,
+    allowRiskRegression,
+    requireValidationEligibility,
     dedupeEquivalentSelections,
     progressInterval: 250,
     onProgress: (progress) => {
@@ -990,6 +1175,17 @@ export const main = async () => {
       includeSymbol,
       includeGateContext,
       featureProfile,
+      featurePolicy,
+      featurePolicyAudit: Object.fromEntries(
+        [...excludedFeaturePaths.entries()].map(([classification, paths]) => [
+          classification,
+          {
+            paths: paths.size,
+            samples: [...paths].sort().slice(0, 5),
+          },
+        ]),
+      ),
+      objective,
       validationSplit,
       testSplit,
       minValidationSupport,
@@ -1002,6 +1198,13 @@ export const main = async () => {
         minTotalProfit,
         maxAtomicPredicates,
         maxCombinations,
+        minEvents,
+        minValidationEvents,
+        ...(maxBatch > 0 ? { maxBatch } : {}),
+        maxEventCountShare,
+        maxSymbolCountShare,
+        allowRiskRegression,
+        requireValidationEligibility,
         validationSplit,
         testSplit,
         minValidationSupport,
@@ -1049,6 +1252,7 @@ export const main = async () => {
         ['selected', chalk.blue(String(selectedRows))],
         ['evaluated', chalk.blue(String(rows.length))],
         ['scope', chalk.yellow(scope)],
+        ['objective', chalk.yellow(objective)],
         ['direction', direction ? chalk.yellow(direction) : chalk.gray('all')],
         ['scope_rows', chalk.blue(String(scopeRows.length))],
         ['train_rows', chalk.blue(String(trainRows.length))],
@@ -1081,6 +1285,11 @@ export const main = async () => {
         ['min_quality', chalk.magenta(String(minQuality))],
         ['max_depth', chalk.magenta(String(maxDepth))],
         ['min_support', chalk.magenta(String(minSupport))],
+        ['min_events', chalk.magenta(String(minEvents))],
+        ['min_validation_events', chalk.magenta(String(minValidationEvents))],
+        ['max_batch', chalk.magenta(maxBatch > 0 ? String(maxBatch) : 'off')],
+        ['max_event_share', chalk.magenta(formatRatio(maxEventCountShare))],
+        ['max_symbol_share', chalk.magenta(formatRatio(maxSymbolCountShare))],
         ['max_atomic_predicates', chalk.magenta(String(maxAtomicPredicates))],
         ['max_combinations', chalk.magenta(String(maxCombinations))],
         ['validation_split', chalk.magenta(formatRatio(validationSplit))],
@@ -1099,6 +1308,17 @@ export const main = async () => {
           includeGateContext ? chalk.yellow('on') : chalk.gray('off'),
         ],
         ['feature_profile', chalk.magenta(featureProfile)],
+        ['feature_policy', chalk.magenta(featurePolicy)],
+        [
+          'allow_risk_regression',
+          allowRiskRegression ? chalk.yellow('on') : chalk.green('off'),
+        ],
+        [
+          'validation_eligibility',
+          requireValidationEligibility
+            ? chalk.green('required')
+            : chalk.yellow('off'),
+        ],
         ['report', chalk.gray(reportPath)],
         ['output', outputPath ? chalk.gray(outputPath) : chalk.gray('off')],
       ],
@@ -1140,6 +1360,26 @@ export const main = async () => {
     );
   }
 
+  if (search.testBaseline) {
+    printSection(
+      'UNTOUCHED TEST BASELINE',
+      createTable(
+        [chalk.gray('METRIC'), chalk.gray('VALUE')],
+        buildSummaryRows(search.testBaseline),
+      ),
+    );
+  }
+
+  if (search.objectiveBaseline) {
+    printSection(
+      'CURRENT GATE TRAIN BASELINE',
+      createTable(
+        [chalk.gray('METRIC'), chalk.gray('VALUE')],
+        buildSummaryRows(search.objectiveBaseline),
+      ),
+    );
+  }
+
   printSection(
     'SEARCH STATS',
     createTable(
@@ -1149,6 +1389,10 @@ export const main = async () => {
         ['predicates', chalk.cyan(String(search.stats.predicates))],
         ['atomic_used', chalk.cyan(String(search.stats.atomicPredicatesUsed))],
         [
+          'feature_families',
+          chalk.cyan(search.stats.featureFamiliesUsed.join(', ')),
+        ],
+        [
           'estimated_combinations',
           chalk.cyan(String(search.stats.estimatedCombinations)),
         ],
@@ -1157,6 +1401,7 @@ export const main = async () => {
           chalk.cyan(String(search.stats.combinationsEvaluated)),
         ],
         ['validation_rows', chalk.cyan(String(search.stats.validationRows))],
+        ['test_rows', chalk.cyan(String(search.stats.testRows))],
         [
           'duplicate_pockets_skipped',
           chalk.cyan(String(search.stats.duplicatePocketsSkipped)),
@@ -1175,15 +1420,22 @@ export const main = async () => {
       [
         chalk.gray('#'),
         chalk.gray('N'),
+        chalk.gray('EVENTS'),
+        chalk.gray('MAX_B'),
         chalk.gray('SUP'),
         chalk.gray('WR'),
         chalk.gray('PF'),
         chalk.gray('PNL'),
+        chalk.gray('OBJ_PNL'),
         chalk.gray('MAX_DD'),
         chalk.gray('VAL_N'),
         chalk.gray('VAL_WR'),
         chalk.gray('VAL_PF'),
         chalk.gray('VAL_PNL'),
+        chalk.gray('TEST_N'),
+        chalk.gray('TEST_PF'),
+        chalk.gray('TEST_PNL'),
+        chalk.gray('TEST_OBJ'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),
@@ -1199,15 +1451,22 @@ export const main = async () => {
       [
         chalk.gray('#'),
         chalk.gray('N'),
+        chalk.gray('EVENTS'),
+        chalk.gray('MAX_B'),
         chalk.gray('SUP'),
         chalk.gray('WR'),
         chalk.gray('PF'),
         chalk.gray('PNL'),
+        chalk.gray('OBJ_PNL'),
         chalk.gray('MAX_DD'),
         chalk.gray('VAL_N'),
         chalk.gray('VAL_WR'),
         chalk.gray('VAL_PF'),
         chalk.gray('VAL_PNL'),
+        chalk.gray('TEST_N'),
+        chalk.gray('TEST_PF'),
+        chalk.gray('TEST_PNL'),
+        chalk.gray('TEST_OBJ'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),

@@ -1,6 +1,7 @@
 import type { AiPayload } from '@tradejs/types';
 import {
   buildAiPocketMarkdownReport,
+  classifyAiPocketFeaturePath,
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketSearchRow,
@@ -202,6 +203,287 @@ describe('aiPocketSearch', () => {
     );
   });
 
+  it('keeps only causal stationary evidence under the research feature policy', () => {
+    const payload = {
+      signal: {
+        symbol: 'ETHUSDT',
+        signalId: 'stationary-policy',
+        interval: '15',
+        direction: 'SHORT',
+        timestamp: 123456,
+        strategy: 'DoubleTap',
+        prices: {
+          currentPrice: 3500,
+          takeProfitPrice: 3400,
+          stopLossPrice: 3550,
+        },
+      },
+      figures: {},
+      indicators: {},
+      additionalIndicators: {
+        baseContext: {
+          raw: {
+            price: { current: 3500 },
+            trend: { ma5: 3490 },
+          },
+          regime: { trend: 'down' },
+          relative: { targetVsEth: { ratioReturn24h: -0.03 } },
+          derivatives: {
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '15m': {
+                    points: 176,
+                    asOfTs: 123456,
+                    fundingRateChangePct: 0.1,
+                  },
+                },
+              },
+            },
+          },
+          doubleTapGateFeatures: {
+            setupScore: 4,
+          },
+        },
+      },
+    } satisfies AiPayload;
+
+    const exclusions: Array<{ path: string; classification: string }> = [];
+    const features = collectAiPocketFeatures({
+      payload,
+      featurePolicy: 'causal-stationary',
+      onFeatureExcluded: (event) => exclusions.push(event),
+    });
+
+    expect(features['signal.direction']).toBe('SHORT');
+    expect(features['signal.symbol']).toBeUndefined();
+    expect(features['signal.interval']).toBeUndefined();
+    expect(features['additionalIndicators.baseContext.raw.price.current']).toBe(
+      undefined,
+    );
+    expect(features['additionalIndicators.baseContext.raw.trend.ma5']).toBe(
+      undefined,
+    );
+    expect(
+      features[
+        'additionalIndicators.baseContext.derivatives.referenceContexts.ETHUSDT.intervals.15m.points'
+      ],
+    ).toBeUndefined();
+    expect(
+      features[
+        'additionalIndicators.baseContext.derivatives.referenceContexts.ETHUSDT.intervals.15m.asOfTs'
+      ],
+    ).toBeUndefined();
+    expect(
+      features[
+        'additionalIndicators.baseContext.derivatives.referenceContexts.ETHUSDT.intervals.15m.fundingRateChangePct'
+      ],
+    ).toBe(0.1);
+    expect(
+      features[
+        'additionalIndicators.baseContext.relative.targetVsEth.ratioReturn24h'
+      ],
+    ).toBe(-0.03);
+    expect(features['additionalIndicators.baseContext.regime.trend']).toBe(
+      'down',
+    );
+    expect(
+      features[
+        'additionalIndicators.baseContext.doubleTapGateFeatures.setupScore'
+      ],
+    ).toBeUndefined();
+    expect(classifyAiPocketFeaturePath('context.points')).toBe('data-quality');
+    expect(classifyAiPocketFeaturePath('context.raw.price.current')).toBe(
+      'raw-nonstationary',
+    );
+    expect(classifyAiPocketFeaturePath('context.derivatives.liqLong')).toBe(
+      'raw-nonstationary',
+    );
+    expect(classifyAiPocketFeaturePath('context.derivatives.liqTotal')).toBe(
+      'raw-nonstationary',
+    );
+    expect(classifyAiPocketFeaturePath('context.tradeFlow.available')).toBe(
+      'data-quality',
+    );
+    expect(classifyAiPocketFeaturePath('context.takerBuyBaseVolume')).toBe(
+      'raw-nonstationary',
+    );
+    expect(exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: expect.stringContaining('points'),
+          classification: 'data-quality',
+        }),
+        expect.objectContaining({
+          path: expect.stringContaining('doubleTapGateFeatures'),
+          classification: 'derived-policy',
+        }),
+      ]),
+    );
+  });
+
+  it('summarizes independent events and rejects concentrated timestamp batches', () => {
+    const rows: AiPocketSearchRow[] = [
+      ...[1, 2, 3, 4].map((profit, index) => ({
+        profit,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 100,
+        symbol: `S${index}`,
+        features: { batch: true },
+      })),
+      {
+        profit: -2,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 200,
+        symbol: 'X',
+        features: { batch: false },
+      },
+    ];
+
+    const unrestricted = searchAiPockets(rows, {
+      minSupport: 4,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    });
+    const eventGuarded = searchAiPockets(rows, {
+      minSupport: 4,
+      minEvents: 2,
+      maxBatch: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    });
+
+    expect(unrestricted.positivePockets[0].summary).toEqual(
+      expect.objectContaining({
+        support: 4,
+        events: 1,
+        maxBatch: 4,
+        eventBalancedProfit: 2.5,
+      }),
+    );
+    expect(eventGuarded.positivePockets).toHaveLength(0);
+  });
+
+  it('scores add-to-gate pockets against q4+ and blocks risk regressions', () => {
+    const baselineRows: AiPocketSearchRow[] = [
+      {
+        signalId: 'base-win',
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 4,
+        timestamp: 1,
+        features: {},
+      },
+      {
+        signalId: 'base-loss',
+        profit: -2,
+        profitableTrade: false,
+        aiApproved: true,
+        quality: 4,
+        timestamp: 2,
+        features: {},
+      },
+    ];
+    const candidateRows: AiPocketSearchRow[] = [
+      {
+        profit: 8,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 3,
+        features: { recovery: true },
+      },
+      {
+        profit: -5,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 4,
+        features: { recovery: true },
+      },
+      {
+        profit: -1,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 5,
+        features: { recovery: false },
+      },
+    ];
+    const options = {
+      objective: 'add-to-gate' as const,
+      baselineRows,
+      minSupport: 2,
+      minProfitFactor: 1,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    };
+
+    const guarded = searchAiPockets(candidateRows, options);
+    const exploratory = searchAiPockets(candidateRows, {
+      ...options,
+      allowRiskRegression: true,
+    });
+
+    expect(guarded.objective).toBe('add-to-gate');
+    expect(guarded.objectiveBaseline).toEqual(
+      expect.objectContaining({ totalProfit: 8, profitFactor: 5 }),
+    );
+    expect(guarded.positivePockets).toHaveLength(0);
+    expect(exploratory.positivePockets[0]).toEqual(
+      expect.objectContaining({
+        condition: 'recovery == true',
+        summary: expect.objectContaining({ totalProfit: 3 }),
+        objectiveSummary: expect.objectContaining({ totalProfit: 11 }),
+      }),
+    );
+  });
+
+  it('finds profitable bounded numeric ranges', () => {
+    const rows: AiPocketSearchRow[] = Array.from({ length: 10 }, (_, value) => {
+      const profit = value >= 3 && value <= 6 ? 10 : -10;
+      return {
+        profit,
+        profitableTrade: profit > 0,
+        aiApproved: false,
+        quality: 2,
+        timestamp: value,
+        features: { value },
+      };
+    });
+
+    const result = searchAiPockets(rows, {
+      minSupport: 4,
+      minProfitFactor: 1.1,
+      maxDepth: 2,
+      maxAtomicPredicates: 20,
+      maxCombinations: 200,
+      dedupeEquivalentSelections: false,
+      top: 20,
+    });
+
+    expect(
+      result.positivePockets.some(
+        (pocket) =>
+          pocket.predicates.length === 2 &&
+          pocket.predicates.every(
+            (predicate) => predicate.featureKey === 'value',
+          ) &&
+          pocket.predicates.some((predicate) => predicate.op === '>=') &&
+          pocket.predicates.some((predicate) => predicate.op === '<=') &&
+          pocket.summary.totalProfit === 40,
+      ),
+    ).toBe(true);
+  });
+
   it('finds profitable and losing pockets across predicate combinations', () => {
     const rows: AiPocketSearchRow[] = [
       {
@@ -399,11 +681,33 @@ describe('aiPocketSearch', () => {
         features: { a: false },
       },
     ];
+    const testRows: AiPocketSearchRow[] = [
+      {
+        profit: 3,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 5,
+        features: { a: true },
+      },
+    ];
 
     const result = searchAiPockets(trainRows, {
       validationRows,
+      testRows,
       minSupport: 2,
       minValidationSupport: 1,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      top: 10,
+    });
+    const validationGuarded = searchAiPockets(trainRows, {
+      validationRows,
+      testRows,
+      minSupport: 2,
+      minValidationSupport: 1,
+      requireValidationEligibility: true,
       maxDepth: 1,
       maxAtomicPredicates: 10,
       maxCombinations: 20,
@@ -412,12 +716,17 @@ describe('aiPocketSearch', () => {
 
     expect(result.validationBaseline?.support).toBe(2);
     expect(result.stats.validationRows).toBe(2);
+    expect(result.stats.testRows).toBe(1);
     expect(result.positivePockets[0].validationSummary).toEqual(
       expect.objectContaining({
         support: 1,
         totalProfit: -5,
       }),
     );
+    expect(result.positivePockets[0].testSummary).toEqual(
+      expect.objectContaining({ support: 1, totalProfit: 3 }),
+    );
+    expect(validationGuarded.positivePockets).toHaveLength(0);
   });
 
   it('emits search progress updates', () => {
