@@ -15,6 +15,8 @@ jest.mock('@tradejs/infra/redis', () => ({
       `users:${userName}:runtime:trade-records:${orderId}`,
     runtimeTradeBucket: (userName: string, dayKey: string) =>
       `users:${userName}:runtime:trade-records:days:${dayKey}`,
+    runtimeClosedTradeBucket: (userName: string, dayKey: string) =>
+      `users:${userName}:runtime:closed-trade-records:days:${dayKey}`,
   },
   setData: (...args: unknown[]) => mockSetData(...args),
   setHashJsonField: (...args: unknown[]) => mockSetHashJsonField(...args),

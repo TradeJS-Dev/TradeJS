@@ -16,6 +16,7 @@ import {
   RuntimeTradeRecord,
   RuntimeTradeFillSource,
   RuntimeTradeTelemetryQuality,
+  RuntimeLineage,
   SignalAnalysis,
   MarketUniverse,
   AssetClass,
@@ -87,6 +88,7 @@ export const recordRuntimeTradeOpen = async (params: {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
+  runtimeLineage?: RuntimeLineage;
 }) => {
   const { userName } = params;
   if (!userName) {
@@ -334,6 +336,7 @@ export const markRuntimeTradeClosed = async (params: {
     lastSyncedAt: now(),
   };
   const dayKey = getRuntimeStorageDayKey(existing.entryTimestamp);
+  const closeDayKey = getRuntimeStorageDayKey(next.exitTimestamp!);
 
   try {
     await Promise.all([
@@ -342,6 +345,12 @@ export const markRuntimeTradeClosed = async (params: {
       }),
       setHashJsonField(
         redisKeys.runtimeTradeBucket(userName, dayKey),
+        orderId,
+        next,
+        { expire: TTL_1M },
+      ),
+      setHashJsonField(
+        redisKeys.runtimeClosedTradeBucket(userName, closeDayKey),
         orderId,
         next,
         { expire: TTL_1M },

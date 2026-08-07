@@ -3,9 +3,11 @@ import path from 'node:path';
 import args from 'args';
 import chalk from 'chalk';
 import {
-  buildRuntimeDebugReportPayload,
+  buildRuntimeEvidenceReportPayload,
   collectRuntimeDebugEvidence,
 } from '../lib/runtimeDebugEvidence';
+import { publishRuntimeEvidenceBundle } from '../lib/runtimeEvidenceArtifacts';
+import { runtimeLineageKey } from '../lib/runtimeLineage';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
@@ -18,8 +20,22 @@ args.option(
   'Fallback window in hours when start/end are omitted',
   24,
 );
+args.option(
+  'daily',
+  'Use the latest complete 21:00 MSK to 21:00 MSK window',
+  false,
+);
 args.option(['s', 'strategy'], 'Strategy filter, comma-separated');
 args.option(['o', 'out'], 'Output JSON path', 'output/runtime-evidence.json');
+args.option(
+  'publishDir',
+  'Publish an immutable bundle under <dir>/ready/<deployment>',
+);
+args.option(
+  'deployment',
+  'Deployment id used by immutable evidence bundles',
+  process.env.RUNTIME_EVIDENCE_DEPLOYMENT_ID || 'production',
+);
 
 const flags = args.parse(process.argv);
 const projectRoot =
@@ -41,13 +57,28 @@ const toEpochMs = (value: unknown): number | null => {
 };
 
 const resolveWindow = () => {
-  const endTime = toEpochMs(flags.endTime) ?? Date.now();
+  const explicitStartTime = toEpochMs(flags.startTime);
+  const explicitEndTime = toEpochMs(flags.endTime);
+  const now = Date.now();
+  const dailyEndTime = (() => {
+    if (!flags.daily || explicitStartTime != null || explicitEndTime != null) {
+      return null;
+    }
+    const date = new Date(now);
+    const boundary = Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      18,
+    );
+    return now >= boundary ? boundary : boundary - 24 * 60 * 60 * 1000;
+  })();
+  const endTime = explicitEndTime ?? dailyEndTime ?? now;
   const hours = Math.max(
     1,
     Number.parseInt(String(flags.hours ?? 24), 10) || 24,
   );
-  const startTime =
-    toEpochMs(flags.startTime) ?? endTime - hours * 60 * 60 * 1000;
+  const startTime = explicitStartTime ?? endTime - hours * 60 * 60 * 1000;
 
   if (startTime >= endTime) {
     throw new Error(
@@ -59,7 +90,11 @@ const resolveWindow = () => {
     startTime,
     endTime,
     source:
-      flags.startTime != null || flags.endTime != null ? 'explicit' : 'hours',
+      explicitStartTime != null || explicitEndTime != null
+        ? 'explicit'
+        : dailyEndTime != null
+          ? 'daily'
+          : 'hours',
   };
 };
 
@@ -78,7 +113,7 @@ export const runtimeEvidence = async () => {
     endTime,
     strategies: strategies.length ? strategies : undefined,
   });
-  const runtime = await buildRuntimeDebugReportPayload({
+  const runtime = buildRuntimeEvidenceReportPayload({
     userName: flags.user,
     startTime,
     endTime,
@@ -107,7 +142,32 @@ export const runtimeEvidence = async () => {
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
 
+  const publishDir = String(flags.publishDir ?? '').trim();
+  const published = publishDir
+    ? await publishRuntimeEvidenceBundle({
+        publishRoot: path.resolve(projectRoot, publishDir),
+        deploymentId: String(flags.deployment),
+        userName: String(flags.user),
+        startTime,
+        endTime,
+        artifact,
+        counts: artifact.runtime.counts,
+        lineageKeys: [
+          ...evidence.signals.map((signal) => signal.runtimeLineage),
+          ...evidence.evaluations.map(
+            (evaluation) => evaluation.runtimeLineage,
+          ),
+          ...evidence.trades.map((trade) => trade.runtimeLineage),
+        ]
+          .filter((lineage) => lineage != null)
+          .map(runtimeLineageKey),
+      })
+    : null;
+
   console.log(chalk.green(`Wrote ${outPath}`));
+  if (published) {
+    console.log(chalk.green(`Published ${published.bundleDir}`));
+  }
   console.log(
     JSON.stringify(
       {

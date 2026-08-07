@@ -181,6 +181,43 @@ describe('runtimeRedis', () => {
     expect(getKeys).toHaveBeenCalledWith('users:root:runtime:trade-records:');
   });
 
+  it('loads trades closed in the requested window independently of entry day', async () => {
+    const exitTimestamp = Date.parse('2026-05-03T12:00:00.000Z');
+    const getHashJsonValues = jest.fn(async () => [
+      {
+        orderId: 'ord-closed',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: Date.parse('2026-04-20T12:00:00.000Z'),
+        status: 'closed',
+        exitTimestamp,
+        closedPnl: 5,
+      },
+    ]);
+    jest.doMock('@tradejs/infra/redis', () => ({
+      getData: jest.fn(),
+      getHashJsonValues,
+      getKeys: jest.fn(),
+      redisKeys: {
+        runtimeClosedTradeBucket: (userName: string, dayKey: string) =>
+          `users:${userName}:runtime:closed-trade-records:days:${dayKey}`,
+      },
+    }));
+
+    const { loadRuntimeClosedTrades } = await import('../lib/runtimeRedis');
+    const trades = await loadRuntimeClosedTrades('root', {
+      startTime: Date.parse('2026-05-03T00:00:00.000Z'),
+      endTime: Date.parse('2026-05-04T00:00:00.000Z'),
+    });
+
+    expect(trades).toEqual([
+      expect.objectContaining({ orderId: 'ord-closed', exitTimestamp }),
+    ]);
+  });
+
   it('loads scoped active runtime trade order ids', async () => {
     const activePrefix = 'users:root:runtime:active-trades:';
     const getKeys = jest.fn(async (prefix: string) =>

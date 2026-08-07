@@ -5,7 +5,11 @@ import type {
   Signal,
   StrategyConfig,
 } from '@tradejs/types';
-import { loadRuntimeStrategyConfigs, loadRuntimeTrades } from './runtimeRedis';
+import {
+  loadRuntimeClosedTrades,
+  loadRuntimeStrategyConfigs,
+  loadRuntimeTrades,
+} from './runtimeRedis';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
   loadRuntimeSignalEvaluations,
@@ -110,14 +114,30 @@ export const collectRuntimeDebugEvidence = async ({
 }): Promise<RuntimeDebugEvidence> => {
   const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
   const dayKeySet = new Set(dayKeys);
-  const [trades, signals, evaluations, evaluationStatsBuckets, configs] =
-    await Promise.all([
-      loadRuntimeTrades(userName, { startTime, endTime }),
-      loadRuntimeSignals(userName, { startTime, endTime }),
-      loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
-      loadRuntimeSignalEvaluationStatsBuckets(userName),
-      loadRuntimeStrategyConfigs(userName),
-    ]);
+  const [
+    entryTrades,
+    closedTrades,
+    signals,
+    evaluations,
+    evaluationStatsBuckets,
+    configs,
+  ] = await Promise.all([
+    loadRuntimeTrades(userName, { startTime, endTime }),
+    loadRuntimeClosedTrades(userName, { startTime, endTime }),
+    loadRuntimeSignals(userName, { startTime, endTime }),
+    loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
+    loadRuntimeSignalEvaluationStatsBuckets(userName),
+    loadRuntimeStrategyConfigs(userName),
+  ]);
+  const tradesByOrderId = new Map(
+    entryTrades.map((trade) => [trade.orderId, trade]),
+  );
+  for (const trade of closedTrades) {
+    tradesByOrderId.set(trade.orderId, trade);
+  }
+  const trades = [...tradesByOrderId.values()].sort(
+    (left, right) => left.entryTimestamp - right.entryTimestamp,
+  );
   const filteredStats = evaluationStatsBuckets.filter(
     (entry) =>
       dayKeySet.has(entry.dayKey) &&
@@ -338,6 +358,49 @@ export const buildRuntimeDebugReportPayload = async ({
     strategyConfigs: strategyConfigs ?? [],
   };
 };
+
+export const buildRuntimeEvidenceReportPayload = ({
+  userName,
+  startTime,
+  endTime,
+  signals,
+  evaluations,
+  trades,
+  strategyConfigs,
+  evaluationStatsBuckets,
+}: {
+  userName: string;
+  startTime: number;
+  endTime: number;
+  signals: Signal[];
+  evaluations: RuntimeSignalEvaluationRecord[];
+  trades: RuntimeTradeRecord[];
+  strategyConfigs?: RuntimeDebugStrategyConfig[];
+  evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
+}) => ({
+  reportType: 'runtime-daily-evidence' as const,
+  generatedAt: Date.now(),
+  userName,
+  window: {
+    startTime,
+    endTime,
+    startMsk: formatRuntimeDebugDateTime(startTime),
+    endMsk: formatRuntimeDebugDateTime(endTime),
+    dayKeys: getRuntimeStorageDayKeys(startTime, endTime),
+  },
+  counts: {
+    trades: trades.length,
+    signals: signals.length,
+    evaluations: evaluations.length,
+    evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
+    strategyConfigs: strategyConfigs?.length ?? 0,
+  },
+  trades: trades.map((trade) => ({ trade })),
+  signals: signals.map((signal) => ({ signal })),
+  evaluations: evaluations.map((evaluation) => ({ evaluation })),
+  evaluationStatsBuckets: evaluationStatsBuckets ?? [],
+  strategyConfigs: strategyConfigs ?? [],
+});
 
 export const buildRuntimeDebugReportAttachment = async (
   params: Parameters<typeof buildRuntimeDebugReportPayload>[0],

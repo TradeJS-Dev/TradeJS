@@ -142,6 +142,10 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeTradeBuckets: (userName: string) =>
         `users:${userName}:runtime:trade-records:days:`,
+      runtimeClosedTradeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:closed-trade-records:days:${dayKey}`,
+      runtimeClosedTradeBuckets: (userName: string) =>
+        `users:${userName}:runtime:closed-trade-records:days:`,
       runtimeActiveTrade: (
         userName: string,
         symbol: string,
@@ -591,6 +595,10 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeTradeBuckets: (userName: string) =>
         `users:${userName}:runtime:trade-records:days:`,
+      runtimeClosedTradeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:closed-trade-records:days:${dayKey}`,
+      runtimeClosedTradeBuckets: (userName: string) =>
+        `users:${userName}:runtime:closed-trade-records:days:`,
       runtimeActiveTrade: (
         userName: string,
         symbol: string,

@@ -26,7 +26,6 @@ import { SIGNALS_CLI_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { enrichSignalWithBinanceMarketContext } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { redisKeys, setData, setHashJsonField } from '@tradejs/infra/redis';
 import {
   getRuntimeDeployment,
   saveRuntimeDeploymentHeartbeat,
@@ -41,12 +40,6 @@ import {
   RuntimeStrategyCloseNotification,
   Signal,
 } from '@tradejs/types';
-import {
-  getRuntimeSignalRetentionTtlSeconds,
-  getRuntimeStorageDayKey,
-  toStoredRuntimeSignal,
-  toRuntimeSignalBucketRef,
-} from '../lib/runtimeSignalsStorage';
 import {
   alignSymbolWithBtcReference,
   getClosedCandlesForInterval,
@@ -341,6 +334,9 @@ const findSignals = async (
   saveRuntimeSignalEvaluation?: ReturnType<
     typeof createRuntimeSignalEvaluationBuffer
   >['save'],
+  saveRuntimeSignal?: ReturnType<
+    typeof createRuntimeSignalEvaluationBuffer
+  >['saveSignal'],
 ): Promise<Signal[]> => {
   const strategySignals: Signal[] = [];
 
@@ -575,28 +571,7 @@ const findSignals = async (
       );
     }
     strategySignals.push(signal);
-    const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
-
-    await setData(
-      redisKeys.storeSignal(symbol, signal.signalId),
-      toStoredRuntimeSignal(signal),
-      {
-        expire: runtimeSignalRetentionTtl,
-      },
-    );
-
-    await setHashJsonField(
-      redisKeys.runtimeSignalBucket(
-        flags.user,
-        getRuntimeStorageDayKey(signal.timestamp),
-        signal.strategy,
-      ),
-      signal.signalId,
-      toRuntimeSignalBucketRef(signal),
-      {
-        expire: runtimeSignalRetentionTtl,
-      },
-    );
+    saveRuntimeSignal?.(flags.user, signal);
 
     await saveRuntimeSignalEvaluation?.({
       evaluationId: buildRuntimeSignalEvaluationId({
@@ -945,6 +920,7 @@ export const signals = async (options: { session?: SignalsSession } = {}) => {
           instrumentsBySymbol.get(symbol),
           sessionUniverse,
           runtimeSignalEvaluations.save,
+          runtimeSignalEvaluations.saveSignal,
         );
 
         if (strategySignals.length > 0) {

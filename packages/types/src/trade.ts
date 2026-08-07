@@ -886,6 +886,7 @@ export type RuntimeTradeTelemetryQuality =
 export interface RuntimeTradeRecord {
   orderId: string;
   signalId?: string;
+  runtimeLineage?: RuntimeLineage;
   strategy: string;
   universe?: MarketUniverse;
   assetClass?: import('./market').AssetClass;

@@ -201,6 +201,46 @@ export const loadRuntimeTrades = async (
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
+export const loadRuntimeClosedTrades = async (
+  userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime: number;
+    endTime: number;
+  },
+): Promise<RuntimeTradeRecord[]> => {
+  const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
+  const trades = (
+    await Promise.all(
+      dayKeys.map((dayKey) =>
+        getHashJsonValues<RuntimeTradeRecord>(
+          redisKeys.runtimeClosedTradeBucket(userName, dayKey),
+        ),
+      ),
+    )
+  ).flat();
+  const deduped = new Map<string, RuntimeTradeRecord>();
+
+  for (const trade of trades) {
+    if (
+      !isRuntimeTradeRecord(trade) ||
+      trade.status !== 'closed' ||
+      !Number.isFinite(trade.exitTimestamp) ||
+      trade.exitTimestamp! < startTime ||
+      trade.exitTimestamp! >= endTime
+    ) {
+      continue;
+    }
+    deduped.set(trade.orderId, trade);
+  }
+
+  return [...deduped.values()].sort(
+    (left, right) => left.exitTimestamp! - right.exitTimestamp!,
+  );
+};
+
 export const loadRuntimeActiveTradeOrderIds = async (
   userName: string,
 ): Promise<Set<string>> => {

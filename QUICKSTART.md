@@ -109,6 +109,7 @@ Summary reports:
 
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours
 - production cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone
+- production cron publishes immutable runtime evidence every day at `21:05` in `Europe/Moscow` timezone
 - production cron runs runtime parity every day at `21:10` in `Europe/Moscow` timezone
 - production cron sends the weekly report on Sundays at `22:10` in `Europe/Moscow` timezone using `--hours 168`
 - production cron runs nightly research every day at `00:00` in `Europe/Moscow` timezone:
@@ -138,6 +139,42 @@ yarn signals -- --notify --user root --connector bybit
 yarn signals:daemon -- --notify --makeOrders --user root --connector bybit
 yarn signals:summary -- --user root --connector bybit --printOnly
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
+```
+
+Runtime feedback artifacts:
+
+- the runtime server publishes the latest complete `21:00 MSK -> 21:00 MSK` window into an immutable bundle under `incoming/` and atomically moves it to `ready/`
+- each ready bundle contains `runtime-evidence.json`, `manifest.json`, and `.complete`; consumers verify the payload size and SHA-256 before processing
+- closed trades are indexed by their exit day, so a trade opened on an earlier day still appears in the artifact for the day it closes
+
+```bash
+RUNTIME_EVIDENCE_PUBLISH_DIR=/app/data/runtime-evidence \
+RUNTIME_EVIDENCE_DEPLOYMENT_ID=production \
+yarn runtime:evidence:publish -- --user root
+```
+
+The local checkout can use the existing SSH account while the dedicated
+read-only evidence account is not configured yet:
+
+```bash
+RUNTIME_EVIDENCE_RSYNC_SOURCE='inv:/root/data/runtime-evidence/ready/production/' \
+RUNTIME_EVIDENCE_DEPLOYMENT_ID=production \
+yarn runtime:evidence:sync
+```
+
+The sync command never deletes remote artifacts. It downloads into
+`data/runtime-evidence/inbox`, verifies completed bundles, moves them to
+`data/runtime-evidence/artifacts`, and reports every artifact without a local
+processing receipt. After replay and calibration, build the daily scorecard and
+write the receipt only on successful completion:
+
+```bash
+yarn runtime:scorecard -- \
+  --runtimeEvidence <bundle>/runtime-evidence.json \
+  --replayEvidence output/replay-runtime-evidence.json \
+  --calibration output/execution-calibration.json \
+  --historyDir data/runtime-evidence/artifacts/production \
+  --markProcessed
 ```
 
 Runtime/backtest parity:

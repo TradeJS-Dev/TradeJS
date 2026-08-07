@@ -4,7 +4,7 @@ import args from 'args';
 import chalk from 'chalk';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
 import {
-  buildRuntimeDebugReportPayload,
+  buildRuntimeEvidenceReportPayload,
   collectRuntimeDebugEvidence,
 } from '../lib/runtimeDebugEvidence';
 import { REPLAY_RESULTS_CONFIG } from '../lib/replay/support';
@@ -190,6 +190,7 @@ const summarizeReplayComparison = (
 
   return {
     mode: comparison.mode ?? null,
+    lineage: comparison.lineage ?? null,
     rows: asArray(comparison.rows).filter(
       (row) => !useFilter || strategySet.has(String(row.strategyName ?? '')),
     ),
@@ -338,7 +339,7 @@ const loadRuntimePayload = async ({
   return {
     source: 'local-redis',
     path: null,
-    payload: await buildRuntimeDebugReportPayload({
+    payload: buildRuntimeEvidenceReportPayload({
       userName: flags.user,
       startTime,
       endTime,

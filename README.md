@@ -216,7 +216,7 @@ yarn continuity --user root --timeframe 15 --provider bybit
 - The Bybit signals daemon uses one persistent public kline WebSocket by default. Confirmed candles are batch-upserted into Timescale; REST remains the automatic startup, missing-candle, and reconnect recovery path. Set `SIGNALS_KLINE_WS_ENABLED=0` for an immediate REST-only rollback or tune the close wait with `SIGNALS_KLINE_WS_WAIT_MS`.
 - Production also starts `yarn market:ws` on `MARKET_WS_PORT=3001`. The dashboard loads history over HTTP, then receives live/forming candles through `/ws/market` without opening browser connections to Bybit.
 - Each signal is delivered in order with its optional AI analysis follow-up so chat ordering stays stable.
-- `yarn signals:summary` builds the Telegram digest; current cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone for the last 24 hours and the weekly report on Sundays at `22:10` for the last 168 hours. Runtime parity runs every day at `21:10` in `Europe/Moscow` timezone.
+- `yarn signals:summary` builds the Telegram digest; current cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone for the last 24 hours and the weekly report on Sundays at `22:10` for the last 168 hours. Immutable runtime evidence is published at `21:05`, and runtime parity runs at `21:10` every day.
 - The summary groups signal statuses and trade PnL/status by strategy and uses generated runtime `orderId` linkage (`orderLinkId` on Bybit).
 
 ## ML Flow (High-Level)

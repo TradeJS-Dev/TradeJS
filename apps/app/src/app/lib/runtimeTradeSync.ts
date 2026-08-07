@@ -262,6 +262,15 @@ export const syncRuntimeTrades = async ({
         nextTrade,
         { expire: TTL_1M },
       ),
+      setHashJsonField(
+        redisKeys.runtimeClosedTradeBucket(
+          userName,
+          getRuntimeStorageDayKey(nextTrade.exitTimestamp!),
+        ),
+        trade.orderId,
+        nextTrade,
+        { expire: TTL_1M },
+      ),
       ...(isCurrentActiveTrade ? [delKey(activeTradeKey)] : []),
     ]);
     syncedTrades.push(nextTrade);
