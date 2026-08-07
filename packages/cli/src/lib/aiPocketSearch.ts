@@ -485,13 +485,16 @@ export const classifyAiPocketFeaturePath = (
     /(?:liquidations?|marketcap|notional|openinterest|price|turnover|volume)$/.test(
       leaf,
     );
+  const isRawStructureLevel =
+    leaf === 'level' && normalized.includes('structure');
   if (
     !isDerivedFeature &&
     !isNormalizedLeaf &&
     (RAW_NONSTATIONARY_LEAVES.has(leaf) ||
       isRawMovingAverage ||
       isRawAbsolutePositioning ||
-      isRawAbsoluteMeasure)
+      isRawAbsoluteMeasure ||
+      isRawStructureLevel)
   ) {
     return 'raw-nonstationary';
   }

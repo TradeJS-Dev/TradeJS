@@ -330,6 +330,11 @@ describe('aiPocketSearch', () => {
     expect(classifyAiPocketFeaturePath('context.derivatives.liqTotal')).toBe(
       'raw-nonstationary',
     );
+    expect(
+      classifyAiPocketFeaturePath(
+        'additionalIndicators.baseContext.structure.srZones.nearestResistance.level',
+      ),
+    ).toBe('raw-nonstationary');
     expect(classifyAiPocketFeaturePath('context.tradeFlow.available')).toBe(
       'data-quality',
     );
