@@ -1179,6 +1179,49 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
+  it('blocks BNB rotation approval below the ETH/BTC volume ratio gate', () => {
+    const result = doubleTapAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: createBnbOiRotationBaseContext({
+            relative: {
+              cmcReferenceAssets: {
+                ethVsBtcVolumeRatio: 0.339,
+              },
+            },
+          }),
+        },
+      } as any,
+    } as any);
+
+    const context = (result as any).additionalIndicators.doubleTapContext;
+
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
+    expect(context.strictMomentumApprovalAllowedNow).toBe(false);
+    expect(context.ethVsBtcVolumeRatioApprovalOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'eth_vs_btc_volume_ratio_below_approval_gate',
+    );
+    expect(context.doubleTapGateFeatures).toMatchObject({
+      defaultApprovalAllowed: false,
+      approvalPocket: 'bnb_oi_rotation_blocked',
+      bnbOiRotationPocket: true,
+      bnbOiRotationMomentumOk: true,
+      ethVsBtcVolumeRatioApprovalOk: false,
+      strictMomentumApproved: false,
+    });
+  });
+
   it('approves the XRP OI short pocket when HTF conflict is absent', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
@@ -1202,7 +1245,7 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBe('SHORT');
   });
 
-  it('approves the ETH volume/breadth compression pocket without BNB/XRP confirmation', () => {
+  it('keeps the ETH volume/breadth compression pocket as observation without BNB/XRP confirmation', () => {
     const result = doubleTapAiAdapter.buildPayload?.({
       signal: {
         additionalIndicators: {
@@ -1242,23 +1285,28 @@ describe('doubleTapAiAdapter', () => {
 
     const context = (result as any).additionalIndicators.doubleTapContext;
 
-    expect(context.deterministicQuality).toBe(4);
-    expect(context.approvalAllowedNow).toBe(true);
+    expect(context.deterministicQuality).toBe(3);
+    expect(context.approvalAllowedNow).toBe(false);
     expect(context.ethVolumeBreadthContextAvailable).toBe(true);
     expect(context.ethVolumeBreadthCompressionPocket).toBe(true);
+    expect(context.ethVsBtcVolumeRatioApprovalOk).toBe(true);
     expect(context.protectiveApprovalContextAvailable).toBe(true);
     expect(context.protectiveApprovalContextOk).toBe(false);
+    expect(context.softBlockReasons).toContain(
+      'eth_volume_breadth_observation_only',
+    );
     expect(context.softBlockReasons).not.toContain(
       'bnb_reference_pressure_crowded_long_protective_gate',
     );
     expect(context.doubleTapGateFeatures).toMatchObject({
-      approvalPocket: 'eth_volume_breadth',
-      defaultApprovalAllowed: true,
-      highQualityCadencePocket: true,
+      approvalPocket: 'eth_volume_breadth_blocked',
+      defaultApprovalAllowed: false,
+      highQualityCadencePocket: false,
       bnbOiRotationPocket: false,
       xrpOiShortNoHtfPocket: false,
       ethVolumeBreadthContextAvailable: true,
       ethVolumeBreadthCompressionPocket: true,
+      ethVsBtcVolumeRatioApprovalOk: true,
       protectiveApprovalContextAvailable: true,
       protectiveApprovalContextOk: false,
     });
