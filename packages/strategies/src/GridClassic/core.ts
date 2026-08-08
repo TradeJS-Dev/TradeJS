@@ -36,6 +36,7 @@ interface PendingGridClassicEntry {
 }
 
 interface GridClassicCycle {
+  mode: GridClassicConfig['GRIDCLASSIC_MODE'];
   direction: Direction;
   geometry: CausalRangeGeometry;
   plan: GridClassicGridPlan;
@@ -121,11 +122,79 @@ const getRiskRates = (config: GridClassicConfig) => {
   };
 };
 
+const buildContinuationPlan = ({
+  direction,
+  entryPrice,
+  geometry,
+  maxLossValue,
+  feeRate,
+  slippageRate,
+  targetRangeMult,
+  stopInsideRangeFraction,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  geometry: CausalRangeGeometry;
+  maxLossValue: number;
+  feeRate: number;
+  slippageRate: number;
+  targetRangeMult: number;
+  stopInsideRangeFraction: number;
+}): GridClassicGridPlan | null => {
+  const lower = geometry.lowerPrice;
+  const upper = geometry.upperPrice;
+  if (lower == null || upper == null || upper <= lower) return null;
+  const width = upper - lower;
+  const stopDepth =
+    width * Math.min(0.9, Math.max(0.01, stopInsideRangeFraction));
+  const stopLossPrice =
+    direction === 'LONG' ? upper - stopDepth : lower + stopDepth;
+  const takeProfitPrice =
+    direction === 'LONG'
+      ? entryPrice + width * Math.max(0.1, targetRangeMult)
+      : entryPrice - width * Math.max(0.1, targetRangeMult);
+  if (
+    !isDirectionalStop(direction, stopLossPrice, entryPrice) ||
+    !isDirectionalTarget(direction, takeProfitPrice, entryPrice)
+  ) {
+    return null;
+  }
+  const unitLoss = calculateGridClassicUnitLoss({
+    entryPrice,
+    stopLossPrice,
+    feeRate,
+    slippageRate,
+  });
+  const qty = unitLoss > 0 ? maxLossValue / unitLoss : 0;
+  if (!Number.isFinite(qty) || qty <= Number.EPSILON) return null;
+  return {
+    stopLossPrice,
+    takeProfitPrice,
+    stepDistance: width,
+    levels: [
+      {
+        level: 1,
+        price: entryPrice,
+        qty,
+        worstCaseLoss: qty * unitLoss,
+      },
+    ],
+    worstCaseLoss: qty * unitLoss,
+  };
+};
+
 const buildExecutionStateKey = (config: GridClassicConfig) =>
   JSON.stringify({
     detector: buildGridClassicDetectorKey(config),
     maxLossValue: config.MAX_LOSS_VALUE,
     levels: config.GRIDCLASSIC_LEVELS,
+    mode: config.GRIDCLASSIC_MODE,
+    continuationTargetRangeMult:
+      config.GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT,
+    continuationStopInsideRangeFraction:
+      config.GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION,
+    continuationMaxEntryDistanceAtr:
+      config.GRIDCLASSIC_CONTINUATION_MAX_ENTRY_DISTANCE_ATR,
     requireRejectionForAdd: config.GRIDCLASSIC_REQUIRE_REJECTION_FOR_ADD,
     stepAtr: config.GRIDCLASSIC_GRID_STEP_ATR,
     stepRangeFraction: config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION,
@@ -159,6 +228,7 @@ const freezeCycle = ({
   economics: GridClassicEntryEconomics;
   timestamp: number;
 }): GridClassicCycle => ({
+  mode: snapshot.strategyMode,
   direction,
   geometry: cloneGeometry(snapshot.geometry),
   plan: {
@@ -236,6 +306,7 @@ const recoverCycle = ({
   };
 
   return {
+    mode: config.GRIDCLASSIC_MODE,
     direction: position.direction,
     geometry: cloneGeometry(snapshot.geometry),
     plan: {
@@ -538,16 +609,19 @@ export const createGridClassicCore: CreateStrategyCore<
           draft.cycle.adverseBreakoutBars = adverseBreakout
             ? draft.cycle.adverseBreakoutBars + 1
             : 0;
-          draft.cycle.invalidRangeBars = snapshot.geometry.detected
-            ? 0
-            : draft.cycle.invalidRangeBars + 1;
+          draft.cycle.invalidRangeBars =
+            draft.cycle.mode === 'breakout_continuation' ||
+            snapshot.geometry.detected
+              ? 0
+              : draft.cycle.invalidRangeBars + 1;
           draft.cycle.failedRejectionBars = failedRejection
             ? draft.cycle.failedRejectionBars + 1
             : 0;
           if (
             adverseBreakout ||
             !snapshot.geometry.detected ||
-            snapshot.volatilityShock
+            snapshot.volatilityShock ||
+            draft.cycle.mode === 'breakout_continuation'
           ) {
             draft.cycle.additionsStopped = true;
           }
@@ -618,6 +692,7 @@ export const createGridClassicCore: CreateStrategyCore<
         });
       }
       if (
+        currentCycle.mode === 'mean_reversion' &&
         failedRejectionExitBars > 0 &&
         currentCycle.failedRejectionBars >= failedRejectionExitBars
       ) {
@@ -678,9 +753,11 @@ export const createGridClassicCore: CreateStrategyCore<
           : snapshot.close <= currentCycle.takeProfitPrice;
       if (targetReached) {
         const targetCode =
-          config.GRIDCLASSIC_TP_MODE === 'opposite_edge'
-            ? 'GRIDCLASSIC_OPPOSITE_EDGE_TP_EXIT'
-            : 'GRIDCLASSIC_CENTER_TP_EXIT';
+          currentCycle.mode === 'breakout_continuation'
+            ? 'GRIDCLASSIC_CONTINUATION_TP_EXIT'
+            : config.GRIDCLASSIC_TP_MODE === 'opposite_edge'
+              ? 'GRIDCLASSIC_OPPOSITE_EDGE_TP_EXIT'
+              : 'GRIDCLASSIC_CENTER_TP_EXIT';
         executionState.update((draft) => {
           if (draft.cycle) draft.cycle.exitCode = targetCode;
         });
@@ -875,10 +952,14 @@ export const createGridClassicCore: CreateStrategyCore<
     ) {
       return strategyApi.skip('GRIDCLASSIC_COOLDOWN');
     }
-    if (!snapshot.geometry.ready) {
+    const continuationMode = snapshot.strategyMode === 'breakout_continuation';
+    const entryGeometry = continuationMode
+      ? snapshot.setupGeometry
+      : snapshot.geometry;
+    if (!entryGeometry?.ready) {
       return strategyApi.skip('GRIDCLASSIC_RANGE_NOT_READY');
     }
-    if (!snapshot.geometry.detected) {
+    if (!entryGeometry.detected) {
       return strategyApi.skip('GRIDCLASSIC_RANGE_NOT_DETECTED');
     }
     if (!snapshot.entryDirection) {
@@ -894,8 +975,8 @@ export const createGridClassicCore: CreateStrategyCore<
     const direction = snapshot.entryDirection;
     const sideConfig = direction === 'LONG' ? config.LONG : config.SHORT;
     if (!sideConfig.enable) return strategyApi.skip('STRATEGY_DISABLED');
-    const lowerPrice = snapshot.geometry.lowerPrice;
-    const upperPrice = snapshot.geometry.upperPrice;
+    const lowerPrice = entryGeometry.lowerPrice;
+    const upperPrice = entryGeometry.upperPrice;
     if (lowerPrice == null || upperPrice == null) {
       return strategyApi.skip('GRIDCLASSIC_INVALID_GEOMETRY');
     }
@@ -904,37 +985,75 @@ export const createGridClassicCore: CreateStrategyCore<
       await strategyApi.getDecisionPriceContext();
     const currentPosition =
       (currentPrice - lowerPrice) / (upperPrice - lowerPrice);
-    const stillNearEdge =
-      direction === 'LONG'
+    const continuationMaxEntryDistance =
+      snapshot.atr *
+      Math.max(
+        0,
+        Number(config.GRIDCLASSIC_CONTINUATION_MAX_ENTRY_DISTANCE_ATR ?? 0),
+      );
+    const continuationDistanceAccepted =
+      !continuationMode ||
+      continuationMaxEntryDistance <= 0 ||
+      snapshot.breakoutLevel == null ||
+      Math.abs(currentPrice - snapshot.breakoutLevel) <=
+        continuationMaxEntryDistance;
+    const stillNearEdge = continuationMode
+      ? direction === 'LONG'
+        ? currentPrice >= (snapshot.breakoutLevel ?? upperPrice) &&
+          continuationDistanceAccepted
+        : currentPrice <= (snapshot.breakoutLevel ?? lowerPrice) &&
+          continuationDistanceAccepted
+      : direction === 'LONG'
         ? currentPosition >=
             -Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
-              Math.max(snapshot.geometry.widthAtr ?? 1, Number.EPSILON) &&
+              Math.max(entryGeometry.widthAtr ?? 1, Number.EPSILON) &&
           currentPosition <= edgeZoneFraction
         : currentPosition <=
             1 +
               Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
-                Math.max(snapshot.geometry.widthAtr ?? 1, Number.EPSILON) &&
+                Math.max(entryGeometry.widthAtr ?? 1, Number.EPSILON) &&
           currentPosition >= 1 - edgeZoneFraction;
     if (!stillNearEdge) {
-      return strategyApi.skip('GRIDCLASSIC_ENTRY_GAP_OUTSIDE_EDGE');
+      return strategyApi.skip(
+        continuationMode && !continuationDistanceAccepted
+          ? 'GRIDCLASSIC_CONTINUATION_ENTRY_TOO_EXTENDED'
+          : 'GRIDCLASSIC_ENTRY_GAP_OUTSIDE_EDGE',
+      );
     }
 
-    const plan = buildGridClassicGridPlan({
-      direction,
-      entryPrice: currentPrice,
-      lowerPrice,
-      upperPrice,
-      atr: snapshot.atr,
-      levels,
-      stepAtr: Number(config.GRIDCLASSIC_GRID_STEP_ATR),
-      stepRangeFraction: Number(config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION),
-      levelSizeDecay: Number(config.GRIDCLASSIC_LEVEL_SIZE_DECAY),
-      stopAtrBuffer: Number(config.GRIDCLASSIC_STOP_ATR_BUFFER),
-      takeProfitMode: config.GRIDCLASSIC_TP_MODE,
-      maxLossValue,
-      feeRate,
-      slippageRate,
-    });
+    const plan = continuationMode
+      ? buildContinuationPlan({
+          direction,
+          entryPrice: currentPrice,
+          geometry: entryGeometry,
+          maxLossValue,
+          feeRate,
+          slippageRate,
+          targetRangeMult: Number(
+            config.GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT,
+          ),
+          stopInsideRangeFraction: Number(
+            config.GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION,
+          ),
+        })
+      : buildGridClassicGridPlan({
+          direction,
+          entryPrice: currentPrice,
+          lowerPrice,
+          upperPrice,
+          atr: snapshot.atr,
+          levels,
+          stepAtr: Number(config.GRIDCLASSIC_GRID_STEP_ATR),
+          stepRangeFraction: Number(
+            config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION,
+          ),
+          levelSizeDecay: Number(config.GRIDCLASSIC_LEVEL_SIZE_DECAY),
+          stopAtrBuffer: Number(config.GRIDCLASSIC_STOP_ATR_BUFFER),
+          takeProfitMode: config.GRIDCLASSIC_TP_MODE,
+          maxLossValue,
+          feeRate,
+          slippageRate,
+        });
     const firstLevel = plan?.levels[0];
     if (!plan || !firstLevel || firstLevel.qty <= Number.EPSILON) {
       return strategyApi.skip('GRIDCLASSIC_INVALID_GRID_PLAN');
@@ -958,9 +1077,14 @@ export const createGridClassicCore: CreateStrategyCore<
       );
     }
 
+    const entrySnapshot: GridClassicSnapshot = {
+      ...snapshot,
+      geometry: entryGeometry,
+      setupGeometry: entryGeometry,
+    };
     const cycle = freezeCycle({
       direction,
-      snapshot,
+      snapshot: entrySnapshot,
       plan,
       economics,
       timestamp,
@@ -980,15 +1104,18 @@ export const createGridClassicCore: CreateStrategyCore<
     const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     return strategyApi.entry({
-      code:
-        direction === 'LONG'
+      code: continuationMode
+        ? direction === 'LONG'
+          ? 'GRIDCLASSIC_UPPER_BREAKOUT_CONTINUATION_LONG'
+          : 'GRIDCLASSIC_LOWER_BREAKOUT_CONTINUATION_SHORT'
+        : direction === 'LONG'
           ? 'GRIDCLASSIC_LOWER_EDGE_LONG'
           : 'GRIDCLASSIC_UPPER_EDGE_SHORT',
       direction: sideConfig.direction,
       indicators,
       additionalIndicators: {
         gridClassicContext: buildGridClassicSignalContext({
-          snapshot,
+          snapshot: entrySnapshot,
           direction,
           gridLevel: 1,
           filledLevels: 0,
@@ -999,7 +1126,7 @@ export const createGridClassicCore: CreateStrategyCore<
       },
       figures: buildGridClassicFigures({
         direction,
-        geometry: snapshot.geometry,
+        geometry: entryGeometry,
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
         plannedLevels: plan.levels,

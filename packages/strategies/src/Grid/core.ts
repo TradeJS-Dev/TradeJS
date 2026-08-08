@@ -13,6 +13,7 @@ import {
 } from './engine';
 import { buildGridFigures } from './figures';
 import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
+import { buildTradeEconomics } from '../shared/structureRisk';
 
 interface PendingGridEntry {
   timestamp: number;
@@ -160,6 +161,10 @@ const buildExecutionStateKey = (config: GridConfig) =>
     maxLossValue: config.MAX_LOSS_VALUE,
     maxLevels: config.GRID_MAX_LEVELS,
     feePercent: config.FEE_PERCENT,
+    slippageBaseBps: config.SLIPPAGE_BASE_BPS,
+    slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
+    entryMode: config.GRID_ENTRY_MODE,
+    continuationAllowScaleIn: config.GRID_CONTINUATION_ALLOW_SCALE_IN,
     rangeFilterMode: config.GRID_RANGE_FILTER_MODE,
     rangeEdgeFraction: config.GRID_RANGE_EDGE_FRACTION,
   });
@@ -278,12 +283,27 @@ export const createGridCore: CreateStrategyCore<
       state.engine.next(candle),
     );
 
-  const maxLevels = Math.max(
+  const configuredMaxLevels = Math.max(
     1,
     Math.floor(Number(config.GRID_MAX_LEVELS ?? 4)),
   );
+  const maxLevels =
+    config.GRID_ENTRY_MODE === 'breakout_retest' &&
+    !Boolean(config.GRID_CONTINUATION_ALLOW_SCALE_IN)
+      ? 1
+      : configuredMaxLevels;
   const maxLossValue = Math.max(0, Number(config.MAX_LOSS_VALUE ?? 0));
   const feeRate = Math.max(0, Number(config.FEE_PERCENT ?? 0));
+  const slippageBps = Math.max(
+    0,
+    Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+      Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
+  );
+  const executionCostRate = feeRate + slippageBps / 10_000;
+  const minNetRiskRatio = Math.max(
+    0,
+    Number(config.GRID_MIN_NET_RISK_RATIO ?? 0),
+  );
   const cooldownMs =
     Math.max(0, Number(config.GRID_ENTRY_COOLDOWN_BARS ?? 0)) *
     getIntervalMs(config.INTERVAL);
@@ -317,7 +337,7 @@ export const createGridCore: CreateStrategyCore<
             snapshot,
             maxLossValue,
             maxLevels,
-            feeRate,
+            feeRate: executionCostRate,
           });
         });
       } else if (state.cycle.pending) {
@@ -332,7 +352,7 @@ export const createGridCore: CreateStrategyCore<
               position,
               maxLossValue,
               maxLevels,
-              feeRate,
+              feeRate: executionCostRate,
             });
             draft.cycle.pending = null;
           });
@@ -349,7 +369,7 @@ export const createGridCore: CreateStrategyCore<
             position,
             maxLossValue,
             maxLevels,
-            feeRate,
+            feeRate: executionCostRate,
           });
         });
       }
@@ -424,7 +444,7 @@ export const createGridCore: CreateStrategyCore<
         qty: position.qty,
         entryPrice: position.price,
         stopLossPrice,
-        feeRate,
+        feeRate: executionCostRate,
       });
       const remainingRisk = Math.max(0, maxLossValue - existingRisk);
       if (
@@ -451,8 +471,8 @@ export const createGridCore: CreateStrategyCore<
       if (canIncrease && !rangeBlocksIncrease) {
         const nextUnitRisk =
           Math.abs(snapshot.close - stopLossPrice) +
-          Math.abs(snapshot.close) * feeRate +
-          Math.abs(stopLossPrice) * feeRate;
+          Math.abs(snapshot.close) * executionCostRate +
+          Math.abs(stopLossPrice) * executionCostRate;
         const riskLimitedQty =
           nextUnitRisk > 0 ? remainingRisk / nextUnitRisk : 0;
         const qty = Math.min(cycle.levelQty, riskLimitedQty);
@@ -472,6 +492,18 @@ export const createGridCore: CreateStrategyCore<
           snapshot.takeProfitDistance,
           'target',
         );
+        const projectedEconomics = buildTradeEconomics({
+          entryPrice: projectedAveragePrice,
+          stopLossPrice,
+          takeProfitPrice: projectedTargetPrice,
+          feeRate,
+          slippageBps,
+        });
+        if (projectedEconomics.netRiskRatio < minNetRiskRatio) {
+          return strategyApi.skip(
+            `GRID_NET_RISK_RATIO:${projectedEconomics.netRiskRatio.toFixed(2)}`,
+          );
+        }
         const level = cycle.levelsFilled + 1;
         executionState.update((draft) => {
           if (!draft.cycle) return;
@@ -497,6 +529,8 @@ export const createGridCore: CreateStrategyCore<
               projectedAveragePrice,
               stopLossPrice,
               takeProfitPrice: projectedTargetPrice,
+              grossRiskRatio: projectedEconomics.grossRiskRatio,
+              netRiskRatio: projectedEconomics.netRiskRatio,
             }),
           },
           figures: buildGridFigures({
@@ -509,6 +543,7 @@ export const createGridCore: CreateStrategyCore<
             stopLossPrice,
             takeProfitPrice: projectedTargetPrice,
             rangeGeometry: snapshot.rangeGeometry,
+            breakoutLevel: snapshot.breakoutLevel,
           }),
           orderPlan: {
             qty,
@@ -553,7 +588,11 @@ export const createGridCore: CreateStrategyCore<
       return strategyApi.skip('GRID_ENTRY_COOLDOWN');
     }
     if (!snapshot.entryDirection) {
-      return strategyApi.skip('GRID_NO_DIRECTIONAL_PULLBACK');
+      return strategyApi.skip(
+        config.GRID_ENTRY_MODE === 'breakout_retest'
+          ? 'GRID_NO_BREAKOUT_RETEST'
+          : 'GRID_NO_DIRECTIONAL_PULLBACK',
+      );
     }
 
     const direction = snapshot.entryDirection;
@@ -588,12 +627,24 @@ export const createGridCore: CreateStrategyCore<
       snapshot.takeProfitDistance,
       'target',
     );
+    const economics = buildTradeEconomics({
+      entryPrice: snapshot.close,
+      stopLossPrice,
+      takeProfitPrice,
+      feeRate,
+      slippageBps,
+    });
+    if (economics.netRiskRatio < minNetRiskRatio) {
+      return strategyApi.skip(
+        `GRID_NET_RISK_RATIO:${economics.netRiskRatio.toFixed(2)}`,
+      );
+    }
     const qty = calculateLevelQty({
       maxLossValue,
       maxLevels,
       entryPrice: snapshot.close,
       stopLossPrice,
-      feeRate,
+      feeRate: executionCostRate,
     });
     if (!Number.isFinite(qty) || qty <= Number.EPSILON) {
       return strategyApi.skip('GRID_INVALID_QTY');
@@ -615,7 +666,10 @@ export const createGridCore: CreateStrategyCore<
     const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     return strategyApi.entry({
-      code: 'GRID_DIRECTIONAL_PULLBACK_ENTRY',
+      code:
+        snapshot.entryStage === 'breakout_retest_held'
+          ? 'GRID_BREAKOUT_RETEST_ENTRY'
+          : 'GRID_DIRECTIONAL_PULLBACK_ENTRY',
       direction: sideConfig.direction,
       indicators,
       additionalIndicators: {
@@ -629,6 +683,8 @@ export const createGridCore: CreateStrategyCore<
           projectedAveragePrice: snapshot.close,
           stopLossPrice,
           takeProfitPrice,
+          grossRiskRatio: economics.grossRiskRatio,
+          netRiskRatio: economics.netRiskRatio,
         }),
       },
       figures: buildGridFigures({
@@ -641,6 +697,7 @@ export const createGridCore: CreateStrategyCore<
         stopLossPrice,
         takeProfitPrice,
         rangeGeometry: snapshot.rangeGeometry,
+        breakoutLevel: snapshot.breakoutLevel,
       }),
       orderPlan: {
         qty,

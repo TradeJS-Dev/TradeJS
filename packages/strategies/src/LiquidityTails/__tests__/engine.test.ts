@@ -50,6 +50,11 @@ describe('Liquidity Tails engine', () => {
     expect(signal?.zone.bottom).toBe(95);
     expect(signal?.reactionBodyAligned).toBe(true);
     expect(signal?.retestOrdinal).toBe(1);
+    expect(signal?.candidateAction).toBe('initial_entry');
+    expect(signal?.candidateOrdinal).toBe(1);
+    expect(signal?.zone.traded).toBe(false);
+    expect(signal?.zone.retestsObserved).toBe(1);
+    expect(signal?.zone.entryCandidatesEmitted).toBe(1);
   });
 
   it('detects sell pressure zone retests with bearish reaction', () => {
@@ -72,6 +77,42 @@ describe('Liquidity Tails engine', () => {
     expect(signal?.retestOrdinal).toBe(1);
   });
 
+  it('requires efficient rejection when the causal entry filter is enabled', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({
+        LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO: 1.1,
+      }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states.at(-1)?.signal).toBeNull();
+  });
+
+  it('rejects an initial entry after the configured zone age', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({ LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS: 2 }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 102, 102.5, 101.5, 102),
+      makeCandle(4, 102, 102.5, 101.5, 102),
+      makeCandle(5, 99.5, 102, 99, 101),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states.at(-1)?.signal).toBeNull();
+  });
+
   it('emits one separated secondary retest when scale-in is enabled', () => {
     const engine = createLiquidityTailsEngine({ config: makeConfig() });
     const candles = [
@@ -90,6 +131,11 @@ describe('Liquidity Tails engine', () => {
 
     expect(signals).toHaveLength(2);
     expect(signals.map((signal) => signal?.retestOrdinal)).toEqual([1, 2]);
+    expect(signals.map((signal) => signal?.candidateAction)).toEqual([
+      'initial_entry',
+      'scale_in',
+    ]);
+    expect(signals.map((signal) => signal?.candidateOrdinal)).toEqual([1, 2]);
     expect(signals[0]?.zone.id).toBe(signals[1]?.zone.id);
   });
 
@@ -190,5 +236,23 @@ describe('Liquidity Tails engine', () => {
     });
 
     expect(resumed.next(candles.at(-1) as any)).toEqual(expected);
+  });
+
+  it('does not advance retest ordinals twice for the same timestamp', () => {
+    const engine = createLiquidityTailsEngine({ config: makeConfig() });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+    ];
+    for (const candle of candles.slice(0, -1)) engine.next(candle as any);
+
+    const first = engine.next(candles.at(-1) as any);
+    const duplicate = engine.next(candles.at(-1) as any);
+
+    expect(duplicate).toEqual(first);
+    expect(duplicate.signal?.zone.retestsObserved).toBe(1);
+    expect(duplicate.signal?.zone.candidatesEmitted).toBe(1);
   });
 });

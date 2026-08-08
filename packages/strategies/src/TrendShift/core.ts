@@ -161,7 +161,10 @@ export const createTrendShiftCore: CreateStrategyCore<
       stopLossPrice,
       targetR: Number(config.TRENDSHIFT_TARGET_R_MULT ?? 2.5),
       maxLossValue: config.MAX_LOSS_VALUE,
-      feePercent: Number(config.FEE_PERCENT ?? 0),
+      feeRate: Number(config.FEE_PERCENT ?? 0),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
     });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {

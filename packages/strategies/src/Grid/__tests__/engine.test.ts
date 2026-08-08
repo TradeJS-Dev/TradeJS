@@ -170,4 +170,100 @@ describe('Grid engine', () => {
     expect(snapshot.stopDistance).toBeCloseTo(snapshot.stepDistance * 4);
     expect(snapshot.takeProfitDistance).toBeCloseTo(snapshot.stepDistance * 2);
   });
+
+  it('emits a one-shot continuation entry only after breakout acceptance and retest', () => {
+    const config = makeConfig({
+      GRID_ENTRY_MODE: 'breakout_retest',
+      GRID_BREAKOUT_LOOKBACK_BARS: 6,
+      GRID_BREAKOUT_MIN_DISTANCE_ATR: 0,
+      GRID_BREAKOUT_ACCEPTANCE_BARS: 1,
+      GRID_BREAKOUT_RETEST_MAX_BARS: 4,
+      GRID_BREAKOUT_RETEST_TOLERANCE_ATR: 0.5,
+    });
+    const trend = Array.from({ length: 12 }, (_, index) => {
+      const open = 100 + index;
+      return makeCandle(index, open, open + 1.4, open - 0.4, open + 1);
+    });
+    const breakout = makeCandle(12, 112, 116, 111.8, 115);
+    const acceptance = makeCandle(13, 115, 116.5, 114.5, 116);
+    const retest = makeCandle(14, 114, 114.5, 112.3, 113);
+    const engine = createGridEngine({ config });
+    for (const candle of trend) engine.next(candle);
+
+    const breakoutState = engine.next(breakout);
+    expect(breakoutState.snapshot).toEqual(
+      expect.objectContaining({
+        entryDirection: null,
+        setupId: expect.stringMatching(/^grid-breakout:LONG:/),
+        breakoutAgeBars: expect.any(Number),
+      }),
+    );
+    expect(engine.next(acceptance).snapshot?.entryDirection).toBeNull();
+
+    const ready = engine.next(retest);
+    expect(ready.snapshot).toEqual(
+      expect.objectContaining({
+        entryDirection: 'LONG',
+        entryStage: 'breakout_retest_held',
+        breakoutLevel: breakoutState.snapshot?.breakoutLevel,
+        setupId: breakoutState.snapshot?.setupId,
+        breakoutRetestCloseDistanceAtr: expect.any(Number),
+      }),
+    );
+    expect(engine.next(retest)).toEqual(ready);
+    expect(
+      engine.next(makeCandle(15, 113, 114, 112.8, 113.5)).snapshot
+        ?.entryDirection,
+    ).toBeNull();
+  });
+
+  it('does not chase a retest close that is too far beyond the breakout level', () => {
+    const config = makeConfig({
+      GRID_ENTRY_MODE: 'breakout_retest',
+      GRID_BREAKOUT_LOOKBACK_BARS: 6,
+      GRID_BREAKOUT_MIN_DISTANCE_ATR: 0,
+      GRID_BREAKOUT_ACCEPTANCE_BARS: 1,
+      GRID_BREAKOUT_RETEST_MAX_BARS: 4,
+      GRID_BREAKOUT_RETEST_TOLERANCE_ATR: 0.5,
+      GRID_BREAKOUT_RETEST_MAX_CLOSE_DISTANCE_ATR: 0.05,
+    });
+    const trend = Array.from({ length: 12 }, (_, index) => {
+      const open = 100 + index;
+      return makeCandle(index, open, open + 1.4, open - 0.4, open + 1);
+    });
+    const engine = createGridEngine({ config });
+    for (const candle of trend) engine.next(candle);
+
+    engine.next(makeCandle(12, 112, 116, 111.8, 115));
+    engine.next(makeCandle(13, 115, 116.5, 114.5, 116));
+    const rejected = engine.next(makeCandle(14, 114, 114.5, 112.3, 113));
+
+    expect(rejected.snapshot?.entryDirection).toBeNull();
+    expect(rejected.snapshot?.entryStage).toBeNull();
+  });
+
+  it('replays a pending breakout lifecycle identically', () => {
+    const config = makeConfig({
+      GRID_ENTRY_MODE: 'breakout_retest',
+      GRID_BREAKOUT_LOOKBACK_BARS: 6,
+      GRID_BREAKOUT_MIN_DISTANCE_ATR: 0,
+      GRID_BREAKOUT_ACCEPTANCE_BARS: 1,
+      GRID_BREAKOUT_RETEST_TOLERANCE_ATR: 0.5,
+    });
+    const history = [
+      ...Array.from({ length: 12 }, (_, index) => {
+        const open = 100 + index;
+        return makeCandle(index, open, open + 1.4, open - 0.4, open + 1);
+      }),
+      makeCandle(12, 112, 116, 111.8, 115),
+      makeCandle(13, 115, 116.5, 114.5, 116),
+    ];
+    const retest = makeCandle(14, 114, 114.5, 112.3, 113);
+    const continuous = createGridEngine({ config });
+    for (const candle of history) continuous.next(candle);
+    const expected = continuous.next(retest);
+    const restored = createGridEngine({ config, initialCandles: history });
+
+    expect(restored.next(retest)).toEqual(expected);
+  });
 });

@@ -10,6 +10,13 @@ export interface VolumeDivergenceModeConfig {
   enable: boolean;
   direction: Direction;
   minRiskRatio: number;
+  minDivergenceAmplitudeAtrRatio: number;
+  minReclaimPct: number;
+  minConfirmationCandleQuality: number;
+  requireRetest: boolean;
+  retestToleranceAtr: number;
+  maxRetestBars: number;
+  maxConfirmationDistanceAtr: number;
 }
 
 export const config = {
@@ -55,11 +62,25 @@ export const config = {
     enable: true,
     direction: 'LONG',
     minRiskRatio: 2,
+    minDivergenceAmplitudeAtrRatio: 0.45,
+    minReclaimPct: 110,
+    minConfirmationCandleQuality: 0.6,
+    requireRetest: true,
+    retestToleranceAtr: 0.35,
+    maxRetestBars: 4,
+    maxConfirmationDistanceAtr: 1.5,
   },
   BEARISH: {
     enable: true,
     direction: 'SHORT',
     minRiskRatio: 2,
+    minDivergenceAmplitudeAtrRatio: 0.6,
+    minReclaimPct: 125,
+    minConfirmationCandleQuality: 0.7,
+    requireRetest: true,
+    retestToleranceAtr: 0.3,
+    maxRetestBars: 3,
+    maxConfirmationDistanceAtr: 1.2,
   },
 } as const;
 

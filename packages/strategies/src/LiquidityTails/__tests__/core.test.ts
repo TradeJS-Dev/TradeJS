@@ -34,17 +34,22 @@ const makeSignal = ({
   close,
   direction = 'LONG',
   zoneId = `zone-${timestamp}`,
+  candidateAction = 'initial_entry',
 }: {
   timestamp: number;
   close: number;
   direction?: 'LONG' | 'SHORT';
   zoneId?: string;
+  candidateAction?: 'initial_entry' | 'scale_in';
 }): LiquidityTailsSignal => {
   const isLong = direction === 'LONG';
   const top = isLong ? 95 : 110;
   const bottom = isLong ? 90 : 105;
 
   return {
+    setupId: zoneId,
+    candidateAction,
+    candidateOrdinal: candidateAction === 'initial_entry' ? 1 : 2,
     direction,
     zone: {
       id: zoneId,
@@ -60,7 +65,12 @@ const makeSignal = ({
       originVolume: 1_000,
       spent: false,
       traded: true,
-      signalsEmitted: 1,
+      retestsObserved: candidateAction === 'initial_entry' ? 1 : 2,
+      candidatesEmitted: candidateAction === 'initial_entry' ? 1 : 2,
+      entryCandidatesEmitted: 1,
+      scaleInCandidatesEmitted: candidateAction === 'scale_in' ? 1 : 0,
+      signalsEmitted: candidateAction === 'initial_entry' ? 1 : 2,
+      lastRetestIndex: 1,
       lastSignalIndex: 1,
     },
     timestamp,
@@ -74,8 +84,9 @@ const makeSignal = ({
     wickDominanceRatio: 2,
     retestPenetrationPct: 20,
     reactionCloseDistancePct: 2,
+    rejectionEfficiencyRatio: 1,
     reactionBodyAligned: true,
-    retestOrdinal: 1,
+    retestOrdinal: candidateAction === 'initial_entry' ? 1 : 2,
   };
 };
 
@@ -151,9 +162,25 @@ describe('LiquidityTails core scale-in cycle', () => {
 
   it('uses 70% risk for open and the remaining budget for one improved-price increase', async () => {
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 95 })),
-      makeRuntimeState(makeSignal({ timestamp: 3, close: 94 })),
+      makeRuntimeState(
+        makeSignal({ timestamp: 1, close: 100, zoneId: 'zone-cycle' }),
+      ),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 2,
+          close: 95,
+          zoneId: 'zone-cycle',
+          candidateAction: 'scale_in',
+        }),
+      ),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 3,
+          close: 94,
+          zoneId: 'zone-cycle',
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     let decision = { timestamp: 1, currentPrice: 100 };
     let position: any = null;
@@ -237,11 +264,19 @@ describe('LiquidityTails core scale-in cycle', () => {
 
   it('splits the remaining risk budget across three improved-price increases', async () => {
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 95 })),
-      makeRuntimeState(makeSignal({ timestamp: 3, close: 94 })),
-      makeRuntimeState(makeSignal({ timestamp: 4, close: 93 })),
-      makeRuntimeState(makeSignal({ timestamp: 5, close: 92 })),
+      makeRuntimeState(
+        makeSignal({ timestamp: 1, close: 100, zoneId: 'zone-cycle' }),
+      ),
+      ...[95, 94, 93, 92].map((close, index) =>
+        makeRuntimeState(
+          makeSignal({
+            timestamp: index + 2,
+            close,
+            zoneId: 'zone-cycle',
+            candidateAction: 'scale_in',
+          }),
+        ),
+      ),
     ]);
     let decision = { timestamp: 1, currentPrice: 100 };
     let position: any = null;
@@ -332,7 +367,13 @@ describe('LiquidityTails core scale-in cycle', () => {
       tpPrice: 116,
     };
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 95 })),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 2,
+          close: 95,
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     const strategyApi = makeStrategyApi({
       getPosition: () => position,
@@ -366,7 +407,13 @@ describe('LiquidityTails core scale-in cycle', () => {
       tpPrice: 105.6,
     };
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 4, close: 93 })),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 4,
+          close: 93,
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     const strategyApi = makeStrategyApi({
       getPosition: () => position,
@@ -469,7 +516,13 @@ describe('LiquidityTails core scale-in cycle', () => {
 
   it('requires at least the configured ATR improvement for scale-in', async () => {
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 98.1 })),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 2,
+          close: 98.1,
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     const strategyApi = makeStrategyApi({
       getPosition: () => ({
@@ -501,7 +554,13 @@ describe('LiquidityTails core scale-in cycle', () => {
 
   it('allows scale-in at exactly the configured ATR improvement', async () => {
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 98 })),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 2,
+          close: 98,
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     const strategyApi = makeStrategyApi({
       getPosition: () => ({
@@ -532,7 +591,11 @@ describe('LiquidityTails core scale-in cycle', () => {
   });
 
   it('exits instead of increasing on a qualifying follow-up retest', async () => {
-    const signal = makeSignal({ timestamp: 2, close: 98 });
+    const signal = makeSignal({
+      timestamp: 2,
+      close: 98,
+      candidateAction: 'scale_in',
+    });
     signal.retestOrdinal = 2;
     mockRuntimeStates([makeRuntimeState(signal)]);
     const strategyApi = makeStrategyApi({
@@ -567,7 +630,11 @@ describe('LiquidityTails core scale-in cycle', () => {
   });
 
   it('does not use a secondary zone retest as a new primary entry', async () => {
-    const signal = makeSignal({ timestamp: 2, close: 98 });
+    const signal = makeSignal({
+      timestamp: 2,
+      close: 98,
+      candidateAction: 'scale_in',
+    });
     signal.retestOrdinal = 2;
     mockRuntimeStates([makeRuntimeState(signal)]);
     const strategyApi = makeStrategyApi({
@@ -586,7 +653,7 @@ describe('LiquidityTails core scale-in cycle', () => {
     expect(result).toEqual(
       expect.objectContaining({
         kind: 'skip',
-        code: 'LIQUIDITY_TAILS_SECONDARY_RETEST_WITHOUT_POSITION',
+        code: 'LIQUIDITY_TAILS_SCALE_IN_RETEST_WITHOUT_POSITION',
       }),
     );
   });
@@ -636,7 +703,13 @@ describe('LiquidityTails core scale-in cycle', () => {
 
   it('does not increase at a worse average price', async () => {
     mockRuntimeStates([
-      makeRuntimeState(makeSignal({ timestamp: 2, close: 101 })),
+      makeRuntimeState(
+        makeSignal({
+          timestamp: 2,
+          close: 101,
+          candidateAction: 'scale_in',
+        }),
+      ),
     ]);
     const strategyApi = makeStrategyApi({
       getPosition: () => ({

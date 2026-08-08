@@ -153,7 +153,8 @@ export const buildContextRiskOrder = ({
   stopLossPrice,
   targetR,
   maxLossValue,
-  feePercent,
+  feeRate,
+  slippageBps = 0,
   minRiskRatio,
 }: {
   currentPrice: number;
@@ -161,7 +162,8 @@ export const buildContextRiskOrder = ({
   stopLossPrice: number;
   targetR: number;
   maxLossValue: number;
-  feePercent: number;
+  feeRate: number;
+  slippageBps?: number;
   minRiskRatio: number;
 }):
   | {
@@ -194,7 +196,8 @@ export const buildContextRiskOrder = ({
     stopLossPrice,
     targetR,
     maxLossValue,
-    feePercent,
+    feeRate,
+    slippageBps,
   });
 
   if (!plan.qty || !Number.isFinite(plan.qty) || plan.qty <= 0) {

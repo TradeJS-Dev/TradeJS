@@ -110,6 +110,26 @@ const makeIndicatorsState = () =>
 const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...DEFAULT_CONFIG,
   ...overrides,
+  BULLISH: {
+    ...DEFAULT_CONFIG.BULLISH,
+    requireRetest: false,
+    minDivergenceAmplitudeAtrRatio:
+      DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+    minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
+    minConfirmationCandleQuality:
+      DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
+    ...(overrides.BULLISH ?? {}),
+  },
+  BEARISH: {
+    ...DEFAULT_CONFIG.BEARISH,
+    requireRetest: false,
+    minDivergenceAmplitudeAtrRatio:
+      DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+    minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
+    minConfirmationCandleQuality:
+      DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
+    ...(overrides.BEARISH ?? {}),
+  },
 });
 
 const DIVERGENCE_TEST_CONFIG = {
@@ -319,6 +339,154 @@ describe('createVolumeDivergenceCore', () => {
         }),
       }),
     );
+  });
+
+  it('waits for a causal retest after bullish rebound confirmation', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi();
+    const retestConfig = makeConfig({
+      ...DIVERGENCE_TEST_CONFIG,
+      BULLISH: {
+        requireRetest: true,
+        retestToleranceAtr: 0.5,
+        maxRetestBars: 3,
+        maxConfirmationDistanceAtr: 2,
+      },
+    });
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: retestConfig,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    expect(await core(candles.at(-1) as any, candles.at(-1) as any)).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+
+    const confirmation = makeFollowUpCandle({
+      previousCandle: candles.at(-1)!,
+      price: 94,
+      volume: 90,
+    });
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: confirmation,
+      timestamp: confirmation.timestamp,
+      currentPrice: confirmation.close,
+    });
+    expect(await core(confirmation as any, confirmation as any)).toEqual({
+      kind: 'skip',
+      code: 'WAIT_CONFIRMATION_RETEST',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+
+    const retest = makeCandle(confirmation.timestamp + 900_000, 92, 80);
+    retest.open = 90.8;
+    retest.high = 92.4;
+    retest.low = 90.5;
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: retest,
+      timestamp: retest.timestamp,
+      currentPrice: retest.close,
+    });
+    const result = await core(retest as any, retest as any);
+
+    expect(result.kind).toBe('entry');
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'LONG',
+        additionalIndicators: expect.objectContaining({
+          setupId: expect.stringMatching(/^bullish:/),
+          volumeDivergenceSignalTiming: expect.objectContaining({
+            phase: 'retest_pending',
+            entryTiming: 'retest_ready',
+            barsSinceRebound: 1,
+          }),
+          volumeDivergenceThresholds: expect.objectContaining({
+            requireRetest: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rebuilds retest-pending state from initial candles', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const confirmation = makeFollowUpCandle({
+      previousCandle: candles.at(-1)!,
+      price: 94,
+      volume: 90,
+    });
+    const retest = makeCandle(confirmation.timestamp + 900_000, 92, 80);
+    retest.open = 90.8;
+    retest.high = 92.4;
+    retest.low = 90.5;
+    const strategyApi = makeStrategyApi();
+    strategyApi.getDecisionPriceContext.mockResolvedValue({
+      candle: retest,
+      timestamp: retest.timestamp,
+      currentPrice: retest.close,
+    });
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+        BULLISH: {
+          requireRetest: true,
+          retestToleranceAtr: 0.5,
+          maxRetestBars: 3,
+          maxConfirmationDistanceAtr: 2,
+        },
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: [...candles, confirmation] as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(retest as any, retest as any);
+    expect(result.kind).toBe('entry');
+    expect(
+      (result as any).signal.additionalIndicators.volumeDivergenceSignalTiming
+        .entryTiming,
+    ).toBe('retest_ready');
+  });
+
+  it('applies divergence amplitude thresholds independently by direction', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi();
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+        BULLISH: { minDivergenceAmplitudeAtrRatio: 999 },
+        BEARISH: { minDivergenceAmplitudeAtrRatio: 0.01 },
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    expect(await core(candles.at(-1) as any, candles.at(-1) as any)).toEqual({
+      kind: 'skip',
+      code: 'WEAK_DIVERGENCE_AMPLITUDE_ATR',
+    });
   });
 
   it('keeps bullish structure-advance candidates pending until confirmation is ready', async () => {
@@ -696,6 +864,7 @@ describe('createVolumeDivergenceCore', () => {
         BULLISH: {
           ...DEFAULT_CONFIG.BULLISH,
           minRiskRatio: 2,
+          requireRetest: false,
         },
         VOLUME_DIVERGENCE_TARGET_R_MULT: 1.01,
       }),
@@ -734,7 +903,7 @@ describe('createVolumeDivergenceCore', () => {
     );
     expect(result).toEqual({
       kind: 'skip',
-      code: 'RISK_RATIO:1.01',
+      code: 'RISK_RATIO:0.94',
     });
   });
 

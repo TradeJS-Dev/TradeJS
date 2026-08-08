@@ -225,4 +225,165 @@ describe('GridClassic engine', () => {
       testConfig.GRIDCLASSIC_LOOKBACK_BARS,
     );
   });
+
+  it('confirms range breakout continuation only after acceptance and retest', () => {
+    const config = {
+      ...testConfig,
+      GRIDCLASSIC_MODE: 'breakout_continuation' as const,
+      GRIDCLASSIC_CONTINUATION_ACCEPTANCE_BARS: 1,
+      GRIDCLASSIC_CONTINUATION_RETEST_MAX_BARS: 4,
+      GRIDCLASSIC_CONTINUATION_RETEST_TOLERANCE_ATR: 0.1,
+    };
+    const base = buildRange();
+    const engine = createGridClassicEngine({ config });
+    base.forEach((candle) => engine.next(candle));
+
+    const breakout = makeCandle(base.length, 107, {
+      open: 105,
+      high: 107.5,
+      low: 104.8,
+      close: 107,
+    });
+    const candidate = engine.next(breakout).snapshot;
+    expect(candidate).toEqual(
+      expect.objectContaining({
+        strategyMode: 'breakout_continuation',
+        entryDirection: null,
+        entrySignalStage: 'breakout_candidate',
+        setupId: expect.stringMatching(/^gridclassic-continuation:LONG:/),
+        setupGeometry: expect.objectContaining({ detected: true }),
+      }),
+    );
+
+    const acceptance = makeCandle(base.length + 1, 107.5, {
+      open: 107,
+      high: 108,
+      low: 106.5,
+      close: 107.5,
+    });
+    expect(engine.next(acceptance).snapshot).toEqual(
+      expect.objectContaining({
+        entryDirection: null,
+        entrySignalStage: 'breakout_accepted',
+      }),
+    );
+
+    const retest = makeCandle(base.length + 2, 106, {
+      open: 105.5,
+      high: 106.5,
+      low: 105.2,
+      close: 106,
+    });
+    const ready = engine.next(retest);
+    expect(ready.snapshot).toEqual(
+      expect.objectContaining({
+        entryDirection: 'LONG',
+        entrySignalStage: 'breakout_retest_confirmed',
+        setupId: candidate?.setupId,
+        breakoutLevel: candidate?.breakoutLevel,
+      }),
+    );
+    expect(engine.next(retest)).toEqual(ready);
+  });
+
+  it('waits for a directional response on a continuation retest when required', () => {
+    const config = {
+      ...testConfig,
+      GRIDCLASSIC_MODE: 'breakout_continuation' as const,
+      GRIDCLASSIC_CONTINUATION_ACCEPTANCE_BARS: 1,
+      GRIDCLASSIC_CONTINUATION_RETEST_MAX_BARS: 4,
+      GRIDCLASSIC_CONTINUATION_RETEST_TOLERANCE_ATR: 0.1,
+      GRIDCLASSIC_CONTINUATION_REQUIRE_DIRECTIONAL_RETEST: true,
+    };
+    const base = buildRange();
+    const engine = createGridClassicEngine({ config });
+    base.forEach((candle) => engine.next(candle));
+    engine.next(
+      makeCandle(base.length, 107, {
+        open: 105,
+        high: 107.5,
+        low: 104.8,
+        close: 107,
+      }),
+    );
+    engine.next(
+      makeCandle(base.length + 1, 107.5, {
+        open: 107,
+        high: 108,
+        low: 106.5,
+        close: 107.5,
+      }),
+    );
+
+    const weakRetest = engine.next(
+      makeCandle(base.length + 2, 106, {
+        open: 106.2,
+        high: 106.4,
+        low: 105.2,
+        close: 106,
+      }),
+    );
+    expect(weakRetest.snapshot).toEqual(
+      expect.objectContaining({
+        entryDirection: null,
+        entrySignalStage: 'breakout_accepted',
+      }),
+    );
+
+    expect(
+      engine.next(
+        makeCandle(base.length + 3, 106, {
+          open: 105.5,
+          high: 106.5,
+          low: 105.2,
+          close: 106,
+        }),
+      ).snapshot,
+    ).toEqual(
+      expect.objectContaining({
+        entryDirection: 'LONG',
+        entrySignalStage: 'breakout_retest_confirmed',
+      }),
+    );
+  });
+
+  it('replays pending continuation state identically', () => {
+    const config = {
+      ...testConfig,
+      GRIDCLASSIC_MODE: 'breakout_continuation' as const,
+      GRIDCLASSIC_CONTINUATION_ACCEPTANCE_BARS: 1,
+      GRIDCLASSIC_CONTINUATION_RETEST_TOLERANCE_ATR: 0.1,
+    };
+    const base = buildRange();
+    const history = [
+      ...base,
+      makeCandle(base.length, 107, {
+        open: 105,
+        high: 107.5,
+        low: 104.8,
+        close: 107,
+      }),
+      makeCandle(base.length + 1, 107.5, {
+        open: 107,
+        high: 108,
+        low: 106.5,
+        close: 107.5,
+      }),
+    ];
+    const retest = makeCandle(base.length + 2, 106, {
+      open: 105.5,
+      high: 106.5,
+      low: 105.2,
+      close: 106,
+    });
+    const continuous = createGridClassicEngine({ config });
+    history.forEach((candle) => continuous.next(candle));
+    const expected = continuous.next(retest);
+    const restored = createGridClassicEngine({
+      config,
+      initialCandles: history,
+    });
+
+    expect(restored.next(retest)).toEqual(expected);
+  });
 });

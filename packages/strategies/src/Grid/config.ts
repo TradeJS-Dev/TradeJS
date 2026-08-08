@@ -12,6 +12,8 @@ export interface GridSideConfig {
   direction: Direction;
 }
 
+export type GridEntryMode = 'pullback_recovery' | 'breakout_retest';
+
 export const config = {
   ENV: 'BACKTEST',
   INTERVAL: '15' as Interval,
@@ -47,10 +49,19 @@ export const config = {
   GRID_MIN_ATR_PCT: 0.15,
   GRID_MAX_ATR_PCT: 5,
   GRID_MAX_PULLBACK_BEYOND_SLOW_ATR: 0.5,
+  GRID_ENTRY_MODE: 'pullback_recovery' as GridEntryMode,
+  GRID_BREAKOUT_LOOKBACK_BARS: 20,
+  GRID_BREAKOUT_MIN_DISTANCE_ATR: 0.1,
+  GRID_BREAKOUT_ACCEPTANCE_BARS: 1,
+  GRID_BREAKOUT_RETEST_MAX_BARS: 4,
+  GRID_BREAKOUT_RETEST_TOLERANCE_ATR: 0.3,
+  GRID_BREAKOUT_RETEST_MAX_CLOSE_DISTANCE_ATR: 0,
+  GRID_CONTINUATION_ALLOW_SCALE_IN: false,
   GRID_STEP_ATR_MULT: 0.8,
   GRID_MIN_STEP_PCT: 0.35,
   GRID_STOP_ATR_MULT: 4.5,
   GRID_TAKE_PROFIT_STEP_MULT: 1,
+  GRID_MIN_NET_RISK_RATIO: 0,
   GRID_MAX_LEVELS: 4,
   GRID_MAX_CANDLE_RANGE_ATR: 3,
   GRID_EXIT_ON_REGIME_FLIP: true,
@@ -81,8 +92,12 @@ export const config = {
 } as const;
 
 export type GridConfig = StrategyConfig &
-  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
+  Omit<
+    typeof config,
+    'BACKTEST_PRICE_MODE' | 'GRID_ENTRY_MODE' | 'LONG' | 'SHORT'
+  > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
+    GRID_ENTRY_MODE: GridEntryMode;
     LONG: GridSideConfig;
     SHORT: GridSideConfig;
   };

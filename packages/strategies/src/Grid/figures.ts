@@ -17,6 +17,7 @@ export const buildGridFigures = ({
   stopLossPrice,
   takeProfitPrice,
   rangeGeometry,
+  breakoutLevel,
 }: {
   direction: Direction;
   series: GridFigureSeries;
@@ -27,6 +28,7 @@ export const buildGridFigures = ({
   stopLossPrice: number;
   takeProfitPrice: number;
   rangeGeometry?: GridRangeGeometry;
+  breakoutLevel?: number | null;
 }): StrategyEntryModelFigures => {
   const startTimestamp =
     series.emaSlow[0]?.timestamp ??
@@ -101,6 +103,21 @@ export const buildGridFigures = ({
             ],
             color: '#a78bfa',
             width: 1,
+            style: 'dashed' as const,
+          },
+        ]
+      : []),
+    ...(breakoutLevel != null && Number.isFinite(breakoutLevel)
+      ? [
+          {
+            id: `grid-breakout-${entryTimestamp}`,
+            kind: 'grid_breakout_level',
+            points: [
+              { timestamp: startTimestamp, value: breakoutLevel },
+              { timestamp: entryTimestamp, value: breakoutLevel },
+            ],
+            color: '#e879f9',
+            width: 2,
             style: 'dashed' as const,
           },
         ]

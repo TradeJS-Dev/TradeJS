@@ -240,6 +240,19 @@ const getVolumeDivergenceThresholdSummary = (
     minConfirmationCandleQuality:
       toFiniteNumberOrNull(candidate.minConfirmationCandleQuality) ??
       DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.minConfirmationCandleQuality,
+    requireRetest:
+      typeof candidate.requireRetest === 'boolean'
+        ? candidate.requireRetest
+        : DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.requireRetest,
+    retestToleranceAtr:
+      toFiniteNumberOrNull(candidate.retestToleranceAtr) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.retestToleranceAtr,
+    maxRetestBars:
+      toFiniteNumberOrNull(candidate.maxRetestBars) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.maxRetestBars,
+    maxConfirmationDistanceAtr:
+      toFiniteNumberOrNull(candidate.maxConfirmationDistanceAtr) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.maxConfirmationDistanceAtr,
   };
 };
 

@@ -1,5 +1,5 @@
 import type { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
-import type { GridClassicConfig } from './config';
+import type { GridClassicConfig, GridClassicMode } from './config';
 import type { GridClassicEntryEconomics } from './guardrails';
 import {
   createCausalRangeGeometryEngine,
@@ -13,7 +13,10 @@ export type GridClassicEntrySignalStage =
   | 'candidate'
   | 'waiting'
   | 'confirmed'
-  | 'immediate';
+  | 'immediate'
+  | 'breakout_candidate'
+  | 'breakout_accepted'
+  | 'breakout_retest_confirmed';
 
 export interface GridClassicSnapshot {
   timestamp: number;
@@ -32,6 +35,11 @@ export interface GridClassicSnapshot {
   recentContainmentRatio: number | null;
   recentOutsideCloseCount: number;
   rangeQualityAccepted: boolean;
+  strategyMode: GridClassicMode;
+  setupId: string | null;
+  setupGeometry: CausalRangeGeometry | null;
+  breakoutLevel: number | null;
+  breakoutAgeBars: number | null;
   entrySignalStage: GridClassicEntrySignalStage;
   entryConfirmationAgeBars: number | null;
   entryDirection: Direction | null;
@@ -52,6 +60,15 @@ type PendingEntryConfirmation = {
   direction: Direction;
   barIndex: number;
   midpoint: number;
+};
+
+type PendingContinuation = {
+  setupId: string;
+  direction: Direction;
+  level: number;
+  breakoutBarIndex: number;
+  acceptedAtIndex: number | null;
+  geometry: CausalRangeGeometry;
 };
 
 const finite = (value: unknown, fallback: number) => {
@@ -102,6 +119,7 @@ export const getGridClassicGeometryOptions = (
 });
 
 const getEngineOptions = (config: GridClassicConfig) => ({
+  strategyMode: config.GRIDCLASSIC_MODE ?? 'mean_reversion',
   atrPeriod: positiveInteger(config.GRIDCLASSIC_ATR_PERIOD, 14),
   edgeZoneFraction: Math.min(
     0.45,
@@ -133,6 +151,21 @@ const getEngineOptions = (config: GridClassicConfig) => ({
   minRecentContainmentRatio: Math.min(
     1,
     Math.max(0, finite(config.GRIDCLASSIC_MIN_RECENT_CONTAINMENT_RATIO, 0)),
+  ),
+  continuationAcceptanceBars: positiveInteger(
+    config.GRIDCLASSIC_CONTINUATION_ACCEPTANCE_BARS,
+    1,
+  ),
+  continuationRetestMaxBars: positiveInteger(
+    config.GRIDCLASSIC_CONTINUATION_RETEST_MAX_BARS,
+    4,
+  ),
+  continuationRetestToleranceAtr: Math.max(
+    0,
+    finite(config.GRIDCLASSIC_CONTINUATION_RETEST_TOLERANCE_ATR, 0.3),
+  ),
+  continuationRequireDirectionalRetest: Boolean(
+    config.GRIDCLASSIC_CONTINUATION_REQUIRE_DIRECTIONAL_RETEST,
   ),
 });
 
@@ -183,6 +216,14 @@ const projectLine = (line: CausalRangeLine, timestamp: number) => {
   const progress = (timestamp - line.startTimestamp) / duration;
   return line.startPrice + (line.endPrice - line.startPrice) * progress;
 };
+
+const cloneGeometry = (geometry: CausalRangeGeometry): CausalRangeGeometry => ({
+  ...geometry,
+  pivots: geometry.pivots.map((pivot) => ({ ...pivot })),
+  upperLine: geometry.upperLine ? { ...geometry.upperLine } : null,
+  lowerLine: geometry.lowerLine ? { ...geometry.lowerLine } : null,
+  centerLine: geometry.centerLine ? { ...geometry.centerLine } : null,
+});
 
 const countAlternatingPivots = (geometry: CausalRangeGeometry) => {
   const sorted = geometry.pivots
@@ -294,8 +335,12 @@ export const buildGridClassicSignalContext = ({
   stopLossPrice: number;
   economics?: GridClassicEntryEconomics | null;
 }) => {
-  const { geometry } = snapshot;
+  const geometry = snapshot.setupGeometry ?? snapshot.geometry;
   return {
+    strategyMode: snapshot.strategyMode,
+    setupId: snapshot.setupId,
+    breakoutLevel: snapshot.breakoutLevel,
+    breakoutAgeBars: snapshot.breakoutAgeBars,
     timestamp: snapshot.timestamp,
     currentPrice: snapshot.close,
     direction,
@@ -379,6 +424,8 @@ export const createGridClassicEngine = ({
   let lastTimestamp: number | null = null;
   let snapshot: GridClassicSnapshot | null = null;
   let pendingEntryConfirmation: PendingEntryConfirmation | null = null;
+  let pendingContinuation: PendingContinuation | null = null;
+  let lastMatureGeometry: CausalRangeGeometry | null = null;
 
   const next = (candle: Candle): GridClassicRuntimeState => {
     if (
@@ -406,7 +453,8 @@ export const createGridClassicEngine = ({
     const geometry = geometryEngine.next(candle, atr);
     const candleRangeAtr = (candle.high - candle.low) / atr;
     const volatilityShock =
-      geometry.volatilityExpansion ||
+      (engineOptions.strategyMode === 'mean_reversion' &&
+        geometry.volatilityExpansion) ||
       candleRangeAtr > engineOptions.maxCandleRangeAtr;
     const lower = geometry.lowerPrice;
     const upper = geometry.upperPrice;
@@ -485,54 +533,146 @@ export const createGridClassicEngine = ({
     let entryDirection: Direction | null = null;
     let entrySignalStage: GridClassicEntrySignalStage = 'none';
     let entryConfirmationAgeBars: number | null = null;
+    let setupId: string | null = null;
+    let setupGeometry: CausalRangeGeometry | null = null;
+    let breakoutLevel: number | null = null;
+    let breakoutAgeBars: number | null = null;
 
-    if (engineOptions.entryConfirmationBars > 0 && pendingEntryConfirmation) {
-      const pending = pendingEntryConfirmation;
-      const ageBars = barIndex - pending.barIndex;
-      entryConfirmationAgeBars = ageBars;
-      const confirmationInside =
-        pending.direction === 'LONG'
-          ? lower != null &&
-            candle.close >= lower &&
-            candle.close >= pending.midpoint &&
-            longInEdge
-          : upper != null &&
-            candle.close <= upper &&
-            candle.close <= pending.midpoint &&
-            shortInEdge;
-      if (
-        ageBars >= 1 &&
-        ageBars <= engineOptions.entryConfirmationBars &&
-        signalBaseAccepted &&
-        confirmationInside
-      ) {
-        entryDirection = pending.direction;
-        entrySignalStage = 'confirmed';
-        pendingEntryConfirmation = null;
-      } else if (
-        ageBars > engineOptions.entryConfirmationBars ||
-        !signalBaseAccepted
-      ) {
-        pendingEntryConfirmation = null;
-      } else {
-        entrySignalStage = 'waiting';
+    if (engineOptions.strategyMode === 'mean_reversion') {
+      if (engineOptions.entryConfirmationBars > 0 && pendingEntryConfirmation) {
+        const pending = pendingEntryConfirmation;
+        const ageBars = barIndex - pending.barIndex;
+        entryConfirmationAgeBars = ageBars;
+        const confirmationInside =
+          pending.direction === 'LONG'
+            ? lower != null &&
+              candle.close >= lower &&
+              candle.close >= pending.midpoint &&
+              longInEdge
+            : upper != null &&
+              candle.close <= upper &&
+              candle.close <= pending.midpoint &&
+              shortInEdge;
+        if (
+          ageBars >= 1 &&
+          ageBars <= engineOptions.entryConfirmationBars &&
+          signalBaseAccepted &&
+          confirmationInside
+        ) {
+          entryDirection = pending.direction;
+          entrySignalStage = 'confirmed';
+          pendingEntryConfirmation = null;
+        } else if (
+          ageBars > engineOptions.entryConfirmationBars ||
+          !signalBaseAccepted
+        ) {
+          pendingEntryConfirmation = null;
+        } else {
+          entrySignalStage = 'waiting';
+        }
+      }
+
+      if (entryDirection == null && immediateCandidate) {
+        if (engineOptions.entryConfirmationBars <= 0) {
+          entryDirection = immediateCandidate;
+          entrySignalStage = 'immediate';
+          entryConfirmationAgeBars = 0;
+        } else {
+          pendingEntryConfirmation = {
+            direction: immediateCandidate,
+            barIndex,
+            midpoint: (candle.high + candle.low) / 2,
+          };
+          entrySignalStage = 'candidate';
+          entryConfirmationAgeBars = 0;
+        }
+      }
+    } else {
+      const tolerance = atr * engineOptions.continuationRetestToleranceAtr;
+      const pending = pendingContinuation;
+      if (pending) {
+        const ageBars = barIndex - pending.breakoutBarIndex;
+        setupId = pending.setupId;
+        setupGeometry = cloneGeometry(pending.geometry);
+        breakoutLevel = pending.level;
+        breakoutAgeBars = ageBars;
+        entryConfirmationAgeBars = ageBars;
+        const invalidated =
+          pending.direction === 'LONG'
+            ? candle.close < pending.level - tolerance
+            : candle.close > pending.level + tolerance;
+        const expired =
+          ageBars >
+          engineOptions.continuationAcceptanceBars +
+            engineOptions.continuationRetestMaxBars;
+        if (invalidated || expired || volatilityShock) {
+          pendingContinuation = null;
+        } else if (pending.acceptedAtIndex == null) {
+          const accepted =
+            ageBars >= engineOptions.continuationAcceptanceBars &&
+            (pending.direction === 'LONG'
+              ? candle.close > pending.level
+              : candle.close < pending.level);
+          entrySignalStage = accepted
+            ? 'breakout_accepted'
+            : 'breakout_candidate';
+          if (accepted) pending.acceptedAtIndex = barIndex;
+        } else if (barIndex > pending.acceptedAtIndex) {
+          entrySignalStage = 'breakout_accepted';
+          const held =
+            pending.direction === 'LONG'
+              ? candle.low <= pending.level + tolerance &&
+                candle.low >= pending.level - tolerance &&
+                candle.close >= pending.level &&
+                (!engineOptions.continuationRequireDirectionalRetest ||
+                  candle.close > candle.open)
+              : candle.high >= pending.level - tolerance &&
+                candle.high <= pending.level + tolerance &&
+                candle.close <= pending.level &&
+                (!engineOptions.continuationRequireDirectionalRetest ||
+                  candle.close < candle.open);
+          if (held) {
+            entryDirection = pending.direction;
+            entrySignalStage = 'breakout_retest_confirmed';
+            pendingContinuation = null;
+          }
+        }
+      } else if (lastMatureGeometry) {
+        const upperLevel = lastMatureGeometry.upperLine
+          ? projectLine(lastMatureGeometry.upperLine, candle.timestamp)
+          : lastMatureGeometry.upperPrice;
+        const lowerLevel = lastMatureGeometry.lowerLine
+          ? projectLine(lastMatureGeometry.lowerLine, candle.timestamp)
+          : lastMatureGeometry.lowerPrice;
+        const direction: Direction | null =
+          upperLevel != null && candle.close > upperLevel + tolerance
+            ? 'LONG'
+            : lowerLevel != null && candle.close < lowerLevel - tolerance
+              ? 'SHORT'
+              : null;
+        const level = direction === 'LONG' ? upperLevel : lowerLevel;
+        if (direction && level != null && !volatilityShock) {
+          const nextSetupId = `gridclassic-continuation:${direction}:${candle.timestamp}:${level.toFixed(8)}`;
+          pendingContinuation = {
+            setupId: nextSetupId,
+            direction,
+            level,
+            breakoutBarIndex: barIndex,
+            acceptedAtIndex: null,
+            geometry: cloneGeometry(lastMatureGeometry),
+          };
+          setupId = nextSetupId;
+          setupGeometry = cloneGeometry(lastMatureGeometry);
+          breakoutLevel = level;
+          breakoutAgeBars = 0;
+          entrySignalStage = 'breakout_candidate';
+          entryConfirmationAgeBars = 0;
+        }
       }
     }
 
-    if (entryDirection == null && immediateCandidate) {
-      if (engineOptions.entryConfirmationBars <= 0) {
-        entryDirection = immediateCandidate;
-        entrySignalStage = 'immediate';
-        entryConfirmationAgeBars = 0;
-      } else {
-        pendingEntryConfirmation = {
-          direction: immediateCandidate,
-          barIndex,
-          midpoint: (candle.high + candle.low) / 2,
-        };
-        entrySignalStage = 'candidate';
-        entryConfirmationAgeBars = 0;
-      }
+    if (signalBaseAccepted && pendingContinuation == null) {
+      lastMatureGeometry = cloneGeometry(geometry);
     }
 
     closeSeries.push({ timestamp: candle.timestamp, value: candle.close });
@@ -551,6 +691,13 @@ export const createGridClassicEngine = ({
       longCloseInside,
       shortCloseInside,
       ...quality,
+      rangeQualityAccepted:
+        setupGeometry != null ? true : quality.rangeQualityAccepted,
+      strategyMode: engineOptions.strategyMode,
+      setupId,
+      setupGeometry,
+      breakoutLevel,
+      breakoutAgeBars,
       entrySignalStage,
       entryConfirmationAgeBars,
       entryDirection,

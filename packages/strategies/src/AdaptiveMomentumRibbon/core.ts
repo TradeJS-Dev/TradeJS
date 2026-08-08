@@ -292,7 +292,10 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       stopLossPrice,
       targetR: Number(config.AMR_TARGET_R_MULT ?? 2),
       maxLossValue: MAX_LOSS_VALUE,
-      feePercent: Number(FEE_PERCENT ?? 0),
+      feeRate: Number(FEE_PERCENT ?? 0),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
     });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {

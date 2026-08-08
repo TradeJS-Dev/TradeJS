@@ -16,12 +16,23 @@ export interface LiquidityTailsZone {
   lastTouchIndex: number;
   originVolume: number;
   spent: boolean;
+  /** Execution is owned by core/runtime and is never inferred by the detector. */
   traded: boolean;
+  retestsObserved: number;
+  candidatesEmitted: number;
+  entryCandidatesEmitted: number;
+  scaleInCandidatesEmitted: number;
   signalsEmitted: number;
+  lastRetestIndex: number;
   lastSignalIndex: number;
 }
 
+export type LiquidityTailsCandidateAction = 'initial_entry' | 'scale_in';
+
 export interface LiquidityTailsSignal {
+  setupId: string;
+  candidateAction: LiquidityTailsCandidateAction;
+  candidateOrdinal: number;
   direction: Direction;
   zone: LiquidityTailsZone;
   timestamp: number;
@@ -35,6 +46,7 @@ export interface LiquidityTailsSignal {
   wickDominanceRatio: number;
   retestPenetrationPct: number;
   reactionCloseDistancePct: number;
+  rejectionEfficiencyRatio: number;
   reactionBodyAligned: boolean;
   retestOrdinal: number;
 }
@@ -57,6 +69,8 @@ export interface LiquidityTailsExecutionContext {
   projectedRiskValue: number;
   riskBudgetUsedPct: number;
   initialRiskFraction: number;
+  grossRiskRatio: number;
+  netRiskRatio: number;
 }
 
 export interface LiquidityTailsRuntimeState {
@@ -76,6 +90,7 @@ type EngineState = {
   lastFireIndex: number;
   zones: LiquidityTailsZone[];
   signal: LiquidityTailsSignal | null;
+  lastTimestamp: number | null;
 };
 
 const asFiniteNumber = (value: unknown): number | null => {
@@ -149,6 +164,26 @@ const getConfigNumbers = (config: LiquidityTailsConfig) => ({
     0,
     Number(config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT ?? 1.2),
   ),
+  minRetestAgeBars: Math.max(
+    1,
+    Math.floor(config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS ?? 1),
+  ),
+  minZoneTouches: Math.max(
+    1,
+    Math.floor(config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES ?? 1),
+  ),
+  maxEntryRetestOrdinal: Math.max(
+    1,
+    Math.floor(config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL ?? 1),
+  ),
+  maxEntryZoneAgeBars: Math.max(
+    0,
+    Math.floor(config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS ?? 0),
+  ),
+  minRejectionEfficiencyRatio: Math.max(
+    0,
+    Number(config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO ?? 0),
+  ),
   scaleInEnabled: Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED),
   scaleInCount: Math.max(
     0,
@@ -179,7 +214,11 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone,
   requireReactionBody,
   maxRetestDistancePct,
+  maxEntryZoneAgeBars,
+  minRejectionEfficiencyRatio,
   retestOrdinal,
+  candidateAction,
+  candidateOrdinal,
 }: {
   zone: LiquidityTailsZone;
   candle: Candle;
@@ -191,13 +230,18 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone: boolean;
   requireReactionBody: boolean;
   maxRetestDistancePct: number;
+  maxEntryZoneAgeBars: number;
+  minRejectionEfficiencyRatio: number;
   retestOrdinal: number;
+  candidateAction: LiquidityTailsCandidateAction;
+  candidateOrdinal: number;
 }): LiquidityTailsSignal | null => {
   const open = Number(candle.open);
   const high = Number(candle.high);
   const low = Number(candle.low);
   const close = Number(candle.close);
   const zoneHeight = Math.max(zone.top - zone.bottom, 1e-9);
+  const zoneAgeBars = index - zone.birthIndex;
   const isLong = zone.kind === 'buy_pressure';
   const touched = isLong ? low <= zone.top : high >= zone.bottom;
   if (!touched) {
@@ -229,18 +273,32 @@ const buildRetestSignal = ({
   const reactionDistance = isLong
     ? Math.max(0, close - zone.top)
     : Math.max(0, zone.bottom - close);
+  const rejectionEfficiencyRatio =
+    reactionDistance / Math.max(retestDistance, zoneHeight * 1e-6);
+  if (
+    (candidateAction === 'initial_entry' &&
+      maxEntryZoneAgeBars > 0 &&
+      zoneAgeBars > maxEntryZoneAgeBars) ||
+    (minRejectionEfficiencyRatio > 0 &&
+      rejectionEfficiencyRatio < minRejectionEfficiencyRatio)
+  ) {
+    return null;
+  }
   const activeWick = isLong ? bottomShadow : topShadow;
   const oppositeWick = isLong ? topShadow : bottomShadow;
   const wickBodyRatio = activeWick / Math.max(candleBody, 1e-9);
   const wickDominanceRatio = activeWick / Math.max(oppositeWick, 1e-9);
 
   return {
+    setupId: zone.id,
+    candidateAction,
+    candidateOrdinal,
     direction: zone.direction,
     zone: cloneZone(zone),
     timestamp: candle.timestamp,
     close,
     atr,
-    zoneAgeBars: index - zone.birthIndex,
+    zoneAgeBars,
     topShadow,
     bottomShadow,
     candleBody,
@@ -248,6 +306,7 @@ const buildRetestSignal = ({
     wickDominanceRatio,
     retestPenetrationPct,
     reactionCloseDistancePct: (reactionDistance / Math.max(close, 1e-9)) * 100,
+    rejectionEfficiencyRatio,
     reactionBodyAligned,
     retestOrdinal,
   };
@@ -257,7 +316,10 @@ export const buildLiquidityTailsSignalContext = (
   signal: LiquidityTailsSignal,
   executionContext?: LiquidityTailsExecutionContext,
 ) => ({
+  setupId: signal.setupId,
   signalDirection: signal.direction,
+  candidateAction: signal.candidateAction,
+  candidateOrdinal: signal.candidateOrdinal,
   zoneId: signal.zone.id,
   zoneKind: signal.zone.kind,
   zoneTop: signal.zone.top,
@@ -266,6 +328,10 @@ export const buildLiquidityTailsSignalContext = (
   zoneHeight: signal.zone.top - signal.zone.bottom,
   zoneAgeBars: signal.zoneAgeBars,
   zoneTouches: signal.zone.touches,
+  zoneRetestsObserved: signal.zone.retestsObserved,
+  zoneCandidatesEmitted: signal.zone.candidatesEmitted,
+  zoneEntryCandidatesEmitted: signal.zone.entryCandidatesEmitted,
+  zoneScaleInCandidatesEmitted: signal.zone.scaleInCandidatesEmitted,
   zoneRetestOrdinal: signal.retestOrdinal,
   originVolume: signal.zone.originVolume,
   currentPrice: signal.close,
@@ -274,6 +340,7 @@ export const buildLiquidityTailsSignalContext = (
   wickDominanceRatio: signal.wickDominanceRatio,
   retestPenetrationPct: signal.retestPenetrationPct,
   reactionCloseDistancePct: signal.reactionCloseDistancePct,
+  rejectionEfficiencyRatio: signal.rejectionEfficiencyRatio,
   reactionBodyAligned: signal.reactionBodyAligned,
   action: executionContext?.action ?? 'open',
   level: executionContext?.level ?? 1,
@@ -293,6 +360,8 @@ export const buildLiquidityTailsSignalContext = (
   projectedRiskValue: executionContext?.projectedRiskValue ?? null,
   riskBudgetUsedPct: executionContext?.riskBudgetUsedPct ?? null,
   initialRiskFraction: executionContext?.initialRiskFraction ?? 1,
+  grossRiskRatio: executionContext?.grossRiskRatio ?? null,
+  netRiskRatio: executionContext?.netRiskRatio ?? null,
 });
 
 export type LiquidityTailsSignalContext = ReturnType<
@@ -320,6 +389,11 @@ export const createLiquidityTailsEngine = ({
     reactionCloseBeyondZone,
     requireReactionBody,
     maxRetestDistancePct,
+    minRetestAgeBars,
+    minZoneTouches,
+    maxEntryRetestOrdinal,
+    maxEntryZoneAgeBars,
+    minRejectionEfficiencyRatio,
     scaleInEnabled,
     scaleInCount,
     exitOnScaleInRetest,
@@ -331,9 +405,17 @@ export const createLiquidityTailsEngine = ({
     lastFireIndex: 0,
     zones: [],
     signal: null,
+    lastTimestamp: null,
   };
 
   const apply = (candle: Candle): LiquidityTailsRuntimeState => {
+    if (state.lastTimestamp === candle.timestamp) {
+      return {
+        signal: state.signal,
+        zones: snapshotZones(state.zones),
+      };
+    }
+    state.lastTimestamp = candle.timestamp;
     state.index += 1;
     state.signal = null;
 
@@ -402,7 +484,12 @@ export const createLiquidityTailsEngine = ({
         originVolume: Number.isFinite(volume) ? volume : 0,
         spent: false,
         traded: false,
+        retestsObserved: 0,
+        candidatesEmitted: 0,
+        entryCandidatesEmitted: 0,
+        scaleInCandidatesEmitted: 0,
         signalsEmitted: 0,
+        lastRetestIndex: -1,
         lastSignalIndex: -1,
       });
     }
@@ -425,7 +512,12 @@ export const createLiquidityTailsEngine = ({
         originVolume: Number.isFinite(volume) ? volume : 0,
         spent: false,
         traded: false,
+        retestsObserved: 0,
+        candidatesEmitted: 0,
+        entryCandidatesEmitted: 0,
+        scaleInCandidatesEmitted: 0,
         signalsEmitted: 0,
+        lastRetestIndex: -1,
         lastSignalIndex: -1,
       });
     }
@@ -464,20 +556,17 @@ export const createLiquidityTailsEngine = ({
         zone.lastTouchIndex = state.index;
       }
 
-      const maxSignals = scaleInEnabled
-        ? 1 + scaleInCount
-        : exitOnScaleInRetest
-          ? 2
-          : 1;
-      const signalSeparated =
-        zone.signalsEmitted === 0 || state.index - zone.lastSignalIndex > 2;
-      if (
-        zone.signalsEmitted < maxSignals &&
-        signalSeparated &&
-        state.signal == null
-      ) {
-        const retestOrdinal = zone.signalsEmitted + 1;
-        const signal = buildRetestSignal({
+      const retestSeparated =
+        zone.lastRetestIndex < 0 || state.index - zone.lastRetestIndex > 2;
+      if (retestSeparated && state.signal == null) {
+        const retestOrdinal = zone.retestsObserved + 1;
+        const observesInitialCandidate =
+          zone.entryCandidatesEmitted === 0 &&
+          retestOrdinal <= maxEntryRetestOrdinal;
+        const candidateAction: LiquidityTailsCandidateAction =
+          observesInitialCandidate ? 'initial_entry' : 'scale_in';
+        const candidateOrdinal = zone.candidatesEmitted + 1;
+        const observed = buildRetestSignal({
           zone,
           candle,
           index: state.index,
@@ -488,13 +577,40 @@ export const createLiquidityTailsEngine = ({
           reactionCloseBeyondZone,
           requireReactionBody,
           maxRetestDistancePct,
+          maxEntryZoneAgeBars,
+          minRejectionEfficiencyRatio,
           retestOrdinal,
+          candidateAction,
+          candidateOrdinal,
         });
-        if (signal) {
-          zone.traded = true;
+        if (observed) {
+          zone.retestsObserved += 1;
+          zone.lastRetestIndex = state.index;
+          const mature =
+            observed.zoneAgeBars >= minRetestAgeBars &&
+            zone.touches >= minZoneTouches;
+          const scaleInCandidateAllowed =
+            candidateAction === 'scale_in' &&
+            ((scaleInEnabled && zone.scaleInCandidatesEmitted < scaleInCount) ||
+              (exitOnScaleInRetest && zone.scaleInCandidatesEmitted < 1));
+          const candidateAllowed =
+            mature &&
+            (candidateAction === 'initial_entry' || scaleInCandidateAllowed);
+          if (!candidateAllowed) continue;
+
+          zone.candidatesEmitted += 1;
           zone.signalsEmitted += 1;
+          if (candidateAction === 'initial_entry') {
+            zone.entryCandidatesEmitted += 1;
+          } else {
+            zone.scaleInCandidatesEmitted += 1;
+          }
           zone.lastSignalIndex = state.index;
-          state.signal = signal;
+          state.signal = {
+            ...observed,
+            candidateOrdinal: zone.candidatesEmitted,
+            zone: cloneZone(zone),
+          };
         }
       }
     }

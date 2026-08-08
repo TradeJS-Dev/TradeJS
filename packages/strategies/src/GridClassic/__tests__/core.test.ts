@@ -87,12 +87,30 @@ const runtimeState = ({
   entryDirection = null,
   rangeGeometry = geometry(),
   volatilityShock = false,
+  strategyMode = 'mean_reversion',
+  setupId = null,
+  setupGeometry = null,
+  breakoutLevel = null,
+  entrySignalStage,
 }: {
   timestamp: number;
   close: number;
   entryDirection?: 'LONG' | 'SHORT' | null;
   rangeGeometry?: CausalRangeGeometry;
   volatilityShock?: boolean;
+  strategyMode?: 'mean_reversion' | 'breakout_continuation';
+  setupId?: string | null;
+  setupGeometry?: CausalRangeGeometry | null;
+  breakoutLevel?: number | null;
+  entrySignalStage?:
+    | 'none'
+    | 'candidate'
+    | 'waiting'
+    | 'confirmed'
+    | 'immediate'
+    | 'breakout_candidate'
+    | 'breakout_accepted'
+    | 'breakout_retest_confirmed';
 }): GridClassicRuntimeState => ({
   snapshot: {
     timestamp,
@@ -111,7 +129,13 @@ const runtimeState = ({
     recentContainmentRatio: 1,
     recentOutsideCloseCount: 0,
     rangeQualityAccepted: true,
-    entrySignalStage: entryDirection ? 'immediate' : 'none',
+    strategyMode,
+    setupId,
+    setupGeometry,
+    breakoutLevel,
+    breakoutAgeBars: setupId ? 2 : null,
+    entrySignalStage:
+      entrySignalStage ?? (entryDirection ? 'immediate' : 'none'),
     entryConfirmationAgeBars: entryDirection ? 0 : null,
     entryDirection,
   },
@@ -269,6 +293,108 @@ describe('GridClassic core', () => {
       );
     },
   );
+
+  it('builds a one-shot range continuation plan after breakout retest', async () => {
+    const setupGeometry = geometry({ position: 1.1 });
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 106,
+        entryDirection: 'LONG',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'breakout_retest_confirmed',
+        setupId: 'gridclassic-continuation-long-1',
+        setupGeometry,
+        breakoutLevel: 105,
+        rangeGeometry: geometry({
+          detected: false,
+          breakoutDirection: 'UP',
+          position: 1.1,
+        }),
+      }),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 106,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MODE: 'breakout_continuation',
+        GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT: 1,
+        GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION: 0.2,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+        FEE_PERCENT: 0,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(candle(1, 106) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRIDCLASSIC_UPPER_BREAKOUT_CONTINUATION_LONG',
+        orderPlan: expect.objectContaining({
+          qty: 10 / 3,
+          stopLossPrice: 103,
+          takeProfits: [{ rate: 1, price: 116 }],
+        }),
+      }),
+    );
+    expect(result.signal.additionalIndicators.gridClassicContext).toEqual(
+      expect.objectContaining({
+        strategyMode: 'breakout_continuation',
+        setupId: 'gridclassic-continuation-long-1',
+        breakoutLevel: 105,
+        entrySignalStage: 'breakout_retest_confirmed',
+        remainingLevels: 0,
+      }),
+    );
+  });
+
+  it('rejects an extended continuation entry after the confirmed retest', async () => {
+    const setupGeometry = geometry({ position: 1.1 });
+    mockStates([
+      runtimeState({
+        timestamp: 1,
+        close: 106,
+        entryDirection: 'LONG',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'breakout_retest_confirmed',
+        setupId: 'gridclassic-continuation-long-extended',
+        setupGeometry,
+        breakoutLevel: 105,
+        rangeGeometry: geometry({
+          detected: false,
+          breakoutDirection: 'UP',
+          position: 1.1,
+        }),
+      }),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 106,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MODE: 'breakout_continuation',
+        GRIDCLASSIC_CONTINUATION_MAX_ENTRY_DISTANCE_ATR: 0.5,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(candle(1, 106) as any, {} as any)) as any;
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'GRIDCLASSIC_CONTINUATION_ENTRY_TOO_EXTENDED',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
 
   it('allows at most one addition on the same closed candle', async () => {
     mockStates([

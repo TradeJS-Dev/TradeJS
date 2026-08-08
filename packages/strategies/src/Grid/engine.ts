@@ -1,5 +1,5 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
-import { GridConfig } from './config';
+import { GridConfig, GridEntryMode } from './config';
 import {
   buildGridRangeGeometryKey,
   createGridRangeGeometryEngine,
@@ -21,6 +21,12 @@ export interface GridSnapshot {
   recentLow: number;
   regimeDirection: Direction | null;
   entryDirection: Direction | null;
+  entryMode: GridEntryMode;
+  entryStage: 'pullback_recovery' | 'breakout_retest_held' | null;
+  setupId: string | null;
+  breakoutLevel: number | null;
+  breakoutAgeBars: number | null;
+  breakoutRetestCloseDistanceAtr: number | null;
   stepDistance: number;
   stopDistance: number;
   takeProfitDistance: number;
@@ -48,6 +54,18 @@ type EngineState = {
   candles: Candle[];
   snapshot: GridSnapshot | null;
   series: GridFigureSeries;
+  breakoutPending: GridBreakoutPending | null;
+  consumedSetupIds: Set<string>;
+  lastTimestamp: number | null;
+};
+
+type GridBreakoutPending = {
+  setupId: string;
+  direction: Direction;
+  level: number;
+  breakoutIndex: number;
+  breakoutTimestamp: number;
+  acceptedAtIndex: number | null;
 };
 
 const finite = (value: unknown, fallback: number) => {
@@ -93,6 +111,28 @@ const getConfig = (config: GridConfig) => ({
     0,
     finite(config.GRID_MAX_PULLBACK_BEYOND_SLOW_ATR, 0.5),
   ),
+  entryMode: config.GRID_ENTRY_MODE ?? 'pullback_recovery',
+  breakoutLookbackBars: positiveInteger(config.GRID_BREAKOUT_LOOKBACK_BARS, 20),
+  breakoutMinDistanceAtr: Math.max(
+    0,
+    finite(config.GRID_BREAKOUT_MIN_DISTANCE_ATR, 0.1),
+  ),
+  breakoutAcceptanceBars: positiveInteger(
+    config.GRID_BREAKOUT_ACCEPTANCE_BARS,
+    1,
+  ),
+  breakoutRetestMaxBars: positiveInteger(
+    config.GRID_BREAKOUT_RETEST_MAX_BARS,
+    4,
+  ),
+  breakoutRetestToleranceAtr: Math.max(
+    0,
+    finite(config.GRID_BREAKOUT_RETEST_TOLERANCE_ATR, 0.3),
+  ),
+  breakoutRetestMaxCloseDistanceAtr: Math.max(
+    0,
+    finite(config.GRID_BREAKOUT_RETEST_MAX_CLOSE_DISTANCE_ATR, 0),
+  ),
   stepAtrMult: Math.max(0.01, finite(config.GRID_STEP_ATR_MULT, 0.8)),
   minStepPct: Math.max(0, finite(config.GRID_MIN_STEP_PCT, 0.35)),
   stopAtrMult: Math.max(0.1, finite(config.GRID_STOP_ATR_MULT, 4.5)),
@@ -121,6 +161,8 @@ export const buildGridSignalContext = ({
   projectedAveragePrice,
   stopLossPrice,
   takeProfitPrice,
+  grossRiskRatio,
+  netRiskRatio,
 }: {
   snapshot: GridSnapshot;
   action: 'open' | 'increase';
@@ -131,6 +173,8 @@ export const buildGridSignalContext = ({
   projectedAveragePrice: number;
   stopLossPrice: number;
   takeProfitPrice: number;
+  grossRiskRatio?: number;
+  netRiskRatio?: number;
 }) => ({
   action,
   level,
@@ -140,10 +184,18 @@ export const buildGridSignalContext = ({
   projectedAveragePrice,
   stopLossPrice,
   takeProfitPrice,
+  grossRiskRatio: grossRiskRatio ?? null,
+  netRiskRatio: netRiskRatio ?? null,
   timestamp: snapshot.timestamp,
   currentPrice: snapshot.close,
   regimeDirection: snapshot.regimeDirection,
   entryDirection: snapshot.entryDirection,
+  entryMode: snapshot.entryMode,
+  entryStage: snapshot.entryStage,
+  setupId: snapshot.setupId,
+  breakoutLevel: snapshot.breakoutLevel,
+  breakoutAgeBars: snapshot.breakoutAgeBars,
+  breakoutRetestCloseDistanceAtr: snapshot.breakoutRetestCloseDistanceAtr,
   emaFast: snapshot.emaFast,
   emaSlow: snapshot.emaSlow,
   atr: snapshot.atr,
@@ -173,7 +225,12 @@ export const createGridEngine = ({
   const rangeGeometryEngine = createGridRangeGeometryEngine({
     options: getGridRangeGeometryOptions(config),
   });
-  const candleLimit = Math.max(options.slowPeriod, options.atrPeriod, 20);
+  const candleLimit = Math.max(
+    options.slowPeriod,
+    options.atrPeriod,
+    options.breakoutLookbackBars + 1,
+    20,
+  );
   const slowHistoryLimit = options.slopeBars + 1;
   const state: EngineState = {
     count: 0,
@@ -185,6 +242,9 @@ export const createGridEngine = ({
     candles: [],
     snapshot: null,
     series: { emaFast: [], emaSlow: [] },
+    breakoutPending: null,
+    consumedSetupIds: new Set(),
+    lastTimestamp: null,
   };
 
   const apply = (candle: Candle): GridRuntimeState => {
@@ -201,14 +261,37 @@ export const createGridEngine = ({
         },
       };
     }
+    if (state.lastTimestamp === candle.timestamp) {
+      return {
+        snapshot: state.snapshot,
+        series: {
+          emaFast: state.series.emaFast.slice(),
+          emaSlow: state.series.emaSlow.slice(),
+        },
+      };
+    }
+    state.lastTimestamp = candle.timestamp;
+
+    const previousClose = state.previousClose;
+    const breakoutReferenceCandles = state.candles.slice(
+      -options.breakoutLookbackBars,
+    );
+    const priorHigh =
+      breakoutReferenceCandles.length > 0
+        ? Math.max(...breakoutReferenceCandles.map((item) => Number(item.high)))
+        : null;
+    const priorLow =
+      breakoutReferenceCandles.length > 0
+        ? Math.min(...breakoutReferenceCandles.map((item) => Number(item.low)))
+        : null;
 
     const trueRange =
-      state.previousClose == null
+      previousClose == null
         ? high - low
         : Math.max(
             high - low,
-            Math.abs(high - state.previousClose),
-            Math.abs(low - state.previousClose),
+            Math.abs(high - previousClose),
+            Math.abs(low - previousClose),
           );
     state.emaFast = nextEma(state.emaFast, close, options.fastPeriod);
     state.emaSlow = nextEma(state.emaSlow, close, options.slowPeriod);
@@ -285,11 +368,109 @@ export const createGridEngine = ({
       high >= state.emaFast &&
       close <= state.emaFast &&
       close < open;
-    const entryDirection = longRecovery
-      ? 'LONG'
-      : shortRecovery
-        ? 'SHORT'
-        : null;
+    let entryDirection: Direction | null = null;
+    let entryStage: GridSnapshot['entryStage'] = null;
+    let setupId: string | null = null;
+    let breakoutLevel: number | null = null;
+    let breakoutAgeBars: number | null = null;
+    let breakoutRetestCloseDistanceAtr: number | null = null;
+
+    if (options.entryMode === 'pullback_recovery') {
+      entryDirection = longRecovery ? 'LONG' : shortRecovery ? 'SHORT' : null;
+      entryStage = entryDirection ? 'pullback_recovery' : null;
+    } else {
+      const currentIndex = state.count - 1;
+      const tolerance = atr * options.breakoutRetestToleranceAtr;
+      let completedSetupOnCurrentBar = false;
+      const pending = state.breakoutPending;
+      if (pending) {
+        const age = currentIndex - pending.breakoutIndex;
+        setupId = pending.setupId;
+        breakoutLevel = pending.level;
+        breakoutAgeBars = age;
+        const regimeInvalid = regimeDirection !== pending.direction;
+        const closeInvalid =
+          pending.direction === 'LONG'
+            ? close < pending.level - tolerance
+            : close > pending.level + tolerance;
+        const expired =
+          age > options.breakoutAcceptanceBars + options.breakoutRetestMaxBars;
+
+        if (regimeInvalid || closeInvalid || expired) {
+          state.consumedSetupIds.add(pending.setupId);
+          state.breakoutPending = null;
+        } else if (pending.acceptedAtIndex == null) {
+          const accepted =
+            age >= options.breakoutAcceptanceBars &&
+            (pending.direction === 'LONG'
+              ? close > pending.level
+              : close < pending.level);
+          if (accepted) pending.acceptedAtIndex = currentIndex;
+        } else if (currentIndex > pending.acceptedAtIndex) {
+          const closeDistanceAtr =
+            pending.direction === 'LONG'
+              ? (close - pending.level) / atr
+              : (pending.level - close) / atr;
+          const touchedAndHeld =
+            pending.direction === 'LONG'
+              ? low <= pending.level + tolerance &&
+                low >= pending.level - tolerance &&
+                close >= pending.level
+              : high >= pending.level - tolerance &&
+                high <= pending.level + tolerance &&
+                close <= pending.level;
+          const closeDistanceAccepted =
+            options.breakoutRetestMaxCloseDistanceAtr === 0 ||
+            closeDistanceAtr <= options.breakoutRetestMaxCloseDistanceAtr;
+          if (touchedAndHeld && closeDistanceAccepted) {
+            entryDirection = pending.direction;
+            entryStage = 'breakout_retest_held';
+            breakoutRetestCloseDistanceAtr = closeDistanceAtr;
+            state.consumedSetupIds.add(pending.setupId);
+            state.breakoutPending = null;
+            completedSetupOnCurrentBar = true;
+          }
+        }
+      }
+
+      if (!state.breakoutPending && !completedSetupOnCurrentBar) {
+        const minimumDistance = atr * options.breakoutMinDistanceAtr;
+        const longBreakout =
+          regimeDirection === 'LONG' &&
+          priorHigh != null &&
+          previousClose != null &&
+          previousClose <= priorHigh &&
+          close >= priorHigh + minimumDistance;
+        const shortBreakout =
+          regimeDirection === 'SHORT' &&
+          priorLow != null &&
+          previousClose != null &&
+          previousClose >= priorLow &&
+          close <= priorLow - minimumDistance;
+        const direction: Direction | null = longBreakout
+          ? 'LONG'
+          : shortBreakout
+            ? 'SHORT'
+            : null;
+        const level = direction === 'LONG' ? priorHigh : priorLow;
+        if (direction && level != null) {
+          const nextSetupId = `grid-breakout:${direction}:${candle.timestamp}:${level.toFixed(8)}`;
+          if (!state.consumedSetupIds.has(nextSetupId)) {
+            state.breakoutPending = {
+              setupId: nextSetupId,
+              direction,
+              level,
+              breakoutIndex: currentIndex,
+              breakoutTimestamp: candle.timestamp,
+              acceptedAtIndex: null,
+            };
+            setupId = nextSetupId;
+            breakoutLevel = level;
+            breakoutAgeBars = 0;
+          }
+        }
+      }
+    }
     const minStepDistance = close * (options.minStepPct / 100);
     const stepDistance = Math.max(atr * options.stepAtrMult, minStepDistance);
     const stopDistance = Math.max(
@@ -315,6 +496,12 @@ export const createGridEngine = ({
       recentLow,
       regimeDirection,
       entryDirection,
+      entryMode: options.entryMode,
+      entryStage,
+      setupId,
+      breakoutLevel,
+      breakoutAgeBars,
+      breakoutRetestCloseDistanceAtr,
       stepDistance,
       stopDistance,
       takeProfitDistance,

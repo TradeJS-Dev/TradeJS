@@ -12,6 +12,8 @@ export interface DoubleTapSideConfig {
   minRiskRatio: number;
 }
 
+export type DoubleTapEntryMode = 'breakout' | 'close_acceptance' | 'retest';
+
 export const config = {
   ENV: 'BACKTEST',
   INTERVAL: '15' as Interval,
@@ -42,7 +44,18 @@ export const config = {
   DOUBLETAP_TARGET_FIB_PCT: 180,
   DOUBLETAP_STOP_FIB_PCT: 0,
   DOUBLETAP_MIN_PATTERN_HEIGHT_PCT: 0.2,
+  DOUBLETAP_MIN_PATTERN_HEIGHT_ATR: 1,
+  DOUBLETAP_ATR_PERIOD: 14,
+  DOUBLETAP_MIN_TAP_SPACING_BARS: 3,
+  DOUBLETAP_MAX_PATTERN_AGE_BARS: 180,
+  DOUBLETAP_MIN_LEG_SYMMETRY_RATIO: 0.25,
+  DOUBLETAP_MIN_BREAKOUT_DISTANCE_ATR: 0.05,
+  DOUBLETAP_MAX_BREAKOUT_DISTANCE_HEIGHT_RATIO: 0.8,
   DOUBLETAP_MAX_BREAKOUT_DISTANCE_PCT: 0.8,
+  DOUBLETAP_ENTRY_MODE: 'close_acceptance' as DoubleTapEntryMode,
+  DOUBLETAP_CONFIRMATION_MAX_BARS: 2,
+  DOUBLETAP_RETEST_MAX_BARS: 4,
+  DOUBLETAP_RETEST_TOLERANCE_ATR: 0.25,
   DOUBLETAP_EXIT_ON_OPPOSITE_PATTERN: true,
   LONG: {
     enable: true,
@@ -63,6 +76,7 @@ export type DoubleTapConfig = StrategyConfig &
   > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     MIN_AI_QUALITY: number;
+    DOUBLETAP_ENTRY_MODE: DoubleTapEntryMode;
     LONG: DoubleTapSideConfig;
     SHORT: DoubleTapSideConfig;
   };

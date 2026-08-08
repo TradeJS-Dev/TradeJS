@@ -17,6 +17,7 @@ export type VolumeDivergenceSetupFeatures = {
   reclaimPct: number | null;
   confirmationCandleQuality: number | null;
   confirmationDistancePct: number | null;
+  confirmationDistanceAtrRatio: number | null;
 };
 
 export type VolumeDivergenceEntryThresholdSnapshot = {
@@ -24,6 +25,10 @@ export type VolumeDivergenceEntryThresholdSnapshot = {
   minDivergenceAmplitudeAtrRatio: number;
   minReclaimPct: number;
   minConfirmationCandleQuality: number;
+  requireRetest: boolean;
+  retestToleranceAtr: number;
+  maxRetestBars: number;
+  maxConfirmationDistanceAtr: number;
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -35,6 +40,10 @@ export const DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS: VolumeDivergenceEntryTh
     minDivergenceAmplitudeAtrRatio: 0.35,
     minReclaimPct: 105,
     minConfirmationCandleQuality: 0.58,
+    requireRetest: false,
+    retestToleranceAtr: 0.35,
+    maxRetestBars: 4,
+    maxConfirmationDistanceAtr: 0,
   };
 
 const VOLUME_DIVERGENCE_AI_THRESHOLDS: Record<
@@ -75,6 +84,46 @@ export const getVolumeDivergenceEntryThresholds = ({
   minDivergenceAmplitudeAtrRatio: MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
   minReclaimPct: MIN_RECLAIM_PCT,
   minConfirmationCandleQuality: MIN_CONFIRMATION_CANDLE_QUALITY,
+  requireRetest: false,
+  retestToleranceAtr: 0.35,
+  maxRetestBars: 4,
+  maxConfirmationDistanceAtr: 0,
+});
+
+export const getVolumeDivergenceEntryThresholdsForDirection = ({
+  config,
+  mode,
+}: {
+  config: VolumeDivergenceConfig;
+  mode: VolumeDivergenceConfig['BULLISH'];
+}): VolumeDivergenceEntryThresholdSnapshot => ({
+  allowStructureAdvanceEntry: Boolean(config.ALLOW_STRUCTURE_ADVANCE_ENTRY),
+  minDivergenceAmplitudeAtrRatio: Math.max(
+    0,
+    Number(
+      mode.minDivergenceAmplitudeAtrRatio ??
+        config.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+    ),
+  ),
+  minReclaimPct: Math.max(
+    0,
+    Number(mode.minReclaimPct ?? config.MIN_RECLAIM_PCT),
+  ),
+  minConfirmationCandleQuality: clamp(
+    Number(
+      mode.minConfirmationCandleQuality ??
+        config.MIN_CONFIRMATION_CANDLE_QUALITY,
+    ),
+    0,
+    1,
+  ),
+  requireRetest: Boolean(mode.requireRetest),
+  retestToleranceAtr: Math.max(0, Number(mode.retestToleranceAtr ?? 0.35)),
+  maxRetestBars: Math.max(1, Math.floor(Number(mode.maxRetestBars ?? 4))),
+  maxConfirmationDistanceAtr: Math.max(
+    0,
+    Number(mode.maxConfirmationDistanceAtr ?? 0),
+  ),
 });
 
 export const getVolumeDivergenceAiThresholds = (
@@ -277,6 +326,12 @@ export const buildVolumeDivergenceSetupFeatures = ({
     currentPivotLow,
     currentPivotHigh,
   });
+  const confirmationPrice =
+    direction === 'LONG' ? currentPivotHigh : currentPivotLow;
+  const confirmationDistanceAtrRatio =
+    atrAbsolute != null && atrAbsolute > 0
+      ? Math.abs(currentPrice - confirmationPrice) / atrAbsolute
+      : null;
 
   return {
     atrAbsolute,
@@ -285,5 +340,6 @@ export const buildVolumeDivergenceSetupFeatures = ({
     reclaimPct,
     confirmationCandleQuality,
     confirmationDistancePct,
+    confirmationDistanceAtrRatio,
   };
 };

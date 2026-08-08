@@ -29,6 +29,10 @@ const makeRuntimeState = ({
   timestamp,
   close,
   entryDirection = null,
+  entryMode = 'pullback_recovery',
+  entryStage,
+  setupId = null,
+  breakoutLevel = null,
   regimeDirection = 'LONG',
   volatilityShock = false,
   rangeGeometry = getEmptyGridRangeGeometry(),
@@ -36,6 +40,10 @@ const makeRuntimeState = ({
   timestamp: number;
   close: number;
   entryDirection?: 'LONG' | 'SHORT' | null;
+  entryMode?: 'pullback_recovery' | 'breakout_retest';
+  entryStage?: 'pullback_recovery' | 'breakout_retest_held' | null;
+  setupId?: string | null;
+  breakoutLevel?: number | null;
   regimeDirection?: 'LONG' | 'SHORT' | null;
   volatilityShock?: boolean;
   rangeGeometry?: GridRangeGeometry;
@@ -54,6 +62,12 @@ const makeRuntimeState = ({
     recentLow: close - 5,
     regimeDirection,
     entryDirection,
+    entryMode,
+    entryStage: entryStage ?? (entryDirection ? 'pullback_recovery' : null),
+    setupId,
+    breakoutLevel,
+    breakoutAgeBars: null,
+    breakoutRetestCloseDistanceAtr: null,
     stepDistance: 2,
     stopDistance: 10,
     takeProfitDistance: 2,
@@ -164,6 +178,50 @@ describe('Grid core', () => {
     expect(second.orderPlan.stopLossPrice).toBe(90);
     expect(second.signal.additionalIndicators.gridContext.action).toBe(
       'increase',
+    );
+  });
+
+  it('opens breakout continuation as a one-shot full-risk position by default', async () => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      entryMode: 'breakout_retest',
+      entryStage: 'breakout_retest_held',
+      setupId: 'grid-breakout-long-1',
+      breakoutLevel: 99,
+    });
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => null);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_ALLOW_SCALE_IN: false,
+        GRID_MAX_LEVELS: 4,
+        MAX_LOSS_VALUE: 10,
+        FEE_PERCENT: 0,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRID_BREAKOUT_RETEST_ENTRY',
+        orderPlan: expect.objectContaining({ qty: 1 }),
+      }),
+    );
+    expect(result.signal.additionalIndicators.gridContext).toEqual(
+      expect.objectContaining({
+        entryMode: 'breakout_retest',
+        entryStage: 'breakout_retest_held',
+        setupId: 'grid-breakout-long-1',
+        breakoutLevel: 99,
+      }),
     );
   });
 

@@ -7,6 +7,7 @@ import {
 } from '@tradejs/types';
 
 export type GridClassicTakeProfitMode = 'center' | 'opposite_edge';
+export type GridClassicMode = 'mean_reversion' | 'breakout_continuation';
 export type GridClassicEntryConfirmation =
   | 'rejection'
   | 'close_inside'
@@ -49,6 +50,14 @@ export const config = {
   MACD_SLOW: 26,
   MACD_SIGNAL: 9,
   GRIDCLASSIC_ATR_PERIOD: 14,
+  GRIDCLASSIC_MODE: 'mean_reversion' as GridClassicMode,
+  GRIDCLASSIC_CONTINUATION_ACCEPTANCE_BARS: 1,
+  GRIDCLASSIC_CONTINUATION_RETEST_MAX_BARS: 4,
+  GRIDCLASSIC_CONTINUATION_RETEST_TOLERANCE_ATR: 0.3,
+  GRIDCLASSIC_CONTINUATION_REQUIRE_DIRECTIONAL_RETEST: false,
+  GRIDCLASSIC_CONTINUATION_MAX_ENTRY_DISTANCE_ATR: 0,
+  GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT: 1,
+  GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION: 0.2,
   GRIDCLASSIC_PIVOT_LEFT_BARS: 3,
   GRIDCLASSIC_PIVOT_RIGHT_BARS: 3,
   GRIDCLASSIC_LOOKBACK_BARS: 96,
@@ -111,12 +120,14 @@ export type GridClassicConfig = StrategyConfig &
   Omit<
     GridClassicRuntimeDefaults,
     | 'BACKTEST_PRICE_MODE'
+    | 'GRIDCLASSIC_MODE'
     | 'GRIDCLASSIC_ENTRY_CONFIRMATION'
     | 'GRIDCLASSIC_TP_MODE'
     | 'LONG'
     | 'SHORT'
   > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
+    GRIDCLASSIC_MODE: GridClassicMode;
     GRIDCLASSIC_ENTRY_CONFIRMATION: GridClassicEntryConfirmation;
     GRIDCLASSIC_TP_MODE: GridClassicTakeProfitMode;
     LONG: GridClassicSideConfig;

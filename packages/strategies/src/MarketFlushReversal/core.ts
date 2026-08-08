@@ -434,7 +434,10 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       stopLossPrice,
       targetR: Number(config.MFR_TARGET_R_MULT ?? 2.2),
       maxLossValue: Number(config.MAX_LOSS_VALUE ?? 0),
-      feePercent: Number(config.FEE_PERCENT ?? 0),
+      feeRate: Number(config.FEE_PERCENT ?? 0),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
       minRiskRatio: modeConfig.minRiskRatio,
     });
 

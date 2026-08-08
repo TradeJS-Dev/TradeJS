@@ -12,6 +12,7 @@ import {
   LiquidityTailsExecutionContext,
 } from './engine';
 import { buildLiquidityTailsFigures } from './figures';
+import { buildTradeEconomics } from '../shared/structureRisk';
 
 interface PendingLiquidityTailsEntry {
   timestamp: number;
@@ -20,6 +21,7 @@ interface PendingLiquidityTailsEntry {
 }
 
 interface LiquidityTailsCycle {
+  setupId: string | null;
   direction: Direction;
   stopLossPrice: number;
   invalidationPrice: number | null;
@@ -149,6 +151,8 @@ const buildExecutionStateKey = (config: LiquidityTailsConfig) =>
   JSON.stringify({
     maxLossValue: config.MAX_LOSS_VALUE,
     feePercent: config.FEE_PERCENT,
+    slippageBaseBps: config.SLIPPAGE_BASE_BPS,
+    slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
     targetR: config.LIQUIDITY_TAILS_TARGET_R_MULT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
@@ -203,6 +207,7 @@ const buildRecoveredCycle = ({
   }
 
   return {
+    setupId: null,
     direction: position.direction,
     stopLossPrice,
     invalidationPrice: null,
@@ -230,6 +235,8 @@ const buildExecutionContext = ({
   projectedRiskValue,
   maxLossValue,
   initialRiskFraction,
+  grossRiskRatio,
+  netRiskRatio,
 }: Omit<LiquidityTailsExecutionContext, 'riskBudgetUsedPct'> & {
   maxLossValue: number;
 }): LiquidityTailsExecutionContext => ({
@@ -251,6 +258,8 @@ const buildExecutionContext = ({
   riskBudgetUsedPct:
     maxLossValue > 0 ? (projectedRiskValue / maxLossValue) * 100 : 0,
   initialRiskFraction,
+  grossRiskRatio,
+  netRiskRatio,
 });
 
 const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
@@ -265,6 +274,12 @@ const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
     reactionCloseBeyondZone: config.LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE,
     requireReactionBody: config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY,
     maxRetestDistancePct: config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT,
+    minRetestAgeBars: config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS,
+    minZoneTouches: config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES,
+    maxEntryRetestOrdinal: config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL,
+    maxEntryZoneAgeBars: config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS,
+    minRejectionEfficiencyRatio:
+      config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
   });
@@ -308,6 +323,12 @@ export const createLiquidityTailsCore: CreateStrategyCore<
     );
   const maxLossValue = Math.max(0, Number(config.MAX_LOSS_VALUE ?? 0));
   const feeRate = Math.max(0, Number(config.FEE_PERCENT ?? 0));
+  const slippageBps = Math.max(
+    0,
+    Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+      Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
+  );
+  const executionCostRate = feeRate + slippageBps / 10_000;
   const scaleInEnabled = Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED);
   const configuredScaleInCount = Number(
     config.LIQUIDITY_TAILS_SCALE_IN_COUNT ?? 1,
@@ -357,7 +378,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
           draft.cycle = buildRecoveredCycle({
             position,
             maxLossValue,
-            feeRate,
+            feeRate: executionCostRate,
             targetR,
             initialRiskFraction,
             maxLevels,
@@ -427,6 +448,12 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       if (!cycle) {
         return strategyApi.skip('LIQUIDITY_TAILS_SCALE_IN_STATE_UNAVAILABLE');
       }
+      if (signal.candidateAction !== 'scale_in') {
+        return strategyApi.skip('LIQUIDITY_TAILS_INITIAL_ENTRY_ALREADY_OPEN');
+      }
+      if (cycle.setupId != null && signal.setupId !== cycle.setupId) {
+        return strategyApi.skip('LIQUIDITY_TAILS_SCALE_IN_SETUP_MISMATCH');
+      }
       if (cycle.pending) {
         return strategyApi.skip('LIQUIDITY_TAILS_ORDER_PENDING');
       }
@@ -470,7 +497,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         qty: position.qty,
         entryPrice: position.price,
         stopLossPrice: cycle.stopLossPrice,
-        feeRate,
+        feeRate: executionCostRate,
       });
       const remainingRiskValue = Math.max(0, maxLossValue - existingRiskValue);
       const nextLevel = cycle.entriesFilled + 1;
@@ -486,7 +513,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         riskBudget: levelRiskBudget,
         entryPrice: currentPrice,
         stopLossPrice: cycle.stopLossPrice,
-        feeRate,
+        feeRate: executionCostRate,
       });
       if (!Number.isFinite(qty) || qty <= Number.EPSILON) {
         return strategyApi.skip(
@@ -506,11 +533,25 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         stopLossPrice: cycle.stopLossPrice,
         targetR: cycle.targetR,
       });
+      const projectedEconomics = buildTradeEconomics({
+        entryPrice: projectedAveragePrice,
+        stopLossPrice: cycle.stopLossPrice,
+        takeProfitPrice,
+        feeRate,
+        slippageBps,
+      });
+      const scaleModeConfig =
+        position.direction === 'LONG' ? config.LONG : config.SHORT;
+      if (projectedEconomics.netRiskRatio <= scaleModeConfig.minRiskRatio) {
+        return strategyApi.skip(
+          `RISK_RATIO:${round(projectedEconomics.netRiskRatio)}`,
+        );
+      }
       const projectedRiskValue = calculateWorstCaseLoss({
         qty: projectedQty,
         entryPrice: projectedAveragePrice,
         stopLossPrice: cycle.stopLossPrice,
-        feeRate,
+        feeRate: executionCostRate,
       });
       const executionContext = buildExecutionContext({
         action: 'increase',
@@ -530,9 +571,12 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         projectedRiskValue,
         maxLossValue,
         initialRiskFraction,
+        grossRiskRatio: projectedEconomics.grossRiskRatio,
+        netRiskRatio: projectedEconomics.netRiskRatio,
       });
       executionState.update((draft) => {
         if (!draft.cycle) return;
+        draft.cycle.setupId ??= signal.setupId;
         draft.cycle.pending = {
           timestamp: candle.timestamp,
           observedQty: position.qty,
@@ -578,9 +622,9 @@ export const createLiquidityTailsCore: CreateStrategyCore<
     if (!signal) {
       return strategyApi.skip('NO_LIQUIDITY_TAIL_RETEST');
     }
-    if (signal.retestOrdinal > 1) {
+    if (signal.candidateAction !== 'initial_entry') {
       return strategyApi.skip(
-        'LIQUIDITY_TAILS_SECONDARY_RETEST_WITHOUT_POSITION',
+        'LIQUIDITY_TAILS_SCALE_IN_RETEST_WITHOUT_POSITION',
       );
     }
 
@@ -611,13 +655,20 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       signal.direction === 'LONG'
         ? currentPrice + riskDistance * targetR
         : currentPrice - riskDistance * targetR;
-    const riskRatio = riskDistance > 0 ? targetR : 0;
+    const economics = buildTradeEconomics({
+      entryPrice: currentPrice,
+      stopLossPrice,
+      takeProfitPrice,
+      feeRate,
+      slippageBps,
+    });
+    const riskRatio = economics.netRiskRatio;
     const initialRiskValue = maxLossValue * initialRiskFraction;
     const qty = calculateRiskSizedQty({
       riskBudget: initialRiskValue,
       entryPrice: currentPrice,
       stopLossPrice,
-      feeRate,
+      feeRate: executionCostRate,
     });
 
     if (
@@ -639,7 +690,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       qty,
       entryPrice: currentPrice,
       stopLossPrice,
-      feeRate,
+      feeRate: executionCostRate,
     });
     const executionContext = buildExecutionContext({
       action: 'open',
@@ -659,9 +710,12 @@ export const createLiquidityTailsCore: CreateStrategyCore<
       projectedRiskValue,
       maxLossValue,
       initialRiskFraction,
+      grossRiskRatio: economics.grossRiskRatio,
+      netRiskRatio: economics.netRiskRatio,
     });
     executionState.update((draft) => {
       draft.cycle = {
+        setupId: signal.setupId,
         direction: signal.direction,
         stopLossPrice,
         invalidationPrice:

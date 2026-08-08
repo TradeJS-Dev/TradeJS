@@ -91,7 +91,10 @@ export const createHyperliquidConsensusCore: CreateStrategyCore<
       stopLossPrice,
       targetR: Number(config.HLC_TARGET_R_MULT),
       maxLossValue: Number(config.MAX_LOSS_VALUE),
-      feePercent: Number(config.FEE_PERCENT),
+      feeRate: Number(config.FEE_PERCENT),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
       minRiskRatio: modeConfig.minRiskRatio,
     });
     if (riskOrder.skipCode || !riskOrder.plan) {
