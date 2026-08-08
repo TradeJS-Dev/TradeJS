@@ -11,6 +11,7 @@ import {
   createLiquidityZonesEngine,
 } from './engine';
 import { buildLiquidityZonesFigures } from './figures';
+import { getLiquidityZonesFilterSkipCode } from './filters';
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
@@ -94,6 +95,16 @@ export const createLiquidityZonesCore: CreateStrategyCore<
     const modeConfig = signal.direction === 'LONG' ? config.LONG : config.SHORT;
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
+    }
+
+    const { baseContext } = strategyApi.getCurrentIndicatorsContext();
+    const filterSkipCode = getLiquidityZonesFilterSkipCode({
+      signal,
+      config,
+      baseContext,
+    });
+    if (filterSkipCode) {
+      return strategyApi.skip(filterSkipCode);
     }
 
     const { timestamp, currentPrice } =

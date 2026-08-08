@@ -28,6 +28,26 @@ export const getTrendFollowCoreFilterSkipCode = ({
   config: TrendFollowConfig;
   baseContext?: BaseStrategyContextSnapshot | null;
 }): string | null => {
+  const minBreakoutDistancePct = asPositiveThreshold(
+    config.TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT,
+  );
+  if (
+    minBreakoutDistancePct != null &&
+    signal.breakoutDistancePct < minBreakoutDistancePct
+  ) {
+    return 'TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_SMALL';
+  }
+
+  const maxBreakoutDistancePct = asPositiveThreshold(
+    config.TRENDFOLLOW_MAX_BREAKOUT_DISTANCE_PCT,
+  );
+  if (
+    maxBreakoutDistancePct != null &&
+    signal.breakoutDistancePct > maxBreakoutDistancePct
+  ) {
+    return 'TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_EXTENDED';
+  }
+
   const breakoutState = baseContext?.structure?.localRange?.breakoutState;
   if (
     config.TRENDFOLLOW_REQUIRE_STRUCTURE_BREAKOUT &&

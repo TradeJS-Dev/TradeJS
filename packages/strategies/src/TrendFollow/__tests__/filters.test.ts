@@ -3,8 +3,10 @@
 import { config as DEFAULT_CONFIG } from '../config';
 import { getTrendFollowCoreFilterSkipCode } from '../filters';
 
-const makeSignal = (direction: 'LONG' | 'SHORT' = 'LONG') =>
-  ({ direction }) as any;
+const makeSignal = (
+  direction: 'LONG' | 'SHORT' = 'LONG',
+  overrides: Record<string, unknown> = {},
+) => ({ direction, breakoutDistancePct: 1, ...overrides }) as any;
 
 const makeConfig = (overrides: Record<string, unknown> = {}) =>
   ({ ...DEFAULT_CONFIG, ...overrides }) as any;
@@ -29,6 +31,22 @@ describe('getTrendFollowCoreFilterSkipCode', () => {
         } as any,
       }),
     ).toBe('TRENDFOLLOW_STRUCTURE_BREAKOUT_NOT_CONFIRMED');
+  });
+
+  it('supports a causal breakout-distance maturity range', () => {
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('SHORT', { breakoutDistancePct: 1.5 }),
+        config: makeConfig({ TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT: 2 }),
+      }),
+    ).toBe('TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_SMALL');
+
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('SHORT', { breakoutDistancePct: 3.5 }),
+        config: makeConfig({ TRENDFOLLOW_MAX_BREAKOUT_DISTANCE_PCT: 3 }),
+      }),
+    ).toBe('TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_EXTENDED');
   });
 
   it('can require independent trend, benchmark, and volume confirmation', () => {
