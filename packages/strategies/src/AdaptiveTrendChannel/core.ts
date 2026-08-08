@@ -11,6 +11,10 @@ import {
 } from './engine';
 import { buildAdaptiveTrendChannelFigures } from './figures';
 import { getAdaptiveTrendChannelFilterSkipCode } from './filters';
+import {
+  buildStructureRiskPlan,
+  isStopLossOnCorrectSide,
+} from '../shared/structureRisk';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -134,27 +138,28 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       await strategyApi.getDecisionPriceContext();
     const stopLossPrice =
       signal.direction === 'LONG' ? signal.floor : signal.roof;
-    const riskDistance = Math.abs(currentPrice - stopLossPrice);
-    const targetR = Math.max(
-      0,
-      Number(config.ADAPTIVE_TREND_CHANNEL_TARGET_R_MULT ?? 2),
-    );
-    const takeProfitPrice =
-      signal.direction === 'LONG'
-        ? currentPrice + riskDistance * targetR
-        : currentPrice - riskDistance * targetR;
-    const riskRatio = riskDistance > 0 ? targetR : 0;
-    const rawQty =
-      riskDistance > 0 ? Number(config.MAX_LOSS_VALUE ?? 0) / riskDistance : 0;
-    const feeBuffer = 1 + Math.max(0, Number(config.FEE_PERCENT ?? 0)) / 100;
-    const qty = rawQty / feeBuffer;
 
     if (
-      (signal.direction === 'LONG' && stopLossPrice >= currentPrice) ||
-      (signal.direction === 'SHORT' && stopLossPrice <= currentPrice)
+      !isStopLossOnCorrectSide({
+        direction: signal.direction,
+        currentPrice,
+        stopLossPrice,
+      })
     ) {
       return strategyApi.skip('INVALID_STOP');
     }
+
+    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
+      currentPrice,
+      direction: signal.direction,
+      stopLossPrice,
+      targetR: Number(config.ADAPTIVE_TREND_CHANNEL_TARGET_R_MULT ?? 2),
+      maxLossValue: config.MAX_LOSS_VALUE,
+      feeRate: Number(config.FEE_PERCENT ?? 0),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
+    });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');

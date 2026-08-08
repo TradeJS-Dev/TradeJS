@@ -32,7 +32,7 @@ const isDirectionAligned = ({
   value: string | null | undefined;
 }) => (direction === 'LONG' ? value === bullishValue : value === bearishValue);
 
-const hasContextAlignment = ({
+const getContextAlignmentCount = ({
   signal,
   baseContext,
 }: {
@@ -61,28 +61,28 @@ const hasContextAlignment = ({
       : derivativesRiskFlags.includes('long_liquidation_spike') ||
         derivativesPressure === 'long_flush';
 
-  return (
+  return [
     isDirectionAligned({
       direction: signal.direction,
       bullishValue: 'bull',
       bearishValue: 'bear',
       value: trendBias,
-    }) ||
+    }),
     isDirectionAligned({
       direction: signal.direction,
       bullishValue: 'above_high_level',
       bearishValue: 'below_low_level',
       value: breakoutState,
-    }) ||
+    }),
     isDirectionAligned({
       direction: signal.direction,
       bullishValue: 'aligned_bull',
       bearishValue: 'aligned_bear',
       value: benchmarkTrendAlignment,
-    }) ||
-    derivativesDirectionAligned === true ||
-    flushSupport
-  );
+    }),
+    derivativesDirectionAligned === true,
+    flushSupport,
+  ].filter(Boolean).length;
 };
 
 export const getAdaptiveTrendChannelFilterSkipCode = ({
@@ -100,6 +100,12 @@ export const getAdaptiveTrendChannelFilterSkipCode = ({
   );
   const maxBreakoutDistancePct = asPositiveThreshold(
     config.ADAPTIVE_TREND_CHANNEL_MAX_BREAKOUT_DISTANCE_PCT,
+  );
+  const minBreakoutDistanceAtr = asPositiveThreshold(
+    config.ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR,
+  );
+  const maxBreakoutDistanceAtr = asPositiveThreshold(
+    config.ADAPTIVE_TREND_CHANNEL_MAX_BREAKOUT_DISTANCE_ATR,
   );
   const minChannelWidthPct = asPositiveThreshold(
     config.ADAPTIVE_TREND_CHANNEL_MIN_CHANNEL_WIDTH_PCT,
@@ -129,6 +135,20 @@ export const getAdaptiveTrendChannelFilterSkipCode = ({
   }
 
   if (
+    minBreakoutDistanceAtr != null &&
+    signal.breakoutDistanceAtr < minBreakoutDistanceAtr
+  ) {
+    return 'ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_SMALL';
+  }
+
+  if (
+    maxBreakoutDistanceAtr != null &&
+    signal.breakoutDistanceAtr > maxBreakoutDistanceAtr
+  ) {
+    return 'ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_EXTENDED';
+  }
+
+  if (
     minChannelWidthPct != null &&
     signal.channelWidthPct < minChannelWidthPct
   ) {
@@ -152,7 +172,13 @@ export const getAdaptiveTrendChannelFilterSkipCode = ({
 
   if (
     config.ADAPTIVE_TREND_CHANNEL_REQUIRE_CONTEXT_ALIGNMENT &&
-    !hasContextAlignment({ signal, baseContext })
+    getContextAlignmentCount({ signal, baseContext }) <
+      Math.max(
+        1,
+        Math.floor(
+          Number(config.ADAPTIVE_TREND_CHANNEL_MIN_CONTEXT_ALIGNMENTS ?? 1),
+        ),
+      )
   ) {
     return 'ADAPTIVE_TREND_CHANNEL_CONTEXT_NOT_ALIGNED';
   }

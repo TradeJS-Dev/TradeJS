@@ -19,6 +19,7 @@ export interface AdaptiveTrendChannelSnapshot {
   halfChannel: number;
   atr: number;
   breakoutDistancePct: number | null;
+  breakoutDistanceAtr: number | null;
   channelWidthPct: number | null;
   timestamp: number;
   close: number;
@@ -33,6 +34,7 @@ export interface AdaptiveTrendChannelSignal {
   halfChannel: number;
   atr: number;
   breakoutDistancePct: number;
+  breakoutDistanceAtr: number;
   channelWidthPct: number;
   timestamp: number;
   close: number;
@@ -200,6 +202,7 @@ export const buildAdaptiveTrendChannelSignalContext = (
   halfChannel: signal.halfChannel,
   atr: signal.atr,
   breakoutDistancePct: signal.breakoutDistancePct,
+  breakoutDistanceAtr: signal.breakoutDistanceAtr,
   channelWidthPct: signal.channelWidthPct,
   currentPrice: signal.close,
 });
@@ -370,6 +373,8 @@ export const createAdaptiveTrendChannelEngine = ({
           ? ((close - state.centerline) / Math.abs(state.centerline)) * 100
           : ((state.centerline - close) / Math.abs(state.centerline)) * 100
         : null;
+    const breakoutDistanceAtr =
+      atr > 0 ? Math.abs(close - state.centerline) / atr : null;
 
     pushBoundedPoint(
       state.series.centerline,
@@ -390,6 +395,7 @@ export const createAdaptiveTrendChannelEngine = ({
     if (
       (flipUp || flipDown) &&
       breakoutDistancePct != null &&
+      breakoutDistanceAtr != null &&
       channelWidthPct != null
     ) {
       state.signal = {
@@ -401,6 +407,7 @@ export const createAdaptiveTrendChannelEngine = ({
         halfChannel,
         atr,
         breakoutDistancePct,
+        breakoutDistanceAtr,
         channelWidthPct,
         timestamp: candle.timestamp,
         close,
@@ -425,6 +432,7 @@ export const createAdaptiveTrendChannelEngine = ({
       halfChannel,
       atr,
       breakoutDistancePct,
+      breakoutDistanceAtr,
       channelWidthPct,
       timestamp: candle.timestamp,
       close,

@@ -11,6 +11,10 @@ import {
   createLiquidityZonesEngine,
 } from './engine';
 import { buildLiquidityZonesFigures } from './figures';
+import {
+  buildStructureRiskPlan,
+  isStopLossOnCorrectSide,
+} from '../shared/structureRisk';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -107,27 +111,28 @@ export const createLiquidityZonesCore: CreateStrategyCore<
       signal.direction === 'LONG'
         ? signal.zone.bottom - buffer
         : signal.zone.top + buffer;
-    const riskDistance = Math.abs(currentPrice - stopLossPrice);
-    const targetR = Math.max(
-      0,
-      Number(config.LIQUIDITY_ZONES_TARGET_R_MULT ?? 2),
-    );
-    const takeProfitPrice =
-      signal.direction === 'LONG'
-        ? currentPrice + riskDistance * targetR
-        : currentPrice - riskDistance * targetR;
-    const riskRatio = riskDistance > 0 ? targetR : 0;
-    const rawQty =
-      riskDistance > 0 ? Number(config.MAX_LOSS_VALUE ?? 0) / riskDistance : 0;
-    const feeBuffer = 1 + Math.max(0, Number(config.FEE_PERCENT ?? 0)) / 100;
-    const qty = rawQty / feeBuffer;
 
     if (
-      (signal.direction === 'LONG' && stopLossPrice >= currentPrice) ||
-      (signal.direction === 'SHORT' && stopLossPrice <= currentPrice)
+      !isStopLossOnCorrectSide({
+        direction: signal.direction,
+        currentPrice,
+        stopLossPrice,
+      })
     ) {
       return strategyApi.skip('INVALID_STOP');
     }
+
+    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
+      currentPrice,
+      direction: signal.direction,
+      stopLossPrice,
+      targetR: Number(config.LIQUIDITY_ZONES_TARGET_R_MULT ?? 2),
+      maxLossValue: config.MAX_LOSS_VALUE,
+      feeRate: Number(config.FEE_PERCENT ?? 0),
+      slippageBps:
+        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
+    });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');

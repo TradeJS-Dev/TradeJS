@@ -85,4 +85,36 @@ describe('Liquidity Zones engine', () => {
     expect(signal?.zone.startIndex).toBe(base + 1);
     expect(signal?.zoneAgeBars).toBe(1);
   });
+
+  it('can require a stronger close reaction away from the zone', () => {
+    const engine = createLiquidityZonesEngine({
+      config: makeConfig({
+        LIQUIDITY_ZONES_MIN_REACTION_CLOSE_DISTANCE_PCT: 5,
+      }),
+    });
+    const candles = [
+      makeCandle(0, 102, 105, 100, 103),
+      makeCandle(1, 100, 102, 90, 101),
+      makeCandle(2, 99, 105, 99, 104),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states[states.length - 1].signal).toBeNull();
+  });
+
+  it('can require a mature zone before accepting its retest', () => {
+    const engine = createLiquidityZonesEngine({
+      config: makeConfig({ LIQUIDITY_ZONES_MIN_ZONE_AGE: 2 }),
+    });
+    const candles = [
+      makeCandle(0, 102, 105, 100, 103),
+      makeCandle(1, 100, 102, 90, 101),
+      makeCandle(2, 99, 105, 99, 104),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states[states.length - 1].signal).toBeNull();
+  });
 });

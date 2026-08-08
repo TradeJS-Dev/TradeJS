@@ -13,6 +13,7 @@ const makeSignal = (overrides: Record<string, unknown> = {}) =>
     halfChannel: 3,
     atr: 3,
     breakoutDistancePct: 0.6,
+    breakoutDistanceAtr: 0.2,
     channelWidthPct: 6,
     timestamp: 1_700_000_000_000,
     close: 100.6,
@@ -57,6 +58,26 @@ describe('getAdaptiveTrendChannelFilterSkipCode', () => {
     ).toBe('ADAPTIVE_TREND_CHANNEL_BREAKOUT_TOO_EXTENDED');
   });
 
+  it('supports ATR-normalized breakout maturity bounds', () => {
+    expect(
+      getAdaptiveTrendChannelFilterSkipCode({
+        signal: makeSignal({ breakoutDistanceAtr: 0.2 }),
+        config: makeConfig({
+          ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR: 0.4,
+        }),
+      }),
+    ).toBe('ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_SMALL');
+
+    expect(
+      getAdaptiveTrendChannelFilterSkipCode({
+        signal: makeSignal({ breakoutDistanceAtr: 2.5 }),
+        config: makeConfig({
+          ADAPTIVE_TREND_CHANNEL_MAX_BREAKOUT_DISTANCE_ATR: 2,
+        }),
+      }),
+    ).toBe('ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_EXTENDED');
+  });
+
   it('rejects thin-volume flips when volume context is available', () => {
     expect(
       getAdaptiveTrendChannelFilterSkipCode({
@@ -99,5 +120,20 @@ describe('getAdaptiveTrendChannelFilterSkipCode', () => {
         } as any,
       }),
     ).toBeNull();
+  });
+
+  it('can require more than one independent context alignment', () => {
+    expect(
+      getAdaptiveTrendChannelFilterSkipCode({
+        signal: makeSignal({ direction: 'SHORT', regime: -1 }),
+        config: makeConfig({
+          ADAPTIVE_TREND_CHANNEL_REQUIRE_CONTEXT_ALIGNMENT: true,
+          ADAPTIVE_TREND_CHANNEL_MIN_CONTEXT_ALIGNMENTS: 2,
+        }),
+        baseContext: {
+          relative: { benchmark: { trendAlignment: 'aligned_bear' } },
+        } as any,
+      }),
+    ).toBe('ADAPTIVE_TREND_CHANNEL_CONTEXT_NOT_ALIGNED');
   });
 });

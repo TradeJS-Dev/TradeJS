@@ -26,6 +26,7 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
     TRENDFOLLOW_PIVOT_LENGTH: 2,
     TRENDFOLLOW_ATR_LENGTH: 2,
     TRENDFOLLOW_ATR_MULT: 1,
+    TRENDFOLLOW_SIGNAL_OFFSET_ATR: 0,
     ...overrides,
   }) as any;
 
@@ -91,5 +92,25 @@ describe('TrendFollow engine', () => {
     expect(signal?.direction).toBe('SHORT');
     expect(signal?.entryLevel).toBe(90);
     expect(signal?.trailStop).toBeGreaterThan(signal?.close ?? 0);
+  });
+
+  it('waits for the configured ATR-normalized breakout acceptance', () => {
+    const engine = createTrendFollowEngine({
+      config: makeConfig({ TRENDFOLLOW_SIGNAL_OFFSET_ATR: 0.5 }),
+    });
+    const candles = [
+      makeCandle(0, 99, 100, 95, 98),
+      makeCandle(1, 100, 105, 99, 101),
+      makeCandle(2, 101, 110, 98, 102),
+      makeCandle(3, 102, 104, 99, 103),
+      makeCandle(4, 103, 103, 100, 102),
+      makeCandle(5, 103, 111, 102, 110.5),
+      makeCandle(6, 110.5, 116, 109, 115),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states[5].signal).toBeNull();
+    expect(states[6].signal?.direction).toBe('LONG');
   });
 });

@@ -164,6 +164,10 @@ const getConfigNumbers = (config: TrendFollowConfig) => ({
   ),
   atrLength: Math.max(1, Math.floor(config.TRENDFOLLOW_ATR_LENGTH ?? 14)),
   atrMult: clampPositive(config.TRENDFOLLOW_ATR_MULT, 4),
+  signalOffsetAtr: Math.max(
+    0,
+    Number(config.TRENDFOLLOW_SIGNAL_OFFSET_ATR ?? 0),
+  ),
   maxFigurePoints: Math.max(
     20,
     Math.floor(config.TRENDFOLLOW_MAX_FIGURE_POINTS ?? 180),
@@ -252,8 +256,14 @@ export const createTrendFollowEngine = ({
   next: (candle: Candle) => TrendFollowRuntimeState;
   getState: () => TrendFollowRuntimeState;
 } => {
-  const { pivotLength, minBarsBetween, atrLength, atrMult, maxFigurePoints } =
-    getConfigNumbers(config);
+  const {
+    pivotLength,
+    minBarsBetween,
+    atrLength,
+    atrMult,
+    signalOffsetAtr,
+    maxFigurePoints,
+  } = getConfigNumbers(config);
   const maxCandles = pivotLength * 2 + 1;
   const state: EngineState = {
     candles: [],
@@ -315,18 +325,28 @@ export const createTrendFollowEngine = ({
         : currentIndex - state.lastSignalIndex;
     const filterPass =
       minBarsBetween === 0 || barsSinceLastSignal >= minBarsBetween;
+    const bullConfirmationLevel =
+      state.lastPivotHigh != null
+        ? state.lastPivotHigh.value + atr * signalOffsetAtr
+        : null;
+    const bearConfirmationLevel =
+      state.lastPivotLow != null
+        ? state.lastPivotLow.value - atr * signalOffsetAtr
+        : null;
     const bullCross =
       state.lastPivotHigh != null &&
+      bullConfirmationLevel != null &&
       prevClose != null &&
-      prevClose <= state.lastPivotHigh.value &&
-      close > state.lastPivotHigh.value &&
+      prevClose <= bullConfirmationLevel &&
+      close > bullConfirmationLevel &&
       state.trendState !== 1 &&
       filterPass;
     const bearCross =
       state.lastPivotLow != null &&
+      bearConfirmationLevel != null &&
       prevClose != null &&
-      prevClose >= state.lastPivotLow.value &&
-      close < state.lastPivotLow.value &&
+      prevClose >= bearConfirmationLevel &&
+      close < bearConfirmationLevel &&
       state.trendState !== -1 &&
       filterPass;
 

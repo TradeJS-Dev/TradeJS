@@ -70,6 +70,7 @@ const getConfigNumbers = (config: LiquidityZonesConfig) => ({
   showSwingHighZones: Boolean(config.LIQUIDITY_ZONES_SHOW_SWING_HIGH_ZONES),
   showSwingLowZones: Boolean(config.LIQUIDITY_ZONES_SHOW_SWING_LOW_ZONES),
   maxAge: Math.max(1, Math.floor(config.LIQUIDITY_ZONES_MAX_AGE ?? 500)),
+  minZoneAge: Math.max(0, Math.floor(config.LIQUIDITY_ZONES_MIN_ZONE_AGE ?? 0)),
   reactionCloseBeyondZone: Boolean(
     config.LIQUIDITY_ZONES_REACTION_CLOSE_BEYOND_ZONE,
   ),
@@ -77,6 +78,10 @@ const getConfigNumbers = (config: LiquidityZonesConfig) => ({
   maxRetestPenetrationPct: Math.max(
     0,
     Number(config.LIQUIDITY_ZONES_MAX_RETEST_PENETRATION_PCT ?? 125),
+  ),
+  minReactionCloseDistancePct: Math.max(
+    0,
+    Number(config.LIQUIDITY_ZONES_MIN_REACTION_CLOSE_DISTANCE_PCT ?? 0),
   ),
 });
 
@@ -218,6 +223,8 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone,
   requireReactionBody,
   maxRetestPenetrationPct,
+  minZoneAge,
+  minReactionCloseDistancePct,
 }: {
   zone: LiquidityZone;
   candle: Candle;
@@ -226,12 +233,18 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone: boolean;
   requireReactionBody: boolean;
   maxRetestPenetrationPct: number;
+  minZoneAge: number;
+  minReactionCloseDistancePct: number;
 }): LiquidityZonesSignal | null => {
   const open = Number(candle.open);
   const high = Number(candle.high);
   const low = Number(candle.low);
   const close = Number(candle.close);
   const isLong = zone.direction === 'LONG';
+  const zoneAgeBars = index - zone.startIndex;
+  if (zoneAgeBars < minZoneAge) {
+    return null;
+  }
   const touched = isLong ? low <= zone.top : high >= zone.bottom;
   if (!touched) {
     return null;
@@ -263,18 +276,23 @@ const buildRetestSignal = ({
   const reactionDistance = isLong
     ? Math.max(0, close - zone.top)
     : Math.max(0, zone.bottom - close);
+  const reactionCloseDistancePct =
+    (reactionDistance / Math.max(close, 1e-9)) * 100;
+  if (reactionCloseDistancePct < minReactionCloseDistancePct) {
+    return null;
+  }
 
   return {
     direction: zone.direction,
     zone: cloneZone(zone),
     timestamp: candle.timestamp,
     close,
-    zoneAgeBars: index - zone.startIndex,
+    zoneAgeBars,
     zoneHeight,
     filterMode,
     filterMetric: getFilterMetric(zone, filterMode),
     retestPenetrationPct,
-    reactionCloseDistancePct: (reactionDistance / Math.max(close, 1e-9)) * 100,
+    reactionCloseDistancePct,
     reactionBodyAligned,
   };
 };
@@ -322,9 +340,11 @@ export const createLiquidityZonesEngine = ({
     showSwingHighZones,
     showSwingLowZones,
     maxAge,
+    minZoneAge,
     reactionCloseBeyondZone,
     requireReactionBody,
     maxRetestPenetrationPct,
+    minReactionCloseDistancePct,
   } = getConfigNumbers(config);
   const maxCandles = pivotLookback * 2 + 1;
   const state: EngineState = {
@@ -420,6 +440,8 @@ export const createLiquidityZonesEngine = ({
         reactionCloseBeyondZone,
         requireReactionBody,
         maxRetestPenetrationPct,
+        minZoneAge,
+        minReactionCloseDistancePct,
       });
       if (signal) {
         zone.traded = true;
