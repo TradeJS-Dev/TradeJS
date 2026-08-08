@@ -3,6 +3,82 @@ import { ATR_PCT } from '@tradejs/indicators';
 import { getSma } from './utils';
 
 import { KlineChartData } from '@tradejs/types';
+import type { TrendLineConfig } from './config';
+
+type TrendLineStructuralFilterContext = {
+  breakVsAtrRatio: number | null;
+  btcBiasAligned: boolean | null;
+};
+
+type TrendLineTimingFilterContext = {
+  entryTiming: string;
+  lineSlopeAligned: boolean | null;
+};
+
+const asPositiveThreshold = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+export const getTrendLineCoreFilterSkipCode = ({
+  config,
+  structuralContext,
+  timingContext,
+}: {
+  config: TrendLineConfig;
+  structuralContext: TrendLineStructuralFilterContext;
+  timingContext: TrendLineTimingFilterContext;
+}): string | null => {
+  const minBreakAtrRatio = asPositiveThreshold(
+    config.TRENDLINE_MIN_BREAK_ATR_RATIO,
+  );
+  if (
+    minBreakAtrRatio != null &&
+    (structuralContext.breakVsAtrRatio == null ||
+      structuralContext.breakVsAtrRatio < minBreakAtrRatio)
+  ) {
+    return 'TRENDLINE_BREAK_TOO_WEAK_VS_ATR';
+  }
+
+  const maxBreakAtrRatio = asPositiveThreshold(
+    config.TRENDLINE_MAX_BREAK_ATR_RATIO,
+  );
+  if (
+    maxBreakAtrRatio != null &&
+    (structuralContext.breakVsAtrRatio == null ||
+      structuralContext.breakVsAtrRatio > maxBreakAtrRatio)
+  ) {
+    return 'TRENDLINE_BREAK_TOO_EXTENDED_VS_ATR';
+  }
+
+  if (
+    config.TRENDLINE_REQUIRE_SLOPE_ALIGNMENT &&
+    timingContext.lineSlopeAligned !== true
+  ) {
+    return 'TRENDLINE_SLOPE_NOT_ALIGNED';
+  }
+
+  if (
+    config.TRENDLINE_REQUIRE_BTC_BIAS_ALIGNMENT &&
+    structuralContext.btcBiasAligned !== true
+  ) {
+    return 'TRENDLINE_BTC_BIAS_NOT_ALIGNED';
+  }
+
+  const allowedEntryTimings = Array.isArray(
+    config.TRENDLINE_ALLOWED_ENTRY_TIMINGS,
+  )
+    ? config.TRENDLINE_ALLOWED_ENTRY_TIMINGS
+    : [];
+  if (
+    allowedEntryTimings.length > 0 &&
+    !allowedEntryTimings.includes(timingContext.entryTiming)
+  ) {
+    return 'TRENDLINE_ENTRY_TIMING_NOT_ALLOWED';
+  }
+
+  return null;
+};
 
 const MIN_ATR = 0.94;
 const SMA_SLOW = 200;

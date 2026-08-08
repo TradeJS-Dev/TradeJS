@@ -3,6 +3,7 @@ import { createTrendlineEngine } from '@tradejs/core/indicators';
 
 import { ReverseTrendLineConfig } from './config';
 import { buildReverseTrendLineFigures } from './figures';
+import { getReverseTrendLineCoreFilterSkipCode } from './filters';
 import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
@@ -30,6 +31,7 @@ const buildReverseTrendlineSignalSeed = ({
   currentPrice,
   indicators,
   bestLine,
+  baseContext,
   currentCandle,
   reverseTrendlineTiming,
 }: {
@@ -37,6 +39,7 @@ const buildReverseTrendlineSignalSeed = ({
   currentPrice: number;
   indicators: Record<string, unknown>;
   bestLine: TrendLine;
+  baseContext?: Record<string, unknown>;
   currentCandle?: Record<string, unknown>;
   reverseTrendlineTiming?: Record<string, unknown>;
 }) => ({
@@ -47,6 +50,7 @@ const buildReverseTrendlineSignalSeed = ({
     touches: Array.isArray(bestLine.touches) ? bestLine.touches.length + 2 : 2,
     distance: bestLine.distance,
     trendLine: bestLine,
+    ...(baseContext ? { baseContext } : {}),
     ...(currentCandle ? { currentCandle } : {}),
     ...(reverseTrendlineTiming ? { reverseTrendlineTiming } : {}),
   },
@@ -325,6 +329,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       currentPrice,
       indicators: indicators as Record<string, unknown>,
       bestLine,
+      baseContext: baseContext as unknown as Record<string, unknown>,
       currentCandle: {
         timestamp: candle.timestamp,
         open: candle.open,
@@ -351,6 +356,15 @@ export const createReverseTrendLineCore: CreateStrategyCore<
             ? 'WAIT_REACTION_CONFIRMATION'
             : 'WAIT_TOUCH';
       return strategyApi.skip(`REVERSE_TRENDLINE_TIMING:${timingCode}`);
+    }
+
+    const filterSkipCode = getReverseTrendLineCoreFilterSkipCode({
+      config,
+      structuralContext,
+      timingContext,
+    });
+    if (filterSkipCode) {
+      return strategyApi.skip(filterSkipCode);
     }
 
     const riskPlan = buildReverseTrendlineRiskPlan({
@@ -397,6 +411,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         currentPrice,
         indicators: indicators as Record<string, unknown>,
         bestLine,
+        baseContext: baseContext as unknown as Record<string, unknown>,
         currentCandle: {
           timestamp: candle.timestamp,
           open: candle.open,

@@ -44,6 +44,14 @@ export const config = {
   } as Partial<TrendLineOptions>,
   REVERSE_TRENDLINE_STOP_BASE_PCT: 1.4,
   REVERSE_TRENDLINE_TARGET_R_MULT: 1.8,
+  REVERSE_TRENDLINE_MIN_REJECTION_WICK_PCT: 0,
+  REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT: 0,
+  REVERSE_TRENDLINE_REQUIRE_COIN_BIAS_ALIGNMENT: false,
+  REVERSE_TRENDLINE_REQUIRE_BTC_BIAS_ALIGNMENT: false,
+  REVERSE_TRENDLINE_ALLOWED_ENTRY_TIMINGS: [
+    'ready_rejection',
+    'ready_follow_through',
+  ] as readonly string[],
   HIGHS: {
     enable: true,
     direction: 'SHORT',
@@ -59,10 +67,15 @@ export const config = {
 export type ReverseTrendLineConfig = StrategyConfig &
   Omit<
     typeof config,
-    'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'
+    | 'BACKTEST_PRICE_MODE'
+    | 'TRENDLINE'
+    | 'REVERSE_TRENDLINE_ALLOWED_ENTRY_TIMINGS'
+    | 'HIGHS'
+    | 'LOWS'
   > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     TRENDLINE: Partial<TrendLineOptions>;
+    REVERSE_TRENDLINE_ALLOWED_ENTRY_TIMINGS: readonly string[];
     HIGHS: ReverseTrendLineModeConfig;
     LOWS: ReverseTrendLineModeConfig;
   };

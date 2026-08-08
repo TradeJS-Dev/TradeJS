@@ -528,5 +528,7 @@ export const buildReverseTrendlineTimingContext = ({
       entryTiming === 'ready_follow_through',
     currentRejectionStrengthPct: lastSample?.rejectionStrengthPct ?? null,
     previousRejectionStrengthPct: prevSample?.rejectionStrengthPct ?? null,
+    currentRejectionWickPct: lastSample?.rejectionWickPct ?? null,
+    previousRejectionWickPct: prevSample?.rejectionWickPct ?? null,
   };
 };

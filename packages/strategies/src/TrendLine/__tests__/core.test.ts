@@ -277,10 +277,23 @@ describe('createTrendLineCore', () => {
       onBar: jest.fn(),
       next: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
-      snapshot: jest.fn(() => ({ maFast: [1], correlation: [0.1] })),
+      snapshot: jest.fn(() => ({
+        maFast: [1],
+        correlation: [0.1],
+        baseContext: {
+          marker: 'trendline-core-context',
+          candle,
+          raw: {
+            trend: { maFast: 101, maSlow: 100 },
+            volatility: { atrPct: 1 },
+          },
+          relative: { benchmark: { maFast: 101, maSlow: 100 } },
+        },
+      })),
       latestNumber: jest.fn(() => 0.1),
       isInitialized: jest.fn(() => true),
     };
+    activeIndicatorsState = indicatorsState;
 
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
       fullData: [candle],
@@ -340,7 +353,7 @@ describe('createTrendLineCore', () => {
       }),
     );
     expect(tpSlParams.stopLossDelta).toBeCloseTo(0.91, 2);
-    expect(tpSlParams.takeProfitDelta).toBeCloseTo(2.24, 2);
+    expect(tpSlParams.takeProfitDelta).toBeCloseTo(2.1, 2);
     expect(indicatorsState.onBar).toHaveBeenCalledWith();
     expect(buildEntrySignalDecision).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -357,6 +370,9 @@ describe('createTrendLineCore', () => {
           points: expect.any(Array),
         }),
         additionalIndicators: expect.objectContaining({
+          baseContext: expect.objectContaining({
+            marker: 'trendline-core-context',
+          }),
           trendlineTiming: expect.objectContaining({
             entryTiming: 'ready_breakout',
             entryReadyNow: true,

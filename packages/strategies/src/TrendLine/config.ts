@@ -48,6 +48,15 @@ export const config = {
   } as Partial<TrendLineOptions>,
   TRENDLINE_STOP_BASE_PCT: 1.6,
   TRENDLINE_TARGET_R_MULT: 2.2,
+  TRENDLINE_MIN_BREAK_ATR_RATIO: 0,
+  TRENDLINE_MAX_BREAK_ATR_RATIO: 0,
+  TRENDLINE_REQUIRE_SLOPE_ALIGNMENT: false,
+  TRENDLINE_REQUIRE_BTC_BIAS_ALIGNMENT: false,
+  TRENDLINE_ALLOWED_ENTRY_TIMINGS: [
+    'ready_breakout',
+    'ready_follow_through',
+    'ready_retest',
+  ] as readonly string[],
   HIGHS: {
     enable: true,
     direction: 'LONG',
@@ -63,10 +72,15 @@ export const config = {
 export type TrendLineConfig = StrategyConfig &
   Omit<
     typeof config,
-    'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'
+    | 'BACKTEST_PRICE_MODE'
+    | 'TRENDLINE'
+    | 'TRENDLINE_ALLOWED_ENTRY_TIMINGS'
+    | 'HIGHS'
+    | 'LOWS'
   > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     TRENDLINE: Partial<TrendLineOptions>;
+    TRENDLINE_ALLOWED_ENTRY_TIMINGS: readonly string[];
     HIGHS: TrendLineModeConfig;
     LOWS: TrendLineModeConfig;
   };

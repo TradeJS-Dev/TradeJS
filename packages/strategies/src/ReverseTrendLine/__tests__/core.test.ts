@@ -279,17 +279,36 @@ describe('createReverseTrendLineCore', () => {
       currentPrice: candle.close,
     });
 
-    const core = await createReverseTrendLineCore(
-      makeCoreParams({
-        data: [candle] as any,
-      }) as any,
-    );
+    const params = makeCoreParams({ data: [candle] as any });
+    const indicatorsState = params.indicatorsState as any;
+    indicatorsState.snapshot.mockReturnValue({
+      maFast: [101],
+      maSlow: [100],
+      btcMaFast: [101],
+      btcMaSlow: [100],
+      atrPct: [0.8],
+      correlation: [0.1],
+      baseContext: {
+        marker: 'reverse-trendline-core-context',
+        candle,
+        raw: {
+          trend: { maFast: 101, maSlow: 100 },
+          volatility: { atrPct: 1 },
+        },
+        relative: { benchmark: { maFast: 101, maSlow: 100 } },
+      },
+    });
+
+    const core = await createReverseTrendLineCore(params as any);
 
     const decision = await core(candle as any, candle as any);
 
     expect(decision.kind).toBe('entry');
     expect((decision as any).direction).toBe('LONG');
     expect(decision.code).toBe('REVERSE_TRENDLINE_SIGNAL');
+    expect((decision as any).additionalIndicators.baseContext).toEqual(
+      expect.objectContaining({ marker: 'reverse-trendline-core-context' }),
+    );
   });
 
   it('uses bounded initial candle history for follow-through timing', async () => {

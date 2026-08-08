@@ -3,6 +3,7 @@ import { createTrendlineEngine } from '@tradejs/core/indicators';
 
 import { TrendLineConfig } from './config';
 import { buildTrendLineFigures } from './figures';
+import { getTrendLineCoreFilterSkipCode } from './filters';
 import {
   buildTrendlineStructuralContext,
   buildTrendlineTimingContext,
@@ -29,12 +30,14 @@ const buildTrendlineSignalSeed = ({
   currentPrice,
   indicators,
   bestLine,
+  baseContext,
   trendlineTiming,
 }: {
   direction: TrendLineConfig['HIGHS']['direction'];
   currentPrice: number;
   indicators: Record<string, unknown>;
   bestLine: TrendLine;
+  baseContext?: Record<string, unknown>;
   trendlineTiming?: Record<string, unknown>;
 }) => ({
   direction,
@@ -44,6 +47,7 @@ const buildTrendlineSignalSeed = ({
     touches: bestLine.touches.length + 2,
     distance: bestLine.distance,
     trendLine: bestLine,
+    ...(baseContext ? { baseContext } : {}),
     ...(trendlineTiming ? { trendlineTiming } : {}),
   },
   figures: {
@@ -212,6 +216,7 @@ export const createTrendLineCore: CreateStrategyCore<
       currentPrice,
       indicators: indicators as Record<string, unknown>,
       bestLine,
+      baseContext: baseContext as unknown as Record<string, unknown>,
     });
     const structuralContext = buildTrendlineStructuralContext(signalSeed);
 
@@ -235,6 +240,15 @@ export const createTrendLineCore: CreateStrategyCore<
             ? 'WAIT_RETEST_CONFIRMATION'
             : 'WAIT_RETEST';
       return strategyApi.skip(`TRENDLINE_TIMING:${timingCode}`);
+    }
+
+    const filterSkipCode = getTrendLineCoreFilterSkipCode({
+      config,
+      structuralContext,
+      timingContext,
+    });
+    if (filterSkipCode) {
+      return strategyApi.skip(filterSkipCode);
     }
 
     const riskPlan = buildTrendlineRiskPlan({
@@ -279,6 +293,7 @@ export const createTrendLineCore: CreateStrategyCore<
         currentPrice,
         indicators: indicators as Record<string, unknown>,
         bestLine,
+        baseContext: baseContext as unknown as Record<string, unknown>,
         trendlineTiming: timingContext as Record<string, unknown>,
       }).additionalIndicators,
       orderPlan: {
