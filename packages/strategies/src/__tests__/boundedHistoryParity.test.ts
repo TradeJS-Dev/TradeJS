@@ -2,6 +2,8 @@
 
 import { createHash } from 'crypto';
 import { Candle } from '@tradejs/types';
+import { config as CUP_AND_HANDLE_CONFIG } from '../CupAndHandle/config';
+import { createCupAndHandleEngine } from '../CupAndHandle/engine';
 import { config as DOUBLE_TAP_CONFIG } from '../DoubleTap/config';
 import { createDoubleTapEngine } from '../DoubleTap/engine';
 import { config as GRID_CONFIG } from '../Grid/config';
@@ -157,6 +159,27 @@ const scenarios = [
         LIQUIDITY_ZONES_PIVOT_LOOKBACK: 20,
         LIQUIDITY_ZONES_MIN_FILTER_VALUE: 1,
         LIQUIDITY_ZONES_FILTER_MODE: 'count',
+      },
+    ],
+  },
+  {
+    strategyName: 'CupAndHandle',
+    createEngine: createCupAndHandleEngine,
+    baseConfig: CUP_AND_HANDLE_CONFIG,
+    variants: [
+      {},
+      {
+        CUPHANDLE_PIVOT_LOOKBACK: 1,
+        CUPHANDLE_MIN_CUP_DEPTH_PCT: 0,
+        CUPHANDLE_MIN_CUP_DEPTH_ATR: 0,
+        CUPHANDLE_MIN_CUP_BARS: 2,
+        CUPHANDLE_MIN_HANDLE_BARS: 1,
+        CUPHANDLE_MAX_BREAKOUT_DISTANCE_PCT: 5,
+      },
+      {
+        CUPHANDLE_PIVOT_LOOKBACK: 5,
+        CUPHANDLE_RIM_TOLERANCE_PCT: 10,
+        CUPHANDLE_MAX_HANDLE_DEPTH_RATIO: 0.4,
       },
     ],
   },

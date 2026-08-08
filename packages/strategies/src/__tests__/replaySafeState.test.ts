@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 const statefulStrategyCores = [
   'AdaptiveMomentumRibbon',
   'AdaptiveTrendChannel',
+  'CupAndHandle',
   'DoubleTap',
   'Grid',
   'GridClassic',
