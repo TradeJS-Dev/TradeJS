@@ -1,5 +1,10 @@
-import { createBreakoutCore } from '../core';
+import {
+  createBreakoutCore,
+  getBreakoutSetupMetrics,
+  isBreakoutSetupAccepted,
+} from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
+import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
@@ -54,6 +59,7 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
         };
       },
     ),
+    createStateController: createTestStateController(),
     createLastTradeController: jest.fn(),
     exit: jest.fn(async (params: any) => ({
       kind: 'exit',
@@ -318,6 +324,68 @@ describe('createBreakoutCore', () => {
       candle.close * (1 - config.SL_LONG),
     );
     expect(result.orderPlan.takeProfits?.length).toBe(config.TP_LONG.length);
+  });
+
+  it('uses replayed engine levels for a fresh long breakout', async () => {
+    const initialCandles = [
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_060_000, 101),
+    ];
+    const candle = makeCandle(1_700_000_120_000, 104);
+    const config = makeConfig({
+      BREAKOUT_USE_ENGINE: true,
+      BREAKOUT_ENGINE_LOOKBACK: 2,
+      BREAKOUT_ENGINE_DELAY: 1,
+      BREAKOUT_COOLDOWN_HOURS: 0,
+    });
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config,
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: initialCandles,
+      btcData: [],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: {
+          symbol: 'TESTUSDT',
+          qty: 0,
+          direction: 'LONG',
+          price: 0,
+        },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [...initialCandles, candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            prevCandle: initialCandles[initialCandles.length - 1],
+            highLevel: null,
+            lowLevel: null,
+          }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'OPEN_LONG',
+      }),
+    );
+    expect((result as any).signal.additionalIndicators).toEqual(
+      expect.objectContaining({
+        highLevel: expect.any(Number),
+        breakoutEngine: expect.objectContaining({
+          signal: expect.objectContaining({ direction: 'LONG' }),
+        }),
+      }),
+    );
   });
 
   it('returns exit decision for reverse signal on open position', async () => {
@@ -698,5 +766,51 @@ describe('createBreakoutCore', () => {
       kind: 'skip',
       code: 'POSITION_HELD',
     });
+  });
+
+  it('rejects an overextended breakout using ATR-normalized distance', () => {
+    const candle = makeCandle(1_700_000_000_000, 105);
+    const metrics = getBreakoutSetupMetrics({
+      direction: 'LONG',
+      candle: { ...candle, open: 101 },
+      prevCandle: makeCandle(candle.timestamp - 60_000, 99),
+      breakoutLevel: 100,
+      atr: 2,
+      trendMoveAtr: 1.5,
+      rangeAtr: 10,
+      baseContext: {
+        participation: { volume: { volumeRel20: 1.5 } },
+        structure: {
+          acceptance: { closesAboveHighLevel3: 1 },
+        },
+      } as any,
+    });
+
+    expect(metrics).toMatchObject({
+      bodyAtr: 2,
+      distanceAtr: 2.5,
+      trendMoveAtr: 1.5,
+      rangeAtr: 10,
+      freshLevelCross: true,
+      directionalBody: true,
+    });
+    expect(
+      isBreakoutSetupAccepted(
+        makeConfig({ BREAKOUT_MAX_DISTANCE_ATR: 2 }) as any,
+        metrics,
+      ),
+    ).toBe(false);
+    expect(
+      isBreakoutSetupAccepted(
+        makeConfig({ BREAKOUT_MIN_TREND_MOVE_ATR: 2 }) as any,
+        metrics,
+      ),
+    ).toBe(false);
+    expect(
+      isBreakoutSetupAccepted(
+        makeConfig({ BREAKOUT_MAX_RANGE_ATR: 8 }) as any,
+        metrics,
+      ),
+    ).toBe(false);
   });
 });

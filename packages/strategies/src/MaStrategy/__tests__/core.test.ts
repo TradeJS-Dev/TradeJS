@@ -1,7 +1,11 @@
 /** @jest-environment node */
 
 import { config as DEFAULT_CONFIG } from '../config';
-import { createMaStrategyCore } from '../core';
+import {
+  createMaStrategyCore,
+  getMaCrossQuality,
+  isMaCrossQualityAccepted,
+} from '../core';
 
 const makeCandle = (index: number, price: number) => ({
   timestamp: 1_700_000_000_000 + index * 60_000,
@@ -234,5 +238,34 @@ describe('MaStrategy core', () => {
       },
     });
     expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
+  it('normalizes cross strength by ATR and rejects a weak cross', () => {
+    const quality = getMaCrossQuality(
+      {
+        kind: 'bullish',
+        maFastPrev: 99.8,
+        maFastCurrent: 100.1,
+        maSlowPrev: 100,
+        maSlowCurrent: 100,
+      },
+      {
+        candle: makeCandle(1, 100.2),
+        raw: { volatility: { atr: 2 } },
+        participation: { volume: { volumeRel20: 1.2 } },
+      } as any,
+    );
+
+    expect(quality.gapAtr).toBeCloseTo(0.05);
+    expect(quality.fastSlopeAtr).toBeCloseTo(0.15);
+    expect(
+      isMaCrossQualityAccepted(
+        {
+          ...DEFAULT_CONFIG,
+          MA_MIN_CROSS_GAP_ATR: 0.1,
+        } as any,
+        quality,
+      ),
+    ).toBe(false);
   });
 });

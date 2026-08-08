@@ -30,6 +30,13 @@ export const config = {
   TRADE_COOLDOWN_MS: 0,
   MA_FAST: 21,
   MA_SLOW: 55,
+  MA_MIN_CROSS_GAP_ATR: 0,
+  MA_MIN_FAST_SLOPE_ATR: 0,
+  MA_REQUIRE_SLOW_SLOPE_ALIGNMENT: false,
+  MA_REQUIRE_DIRECTIONAL_BODY: false,
+  MA_MIN_BODY_ATR: 0,
+  MA_MIN_VOLUME_REL20: 0,
+  MA_MAX_PRICE_DISTANCE_FAST_ATR: 0,
   LONG: {
     enable: true,
     direction: 'LONG',

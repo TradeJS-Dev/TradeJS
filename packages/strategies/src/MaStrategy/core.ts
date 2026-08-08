@@ -3,18 +3,29 @@ import { round } from '@tradejs/core/math';
 import { MaStrategyConfig } from './config';
 import { buildMaStrategyFigures } from './figures';
 import type {
+  BaseStrategyContextSnapshot,
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
   KlineChartData,
 } from '@tradejs/types';
 import { getIndicatorsCorrelation } from '../shared/baseContext';
 
-interface CrossState {
+export interface CrossState {
   kind: 'bullish' | 'bearish';
   maFastPrev: number;
   maFastCurrent: number;
   maSlowPrev: number;
   maSlowCurrent: number;
+}
+
+export interface MaCrossQuality {
+  gapAtr: number | null;
+  fastSlopeAtr: number | null;
+  slowSlopeAligned: boolean;
+  bodyAtr: number | null;
+  directionalBody: boolean;
+  volumeRel20: number | null;
+  priceDistanceFastAtr: number | null;
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -60,6 +71,109 @@ const detectCross = (maFast: number[], maSlow: number[]): CrossState | null => {
   }
 
   return null;
+};
+
+const toFiniteNumberOrNull = (value: unknown): number | null => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+};
+
+export const getMaCrossQuality = (
+  cross: CrossState,
+  baseContext?: BaseStrategyContextSnapshot,
+): MaCrossQuality => {
+  const atr = toFiniteNumberOrNull(baseContext?.raw?.volatility?.atr);
+  const candle = baseContext?.candle;
+  const body = candle
+    ? Math.abs(Number(candle.close) - Number(candle.open))
+    : null;
+  const priceDistanceFast = candle
+    ? Math.abs(Number(candle.close) - cross.maFastCurrent)
+    : null;
+  const isBullish = cross.kind === 'bullish';
+
+  return {
+    gapAtr:
+      atr != null && atr > 0
+        ? Math.abs(cross.maFastCurrent - cross.maSlowCurrent) / atr
+        : null,
+    fastSlopeAtr:
+      atr != null && atr > 0
+        ? Math.abs(cross.maFastCurrent - cross.maFastPrev) / atr
+        : null,
+    slowSlopeAligned: isBullish
+      ? cross.maSlowCurrent > cross.maSlowPrev
+      : cross.maSlowCurrent < cross.maSlowPrev,
+    bodyAtr:
+      atr != null && atr > 0 && body != null && Number.isFinite(body)
+        ? body / atr
+        : null,
+    directionalBody: candle
+      ? isBullish
+        ? Number(candle.close) > Number(candle.open)
+        : Number(candle.close) < Number(candle.open)
+      : false,
+    volumeRel20: toFiniteNumberOrNull(
+      baseContext?.participation?.volume?.volumeRel20,
+    ),
+    priceDistanceFastAtr:
+      atr != null && atr > 0 && priceDistanceFast != null
+        ? priceDistanceFast / atr
+        : null,
+  };
+};
+
+export const isMaCrossQualityAccepted = (
+  config: MaStrategyConfig,
+  quality: MaCrossQuality,
+): boolean => {
+  const minGapAtr = Math.max(0, Number(config.MA_MIN_CROSS_GAP_ATR ?? 0));
+  if (minGapAtr > 0 && (quality.gapAtr == null || quality.gapAtr < minGapAtr)) {
+    return false;
+  }
+  const minFastSlopeAtr = Math.max(
+    0,
+    Number(config.MA_MIN_FAST_SLOPE_ATR ?? 0),
+  );
+  if (
+    minFastSlopeAtr > 0 &&
+    (quality.fastSlopeAtr == null || quality.fastSlopeAtr < minFastSlopeAtr)
+  ) {
+    return false;
+  }
+  if (config.MA_REQUIRE_SLOW_SLOPE_ALIGNMENT && !quality.slowSlopeAligned) {
+    return false;
+  }
+  if (config.MA_REQUIRE_DIRECTIONAL_BODY && !quality.directionalBody) {
+    return false;
+  }
+  const minBodyAtr = Math.max(0, Number(config.MA_MIN_BODY_ATR ?? 0));
+  if (
+    minBodyAtr > 0 &&
+    (quality.bodyAtr == null || quality.bodyAtr < minBodyAtr)
+  ) {
+    return false;
+  }
+  const minVolumeRel20 = Math.max(0, Number(config.MA_MIN_VOLUME_REL20 ?? 0));
+  if (
+    minVolumeRel20 > 0 &&
+    (quality.volumeRel20 == null || quality.volumeRel20 < minVolumeRel20)
+  ) {
+    return false;
+  }
+  const maxPriceDistanceFastAtr = Math.max(
+    0,
+    Number(config.MA_MAX_PRICE_DISTANCE_FAST_ATR ?? 0),
+  );
+  if (
+    maxPriceDistanceFastAtr > 0 &&
+    (quality.priceDistanceFastAtr == null ||
+      quality.priceDistanceFastAtr > maxPriceDistanceFastAtr)
+  ) {
+    return false;
+  }
+
+  return true;
 };
 
 export const createMaStrategyCore: CreateStrategyCore<
@@ -116,6 +230,11 @@ export const createMaStrategyCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
+    const crossQuality = getMaCrossQuality(cross, indicators.baseContext);
+    if (!isMaCrossQualityAccepted(config, crossQuality)) {
+      return strategyApi.skip('WEAK_MA_CROSS');
+    }
+
     const { timestamp, currentPrice, candle } =
       await strategyApi.getDecisionPriceContext();
     if (lastTradeController.isInCooldown(timestamp)) {
@@ -169,6 +288,7 @@ export const createMaStrategyCore: CreateStrategyCore<
         maSlowPrev: cross.maSlowPrev,
         maSlowCurrent: cross.maSlowCurrent,
         maGap: cross.maFastCurrent - cross.maSlowCurrent,
+        ...crossQuality,
         correlation,
       },
       orderPlan: {
