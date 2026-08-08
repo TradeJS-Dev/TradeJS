@@ -102,4 +102,34 @@ describe('StructureZones engine', () => {
     expect(firstReaction.signal?.direction).toBe('LONG');
     expect(repeatedReaction.signal).toBeNull();
   });
+
+  it('counts distinct touch episodes and can keep only the first touch', () => {
+    const candles = [
+      makeCandle(0, 100, 102, 98, 100),
+      makeCandle(1, 101, 104, 99, 102),
+      makeCandle(2, 102, 110, 100, 108),
+      makeCandle(3, 108, 106, 101, 103),
+      makeCandle(4, 103, 105, 96, 99),
+      makeCandle(5, 99, 104, 94, 96),
+      makeCandle(6, 96, 103, 94.8, 101),
+      makeCandle(7, 101, 105, 97, 103),
+      makeCandle(8, 97, 98, 95.4, 95),
+      makeCandle(9, 100, 104, 99, 102),
+    ];
+    const firstTouchOnly = createStructureZonesEngine({
+      config: makeConfig({ STRUCTURE_ZONES_MAX_TOUCH_ORDINAL: 1 }),
+      initialCandles: candles as any,
+    });
+    const firstTwoTouches = createStructureZonesEngine({
+      config: makeConfig({ STRUCTURE_ZONES_MAX_TOUCH_ORDINAL: 2 }),
+      initialCandles: candles as any,
+    });
+    const secondTouch = makeCandle(10, 95, 98, 95.4, 97) as any;
+
+    expect(firstTouchOnly.next(secondTouch).signal).toBeNull();
+    expect(firstTwoTouches.next(secondTouch).signal).toMatchObject({
+      kind: 'support_reaction',
+      touchOrdinal: 2,
+    });
+  });
 });

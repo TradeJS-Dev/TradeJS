@@ -31,6 +31,7 @@ export interface MarketFlushReversalSignalContext {
   marketFlushConfirmed: boolean;
   minMarketLiqSpikeRatio: number;
   rejectionClosePosition: number | null;
+  rejectionBodyAtr: number | null;
   rejectionConfirmed: boolean;
   sweepState: string | null;
   breakoutState: string | null;
@@ -220,7 +221,7 @@ const getLocalStructureCandidate = ({
   return longScore > shortScore ? 'LONG' : 'SHORT';
 };
 
-const detectSignal = ({
+export const detectMarketFlushReversalSignal = ({
   baseContext,
   config,
 }: {
@@ -260,10 +261,21 @@ const detectSignal = ({
     baseContext,
     direction,
   );
+  const atr = toFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
+  const candleBody = Math.abs(
+    Number(baseContext.candle.close) - Number(baseContext.candle.open),
+  );
+  const rejectionBodyAtr =
+    atr != null && atr > 0 && Number.isFinite(candleBody)
+      ? candleBody / atr
+      : null;
   const rejectionConfirmed =
     rejectionClosePosition != null &&
     rejectionClosePosition >=
-      Number(config.MFR_MIN_REJECTION_CLOSE_POSITION ?? 0.6);
+      Number(config.MFR_MIN_REJECTION_CLOSE_POSITION ?? 0.6) &&
+    (Number(config.MFR_MIN_REJECTION_BODY_ATR ?? 0) <= 0 ||
+      (rejectionBodyAtr != null &&
+        rejectionBodyAtr >= Number(config.MFR_MIN_REJECTION_BODY_ATR ?? 0)));
   if (!rejectionConfirmed) return null;
   const rangePosition20 =
     toFiniteNumberOrNull(localRange?.rangePosition20) ?? null;
@@ -329,6 +341,7 @@ const detectSignal = ({
     marketFlushConfirmed,
     minMarketLiqSpikeRatio,
     rejectionClosePosition,
+    rejectionBodyAtr,
     rejectionConfirmed,
     sweepState: liquidity?.sweepState ?? null,
     breakoutState: localRange?.breakoutState ?? null,
@@ -405,7 +418,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
 
-    const signal = detectSignal({ baseContext, config });
+    const signal = detectMarketFlushReversalSignal({ baseContext, config });
     const position = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(position)) {

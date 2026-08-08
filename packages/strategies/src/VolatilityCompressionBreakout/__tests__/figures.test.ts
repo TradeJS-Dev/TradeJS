@@ -16,6 +16,8 @@ describe('buildVolatilityCompressionBreakoutFigures', () => {
         bbWidthRank100: 22,
         rangeExpansionRank20: 81,
         breakoutBodyAtr: 0.7,
+        breakoutLevel: 96,
+        breakoutDistanceAtr: 0.4,
         acceptanceCloses: 2,
         volumeRel20: 1.5,
         buyPressurePct: 0.38,

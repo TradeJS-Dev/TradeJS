@@ -21,6 +21,7 @@ describe('buildMarketFlushReversalFigures', () => {
         marketFlushConfirmed: true,
         minMarketLiqSpikeRatio: 1.5,
         rejectionClosePosition: 0.8,
+        rejectionBodyAtr: 0.6,
         rejectionConfirmed: true,
         sweepState: 'sweep_low',
         breakoutState: 'inside_range',

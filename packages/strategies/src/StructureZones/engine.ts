@@ -20,6 +20,8 @@ export interface StructureZone {
   top: number;
   bottom: number;
   level: number;
+  sourcePivotTimestamp: number;
+  sourcePivotIndex: number;
 }
 
 export interface StructureZonesSnapshot {
@@ -34,6 +36,10 @@ export interface StructureZonesSnapshot {
   prevLow: StructureZonesPivot | null;
   supportZone: StructureZone | null;
   resistanceZone: StructureZone | null;
+  supportZoneAgeBars: number | null;
+  resistanceZoneAgeBars: number | null;
+  supportTouchOrdinal: number;
+  resistanceTouchOrdinal: number;
   atr: number;
   timestamp: number;
   close: number;
@@ -50,6 +56,8 @@ export interface StructureZonesSignal {
   lastLow: StructureZonesPivot;
   atr: number;
   zoneHeight: number;
+  zoneAgeBars: number;
+  touchOrdinal: number;
   reactionCloseDistancePct: number;
   reactionBodyAligned: boolean;
   structureBias: 'up' | 'down' | 'range';
@@ -82,6 +90,10 @@ type EngineState = {
   lastOppForLow: number | null;
   supportZone: StructureZone | null;
   resistanceZone: StructureZone | null;
+  supportTouchOrdinal: number;
+  resistanceTouchOrdinal: number;
+  supportWasTouched: boolean;
+  resistanceWasTouched: boolean;
   lastSignalKey: string | null;
   signal: StructureZonesSignal | null;
   snapshot: StructureZonesSnapshot | null;
@@ -205,6 +217,22 @@ const getConfigNumbers = (config: StructureZonesConfig) => ({
     0,
     Number(config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR ?? 0.1),
   ),
+  minZoneAgeBars: Math.max(
+    0,
+    Math.floor(Number(config.STRUCTURE_ZONES_MIN_ZONE_AGE_BARS ?? 0)),
+  ),
+  maxZoneAgeBars: Math.max(
+    0,
+    Math.floor(Number(config.STRUCTURE_ZONES_MAX_ZONE_AGE_BARS ?? 0)),
+  ),
+  minTouchOrdinal: Math.max(
+    1,
+    Math.floor(Number(config.STRUCTURE_ZONES_MIN_TOUCH_ORDINAL ?? 1)),
+  ),
+  maxTouchOrdinal: Math.max(
+    0,
+    Math.floor(Number(config.STRUCTURE_ZONES_MAX_TOUCH_ORDINAL ?? 0)),
+  ),
   tradeTransitionBreakouts: Boolean(
     config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
   ),
@@ -292,6 +320,8 @@ const buildSignalContext = ({
   lastHigh,
   lastLow,
   atr,
+  zoneAgeBars,
+  touchOrdinal,
   candle,
   structureBias,
 }: {
@@ -304,6 +334,8 @@ const buildSignalContext = ({
   lastHigh: StructureZonesPivot;
   lastLow: StructureZonesPivot;
   atr: number;
+  zoneAgeBars: number;
+  touchOrdinal: number;
   candle: Candle;
   structureBias: 'up' | 'down' | 'range';
 }): StructureZonesSignal => {
@@ -324,6 +356,8 @@ const buildSignalContext = ({
     lastLow,
     atr,
     zoneHeight: Math.max(zone.top - zone.bottom, 1e-9),
+    zoneAgeBars,
+    touchOrdinal,
     reactionCloseDistancePct: (reactionDistance / Math.max(close, 1e-9)) * 100,
     reactionBodyAligned: isLong ? close > open : close < open,
     structureBias,
@@ -344,6 +378,9 @@ export const buildStructureZonesSignalContext = (
   zoneBottom: signal.zone.bottom,
   zoneLevel: signal.zone.level,
   zoneHeight: signal.zoneHeight,
+  zoneAgeBars: signal.zoneAgeBars,
+  touchOrdinal: signal.touchOrdinal,
+  zoneSourcePivotTimestamp: signal.zone.sourcePivotTimestamp,
   supportTop: signal.supportZone.top,
   supportBottom: signal.supportZone.bottom,
   resistanceTop: signal.resistanceZone.top,
@@ -380,6 +417,10 @@ export const createStructureZonesEngine = ({
     requireReactionBody,
     requireBiasAlignment,
     minReactionDistanceAtr,
+    minZoneAgeBars,
+    maxZoneAgeBars,
+    minTouchOrdinal,
+    maxTouchOrdinal,
     tradeTransitionBreakouts,
     maxFigurePoints,
   } = getConfigNumbers(config);
@@ -398,6 +439,10 @@ export const createStructureZonesEngine = ({
     lastOppForLow: null,
     supportZone: null,
     resistanceZone: null,
+    supportTouchOrdinal: 0,
+    resistanceTouchOrdinal: 0,
+    supportWasTouched: false,
+    resistanceWasTouched: false,
     lastSignalKey: null,
     signal: null,
     snapshot: null,
@@ -479,18 +524,34 @@ export const createStructureZonesEngine = ({
 
     if (structureUpdated && state.lastHigh && state.lastLow) {
       const half = zoneWidthAtr * atr;
+      const resistanceChanged =
+        state.resistanceZone?.sourcePivotTimestamp !== state.lastHigh.timestamp;
+      const supportChanged =
+        state.supportZone?.sourcePivotTimestamp !== state.lastLow.timestamp;
       state.resistanceZone = {
         kind: 'resistance',
         top: state.lastHigh.value + half,
         bottom: state.lastHigh.value - half,
         level: state.lastHigh.value,
+        sourcePivotTimestamp: state.lastHigh.timestamp,
+        sourcePivotIndex: state.lastHigh.index,
       };
       state.supportZone = {
         kind: 'support',
         top: state.lastLow.value + half,
         bottom: state.lastLow.value - half,
         level: state.lastLow.value,
+        sourcePivotTimestamp: state.lastLow.timestamp,
+        sourcePivotIndex: state.lastLow.index,
       };
+      if (resistanceChanged) {
+        state.resistanceTouchOrdinal = 0;
+        state.resistanceWasTouched = false;
+      }
+      if (supportChanged) {
+        state.supportTouchOrdinal = 0;
+        state.supportWasTouched = false;
+      }
     }
 
     const isUpStructure = Boolean(
@@ -541,6 +602,33 @@ export const createStructureZonesEngine = ({
       const supportTouched = Number(candle.low) <= state.supportZone.top;
       const resistanceTouched =
         Number(candle.high) >= state.resistanceZone.bottom;
+      const supportOverlapped =
+        Number(candle.low) <= state.supportZone.top &&
+        Number(candle.high) >= state.supportZone.bottom;
+      const resistanceOverlapped =
+        Number(candle.high) >= state.resistanceZone.bottom &&
+        Number(candle.low) <= state.resistanceZone.top;
+      if (supportOverlapped && !state.supportWasTouched) {
+        state.supportTouchOrdinal += 1;
+      }
+      if (resistanceOverlapped && !state.resistanceWasTouched) {
+        state.resistanceTouchOrdinal += 1;
+      }
+      state.supportWasTouched = supportOverlapped;
+      state.resistanceWasTouched = resistanceOverlapped;
+      const supportZoneAgeBars = Math.max(
+        0,
+        currentIndex - state.supportZone.sourcePivotIndex,
+      );
+      const resistanceZoneAgeBars = Math.max(
+        0,
+        currentIndex - state.resistanceZone.sourcePivotIndex,
+      );
+      const lifecycleAccepted = (ageBars: number, touchOrdinal: number) =>
+        ageBars >= minZoneAgeBars &&
+        (maxZoneAgeBars <= 0 || ageBars <= maxZoneAgeBars) &&
+        touchOrdinal >= minTouchOrdinal &&
+        (maxTouchOrdinal <= 0 || touchOrdinal <= maxTouchOrdinal);
       const supportReactionClose = reactionCloseBeyondZone
         ? close > state.supportZone.top
         : close > state.supportZone.level;
@@ -556,6 +644,7 @@ export const createStructureZonesEngine = ({
       );
       const longReaction =
         supportTouched &&
+        lifecycleAccepted(supportZoneAgeBars, state.supportTouchOrdinal) &&
         supportReactionClose &&
         (!requireReactionBody || bullBody) &&
         (!requireBiasAlignment || structureBias !== 'down') &&
@@ -563,6 +652,10 @@ export const createStructureZonesEngine = ({
         marketState !== 'Transition';
       const shortReaction =
         resistanceTouched &&
+        lifecycleAccepted(
+          resistanceZoneAgeBars,
+          state.resistanceTouchOrdinal,
+        ) &&
         resistanceReactionClose &&
         (!requireReactionBody || bearBody) &&
         (!requireBiasAlignment || structureBias !== 'up') &&
@@ -588,6 +681,8 @@ export const createStructureZonesEngine = ({
             lastHigh: state.lastHigh,
             lastLow: state.lastLow,
             atr,
+            zoneAgeBars: resistanceZoneAgeBars,
+            touchOrdinal: state.resistanceTouchOrdinal,
             candle,
             structureBias,
           })
@@ -602,6 +697,8 @@ export const createStructureZonesEngine = ({
               lastHigh: state.lastHigh,
               lastLow: state.lastLow,
               atr,
+              zoneAgeBars: supportZoneAgeBars,
+              touchOrdinal: state.supportTouchOrdinal,
               candle,
               structureBias,
             })
@@ -616,6 +713,8 @@ export const createStructureZonesEngine = ({
                 lastHigh: state.lastHigh,
                 lastLow: state.lastLow,
                 atr,
+                zoneAgeBars: supportZoneAgeBars,
+                touchOrdinal: state.supportTouchOrdinal,
                 candle,
                 structureBias,
               })
@@ -630,12 +729,16 @@ export const createStructureZonesEngine = ({
                   lastHigh: state.lastHigh,
                   lastLow: state.lastLow,
                   atr,
+                  zoneAgeBars: resistanceZoneAgeBars,
+                  touchOrdinal: state.resistanceTouchOrdinal,
                   candle,
                   structureBias,
                 })
               : null;
 
-      const signalKey = signal ? `${signal.kind}:${signal.zone.level}` : null;
+      const signalKey = signal
+        ? `${signal.kind}:${signal.zone.sourcePivotTimestamp}`
+        : null;
       if (signal && signalKey !== state.lastSignalKey) {
         state.signal = signal;
         state.lastSignalKey = signalKey;
@@ -654,6 +757,14 @@ export const createStructureZonesEngine = ({
       prevLow: state.prevLow,
       supportZone: state.supportZone,
       resistanceZone: state.resistanceZone,
+      supportZoneAgeBars: state.supportZone
+        ? Math.max(0, currentIndex - state.supportZone.sourcePivotIndex)
+        : null,
+      resistanceZoneAgeBars: state.resistanceZone
+        ? Math.max(0, currentIndex - state.resistanceZone.sourcePivotIndex)
+        : null,
+      supportTouchOrdinal: state.supportTouchOrdinal,
+      resistanceTouchOrdinal: state.resistanceTouchOrdinal,
       atr,
       timestamp: candle.timestamp,
       close,

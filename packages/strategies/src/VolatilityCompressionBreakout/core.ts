@@ -23,6 +23,8 @@ export interface VolatilityCompressionBreakoutSignalContext {
   bbWidthRank100: number | null;
   rangeExpansionRank20: number | null;
   breakoutBodyAtr: number | null;
+  breakoutLevel: number | null;
+  breakoutDistanceAtr: number | null;
   acceptanceCloses: number | null;
   volumeRel20: number | null;
   buyPressurePct: number | null;
@@ -68,7 +70,7 @@ const isMtfAligned = ({
       ? mtfAlignment === 'aligned_bull'
       : mtfAlignment === 'aligned_bear';
 
-const detectSignal = ({
+export const detectVolatilityCompressionBreakoutSignal = ({
   baseContext,
   config,
 }: {
@@ -88,6 +90,28 @@ const detectSignal = ({
   const breakoutBodyAtr = toFiniteNumberOrNull(
     baseContext.structure?.acceptance?.breakoutBodyAtr,
   );
+  const currentPrice = Number(baseContext.candle.close);
+  const atr = toFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
+  const breakoutLevel = getBreakoutLevel({
+    baseContext,
+    direction,
+    currentPrice,
+  });
+  const breakoutDistanceAtr =
+    breakoutLevel != null && atr != null && atr > 0
+      ? Math.abs(currentPrice - breakoutLevel) / atr
+      : null;
+  const maxBreakoutDistanceAtr = Math.max(
+    0,
+    Number(config.VCB_MAX_BREAKOUT_DISTANCE_ATR ?? 0),
+  );
+  if (
+    maxBreakoutDistanceAtr > 0 &&
+    (breakoutDistanceAtr == null ||
+      breakoutDistanceAtr > maxBreakoutDistanceAtr)
+  ) {
+    return null;
+  }
   const atrCompressed =
     volatility?.state === 'compressed' ||
     (atrPctRank100 != null &&
@@ -187,6 +211,8 @@ const detectSignal = ({
     bbWidthRank100,
     rangeExpansionRank20,
     breakoutBodyAtr,
+    breakoutLevel,
+    breakoutDistanceAtr,
     acceptanceCloses,
     volumeRel20,
     buyPressurePct,
@@ -308,7 +334,10 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
 
-    const signal = detectSignal({ baseContext, config });
+    const signal = detectVolatilityCompressionBreakoutSignal({
+      baseContext,
+      config,
+    });
     const position = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(position)) {

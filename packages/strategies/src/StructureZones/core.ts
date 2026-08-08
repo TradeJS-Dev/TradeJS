@@ -33,6 +33,10 @@ const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
     requireReactionBody: config.STRUCTURE_ZONES_REQUIRE_REACTION_BODY,
     requireBiasAlignment: config.STRUCTURE_ZONES_REQUIRE_BIAS_ALIGNMENT,
     minReactionDistanceAtr: config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR,
+    minZoneAgeBars: config.STRUCTURE_ZONES_MIN_ZONE_AGE_BARS,
+    maxZoneAgeBars: config.STRUCTURE_ZONES_MAX_ZONE_AGE_BARS,
+    minTouchOrdinal: config.STRUCTURE_ZONES_MIN_TOUCH_ORDINAL,
+    maxTouchOrdinal: config.STRUCTURE_ZONES_MAX_TOUCH_ORDINAL,
     tradeTransitionBreakouts: config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
     maxFigurePoints: config.STRUCTURE_ZONES_MAX_FIGURE_POINTS,
   });
