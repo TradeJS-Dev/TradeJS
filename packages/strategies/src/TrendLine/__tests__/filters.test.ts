@@ -8,6 +8,7 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
 
 const makeStructural = (overrides: Record<string, unknown> = {}) => ({
   breakVsAtrRatio: 1.2,
+  volumeRel20: 1,
   btcBiasAligned: true,
   ...overrides,
 });
@@ -45,6 +46,46 @@ describe('getTrendLineCoreFilterSkipCode', () => {
         timingContext: makeTiming(),
       }),
     ).toBe('TRENDLINE_BREAK_TOO_EXTENDED_VS_ATR');
+  });
+
+  it('rejects high-effort breakouts with weak ATR-normalized displacement', () => {
+    const config = makeConfig({
+      TRENDLINE_WEAK_BREAK_MAX_ATR_RATIO: 1.25,
+      TRENDLINE_WEAK_BREAK_MIN_VOLUME_REL20: 3,
+    });
+
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        structuralContext: makeStructural({
+          breakVsAtrRatio: 1.2,
+          volumeRel20: 4,
+        }),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('TRENDLINE_WEAK_BREAK_POOR_EFFICIENCY');
+
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        structuralContext: makeStructural({
+          breakVsAtrRatio: 1.3,
+          volumeRel20: 4,
+        }),
+        timingContext: makeTiming(),
+      }),
+    ).toBeNull();
+
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        structuralContext: makeStructural({
+          breakVsAtrRatio: 1.2,
+          volumeRel20: 2.9,
+        }),
+        timingContext: makeTiming(),
+      }),
+    ).toBeNull();
   });
 
   it('can require slope, benchmark, and timing alignment', () => {

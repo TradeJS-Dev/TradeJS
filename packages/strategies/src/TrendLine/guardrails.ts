@@ -2,6 +2,7 @@ import {
   getSignalAtrPct,
   getSignalBtcMaFast,
   getSignalBtcMaSlow,
+  getSignalVolumeRel20,
 } from '../shared/baseContext';
 import {
   buildTrendLineEvaluator,
@@ -148,6 +149,7 @@ export const buildTrendlineStructuralContext = (
         ? trendLine.touches.length
         : null;
   const atrPct = getSignalAtrPct(signal);
+  const volumeRel20 = getSignalVolumeRel20(signal);
   const btcMaFast = getSignalBtcMaFast(signal);
   const btcMaSlow = getSignalBtcMaSlow(signal);
   const btcMaBias = getBias(btcMaFast, btcMaSlow);
@@ -226,6 +228,7 @@ export const buildTrendlineStructuralContext = (
     clearBreak,
     nearLineNoise,
     atrPct,
+    volumeRel20,
     breakVsAtrRatio,
     btcMaFast,
     btcMaSlow,

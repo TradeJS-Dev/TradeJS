@@ -261,10 +261,15 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         activeLinePrice != null && activeLinePrice !== 0
           ? ((candle.close - activeLinePrice) / activeLinePrice) * 100
           : null;
+      const failedBounceExitPct = Number(
+        config.REVERSE_TRENDLINE_FAILED_BOUNCE_EXIT_PCT ?? 0.35,
+      );
       const failedBounceBreak =
-        currentPosition.direction === 'LONG'
-          ? priceVsLinePct != null && priceVsLinePct <= -0.35
-          : priceVsLinePct != null && priceVsLinePct >= 0.35;
+        Number.isFinite(failedBounceExitPct) &&
+        failedBounceExitPct > 0 &&
+        (currentPosition.direction === 'LONG'
+          ? priceVsLinePct != null && priceVsLinePct <= -failedBounceExitPct
+          : priceVsLinePct != null && priceVsLinePct >= failedBounceExitPct);
 
       if (failedBounceBreak) {
         return strategyApi.exit({

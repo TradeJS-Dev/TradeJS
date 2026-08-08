@@ -41,6 +41,9 @@ export const getSignalCoinMaSlow = (signal: SignalLike): number | null =>
 export const getSignalAtrPct = (signal: SignalLike): number | null =>
   getSignalBaseContext(signal)?.raw.volatility.atrPct ?? null;
 
+export const getSignalVolumeRel20 = (signal: SignalLike): number | null =>
+  getSignalBaseContext(signal)?.participation?.volume?.volumeRel20 ?? null;
+
 export const getSignalBtcMaFast = (signal: SignalLike): number | null =>
   getSignalBaseContext(signal)?.relative.benchmark.maFast ?? null;
 

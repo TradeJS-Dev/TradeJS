@@ -515,6 +515,54 @@ describe('createReverseTrendLineCore', () => {
     expect(decision.code).toBe('REVERSE_TRENDLINE_FAILED_BOUNCE_EXIT');
   });
 
+  it('can leave failed-bounce management to the configured stop loss', async () => {
+    const candle = makeCandle(1_700_000_000_000, {
+      open: 99.7,
+      close: 99.4,
+      high: 99.8,
+      low: 99.2,
+    });
+    const lowsLine = makeLine({
+      mode: 'lows',
+      timestamp: candle.timestamp,
+      linePrice: 100,
+    });
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [lowsLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      direction: 'LONG',
+      price: 100.2,
+      qty: 1,
+      slPrice: 99,
+    });
+
+    const core = await createReverseTrendLineCore(
+      makeCoreParams({
+        config: {
+          ...DEFAULT_CONFIG,
+          REVERSE_TRENDLINE_FAILED_BOUNCE_EXIT_PCT: 0,
+        },
+        data: [candle] as any,
+        strategyApi,
+      }) as any,
+    );
+
+    await expect(core(candle as any, candle as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+  });
+
   it('prefers the touched candidate line when both directions are available', async () => {
     const candle = makeCandle(1_700_000_000_000, {
       open: 100.15,

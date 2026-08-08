@@ -7,6 +7,7 @@ import type { TrendLineConfig } from './config';
 
 type TrendLineStructuralFilterContext = {
   breakVsAtrRatio: number | null;
+  volumeRel20: number | null;
   btcBiasAligned: boolean | null;
 };
 
@@ -49,6 +50,23 @@ export const getTrendLineCoreFilterSkipCode = ({
       structuralContext.breakVsAtrRatio > maxBreakAtrRatio)
   ) {
     return 'TRENDLINE_BREAK_TOO_EXTENDED_VS_ATR';
+  }
+
+  const weakBreakMaxAtrRatio = asPositiveThreshold(
+    config.TRENDLINE_WEAK_BREAK_MAX_ATR_RATIO,
+  );
+  const weakBreakMinVolumeRel20 = asPositiveThreshold(
+    config.TRENDLINE_WEAK_BREAK_MIN_VOLUME_REL20,
+  );
+  if (
+    weakBreakMaxAtrRatio != null &&
+    weakBreakMinVolumeRel20 != null &&
+    structuralContext.breakVsAtrRatio != null &&
+    structuralContext.volumeRel20 != null &&
+    structuralContext.breakVsAtrRatio < weakBreakMaxAtrRatio &&
+    structuralContext.volumeRel20 >= weakBreakMinVolumeRel20
+  ) {
+    return 'TRENDLINE_WEAK_BREAK_POOR_EFFICIENCY';
   }
 
   if (
