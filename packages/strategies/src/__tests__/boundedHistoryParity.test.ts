@@ -8,6 +8,8 @@ import { config as DOUBLE_TAP_CONFIG } from '../DoubleTap/config';
 import { createDoubleTapEngine } from '../DoubleTap/engine';
 import { config as GRID_CONFIG } from '../Grid/config';
 import { createGridEngine } from '../Grid/engine';
+import { config as HEAD_AND_SHOULDERS_CONFIG } from '../HeadAndShoulders/config';
+import { createHeadAndShouldersEngine } from '../HeadAndShoulders/engine';
 import { config as LIQUIDITY_ZONES_CONFIG } from '../LiquidityZones/config';
 import { createLiquidityZonesEngine } from '../LiquidityZones/engine';
 import { config as STRUCTURE_ZONES_CONFIG } from '../StructureZones/config';
@@ -198,6 +200,26 @@ const scenarios = [
         DOUBLETAP_PIVOT_LENGTH: 20,
         DOUBLETAP_PIVOT_TOLERANCE_PCT: 10,
         DOUBLETAP_MAX_BREAKOUT_DISTANCE_PCT: 1.4,
+      },
+    ],
+  },
+  {
+    strategyName: 'HeadAndShoulders',
+    createEngine: createHeadAndShouldersEngine,
+    baseConfig: HEAD_AND_SHOULDERS_CONFIG,
+    variants: [
+      {},
+      {
+        HEADSHOULDERS_PIVOT_LOOKBACK: 1,
+        HEADSHOULDERS_MIN_HEAD_HEIGHT_PCT: 0,
+        HEADSHOULDERS_MIN_HEAD_HEIGHT_ATR: 0,
+        HEADSHOULDERS_MIN_PATTERN_BARS: 4,
+        HEADSHOULDERS_MAX_BREAKOUT_DISTANCE_PCT: 5,
+      },
+      {
+        HEADSHOULDERS_PIVOT_LOOKBACK: 5,
+        HEADSHOULDERS_SHOULDER_TOLERANCE_PCT: 15,
+        HEADSHOULDERS_MAX_NECKLINE_SLOPE_RATIO: 0.35,
       },
     ],
   },

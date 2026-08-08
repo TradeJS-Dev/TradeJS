@@ -8,6 +8,7 @@ import { marketFlushReversalManifest } from './MarketFlushReversal/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { gridManifest } from './Grid/manifest';
 import { gridClassicManifest } from './GridClassic/manifest';
+import { headAndShouldersManifest } from './HeadAndShoulders/manifest';
 import { hyperliquidConsensusManifest } from './HyperliquidConsensus/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { relativeRotationManifest } from './RelativeRotation/manifest';
@@ -36,6 +37,8 @@ import { config as gridDefaultConfig } from './Grid/config';
 import { GridStrategyCreator } from './Grid/strategy';
 import { config as gridClassicDefaultConfig } from './GridClassic/config';
 import { GridClassicStrategyCreator } from './GridClassic/strategy';
+import { config as headAndShouldersDefaultConfig } from './HeadAndShoulders/config';
+import { HeadAndShouldersStrategyCreator } from './HeadAndShoulders/strategy';
 import { config as hyperliquidConsensusDefaultConfig } from './HyperliquidConsensus/config';
 import { HyperliquidConsensusStrategyCreator } from './HyperliquidConsensus/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
@@ -90,6 +93,10 @@ export const strategyEntries: StrategyRegistryEntry[] = [
   {
     manifest: doubleTapManifest,
     creator: DoubleTapStrategyCreator,
+  },
+  {
+    manifest: headAndShouldersManifest,
+    creator: HeadAndShouldersStrategyCreator,
   },
   {
     manifest: cupAndHandleManifest,
@@ -153,6 +160,7 @@ const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   RelativeRotation: relativeRotationDefaultConfig,
   TrendShift: trendShiftDefaultConfig,
   DoubleTap: doubleTapDefaultConfig,
+  HeadAndShoulders: headAndShouldersDefaultConfig,
   CupAndHandle: cupAndHandleDefaultConfig,
   Grid: gridDefaultConfig,
   GridClassic: gridClassicDefaultConfig,
@@ -181,6 +189,7 @@ export { relativeRotationDefaultConfig };
 export { trendLineDefaultConfig };
 export { trendShiftDefaultConfig };
 export { doubleTapDefaultConfig };
+export { headAndShouldersDefaultConfig };
 export { cupAndHandleDefaultConfig };
 export { gridDefaultConfig };
 export { gridClassicDefaultConfig };
@@ -203,6 +212,7 @@ export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
 export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
 export { doubleTapAiAdapter } from './DoubleTap/adapters/ai';
+export { headAndShouldersAiAdapter } from './HeadAndShoulders/adapters/ai';
 export { cupAndHandleAiAdapter } from './CupAndHandle/adapters/ai';
 export { gridAiAdapter } from './Grid/adapters/ai';
 export { gridClassicAiAdapter } from './GridClassic/adapters/ai';

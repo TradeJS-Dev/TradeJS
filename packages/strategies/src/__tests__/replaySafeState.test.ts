@@ -10,6 +10,7 @@ const statefulStrategyCores = [
   'DoubleTap',
   'Grid',
   'GridClassic',
+  'HeadAndShoulders',
   'LiquidityTails',
   'LiquidityZones',
   'ReverseTrendLine',
