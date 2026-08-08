@@ -25,6 +25,7 @@ describe('buildRelativeRotationFigures', () => {
         rotationScore: 2.65,
         ratioTrendConfirmed: true,
         alphaConfirmed: true,
+        ratioReturnConfirmed: true,
         relativeStrengthConfirmed: true,
         regimeConfirmed: true,
       },

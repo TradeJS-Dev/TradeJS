@@ -47,6 +47,7 @@ const buildCupAndHandleStateKey = (config: CupAndHandleConfig) =>
     maxBreakoutDistanceDepthRatio:
       config.CUPHANDLE_MAX_BREAKOUT_DISTANCE_DEPTH_RATIO,
     maxBreakoutDistancePct: config.CUPHANDLE_MAX_BREAKOUT_DISTANCE_PCT,
+    requireBreakoutCross: config.CUPHANDLE_REQUIRE_BREAKOUT_CROSS,
     entryMode: config.CUPHANDLE_ENTRY_MODE,
     confirmationMaxBars: config.CUPHANDLE_CONFIRMATION_MAX_BARS,
     retestMaxBars: config.CUPHANDLE_RETEST_MAX_BARS,
@@ -113,6 +114,21 @@ export const createCupAndHandleCore: CreateStrategyCore<
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
     const indicators = indicatorsState.snapshot();
+    const { baseContext } = strategyApi.getCurrentIndicatorsContext();
+    const minimumBreakoutVolumeRel20 = Math.max(
+      0,
+      Number(config.CUPHANDLE_MIN_BREAKOUT_VOLUME_REL20 ?? 0),
+    );
+    const breakoutVolumeRel20 = Number(
+      baseContext?.participation?.volume?.volumeRel20,
+    );
+    if (
+      minimumBreakoutVolumeRel20 > 0 &&
+      (!Number.isFinite(breakoutVolumeRel20) ||
+        breakoutVolumeRel20 < minimumBreakoutVolumeRel20)
+    ) {
+      return strategyApi.skip('BREAKOUT_VOLUME_NOT_CONFIRMED');
+    }
     if (
       !isStopLossOnCorrectSide({
         direction: pattern.direction,
@@ -144,6 +160,9 @@ export const createCupAndHandleCore: CreateStrategyCore<
     const riskRatio = economics.netRiskRatio;
     const signalContext = {
       ...buildCupAndHandleSignalContext({ ...pattern, close: currentPrice }),
+      breakoutVolumeRel20: Number.isFinite(breakoutVolumeRel20)
+        ? breakoutVolumeRel20
+        : null,
       executionEconomics: {
         grossRiskRatio: economics.grossRiskRatio,
         netRiskRatio: economics.netRiskRatio,

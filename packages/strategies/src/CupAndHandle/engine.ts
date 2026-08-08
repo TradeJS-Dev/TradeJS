@@ -179,6 +179,7 @@ const getConfigNumbers = (config: CupAndHandleConfig) => ({
     fallback: 0.8,
     min: 0,
   }),
+  requireBreakoutCross: Boolean(config.CUPHANDLE_REQUIRE_BREAKOUT_CROSS),
   entryMode: config.CUPHANDLE_ENTRY_MODE ?? 'close_acceptance',
   confirmationMaxBars: Math.max(
     1,
@@ -467,6 +468,7 @@ const buildBreakoutPattern = ({
     (direction === 'LONG'
       ? prevClose <= neckline && close > neckline
       : prevClose >= neckline && close < neckline);
+  if (options.requireBreakoutCross && !breakoutCrossedOnSignalBar) return null;
 
   return {
     setupId,

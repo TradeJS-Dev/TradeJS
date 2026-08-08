@@ -30,6 +30,8 @@ export interface MarketFlushReversalSignalContext {
   marketPriceOiDivergenceType: string | null;
   marketFlushConfirmed: boolean;
   minMarketLiqSpikeRatio: number;
+  rejectionClosePosition: number | null;
+  rejectionConfirmed: boolean;
   sweepState: string | null;
   breakoutState: string | null;
   tailSide: string | null;
@@ -104,6 +106,18 @@ const getMarketFundingZScore = (baseContext: BaseStrategyContextSnapshot) => {
 const getMarketPriceOiDivergenceType = (
   baseContext: BaseStrategyContextSnapshot,
 ) => baseContext.derivatives?.summary?.priceOiDivergenceType ?? null;
+
+const getDirectionalClosePosition = (
+  baseContext: BaseStrategyContextSnapshot,
+  direction: Direction,
+) => {
+  const { high, low, close } = baseContext.candle;
+  const range = Number(high) - Number(low);
+  if (!Number.isFinite(range) || range <= 0) return null;
+  const closePosition = (Number(close) - Number(low)) / range;
+  if (!Number.isFinite(closePosition)) return null;
+  return direction === 'LONG' ? closePosition : 1 - closePosition;
+};
 
 const hasBlockingMarketContext = (baseContext: BaseStrategyContextSnapshot) => {
   const riskFlags = getMarketRiskFlags(baseContext);
@@ -235,6 +249,22 @@ const detectSignal = ({
     baseContext,
     minSpike: minMarketLiqSpikeRatio,
   });
+  const marketFlushConfirmed = marketFlushDirection === direction;
+  if (
+    Boolean(config.MFR_REQUIRE_MARKET_FLUSH_CONFIRMATION ?? false) &&
+    !marketFlushConfirmed
+  ) {
+    return null;
+  }
+  const rejectionClosePosition = getDirectionalClosePosition(
+    baseContext,
+    direction,
+  );
+  const rejectionConfirmed =
+    rejectionClosePosition != null &&
+    rejectionClosePosition >=
+      Number(config.MFR_MIN_REJECTION_CLOSE_POSITION ?? 0.6);
+  if (!rejectionConfirmed) return null;
   const rangePosition20 =
     toFiniteNumberOrNull(localRange?.rangePosition20) ?? null;
   const sweepWickPct = toFiniteNumberOrNull(liquidity?.sweepWickPct);
@@ -296,8 +326,10 @@ const detectSignal = ({
     marketLiqImbalance,
     marketFundingZScore,
     marketPriceOiDivergenceType: getMarketPriceOiDivergenceType(baseContext),
-    marketFlushConfirmed: marketFlushDirection === direction,
+    marketFlushConfirmed,
     minMarketLiqSpikeRatio,
+    rejectionClosePosition,
+    rejectionConfirmed,
     sweepState: liquidity?.sweepState ?? null,
     breakoutState: localRange?.breakoutState ?? null,
     tailSide: currentTail?.side ?? null,

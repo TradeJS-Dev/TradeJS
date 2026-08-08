@@ -31,6 +31,8 @@ const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
     acceptBars: config.STRUCTURE_ZONES_ACCEPT_BARS,
     reactionCloseBeyondZone: config.STRUCTURE_ZONES_REACTION_CLOSE_BEYOND_ZONE,
     requireReactionBody: config.STRUCTURE_ZONES_REQUIRE_REACTION_BODY,
+    requireBiasAlignment: config.STRUCTURE_ZONES_REQUIRE_BIAS_ALIGNMENT,
+    minReactionDistanceAtr: config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR,
     tradeTransitionBreakouts: config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
     maxFigurePoints: config.STRUCTURE_ZONES_MAX_FIGURE_POINTS,
   });
@@ -56,7 +58,11 @@ export const createStructureZonesCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    cooldownMs:
+      Math.max(0, Number(config.STRUCTURE_ZONES_COOLDOWN_HOURS ?? 72)) *
+      3_600_000,
+  });
   const nextDetectorState = (
     candle: Parameters<
       ReturnType<typeof createStructureZonesEngine>['next']

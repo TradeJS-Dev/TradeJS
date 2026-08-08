@@ -31,6 +31,7 @@ export interface RelativeRotationSignalContext {
   rotationScore: number;
   ratioTrendConfirmed: boolean;
   alphaConfirmed: boolean;
+  ratioReturnConfirmed: boolean;
   relativeStrengthConfirmed: boolean;
   regimeConfirmed: boolean | null;
 }
@@ -117,11 +118,17 @@ const buildDirectionCandidate = ({
   }
 
   const alphaConfirmed =
-    (signedAlpha != null &&
-      signedAlpha >= Number(config.RR_MIN_ALPHA_24H ?? 0.8)) ||
-    (signedRatioReturn != null &&
-      signedRatioReturn >= Number(config.RR_MIN_RATIO_RETURN_24H ?? 0.4));
-  if (!alphaConfirmed) return null;
+    signedAlpha != null &&
+    signedAlpha >= Number(config.RR_MIN_ALPHA_24H ?? 0.8);
+  const ratioReturnConfirmed =
+    signedRatioReturn != null &&
+    signedRatioReturn >= Number(config.RR_MIN_RATIO_RETURN_24H ?? 0.4);
+  const rotationMagnitudeConfirmed = Boolean(
+    config.RR_REQUIRE_ALPHA_AND_RATIO_RETURN
+      ? alphaConfirmed && ratioReturnConfirmed
+      : alphaConfirmed || ratioReturnConfirmed,
+  );
+  if (!rotationMagnitudeConfirmed) return null;
 
   const relativeStrengthConfirmed =
     signedRelativeStrength == null ||
@@ -180,6 +187,7 @@ const buildDirectionCandidate = ({
     rotationScore,
     ratioTrendConfirmed,
     alphaConfirmed,
+    ratioReturnConfirmed,
     relativeStrengthConfirmed,
     regimeConfirmed,
   };

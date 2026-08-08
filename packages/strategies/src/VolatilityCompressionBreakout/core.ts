@@ -23,12 +23,14 @@ export interface VolatilityCompressionBreakoutSignalContext {
   bbWidthRank100: number | null;
   rangeExpansionRank20: number | null;
   breakoutBodyAtr: number | null;
+  acceptanceCloses: number | null;
   volumeRel20: number | null;
   buyPressurePct: number | null;
   tradeFlowBuyPressurePct: number | null;
   mtfAlignment: string | null;
   compressionConfirmed: boolean;
   expansionConfirmed: boolean;
+  directionalBodyConfirmed: boolean;
   participationConfirmed: boolean;
   mtfConfirmed: boolean | null;
   tradeFlowConfirmed: boolean | null;
@@ -100,14 +102,47 @@ const detectSignal = ({
   );
   if (!compressionConfirmed) return null;
 
+  const rangeExpansionConfirmed = Boolean(
+    rangeExpansionRank20 != null &&
+      rangeExpansionRank20 >= Number(config.VCB_MIN_RANGE_EXPANSION_RANK ?? 60),
+  );
+  const breakoutBodyConfirmed = Boolean(
+    breakoutBodyAtr != null &&
+      breakoutBodyAtr >= Number(config.VCB_MIN_BREAKOUT_BODY_ATR ?? 0.2),
+  );
   const expansionConfirmed = Boolean(
-    (rangeExpansionRank20 != null &&
-      rangeExpansionRank20 >=
-        Number(config.VCB_MIN_RANGE_EXPANSION_RANK ?? 60)) ||
-      (breakoutBodyAtr != null &&
-        breakoutBodyAtr >= Number(config.VCB_MIN_BREAKOUT_BODY_ATR ?? 0.2)),
+    config.VCB_REQUIRE_BOTH_EXPANSION_FILTERS
+      ? rangeExpansionConfirmed && breakoutBodyConfirmed
+      : rangeExpansionConfirmed || breakoutBodyConfirmed,
   );
   if (!expansionConfirmed) return null;
+
+  const acceptanceCloses = toFiniteNumberOrNull(
+    direction === 'LONG'
+      ? baseContext.structure?.acceptance?.closesAboveHighLevel3
+      : baseContext.structure?.acceptance?.closesBelowLowLevel3,
+  );
+  const minimumAcceptanceCloses = Math.max(
+    0,
+    Number(config.VCB_MIN_ACCEPTANCE_CLOSES ?? 0),
+  );
+  if (
+    minimumAcceptanceCloses > 0 &&
+    (acceptanceCloses == null || acceptanceCloses < minimumAcceptanceCloses)
+  ) {
+    return null;
+  }
+
+  const directionalBodyConfirmed =
+    direction === 'LONG'
+      ? baseContext.candle.close > baseContext.candle.open
+      : baseContext.candle.close < baseContext.candle.open;
+  if (
+    Boolean(config.VCB_REQUIRE_DIRECTIONAL_BODY) &&
+    !directionalBodyConfirmed
+  ) {
+    return null;
+  }
 
   const volumeRel20 = toFiniteNumberOrNull(
     baseContext.participation?.volume?.volumeRel20,
@@ -152,12 +187,14 @@ const detectSignal = ({
     bbWidthRank100,
     rangeExpansionRank20,
     breakoutBodyAtr,
+    acceptanceCloses,
     volumeRel20,
     buyPressurePct,
     tradeFlowBuyPressurePct,
     mtfAlignment,
     compressionConfirmed,
     expansionConfirmed,
+    directionalBodyConfirmed,
     participationConfirmed,
     mtfConfirmed,
     tradeFlowConfirmed,

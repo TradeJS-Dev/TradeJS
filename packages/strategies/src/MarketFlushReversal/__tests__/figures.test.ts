@@ -20,6 +20,8 @@ describe('buildMarketFlushReversalFigures', () => {
         marketPriceOiDivergenceType: 'bullish',
         marketFlushConfirmed: true,
         minMarketLiqSpikeRatio: 1.5,
+        rejectionClosePosition: 0.8,
+        rejectionConfirmed: true,
         sweepState: 'sweep_low',
         breakoutState: 'inside_range',
         tailSide: 'low',

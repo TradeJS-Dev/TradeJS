@@ -78,4 +78,28 @@ describe('StructureZones engine', () => {
     expect(latest?.resistanceZone?.level).toBe(110);
     expect(latest?.supportZone?.level).toBe(94);
   });
+
+  it('emits only one reaction for the same zone setup', () => {
+    const engine = createStructureZonesEngine({ config: makeConfig() });
+    const candles = [
+      makeCandle(0, 100, 102, 98, 100),
+      makeCandle(1, 101, 104, 99, 102),
+      makeCandle(2, 102, 110, 100, 108),
+      makeCandle(3, 108, 106, 101, 103),
+      makeCandle(4, 103, 105, 96, 99),
+      makeCandle(5, 99, 104, 94, 96),
+      makeCandle(6, 96, 103, 95, 101),
+      makeCandle(7, 101, 105, 97, 103),
+    ];
+    candles.forEach((candle) => engine.next(candle as any));
+
+    const firstReaction = engine.next(makeCandle(8, 95, 98, 94.5, 97) as any);
+    const repeatedReaction = engine.next(
+      makeCandle(9, 95.5, 106, 94.5, 97.5) as any,
+    );
+
+    expect(firstReaction.signal?.kind).toBe('support_reaction');
+    expect(firstReaction.signal?.direction).toBe('LONG');
+    expect(repeatedReaction.signal).toBeNull();
+  });
 });

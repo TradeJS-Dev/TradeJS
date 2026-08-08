@@ -198,6 +198,13 @@ const getConfigNumbers = (config: StructureZonesConfig) => ({
     config.STRUCTURE_ZONES_REACTION_CLOSE_BEYOND_ZONE,
   ),
   requireReactionBody: Boolean(config.STRUCTURE_ZONES_REQUIRE_REACTION_BODY),
+  requireBiasAlignment: Boolean(
+    config.STRUCTURE_ZONES_REQUIRE_BIAS_ALIGNMENT ?? true,
+  ),
+  minReactionDistanceAtr: Math.max(
+    0,
+    Number(config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR ?? 0.1),
+  ),
   tradeTransitionBreakouts: Boolean(
     config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
   ),
@@ -371,6 +378,8 @@ export const createStructureZonesEngine = ({
     acceptBars,
     reactionCloseBeyondZone,
     requireReactionBody,
+    requireBiasAlignment,
+    minReactionDistanceAtr,
     tradeTransitionBreakouts,
     maxFigurePoints,
   } = getConfigNumbers(config);
@@ -540,15 +549,24 @@ export const createStructureZonesEngine = ({
         : close < state.resistanceZone.level;
       const bullBody = close > Number(candle.open);
       const bearBody = close < Number(candle.open);
+      const longReactionDistance = Math.max(0, close - state.supportZone.top);
+      const shortReactionDistance = Math.max(
+        0,
+        state.resistanceZone.bottom - close,
+      );
       const longReaction =
         supportTouched &&
         supportReactionClose &&
         (!requireReactionBody || bullBody) &&
+        (!requireBiasAlignment || structureBias !== 'down') &&
+        longReactionDistance >= minReactionDistanceAtr * atr &&
         marketState !== 'Transition';
       const shortReaction =
         resistanceTouched &&
         resistanceReactionClose &&
         (!requireReactionBody || bearBody) &&
+        (!requireBiasAlignment || structureBias !== 'up') &&
+        shortReactionDistance >= minReactionDistanceAtr * atr &&
         marketState !== 'Transition';
       const longTransition =
         tradeTransitionBreakouts &&
@@ -617,9 +635,7 @@ export const createStructureZonesEngine = ({
                 })
               : null;
 
-      const signalKey = signal
-        ? `${signal.kind}:${signal.zone.level}:${signal.timestamp}`
-        : null;
+      const signalKey = signal ? `${signal.kind}:${signal.zone.level}` : null;
       if (signal && signalKey !== state.lastSignalKey) {
         state.signal = signal;
         state.lastSignalKey = signalKey;
