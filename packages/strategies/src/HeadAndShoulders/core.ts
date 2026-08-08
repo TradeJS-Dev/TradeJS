@@ -41,13 +41,21 @@ const buildHeadAndShouldersStateKey = (config: HeadAndShouldersConfig) =>
     minPatternSymmetryRatio: config.HEADSHOULDERS_MIN_PATTERN_SYMMETRY_RATIO,
     maxNecklineSlopeRatio: config.HEADSHOULDERS_MAX_NECKLINE_SLOPE_RATIO,
     maxPatternAgeBars: config.HEADSHOULDERS_MAX_PATTERN_AGE_BARS,
+    priorTrendLookback: config.HEADSHOULDERS_PRIOR_TREND_LOOKBACK,
+    maxPriorMoveAtr: config.HEADSHOULDERS_MAX_PRIOR_MOVE_ATR,
     minBreakoutDistanceAtr: config.HEADSHOULDERS_MIN_BREAKOUT_DISTANCE_ATR,
     maxBreakoutDistanceHeightRatio:
       config.HEADSHOULDERS_MAX_BREAKOUT_DISTANCE_HEIGHT_RATIO,
     maxBreakoutDistancePct: config.HEADSHOULDERS_MAX_BREAKOUT_DISTANCE_PCT,
+    maxBreakoutDelayBars: config.HEADSHOULDERS_MAX_BREAKOUT_DELAY_BARS,
     requireBreakoutCross: config.HEADSHOULDERS_REQUIRE_BREAKOUT_CROSS,
     entryMode: config.HEADSHOULDERS_ENTRY_MODE,
     confirmationMaxBars: config.HEADSHOULDERS_CONFIRMATION_MAX_BARS,
+    minConfirmationBodyAtr: config.HEADSHOULDERS_MIN_CONFIRMATION_BODY_ATR,
+    maxConfirmationCloseLocation:
+      config.HEADSHOULDERS_MAX_CONFIRMATION_CLOSE_LOCATION,
+    confirmationVolumePeriod: config.HEADSHOULDERS_CONFIRMATION_VOLUME_PERIOD,
+    minConfirmationVolumeRel: config.HEADSHOULDERS_MIN_CONFIRMATION_VOLUME_REL,
     retestMaxBars: config.HEADSHOULDERS_RETEST_MAX_BARS,
     retestToleranceAtr: config.HEADSHOULDERS_RETEST_TOLERANCE_ATR,
   });

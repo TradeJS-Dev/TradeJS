@@ -14,6 +14,8 @@ export interface HeadAndShouldersPivot {
   index: number;
   value: number;
   kind: 'high' | 'low';
+  atr?: number | null;
+  priorMoveAtr?: number | null;
 }
 
 export interface HeadAndShouldersPattern {
@@ -43,12 +45,17 @@ export interface HeadAndShouldersPattern {
   patternSymmetryRatio: number;
   patternAgeBars: number;
   necklineSlopeRatio: number;
+  priorMoveAtr: number | null;
   breakoutDistancePct: number;
   breakoutDistanceAtr: number;
   breakoutDistanceHeightRatio: number;
+  breakoutDelayBars: number;
   breakoutCrossedOnSignalBar: boolean;
   breakoutTimestamp: number;
   confirmationBars: number;
+  confirmationBodyAtr: number | null;
+  confirmationCloseLocation: number | null;
+  confirmationVolumeRel: number | null;
   timestamp: number;
   close: number;
 }
@@ -161,6 +168,15 @@ const getConfigNumbers = (config: HeadAndShouldersConfig) => ({
     4,
     Math.floor(Number(config.HEADSHOULDERS_MAX_PATTERN_AGE_BARS ?? 220)),
   ),
+  priorTrendLookback: Math.max(
+    1,
+    Math.floor(Number(config.HEADSHOULDERS_PRIOR_TREND_LOOKBACK ?? 80)),
+  ),
+  maxPriorMoveAtr: clampNumber({
+    value: config.HEADSHOULDERS_MAX_PRIOR_MOVE_ATR,
+    fallback: 0,
+    min: 0,
+  }),
   minBreakoutDistanceAtr: clampNumber({
     value: config.HEADSHOULDERS_MIN_BREAKOUT_DISTANCE_ATR,
     fallback: 0.05,
@@ -176,12 +192,36 @@ const getConfigNumbers = (config: HeadAndShouldersConfig) => ({
     fallback: 0.8,
     min: 0,
   }),
+  maxBreakoutDelayBars: Math.max(
+    0,
+    Math.floor(Number(config.HEADSHOULDERS_MAX_BREAKOUT_DELAY_BARS ?? 0)),
+  ),
   requireBreakoutCross: Boolean(config.HEADSHOULDERS_REQUIRE_BREAKOUT_CROSS),
   entryMode: config.HEADSHOULDERS_ENTRY_MODE ?? 'close_acceptance',
   confirmationMaxBars: Math.max(
     1,
     Math.floor(Number(config.HEADSHOULDERS_CONFIRMATION_MAX_BARS ?? 2)),
   ),
+  minConfirmationBodyAtr: clampNumber({
+    value: config.HEADSHOULDERS_MIN_CONFIRMATION_BODY_ATR,
+    fallback: 0,
+    min: 0,
+  }),
+  maxConfirmationCloseLocation: clampNumber({
+    value: config.HEADSHOULDERS_MAX_CONFIRMATION_CLOSE_LOCATION,
+    fallback: 1,
+    min: 0,
+    max: 1,
+  }),
+  confirmationVolumePeriod: Math.max(
+    2,
+    Math.floor(Number(config.HEADSHOULDERS_CONFIRMATION_VOLUME_PERIOD ?? 20)),
+  ),
+  minConfirmationVolumeRel: clampNumber({
+    value: config.HEADSHOULDERS_MIN_CONFIRMATION_VOLUME_REL,
+    fallback: 0,
+    min: 0,
+  }),
   retestMaxBars: Math.max(
     1,
     Math.floor(Number(config.HEADSHOULDERS_RETEST_MAX_BARS ?? 4)),
@@ -238,14 +278,52 @@ const getBufferedCandle = (
   absoluteIndex: number,
 ) => state.candles[absoluteIndex - state.candleStartIndex] ?? null;
 
+const calculateAtrAt = ({
+  state,
+  absoluteIndex,
+  period,
+}: {
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>;
+  absoluteIndex: number;
+  period: number;
+}): number | null => {
+  const trueRanges: number[] = [];
+  for (
+    let index = absoluteIndex - period + 1;
+    index <= absoluteIndex;
+    index += 1
+  ) {
+    const candle = getBufferedCandle(state, index);
+    const previous = getBufferedCandle(state, index - 1);
+    const high = asNumber(candle?.high);
+    const low = asNumber(candle?.low);
+    const previousClose = asNumber(previous?.close);
+    if (high == null || low == null || previousClose == null) continue;
+    trueRanges.push(
+      Math.max(
+        high - low,
+        Math.abs(high - previousClose),
+        Math.abs(low - previousClose),
+      ),
+    );
+  }
+
+  if (trueRanges.length === 0) return null;
+  return trueRanges.reduce((sum, value) => sum + value, 0) / trueRanges.length;
+};
+
 const resolveConfirmedPivot = ({
   state,
   candidateIndex,
   lookback,
+  atrPeriod,
+  priorTrendLookback,
 }: {
   state: Pick<EngineState, 'candles' | 'candleStartIndex'>;
   candidateIndex: number;
   lookback: number;
+  atrPeriod: number;
+  priorTrendLookback: number;
 }): HeadAndShouldersPivot | null => {
   const candidate = getBufferedCandle(state, candidateIndex);
   const high = asNumber(candidate?.high);
@@ -272,11 +350,25 @@ const resolveConfirmedPivot = ({
     otherCandles.some((candle) => low < Number(candle.low));
   if (isHigh === isLow) return null;
 
+  const atr = calculateAtrAt({
+    state,
+    absoluteIndex: candidateIndex,
+    period: atrPeriod,
+  });
+  const priorClose = asNumber(
+    getBufferedCandle(state, candidateIndex - priorTrendLookback)?.close,
+  );
+  const priorMove =
+    priorClose == null ? null : isHigh ? high - priorClose : priorClose - low;
+
   return {
     timestamp: candidate.timestamp,
     index: candidateIndex,
     value: isHigh ? high : low,
     kind: isHigh ? 'high' : 'low',
+    atr,
+    priorMoveAtr:
+      priorMove != null && atr != null && atr > 0 ? priorMove / atr : null,
   };
 };
 
@@ -438,16 +530,22 @@ const buildBreakoutPattern = ({
         Math.max(leftHalfBars, rightHalfBars)
       : 0;
   const patternAgeBars = state.currentIndex - leftShoulder.index;
+  const breakoutDelayBars = state.currentIndex - rightShoulder.index;
   const necklineSlopePerBar =
     (rightNeck.value - leftNeck.value) / (rightNeck.index - leftNeck.index);
   const necklineSlopeRatio =
     Math.abs(rightNeck.value - leftNeck.value) / headHeight;
+  const priorMoveAtr = leftShoulder.priorMoveAtr ?? null;
   if (
     patternDurationBars < options.minPatternBars ||
     patternDurationBars > options.maxPatternBars ||
     patternSymmetryRatio < options.minPatternSymmetryRatio ||
     necklineSlopeRatio > options.maxNecklineSlopeRatio ||
-    patternAgeBars > options.maxPatternAgeBars
+    patternAgeBars > options.maxPatternAgeBars ||
+    (options.maxBreakoutDelayBars > 0 &&
+      breakoutDelayBars > options.maxBreakoutDelayBars) ||
+    (options.maxPriorMoveAtr > 0 &&
+      (priorMoveAtr == null || priorMoveAtr > options.maxPriorMoveAtr))
   ) {
     return null;
   }
@@ -516,12 +614,17 @@ const buildBreakoutPattern = ({
     patternSymmetryRatio,
     patternAgeBars,
     necklineSlopeRatio,
+    priorMoveAtr,
     breakoutDistancePct,
     breakoutDistanceAtr,
     breakoutDistanceHeightRatio,
+    breakoutDelayBars,
     breakoutCrossedOnSignalBar,
     breakoutTimestamp: candle.timestamp,
     confirmationBars: 0,
+    confirmationBodyAtr: null,
+    confirmationCloseLocation: null,
+    confirmationVolumeRel: null,
     timestamp: candle.timestamp,
     close,
   };
@@ -554,9 +657,10 @@ const resolvePending = ({
   if (confirmationBars < 1) return null;
 
   const close = asNumber(candle.close);
+  const open = asNumber(candle.open);
   const high = asNumber(candle.high);
   const low = asNumber(candle.low);
-  if (close == null || high == null || low == null) return null;
+  if (close == null || open == null || high == null || low == null) return null;
 
   const pattern = pending.pattern;
   const invalidated =
@@ -582,17 +686,58 @@ const resolvePending = ({
     neckline,
     minimumDistance,
   );
+  const confirmationBody =
+    pattern.direction === 'LONG' ? close - open : open - close;
+  const confirmationBodyAtr =
+    effectiveAtr > 0 ? confirmationBody / effectiveAtr : 0;
+  const candleRange = high - low;
+  const confirmationCloseLocation =
+    candleRange > 0
+      ? pattern.direction === 'LONG'
+        ? (high - close) / candleRange
+        : (close - low) / candleRange
+      : 1;
+  const priorVolumeCandles = state.candles.slice(
+    -(options.confirmationVolumePeriod + 1),
+    -1,
+  );
+  const priorVolumes = priorVolumeCandles
+    .map((item) => asNumber(item.volume))
+    .filter((value): value is number => value != null && value >= 0);
+  const averagePriorVolume =
+    priorVolumes.length > 0
+      ? priorVolumes.reduce((sum, value) => sum + value, 0) /
+        priorVolumes.length
+      : null;
+  const currentVolume = asNumber(candle.volume);
+  const confirmationVolumeRel =
+    currentVolume != null &&
+    averagePriorVolume != null &&
+    averagePriorVolume > 0
+      ? currentVolume / averagePriorVolume
+      : null;
+  const confirmationQualityAccepted =
+    (options.minConfirmationBodyAtr <= 0 ||
+      confirmationBodyAtr >= options.minConfirmationBodyAtr) &&
+    confirmationCloseLocation <= options.maxConfirmationCloseLocation &&
+    (options.minConfirmationVolumeRel <= 0 ||
+      (confirmationVolumeRel != null &&
+        confirmationVolumeRel >= options.minConfirmationVolumeRel));
   let entryStage: HeadAndShouldersEntryStage | null = null;
 
   if (pending.mode === 'close_acceptance') {
-    if (closeAccepted) entryStage = 'close_accepted';
+    if (closeAccepted && confirmationQualityAccepted) {
+      entryStage = 'close_accepted';
+    }
   } else {
     const tolerance = effectiveAtr * options.retestToleranceAtr;
     const touched =
       pattern.direction === 'LONG'
         ? low <= neckline + tolerance && low >= neckline - tolerance
         : high >= neckline - tolerance && high <= neckline + tolerance;
-    if (touched && closeAccepted) entryStage = 'retest_held';
+    if (touched && closeAccepted && confirmationQualityAccepted) {
+      entryStage = 'retest_held';
+    }
   }
 
   if (!entryStage) return null;
@@ -603,6 +748,9 @@ const resolvePending = ({
     entryStage,
     neckline,
     confirmationBars,
+    confirmationBodyAtr,
+    confirmationCloseLocation,
+    confirmationVolumeRel,
     timestamp: candle.timestamp,
     close,
   };
@@ -630,12 +778,17 @@ export const buildHeadAndShouldersSignalContext = (
   patternSymmetryRatio: pattern.patternSymmetryRatio,
   patternAgeBars: pattern.patternAgeBars,
   necklineSlopeRatio: pattern.necklineSlopeRatio,
+  priorMoveAtr: pattern.priorMoveAtr,
   breakoutDistancePct: pattern.breakoutDistancePct,
   breakoutDistanceAtr: pattern.breakoutDistanceAtr,
   breakoutDistanceHeightRatio: pattern.breakoutDistanceHeightRatio,
+  breakoutDelayBars: pattern.breakoutDelayBars,
   breakoutCrossedOnSignalBar: pattern.breakoutCrossedOnSignalBar,
   breakoutTimestamp: pattern.breakoutTimestamp,
   confirmationBars: pattern.confirmationBars,
+  confirmationBodyAtr: pattern.confirmationBodyAtr,
+  confirmationCloseLocation: pattern.confirmationCloseLocation,
+  confirmationVolumeRel: pattern.confirmationVolumeRel,
   currentPrice: pattern.close,
   pivots: pattern.pivots.map(({ timestamp, value, kind }) => ({
     timestamp,
@@ -686,6 +839,8 @@ export const createHeadAndShouldersEngine = ({
     const maxCandles = Math.max(
       options.pivotLookback * 2 + 1,
       options.atrPeriod + 1,
+      options.priorTrendLookback + options.pivotLookback + 1,
+      options.confirmationVolumePeriod + 1,
     );
     const currentIndex = pushBoundedCandle(state, candle, maxCandles);
     const atr = calculateAtr(state.candles, options.atrPeriod);
@@ -697,6 +852,8 @@ export const createHeadAndShouldersEngine = ({
         state,
         candidateIndex: currentIndex - options.pivotLookback,
         lookback: options.pivotLookback,
+        atrPeriod: options.atrPeriod,
+        priorTrendLookback: options.priorTrendLookback,
       }),
     );
 

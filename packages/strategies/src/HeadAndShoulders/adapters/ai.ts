@@ -38,9 +38,14 @@ Additional HeadAndShoulders context:
 - leftHeadProminenceRatio=${String(context.leftHeadProminenceRatio ?? 'n/a')}
 - rightHeadProminenceRatio=${String(context.rightHeadProminenceRatio ?? 'n/a')}
 - patternSymmetryRatio=${String(context.patternSymmetryRatio ?? 'n/a')}
+- priorMoveAtr=${String(context.priorMoveAtr ?? 'n/a')}
 - breakoutDistanceAtr=${String(context.breakoutDistanceAtr ?? 'n/a')}
 - breakoutDistanceHeightRatio=${String(context.breakoutDistanceHeightRatio ?? 'n/a')}
+- breakoutDelayBars=${String(context.breakoutDelayBars ?? 'n/a')}
 - breakoutCrossedOnSignalBar=${String(context.breakoutCrossedOnSignalBar ?? 'n/a')}
+- confirmationBodyAtr=${String(context.confirmationBodyAtr ?? 'n/a')}
+- confirmationCloseLocation=${String(context.confirmationCloseLocation ?? 'n/a')}
+- confirmationVolumeRel=${String(context.confirmationVolumeRel ?? 'n/a')}
 
 Interpretation rules for HeadAndShoulders:
 - SHORT is a classic head-and-shoulders neckline breakdown; LONG is the mirrored inverse pattern.

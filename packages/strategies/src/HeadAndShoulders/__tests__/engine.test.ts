@@ -31,6 +31,7 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
     HEADSHOULDERS_MIN_PATTERN_BARS: 4,
     HEADSHOULDERS_MIN_PATTERN_SYMMETRY_RATIO: 0,
     HEADSHOULDERS_MAX_NECKLINE_SLOPE_RATIO: 1,
+    HEADSHOULDERS_MAX_PRIOR_MOVE_ATR: 0,
     HEADSHOULDERS_MIN_BREAKOUT_DISTANCE_ATR: 0,
     HEADSHOULDERS_MAX_BREAKOUT_DISTANCE_HEIGHT_RATIO: 0,
     HEADSHOULDERS_MAX_BREAKOUT_DISTANCE_PCT: 5,
@@ -82,6 +83,7 @@ describe('HeadAndShoulders engine', () => {
       110, 95, 120, 96, 111,
     ]);
     expect(pattern?.neckline).toBe(97);
+    expect(pattern?.breakoutDelayBars).toBe(2);
     expect(pattern?.targetPrice).toBeLessThan(pattern?.neckline ?? 0);
     expect(pattern?.stopLossPrice).toBeGreaterThan(120);
   });
@@ -121,6 +123,8 @@ describe('HeadAndShoulders engine', () => {
     const accepted = engine.next(confirmation as any);
     expect(accepted.pattern?.entryStage).toBe('close_accepted');
     expect(accepted.pattern?.confirmationBars).toBe(1);
+    expect(accepted.pattern?.confirmationBodyAtr).toBeGreaterThan(0);
+    expect(accepted.pattern?.confirmationCloseLocation).toBeCloseTo(2 / 7);
     expect(engine.next(confirmation as any)).toEqual(accepted);
     expect(
       engine.next(makeCandle(13, 93, 96, 90, 92) as any).pattern,
@@ -140,6 +144,48 @@ describe('HeadAndShoulders engine', () => {
 
     expect(held.pattern?.entryStage).toBe('retest_held');
     expect(held.pending).toBeNull();
+  });
+
+  it('rejects a weak confirmation close while the setup is pending', () => {
+    const engine = createHeadAndShouldersEngine({
+      config: makeConfig({
+        HEADSHOULDERS_ENTRY_MODE: 'close_acceptance',
+        HEADSHOULDERS_MAX_CONFIRMATION_CLOSE_LOCATION: 0.25,
+      }),
+    });
+    for (const candle of makeClassicCandles()) engine.next(candle as any);
+
+    const weakConfirmation = engine.next(makeCandle(12, 93, 98, 91, 94) as any);
+
+    expect(weakConfirmation.pattern).toBeNull();
+    expect(weakConfirmation.pending?.stage).toBe('neckline_crossed');
+  });
+
+  it('rejects a breakout that is stale relative to the right shoulder', () => {
+    const engine = createHeadAndShouldersEngine({
+      config: makeConfig({
+        HEADSHOULDERS_MAX_BREAKOUT_DELAY_BARS: 1,
+      }),
+    });
+    const states = makeClassicCandles().map((candle) =>
+      engine.next(candle as any),
+    );
+
+    expect(states[states.length - 1].pattern).toBeNull();
+  });
+
+  it('rejects a pattern after an excessive move into the left shoulder', () => {
+    const engine = createHeadAndShouldersEngine({
+      config: makeConfig({
+        HEADSHOULDERS_PRIOR_TREND_LOOKBACK: 1,
+        HEADSHOULDERS_MAX_PRIOR_MOVE_ATR: 0.1,
+      }),
+    });
+    const states = makeClassicCandles().map((candle) =>
+      engine.next(candle as any),
+    );
+
+    expect(states[states.length - 1].pattern).toBeNull();
   });
 
   it('rebuilds pending state by replaying initial candles', () => {
