@@ -1,5 +1,7 @@
 import { StrategyConfig } from '@tradejs/types';
 
+export type BreakoutEntryMode = 'breakout' | 'confirmation' | 'retest';
+
 export const config = {
   ML_ENABLED: false,
   MA_FAST: 49,
@@ -29,6 +31,10 @@ export const config = {
   BREAKOUT_ENGINE_LOOKBACK: 20,
   BREAKOUT_ENGINE_DELAY: 1,
   BREAKOUT_TREND_LOOKBACK: 20,
+  BREAKOUT_ENTRY_MODE: 'breakout' as BreakoutEntryMode,
+  BREAKOUT_CONFIRMATION_BARS: 1,
+  BREAKOUT_RETEST_MAX_BARS: 8,
+  BREAKOUT_RETEST_TOLERANCE_ATR: 0.25,
   BREAKOUT_LONG_ENABLED: true,
   BREAKOUT_SHORT_ENABLED: true,
   BREAKOUT_REQUIRE_FRESH_LEVEL_CROSS: false,

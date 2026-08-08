@@ -1,6 +1,6 @@
 import type { Candle, Direction } from '@tradejs/types';
 
-import type { BreakoutConfig } from './config';
+import type { BreakoutConfig, BreakoutEntryMode } from './config';
 
 export interface BreakoutEngineSignal {
   direction: Direction;
@@ -10,6 +10,18 @@ export interface BreakoutEngineSignal {
   close: number;
   lookback: number;
   delay: number;
+  entryMode: BreakoutEntryMode;
+  breakoutTimestamp: number;
+  ageBars: number;
+}
+
+export interface BreakoutPendingSignal {
+  direction: Direction;
+  breakoutLevel: number;
+  breakoutTimestamp: number;
+  breakoutClose: number;
+  previousClose: number;
+  ageBars: number;
 }
 
 export interface BreakoutEngineSnapshot {
@@ -20,6 +32,7 @@ export interface BreakoutEngineSnapshot {
   rangeAtr: number | null;
   previousCandle: Candle | null;
   signal: BreakoutEngineSignal | null;
+  pending: BreakoutPendingSignal | null;
   timestamp: number;
   close: number;
 }
@@ -27,6 +40,7 @@ export interface BreakoutEngineSnapshot {
 type EngineState = {
   candles: Candle[];
   signal: BreakoutEngineSignal | null;
+  pending: BreakoutPendingSignal | null;
   snapshot: BreakoutEngineSnapshot | null;
 };
 
@@ -35,17 +49,38 @@ const asFiniteNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getConfigNumbers = (config: BreakoutConfig) => ({
-  lookback: Math.max(
-    2,
-    Math.floor(Number(config.BREAKOUT_ENGINE_LOOKBACK ?? 20)),
-  ),
-  delay: Math.max(1, Math.floor(Number(config.BREAKOUT_ENGINE_DELAY ?? 1))),
-  trendLookback: Math.max(
-    2,
-    Math.floor(Number(config.BREAKOUT_TREND_LOOKBACK ?? 20)),
-  ),
-});
+const getConfigNumbers = (config: BreakoutConfig) => {
+  const configuredEntryMode = String(config.BREAKOUT_ENTRY_MODE ?? 'breakout');
+  const entryMode: BreakoutEntryMode =
+    configuredEntryMode === 'confirmation' || configuredEntryMode === 'retest'
+      ? configuredEntryMode
+      : 'breakout';
+
+  return {
+    lookback: Math.max(
+      2,
+      Math.floor(Number(config.BREAKOUT_ENGINE_LOOKBACK ?? 20)),
+    ),
+    delay: Math.max(1, Math.floor(Number(config.BREAKOUT_ENGINE_DELAY ?? 1))),
+    trendLookback: Math.max(
+      2,
+      Math.floor(Number(config.BREAKOUT_TREND_LOOKBACK ?? 20)),
+    ),
+    entryMode,
+    confirmationBars: Math.max(
+      1,
+      Math.floor(Number(config.BREAKOUT_CONFIRMATION_BARS ?? 1)),
+    ),
+    retestMaxBars: Math.max(
+      1,
+      Math.floor(Number(config.BREAKOUT_RETEST_MAX_BARS ?? 8)),
+    ),
+    retestToleranceAtr: Math.max(
+      0,
+      Number(config.BREAKOUT_RETEST_TOLERANCE_ATR ?? 0.25),
+    ),
+  };
+};
 
 const getAtr = (candles: Candle[]): number | null => {
   const window = candles.slice(-15);
@@ -72,11 +107,20 @@ export const createBreakoutEngine = ({
   config: BreakoutConfig;
   initialCandles?: Candle[];
 }) => {
-  const { lookback, delay, trendLookback } = getConfigNumbers(config);
+  const {
+    lookback,
+    delay,
+    trendLookback,
+    entryMode,
+    confirmationBars,
+    retestMaxBars,
+    retestToleranceAtr,
+  } = getConfigNumbers(config);
   const maxCandles = Math.max(lookback + delay + 2, trendLookback + 2, 16);
   const state: EngineState = {
     candles: [],
     signal: null,
+    pending: null,
     snapshot: null,
   };
 
@@ -99,40 +143,114 @@ export const createBreakoutEngine = ({
     const highLevel = highs.length === lookback ? Math.max(...highs) : null;
     const lowLevel = lows.length === lookback ? Math.min(...lows) : null;
 
-    state.signal = null;
-    if (close != null && previousClose != null) {
+    const freshBreakout = (() => {
+      if (close == null || previousClose == null) return null;
       if (
         highLevel != null &&
         previousClose <= highLevel &&
         close > highLevel
       ) {
-        state.signal = {
-          direction: 'LONG',
+        return {
+          direction: 'LONG' as const,
           breakoutLevel: highLevel,
           previousClose,
-          timestamp: candle.timestamp,
-          close,
-          lookback,
-          delay,
+          breakoutTimestamp: candle.timestamp,
+          breakoutClose: close,
+          ageBars: 0,
         };
-      } else if (
-        lowLevel != null &&
-        previousClose >= lowLevel &&
-        close < lowLevel
-      ) {
-        state.signal = {
-          direction: 'SHORT',
+      }
+      if (lowLevel != null && previousClose >= lowLevel && close < lowLevel) {
+        return {
+          direction: 'SHORT' as const,
           breakoutLevel: lowLevel,
           previousClose,
+          breakoutTimestamp: candle.timestamp,
+          breakoutClose: close,
+          ageBars: 0,
+        };
+      }
+      return null;
+    })();
+
+    const atr = getAtr([...state.candles, candle]);
+    state.signal = null;
+    if (entryMode === 'breakout' && freshBreakout && close != null) {
+      state.signal = {
+        direction: freshBreakout.direction,
+        breakoutLevel: freshBreakout.breakoutLevel,
+        previousClose: freshBreakout.previousClose,
+        timestamp: candle.timestamp,
+        close,
+        lookback,
+        delay,
+        entryMode,
+        breakoutTimestamp: freshBreakout.breakoutTimestamp,
+        ageBars: 0,
+      };
+    } else if (entryMode !== 'breakout' && state.pending && close != null) {
+      const pending = {
+        ...state.pending,
+        ageBars: state.pending.ageBars + 1,
+      };
+      state.pending = pending;
+      const isLong = pending.direction === 'LONG';
+      const accepted = isLong
+        ? close > pending.breakoutLevel
+        : close < pending.breakoutLevel;
+      const maxPendingBars =
+        entryMode === 'confirmation' ? confirmationBars : retestMaxBars;
+      const expired = pending.ageBars > maxPendingBars;
+      const retestPrice = asFiniteNumber(isLong ? candle.low : candle.high);
+      const retestDistanceAtr =
+        retestPrice != null && atr != null && atr > 0
+          ? Math.abs(retestPrice - pending.breakoutLevel) / atr
+          : null;
+      const confirmed =
+        entryMode === 'confirmation' &&
+        pending.ageBars >= confirmationBars &&
+        accepted;
+      const retested =
+        entryMode === 'retest' &&
+        accepted &&
+        retestDistanceAtr != null &&
+        retestDistanceAtr <= retestToleranceAtr;
+
+      if (!accepted || expired) {
+        state.pending = null;
+      } else if (confirmed || retested) {
+        state.signal = {
+          direction: pending.direction,
+          breakoutLevel: pending.breakoutLevel,
+          previousClose: pending.previousClose,
           timestamp: candle.timestamp,
           close,
           lookback,
           delay,
+          entryMode,
+          breakoutTimestamp: pending.breakoutTimestamp,
+          ageBars: pending.ageBars,
         };
+        state.pending = null;
       }
     }
 
-    const atr = getAtr([...state.candles, candle]);
+    if (
+      entryMode !== 'breakout' &&
+      state.pending == null &&
+      state.signal == null &&
+      freshBreakout
+    ) {
+      state.pending = freshBreakout;
+    }
+
+    /*
+     * Immediate breakouts are emitted only on the transition bar. Delayed
+     * modes keep one pending setup and either confirm it causally or discard
+     * it after invalidation/expiry.
+     */
+    if (entryMode === 'breakout') {
+      state.pending = null;
+    }
     const trendStart =
       state.candles[state.candles.length - 1 - trendLookback] ?? null;
     const trendStartClose = asFiniteNumber(trendStart?.close);
@@ -153,6 +271,7 @@ export const createBreakoutEngine = ({
       rangeAtr,
       previousCandle,
       signal: state.signal,
+      pending: state.pending,
       timestamp: candle.timestamp,
       close: close ?? Number(candle.close),
     };
@@ -163,6 +282,7 @@ export const createBreakoutEngine = ({
 
     return {
       signal: state.signal,
+      pending: state.pending,
       snapshot: state.snapshot,
     };
   };
