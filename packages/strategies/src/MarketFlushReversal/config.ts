@@ -12,6 +12,8 @@ export interface MarketFlushReversalSideConfig {
   minRiskRatio: number;
 }
 
+export type MarketFlushReversalEntryMode = 'immediate' | 'confirmation';
+
 export const config = {
   ENV: 'BACKTEST',
   INTERVAL: '15' as Interval,
@@ -42,31 +44,43 @@ export const config = {
   MFR_MIN_VOLUME_REL20: 1.1,
   MFR_MIN_MARKET_LIQ_SPIKE_RATIO: 2,
   MFR_REQUIRE_MARKET_FLUSH_CONFIRMATION: false,
+  MFR_REQUIRE_CALIBRATED_LONG_REBOUND_POCKET: false,
   MFR_MIN_SWEEP_WICK_PCT: 0.2,
   MFR_MIN_REJECTION_CLOSE_POSITION: 0.6,
+  MFR_MIN_REJECTION_CLOSE_POSITION_LONG: 0.6,
+  MFR_MIN_REJECTION_CLOSE_POSITION_SHORT: 0.7,
   MFR_MIN_REJECTION_BODY_ATR: 0,
+  MFR_MIN_REJECTION_BODY_ATR_LONG: 0.8,
+  MFR_MIN_REJECTION_BODY_ATR_SHORT: 0.6,
   MFR_MAX_LONG_RANGE_POSITION: 0.45,
   MFR_MIN_SHORT_RANGE_POSITION: 0.55,
   MFR_STOP_ATR_BUFFER_MULT: 0.25,
   MFR_STOP_BUFFER_PCT: 0.05,
   MFR_FALLBACK_STOP_ATR_MULT: 1.4,
   MFR_TARGET_R_MULT: 2.2,
+  MFR_ENTRY_MODE: 'confirmation' as MarketFlushReversalEntryMode,
+  MFR_CONFIRMATION_BARS: 3,
+  MFR_CONFIRMATION_BARS_LONG: 4,
+  MFR_CONFIRMATION_BARS_SHORT: 3,
+  MFR_PENDING_MAX_BARS: 4,
+  MFR_REQUIRE_DIRECTIONAL_CONFIRMATION_BODY: true,
   MFR_EXIT_ON_OPPOSITE_SIGNAL: true,
   LONG: {
     enable: true,
     direction: 'LONG',
-    minRiskRatio: 1.4,
+    minRiskRatio: 1.2,
   },
   SHORT: {
     enable: true,
     direction: 'SHORT',
-    minRiskRatio: 1.4,
+    minRiskRatio: 1.2,
   },
 } as const;
 
 export type MarketFlushReversalConfig = StrategyConfig &
   Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
+    MFR_ENTRY_MODE: MarketFlushReversalEntryMode;
     LONG: MarketFlushReversalSideConfig;
     SHORT: MarketFlushReversalSideConfig;
   };

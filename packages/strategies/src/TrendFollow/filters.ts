@@ -1,6 +1,7 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { TrendFollowConfig } from './config';
 import type { TrendFollowSignal } from './engine';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const asPositiveThreshold = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -29,7 +30,12 @@ export const getTrendFollowCoreFilterSkipCode = ({
   baseContext?: BaseStrategyContextSnapshot | null;
 }): string | null => {
   const minBreakoutDistancePct = asPositiveThreshold(
-    config.TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT',
+      direction: signal.direction,
+      fallback: 0,
+    }),
   );
   if (
     minBreakoutDistancePct != null &&

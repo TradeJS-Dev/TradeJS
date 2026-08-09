@@ -38,6 +38,8 @@ export const config = {
   AMR_WAIT_CLOSE: true,
   AMR_CONFIRM_ON_NEXT_BAR: true,
   AMR_MIN_SIGNAL_OSC_ABS: 0.55,
+  AMR_MIN_SIGNAL_OSC_ABS_LONG: 1.75,
+  AMR_MIN_SIGNAL_OSC_ABS_SHORT: 1.25,
   AMR_REQUIRE_KC_BIAS: true,
   AMR_MIN_BARS_BETWEEN_SIGNALS: 12,
   AMR_SHOW_INVALIDATION_LEVELS: true,
@@ -53,12 +55,12 @@ export const config = {
   LONG: {
     enable: true,
     direction: 'LONG',
-    minRiskRatio: 1.2,
+    minRiskRatio: 1,
   },
   SHORT: {
     enable: true,
     direction: 'SHORT',
-    minRiskRatio: 1.2,
+    minRiskRatio: 1,
   },
 } as const;
 

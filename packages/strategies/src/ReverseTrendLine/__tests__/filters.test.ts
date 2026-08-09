@@ -4,7 +4,12 @@ import { config as DEFAULT_CONFIG } from '../config';
 import { getReverseTrendLineCoreFilterSkipCode } from '../filters';
 
 const makeConfig = (overrides: Record<string, unknown> = {}) =>
-  ({ ...DEFAULT_CONFIG, ...overrides }) as any;
+  ({
+    ...DEFAULT_CONFIG,
+    REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT_LONG: undefined,
+    REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT_SHORT: undefined,
+    ...overrides,
+  }) as any;
 
 const makeStructural = (overrides: Record<string, unknown> = {}) => ({
   coinBiasAligned: true,
@@ -22,10 +27,11 @@ const makeTiming = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('getReverseTrendLineCoreFilterSkipCode', () => {
-  it('keeps default filters permissive', () => {
+  it('keeps a neutral directional test config permissive', () => {
     expect(
       getReverseTrendLineCoreFilterSkipCode({
         config: makeConfig(),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
@@ -38,6 +44,7 @@ describe('getReverseTrendLineCoreFilterSkipCode', () => {
         config: makeConfig({
           REVERSE_TRENDLINE_MIN_REJECTION_WICK_PCT: 0.4,
         }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming({
           entryTiming: 'ready_follow_through',
@@ -54,6 +61,7 @@ describe('getReverseTrendLineCoreFilterSkipCode', () => {
         config: makeConfig({
           REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT: 0.3,
         }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
@@ -64,6 +72,7 @@ describe('getReverseTrendLineCoreFilterSkipCode', () => {
         config: makeConfig({
           REVERSE_TRENDLINE_REQUIRE_COIN_BIAS_ALIGNMENT: true,
         }),
+        direction: 'LONG',
         structuralContext: makeStructural({ coinBiasAligned: false }),
         timingContext: makeTiming(),
       }),
@@ -74,9 +83,34 @@ describe('getReverseTrendLineCoreFilterSkipCode', () => {
         config: makeConfig({
           REVERSE_TRENDLINE_ALLOWED_ENTRY_TIMINGS: ['ready_follow_through'],
         }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
     ).toBe('REVERSE_TRENDLINE_ENTRY_TIMING_NOT_ALLOWED');
+  });
+
+  it('uses independent rejection-strength thresholds by direction', () => {
+    const config = makeConfig({
+      REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT_LONG: 0.3,
+      REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT_SHORT: 0.1,
+    });
+
+    expect(
+      getReverseTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'LONG',
+        structuralContext: makeStructural(),
+        timingContext: makeTiming({ currentRejectionStrengthPct: 0.2 }),
+      }),
+    ).toBe('REVERSE_TRENDLINE_REJECTION_STRENGTH_TOO_WEAK');
+    expect(
+      getReverseTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'SHORT',
+        structuralContext: makeStructural(),
+        timingContext: makeTiming({ currentRejectionStrengthPct: 0.2 }),
+      }),
+    ).toBeNull();
   });
 });

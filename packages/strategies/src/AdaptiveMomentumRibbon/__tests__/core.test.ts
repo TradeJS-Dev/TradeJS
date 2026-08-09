@@ -337,6 +337,8 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
+        AMR_MIN_SIGNAL_OSC_ABS_LONG: undefined,
+        AMR_MIN_SIGNAL_OSC_ABS_SHORT: undefined,
       } as any,
       isConfigFromBacktest: false,
       connector: {} as any,

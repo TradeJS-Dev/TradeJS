@@ -27,6 +27,8 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
     STRUCTURE_ZONES_ATR_LENGTH: 5,
     STRUCTURE_ZONES_MIN_SWING_ATR: 0.1,
     STRUCTURE_ZONES_ZONE_WIDTH_ATR: 0.2,
+    STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR_LONG: undefined,
+    STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR_SHORT: undefined,
     ...overrides,
   }) as any;
 

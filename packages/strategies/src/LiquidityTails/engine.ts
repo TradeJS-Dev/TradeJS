@@ -1,5 +1,6 @@
 import { Candle, Direction } from '@tradejs/types';
 import { LiquidityTailsConfig } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export type LiquidityTailsZoneKind = 'buy_pressure' | 'sell_pressure';
 
@@ -151,8 +152,42 @@ const updateAtrState = ({
 const getConfigNumbers = (config: LiquidityTailsConfig) => ({
   atrLength: Math.max(2, Math.floor(config.LIQUIDITY_TAILS_ATR_LENGTH ?? 14)),
   atrMult: clampPositive(config.LIQUIDITY_TAILS_ATR_MULT, 0.8),
-  minWickRatio: clampPositive(config.LIQUIDITY_TAILS_MIN_WICK_RATIO, 1.3),
-  wickDominance: clampPositive(config.LIQUIDITY_TAILS_WICK_DOMINANCE, 1.2),
+  minWickRatioLong: clampPositive(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MIN_WICK_RATIO',
+      direction: 'LONG',
+      fallback: 1.3,
+    }),
+    1.3,
+  ),
+  minWickRatioShort: clampPositive(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MIN_WICK_RATIO',
+      direction: 'SHORT',
+      fallback: 1.3,
+    }),
+    1.3,
+  ),
+  wickDominanceLong: clampPositive(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_WICK_DOMINANCE',
+      direction: 'LONG',
+      fallback: 1.2,
+    }),
+    1.2,
+  ),
+  wickDominanceShort: clampPositive(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_WICK_DOMINANCE',
+      direction: 'SHORT',
+      fallback: 1.2,
+    }),
+    1.2,
+  ),
   minGap: Math.max(1, Math.floor(config.LIQUIDITY_TAILS_MIN_GAP ?? 5)),
   maxAge: Math.max(50, Math.floor(config.LIQUIDITY_TAILS_MAX_AGE ?? 500)),
   keepBroken: Boolean(config.LIQUIDITY_TAILS_KEEP_BROKEN),
@@ -160,9 +195,23 @@ const getConfigNumbers = (config: LiquidityTailsConfig) => ({
     config.LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE,
   ),
   requireReactionBody: Boolean(config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY),
-  maxRetestDistancePct: Math.max(
+  maxRetestDistancePctLong: Math.max(
     0,
-    Number(config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT ?? 1.2),
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT',
+      direction: 'LONG',
+      fallback: 1.2,
+    }),
+  ),
+  maxRetestDistancePctShort: Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT',
+      direction: 'SHORT',
+      fallback: 1.2,
+    }),
   ),
   minRetestAgeBars: Math.max(
     1,
@@ -381,14 +430,17 @@ export const createLiquidityTailsEngine = ({
   const {
     atrLength,
     atrMult,
-    minWickRatio,
-    wickDominance,
+    minWickRatioLong,
+    minWickRatioShort,
+    wickDominanceLong,
+    wickDominanceShort,
     minGap,
     maxAge,
     keepBroken,
     reactionCloseBeyondZone,
     requireReactionBody,
-    maxRetestDistancePct,
+    maxRetestDistancePctLong,
+    maxRetestDistancePctShort,
     minRetestAgeBars,
     minZoneTouches,
     maxEntryRetestOrdinal,
@@ -450,19 +502,20 @@ export const createLiquidityTailsEngine = ({
     const atr = state.atrState.value ?? 0;
     const atrReady = state.atrState.count >= atrLength;
     const atrThreshold = atrMult * atr;
-    const ratioThreshold = minWickRatio * candleBody;
-    const topDominant = topShadow > bottomShadow * wickDominance;
-    const bottomDominant = bottomShadow > topShadow * wickDominance;
+    const topRatioThreshold = minWickRatioShort * candleBody;
+    const bottomRatioThreshold = minWickRatioLong * candleBody;
+    const topDominant = topShadow > bottomShadow * wickDominanceShort;
+    const bottomDominant = bottomShadow > topShadow * wickDominanceLong;
     const sellFire =
       atrReady &&
       topShadow >= atrThreshold &&
-      topShadow >= ratioThreshold &&
+      topShadow >= topRatioThreshold &&
       topDominant &&
       state.index - state.lastFireIndex > minGap;
     const buyFire =
       atrReady &&
       bottomShadow >= atrThreshold &&
-      bottomShadow >= ratioThreshold &&
+      bottomShadow >= bottomRatioThreshold &&
       bottomDominant &&
       state.index - state.lastFireIndex > minGap;
 
@@ -576,7 +629,10 @@ export const createLiquidityTailsEngine = ({
           candleBody,
           reactionCloseBeyondZone,
           requireReactionBody,
-          maxRetestDistancePct,
+          maxRetestDistancePct:
+            zone.direction === 'LONG'
+              ? maxRetestDistancePctLong
+              : maxRetestDistancePctShort,
           maxEntryZoneAgeBars,
           minRejectionEfficiencyRatio,
           retestOrdinal,

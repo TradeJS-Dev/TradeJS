@@ -1,5 +1,6 @@
 import { Candle, Direction } from '@tradejs/types';
 import { HeadAndShouldersConfig, HeadAndShouldersEntryMode } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export type HeadAndShouldersPatternKind =
   | 'head_and_shoulders'
@@ -121,8 +122,23 @@ const getConfigNumbers = (config: HeadAndShouldersConfig) => ({
     fallback: 0.2,
     min: 0,
   }),
-  targetHeightPct: clampNumber({
-    value: config.HEADSHOULDERS_TARGET_HEIGHT_PCT,
+  targetHeightPctLong: clampNumber({
+    value: resolveDirectionalConfigNumber({
+      config,
+      key: 'HEADSHOULDERS_TARGET_HEIGHT_PCT',
+      direction: 'LONG',
+      fallback: 100,
+    }),
+    fallback: 100,
+    min: 0,
+  }),
+  targetHeightPctShort: clampNumber({
+    value: resolveDirectionalConfigNumber({
+      config,
+      key: 'HEADSHOULDERS_TARGET_HEIGHT_PCT',
+      direction: 'SHORT',
+      fallback: 100,
+    }),
     fallback: 100,
     min: 0,
   }),
@@ -600,7 +616,12 @@ const buildBreakoutPattern = ({
     necklineSlopePerBar,
     targetPrice:
       neckline +
-      directionMultiplier * headHeight * (options.targetHeightPct / 100),
+      directionMultiplier *
+        headHeight *
+        ((direction === 'LONG'
+          ? options.targetHeightPctLong
+          : options.targetHeightPctShort) /
+          100),
     stopLossPrice:
       head.value -
       directionMultiplier * headHeight * (options.stopBufferHeightPct / 100),

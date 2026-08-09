@@ -37,6 +37,8 @@ describe('MarketFlushReversal core detector', () => {
       config: {
         ...DEFAULT_CONFIG,
         MFR_MIN_REJECTION_BODY_ATR: 0.7,
+        MFR_MIN_REJECTION_BODY_ATR_LONG: undefined,
+        MFR_MIN_REJECTION_BODY_ATR_SHORT: undefined,
       } as any,
     });
     const rejected = detectMarketFlushReversalSignal({
@@ -44,6 +46,8 @@ describe('MarketFlushReversal core detector', () => {
       config: {
         ...DEFAULT_CONFIG,
         MFR_MIN_REJECTION_BODY_ATR: 0.81,
+        MFR_MIN_REJECTION_BODY_ATR_LONG: undefined,
+        MFR_MIN_REJECTION_BODY_ATR_SHORT: undefined,
       } as any,
     });
 

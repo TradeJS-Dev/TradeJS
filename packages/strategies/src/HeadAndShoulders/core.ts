@@ -32,6 +32,8 @@ const buildHeadAndShouldersStateKey = (config: HeadAndShouldersConfig) =>
     shoulderTolerancePct: config.HEADSHOULDERS_SHOULDER_TOLERANCE_PCT,
     minHeadProminenceRatio: config.HEADSHOULDERS_MIN_HEAD_PROMINENCE_RATIO,
     targetHeightPct: config.HEADSHOULDERS_TARGET_HEIGHT_PCT,
+    targetHeightPctLong: config.HEADSHOULDERS_TARGET_HEIGHT_PCT_LONG,
+    targetHeightPctShort: config.HEADSHOULDERS_TARGET_HEIGHT_PCT_SHORT,
     stopBufferHeightPct: config.HEADSHOULDERS_STOP_BUFFER_HEIGHT_PCT,
     minHeadHeightPct: config.HEADSHOULDERS_MIN_HEAD_HEIGHT_PCT,
     minHeadHeightAtr: config.HEADSHOULDERS_MIN_HEAD_HEIGHT_ATR,

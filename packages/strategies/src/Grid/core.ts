@@ -13,6 +13,7 @@ import {
 } from './engine';
 import { buildGridFigures } from './figures';
 import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import { buildTradeEconomics } from '../shared/structureRisk';
 
 interface PendingGridEntry {
@@ -65,6 +66,26 @@ const getDirectionalPrice = (
     ? anchor + sign * distance
     : anchor - sign * distance;
 };
+
+const getTakeProfitDistance = ({
+  config,
+  direction,
+  stepDistance,
+}: {
+  config: GridConfig;
+  direction: Direction;
+  stepDistance: number;
+}) =>
+  stepDistance *
+  Math.max(
+    0.1,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'GRID_TAKE_PROFIT_STEP_MULT',
+      direction,
+      fallback: 1,
+    }),
+  );
 
 const calculateLevelQty = ({
   maxLossValue,
@@ -165,6 +186,8 @@ const buildExecutionStateKey = (config: GridConfig) =>
     slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
     entryMode: config.GRID_ENTRY_MODE,
     continuationAllowScaleIn: config.GRID_CONTINUATION_ALLOW_SCALE_IN,
+    takeProfitStepMultLong: config.GRID_TAKE_PROFIT_STEP_MULT_LONG,
+    takeProfitStepMultShort: config.GRID_TAKE_PROFIT_STEP_MULT_SHORT,
     rangeFilterMode: config.GRID_RANGE_FILTER_MODE,
     rangeEdgeFraction: config.GRID_RANGE_EDGE_FRACTION,
   });
@@ -430,10 +453,15 @@ export const createGridCore: CreateStrategyCore<
         });
       }
 
+      const takeProfitDistance = getTakeProfitDistance({
+        config,
+        direction,
+        stepDistance: snapshot.stepDistance,
+      });
       const targetPrice = getDirectionalPrice(
         direction,
         position.price,
-        snapshot.takeProfitDistance,
+        takeProfitDistance,
         'target',
       );
       const adverseLevelReached =
@@ -489,7 +517,7 @@ export const createGridCore: CreateStrategyCore<
         const projectedTargetPrice = getDirectionalPrice(
           direction,
           projectedAveragePrice,
-          snapshot.takeProfitDistance,
+          takeProfitDistance,
           'target',
         );
         const projectedEconomics = buildTradeEconomics({
@@ -520,7 +548,7 @@ export const createGridCore: CreateStrategyCore<
           indicators,
           additionalIndicators: {
             gridContext: buildGridSignalContext({
-              snapshot,
+              snapshot: { ...snapshot, takeProfitDistance },
               action: 'increase',
               level,
               levelsFilled: cycle.levelsFilled,
@@ -621,10 +649,15 @@ export const createGridCore: CreateStrategyCore<
       snapshot.stopDistance,
       'stop',
     );
+    const takeProfitDistance = getTakeProfitDistance({
+      config,
+      direction,
+      stepDistance: snapshot.stepDistance,
+    });
     const takeProfitPrice = getDirectionalPrice(
       direction,
       snapshot.close,
-      snapshot.takeProfitDistance,
+      takeProfitDistance,
       'target',
     );
     const economics = buildTradeEconomics({
@@ -674,7 +707,7 @@ export const createGridCore: CreateStrategyCore<
       indicators,
       additionalIndicators: {
         gridContext: buildGridSignalContext({
-          snapshot,
+          snapshot: { ...snapshot, takeProfitDistance },
           action: 'open',
           level: 1,
           levelsFilled: 0,

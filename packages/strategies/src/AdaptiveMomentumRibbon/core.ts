@@ -12,6 +12,7 @@ import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
 } from '../shared/structureRisk';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -104,6 +105,8 @@ const buildAdaptiveMomentumRibbonStateKey = ({
     waitClose: config.AMR_WAIT_CLOSE,
     confirmOnNextBar: config.AMR_CONFIRM_ON_NEXT_BAR,
     minSignalOscAbs: config.AMR_MIN_SIGNAL_OSC_ABS,
+    minSignalOscAbsLong: config.AMR_MIN_SIGNAL_OSC_ABS_LONG,
+    minSignalOscAbsShort: config.AMR_MIN_SIGNAL_OSC_ABS_SHORT,
     requireKcBias: config.AMR_REQUIRE_KC_BIAS,
     minBarsBetweenSignals: config.AMR_MIN_BARS_BETWEEN_SIGNALS,
     showInvalidationLevels: config.AMR_SHOW_INVALIDATION_LEVELS,
@@ -333,7 +336,12 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
             3,
           ),
           minSignalOscAbs: asPositiveNumber(
-            config.AMR_MIN_SIGNAL_OSC_ABS,
+            resolveDirectionalConfigNumber({
+              config,
+              key: 'AMR_MIN_SIGNAL_OSC_ABS',
+              direction: modeConfig.direction,
+              fallback: 0.55,
+            }),
             0.55,
           ),
           requireKcBias: Boolean(config.AMR_REQUIRE_KC_BIAS),

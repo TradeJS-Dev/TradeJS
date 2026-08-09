@@ -23,11 +23,13 @@ const makeSignal = (overrides: Record<string, unknown> = {}) =>
 const makeConfig = (overrides: Record<string, unknown> = {}) =>
   ({
     ...DEFAULT_CONFIG,
+    ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR_LONG: undefined,
+    ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR_SHORT: undefined,
     ...overrides,
   }) as any;
 
 describe('getAdaptiveTrendChannelFilterSkipCode', () => {
-  it('keeps current defaults permissive', () => {
+  it('keeps a neutral directional test config permissive', () => {
     expect(
       getAdaptiveTrendChannelFilterSkipCode({
         signal: makeSignal(),
@@ -76,6 +78,26 @@ describe('getAdaptiveTrendChannelFilterSkipCode', () => {
         }),
       }),
     ).toBe('ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_EXTENDED');
+  });
+
+  it('keeps ATR maturity overrides direction-specific', () => {
+    const config = makeConfig({
+      ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR_LONG: 1.2,
+      ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR_SHORT: 0.8,
+    });
+
+    expect(
+      getAdaptiveTrendChannelFilterSkipCode({
+        signal: makeSignal({ direction: 'LONG', breakoutDistanceAtr: 1 }),
+        config,
+      }),
+    ).toBe('ADAPTIVE_TREND_CHANNEL_BREAKOUT_ATR_TOO_SMALL');
+    expect(
+      getAdaptiveTrendChannelFilterSkipCode({
+        signal: makeSignal({ direction: 'SHORT', breakoutDistanceAtr: 1 }),
+        config,
+      }),
+    ).toBeNull();
   });
 
   it('rejects thin-volume flips when volume context is available', () => {

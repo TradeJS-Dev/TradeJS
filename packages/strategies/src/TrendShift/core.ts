@@ -15,6 +15,7 @@ import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
 } from '../shared/structureRisk';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -159,7 +160,12 @@ export const createTrendShiftCore: CreateStrategyCore<
       currentPrice,
       direction,
       stopLossPrice,
-      targetR: Number(config.TRENDSHIFT_TARGET_R_MULT ?? 2.5),
+      targetR: resolveDirectionalConfigNumber({
+        config,
+        key: 'TRENDSHIFT_TARGET_R_MULT',
+        direction,
+        fallback: 2.5,
+      }),
       maxLossValue: config.MAX_LOSS_VALUE,
       feeRate: Number(config.FEE_PERCENT ?? 0),
       slippageBps:

@@ -17,10 +17,15 @@ const makeCandle = (timestamp: number, price: number) => ({
   turnover: price * 1000,
 });
 
-const makeConfig = (overrides: Record<string, any> = {}) => ({
-  ...DEFAULT_CONFIG,
-  ...overrides,
-});
+const makeConfig = (overrides: Record<string, any> = {}) =>
+  ({
+    ...DEFAULT_CONFIG,
+    BREAKOUT_RETEST_TOLERANCE_ATR_LONG: undefined,
+    BREAKOUT_RETEST_TOLERANCE_ATR_SHORT: undefined,
+    BREAKOUT_MIN_RANGE_ATR_LONG: undefined,
+    BREAKOUT_MIN_RANGE_ATR_SHORT: undefined,
+    ...overrides,
+  }) as any;
 
 const makeStrategyApi = (overrides: Record<string, any> = {}) =>
   ({

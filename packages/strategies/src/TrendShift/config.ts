@@ -46,17 +46,19 @@ export const config = {
   TRENDSHIFT_STOP_ATR_BUFFER_MULT: 0,
   TRENDSHIFT_STOP_BUFFER_PCT: 0.06,
   TRENDSHIFT_TARGET_R_MULT: 2.5,
+  TRENDSHIFT_TARGET_R_MULT_LONG: 1.2,
+  TRENDSHIFT_TARGET_R_MULT_SHORT: 1,
   TRENDSHIFT_EXIT_ON_OPPOSITE_FLIP: true,
   TRENDSHIFT_MAX_FIGURE_POINTS: 180,
   LONG: {
     enable: true,
     direction: 'LONG',
-    minRiskRatio: 1.6,
+    minRiskRatio: 1,
   },
   SHORT: {
     enable: true,
     direction: 'SHORT',
-    minRiskRatio: 1.6,
+    minRiskRatio: 0.8,
   },
 } as const;
 

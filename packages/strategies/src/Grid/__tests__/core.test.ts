@@ -263,7 +263,7 @@ describe('Grid core', () => {
       price: 100,
       qty: opened.orderPlan.qty,
       slPrice: 90,
-      tpPrice: 102,
+      tpPrice: 102.5,
     };
     const increased = (await continuousCore(
       makeCandle(2, 97.5) as any,
@@ -479,7 +479,7 @@ describe('Grid core', () => {
       price: 100,
       qty: opened.orderPlan.qty,
       slPrice: 90,
-      tpPrice: 102,
+      tpPrice: 102.5,
     };
     await expect(core(makeCandle(2, 97.5) as any, {} as any)).resolves.toEqual(
       expect.objectContaining({ kind: 'entry', code: 'GRID_SCALE_IN_2' }),
@@ -621,7 +621,7 @@ describe('Grid core', () => {
       price: 100,
       qty: opened.orderPlan.qty,
       slPrice: 90,
-      tpPrice: 102,
+      tpPrice: 102.5,
     };
     await expect(
       core(makeCandle(900_001, 100) as any, {} as any),
@@ -679,6 +679,7 @@ describe('Grid core', () => {
         ...DEFAULT_CONFIG,
         MAX_LOSS_VALUE: 10,
         GRID_MAX_LEVELS: 4,
+        GRID_TAKE_PROFIT_STEP_MULT_SHORT: 1.1,
         FEE_PERCENT: 0,
       } as unknown as GridConfig,
       data: [],
@@ -693,7 +694,7 @@ describe('Grid core', () => {
         orderPlan: expect.objectContaining({
           qty: 0.25,
           stopLossPrice: 110,
-          takeProfits: [{ rate: 1, price: 98 }],
+          takeProfits: [{ rate: 1, price: 97.8 }],
         }),
       }),
     );
@@ -702,6 +703,7 @@ describe('Grid core', () => {
         action: 'open',
         regimeDirection: 'SHORT',
         projectedAveragePrice: 100,
+        takeProfitDistance: 2.2,
       }),
     );
   });
@@ -813,7 +815,7 @@ describe('Grid core', () => {
       price: 100,
       qty: 0.25,
       slPrice: 90,
-      tpPrice: 102,
+      tpPrice: 102.5,
     }));
     const core = await createGridCore({
       config: {

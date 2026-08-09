@@ -10,6 +10,7 @@ import {
   createStructureZonesEngine,
 } from './engine';
 import { buildStructureZonesFigures } from './figures';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -33,6 +34,10 @@ const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
     requireReactionBody: config.STRUCTURE_ZONES_REQUIRE_REACTION_BODY,
     requireBiasAlignment: config.STRUCTURE_ZONES_REQUIRE_BIAS_ALIGNMENT,
     minReactionDistanceAtr: config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR,
+    minReactionDistanceAtrLong:
+      config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR_LONG,
+    minReactionDistanceAtrShort:
+      config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR_SHORT,
     minZoneAgeBars: config.STRUCTURE_ZONES_MIN_ZONE_AGE_BARS,
     maxZoneAgeBars: config.STRUCTURE_ZONES_MAX_ZONE_AGE_BARS,
     minTouchOrdinal: config.STRUCTURE_ZONES_MIN_TOUCH_ORDINAL,
@@ -132,7 +137,12 @@ export const createStructureZonesCore: CreateStrategyCore<
     const riskDistance = Math.abs(currentPrice - stopLossPrice);
     const targetR = Math.max(
       0,
-      Number(config.STRUCTURE_ZONES_TARGET_R_MULT ?? 2),
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'STRUCTURE_ZONES_TARGET_R_MULT',
+        direction: signal.direction,
+        fallback: 2,
+      }),
     );
     const takeProfitPrice =
       signal.direction === 'LONG'

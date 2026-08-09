@@ -365,6 +365,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
 
     const filterSkipCode = getReverseTrendLineCoreFilterSkipCode({
       config,
+      direction,
       structuralContext,
       timingContext,
     });

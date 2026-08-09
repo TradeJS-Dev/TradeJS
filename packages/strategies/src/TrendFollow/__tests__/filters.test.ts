@@ -9,10 +9,15 @@ const makeSignal = (
 ) => ({ direction, breakoutDistancePct: 1, ...overrides }) as any;
 
 const makeConfig = (overrides: Record<string, unknown> = {}) =>
-  ({ ...DEFAULT_CONFIG, ...overrides }) as any;
+  ({
+    ...DEFAULT_CONFIG,
+    TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_LONG: undefined,
+    TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_SHORT: undefined,
+    ...overrides,
+  }) as any;
 
 describe('getTrendFollowCoreFilterSkipCode', () => {
-  it('keeps the default core filters permissive', () => {
+  it('keeps a neutral directional test config permissive', () => {
     expect(
       getTrendFollowCoreFilterSkipCode({
         signal: makeSignal(),
@@ -47,6 +52,27 @@ describe('getTrendFollowCoreFilterSkipCode', () => {
         config: makeConfig({ TRENDFOLLOW_MAX_BREAKOUT_DISTANCE_PCT: 3 }),
       }),
     ).toBe('TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_EXTENDED');
+  });
+
+  it('applies breakout maturity overrides only to their direction', () => {
+    const config = makeConfig({
+      TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT: 1,
+      TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_LONG: 3,
+      TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_SHORT: 2,
+    });
+
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('LONG', { breakoutDistancePct: 2.5 }),
+        config,
+      }),
+    ).toBe('TRENDFOLLOW_BREAKOUT_DISTANCE_TOO_SMALL');
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('SHORT', { breakoutDistancePct: 2.5 }),
+        config,
+      }),
+    ).toBeNull();
   });
 
   it('can require independent trend, benchmark, and volume confirmation', () => {

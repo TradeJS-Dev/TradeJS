@@ -1,6 +1,7 @@
 import { BaseStrategyContextSnapshot } from '@tradejs/types';
 import { AdaptiveTrendChannelConfig } from './config';
 import { AdaptiveTrendChannelSignal } from './engine';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -102,7 +103,12 @@ export const getAdaptiveTrendChannelFilterSkipCode = ({
     config.ADAPTIVE_TREND_CHANNEL_MAX_BREAKOUT_DISTANCE_PCT,
   );
   const minBreakoutDistanceAtr = asPositiveThreshold(
-    config.ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'ADAPTIVE_TREND_CHANNEL_MIN_BREAKOUT_DISTANCE_ATR',
+      direction: signal.direction,
+      fallback: 0,
+    }),
   );
   const maxBreakoutDistanceAtr = asPositiveThreshold(
     config.ADAPTIVE_TREND_CHANNEL_MAX_BREAKOUT_DISTANCE_ATR,

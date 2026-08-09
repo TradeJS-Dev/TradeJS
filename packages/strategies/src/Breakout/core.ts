@@ -1,6 +1,7 @@
 import _ from 'lodash';
 
 import { BreakoutConfig } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import { createBreakoutEngine } from './engine';
 import { buildBreakoutFigures } from './figures';
 import {
@@ -265,7 +266,15 @@ export const isBreakoutSetupAccepted = (
   ) {
     return false;
   }
-  const minRangeAtr = Math.max(0, Number(config.BREAKOUT_MIN_RANGE_ATR ?? 0));
+  const minRangeAtr = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'BREAKOUT_MIN_RANGE_ATR',
+      direction: metrics.direction,
+      fallback: 0,
+    }),
+  );
   if (
     minRangeAtr > 0 &&
     (metrics.rangeAtr == null || metrics.rangeAtr < minRangeAtr)
@@ -308,6 +317,8 @@ export const createBreakoutCore: CreateStrategyCore<
             confirmationBars: config.BREAKOUT_CONFIRMATION_BARS,
             retestMaxBars: config.BREAKOUT_RETEST_MAX_BARS,
             retestToleranceAtr: config.BREAKOUT_RETEST_TOLERANCE_ATR,
+            retestToleranceAtrLong: config.BREAKOUT_RETEST_TOLERANCE_ATR_LONG,
+            retestToleranceAtrShort: config.BREAKOUT_RETEST_TOLERANCE_ATR_SHORT,
           }),
           snapshot: (state) => state.engine.getState(),
         },

@@ -7,6 +7,15 @@ import { config as RR_DEFAULT_CONFIG } from '../RelativeRotation/config';
 import { createRelativeRotationCore } from '../RelativeRotation/core';
 import { config as VCB_DEFAULT_CONFIG } from '../VolatilityCompressionBreakout/config';
 import { createVolatilityCompressionBreakoutCore } from '../VolatilityCompressionBreakout/core';
+import { createTestStateController } from '../testUtils/stateControllerTestUtils';
+
+const MFR_IMMEDIATE_CONFIG = {
+  ...MFR_DEFAULT_CONFIG,
+  MFR_ENTRY_MODE: 'immediate' as const,
+  MFR_MIN_REJECTION_BODY_ATR_LONG: 0,
+  MFR_MIN_REJECTION_BODY_ATR_SHORT: 0,
+  MFR_MIN_REJECTION_CLOSE_POSITION_SHORT: 0.6,
+};
 
 const makeCandle = (price: number) => ({
   timestamp: 1_700_000_000_000,
@@ -263,6 +272,7 @@ const makeStrategyApi = (currentPrice = 101) => {
     getCurrentPosition: jest.fn(async () => null),
     getDirectionalTpSlPrices: jest.fn(),
     createLastTradeController: jest.fn(() => lastTradeController),
+    createStateController: createTestStateController(),
   } as any;
 
   return { strategyApi, lastTradeController };
@@ -309,7 +319,10 @@ describe('context strategies', () => {
     const { strategyApi, lastTradeController } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: MFR_DEFAULT_CONFIG,
+        config: {
+          ...MFR_IMMEDIATE_CONFIG,
+          MFR_REQUIRE_CALIBRATED_LONG_REBOUND_POCKET: true,
+        },
         strategyApi,
         baseContext,
       }),
@@ -355,7 +368,10 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: MFR_DEFAULT_CONFIG,
+        config: {
+          ...MFR_IMMEDIATE_CONFIG,
+          MFR_REQUIRE_CALIBRATED_LONG_REBOUND_POCKET: true,
+        },
         strategyApi,
         baseContext,
       }),
@@ -388,7 +404,10 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: MFR_DEFAULT_CONFIG,
+        config: {
+          ...MFR_IMMEDIATE_CONFIG,
+          MFR_REQUIRE_CALIBRATED_LONG_REBOUND_POCKET: true,
+        },
         strategyApi,
         baseContext,
       }),
@@ -408,7 +427,7 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createMarketFlushReversalCore(
       makeCoreParams({
-        config: MFR_DEFAULT_CONFIG,
+        config: MFR_IMMEDIATE_CONFIG,
         strategyApi,
         baseContext,
       }),

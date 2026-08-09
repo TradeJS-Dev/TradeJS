@@ -13,6 +13,7 @@ import {
   isOpenPosition,
   toFiniteNumberOrNull,
 } from '../shared/contextStrategy';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export interface RelativeRotationSignalContext {
   signalDirection: Direction;
@@ -133,7 +134,12 @@ const buildDirectionCandidate = ({
   const relativeStrengthConfirmed =
     signedRelativeStrength == null ||
     signedRelativeStrength >=
-      Number(config.RR_MIN_RELATIVE_STRENGTH_1H ?? 0.15);
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'RR_MIN_RELATIVE_STRENGTH_1H',
+        direction,
+        fallback: 0.15,
+      });
   if (!relativeStrengthConfirmed) return null;
 
   if (
@@ -283,7 +289,12 @@ export const createRelativeRotationCore: CreateStrategyCore<
       currentPrice,
       direction: modeConfig.direction,
       stopLossPrice,
-      targetR: Number(config.RR_TARGET_R_MULT ?? 2.5),
+      targetR: resolveDirectionalConfigNumber({
+        config,
+        key: 'RR_TARGET_R_MULT',
+        direction: signal.signalDirection,
+        fallback: 2.5,
+      }),
       maxLossValue: Number(config.MAX_LOSS_VALUE ?? 0),
       feeRate: Number(config.FEE_PERCENT ?? 0),
       slippageBps:

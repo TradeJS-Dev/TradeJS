@@ -1,5 +1,6 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import { StructureZonesConfig } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export type StructureZonesMarketState = 'Trend' | 'Range' | 'Transition';
 export type StructureZonesSignalKind =
@@ -213,9 +214,23 @@ const getConfigNumbers = (config: StructureZonesConfig) => ({
   requireBiasAlignment: Boolean(
     config.STRUCTURE_ZONES_REQUIRE_BIAS_ALIGNMENT ?? true,
   ),
-  minReactionDistanceAtr: Math.max(
+  minReactionDistanceAtrLong: Math.max(
     0,
-    Number(config.STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR ?? 0.1),
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR',
+      direction: 'LONG',
+      fallback: 0.1,
+    }),
+  ),
+  minReactionDistanceAtrShort: Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'STRUCTURE_ZONES_MIN_REACTION_DISTANCE_ATR',
+      direction: 'SHORT',
+      fallback: 0.1,
+    }),
   ),
   minZoneAgeBars: Math.max(
     0,
@@ -416,7 +431,8 @@ export const createStructureZonesEngine = ({
     reactionCloseBeyondZone,
     requireReactionBody,
     requireBiasAlignment,
-    minReactionDistanceAtr,
+    minReactionDistanceAtrLong,
+    minReactionDistanceAtrShort,
     minZoneAgeBars,
     maxZoneAgeBars,
     minTouchOrdinal,
@@ -648,7 +664,7 @@ export const createStructureZonesEngine = ({
         supportReactionClose &&
         (!requireReactionBody || bullBody) &&
         (!requireBiasAlignment || structureBias !== 'down') &&
-        longReactionDistance >= minReactionDistanceAtr * atr &&
+        longReactionDistance >= minReactionDistanceAtrLong * atr &&
         marketState !== 'Transition';
       const shortReaction =
         resistanceTouched &&
@@ -659,7 +675,7 @@ export const createStructureZonesEngine = ({
         resistanceReactionClose &&
         (!requireReactionBody || bearBody) &&
         (!requireBiasAlignment || structureBias !== 'up') &&
-        shortReactionDistance >= minReactionDistanceAtr * atr &&
+        shortReactionDistance >= minReactionDistanceAtrShort * atr &&
         marketState !== 'Transition';
       const longTransition =
         tradeTransitionBreakouts &&

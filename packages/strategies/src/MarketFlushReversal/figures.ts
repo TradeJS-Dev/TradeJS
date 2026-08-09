@@ -76,6 +76,8 @@ export const buildMarketFlushReversalFigures = ({
           `Tail: ${context.tailSide ?? 'n/a'}; wick: ${formatFigureRatioAsPercent(context.sweepWickPct)}`,
           `Volume rel20: ${formatFigureMetric(context.volumeRel20)}; buy pressure: ${formatFigureRatioAsPercent(context.buyPressurePct)}`,
           `Delta divergence: ${context.deltaDivergenceVsPrice ?? 'n/a'}; flags: ${context.marketRiskFlags.join(', ') || 'none'}`,
+          `Entry: ${context.entryMode ?? 'immediate'} after ${context.entryDelayBars ?? 0} bars`,
+          `Price improvement ATR: ${formatFigureMetric(context.priceImprovementAtr)}`,
         ],
       }),
     ],

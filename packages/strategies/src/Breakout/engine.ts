@@ -1,6 +1,7 @@
 import type { Candle, Direction } from '@tradejs/types';
 
 import type { BreakoutConfig, BreakoutEntryMode } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export interface BreakoutEngineSignal {
   direction: Direction;
@@ -75,9 +76,23 @@ const getConfigNumbers = (config: BreakoutConfig) => {
       1,
       Math.floor(Number(config.BREAKOUT_RETEST_MAX_BARS ?? 8)),
     ),
-    retestToleranceAtr: Math.max(
+    retestToleranceAtrLong: Math.max(
       0,
-      Number(config.BREAKOUT_RETEST_TOLERANCE_ATR ?? 0.25),
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'BREAKOUT_RETEST_TOLERANCE_ATR',
+        direction: 'LONG',
+        fallback: 0.25,
+      }),
+    ),
+    retestToleranceAtrShort: Math.max(
+      0,
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'BREAKOUT_RETEST_TOLERANCE_ATR',
+        direction: 'SHORT',
+        fallback: 0.25,
+      }),
     ),
   };
 };
@@ -114,7 +129,8 @@ export const createBreakoutEngine = ({
     entryMode,
     confirmationBars,
     retestMaxBars,
-    retestToleranceAtr,
+    retestToleranceAtrLong,
+    retestToleranceAtrShort,
   } = getConfigNumbers(config);
   const maxCandles = Math.max(lookback + delay + 2, trendLookback + 2, 16);
   const state: EngineState = {
@@ -213,7 +229,8 @@ export const createBreakoutEngine = ({
         entryMode === 'retest' &&
         accepted &&
         retestDistanceAtr != null &&
-        retestDistanceAtr <= retestToleranceAtr;
+        retestDistanceAtr <=
+          (isLong ? retestToleranceAtrLong : retestToleranceAtrShort);
 
       if (!accepted || expired) {
         state.pending = null;

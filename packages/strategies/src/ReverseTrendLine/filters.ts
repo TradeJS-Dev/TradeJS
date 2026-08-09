@@ -1,4 +1,6 @@
+import type { Direction } from '@tradejs/types';
 import type { ReverseTrendLineConfig } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 type ReverseStructuralFilterContext = {
   coinBiasAligned: boolean | null;
@@ -33,10 +35,12 @@ const getReactionValue = ({
 
 export const getReverseTrendLineCoreFilterSkipCode = ({
   config,
+  direction,
   structuralContext,
   timingContext,
 }: {
   config: ReverseTrendLineConfig;
+  direction: Direction;
   structuralContext: ReverseStructuralFilterContext;
   timingContext: ReverseTimingFilterContext;
 }): string | null => {
@@ -56,7 +60,12 @@ export const getReverseTrendLineCoreFilterSkipCode = ({
   }
 
   const minRejectionStrengthPct = asPositiveThreshold(
-    config.REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'REVERSE_TRENDLINE_MIN_REJECTION_STRENGTH_PCT',
+      direction,
+      fallback: 0,
+    }),
   );
   const rejectionStrengthPct = getReactionValue({
     timingContext,

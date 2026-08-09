@@ -4,6 +4,7 @@ import type {
   AdaptiveMomentumRibbonConfig,
   AdaptiveMomentumRibbonKcMaType,
 } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export type AdaptiveMomentumRibbonPlotName =
   | 'signalOsc'
@@ -396,7 +397,24 @@ export const createAdaptiveMomentumRibbonEngine = ({
   const smoothingLength = asPositiveInt(config.AMR_BUTTERWORTH_SMOOTHING, 3);
   const waitClose = Boolean(config.AMR_WAIT_CLOSE);
   const confirmOnNextBar = Boolean(config.AMR_CONFIRM_ON_NEXT_BAR);
-  const minSignalOscAbs = asPositiveNumber(config.AMR_MIN_SIGNAL_OSC_ABS, 0.55);
+  const minSignalOscAbsLong = asPositiveNumber(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'AMR_MIN_SIGNAL_OSC_ABS',
+      direction: 'LONG',
+      fallback: 0.55,
+    }),
+    0.55,
+  );
+  const minSignalOscAbsShort = asPositiveNumber(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'AMR_MIN_SIGNAL_OSC_ABS',
+      direction: 'SHORT',
+      fallback: 0.55,
+    }),
+    0.55,
+  );
   const requireKcBias = Boolean(config.AMR_REQUIRE_KC_BIAS);
   const minBarsBetweenSignals = asPositiveInt(
     config.AMR_MIN_BARS_BETWEEN_SIGNALS,
@@ -512,7 +530,8 @@ export const createAdaptiveMomentumRibbonEngine = ({
     if (signalOsc != null && previousSignalOsc != null) {
       const rawEntryLong = previousSignalOsc <= 0 && signalOsc > 0;
       const rawEntryShort = previousSignalOsc >= 0 && signalOsc < 0;
-      const strongEnough = Math.abs(signalOsc) >= minSignalOscAbs;
+      const longStrongEnough = Math.abs(signalOsc) >= minSignalOscAbsLong;
+      const shortStrongEnough = Math.abs(signalOsc) >= minSignalOscAbsShort;
       const spacingOk =
         lastAcceptedSignalIndex == null ||
         index - lastAcceptedSignalIndex >= minBarsBetweenSignals;
@@ -527,7 +546,10 @@ export const createAdaptiveMomentumRibbonEngine = ({
             pendingSignal.invalidationLevel == null ||
             candle.low >= pendingSignal.invalidationLevel;
           const confirmed =
-            pendingStillValid && signalOsc > 0 && strongEnough && longKcBiasOk;
+            pendingStillValid &&
+            signalOsc > 0 &&
+            longStrongEnough &&
+            longKcBiasOk;
 
           if (confirmed) {
             entryLong = true;
@@ -541,7 +563,10 @@ export const createAdaptiveMomentumRibbonEngine = ({
             pendingSignal.invalidationLevel == null ||
             candle.high <= pendingSignal.invalidationLevel;
           const confirmed =
-            pendingStillValid && signalOsc < 0 && strongEnough && shortKcBiasOk;
+            pendingStillValid &&
+            signalOsc < 0 &&
+            shortStrongEnough &&
+            shortKcBiasOk;
 
           if (confirmed) {
             entryShort = true;
@@ -553,14 +578,19 @@ export const createAdaptiveMomentumRibbonEngine = ({
         }
 
         if (!entryLong && !entryShort && spacingOk) {
-          if (rawEntryLong && strongEnough && longKcBiasOk && sourceCandle) {
+          if (
+            rawEntryLong &&
+            longStrongEnough &&
+            longKcBiasOk &&
+            sourceCandle
+          ) {
             pendingSignal = {
               direction: 'LONG',
               invalidationLevel: sourceCandle.low,
             };
           } else if (
             rawEntryShort &&
-            strongEnough &&
+            shortStrongEnough &&
             shortKcBiasOk &&
             sourceCandle
           ) {
@@ -571,9 +601,10 @@ export const createAdaptiveMomentumRibbonEngine = ({
           }
         }
       } else {
-        entryLong = rawEntryLong && strongEnough && spacingOk && longKcBiasOk;
+        entryLong =
+          rawEntryLong && longStrongEnough && spacingOk && longKcBiasOk;
         entryShort =
-          rawEntryShort && strongEnough && spacingOk && shortKcBiasOk;
+          rawEntryShort && shortStrongEnough && spacingOk && shortKcBiasOk;
       }
     }
 

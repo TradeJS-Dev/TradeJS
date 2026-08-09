@@ -1,10 +1,18 @@
 import type {
   BaseStrategyContextSnapshot,
+  Candle,
   CreateStrategyCore,
   Direction,
   IndicatorsHistorySnapshot,
 } from '@tradejs/types';
-import { MarketFlushReversalConfig } from './config';
+import {
+  MarketFlushReversalConfig,
+  MarketFlushReversalEntryMode,
+} from './config';
+import {
+  createMarketFlushReversalEntryEngine,
+  MarketFlushReversalEntryCandidate,
+} from './engine';
 import { buildMarketFlushReversalFigures } from './figures';
 import {
   buildAtrFallbackStop,
@@ -15,6 +23,7 @@ import {
   resolveAtrBuffer,
   toFiniteNumberOrNull,
 } from '../shared/contextStrategy';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import {
   getMarketFlushReversalLongReboundPocketFeatures,
   isMarketFlushReversalCalibratedLongReboundPocket,
@@ -43,6 +52,10 @@ export interface MarketFlushReversalSignalContext {
   deltaDivergenceVsPrice: string | null;
   structureConfirmed: boolean;
   participationConfirmed: boolean;
+  entryMode?: MarketFlushReversalEntryMode;
+  setupTimestamp?: number;
+  entryDelayBars?: number;
+  priceImprovementAtr?: number | null;
 }
 
 const getMarketRiskFlags = (baseContext: BaseStrategyContextSnapshot) =>
@@ -269,13 +282,23 @@ export const detectMarketFlushReversalSignal = ({
     atr != null && atr > 0 && Number.isFinite(candleBody)
       ? candleBody / atr
       : null;
+  const minRejectionClosePosition = resolveDirectionalConfigNumber({
+    config,
+    key: 'MFR_MIN_REJECTION_CLOSE_POSITION',
+    direction,
+    fallback: 0.6,
+  });
+  const minRejectionBodyAtr = resolveDirectionalConfigNumber({
+    config,
+    key: 'MFR_MIN_REJECTION_BODY_ATR',
+    direction,
+    fallback: 0,
+  });
   const rejectionConfirmed =
     rejectionClosePosition != null &&
-    rejectionClosePosition >=
-      Number(config.MFR_MIN_REJECTION_CLOSE_POSITION ?? 0.6) &&
-    (Number(config.MFR_MIN_REJECTION_BODY_ATR ?? 0) <= 0 ||
-      (rejectionBodyAtr != null &&
-        rejectionBodyAtr >= Number(config.MFR_MIN_REJECTION_BODY_ATR ?? 0)));
+    rejectionClosePosition >= minRejectionClosePosition &&
+    (minRejectionBodyAtr <= 0 ||
+      (rejectionBodyAtr != null && rejectionBodyAtr >= minRejectionBodyAtr));
   if (!rejectionConfirmed) return null;
   const rangePosition20 =
     toFiniteNumberOrNull(localRange?.rangePosition20) ?? null;
@@ -405,13 +428,67 @@ const buildStopLoss = ({
   });
 };
 
+const getEntryReferencePrice = ({
+  baseContext,
+  direction,
+}: {
+  baseContext: BaseStrategyContextSnapshot;
+  direction: Direction;
+}) => {
+  const candle = baseContext.candle;
+  const level =
+    direction === 'LONG'
+      ? baseContext.raw?.levels?.lowLevel
+      : baseContext.raw?.levels?.highLevel;
+  return (
+    toFiniteNumberOrNull(level) ??
+    toFiniteNumberOrNull(direction === 'LONG' ? candle.low : candle.high)
+  );
+};
+
+const buildEntryStateKey = (config: MarketFlushReversalConfig) =>
+  JSON.stringify({
+    entryMode: config.MFR_ENTRY_MODE,
+    confirmationBars: config.MFR_CONFIRMATION_BARS,
+    confirmationBarsLong: config.MFR_CONFIRMATION_BARS_LONG,
+    confirmationBarsShort: config.MFR_CONFIRMATION_BARS_SHORT,
+    pendingMaxBars: config.MFR_PENDING_MAX_BARS,
+    requireDirectionalBody: config.MFR_REQUIRE_DIRECTIONAL_CONFIRMATION_BODY,
+    stopAtrBufferMult: config.MFR_STOP_ATR_BUFFER_MULT,
+    stopBufferPct: config.MFR_STOP_BUFFER_PCT,
+    fallbackStopAtrMult: config.MFR_FALLBACK_STOP_ATR_MULT,
+  });
+
 export const createMarketFlushReversalCore: CreateStrategyCore<
   MarketFlushReversalConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, strategyApi }) => {
+  const entryState = strategyApi.createStateController<
+    { engine: ReturnType<typeof createMarketFlushReversalEntryEngine> },
+    ReturnType<ReturnType<typeof createMarketFlushReversalEntryEngine>['next']>,
+    ReturnType<
+      ReturnType<typeof createMarketFlushReversalEntryEngine>['getState']
+    >
+  >(
+    'MarketFlushReversalEntry',
+    () => ({
+      engine: createMarketFlushReversalEntryEngine({ config }),
+    }),
+    {
+      configKey: buildEntryStateKey(config),
+      snapshot: (state) => state.engine.getState(),
+    },
+  );
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextEntryState = (
+    candle: Candle,
+    candidate: MarketFlushReversalEntryCandidate | null,
+  ) =>
+    entryState.oncePerTimestamp(candle.timestamp, (state) =>
+      state.engine.next({ candle, candidate }),
+    );
 
-  return async () => {
+  return async (candle) => {
     const { indicators, baseContext } =
       strategyApi.getCurrentIndicatorsContext();
     if (!baseContext) {
@@ -422,6 +499,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
     const position = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(position)) {
+      nextEntryState(candle, null);
       const oppositeSignal =
         signal != null &&
         isDirectionAligned({
@@ -441,8 +519,63 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       return strategyApi.skip('POSITION_EXISTS');
     }
 
-    if (!signal) {
-      return strategyApi.skip('NO_MARKET_FLUSH_REVERSAL');
+    let candidate: MarketFlushReversalEntryCandidate | null = null;
+    let candidateSkipCode = 'NO_MARKET_FLUSH_REVERSAL';
+    if (signal) {
+      const setupModeConfig =
+        signal.signalDirection === 'LONG' ? config.LONG : config.SHORT;
+      if (lastTradeController.isInCooldown(baseContext.candle.timestamp)) {
+        candidateSkipCode = 'DEV_TRADE_COOLDOWN';
+      } else if (!setupModeConfig.enable) {
+        candidateSkipCode = 'STRATEGY_DISABLED';
+      } else if (
+        Boolean(config.MFR_REQUIRE_CALIBRATED_LONG_REBOUND_POCKET) &&
+        signal.signalDirection === 'LONG' &&
+        !isMarketFlushReversalCalibratedLongReboundPocket({
+          direction: signal.signalDirection,
+          ...getMarketFlushReversalLongReboundPocketFeatures(baseContext),
+        })
+      ) {
+        candidateSkipCode = 'MFR_LONG_REBOUND_POCKET_MISSING';
+      } else {
+        const setupPrice = toFiniteNumberOrNull(baseContext.candle.close);
+        const atr = toFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
+        const referencePrice = getEntryReferencePrice({
+          baseContext,
+          direction: signal.signalDirection,
+        });
+        if (
+          setupPrice != null &&
+          atr != null &&
+          atr > 0 &&
+          referencePrice != null
+        ) {
+          candidate = {
+            direction: signal.signalDirection,
+            setupTimestamp: baseContext.candle.timestamp,
+            setupPrice,
+            referencePrice,
+            atr,
+            stopLossPrice: buildStopLoss({
+              baseContext,
+              direction: signal.signalDirection,
+              currentPrice: setupPrice,
+              config,
+            }),
+            context: signal,
+          };
+        } else {
+          candidateSkipCode = 'MFR_INVALID_PENDING_SETUP';
+        }
+      }
+    }
+
+    const entryRuntime = nextEntryState(candle, candidate);
+    const entrySignal = entryRuntime.signal;
+    if (!entrySignal) {
+      return strategyApi.skip(
+        entryRuntime.pending ? 'MFR_ENTRY_PENDING' : candidateSkipCode,
+      );
     }
 
     if (lastTradeController.isInCooldown(baseContext.candle.timestamp)) {
@@ -450,26 +583,14 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
     }
 
     const modeConfig =
-      signal.signalDirection === 'LONG' ? config.LONG : config.SHORT;
-    if (!modeConfig.enable) {
-      return strategyApi.skip('STRATEGY_DISABLED');
-    }
-
-    if (
-      signal.signalDirection === 'LONG' &&
-      !isMarketFlushReversalCalibratedLongReboundPocket({
-        direction: signal.signalDirection,
-        ...getMarketFlushReversalLongReboundPocketFeatures(baseContext),
-      })
-    ) {
-      return strategyApi.skip('MFR_LONG_REBOUND_POCKET_MISSING');
-    }
+      entrySignal.direction === 'LONG' ? config.LONG : config.SHORT;
+    if (!modeConfig.enable) return strategyApi.skip('STRATEGY_DISABLED');
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
     const stopLossPrice = buildStopLoss({
       baseContext,
-      direction: modeConfig.direction,
+      direction: entrySignal.direction,
       currentPrice,
       config,
     });
@@ -490,18 +611,29 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       return strategyApi.skip(riskOrder.skipCode ?? 'INVALID_RISK_PLAN');
     }
     const riskPlan = riskOrder.plan;
+    const signalContext: MarketFlushReversalSignalContext = {
+      ...entrySignal.context,
+      entryMode: entrySignal.entryMode,
+      setupTimestamp: entrySignal.setupTimestamp,
+      entryDelayBars: entrySignal.entryDelayBars,
+      priceImprovementAtr: entrySignal.priceImprovementAtr,
+    };
 
     lastTradeController.markTrade(timestamp);
 
+    const baseEntryCode =
+      modeConfig.direction === 'LONG'
+        ? 'MFR_LONG_FLUSH_REVERSAL'
+        : 'MFR_SHORT_FLUSH_REVERSAL';
     return strategyApi.entry({
       code:
-        modeConfig.direction === 'LONG'
-          ? 'MFR_LONG_FLUSH_REVERSAL'
-          : 'MFR_SHORT_FLUSH_REVERSAL',
+        entrySignal.entryMode === 'immediate'
+          ? baseEntryCode
+          : `${baseEntryCode}_CONFIRMATION`,
       direction: modeConfig.direction,
       indicators: indicators ?? {},
       additionalIndicators: {
-        marketFlushReversalContext: signal,
+        marketFlushReversalContext: signalContext,
       },
       figures: buildMarketFlushReversalFigures({
         direction: modeConfig.direction,
@@ -509,12 +641,9 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
         entryPrice: currentPrice,
         stopLossPrice,
         takeProfitPrice: riskPlan.takeProfitPrice,
-        referenceTimestamp: baseContext.candle.timestamp,
-        referencePrice:
-          modeConfig.direction === 'LONG'
-            ? baseContext.raw?.levels?.lowLevel
-            : baseContext.raw?.levels?.highLevel,
-        context: signal,
+        referenceTimestamp: entrySignal.setupTimestamp,
+        referencePrice: entrySignal.referencePrice,
+        context: signalContext,
       }),
       orderPlan: {
         qty: riskPlan.qty,
