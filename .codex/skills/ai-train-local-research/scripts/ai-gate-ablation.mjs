@@ -3483,6 +3483,13 @@ export const buildCrossStrategyReport = async ({
           : 'normalized benchmark, reference, and global market state',
       directions: profileDirections,
     };
+
+    // Each profile is searched independently. Release its per-row source maps
+    // once both directions are complete so the next profile does not duplicate
+    // two full feature universes while constructing its direction split.
+    for (const row of rows) {
+      delete row.profileFeatures[profile];
+    }
   }
 
   const datasetOverlapRows = groups.reduce(
