@@ -113,8 +113,7 @@ export const createCupAndHandleCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const indicators = indicatorsState.snapshot();
-    const { baseContext } = strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     const minimumBreakoutVolumeRel20 = Math.max(
       0,
       Number(config.CUPHANDLE_MIN_BREAKOUT_VOLUME_REL20 ?? 0),
@@ -178,6 +177,7 @@ export const createCupAndHandleCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const indicators = indicatorsState.snapshot();
     lastTradeController.markTrade(timestamp);
     return strategyApi.entry({
       code:

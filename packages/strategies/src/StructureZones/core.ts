@@ -121,7 +121,6 @@ export const createStructureZonesCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const indicators = indicatorsState.snapshot();
     const zoneBuffer =
       signal.zoneHeight *
       Math.max(0, Number(config.STRUCTURE_ZONES_STOP_ZONE_BUFFER_MULT ?? 0.2));
@@ -169,6 +168,7 @@ export const createStructureZonesCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const indicators = indicatorsState.snapshot();
     lastTradeController.markTrade(timestamp);
 
     return strategyApi.entry({

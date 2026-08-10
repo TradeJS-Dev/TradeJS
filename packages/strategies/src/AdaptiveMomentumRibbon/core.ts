@@ -251,8 +251,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     const structuralRejectCode = shouldRejectByStructure({
       baseContext,
       direction: modeConfig.direction,
@@ -308,6 +307,8 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     if (riskRatio <= modeConfig.minRiskRatio) {
       return strategyApi.skip(`RISK_RATIO:${riskRatio.toFixed(2)}`);
     }
+
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     return strategyApi.entry({
       code: amr.entryLong ? 'AMR_ENTRY_LONG' : 'AMR_ENTRY_SHORT',

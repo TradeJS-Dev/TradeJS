@@ -1375,6 +1375,15 @@ describe('utils indicators', () => {
     const snapshot = indicators.snapshot();
     expect(snapshot.baseContext).toBeDefined();
     expect(snapshot.baseContext).toBe(snapshot.baseContext);
+    expect(snapshot.baseContext?.regime).toBe(snapshot.baseContext?.regime);
+    expect(snapshot.baseContext?.structure).toBe(
+      snapshot.baseContext?.structure,
+    );
+    expect(snapshot.baseContext?.participation).toBe(
+      snapshot.baseContext?.participation,
+    );
+    expect(snapshot.baseContext?.relative).toBe(snapshot.baseContext?.relative);
+    expect(snapshot.baseContext?.mtf).toBe(snapshot.baseContext?.mtf);
   });
 
   it('returns snapshot result that is not mutated by subsequent next() calls', () => {

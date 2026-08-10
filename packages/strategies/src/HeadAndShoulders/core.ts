@@ -123,7 +123,6 @@ export const createHeadAndShouldersCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const indicators = indicatorsState.snapshot();
     if (
       !isStopLossOnCorrectSide({
         direction: pattern.direction,
@@ -173,6 +172,7 @@ export const createHeadAndShouldersCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const indicators = indicatorsState.snapshot();
     lastTradeController.markTrade(timestamp);
     return strategyApi.entry({
       code:

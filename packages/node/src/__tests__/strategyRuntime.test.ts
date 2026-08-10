@@ -422,6 +422,55 @@ describe('strategyRuntime', () => {
     });
   });
 
+  it('preserves lazy base context sections while merging Hyperliquid context', async () => {
+    const hyperliquidWhales = {
+      source: 'hyperliquid_user_fills',
+      interval: '15m',
+      symbol: 'BTC',
+    };
+    let relativeReads = 0;
+    let volumeStructureReads = 0;
+    mockLoadHyperliquidWhaleFlowContext.mockResolvedValue(hyperliquidWhales);
+
+    await makeRuntime(
+      () => ({ kind: 'skip', code: 'NOOP' }),
+      { ENV: 'BACKTEST' },
+      { strategyName: 'HyperliquidConsensus' },
+    );
+    const createStrategyApiMock = createStrategyAPI as jest.Mock;
+    const loadDecisionBaseContext = createStrategyApiMock.mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext as (params: any) => Promise<any>;
+    const participation = {
+      volume: { volumeRel20: 1 },
+      get volumeStructure() {
+        volumeStructureReads += 1;
+        return { profilePosition: 0.5 };
+      },
+    };
+    const baseContext = {
+      participation,
+      get relative() {
+        relativeReads += 1;
+        return { execution: { venueSpread: 0.1 } };
+      },
+    };
+
+    const enriched = await loadDecisionBaseContext({
+      baseContext,
+      candle: { timestamp: 1_000 },
+      symbol: 'BTCUSDT',
+      interval: '15',
+    });
+
+    expect(relativeReads).toBe(0);
+    expect(volumeStructureReads).toBe(0);
+    expect(enriched.participation.hyperliquidWhales).toBe(hyperliquidWhales);
+    expect(enriched.relative.execution.venueSpread).toBe(0.1);
+    expect(enriched.participation.volumeStructure.profilePosition).toBe(0.5);
+    expect(relativeReads).toBe(1);
+    expect(volumeStructureReads).toBe(1);
+  });
+
   it('preserves core base context when required external data is absent', async () => {
     await makeRuntime(
       () => ({ kind: 'skip', code: 'NOOP' }),

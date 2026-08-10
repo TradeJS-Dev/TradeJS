@@ -78,6 +78,12 @@ type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
 type ExitDecision = Extract<StrategyDecision, { kind: 'exit' }>;
 type ProtectDecision = Extract<StrategyDecision, { kind: 'protect' }>;
 
+const cloneWithPropertyDescriptors = <T extends object>(value: T): T =>
+  Object.create(
+    Object.getPrototypeOf(value),
+    Object.getOwnPropertyDescriptors(value),
+  ) as T;
+
 const buildExitOrderSignal = ({
   strategyName,
   symbol,
@@ -1696,13 +1702,23 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         });
         if (!hyperliquidWhales) return baseContext;
 
-        return {
-          ...baseContext,
-          participation: {
-            ...baseContext.participation,
-            hyperliquidWhales,
-          },
-        };
+        const participation = cloneWithPropertyDescriptors(
+          baseContext.participation,
+        );
+        Object.defineProperty(participation, 'hyperliquidWhales', {
+          configurable: true,
+          enumerable: true,
+          value: hyperliquidWhales,
+          writable: true,
+        });
+        const enrichedBaseContext = cloneWithPropertyDescriptors(baseContext);
+        Object.defineProperty(enrichedBaseContext, 'participation', {
+          configurable: true,
+          enumerable: true,
+          value: participation,
+          writable: true,
+        });
+        return enrichedBaseContext;
       },
     });
 

@@ -25,7 +25,7 @@ import { isMarketContextCancellationError } from './marketContextErrors';
 const MAX_CACHE_ENTRIES = 2_048;
 const MAX_COVERAGE_SERIES_CACHE_ENTRIES = 20;
 const MAX_FLOW_SERIES_CACHE_ENTRIES = 64;
-const SERIES_CHUNK_MS = 30 * 24 * 60 * 60_000;
+const SERIES_CHUNK_MS = 90 * 24 * 60 * 60_000;
 const MAX_SERIES_LOOKBACK_MS = 60 * 60_000;
 const DEFAULT_MIN_COVERAGE_PCT = 0.8;
 const INTERVAL_MS: Record<MarketFeatureInterval, number> = {

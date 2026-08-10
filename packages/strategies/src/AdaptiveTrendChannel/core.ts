@@ -123,8 +123,7 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     const filterSkipCode = getAdaptiveTrendChannelFilterSkipCode({
       signal,
       config,
@@ -169,6 +168,7 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
     lastTradeController.markTrade(timestamp);
 
     return strategyApi.entry({

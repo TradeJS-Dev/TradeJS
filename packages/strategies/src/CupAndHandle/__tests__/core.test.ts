@@ -61,6 +61,11 @@ const makeStrategyApi = (marketData: any) =>
         },
       },
     })),
+    getBaseContext: jest.fn(() => ({
+      participation: {
+        volume: { volumeRel20: marketData.volumeRel20 ?? 1.5 },
+      },
+    })),
     getCurrentPosition: jest.fn(async () => null),
     createLastTradeController: jest.fn(() => ({
       isInCooldown: () => false,

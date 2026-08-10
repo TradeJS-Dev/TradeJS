@@ -97,7 +97,7 @@ export const createLiquidityZonesCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { baseContext } = strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     const filterSkipCode = getLiquidityZonesFilterSkipCode({
       signal,
       config,
@@ -109,7 +109,6 @@ export const createLiquidityZonesCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const indicators = indicatorsState.snapshot();
     const zoneBuffer =
       signal.zoneHeight *
       Math.max(0, Number(config.LIQUIDITY_ZONES_STOP_ZONE_BUFFER_MULT ?? 0.2));
@@ -153,6 +152,7 @@ export const createLiquidityZonesCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const indicators = indicatorsState.snapshot();
     lastTradeController.markTrade(timestamp);
 
     return strategyApi.entry({

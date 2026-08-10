@@ -938,6 +938,44 @@ const cloneBaseContextData = (
   const clone = cloneSignalPayloadDataProperties(
     baseContext,
   ) as BaseStrategyContextSnapshot;
+  clone.regime = cloneSignalPayloadDataProperties(
+    baseContext.regime,
+  ) as BaseStrategyContextSnapshot['regime'];
+  clone.structure = cloneSignalPayloadDataProperties(
+    baseContext.structure,
+  ) as BaseStrategyContextSnapshot['structure'];
+  const participation = baseContext.participation;
+  if (participation) {
+    const participationClone = cloneSignalPayloadDataProperties(
+      participation,
+    ) as BaseStrategyContextSnapshot['participation'];
+    const priceVolumeProfile = participation.priceVolumeProfile;
+    const volumeStructure = participation.volumeStructure;
+    const delta = participation.delta;
+    if (priceVolumeProfile != null) {
+      participationClone.priceVolumeProfile = cloneSignalPayloadDataProperties(
+        priceVolumeProfile,
+      ) as NonNullable<
+        BaseStrategyContextSnapshot['participation']['priceVolumeProfile']
+      >;
+    }
+    if (volumeStructure != null) {
+      participationClone.volumeStructure = cloneSignalPayloadDataProperties(
+        volumeStructure,
+      ) as NonNullable<
+        BaseStrategyContextSnapshot['participation']['volumeStructure']
+      >;
+    }
+    if (delta != null) {
+      participationClone.delta = cloneSignalPayloadDataProperties(
+        delta,
+      ) as NonNullable<BaseStrategyContextSnapshot['participation']['delta']>;
+    }
+    clone.participation = participationClone;
+  }
+  clone.relative = cloneSignalPayloadDataProperties(
+    baseContext.relative,
+  ) as BaseStrategyContextSnapshot['relative'];
   const compactMtf = cloneCompactMtfContext(baseContext);
 
   if (compactMtf) {

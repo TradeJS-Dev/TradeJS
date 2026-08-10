@@ -42,7 +42,7 @@ const buildTrendShiftStateKey = (config: TrendShiftConfig) =>
 export const createTrendShiftCore: CreateStrategyCore<
   TrendShiftConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, data: initialData, strategyApi }) => {
+> = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
   const detectorState = strategyApi.createStateController<
     { engine: ReturnType<typeof createTrendShiftEngine> },
     ReturnType<ReturnType<typeof createTrendShiftEngine>['next']>,
@@ -113,15 +113,14 @@ export const createTrendShiftCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     const direction = modeConfig.direction;
     const signalContext = buildTrendShiftSignalContext({
       snapshot: {
         ...snapshot,
         close: currentPrice,
       },
-      indicators: indicators as Record<string, unknown>,
+      indicators: { baseContext },
     });
     const guardrailContext = buildTrendShiftGuardrailContext({
       signalContext,
@@ -181,6 +180,7 @@ export const createTrendShiftCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
+    const indicators = indicatorsState.snapshot();
     lastTradeController.markTrade(timestamp);
 
     return strategyApi.entry({

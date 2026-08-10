@@ -806,6 +806,136 @@ describe('buildStrategySignal', () => {
     });
   });
 
+  it('materializes lazy baseContext sections once when building a signal', () => {
+    const reads = {
+      regime: 0,
+      structure: 0,
+      participation: 0,
+      relative: 0,
+      mtf: 0,
+    };
+    const participationReads = {
+      priceVolumeProfile: 0,
+      volumeStructure: 0,
+      delta: 0,
+    };
+    const lazyParticipation = {
+      volume: baseContext.participation.volume,
+      get priceVolumeProfile() {
+        participationReads.priceVolumeProfile += 1;
+        return {
+          pointOfControl: 100,
+          distanceToPointOfControlAtr: 0,
+          pointOfControlVolumeShare: 0.2,
+          priceAbovePointOfControl: false,
+          nearPointOfControl: true,
+        };
+      },
+      get volumeStructure() {
+        participationReads.volumeStructure += 1;
+        return {
+          pointOfControl: 100,
+          pocIndex: 10,
+          pointOfControlVolumeShare: 0.2,
+          pocUpVolumeShare: 0.6,
+          pocDownVolumeShare: 0.4,
+          totalUpVolumeShare: 0.55,
+          totalDownVolumeShare: 0.45,
+          priceAbovePointOfControl: false,
+          distanceToPointOfControlAtr: 0,
+          rowCount: 20,
+          calcBars: 180,
+        };
+      },
+      get delta() {
+        participationReads.delta += 1;
+        return {
+          buyPressurePct: 0.55,
+          signedVolume: 10,
+          signedVolumeZScore: 0.2,
+          deltaSlope: 0.1,
+          deltaDivergenceVsPrice: 'none' as const,
+        };
+      },
+    } as BaseStrategyContextSnapshot['participation'];
+    const liveBaseContext = {
+      candle: baseContext.candle,
+      prevCandle: baseContext.prevCandle,
+      raw: baseContext.raw,
+      get regime() {
+        reads.regime += 1;
+        return baseContext.regime;
+      },
+      get structure() {
+        reads.structure += 1;
+        return baseContext.structure;
+      },
+      get participation() {
+        reads.participation += 1;
+        return lazyParticipation;
+      },
+      get relative() {
+        reads.relative += 1;
+        return baseContext.relative;
+      },
+      get mtf() {
+        reads.mtf += 1;
+        return baseContext.mtf;
+      },
+    } as BaseStrategyContextSnapshot;
+
+    const signal = buildStrategySignal({
+      signalId: 's-lazy-context',
+      strategy: 'RelativeRotation',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 4,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: liveBaseContext,
+      },
+    });
+
+    expect(reads).toEqual({
+      regime: 1,
+      structure: 1,
+      participation: 1,
+      relative: 1,
+      mtf: 1,
+    });
+    expect(participationReads).toEqual({
+      priceVolumeProfile: 1,
+      volumeStructure: 1,
+      delta: 1,
+    });
+    expect(signal.additionalIndicators?.baseContext).toMatchObject({
+      regime: baseContext.regime,
+      structure: baseContext.structure,
+      participation: {
+        volume: baseContext.participation.volume,
+        priceVolumeProfile: {
+          pointOfControl: 100,
+        },
+        volumeStructure: {
+          pointOfControl: 100,
+        },
+        delta: {
+          signedVolume: 10,
+        },
+      },
+      relative: baseContext.relative,
+      mtf: {
+        compact: true,
+      },
+    });
+  });
+
   it('does not materialize lazy indicator snapshot fields when moving baseContext', () => {
     let lazyReads = 0;
     const indicators = new Proxy(
