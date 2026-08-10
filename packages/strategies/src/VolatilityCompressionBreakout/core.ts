@@ -328,8 +328,7 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async () => {
-    const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
@@ -399,6 +398,7 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
       return strategyApi.skip(riskOrder.skipCode ?? 'INVALID_RISK_PLAN');
     }
     const riskPlan = riskOrder.plan;
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     lastTradeController.markTrade(timestamp);
 

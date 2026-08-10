@@ -83,6 +83,30 @@ describe('strategy indicators state latestNumber', () => {
     expect(result).not.toHaveBeenCalled();
   });
 
+  it('delegates latestNumbers to the indicators controller without building snapshot', () => {
+    const next = jest.fn();
+    const result = jest.fn(() => ({ maFast: [1, 2, 3] }));
+    const latestNumber = jest.fn(() => 3);
+    const latestNumbers = jest.fn(() => [2, 3]);
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+      latestNumbers,
+    });
+
+    const state = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [],
+      btcData: [],
+    });
+
+    expect(state.latestNumbers('maFast' as any, 2)).toEqual([2, 3]);
+    expect(latestNumbers).toHaveBeenCalledWith('maFast', 2);
+    expect(result).not.toHaveBeenCalled();
+  });
+
   it('shares a backtest replay controller across states with the same key', () => {
     const next = jest.fn(() => ({ maFast: 10 }));
     const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));

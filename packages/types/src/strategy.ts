@@ -1180,6 +1180,10 @@ export interface StrategyIndicatorsState<
   latestNumber: <K extends Extract<keyof NonNullable<TSnapshot>, string>>(
     key: K,
   ) => number | undefined;
+  latestNumbers: <K extends Extract<keyof NonNullable<TSnapshot>, string>>(
+    key: K,
+    count: number,
+  ) => number[];
 }
 
 export interface StrategyRuntimeMlOptions {

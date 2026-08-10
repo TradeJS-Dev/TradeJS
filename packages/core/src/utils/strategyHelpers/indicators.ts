@@ -62,6 +62,7 @@ export const buildDefaultIndicatorPeriods = (
 type IndicatorsController = ReturnType<typeof createIndicators>;
 type SnapshotController = IndicatorsController & {
   latestNumber: (key: string) => number | undefined;
+  latestNumbers: (key: string, count: number) => number[];
   latestSnapshot: () => ReturnType<IndicatorsController['next']>;
   snapshot: (options?: {
     compact?: boolean;
@@ -481,5 +482,7 @@ export const createStrategyIndicatorsState = ({
     latestSnapshot: () => ensureControllerInitialized().latestSnapshot(),
 
     latestNumber: (key) => ensureControllerInitialized().latestNumber(key),
+    latestNumbers: (key, count) =>
+      ensureControllerInitialized().latestNumbers(key, count),
   };
 };

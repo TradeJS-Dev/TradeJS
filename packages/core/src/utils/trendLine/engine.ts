@@ -1075,12 +1075,7 @@ export const createTrendlineEngine = (
 
   const next = (candle: KLineData) => {
     appendCandle(candle);
-    let result = buildResult();
-    if (opts.capture && result.length === 0 && rawExtremaPoints.length) {
-      rebuildCandidatesLikeBatch();
-      result = buildResult();
-    }
-    return result;
+    return buildResult();
   };
 
   const nextMany = (candles: KLineData[]) => {
@@ -1088,13 +1083,7 @@ export const createTrendlineEngine = (
       appendCandle(candle);
     }
 
-    let result = buildResult();
-    if (opts.capture && result.length === 0 && rawExtremaPoints.length) {
-      rebuildCandidatesLikeBatch();
-      result = buildResult();
-    }
-
-    return result;
+    return buildResult();
   };
 
   const getLines = () => buildResult();

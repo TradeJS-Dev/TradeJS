@@ -489,8 +489,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
     );
 
   return async (candle) => {
-    const { indicators, baseContext } =
-      strategyApi.getCurrentIndicatorsContext();
+    const baseContext = strategyApi.getBaseContext();
     if (!baseContext) {
       return strategyApi.skip('NO_BASE_CONTEXT');
     }
@@ -611,6 +610,7 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       return strategyApi.skip(riskOrder.skipCode ?? 'INVALID_RISK_PLAN');
     }
     const riskPlan = riskOrder.plan;
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
     const signalContext: MarketFlushReversalSignalContext = {
       ...entrySignal.context,
       entryMode: entrySignal.entryMode,

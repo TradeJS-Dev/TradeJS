@@ -339,15 +339,30 @@ export const createBreakoutCore: CreateStrategyCore<
       candle.timestamp,
       (state) => state.engine.next(candle),
     );
+    const engineSnapshot = engineRuntime?.snapshot ?? null;
+    const engineSignal = engineRuntime?.signal ?? null;
+    const position = await strategyApi.getCurrentPosition();
+    const positionExists = Boolean(
+      position && typeof position.qty === 'number' && position.qty > 0,
+    );
 
-    const { indicators: indicatorValues } =
-      strategyApi.getCurrentIndicatorsContext();
-    if (!indicatorValues && !useEngine) {
+    if (
+      useEngine &&
+      !engineSignal &&
+      !positionExists &&
+      engineSnapshot?.previousCandle &&
+      engineSnapshot.highLevel != null &&
+      engineSnapshot.lowLevel != null &&
+      engineSnapshot.atr != null
+    ) {
+      return strategyApi.skip('NO_SIGNAL');
+    }
+
+    const baseContext = strategyApi.getBaseContext();
+    if (!baseContext && !useEngine) {
       return strategyApi.skip('NO_INDICATORS');
     }
 
-    const engineSnapshot = engineRuntime?.snapshot ?? null;
-    const baseContext = indicatorValues?.baseContext;
     const highLevel = baseContext?.raw.levels.highLevel ?? null;
     const lowLevel = baseContext?.raw.levels.lowLevel ?? null;
     const maFast = baseContext?.raw.trend.maFast ?? null;
@@ -358,7 +373,6 @@ export const createBreakoutCore: CreateStrategyCore<
     const bbUpper = baseContext?.raw.volatility.bbUpper ?? null;
     const bbLower = baseContext?.raw.volatility.bbLower ?? null;
     const correlation = baseContext?.raw.crossAsset.btcCorrelation ?? null;
-    const engineSignal = engineRuntime?.signal ?? null;
     const effectiveHighLevel = useEngine
       ? engineSnapshot?.highLevel ?? null
       : highLevel;
@@ -366,7 +380,7 @@ export const createBreakoutCore: CreateStrategyCore<
       ? engineSnapshot?.lowLevel ?? null
       : lowLevel;
     const prevCandle =
-      indicatorValues?.prevCandle ?? engineSnapshot?.previousCandle ?? null;
+      baseContext?.prevCandle ?? engineSnapshot?.previousCandle ?? null;
 
     if (
       !prevCandle ||
@@ -383,11 +397,6 @@ export const createBreakoutCore: CreateStrategyCore<
     ) {
       return strategyApi.skip('WAIT_DATA');
     }
-
-    const position = await strategyApi.getCurrentPosition();
-    const positionExists = Boolean(
-      position && typeof position.qty === 'number' && position.qty > 0,
-    );
 
     const signals = getSignals(config, {
       candle,

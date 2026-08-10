@@ -1,4 +1,7 @@
-import { createStrategyIndicatorsState } from '../indicators';
+import {
+  createStrategyIndicatorsState,
+  releaseStrategyIndicatorsReplayCache,
+} from '../indicators';
 
 const INTERVAL_15M_MS = 15 * 60_000;
 
@@ -14,6 +17,70 @@ const makeCandle = (timestamp: number, close: number) => ({
 });
 
 describe('strategy indicators state snapshot integration', () => {
+  it('keeps bounded reads and snapshots equal in backtest, replay, and runtime', () => {
+    const data = Array.from({ length: 260 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index * 0.5),
+    );
+    const btcData = Array.from({ length: 260 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 20_000 + index),
+    );
+    const periods = {
+      maFast: 3,
+      maMedium: 4,
+      maSlow: 5,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const current = data.at(-1)!;
+    const currentBtc = btcData.at(-1)!;
+    const replayKey = 'indicator-mode-parity';
+
+    const runMode = (env: 'BACKTEST' | 'PARITY' | 'CRON') => {
+      const modeData = data.slice(0, -1);
+      const modeBtcData = btcData.slice(0, -1);
+      const state = createStrategyIndicatorsState({
+        env,
+        data: modeData as any,
+        btcData: modeBtcData as any,
+        periods,
+        ...(env === 'PARITY' ? { sharedReplayKey: replayKey } : {}),
+      });
+
+      modeData.push(current);
+      modeBtcData.push(currentBtc);
+      state.setCurrentBar(current as any, currentBtc as any);
+      state.onBar();
+
+      const latest = state.latestSnapshot!() as Record<string, any>;
+      const full = state.snapshot() as Record<string, any>;
+      return {
+        maFast: state.latestNumbers('maFast', 2),
+        maSlow: state.latestNumbers('maSlow', 2),
+        latestMaFast: latest.maFast,
+        fullMaFast: full.maFast.slice(-2),
+        latestBaseContext: JSON.parse(JSON.stringify(latest.baseContext)),
+        fullBaseContext: JSON.parse(JSON.stringify(full.baseContext)),
+      };
+    };
+
+    try {
+      const backtest = runMode('BACKTEST');
+      expect(runMode('PARITY')).toEqual(backtest);
+      expect(runMode('CRON')).toEqual(backtest);
+      expect(backtest.maFast).toEqual(backtest.fullMaFast);
+      expect(backtest.latestBaseContext).toEqual(backtest.fullBaseContext);
+    } finally {
+      releaseStrategyIndicatorsReplayCache(replayKey);
+    }
+  });
+
   it('keeps lazy snapshot fields stable after the next bar is applied', () => {
     const data = Array.from({ length: 140 }, (_, index) =>
       makeCandle(index * INTERVAL_15M_MS, 100 + index),

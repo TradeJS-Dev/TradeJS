@@ -2191,6 +2191,33 @@ export const createIndicators = (
       const last = value[value.length - 1];
       return typeof last === 'number' ? last : undefined;
     },
+    latestNumbers: (key: string, count: number): number[] => {
+      const normalizedCount = Number.isFinite(count)
+        ? Math.max(0, Math.trunc(count))
+        : 0;
+      if (normalizedCount === 0) return [];
+
+      const buffer = indicatorHistory[key];
+      if (buffer) {
+        const resultSize = Math.min(normalizedCount, buffer.size);
+        const result = new Array<number>(resultSize);
+        const firstOffset = buffer.size - resultSize;
+        for (let index = 0; index < resultSize; index += 1) {
+          result[index] =
+            buffer.values[
+              (buffer.start + firstOffset + index) % ML_BASE_CANDLES_WINDOW
+            ]!;
+        }
+        return result;
+      }
+
+      const value = getHistoryResult()[key as keyof IndicatorsHistorySnapshot];
+      return Array.isArray(value)
+        ? value
+            .slice(-normalizedCount)
+            .filter((item): item is number => typeof item === 'number')
+        : [];
+    },
     result: (): IndicatorsHistorySnapshot => {
       return cloneHistorySnapshot(
         getHistoryResult() as Record<string, number[] | Candle[]>,

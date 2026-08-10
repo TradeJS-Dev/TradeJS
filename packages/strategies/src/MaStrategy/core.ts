@@ -179,7 +179,7 @@ export const isMaCrossQualityAccepted = (
 export const createMaStrategyCore: CreateStrategyCore<
   MaStrategyConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi }) => {
+> = async ({ config, strategyApi, indicatorsState }) => {
   const { FEE_PERCENT, MAX_LOSS_VALUE, TRADE_COOLDOWN_MS, LONG, SHORT } =
     config;
 
@@ -189,13 +189,9 @@ export const createMaStrategyCore: CreateStrategyCore<
   });
 
   return async () => {
-    const { indicators } = strategyApi.getCurrentIndicatorsContext();
-    if (!indicators) {
-      return strategyApi.skip('NO_INDICATORS');
-    }
-
-    const maFast = Array.isArray(indicators.maFast) ? indicators.maFast : [];
-    const maSlow = Array.isArray(indicators.maSlow) ? indicators.maSlow : [];
+    indicatorsState.onBar();
+    const maFast = indicatorsState.latestNumbers('maFast', 2);
+    const maSlow = indicatorsState.latestNumbers('maSlow', 2);
     if (maFast.length < 2 || maSlow.length < 2) {
       return strategyApi.skip('WAIT_MA_DATA');
     }
@@ -230,6 +226,10 @@ export const createMaStrategyCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
+    const { indicators } = strategyApi.getCurrentIndicatorsContext();
+    if (!indicators) {
+      return strategyApi.skip('NO_INDICATORS');
+    }
     const crossQuality = getMaCrossQuality(cross, indicators.baseContext);
     if (!isMaCrossQualityAccepted(config, crossQuality)) {
       return strategyApi.skip('WEAK_MA_CROSS');

@@ -39,7 +39,12 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
         baseContext: indicators?.baseContext,
       };
     }),
-    getBaseContext: jest.fn(() => overrides.indicators?.baseContext),
+    getBaseContext: jest.fn(() => {
+      const indicators =
+        overrides.indicators ??
+        overrides.nextIndicators?.(overrides.candle, overrides.btcCandle);
+      return indicators?.baseContext;
+    }),
     getDecisionPriceContext: jest.fn(async () => ({
       timestamp: overrides.marketData?.timestamp,
       currentPrice: overrides.marketData?.currentPrice,
@@ -162,6 +167,8 @@ const makeIndicatorSnapshot = (
   return {
     ...snapshot,
     baseContext: {
+      candle: snapshot.candle,
+      prevCandle: snapshot.prevCandle,
       raw: {
         trend: {
           maFast: snapshot.maFast,
@@ -190,7 +197,7 @@ const makeIndicatorSnapshot = (
           volume24h: null,
         },
         price: {
-          prevClose: snapshot.prevCandle.close,
+          prevClose: snapshot.prevCandle?.close ?? null,
           price1hPct: null,
           price24hPct: null,
           highPrice1h: null,
@@ -393,6 +400,47 @@ describe('createBreakoutCore', () => {
     );
   });
 
+  it('skips a mature engine bar without materializing indicator context', async () => {
+    const initialCandles = [
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_060_000, 100),
+    ];
+    const candle = makeCandle(1_700_000_120_000, 100);
+    const strategyApi = makeStrategyApi({
+      currentPosition: undefined,
+      marketData: {
+        currentPrice: candle.close,
+        timestamp: candle.timestamp,
+        fullData: [...initialCandles, candle],
+        lastCandle: candle,
+      },
+      nextIndicators: () => makeIndicatorSnapshot(candle),
+    });
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        BREAKOUT_USE_ENGINE: true,
+        BREAKOUT_ENGINE_LOOKBACK: 2,
+        BREAKOUT_ENGINE_DELAY: 1,
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: initialCandles,
+      btcData: [],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: {} as any,
+    });
+
+    await expect(core(candle, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    });
+    expect(strategyApi.getBaseContext).not.toHaveBeenCalled();
+    expect(strategyApi.getCurrentIndicatorsContext).not.toHaveBeenCalled();
+  });
+
   it('returns exit decision for reverse signal on open position', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
 
@@ -525,12 +573,12 @@ describe('createBreakoutCore', () => {
           fullData: [candle],
           lastCandle: candle,
         },
-        nextIndicators: () => ({
-          candle,
-          prevCandle: null,
-          highLevel: null,
-          lowLevel: null,
-        }),
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            prevCandle: null,
+            highLevel: null,
+            lowLevel: null,
+          }),
       }),
       indicatorsState: {} as any,
     });

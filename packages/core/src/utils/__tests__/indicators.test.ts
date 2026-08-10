@@ -1326,7 +1326,7 @@ describe('utils indicators', () => {
       },
     });
 
-    for (let i = 0; i < 160; i += 1) {
+    for (let i = 0; i < 260; i += 1) {
       const ts = i * INTERVAL_15M_MS;
       indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
     }
@@ -1548,6 +1548,24 @@ describe('utils indicators', () => {
     const expected = result.maFast1h[result.maFast1h.length - 1];
 
     expect(indicators.latestNumber('maFast1h')).toBe(expected);
+  });
+
+  it('returns the latest numeric history window without changing its order', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 4,
+      },
+    });
+
+    for (let i = 0; i < 160; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const expected = (indicators.result().maFast ?? []).slice(-2);
+    expect(indicators.latestNumbers('maFast', 2)).toEqual(expected);
   });
 
   it('restores controller runtime state and preserves indicator parity after suffix replay', () => {

@@ -18,16 +18,23 @@ const makeCandle = (index: number, price: number) => ({
   turnover: price * 1_000,
 });
 
-const makeIndicatorsState = (snapshot: Record<string, unknown> | null) =>
-  ({
+const makeIndicatorsState = (snapshot: Record<string, unknown> | null) => {
+  const latestNumbers = (key: string, count: number) => {
+    const value = snapshot?.[key];
+    return Array.isArray(value) ? value.slice(-count) : [];
+  };
+
+  return {
     setCurrentBar: jest.fn(),
     next: jest.fn(),
     onBar: jest.fn(),
     ensureInitializedWithCurrentBar: jest.fn(),
     snapshot: jest.fn(() => snapshot),
     latestNumber: jest.fn(() => undefined),
+    latestNumbers: jest.fn(latestNumbers),
     isInitialized: jest.fn(() => true),
-  }) as any;
+  } as any;
+};
 
 let activeIndicatorsState: any;
 
