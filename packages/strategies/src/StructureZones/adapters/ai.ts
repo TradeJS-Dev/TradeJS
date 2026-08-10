@@ -7,6 +7,11 @@ import {
 import { StructureZonesConfig } from '../config';
 import { StructureZonesSignalContext } from '../engine';
 import { buildStructureZonesGuardrailContext } from '../guardrails';
+import {
+  getAiPayloadNumber,
+  getAiPayloadString,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
@@ -26,7 +31,7 @@ const getStructureZonesContext = (payload: AiPayload) => {
   });
 };
 
-export const structureZonesAiAdapter: StrategyAiAdapter = {
+const structureZonesBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const payload = {
       ...basePayload,
@@ -120,3 +125,24 @@ Interpretation rules for StructureZones:
       >,
     ),
 };
+
+export const structureZonesAiAdapter = withStrategyLocalAiGate(
+  structureZonesBaseAiAdapter,
+  {
+    id: 'structure_zones_bull_mtf_breadth',
+    approves: ({ payload }) => {
+      const mtfAlignment = getAiPayloadString(
+        payload,
+        'additionalIndicators.baseContext.mtf.summary.mtfAlignment',
+      );
+      const decliners = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.relative.marketBreadths.top50.decliners',
+      );
+
+      return (
+        mtfAlignment === 'aligned_bull' && decliners != null && decliners >= 1
+      );
+    },
+  },
+);

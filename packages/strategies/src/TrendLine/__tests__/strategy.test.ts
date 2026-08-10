@@ -5,7 +5,6 @@ import {
   createIndicators,
   createTrendlineEngine,
 } from '@tradejs/core/indicators';
-import { logger } from '@tradejs/infra/logger';
 import { fetchMlThreshold } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 

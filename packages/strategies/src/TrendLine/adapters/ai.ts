@@ -469,19 +469,6 @@ const buildTrendlineContext = (signal: {
     volumeRel20 < 0.8 &&
     derivativesRiskFlags.includes('crowded_short') &&
     benchmarkTrendAlignment !== 'against_benchmark';
-  const longHistoricalApprovalPocket =
-    (venueSpreadZScore != null && venueSpreadZScore <= -1) ||
-    longUsLowVolumeCrowdedShortSqueeze ||
-    (sessionPrimary !== 'europe' &&
-      !derivativesRiskFlags.includes('missing_derivatives') &&
-      !(
-        structural.breakVsAtrRatio != null &&
-        structural.breakVsAtrRatio >= 0.8 &&
-        structural.breakVsAtrRatio < 1.2
-      ) &&
-      volumeRel20 != null &&
-      volumeRel20 >= 0.8 &&
-      benchmarkTrendAlignment !== 'against_benchmark');
   const longHighQualitySessionApproval =
     baseDeterministicQuality >= 5 && sessionPrimary !== 'asia';
   const longStrongDerivativesAlignedApproval =
@@ -500,11 +487,6 @@ const buildTrendlineContext = (signal: {
     derivativesDirectionAligned == null &&
     derivativesRiskFlags.length > 0 &&
     !oiNotConfirming;
-  const longBaseContextApprovalPocket =
-    structural.signalDirection !== 'LONG' ||
-    longModerateRetestLiquidSessionApproval ||
-    (longHistoricalApprovalPocket &&
-      (longHighQualitySessionApproval || longStrongDerivativesAlignedApproval));
   const shortThinNeutralBenchmarkRisk =
     structural.signalDirection === 'SHORT' &&
     volumeRel20 != null &&

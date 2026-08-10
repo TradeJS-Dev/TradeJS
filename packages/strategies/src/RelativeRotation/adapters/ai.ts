@@ -7,6 +7,10 @@ import type {
 import type { RelativeRotationConfig } from '../config';
 import type { RelativeRotationSignalContext } from '../core';
 import { buildRelativeRotationGuardrailContext } from '../guardrails';
+import {
+  getAiPayloadNumber,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -27,7 +31,7 @@ const getRelativeRotationContext = (payload: AiPayload) => {
   });
 };
 
-export const relativeRotationAiAdapter: StrategyAiAdapter = {
+const relativeRotationBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }): AiPayload => {
     const payload = {
       ...basePayload,
@@ -114,3 +118,28 @@ Interpretation rules for RelativeRotation:
       >,
     ),
 };
+
+export const relativeRotationAiAdapter = withStrategyLocalAiGate(
+  relativeRotationBaseAiAdapter,
+  {
+    id: 'relative_rotation_short_channel_liquidations',
+    approves: ({ signal, payload }) => {
+      const centerlineSlope = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.regime.trend.adaptiveChannel.centerlineSlope',
+      );
+      const trxLiquidationImbalance = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.derivatives.referenceContexts.TRXUSDT.intervals.1h.liqImbalance',
+      );
+
+      return (
+        signal.direction === 'SHORT' &&
+        centerlineSlope != null &&
+        centerlineSlope <= -0.0002 &&
+        trxLiquidationImbalance != null &&
+        trxLiquidationImbalance >= 0.17
+      );
+    },
+  },
+);

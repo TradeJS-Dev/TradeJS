@@ -137,20 +137,6 @@ const toFiniteNumberOrNull = (value: unknown): number | null => {
   return null;
 };
 
-const getLastFiniteNumber = (value: unknown): number | null => {
-  if (Array.isArray(value)) {
-    for (let i = value.length - 1; i >= 0; i -= 1) {
-      const item = toFiniteNumberOrNull(value[i]);
-      if (item != null) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  return toFiniteNumberOrNull(value);
-};
-
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)

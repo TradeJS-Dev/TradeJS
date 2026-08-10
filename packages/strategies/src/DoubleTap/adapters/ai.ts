@@ -7,6 +7,10 @@ import {
 } from '@tradejs/types';
 import { DoubleTapConfig } from '../config';
 import { DoubleTapSignalContext } from '../engine';
+import {
+  getAiPayloadNumber,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 type Direction = 'LONG' | 'SHORT';
 
@@ -1344,7 +1348,7 @@ const withDoubleTapGateFeatures = ({
         doubleTapGateFeatures: context.doubleTapGateFeatures,
       };
 
-export const doubleTapAiAdapter: StrategyAiAdapter = {
+const doubleTapBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const baseAdditional =
       (basePayload.additionalIndicators as
@@ -1505,3 +1509,28 @@ Interpretation rules for DoubleTap:
       >,
     ),
 };
+
+export const doubleTapAiAdapter = withStrategyLocalAiGate(
+  doubleTapBaseAiAdapter,
+  {
+    id: 'double_tap_long_dispersion_momentum',
+    approves: ({ signal, payload }) => {
+      const altDispersion24h = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.doubleTapContext.altDispersion24h',
+      );
+      const roc1h = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.regime.momentum.roc1h',
+      );
+
+      return (
+        signal.direction === 'LONG' &&
+        altDispersion24h != null &&
+        altDispersion24h >= 0.032 &&
+        roc1h != null &&
+        roc1h >= 0
+      );
+    },
+  },
+);

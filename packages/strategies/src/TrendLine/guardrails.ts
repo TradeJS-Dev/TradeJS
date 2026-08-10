@@ -7,7 +7,6 @@ import {
 import {
   buildTrendLineEvaluator,
   getBias,
-  getLastFiniteNumber,
   getSpreadPct,
   getTrendLineFromPayload,
   toFiniteNumberOrNull,

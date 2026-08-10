@@ -97,7 +97,6 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     ];
   const xrpDerivatives1h =
     baseContext?.derivatives?.referenceContexts?.['XRPUSDT']?.intervals?.['1h'];
-  const targetDerivatives1hStale = targetDerivatives1h?.stale === true;
   const ethDerivatives1hStale = ethDerivatives1h?.stale === true;
   const xrpDerivatives1hStale = xrpDerivatives1h?.stale === true;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;

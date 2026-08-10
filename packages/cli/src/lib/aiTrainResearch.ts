@@ -271,9 +271,7 @@ const resolveGateFingerprint = async (
     `packages/strategies/src/${strategyName}/guardrails.ts`,
     `packages/strategies/src/${strategyName}/pockets.ts`,
     `packages/strategies/src/${strategyName}/config.ts`,
-    'packages/strategies/src/shared/aiGateObservation.ts',
-    'packages/strategies/src/shared/aiGateRebuild.ts',
-    'packages/strategies/src/index.ts',
+    'packages/strategies/src/shared/localAiGate.ts',
     'packages/node/src/ai.ts',
   ];
   const optionalSourceEntries = await Promise.all(

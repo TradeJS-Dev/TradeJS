@@ -11,7 +11,6 @@ import {
 import {
   Candle,
   CreateStrategyCore,
-  Direction,
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';

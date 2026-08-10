@@ -14,6 +14,10 @@ import {
   getSignalDerivativesContext,
   getSignalSessionPrimary,
 } from '../../shared/baseContext';
+import {
+  getAiPayloadNumber,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
 AdaptiveMomentumRibbon addon:
@@ -220,20 +224,6 @@ const toFiniteNumberOrNull = (value: unknown): number | null => {
   return null;
 };
 
-const getLastFiniteNumber = (value: unknown): number | null => {
-  if (Array.isArray(value)) {
-    for (let i = value.length - 1; i >= 0; i -= 1) {
-      const item = toFiniteNumberOrNull(value[i]);
-      if (item != null) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  return toFiniteNumberOrNull(value);
-};
-
 const getBias = (fast: number | null, slow: number | null): Bias => {
   if (fast == null || slow == null) {
     return null;
@@ -289,22 +279,6 @@ const getDirectionalAlignment = ({
   }
 
   return signalDirection === 'LONG' ? value > 0 : value < 0;
-};
-
-const isDirectionallyAtLeast = ({
-  signalDirection,
-  value,
-  threshold,
-}: {
-  signalDirection: Direction | null;
-  value: number | null;
-  threshold: number;
-}) => {
-  if (signalDirection == null || value == null) {
-    return false;
-  }
-
-  return signalDirection === 'LONG' ? value >= threshold : value <= -threshold;
 };
 
 const getAdditionalIndicators = (
@@ -1427,7 +1401,7 @@ const postProcessAnalysis = ({
   };
 };
 
-export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
+const adaptiveMomentumRibbonBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const additionalIndicators = getRecord(basePayload.additionalIndicators);
 
@@ -1537,3 +1511,28 @@ Interpretation rules for AdaptiveMomentumRibbon:
       >,
     ),
 };
+
+export const adaptiveMomentumRibbonAiAdapter = withStrategyLocalAiGate(
+  adaptiveMomentumRibbonBaseAiAdapter,
+  {
+    id: 'adaptive_momentum_ribbon_long_breadth_poc',
+    approves: ({ signal, payload }) => {
+      const unchanged = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.relative.marketBreadths.top100.unchanged',
+      );
+      const pointOfControlVolumeShare = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.participation.volumeStructure.pointOfControlVolumeShare',
+      );
+
+      return (
+        signal.direction === 'LONG' &&
+        unchanged != null &&
+        unchanged >= 10 &&
+        pointOfControlVolumeShare != null &&
+        pointOfControlVolumeShare <= 0.166
+      );
+    },
+  },
+);
