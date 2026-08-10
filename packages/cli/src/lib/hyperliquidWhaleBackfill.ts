@@ -1,3 +1,4 @@
+import ProgressBar from 'progress';
 import {
   getHyperliquidWhaleWalletCoverage,
   hasHyperliquidWhaleBackfillCoverage,
@@ -314,11 +315,36 @@ export const backfillHyperliquidWhaleContext = async (params: {
     toMs,
     ...identity,
   });
+  const totalCoverageBuckets = Math.ceil(
+    (toMs - fromMs) / HYPERLIQUID_WHALE_BUCKET_MS,
+  );
+  const coverageBar = new ProgressBar(
+    'Hyperliquid coverage :current/:total [:bar][:percent] :eta(s) rows=:rows chunk=:chunk',
+    {
+      total: Math.max(1, totalCoverageBuckets),
+      width: 24,
+    },
+  );
+  let displayedCoverageBuckets = 0;
   const coverageBuckets = await rebuildHyperliquidWhaleCoverageRows({
     fromMs,
     toMs,
     expectedWhales: whales.addresses.length,
     ...identity,
+    onProgress: (progress) => {
+      const next = Math.max(
+        displayedCoverageBuckets,
+        Math.min(progress.completedBuckets, coverageBar.total),
+      );
+      const delta = next - displayedCoverageBuckets;
+      if (delta > 0) {
+        coverageBar.tick(delta, {
+          rows: progress.rows,
+          chunk: `${progress.chunkIndex}/${progress.totalChunks}`,
+        });
+        displayedCoverageBuckets = next;
+      }
+    },
   });
   const result: HyperliquidWhaleBackfillResult = {
     cached: false,

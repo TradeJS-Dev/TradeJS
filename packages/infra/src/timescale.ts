@@ -3275,80 +3275,182 @@ export async function upsertHyperliquidWhaleWalletCoverage(params: {
   );
 }
 
+export type HyperliquidWhaleCoverageRebuildProgress = {
+  chunkIndex: number;
+  totalChunks: number;
+  completedBuckets: number;
+  totalBuckets: number;
+  rows: number;
+};
+
 export async function rebuildHyperliquidWhaleCoverageRows(params: {
   fromMs: number;
   toMs: number;
   expectedWhales: number;
   universeFingerprint: string;
   whaleRegistryFingerprint: string;
+  chunkMinutes?: number;
+  onProgress?: (progress: HyperliquidWhaleCoverageRebuildProgress) => void;
 }) {
   await ensureHyperliquidWhaleSchema();
   if (params.toMs <= params.fromMs) return 0;
-  const result = await getPool().query(
-    `
-      WITH buckets AS (
-        SELECT generate_series(
-          to_timestamp($3/1000.0),
-          to_timestamp($4/1000.0) - interval '1 minute',
-          interval '1 minute'
-        ) AS ts
-      ), coverage AS (
+  const minuteMs = 60_000;
+  const defaultChunkMinutes = 7 * 24 * 60;
+  const chunkMinutes =
+    Number.isFinite(params.chunkMinutes) && Number(params.chunkMinutes) > 0
+      ? Math.floor(Number(params.chunkMinutes))
+      : defaultChunkMinutes;
+  const chunkMs = chunkMinutes * minuteMs;
+  const totalBuckets = Math.ceil((params.toMs - params.fromMs) / minuteMs);
+  const totalChunks = Math.ceil((params.toMs - params.fromMs) / chunkMs);
+  let completedBuckets = 0;
+  let rows = 0;
+
+  for (
+    let chunkIndex = 0, chunkFromMs = params.fromMs;
+    chunkFromMs < params.toMs;
+    chunkIndex += 1, chunkFromMs += chunkMs
+  ) {
+    const chunkToMs = Math.min(params.toMs, chunkFromMs + chunkMs);
+    const result = await getPool().query(
+      `
+        WITH normalized_ranges AS (
+          SELECT
+            address,
+            GREATEST(
+              to_timestamp($3/1000.0),
+              date_trunc('minute', covered_from_ts) +
+                CASE
+                  WHEN covered_from_ts = date_trunc('minute', covered_from_ts)
+                  THEN interval '0 minutes'
+                  ELSE interval '1 minute'
+                END
+            ) AS range_start,
+            LEAST(
+              to_timestamp($4/1000.0),
+              date_trunc('minute', covered_to_ts)
+            ) AS range_end
+          FROM hyperliquid_whale_wallet_coverage
+          WHERE universe_fingerprint = $1
+            AND whale_registry_fingerprint = $2
+            AND data_model_version = $6
+            AND status IN ('complete', 'truncated')
+            AND covered_from_ts < to_timestamp($4/1000.0)
+            AND covered_to_ts > to_timestamp($3/1000.0)
+        ), eligible_ranges AS (
+          SELECT *
+          FROM normalized_ranges
+          WHERE range_start < range_end
+        ), ordered_ranges AS (
+          SELECT
+            *,
+            MAX(range_end) OVER (
+              PARTITION BY address
+              ORDER BY range_start, range_end
+              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            ) AS previous_max_end
+          FROM eligible_ranges
+        ), marked_ranges AS (
+          SELECT
+            *,
+            SUM(
+              CASE
+                WHEN previous_max_end IS NULL OR range_start > previous_max_end
+                THEN 1
+                ELSE 0
+              END
+            ) OVER (
+              PARTITION BY address
+              ORDER BY range_start, range_end
+            ) AS range_group
+          FROM ordered_ranges
+        ), merged_ranges AS (
+          SELECT
+            address,
+            MIN(range_start) AS range_start,
+            MAX(range_end) AS range_end
+          FROM marked_ranges
+          GROUP BY address, range_group
+        ), deltas AS (
+          SELECT range_start AS ts, 1 AS delta
+          FROM merged_ranges
+          UNION ALL
+          SELECT range_end AS ts, -1 AS delta
+          FROM merged_ranges
+        ), bucket_deltas AS (
+          SELECT ts, SUM(delta)::int AS delta
+          FROM deltas
+          GROUP BY ts
+        ), buckets AS (
+          SELECT generate_series(
+            to_timestamp($3/1000.0),
+            to_timestamp($4/1000.0) - interval '1 minute',
+            interval '1 minute'
+          ) AS ts
+        ), coverage AS (
+          SELECT
+            buckets.ts,
+            SUM(COALESCE(bucket_deltas.delta, 0)) OVER (
+              ORDER BY buckets.ts
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            )::int AS covered_whales
+          FROM buckets
+          LEFT JOIN bucket_deltas USING (ts)
+        )
+        INSERT INTO hyperliquid_whale_coverage_1m (
+          ts,
+          covered_whales,
+          expected_whales,
+          coverage_pct,
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          source,
+          data_model_version
+        )
         SELECT
-          buckets.ts,
-          COUNT(DISTINCT wallets.address)::int AS covered_whales
-        FROM buckets
-        LEFT JOIN hyperliquid_whale_wallet_coverage wallets
-          ON wallets.universe_fingerprint = $1
-         AND wallets.whale_registry_fingerprint = $2
-         AND wallets.data_model_version = $6
-         AND wallets.status IN ('complete', 'truncated')
-         AND wallets.covered_from_ts <= buckets.ts
-         AND wallets.covered_to_ts >= buckets.ts + interval '1 minute'
-        GROUP BY buckets.ts
-      )
-      INSERT INTO hyperliquid_whale_coverage_1m (
-        ts,
-        covered_whales,
-        expected_whales,
-        coverage_pct,
-        universe_fingerprint,
-        whale_registry_fingerprint,
-        source
-        ,data_model_version
-      )
-      SELECT
-        ts,
-        covered_whales,
-        $5,
-        CASE WHEN $5 > 0 THEN covered_whales::double precision / $5 ELSE 0 END,
-        $1,
-        $2,
-        'hyperliquid_user_fills',
-        $6
-      FROM coverage
-      ON CONFLICT (
-        universe_fingerprint,
-        whale_registry_fingerprint,
-        ts
-      ) DO UPDATE SET
-        covered_whales = EXCLUDED.covered_whales,
-        expected_whales = EXCLUDED.expected_whales,
-        coverage_pct = EXCLUDED.coverage_pct,
-        source = EXCLUDED.source,
-        data_model_version = EXCLUDED.data_model_version,
-        ingested_at = now()
-      RETURNING 1
-    `,
-    [
-      params.universeFingerprint,
-      params.whaleRegistryFingerprint,
-      params.fromMs,
-      params.toMs,
-      params.expectedWhales,
-      HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
-    ],
-  );
-  return result.rowCount ?? 0;
+          ts,
+          covered_whales,
+          $5,
+          CASE WHEN $5 > 0 THEN covered_whales::double precision / $5 ELSE 0 END,
+          $1,
+          $2,
+          'hyperliquid_user_fills',
+          $6
+        FROM coverage
+        ON CONFLICT (
+          universe_fingerprint,
+          whale_registry_fingerprint,
+          ts
+        ) DO UPDATE SET
+          covered_whales = EXCLUDED.covered_whales,
+          expected_whales = EXCLUDED.expected_whales,
+          coverage_pct = EXCLUDED.coverage_pct,
+          source = EXCLUDED.source,
+          data_model_version = EXCLUDED.data_model_version,
+          ingested_at = now()
+      `,
+      [
+        params.universeFingerprint,
+        params.whaleRegistryFingerprint,
+        chunkFromMs,
+        chunkToMs,
+        params.expectedWhales,
+        HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
+      ],
+    );
+    const chunkBuckets = Math.ceil((chunkToMs - chunkFromMs) / minuteMs);
+    completedBuckets = Math.min(totalBuckets, completedBuckets + chunkBuckets);
+    rows += result.rowCount ?? 0;
+    params.onProgress?.({
+      chunkIndex: chunkIndex + 1,
+      totalChunks,
+      completedBuckets,
+      totalBuckets,
+      rows,
+    });
+  }
+
+  return rows;
 }
 
 export async function upsertHyperliquidWhaleCoverageRows(

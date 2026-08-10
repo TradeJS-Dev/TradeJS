@@ -1537,9 +1537,12 @@ describe('timescale candle helpers', () => {
   });
 
   it('materializes one coverage row per minute from wallet ranges', async () => {
-    const query = jest.fn(async (sql: string) => {
-      if (sql.includes('RETURNING 1'))
-        return { rows: [{ '?column?': 1 }], rowCount: 3 };
+    const query = jest.fn(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('INSERT INTO hyperliquid_whale_coverage_1m')) {
+        const fromMs = Number(values?.[2]);
+        const toMs = Number(values?.[3]);
+        return { rows: [], rowCount: Math.ceil((toMs - fromMs) / 60_000) };
+      }
       return { rows: [] };
     });
     jest.doMock('pg', () => ({
@@ -1548,6 +1551,7 @@ describe('timescale candle helpers', () => {
     const { rebuildHyperliquidWhaleCoverageRows } = await import(
       '@tradejs/infra/timescale'
     );
+    const progress: unknown[] = [];
     await expect(
       rebuildHyperliquidWhaleCoverageRows({
         fromMs: 60_000,
@@ -1555,12 +1559,42 @@ describe('timescale candle helpers', () => {
         expectedWhales: 100,
         universeFingerprint: 'universe-v1',
         whaleRegistryFingerprint: 'whales-v1',
+        chunkMinutes: 2,
+        onProgress: (event) => progress.push(event),
       }),
     ).resolves.toBe(3);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('COUNT(DISTINCT wallets.address)'),
-      ['universe-v1', 'whales-v1', 60_000, 240_000, 100, 3],
+    const coverageCalls = query.mock.calls.filter(([sql]) =>
+      sql.includes('INSERT INTO hyperliquid_whale_coverage_1m'),
     );
+    expect(coverageCalls).toHaveLength(2);
+    expect(coverageCalls[0]).toEqual([
+      expect.stringContaining('MAX(range_end) OVER'),
+      ['universe-v1', 'whales-v1', 60_000, 180_000, 100, 3],
+    ]);
+    expect(coverageCalls[1]).toEqual([
+      expect.stringContaining('SUM(COALESCE(bucket_deltas.delta, 0)) OVER'),
+      ['universe-v1', 'whales-v1', 180_000, 240_000, 100, 3],
+    ]);
+    expect(String(coverageCalls[0][0])).not.toContain(
+      'COUNT(DISTINCT wallets.address)',
+    );
+    expect(String(coverageCalls[0][0])).not.toContain('RETURNING 1');
+    expect(progress).toEqual([
+      {
+        chunkIndex: 1,
+        totalChunks: 2,
+        completedBuckets: 2,
+        totalBuckets: 3,
+        rows: 2,
+      },
+      {
+        chunkIndex: 2,
+        totalChunks: 2,
+        completedBuckets: 3,
+        totalBuckets: 3,
+        rows: 3,
+      },
+    ]);
   });
 
   it('dry-runs and applies deprecated market context cleanup', async () => {

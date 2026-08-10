@@ -5,6 +5,15 @@ const mockUpsertHyperliquidWhaleTradeEvents = jest.fn();
 const mockRebuildHyperliquidWhaleFlowRows = jest.fn();
 const mockRebuildHyperliquidWhaleCoverageRows = jest.fn();
 
+jest.mock('progress', () =>
+  jest
+    .fn()
+    .mockImplementation((_format: string, options: { total: number }) => ({
+      total: options.total,
+      tick: jest.fn(),
+    })),
+);
+
 jest.mock('@tradejs/infra/timescale', () => ({
   hasHyperliquidWhaleBackfillCoverage: (...args: unknown[]) =>
     mockHasHyperliquidWhaleBackfillCoverage(...args),
@@ -42,6 +51,7 @@ import {
   fetchHyperliquidUserFillsByTime,
 } from '../lib/hyperliquidWhaleBackfill';
 import { HyperliquidInfoRateLimiter } from '../lib/hyperliquidRateLimiter';
+import ProgressBar from 'progress';
 
 describe('hyperliquidWhaleBackfill', () => {
   beforeEach(() => {
@@ -229,5 +239,62 @@ describe('hyperliquidWhaleBackfill', () => {
     });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(mockRebuildHyperliquidWhaleCoverageRows).toHaveBeenCalled();
+  });
+
+  it('renders coverage rebuild progress after each completed chunk', async () => {
+    mockGetHyperliquidWhaleWalletCoverage.mockResolvedValue({
+      status: 'truncated',
+    });
+    mockRebuildHyperliquidWhaleCoverageRows.mockImplementation(
+      async (params: {
+        onProgress?: (progress: {
+          chunkIndex: number;
+          totalChunks: number;
+          completedBuckets: number;
+          totalBuckets: number;
+          rows: number;
+        }) => void;
+      }) => {
+        params.onProgress?.({
+          chunkIndex: 1,
+          totalChunks: 2,
+          completedBuckets: 1,
+          totalBuckets: 2,
+          rows: 1,
+        });
+        params.onProgress?.({
+          chunkIndex: 2,
+          totalChunks: 2,
+          completedBuckets: 2,
+          totalBuckets: 2,
+          rows: 2,
+        });
+        return 2;
+      },
+    );
+
+    await backfillHyperliquidWhaleContext({
+      startMs: 0,
+      endMs: 120_000,
+      cacheOnly: false,
+      strict: false,
+    });
+
+    expect(ProgressBar).toHaveBeenCalledWith(
+      expect.stringContaining('Hyperliquid coverage'),
+      { total: 2, width: 24 },
+    );
+    const progressBarMock = ProgressBar as unknown as jest.Mock;
+    const progressBar = progressBarMock.mock.results[
+      progressBarMock.mock.results.length - 1
+    ].value as { tick: jest.Mock };
+    expect(progressBar.tick).toHaveBeenNthCalledWith(1, 1, {
+      rows: 1,
+      chunk: '1/2',
+    });
+    expect(progressBar.tick).toHaveBeenNthCalledWith(2, 1, {
+      rows: 2,
+      chunk: '2/2',
+    });
   });
 });
