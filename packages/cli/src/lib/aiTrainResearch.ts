@@ -88,6 +88,23 @@ export type AiTrainLineage = {
   context: Record<string, string | number | boolean | null>;
 };
 
+export const writeAiTrainResearchSnapshot = async ({
+  outputPath,
+  result,
+}: {
+  outputPath: string;
+  result: unknown;
+}) => {
+  const resolvedPath = path.resolve(outputPath);
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+  await fs.writeFile(
+    resolvedPath,
+    `${JSON.stringify(result, null, 2)}\n`,
+    'utf8',
+  );
+  return resolvedPath;
+};
+
 const normalizeForStableJson = (value: unknown): unknown => {
   if (Array.isArray(value)) {
     return value.map(normalizeForStableJson);
@@ -254,6 +271,9 @@ const resolveGateFingerprint = async (
     `packages/strategies/src/${strategyName}/guardrails.ts`,
     `packages/strategies/src/${strategyName}/pockets.ts`,
     `packages/strategies/src/${strategyName}/config.ts`,
+    'packages/strategies/src/shared/aiGateObservation.ts',
+    'packages/strategies/src/shared/aiGateRebuild.ts',
+    'packages/strategies/src/index.ts',
     'packages/node/src/ai.ts',
   ];
   const optionalSourceEntries = await Promise.all(

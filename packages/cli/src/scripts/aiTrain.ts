@@ -49,6 +49,7 @@ import {
   summarizeAiTrainCoverage,
   summarizeAiTrainRejectReasons,
   summarizeAiTrainTerminalWindows,
+  writeAiTrainResearchSnapshot,
 } from '../lib/aiTrainResearch';
 import {
   applyAiTrainSymbolQuarantine,
@@ -103,6 +104,11 @@ args.option(
   false,
 );
 args.option(['j', 'json'], 'Print structured JSON summary', false);
+args.option(
+  ['O', 'output'],
+  'Write the structured JSON summary to a file and suppress table output',
+  '',
+);
 args.option(
   ['S', 'since'],
   'Only evaluate rows at or after this timestamp (ISO date or epoch ms)',
@@ -654,7 +660,9 @@ export const main = async () => {
   const minQuality = normalizeInt(flags.minQuality, 4);
   const localOnly = Boolean(flags.localOnly);
   const saveChart = Boolean(flags.chart);
-  const jsonOutput = Boolean(flags.json);
+  const printJsonOutput = Boolean(flags.json);
+  const jsonOutputPath = String(flags.output || '').trim();
+  const jsonOutput = printJsonOutput || Boolean(jsonOutputPath);
   const sinceInput = parseTimestampFilter(flags.since);
   const untilInput = parseTimestampFilter(flags.until);
   const trailingPeriodMs = parseTrailingPeriodMs(flags.period);
@@ -1008,6 +1016,13 @@ export const main = async () => {
     },
   };
 
+  if (jsonOutputPath) {
+    await writeAiTrainResearchSnapshot({
+      outputPath: jsonOutputPath,
+      result,
+    });
+  }
+
   if (dumpEvaluationsPath) {
     await fs.mkdir(path.dirname(path.resolve(dumpEvaluationsPath)), {
       recursive: true,
@@ -1055,7 +1070,9 @@ export const main = async () => {
   }
 
   if (jsonOutput) {
-    console.log(JSON.stringify(result));
+    if (printJsonOutput) {
+      console.log(JSON.stringify(result));
+    }
     process.exit(failed === selectedRows ? 1 : 0);
   }
 

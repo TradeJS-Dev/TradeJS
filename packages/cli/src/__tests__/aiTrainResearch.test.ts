@@ -1,9 +1,13 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   buildAiTrainLineage,
   fingerprintResearchValue,
   summarizeAiTrainCoverage,
   summarizeAiTrainRejectReasons,
   summarizeAiTrainTerminalWindows,
+  writeAiTrainResearchSnapshot,
 } from '../lib/aiTrainResearch';
 
 describe('aiTrainResearch', () => {
@@ -149,6 +153,28 @@ describe('aiTrainResearch', () => {
     expect(lineage.context).not.toHaveProperty('DERIVATIVES_CONTEXT_INTERVALS');
     expect(lineage.context).not.toHaveProperty('OPENROUTER_API_KEY');
     expect(lineage.gateFingerprint).toMatch(/^[a-f0-9]{16}$/);
+    expect(lineage.gateFingerprintFiles).toEqual([]);
     expect(lineage.contextFingerprint).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it('writes a formatted structured research snapshot', async () => {
+    const temporaryDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'tradejs-ai-train-research-'),
+    );
+    const outputPath = path.join(temporaryDirectory, 'nested', 'report.json');
+
+    try {
+      await expect(
+        writeAiTrainResearchSnapshot({
+          outputPath,
+          result: { run: { strategy: 'TrendFollow' }, outcome: { total: 2 } },
+        }),
+      ).resolves.toBe(path.resolve(outputPath));
+      await expect(fs.readFile(outputPath, 'utf8')).resolves.toBe(
+        '{\n  "run": {\n    "strategy": "TrendFollow"\n  },\n  "outcome": {\n    "total": 2\n  }\n}\n',
+      );
+    } finally {
+      await fs.rm(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });

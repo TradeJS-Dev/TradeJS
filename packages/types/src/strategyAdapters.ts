@@ -43,6 +43,11 @@ export interface StrategyAiAdapter {
     payload: AiPayload;
     analysis: Partial<SignalAnalysis>;
   }) => Partial<SignalAnalysis>;
+  postProcessLocalAnalysis?: (params: {
+    signal: Signal;
+    payload: AiPayload;
+    analysis: Partial<SignalAnalysis>;
+  }) => Partial<SignalAnalysis>;
   buildSystemPromptAddon?: (params: { signal: Signal }) => string;
   buildHumanPromptAddon?: (params: {
     signal: Signal;

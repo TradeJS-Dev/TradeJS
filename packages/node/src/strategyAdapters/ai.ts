@@ -83,3 +83,21 @@ export const postProcessAiAnalysisByStrategy = (
     payload,
     analysis,
   }) ?? analysis;
+
+export const postProcessLocalAiAnalysisByStrategy = (
+  signal: Signal,
+  analysis: Partial<SignalAnalysis>,
+  payload = buildAiPayloadByStrategy(signal),
+): Partial<SignalAnalysis> => {
+  const adapter = getSignalAiAdapter(signal);
+  const strategyAnalysis =
+    adapter.postProcessAnalysis?.({ signal, payload, analysis }) ?? analysis;
+
+  return (
+    adapter.postProcessLocalAnalysis?.({
+      signal,
+      payload,
+      analysis: strategyAnalysis,
+    }) ?? strategyAnalysis
+  );
+};

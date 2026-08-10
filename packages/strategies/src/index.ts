@@ -64,8 +64,9 @@ import { VolumeDivergenceStrategyCreator } from './VolumeDivergence/strategy';
 import { config as volatilityCompressionBreakoutDefaultConfig } from './VolatilityCompressionBreakout/config';
 import { VolatilityCompressionBreakoutStrategyCreator } from './VolatilityCompressionBreakout/strategy';
 import { type StrategyRegistryEntry } from '@tradejs/types';
+import { applyAiGateRebuildPolicy } from './shared/aiGateRebuild';
 
-export const strategyEntries: StrategyRegistryEntry[] = [
+const rawStrategyEntries: StrategyRegistryEntry[] = [
   {
     manifest: breakoutManifest,
     creator: BreakoutStrategyCreator,
@@ -151,6 +152,19 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: VolumeDivergenceStrategyCreator,
   },
 ];
+
+export const strategyEntries: StrategyRegistryEntry[] = rawStrategyEntries.map(
+  (entry) => ({
+    ...entry,
+    manifest: {
+      ...entry.manifest,
+      aiAdapter: applyAiGateRebuildPolicy(
+        entry.manifest.name,
+        entry.manifest.aiAdapter,
+      ),
+    },
+  }),
+);
 
 const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   Breakout: breakoutDefaultConfig,

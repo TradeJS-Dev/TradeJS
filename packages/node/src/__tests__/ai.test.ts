@@ -3133,7 +3133,7 @@ describe('ai helpers', () => {
       expect(result.qualityReason).toContain('TrendLine guardrail');
     });
 
-    it('keeps TrendLine short approvals in watch mode during off-hours local replay', async () => {
+    it('passes TrendLine short core signals through during local replay', async () => {
       const signal = makeDeterministicQualityShortSignal();
       signal.timestamp = Date.UTC(2026, 0, 1, 23, 30);
       signal.additionalIndicators = {
@@ -3157,18 +3157,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
-          quality: 3,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          direction: signal.direction,
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps aligned recent TrendLine long follow-through setups in watch mode without the market-context pocket', async () => {
+    it('passes aligned recent TrendLine long core signals through', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.baseContext = {
         ...signal.additionalIndicators.baseContext,
@@ -3209,18 +3209,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps US low-volume crowded-short TrendLine long squeeze setups in watch mode without stronger confirmation', async () => {
+    it('passes US low-volume TrendLine long core signals through', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.baseContext = {
         ...signal.additionalIndicators.baseContext,
@@ -3270,18 +3270,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps moderate TrendLine long retests in watch mode without the market-context pocket', async () => {
+    it('passes moderate TrendLine long retest core signals through', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.trendlineTiming = {
         ...signal.additionalIndicators.trendlineTiming,
@@ -3337,18 +3337,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps thin neutral-benchmark TrendLine short ready-breakouts in watch mode during local replay', async () => {
+    it('passes thin neutral-benchmark TrendLine short core signals through', async () => {
       const signal = makeModerateReadyBreakoutShortTrendlineSignal();
       signal.additionalIndicators.baseContext = {
         ...signal.additionalIndicators.baseContext,
@@ -3380,18 +3380,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps TrendLine q4 setups in watch mode without reference OI and POC confirmation', async () => {
+    it('passes TrendLine core signals through without reference OI and POC confirmation', async () => {
       const signal = makeModerateReadyBreakoutShortTrendlineSignal();
       const payload = buildAiPayload(signal);
 
@@ -3408,18 +3408,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('approves TrendLine market-context pocket during local replay', async () => {
+    it('passes the legacy TrendLine market-context pocket through', async () => {
       const signal = withTrendlineMarketContextApproval(
         makeModerateReadyBreakoutShortTrendlineSignal(),
       );
@@ -3441,18 +3441,21 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'SHORT',
+          direction: signal.direction,
           quality: 4,
           needRetest: false,
-          takeProfitPrice: 96,
-          stopLossPrice: 101.2,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
+      );
+      expect(result.qualityReason).toContain(
+        'rule=pass_through; decision=approved',
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps moderate TrendLine short ready-breakout setups in watch mode without the market-context pocket', async () => {
+    it('passes moderate TrendLine short ready-breakout core signals through', async () => {
       const signal = makeModerateReadyBreakoutShortTrendlineSignal();
       withTrendlineQ4ReferenceConfirmation(signal);
       const payload = buildAiPayload(signal);
@@ -3471,18 +3474,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
+          direction: signal.direction,
           quality: 4,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps non-breakout TrendLine short setups in watch mode during local replay even when displacement is moderate', async () => {
+    it('passes non-breakout TrendLine short core signals through', async () => {
       const signal = makeDeterministicQualityShortSignal();
       signal.timestamp = Date.UTC(2026, 0, 1, 10, 0);
       signal.additionalIndicators = {
@@ -3505,18 +3508,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
-          quality: 3,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          direction: signal.direction,
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps TrendLine approvals in watch mode when derivatives oi is not confirming during local replay', async () => {
+    it('passes TrendLine core signals through when derivatives OI does not confirm', async () => {
       const signal = makeDeterministicQualityShortSignal();
       signal.additionalIndicators = {
         ...signal.additionalIndicators,
@@ -3549,18 +3552,18 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: null,
-          quality: 3,
-          needRetest: true,
-          takeProfitPrice: null,
-          stopLossPrice: null,
+          direction: signal.direction,
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('replays strong AdaptiveMomentumRibbon long entries locally without AI provider calls', async () => {
+    it('rejects AdaptiveMomentumRibbon entries outside the rebuilt pocket', async () => {
       const signal = makeAdaptiveMomentumRibbonSignal();
       const payload = buildAiPayload(signal);
 
@@ -3576,13 +3579,16 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
-          quality: 5,
-          needRetest: false,
+          direction: null,
+          quality: 3,
+          needRetest: true,
           retestPrice: null,
-          takeProfitPrice: 103,
-          stopLossPrice: 99.7,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
+      );
+      expect(result.rejectReason).toContain(
+        'rule=adaptive_momentum_ribbon_long_breadth_poc; decision=rejected',
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalled();

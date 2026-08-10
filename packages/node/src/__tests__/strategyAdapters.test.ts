@@ -19,6 +19,7 @@ import {
   buildAiSystemPromptAddonByStrategy,
   getStrategyAiAdapter,
   postProcessAiAnalysisByStrategy,
+  postProcessLocalAiAnalysisByStrategy,
 } from '../strategyAdapters/ai';
 import { getStrategyMlAdapter } from '../strategyAdapters/ml';
 
@@ -274,5 +275,37 @@ describe('strategyAdapters utils', () => {
       direction: 'LONG',
       quality: 4,
     });
+  });
+
+  it('applies the local-only hook after normal strategy post-processing', () => {
+    const signal = makeSignal();
+    const postProcessAnalysis = jest.fn(({ analysis }) => ({
+      ...analysis,
+      quality: 4,
+    }));
+    const postProcessLocalAnalysis = jest.fn(({ analysis }) => ({
+      ...analysis,
+      direction: null,
+      quality: 3,
+    }));
+    mockGetStrategyManifest.mockReturnValue({
+      aiAdapter: {
+        postProcessAnalysis,
+        postProcessLocalAnalysis,
+      },
+    });
+
+    expect(
+      postProcessLocalAiAnalysisByStrategy(signal, {
+        direction: 'LONG',
+        quality: 5,
+      } as any),
+    ).toEqual({ direction: null, quality: 3 });
+    expect(postProcessLocalAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signal,
+        analysis: { direction: 'LONG', quality: 4 },
+      }),
+    );
   });
 });

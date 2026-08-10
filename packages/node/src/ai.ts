@@ -13,6 +13,7 @@ import {
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
   postProcessAiAnalysisByStrategy,
+  postProcessLocalAiAnalysisByStrategy,
 } from './strategyAdapters/ai';
 import { ensureStrategyPluginsLoaded } from './strategy/manifests';
 import {
@@ -589,7 +590,7 @@ export const runAiPromptLocal = async (
       ? gateContext.approvalAllowedNow
       : deterministicQuality >= 4;
 
-  return postProcessAiAnalysisByStrategy(
+  return postProcessLocalAiAnalysisByStrategy(
     signal,
     {
       direction: approvalAllowedNow ? signalDirection : null,
