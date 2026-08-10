@@ -105,6 +105,11 @@ jest.mock('@tradejs/infra/redis', () => ({
   },
 }));
 
+jest.mock('@tradejs/infra/timescale', () => ({
+  ...jest.requireActual('@tradejs/infra/timescale'),
+  ensureMarketContextSchemas: jest.fn(async () => undefined),
+}));
+
 jest.mock('../lib/derivativesContextBackfill', () => ({
   backfillDerivativesContextForBacktest: jest.fn(),
   shouldBackfillDerivativesContextForBacktest: jest.fn(),

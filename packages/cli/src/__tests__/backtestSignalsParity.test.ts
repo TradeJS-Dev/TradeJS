@@ -621,6 +621,10 @@ const runSignalsPath = async () => {
     setHashJsonField,
     setHashJsonFields,
   }));
+  jest.doMock('@tradejs/infra/timescale', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale'),
+    ensureMarketContextSchemas: jest.fn(async () => undefined),
+  }));
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
     getRuntimeDeployment: jest.fn(async () => null),
     saveRuntimeDeploymentHeartbeat: jest.fn(),

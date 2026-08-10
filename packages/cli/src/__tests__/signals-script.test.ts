@@ -440,6 +440,11 @@ const loadScript = async (scenario: Scenario) => {
     setHashJsonFields,
   }));
 
+  jest.doMock('@tradejs/infra/timescale', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale'),
+    ensureMarketContextSchemas: jest.fn(async () => undefined),
+  }));
+
   jest.doMock('../lib/derivativesContextBackfill', () => ({
     backfillDerivativesContextForSignals,
     shouldBackfillDerivativesContextForSignals,
