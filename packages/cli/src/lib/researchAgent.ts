@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 export const RESEARCH_AGENT_MODEL = 'openai/gpt-5.4';
 export const RESEARCH_AGENT_REASONING_EFFORT = 'medium';
 export const RESEARCH_AGENT_BRANCH_PREFIX = 'codex/research';
@@ -31,20 +29,6 @@ export interface ResearchAgentRunRecord {
   finishedAt?: string;
 }
 
-export const toUpperSnakeCase = (value: string) =>
-  value
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .toUpperCase();
-
-const RESEARCH_NOTE_FILE_OVERRIDES: Record<string, string> = {
-  TrendLine: 'AI_TRENDLINE_REPLAY_NOTES.md',
-  ReverseTrendLine: 'AI_REVERSE_TRENDLINE_REPLAY_NOTES.md',
-  AdaptiveMomentumRibbon: 'AI_ADAPTIVE_MOMENTUM_RIBBON_REPLAY_NOTES.md',
-  VolumeDivergence: 'AI_VOLUME_DIVERGENCE_REPLAY_NOTES.md',
-};
-
 export const buildResearchAgentBranchName = (
   strategy: string,
   runId: string,
@@ -72,16 +56,8 @@ export const buildResearchAgentCommitMessage = (
 export const buildResearchAgentPrTitle = (strategy: string, runId: string) =>
   `Research agent: ${strategy} follow-up for ${runId}`;
 
-export const getResearchAgentNotePath = (strategy: string) =>
-  path.join(
-    'notes',
-    RESEARCH_NOTE_FILE_OVERRIDES[strategy] ||
-      `AI_${toUpperSnakeCase(strategy)}_REPLAY_NOTES.md`,
-  );
-
 export const getResearchAgentAllowedPathPrefixes = (strategy: string) => [
   `packages/strategies/src/${strategy}/`,
-  getResearchAgentNotePath(strategy),
 ];
 
 export const parseGithubRepositoryFromRemote = (value: string) => {

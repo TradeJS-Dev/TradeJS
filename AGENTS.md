@@ -71,11 +71,15 @@ If a feature is not publish-ready for external users, document that limitation e
 
 ## Internal Notes
 
-- Internal research notes and audit-style markdown files should live under `notes/`, not in the repo root.
-- Current internal notes include:
-  - `notes/AI_TRENDLINE_REPLAY_NOTES.md`
-  - `notes/ML_PIPELINE_AUDIT.md`
-  - `notes/ML_TRANSFORM_README_RU.md`
+- Everything under `notes/` is local-only and permanently ignored by Git. Never stage, commit, or force-add any file from `notes/`.
+- Internal research notes and audit-style markdown files live under strategy/category directories, never directly under `notes/` or in the repo root.
+- Strategy research path: `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`, using the exact strategy directory name from `packages/strategies/src`.
+- Repository-wide architecture/ML records live under `notes/Shared/`; one comparison spanning several strategies lives under `notes/CrossStrategy/`.
+- One research question plus one immutable run/export lineage equals one file. A new export, run, hypothesis family, or decision requires a new file; do not append dated entries to a rolling strategy log.
+- Every new record must follow `.codex/skills/strategy-backtest-research/references/research-notes.md` and begin with `schema: tradejs-research/v1` frontmatter.
+- The local note is the durable metric record relative to disposable exports and caches. For `reproduction: complete`, embed the full secret-free resolved config, exact commands/selection/partitions, git and gate/config/context lineage, and the complete machine-readable metrics JSON needed to rebuild every displayed table after exports, Redis data, cache, or `data/ai/output` artifacts are deleted.
+- Artifact paths and mutable config names are inventory only, not sufficient reproduction evidence. Never fill missing historical fields from current defaults; mark them `partial`, `blocked`, or `legacy-partial`.
+- Migrated historical examples now live under paths such as `notes/TrendLine/`, `notes/Shared/`, and `notes/CrossStrategy/`.
 - Keep root markdown focused on stable repository guidance and runnable internal workflows.
 - Strategy-specific agent workflows may live under `.codex/skills/` when they capture repeatable internal research or tuning procedures.
 
@@ -390,7 +394,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Record the export minimum/maximum timestamps and data lag. If the export does not overlap the production period being discussed, report live cadence as unknown instead of extrapolating the full-history average.
 - Compare runtime and `ai-train` gate behavior only when git SHA, gate fingerprint, config-id fingerprint, context fingerprint, `MIN_AI_QUALITY`, and the relevant context env agree. Treat a mismatch as a different experiment.
 - A zero-approval terminal window must be reported explicitly even when full-history cadence is healthy. Investigate top reject reasons and current feature availability before changing thresholds.
-- After changing a deterministic AI gate, regenerate the terminal-window report and update the matching `notes/AI_*_REPLAY_NOTES.md`; old notes are not evidence for the new gate lineage.
+- After changing a deterministic AI gate, regenerate the terminal-window report and create a new `notes/<Strategy>/YYYY-MM-DD-<slug>.md` record with the resolved config and structured metric snapshot; old notes are not evidence for the new gate lineage.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
 - `yarn ai-pocket-search` is the preferred deterministic AI export pocket discovery tool before writing or tuning new AI-gate rules. It reconstructs current strategy AI payloads, groups sharded merged exports, shows progress bars, and writes Markdown reports to `data/ai/output` by default.
 - `ai-pocket-search` excludes outcome fields and current deterministic gate output fields from candidate features by default; use `--includeGateContext` only when explicitly auditing existing gate decisions, not when discovering future approval rules.

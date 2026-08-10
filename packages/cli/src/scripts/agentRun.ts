@@ -15,7 +15,6 @@ import {
   buildResearchAgentPrBody,
   buildResearchAgentPrTitle,
   getResearchAgentAllowedPathPrefixes,
-  getResearchAgentNotePath,
   normalizeDiffOutput,
   parseGithubRepositoryFromRemote,
   RESEARCH_AGENT_MODEL,
@@ -81,7 +80,7 @@ Output ONLY one of:
 
 Rules:
 - Keep the patch small and surgical.
-- Prefer strategy-scoped tests and notes updates over broad refactors.
+- Prefer strategy-scoped tests over broad refactors.
 - If you change strategy logic, also add or update tests in the same strategy directory.
 - Do not touch package boundaries or unrelated files.
 - Do not add markdown fences, commentary, or explanations.
@@ -204,16 +203,10 @@ const collectStrategyContextFiles = async (
     'src',
     strategy,
   );
-  const notePath = path.join(worktreePath, getResearchAgentNotePath(strategy));
   const strategyFiles = await listFilesRecursive(strategyRoot);
   const files = strategyFiles.filter((filePath) =>
     /\.(ts|tsx|md)$/.test(filePath),
   );
-
-  try {
-    await fs.access(notePath);
-    files.push(notePath);
-  } catch {}
 
   return [...new Set(files)].sort((left, right) => left.localeCompare(right));
 };
@@ -252,9 +245,12 @@ const buildPrompt = async (
       {
         status: run.status,
         finishedAt: run.finishedAt,
+        backtestResultKey: run.artifacts.backtestResultKey,
         backtestResult: run.artifacts.backtestResult,
+        aiExportFile: run.artifacts.aiExportFile,
         aiTrainLocal: run.artifacts.aiTrainLocal,
         strategyConfig: run.artifacts.strategyConfig,
+        backtestConfig: run.artifacts.backtestConfig,
       },
       null,
       2,
@@ -263,8 +259,9 @@ const buildPrompt = async (
     'Task:',
     '- Inspect the research results and current strategy files.',
     '- Produce the smallest safe follow-up patch.',
-    '- Prefer notes and tests if the data does not justify a production logic change.',
+    '- Prefer strategy-scoped tests or NO_CHANGES if the data does not justify a production logic change.',
     '- If you change strategy logic, include matching regression tests.',
+    '- Do not create or modify notes/: local research notes are permanently Git-ignored and are not allowed in agent commits.',
     '',
     contexts.join('\n\n'),
   ].join('\n');

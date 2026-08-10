@@ -16,7 +16,8 @@ Use this skill when the user asks to:
 - check time stability, symbol concentration, or direction-specific pockets
 - compare current results with previous TrendLine / ReverseTrendLine style investigations
 - break down false positives / false negatives
-- save conclusions in `notes/AI_*_REPLAY_NOTES.md`
+- save each conclusion in a new
+  `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md` research record
 - tune approval cadence toward roughly 2-3 approved trades per day when possible, with ~1 approved trade per day as the practical lower bound for narrow high-quality pockets; if a gate approves more, look for filters that lower approvals and raise winrate
 
 ## Reusable Research Tooling
@@ -264,6 +265,7 @@ Examples:
 yarn ai-train --strategy TrendLine -n 500 --localOnly
 yarn ai-train --strategy ReverseTrendLine -n 500 --localOnly
 yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
+yarn ai-train --strategy TrendLine -n 0 --localOnly --terminalWindows=180,90,30,7 --output data/ai/output/trendline-ai-train.json
 yarn ai-pocket-search --strategy TrendLine -n 0 --maxDepth 2 --minSupport 25
 ```
 
@@ -320,9 +322,10 @@ Context semantics rule:
 - do not switch an existing gate from benchmark to target behavior without a
   new export, terminal validation, and updated notes
 
-After any gate-code change, rerun the command and update the matching
-`notes/AI_*_REPLAY_NOTES.md`. Metrics from an older gate fingerprint are
-historical context only.
+After any gate-code change, rerun the command and create a new research file at
+`notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`. Never append the run to an
+older research file. Metrics from an older gate fingerprint are historical
+context only.
 
 Shard-aware examples:
 
@@ -489,10 +492,26 @@ Risk-adjusted metric convention:
 
 ## Notes format
 
-Read `references/reporting.md`. New dated notes entries must begin with the same
-fixed report used in chat, then append the detailed audit, validation,
-threshold, rollout, and cleanup sections defined there. Historical notes are
-content references, not formatting authority.
+Read both `references/reporting.md` and
+`../strategy-backtest-research/references/research-notes.md` before writing a
+note. The shared contract controls storage, one-research-per-file boundaries,
+frontmatter, resolved config, and the machine-readable metric snapshot. The AI
+reporting contract controls tables, metric names, validation, threshold,
+rollout, and cleanup sections.
+
+Every new AI-gate study must:
+
+- create one new file under `notes/<Strategy>/`, never update a rolling log;
+- keep that file local-only and ignored by Git; never stage, commit, or
+  force-add anything under `notes/`;
+- embed the complete `ai-train --localOnly --json` result and structured
+  ablation/partition summaries needed to rebuild every displayed metric;
+- embed the secret-free resolved backtest/runtime/context configuration instead
+  of only naming a Redis key or current config;
+- list export/output paths and SHA-256 values as disposable artifact inventory,
+  not as the only metric evidence;
+- downgrade `reproduction` from `complete` when any displayed metric or lineage
+  cannot be recovered from the note after export deletion.
 
 ## Current repo conventions
 

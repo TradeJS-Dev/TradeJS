@@ -5,21 +5,12 @@ import {
   buildResearchAgentPrBody,
   buildResearchAgentPrTitle,
   getResearchAgentAllowedPathPrefixes,
-  getResearchAgentNotePath,
   normalizeDiffOutput,
   parseChangedFilesFromDiff,
   parseGithubRepositoryFromRemote,
-  toUpperSnakeCase,
 } from '../lib/researchAgent';
 
 describe('research agent helpers', () => {
-  it('builds upper snake strategy token for fallback notes', () => {
-    expect(toUpperSnakeCase('TrendLine')).toBe('TREND_LINE');
-    expect(toUpperSnakeCase('AdaptiveMomentumRibbon')).toBe(
-      'ADAPTIVE_MOMENTUM_RIBBON',
-    );
-  });
-
   it('builds deterministic branch and commit names', () => {
     expect(buildResearchAgentBranchName('TrendLine', '171-test-run')).toBe(
       'codex/research/trend-line-171-test-run',
@@ -32,13 +23,9 @@ describe('research agent helpers', () => {
     );
   });
 
-  it('returns allowed strategy and note paths', () => {
-    expect(getResearchAgentNotePath('TrendLine')).toBe(
-      'notes/AI_TRENDLINE_REPLAY_NOTES.md',
-    );
+  it('allows only the strategy package path', () => {
     expect(getResearchAgentAllowedPathPrefixes('TrendLine')).toEqual([
       'packages/strategies/src/TrendLine/',
-      'notes/AI_TRENDLINE_REPLAY_NOTES.md',
     ]);
   });
 
@@ -56,16 +43,16 @@ describe('research agent helpers', () => {
       '@@',
       '-old',
       '+new',
-      'diff --git a/notes/AI_TRENDLINE_REPLAY_NOTES.md b/notes/AI_TRENDLINE_REPLAY_NOTES.md',
+      'diff --git a/notes/TrendLine/2026-08-10-test-run.md b/notes/TrendLine/2026-08-10-test-run.md',
       '--- /dev/null',
-      '+++ b/notes/AI_TRENDLINE_REPLAY_NOTES.md',
+      '+++ b/notes/TrendLine/2026-08-10-test-run.md',
       '@@',
       '+note',
     ].join('\n');
 
     expect(parseChangedFilesFromDiff(diff)).toEqual([
       'packages/strategies/src/TrendLine/config.ts',
-      'notes/AI_TRENDLINE_REPLAY_NOTES.md',
+      'notes/TrendLine/2026-08-10-test-run.md',
     ]);
   });
 
@@ -94,7 +81,7 @@ describe('research agent helpers', () => {
       recent: 1000,
       changedFiles: [
         'packages/strategies/src/TrendLine/config.ts',
-        'notes/AI_TRENDLINE_REPLAY_NOTES.md',
+        'packages/strategies/src/TrendLine/core.test.ts',
       ],
       validation: {
         prettify: 'passed',
@@ -137,6 +124,19 @@ describe('research agent helpers', () => {
           '@@',
           '-x',
           '+y',
+        ].join('\n'),
+        getResearchAgentAllowedPathPrefixes('TrendLine'),
+      ),
+    ).toThrow('disallowed path');
+
+    expect(() =>
+      assertDiffAllowed(
+        [
+          'diff --git a/notes/TrendLine/2026-08-10-test-run.md b/notes/TrendLine/2026-08-10-test-run.md',
+          '--- /dev/null',
+          '+++ b/notes/TrendLine/2026-08-10-test-run.md',
+          '@@',
+          '+note',
         ].join('\n'),
         getResearchAgentAllowedPathPrefixes('TrendLine'),
       ),

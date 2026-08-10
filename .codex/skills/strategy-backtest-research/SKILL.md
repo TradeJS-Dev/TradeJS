@@ -50,7 +50,7 @@ For DoubleTap, prioritize:
 For detailed metrics from a non-`--fast` backtest run, use:
 
 ```bash
-yarn node -r dotenv/config .codex/skills/strategy-backtest-research/scripts/backtest-run-metrics.mjs --run <run-id>
+yarn node -r dotenv/config .codex/skills/strategy-backtest-research/scripts/backtest-run-metrics.mjs --run <run-id> --json
 ```
 
 The report reconstructs completed trades from cached order artifacts and shows
@@ -63,6 +63,30 @@ minimum and maximum timestamps, backtest config ids, git SHA, and the context en
 used to construct derivatives/CMC inputs. A year-scale export without a fresh
 terminal tail is suitable for historical research but not for a current live
 cadence claim.
+
+## Research notes
+
+Before writing research results, read `references/research-notes.md` and follow
+it exactly.
+
+- Store strategy research at
+  `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`.
+- Keep `notes/` local-only. Never stage, commit, or force-add its contents; the
+  directory must remain ignored by Git.
+- Create one file per research question and immutable run/export lineage. Never
+  append another dated study to an existing rolling notes file.
+- Put repository-wide work in `notes/Shared/` and genuine multi-strategy
+  comparisons in `notes/CrossStrategy/`; never place files directly in
+  `notes/`.
+- Embed the complete secret-free resolved config and the authoritative
+  structured metrics JSON. Paths to Redis, cached orders, exports, or output
+  reports are not enough because those artifacts may be deleted.
+- Use `reproduction: complete` only when the note alone preserves every
+  reported aggregate metric and its lineage. Mark missing historical evidence
+  `partial` or `blocked`; never reconstruct it from current defaults.
+- Run
+  `node .codex/skills/strategy-backtest-research/scripts/research-notes-check.mjs`
+  after creating or editing research records.
 
 ## Validation
 

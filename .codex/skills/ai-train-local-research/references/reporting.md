@@ -197,8 +197,12 @@ Put optional strategy-specific findings only after this fixed block under
 
 ## Notes contract
 
-Write results to the matching `notes/AI_<STRATEGY>_REPLAY_NOTES.md`. Start every
-dated entry with the complete chat report contract above, then append these
+Write each study to a new
+`notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md` file. Never append dated
+entries to a rolling strategy log. The file must first follow
+`../../strategy-backtest-research/references/research-notes.md`, including the
+resolved config and complete machine-readable metrics snapshot. Put the full
+chat report contract above under `## Reported metrics`, then append these
 sections in order when gate tuning is in scope:
 
 1. strategy intent and exact causal field paths
@@ -211,5 +215,6 @@ sections in order when gate tuning is in scope:
 5. raw and rounded thresholds, sensitivity, and boundary tests
 6. rollout, old-gate cleanup, and remaining production blockers
 
-Use existing `notes/AI_*_REPLAY_NOTES.md` files only as content references. This
-contract, not their historical formatting, controls new entries.
+Use migrated `notes/<Strategy>/*.md` files only as historical content
+references. The shared research-note contract and this reporting contract, not
+their legacy body formatting, control new records.
