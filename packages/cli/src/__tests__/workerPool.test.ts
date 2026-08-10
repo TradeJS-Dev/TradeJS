@@ -27,6 +27,7 @@ const loadWorkerPool = async () => {
   const module = await import('../lib/backtest/workerPool');
   return {
     executeBacktestWorkerPool: module.executeBacktestWorkerPool,
+    resolveFastAiWorkerPgPoolMax: module.resolveFastAiWorkerPgPoolMax,
     forkedWorkers,
     progressBar,
     progressTick,
@@ -34,6 +35,44 @@ const loadWorkerPool = async () => {
 };
 
 describe('executeBacktestWorkerPool', () => {
+  it.each([
+    { workerCount: 2, expected: '9' },
+    { workerCount: 3, expected: '6' },
+    { workerCount: 4, expected: '4' },
+    { workerCount: 5, expected: '3' },
+    { workerCount: 6, expected: '3' },
+  ])(
+    'caps fast AI worker pools at $expected connections for $workerCount workers',
+    async ({ workerCount, expected }) => {
+      const { resolveFastAiWorkerPgPoolMax } = await loadWorkerPool();
+
+      expect(
+        resolveFastAiWorkerPgPoolMax(
+          [{ fast: true, ai: true }] as any,
+          workerCount,
+          undefined,
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  it('does not cap single-worker, non-fast-AI, or explicitly configured pools', async () => {
+    const { resolveFastAiWorkerPgPoolMax } = await loadWorkerPool();
+    const fastAiSuite = [{ fast: true, ai: true }] as any;
+
+    expect(
+      resolveFastAiWorkerPgPoolMax(fastAiSuite, 1, undefined),
+    ).toBeUndefined();
+    expect(
+      resolveFastAiWorkerPgPoolMax(
+        [{ fast: true, ai: false }] as any,
+        6,
+        undefined,
+      ),
+    ).toBeUndefined();
+    expect(resolveFastAiWorkerPgPoolMax(fastAiSuite, 6, '7')).toBeUndefined();
+  });
+
   it('prints cumulative trades in backtest progress ticks', async () => {
     const {
       executeBacktestWorkerPool,

@@ -4,6 +4,35 @@ import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
 import { TestSuite, TestWorkerResult } from '@tradejs/types';
 
+const DEFAULT_PG_POOL_MAX = 10;
+const FAST_AI_PG_CONNECTION_BUDGET = 18;
+const MIN_FAST_AI_WORKER_PG_POOL_MAX = 3;
+
+export const resolveFastAiWorkerPgPoolMax = (
+  testSuite: TestSuite,
+  workerCount: number,
+  configuredPoolMax: string | undefined,
+) => {
+  if (
+    configuredPoolMax?.trim() ||
+    workerCount <= 1 ||
+    testSuite.length === 0 ||
+    testSuite.some((test) => !test.fast || !test.ai)
+  ) {
+    return undefined;
+  }
+
+  return String(
+    Math.min(
+      DEFAULT_PG_POOL_MAX,
+      Math.max(
+        MIN_FAST_AI_WORKER_PG_POOL_MAX,
+        Math.floor(FAST_AI_PG_CONNECTION_BUDGET / workerCount),
+      ),
+    ),
+  );
+};
+
 export const executeBacktestWorkerPool = async ({
   testSuite,
   userName,
@@ -42,6 +71,14 @@ export const executeBacktestWorkerPool = async ({
   totalTests?: number;
 }) => {
   const chunks = chunkTestSuite(testSuite);
+  const fastAiWorkerPgPoolMax = resolveFastAiWorkerPgPoolMax(
+    testSuite,
+    chunks.length,
+    process.env.PG_POOL_MAX,
+  );
+  const workerEnv = fastAiWorkerPgPoolMax
+    ? { ...process.env, PG_POOL_MAX: fastAiWorkerPgPoolMax }
+    : undefined;
   const totalExpectedTests = Math.max(
     testSuite.length,
     totalTests ?? testSuite.length,
@@ -148,6 +185,7 @@ export const executeBacktestWorkerPool = async ({
     const chunkId = runId ? `${runId}-${attemptId}` : attemptId;
     const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
     const tester = fork(testerWorkerPath, [], {
+      ...(workerEnv ? { env: workerEnv } : {}),
       execArgv: testerNeedsTsRuntime
         ? [
             `--max-old-space-size=${workerHeapMb}`,
