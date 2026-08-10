@@ -295,9 +295,7 @@ const makeCoreParams = ({
       baseContext: indicators.baseContext,
     };
   });
-  strategyApi.getBaseContext.mockImplementation(
-    () => strategyApi.getCurrentIndicatorsContext().baseContext,
-  );
+  strategyApi.getBaseContext.mockImplementation(() => baseContext);
 
   return {
     userName: 'root',
@@ -737,6 +735,8 @@ describe('context strategies', () => {
       }),
     );
     expect((result as any).orderPlan.stopLossPrice).toBeLessThan(101);
+    expect(strategyApi.getBaseContext).toHaveBeenCalledTimes(1);
+    expect(strategyApi.getCurrentIndicatorsContext).toHaveBeenCalledTimes(1);
   });
 
   it('uses target-vs-BTC 1h return for RelativeRotation strength', async () => {
@@ -755,5 +755,7 @@ describe('context strategies', () => {
     const result = await core(baseContext.candle, baseContext.candle);
 
     expect(result).toEqual({ kind: 'skip', code: 'NO_RELATIVE_ROTATION' });
+    expect(strategyApi.getBaseContext).toHaveBeenCalledTimes(1);
+    expect(strategyApi.getCurrentIndicatorsContext).not.toHaveBeenCalled();
   });
 });
