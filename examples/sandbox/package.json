@@ -16,9 +16,9 @@
     "ws@npm:^8.18.3": "8.21.1"
   },
   "dependencies": {
-    "@tradejs/cli": "2.0.17",
-    "@tradejs/core": "2.0.17",
-    "@tradejs/types": "2.0.17",
+    "@tradejs/cli": "2.0.18",
+    "@tradejs/core": "2.0.18",
+    "@tradejs/types": "2.0.18",
     "ioredis": "5.11.1"
   },
   "devDependencies": {
