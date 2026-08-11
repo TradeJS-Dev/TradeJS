@@ -132,7 +132,15 @@ export const isMaCrossQualityAccepted = (
   quality: MaCrossQuality,
   direction: 'LONG' | 'SHORT' = 'LONG',
 ): boolean => {
-  const minGapAtr = Math.max(0, Number(config.MA_MIN_CROSS_GAP_ATR ?? 0));
+  const minGapAtr = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'MA_MIN_CROSS_GAP_ATR',
+      direction,
+      fallback: 0,
+    }),
+  );
   if (minGapAtr > 0 && (quality.gapAtr == null || quality.gapAtr < minGapAtr)) {
     return false;
   }
@@ -171,7 +179,15 @@ export const isMaCrossQualityAccepted = (
   ) {
     return false;
   }
-  const minVolumeRel20 = Math.max(0, Number(config.MA_MIN_VOLUME_REL20 ?? 0));
+  const minVolumeRel20 = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'MA_MIN_VOLUME_REL20',
+      direction,
+      fallback: 0,
+    }),
+  );
   if (
     minVolumeRel20 > 0 &&
     (quality.volumeRel20 == null || quality.volumeRel20 < minVolumeRel20)
@@ -236,9 +252,14 @@ export const createMaStrategyCore: CreateStrategyCore<
 
     // When position is open, MA cross acts as an opposite-signal exit.
     if (positionExists && position) {
+      const exitOnOppositeCross =
+        position.direction === 'LONG'
+          ? config.MA_EXIT_ON_OPPOSITE_CROSS_LONG
+          : config.MA_EXIT_ON_OPPOSITE_CROSS_SHORT;
       if (
-        (position.direction === 'LONG' && cross?.kind === 'bearish') ||
-        (position.direction === 'SHORT' && cross?.kind === 'bullish')
+        exitOnOppositeCross &&
+        ((position.direction === 'LONG' && cross?.kind === 'bearish') ||
+          (position.direction === 'SHORT' && cross?.kind === 'bullish'))
       ) {
         return strategyApi.exit({
           code: 'CLOSE_BY_OPPOSITE_MA_CROSS',

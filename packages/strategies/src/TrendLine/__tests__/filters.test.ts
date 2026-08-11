@@ -140,8 +140,17 @@ describe('getTrendLineCoreFilterSkipCode', () => {
       getTrendLineCoreFilterSkipCode({
         config,
         direction: 'SHORT',
+        baseContext: { raw: { volatility: { bbWidthPct: 3 } } } as any,
+        structuralContext: makeStructural({ volumeRel20: 2.99 }),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('TRENDLINE_VOLUME_TOO_THIN');
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'SHORT',
         baseContext: { raw: { volatility: { bbWidthPct: 4.1 } } } as any,
-        structuralContext: makeStructural(),
+        structuralContext: makeStructural({ volumeRel20: 3 }),
         timingContext: makeTiming(),
       }),
     ).toBe('TRENDLINE_VOLATILITY_TOO_WIDE');

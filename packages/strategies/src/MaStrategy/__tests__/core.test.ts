@@ -112,16 +112,23 @@ const makeStrategyApi = ({
 const makeCore = async ({
   indicators,
   strategyApi,
+  configOverrides = {},
 }: {
   indicators: Record<string, unknown> | null;
   strategyApi: any;
+  configOverrides?: Record<string, unknown>;
 }) => {
   activeIndicatorsState = makeIndicatorsState(indicators);
   return createMaStrategyCore({
     config: {
       ...DEFAULT_CONFIG,
+      MA_MIN_CROSS_GAP_ATR_LONG: 0,
+      MA_MIN_CROSS_GAP_ATR_SHORT: 0,
       MA_MAX_CROSS_GAP_ATR_LONG: 0,
+      MA_MIN_VOLUME_REL20_LONG: 0,
+      MA_MIN_VOLUME_REL20_SHORT: 0,
       MA_MAX_CORRELATION_SHORT: 0,
+      ...configOverrides,
     } as any,
     data: [],
     strategyApi,
@@ -245,6 +252,65 @@ describe('MaStrategy core', () => {
     expect(strategyApi.entry).not.toHaveBeenCalled();
   });
 
+  it('keeps an existing long position when opposite-cross exit is disabled', async () => {
+    const candles = [makeCandle(0, 100), makeCandle(1, 98)];
+    const { strategyApi } = makeStrategyApi({
+      marketData: {
+        fullData: candles,
+        timestamp: candles[1].timestamp,
+        currentPrice: candles[1].close,
+      },
+      currentPosition: {
+        direction: 'LONG',
+        qty: 1,
+      },
+    });
+    const core = await makeCore({
+      strategyApi,
+      indicators: {
+        maFast: [102, 99],
+        maSlow: [101, 100],
+      },
+      configOverrides: {
+        MA_EXIT_ON_OPPOSITE_CROSS_LONG: false,
+      },
+    });
+
+    const result = await core(candles[1] as any, candles[1] as any);
+
+    expect(result).toEqual({ kind: 'skip', code: 'POSITION_HELD' });
+    expect(strategyApi.exit).not.toHaveBeenCalled();
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
+  it('keeps a short position on a bullish cross by default', async () => {
+    const candles = [makeCandle(0, 100), makeCandle(1, 102)];
+    const { strategyApi } = makeStrategyApi({
+      marketData: {
+        fullData: candles,
+        timestamp: candles[1].timestamp,
+        currentPrice: candles[1].close,
+      },
+      currentPosition: {
+        direction: 'SHORT',
+        qty: 1,
+      },
+    });
+    const core = await makeCore({
+      strategyApi,
+      indicators: {
+        maFast: [99, 102],
+        maSlow: [100, 101],
+      },
+    });
+
+    const result = await core(candles[1] as any, candles[1] as any);
+
+    expect(result).toEqual({ kind: 'skip', code: 'POSITION_HELD' });
+    expect(strategyApi.exit).not.toHaveBeenCalled();
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
   it('normalizes cross strength by ATR and rejects a weak cross', () => {
     const quality = getMaCrossQuality(
       {
@@ -268,10 +334,57 @@ describe('MaStrategy core', () => {
         {
           ...DEFAULT_CONFIG,
           MA_MIN_CROSS_GAP_ATR: 0.1,
+          MA_MIN_CROSS_GAP_ATR_LONG: 0.1,
+          MA_MIN_CROSS_GAP_ATR_SHORT: 0.1,
         } as any,
         quality,
       ),
     ).toBe(false);
+  });
+
+  it('applies direction-specific minimum gap and volume filters', () => {
+    const quality = {
+      gapAtr: 0.24,
+      fastSlopeAtr: 0.5,
+      slowSlopeAligned: true,
+      bodyAtr: 0.5,
+      directionalBody: true,
+      volumeRel20: 1,
+      priceDistanceFastAtr: 0.1,
+      correlation: 0.1,
+    };
+    const config = {
+      ...DEFAULT_CONFIG,
+      MA_MIN_CROSS_GAP_ATR: 0.2,
+      MA_MIN_CROSS_GAP_ATR_LONG: 0.25,
+      MA_MIN_CROSS_GAP_ATR_SHORT: 0.2,
+      MA_MIN_VOLUME_REL20: 0.8,
+      MA_MIN_VOLUME_REL20_LONG: 1.1,
+      MA_MIN_VOLUME_REL20_SHORT: 0.8,
+    } as any;
+
+    expect(isMaCrossQualityAccepted(config, quality, 'LONG')).toBe(false);
+    expect(isMaCrossQualityAccepted(config, quality, 'SHORT')).toBe(true);
+  });
+
+  it('uses the tuned direction-specific minimums by default', () => {
+    const quality = {
+      gapAtr: 0.23,
+      fastSlopeAtr: 0.5,
+      slowSlopeAligned: true,
+      bodyAtr: 0.5,
+      directionalBody: true,
+      volumeRel20: 1,
+      priceDistanceFastAtr: 0.1,
+      correlation: 0.1,
+    };
+
+    expect(
+      isMaCrossQualityAccepted(DEFAULT_CONFIG as any, quality, 'LONG'),
+    ).toBe(false);
+    expect(
+      isMaCrossQualityAccepted(DEFAULT_CONFIG as any, quality, 'SHORT'),
+    ).toBe(true);
   });
 
   it('supports directional maximum gap and correlation filters', () => {
@@ -287,6 +400,10 @@ describe('MaStrategy core', () => {
     };
     const config = {
       ...DEFAULT_CONFIG,
+      MA_MIN_CROSS_GAP_ATR_LONG: 0,
+      MA_MIN_CROSS_GAP_ATR_SHORT: 0,
+      MA_MIN_VOLUME_REL20_LONG: 0,
+      MA_MIN_VOLUME_REL20_SHORT: 0,
       MA_MAX_CROSS_GAP_ATR_LONG: 0.24,
       MA_MAX_CROSS_GAP_ATR_SHORT: 0,
       MA_MAX_CORRELATION_LONG: 0,

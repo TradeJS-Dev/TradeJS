@@ -34,12 +34,23 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
     LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT_LONG: undefined,
     LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT_SHORT: undefined,
     LIQUIDITY_TAILS_MIN_GAP: 1,
+    LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO: 0,
     ...overrides,
   }) as any;
 
+const makeDefaultConfig = () =>
+  makeConfig({
+    LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO:
+      DEFAULT_CONFIG.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO,
+  });
+
 describe('Liquidity Tails engine', () => {
   it('detects buy pressure zone retests with bullish reaction', () => {
-    const engine = createLiquidityTailsEngine({ config: makeConfig() });
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({
+        LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO: 0,
+      }),
+    });
     const candles = [
       makeCandle(0, 100, 101, 99, 100),
       makeCandle(1, 100, 101, 99, 100),
@@ -64,7 +75,11 @@ describe('Liquidity Tails engine', () => {
   });
 
   it('detects sell pressure zone retests with bearish reaction', () => {
-    const engine = createLiquidityTailsEngine({ config: makeConfig() });
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({
+        LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO: 0,
+      }),
+    });
     const candles = [
       makeCandle(0, 100, 101, 99, 100),
       makeCandle(1, 100, 101, 99, 100),
@@ -81,6 +96,20 @@ describe('Liquidity Tails engine', () => {
     expect(signal?.zone.bottom).toBe(101);
     expect(signal?.reactionBodyAligned).toBe(true);
     expect(signal?.retestOrdinal).toBe(1);
+  });
+
+  it('rejects an inefficient sell-pressure retest by default', () => {
+    const engine = createLiquidityTailsEngine({ config: makeDefaultConfig() });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 101, 107, 100, 100),
+      makeCandle(3, 101.5, 106, 99, 100),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states.at(-1)?.signal).toBeNull();
   });
 
   it('requires efficient rejection when the causal entry filter is enabled', () => {

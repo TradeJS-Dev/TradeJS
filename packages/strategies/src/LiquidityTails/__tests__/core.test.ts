@@ -739,7 +739,7 @@ describe('LiquidityTails core scale-in cycle', () => {
     );
   });
 
-  it('does not use an opposite signal as an increase when opposite exit is disabled', async () => {
+  it('does not use an opposite signal as an increase by default', async () => {
     mockRuntimeStates([
       makeRuntimeState(
         makeSignal({ timestamp: 2, close: 105, direction: 'SHORT' }),
@@ -757,9 +757,7 @@ describe('LiquidityTails core scale-in cycle', () => {
       getDecision: () => ({ timestamp: 2, currentPrice: 105 }),
     });
     const core = await createLiquidityTailsCore({
-      config: makeCoreConfig({
-        LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST: false,
-      }),
+      config: makeCoreConfig(),
       data: [],
       strategyApi,
       indicatorsState: { snapshot: jest.fn(() => ({})) },
