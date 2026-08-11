@@ -10,6 +10,7 @@ import {
   createHeadAndShouldersEngine,
 } from './engine';
 import { buildHeadAndShouldersFigures } from './figures';
+import { getHeadAndShouldersCoreFilterSkipCode } from './filters';
 import {
   buildTradeEconomics,
   isStopLossOnCorrectSide,
@@ -120,6 +121,13 @@ export const createHeadAndShouldersCore: CreateStrategyCore<
     const sideConfig =
       pattern.direction === 'LONG' ? config.LONG : config.SHORT;
     if (!sideConfig.enable) return strategyApi.skip('STRATEGY_DISABLED');
+
+    const filterSkipCode = getHeadAndShouldersCoreFilterSkipCode({
+      pattern,
+      config,
+      baseContext: strategyApi.getBaseContext(),
+    });
+    if (filterSkipCode) return strategyApi.skip(filterSkipCode);
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();

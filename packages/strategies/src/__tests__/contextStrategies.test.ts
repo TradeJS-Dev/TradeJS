@@ -15,6 +15,20 @@ const MFR_IMMEDIATE_CONFIG = {
   MFR_MIN_REJECTION_BODY_ATR_LONG: 0,
   MFR_MIN_REJECTION_BODY_ATR_SHORT: 0,
   MFR_MIN_REJECTION_CLOSE_POSITION_SHORT: 0.6,
+  MFR_MIN_ENTRY_BODY_STRENGTH_LONG: 0,
+  MFR_MIN_CONFIRMATION_DISPLACEMENT_ATR_SHORT: 0,
+  MFR_MIN_AVG_TURNOVER_20_LONG: 0,
+};
+
+const VCB_ENTRY_TEST_CONFIG = {
+  ...VCB_DEFAULT_CONFIG,
+  VCB_MIN_BREAKOUT_DISTANCE_ATR_LONG: 0,
+};
+
+const RR_ENTRY_TEST_CONFIG = {
+  ...RR_DEFAULT_CONFIG,
+  RR_MIN_ADX_DI_MINUS_LONG: 0,
+  RR_MIN_TARGET_BTC_CORRELATION_LONG: 0,
 };
 
 const makeCandle = (price: number) => ({
@@ -671,7 +685,7 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createVolatilityCompressionBreakoutCore(
       makeCoreParams({
-        config: VCB_DEFAULT_CONFIG,
+        config: VCB_ENTRY_TEST_CONFIG,
         strategyApi,
         baseContext,
       }),
@@ -708,7 +722,7 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createRelativeRotationCore(
       makeCoreParams({
-        config: RR_DEFAULT_CONFIG,
+        config: RR_ENTRY_TEST_CONFIG,
         strategyApi,
         baseContext,
       }),
@@ -746,7 +760,7 @@ describe('context strategies', () => {
     const { strategyApi } = makeStrategyApi(101);
     const core = await createRelativeRotationCore(
       makeCoreParams({
-        config: RR_DEFAULT_CONFIG,
+        config: RR_ENTRY_TEST_CONFIG,
         strategyApi,
         baseContext,
       }),

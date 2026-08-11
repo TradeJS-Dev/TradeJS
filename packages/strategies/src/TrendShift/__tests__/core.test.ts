@@ -144,6 +144,12 @@ const makeIndicatorsState = (overrides: Record<string, unknown> = {}) => {
           volatility: {
             atrPctZScore: 0.6,
           },
+          momentum: {
+            bodyStrength: 0.8,
+          },
+          trend: {
+            adx: { adx: 30 },
+          },
         },
         structure: {
           localRange: {
@@ -258,6 +264,12 @@ describe('TrendShift core', () => {
             volatility: {
               atrPctZScore: 0.6,
             },
+            momentum: {
+              bodyStrength: 0.8,
+            },
+            trend: {
+              adx: { adx: 30 },
+            },
           },
           structure: {
             localRange: {
@@ -364,6 +376,12 @@ describe('TrendShift core', () => {
             volatility: {
               atrPctZScore: 0.7,
             },
+            momentum: {
+              bodyStrength: 0.8,
+            },
+            trend: {
+              adx: { adx: 30 },
+            },
           },
           structure: {
             localRange: {
@@ -441,6 +459,12 @@ describe('TrendShift core', () => {
             },
             volatility: {
               atrPctZScore: 0.7,
+            },
+            momentum: {
+              bodyStrength: 0.8,
+            },
+            trend: {
+              adx: { adx: 30 },
             },
           },
           structure: {

@@ -14,6 +14,7 @@ import {
   MarketFlushReversalEntryCandidate,
 } from './engine';
 import { buildMarketFlushReversalFigures } from './figures';
+import { getMarketFlushReversalEntryFilterSkipCode } from './filters';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
@@ -584,6 +585,15 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
     const modeConfig =
       entrySignal.direction === 'LONG' ? config.LONG : config.SHORT;
     if (!modeConfig.enable) return strategyApi.skip('STRATEGY_DISABLED');
+
+    const entryFilterSkipCode = getMarketFlushReversalEntryFilterSkipCode({
+      config,
+      entrySignal,
+      baseContext,
+    });
+    if (entryFilterSkipCode) {
+      return strategyApi.skip(entryFilterSkipCode);
+    }
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();

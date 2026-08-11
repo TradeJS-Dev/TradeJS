@@ -15,6 +15,7 @@ import {
   resolveAtrBuffer,
   toFiniteNumberOrNull,
 } from '../shared/contextStrategy';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export interface VolatilityCompressionBreakoutSignalContext {
   signalDirection: Direction;
@@ -101,6 +102,22 @@ export const detectVolatilityCompressionBreakoutSignal = ({
     breakoutLevel != null && atr != null && atr > 0
       ? Math.abs(currentPrice - breakoutLevel) / atr
       : null;
+  const minBreakoutDistanceAtr = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'VCB_MIN_BREAKOUT_DISTANCE_ATR',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    minBreakoutDistanceAtr > 0 &&
+    (breakoutDistanceAtr == null ||
+      breakoutDistanceAtr < minBreakoutDistanceAtr)
+  ) {
+    return null;
+  }
   const maxBreakoutDistanceAtr = Math.max(
     0,
     Number(config.VCB_MAX_BREAKOUT_DISTANCE_ATR ?? 0),
@@ -109,6 +126,21 @@ export const detectVolatilityCompressionBreakoutSignal = ({
     maxBreakoutDistanceAtr > 0 &&
     (breakoutDistanceAtr == null ||
       breakoutDistanceAtr > maxBreakoutDistanceAtr)
+  ) {
+    return null;
+  }
+  const entryMaxAtrPctRank = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'VCB_ENTRY_MAX_ATR_PCT_RANK',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    entryMaxAtrPctRank > 0 &&
+    (atrPctRank100 == null || atrPctRank100 > entryMaxAtrPctRank)
   ) {
     return null;
   }

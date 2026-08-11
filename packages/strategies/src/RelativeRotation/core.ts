@@ -14,6 +14,7 @@ import {
   toFiniteNumberOrNull,
 } from '../shared/contextStrategy';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { getRelativeRotationCoreFilterSkipCode } from './filters';
 
 export interface RelativeRotationSignalContext {
   signalDirection: Direction;
@@ -274,6 +275,13 @@ export const createRelativeRotationCore: CreateStrategyCore<
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
     }
+
+    const filterSkipCode = getRelativeRotationCoreFilterSkipCode({
+      signal,
+      config,
+      baseContext,
+    });
+    if (filterSkipCode) return strategyApi.skip(filterSkipCode);
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();

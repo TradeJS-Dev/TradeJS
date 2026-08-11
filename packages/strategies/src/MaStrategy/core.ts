@@ -9,6 +9,7 @@ import type {
   KlineChartData,
 } from '@tradejs/types';
 import { getIndicatorsCorrelation } from '../shared/baseContext';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 export interface CrossState {
   kind: 'bullish' | 'bearish';
@@ -26,6 +27,7 @@ export interface MaCrossQuality {
   directionalBody: boolean;
   volumeRel20: number | null;
   priceDistanceFastAtr: number | null;
+  correlation: number | null;
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -81,6 +83,7 @@ const toFiniteNumberOrNull = (value: unknown): number | null => {
 export const getMaCrossQuality = (
   cross: CrossState,
   baseContext?: BaseStrategyContextSnapshot,
+  correlation: number | null = null,
 ): MaCrossQuality => {
   const atr = toFiniteNumberOrNull(baseContext?.raw?.volatility?.atr);
   const candle = baseContext?.candle;
@@ -120,15 +123,29 @@ export const getMaCrossQuality = (
       atr != null && atr > 0 && priceDistanceFast != null
         ? priceDistanceFast / atr
         : null,
+    correlation,
   };
 };
 
 export const isMaCrossQualityAccepted = (
   config: MaStrategyConfig,
   quality: MaCrossQuality,
+  direction: 'LONG' | 'SHORT' = 'LONG',
 ): boolean => {
   const minGapAtr = Math.max(0, Number(config.MA_MIN_CROSS_GAP_ATR ?? 0));
   if (minGapAtr > 0 && (quality.gapAtr == null || quality.gapAtr < minGapAtr)) {
+    return false;
+  }
+  const maxGapAtr = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'MA_MAX_CROSS_GAP_ATR',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (maxGapAtr > 0 && (quality.gapAtr == null || quality.gapAtr > maxGapAtr)) {
     return false;
   }
   const minFastSlopeAtr = Math.max(
@@ -169,6 +186,21 @@ export const isMaCrossQualityAccepted = (
     maxPriceDistanceFastAtr > 0 &&
     (quality.priceDistanceFastAtr == null ||
       quality.priceDistanceFastAtr > maxPriceDistanceFastAtr)
+  ) {
+    return false;
+  }
+  const maxCorrelation = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'MA_MAX_CORRELATION',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    maxCorrelation > 0 &&
+    (quality.correlation == null || quality.correlation > maxCorrelation)
   ) {
     return false;
   }
@@ -230,8 +262,13 @@ export const createMaStrategyCore: CreateStrategyCore<
     if (!indicators) {
       return strategyApi.skip('NO_INDICATORS');
     }
-    const crossQuality = getMaCrossQuality(cross, indicators.baseContext);
-    if (!isMaCrossQualityAccepted(config, crossQuality)) {
+    const correlation = getIndicatorsCorrelation(indicators);
+    const crossQuality = getMaCrossQuality(
+      cross,
+      indicators.baseContext,
+      correlation,
+    );
+    if (!isMaCrossQualityAccepted(config, crossQuality, modeConfig.direction)) {
       return strategyApi.skip('WEAK_MA_CROSS');
     }
 
@@ -260,7 +297,6 @@ export const createMaStrategyCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
-    const correlation = getIndicatorsCorrelation(indicators);
     const figureCandles = Array.isArray(indicators.candles15m)
       ? (indicators.candles15m as KlineChartData)
       : candle

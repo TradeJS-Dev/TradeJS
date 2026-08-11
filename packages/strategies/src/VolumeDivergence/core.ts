@@ -18,6 +18,10 @@ import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
 } from '../shared/structureRisk';
+import {
+  getVolumeDivergenceCoreFilterSkipCode,
+  getVolumeDivergenceStrength,
+} from './filters';
 
 type PivotDivergence = {
   currentPivotIndex: number;
@@ -122,7 +126,7 @@ const isOpenPosition = (
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
-const buildVolumeDivergenceStateKey = (config: VolumeDivergenceConfig) =>
+export const buildVolumeDivergenceStateKey = (config: VolumeDivergenceConfig) =>
   JSON.stringify({
     normalizationLength: config.NORMALIZATION_LENGTH,
     pivotLookbackLeft: config.PIVOT_LOOKBACK_LEFT,
@@ -133,6 +137,9 @@ const buildVolumeDivergenceStateKey = (config: VolumeDivergenceConfig) =>
     minDivergenceAmplitudeAtrRatio: config.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
     minReclaimPct: config.MIN_RECLAIM_PCT,
     minConfirmationCandleQuality: config.MIN_CONFIRMATION_CANDLE_QUALITY,
+    maxStrength: config.VOLUME_DIVERGENCE_MAX_STRENGTH,
+    maxStrengthLong: config.VOLUME_DIVERGENCE_MAX_STRENGTH_LONG,
+    maxStrengthShort: config.VOLUME_DIVERGENCE_MAX_STRENGTH_SHORT,
     atr: config.ATR,
     bullish: config.BULLISH,
     bearish: config.BEARISH,
@@ -628,6 +635,11 @@ const buildEntryPayloadFromPendingCandidate = ({
       previousNormalizedVolumeAtPivot: candidate.previousPivotVolumeNorm,
       volumeAtPivot: candidate.currentPivotVolume,
       deltaAtPivot: candidate.currentPivotDelta,
+      volumeDivergenceStrength: getVolumeDivergenceStrength({
+        direction: candidate.direction,
+        currentVolumeNorm: candidate.currentPivotVolumeNorm,
+        previousVolumeNorm: candidate.previousPivotVolumeNorm,
+      }),
       barsBetweenPivotConfirmations: candidate.barsBetweenPivotConfirmations,
       divergence: {
         kind: candidate.kind,
@@ -858,6 +870,16 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       bullish: BULLISH,
       bearish: BEARISH,
     });
+    const filterSkipCode = getVolumeDivergenceCoreFilterSkipCode({
+      direction: modeConfig.direction,
+      currentVolumeNorm: state.pendingCandidate.currentPivotVolumeNorm,
+      previousVolumeNorm: state.pendingCandidate.previousPivotVolumeNorm,
+      config,
+    });
+    if (filterSkipCode) {
+      state.pendingCandidate = null;
+      return { kind: 'skip', code: filterSkipCode };
+    }
     const entryThresholds = getVolumeDivergenceEntryThresholdsForDirection({
       config,
       mode: modeConfig,
@@ -1107,7 +1129,6 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       setupFeatures,
       entryThresholds,
     });
-
     lastTradeController.markTrade(timestamp);
     detectorState.update((state) => {
       state.pendingCandidate = null;

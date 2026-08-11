@@ -246,7 +246,12 @@ export const isBreakoutSetupAccepted = (
   }
   const maxDistanceAtr = Math.max(
     0,
-    Number(config.BREAKOUT_MAX_DISTANCE_ATR ?? 0),
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'BREAKOUT_MAX_DISTANCE_ATR',
+      direction: metrics.direction,
+      fallback: 0,
+    }),
   );
   if (
     maxDistanceAtr > 0 &&
@@ -281,7 +286,15 @@ export const isBreakoutSetupAccepted = (
   ) {
     return false;
   }
-  const maxRangeAtr = Math.max(0, Number(config.BREAKOUT_MAX_RANGE_ATR ?? 0));
+  const maxRangeAtr = Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'BREAKOUT_MAX_RANGE_ATR',
+      direction: metrics.direction,
+      fallback: 0,
+    }),
+  );
   if (
     maxRangeAtr > 0 &&
     (metrics.rangeAtr == null || metrics.rangeAtr > maxRangeAtr)

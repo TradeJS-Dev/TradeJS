@@ -24,6 +24,10 @@ const makeConfig = (overrides: Record<string, any> = {}) =>
     BREAKOUT_RETEST_TOLERANCE_ATR_SHORT: undefined,
     BREAKOUT_MIN_RANGE_ATR_LONG: undefined,
     BREAKOUT_MIN_RANGE_ATR_SHORT: undefined,
+    BREAKOUT_MAX_DISTANCE_ATR_LONG: undefined,
+    BREAKOUT_MAX_DISTANCE_ATR_SHORT: undefined,
+    BREAKOUT_MAX_RANGE_ATR_LONG: undefined,
+    BREAKOUT_MAX_RANGE_ATR_SHORT: undefined,
     ...overrides,
   }) as any;
 
@@ -865,5 +869,38 @@ describe('createBreakoutCore', () => {
         metrics,
       ),
     ).toBe(false);
+  });
+
+  it('uses independent distance and range caps by direction', () => {
+    const makeMetrics = (direction: 'LONG' | 'SHORT') =>
+      ({
+        direction,
+        distanceAtr: 0.2,
+        rangeAtr: 22,
+        freshLevelCross: true,
+        directionalBody: true,
+      }) as any;
+    const config = {
+      ...makeConfig(),
+      BREAKOUT_MAX_DISTANCE_ATR_LONG: 0.13,
+      BREAKOUT_MAX_DISTANCE_ATR_SHORT: 0,
+      BREAKOUT_MAX_RANGE_ATR_LONG: 0,
+      BREAKOUT_MAX_RANGE_ATR_SHORT: 21,
+    } as any;
+
+    expect(isBreakoutSetupAccepted(config, makeMetrics('LONG'))).toBe(false);
+    expect(isBreakoutSetupAccepted(config, makeMetrics('SHORT'))).toBe(false);
+    expect(
+      isBreakoutSetupAccepted(config, {
+        ...makeMetrics('LONG'),
+        distanceAtr: 0.1,
+      }),
+    ).toBe(true);
+    expect(
+      isBreakoutSetupAccepted(config, {
+        ...makeMetrics('SHORT'),
+        rangeAtr: 20.5,
+      }),
+    ).toBe(true);
   });
 });

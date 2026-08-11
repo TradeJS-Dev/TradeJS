@@ -10,6 +10,7 @@ import {
   createStructureZonesEngine,
 } from './engine';
 import { buildStructureZonesFigures } from './figures';
+import { getStructureZonesCoreFilterSkipCode } from './filters';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const isOpenPosition = (position: Position | null): position is Position =>
@@ -118,6 +119,13 @@ export const createStructureZonesCore: CreateStrategyCore<
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
     }
+
+    const filterSkipCode = getStructureZonesCoreFilterSkipCode({
+      signal,
+      config,
+      baseContext: strategyApi.getBaseContext(),
+    });
+    if (filterSkipCode) return strategyApi.skip(filterSkipCode);
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();

@@ -1,4 +1,7 @@
-import { createVolumeDivergenceCore } from '../core';
+import {
+  buildVolumeDivergenceStateKey,
+  createVolumeDivergenceCore,
+} from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
@@ -107,30 +110,33 @@ const makeIndicatorsState = () =>
     isInitialized: jest.fn(() => true),
   }) as any;
 
-const makeConfig = (overrides: Record<string, any> = {}) => ({
-  ...DEFAULT_CONFIG,
-  ...overrides,
-  BULLISH: {
-    ...DEFAULT_CONFIG.BULLISH,
-    requireRetest: false,
-    minDivergenceAmplitudeAtrRatio:
-      DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
-    minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
-    minConfirmationCandleQuality:
-      DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
-    ...(overrides.BULLISH ?? {}),
-  },
-  BEARISH: {
-    ...DEFAULT_CONFIG.BEARISH,
-    requireRetest: false,
-    minDivergenceAmplitudeAtrRatio:
-      DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
-    minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
-    minConfirmationCandleQuality:
-      DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
-    ...(overrides.BEARISH ?? {}),
-  },
-});
+const makeConfig = (overrides: Record<string, any> = {}) =>
+  ({
+    ...DEFAULT_CONFIG,
+    VOLUME_DIVERGENCE_MAX_STRENGTH_LONG: 0,
+    VOLUME_DIVERGENCE_MAX_STRENGTH_SHORT: 0,
+    ...overrides,
+    BULLISH: {
+      ...DEFAULT_CONFIG.BULLISH,
+      requireRetest: false,
+      minDivergenceAmplitudeAtrRatio:
+        DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+      minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
+      minConfirmationCandleQuality:
+        DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
+      ...(overrides.BULLISH ?? {}),
+    },
+    BEARISH: {
+      ...DEFAULT_CONFIG.BEARISH,
+      requireRetest: false,
+      minDivergenceAmplitudeAtrRatio:
+        DEFAULT_CONFIG.MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+      minReclaimPct: DEFAULT_CONFIG.MIN_RECLAIM_PCT,
+      minConfirmationCandleQuality:
+        DEFAULT_CONFIG.MIN_CONFIRMATION_CANDLE_QUALITY,
+      ...(overrides.BEARISH ?? {}),
+    },
+  }) as any;
 
 const DIVERGENCE_TEST_CONFIG = {
   NORMALIZATION_LENGTH: 8,
@@ -182,6 +188,21 @@ const makeFollowUpCandle = ({
   candle.low = Math.min(candle.low, previousCandle.close, price);
   return candle;
 };
+
+describe('buildVolumeDivergenceStateKey', () => {
+  it('changes when a state-mutating strength filter changes', () => {
+    const permissive = makeConfig({
+      VOLUME_DIVERGENCE_MAX_STRENGTH_LONG: 0,
+    });
+    const filtered = makeConfig({
+      VOLUME_DIVERGENCE_MAX_STRENGTH_LONG: 3,
+    });
+
+    expect(buildVolumeDivergenceStateKey(permissive)).not.toBe(
+      buildVolumeDivergenceStateKey(filtered),
+    );
+  });
+});
 
 describe('createVolumeDivergenceCore', () => {
   it('returns NO_DIVERGENCE when pivots do not match divergence rules', async () => {

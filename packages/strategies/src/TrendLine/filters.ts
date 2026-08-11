@@ -2,8 +2,13 @@ import { diffRel } from '@tradejs/core/math';
 import { ATR_PCT } from '@tradejs/indicators';
 import { getSma } from './utils';
 
-import { KlineChartData } from '@tradejs/types';
+import {
+  BaseStrategyContextSnapshot,
+  Direction,
+  KlineChartData,
+} from '@tradejs/types';
 import type { TrendLineConfig } from './config';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 type TrendLineStructuralFilterContext = {
   breakVsAtrRatio: number | null;
@@ -23,13 +28,48 @@ const asPositiveThreshold = (value: unknown): number | null => {
 
 export const getTrendLineCoreFilterSkipCode = ({
   config,
+  direction,
+  baseContext,
   structuralContext,
   timingContext,
 }: {
   config: TrendLineConfig;
+  direction: Direction;
+  baseContext?: BaseStrategyContextSnapshot | null;
   structuralContext: TrendLineStructuralFilterContext;
   timingContext: TrendLineTimingFilterContext;
 }): string | null => {
+  const minVolumeRel20 = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDLINE_MIN_VOLUME_REL20',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    minVolumeRel20 != null &&
+    (structuralContext.volumeRel20 == null ||
+      structuralContext.volumeRel20 < minVolumeRel20)
+  ) {
+    return 'TRENDLINE_VOLUME_TOO_THIN';
+  }
+
+  const maxBbWidthPct = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDLINE_MAX_BB_WIDTH_PCT',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (maxBbWidthPct != null) {
+    const bbWidthPct = Number(baseContext?.raw?.volatility?.bbWidthPct);
+    if (!Number.isFinite(bbWidthPct) || bbWidthPct > maxBbWidthPct) {
+      return 'TRENDLINE_VOLATILITY_TOO_WIDE';
+    }
+  }
+
   const minBreakAtrRatio = asPositiveThreshold(
     config.TRENDLINE_MIN_BREAK_ATR_RATIO,
   );

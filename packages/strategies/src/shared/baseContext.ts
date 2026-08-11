@@ -44,6 +44,25 @@ export const getSignalAtrPct = (signal: SignalLike): number | null =>
 export const getSignalVolumeRel20 = (signal: SignalLike): number | null =>
   getSignalBaseContext(signal)?.participation?.volume?.volumeRel20 ?? null;
 
+export const getAverageTurnover20 = (
+  baseContext: BaseStrategyContextSnapshot | null | undefined,
+): number | null => {
+  const turnover = Number(baseContext?.candle?.turnover);
+  const turnoverRel20 = Number(
+    baseContext?.participation?.volume?.turnoverRel20,
+  );
+  if (
+    !Number.isFinite(turnover) ||
+    turnover < 0 ||
+    !Number.isFinite(turnoverRel20) ||
+    turnoverRel20 <= 0
+  ) {
+    return null;
+  }
+
+  return turnover / turnoverRel20;
+};
+
 export const getSignalBtcMaFast = (signal: SignalLike): number | null =>
   getSignalBaseContext(signal)?.relative.benchmark.maFast ?? null;
 

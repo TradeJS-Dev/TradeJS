@@ -7,6 +7,7 @@ import type {
 import { DoubleTapConfig } from './config';
 import { buildDoubleTapSignalContext, createDoubleTapEngine } from './engine';
 import { buildDoubleTapFigures } from './figures';
+import { getDoubleTapCoreFilterSkipCode } from './filters';
 import {
   buildTradeEconomics,
   isStopLossOnCorrectSide,
@@ -110,6 +111,15 @@ export const createDoubleTapCore: CreateStrategyCore<
       pattern.direction === 'LONG' ? config.LONG : config.SHORT;
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
+    }
+
+    const coreFilterSkipCode = getDoubleTapCoreFilterSkipCode({
+      config,
+      pattern,
+      baseContext: strategyApi.getBaseContext(),
+    });
+    if (coreFilterSkipCode) {
+      return strategyApi.skip(coreFilterSkipCode);
     }
 
     const { timestamp, currentPrice } =

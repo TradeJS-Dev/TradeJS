@@ -7,6 +7,7 @@ import type {
 import { TrendShiftConfig } from './config';
 import { buildTrendShiftSignalContext, createTrendShiftEngine } from './engine';
 import { buildTrendShiftFigures } from './figures';
+import { getTrendShiftCoreFilterSkipCode } from './filters';
 import {
   buildTrendShiftGuardrailContext,
   getTrendShiftGuardrailSkipCode,
@@ -115,6 +116,13 @@ export const createTrendShiftCore: CreateStrategyCore<
       await strategyApi.getDecisionPriceContext();
     const baseContext = strategyApi.getBaseContext();
     const direction = modeConfig.direction;
+    const coreFilterSkipCode = getTrendShiftCoreFilterSkipCode({
+      config,
+      baseContext,
+    });
+    if (coreFilterSkipCode) {
+      return strategyApi.skip(coreFilterSkipCode);
+    }
     const signalContext = buildTrendShiftSignalContext({
       snapshot: {
         ...snapshot,

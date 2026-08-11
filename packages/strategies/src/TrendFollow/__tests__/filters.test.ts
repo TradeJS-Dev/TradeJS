@@ -13,6 +13,12 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
     ...DEFAULT_CONFIG,
     TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_LONG: undefined,
     TRENDFOLLOW_MIN_BREAKOUT_DISTANCE_PCT_SHORT: undefined,
+    TRENDFOLLOW_MIN_TREND_PERSISTENCE_LONG: undefined,
+    TRENDFOLLOW_MIN_TREND_PERSISTENCE_SHORT: undefined,
+    TRENDFOLLOW_MAX_RSI_LONG: undefined,
+    TRENDFOLLOW_MAX_RSI_SHORT: undefined,
+    TRENDFOLLOW_MAX_BB_WIDTH_PCT_LONG: undefined,
+    TRENDFOLLOW_MAX_BB_WIDTH_PCT_SHORT: undefined,
     ...overrides,
   }) as any;
 
@@ -141,5 +147,39 @@ describe('getTrendFollowCoreFilterSkipCode', () => {
         } as any,
       }),
     ).toBe('TRENDFOLLOW_BREAKOUT_BODY_TOO_SMALL');
+  });
+
+  it('applies directional persistence, RSI, and volatility maturity', () => {
+    const config = makeConfig({
+      TRENDFOLLOW_MIN_TREND_PERSISTENCE_LONG: 0.5,
+      TRENDFOLLOW_MAX_RSI_LONG: 75,
+      TRENDFOLLOW_MAX_BB_WIDTH_PCT_SHORT: 8,
+    });
+
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('LONG'),
+        config,
+        baseContext: {
+          regime: { trend: { persistence: 0.49 }, momentum: { rsi: 70 } },
+        } as any,
+      }),
+    ).toBe('TRENDFOLLOW_TREND_PERSISTENCE_TOO_LOW');
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('LONG'),
+        config,
+        baseContext: {
+          regime: { trend: { persistence: 0.6 }, momentum: { rsi: 76 } },
+        } as any,
+      }),
+    ).toBe('TRENDFOLLOW_RSI_TOO_EXTENDED');
+    expect(
+      getTrendFollowCoreFilterSkipCode({
+        signal: makeSignal('SHORT'),
+        config,
+        baseContext: { raw: { volatility: { bbWidthPct: 8.1 } } } as any,
+      }),
+    ).toBe('TRENDFOLLOW_VOLATILITY_TOO_WIDE');
   });
 });

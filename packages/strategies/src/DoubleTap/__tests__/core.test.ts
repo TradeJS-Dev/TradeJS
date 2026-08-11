@@ -60,6 +60,9 @@ const makeStrategyApi = ({
       currentPrice: marketData.currentPrice,
       candle: marketData.lastCandle,
     })),
+    getBaseContext: jest.fn(() => ({
+      raw: { volatility: { bbWidthPct: 5 } },
+    })),
     getCurrentPosition: jest.fn(async () => currentPosition),
     createLastTradeController: jest.fn(() => ({
       isInCooldown: () => false,

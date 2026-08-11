@@ -95,6 +95,13 @@ const makeFreshBreakoutTrendLine = (
   };
 };
 
+const TEST_CORE_FILTER_OVERRIDES = {
+  TRENDLINE_MIN_VOLUME_REL20_LONG: 0,
+  TRENDLINE_MIN_VOLUME_REL20_SHORT: 0,
+  TRENDLINE_MAX_BB_WIDTH_PCT_LONG: 0,
+  TRENDLINE_MAX_BB_WIDTH_PCT_SHORT: 0,
+};
+
 describe('TrendlineStrategyCreator', () => {
   const originalDerivativesContextEnabled =
     process.env.DERIVATIVES_CONTEXT_ENABLED;
@@ -198,6 +205,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -281,6 +289,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -363,6 +372,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -461,6 +471,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -532,6 +543,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -627,6 +639,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'BACKTEST',
         INTERVAL: '15',
         MAKE_ORDERS: false,
@@ -732,6 +745,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,
@@ -813,6 +827,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'BACKTEST',
         INTERVAL: '15',
         MAKE_ORDERS: true,
@@ -891,6 +906,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,
@@ -972,6 +988,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,
@@ -1052,6 +1069,7 @@ describe('TrendlineStrategyCreator', () => {
       userName: 'test',
       connectorName: 'ByBit',
       config: {
+        ...TEST_CORE_FILTER_OVERRIDES,
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,

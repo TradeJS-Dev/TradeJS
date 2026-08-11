@@ -81,6 +81,9 @@ const makeStrategyApi = ({
       candle: marketData.lastCandle,
     })),
     getCurrentPosition: jest.fn(async () => currentPosition),
+    getBaseContext: jest.fn(() => ({
+      regime: { momentum: { bodyStrength: 1 } },
+    })),
     createLastTradeController: jest.fn(() => ({
       isInCooldown: () => false,
       markTrade: jest.fn(),
@@ -110,7 +113,10 @@ const makeStrategyApi = ({
     })),
   }) as any;
 
-const createCore = async (currentPosition: any = null) => {
+const createCore = async (
+  currentPosition: any = null,
+  configOverrides: Record<string, unknown> = {},
+) => {
   const candles = makeClassicCandles();
   const currentCandle = candles[candles.length - 1];
   const strategyApi = makeStrategyApi({
@@ -124,7 +130,7 @@ const createCore = async (currentPosition: any = null) => {
   const core = await createHeadAndShouldersCore({
     userName: 'root',
     symbol: 'TESTUSDT',
-    config: makeConfig(),
+    config: { ...makeConfig(), ...configOverrides },
     isConfigFromBacktest: false,
     connector: {} as any,
     data: candles.slice(0, -1),
@@ -154,11 +160,14 @@ describe('HeadAndShoulders core', () => {
   });
 
   it('exits an opposite long position on a classic pattern', async () => {
-    const { core, currentCandle, strategyApi } = await createCore({
-      direction: 'LONG',
-      price: 100,
-      qty: 1,
-    });
+    const { core, currentCandle, strategyApi } = await createCore(
+      {
+        direction: 'LONG',
+        price: 100,
+        qty: 1,
+      },
+      { HEADSHOULDERS_EXIT_ON_OPPOSITE_PATTERN: true },
+    );
 
     const result = await core(currentCandle as any, currentCandle as any);
 
@@ -171,5 +180,18 @@ describe('HeadAndShoulders core', () => {
       code: 'HEADSHOULDERS_OPPOSITE_PATTERN_EXIT',
       direction: 'LONG',
     });
+  });
+
+  it('keeps an existing position when opposite-pattern exits are disabled', async () => {
+    const { core, currentCandle, strategyApi } = await createCore({
+      direction: 'LONG',
+      price: 100,
+      qty: 1,
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result).toEqual({ kind: 'skip', code: 'POSITION_EXISTS' });
+    expect(strategyApi.exit).not.toHaveBeenCalled();
   });
 });

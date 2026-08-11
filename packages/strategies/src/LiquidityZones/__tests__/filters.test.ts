@@ -7,7 +7,7 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
   ({ ...DEFAULT_CONFIG, ...overrides }) as any;
 
 const makeSignal = (direction: 'LONG' | 'SHORT' = 'LONG') =>
-  ({ direction }) as any;
+  ({ direction, reactionCloseDistancePct: 0.25 }) as any;
 
 describe('getLiquidityZonesFilterSkipCode', () => {
   it('keeps the default core filters permissive', () => {
@@ -91,5 +91,27 @@ describe('getLiquidityZonesFilterSkipCode', () => {
         } as any,
       }),
     ).toBe('LIQUIDITY_ZONES_VOLUME_TOO_THIN');
+  });
+
+  it('rejects extended long reactions while keeping shorts permissive', () => {
+    expect(
+      getLiquidityZonesFilterSkipCode({
+        signal: {
+          ...makeSignal('LONG'),
+          reactionCloseDistancePct: 0.81,
+        },
+        config: makeConfig(),
+      }),
+    ).toBe('LIQUIDITY_ZONES_REACTION_TOO_EXTENDED');
+
+    expect(
+      getLiquidityZonesFilterSkipCode({
+        signal: {
+          ...makeSignal('SHORT'),
+          reactionCloseDistancePct: 2,
+        },
+        config: makeConfig(),
+      }),
+    ).toBeNull();
   });
 });

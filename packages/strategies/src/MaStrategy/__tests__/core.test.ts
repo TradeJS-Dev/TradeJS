@@ -120,7 +120,11 @@ const makeCore = async ({
   return createMaStrategyCore({
     userName: 'root',
     symbol: 'TESTUSDT',
-    config: DEFAULT_CONFIG as any,
+    config: {
+      ...DEFAULT_CONFIG,
+      MA_MAX_CROSS_GAP_ATR_LONG: 0,
+      MA_MAX_CORRELATION_SHORT: 0,
+    } as any,
     isConfigFromBacktest: false,
     connector: {} as any,
     data: [],
@@ -274,5 +278,35 @@ describe('MaStrategy core', () => {
         quality,
       ),
     ).toBe(false);
+  });
+
+  it('supports directional maximum gap and correlation filters', () => {
+    const quality = {
+      gapAtr: 0.25,
+      fastSlopeAtr: 0.2,
+      slowSlopeAligned: true,
+      bodyAtr: 0.5,
+      directionalBody: true,
+      volumeRel20: 1,
+      priceDistanceFastAtr: 0.5,
+      correlation: 0.6,
+    };
+    const config = {
+      ...DEFAULT_CONFIG,
+      MA_MAX_CROSS_GAP_ATR_LONG: 0.24,
+      MA_MAX_CROSS_GAP_ATR_SHORT: 0,
+      MA_MAX_CORRELATION_LONG: 0,
+      MA_MAX_CORRELATION_SHORT: 0.5,
+    } as any;
+
+    expect(isMaCrossQualityAccepted(config, quality, 'LONG')).toBe(false);
+    expect(isMaCrossQualityAccepted(config, quality, 'SHORT')).toBe(false);
+    expect(
+      isMaCrossQualityAccepted(
+        config,
+        { ...quality, gapAtr: 0.23, correlation: 0.4 },
+        'LONG',
+      ),
+    ).toBe(true);
   });
 });

@@ -14,6 +14,8 @@ const makeConfig = (overrides: Record<string, unknown> = {}) =>
 const makeStructural = (overrides: Record<string, unknown> = {}) => ({
   coinBiasAligned: true,
   btcBiasAligned: true,
+  breakVsAtrRatio: 0.2,
+  btcMaSpreadPct: 0,
   ...overrides,
 });
 
@@ -112,5 +114,31 @@ describe('getReverseTrendLineCoreFilterSkipCode', () => {
         timingContext: makeTiming({ currentRejectionStrengthPct: 0.2 }),
       }),
     ).toBeNull();
+  });
+
+  it('uses direction-specific normalized break and BTC regime caps', () => {
+    const config = makeConfig({
+      REVERSE_TRENDLINE_MAX_BREAK_ATR_RATIO_LONG: 0.3,
+      REVERSE_TRENDLINE_MAX_BREAK_ATR_RATIO_SHORT: 0,
+      REVERSE_TRENDLINE_MAX_BTC_MA_SPREAD_PCT_LONG: 0,
+      REVERSE_TRENDLINE_MAX_BTC_MA_SPREAD_PCT_SHORT: 0.2,
+    });
+
+    expect(
+      getReverseTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'LONG',
+        structuralContext: makeStructural({ breakVsAtrRatio: 0.31 }),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('REVERSE_TRENDLINE_BREAK_TOO_EXTENDED_VS_ATR');
+    expect(
+      getReverseTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'SHORT',
+        structuralContext: makeStructural({ btcMaSpreadPct: 0.21 }),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('REVERSE_TRENDLINE_BTC_UPTREND_TOO_STRONG');
   });
 });

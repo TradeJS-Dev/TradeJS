@@ -136,5 +136,50 @@ export const getTrendFollowCoreFilterSkipCode = ({
     }
   }
 
+  const minTrendPersistence = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDFOLLOW_MIN_TREND_PERSISTENCE',
+      direction: signal.direction,
+      fallback: 0,
+    }),
+  );
+  if (minTrendPersistence != null) {
+    const persistence = Number(baseContext?.regime?.trend?.persistence);
+    if (!Number.isFinite(persistence) || persistence < minTrendPersistence) {
+      return 'TRENDFOLLOW_TREND_PERSISTENCE_TOO_LOW';
+    }
+  }
+
+  const maxRsi = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDFOLLOW_MAX_RSI',
+      direction: signal.direction,
+      fallback: 0,
+    }),
+  );
+  if (maxRsi != null) {
+    const rsi = Number(baseContext?.regime?.momentum?.rsi);
+    if (!Number.isFinite(rsi) || rsi > maxRsi) {
+      return 'TRENDFOLLOW_RSI_TOO_EXTENDED';
+    }
+  }
+
+  const maxBbWidthPct = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'TRENDFOLLOW_MAX_BB_WIDTH_PCT',
+      direction: signal.direction,
+      fallback: 0,
+    }),
+  );
+  if (maxBbWidthPct != null) {
+    const bbWidthPct = Number(baseContext?.raw?.volatility?.bbWidthPct);
+    if (!Number.isFinite(bbWidthPct) || bbWidthPct > maxBbWidthPct) {
+      return 'TRENDFOLLOW_VOLATILITY_TOO_WIDE';
+    }
+  }
+
   return null;
 };

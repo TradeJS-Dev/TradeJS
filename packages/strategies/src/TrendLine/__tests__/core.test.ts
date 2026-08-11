@@ -177,6 +177,10 @@ const makeStrategyApi = () => {
 
 const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...DEFAULT_CONFIG,
+  TRENDLINE_MIN_VOLUME_REL20_LONG: 0,
+  TRENDLINE_MIN_VOLUME_REL20_SHORT: 0,
+  TRENDLINE_MAX_BB_WIDTH_PCT_LONG: 0,
+  TRENDLINE_MAX_BB_WIDTH_PCT_SHORT: 0,
   ...overrides,
 });
 

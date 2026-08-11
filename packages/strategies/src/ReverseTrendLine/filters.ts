@@ -5,6 +5,8 @@ import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 type ReverseStructuralFilterContext = {
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  breakVsAtrRatio: number | null;
+  btcMaSpreadPct: number | null;
 };
 
 type ReverseTimingFilterContext = {
@@ -78,6 +80,38 @@ export const getReverseTrendLineCoreFilterSkipCode = ({
       rejectionStrengthPct < minRejectionStrengthPct)
   ) {
     return 'REVERSE_TRENDLINE_REJECTION_STRENGTH_TOO_WEAK';
+  }
+
+  const maxBreakAtrRatio = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'REVERSE_TRENDLINE_MAX_BREAK_ATR_RATIO',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    maxBreakAtrRatio != null &&
+    (structuralContext.breakVsAtrRatio == null ||
+      structuralContext.breakVsAtrRatio > maxBreakAtrRatio)
+  ) {
+    return 'REVERSE_TRENDLINE_BREAK_TOO_EXTENDED_VS_ATR';
+  }
+
+  const maxBtcMaSpreadPct = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'REVERSE_TRENDLINE_MAX_BTC_MA_SPREAD_PCT',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    maxBtcMaSpreadPct != null &&
+    (structuralContext.btcMaSpreadPct == null ||
+      structuralContext.btcMaSpreadPct > maxBtcMaSpreadPct)
+  ) {
+    return 'REVERSE_TRENDLINE_BTC_UPTREND_TOO_STRONG';
   }
 
   if (

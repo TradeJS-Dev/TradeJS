@@ -63,6 +63,7 @@ const makeCore = async () => {
       ...DEFAULT_CONFIG,
       LIQUIDITY_ZONES_PIVOT_LOOKBACK: 1,
       LIQUIDITY_ZONES_MIN_FILTER_VALUE: 0,
+      LIQUIDITY_ZONES_MAX_REACTION_CLOSE_DISTANCE_PCT_LONG: 0,
     } as any,
     isConfigFromBacktest: false,
     connector,

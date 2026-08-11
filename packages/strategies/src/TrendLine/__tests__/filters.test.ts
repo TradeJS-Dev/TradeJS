@@ -24,6 +24,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config: makeConfig(),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
@@ -34,6 +35,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config: makeConfig({ TRENDLINE_MIN_BREAK_ATR_RATIO: 1.5 }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
@@ -42,6 +44,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config: makeConfig({ TRENDLINE_MAX_BREAK_ATR_RATIO: 1 }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
@@ -57,6 +60,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config,
+        direction: 'LONG',
         structuralContext: makeStructural({
           breakVsAtrRatio: 1.2,
           volumeRel20: 4,
@@ -68,6 +72,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config,
+        direction: 'LONG',
         structuralContext: makeStructural({
           breakVsAtrRatio: 1.3,
           volumeRel20: 4,
@@ -79,6 +84,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config,
+        direction: 'LONG',
         structuralContext: makeStructural({
           breakVsAtrRatio: 1.2,
           volumeRel20: 2.9,
@@ -92,6 +98,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config: makeConfig({ TRENDLINE_REQUIRE_SLOPE_ALIGNMENT: true }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming({ lineSlopeAligned: false }),
       }),
@@ -100,6 +107,7 @@ describe('getTrendLineCoreFilterSkipCode', () => {
     expect(
       getTrendLineCoreFilterSkipCode({
         config: makeConfig({ TRENDLINE_REQUIRE_BTC_BIAS_ALIGNMENT: true }),
+        direction: 'LONG',
         structuralContext: makeStructural({ btcBiasAligned: false }),
         timingContext: makeTiming(),
       }),
@@ -110,9 +118,32 @@ describe('getTrendLineCoreFilterSkipCode', () => {
         config: makeConfig({
           TRENDLINE_ALLOWED_ENTRY_TIMINGS: ['ready_retest'],
         }),
+        direction: 'LONG',
         structuralContext: makeStructural(),
         timingContext: makeTiming(),
       }),
     ).toBe('TRENDLINE_ENTRY_TIMING_NOT_ALLOWED');
+  });
+
+  it('uses directional participation and volatility limits', () => {
+    const config = makeConfig();
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'LONG',
+        baseContext: { raw: { volatility: { bbWidthPct: 8 } } } as any,
+        structuralContext: makeStructural({ volumeRel20: 0.99 }),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('TRENDLINE_VOLUME_TOO_THIN');
+    expect(
+      getTrendLineCoreFilterSkipCode({
+        config,
+        direction: 'SHORT',
+        baseContext: { raw: { volatility: { bbWidthPct: 4.1 } } } as any,
+        structuralContext: makeStructural(),
+        timingContext: makeTiming(),
+      }),
+    ).toBe('TRENDLINE_VOLATILITY_TOO_WIDE');
   });
 });

@@ -1,6 +1,7 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { LiquidityZonesConfig } from './config';
 import type { LiquidityZonesSignal } from './engine';
+import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const asPositiveThreshold = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -63,6 +64,22 @@ export const getLiquidityZonesFilterSkipCode = ({
     if (!Number.isFinite(volumeRel20) || volumeRel20 < minVolumeRel20) {
       return 'LIQUIDITY_ZONES_VOLUME_TOO_THIN';
     }
+  }
+
+  const maxReactionCloseDistancePct = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_ZONES_MAX_REACTION_CLOSE_DISTANCE_PCT',
+      direction: signal.direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    maxReactionCloseDistancePct != null &&
+    (!Number.isFinite(signal.reactionCloseDistancePct) ||
+      signal.reactionCloseDistancePct > maxReactionCloseDistancePct)
+  ) {
+    return 'LIQUIDITY_ZONES_REACTION_TOO_EXTENDED';
   }
 
   return null;

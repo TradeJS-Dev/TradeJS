@@ -244,6 +244,8 @@ export const createTrendLineCore: CreateStrategyCore<
 
     const filterSkipCode = getTrendLineCoreFilterSkipCode({
       config,
+      direction,
+      baseContext,
       structuralContext,
       timingContext,
     });

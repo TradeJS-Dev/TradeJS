@@ -213,7 +213,13 @@ const makeIndicatorsState = () => {
 const makeCoreParams = (overrides: Record<string, unknown> = {}) => ({
   userName: 'test',
   symbol: 'TESTUSDT',
-  config: DEFAULT_CONFIG as any,
+  config: {
+    ...DEFAULT_CONFIG,
+    REVERSE_TRENDLINE_MAX_BREAK_ATR_RATIO_LONG: 0,
+    REVERSE_TRENDLINE_MAX_BREAK_ATR_RATIO_SHORT: 0,
+    REVERSE_TRENDLINE_MAX_BTC_MA_SPREAD_PCT_LONG: 0,
+    REVERSE_TRENDLINE_MAX_BTC_MA_SPREAD_PCT_SHORT: 0,
+  } as any,
   data: [] as any,
   btcData: [] as any,
   connector: {} as any,

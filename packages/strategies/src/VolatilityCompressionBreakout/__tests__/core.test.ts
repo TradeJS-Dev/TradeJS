@@ -44,6 +44,7 @@ describe('VolatilityCompressionBreakout core detector', () => {
       config: {
         ...DEFAULT_CONFIG,
         VCB_MAX_BREAKOUT_DISTANCE_ATR: 0.5,
+        VCB_MAX_BREAKOUT_DISTANCE_ATR_LONG: 0.5,
       } as any,
     });
     const rejected = detectVolatilityCompressionBreakoutSignal({
@@ -51,6 +52,7 @@ describe('VolatilityCompressionBreakout core detector', () => {
       config: {
         ...DEFAULT_CONFIG,
         VCB_MAX_BREAKOUT_DISTANCE_ATR: 0.49,
+        VCB_MAX_BREAKOUT_DISTANCE_ATR_LONG: 0.49,
       } as any,
     });
 
@@ -58,5 +60,31 @@ describe('VolatilityCompressionBreakout core detector', () => {
     expect(accepted?.breakoutLevel).toBe(104);
     expect(accepted?.breakoutDistanceAtr).toBeCloseTo(0.5);
     expect(rejected).toBeNull();
+  });
+
+  it('uses independent long maturity and short volatility filters', () => {
+    const baseContext = makeBaseContext();
+    expect(
+      detectVolatilityCompressionBreakoutSignal({
+        baseContext,
+        config: {
+          ...DEFAULT_CONFIG,
+          VCB_MIN_BREAKOUT_DISTANCE_ATR_LONG: 0.51,
+        } as any,
+      }),
+    ).toBeNull();
+
+    const shortContext = makeBaseContext() as any;
+    shortContext.candle.close = 99;
+    shortContext.candle.open = 101;
+    shortContext.raw.levels = { lowLevel: 100 };
+    shortContext.structure.localRange.breakoutState = 'below_low_level';
+    shortContext.regime.volatility.percentiles.atrPctRank100 = 24;
+    expect(
+      detectVolatilityCompressionBreakoutSignal({
+        baseContext: shortContext,
+        config: DEFAULT_CONFIG as any,
+      }),
+    ).toBeNull();
   });
 });
