@@ -51,6 +51,10 @@ args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['d', 'days'], 'Run replay only for the last N days');
 args.option('startTime', 'Explicit replay start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit replay end timestamp (ms or seconds)');
+args.option(
+  'runtimeEvidence',
+  'Immutable runtime evidence JSON used for offline runtime comparison',
+);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(
@@ -80,4 +84,9 @@ export const replayInterval = String(replayFlags.timeframe ?? 15) as Interval;
 export const replayUserName = String(replayFlags.user ?? 'root');
 export const replayProjectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+export const replayRuntimeEvidencePath =
+  typeof replayFlags.runtimeEvidence === 'string' &&
+  replayFlags.runtimeEvidence.trim()
+    ? replayFlags.runtimeEvidence.trim()
+    : null;
 export const isReplayUpdateOnlyRun = Boolean(replayFlags.updateOnly);

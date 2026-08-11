@@ -26,6 +26,7 @@ import {
   replayFlags,
   replayInterval,
   replayProjectRoot,
+  replayRuntimeEvidencePath,
   replayUserName,
 } from '../lib/replay/cliConfig';
 import { REPLAY_RESULTS_CONFIG } from '../lib/replay/support';
@@ -91,6 +92,7 @@ const finishReplay = async ({
     backtestEntries: replayStrategySnapshot.backtestEntries,
     replaySignals: replayResult.signals,
     replayLineages: replayResult.runtimeLineages,
+    runtimeEvidencePath: replayRuntimeEvidencePath,
   });
 
   const finishedAt = new Date();

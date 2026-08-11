@@ -169,6 +169,23 @@ processing receipt. After replay and calibration, build the daily scorecard and
 write the receipt only on successful completion:
 
 ```bash
+yarn replay -- \
+  --user root \
+  --connector bybit \
+  --cacheOnly \
+  --startTime <window.startTime> \
+  --endTime <window.endTime> \
+  --runtimeEvidence <bundle>/runtime-evidence.json
+yarn replay:evidence -- \
+  --user root \
+  --runtimeEvidence <bundle>/runtime-evidence.json \
+  --startTime <window.startTime> \
+  --endTime <window.endTime> \
+  --out output/replay-runtime-evidence.json
+yarn cli:node8g execution-calibration \
+  --runtimeEvidence <bundle>/runtime-evidence.json \
+  --replayEvidence output/replay-runtime-evidence.json \
+  --out output/execution-calibration.json
 yarn runtime:scorecard -- \
   --runtimeEvidence <bundle>/runtime-evidence.json \
   --replayEvidence output/replay-runtime-evidence.json \

@@ -42,7 +42,8 @@ import {
   type ExchangeOrderFailedBacktestEntry,
 } from '../runtimeParityDetails';
 import { getRuntimeCompareContext } from '../backtest/runState';
-import { replayInterval, replayUserName } from './cliConfig';
+import { replayInterval, replayProjectRoot, replayUserName } from './cliConfig';
+import { loadReplayRuntimeEvidenceSource } from './runtimeEvidenceSource';
 import {
   REPLAY_RUNTIME_COMPARISON_HEADERS,
   REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
@@ -1105,11 +1106,13 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   backtestEntries,
   replaySignals,
   replayLineages,
+  runtimeEvidencePath,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
   replaySignals: Signal[];
   replayLineages: ReplayRuntimeLineageRecord[];
+  runtimeEvidencePath?: string | null;
 }): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   if (!connector || !window) {
@@ -1120,68 +1123,92 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     liveStrategySummaries.map((summary) => summary.strategyName),
   );
   const replaySignalEvaluations = buildReplaySignalEvaluations(replaySignals);
+  const runtimeEvidence = runtimeEvidencePath
+    ? await loadReplayRuntimeEvidenceSource({
+        filePath: runtimeEvidencePath,
+        projectRoot: replayProjectRoot,
+        expectedUserName: replayUserName,
+        expectedWindow: window,
+      })
+    : null;
   const [
     rawRuntimeTrades,
     runtimeSignals,
     runtimeSignalEvaluations,
     runtimeLineageScopes,
-  ] = await Promise.all([
-    loadRuntimeTrades(replayUserName, {
-      startTime: window.start,
-      endTime: window.end,
-    }),
-    loadRuntimeSignals(replayUserName, {
-      startTime: window.start,
-      endTime: window.end,
-    }),
-    loadRuntimeSignalEvaluations(replayUserName, {
-      startTime: window.start,
-      endTime: window.end,
-    }),
-    loadRuntimeLineageScopes(replayUserName, {
-      startTime: window.start,
-      endTime: window.end,
-    }),
-  ]);
-  const syncedRuntimeTrades = await syncRuntimeTrades({
-    userName: replayUserName,
-    connector,
-    trades: rawRuntimeTrades,
-    startTime: window.start,
-    endTime: window.end,
-    openPositionCallbacks: {
-      onError: (error) => {
-        console.log(
-          chalk.yellow(
-            `runtime compare: getOpenPositionPnl failed: ${formatRuntimeTradeSyncError(error)}; continuing without open-position mark prices`,
-          ),
-        );
-      },
-    },
-    closedPnlCallbacks: {
-      onUnsupported: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
-          ),
-        );
-      },
-      onCapped: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
-          ),
-        );
-      },
-      onError: (error) => {
-        console.log(
-          chalk.yellow(
-            `runtime compare: getClosedPnl failed: ${formatRuntimeTradeSyncError(error)}`,
-          ),
-        );
-      },
-    },
-  });
+  ] = runtimeEvidence
+    ? [
+        runtimeEvidence.trades,
+        runtimeEvidence.signals,
+        runtimeEvidence.evaluations,
+        runtimeEvidence.lineageScopes,
+      ]
+    : await Promise.all([
+        loadRuntimeTrades(replayUserName, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+        loadRuntimeSignals(replayUserName, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+        loadRuntimeSignalEvaluations(replayUserName, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+        loadRuntimeLineageScopes(replayUserName, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+      ]);
+  if (runtimeEvidence) {
+    console.log(
+      chalk.gray(
+        `runtime compare: using immutable evidence ${runtimeEvidence.path}`,
+      ),
+    );
+  }
+  const syncedRuntimeTrades = runtimeEvidence
+    ? rawRuntimeTrades
+    : await syncRuntimeTrades({
+        userName: replayUserName,
+        connector,
+        trades: rawRuntimeTrades,
+        startTime: window.start,
+        endTime: window.end,
+        openPositionCallbacks: {
+          onError: (error) => {
+            console.log(
+              chalk.yellow(
+                `runtime compare: getOpenPositionPnl failed: ${formatRuntimeTradeSyncError(error)}; continuing without open-position mark prices`,
+              ),
+            );
+          },
+        },
+        closedPnlCallbacks: {
+          onUnsupported: () => {
+            console.log(
+              chalk.yellow(
+                'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
+              ),
+            );
+          },
+          onCapped: () => {
+            console.log(
+              chalk.yellow(
+                'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
+              ),
+            );
+          },
+          onError: (error) => {
+            console.log(
+              chalk.yellow(
+                `runtime compare: getClosedPnl failed: ${formatRuntimeTradeSyncError(error)}`,
+              ),
+            );
+          },
+        },
+      });
   const comparable = filterReplayComparisonByLineage({
     replayLineages,
     runtimeTrades: syncedRuntimeTrades,
@@ -1198,7 +1225,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       relevantStrategies.has(trade.strategy),
   );
 
-  if (!windowRuntimeTrades.length) {
+  if (!windowRuntimeTrades.length && !runtimeEvidence) {
     console.log('');
     console.log(
       chalk.yellow(

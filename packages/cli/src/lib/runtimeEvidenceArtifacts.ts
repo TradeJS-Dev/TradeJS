@@ -43,6 +43,18 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 const sha256 = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
 
+const runtimeEvidenceIdentitySha256 = (artifact: Record<string, unknown>) => {
+  const identityArtifact = { ...artifact };
+  delete identityArtifact.generatedAt;
+  const runtime = asRecord(identityArtifact.runtime);
+  if (runtime) {
+    const identityRuntime = { ...runtime };
+    delete identityRuntime.generatedAt;
+    identityArtifact.runtime = identityRuntime;
+  }
+  return sha256(JSON.stringify(identityArtifact));
+};
+
 const isExistingDestinationError = (error: unknown) => {
   const code = (error as NodeJS.ErrnoException).code;
   return code === 'EEXIST' || code === 'ENOTEMPTY';
@@ -148,11 +160,12 @@ export const publishRuntimeEvidenceBundle = async ({
 }) => {
   const payload = `${JSON.stringify(artifact, null, 2)}\n`;
   const payloadSha256 = sha256(payload);
+  const identitySha256 = runtimeEvidenceIdentitySha256(artifact);
   const safeDeploymentId = safeSegment(deploymentId, 'default');
   const artifactId = [
     compactTimestamp(startTime),
     compactTimestamp(endTime),
-    payloadSha256.slice(0, 16),
+    identitySha256.slice(0, 16),
   ].join('_');
   const createdAt = Date.now();
   const manifest: RuntimeEvidenceArtifactManifest = {

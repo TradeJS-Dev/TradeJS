@@ -60,6 +60,41 @@ describe('runtime evidence artifacts', () => {
     );
   });
 
+  it('deduplicates repeated publication of the same completed window', async () => {
+    const startTime = Date.UTC(2026, 7, 6, 18);
+    const endTime = Date.UTC(2026, 7, 7, 18);
+    const firstArtifact = createArtifact(startTime, endTime);
+    const secondArtifact = {
+      ...createArtifact(startTime, endTime),
+      generatedAt: endTime + 1_000,
+    };
+
+    const first = await publishRuntimeEvidenceBundle({
+      publishRoot: rootDir,
+      deploymentId: 'production',
+      userName: 'root',
+      startTime,
+      endTime,
+      artifact: firstArtifact,
+      counts: { trades: 1 },
+      lineageKeys: [],
+    });
+    const second = await publishRuntimeEvidenceBundle({
+      publishRoot: rootDir,
+      deploymentId: 'production',
+      userName: 'root',
+      startTime,
+      endTime,
+      artifact: secondArtifact,
+      counts: { trades: 1 },
+      lineageKeys: [],
+    });
+
+    expect(second.bundleDir).toBe(first.bundleDir);
+    expect(second.manifest.payload.sha256).toBe(first.manifest.payload.sha256);
+    expect(second.artifact.generatedAt).toBe(firstArtifact.generatedAt);
+  });
+
   it('syncs ready bundles, keeps them pending, and writes a receipt', async () => {
     const publishRoot = path.join(rootDir, 'server');
     const evidenceRoot = path.join(rootDir, 'local');
