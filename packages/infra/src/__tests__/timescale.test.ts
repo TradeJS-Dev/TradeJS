@@ -10,7 +10,7 @@ describe('timescale candle helpers', () => {
   });
 
   it('normalizes provider and symbol in toRows', async () => {
-    const { toRows } = await import('@tradejs/infra/timescale');
+    const { toRows } = await import('@tradejs/infra/timescale/candles');
 
     const rows = toRows(' Binance ', 'btcusdt', 15, [
       {
@@ -46,7 +46,7 @@ describe('timescale candle helpers', () => {
   });
 
   it('preserves Binance taker volume fields in toRows', async () => {
-    const { toRows } = await import('@tradejs/infra/timescale');
+    const { toRows } = await import('@tradejs/infra/timescale/candles');
 
     const rows = toRows('binance', 'ETHUSDT', 15, [
       {
@@ -74,7 +74,7 @@ describe('timescale candle helpers', () => {
   });
 
   it('throws when provider is empty in toRows', async () => {
-    const { toRows } = await import('@tradejs/infra/timescale');
+    const { toRows } = await import('@tradejs/infra/timescale/candles');
 
     expect(() => toRows('  ', 'BTCUSDT', 15, [])).toThrow(
       'Candle provider is required',
@@ -99,7 +99,7 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { upsertCandles } = await import('@tradejs/infra/timescale');
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
 
     await upsertCandles([
       {
@@ -158,8 +158,11 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { closeTimescalePool, getCandlesRange } = await import(
-      '@tradejs/infra/timescale'
+    const { closeTimescalePool } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getCandlesRange } = await import(
+      '@tradejs/infra/timescale/candles'
     );
 
     await getCandlesRange('ByBit', 'btcusdt', 15, 1_000, 2_000);
@@ -185,7 +188,9 @@ describe('timescale candle helpers', () => {
 
     jest.doMock('pg', () => ({ Pool }));
 
-    const { getCandlesRange } = await import('@tradejs/infra/timescale');
+    const { getCandlesRange } = await import(
+      '@tradejs/infra/timescale/candles'
+    );
 
     await getCandlesRange('ByBit', 'btcusdt', 15, 1_000, 2_000);
 
@@ -230,7 +235,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { getCandlesRange, getDataEdges, deleteCandles, findContinuityGap } =
-      await import('@tradejs/infra/timescale');
+      await import('@tradejs/infra/timescale/candles');
 
     await getCandlesRange('ByBit', 'btcusdt', 15, 1_000, 2_000);
     await expect(getDataEdges('ByBit', 'btcusdt', 15)).resolves.toEqual({
@@ -289,7 +294,9 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { getDataEdgesForSymbols } = await import('@tradejs/infra/timescale');
+    const { getDataEdgesForSymbols } = await import(
+      '@tradejs/infra/timescale/candles'
+    );
 
     const result = await getDataEdgesForSymbols(
       ' ByBit ',
@@ -340,7 +347,7 @@ describe('timescale candle helpers', () => {
     const {
       getDerivativesBackfillCoverage,
       upsertDerivativesBackfillCoverage,
-    } = await import('@tradejs/infra/timescale');
+    } = await import('@tradejs/infra/timescale/derivatives');
 
     await upsertDerivativesBackfillCoverage([
       {
@@ -424,7 +431,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { applyDerivativesMetricCoverage, getDerivativesMetricCoverage } =
-      await import('@tradejs/infra/timescale');
+      await import('@tradejs/infra/timescale/derivatives');
 
     await expect(
       applyDerivativesMetricCoverage([
@@ -497,7 +504,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { upsertMarketBreadthRows, upsertMarketTradeFlowRows } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/marketContext'
     );
 
     await upsertMarketTradeFlowRows([
@@ -556,7 +563,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { upsertMarketBreadthRows } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/marketContext'
     );
     const rows = Array.from({ length: 2_200 }, (_, index) => ({
       universe: 'top30_usdt',
@@ -731,7 +738,7 @@ describe('timescale candle helpers', () => {
       upsertMarketCmcFearGreedContextRows,
       upsertMarketCmcIndexContextRows,
       upsertMarketContextBackfillCoverage,
-    } = await import('@tradejs/infra/timescale');
+    } = await import('@tradejs/infra/timescale/marketContext');
 
     await getLatestMarketGlobalContext({
       source: 'coinmarketcap_global',
@@ -995,7 +1002,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { getLatestMarketBreadth, getLatestMarketTradeFlow } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/marketContext'
     );
 
     await expect(
@@ -1046,7 +1053,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { getLatestMarketTradeFlow } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/marketContext'
     );
 
     await expect(
@@ -1081,10 +1088,12 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      configureTimescaleMarketContextSchemaMode,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { configureTimescaleMarketContextSchemaMode } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
     configureTimescaleMarketContextSchemaMode('verify');
 
     const pending = getLatestMarketTradeFlow({
@@ -1116,10 +1125,12 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      configureTimescaleMarketContextSchemaMode,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { configureTimescaleMarketContextSchemaMode } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
     configureTimescaleMarketContextSchemaMode('verify');
 
     await expect(
@@ -1152,10 +1163,12 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      configureTimescaleMarketContextSchemaMode,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { configureTimescaleMarketContextSchemaMode } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
     configureTimescaleMarketContextSchemaMode('verify');
 
     await expect(
@@ -1182,10 +1195,12 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      configureTimescaleMarketContextSchemaMode,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { configureTimescaleMarketContextSchemaMode } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
     configureTimescaleMarketContextSchemaMode('verify');
 
     await getLatestMarketTradeFlow({
@@ -1220,10 +1235,12 @@ describe('timescale candle helpers', () => {
       Pool: jest.fn().mockImplementation(() => ({ connect, query: poolQuery })),
     }));
 
-    const {
-      configureTimescaleMarketContextSchemaMode,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { configureTimescaleMarketContextSchemaMode } = await import(
+      '@tradejs/infra/timescale/client'
+    );
+    const { getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
     configureTimescaleMarketContextSchemaMode('verify');
 
     await expect(
@@ -1249,7 +1266,7 @@ describe('timescale candle helpers', () => {
       })),
     }));
     const { upsertHyperliquidWhaleTradeEvents } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/hyperliquidWhales'
     );
     await upsertHyperliquidWhaleTradeEvents([
       {
@@ -1335,7 +1352,7 @@ describe('timescale candle helpers', () => {
       })),
     }));
     const { getHyperliquidWhaleFlowAggregate } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/hyperliquidWhales'
     );
     await expect(
       getHyperliquidWhaleFlowAggregate({
@@ -1420,7 +1437,7 @@ describe('timescale candle helpers', () => {
     const {
       getHyperliquidWhaleCoverageSeriesRows,
       getHyperliquidWhaleFlowSeriesRows,
-    } = await import('@tradejs/infra/timescale');
+    } = await import('@tradejs/infra/timescale/hyperliquidWhales');
 
     await expect(
       getHyperliquidWhaleCoverageSeriesRows({
@@ -1490,7 +1507,7 @@ describe('timescale candle helpers', () => {
     const {
       getHyperliquidWhaleWalletCoverage,
       upsertHyperliquidWhaleWalletCoverage,
-    } = await import('@tradejs/infra/timescale');
+    } = await import('@tradejs/infra/timescale/hyperliquidWhales');
     const identity = {
       address: '0x1111111111111111111111111111111111111111',
       fromMs: 60_000,
@@ -1549,7 +1566,7 @@ describe('timescale candle helpers', () => {
       Pool: jest.fn().mockImplementation(() => ({ connect: jest.fn(), query })),
     }));
     const { rebuildHyperliquidWhaleCoverageRows } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/hyperliquidWhales'
     );
     const progress: unknown[] = [];
     await expect(
@@ -1703,7 +1720,7 @@ describe('timescale candle helpers', () => {
     }));
 
     const { cleanupDeprecatedMarketContext } = await import(
-      '@tradejs/infra/timescale'
+      '@tradejs/infra/timescale/marketContext'
     );
 
     await expect(cleanupDeprecatedMarketContext()).resolves.toEqual([

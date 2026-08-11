@@ -1,17 +1,9 @@
 import {
-  AiDatasetRow,
-  BACKTEST_WARNING_CODES,
-  BacktestWarningCounts,
-  BacktestDetectorOptimizedStrategy,
-  Candle,
   Connector,
   ConnectorCreator,
-  ExecutionCostModel,
   Interval,
   KlineChartData,
   KlineChartItem,
-  RuntimeSignalEvaluationRecord,
-  Signal,
   Test,
   TestingBox,
   TestingBoxResult,
@@ -26,24 +18,16 @@ import {
   releaseStrategyReplayCache,
 } from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
-import { appendAiDatasetRow } from '@tradejs/infra/ai';
-import {
-  appendMlDatasetRow,
-  buildMlTrainingRow,
-  trimMlTrainingRowWindows,
-} from '@tradejs/infra/ml';
 import { logger } from '@tradejs/infra/logger';
-import { buildAiPayload } from './ai';
-import { enrichSignalWithMarketContextStages } from './strategyHelpers/marketContextStages';
 import { getStrategyCreator } from './strategy/manifests';
-import { buildMlPayload } from './mlPayload';
 import {
   BUILTIN_CONNECTOR_NAMES,
   getConnectorCreatorByName,
 } from './connectorsRegistry';
-import { createTestConnector } from './testConnector';
-import { resolveExecutionCosts } from './executionCosts';
 import { getTradejsProjectCwd } from './tradejsConfig';
+import type { PreparedBacktestData } from './backtest/contracts';
+import { createBacktestProgress } from './backtest/progress';
+import { BacktestSession, createBacktestSession } from './backtest/session';
 
 type TestingKlineCacheState = {
   coinKlineCache: Map<string, KlineChartData>;
@@ -51,39 +35,8 @@ type TestingKlineCacheState = {
   ethKlineCache: Map<string, KlineChartData>;
   btcBinanceKlineCache: Map<string, KlineChartData>;
   btcCoinbaseKlineCache: Map<string, KlineChartData>;
-  preparedDataCache: Map<string, PreparedTestingData>;
+  preparedDataCache: Map<string, PreparedBacktestData>;
   connectorCache: Map<string, Connector>;
-};
-
-type PreparedTestingData = {
-  data: KlineChartData;
-  btcData: KlineChartData;
-  ethData: KlineChartData;
-  prevData: KlineChartData;
-  btcPrevData: KlineChartData;
-  ethPrevData: KlineChartData;
-  testData: KlineChartData;
-  btcTestData: KlineChartData;
-  ethTestData: KlineChartData;
-  btcBinanceData: KlineChartData;
-  btcCoinbaseData: KlineChartData;
-  backtestExecutionInterval: Interval;
-  backtestExecutionData: KlineChartData;
-  backtestExecutionBtcData: KlineChartData;
-  backtestExecutionDataByTimestamp: Map<number, KlineChartItem>;
-  backtestExecutionBtcDataByTimestamp: Map<number, KlineChartItem>;
-};
-
-type TestingProgressMessage = {
-  progress: true;
-  testName: string;
-  symbol: string;
-  strategyName: string;
-  stage: string;
-  candleIndex?: number;
-  candleTotal?: number;
-  elapsedMs: number;
-  stageElapsedMs: number;
 };
 
 type TestingGroupResult = {
@@ -91,65 +44,7 @@ type TestingGroupResult = {
   result: TestingBoxResult;
 };
 
-type BacktestDelayedEntryStrategy = BacktestDetectorOptimizedStrategy & {
-  __tradejsFlushBacktestDelayedEntry?: (
-    candle: Candle,
-    btcCandle: Candle,
-    ethCandle?: Candle,
-  ) => Promise<string | Signal | undefined>;
-};
-
-const isBacktestEntryDelayControlCode = (value: unknown) =>
-  typeof value === 'string' && value.startsWith('BACKTEST_ENTRY_DELAY_');
-
 const CLOSED_RESULT_FLUSH_INTERVAL = 500;
-const DEFAULT_STRATEGY_CANDLE_TIMEOUT_MS = 60_000;
-
-const createBacktestWarningCounts = (): BacktestWarningCounts => ({
-  [BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY]: 0,
-});
-
-const recordBacktestSignalWarning = (
-  warningCounts: BacktestWarningCounts,
-  signal: string | Signal | undefined,
-) => {
-  if (
-    !signal ||
-    typeof signal === 'string' ||
-    signal.orderStatus !== 'failed' ||
-    signal.orderFailureReason !==
-      BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY
-  ) {
-    return;
-  }
-
-  const code = BACKTEST_WARNING_CODES.TAKE_PROFIT_CROSSED_BEFORE_ENTRY;
-  warningCounts[code] = (warningCounts[code] ?? 0) + 1;
-};
-
-const resolvePositiveInt = (value: unknown, fallback: number) => {
-  const parsed = parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-const getStrategyCandleTimeoutMs = () =>
-  resolvePositiveInt(
-    process.env.BACKTEST_STRATEGY_CANDLE_TIMEOUT_MS,
-    DEFAULT_STRATEGY_CANDLE_TIMEOUT_MS,
-  );
-
-const getEffectiveTimeoutMs = (
-  baseTimeoutMs: number | undefined,
-  stageTimeoutMs: number | null,
-) => {
-  const base =
-    baseTimeoutMs && baseTimeoutMs > 0 ? Math.trunc(baseTimeoutMs) : null;
-  const stage =
-    stageTimeoutMs && stageTimeoutMs > 0 ? Math.trunc(stageTimeoutMs) : null;
-  if (base == null) return stage;
-  if (stage == null) return base;
-  return Math.min(base, stage);
-};
 
 const buildCandleByTimestamp = (candles?: KlineChartData) =>
   new Map(
@@ -158,114 +53,13 @@ const buildCandleByTimestamp = (candles?: KlineChartData) =>
       .map((candle) => [candle.timestamp, candle]),
   ) as Map<number, KlineChartItem>;
 
-type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
-  signal: Signal;
-};
-
-const buildBacktestDatasetMetadata = ({
-  backtestRunId,
-  backtestTestKey,
-  chunkId,
-}: {
-  backtestRunId?: string;
-  backtestTestKey?: string;
-  chunkId?: string;
-}): Record<string, string> => {
-  if (!backtestRunId || !backtestTestKey || !chunkId) {
-    return {};
-  }
-
-  return {
-    backtestRunId,
-    backtestTestKey,
-    backtestChunkId: chunkId,
-  };
-};
-
-const cloneAiPayloadSignal = (signal: Signal): Signal => {
-  const cloneValue = <T>(value: T): T => {
-    if (value == null) {
-      return value;
-    }
-
-    if (typeof structuredClone === 'function') {
-      return structuredClone(value);
-    }
-
-    return JSON.parse(JSON.stringify(value)) as T;
-  };
-
-  return {
-    ...signal,
-    figures: cloneValue(signal.figures),
-    indicators: cloneValue(signal.indicators),
-    additionalIndicators: cloneValue(signal.additionalIndicators),
-  };
-};
-
-const buildReplaySignalEvaluationRecord = ({
-  signal,
-  testId,
-  userName,
-  strategyName,
-  symbol,
-  interval,
-  candle,
-}: {
-  signal: Signal | string | null | undefined;
-  testId: string;
-  userName: string;
-  strategyName: string;
-  symbol: string;
-  interval: Interval;
-  candle: Candle;
-}): RuntimeSignalEvaluationRecord => {
-  if (!signal || typeof signal === 'string') {
-    return {
-      evaluationId: `${testId}:${strategyName}:${symbol}:${candle.timestamp}`,
-      userName,
-      strategy: strategyName,
-      symbol,
-      interval,
-      timestamp: candle.timestamp,
-      evaluatedAt: candle.timestamp,
-      status: 'skip',
-      reason:
-        typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL',
-    };
-  }
-
-  const signalTimestamp =
-    typeof signal.timestamp === 'number' && Number.isFinite(signal.timestamp)
-      ? signal.timestamp
-      : candle.timestamp;
-
-  return {
-    evaluationId: `${signal.signalId || testId}:${strategyName}:${symbol}:${signalTimestamp}`,
-    userName,
-    strategy: signal.strategy || strategyName,
-    symbol: signal.symbol || symbol,
-    interval: signal.interval || interval,
-    timestamp: signalTimestamp,
-    evaluatedAt: candle.timestamp,
-    status: 'signal',
-    reason: signal.orderSkipReason || signal.orderStatus,
-    signalId: signal.signalId,
-    direction: signal.direction,
-    orderStatus: signal.orderStatus,
-    orderSkipReason: signal.orderSkipReason,
-    aiAnalysis: signal.aiAnalysis ?? null,
-    ml: signal.ml,
-  };
-};
-
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
   coinKlineCache: new Map<string, KlineChartData>(),
   btcKlineCache: new Map<string, KlineChartData>(),
   ethKlineCache: new Map<string, KlineChartData>(),
   btcBinanceKlineCache: new Map<string, KlineChartData>(),
   btcCoinbaseKlineCache: new Map<string, KlineChartData>(),
-  preparedDataCache: new Map<string, PreparedTestingData>(),
+  preparedDataCache: new Map<string, PreparedBacktestData>(),
   connectorCache: new Map<string, Connector>(),
 });
 
@@ -405,14 +199,6 @@ const resolveIntervalMs = (interval: Interval) => {
   return Number.isFinite(intervalMinutes) && intervalMinutes > 0
     ? intervalMinutes * 60_000
     : Number(BACKTEST_INTERVAL) * 60_000;
-};
-
-const deleteMapEntriesByPrefix = <T>(map: Map<string, T>, prefix: string) => {
-  for (const key of map.keys()) {
-    if (key.startsWith(prefix)) {
-      map.delete(key);
-    }
-  }
 };
 
 const splitCandlesForTesting = (
@@ -988,162 +774,37 @@ export const canRunTestsInSharedCandleLoop = (tests: Test[]): boolean => {
   );
 };
 
-export const testing: TestingBox = async ({
-  userName,
-  symbol,
-  options: { start, end },
-  name,
-  testId,
-  testSuiteId,
-  configId,
-  strategyName,
-  strategyConfig,
-  connectorName,
-  universe = 'crypto',
-  assetClass,
-  instrument: requestedInstrument,
-  accountId,
-  deploymentId,
-  policyProfileId,
-  interval = BACKTEST_INTERVAL,
-  ml = false,
-  ai = false,
-  fast = false,
-  collectReplaySignalEvaluations = false,
-  chunkId = 'single',
-  backtestRunId,
-  backtestTestKey,
-  timeoutMs,
-}) => {
+export const testing: TestingBox = async (test) => {
+  const {
+    userName,
+    symbol,
+    options: { start, end },
+    name,
+    strategyName,
+    connectorName,
+    universe = 'crypto',
+    accountId,
+    deploymentId,
+    interval = BACKTEST_INTERVAL,
+    timeoutMs,
+  } = test;
   if (!start) {
     throw new Error('no start');
   }
   // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
   const preloadStart = getBacktestPreloadStart(start);
 
-  const startedAt = Date.now();
-  let activeStageStartedAt = startedAt;
-  let lastProgressSentAt = 0;
-  let lastProgressSignature = '';
-  let currentCandleIndex = 0;
-  let totalCandles = 0;
-  const strategyCandleTimeoutMs = getStrategyCandleTimeoutMs();
-  const formatTimeoutMessage = (stage: string, stageTimeoutMs: number) =>
-    `Test ${name} (${symbol}) timed out after ${stageTimeoutMs}ms during ${stage}`;
-  const emitProgress = (
-    stage: string,
-    options: {
-      force?: boolean;
-      candleIndex?: number;
-      candleTotal?: number;
-    } = {},
-  ) => {
-    const now = Date.now();
-    const candleIndex =
-      typeof options.candleIndex === 'number'
-        ? options.candleIndex
-        : currentCandleIndex;
-    const candleTotal =
-      typeof options.candleTotal === 'number'
-        ? options.candleTotal
-        : totalCandles;
-    const signature = [
-      stage,
-      candleIndex,
-      candleTotal,
-      Math.floor((now - activeStageStartedAt) / 5000),
-    ].join(':');
-    if (!options.force) {
-      if (signature === lastProgressSignature) {
-        return;
-      }
-      if (now - lastProgressSentAt < 4000) {
-        return;
-      }
-    }
-
-    lastProgressSentAt = now;
-    lastProgressSignature = signature;
-    process.send?.({
-      progress: true,
-      testName: name,
-      symbol,
-      strategyName,
-      stage,
-      candleIndex,
-      candleTotal,
-      elapsedMs: now - startedAt,
-      stageElapsedMs: now - activeStageStartedAt,
-    } satisfies TestingProgressMessage);
-  };
-  const getStageTimeoutMs = () => {
-    if (!timeoutMs || timeoutMs <= 0) {
-      return null;
-    }
-
-    return timeoutMs;
-  };
-  const throwIfTimedOut = (stage: string) => {
-    if (getStageTimeoutMs() == null) {
-      return;
-    }
-
-    emitProgress(stage);
-  };
-  const withTimeout = async <T>(
-    stage: string,
-    promise: Promise<T>,
-    stageTimeoutOverrideMs: number | null = null,
-  ): Promise<T> => {
-    const stageTimeoutMs = getEffectiveTimeoutMs(
-      getStageTimeoutMs() ?? undefined,
-      stageTimeoutOverrideMs,
-    );
-    if (stageTimeoutMs == null) {
-      return promise;
-    }
-
-    activeStageStartedAt = Date.now();
-    emitProgress(stage, { force: true });
-
-    return await new Promise<T>((resolve, reject) => {
-      const heartbeat = setInterval(() => {
-        emitProgress(stage);
-      }, 5000);
-      const timer = setTimeout(() => {
-        clearInterval(heartbeat);
-        reject(new Error(formatTimeoutMessage(stage, stageTimeoutMs)));
-      }, stageTimeoutMs);
-
-      promise.then(
-        (value) => {
-          clearInterval(heartbeat);
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (error) => {
-          clearInterval(heartbeat);
-          clearTimeout(timer);
-          reject(error);
-        },
-      );
-    });
-  };
-  const runStage = <T>(stage: string, fn: () => Promise<T>): Promise<T> => {
-    if (getStageTimeoutMs() == null) {
-      return fn();
-    }
-    return withTimeout(stage, fn());
-  };
-  const runStrategyCandleStage = <T>(
-    stage: string,
-    fn: () => Promise<T>,
-  ): Promise<T> => withTimeout(stage, fn(), strategyCandleTimeoutMs);
+  const progress = createBacktestProgress({
+    testName: name,
+    symbol,
+    strategyName,
+    timeoutMs,
+    timeoutSubject: `Test ${name} (${symbol})`,
+  });
 
   const { projectRoot, state } = getTestingKlineCacheState();
 
-  const connector = await withTimeout(
-    'connector init',
+  const connector = await progress.run('connector init', () =>
     getCachedConnector({
       state,
       projectRoot,
@@ -1157,15 +818,13 @@ export const testing: TestingBox = async ({
   if (!connector) {
     throw new Error(`Unknown connector: ${connectorName}`);
   }
-  const strategyCreator = await withTimeout(
-    'strategy lookup',
+  const strategyCreator = await progress.run('strategy lookup', () =>
     getStrategyCreator(strategyName, projectRoot),
   );
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
-  const preparedData = await withTimeout(
-    'kline preload',
+  const preparedData = await progress.run('kline preload', () =>
     prepareTestingData({
       state,
       projectRoot,
@@ -1186,261 +845,29 @@ export const testing: TestingBox = async ({
     throw new Error('Prepared backtest data not available');
   }
 
-  const {
-    prevData,
-    btcPrevData,
-    ethPrevData,
-    ethTestData,
-    testData,
-    btcTestData,
-    btcBinanceData,
-    btcCoinbaseData,
-    backtestExecutionInterval,
-    backtestExecutionData,
-    backtestExecutionBtcData,
-    backtestExecutionDataByTimestamp,
-    backtestExecutionBtcDataByTimestamp,
-  } = preparedData;
-  const runtimePrevData = prevData.slice();
-  const runtimeBtcPrevData = btcPrevData.slice();
-  const runtimeEthData = [...ethPrevData, ...ethTestData];
-  totalCandles = testData.length;
-
-  const instrument = requestedInstrument;
-  const { model: executionCostModel, fundingRates } =
-    await resolveExecutionCosts({
-      connector,
-      symbol,
-      config: strategyConfig,
-      startTime: start,
-      endTime: end,
-      instrument,
-    });
-
-  const testConnector = createTestConnector(connector, {
-    userName,
-    mlEnabled: ml,
-    aiEnabled: ai,
-    fastMode: fast,
-    instrument,
-    executionCostModel,
-    fundingRates,
+  const { testData, btcTestData } = preparedData;
+  const session = await createBacktestSession({
+    test,
+    connector,
+    strategyCreator,
+    preparedData,
+    interval,
+    monitor: progress,
   });
-
-  const strategy = await withTimeout(
-    'strategy init',
-    strategyCreator({
-      userName,
-      connectorName,
-      universe,
-      assetClass: assetClass ?? instrument?.assetClass,
-      instrument,
-      accountId,
-      deploymentId,
-      policyProfileId,
-      config: {
-        ...strategyConfig,
-        INTERVAL: interval,
-      },
-      symbol,
-      data: runtimePrevData,
-      btcData: runtimeBtcPrevData,
-      ethData: runtimeEthData,
-      btcBinanceData,
-      btcCoinbaseData,
-      backtestExecutionMarketData: {
-        interval: backtestExecutionInterval,
-        data: backtestExecutionData,
-        btcData: backtestExecutionBtcData,
-        dataByTimestamp: backtestExecutionDataByTimestamp,
-        btcDataByTimestamp: backtestExecutionBtcDataByTimestamp,
-      },
-      connector: testConnector,
-    }),
-  );
-
-  const pendingMlPayloadBySignalId = new Map<
-    string,
-    ReturnType<typeof buildMlPayload>
-  >();
-  const pendingAiRowBySignalId = new Map<string, PendingAiDatasetRow>();
-  const warningCounts = createBacktestWarningCounts();
-  const replaySignalEvaluations = collectReplaySignalEvaluations
-    ? ([] as RuntimeSignalEvaluationRecord[])
-    : null;
-
-  const flushClosedResultsBatch = async () => {
-    if (!ml && !ai) return;
-    const batch = await testConnector.drainMlResultsBatch();
-    if (!batch.length) return;
-
-    for (const resultRecord of batch) {
-      const payload = pendingMlPayloadBySignalId.get(resultRecord.signalId);
-      if (payload) {
-        pendingMlPayloadBySignalId.delete(resultRecord.signalId);
-
-        const fullRow = buildMlTrainingRow(payload, {
-          profit: resultRecord.profit,
-        });
-        const row = {
-          ...trimMlTrainingRowWindows(fullRow, 5),
-          ...buildBacktestDatasetMetadata({
-            backtestRunId,
-            backtestTestKey,
-            chunkId,
-          }),
-        };
-        await appendMlDatasetRow({
-          strategyName,
-          chunkId,
-          row,
-        });
-      }
-
-      const aiRowBase = pendingAiRowBySignalId.get(resultRecord.signalId);
-      if (aiRowBase) {
-        pendingAiRowBySignalId.delete(resultRecord.signalId);
-        const { signal: aiSignal, ...rowBase } = aiRowBase;
-        await appendAiDatasetRow({
-          strategyName,
-          chunkId,
-          row: {
-            ...rowBase,
-            payload: buildAiPayload(aiSignal),
-            profit: resultRecord.profit,
-            tradeResult: resultRecord.tradeResult,
-          },
-        });
-      }
-    }
-  };
-  const processSignal = async (
-    signal: string | Signal | undefined,
-    candle: Candle,
-  ) => {
-    recordBacktestSignalWarning(warningCounts, signal);
-
-    if (isBacktestEntryDelayControlCode(signal)) {
-      return;
-    }
-
-    if (replaySignalEvaluations) {
-      replaySignalEvaluations.push(
-        buildReplaySignalEvaluationRecord({
-          signal,
-          testId,
-          userName,
-          strategyName,
-          symbol,
-          interval,
-          candle,
-        }),
-      );
-    }
-    const shouldCapturePayload =
-      signal && typeof signal !== 'string' && signal.signalId && (ml || ai);
-    if (shouldCapturePayload) {
-      await enrichSignalWithMarketContextStages({
-        signal: signal as Signal,
-        env: 'BACKTEST',
-        coinMarketCapEnabled: true,
-        onStageStart: (stage) => {
-          activeStageStartedAt = Date.now();
-          emitProgress(`${stage} context`, { force: true });
-        },
-      });
-    }
-    if (ml && signal && typeof signal !== 'string' && signal.signalId) {
-      const payload = buildMlPayload({
-        signal,
-        context: {
-          userName,
-          testId,
-          testSuiteId,
-          testName: name,
-          configId,
-          symbol,
-          strategyName,
-          strategyConfig,
-          connectorName,
-        },
-      });
-      pendingMlPayloadBySignalId.set(signal.signalId, payload);
-    }
-    if (ai && signal && typeof signal !== 'string' && signal.signalId) {
-      pendingAiRowBySignalId.set(signal.signalId, {
-        signalId: signal.signalId,
-        strategyName: signal.strategy || strategyName,
-        symbol: signal.symbol || symbol,
-        direction: signal.direction,
-        timestamp: signal.timestamp,
-        signal: cloneAiPayloadSignal(signal as Signal),
-        testId,
-        testSuiteId,
-        testName: name,
-        configId,
-        connectorName,
-        ...buildBacktestDatasetMetadata({
-          backtestRunId,
-          backtestTestKey,
-          chunkId,
-        }),
-      });
-    }
-  };
 
   for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
     if (candleIndex % 25 === 0) {
-      throwIfTimedOut('candle loop');
+      progress.checkpoint('candle loop');
     }
-    currentCandleIndex = candleIndex + 1;
-    emitProgress('candle loop', {
-      force: candleIndex === 0 || currentCandleIndex === totalCandles,
-    });
-
-    const candle = testData[candleIndex];
-    const btcCandle = btcTestData[candleIndex];
-    // Delayed entries are previous-bar signals filled on this bar, so they
-    // must be live before this bar's TP/SL checks.
-    const delayedSignal = await runStrategyCandleStage(
-      'delayed entry',
-      async () =>
-        (
-          strategy as BacktestDelayedEntryStrategy
-        ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
-    );
-    if (delayedSignal && typeof delayedSignal !== 'string') {
-      await processSignal(delayedSignal, candle);
-    }
-
-    // Process exits on the current candle first. Any position opened below
-    // can only be closed starting from the next candle to avoid same-bar lookahead.
-    await runStage('exit checks', () => testConnector.checkExits(candle));
-
-    const signal = await runStrategyCandleStage('strategy signal', () =>
-      strategy(candle, btcCandle),
-    );
-    await processSignal(signal, candle);
+    progress.setCandle(candleIndex + 1, testData.length);
+    await session.next(testData[candleIndex], btcTestData[candleIndex]);
 
     if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
-      await withTimeout('flush closed results', flushClosedResultsBatch());
+      await session.flush();
     }
   }
 
-  await withTimeout('flush closed results', flushClosedResultsBatch());
-
-  const result = await withTimeout('collect result', testConnector.getResult());
-  const resultWithWarnings = {
-    ...result,
-    warningCounts,
-  };
-
-  return replaySignalEvaluations
-    ? {
-        ...resultWithWarnings,
-        inlineReplaySignalEvaluations: replaySignalEvaluations,
-      }
-    : resultWithWarnings;
+  return session.result();
 };
 
 export const testingGroupInSharedCandleLoop = async (
@@ -1468,10 +895,6 @@ export const testingGroupInSharedCandleLoop = async (
     accountId,
     deploymentId,
     interval = BACKTEST_INTERVAL,
-    ml = false,
-    ai = false,
-    fast = false,
-    collectReplaySignalEvaluations = false,
     chunkId = 'single',
     timeoutMs,
   } = first;
@@ -1480,128 +903,16 @@ export const testingGroupInSharedCandleLoop = async (
   }
 
   const preloadStart = getBacktestPreloadStart(start);
-  const startedAt = Date.now();
-  let activeStageStartedAt = startedAt;
-  let lastProgressSentAt = 0;
-  let lastProgressSignature = '';
-  let currentCandleIndex = 0;
-  let totalCandles = 0;
-  const strategyCandleTimeoutMs = getStrategyCandleTimeoutMs();
-  const formatTimeoutMessage = (stage: string, stageTimeoutMs: number) =>
-    `Test group ${strategyName}/${symbol} timed out after ${stageTimeoutMs}ms during ${stage}`;
-  const emitProgress = (
-    stage: string,
-    options: {
-      force?: boolean;
-      candleIndex?: number;
-      candleTotal?: number;
-    } = {},
-  ) => {
-    const now = Date.now();
-    const candleIndex =
-      typeof options.candleIndex === 'number'
-        ? options.candleIndex
-        : currentCandleIndex;
-    const candleTotal =
-      typeof options.candleTotal === 'number'
-        ? options.candleTotal
-        : totalCandles;
-    const signature = [
-      stage,
-      candleIndex,
-      candleTotal,
-      Math.floor((now - activeStageStartedAt) / 5000),
-    ].join(':');
-    if (!options.force) {
-      if (signature === lastProgressSignature) {
-        return;
-      }
-      if (now - lastProgressSentAt < 4000) {
-        return;
-      }
-    }
-
-    lastProgressSentAt = now;
-    lastProgressSignature = signature;
-    process.send?.({
-      progress: true,
-      testName: first.name,
-      symbol,
-      strategyName,
-      stage,
-      candleIndex,
-      candleTotal,
-      elapsedMs: now - startedAt,
-      stageElapsedMs: now - activeStageStartedAt,
-    } satisfies TestingProgressMessage);
-  };
-  const getStageTimeoutMs = () => {
-    if (!timeoutMs || timeoutMs <= 0) {
-      return null;
-    }
-
-    return timeoutMs;
-  };
-  const throwIfTimedOut = (stage: string) => {
-    if (getStageTimeoutMs() == null) {
-      return;
-    }
-
-    emitProgress(stage);
-  };
-  const withTimeout = async <T>(
-    stage: string,
-    promise: Promise<T>,
-    stageTimeoutOverrideMs: number | null = null,
-  ): Promise<T> => {
-    const stageTimeoutMs = getEffectiveTimeoutMs(
-      getStageTimeoutMs() ?? undefined,
-      stageTimeoutOverrideMs,
-    );
-    if (stageTimeoutMs == null) {
-      return promise;
-    }
-
-    activeStageStartedAt = Date.now();
-    emitProgress(stage, { force: true });
-
-    return await new Promise<T>((resolve, reject) => {
-      const heartbeat = setInterval(() => {
-        emitProgress(stage);
-      }, 5000);
-      const timer = setTimeout(() => {
-        clearInterval(heartbeat);
-        reject(new Error(formatTimeoutMessage(stage, stageTimeoutMs)));
-      }, stageTimeoutMs);
-
-      promise.then(
-        (value) => {
-          clearInterval(heartbeat);
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (error) => {
-          clearInterval(heartbeat);
-          clearTimeout(timer);
-          reject(error);
-        },
-      );
-    });
-  };
-  const runStage = <T>(stage: string, fn: () => Promise<T>): Promise<T> => {
-    if (getStageTimeoutMs() == null) {
-      return fn();
-    }
-    return withTimeout(stage, fn());
-  };
-  const runStrategyCandleStage = <T>(
-    stage: string,
-    fn: () => Promise<T>,
-  ): Promise<T> => withTimeout(stage, fn(), strategyCandleTimeoutMs);
+  const progress = createBacktestProgress({
+    testName: first.name,
+    symbol,
+    strategyName,
+    timeoutMs,
+    timeoutSubject: `Test group ${strategyName}/${symbol}`,
+  });
 
   const { projectRoot, state } = getTestingKlineCacheState();
-  const connector = await withTimeout(
-    'connector init',
+  const connector = await progress.run('connector init', () =>
     getCachedConnector({
       state,
       projectRoot,
@@ -1615,15 +926,13 @@ export const testingGroupInSharedCandleLoop = async (
   if (!connector) {
     throw new Error(`Unknown connector: ${connectorName}`);
   }
-  const strategyCreator = await withTimeout(
-    'strategy lookup',
+  const strategyCreator = await progress.run('strategy lookup', () =>
     getStrategyCreator(strategyName, projectRoot),
   );
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
-  const preparedData = await withTimeout(
-    'kline preload',
+  const preparedData = await progress.run('kline preload', () =>
     prepareTestingData({
       state,
       projectRoot,
@@ -1643,22 +952,7 @@ export const testingGroupInSharedCandleLoop = async (
     throw new Error('Prepared backtest data not available');
   }
 
-  const {
-    prevData,
-    btcPrevData,
-    ethPrevData,
-    ethTestData,
-    testData,
-    btcTestData,
-    btcBinanceData,
-    btcCoinbaseData,
-    backtestExecutionInterval,
-    backtestExecutionData,
-    backtestExecutionBtcData,
-    backtestExecutionDataByTimestamp,
-    backtestExecutionBtcDataByTimestamp,
-  } = preparedData;
-  totalCandles = testData.length;
+  const { testData, btcTestData } = preparedData;
 
   const sharedIndicatorsReplayKey = [
     'shared',
@@ -1672,307 +966,60 @@ export const testingGroupInSharedCandleLoop = async (
     chunkId,
   ].join(':');
 
-  type Runner = {
-    test: Test;
-    strategy: BacktestDetectorOptimizedStrategy;
-    testConnector: ReturnType<typeof createTestConnector>;
-    pendingMlPayloadBySignalId: Map<string, ReturnType<typeof buildMlPayload>>;
-    pendingAiRowBySignalId: Map<string, PendingAiDatasetRow>;
-    warningCounts: BacktestWarningCounts;
-    replaySignalEvaluations: RuntimeSignalEvaluationRecord[] | null;
-  };
-
-  const runners: Runner[] = [];
+  const runners: { test: Test; session: BacktestSession }[] = [];
   try {
     for (const test of tests) {
-      const instrument = test.instrument;
-      const { model: executionCostModel, fundingRates } =
-        await resolveExecutionCosts({
-          connector,
-          symbol: test.symbol,
-          config: test.strategyConfig,
-          startTime: start,
-          endTime: end,
-          instrument,
-        });
-      const testConnector = createTestConnector(connector, {
-        userName: test.userName,
-        mlEnabled: test.ml,
-        aiEnabled: test.ai,
-        fastMode: test.fast,
-        instrument,
-        executionCostModel,
-        fundingRates,
-      });
-      const strategy = (await withTimeout(
-        'strategy init',
-        strategyCreator({
-          userName: test.userName,
-          connectorName: test.connectorName,
-          universe: test.universe ?? universe,
-          assetClass: test.assetClass ?? instrument?.assetClass,
-          instrument,
-          accountId: test.accountId ?? accountId,
-          deploymentId: test.deploymentId ?? deploymentId,
-          policyProfileId: test.policyProfileId,
-          config: {
-            ...test.strategyConfig,
-            INTERVAL: test.interval ?? interval,
-          },
-          symbol: test.symbol,
-          data: prevData.slice(),
-          btcData: btcPrevData.slice(),
-          ethData: [...ethPrevData, ...ethTestData],
-          btcBinanceData,
-          btcCoinbaseData,
-          backtestExecutionMarketData: {
-            interval: backtestExecutionInterval,
-            data: backtestExecutionData,
-            btcData: backtestExecutionBtcData,
-            dataByTimestamp: backtestExecutionDataByTimestamp,
-            btcDataByTimestamp: backtestExecutionBtcDataByTimestamp,
-          },
-          connector: testConnector,
-          sharedIndicatorsReplayKey,
-        }),
-      )) as BacktestDetectorOptimizedStrategy;
-
       runners.push({
         test,
-        strategy,
-        testConnector,
-        pendingMlPayloadBySignalId: new Map(),
-        pendingAiRowBySignalId: new Map(),
-        warningCounts: createBacktestWarningCounts(),
-        replaySignalEvaluations: collectReplaySignalEvaluations ? [] : null,
+        session: await createBacktestSession({
+          test,
+          connector,
+          strategyCreator,
+          preparedData,
+          interval,
+          sharedIndicatorsReplayKey,
+          monitor: progress,
+        }),
       });
     }
 
-    const flushClosedResultsBatch = async (runner: Runner) => {
-      if (!runner.test.ml && !runner.test.ai) return;
-      const batch = await runner.testConnector.drainMlResultsBatch();
-      if (!batch.length) return;
-
-      for (const resultRecord of batch) {
-        const payload = runner.pendingMlPayloadBySignalId.get(
-          resultRecord.signalId,
-        );
-        if (payload) {
-          runner.pendingMlPayloadBySignalId.delete(resultRecord.signalId);
-
-          const fullRow = buildMlTrainingRow(payload, {
-            profit: resultRecord.profit,
-          });
-          const resolvedChunkId = runner.test.chunkId ?? 'single';
-          const row = {
-            ...trimMlTrainingRowWindows(fullRow, 5),
-            ...buildBacktestDatasetMetadata({
-              backtestRunId: runner.test.backtestRunId,
-              backtestTestKey: runner.test.backtestTestKey,
-              chunkId: resolvedChunkId,
-            }),
-          };
-          await appendMlDatasetRow({
-            strategyName: runner.test.strategyName,
-            chunkId: resolvedChunkId,
-            row,
-          });
-        }
-
-        const aiRowBase = runner.pendingAiRowBySignalId.get(
-          resultRecord.signalId,
-        );
-        if (aiRowBase) {
-          runner.pendingAiRowBySignalId.delete(resultRecord.signalId);
-          const { signal: aiSignal, ...rowBase } = aiRowBase;
-          const resolvedChunkId = runner.test.chunkId ?? 'single';
-          await appendAiDatasetRow({
-            strategyName: runner.test.strategyName,
-            chunkId: resolvedChunkId,
-            row: {
-              ...rowBase,
-              payload: buildAiPayload(aiSignal),
-              profit: resultRecord.profit,
-              tradeResult: resultRecord.tradeResult,
-            },
-          });
-        }
-      }
-    };
-    const processRunnerSignal = async (
-      runner: Runner,
-      signal: string | Signal | undefined,
-      candle: Candle,
-    ) => {
-      recordBacktestSignalWarning(runner.warningCounts, signal);
-
-      if (isBacktestEntryDelayControlCode(signal)) {
-        return;
-      }
-
-      const { test } = runner;
-      if (runner.replaySignalEvaluations) {
-        runner.replaySignalEvaluations.push(
-          buildReplaySignalEvaluationRecord({
-            signal,
-            testId: test.testId,
-            userName: test.userName,
-            strategyName: test.strategyName,
-            symbol: test.symbol,
-            interval: test.interval ?? interval,
-            candle,
-          }),
-        );
-      }
-
-      const shouldCapturePayload =
-        signal &&
-        typeof signal !== 'string' &&
-        signal.signalId &&
-        (test.ml || test.ai);
-      if (shouldCapturePayload) {
-        await enrichSignalWithMarketContextStages({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-          coinMarketCapEnabled: true,
-          onStageStart: (stage) => {
-            activeStageStartedAt = Date.now();
-            emitProgress(`${stage} context`, { force: true });
-          },
-        });
-      }
-      if (test.ml && signal && typeof signal !== 'string' && signal.signalId) {
-        const payload = buildMlPayload({
-          signal,
-          context: {
-            userName: test.userName,
-            testId: test.testId,
-            testSuiteId: test.testSuiteId,
-            testName: test.name,
-            configId: test.configId,
-            symbol: test.symbol,
-            strategyName: test.strategyName,
-            strategyConfig: test.strategyConfig,
-            connectorName: test.connectorName,
-          },
-        });
-        runner.pendingMlPayloadBySignalId.set(signal.signalId, payload);
-      }
-      if (test.ai && signal && typeof signal !== 'string' && signal.signalId) {
-        runner.pendingAiRowBySignalId.set(signal.signalId, {
-          signalId: signal.signalId,
-          strategyName: signal.strategy || test.strategyName,
-          symbol: signal.symbol || test.symbol,
-          direction: signal.direction,
-          timestamp: signal.timestamp,
-          signal: cloneAiPayloadSignal(signal as Signal),
-          testId: test.testId,
-          testSuiteId: test.testSuiteId,
-          testName: test.name,
-          configId: test.configId,
-          connectorName: test.connectorName,
-          ...buildBacktestDatasetMetadata({
-            backtestRunId: test.backtestRunId,
-            backtestTestKey: test.backtestTestKey,
-            chunkId: test.chunkId ?? 'single',
-          }),
-        });
-      }
-    };
-
     for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
       if (candleIndex % 25 === 0) {
-        throwIfTimedOut('candle loop');
+        progress.checkpoint('candle loop');
       }
-      currentCandleIndex = candleIndex + 1;
-      emitProgress('candle loop', {
-        force: candleIndex === 0 || currentCandleIndex === totalCandles,
-      });
+      progress.setCandle(candleIndex + 1, testData.length);
 
       const candle = testData[candleIndex];
       const btcCandle = btcTestData[candleIndex];
       const detectorNoSignalByKey = new Map<string, string>();
 
       for (const runner of runners) {
-        const { test, testConnector, strategy } = runner;
-        // Delayed entries are previous-bar signals filled on this bar, so they
-        // must be live before this bar's TP/SL checks.
-        const delayedSignal = await runStrategyCandleStage(
-          'delayed entry',
-          async () =>
-            (
-              strategy as BacktestDelayedEntryStrategy
-            ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
-        );
-        if (delayedSignal && typeof delayedSignal !== 'string') {
-          await processRunnerSignal(runner, delayedSignal, candle);
-        }
-        await runStage('exit checks', () => testConnector.checkExits(candle));
-
-        const detectorFanoutKey = strategy.detectorFanoutKey;
+        const { session } = runner;
+        const detectorFanoutKey = session.detectorFanoutKey;
         const detectorSkipCode = detectorFanoutKey
           ? detectorNoSignalByKey.get(detectorFanoutKey)
           : undefined;
-        const signal = await runStrategyCandleStage(
-          detectorSkipCode ? 'strategy detector skip' : 'strategy signal',
-          () =>
-            detectorSkipCode &&
-            strategy.canFastAdvanceDetectorNoSignal &&
-            strategy.advanceDetectorNoSignal
-              ? strategy.advanceDetectorNoSignal(
-                  candle,
-                  btcCandle,
-                  detectorSkipCode,
-                )
-              : detectorSkipCode && strategy.skipDetectorNoSignal
-                ? strategy.skipDetectorNoSignal(
-                    candle,
-                    btcCandle,
-                    detectorSkipCode,
-                  )
-                : strategy(candle, btcCandle),
-        );
+        const signal = await session.next(candle, btcCandle, detectorSkipCode);
         if (
           detectorFanoutKey &&
-          strategy.detectorNoSignalSkipReason &&
+          session.detectorNoSignalSkipReason &&
           typeof signal === 'string' &&
-          signal === strategy.detectorNoSignalSkipReason
+          signal === session.detectorNoSignalSkipReason
         ) {
           detectorNoSignalByKey.set(detectorFanoutKey, signal);
         }
-        await processRunnerSignal(runner, signal, candle);
       }
 
       if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
-        await withTimeout(
-          'flush closed results',
-          Promise.all(runners.map((runner) => flushClosedResultsBatch(runner))),
-        );
+        await Promise.all(runners.map(({ session }) => session.flush()));
       }
     }
 
     const results: TestingGroupResult[] = [];
     for (const runner of runners) {
-      await withTimeout(
-        'flush closed results',
-        flushClosedResultsBatch(runner),
-      );
-      const result = await withTimeout(
-        'collect result',
-        runner.testConnector.getResult(),
-      );
       results.push({
         test: runner.test,
-        result: runner.replaySignalEvaluations
-          ? {
-              ...result,
-              warningCounts: runner.warningCounts,
-              inlineReplaySignalEvaluations: runner.replaySignalEvaluations,
-            }
-          : {
-              ...result,
-              warningCounts: runner.warningCounts,
-            },
+        result: await runner.session.result(),
       });
     }
 

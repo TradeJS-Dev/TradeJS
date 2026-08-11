@@ -12,81 +12,35 @@ import {
 } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import type { StrategyConfigGrid } from '@tradejs/types';
+import type {
+  BacktestConfigSummary,
+  BacktestJobProgress,
+  BacktestJobRecord,
+  BacktestJobRequest,
+  BacktestJobStatus,
+} from './backtestJobContracts';
+import {
+  buildBacktestCommandArgs,
+  normalizeBacktestJobRequest,
+} from './backtestJobRequest';
+import { parseBacktestProgressLine } from './backtestJobProgress';
+export type {
+  BacktestConfigSummary,
+  BacktestJobProgress,
+  BacktestJobRecord,
+  BacktestJobRequest,
+  BacktestJobStatus,
+  BacktestPeriodMode,
+} from './backtestJobContracts';
+export {
+  buildBacktestCommandArgs,
+  normalizeBacktestJobRequest,
+} from './backtestJobRequest';
+export { parseBacktestProgressLine } from './backtestJobProgress';
 
 const HEARTBEAT_TIMEOUT_MS = 20_000;
 const SWEEP_INTERVAL_MS = 5_000;
 const MAX_LOG_LINES = 220;
-const DEFAULT_INTERVAL = '15';
-const DEFAULT_CONNECTOR = 'binance';
-
-export type BacktestJobStatus =
-  | 'running'
-  | 'pausing'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
-
-export type BacktestPeriodMode = 'days' | 'range';
-
-export interface BacktestJobRequest {
-  strategyName: string;
-  configId: string;
-  periodMode: BacktestPeriodMode;
-  days?: number;
-  startTime?: number;
-  endTime?: number;
-  ai: boolean;
-  fast: boolean;
-  interval: string;
-  connector: string;
-  tickers?: string;
-  tickersLimit?: number;
-  testsLimit?: number;
-  parallel?: number;
-}
-
-export interface BacktestJobProgress {
-  completed: number;
-  total: number | null;
-  percent: number;
-  averageProfit: number | null;
-  winRate: number | null;
-  successTests: number | null;
-  errorTests: number | null;
-}
-
-export interface BacktestJobRecord {
-  id: string;
-  userName: string;
-  status: BacktestJobStatus;
-  request: BacktestJobRequest;
-  command: string;
-  args: string[];
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string;
-  finishedAt?: string;
-  pausedAt?: string;
-  cancelledAt?: string;
-  lastHeartbeatAt?: string;
-  pid?: number;
-  exitCode?: number | null;
-  signal?: NodeJS.Signals | null;
-  runCount: number;
-  progress: BacktestJobProgress;
-  logs: string[];
-  error?: string;
-  pauseReason?: string;
-}
-
-export interface BacktestConfigSummary {
-  id: string;
-  strategyName: string;
-  paramCount: number;
-  combinationCount: number;
-}
-
 type BacktestProcessHandle = {
   child: ChildProcess;
   record: BacktestJobRecord;
@@ -135,21 +89,6 @@ const emptyProgress = (): BacktestJobProgress => ({
   successTests: null,
   errorTests: null,
 });
-
-const toFiniteNumber = (value: unknown): number | null => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const toPositiveNumber = (value: unknown): number | undefined => {
-  const parsed = toFiniteNumber(value);
-  return parsed != null && parsed > 0 ? parsed : undefined;
-};
-
-const toPositiveInteger = (value: unknown): number | undefined => {
-  const parsed = toPositiveNumber(value);
-  return parsed == null ? undefined : Math.trunc(parsed);
-};
 
 const normalizeText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : '';
@@ -281,47 +220,6 @@ const recalculatePercent = (progress: BacktestJobProgress) => {
   );
 };
 
-export const parseBacktestProgressLine = (line: string, offset = 0) => {
-  const text = stripAnsi(line);
-  const progressMatch = text.match(
-    /(\d+)\/(\d+).*?\bavg\s+(-?\d+(?:\.\d+)?)\$\s+win\s+(-?\d+(?:\.\d+)?)%/i,
-  );
-
-  if (progressMatch) {
-    const completed = Number(progressMatch[1]);
-    const total = Number(progressMatch[2]);
-    return {
-      completed: offset + completed,
-      total: offset + total,
-      averageProfit: Number(progressMatch[3]),
-      winRate: Number(progressMatch[4]),
-    };
-  }
-
-  const testsMatch = text.match(/\btests:\s*(\d+)\b/i);
-  if (testsMatch) {
-    return {
-      total: offset + Number(testsMatch[1]),
-    };
-  }
-
-  const successMatch = text.match(/\bSUCCESS TESTS:\s*(\d+)\b/i);
-  if (successMatch) {
-    return {
-      successTests: offset + Number(successMatch[1]),
-    };
-  }
-
-  const errorMatch = text.match(/\bERRORS:\s*(\d+)\b/i);
-  if (errorMatch) {
-    return {
-      errorTests: Number(errorMatch[1]),
-    };
-  }
-
-  return null;
-};
-
 const applyProgressLine = (
   record: BacktestJobRecord,
   line: string,
@@ -384,136 +282,6 @@ const getLiveRecord = async (userName: string, jobId: string) => {
   }
 
   return loadJob(userName, jobId);
-};
-
-export const normalizeBacktestJobRequest = (
-  payload: unknown,
-): BacktestJobRequest => {
-  if (!isPlainObject(payload)) {
-    throw new Error('Invalid backtest request');
-  }
-
-  const configId = normalizeText(payload.configId);
-  if (!configId) {
-    throw new Error('Backtest config is required');
-  }
-
-  const derivedStrategyName = configId.split(':')[0] || configId;
-  const strategyName =
-    normalizeText(payload.strategyName) || derivedStrategyName;
-  const periodMode: BacktestPeriodMode =
-    payload.periodMode === 'range' ? 'range' : 'days';
-  const interval = normalizeText(payload.interval) || DEFAULT_INTERVAL;
-  const connector = normalizeText(payload.connector) || DEFAULT_CONNECTOR;
-
-  const request: BacktestJobRequest = {
-    strategyName,
-    configId,
-    periodMode,
-    ai: payload.ai === true,
-    fast: payload.fast === true,
-    interval,
-    connector,
-  };
-
-  if (periodMode === 'range') {
-    const startTime = toPositiveInteger(payload.startTime);
-    const endTime = toPositiveInteger(payload.endTime);
-    if (!startTime || !endTime || startTime >= endTime) {
-      throw new Error('Valid start and end timestamps are required');
-    }
-    request.startTime = startTime;
-    request.endTime = endTime;
-  } else {
-    request.days = toPositiveNumber(payload.days) ?? 30;
-  }
-
-  const tickers = normalizeText(payload.tickers);
-  if (tickers) {
-    request.tickers = tickers;
-  }
-
-  const tickersLimit = toPositiveInteger(payload.tickersLimit);
-  if (tickersLimit) {
-    request.tickersLimit = tickersLimit;
-  }
-
-  const testsLimit = toPositiveInteger(payload.testsLimit);
-  if (testsLimit) {
-    request.testsLimit = testsLimit;
-  }
-
-  const parallel = toPositiveInteger(payload.parallel);
-  if (parallel) {
-    request.parallel = parallel;
-  }
-
-  return request;
-};
-
-export const buildBacktestCommandArgs = ({
-  request,
-  userName,
-  skip = 0,
-}: {
-  request: BacktestJobRequest;
-  userName: string;
-  skip?: number;
-}) => {
-  const args = [
-    'backtest',
-    '--config',
-    request.configId,
-    '--user',
-    userName,
-    '--timeframe',
-    request.interval,
-    '--connector',
-    request.connector,
-    '--progressStep',
-    '1',
-  ];
-
-  if (request.periodMode === 'range') {
-    args.push(
-      '--startTime',
-      String(request.startTime),
-      '--endTime',
-      String(request.endTime),
-    );
-  } else if (request.days) {
-    args.push('--days', String(request.days));
-  }
-
-  if (request.ai) {
-    args.push('--ai');
-  }
-
-  if (request.fast) {
-    args.push('--fast');
-  }
-
-  if (request.tickers) {
-    args.push('--tickers', request.tickers);
-  }
-
-  if (request.tickersLimit) {
-    args.push('--tickersLimit', String(request.tickersLimit));
-  }
-
-  if (request.parallel) {
-    args.push('--parallel', String(request.parallel));
-  }
-
-  if (skip > 0) {
-    args.push('--skip', String(skip));
-  }
-
-  if (request.testsLimit) {
-    args.push('--tests', String(Math.max(0, request.testsLimit - skip)));
-  }
-
-  return args;
 };
 
 const shouldSkipLaunch = (record: BacktestJobRecord, skip: number) =>

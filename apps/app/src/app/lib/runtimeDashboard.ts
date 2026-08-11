@@ -26,20 +26,22 @@ import {
   resolveConnectorCreatorByProvider,
 } from '#app/lib/connectorCreator';
 import {
-  assignLegacyRuntimeTradeAccountScopes,
   buildRuntimeStrategyAnalytics,
-  buildRuntimeStrategyAiGateChanges,
-  buildRuntimeStrategyMaxLossValueTimeline,
-  buildRuntimeStrategyIdentityKey,
   buildExchangeFallbackRuntimeTrades,
-  getRuntimeStrategyAiGateObservedFrom,
   isRuntimeTradeRecord,
-  isRuntimeStrategyLineageScope,
-  RuntimeStrategyLineageScope,
   RuntimeStrategiesResponse,
   selectTradesForWindow,
   toRuntimeTradeView,
 } from '#app/lib/runtimeStrategies';
+import {
+  assignLegacyRuntimeTradeAccountScopes,
+  buildRuntimeStrategyAiGateChanges,
+  buildRuntimeStrategyIdentityKey,
+  buildRuntimeStrategyMaxLossValueTimeline,
+  getRuntimeStrategyAiGateObservedFrom,
+  isRuntimeStrategyLineageScope,
+  type RuntimeStrategyLineageScope,
+} from '#app/lib/runtimeStrategyLineage';
 import {
   isRuntimeTradeInConnectorScope,
   syncRuntimeTrades,

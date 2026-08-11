@@ -42,74 +42,23 @@ import { buildKlinePath } from '#app/lib/marketRoutes';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 import { EmptyState, Segment, Select, toaster } from '#ui';
-
-type SummaryItem = {
-  symbol: string;
-  interval: '15m' | '1h';
-  points: number;
-  last_ts: string;
-  first_ts: string;
-  latest_open_interest: number | null;
-  first_open_interest: number | null;
-  oi_change: number | null;
-  oi_change_pct: number | null;
-  latest_funding_rate: number | null;
-  first_funding_rate: number | null;
-  funding_change: number | null;
-  sum_liq_long: number | null;
-  sum_liq_short: number | null;
-  sum_liq_total: number | null;
-};
-
-type SummaryResponse = {
-  hours: number;
-  items: SummaryItem[];
-};
-
-type DetailRow = {
-  symbol: string;
-  interval: '15m' | '1h';
-  ts: string;
-  open_interest: number | null;
-  funding_rate: number | null;
-  liq_long: number | null;
-  liq_short: number | null;
-  liq_total: number | null;
-};
-
-type DetailResponse = {
-  rows: DetailRow[];
-  symbol: string;
-  interval: '15m' | '1h';
-};
-
-type PriceRow = {
-  close: number;
-  timestamp: number;
-};
-
-type PriceResponse = {
-  data?: PriceRow[];
-};
+import {
+  buildDerivativesDashboardViewModel,
+  toFiniteNumber,
+  type DerivativesChartRow,
+  type DerivativesInterval,
+  type DetailResponse,
+  type DetailRow,
+  type PriceChartRow,
+  type PriceResponse,
+  type PriceRow,
+  type SummaryResponse,
+  type SymbolMetrics,
+} from './derivativesViewModel';
 
 type ChartWindow = {
   startTimestamp: number;
   endTimestamp: number;
-};
-
-type BiasTone = 'teal' | 'green' | 'red' | 'orange' | 'gray';
-
-type SymbolMetrics = {
-  symbol: string;
-  lastTs: string | null;
-  currentOpenInterest: number | null;
-  oiChange: number | null;
-  oiChangePct: number | null;
-  currentFundingRate: number | null;
-  fundingChange: number | null;
-  sumLiqLong: number | null;
-  sumLiqShort: number | null;
-  sumLiqTotal: number | null;
 };
 
 type SymbolChartTheme = {
@@ -158,9 +107,6 @@ const compactSignedFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
   signDisplay: 'always',
 });
-
-const toFiniteNumber = (value: number | null | undefined) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : null;
 
 const formatCompact = (value: number | null | undefined) => {
   const parsed = toFiniteNumber(value);
@@ -251,94 +197,6 @@ const getFundingColor = (value: number | null | undefined) => {
 
 const getSymbolLabel = (symbol: string) =>
   symbol === 'BTCUSDT' ? 'BTC' : symbol === 'ETHUSDT' ? 'ETH' : symbol;
-
-const getBias = (item: {
-  latest_funding_rate: number | null;
-  oi_change_pct: number | null;
-  sum_liq_long: number | null;
-  sum_liq_short: number | null;
-}) => {
-  const funding = toFiniteNumber(item.latest_funding_rate) ?? 0;
-  const oiChangePct = toFiniteNumber(item.oi_change_pct) ?? 0;
-  const longLiq = toFiniteNumber(item.sum_liq_long) ?? 0;
-  const shortLiq = toFiniteNumber(item.sum_liq_short) ?? 0;
-
-  if (shortLiq > longLiq * 1.35) {
-    return { label: 'Short squeeze', tone: 'green' as BiasTone };
-  }
-
-  if (longLiq > shortLiq * 1.35) {
-    return { label: 'Long flush', tone: 'red' as BiasTone };
-  }
-
-  if (oiChangePct > 1 && funding > 0) {
-    return { label: 'Crowded longs', tone: 'orange' as BiasTone };
-  }
-
-  if (oiChangePct > 1 && funding < 0) {
-    return { label: 'Crowded shorts', tone: 'teal' as BiasTone };
-  }
-
-  return { label: 'Balanced', tone: 'gray' as BiasTone };
-};
-
-const buildMetricsFromRows = (
-  symbol: string,
-  rows: DetailRow[],
-  summaryRow?: SummaryItem,
-): SymbolMetrics => {
-  if (!rows.length) {
-    return {
-      symbol,
-      lastTs: summaryRow?.last_ts ?? null,
-      currentOpenInterest: summaryRow?.latest_open_interest ?? null,
-      oiChange: summaryRow?.oi_change ?? null,
-      oiChangePct: summaryRow?.oi_change_pct ?? null,
-      currentFundingRate: summaryRow?.latest_funding_rate ?? null,
-      fundingChange: summaryRow?.funding_change ?? null,
-      sumLiqLong: summaryRow?.sum_liq_long ?? null,
-      sumLiqShort: summaryRow?.sum_liq_short ?? null,
-      sumLiqTotal: summaryRow?.sum_liq_total ?? null,
-    };
-  }
-
-  const first = rows[0];
-  const last = rows[rows.length - 1];
-  const firstOi = toFiniteNumber(first.open_interest);
-  const lastOi = toFiniteNumber(last.open_interest);
-  const oiChange = firstOi != null && lastOi != null ? lastOi - firstOi : null;
-  const oiChangePct =
-    oiChange != null && firstOi != null && Math.abs(firstOi) > 0
-      ? (oiChange / Math.abs(firstOi)) * 100
-      : null;
-  const firstFunding = toFiniteNumber(first.funding_rate);
-  const lastFunding = toFiniteNumber(last.funding_rate);
-  const fundingChange =
-    firstFunding != null && lastFunding != null
-      ? lastFunding - firstFunding
-      : null;
-
-  return rows.reduce<SymbolMetrics>(
-    (acc, row) => {
-      acc.sumLiqLong = (acc.sumLiqLong ?? 0) + Number(row.liq_long || 0);
-      acc.sumLiqShort = (acc.sumLiqShort ?? 0) + Number(row.liq_short || 0);
-      acc.sumLiqTotal = (acc.sumLiqTotal ?? 0) + Number(row.liq_total || 0);
-      return acc;
-    },
-    {
-      symbol,
-      lastTs: last.ts,
-      currentOpenInterest: lastOi,
-      oiChange,
-      oiChangePct,
-      currentFundingRate: lastFunding,
-      fundingChange,
-      sumLiqLong: 0,
-      sumLiqShort: 0,
-      sumLiqTotal: 0,
-    },
-  );
-};
 
 const DashboardSkeleton = () => (
   <>
@@ -570,33 +428,17 @@ const ChartCard = ({
   </Card.Root>
 );
 
-const mapRowsToChartRows = (rows: DetailRow[]) =>
-  rows.map((row) => ({
-    timestamp: new Date(row.ts).getTime(),
-    openInterest: toFiniteNumber(row.open_interest) ?? 0,
-    funding: (toFiniteNumber(row.funding_rate) ?? 0) * 10_000,
-    longLiquidations: -(toFiniteNumber(row.liq_long) ?? 0),
-    shortLiquidations: toFiniteNumber(row.liq_short) ?? 0,
-  }));
-
-const mapPriceRowsToChartRows = (rows: PriceRow[]) =>
-  rows.map((row) => ({
-    price: toFiniteNumber(row.close) ?? 0,
-    timestamp: row.timestamp,
-  }));
-
 const SymbolPriceCard = ({
   symbol,
-  rows,
+  chartRows,
   window,
 }: {
   symbol: string;
-  rows: PriceRow[];
+  chartRows: PriceChartRow[];
   window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
-  const chartRows = useMemo(() => mapPriceRowsToChartRows(rows), [rows]);
 
   const priceChartConfig = useMemo(
     () => ({
@@ -607,7 +449,7 @@ const SymbolPriceCard = ({
   );
 
   const priceChart = useChart(priceChartConfig as never);
-  const latestPrice = rows[rows.length - 1]?.close ?? null;
+  const latestPrice = chartRows[chartRows.length - 1]?.price ?? null;
   const priceDomain = useMemo(
     () => getChartDomain(chartRows.map((row) => row.price)),
     [chartRows],
@@ -680,16 +522,15 @@ const SymbolPriceCard = ({
 
 const SymbolOpenInterestCard = ({
   symbol,
-  rows,
+  chartRows,
   window,
 }: {
   symbol: string;
-  rows: DetailRow[];
+  chartRows: DerivativesChartRow[];
   window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
-  const chartRows = useMemo(() => mapRowsToChartRows(rows), [rows]);
 
   const oiChartConfig = useMemo(
     () => ({
@@ -772,16 +613,15 @@ const SymbolOpenInterestCard = ({
 
 const SymbolFundingCard = ({
   symbol,
-  rows,
+  chartRows,
   window,
 }: {
   symbol: string;
-  rows: DetailRow[];
+  chartRows: DerivativesChartRow[];
   window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
-  const chartRows = useMemo(() => mapRowsToChartRows(rows), [rows]);
 
   const fundingChartConfig = useMemo(
     () => ({
@@ -851,16 +691,15 @@ const SymbolFundingCard = ({
 
 const SymbolLiquidationCard = ({
   symbol,
-  rows,
+  chartRows,
   window,
 }: {
   symbol: string;
-  rows: DetailRow[];
+  chartRows: DerivativesChartRow[];
   window: ChartWindow;
 }) => {
   const theme = SYMBOL_THEMES[symbol];
   const symbolLabel = getSymbolLabel(symbol);
-  const chartRows = useMemo(() => mapRowsToChartRows(rows), [rows]);
 
   const liquidationChartConfig = useMemo(
     () => ({
@@ -931,7 +770,8 @@ const SymbolLiquidationCard = ({
 
 const DerivativesPage = () => {
   const [hours, setHours] = useState('24');
-  const [selectedInterval, setSelectedInterval] = useState<'15m' | '1h'>('1h');
+  const [selectedInterval, setSelectedInterval] =
+    useState<DerivativesInterval>('1h');
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [detailsBySymbol, setDetailsBySymbol] = useState<
     Record<string, DetailRow[]>
@@ -1045,48 +885,38 @@ const DerivativesPage = () => {
     void loadDetails();
   }, [loadDetails]);
 
-  const filteredSummary = useMemo(
+  const dashboard = useMemo(
     () =>
-      (summary?.items ?? []).filter(
-        (item) =>
-          item.interval === selectedInterval &&
-          FIXED_SYMBOLS.includes(item.symbol as (typeof FIXED_SYMBOLS)[number]),
-      ),
-    [selectedInterval, summary?.items],
+      buildDerivativesDashboardViewModel({
+        symbols: FIXED_SYMBOLS,
+        selectedInterval,
+        summary,
+        detailsBySymbol,
+        pricesBySymbol,
+        summaryLoading,
+        detailLoading,
+        summaryError,
+        detailError,
+      }),
+    [
+      detailError,
+      detailLoading,
+      detailsBySymbol,
+      pricesBySymbol,
+      selectedInterval,
+      summary,
+      summaryError,
+      summaryLoading,
+    ],
   );
-
-  const summaryBySymbol = useMemo(
-    () =>
-      Object.fromEntries(
-        filteredSummary.map((item) => [item.symbol, item]),
-      ) as Record<string, SummaryItem | undefined>,
-    [filteredSummary],
-  );
-
-  const metricsBySymbol = useMemo(
-    () =>
-      Object.fromEntries(
-        FIXED_SYMBOLS.map((symbol) => [
-          symbol,
-          buildMetricsFromRows(
-            symbol,
-            detailsBySymbol[symbol] ?? [],
-            summaryBySymbol[symbol],
-          ),
-        ]),
-      ) as Record<string, SymbolMetrics>,
-    [detailsBySymbol, summaryBySymbol],
-  );
-
-  const noSummaryData =
-    !summaryLoading && !summaryError && filteredSummary.length === 0;
-  const noDetailData =
-    !detailLoading &&
-    !detailError &&
-    FIXED_SYMBOLS.every(
-      (symbol) => (detailsBySymbol[symbol] ?? []).length === 0,
-    );
-  const showSkeleton = (summaryLoading || detailLoading) && !summary;
+  const {
+    chartDataBySymbol,
+    metricsBySymbol,
+    noDetailData,
+    noSummaryData,
+    overviewRows,
+    showSkeleton,
+  } = dashboard;
 
   return (
     <ClientOnly>
@@ -1117,7 +947,9 @@ const DerivativesPage = () => {
                 defaultValue={selectedInterval}
                 value={selectedInterval}
                 onChange={(value) =>
-                  setSelectedInterval((value as '15m' | '1h' | null) ?? '1h')
+                  setSelectedInterval(
+                    (value as DerivativesInterval | null) ?? '1h',
+                  )
                 }
                 items={INTERVAL_OPTIONS.map((value) => ({
                   label: value,
@@ -1164,7 +996,7 @@ const DerivativesPage = () => {
                       <SymbolPriceCard
                         key={`${symbol}:price`}
                         symbol={symbol}
-                        rows={pricesBySymbol[symbol] ?? []}
+                        chartRows={chartDataBySymbol[symbol].prices}
                         window={chartWindow}
                       />
                     ))}
@@ -1175,7 +1007,7 @@ const DerivativesPage = () => {
                       <SymbolOpenInterestCard
                         key={`${symbol}:oi`}
                         symbol={symbol}
-                        rows={detailsBySymbol[symbol] ?? []}
+                        chartRows={chartDataBySymbol[symbol].derivatives}
                         window={chartWindow}
                       />
                     ))}
@@ -1186,7 +1018,7 @@ const DerivativesPage = () => {
                       <SymbolFundingCard
                         key={`${symbol}:funding`}
                         symbol={symbol}
-                        rows={detailsBySymbol[symbol] ?? []}
+                        chartRows={chartDataBySymbol[symbol].derivatives}
                         window={chartWindow}
                       />
                     ))}
@@ -1197,7 +1029,7 @@ const DerivativesPage = () => {
                       <SymbolLiquidationCard
                         key={`${symbol}:liq`}
                         symbol={symbol}
-                        rows={detailsBySymbol[symbol] ?? []}
+                        chartRows={chartDataBySymbol[symbol].derivatives}
                         window={chartWindow}
                       />
                     ))}
@@ -1243,16 +1075,7 @@ const DerivativesPage = () => {
                         </Table.Row>
                       </Table.Header>
                       <Table.Body>
-                        {FIXED_SYMBOLS.map((symbol) => {
-                          const row = summaryBySymbol[symbol];
-                          const bias = getBias({
-                            latest_funding_rate:
-                              metricsBySymbol[symbol].currentFundingRate,
-                            oi_change_pct: metricsBySymbol[symbol].oiChangePct,
-                            sum_liq_long: metricsBySymbol[symbol].sumLiqLong,
-                            sum_liq_short: metricsBySymbol[symbol].sumLiqShort,
-                          });
-
+                        {overviewRows.map(({ symbol, metrics, bias }) => {
                           return (
                             <Table.Row key={symbol}>
                               <Table.Cell>
@@ -1261,41 +1084,29 @@ const DerivativesPage = () => {
                                 </Text>
                               </Table.Cell>
                               <Table.Cell textAlign="right">
-                                {formatCompact(
-                                  metricsBySymbol[symbol].currentOpenInterest,
-                                )}
+                                {formatCompact(metrics.currentOpenInterest)}
                               </Table.Cell>
                               <Table.Cell textAlign="right">
                                 <Text
-                                  color={getValueColor(
-                                    metricsBySymbol[symbol].oiChangePct,
-                                  )}
+                                  color={getValueColor(metrics.oiChangePct)}
                                 >
-                                  {formatPercent(
-                                    metricsBySymbol[symbol].oiChangePct,
-                                  )}
+                                  {formatPercent(metrics.oiChangePct)}
                                 </Text>
                               </Table.Cell>
                               <Table.Cell textAlign="right">
                                 <Text
                                   color={getFundingColor(
-                                    metricsBySymbol[symbol].currentFundingRate,
+                                    metrics.currentFundingRate,
                                   )}
                                 >
-                                  {formatFunding(
-                                    metricsBySymbol[symbol].currentFundingRate,
-                                  )}
+                                  {formatFunding(metrics.currentFundingRate)}
                                 </Text>
                               </Table.Cell>
                               <Table.Cell textAlign="right">
-                                {formatCompact(
-                                  metricsBySymbol[symbol].sumLiqLong,
-                                )}
+                                {formatCompact(metrics.sumLiqLong)}
                               </Table.Cell>
                               <Table.Cell textAlign="right">
-                                {formatCompact(
-                                  metricsBySymbol[symbol].sumLiqShort,
-                                )}
+                                {formatCompact(metrics.sumLiqShort)}
                               </Table.Cell>
                               <Table.Cell>
                                 <Badge colorPalette={bias.tone}>
@@ -1303,10 +1114,7 @@ const DerivativesPage = () => {
                                 </Badge>
                               </Table.Cell>
                               <Table.Cell>
-                                {formatFullTime(
-                                  metricsBySymbol[symbol].lastTs ??
-                                    row?.last_ts,
-                                )}
+                                {formatFullTime(metrics.lastTs)}
                               </Table.Cell>
                             </Table.Row>
                           );

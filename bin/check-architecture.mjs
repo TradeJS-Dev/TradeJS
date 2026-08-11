@@ -45,6 +45,37 @@ const allowedWorkspaceDependencies = new Map([
       '@tradejs/strategies',
     ]),
   ],
+  [
+    '@tradejs/cli',
+    new Set([
+      '@tradejs/base',
+      '@tradejs/connectors',
+      '@tradejs/core',
+      '@tradejs/indicators',
+      '@tradejs/infra',
+      '@tradejs/node',
+      '@tradejs/strategies',
+      '@tradejs/types',
+    ]),
+  ],
+  [
+    '@tradejs/app',
+    new Set([
+      '@tradejs/connectors',
+      '@tradejs/core',
+      '@tradejs/indicators',
+      '@tradejs/infra',
+      '@tradejs/node',
+      '@tradejs/strategies',
+      '@tradejs/types',
+    ]),
+  ],
+  ['create-tradejs', new Set()],
+  ['@tradejs/ml', new Set()],
+]);
+
+const allowedTestWorkspaceDependencies = new Map([
+  ['@tradejs/node', new Set(['@tradejs/strategies'])],
 ]);
 
 const errors = [];
@@ -73,6 +104,28 @@ const packageNameFromSpecifier = (specifier) => {
   if (specifier.startsWith('.') || specifier.startsWith('#')) return null;
   if (specifier.startsWith('@')) return specifier.split('/').slice(0, 2).join('/');
   return specifier.split('/')[0];
+};
+
+const packageSubpathFromSpecifier = (specifier, packageName) => {
+  if (specifier === packageName) return '.';
+  return `.${specifier.slice(packageName.length)}`;
+};
+
+const isExportedSubpath = (manifest, subpath) => {
+  const packageExports = manifest.exports;
+  if (!packageExports || typeof packageExports !== 'object') return false;
+  if (Object.prototype.hasOwnProperty.call(packageExports, subpath)) return true;
+
+  return Object.keys(packageExports).some((candidate) => {
+    if (!candidate.includes('*')) return false;
+    const [prefix, suffix] = candidate.split('*');
+    return subpath.startsWith(prefix) && subpath.endsWith(suffix);
+  });
+};
+
+const isWithinDirectory = (file, directory) => {
+  const relative = path.relative(directory, file);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
 const extractSpecifiers = (source, file) => {
@@ -125,6 +178,10 @@ const packages = await Promise.all(
   })),
 );
 const workspaceNames = new Set(packages.map(({ manifest }) => manifest.name));
+const packagesByName = new Map(packages.map((item) => [item.manifest.name, item]));
+const productionWorkspaceGraph = new Map(
+  packages.map(({ manifest }) => [manifest.name, new Set()]),
+);
 
 for (const packageInfo of packages) {
   const { directory, files, manifest } = packageInfo;
@@ -137,12 +194,25 @@ for (const packageInfo of packages) {
     }),
   );
   const allowedWorkspace = allowedWorkspaceDependencies.get(manifest.name);
+  if (!allowedWorkspace) {
+    errors.push(
+      `${path.relative(root, directory)}/package.json: missing explicit workspace dependency rule for ${manifest.name}`,
+    );
+  }
 
   for (const file of files) {
     const relativeFile = path.relative(root, file);
     const source = await readFile(file, 'utf8');
 
     for (const specifier of extractSpecifiers(source, file)) {
+      if (specifier.startsWith('.')) {
+        const resolvedImport = path.resolve(path.dirname(file), specifier);
+        if (!isWithinDirectory(resolvedImport, directory)) {
+          errors.push(
+            `${relativeFile}: relative import escapes package ${manifest.name}: ${specifier}`,
+          );
+        }
+      }
       if (/^@tradejs\/(?:core|node|infra)$/.test(specifier)) {
         errors.push(`${relativeFile}: root package import is forbidden: ${specifier}`);
       }
@@ -151,8 +221,7 @@ for (const packageInfo of packages) {
       }
       if (
         specifier === '@tradejs/infra/timescale' &&
-        manifest.name !== '@tradejs/infra' &&
-        !isTestFile(file)
+        manifest.name !== '@tradejs/infra'
       ) {
         errors.push(
           `${relativeFile}: use a focused @tradejs/infra/timescale/* subpath`,
@@ -161,6 +230,17 @@ for (const packageInfo of packages) {
 
       const dependency = packageNameFromSpecifier(specifier);
       if (!dependency || builtins.has(specifier) || builtins.has(dependency)) continue;
+
+      const workspaceDependency = packagesByName.get(dependency);
+      if (workspaceDependency) {
+        const subpath = packageSubpathFromSpecifier(specifier, dependency);
+        if (!isExportedSubpath(workspaceDependency.manifest, subpath)) {
+          errors.push(
+            `${relativeFile}: ${specifier} is not exported by ${dependency}`,
+          );
+        }
+      }
+
       if (dependency === manifest.name) continue;
 
       if (!declaredDependencies.has(dependency)) {
@@ -169,15 +249,19 @@ for (const packageInfo of packages) {
         );
       }
 
-      if (
-        workspaceNames.has(dependency) &&
-        allowedWorkspace &&
-        !isTestFile(file) &&
-        !allowedWorkspace.has(dependency)
-      ) {
-        errors.push(
-          `${relativeFile}: forbidden package direction ${manifest.name} -> ${dependency}`,
-        );
+      if (workspaceNames.has(dependency)) {
+        if (!isTestFile(file)) {
+          productionWorkspaceGraph.get(manifest.name)?.add(dependency);
+        }
+        const testDependencies = allowedTestWorkspaceDependencies.get(manifest.name);
+        const allowedForFile =
+          allowedWorkspace?.has(dependency) ||
+          (isTestFile(file) && testDependencies?.has(dependency));
+        if (!allowedForFile) {
+          errors.push(
+            `${relativeFile}: forbidden package direction ${manifest.name} -> ${dependency}`,
+          );
+        }
       }
     }
   }
@@ -190,6 +274,27 @@ for (const packageInfo of packages) {
       );
     }
   }
+}
+
+const visitWorkspacePackage = (packageName, pathToPackage, visited) => {
+  if (pathToPackage.includes(packageName)) {
+    const cycleStart = pathToPackage.indexOf(packageName);
+    const cycle = [...pathToPackage.slice(cycleStart), packageName];
+    errors.push(`workspace dependency cycle: ${cycle.join(' -> ')}`);
+    return;
+  }
+  if (visited.has(packageName)) return;
+
+  const nextPath = [...pathToPackage, packageName];
+  for (const dependency of productionWorkspaceGraph.get(packageName) ?? []) {
+    visitWorkspacePackage(dependency, nextPath, visited);
+  }
+  visited.add(packageName);
+};
+
+const visitedWorkspacePackages = new Set();
+for (const packageName of productionWorkspaceGraph.keys()) {
+  visitWorkspacePackage(packageName, [], visitedWorkspacePackages);
 }
 
 const coreEntries = (await readdir(path.join(root, 'packages/core/src')))

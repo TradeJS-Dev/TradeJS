@@ -673,6 +673,50 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
   };
 };
 
+export const buildRuntimeStrategyCardViewModel = (
+  strategy: RuntimeStrategyView,
+) => {
+  const symbolPnlRanking = buildRuntimeSymbolPnlRanking(strategy.orders);
+  const firstPoint = strategy.orderLog[0];
+  const lastPoint = strategy.orderLog[strategy.orderLog.length - 1];
+
+  return {
+    lastTrade: strategy.recentTrades[0],
+    runtimeOrders: strategy.orders.map(mapRuntimeOrder),
+    runtimeOrderSummaryItems: getRuntimeOrdersSummaryItems(strategy.orders),
+    drawerMetrics: buildRuntimeDrawerMetrics(strategy),
+    performance: buildStrategyPerformanceViewModel(strategy.orderLog),
+    symbolPnlRanking,
+    symbolConcentration: buildRuntimeSymbolConcentration(strategy.orders).slice(
+      0,
+      8,
+    ),
+    topSymbolPnlRanking: [...symbolPnlRanking]
+      .sort(
+        (left, right) =>
+          right.pnl - left.pnl || left.symbol.localeCompare(right.symbol),
+      )
+      .slice(0, 10),
+    worstSymbolPnlRanking: [...symbolPnlRanking]
+      .sort(
+        (left, right) =>
+          left.pnl - right.pnl || left.symbol.localeCompare(right.symbol),
+      )
+      .slice(0, 10),
+    symbolRankingMaxAbsPnl: Math.max(
+      ...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)),
+      1,
+    ),
+    directionStats: buildRuntimeDirectionStats(strategy.orders),
+    advancedMetrics: calculateAdvancedTradeMetrics({
+      trades: buildRuntimeAdvancedTrades(strategy.orders),
+      orderLog: strategy.orderLog,
+      startTimestamp: firstPoint?.[0] ?? null,
+      endTimestamp: lastPoint?.[0] ?? null,
+    }),
+  };
+};
+
 export const RuntimeStrategyCard = ({
   strategy,
   provider,
@@ -689,23 +733,22 @@ export const RuntimeStrategyCard = ({
   const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
-  const lastTrade = strategy.recentTrades[0];
-  const runtimeOrders = useMemo(
-    () => strategy.orders.map(mapRuntimeOrder),
-    [strategy.orders],
-  );
-  const runtimeOrderSummaryItems = useMemo(
-    () => getRuntimeOrdersSummaryItems(strategy.orders),
-    [strategy.orders],
-  );
-  const drawerMetrics = useMemo(
-    () => buildRuntimeDrawerMetrics(strategy),
+  const viewModel = useMemo(
+    () => buildRuntimeStrategyCardViewModel(strategy),
     [strategy],
   );
-  const performanceViewModel = useMemo(
-    () => buildStrategyPerformanceViewModel(strategy.orderLog),
-    [strategy.orderLog],
-  );
+  const {
+    lastTrade,
+    runtimeOrders,
+    runtimeOrderSummaryItems,
+    drawerMetrics,
+    symbolConcentration,
+    topSymbolPnlRanking,
+    worstSymbolPnlRanking,
+    symbolRankingMaxAbsPnl,
+    directionStats,
+    advancedMetrics,
+  } = viewModel;
   const {
     monthlyStats,
     tradePoints: runtimeTradePoints,
@@ -714,54 +757,7 @@ export const RuntimeStrategyCard = ({
     pnlDistributionBins,
     sessionPnlStats,
     hourlyPnlStats,
-  } = performanceViewModel;
-  const symbolPnlRanking = useMemo(
-    () => buildRuntimeSymbolPnlRanking(strategy.orders),
-    [strategy.orders],
-  );
-  const symbolConcentration = useMemo(
-    () => buildRuntimeSymbolConcentration(strategy.orders).slice(0, 8),
-    [strategy.orders],
-  );
-  const topSymbolPnlRanking = useMemo(
-    () =>
-      [...symbolPnlRanking]
-        .sort(
-          (left, right) =>
-            right.pnl - left.pnl || left.symbol.localeCompare(right.symbol),
-        )
-        .slice(0, 10),
-    [symbolPnlRanking],
-  );
-  const worstSymbolPnlRanking = useMemo(
-    () =>
-      [...symbolPnlRanking]
-        .sort(
-          (left, right) =>
-            left.pnl - right.pnl || left.symbol.localeCompare(right.symbol),
-        )
-        .slice(0, 10),
-    [symbolPnlRanking],
-  );
-  const symbolRankingMaxAbsPnl = useMemo(
-    () => Math.max(...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)), 1),
-    [symbolPnlRanking],
-  );
-  const directionStats = useMemo(
-    () => buildRuntimeDirectionStats(strategy.orders),
-    [strategy.orders],
-  );
-  const advancedMetrics = useMemo(() => {
-    const firstPoint = strategy.orderLog[0];
-    const lastPoint = strategy.orderLog[strategy.orderLog.length - 1];
-
-    return calculateAdvancedTradeMetrics({
-      trades: buildRuntimeAdvancedTrades(strategy.orders),
-      orderLog: strategy.orderLog,
-      startTimestamp: firstPoint?.[0] ?? null,
-      endTimestamp: lastPoint?.[0] ?? null,
-    });
-  }, [strategy.orderLog, strategy.orders]);
+  } = viewModel.performance;
 
   return (
     <Box

@@ -1191,6 +1191,93 @@ const buildSymbolPnlRanking = (
     );
 };
 
+export const buildStrategySnapshotCardViewModel = (
+  snapshot: StrategyChartSnapshot,
+  mode: 'replay' | 'ai',
+) => {
+  const snapshotOrders = buildSnapshotOrders(snapshot, mode);
+  const symbolPnlRanking = buildSymbolPnlRanking(snapshot.details);
+  const performance = buildStrategyPerformanceViewModel(snapshot.orderLog);
+  const maxLossStreak = calculateMaxLossStreak(snapshot.orderLog);
+  const drawerBaseMetrics =
+    mode === 'ai'
+      ? snapshot.metrics
+          .filter((metric) => metric.id !== 'pnl')
+          .map((metric) =>
+            metric.id === 'quality' || metric.label === 'Quality'
+              ? {
+                  id: 'maxDrawdown',
+                  label: 'Max drawdown',
+                  value:
+                    calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
+                  tone: 'warning' as const,
+                }
+              : metric,
+          )
+      : snapshot.metrics;
+  const firstPoint = snapshot.orderLog[0];
+  const lastPoint = snapshot.orderLog[snapshot.orderLog.length - 1];
+  const symbolsLabel =
+    snapshot.symbols.length > 3
+      ? `${snapshot.symbols.slice(0, 3).join(', ')} +${snapshot.symbols.length - 3}`
+      : snapshot.symbols.join(', ') || 'n/a';
+
+  return {
+    snapshotOrders,
+    aiDiagnosticGroups: buildAiDiagnosticGroups(snapshot.details),
+    directionStatGroups: buildDirectionStatGroups(snapshot.details),
+    symbolPnlRanking,
+    topSymbolPnlRanking: [...symbolPnlRanking]
+      .sort(
+        (left, right) =>
+          right.pnl - left.pnl || left.symbol.localeCompare(right.symbol),
+      )
+      .slice(0, 10),
+    worstSymbolPnlRanking: [...symbolPnlRanking]
+      .sort(
+        (left, right) =>
+          left.pnl - right.pnl || left.symbol.localeCompare(right.symbol),
+      )
+      .slice(0, 10),
+    symbolRankingMaxAbsPnl: Math.max(
+      ...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)),
+      1,
+    ),
+    performance,
+    symbolsLabel,
+    sourceLabel: mode === 'ai' && snapshot.datasetId ? 'dataset:' : 'symbols:',
+    sourceValue:
+      mode === 'ai' && snapshot.datasetId ? snapshot.datasetId : symbolsLabel,
+    tagsLabel: snapshot.tags?.join(' · ') ?? '',
+    displaySubtitle:
+      mode === 'ai'
+        ? snapshot.subtitle?.replace(/^q\d+\+\s*(?:·\s*)?/i, '').trim()
+        : snapshot.subtitle,
+    metrics: buildSnapshotSummaryMetrics(snapshot),
+    drawerMetrics:
+      mode === 'ai'
+        ? sortAiDrawerMetrics([
+            ...drawerBaseMetrics,
+            {
+              id: 'maxLossStreak',
+              label: 'Max loss streak',
+              value: formatInteger(maxLossStreak),
+              tone:
+                maxLossStreak > 0 ? ('warning' as const) : ('success' as const),
+            },
+          ])
+        : drawerBaseMetrics,
+    advancedMetrics: calculateAdvancedTradeMetrics({
+      trades: buildSnapshotAdvancedTrades(snapshot),
+      orderLog: snapshot.orderLog,
+      startTimestamp: firstPoint?.[0] ?? null,
+      endTimestamp: lastPoint?.[0] ?? null,
+    }),
+    hasOrdersDrawer: snapshotOrders.length > 0,
+    hasStatDrawer: mode === 'ai' || Boolean(snapshot.details?.length),
+  };
+};
+
 export const StrategySnapshotCard = ({
   snapshot,
   emptyText,
@@ -1210,50 +1297,27 @@ export const StrategySnapshotCard = ({
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const snapshotOrders = useMemo(
-    () => buildSnapshotOrders(snapshot, mode),
+  const viewModel = useMemo(
+    () => buildStrategySnapshotCardViewModel(snapshot, mode),
     [mode, snapshot],
   );
-  const aiDiagnosticGroups = useMemo(
-    () => buildAiDiagnosticGroups(snapshot.details),
-    [snapshot.details],
-  );
-  const directionStatGroups = useMemo(
-    () => buildDirectionStatGroups(snapshot.details),
-    [snapshot.details],
-  );
-  const symbolPnlRanking = useMemo(
-    () => buildSymbolPnlRanking(snapshot.details),
-    [snapshot.details],
-  );
-  const topSymbolPnlRanking = useMemo(
-    () =>
-      [...symbolPnlRanking]
-        .sort(
-          (left, right) =>
-            right.pnl - left.pnl || left.symbol.localeCompare(right.symbol),
-        )
-        .slice(0, 10),
-    [symbolPnlRanking],
-  );
-  const worstSymbolPnlRanking = useMemo(
-    () =>
-      [...symbolPnlRanking]
-        .sort(
-          (left, right) =>
-            left.pnl - right.pnl || left.symbol.localeCompare(right.symbol),
-        )
-        .slice(0, 10),
-    [symbolPnlRanking],
-  );
-  const symbolRankingMaxAbsPnl = useMemo(
-    () => Math.max(...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)), 1),
-    [symbolPnlRanking],
-  );
-  const performanceViewModel = useMemo(
-    () => buildStrategyPerformanceViewModel(snapshot.orderLog),
-    [snapshot.orderLog],
-  );
+  const {
+    snapshotOrders,
+    aiDiagnosticGroups,
+    directionStatGroups,
+    topSymbolPnlRanking,
+    worstSymbolPnlRanking,
+    symbolRankingMaxAbsPnl,
+    sourceLabel,
+    sourceValue,
+    tagsLabel,
+    displaySubtitle,
+    metrics,
+    drawerMetrics,
+    advancedMetrics,
+    hasOrdersDrawer,
+    hasStatDrawer,
+  } = viewModel;
   const {
     monthlyStats,
     tradePoints: snapshotTradePoints,
@@ -1262,73 +1326,7 @@ export const StrategySnapshotCard = ({
     pnlDistributionBins,
     sessionPnlStats,
     hourlyPnlStats,
-  } = performanceViewModel;
-  const symbolsLabel =
-    snapshot.symbols.length > 3
-      ? `${snapshot.symbols.slice(0, 3).join(', ')} +${snapshot.symbols.length - 3}`
-      : snapshot.symbols.join(', ') || 'n/a';
-  const sourceLabel =
-    mode === 'ai' && snapshot.datasetId ? 'dataset:' : 'symbols:';
-  const sourceValue =
-    mode === 'ai' && snapshot.datasetId ? snapshot.datasetId : symbolsLabel;
-  const tagsLabel = snapshot.tags?.join(' · ') ?? '';
-  const displaySubtitle =
-    mode === 'ai'
-      ? snapshot.subtitle?.replace(/^q\d+\+\s*(?:·\s*)?/i, '').trim()
-      : snapshot.subtitle;
-  const metrics = useMemo(
-    () => buildSnapshotSummaryMetrics(snapshot),
-    [snapshot],
-  );
-  const drawerBaseMetrics =
-    mode === 'ai'
-      ? snapshot.metrics
-          .filter((metric) => metric.id !== 'pnl')
-          .map((metric) =>
-            metric.id === 'quality' || metric.label === 'Quality'
-              ? {
-                  id: 'maxDrawdown',
-                  label: 'Max drawdown',
-                  value:
-                    calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
-                  tone: 'warning' as const,
-                }
-              : metric,
-          )
-      : snapshot.metrics;
-  const maxLossStreak = useMemo(
-    () => calculateMaxLossStreak(snapshot.orderLog),
-    [snapshot.orderLog],
-  );
-  const drawerMetrics = useMemo(
-    () =>
-      mode === 'ai'
-        ? sortAiDrawerMetrics([
-            ...drawerBaseMetrics,
-            {
-              id: 'maxLossStreak',
-              label: 'Max loss streak',
-              value: formatInteger(maxLossStreak),
-              tone:
-                maxLossStreak > 0 ? ('warning' as const) : ('success' as const),
-            },
-          ])
-        : drawerBaseMetrics,
-    [drawerBaseMetrics, maxLossStreak, mode],
-  );
-  const advancedMetrics = useMemo(() => {
-    const firstPoint = snapshot.orderLog[0];
-    const lastPoint = snapshot.orderLog[snapshot.orderLog.length - 1];
-
-    return calculateAdvancedTradeMetrics({
-      trades: buildSnapshotAdvancedTrades(snapshot),
-      orderLog: snapshot.orderLog,
-      startTimestamp: firstPoint?.[0] ?? null,
-      endTimestamp: lastPoint?.[0] ?? null,
-    });
-  }, [snapshot]);
-  const hasOrdersDrawer = snapshotOrders.length > 0;
-  const hasStatDrawer = mode === 'ai' || Boolean(snapshot.details?.length);
+  } = viewModel.performance;
 
   const handleDelete = async () => {
     if (isDeleting) {

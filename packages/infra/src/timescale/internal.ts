@@ -1,39 +1,17 @@
-import { Pool, type QueryResultRow } from 'pg';
-
-declare global {
-  // чтобы Next.js не создавал пул на каждый HMR
-  // eslint-disable-next-line no-var
-  var __pgPool__: Pool | undefined;
-}
-
-export const getPool = () => {
-  if (!global.__pgPool__) {
-    const host = process.env.PG_HOST || '127.0.0.1';
-    const port = Number(process.env.PG_PORT ?? 5432);
-    const user = process.env.PG_USER || 'app';
-    const password = String(process.env.PG_PASSWORD ?? 'app');
-    const database = process.env.PG_DATABASE || process.env.PG_DB || 'app';
-    const max = Number(process.env.PG_POOL_MAX ?? 10);
-    const connectionTimeoutMillis = Number(
-      process.env.PG_CONNECTION_TIMEOUT_MS ?? 30_000,
-    );
-
-    global.__pgPool__ = new Pool({
-      host,
-      port,
-      user,
-      password,
-      database,
-      max: Number.isFinite(max) && max > 0 ? Math.floor(max) : 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis:
-        Number.isFinite(connectionTimeoutMillis) && connectionTimeoutMillis > 0
-          ? Math.floor(connectionTimeoutMillis)
-          : 30_000,
-    });
-  }
-  return global.__pgPool__;
-};
+import { closePool, getPool } from './pool';
+import { queryMarketContext } from './query';
+export { getPool } from './pool';
+export {
+  queryMarketContext,
+  type TimescaleMarketContextQueryOptions,
+} from './query';
+export {
+  getSafeBulkInsertRows,
+  normalizeCandleProvider,
+  normalizeCandleSymbol,
+  toMarketFeatureAge,
+  type MarketFeatureAsOf,
+} from './values';
 
 let candlesSchemaReady = false;
 let derivativesSchemaReady = false;
@@ -52,11 +30,6 @@ export type TimescaleMarketContextSource =
   | 'derivatives'
   | 'hyperliquidWhales';
 
-export type TimescaleMarketContextQueryOptions = {
-  signal?: AbortSignal;
-  timeoutMs?: number;
-};
-
 let marketContextSchemaMode: 'ensure' | 'verify' = 'ensure';
 const verifiedMarketContextSchemas = new Set<TimescaleMarketContextSource>();
 
@@ -68,12 +41,6 @@ export const configureTimescaleMarketContextSchemaMode = (
 };
 
 export const closeTimescalePool = async (): Promise<void> => {
-  const pool = global.__pgPool__;
-  if (!pool) {
-    return;
-  }
-
-  global.__pgPool__ = undefined;
   candlesSchemaReady = false;
   derivativesSchemaReady = false;
   spreadSchemaReady = false;
@@ -85,7 +52,7 @@ export const closeTimescalePool = async (): Promise<void> => {
   binanceMarketSchemaReadyPromise = null;
   hyperliquidWhaleSchemaReadyPromise = null;
   verifiedMarketContextSchemas.clear();
-  await pool.end();
+  await closePool();
 };
 
 const CANDLES_SCHEMA_LOCK_KEY = 610000;
@@ -93,101 +60,6 @@ const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
 const HYPERLIQUID_WHALE_SCHEMA_LOCK_KEY = 610004;
-const PG_SAFE_MAX_BIND_PARAMS = 30_000;
-
-const resolveMarketContextQueryTimeoutMs = (override?: number) => {
-  if (Number.isFinite(override) && Number(override) > 0) {
-    return Math.floor(Number(override));
-  }
-  const configured = Number(process.env.MARKET_CONTEXT_SQL_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured > 0
-    ? Math.floor(configured)
-    : 30_000;
-};
-
-const createMarketContextQueryError = (
-  name: 'AbortError' | 'TimescaleQueryTimeoutError',
-  message: string,
-) => {
-  const error = new Error(message);
-  error.name = name;
-  return error;
-};
-
-export const queryMarketContext = async <TRow extends QueryResultRow>(
-  text: string,
-  values: unknown[],
-  options: TimescaleMarketContextQueryOptions = {},
-) => {
-  const pool = getPool();
-  const client = await pool.connect();
-  const timeoutMs = resolveMarketContextQueryTimeoutMs(options.timeoutMs);
-  let released = false;
-  let rejectCancellation: ((error: Error) => void) | undefined;
-
-  const release = (error?: Error) => {
-    if (released) return;
-    released = true;
-    client.release(error);
-  };
-  const cancellation = new Promise<never>((_resolve, reject) => {
-    rejectCancellation = reject;
-  });
-  const cancel = (error: Error) => {
-    release(error);
-    rejectCancellation?.(error);
-  };
-  const onAbort = () =>
-    cancel(
-      createMarketContextQueryError(
-        'AbortError',
-        'Timescale market-context query aborted',
-      ),
-    );
-  const timer = setTimeout(
-    () =>
-      cancel(
-        createMarketContextQueryError(
-          'TimescaleQueryTimeoutError',
-          `Timescale market-context query exceeded ${timeoutMs}ms`,
-        ),
-      ),
-    timeoutMs,
-  );
-  timer.unref?.();
-  options.signal?.addEventListener('abort', onAbort, { once: true });
-
-  try {
-    if (options.signal?.aborted) {
-      const error = createMarketContextQueryError(
-        'AbortError',
-        'Timescale market-context query aborted',
-      );
-      release(error);
-      throw error;
-    }
-    const query = client.query<TRow>(text, values);
-    return await Promise.race([query, cancellation]);
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener('abort', onAbort);
-    release();
-  }
-};
-
-export const normalizeCandleProvider = (provider: string) =>
-  String(provider || '')
-    .trim()
-    .toLowerCase();
-
-export const normalizeCandleSymbol = (symbol: string) =>
-  String(symbol || '')
-    .trim()
-    .toUpperCase();
-
-export const getSafeBulkInsertRows = (columnsCount: number) =>
-  Math.max(1, Math.floor(PG_SAFE_MAX_BIND_PARAMS / columnsCount));
-
 const withSchemaLock = async (lockKey: number, work: () => Promise<void>) => {
   const pool = getPool();
   await pool.query('SELECT pg_advisory_lock($1)', [lockKey]);
@@ -995,14 +867,4 @@ export const ensureMarketContextSchemas = async (
   for (const source of new Set(sources)) {
     await ensureMarketContextSchema(source);
   }
-};
-
-export type MarketFeatureAsOf<T> = T & {
-  ageMs: number | null;
-  stale: boolean;
-};
-
-export const toMarketFeatureAge = (rowTs: Date, atMs: number) => {
-  const ageMs = atMs - rowTs.getTime();
-  return Number.isFinite(ageMs) ? ageMs : null;
 };

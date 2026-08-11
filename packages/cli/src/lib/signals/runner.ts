@@ -21,7 +21,6 @@ import type {
   TradejsConfigHooks,
 } from '@tradejs/core/config';
 import { SIGNALS_CLI_PRELOAD_DAYS } from '@tradejs/core/constants';
-import { enrichSignalWithBinanceMarketContext } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -31,17 +30,13 @@ import {
 import {
   Connector,
   ConnectorCreator,
-  InstrumentDescriptor,
   Interval,
   MarketUniverse,
   RuntimeDeployment,
   RuntimeStrategyCloseNotification,
   Signal,
 } from '@tradejs/types';
-import {
-  alignSymbolWithBtcReference,
-  getClosedCandlesForInterval,
-} from '../marketData/windows';
+import { getClosedCandlesForInterval } from '../marketData/windows';
 import { timeOperation as runTimedOperation } from '../runFormatting';
 import { invokeAfterSignalsHooks, invokeBeforeSignalsHooks } from './hooks';
 import { prepareMarketContextForRun } from '../marketContextPrepare';
@@ -51,23 +46,10 @@ import {
   updateMarketHistoryWithBtcReferences,
   updatePrimaryMarketHistory,
 } from '../marketData/historyPrepare';
-import {
-  loadRuntimeStrategies,
-  type StrategyRuntimeConfig,
-} from './runtimeStrategies';
-import {
-  createStrategySkipStats,
-  logStrategySkipStats,
-  recordStrategyReason,
-  type StrategySkipStatsMap,
-} from './skipStats';
-import {
-  buildRuntimeSignalEvaluationId,
-  createRuntimeSignalEvaluationBuffer,
-} from './evaluations';
+import { loadRuntimeStrategies } from './runtimeStrategies';
+import { createStrategySkipStats, logStrategySkipStats } from './skipStats';
+import { createRuntimeSignalEvaluationBuffer } from './evaluations';
 import { getTelegramDeliverableSignals } from './telegram';
-import { buildRuntimeModeStrategyConfig } from '../runtimeModeConfig';
-import { buildRuntimeLineage } from '../runtimeLineage';
 import {
   buildSignalsStrategyLifecycleKey,
   createSignalsStrategyLifecycle,
@@ -75,6 +57,7 @@ import {
 } from './runtimeLifecycle';
 import { getSignalsHeartbeatStatus, runSignalsDaemon } from './daemon';
 import { createSignalsKlineFeed, type SignalsKlineFeed } from './klineFeed';
+import { createSignalsTickerEvaluator } from './tickerEvaluator';
 
 const SLOW_SIGNALS_WARNING_MS = 10 * 60_000;
 
@@ -132,40 +115,6 @@ export interface SignalsRunner {
   runDaemon: () => Promise<void>;
 }
 
-interface EvaluateTickerParams {
-  symbol: string;
-  connectorName: string;
-  connector: Connector;
-  btcBinanceData: Awaited<ReturnType<Connector['kline']>>;
-  btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>;
-  primaryBtcClosedData: Awaited<ReturnType<Connector['kline']>>;
-  primaryEthClosedData: Awaited<ReturnType<Connector['kline']>>;
-  primaryEthByTimestamp: ReadonlyMap<
-    number,
-    Awaited<ReturnType<Connector['kline']>>[number]
-  >;
-  runtimeStrategies: StrategyRuntimeConfig[];
-  strategyStats: StrategySkipStatsMap;
-  runtimeCloseNotifications: RuntimeStrategyCloseNotification[];
-  lifecycle: SignalsStrategyLifecycle;
-  preloadStart: number;
-  currentTimestamp: number;
-  persistStrategyState: boolean;
-  universe: MarketUniverse;
-  interval: Interval;
-  intervalMs: number;
-  accountId?: string;
-  deploymentId?: string;
-  instrument?: InstrumentDescriptor;
-  runtimeScopeUniverse?: MarketUniverse;
-  saveRuntimeSignalEvaluation?: ReturnType<
-    typeof createRuntimeSignalEvaluationBuffer
-  >['save'];
-  saveRuntimeSignal?: ReturnType<
-    typeof createRuntimeSignalEvaluationBuffer
-  >['saveSignal'];
-}
-
 const formatDuration = (durationMs: number) =>
   `${(durationMs / 1000).toFixed(1)}s`;
 
@@ -190,7 +139,6 @@ export const createSignalsRunner = (
   config: SignalsRunnerConfig,
 ): SignalsRunner => {
   const interval = config.interval;
-  const intervalMs = Number(interval) * 60_000;
   const projectRoot =
     config.projectRoot?.trim() ||
     String(process.env.PROJECT_CWD || process.cwd()).trim() ||
@@ -335,303 +283,6 @@ export const createSignalsRunner = (
       btcReferences,
       lifecycle,
     };
-  };
-
-  const evaluateTicker = async ({
-    symbol,
-    connectorName,
-    connector,
-    btcBinanceData,
-    btcCoinbaseData,
-    primaryBtcClosedData,
-    primaryEthClosedData,
-    primaryEthByTimestamp,
-    runtimeStrategies,
-    strategyStats,
-    runtimeCloseNotifications,
-    lifecycle,
-    preloadStart,
-    currentTimestamp,
-    persistStrategyState,
-    universe,
-    interval,
-    intervalMs,
-    accountId,
-    deploymentId,
-    instrument,
-    runtimeScopeUniverse,
-    saveRuntimeSignalEvaluation,
-    saveRuntimeSignal,
-  }: EvaluateTickerParams): Promise<Signal[]> => {
-    const strategySignals: Signal[] = [];
-
-    const loadCached = (cachedSymbol: string) =>
-      connector.kline({
-        symbol: cachedSymbol,
-        start: preloadStart,
-        end: currentTimestamp,
-        cacheOnly: true,
-        interval,
-      });
-    const cachedData =
-      universe === 'crypto' && symbol === 'BTCUSDT'
-        ? primaryBtcClosedData
-        : universe === 'crypto' && symbol === 'ETHUSDT'
-          ? primaryEthClosedData
-          : await loadCached(symbol);
-
-    // Runtime evaluates only on the last closed candle. Timestamp filtering keeps
-    // cache-only runs from accidentally stepping one closed bar back when the
-    // newest forming bar is absent from Timescale.
-    const closedData = getClosedCandlesForInterval(
-      cachedData,
-      currentTimestamp,
-      intervalMs,
-    );
-    const closedBtcData = primaryBtcClosedData;
-    const closedEthData = primaryEthClosedData;
-    const { alignedCoinCandles, alignedBtcCandles } =
-      universe === 'crypto'
-        ? alignSymbolWithBtcReference(closedData, closedBtcData)
-        : { alignedCoinCandles: closedData, alignedBtcCandles: closedData };
-    const alignedEthCandles = alignedCoinCandles
-      .map((candle) => primaryEthByTimestamp.get(candle.timestamp))
-      .filter((candle): candle is (typeof closedEthData)[number] =>
-        Boolean(candle),
-      );
-    const lastCandle = alignedCoinCandles.at(-1);
-    const btcLastCandle = alignedBtcCandles.at(-1);
-    const ethLastCandle =
-      lastCandle == null
-        ? undefined
-        : primaryEthByTimestamp.get(lastCandle.timestamp);
-
-    if (!lastCandle || !btcLastCandle) {
-      return strategySignals;
-    }
-    const previousData = alignedCoinCandles.slice(0, -1);
-    const previousBtcData = alignedBtcCandles.slice(0, -1);
-    const previousEthData = alignedEthCandles.filter(
-      (candle) => candle.timestamp < lastCandle.timestamp,
-    );
-
-    for (const runtimeStrategy of runtimeStrategies) {
-      const {
-        strategyName,
-        configId,
-        strategyCreator,
-        sourceStrategyConfig,
-        strategyConfig,
-        strategyResults,
-      } = runtimeStrategy;
-      const runtimeConfig = buildRuntimeModeStrategyConfig({
-        strategyConfig,
-        env: 'CRON',
-        interval,
-        makeOrders: config.makeOrders,
-      });
-      const runtimeLineage = await buildRuntimeLineage({
-        projectRoot,
-        strategyName,
-        config: {
-          configId,
-          strategyConfig,
-          symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-        },
-        runContext: {
-          connectorName: connectorName.toLowerCase(),
-          interval: String(interval),
-          universe,
-        },
-      });
-      const lifecycleKey = buildSignalsStrategyLifecycleKey({
-        connectorName,
-        universe: runtimeScopeUniverse,
-        accountId,
-        deploymentId,
-        symbol,
-        interval,
-        strategyName,
-        configId,
-      });
-      const stats = strategyStats.get(strategyName);
-      const initialDataLength = previousData.length;
-      const initialBtcDataLength = previousBtcData.length;
-      const initialEthDataLength = previousEthData.length;
-      let evaluation: Awaited<ReturnType<SignalsStrategyLifecycle['evaluate']>>;
-      try {
-        evaluation = await lifecycle.evaluate({
-          key: lifecycleKey,
-          timestamp: lastCandle.timestamp,
-          config: {
-            runtimeConfig,
-            sourceStrategyConfig,
-            symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-          },
-          btcBinanceData,
-          btcCoinbaseData,
-          onRuntimeClose: (event) => {
-            runtimeCloseNotifications.push(event);
-          },
-          create: async ({
-            btcBinanceData: lifecycleBtcBinanceData,
-            btcCoinbaseData: lifecycleBtcCoinbaseData,
-            onRuntimeClose,
-          }) =>
-            strategyCreator({
-              userName: config.userName,
-              connectorName,
-              runtimeConfigId: configId,
-              runtimeConfigSnapshot: {
-                userConfig: sourceStrategyConfig,
-                symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-              },
-              connector,
-              symbol,
-              ...(runtimeScopeUniverse
-                ? {
-                    universe,
-                    assetClass: instrument?.assetClass,
-                    instrument,
-                    accountId,
-                    deploymentId,
-                  }
-                : {}),
-              data: previousData,
-              btcData: universe === 'crypto' ? previousBtcData : [],
-              ethData: universe === 'crypto' ? previousEthData : [],
-              btcBinanceData: lifecycleBtcBinanceData,
-              btcCoinbaseData: lifecycleBtcCoinbaseData,
-              config: runtimeConfig,
-              ...(persistStrategyState
-                ? { sharedStrategyStateKey: lifecycleKey }
-                : {}),
-              onRuntimeClose,
-            }),
-          run: (strategy) => strategy(lastCandle, btcLastCandle, ethLastCandle),
-        });
-      } finally {
-        // Disposable runtimes append the evaluated candle to their input arrays.
-        // Restore the shared per-symbol warmup arrays before the next strategy so
-        // every strategy sees the same history without allocating three copies.
-        previousData.length = initialDataLength;
-        previousBtcData.length = initialBtcDataLength;
-        previousEthData.length = initialEthDataLength;
-      }
-
-      if (evaluation.action === 'duplicate' || evaluation.action === 'stale') {
-        continue;
-      }
-      if (evaluation.action.startsWith('rebuilt_')) {
-        logger.info(
-          'Rebuilt signals strategy state (%s): %s %s',
-          evaluation.action.slice('rebuilt_'.length),
-          strategyName,
-          symbol,
-        );
-      }
-      if (stats) {
-        stats.evaluated += 1;
-      }
-
-      const signal = evaluation.result;
-      if (!signal || typeof signal === 'string') {
-        const reason =
-          typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL';
-        if (typeof signal === 'string') {
-          recordStrategyReason(strategyStats, strategyName, signal, 'core');
-        }
-        await saveRuntimeSignalEvaluation?.({
-          evaluationId: buildRuntimeSignalEvaluationId({
-            strategyName,
-            symbol,
-            timestamp: lastCandle.timestamp,
-            runtimeConfigId: configId,
-          }),
-          userName: config.userName,
-          strategy: strategyName,
-          runtimeConfigId: configId,
-          runtimeLineage,
-          symbol,
-          interval,
-          universe,
-          assetClass: instrument?.assetClass,
-          accountId,
-          deploymentId,
-          policyProfileId: runtimeConfig.POLICY_PROFILE_ID,
-          timestamp: lastCandle.timestamp,
-          evaluatedAt: Date.now(),
-          status: 'skip',
-          reason,
-        });
-        continue;
-      }
-
-      if (stats) {
-        stats.signals += 1;
-      }
-      signal.runtimeConfigId = configId;
-      signal.runtimeLineage = runtimeLineage;
-      if (
-        configId &&
-        configId !== 'config' &&
-        !signal.signalId.endsWith(`:${configId}`)
-      ) {
-        signal.signalId = `${signal.signalId}:${configId}`;
-      }
-      await enrichSignalWithBinanceMarketContext({
-        signal,
-        env: 'CRON',
-      });
-      if (
-        signal.orderStatus === 'skipped' &&
-        typeof signal.orderSkipReason === 'string' &&
-        signal.orderSkipReason.trim()
-      ) {
-        recordStrategyReason(
-          strategyStats,
-          strategyName,
-          signal.orderSkipReason,
-          'runtime',
-        );
-      }
-      strategySignals.push(signal);
-      saveRuntimeSignal?.(config.userName, signal);
-
-      await saveRuntimeSignalEvaluation?.({
-        evaluationId: buildRuntimeSignalEvaluationId({
-          strategyName,
-          symbol,
-          timestamp: lastCandle.timestamp,
-          runtimeConfigId: configId,
-        }),
-        userName: config.userName,
-        strategy: strategyName,
-        runtimeConfigId: configId,
-        runtimeLineage,
-        symbol,
-        interval,
-        universe,
-        assetClass: instrument?.assetClass,
-        accountId,
-        deploymentId,
-        policyProfileId: signal.policyProfileId,
-        timestamp: lastCandle.timestamp,
-        evaluatedAt: Date.now(),
-        status: 'signal',
-        reason: signal.orderSkipReason || signal.orderStatus || 'SIGNAL',
-        signalId: signal.signalId,
-        direction: signal.direction,
-        orderStatus: signal.orderStatus,
-        orderSkipReason: signal.orderSkipReason,
-        ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
-        ...(signal.ml ? { ml: signal.ml } : {}),
-      });
-
-      logger.info('Signal found %s by strategy %s', symbol, strategyName);
-    }
-
-    return strategySignals;
   };
 
   const signals = async (options: { session?: SignalsSession } = {}) => {
@@ -918,35 +569,42 @@ export const createSignalsRunner = (
       logger.info(chalk.yellow(`tickers: ${tickers.length}`));
       const signalsParallel = resolvePositiveInteger(config.parallel, 4);
       logger.info(chalk.yellow(`signal workers: ${signalsParallel}`));
+      const evaluateTicker = createSignalsTickerEvaluator({
+        userName: config.userName,
+        makeOrders: config.makeOrders,
+        projectRoot,
+        context: {
+          connectorName,
+          connector: marketConnector,
+          btcBinanceData,
+          btcCoinbaseData,
+          primaryBtcClosedData,
+          primaryEthClosedData,
+          primaryEthByTimestamp,
+          runtimeStrategies,
+          strategyStats,
+          runtimeCloseNotifications,
+          lifecycle,
+          preloadStart,
+          currentTimestamp,
+          persistStrategyState,
+          universe,
+          interval,
+          intervalMs,
+          accountId,
+          deploymentId: deployment?.id,
+          runtimeScopeUniverse: sessionUniverse,
+          saveRuntimeSignalEvaluation: runtimeSignalEvaluations.save,
+          saveRuntimeSignal: runtimeSignalEvaluations.saveSignal,
+        },
+      });
 
       await timeOperation('strategy evaluation', async () => {
         await runWithConcurrency(tickers, signalsParallel, async (symbol) => {
-          const strategySignals = await evaluateTicker({
+          const strategySignals = await evaluateTicker(
             symbol,
-            connectorName,
-            connector: marketConnector,
-            btcBinanceData,
-            btcCoinbaseData,
-            primaryBtcClosedData,
-            primaryEthClosedData,
-            primaryEthByTimestamp,
-            runtimeStrategies,
-            strategyStats,
-            runtimeCloseNotifications,
-            lifecycle,
-            preloadStart,
-            currentTimestamp,
-            persistStrategyState,
-            universe,
-            interval,
-            intervalMs,
-            accountId,
-            deploymentId: deployment?.id,
-            instrument: instrumentsBySymbol.get(symbol),
-            runtimeScopeUniverse: sessionUniverse,
-            saveRuntimeSignalEvaluation: runtimeSignalEvaluations.save,
-            saveRuntimeSignal: runtimeSignalEvaluations.saveSignal,
-          });
+            instrumentsBySymbol.get(symbol),
+          );
 
           if (strategySignals.length > 0) {
             signals.push(...strategySignals);

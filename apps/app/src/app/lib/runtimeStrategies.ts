@@ -5,26 +5,42 @@ import {
   parseStrategyOrderLinkKey,
 } from '@tradejs/core/trade';
 import type {
-  ClosedPnlRecord,
   ExchangeEntryRecord,
   PositionPnlSnapshot,
   RuntimeTradeRecord,
-  RuntimeLineage,
   SimpleOrderLogData,
   StrategyConfig,
   TestStat,
   MarketUniverse,
   Interval,
 } from '@tradejs/types';
+import type {
+  RuntimeStrategyAiGateChange,
+  RuntimeStrategyMaxLossValueTimeline,
+} from './runtimeStrategyLineage';
+import {
+  takeExactClosedPnlMatch,
+  type ClosedPnlRecordWithOrderLinkId,
+} from './runtimeTradeReconciliation';
+export {
+  assignLegacyRuntimeTradeAccountScopes,
+  buildRuntimeStrategyAiGateChanges,
+  buildRuntimeStrategyIdentityKey,
+  buildRuntimeStrategyMaxLossValueTimeline,
+  getRuntimeStrategyAiGateObservedFrom,
+  isRuntimeStrategyLineageScope,
+} from './runtimeStrategyLineage';
+export type {
+  RuntimeStrategyAccountScope,
+  RuntimeStrategyAiGateChange,
+  RuntimeStrategyLineageScope,
+  RuntimeStrategyMaxLossValueChange,
+  RuntimeStrategyMaxLossValueTimeline,
+} from './runtimeStrategyLineage';
+export { takeClosedPnlMatch } from './runtimeTradeReconciliation';
 
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 const AVG_DAYS_IN_MONTH = 30.4375;
-
-type ClosedPnlRecordWithOrderLinkId = ClosedPnlRecord & {
-  direction?: RuntimeTradeRecord['direction'];
-  entryTimestamp?: number;
-  orderLinkId?: string;
-};
 
 type RuntimeTradeWithResolvedPnl = RuntimeTradeRecord & {
   resolvedPnl: number;
@@ -73,35 +89,6 @@ export interface RuntimeStrategyTradeView {
   lastSyncedAt: number | null;
 }
 
-export interface RuntimeStrategyLineageScope {
-  strategy: string;
-  symbol: string;
-  runtimeConfigId?: string;
-  lineage: RuntimeLineage & {
-    maxLossValue?: number | null;
-  };
-  firstTimestamp: number;
-  lastTimestamp: number;
-}
-
-export interface RuntimeStrategyAiGateChange {
-  timestamp: number;
-  previousFingerprint: string;
-  fingerprint: string;
-}
-
-export interface RuntimeStrategyMaxLossValueChange {
-  timestamp: number;
-  previousValue: number;
-  value: number;
-}
-
-export interface RuntimeStrategyMaxLossValueTimeline {
-  observedFrom: number | null;
-  initialValue: number | null;
-  changes: RuntimeStrategyMaxLossValueChange[];
-}
-
 export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
@@ -126,65 +113,6 @@ export interface RuntimeStrategyView {
   orders: RuntimeStrategyTradeView[];
 }
 
-export const buildRuntimeStrategyIdentityKey = ({
-  strategyName,
-  configId,
-  universe,
-  accountId,
-  deploymentId,
-  policyProfileId,
-}: {
-  strategyName: string;
-  configId?: string;
-  universe?: MarketUniverse;
-  accountId?: string;
-  deploymentId?: string;
-  policyProfileId?: string;
-}) =>
-  [
-    strategyName,
-    configId ?? 'config',
-    universe ?? 'crypto',
-    accountId ?? 'default',
-    deploymentId ?? 'default',
-    policyProfileId ?? 'default',
-  ].join(':');
-
-export interface RuntimeStrategyAccountScope {
-  strategyName: string;
-  configId: string;
-  universe: MarketUniverse;
-  accountId?: string;
-}
-
-export const assignLegacyRuntimeTradeAccountScopes = (
-  trades: RuntimeTradeRecord[],
-  scopes: RuntimeStrategyAccountScope[],
-): RuntimeTradeRecord[] =>
-  trades.map((trade) => {
-    if (trade.accountId || trade.deploymentId) {
-      return trade;
-    }
-
-    const matchingAccountIds = new Set(
-      scopes
-        .filter(
-          (scope) =>
-            scope.strategyName === trade.strategy &&
-            scope.configId === (trade.runtimeConfigId ?? 'config') &&
-            scope.universe === (trade.universe ?? 'crypto'),
-        )
-        .map((scope) => scope.accountId)
-        .filter((accountId): accountId is string => Boolean(accountId)),
-    );
-
-    if (matchingAccountIds.size !== 1) {
-      return trade;
-    }
-
-    return { ...trade, accountId: [...matchingAccountIds][0] };
-  });
-
 export interface RuntimeStrategiesResponse {
   provider: string;
   hours: number;
@@ -196,212 +124,6 @@ export interface RuntimeStrategiesResponse {
   };
   strategies: RuntimeStrategyView[];
 }
-
-export const getRuntimeStrategyAiGateObservedFrom = ({
-  scopes,
-  strategyName,
-  configId,
-  endTime,
-}: {
-  scopes: RuntimeStrategyLineageScope[];
-  strategyName: string;
-  configId?: string;
-  endTime: number;
-}) => {
-  const normalizedConfigId = configId ?? 'config';
-  let observedFrom: number | null = null;
-
-  for (const scope of scopes) {
-    if (
-      scope.strategy !== strategyName ||
-      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
-      scope.firstTimestamp > endTime
-    ) {
-      continue;
-    }
-
-    observedFrom =
-      observedFrom == null
-        ? scope.firstTimestamp
-        : Math.min(observedFrom, scope.firstTimestamp);
-  }
-
-  return observedFrom;
-};
-
-export const buildRuntimeStrategyMaxLossValueTimeline = ({
-  scopes,
-  strategyName,
-  configId,
-  startTime,
-  endTime,
-}: {
-  scopes: RuntimeStrategyLineageScope[];
-  strategyName: string;
-  configId?: string;
-  startTime: number;
-  endTime: number;
-}): RuntimeStrategyMaxLossValueTimeline => {
-  const normalizedConfigId = configId ?? 'config';
-  const observationsByTimestamp = new Map<
-    number,
-    { value: number; lastTimestamp: number }
-  >();
-
-  for (const scope of scopes) {
-    const value = scope.lineage.maxLossValue;
-    if (
-      scope.strategy !== strategyName ||
-      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
-      scope.firstTimestamp > endTime ||
-      typeof value !== 'number' ||
-      !Number.isFinite(value)
-    ) {
-      continue;
-    }
-
-    const existing = observationsByTimestamp.get(scope.firstTimestamp);
-    if (
-      !existing ||
-      scope.lastTimestamp > existing.lastTimestamp ||
-      (scope.lastTimestamp === existing.lastTimestamp && value > existing.value)
-    ) {
-      observationsByTimestamp.set(scope.firstTimestamp, {
-        value,
-        lastTimestamp: scope.lastTimestamp,
-      });
-    }
-  }
-
-  const observations = [...observationsByTimestamp.entries()].sort(
-    ([leftTimestamp], [rightTimestamp]) => leftTimestamp - rightTimestamp,
-  );
-  const changes: RuntimeStrategyMaxLossValueChange[] = [];
-  let observedFrom: number | null = null;
-  let initialValue: number | null = null;
-  let currentValue: number | null = null;
-
-  for (const [timestamp, observation] of observations) {
-    if (currentValue == null) {
-      observedFrom = timestamp;
-      initialValue = observation.value;
-      currentValue = observation.value;
-      continue;
-    }
-    if (observation.value === currentValue) {
-      continue;
-    }
-
-    if (timestamp >= startTime) {
-      changes.push({
-        timestamp,
-        previousValue: currentValue,
-        value: observation.value,
-      });
-    }
-    currentValue = observation.value;
-  }
-
-  return { observedFrom, initialValue, changes };
-};
-
-export const isRuntimeStrategyLineageScope = (
-  value: unknown,
-): value is RuntimeStrategyLineageScope => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  const lineage = record.lineage as Record<string, unknown> | undefined;
-
-  return (
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.firstTimestamp === 'number' &&
-    Number.isFinite(record.firstTimestamp) &&
-    typeof record.lastTimestamp === 'number' &&
-    Number.isFinite(record.lastTimestamp) &&
-    lineage != null &&
-    typeof lineage.gateFingerprint === 'string' &&
-    lineage.gateFingerprint.trim().length > 0
-  );
-};
-
-export const buildRuntimeStrategyAiGateChanges = ({
-  scopes,
-  strategyName,
-  configId,
-  startTime,
-  endTime,
-}: {
-  scopes: RuntimeStrategyLineageScope[];
-  strategyName: string;
-  configId?: string;
-  startTime: number;
-  endTime: number;
-}): RuntimeStrategyAiGateChange[] => {
-  const normalizedConfigId = configId ?? 'config';
-  const observationsByTimestamp = new Map<
-    number,
-    { fingerprint: string; lastTimestamp: number }
-  >();
-
-  for (const scope of scopes) {
-    if (
-      scope.strategy !== strategyName ||
-      (scope.runtimeConfigId ?? 'config') !== normalizedConfigId ||
-      scope.firstTimestamp > endTime
-    ) {
-      continue;
-    }
-
-    const fingerprint = scope.lineage.gateFingerprint.trim();
-    const existing = observationsByTimestamp.get(scope.firstTimestamp);
-
-    // Multiple symbols are evaluated for the same strategy timestamp. If a
-    // deploy happens during that cycle, prefer the lineage that kept running
-    // afterwards instead of making the marker order depend on the symbol name.
-    if (
-      !existing ||
-      scope.lastTimestamp > existing.lastTimestamp ||
-      (scope.lastTimestamp === existing.lastTimestamp &&
-        fingerprint > existing.fingerprint)
-    ) {
-      observationsByTimestamp.set(scope.firstTimestamp, {
-        fingerprint,
-        lastTimestamp: scope.lastTimestamp,
-      });
-    }
-  }
-
-  const observations = [...observationsByTimestamp.entries()].sort(
-    ([leftTimestamp], [rightTimestamp]) => leftTimestamp - rightTimestamp,
-  );
-  const changes: RuntimeStrategyAiGateChange[] = [];
-  let currentFingerprint: string | null = null;
-
-  for (const [timestamp, observation] of observations) {
-    if (currentFingerprint == null) {
-      currentFingerprint = observation.fingerprint;
-      continue;
-    }
-    if (observation.fingerprint === currentFingerprint) {
-      continue;
-    }
-
-    if (timestamp >= startTime) {
-      changes.push({
-        timestamp,
-        previousFingerprint: currentFingerprint,
-        fingerprint: observation.fingerprint,
-      });
-    }
-    currentFingerprint = observation.fingerprint;
-  }
-
-  return changes;
-};
 
 const roundValue = (value: number, digits = 2) => {
   if (!Number.isFinite(value)) {
@@ -1101,127 +823,6 @@ const removeClosedPnlFromExactMaps = ({
   if (row.orderId) {
     exactByOrderId.delete(row.orderId);
   }
-};
-
-const removeClosedPnlFromSymbolBuckets = (
-  buckets: Map<string, ClosedPnlRecordWithOrderLinkId[]>,
-  row: ClosedPnlRecordWithOrderLinkId,
-) => {
-  const rows = buckets.get(row.symbol);
-  if (!rows?.length) {
-    return;
-  }
-
-  const index = rows.findIndex((candidate) => candidate === row);
-  if (index >= 0) {
-    rows.splice(index, 1);
-  }
-};
-
-const takeExactClosedPnlMatch = ({
-  exactByOrderLinkId,
-  exactByOrderId,
-  symbolBuckets,
-  orderLinkId,
-  orderId,
-}: {
-  exactByOrderLinkId: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  exactByOrderId: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  symbolBuckets: Map<string, ClosedPnlRecordWithOrderLinkId[]>;
-  orderLinkId?: string | null;
-  orderId?: string | null;
-}) => {
-  const exactKeys: Array<
-    [Map<string, ClosedPnlRecordWithOrderLinkId>, string | null | undefined]
-  > = [
-    [exactByOrderLinkId, orderLinkId],
-    [exactByOrderId, orderId],
-  ];
-
-  for (const [bucket, key] of exactKeys) {
-    const normalizedKey = toNonEmptyString(key);
-
-    if (!normalizedKey) {
-      continue;
-    }
-
-    const exactMatch = bucket.get(normalizedKey);
-    if (!exactMatch) {
-      continue;
-    }
-
-    removeClosedPnlFromExactMaps({
-      exactByOrderLinkId,
-      exactByOrderId,
-      row: exactMatch,
-    });
-    removeClosedPnlFromSymbolBuckets(symbolBuckets, exactMatch);
-    return exactMatch;
-  }
-
-  return null;
-};
-
-export const takeClosedPnlMatch = ({
-  exactByOrderLinkId,
-  exactByOrderId = new Map<string, ClosedPnlRecordWithOrderLinkId>(),
-  symbolBuckets,
-  trade,
-}: {
-  exactByOrderLinkId: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  exactByOrderId?: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  symbolBuckets: Map<string, ClosedPnlRecordWithOrderLinkId[]>;
-  trade: RuntimeTradeRecord;
-}) => {
-  const exactMatch = takeExactClosedPnlMatch({
-    exactByOrderLinkId,
-    exactByOrderId,
-    symbolBuckets,
-    orderLinkId: trade.orderId,
-    orderId: trade.orderId,
-  });
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
-  const rows = symbolBuckets.get(trade.symbol);
-  if (!rows?.length) {
-    return null;
-  }
-
-  const minimumClosedAt = trade.entryTimestamp - 5 * 60_000;
-  const matchIndex = rows.reduce((bestIndex, row, index) => {
-    if (
-      !Number.isFinite(row.closedAt) ||
-      row.closedAt < minimumClosedAt ||
-      (row.direction && row.direction !== trade.direction)
-    ) {
-      return bestIndex;
-    }
-
-    if (bestIndex < 0) {
-      return index;
-    }
-
-    const best = rows[bestIndex];
-    return row.closedAt < best.closedAt ? index : bestIndex;
-  }, -1);
-
-  if (matchIndex < 0) {
-    return null;
-  }
-
-  const [row] = rows.splice(matchIndex, 1);
-  if (row) {
-    removeClosedPnlFromExactMaps({
-      exactByOrderLinkId,
-      exactByOrderId,
-      row,
-    });
-  }
-
-  return row ?? null;
 };
 
 const takeClosedPnlMatchForExchangeEntry = ({

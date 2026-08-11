@@ -15,9 +15,20 @@ import {
   type BaseContextContextMaInput,
   type BaseContextMaLayerInput,
   type BaseContextPsarInput,
-  type BreakoutRuntimeState,
-  type CloseStreakRuntimeState,
 } from './indicatorBaseContext';
+import type {
+  BreakoutRuntimeState,
+  CloseStreakRuntimeState,
+  IndicatorPeriods,
+  IndicatorsControllerCheckpointState,
+  IndicatorsControllerRuntimeState,
+} from './indicatorControllerContracts';
+export type {
+  IndicatorPeriods,
+  IndicatorRuntimeState,
+  IndicatorsControllerCheckpointState,
+  IndicatorsControllerRuntimeState,
+} from './indicatorControllerContracts';
 import {
   appendNumericHistory,
   cloneNumericHistoryBuffer,
@@ -27,20 +38,15 @@ import {
   type NumericHistoryBuffer,
 } from './indicatorHistory';
 import {
-  BASE_INTERVAL_MINUTES,
   buildMlCandleIndicators,
-  calculateZScore,
   cloneMlCandle,
   createIncrementalResampleCache,
-  CANDLE_WINDOW,
   INDICATOR_TIMEFRAMES,
-  isFiniteNumber,
   ONE_DAY_MS,
   ONE_DAY_CANDLE_WINDOW,
   percentChange,
   resampleCandles,
   toMlCandle,
-  toNullable,
   type IndicatorValue,
 } from './indicatorMath';
 import { getRegisteredIndicatorEntries } from './indicatorPlugins';
@@ -53,23 +59,11 @@ import {
   createSerializableObv,
   createSerializablePsar,
   createSerializableRsi,
-  SerializableAdxState,
   SerializableAdxOutput,
   createSerializableSma,
-  SerializableAtrState,
-  SerializableBollingerState,
-  SerializableEmaState,
-  SerializableMacdState,
-  SerializableObvState,
-  SerializablePsarState,
-  SerializableRsiState,
-  SerializableSdState,
   SerializableSmaState,
 } from './serializableIndicators';
-import {
-  createSerializableSpreadSmoother,
-  SpreadSmootherState,
-} from './spread';
+import { createSerializableSpreadSmoother } from './spread';
 
 export { buildMlCandleIndicators };
 
@@ -196,7 +190,6 @@ if (INDICATOR_NEXT_PROFILE) {
   processLike?.once?.('exit', () => {
     const round = (value: number) => Number(value.toFixed(2));
     const stats = indicatorNextProfileStats;
-    // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
         {
@@ -253,31 +246,6 @@ type TrendlineIndicatorHistoryPush = (
   value: number | null | undefined,
 ) => void;
 
-type IndicatorRuntimeState = {
-  maFast: SerializableSmaState;
-  maMedium: SerializableSmaState;
-  maSlow: SerializableSmaState;
-  atr: SerializableAtrState;
-  atrPctShort: SerializableSmaState;
-  atrPctLong: SerializableSmaState;
-  bb: SerializableBollingerState;
-  obv: SerializableObvState;
-  smaObv: SerializableSmaState;
-  macd: SerializableMacdState;
-  rsi: SerializableRsiState;
-  adx: SerializableAdxState;
-  baseContextHl2Ema: Record<string, SerializableEmaState>;
-  baseContextCloseEma34: SerializableEmaState;
-  baseContextTypicalSma20: SerializableSmaState;
-  baseContextAdaptivePreviousCenterline: number | null;
-  baseContextPsar: SerializablePsarState;
-  baseContextPsarEma50: SerializableEmaState;
-  baseContextPsarFilterBarsSinceSignal: number | null;
-  btcMaFast: SerializableSmaState;
-  btcMaSlow: SerializableSmaState;
-  spreadSmoother: SpreadSmootherState;
-};
-
 export const getRequiredControllerSeedWindow = (
   periods: Partial<IndicatorPeriods> = {},
 ): number => {
@@ -291,58 +259,6 @@ export const getRequiredControllerSeedWindow = (
     resolved.levelLookback + Math.max(0, resolved.levelDelay) + 1,
   );
 };
-
-export type IndicatorsControllerRuntimeState = {
-  indicatorState: IndicatorRuntimeState;
-  indicatorHistory: Record<string, NumericHistoryBuffer>;
-  btcRuntimeHistory: Record<string, NumericHistoryBuffer>;
-  latestIndicatorValues: Record<string, number>;
-  rawCoinCandles: Candle[];
-  rawBtcCandles: Candle[];
-  rawEthCandles?: Candle[];
-  coinResampledCandles: {
-    h1: Candle[];
-    h4: Candle[];
-    d1: Candle[];
-  };
-  btcResampledCandles: {
-    h1: Candle[];
-    h4: Candle[];
-    d1: Candle[];
-  };
-  ethResampledCandles?: {
-    h1: Candle[];
-    h4: Candle[];
-    d1: Candle[];
-  };
-  closeStreaks: CloseStreakRuntimeState;
-  breakoutState: BreakoutRuntimeState;
-  btcCloses: number[];
-  btcBinanceCursor: number;
-  btcCoinbaseCursor: number;
-};
-
-export type IndicatorsControllerCheckpointState = Pick<
-  IndicatorsControllerRuntimeState,
-  | 'indicatorState'
-  | 'rawCoinCandles'
-  | 'rawBtcCandles'
-  | 'rawEthCandles'
-  | 'coinResampledCandles'
-  | 'btcResampledCandles'
-  | 'ethResampledCandles'
-  | 'closeStreaks'
-  | 'breakoutState'
-  | 'btcCloses'
-  | 'btcBinanceCursor'
-  | 'btcCoinbaseCursor'
-> &
-  Partial<
-    Pick<
-      IndicatorsControllerRuntimeState,
-      'indicatorHistory' | 'btcRuntimeHistory' | 'latestIndicatorValues'
-    >
-  >;
 
 type TrendlineIndicators = {
   maFast: IndicatorValue;
@@ -406,23 +322,6 @@ const cloneHistorySnapshot = (
         : value,
     ]),
   ) as Record<string, number[] | Candle[]>;
-
-export interface IndicatorPeriods {
-  maFast: number;
-  maMedium: number;
-  maSlow: number;
-  obvSma: number;
-  atr: number;
-  atrPctShort: number;
-  atrPctLong: number;
-  bb: number;
-  bbStd: number;
-  macdFast: number;
-  macdSlow: number;
-  macdSignal: number;
-  levelLookback: number;
-  levelDelay: number;
-}
 
 export const applyIndicatorsToHistory = (
   indicators: TrendlineIndicators,
