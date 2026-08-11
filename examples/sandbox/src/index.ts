@@ -1,7 +1,7 @@
 export {
   strategyEntries,
   STRATEGY_NAME,
-  SandboxDeterministicStrategyCreator,
+  createSandboxDeterministicCore,
 } from './plugins/sandboxStrategy.plugin';
 export { indicatorEntries } from './plugins/sandboxIndicator.plugin';
 export {

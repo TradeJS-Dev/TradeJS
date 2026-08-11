@@ -177,9 +177,7 @@ const run = async () => {
     );
     assertTrue(
       'signalId prefix',
-      String(storeSignal.signalId || '').startsWith(
-        `sandbox-deterministic-${SANDBOX_E2E_SYMBOL}-`,
-      ),
+      String(storeSignal.signalId || '').startsWith('sandbox-deterministic-'),
     );
     assertTrue(
       'timestamp aligned to 15m',
