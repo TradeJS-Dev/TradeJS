@@ -1531,9 +1531,14 @@ describe('signals script', () => {
       '15',
       'root',
     );
-    const storedTradeSignal = (mocks.setData.mock.calls as unknown[][]).find(
+    const storedTradeSignalCallIndex = (
+      mocks.setData.mock.calls as unknown[][]
+    ).findIndex(
       ([key]) => key === mocks.redisKeys.storeSignal('ETHUSDT', 'trend-sig'),
-    )?.[1];
+    );
+    const storedTradeSignal = (mocks.setData.mock.calls as unknown[][])[
+      storedTradeSignalCallIndex
+    ]?.[1];
     expect(storedTradeSignal).toEqual(
       expect.objectContaining({
         figures: {
@@ -1561,6 +1566,9 @@ describe('signals script', () => {
         }),
       }),
     );
+    expect(
+      mocks.setData.mock.invocationCallOrder[storedTradeSignalCallIndex],
+    ).toBeLessThan(mocks.makeScreenshots.mock.invocationCallOrder[0]);
     expect(mocks.sendToTG).toHaveBeenCalledWith(
       [
         expect.objectContaining({

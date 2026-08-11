@@ -621,6 +621,7 @@ export const createSignalsRunner = (
         const telegramSignals = getTelegramDeliverableSignals(signals);
 
         if (!config.skipScreenshots && telegramSignals.length > 0) {
+          await runtimeSignalEvaluations.flushSignals();
           await makeScreenshots(telegramSignals, interval, config.userName);
         }
 

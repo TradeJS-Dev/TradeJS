@@ -30,8 +30,9 @@ export const GET = async (
       );
     }
 
-    const signal: Signal = await getData(
+    const signal: Signal | null = await getData(
       redisKeys.storeSignal(symbol, signalId),
+      null,
     );
 
     return NextResponse.json({ signal });

@@ -182,6 +182,50 @@ export const flushRuntimeSignalEvaluations = async (
 export const createRuntimeSignalEvaluationBuffer = () => {
   const evaluations: RuntimeSignalEvaluationRecord[] = [];
   const signals: Array<{ userName: string; signal: Signal }> = [];
+
+  const flushSignals = async () => {
+    const pendingSignals = signals.splice(0);
+    if (pendingSignals.length === 0) return;
+
+    const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
+    const signalRefsByBucket = new Map<
+      string,
+      Array<{
+        field: string;
+        data: ReturnType<typeof toRuntimeSignalBucketRef>;
+      }>
+    >();
+
+    for (const { userName, signal } of pendingSignals) {
+      const bucket = redisKeys.runtimeSignalBucket(
+        userName,
+        getRuntimeStorageDayKey(signal.timestamp),
+        signal.strategy,
+      );
+      const entries = signalRefsByBucket.get(bucket) ?? [];
+      entries.push({
+        field: signal.signalId,
+        data: toRuntimeSignalBucketRef(signal),
+      });
+      signalRefsByBucket.set(bucket, entries);
+    }
+
+    await Promise.all([
+      ...pendingSignals.map(({ signal }) =>
+        setData(
+          redisKeys.storeSignal(signal.symbol, signal.signalId),
+          toStoredRuntimeSignal(signal),
+          { expire: runtimeSignalRetentionTtl },
+        ),
+      ),
+      ...[...signalRefsByBucket].map(([bucket, entries]) =>
+        setHashJsonFields(bucket, entries, {
+          expire: runtimeSignalRetentionTtl,
+        }),
+      ),
+    ]);
+  };
+
   return {
     save: async (evaluation: RuntimeSignalEvaluationRecord) => {
       evaluations.push(evaluation);
@@ -189,46 +233,12 @@ export const createRuntimeSignalEvaluationBuffer = () => {
     saveSignal: (userName: string, signal: Signal) => {
       signals.push({ userName, signal });
     },
+    flushSignals,
     flush: async () => {
       const pending = evaluations.splice(0);
-      const pendingSignals = signals.splice(0);
-      const runtimeSignalRetentionTtl = getRuntimeSignalRetentionTtlSeconds();
-      const signalRefsByBucket = new Map<
-        string,
-        Array<{
-          field: string;
-          data: ReturnType<typeof toRuntimeSignalBucketRef>;
-        }>
-      >();
-
-      for (const { userName, signal } of pendingSignals) {
-        const bucket = redisKeys.runtimeSignalBucket(
-          userName,
-          getRuntimeStorageDayKey(signal.timestamp),
-          signal.strategy,
-        );
-        const entries = signalRefsByBucket.get(bucket) ?? [];
-        entries.push({
-          field: signal.signalId,
-          data: toRuntimeSignalBucketRef(signal),
-        });
-        signalRefsByBucket.set(bucket, entries);
-      }
-
       await Promise.all([
         flushRuntimeSignalEvaluations(pending),
-        ...pendingSignals.map(({ signal }) =>
-          setData(
-            redisKeys.storeSignal(signal.symbol, signal.signalId),
-            toStoredRuntimeSignal(signal),
-            { expire: runtimeSignalRetentionTtl },
-          ),
-        ),
-        ...[...signalRefsByBucket].map(([bucket, entries]) =>
-          setHashJsonFields(bucket, entries, {
-            expire: runtimeSignalRetentionTtl,
-          }),
-        ),
+        flushSignals(),
       ]);
     },
   };
