@@ -2,6 +2,7 @@ import {
   buildDrawdownPoints,
   buildMonthlyStats,
   buildRollingPerformance,
+  buildStrategyPerformanceViewModel,
   buildStrategyTradePoints,
   calculateMaxGrossStreak,
   calculateMaxLossStreak,
@@ -66,5 +67,25 @@ describe('strategy performance', () => {
         ],
       },
     ]);
+  });
+
+  it('builds the complete chart view model from one equity log', () => {
+    const viewModel = buildStrategyPerformanceViewModel(orderLog);
+
+    expect(viewModel.tradePoints).toHaveLength(3);
+    expect(viewModel.drawdownPoints).toHaveLength(4);
+    expect(viewModel.monthlyStats).toHaveLength(1);
+    expect(viewModel.pnlDistributionBins).toHaveLength(12);
+    expect(viewModel.sessionPnlStats).toEqual([
+      { session: 'Asia', pnl: 5, orders: 2 },
+      { session: 'Europe', pnl: 15, orders: 1 },
+      { session: 'US', pnl: 0, orders: 0 },
+    ]);
+    expect(viewModel.hourlyPnlStats).toHaveLength(24);
+    expect(viewModel.rollingPerformancePoints.at(-1)).toEqual({
+      index: 3,
+      winRate: (2 / 3) * 100,
+      pnl: 20,
+    });
   });
 });

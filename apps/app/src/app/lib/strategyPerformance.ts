@@ -63,6 +63,16 @@ export interface QuarterlyMonthlyStats {
   hasData: boolean;
 }
 
+export interface StrategyPerformanceViewModel {
+  monthlyStats: YearlyMonthlyStats[];
+  tradePoints: StrategyTradePoint[];
+  drawdownPoints: DrawdownPoint[];
+  rollingPerformancePoints: RollingPerformancePoint[];
+  pnlDistributionBins: DistributionBin[];
+  sessionPnlStats: SessionPnlStat[];
+  hourlyPnlStats: HourlyPnlStat[];
+}
+
 const resolveTradingSession = (hour: number): TradingSession => {
   if (hour < 8) return 'Asia';
   if (hour < 16) return 'Europe';
@@ -358,4 +368,20 @@ export const buildMonthlyStats = (
   return [...yearlyStats.entries()]
     .sort(([leftYear], [rightYear]) => leftYear - rightYear)
     .map(([year, months]) => ({ year, months }));
+};
+
+export const buildStrategyPerformanceViewModel = (
+  orderLog: EquityLog,
+): StrategyPerformanceViewModel => {
+  const tradePoints = buildStrategyTradePoints(orderLog);
+
+  return {
+    monthlyStats: buildMonthlyStats(orderLog),
+    tradePoints,
+    drawdownPoints: buildDrawdownPoints(orderLog),
+    rollingPerformancePoints: buildRollingPerformance(tradePoints, 50),
+    pnlDistributionBins: buildPnlDistribution(tradePoints),
+    sessionPnlStats: buildSessionPnlStats(tradePoints),
+    hourlyPnlStats: buildHourlyPnlStats(tradePoints),
+  };
 };
