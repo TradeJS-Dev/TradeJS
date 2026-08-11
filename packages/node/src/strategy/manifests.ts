@@ -11,6 +11,7 @@ import {
   resetIndicatorRegistryCache,
 } from '@tradejs/core/indicators';
 import { logger } from '@tradejs/infra/logger';
+import { createStrategyRuntime } from '../strategyRuntime';
 import {
   getTradejsProjectCwd,
   loadTradejsConfig,
@@ -130,8 +131,20 @@ const registerEntries = (
       );
       continue;
     }
-    state.strategyCreators.set(strategyName, entry.creator);
     state.strategyManifestsMap.set(strategyName, entry.manifest);
+    state.strategyCreators.set(
+      strategyName,
+      createStrategyRuntime({
+        strategyName,
+        defaults: entry.defaults,
+        createCore: entry.createCore,
+        manifest: entry.manifest,
+        detectorKey: entry.detectorKey,
+        detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
+        resolveRegisteredManifest: (name) =>
+          state.strategyManifestsMap.get(name),
+      }),
+    );
   }
 };
 

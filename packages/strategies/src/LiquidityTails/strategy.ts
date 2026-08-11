@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, LiquidityTailsConfig } from './config';
 import { createLiquidityTailsCore } from './core';
 import { liquidityTailsManifest } from './manifest';
 
-export const LiquidityTailsStrategyCreator =
-  createStrategyRuntime<LiquidityTailsConfig>({
-    strategyName: 'LiquidityTails',
-    defaults: DEFAULT_CONFIG as LiquidityTailsConfig,
+export const LiquidityTailsStrategyDefinition: StrategyRegistryEntry<LiquidityTailsConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createLiquidityTailsCore,
     manifest: liquidityTailsManifest,
-    strategyDirectory: __dirname,
-  });
+  };

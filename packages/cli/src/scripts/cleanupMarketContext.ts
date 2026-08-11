@@ -1,10 +1,8 @@
 import 'dotenv/config';
 import args from 'args';
 import chalk from 'chalk';
-import {
-  cleanupDeprecatedMarketContext,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
+import { cleanupDeprecatedMarketContext } from '@tradejs/infra/timescale/marketContext';
 
 args.example(
   'yarn cli maintenance:cleanup-market-context --apply',

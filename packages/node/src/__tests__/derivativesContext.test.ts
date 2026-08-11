@@ -1,7 +1,7 @@
 const mockGetDerivativesWindow = jest.fn();
 const mockLoggerWarn = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/derivatives', () => ({
   getDerivativesWindow: (...args: unknown[]) =>
     mockGetDerivativesWindow(...args),
 }));

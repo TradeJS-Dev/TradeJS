@@ -2,7 +2,7 @@
 
 import 'dotenv/config';
 import { closeRedisConnection } from '@tradejs/infra/redis';
-import { closeTimescalePool } from '@tradejs/infra/timescale';
+import { closeTimescalePool } from '@tradejs/infra/timescale/client';
 
 type ScriptModule = {
   main?: () => Promise<unknown> | unknown;

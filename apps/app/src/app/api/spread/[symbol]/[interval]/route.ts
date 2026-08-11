@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSpreadRangeForSymbols } from '@tradejs/infra/timescale';
+import { getSpreadRangeForSymbols } from '@tradejs/infra/timescale/spread';
 import { logger } from '@tradejs/infra/logger';
 import type { DerivativesInterval } from '@tradejs/types';
 

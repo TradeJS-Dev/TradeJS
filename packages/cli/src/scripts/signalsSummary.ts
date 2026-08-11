@@ -29,7 +29,7 @@ import {
   RuntimeSignalStatsBucket,
 } from '../lib/runtimeSignalsStorage';
 import { buildRuntimeDebugReportAttachment } from '../lib/runtimeDebugEvidence';
-import { listRuntimeDeployments } from '@tradejs/infra/tradingAccounts';
+import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
 import {
   ConnectorCreator,
   MarketUniverse,

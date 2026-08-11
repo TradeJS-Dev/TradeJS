@@ -3,7 +3,7 @@ import args from 'args';
 import chalk from 'chalk';
 import ProgressBar from 'progress';
 import _ from 'lodash';
-import { ConnectorCreator } from '@tradejs/types';
+import type { ConnectorCreator, DerivativesInterval } from '@tradejs/types';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
 import {
   coinalyzePointsToRows,
@@ -19,9 +19,8 @@ import { getTickers } from '@tradejs/node/cli';
 import {
   applyDerivativesMetricCoverage,
   upsertDerivatives,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
-import type { DerivativesInterval } from '@tradejs/types';
+} from '@tradejs/infra/timescale/derivatives';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
 
 type CoinalyzeMarket = {
   symbol: string;

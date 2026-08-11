@@ -621,14 +621,16 @@ const runSignalsPath = async () => {
     setHashJsonField,
     setHashJsonFields,
   }));
-  jest.doMock('@tradejs/infra/timescale', () => ({
-    ...jest.requireActual('@tradejs/infra/timescale'),
+  jest.doMock('@tradejs/infra/timescale/marketContext', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale/marketContext'),
     ensureMarketContextSchemas: jest.fn(async () => undefined),
   }));
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+    resolveTradingAccount: jest.fn(async () => null),
+  }));
+  jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
     getRuntimeDeployment: jest.fn(async () => null),
     saveRuntimeDeploymentHeartbeat: jest.fn(),
-    resolveTradingAccount: jest.fn(async () => null),
   }));
   jest.doMock('../lib/derivativesContextBackfill', () => ({
     backfillDerivativesContextForSignals: jest.fn(),

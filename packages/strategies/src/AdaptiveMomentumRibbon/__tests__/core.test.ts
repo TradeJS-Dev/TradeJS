@@ -1,6 +1,5 @@
 /** @jest-environment node */
 
-import { logger } from '@tradejs/infra/logger';
 import { createAdaptiveMomentumRibbonCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import {
@@ -287,17 +286,11 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     }
 
     const core = await createAdaptiveMomentumRibbonCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
         ...configOverrides,
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi,
       indicatorsState: makeIndicatorsState(indicatorsSnapshotOverrides),
     });
@@ -333,18 +326,12 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     const strategyApi = makeStrategyApi(marketData);
 
     const core = await createAdaptiveMomentumRibbonCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
         AMR_MIN_SIGNAL_OSC_ABS_LONG: undefined,
         AMR_MIN_SIGNAL_OSC_ABS_SHORT: undefined,
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -423,16 +410,10 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     };
 
     const core = await createAdaptiveMomentumRibbonCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData, {
         direction: 'LONG',
         qty: 1,
@@ -477,16 +458,10 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     };
 
     const core = await createAdaptiveMomentumRibbonCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData, {
         direction: 'LONG',
         qty: 1,
@@ -521,16 +496,10 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     };
 
     const core = await createAdaptiveMomentumRibbonCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData),
       indicatorsState: makeIndicatorsState(),
     });
@@ -590,14 +559,10 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     );
   });
 
-  it('returns AMR_EVALUATION_FAILED when evaluator throws and logs warning', async () => {
+  it('returns AMR_EVALUATION_FAILED when evaluator throws', async () => {
     mockedEvaluateAdaptiveMomentumRibbon.mockImplementationOnce(() => {
       throw new Error('evaluation-failed');
     });
-    const warnSpy = jest
-      .spyOn(logger, 'warn')
-      .mockImplementation(() => logger as any);
-
     const candles = makeCandles({ bullishLast: true });
     const { core } = await makeRuntime({ candles });
 
@@ -610,12 +575,6 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       kind: 'skip',
       code: 'AMR_EVALUATION_FAILED',
     });
-    expect(warnSpy).toHaveBeenCalledWith(
-      'AdaptiveMomentumRibbon evaluation failed for %s: %s',
-      'TESTUSDT',
-      'Error: evaluation-failed',
-    );
-    warnSpy.mockRestore();
   });
 
   it('returns AMR_SIGNAL_CONFLICT when both entry flags are true', async () => {

@@ -312,14 +312,8 @@ const makeCoreParams = ({
   strategyApi.getBaseContext.mockImplementation(() => baseContext);
 
   return {
-    userName: 'root',
-    symbol: 'TESTUSDT',
     config,
-    isConfigFromBacktest: false,
-    connector: {} as any,
     data: [],
-    btcData: [],
-    loadPineScriptFile: jest.fn(),
     strategyApi,
     indicatorsState,
   };

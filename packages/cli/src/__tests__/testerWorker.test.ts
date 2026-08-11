@@ -33,7 +33,7 @@ describe('CLI tester worker bootstrap', () => {
       getData: jest.fn(),
       redisKeys: { cacheChunk: jest.fn() },
     }));
-    jest.doMock('@tradejs/infra/timescale', () => ({
+    jest.doMock('@tradejs/infra/timescale/client', () => ({
       configureTimescaleMarketContextSchemaMode,
     }));
     jest.spyOn(process, 'on').mockImplementation(() => process);

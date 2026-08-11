@@ -1,2 +1,2 @@
-export { TrendShiftStrategyCreator } from './strategy';
+export { TrendShiftStrategyDefinition } from './strategy';
 export { trendShiftManifest } from './manifest';

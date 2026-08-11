@@ -128,14 +128,8 @@ const createCore = async (
     currentPosition,
   });
   const core = await createHeadAndShouldersCore({
-    userName: 'root',
-    symbol: 'TESTUSDT',
     config: { ...makeConfig(), ...configOverrides },
-    isConfigFromBacktest: false,
-    connector: {} as any,
     data: candles.slice(0, -1),
-    btcData: candles.slice(0, -1),
-    loadPineScriptFile: jest.fn(),
     strategyApi,
     indicatorsState: makeIndicatorsState(),
   });

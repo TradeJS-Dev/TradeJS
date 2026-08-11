@@ -5,13 +5,13 @@ import {
   getDataEdges,
   toRows,
   upsertCandles,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/candles';
 
 jest.mock('@tradejs/core/async', () => ({
   delay: jest.fn(async () => undefined),
 }));
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/candles', () => ({
   getCandlesRange: jest.fn(),
   getDataEdges: jest.fn(),
   upsertCandles: jest.fn(),

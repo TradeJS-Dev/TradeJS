@@ -4,7 +4,8 @@ import { persist } from 'zustand/middleware';
 import { get, set } from 'idb-keyval';
 import _ from 'lodash';
 import { scan } from '#actions/scanner';
-import { Items, MarketUniverse } from '@tradejs/types';
+import { MarketUniverse } from '@tradejs/types';
+import type { Items } from '#app/types/ui';
 
 const LOCAL_STORAGE_KEY = 'tickers';
 const TICKERS_CACHE_TTL_MS = 10 * 60 * 1000;

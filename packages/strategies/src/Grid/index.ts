@@ -1,2 +1,2 @@
-export { GridStrategyCreator } from './strategy';
+export { GridStrategyDefinition } from './strategy';
 export { gridManifest } from './manifest';

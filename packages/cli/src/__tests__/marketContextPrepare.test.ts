@@ -19,7 +19,7 @@ const mockEnsureMarketContextSchemas = jest.fn();
 const mockEnsureStrategyPluginsLoaded = jest.fn();
 const mockGetStrategyManifest = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/marketContext', () => ({
   ensureMarketContextSchemas: (...args: unknown[]) =>
     mockEnsureMarketContextSchemas(...args),
 }));

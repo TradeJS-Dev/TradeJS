@@ -1,5 +1,6 @@
 import { API } from '@tradejs/core/api';
-import { Items, MarketUniverse } from '@tradejs/types';
+import { MarketUniverse } from '@tradejs/types';
+import type { Items } from '#app/types/ui';
 
 const API_PATH = '/api/scanner';
 

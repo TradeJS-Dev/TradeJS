@@ -10,7 +10,7 @@ import {
   writePersistedBacktestOrderLog,
 } from '@tradejs/infra/backtestArtifacts';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
-import { getRuntimeDeployment } from '@tradejs/infra/tradingAccounts';
+import { getRuntimeDeployment } from '@tradejs/infra/runtimeDeployments';
 import {
   BACKTEST_WARNING_CODES,
   Item,

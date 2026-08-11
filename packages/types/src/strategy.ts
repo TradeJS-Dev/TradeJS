@@ -16,7 +16,7 @@ import {
   MarketFeatureInterval,
   OrderPositionIntent,
 } from './trade';
-import { StrategyConfig, StrategyCreator } from './backtest';
+import { StrategyConfig } from './backtest';
 import { StrategyManifest } from './strategyAdapters';
 
 export interface StrategySignalMetaParams {
@@ -1249,23 +1249,14 @@ export interface CreateStrategyCoreParams<
   TConfig extends StrategyConfig,
   TIndicatorsState extends StrategyIndicatorsState = StrategyIndicatorsState,
 > {
-  userName: string;
-  symbol: string;
   config: TConfig;
-  isConfigFromBacktest: boolean;
-  connector: Connector;
   data: KlineChartData;
-  btcData: KlineChartData;
-  ethData?: KlineChartData;
-  loadPineScriptFile: (fileNameOrPath: string, fallback?: string) => string;
   strategyApi: StrategyAPI<
     TIndicatorsState extends StrategyIndicatorsState<any, infer TSnapshot>
       ? TSnapshot
       : never
   >;
   indicatorsState: TIndicatorsState;
-  sharedReplayKey?: string;
-  getSharedReplayState?: StrategySharedReplayStateGetter;
 }
 
 export type StrategyCoreRunner = (
@@ -1286,9 +1277,12 @@ export type CreateStrategyCore<
   >,
 ) => Promise<StrategyCoreRunner> | StrategyCoreRunner;
 
-export interface StrategyRegistryEntry {
+export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
   manifest: StrategyManifest;
-  creator: StrategyCreator;
+  defaults: TConfig;
+  createCore: CreateStrategyCore<TConfig, any, any>;
+  detectorKey?: (config: TConfig) => string | undefined;
+  detectorNoSignalSkipReason?: string;
 }
 
 export interface StrategyPluginDefinition {

@@ -1,2 +1,2 @@
-export { AdaptiveMomentumRibbonStrategyCreator } from './strategy';
+export { AdaptiveMomentumRibbonStrategyDefinition } from './strategy';
 export { adaptiveMomentumRibbonManifest } from './manifest';

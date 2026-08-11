@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, TrendFollowConfig } from './config';
 import { createTrendFollowCore } from './core';
 import { trendFollowManifest } from './manifest';
 
-export const TrendFollowStrategyCreator =
-  createStrategyRuntime<TrendFollowConfig>({
-    strategyName: 'TrendFollow',
-    defaults: DEFAULT_CONFIG as TrendFollowConfig,
+export const TrendFollowStrategyDefinition: StrategyRegistryEntry<TrendFollowConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createTrendFollowCore,
     manifest: trendFollowManifest,
-    strategyDirectory: __dirname,
-  });
+  };

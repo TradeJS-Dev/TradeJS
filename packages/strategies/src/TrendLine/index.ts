@@ -1,2 +1,2 @@
-export { TrendlineStrategyCreator } from './strategy';
+export { TrendlineStrategyDefinition } from './strategy';
 export { trendLineManifest } from './manifest';

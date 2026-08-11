@@ -3,7 +3,7 @@ const mockGetHyperliquidWhaleCoverageSeriesRows = jest.fn();
 const mockGetHyperliquidWhaleFlowSeriesRows = jest.fn();
 const mockLoggerWarn = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/hyperliquidWhales', () => ({
   getHyperliquidWhaleFlowAggregate: (...args: unknown[]) =>
     mockGetHyperliquidWhaleFlowAggregate(...args),
   getHyperliquidWhaleCoverageSeriesRows: (...args: unknown[]) =>

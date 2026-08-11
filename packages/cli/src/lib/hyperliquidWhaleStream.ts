@@ -3,7 +3,7 @@ import {
   rebuildHyperliquidWhaleFlowRows,
   upsertHyperliquidWhaleCoverageRows,
   upsertHyperliquidWhaleTradeEvents,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/hyperliquidWhales';
 import {
   getHyperliquidPerpUniverseSnapshot,
   getHyperliquidWhaleRegistrySnapshot,

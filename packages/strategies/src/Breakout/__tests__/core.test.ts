@@ -238,14 +238,8 @@ describe('createBreakoutCore', () => {
       isInitialized: jest.fn(() => true),
     };
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: undefined,
         nextIndicators: (...args: any[]) =>
@@ -300,16 +294,8 @@ describe('createBreakoutCore', () => {
     });
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config,
-      isConfigFromBacktest: false,
-      connector: {
-        getPosition: jest.fn(),
-      } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -355,14 +341,8 @@ describe('createBreakoutCore', () => {
       BREAKOUT_COOLDOWN_HOURS: 0,
     });
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config,
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: initialCandles,
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -421,18 +401,12 @@ describe('createBreakoutCore', () => {
       nextIndicators: () => makeIndicatorSnapshot(candle),
     });
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         BREAKOUT_USE_ENGINE: true,
         BREAKOUT_ENGINE_LOOKBACK: 2,
         BREAKOUT_ENGINE_DELAY: 1,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: initialCandles,
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: {} as any,
     });
@@ -485,16 +459,8 @@ describe('createBreakoutCore', () => {
     });
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config,
-      isConfigFromBacktest: false,
-      connector: {
-        getPosition: jest.fn(),
-      } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -530,14 +496,8 @@ describe('createBreakoutCore', () => {
   it('returns skip when indicators are not available', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: undefined,
         marketData: {
@@ -561,14 +521,8 @@ describe('createBreakoutCore', () => {
   it('returns WAIT_DATA when required indicator fields are missing', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: undefined,
         marketData: {
@@ -609,14 +563,8 @@ describe('createBreakoutCore', () => {
     });
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config,
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -699,8 +647,6 @@ describe('createBreakoutCore', () => {
     });
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         REQUIRED_SCORE_LONG: 1,
         SIGNALS_LONG: {
@@ -711,11 +657,7 @@ describe('createBreakoutCore', () => {
           SMA_DOWNTREND: { weight: 1, required: true },
         },
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: {} as any,
     });
@@ -732,17 +674,11 @@ describe('createBreakoutCore', () => {
     const candle = makeCandle(1_700_000_000_000, 100);
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         REQUIRED_SCORE_SHORT: 99,
         SIGNALS_SHORT: {},
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -783,17 +719,11 @@ describe('createBreakoutCore', () => {
     const candle = makeCandle(1_700_000_000_000, 100);
 
     const core = await createBreakoutCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         REQUIRED_SCORE_SHORT: 99,
         SIGNALS_SHORT: {},
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',

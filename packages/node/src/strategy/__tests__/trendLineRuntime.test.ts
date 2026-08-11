@@ -1,5 +1,5 @@
-import { TrendlineStrategyCreator } from '../strategy';
-import { askAI } from '@tradejs/node/strategies';
+import { strategyEntries } from '@tradejs/strategies';
+import { askAI, createStrategyRuntime } from '@tradejs/node/strategies';
 import {
   calculateCoinBtcCorrelation,
   createIndicators,
@@ -55,6 +55,16 @@ jest.mock('@tradejs/infra/logger', () => ({
     error: jest.fn(),
   },
 }));
+
+const trendLineDefinition = strategyEntries.find(
+  ({ manifest }) => manifest.name === 'TrendLine',
+);
+if (!trendLineDefinition) throw new Error('TrendLine definition is missing');
+
+const TrendlineStrategyCreator = createStrategyRuntime({
+  strategyName: trendLineDefinition.manifest.name,
+  ...trendLineDefinition,
+});
 
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
@@ -406,7 +416,11 @@ describe('TrendlineStrategyCreator', () => {
       makeCandle(1_700_000_000_000, 20000),
     );
 
-    expect(redisKeys.strategyConfig).toHaveBeenCalledWith('test', 'TrendLine');
+    expect(redisKeys.strategyConfig).toHaveBeenCalledWith(
+      'test',
+      'TrendLine',
+      'config',
+    );
     expect(result).toBe('STRATEGY_DISABLED');
   });
 

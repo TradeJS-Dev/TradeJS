@@ -6,7 +6,7 @@ import {
   getLatestMarketCmcIndexContexts,
   getLatestMarketGlobalContext,
   getLatestMarketReferenceAssetContexts,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/marketContext';
 import type { BaseStrategyContextSnapshot, Signal } from '@tradejs/types';
 import { isMarketContextCancellationError } from './marketContextErrors';
 

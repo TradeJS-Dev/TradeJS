@@ -7,8 +7,8 @@ jest.mock('@tradejs/core/indicators', () => {
   };
 });
 
-jest.mock('@tradejs/node/strategies', () => {
-  const actual = jest.requireActual('@tradejs/node/strategies');
+jest.mock('@tradejs/core/strategies', () => {
+  const actual = jest.requireActual('@tradejs/core/strategies');
 
   return {
     ...actual,
@@ -23,7 +23,7 @@ import {
   buildEntrySignalDecision,
   getStrategyMarketSnapshot,
   getDirectionalTpSlPrices,
-} from '@tradejs/node/strategies';
+} from '@tradejs/core/strategies';
 import { createTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
@@ -244,14 +244,8 @@ describe('createTrendLineCore', () => {
 
     const strategyApi = makeStrategyApi();
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: indicatorsState as any,
     });
@@ -333,14 +327,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config,
-      isConfigFromBacktest: true,
-      connector,
       data: [candle as any],
-      btcData: [btcCandle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: indicatorsState as any,
     });
@@ -408,14 +396,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -450,14 +432,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -490,14 +466,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -547,14 +517,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -617,8 +581,6 @@ describe('createTrendLineCore', () => {
     (buildEntrySignalDecision as jest.Mock).mockReturnValue(fakeDecision);
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ENV: 'BACKTEST',
         LOWS: {
@@ -629,11 +591,7 @@ describe('createTrendLineCore', () => {
           minRiskRatio: 2,
         },
       }),
-      isConfigFromBacktest: true,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -672,14 +630,8 @@ describe('createTrendLineCore', () => {
     }));
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -701,19 +653,13 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         LOWS: {
           ...DEFAULT_CONFIG.LOWS,
           enable: false,
         },
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -741,14 +687,8 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig(),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -776,19 +716,13 @@ describe('createTrendLineCore', () => {
     });
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         LOWS: {
           ...DEFAULT_CONFIG.LOWS,
           minRiskRatio: 2,
         },
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -820,17 +754,11 @@ describe('createTrendLineCore', () => {
     const strategyApi = makeStrategyApi();
 
     const core = await createTrendLineCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ENV: 'PROD',
         MAX_CORRELATION: 0.9,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [candle as any],
-      btcData: [candle as any],
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState,
     });

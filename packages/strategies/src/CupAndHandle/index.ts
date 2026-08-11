@@ -1,2 +1,2 @@
-export { CupAndHandleStrategyCreator } from './strategy';
+export { CupAndHandleStrategyDefinition } from './strategy';
 export { cupAndHandleManifest } from './manifest';

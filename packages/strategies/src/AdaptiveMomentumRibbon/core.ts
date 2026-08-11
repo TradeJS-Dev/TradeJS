@@ -1,5 +1,4 @@
 import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
-import { logger } from '@tradejs/infra/logger';
 import type {
   BaseStrategyContextSnapshot,
   CreateStrategyCore,
@@ -120,7 +119,7 @@ const buildAdaptiveMomentumRibbonStateKey = ({
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, symbol, data: initialData, strategyApi }) => {
+> = async ({ config, data: initialData, strategyApi }) => {
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
     config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
@@ -186,15 +185,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     let detectorResult;
     try {
       detectorResult = nextDetectorState(candle);
-    } catch (error) {
-      if (typeof globalThis.setImmediate === 'function') {
-        logger.warn(
-          'AdaptiveMomentumRibbon evaluation failed for %s: %s',
-          symbol,
-          String(error),
-        );
-      }
-
+    } catch {
       return strategyApi.skip('AMR_EVALUATION_FAILED');
     }
 

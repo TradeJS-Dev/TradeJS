@@ -16,6 +16,9 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
   deleteTradingAccount: (...args: unknown[]) =>
     mockDeleteTradingAccount(...args),
   getTradingAccount: (...args: unknown[]) => mockGetTradingAccount(...args),
+}));
+
+jest.mock('@tradejs/infra/runtimeDeployments', () => ({
   listRuntimeDeployments: (...args: unknown[]) =>
     mockListRuntimeDeployments(...args),
 }));

@@ -218,16 +218,10 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -246,16 +240,10 @@ describe('createVolumeDivergenceCore', () => {
 
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -328,16 +316,10 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -375,14 +357,8 @@ describe('createVolumeDivergenceCore', () => {
       },
     });
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: retestConfig,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -456,8 +432,6 @@ describe('createVolumeDivergenceCore', () => {
       currentPrice: retest.close,
     });
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         BULLISH: {
@@ -467,11 +441,7 @@ describe('createVolumeDivergenceCore', () => {
           maxConfirmationDistanceAtr: 2,
         },
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [...candles, confirmation] as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -488,18 +458,12 @@ describe('createVolumeDivergenceCore', () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         BULLISH: { minDivergenceAmplitudeAtrRatio: 999 },
         BEARISH: { minDivergenceAmplitudeAtrRatio: 0.01 },
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -518,16 +482,10 @@ describe('createVolumeDivergenceCore', () => {
 
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -608,16 +566,10 @@ describe('createVolumeDivergenceCore', () => {
 
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: { getPosition: jest.fn() } as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -686,16 +638,10 @@ describe('createVolumeDivergenceCore', () => {
     const indicatorsState = makeIndicatorsState();
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState,
     });
@@ -722,17 +668,11 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         PIVOT_LOOKBACK_LEFT: 2,
         PIVOT_LOOKBACK_RIGHT: 1,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -763,16 +703,10 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -797,8 +731,6 @@ describe('createVolumeDivergenceCore', () => {
     });
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         BULLISH: {
@@ -806,11 +738,7 @@ describe('createVolumeDivergenceCore', () => {
           enable: false,
         },
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -829,17 +757,11 @@ describe('createVolumeDivergenceCore', () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         MAX_LOSS_VALUE: 0,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -878,8 +800,6 @@ describe('createVolumeDivergenceCore', () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         BULLISH: {
@@ -889,11 +809,7 @@ describe('createVolumeDivergenceCore', () => {
         },
         VOLUME_DIVERGENCE_TARGET_R_MULT: 1.01,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -935,18 +851,12 @@ describe('createVolumeDivergenceCore', () => {
     indicatorsState.latestNumber = jest.fn(() => 0.95);
 
     const core = await createVolumeDivergenceCore({
-      userName: 'test',
-      symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
         ENV: 'PROD',
         MAX_CORRELATION: 0.9,
       }),
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles as any,
-      btcData: candles as any,
-      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState,
     });

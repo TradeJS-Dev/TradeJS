@@ -8,7 +8,6 @@ import {
   buildRuntimeStrategyAnalytics,
   buildRuntimeStrategyMaxLossValueTimeline,
   getRuntimeStrategyAiGateObservedFrom,
-  resolveStrategyNameByConfigKey,
   resolveStrategyNameByOrderLinkId,
   selectTradesForWindow,
   takeClosedPnlMatch,
@@ -108,24 +107,6 @@ describe('runtimeStrategies helpers', () => {
         ],
       ),
     ).toEqual([trade]);
-  });
-
-  it('resolves strategy name from runtime config key', () => {
-    expect(
-      resolveStrategyNameByConfigKey(
-        'root',
-        'users:root:strategies:TrendLine:config',
-      ),
-    ).toBe('TrendLine');
-    expect(
-      resolveStrategyNameByConfigKey(
-        'root',
-        'users:root:strategies:TrendLine:conservative',
-      ),
-    ).toBe('TrendLine');
-    expect(
-      resolveStrategyNameByConfigKey('root', 'users:root:strategies:TrendLine'),
-    ).toBeNull();
   });
 
   it('selects active trades and recent closed trades for window', () => {

@@ -1,4 +1,4 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import {
   VolatilityCompressionBreakoutConfig,
   config as DEFAULT_CONFIG,
@@ -6,11 +6,9 @@ import {
 import { createVolatilityCompressionBreakoutCore } from './core';
 import { volatilityCompressionBreakoutManifest } from './manifest';
 
-export const VolatilityCompressionBreakoutStrategyCreator =
-  createStrategyRuntime<VolatilityCompressionBreakoutConfig>({
-    strategyName: 'VolatilityCompressionBreakout',
-    defaults: DEFAULT_CONFIG as VolatilityCompressionBreakoutConfig,
+export const VolatilityCompressionBreakoutStrategyDefinition: StrategyRegistryEntry<VolatilityCompressionBreakoutConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createVolatilityCompressionBreakoutCore,
     manifest: volatilityCompressionBreakoutManifest,
-    strategyDirectory: __dirname,
-  });
+  };

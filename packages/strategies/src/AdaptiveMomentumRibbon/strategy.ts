@@ -1,4 +1,4 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import {
   AdaptiveMomentumRibbonConfig,
   config as DEFAULT_CONFIG,
@@ -6,11 +6,9 @@ import {
 import { createAdaptiveMomentumRibbonCore } from './core';
 import { adaptiveMomentumRibbonManifest } from './manifest';
 
-export const AdaptiveMomentumRibbonStrategyCreator =
-  createStrategyRuntime<AdaptiveMomentumRibbonConfig>({
-    strategyName: 'AdaptiveMomentumRibbon',
-    defaults: DEFAULT_CONFIG as AdaptiveMomentumRibbonConfig,
+export const AdaptiveMomentumRibbonStrategyDefinition: StrategyRegistryEntry<AdaptiveMomentumRibbonConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createAdaptiveMomentumRibbonCore,
     manifest: adaptiveMomentumRibbonManifest,
-    strategyDirectory: __dirname,
-  });
+  };

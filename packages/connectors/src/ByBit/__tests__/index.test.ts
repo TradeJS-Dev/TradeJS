@@ -12,7 +12,7 @@ import {
   getDataEdges,
   toRows,
   upsertCandles,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/candles';
 import { logger } from '@tradejs/infra/logger';
 
 jest.mock('../client', () => ({
@@ -40,7 +40,7 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/candles', () => ({
   getCandlesRange: jest.fn(),
   getDataEdges: jest.fn(),
   upsertCandles: jest.fn(),

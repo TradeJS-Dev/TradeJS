@@ -1,2 +1,2 @@
-export { VolumeDivergenceStrategyCreator } from './strategy';
+export { VolumeDivergenceStrategyDefinition } from './strategy';
 export { volumeDivergenceManifest } from './manifest';

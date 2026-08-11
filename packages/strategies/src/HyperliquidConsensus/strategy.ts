@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { HyperliquidConsensusConfig, config as DEFAULT_CONFIG } from './config';
 import { createHyperliquidConsensusCore } from './core';
 import { hyperliquidConsensusManifest } from './manifest';
 
-export const HyperliquidConsensusStrategyCreator =
-  createStrategyRuntime<HyperliquidConsensusConfig>({
-    strategyName: 'HyperliquidConsensus',
-    defaults: DEFAULT_CONFIG as HyperliquidConsensusConfig,
+export const HyperliquidConsensusStrategyDefinition: StrategyRegistryEntry<HyperliquidConsensusConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createHyperliquidConsensusCore,
     manifest: hyperliquidConsensusManifest,
-    strategyDirectory: __dirname,
-  });
+  };

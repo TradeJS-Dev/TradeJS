@@ -1,12 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, DoubleTapConfig } from './config';
 import { createDoubleTapCore } from './core';
 import { doubleTapManifest } from './manifest';
 
-export const DoubleTapStrategyCreator = createStrategyRuntime<DoubleTapConfig>({
-  strategyName: 'DoubleTap',
-  defaults: DEFAULT_CONFIG as DoubleTapConfig,
-  createCore: createDoubleTapCore,
-  manifest: doubleTapManifest,
-  strategyDirectory: __dirname,
-});
+export const DoubleTapStrategyDefinition: StrategyRegistryEntry<DoubleTapConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
+    createCore: createDoubleTapCore,
+    manifest: doubleTapManifest,
+  };

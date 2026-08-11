@@ -130,8 +130,6 @@ describe('DoubleTap core', () => {
     const strategyApi = makeStrategyApi({ marketData });
 
     const core = await createDoubleTapCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
         DOUBLETAP_PIVOT_LENGTH: 2,
@@ -148,11 +146,7 @@ describe('DoubleTap core', () => {
           minRiskRatio: 0.5,
         },
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -183,14 +177,8 @@ describe('DoubleTap core', () => {
       },
     });
     const core = await createDoubleTapCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: [],
-      btcData: [],
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });

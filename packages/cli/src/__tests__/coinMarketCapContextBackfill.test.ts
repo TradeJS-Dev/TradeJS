@@ -13,7 +13,7 @@ const mockUpsertMarketContextBackfillCoverage = jest.fn();
 const mockWaitForDbReady = jest.fn();
 const mockGetUserSettings = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/marketContext', () => ({
   getMarketGlobalContextCoverage: (...args: unknown[]) =>
     mockGetMarketGlobalContextCoverage(...args),
   getMarketReferenceAssetContextCoverage: (...args: unknown[]) =>
@@ -38,6 +38,9 @@ jest.mock('@tradejs/infra/timescale', () => ({
     mockUpsertMarketCmcIndexContextRows(...args),
   upsertMarketContextBackfillCoverage: (...args: unknown[]) =>
     mockUpsertMarketContextBackfillCoverage(...args),
+}));
+
+jest.mock('@tradejs/infra/timescale/client', () => ({
   waitForDbReady: (...args: unknown[]) => mockWaitForDbReady(...args),
 }));
 

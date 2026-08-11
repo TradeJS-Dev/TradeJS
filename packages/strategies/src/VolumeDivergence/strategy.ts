@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, VolumeDivergenceConfig } from './config';
 import { createVolumeDivergenceCore } from './core';
 import { volumeDivergenceManifest } from './manifest';
 
-export const VolumeDivergenceStrategyCreator =
-  createStrategyRuntime<VolumeDivergenceConfig>({
-    strategyName: 'VolumeDivergence',
-    defaults: DEFAULT_CONFIG as VolumeDivergenceConfig,
+export const VolumeDivergenceStrategyDefinition: StrategyRegistryEntry<VolumeDivergenceConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createVolumeDivergenceCore,
     manifest: volumeDivergenceManifest,
-    strategyDirectory: __dirname,
-  });
+  };

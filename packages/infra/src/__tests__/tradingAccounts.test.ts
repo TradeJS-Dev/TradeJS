@@ -38,18 +38,20 @@ jest.mock('../redis', () => ({
 }));
 
 import {
-  deleteRuntimeDeployment,
   deleteTradingAccount,
-  getRuntimeDeployment,
-  getRuntimeDeploymentHeartbeat,
   getTradingAccount,
-  listRuntimeDeployments,
   listTradingAccounts,
   resolveTradingAccount,
-  saveRuntimeDeployment,
-  saveRuntimeDeploymentHeartbeat,
   saveTradingAccount,
 } from '../tradingAccounts';
+import {
+  deleteRuntimeDeployment,
+  getRuntimeDeployment,
+  getRuntimeDeploymentHeartbeat,
+  listRuntimeDeployments,
+  saveRuntimeDeployment,
+  saveRuntimeDeploymentHeartbeat,
+} from '../runtimeDeployments';
 import type { RuntimeDeployment, TradingAccountRef } from '@tradejs/types';
 
 const makeAccount = (

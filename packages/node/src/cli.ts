@@ -22,7 +22,7 @@ import {
   redisKeys,
 } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
-import { getDataEdgesForSymbols } from '@tradejs/infra/timescale';
+import { getDataEdgesForSymbols } from '@tradejs/infra/timescale/candles';
 import { askAI } from './ai';
 import { screenDashboard } from './screenshot';
 import {

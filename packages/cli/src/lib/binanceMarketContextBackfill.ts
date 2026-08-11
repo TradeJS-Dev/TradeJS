@@ -8,8 +8,8 @@ import {
   getMarketTradeFlowCoverage,
   upsertMarketBreadthRows,
   upsertMarketTradeFlowRows,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/marketContext';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
 import type {
   AggTrade,
   Connector,

@@ -1,6 +1,6 @@
 import { createBybitKlineStream } from '@tradejs/connectors';
 import { logger } from '@tradejs/infra/logger';
-import { toRows, upsertCandles } from '@tradejs/infra/timescale';
+import { toRows, upsertCandles } from '@tradejs/infra/timescale/candles';
 import type {
   ConnectorConfig,
   Interval,

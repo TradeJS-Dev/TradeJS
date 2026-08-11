@@ -1,2 +1,2 @@
-export { ReverseTrendLineStrategyCreator } from './strategy';
+export { ReverseTrendLineStrategyDefinition } from './strategy';
 export { reverseTrendLineManifest } from './manifest';

@@ -12,7 +12,7 @@ import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
-import { configureTimescaleMarketContextSchemaMode } from '@tradejs/infra/timescale';
+import { configureTimescaleMarketContextSchemaMode } from '@tradejs/infra/timescale/client';
 
 let isProcessing = false;
 

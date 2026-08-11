@@ -1,5 +1,31 @@
 const nextCoreWebVitals = require('eslint-config-next/core-web-vitals');
 const typescriptEslintPlugin = require('@typescript-eslint/eslint-plugin');
+const typescriptEslintParser = require('@typescript-eslint/parser');
+
+const scopeNextConfigToApp = (config) => {
+  const isGlobalIgnoreOnly =
+    config.ignores &&
+    !config.files &&
+    !config.rules &&
+    !config.plugins &&
+    !config.languageOptions &&
+    !config.settings;
+  if (isGlobalIgnoreOnly) return config;
+
+  return {
+    ...config,
+    files: config.files
+      ? config.files.map((pattern) => `apps/app/${pattern}`)
+      : ['apps/app/**/*.{js,jsx,mjs,ts,tsx,mts,cts}'],
+    settings: {
+      ...config.settings,
+      next: {
+        ...config.settings?.next,
+        rootDir: 'apps/app',
+      },
+    },
+  };
+};
 
 const unusedVarsOptions = {
   argsIgnorePattern: '^_',
@@ -12,7 +38,7 @@ module.exports = [
   {
     ignores: ['**/dist/**', '**/.next/**'],
   },
-  ...nextCoreWebVitals,
+  ...nextCoreWebVitals.map(scopeNextConfigToApp),
   {
     rules: {
       'no-duplicate-imports': 'error',
@@ -24,6 +50,13 @@ module.exports = [
   },
   {
     files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: typescriptEslintParser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+    },
     plugins: {
       '@typescript-eslint': typescriptEslintPlugin,
     },
@@ -69,7 +102,6 @@ module.exports = [
             '@tradejs/core/*/*',
             '@tradejs/infra/src/*',
             '@tradejs/infra/dist/*',
-            '@tradejs/infra/*/*',
             '@tradejs/node/src/*',
             '@tradejs/node/dist/*',
             '@tradejs/node/*/*',

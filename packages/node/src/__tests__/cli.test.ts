@@ -932,7 +932,7 @@ describe('cli update kline coverage filtering', () => {
       redisKeys: {},
     }));
 
-    jest.doMock('@tradejs/infra/timescale', () => ({
+    jest.doMock('@tradejs/infra/timescale/candles', () => ({
       getDataEdgesForSymbols,
     }));
 

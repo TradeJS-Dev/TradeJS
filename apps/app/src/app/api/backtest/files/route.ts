@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { Item, TestStat } from '@tradejs/types';
+import { TestStat } from '@tradejs/types';
+import type { Item } from '#app/types/ui';
 import { parseTestName } from '@tradejs/core/backtest';
 import { TTL_1M } from '@tradejs/core/constants';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';

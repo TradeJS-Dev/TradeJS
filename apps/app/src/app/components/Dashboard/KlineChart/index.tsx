@@ -10,7 +10,8 @@ import {
   DataLoaderSubscribeBarParams,
 } from 'klinecharts';
 import { OverlaySpinner } from '#ui';
-import { Indicator, UIFilters } from '@tradejs/types';
+import { Indicator } from '@tradejs/types';
+import type { UIFilters } from '#app/types/ui';
 import {
   useBbIndicator,
   useAtrIndicator,

@@ -1,10 +1,9 @@
 import _ from 'lodash';
-import { getData, redisKeys } from '@tradejs/infra/redis';
 import {
-  RuntimeStrategyConfigSnapshot,
-  StrategyConfig,
-  StrategyResults,
-} from '@tradejs/types';
+  getRuntimeStrategyConfig,
+  getRuntimeStrategyResultConfig,
+} from '@tradejs/infra/runtimeStrategyConfigs';
+import { RuntimeStrategyConfigSnapshot, StrategyConfig } from '@tradejs/types';
 
 interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
   strategyName: string;
@@ -50,28 +49,18 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
     const userConfig = (
       runtimeConfigSnapshot
         ? runtimeConfigSnapshot.userConfig
-        : await getData(
-            runtimeConfigId
-              ? redisKeys.strategyConfig(
-                  userName,
-                  strategyName,
-                  runtimeConfigId,
-                )
-              : redisKeys.strategyConfig(userName, strategyName),
-            {},
-          )
+        : (await getRuntimeStrategyConfig(
+            userName,
+            strategyName,
+            runtimeConfigId,
+          )) ?? {}
     ) as TConfig;
     config = mergeIfNotEmpty(config, userConfig);
 
     if (!runtimeConfigId || runtimeConfigId === 'config') {
       const symbolResultConfig = runtimeConfigSnapshot
         ? runtimeConfigSnapshot.symbolResultConfig
-        : (
-            (await getData(
-              redisKeys.strategyResults(userName, strategyName),
-              {},
-            )) as StrategyResults
-          )?.[symbol]?.config;
+        : await getRuntimeStrategyResultConfig(userName, strategyName, symbol);
       if (symbolResultConfig && !_.isEmpty(symbolResultConfig)) {
         config = mergeIfNotEmpty(
           config,

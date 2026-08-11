@@ -34,7 +34,7 @@ import {
   createLastTradeController,
   createStrategyStateControllerFactory,
 } from './state';
-import { uuid } from '../uuid';
+import { IdGenerator, uuid } from '../uuid';
 
 type AiRuntimeConfigLike = {
   AI_ENABLED?: boolean;
@@ -1130,6 +1130,7 @@ interface BuildEntrySignalDecisionParams {
   signalId?: BuildStrategySignalDraft['signalId'];
   orderPlan: StrategyEntryOrderPlan;
   runtime?: StrategyEntryRuntimeOptions;
+  generateId?: IdGenerator;
 }
 
 export const buildEntrySignalDecision = <
@@ -1148,6 +1149,7 @@ export const buildEntrySignalDecision = <
   signalId,
   orderPlan,
   runtime,
+  generateId = uuid,
 }: Omit<
   BuildEntrySignalDecisionParams,
   'figures' | 'indicators' | 'additionalIndicators'
@@ -1160,7 +1162,7 @@ export const buildEntrySignalDecision = <
   code,
   entryContext,
   signal: buildStrategySignal({
-    signalId: signalId ?? uuid(),
+    signalId: signalId ?? generateId(),
     strategy: entryContext.strategy,
     symbol: entryContext.symbol,
     interval: entryContext.interval,
@@ -1187,6 +1189,7 @@ interface CreateStrategyAPIParams {
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
   sharedReplayKey?: string;
   getSharedReplayState?: StrategySharedReplayStateGetter;
+  generateId?: IdGenerator;
   loadDecisionBaseContext?: (params: {
     baseContext: BaseStrategyContextSnapshot | undefined;
     candle: KlineChartData[number];
@@ -1251,6 +1254,7 @@ export const createStrategyAPI = <
   isConfigFromBacktest,
   sharedReplayKey,
   getSharedReplayState,
+  generateId,
   loadDecisionBaseContext,
 }: CreateStrategyAPIParams): StrategyAPI<TIndicators> => {
   const isBacktestEnv = env === 'BACKTEST';
@@ -1478,6 +1482,7 @@ export const createStrategyAPI = <
         signalId,
         orderPlan,
         runtime,
+        generateId,
       }) as Extract<StrategyDecision, { kind: 'entry' }>;
     },
     exit: async ({ code, direction }: StrategyAPIExitParams) => {

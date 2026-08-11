@@ -6,4 +6,4 @@ export {
   type HyperliquidConsensusSignalContext,
 } from './engine';
 export { hyperliquidConsensusManifest } from './manifest';
-export { HyperliquidConsensusStrategyCreator } from './strategy';
+export { HyperliquidConsensusStrategyDefinition } from './strategy';

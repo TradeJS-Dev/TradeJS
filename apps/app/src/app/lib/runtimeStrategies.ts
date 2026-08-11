@@ -804,37 +804,6 @@ const createEmptyRuntimeStat = (
   };
 };
 
-export const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  return (
-    resolveStrategyConfigIdentityByKey(userName, key)?.strategyName ?? null
-  );
-};
-
-export const resolveStrategyConfigIdentityByKey = (
-  userName: string,
-  key: string,
-): { strategyName: string; configId: string } | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) return null;
-  const [users, keyUserName, strategies, strategyName, configId] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategies !== 'strategies' ||
-    !strategyName ||
-    strategyName === 'charts' ||
-    !configId ||
-    configId === 'results' ||
-    !/^[a-zA-Z0-9_-]+$/.test(configId)
-  ) {
-    return null;
-  }
-  return { strategyName, configId };
-};
-
 const buildStrategyNameKeyMap = (strategyNames: string[]) => {
   const map = new Map<string, string>();
 

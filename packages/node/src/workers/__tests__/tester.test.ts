@@ -70,7 +70,7 @@ describe('worker tester', () => {
     jest.doMock('@tradejs/infra/ai', () => ({
       closeAllAiDatasetWriters: jest.fn(async () => undefined),
     }));
-    jest.doMock('@tradejs/infra/timescale', () => ({
+    jest.doMock('@tradejs/infra/timescale/client', () => ({
       configureTimescaleMarketContextSchemaMode:
         configureTimescaleMarketContextSchemaModeMock,
     }));

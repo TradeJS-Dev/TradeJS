@@ -105,8 +105,8 @@ jest.mock('@tradejs/infra/redis', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/timescale', () => ({
-  ...jest.requireActual('@tradejs/infra/timescale'),
+jest.mock('@tradejs/infra/timescale/marketContext', () => ({
+  ...jest.requireActual('@tradejs/infra/timescale/marketContext'),
   ensureMarketContextSchemas: jest.fn(async () => undefined),
 }));
 

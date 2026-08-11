@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
-  listRuntimeDeployments,
   listTradingAccounts,
   resolveTradingAccount,
 } from '@tradejs/infra/tradingAccounts';
+import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
 import { strategyEntries } from '@tradejs/strategies';
+import { loadRuntimeStrategyConfigs as loadStoredRuntimeStrategyConfigs } from '@tradejs/infra/runtimeStrategyConfigs';
 import {
   getData,
   getHashJsonValues,
@@ -36,7 +37,6 @@ import {
   getRuntimeStrategyAiGateObservedFrom,
   isRuntimeTradeRecord,
   isRuntimeStrategyLineageScope,
-  resolveStrategyConfigIdentityByKey,
   RuntimeStrategyLineageScope,
   RuntimeStrategiesResponse,
   selectTradesForWindow,
@@ -77,24 +77,11 @@ const isRuntimeStrategyConfigEnabled = (config: StrategyConfig | null) => {
 };
 
 const loadRuntimeStrategyConfigs = async (userName: string) => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  const entries = await Promise.all(
-    keys.map(async (key) => {
-      const identity = resolveStrategyConfigIdentityByKey(userName, key);
-      if (!identity) {
-        return null;
-      }
-
-      const config = (await getData(key, null)) as StrategyConfig | null;
-      if (!config || typeof config !== 'object' || Array.isArray(config)) {
-        return null;
-      }
-
-      return { ...identity, key, config };
+  return (await loadStoredRuntimeStrategyConfigs(userName)).map(
+    ({ strategyConfig, ...record }) => ({
+      ...record,
+      config: strategyConfig,
     }),
-  );
-  return entries.filter(
-    (entry): entry is NonNullable<typeof entry> => entry != null,
   );
 };
 

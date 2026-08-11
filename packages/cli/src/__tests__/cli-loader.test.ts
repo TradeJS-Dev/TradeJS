@@ -54,7 +54,7 @@ describe('cli loader', () => {
     jest.doMock('@tradejs/infra/redis', () => ({
       closeRedisConnection,
     }));
-    jest.doMock('@tradejs/infra/timescale', () => ({
+    jest.doMock('@tradejs/infra/timescale/client', () => ({
       closeTimescalePool,
     }));
     jest.doMock('../scripts/agentRun', () => ({
@@ -81,7 +81,7 @@ describe('cli loader', () => {
     jest.doMock('@tradejs/infra/redis', () => ({
       closeRedisConnection,
     }));
-    jest.doMock('@tradejs/infra/timescale', () => ({
+    jest.doMock('@tradejs/infra/timescale/client', () => ({
       closeTimescalePool,
     }));
     jest.doMock('../scripts/agentRun', () => ({

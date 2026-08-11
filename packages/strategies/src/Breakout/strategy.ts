@@ -1,12 +1,10 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG } from './config';
 import { createBreakoutCore } from './core';
 import { breakoutManifest } from './manifest';
 
-export const BreakoutStrategyCreator = createStrategyRuntime({
-  strategyName: 'Breakout',
+export const BreakoutStrategyDefinition: StrategyRegistryEntry = {
   defaults: DEFAULT_CONFIG,
   createCore: createBreakoutCore,
   manifest: breakoutManifest,
-  strategyDirectory: __dirname,
-});
+};

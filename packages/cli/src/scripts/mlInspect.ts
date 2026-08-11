@@ -3,10 +3,9 @@
 import args from 'args';
 import chalk from 'chalk';
 import fs from 'fs/promises';
-import { createReadStream } from 'fs';
+import { createReadStream, type Dirent } from 'fs';
 import path from 'path';
 import readline from 'readline';
-import { Dirent } from 'fs';
 import { spawnSync } from 'child_process';
 
 type Mode = 'head' | 'tail' | 'sample';

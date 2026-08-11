@@ -7,11 +7,10 @@ export default defineConfig({
   tsconfig: './tsconfig.build.json',
   clean: true,
   outDir: 'dist',
-  target: 'node24',
+  target: 'es2022',
   external: [
     '@tradejs/core',
     '@tradejs/indicators',
-    '@tradejs/node',
     '@tradejs/types',
     'technicalindicators',
   ],

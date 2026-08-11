@@ -2,8 +2,12 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { listAiChunkFiles } from '@tradejs/infra/ai';
-import { exportAiStrategiesSequentially, exportAiStrategy } from '../aiExport';
-import type { AiExportProgress, AiExportStrategyResult } from '../aiExport';
+import {
+  exportAiStrategiesSequentially,
+  exportAiStrategy,
+  type AiExportProgress,
+  type AiExportStrategyResult,
+} from '../aiExport';
 
 type FixtureRow = {
   signalId: string;

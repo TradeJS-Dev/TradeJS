@@ -2,7 +2,7 @@ const mockGetLatestMarketTradeFlow = jest.fn();
 const mockGetLatestMarketBreadth = jest.fn();
 const mockLoggerWarn = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/marketContext', () => ({
   getLatestMarketTradeFlow: (...args: unknown[]) =>
     mockGetLatestMarketTradeFlow(...args),
   getLatestMarketBreadth: (...args: unknown[]) =>

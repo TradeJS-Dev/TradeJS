@@ -8,7 +8,7 @@ import {
   getDataEdges,
   toRows,
   upsertCandles,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/candles';
 import { Interval, Kline, KlineChartData, KlineRequest } from '@tradejs/types';
 
 type ExchangeKlineRequest = (request: KlineRequest) => Promise<KlineChartData>;

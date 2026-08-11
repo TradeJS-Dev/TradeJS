@@ -1,2 +1,2 @@
-export { AdaptiveTrendChannelStrategyCreator } from './strategy';
+export { AdaptiveTrendChannelStrategyDefinition } from './strategy';
 export { adaptiveTrendChannelManifest } from './manifest';

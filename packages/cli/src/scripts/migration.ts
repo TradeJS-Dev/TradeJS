@@ -2,7 +2,7 @@ import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { logger } from '@tradejs/infra/logger';
 import { getFile, getFiles } from '@tradejs/infra/files';
-import { toRows, upsertCandles } from '@tradejs/infra/timescale';
+import { toRows, upsertCandles } from '@tradejs/infra/timescale/candles';
 import { KlineChartData } from '@tradejs/types';
 
 const DIR = 'data/history';

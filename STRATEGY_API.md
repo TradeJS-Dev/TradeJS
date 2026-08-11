@@ -57,9 +57,9 @@ Use `strategyApi` for shared operations.
 
 Thin wiring layer:
 
-- `createStrategyRuntime(...)`
-- strategy defaults
-- `createCore`
+- exports a `StrategyRegistryEntry`
+- binds the strategy `manifest`, `defaults`, and `createCore`
+- does not import or construct the Node runtime
 
 ### `manifest.ts`
 
@@ -176,8 +176,10 @@ Typical use cases:
 For Pine-backed strategies:
 
 - keep Pine source in a dedicated `.pine` file inside strategy folder
-- runtime injects `loadPineScriptFile(...)` into `CreateStrategyCore` params
-- strategy `core.ts` executes Pine and maps plots into signal fields/figures
+- load and execute Pine through the explicit server-only `@tradejs/node/pine`
+  adapter
+- keep file-system access outside the pure `CreateStrategyCore` contract
+- map Pine results into normal strategy inputs before evaluating the core
 
 Pine support is limited to strategy modules. Custom indicator plugins use TypeScript; standalone Pine indicator plugins are not supported.
 

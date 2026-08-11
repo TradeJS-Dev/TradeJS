@@ -5,7 +5,7 @@ const mockGetLatestMarketCmcFearGreedContext = jest.fn();
 const mockGetLatestMarketCmcIndexContexts = jest.fn();
 const mockLoggerWarn = jest.fn();
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/marketContext', () => ({
   getLatestMarketCmcExchangeLiquidityContext: (...args: unknown[]) =>
     mockGetLatestMarketCmcExchangeLiquidityContext(...args),
   getLatestMarketCmcFearGreedContext: (...args: unknown[]) =>

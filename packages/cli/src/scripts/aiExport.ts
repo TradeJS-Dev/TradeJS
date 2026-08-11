@@ -3,8 +3,10 @@ import chalk from 'chalk';
 import fs from 'fs/promises';
 import ProgressBar from 'progress';
 import { listAiChunkStrategies } from '@tradejs/infra/ai';
-import { exportAiStrategiesSequentially } from '../lib/aiExport';
-import type { AiExportStrategyResult } from '../lib/aiExport';
+import {
+  exportAiStrategiesSequentially,
+  type AiExportStrategyResult,
+} from '../lib/aiExport';
 import {
   ALL_EXPORT_STRATEGIES,
   resolveExportStrategy,

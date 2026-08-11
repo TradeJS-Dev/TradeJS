@@ -57,19 +57,13 @@ const makeCore = async () => {
     isConfigFromBacktest: false,
   });
   const core = await createLiquidityZonesCore({
-    userName: 'root',
-    symbol: 'TESTUSDT',
     config: {
       ...DEFAULT_CONFIG,
       LIQUIDITY_ZONES_PIVOT_LOOKBACK: 1,
       LIQUIDITY_ZONES_MIN_FILTER_VALUE: 0,
       LIQUIDITY_ZONES_MAX_REACTION_CLOSE_DISTANCE_PCT_LONG: 0,
     } as any,
-    isConfigFromBacktest: false,
-    connector,
     data: initialCandles as any,
-    btcData: initialCandles as any,
-    loadPineScriptFile: jest.fn(),
     strategyApi,
     indicatorsState: makeIndicatorsState(),
   });

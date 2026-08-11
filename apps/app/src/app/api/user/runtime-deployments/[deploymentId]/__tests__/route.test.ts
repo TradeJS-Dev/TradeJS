@@ -11,7 +11,7 @@ jest.mock('next/server', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/tradingAccounts', () => ({
+jest.mock('@tradejs/infra/runtimeDeployments', () => ({
   deleteRuntimeDeployment: (...args: unknown[]) =>
     mockDeleteRuntimeDeployment(...args),
   getRuntimeDeployment: (...args: unknown[]) =>

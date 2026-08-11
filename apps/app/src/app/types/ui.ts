@@ -1,13 +1,6 @@
-import { Filters } from './trade';
+import type { Filters, Item, Items } from '@tradejs/types';
 
-export interface Item<T = Record<string, string | number | boolean>> {
-  label: string;
-  value: string;
-  description?: string;
-  data?: T;
-}
-
-export type Items = Item[];
+export type { Item, Items };
 
 export interface Figure {
   ctx: CanvasRenderingContext2D;

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getTradingAccount,
   getRuntimeDeploymentHeartbeat,
   listRuntimeDeployments,
   saveRuntimeDeployment,
-} from '@tradejs/infra/tradingAccounts';
+} from '@tradejs/infra/runtimeDeployments';
+import { getTradingAccount } from '@tradejs/infra/tradingAccounts';
 import { isMarketUniverse, type RuntimeDeployment } from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
 

@@ -7,7 +7,7 @@ import {
   type HyperliquidWhaleCoverageSeriesRow,
   type HyperliquidWhaleFlowAggregate,
   type HyperliquidWhaleFlowSeriesRow,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/hyperliquidWhales';
 import { logger } from '@tradejs/infra/logger';
 import type {
   BaseHyperliquidWhaleFlowContext,

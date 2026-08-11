@@ -9,8 +9,8 @@ import {
   TestCompareList,
   OrderLogData,
   OnChangeCompare,
-  Items,
 } from '@tradejs/types';
+import type { Items } from '#app/types/ui';
 import { delay } from '@tradejs/core/async';
 import { parseTestName } from '@tradejs/core/backtest';
 

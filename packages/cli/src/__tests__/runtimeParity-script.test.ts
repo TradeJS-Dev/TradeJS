@@ -67,8 +67,8 @@ const setupRuntimeParityModule = async (
     logger,
   }));
 
-  jest.doMock('@tradejs/infra/timescale', () => ({
-    ...jest.requireActual('@tradejs/infra/timescale'),
+  jest.doMock('@tradejs/infra/timescale/marketContext', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale/marketContext'),
     ensureMarketContextSchemas: jest.fn(async () => undefined),
   }));
 

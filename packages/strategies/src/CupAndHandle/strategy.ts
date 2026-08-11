@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, CupAndHandleConfig } from './config';
 import { createCupAndHandleCore } from './core';
 import { cupAndHandleManifest } from './manifest';
 
-export const CupAndHandleStrategyCreator =
-  createStrategyRuntime<CupAndHandleConfig>({
-    strategyName: 'CupAndHandle',
-    defaults: DEFAULT_CONFIG as CupAndHandleConfig,
+export const CupAndHandleStrategyDefinition: StrategyRegistryEntry<CupAndHandleConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createCupAndHandleCore,
     manifest: cupAndHandleManifest,
-    strategyDirectory: __dirname,
-  });
+  };

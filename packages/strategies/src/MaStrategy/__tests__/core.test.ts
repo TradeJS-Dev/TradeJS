@@ -118,18 +118,12 @@ const makeCore = async ({
 }) => {
   activeIndicatorsState = makeIndicatorsState(indicators);
   return createMaStrategyCore({
-    userName: 'root',
-    symbol: 'TESTUSDT',
     config: {
       ...DEFAULT_CONFIG,
       MA_MAX_CROSS_GAP_ATR_LONG: 0,
       MA_MAX_CORRELATION_SHORT: 0,
     } as any,
-    isConfigFromBacktest: false,
-    connector: {} as any,
     data: [],
-    btcData: [],
-    loadPineScriptFile: jest.fn(),
     strategyApi,
     indicatorsState: activeIndicatorsState,
   });

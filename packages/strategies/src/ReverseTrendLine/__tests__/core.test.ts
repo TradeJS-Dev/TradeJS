@@ -7,8 +7,8 @@ jest.mock('@tradejs/core/indicators', () => {
   };
 });
 
-jest.mock('@tradejs/node/strategies', () => {
-  const actual = jest.requireActual('@tradejs/node/strategies');
+jest.mock('@tradejs/core/strategies', () => {
+  const actual = jest.requireActual('@tradejs/core/strategies');
 
   return {
     ...actual,
@@ -23,7 +23,7 @@ import {
   buildEntrySignalDecision,
   getDirectionalTpSlPrices,
   getStrategyMarketSnapshot,
-} from '@tradejs/node/strategies';
+} from '@tradejs/core/strategies';
 import { createReverseTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';

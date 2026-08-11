@@ -1,5 +1,3 @@
-import _ from 'lodash';
-
 import { BreakoutConfig } from './config';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import { createBreakoutEngine } from './engine';
@@ -345,7 +343,7 @@ export const createBreakoutCore: CreateStrategyCore<
   });
 
   return async (candle) => {
-    if (_.isEmpty(candle)) {
+    if (!candle || Object.keys(candle).length === 0) {
       return strategyApi.skip('NO_DATA');
     }
     const engineRuntime = detectorState?.oncePerTimestamp(

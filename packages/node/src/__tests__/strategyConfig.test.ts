@@ -1,20 +1,11 @@
-const getData = jest.fn();
+const getRuntimeStrategyConfig = jest.fn();
+const getRuntimeStrategyResultConfig = jest.fn();
 
-jest.mock('@tradejs/infra/redis', () => ({
-  getData: (...args: unknown[]) => getData(...args),
-  redisKeys: {
-    strategyConfig: (
-      userName: string,
-      strategyName: string,
-      runtimeConfigId?: string,
-    ) =>
-      [
-        `users:${userName}:strategies:${strategyName}`,
-        runtimeConfigId ?? 'config',
-      ].join(':'),
-    strategyResults: (userName: string, strategyName: string) =>
-      `users:${userName}:strategy-results:${strategyName}`,
-  },
+jest.mock('@tradejs/infra/runtimeStrategyConfigs', () => ({
+  getRuntimeStrategyConfig: (...args: unknown[]) =>
+    getRuntimeStrategyConfig(...args),
+  getRuntimeStrategyResultConfig: (...args: unknown[]) =>
+    getRuntimeStrategyResultConfig(...args),
 }));
 
 import { resolveStrategyConfig } from '../strategyHelpers/config';
@@ -63,7 +54,8 @@ describe('resolveStrategyConfig runtime snapshots', () => {
       },
       isConfigFromBacktest: true,
     });
-    expect(getData).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyConfig).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyResultConfig).not.toHaveBeenCalled();
   });
 
   it('keeps named configs isolated from symbol result configs', async () => {
@@ -84,13 +76,13 @@ describe('resolveStrategyConfig runtime snapshots', () => {
       config: { ENV: 'CRON', VALUE: 'named' },
       isConfigFromBacktest: false,
     });
-    expect(getData).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyConfig).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyResultConfig).not.toHaveBeenCalled();
   });
 
   it('retains Redis loading for replay and other callers without a snapshot', async () => {
-    getData.mockResolvedValueOnce({ VALUE: 'user' }).mockResolvedValueOnce({
-      ETHUSDT: { config: { VALUE: 'result' } },
-    });
+    getRuntimeStrategyConfig.mockResolvedValueOnce({ VALUE: 'user' });
+    getRuntimeStrategyResultConfig.mockResolvedValueOnce({ VALUE: 'result' });
 
     const result = await resolveStrategyConfig({
       strategyName: 'TrendLine',
@@ -105,7 +97,8 @@ describe('resolveStrategyConfig runtime snapshots', () => {
       config: { ENV: 'REPLAY', VALUE: 'result' },
       isConfigFromBacktest: true,
     });
-    expect(getData).toHaveBeenCalledTimes(2);
+    expect(getRuntimeStrategyConfig).toHaveBeenCalledTimes(1);
+    expect(getRuntimeStrategyResultConfig).toHaveBeenCalledTimes(1);
   });
 
   it('never consults runtime snapshots in backtest mode', async () => {
@@ -125,6 +118,7 @@ describe('resolveStrategyConfig runtime snapshots', () => {
       config: { ENV: 'BACKTEST', VALUE: 'base' },
       isConfigFromBacktest: false,
     });
-    expect(getData).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyConfig).not.toHaveBeenCalled();
+    expect(getRuntimeStrategyResultConfig).not.toHaveBeenCalled();
   });
 });

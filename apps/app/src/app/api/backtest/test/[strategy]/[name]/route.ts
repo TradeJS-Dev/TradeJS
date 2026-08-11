@@ -7,7 +7,7 @@ import {
 } from '@tradejs/infra/backtestArtifacts';
 import { TTL_1M } from '@tradejs/core/constants';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
-import { Item } from '@tradejs/types';
+import type { Item } from '#app/types/ui';
 import { logger } from '@tradejs/infra/logger';
 import { auth } from '#app/auth';
 

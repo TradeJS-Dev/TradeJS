@@ -1,7 +1,7 @@
 import {
   getLatestMarketBreadth,
   getLatestMarketTradeFlow,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/marketContext';
 import { logger } from '@tradejs/infra/logger';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import type {

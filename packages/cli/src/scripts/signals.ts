@@ -29,7 +29,7 @@ import { logger } from '@tradejs/infra/logger';
 import {
   getRuntimeDeployment,
   saveRuntimeDeploymentHeartbeat,
-} from '@tradejs/infra/tradingAccounts';
+} from '@tradejs/infra/runtimeDeployments';
 import {
   Connector,
   ConnectorCreator,

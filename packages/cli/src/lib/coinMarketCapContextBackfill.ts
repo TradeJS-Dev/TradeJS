@@ -13,8 +13,8 @@ import {
   upsertMarketContextBackfillCoverage,
   upsertMarketGlobalContextRows,
   upsertMarketReferenceAssetContextRows,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/marketContext';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import type {
   CmcExchangeLiquidityRegime,

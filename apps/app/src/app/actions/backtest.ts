@@ -1,5 +1,6 @@
 import { API } from '@tradejs/core/api';
-import { Item, OrderLogData, TestResult } from '@tradejs/types';
+import { OrderLogData, TestResult } from '@tradejs/types';
+import type { Item } from '#app/types/ui';
 import type {
   BacktestConfigSummary,
   BacktestJobRecord,

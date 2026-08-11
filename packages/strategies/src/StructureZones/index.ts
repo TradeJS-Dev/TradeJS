@@ -1,2 +1,2 @@
-export { StructureZonesStrategyCreator } from './strategy';
+export { StructureZonesStrategyDefinition } from './strategy';
 export { structureZonesManifest } from './manifest';

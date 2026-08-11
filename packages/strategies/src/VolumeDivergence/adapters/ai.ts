@@ -1,6 +1,10 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
-import type { Signal, SignalAnalysis } from '@tradejs/types';
+import type {
+  AiPayload,
+  Signal,
+  SignalAnalysis,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import type { VolumeDivergenceConfig } from '../config';
 import {
   getSignalBtcMaFast,

@@ -10,40 +10,14 @@ import {
   StrategyConfig,
   StrategyResults,
 } from '@tradejs/types';
-
-export type RuntimeStrategyConfigRecord = {
-  key: string;
-  strategyName: string;
-  configId: string;
-  strategyConfig: StrategyConfig;
-};
-
-const RESERVED_STRATEGY_NAMES = new Set(['charts']);
-const RESERVED_CONFIG_IDS = new Set(['results']);
-
-export const resolveStrategyConfigIdentityByKey = (
-  userName: string,
-  key: string,
-): { strategyName: string; configId: string } | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) return null;
-
-  const [users, keyUserName, strategiesKey, strategyName, configId] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    !strategyName ||
-    !configId ||
-    RESERVED_STRATEGY_NAMES.has(strategyName) ||
-    RESERVED_CONFIG_IDS.has(configId) ||
-    !/^[a-zA-Z0-9_-]+$/.test(configId)
-  ) {
-    return null;
-  }
-
-  return { strategyName, configId };
-};
+export {
+  getRuntimeStrategyConfigKeys,
+  loadRuntimeStrategyConfigs,
+  loadRuntimeStrategyNames,
+  resolveStrategyConfigIdentityByKey,
+  resolveStrategyNameByConfigKey,
+  type RuntimeStrategyConfigRecord,
+} from '@tradejs/infra/runtimeStrategyConfigs';
 
 export const isRuntimeStrategyEnabled = (strategyConfig: StrategyConfig) => {
   const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
@@ -67,77 +41,6 @@ export const isRuntimeTradeRecord = (
     typeof record.qty === 'number' &&
     (record.direction === 'LONG' || record.direction === 'SHORT')
   );
-};
-
-export const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  return (
-    resolveStrategyConfigIdentityByKey(userName, key)?.strategyName ?? null
-  );
-};
-
-export const getRuntimeStrategyConfigKeys = async (
-  userName: string,
-): Promise<string[]> => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  return keys
-    .filter((key) => resolveStrategyConfigIdentityByKey(userName, key))
-    .sort((left, right) => left.localeCompare(right));
-};
-
-export const loadRuntimeStrategyNames = async (
-  userName: string,
-): Promise<string[]> =>
-  [
-    ...new Set(
-      (await getRuntimeStrategyConfigKeys(userName))
-        .map((key) => resolveStrategyNameByConfigKey(userName, key))
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-
-export const loadRuntimeStrategyConfigs = async (
-  userName: string,
-  {
-    onInvalidConfig,
-  }: {
-    onInvalidConfig?: (key: string) => void;
-  } = {},
-): Promise<RuntimeStrategyConfigRecord[]> => {
-  const configKeys = await getRuntimeStrategyConfigKeys(userName);
-  const strategyConfigs = await Promise.all(
-    configKeys.map(async (key): Promise<RuntimeStrategyConfigRecord | null> => {
-      const strategyName = resolveStrategyNameByConfigKey(userName, key);
-      const identity = resolveStrategyConfigIdentityByKey(userName, key);
-      if (!strategyName || !identity) {
-        return null;
-      }
-
-      const strategyConfig = (await getData(
-        key,
-        null,
-      )) as StrategyConfig | null;
-      if (
-        !strategyConfig ||
-        typeof strategyConfig !== 'object' ||
-        Array.isArray(strategyConfig)
-      ) {
-        onInvalidConfig?.(key);
-        return null;
-      }
-
-      return {
-        key,
-        strategyName,
-        configId: identity.configId,
-        strategyConfig,
-      };
-    }),
-  );
-
-  return strategyConfigs.filter(Boolean) as RuntimeStrategyConfigRecord[];
 };
 
 export const loadRuntimeTrades = async (

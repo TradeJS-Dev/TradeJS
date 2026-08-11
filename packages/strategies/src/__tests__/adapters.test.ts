@@ -7,7 +7,7 @@ import {
   volumeDivergenceMlAdapter,
 } from '@tradejs/strategies';
 
-describe('strategy adapters', () => {
+describe('built-in strategy adapters', () => {
   it('maps AI runtime for AMR and MaStrategy configs', () => {
     expect(
       adaptiveMomentumRibbonAiAdapter.mapEntryRuntimeFromConfig?.({

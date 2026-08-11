@@ -1,155 +1,70 @@
 import { defineStrategyPlugin } from '@tradejs/core/config';
-import { type StrategyConfig } from '@tradejs/types';
-import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
-import { adaptiveTrendChannelManifest } from './AdaptiveTrendChannel/manifest';
-import { breakoutManifest } from './Breakout/manifest';
-import { cupAndHandleManifest } from './CupAndHandle/manifest';
-import { marketFlushReversalManifest } from './MarketFlushReversal/manifest';
-import { doubleTapManifest } from './DoubleTap/manifest';
-import { gridManifest } from './Grid/manifest';
-import { gridClassicManifest } from './GridClassic/manifest';
-import { headAndShouldersManifest } from './HeadAndShoulders/manifest';
-import { hyperliquidConsensusManifest } from './HyperliquidConsensus/manifest';
-import { maStrategyManifest } from './MaStrategy/manifest';
-import { relativeRotationManifest } from './RelativeRotation/manifest';
-import { liquidityTailsManifest } from './LiquidityTails/manifest';
-import { liquidityZonesManifest } from './LiquidityZones/manifest';
-import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
-import { structureZonesManifest } from './StructureZones/manifest';
-import { trendFollowManifest } from './TrendFollow/manifest';
-import { trendShiftManifest } from './TrendShift/manifest';
-import { trendLineManifest } from './TrendLine/manifest';
-import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
-import { volatilityCompressionBreakoutManifest } from './VolatilityCompressionBreakout/manifest';
+import type { StrategyConfig, StrategyRegistryEntry } from '@tradejs/types';
 import { config as adaptiveMomentumRibbonDefaultConfig } from './AdaptiveMomentumRibbon/config';
-import { AdaptiveMomentumRibbonStrategyCreator } from './AdaptiveMomentumRibbon/strategy';
+import { AdaptiveMomentumRibbonStrategyDefinition } from './AdaptiveMomentumRibbon/strategy';
 import { config as adaptiveTrendChannelDefaultConfig } from './AdaptiveTrendChannel/config';
-import { AdaptiveTrendChannelStrategyCreator } from './AdaptiveTrendChannel/strategy';
+import { AdaptiveTrendChannelStrategyDefinition } from './AdaptiveTrendChannel/strategy';
 import { config as breakoutDefaultConfig } from './Breakout/config';
-import { BreakoutStrategyCreator } from './Breakout/strategy';
+import { BreakoutStrategyDefinition } from './Breakout/strategy';
 import { config as cupAndHandleDefaultConfig } from './CupAndHandle/config';
-import { CupAndHandleStrategyCreator } from './CupAndHandle/strategy';
+import { CupAndHandleStrategyDefinition } from './CupAndHandle/strategy';
 import { config as marketFlushReversalDefaultConfig } from './MarketFlushReversal/config';
-import { MarketFlushReversalStrategyCreator } from './MarketFlushReversal/strategy';
+import { MarketFlushReversalStrategyDefinition } from './MarketFlushReversal/strategy';
 import { config as doubleTapDefaultConfig } from './DoubleTap/config';
-import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
+import { DoubleTapStrategyDefinition } from './DoubleTap/strategy';
 import { config as gridDefaultConfig } from './Grid/config';
-import { GridStrategyCreator } from './Grid/strategy';
+import { GridStrategyDefinition } from './Grid/strategy';
 import { config as gridClassicDefaultConfig } from './GridClassic/config';
-import { GridClassicStrategyCreator } from './GridClassic/strategy';
+import { GridClassicStrategyDefinition } from './GridClassic/strategy';
 import { config as headAndShouldersDefaultConfig } from './HeadAndShoulders/config';
-import { HeadAndShouldersStrategyCreator } from './HeadAndShoulders/strategy';
+import { HeadAndShouldersStrategyDefinition } from './HeadAndShoulders/strategy';
 import { config as hyperliquidConsensusDefaultConfig } from './HyperliquidConsensus/config';
-import { HyperliquidConsensusStrategyCreator } from './HyperliquidConsensus/strategy';
+import { HyperliquidConsensusStrategyDefinition } from './HyperliquidConsensus/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
-import { MaStrategyCreator } from './MaStrategy/strategy';
+import { MaStrategyDefinition } from './MaStrategy/strategy';
 import { config as relativeRotationDefaultConfig } from './RelativeRotation/config';
-import { RelativeRotationStrategyCreator } from './RelativeRotation/strategy';
+import { RelativeRotationStrategyDefinition } from './RelativeRotation/strategy';
 import { config as liquidityTailsDefaultConfig } from './LiquidityTails/config';
-import { LiquidityTailsStrategyCreator } from './LiquidityTails/strategy';
+import { LiquidityTailsStrategyDefinition } from './LiquidityTails/strategy';
 import { config as liquidityZonesDefaultConfig } from './LiquidityZones/config';
-import { LiquidityZonesStrategyCreator } from './LiquidityZones/strategy';
+import { LiquidityZonesStrategyDefinition } from './LiquidityZones/strategy';
 import { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
-import { ReverseTrendLineStrategyCreator } from './ReverseTrendLine/strategy';
+import { ReverseTrendLineStrategyDefinition } from './ReverseTrendLine/strategy';
 import { config as structureZonesDefaultConfig } from './StructureZones/config';
-import { StructureZonesStrategyCreator } from './StructureZones/strategy';
+import { StructureZonesStrategyDefinition } from './StructureZones/strategy';
 import { config as trendFollowDefaultConfig } from './TrendFollow/config';
-import { TrendFollowStrategyCreator } from './TrendFollow/strategy';
+import { TrendFollowStrategyDefinition } from './TrendFollow/strategy';
 import { config as trendShiftDefaultConfig } from './TrendShift/config';
-import { TrendShiftStrategyCreator } from './TrendShift/strategy';
+import { TrendShiftStrategyDefinition } from './TrendShift/strategy';
 import { config as trendLineDefaultConfig } from './TrendLine/config';
-import { TrendlineStrategyCreator } from './TrendLine/strategy';
+import { TrendlineStrategyDefinition } from './TrendLine/strategy';
 import { config as volumeDivergenceDefaultConfig } from './VolumeDivergence/config';
-import { VolumeDivergenceStrategyCreator } from './VolumeDivergence/strategy';
+import { VolumeDivergenceStrategyDefinition } from './VolumeDivergence/strategy';
 import { config as volatilityCompressionBreakoutDefaultConfig } from './VolatilityCompressionBreakout/config';
-import { VolatilityCompressionBreakoutStrategyCreator } from './VolatilityCompressionBreakout/strategy';
-import { type StrategyRegistryEntry } from '@tradejs/types';
+import { VolatilityCompressionBreakoutStrategyDefinition } from './VolatilityCompressionBreakout/strategy';
 
 export const strategyEntries: StrategyRegistryEntry[] = [
-  {
-    manifest: breakoutManifest,
-    creator: BreakoutStrategyCreator,
-  },
-  {
-    manifest: trendLineManifest,
-    creator: TrendlineStrategyCreator,
-  },
-  {
-    manifest: marketFlushReversalManifest,
-    creator: MarketFlushReversalStrategyCreator,
-  },
-  {
-    manifest: volatilityCompressionBreakoutManifest,
-    creator: VolatilityCompressionBreakoutStrategyCreator,
-  },
-  {
-    manifest: relativeRotationManifest,
-    creator: RelativeRotationStrategyCreator,
-  },
-  {
-    manifest: trendShiftManifest,
-    creator: TrendShiftStrategyCreator,
-  },
-  {
-    manifest: doubleTapManifest,
-    creator: DoubleTapStrategyCreator,
-  },
-  {
-    manifest: headAndShouldersManifest,
-    creator: HeadAndShouldersStrategyCreator,
-  },
-  {
-    manifest: cupAndHandleManifest,
-    creator: CupAndHandleStrategyCreator,
-  },
-  {
-    manifest: gridManifest,
-    creator: GridStrategyCreator,
-  },
-  {
-    manifest: gridClassicManifest,
-    creator: GridClassicStrategyCreator,
-  },
-  {
-    manifest: hyperliquidConsensusManifest,
-    creator: HyperliquidConsensusStrategyCreator,
-  },
-  {
-    manifest: liquidityTailsManifest,
-    creator: LiquidityTailsStrategyCreator,
-  },
-  {
-    manifest: liquidityZonesManifest,
-    creator: LiquidityZonesStrategyCreator,
-  },
-  {
-    manifest: trendFollowManifest,
-    creator: TrendFollowStrategyCreator,
-  },
-  {
-    manifest: structureZonesManifest,
-    creator: StructureZonesStrategyCreator,
-  },
-  {
-    manifest: reverseTrendLineManifest,
-    creator: ReverseTrendLineStrategyCreator,
-  },
-  {
-    manifest: maStrategyManifest,
-    creator: MaStrategyCreator,
-  },
-  {
-    manifest: adaptiveMomentumRibbonManifest,
-    creator: AdaptiveMomentumRibbonStrategyCreator,
-  },
-  {
-    manifest: adaptiveTrendChannelManifest,
-    creator: AdaptiveTrendChannelStrategyCreator,
-  },
-  {
-    manifest: volumeDivergenceManifest,
-    creator: VolumeDivergenceStrategyCreator,
-  },
+  BreakoutStrategyDefinition,
+  TrendlineStrategyDefinition,
+  MarketFlushReversalStrategyDefinition,
+  VolatilityCompressionBreakoutStrategyDefinition,
+  RelativeRotationStrategyDefinition,
+  TrendShiftStrategyDefinition,
+  DoubleTapStrategyDefinition,
+  HeadAndShouldersStrategyDefinition,
+  CupAndHandleStrategyDefinition,
+  GridStrategyDefinition,
+  GridClassicStrategyDefinition,
+  HyperliquidConsensusStrategyDefinition,
+  LiquidityTailsStrategyDefinition,
+  LiquidityZonesStrategyDefinition,
+  TrendFollowStrategyDefinition,
+  StructureZonesStrategyDefinition,
+  ReverseTrendLineStrategyDefinition,
+  MaStrategyDefinition,
+  AdaptiveMomentumRibbonStrategyDefinition,
+  AdaptiveTrendChannelStrategyDefinition,
+  VolumeDivergenceStrategyDefinition,
 ];
 
 const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {

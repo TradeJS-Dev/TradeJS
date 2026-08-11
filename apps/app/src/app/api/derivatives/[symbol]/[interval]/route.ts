@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDerivativesRangeForSymbols } from '@tradejs/infra/timescale';
+import { getDerivativesRangeForSymbols } from '@tradejs/infra/timescale/derivatives';
 import { logger } from '@tradejs/infra/logger';
 import type { DerivativesInterval } from '@tradejs/types';
 

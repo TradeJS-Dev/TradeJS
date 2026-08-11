@@ -202,14 +202,8 @@ describe('TrendShift core', () => {
     const strategyApi = makeStrategyApi({ marketData });
 
     const core = await createTrendShiftCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -239,14 +233,8 @@ describe('TrendShift core', () => {
     const strategyApi = makeStrategyApi({ marketData });
 
     const core = await createTrendShiftCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState({
         baseContext: {
@@ -319,14 +307,8 @@ describe('TrendShift core', () => {
     });
 
     const core = await createTrendShiftCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -351,14 +333,8 @@ describe('TrendShift core', () => {
     const strategyApi = makeStrategyApi({ marketData });
 
     const core = await createTrendShiftCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState({
         baseContext: {
@@ -435,14 +411,8 @@ describe('TrendShift core', () => {
     const strategyApi = makeStrategyApi({ marketData });
 
     const core = await createTrendShiftCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: DEFAULT_CONFIG as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: initialCandles,
-      btcData: initialCandles,
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState({
         baseContext: {

@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, StructureZonesConfig } from './config';
 import { createStructureZonesCore } from './core';
 import { structureZonesManifest } from './manifest';
 
-export const StructureZonesStrategyCreator =
-  createStrategyRuntime<StructureZonesConfig>({
-    strategyName: 'StructureZones',
-    defaults: DEFAULT_CONFIG as StructureZonesConfig,
+export const StructureZonesStrategyDefinition: StrategyRegistryEntry<StructureZonesConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createStructureZonesCore,
     manifest: structureZonesManifest,
-    strategyDirectory: __dirname,
-  });
+  };

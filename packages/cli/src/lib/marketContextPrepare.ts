@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { ensureMarketContextSchemas } from '@tradejs/infra/timescale';
+import { ensureMarketContextSchemas } from '@tradejs/infra/timescale/marketContext';
 import {
   ensureStrategyPluginsLoaded,
   getStrategyManifest,

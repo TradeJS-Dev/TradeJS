@@ -101,8 +101,6 @@ describe('CupAndHandle core', () => {
       lastCandle: currentCandle,
     });
     const core = await createCupAndHandleCore({
-      userName: 'root',
-      symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
         CUPHANDLE_PIVOT_LOOKBACK: 1,
@@ -120,11 +118,7 @@ describe('CupAndHandle core', () => {
         CUPHANDLE_ENTRY_MODE: 'breakout',
         LONG: { ...DEFAULT_CONFIG.LONG, minRiskRatio: 0.5 },
       } as any,
-      isConfigFromBacktest: false,
-      connector: {} as any,
       data: candles.slice(0, -1),
-      btcData: candles.slice(0, -1),
-      loadPineScriptFile: jest.fn(),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });

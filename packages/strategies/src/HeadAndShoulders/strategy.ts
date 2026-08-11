@@ -1,13 +1,11 @@
-import { createStrategyRuntime } from '@tradejs/node/strategies';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 import { config as DEFAULT_CONFIG, HeadAndShouldersConfig } from './config';
 import { createHeadAndShouldersCore } from './core';
 import { headAndShouldersManifest } from './manifest';
 
-export const HeadAndShouldersStrategyCreator =
-  createStrategyRuntime<HeadAndShouldersConfig>({
-    strategyName: 'HeadAndShoulders',
-    defaults: DEFAULT_CONFIG as HeadAndShouldersConfig,
+export const HeadAndShouldersStrategyDefinition: StrategyRegistryEntry<HeadAndShouldersConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
     createCore: createHeadAndShouldersCore,
     manifest: headAndShouldersManifest,
-    strategyDirectory: __dirname,
-  });
+  };

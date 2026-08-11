@@ -110,13 +110,19 @@ Strategies are loaded as plugins via manifests and registry:
 - `packages/node/src/strategy/manifests.ts`
 - `packages/strategies/src/*/manifest.ts`
 
+Each strategy plugin exports a declarative entry with `manifest`, `defaults`,
+and `createCore`. The Node registry turns that definition into a server runtime;
+strategy packages do not construct or import the Node runtime themselves.
+
 ### Pine Strategy Support
 
 Pine strategies are stored as normal strategy modules and keep Pine source in a dedicated file:
 
 - `packages/strategies/src/<Strategy>/<strategy>.pine`
 
-`createStrategyRuntime` provides `loadPineScriptFile(...)` to strategy core via `CreateStrategyCore` params.
+Pine file loading and execution are explicit server-side operations exposed by
+`@tradejs/node/pine`. They are not injected into the browser-safe
+`CreateStrategyCore` contract.
 
 Pine support currently applies only to strategy modules. Custom indicator plugins must be authored in TypeScript; standalone Pine indicator plugins are not supported.
 

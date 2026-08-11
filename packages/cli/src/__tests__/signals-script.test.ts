@@ -380,12 +380,14 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
-    getRuntimeDeployment,
-    saveRuntimeDeploymentHeartbeat,
     resolveTradingAccount: jest.fn(
       async ({ accountId }: { accountId?: string }) =>
         accountId ? { id: accountId } : null,
     ),
+  }));
+  jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
+    getRuntimeDeployment,
+    saveRuntimeDeploymentHeartbeat,
   }));
 
   jest.doMock('@tradejs/connectors', () => ({
@@ -440,8 +442,8 @@ const loadScript = async (scenario: Scenario) => {
     setHashJsonFields,
   }));
 
-  jest.doMock('@tradejs/infra/timescale', () => ({
-    ...jest.requireActual('@tradejs/infra/timescale'),
+  jest.doMock('@tradejs/infra/timescale/marketContext', () => ({
+    ...jest.requireActual('@tradejs/infra/timescale/marketContext'),
     ensureMarketContextSchemas: jest.fn(async () => undefined),
   }));
 

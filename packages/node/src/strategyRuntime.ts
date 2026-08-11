@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type {
   TradejsConfigAfterBarDecisionHook,
   TradejsConfigAfterCoreDecisionHook,
@@ -36,15 +35,13 @@ import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
 } from './runtimeJournal';
-import { createPineScriptLoader } from './pine';
-import { getStrategyManifest } from './strategy/manifests';
 import { resolveStrategyPolicyProfile } from './strategy/policyProfiles';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   BACKTEST_WARNING_CODES,
+  Connector,
   CreateStrategyCore,
-  CreateStrategyCoreParams,
   KlineChartData,
   KlineChartItem,
   StrategyHookAiContext,
@@ -69,9 +66,9 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   defaults: TConfig;
   createCore: CreateStrategyCore<TConfig, any, any>;
   manifest?: StrategyManifest;
-  strategyDirectory?: string;
   detectorKey?: (config: TConfig) => string | undefined;
   detectorNoSignalSkipReason?: string;
+  resolveRegisteredManifest?: (name: string) => StrategyManifest | undefined;
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
@@ -625,7 +622,7 @@ const buildHookCtx = ({
   env,
   isConfigFromBacktest,
 }: {
-  connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  connector: Connector;
   strategyName: string;
   userName: string;
   symbol: string;
@@ -693,9 +690,7 @@ const shouldRecordRuntimeJournal = ({
   env !== 'PARITY' &&
   config.RECORD_RUNTIME_TRADES !== false;
 
-const isTestConnector = (
-  connector: CreateStrategyCoreParams<StrategyConfig>['connector'],
-) =>
+const isTestConnector = (connector: Connector) =>
   Boolean(
     (connector as unknown as { __tradejsTestConnector?: unknown })
       .__tradejsTestConnector,
@@ -841,7 +836,7 @@ const handleExitDecision = async ({
   onRuntimeClose,
   onRuntimeError,
 }: {
-  connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  connector: Connector;
   userName?: string;
   strategyName?: string;
   symbol: string;
@@ -958,7 +953,7 @@ const handleProtectDecision = async ({
   market,
   onRuntimeError,
 }: {
-  connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  connector: Connector;
   symbol: string;
   decision: ProtectDecision;
   market: HookCandleMarket;
@@ -1007,7 +1002,7 @@ const executeEntryDecision = async ({
   invokeStageHooks,
   notifyRuntimeError,
 }: {
-  connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  connector: Connector;
   symbol: string;
   decision: EntryDecision;
   runtime: ResolvedEntryRuntime;
@@ -1212,9 +1207,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   defaults,
   createCore,
   manifest: staticManifest,
-  strategyDirectory,
   detectorKey,
   detectorNoSignalSkipReason,
+  resolveRegisteredManifest,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
   const projectRoot = getTradejsProjectCwd();
 
@@ -1227,20 +1222,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       return staticManifest;
     }
 
-    return getStrategyManifest(name, projectRoot);
+    return resolveRegisteredManifest?.(name);
   };
-
-  const loadPineScriptFile = createPineScriptLoader(
-    strategyDirectory
-      ? path.resolve(strategyDirectory)
-      : path.resolve(
-          projectRoot,
-          'packages',
-          'strategies',
-          'src',
-          strategyName,
-        ),
-  );
 
   const creator: StrategyCreator = async ({
     userName,
@@ -1723,19 +1706,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     });
 
     const core = await createCore({
-      userName,
-      symbol,
       config,
-      isConfigFromBacktest,
-      connector,
       data,
-      btcData,
-      ethData,
-      loadPineScriptFile,
       strategyApi,
       indicatorsState,
-      sharedReplayKey: strategySharedReplayKey,
-      getSharedReplayState: getSharedStrategyReplayState,
     });
 
     await invokeStageHooks('onInit', strategyManifest?.hooks?.onInit, {

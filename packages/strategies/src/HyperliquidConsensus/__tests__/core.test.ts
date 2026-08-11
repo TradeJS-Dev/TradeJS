@@ -115,14 +115,8 @@ const makeStrategyApi = ({
 
 const createCore = async (strategyApi: any, overrides = {}) =>
   createHyperliquidConsensusCore({
-    userName: 'root',
-    symbol: 'BTCUSDT',
     config: { ...config, ...overrides } as any,
-    isConfigFromBacktest: true,
-    connector: {} as any,
     data: [candle] as any,
-    btcData: [candle] as any,
-    loadPineScriptFile: jest.fn(),
     strategyApi,
     indicatorsState: {} as any,
   });

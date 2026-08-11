@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   deleteRuntimeDeployment,
   getRuntimeDeployment,
-} from '@tradejs/infra/tradingAccounts';
+} from '@tradejs/infra/runtimeDeployments';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const DELETE = async (

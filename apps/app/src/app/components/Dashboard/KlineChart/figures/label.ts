@@ -1,4 +1,4 @@
-import { Figure } from '@tradejs/types';
+import type { Figure } from '#app/types/ui';
 
 export const label = ({ ctx, x, y, text = '', color }: Figure) => {
   ctx.save();

@@ -9,7 +9,7 @@ import {
   DERIVATIVES_CONTEXT_BASE_REFERENCE_SYMBOLS,
   resolveDerivativesContextReferenceSymbols,
 } from '@tradejs/core/constants';
-import { getDerivativesWindow } from '@tradejs/infra/timescale';
+import { getDerivativesWindow } from '@tradejs/infra/timescale/derivatives';
 import { logger } from '@tradejs/infra/logger';
 import type {
   DerivativesContext,

@@ -1,4 +1,3 @@
-import { KlineIntervalV3 } from 'bybit-api';
 import type {
   ConnectorCapabilities,
   FundingRateHistoryRequest,
@@ -10,7 +9,20 @@ import type {
   TradingFeeRate,
 } from './market';
 
-export type Interval = KlineIntervalV3;
+export type Interval =
+  | '1'
+  | '3'
+  | '5'
+  | '15'
+  | '30'
+  | '60'
+  | '120'
+  | '240'
+  | '360'
+  | '720'
+  | 'D'
+  | 'W'
+  | 'M';
 export type Provider = 'bybit' | 'binance' | 'coinbase';
 
 export interface Candle {

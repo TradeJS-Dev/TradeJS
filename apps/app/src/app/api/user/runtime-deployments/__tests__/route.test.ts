@@ -14,9 +14,12 @@ jest.mock('next/server', () => ({
 }));
 
 jest.mock('@tradejs/infra/tradingAccounts', () => ({
+  getTradingAccount: (...args: unknown[]) => mockGetTradingAccount(...args),
+}));
+
+jest.mock('@tradejs/infra/runtimeDeployments', () => ({
   getRuntimeDeploymentHeartbeat: (...args: unknown[]) =>
     mockGetRuntimeDeploymentHeartbeat(...args),
-  getTradingAccount: (...args: unknown[]) => mockGetTradingAccount(...args),
   listRuntimeDeployments: (...args: unknown[]) =>
     mockListRuntimeDeployments(...args),
   saveRuntimeDeployment: (...args: unknown[]) =>

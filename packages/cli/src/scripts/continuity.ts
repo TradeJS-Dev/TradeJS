@@ -10,7 +10,8 @@ import { getTickers } from '@tradejs/node/cli';
 import { PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { deleteCandles, waitForDbReady } from '@tradejs/infra/timescale';
+import { deleteCandles } from '@tradejs/infra/timescale/candles';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
 import { Connector, ConnectorCreator, Interval } from '@tradejs/types';
 import {
   findRepairableContinuityGap,

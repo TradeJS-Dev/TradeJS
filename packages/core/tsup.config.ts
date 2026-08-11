@@ -22,7 +22,7 @@ export default defineConfig({
   tsconfig: './tsconfig.build.json',
   clean: true,
   outDir: 'dist',
-  target: 'node24',
+  target: 'es2022',
   noExternal: ['fast-technical-indicators'],
   external: ['@tradejs/types', 'date-fns', 'klinecharts', 'lodash', 'uuid'],
 });

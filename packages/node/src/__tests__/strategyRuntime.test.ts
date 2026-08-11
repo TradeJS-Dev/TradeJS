@@ -141,7 +141,7 @@ jest.mock('../runtimeJournal', () => ({
     mockMarkRuntimeTradeClosed(...args),
 }));
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/derivatives', () => ({
   getDerivativesWindow: (...args: unknown[]) =>
     mockGetDerivativesWindow(...args),
 }));
@@ -287,6 +287,7 @@ const makeRuntime = async (
     strategyName,
     defaults: {} as any,
     createCore: async () => async () => decisionFactory(),
+    resolveRegisteredManifest: (name) => mockGetStrategyManifest(name),
   });
 
   const connector = {
@@ -605,10 +606,13 @@ describe('strategyRuntime', () => {
       sharedStrategyStateKey: 'signals:ETHUSDT:15:TrendLine',
     } as any);
 
-    expect(createCore).toHaveBeenCalledWith(
+    expect(createStrategyAPI).toHaveBeenCalledWith(
       expect.objectContaining({
         sharedReplayKey: 'signals:ETHUSDT:15:TrendLine:strategy:TrendLine',
       }),
+    );
+    expect(createCore).toHaveBeenCalledWith(
+      expect.not.objectContaining({ sharedReplayKey: expect.anything() }),
     );
     const createStrategyIndicatorsStateMock = jest.requireMock(
       '@tradejs/core/strategies',

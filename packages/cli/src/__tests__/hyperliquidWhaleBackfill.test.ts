@@ -14,7 +14,7 @@ jest.mock('progress', () =>
     })),
 );
 
-jest.mock('@tradejs/infra/timescale', () => ({
+jest.mock('@tradejs/infra/timescale/hyperliquidWhales', () => ({
   hasHyperliquidWhaleBackfillCoverage: (...args: unknown[]) =>
     mockHasHyperliquidWhaleBackfillCoverage(...args),
   getHyperliquidWhaleWalletCoverage: (...args: unknown[]) =>

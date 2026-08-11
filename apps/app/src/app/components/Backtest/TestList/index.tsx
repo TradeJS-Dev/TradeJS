@@ -7,7 +7,7 @@ import { FiFolder } from 'react-icons/fi';
 import { Box, Checkbox, Code } from '@chakra-ui/react';
 import { TestCard } from '#components/Backtest/TestCard';
 import { EmptyState } from '#ui';
-import { Items } from '@tradejs/types';
+import type { Items } from '#app/types/ui';
 
 interface ListProps {
   tests: Items;

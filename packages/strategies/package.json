@@ -34,7 +34,6 @@
   "dependencies": {
     "@tradejs/core": "workspace:^",
     "@tradejs/indicators": "workspace:^",
-    "@tradejs/node": "workspace:^",
     "@tradejs/types": "workspace:^",
     "technicalindicators": "^3.1.0"
   },

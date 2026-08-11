@@ -8,7 +8,7 @@ import {
 } from '@tradejs/types';
 import { getTimestamp } from './timestamp';
 import { toJson } from './toJson';
-import { uuid } from './uuid';
+import { IdGenerator, uuid } from './uuid';
 
 type GenericConfig = StrategyConfig;
 
@@ -41,7 +41,10 @@ export const generateParamGrid = <T extends StrategyConfig>(
   return combinations;
 };
 
-export const generateName = (prefix: string): string => `${prefix}_${uuid(6)}`;
+export const generateName = (
+  prefix: string,
+  generateId: IdGenerator = uuid,
+): string => `${prefix}_${generateId(6)}`;
 
 const toBase36Hash = (value: string) => {
   let hash = 0;
@@ -98,15 +101,16 @@ export const createTestSuite = (
   backtestConfig: StrategyConfigGrid,
   connectorName: string,
   interval: Interval = '15' as Interval,
+  generateId: IdGenerator = uuid,
 ): TestSuite => {
   const start = getTimestamp(BACKTEST_DEFAULT_DAYS);
   const end = getTimestamp();
-  const testSuiteId = uuid(6);
+  const testSuiteId = generateId(6);
   const paramGrid = generateParamGrid(backtestConfig);
 
   return tickers.flatMap((symbol) =>
     paramGrid.map((params) => {
-      const testId = uuid(6);
+      const testId = generateId(6);
       const configId = buildConfigTestId(params);
       return {
         userName,

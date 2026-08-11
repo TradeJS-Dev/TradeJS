@@ -1,13 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { toJson } from '@tradejs/core/data';
-import type {
-  ReplayParityEntryDetail,
-  ReplayRuntimeComparisonDetails,
-  ReplayRuntimeComparisonSummary,
-  ReplayStrategyResultsSnapshot,
+import {
+  getReplayRuntimeUnmatchedCount,
+  type ReplayParityEntryDetail,
+  type ReplayRuntimeComparisonDetails,
+  type ReplayRuntimeComparisonSummary,
+  type ReplayStrategyResultsSnapshot,
 } from './support';
-import { getReplayRuntimeUnmatchedCount } from './support';
 import type { HistoricalSignalsReplayResult } from './historicalSignalsReplay';
 
 type ReplayOutputWindow = {

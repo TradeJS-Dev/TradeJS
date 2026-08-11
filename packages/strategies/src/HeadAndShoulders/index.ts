@@ -1,2 +1,2 @@
-export { HeadAndShouldersStrategyCreator } from './strategy';
+export { HeadAndShouldersStrategyDefinition } from './strategy';
 export { headAndShouldersManifest } from './manifest';

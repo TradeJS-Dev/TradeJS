@@ -74,6 +74,16 @@
       "import": "./dist/redis.mjs",
       "require": "./dist/redis.js"
     },
+    "./runtimeStrategyConfigs": {
+      "types": "./dist/runtimeStrategyConfigs.d.ts",
+      "import": "./dist/runtimeStrategyConfigs.mjs",
+      "require": "./dist/runtimeStrategyConfigs.js"
+    },
+    "./runtimeDeployments": {
+      "types": "./dist/runtimeDeployments.d.ts",
+      "import": "./dist/runtimeDeployments.mjs",
+      "require": "./dist/runtimeDeployments.js"
+    },
     "./userSettings": {
       "types": "./dist/userSettings.d.ts",
       "import": "./dist/userSettings.mjs",
@@ -83,6 +93,36 @@
       "types": "./dist/timescale.d.ts",
       "import": "./dist/timescale.mjs",
       "require": "./dist/timescale.js"
+    },
+    "./timescale/client": {
+      "types": "./dist/timescale/client.d.ts",
+      "import": "./dist/timescale/client.mjs",
+      "require": "./dist/timescale/client.js"
+    },
+    "./timescale/candles": {
+      "types": "./dist/timescale/candles.d.ts",
+      "import": "./dist/timescale/candles.mjs",
+      "require": "./dist/timescale/candles.js"
+    },
+    "./timescale/derivatives": {
+      "types": "./dist/timescale/derivatives.d.ts",
+      "import": "./dist/timescale/derivatives.mjs",
+      "require": "./dist/timescale/derivatives.js"
+    },
+    "./timescale/hyperliquidWhales": {
+      "types": "./dist/timescale/hyperliquidWhales.d.ts",
+      "import": "./dist/timescale/hyperliquidWhales.mjs",
+      "require": "./dist/timescale/hyperliquidWhales.js"
+    },
+    "./timescale/marketContext": {
+      "types": "./dist/timescale/marketContext.d.ts",
+      "import": "./dist/timescale/marketContext.mjs",
+      "require": "./dist/timescale/marketContext.js"
+    },
+    "./timescale/spread": {
+      "types": "./dist/timescale/spread.d.ts",
+      "import": "./dist/timescale/spread.mjs",
+      "require": "./dist/timescale/spread.js"
     },
     "./tradingAccounts": {
       "types": "./dist/tradingAccounts.d.ts",
@@ -95,6 +135,7 @@
     "@grpc/proto-loader": "^0.8.1",
     "@tradejs/types": "workspace:^",
     "chalk": "4.1.2",
+    "date-fns": "^3.6.0",
     "ioredis": "5.11.1",
     "pg": "8.22.0",
     "winston": "3.19.0"

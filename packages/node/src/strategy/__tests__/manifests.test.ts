@@ -34,6 +34,10 @@ describe('strategy manifests registry', () => {
         log: logMock,
       },
     }));
+    jest.doMock('../../strategyRuntime', () => ({
+      createStrategyRuntime: ({ createCore }: { createCore: unknown }) =>
+        createCore,
+    }));
 
     return import('../manifests');
   };
@@ -48,7 +52,8 @@ describe('strategy manifests registry', () => {
     manifests.registerStrategyEntries([
       {
         manifest: { name: 'RuntimeStrategy' } as any,
-        creator: runtimeCreator,
+        defaults: {},
+        createCore: runtimeCreator,
       },
     ]);
 
@@ -65,11 +70,13 @@ describe('strategy manifests registry', () => {
     manifests.registerStrategyEntries([
       {
         manifest: {} as any,
-        creator: runtimeCreator,
+        defaults: {},
+        createCore: runtimeCreator,
       },
       {
         manifest: { name: 'RuntimeStrategy' } as any,
-        creator: runtimeCreator,
+        defaults: {},
+        createCore: runtimeCreator,
       },
     ]);
 
@@ -96,7 +103,8 @@ describe('strategy manifests registry', () => {
         strategyEntries: [
           {
             manifest: { name: 'PluginValid' } as any,
-            creator: pluginCreator,
+            defaults: {},
+            createCore: pluginCreator,
           },
         ],
         indicatorEntries: [
@@ -122,7 +130,8 @@ describe('strategy manifests registry', () => {
           strategyEntries: [
             {
               manifest: { name: 'PluginDefault' } as any,
-              creator: defaultCreator,
+              defaults: {},
+              createCore: defaultCreator,
             },
           ],
           indicatorEntries: [
@@ -194,7 +203,8 @@ describe('strategy manifests registry', () => {
       [
         {
           manifest: { name: 'SandboxStrategy' } as any,
-          creator: creatorA,
+          defaults: {},
+          createCore: creatorA,
         },
       ],
       '/tmp/project-a',
@@ -203,7 +213,8 @@ describe('strategy manifests registry', () => {
       [
         {
           manifest: { name: 'SandboxStrategy' } as any,
-          creator: creatorB,
+          defaults: {},
+          createCore: creatorB,
         },
       ],
       '/tmp/project-b',
@@ -247,7 +258,8 @@ describe('strategy manifests registry', () => {
         strategyEntries: [
           {
             manifest: { name: 'PluginOne' } as any,
-            creator: jest.fn(async () => ({}) as any),
+            defaults: {},
+            createCore: jest.fn(async () => ({}) as any),
           },
         ],
       }),

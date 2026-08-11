@@ -1,5 +1,4 @@
-import { format } from 'date-fns';
-import { getUnixTime, subDays } from 'date-fns';
+import { format, getUnixTime, subDays } from 'date-fns';
 import { BACKTEST_DEFAULT_DAYS, BACKTEST_PRELOAD_DAYS } from '../constants';
 import {
   KlineChartItem,

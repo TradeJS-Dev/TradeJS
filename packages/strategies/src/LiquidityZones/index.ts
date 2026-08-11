@@ -1,2 +1,2 @@
-export { LiquidityZonesStrategyCreator } from './strategy';
+export { LiquidityZonesStrategyDefinition } from './strategy';
 export { liquidityZonesManifest } from './manifest';

@@ -6,11 +6,9 @@ import {
   normalizeCoinalyzeSymbols,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
-import {
-  upsertDerivatives,
-  upsertSpreadRows,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
+import { upsertDerivatives } from '@tradejs/infra/timescale/derivatives';
+import { upsertSpreadRows } from '@tradejs/infra/timescale/spread';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import type { DerivativesInterval } from '@tradejs/types';
 import {

@@ -16,8 +16,8 @@ import {
   getDerivativesMetricCoverage,
   upsertDerivatives,
   upsertDerivativesBackfillCoverage,
-  waitForDbReady,
-} from '@tradejs/infra/timescale';
+} from '@tradejs/infra/timescale/derivatives';
+import { waitForDbReady } from '@tradejs/infra/timescale/client';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import type { DerivativesInterval, DerivativesRow } from '@tradejs/types';
 
