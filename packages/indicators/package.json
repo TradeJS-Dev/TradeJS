@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/indicators",
-  "version": "2.0.16",
+  "version": "2.0.17",
   "description": "MIT-licensed indicator plugin catalog for the TradeJS framework.",
   "keywords": [
     "tradejs",
