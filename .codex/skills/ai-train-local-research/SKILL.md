@@ -22,6 +22,18 @@ Use this skill when the user asks to:
 
 ## Reusable Research Tooling
 
+When AI-gate work follows a raw-core experiment, first read the verified
+`data/research/core/<researchId>/spec.json`, `result.json`, and normalized
+`trades.jsonl` produced by `yarn research:core`. Treat that bundle as the
+immutable source for raw-core ALL/LONG/SHORT economics, selected config lineage,
+and causal setup attribution. Do not rerun core selection inside gate tooling or
+rewrite its target/aggregate verdict. The gate study is a new hypothesis stage:
+evaluate LONG and SHORT approved streams separately, preserve the core bundle
+research ID/config SHA/export lineage in the gate note, and make any
+direction-aware gate explicit. A weak raw-core side may be filtered by a later
+gate only after its own timestamp-grouped validation; never hide or retroactively
+disable it in the core result.
+
 Use `scripts/ai-gate-ablation.mjs` for custom deterministic gate filters,
 exclusions, recovery additions, gate replacements, feature inventory, and
 baseline-vs-candidate tables. Read `references/gate-ablation.md` for its
@@ -48,6 +60,10 @@ Before returning AI-gate metrics in chat or writing a dated notes entry, read
 rounding, and `n/a` rules exactly. Use the full contract unless the user
 explicitly asks for one narrow metric. Do not improvise a shorter alternative
 or silently omit unavailable metrics.
+
+For every approved-stream summary, calculate `PnL/trade` as total approved PnL
+divided by completed approved trades. Never substitute the backtest CLI progress
+`avg`, which is PnL per completed test/symbol. Use `n/a` when `N = 0`.
 
 ## AI Gate Pocket Hygiene
 

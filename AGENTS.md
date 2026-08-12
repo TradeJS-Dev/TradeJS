@@ -374,6 +374,60 @@ Keep them aligned with:
 
 ## ML Workflow Notes
 
+### Professional core research contour
+
+- Use `yarn research:core` and `CORE_RESEARCH.md` for every new core
+  control-versus-candidate hypothesis. Preregister one causal mechanism,
+  ordered-universe checksum, full resolved configs plus canonical hashes,
+  immutable window/costs, target direction, hypothesis family, explicit stage,
+  selection rules, and variants before running a screen.
+- Treat `data/research/core/<researchId>/spec.json` as immutable. A changed
+  hypothesis, config, export lineage, or decision gets a new `researchId`.
+  Preserve rejected trials in the append-only hash-chained family ledger so
+  multiple-testing correction includes the full denominator.
+- Use `stage=screen|isolated_long|confirmation`, require parent research IDs
+  for later stages, and regenerate `yarn research:core index`. Never infer a
+  stage from period length, artifact names, or the presence of a run ID.
+- A selection result is valid only after one-config run manifests complete and
+  export N/W/L/PnL reconcile with Redis. Review matched/control-only/candidate-
+  only identities, signal-time regimes, ALL/LONG/SHORT metrics, folds,
+  bootstrap, overfitting diagnostics, cost stress, and the evidence matrix.
+- Add `--researchTrace` only when setup/entry/skip attribution is needed. It is
+  compact opt-in telemetry and must not change decisions. Completed AI rows
+  carry deterministic setup identity; trace aggregates skips rather than
+  logging every candle.
+- `report.html` is an inspection artifact. `result.json`, `spec.json`, manifest
+  hashes, normalized `trades.jsonl`, and the ledger are authoritative. Run
+  `yarn research:core verify --spec <path>` before handoff.
+- Treat the research contour as a public testing seam. After changing its spec,
+  ingest, metric, comparison, statistical guardrail, reconciliation, trace,
+  report, or orchestration behavior, run `yarn research:core:test` and
+  `yarn research:core:coverage`. The latter enforces the contour's checked-in
+  coverage floor. Test observable specs/results/artifacts and decisions; mock
+  only true system boundaries such as Redis, process execution, time/randomness,
+  or the filesystem. Do not couple tests to internal call order.
+- Keep JSONL ingest single-pass: update the SHA while streaming and parsing rows.
+  Do not add a separate full-file read or retain raw rows in memory. Reject a
+  completed trade row without a stable signal identity. Full normalized trades
+  may remain in memory because chronological portfolio metrics and causal setup
+  matching require them.
+- Reuse chronologically ordered trade arrays in metric/report paths; sort only
+  after detecting an inversion. Group regimes in one pass. Write normalized
+  `trades.jsonl` and large matched-pair artifacts through a backpressure-aware
+  stream rather than constructing one export-sized string.
+- Keep report rendering bounded independently of metric precision. HTML/SVG may
+  downsample only the visual curve while preserving endpoints and local extrema;
+  never downsample `result.json`, normalized `trades.jsonl`, reconciliation, or
+  selection inputs. `report.html` remains non-authoritative.
+- Use the shared threshold-rule evaluator for full, terminal, and cost-stress
+  checks so null and infinite-PF semantics cannot drift. Enforce terminal cadence
+  floors for every preregistered terminal window even when `terminalRules` is an
+  empty list.
+- Calendar-cluster bootstrap must span the full immutable experiment window,
+  including zero-trade clusters. Do not condition uncertainty estimates only on
+  active days. Treat CSCV/PBO as unavailable when candidate fold vectors are
+  identical and no selection ranking exists.
+
 Keep these conventions stable unless explicitly changing the ML pipeline.
 
 - Use `yarn ml-train:latest -- --strategy <Strategy> --model <model>` for model training; legacy `ml-train:trendline:*` package scripts are not CLI dispatch commands.
@@ -385,6 +439,130 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Keep causality guards intact unless explicitly debugging.
 - For all future backtest/config research sweeps, set `MAX_LOSS_VALUE` to `10` when the config includes that field.
 - When updating a backtest `:ai` config, enable both `LONG` and `SHORT`; let the AI gate disable a side later if needed.
+- When a symmetric core/lifecycle candidate improves only one direction, keep
+  the rejected aggregate experiment and create a separate direction-specific
+  follow-up with explicit `_LONG` and `_SHORT` parameters. Keep both sides
+  enabled in the combined config, compare it with the same control, and do not
+  infer the mixed-side result by silently promoting a global parameter.
+- In backtest research and result summaries, report average trade PnL as
+  `PnL/trade = total PnL / completed trades`. Do not present the CLI progress
+  `avg` as PnL/trade: that value is average PnL per completed test/symbol. Keep
+  it only when explicitly labelled `PnL/test` or `PnL/symbol`; use `n/a` for
+  PnL/trade when there are no completed trades.
+- Every core/backtest report must show three cohorts in this fixed order for
+  every reported config and window: `ALL (aggregate portfolio)`, `LONG`, and
+  `SHORT`. Show `N`, `PnL`, `PnL/trade`, `PF`, `WR`, `realized MaxDD`, and
+  `cadence/day` for each cohort. `N` is completed trades; `PnL` is summed net
+  realized trade PnL; `PF` is gross winning PnL divided by absolute gross
+  losing PnL; `WR` is winning trades divided by `N`; `realized MaxDD` is the
+  maximum peak-to-trough decline of the cohort's chronological completed-trade
+  net-PnL equity curve; and `cadence/day` is `N / exact calendar days`.
+  Calculate each directional cohort by filtering trades before computing its
+  metrics. Calculate aggregate `PnL/trade` as
+  `(LONG PnL + SHORT PnL) / (LONG N + SHORT N)`, never as the unweighted average
+  of the two side averages. Label directional drawdown explicitly as
+  `side-only realized MaxDD`: its time-ordered equity contains only that side's
+  completed trades. Label `ALL` drawdown as `aggregate portfolio realized
+MaxDD`; do not substitute one for the other. Assign and report baseline or
+  candidate status separately for `ALL`, `LONG`, and `SHORT`; never infer a
+  side status from the aggregate status.
+- Keep both `LONG` and `SHORT` enabled throughout raw-core research and in the
+  resulting core config. Do not silently disable, omit, or hide a negative
+  direction. The later AI-gate stage evaluates the reconciled LONG and SHORT
+  cohorts separately and may apply an explicit direction-aware gate; it does
+  not retroactively change the raw-core report.
+- For a direction-targeted hypothesis, preregister the target side, the
+  supposedly unaffected side, and the matched-control acceptance rule before
+  running it. Judge the causal hypothesis primarily on the target cohort:
+  require the preregistered improvements in `PnL`, `PnL/trade`, `PF`, `WR`, and
+  `side-only realized MaxDD` (a smaller drawdown is better). Require exact
+  signal/trade identities and exact `N` on the non-target side, plus equal
+  `PnL` within only the documented reconciliation-rounding tolerance, only
+  when the architecture makes that side invariant. If shared position
+  occupancy, cooldown, order lifecycle, or another interaction can change the
+  non-target side, explicitly report occupancy spillover (added/removed trade
+  identities, `N`/cadence, and all economic-metric deltas) and require its
+  preregistered non-regression rule instead of claiming identity. Evaluate
+  aggregate portfolio PnL and aggregate portfolio realized MaxDD as separate
+  promotion guardrails. An aggregate failure can block config promotion, but
+  it must not be folded into the target-side causal verdict or used alone to
+  conceal a side improvement or regression.
+- In full-universe backtest research, define portfolio cadence as completed
+  trades divided by the exact requested calendar days. Do not divide it by the
+  number of tested symbols. Do not extrapolate a full-universe cadence to an
+  approximate exchange symbol count. For a deliberately sampled universe,
+  any linear universe projection must be reported separately from observed
+  cadence, with the tested count, target count, and scale factor.
+- Freeze one eligible ticker list, ordered-symbol checksum, exact start/end
+  timestamps, config snapshot, and git lineage across a core robustness
+  comparison. A mutable Redis universe or config key alone is not sufficient
+  evidence. Record missing/error tests per config and never aggregate multiple
+  grid `configId` buckets into one strategy result.
+- Evaluate long-window core candidates on terminal `365d`, `180d`, `90d`, and
+  `30d` half-open slices `[end - days, end)` anchored to the immutable backtest
+  window end. Include zero-trade windows. A `--fast --ai` run may be used to capture raw core trade rows for
+  this analysis because the BACKTEST entry policy does not apply the AI gate;
+  document that distinction explicitly. Confirm shortlisted variants without
+  `--fast`, then run standalone shorter horizons when reset/warmup sensitivity
+  can change stateful strategy results.
+- After a `--fast --ai` run, use reconciled completed-trade JSONL rows as the
+  authoritative source for trade-level PnL, PF, PnL/trade, terminal windows,
+  and realized portfolio MaxDD. Use Redis per-result `stat` for completion and
+  N/W/L/PnL reconciliation; do not replace row-level totals with its aggregate
+  when only per-symbol cent rounding explains a small PnL delta.
+- Treat the standalone horizons as reset/preload sensitivity tests, not as
+  substitutes for terminal slices of the same long run. If their metrics differ,
+  investigate replay/state initialization and report both; do not choose the
+  more favorable result.
+- A multi-cell parameter family may use an all-universe 180d grid as a cheap
+  first-stage screen. Label it selection-only, retain every cell, and rerun each
+  shortlisted cell on the frozen long window before making any robustness or
+  promotion claim. Do not optimize the short screen and report it as long-run
+  stability.
+- Run shortlisted long-window parameter cells as isolated single-config runs.
+  Do not fan out several 1100d full-universe cells inside one worker group: it
+  raises peak heap usage and can mix lifecycle/execution state when a strategy
+  shares replay state under an incomplete config key. A multi-cell 180d screen
+  is allowed only after proving per-config state isolation; otherwise split the
+  screen into single-cell runs too. Treat OOM/partial manifests as failed runs
+  and never derive aggregate or terminal metrics from their completed subset.
+- Treat backtest worker parallelism as one host-wide budget, including runs
+  launched by other agents or terminals. Before starting another full-universe
+  run, count active tester workers and inspect memory pressure/swap; do not
+  launch a third concurrent batch when two batches already create sustained
+  pressure. Reduce `-p`, finish an active run, and let memory recover instead
+  of relying on per-worker heap limits to prevent an OOM.
+- A raw-core JSONL export is acceptance-grade only when its per-config
+  N/W/L exactly reconcile with the complete Redis result stats and PnL differs
+  only within the documented per-symbol rounding tolerance. Any missing row,
+  duplicate conflict, partial manifest, or nonzero N/W/L delta invalidates its
+  PF, PnL/trade, terminal windows, and portfolio MaxDD; fix the writer/export
+  path and rerun rather than imputing missing outcomes.
+- Never run `ai-export` against a backtest whose manifest is still `running`.
+  Workers can still own open append streams after some checkpoint results are
+  visible; merging or deleting those chunks creates a partial dataset. Keep
+  source chunks by default, require a finished manifest, and perform cleanup
+  separately only after exact Redis/export reconciliation.
+- Treat a cadence floor such as `0.2/day` as a per-window requirement unless
+  the research question says otherwise. At `0.2/day`, the minimum completed
+  trades are 220/73/36/18/6 for 1100/365/180/90/30-day windows. Preserve failed
+  hypotheses and their full resolved configs in immutable local research notes
+  so future sweeps do not silently repeat them.
+- Treat membership inputs selected outside price candles—wallet registries,
+  top-symbol/perp universes, benchmark baskets, allowlists, and similar
+  snapshots—as point-in-time data. A backtest may use only a version whose
+  `effectiveFrom` is at or before the evaluated candle. Applying one current or
+  future membership snapshot across older history is survivor/activity
+  lookahead even when the selector excludes PnL. Mark long-window robustness
+  blocked until effective-dated history exists; do not tune thresholds from the
+  contaminated run.
+- Label a core candidate `strictly robust` only when PnL is non-negative,
+  PF is at least 1, and the cadence floor is met on the full window and every
+  required terminal window. A still-negative strategy may be retained as an
+  `improved research candidate` only when full-window PnL and PnL/trade improve
+  over the frozen baseline, required-window cadence remains adequate, and the
+  terminal-window/drawdown table makes every regression explicit. Do not call
+  aggregate improvement stability when one terminal window collapses.
 - Treat `runtime-parity` as core/backtest execution parity, not live AI/ML approval parity:
   - it replays in `ENV=BACKTEST` with order placement enabled and compares replayed entry orders to saved runtime trade records
   - `runtime=0` and `backtest=0` for a strategy means the selected replay targets produced no comparable entries in that window; it does not measure how many AI rows would be approved

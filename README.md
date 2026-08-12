@@ -137,6 +137,149 @@ Plugin indicators are registered via indicator entries and can add:
 - compute series
 - optional figure renderers
 
+## Strategy Development And Research
+
+Treat strategy implementation, raw-core research, AI-gate research, and live
+deployment as four separate stages. A profitable gate cannot repair an invalid
+or non-causal core experiment, and a promising backtest is not permission to
+place orders.
+
+### 1. Implement A Replay-Safe Strategy
+
+Built-in strategies live under `packages/strategies/src/<StrategyName>`:
+
+- keep deterministic detector transitions in a replayable `engine.ts` when the
+  strategy has pivots, pending confirmations, zones, or other rolling state
+- keep position checks, cooldowns, risk sizing, and `entry`/`exit` decisions in
+  `core.ts`
+- put defaults and typed parameters in `config.ts`; new research behavior should
+  normally be default-off so the control remains reproducible
+- add deterministic `figures` for geometry that must be inspected on a chart
+- cover the legacy control, candidate behavior, LONG and SHORT, duplicate
+  timestamps, continuous replay versus `initialCandles`, and config-state
+  isolation with unit tests
+
+The complete runtime contract and examples are in [STRATEGY_API.md](STRATEGY_API.md).
+Run the focused strategy suite before starting a costly experiment:
+
+```bash
+yarn jest packages/strategies/src/<StrategyName> --runInBand
+yarn workspace @tradejs/strategies typecheck
+```
+
+### 2. Preregister The Raw-Core Experiment
+
+Use `yarn research:core` for control-versus-candidate research. Freeze the
+causal claim, ordered universe and checksum, exact half-open UTC window,
+resolved configs and their canonical hashes, fees/slippage/entry delay, target
+direction, selection rules, and experiment stage before running anything.
+
+```bash
+yarn research:core init \
+  --out data/research/specs/my-hypothesis.json \
+  --researchId my-strategy-family-v1 \
+  --strategy MyStrategy \
+  --start <epoch-ms> \
+  --end <epoch-ms> \
+  --symbolsFile data/research/frozen-symbols.json
+
+# Fill causalClaim, stage, variants[].resolvedConfig/configSha256,
+# commands or files, and executable selection rules in the generated spec.
+yarn research:core prepare --spec data/research/specs/my-hypothesis.json
+yarn research:core run --spec data/research/specs/my-hypothesis.json
+yarn research:core verify --spec data/research/specs/my-hypothesis.json
+yarn research:core index --root data/research/core
+```
+
+Use `analyze` instead of `run` when the spec points to already completed,
+explicit exports. `--researchTrace` is opt-in and should be used only when the
+question needs setup/entry/skip funnel attribution.
+
+The standard evidence progression is:
+
+1. a bounded all-universe `screen` for selection
+2. an isolated, single-config `isolated_long` run for long-window evidence
+3. `confirmation` with non-fast execution, cold-start/reset sensitivity, cost
+   and delay stress, and runtime parity where applicable
+
+Every config and window reports fixed `ALL`, `LONG`, and `SHORT` cohorts with
+`N`, PnL, PnL/trade, PF, WR, realized MaxDD, and cadence/day. Both directions
+remain enabled in the raw-core config. A losing side is evidence to investigate
+or gate later, not a result to hide. Aggregate portfolio guardrails and a
+direction-targeted causal verdict remain separate.
+
+`yarn backtest --ai` is only raw completed-core-trade transport in this stage;
+it does not mean the AI gate approved those trades. Exports are accepted only
+after a completed manifest, full checkpoints, explicit run-scoped export, and
+Redis-versus-JSONL reconciliation:
+
+```bash
+yarn ai-export --strategy MyStrategy --runId <run-id> --partMonths 0 --keepChunks
+yarn node -r dotenv/config \
+  .codex/skills/strategy-backtest-research/scripts/fast-ai-export-metrics.mjs \
+  --file <merged-export.jsonl> --run <run-id> --json
+```
+
+The full spec, artifact, statistical, performance, and verification contract is
+in [CORE_RESEARCH.md](CORE_RESEARCH.md). Immutable local findings belong in
+`notes/<Strategy>/YYYY-MM-DD-<slug>.md`; `notes/` is intentionally ignored and
+must never be committed.
+
+### 3. Research The AI Gate Separately
+
+Only after the core candidate has valid evidence should the same immutable
+export be used for gate research. Discover causal pockets with a time-ordered
+holdout, then replay the deterministic local gate over all selected rows:
+
+```bash
+yarn ai-pocket-search --strategy MyStrategy -n 0 --maxDepth 2 --minSupport 25
+yarn ai-train --strategy MyStrategy --localOnly -n 0 --minQuality 4 --json
+```
+
+Evaluate qN+ streams, terminal windows, regimes, symbols, and LONG/SHORT
+separately. Gate inputs must exist at signal time; delayed fills, exit reasons,
+and realized PnL are outcomes, never features. `AI_MODE=gate` is comparable to
+`ai-train --localOnly`; `AI_MODE=llm` requires provider-backed evidence and must
+not inherit local-gate claims.
+
+### 4. Promote And Launch Gradually
+
+Promote only one fully resolved config. Backtest configs are value grids;
+runtime configs are plain objects. Review the existing runtime config before
+replacing it, keep `ENABLE=true`, retain both LONG and SHORT for AI-gated
+deployment, and preserve the tested `AI_ENABLED`, `AI_MODE`, and
+`MIN_AI_QUALITY`. Runtime configs can be reviewed and saved from the strategies
+screen at `http://localhost:3000/routes/strategies`.
+
+Use an explicit rollout ladder:
+
+```bash
+# 1. Build and validate the exact working tree.
+yarn checks
+
+# 2. Evaluate one closed-candle cycle without notifications or orders.
+yarn signals -- --user root --connector bybit --cacheOnly
+
+# 3. Compare recent replay/backtest entries with recorded runtime evidence.
+yarn runtime-parity -- --user root --connector bybit --days 3 --details
+
+# 4. Observe notifications, still without order placement.
+yarn signals:daemon -- --user root --connector bybit --notify
+
+# 5. Enable orders only after the earlier stages and account/risk review pass.
+yarn signals:daemon -- --user root --connector bybit --notify --makeOrders
+```
+
+Monitor signal evaluations, gate-versus-LLM disagreements, order rejects,
+slippage, parity mismatches, cadence, and realized ALL/LONG/SHORT economics.
+Rollback by disabling the runtime config or removing `--makeOrders`; do not tune
+the model from an unversioned live observation. The production runtime may use
+a different host and Redis, so verify the actual deployment source of truth
+instead of assuming this checkout's local Redis is live.
+
+For environment setup, runtime evidence commands, and operational details, see
+[QUICKSTART.md](QUICKSTART.md).
+
 ## Quick Start
 
 ### 1. Prerequisites
@@ -176,8 +319,12 @@ Useful routes:
 ## Common Commands
 
 ```bash
+yarn checks
 yarn build:ci
 yarn backtest
+yarn research:core
+yarn research:core:test
+yarn research:core:coverage
 yarn results
 yarn signals
 yarn signals:daemon -- --notify --makeOrders

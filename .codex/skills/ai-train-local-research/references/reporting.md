@@ -44,8 +44,8 @@ to each other before moving to the next window.
 ```md
 ### Outcome and tail risk
 
-| Window | Gate |   N |  WR |  PF | PnL | MaxDD | Loss streak | Losing months |
-| ------ | ---- | --: | --: | --: | --: | ----: | ----------: | ------------- |
+| Window | Gate |   N |  WR |  PF | PnL | PnL/trade | MaxDD | Loss streak | Losing months |
+| ------ | ---- | --: | --: | --: | --: | --------: | ----: | ----------: | ------------- |
 ```
 
 ### 3. Cadence and fan-out
@@ -171,6 +171,9 @@ Put optional strategy-specific findings only after this fixed block under
 - `Max simultaneous stop-risk`: sum of configured per-order loss budgets in the
   largest event, before fill/rejection effects.
 - `DD/gross` and `DD/PnL`: max drawdown divided by gross profit and total profit.
+- `PnL/trade`: total PnL divided by completed trades. The backtest CLI progress
+  `avg` is PnL per completed test/symbol and must not be used for this field.
+  Report `n/a` when `N=0`.
 - `Losing months`: count; append month ids in parentheses when non-zero.
 - `qN+`: all approvals with quality greater than or equal to `N`; never use
   plain `qN` for this cumulative stream.
@@ -179,7 +182,7 @@ Put optional strategy-specific findings only after this fixed block under
 
 - Counts: integer.
 - WR, shares, active days, and drawdown percentages: one decimal plus `%`.
-- PF, Sharpe, Sortino, Calmar, PnL, MaxDD, and profit rates: two decimals.
+- PF, Sharpe, Sortino, Calmar, PnL, PnL/trade, MaxDD, and profit rates: two decimals.
 - Trades/day, events/day, and trades/week: three decimals.
 - Trades/event and batch percentiles: two decimals.
 - Timestamps: ISO-8601 UTC.
