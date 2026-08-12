@@ -180,6 +180,7 @@ export interface Test extends BacktestRunConfig {
   ai?: boolean;
   fast?: boolean;
   collectReplaySignalEvaluations?: boolean;
+  researchTrace?: boolean;
   chunkId?: string;
   backtestRunId?: string;
   backtestTestKey?: string;
@@ -216,12 +217,59 @@ export type BacktestWarningCounts = Partial<
   Record<BacktestWarningCode, number>
 >;
 
+export type CoreResearchTraceEvent =
+  | {
+      schema: 'tradejs-core-research-trace/v1';
+      event: 'signal_emitted' | 'entry_rejected' | 'entry_executed';
+      timestamp: number;
+      strategy: string;
+      symbol: string;
+      direction: Direction;
+      setupIdentity: string;
+      setupIdentitySource: 'strategy-context' | 'signal-time-fallback';
+      signalId: string;
+      configId?: string;
+      backtestRunId?: string;
+      backtestTestKey?: string;
+    }
+  | {
+      schema: 'tradejs-core-research-trace/v1';
+      event: 'position_exited';
+      timestamp: number;
+      strategy: string;
+      symbol: string;
+      direction: Direction;
+      setupIdentity: string;
+      setupIdentitySource: 'strategy-context' | 'signal-time-fallback';
+      signalId: string;
+      configId?: string;
+      backtestRunId?: string;
+      backtestTestKey?: string;
+      netProfit: number;
+      exitReason: TestTradeExitReason;
+    }
+  | {
+      schema: 'tradejs-core-research-trace/v1';
+      event: 'skip_summary';
+      timestamp: number;
+      strategy: string;
+      symbol: string;
+      configId?: string;
+      backtestRunId?: string;
+      backtestTestKey?: string;
+      skipCounts: Record<string, number>;
+    };
+
 export interface TestingBoxResult {
   orderLogId: string;
   stat: MinimalStat;
   inlineOrderLog?: OrderLogData;
   inlinePositionLog?: PositionLogData;
   inlineReplaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  researchTraceSummary?: {
+    events: Record<string, number>;
+    skipCounts: Record<string, number>;
+  };
   executionCostModel?: ExecutionCostModel;
   warningCounts?: BacktestWarningCounts;
 }

@@ -32,6 +32,7 @@ export type BacktestRunManifest = {
     cacheOnly: boolean;
     fast: boolean;
     ml: boolean;
+    researchTrace?: boolean;
   };
   marketContextPreparedAt?: string;
   testSuite: TestSuite;
@@ -73,6 +74,7 @@ export const buildBacktestTestKey = (test: Test) =>
     connectorName: test.connectorName,
     interval: String(test.interval ?? ''),
     ml: Boolean(test.ml),
+    researchTrace: Boolean(test.researchTrace),
     options: test.options,
     strategyConfig: test.strategyConfig,
     strategyName: test.strategyName,

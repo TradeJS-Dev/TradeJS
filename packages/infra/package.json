@@ -49,6 +49,11 @@
       "import": "./dist/backtestArtifacts.mjs",
       "require": "./dist/backtestArtifacts.js"
     },
+    "./coreResearch": {
+      "types": "./dist/coreResearch.d.ts",
+      "import": "./dist/coreResearch.mjs",
+      "require": "./dist/coreResearch.js"
+    },
     "./files": {
       "types": "./dist/files.d.ts",
       "import": "./dist/files.mjs",

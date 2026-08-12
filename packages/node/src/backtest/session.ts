@@ -14,6 +14,7 @@ import {
   type TestingBoxResult,
 } from '@tradejs/types';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
+import { appendCoreResearchTraceEvent } from '@tradejs/infra/coreResearch';
 import {
   appendMlDatasetRow,
   buildMlTrainingRow,
@@ -25,6 +26,7 @@ import { buildMlPayload } from '../mlPayload';
 import { enrichSignalWithMarketContextStages } from '../strategyHelpers/marketContextStages';
 import { createTestConnector } from '../testConnector';
 import type { BacktestSessionMonitor, PreparedBacktestData } from './contracts';
+import { resolveCoreResearchSetupIdentity } from './researchTrace';
 
 type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
   signal: Signal;
@@ -175,7 +177,7 @@ export const createBacktestSession = async ({
   const testConnector = createTestConnector(connector, {
     userName: test.userName,
     mlEnabled: test.ml,
-    aiEnabled: test.ai,
+    aiEnabled: Boolean(test.ai || test.researchTrace),
     fastMode: test.fast,
     instrument,
     executionCostModel,
@@ -215,6 +217,12 @@ export const createBacktestSession = async ({
     ReturnType<typeof buildMlPayload>
   >();
   const pendingAiRowBySignalId = new Map<string, PendingAiDatasetRow>();
+  const pendingResearchSetupBySignalId = new Map<
+    string,
+    ReturnType<typeof resolveCoreResearchSetupIdentity>
+  >();
+  const researchSkipCounts = new Map<string, number>();
+  const researchEventCounts = new Map<string, number>();
   const warningCounts = createWarningCounts();
   const replayEvaluations = test.collectReplaySignalEvaluations
     ? ([] as RuntimeSignalEvaluationRecord[])
@@ -226,6 +234,10 @@ export const createBacktestSession = async ({
     candle: Candle,
   ) => {
     recordSignalWarning(warningCounts, signal);
+    if (test.researchTrace && typeof signal === 'string') {
+      const reason = signal.trim() || 'NO_SIGNAL';
+      researchSkipCounts.set(reason, (researchSkipCounts.get(reason) ?? 0) + 1);
+    }
     if (
       typeof signal === 'string' &&
       signal.startsWith('BACKTEST_ENTRY_DELAY_')
@@ -249,6 +261,43 @@ export const createBacktestSession = async ({
         coinMarketCapEnabled: true,
         onStageStart: monitor.contextStage,
       });
+    }
+    if (
+      test.researchTrace &&
+      signal &&
+      typeof signal !== 'string' &&
+      signal.signalId
+    ) {
+      const identity = resolveCoreResearchSetupIdentity(signal);
+      pendingResearchSetupBySignalId.set(signal.signalId, identity);
+      await appendCoreResearchTraceEvent({
+        strategyName: test.strategyName,
+        chunkId,
+        event: {
+          schema: 'tradejs-core-research-trace/v1',
+          event:
+            signal.orderStatus === 'failed' || signal.orderStatus === 'skipped'
+              ? 'entry_rejected'
+              : 'signal_emitted',
+          timestamp: signal.timestamp,
+          strategy: signal.strategy || test.strategyName,
+          symbol: signal.symbol || test.symbol,
+          direction: signal.direction,
+          signalId: signal.signalId,
+          configId: test.configId,
+          backtestRunId: test.backtestRunId,
+          backtestTestKey: test.backtestTestKey,
+          ...identity,
+        },
+      });
+      const traceEvent =
+        signal.orderStatus === 'failed' || signal.orderStatus === 'skipped'
+          ? 'entry_rejected'
+          : 'signal_emitted';
+      researchEventCounts.set(
+        traceEvent,
+        (researchEventCounts.get(traceEvent) ?? 0) + 1,
+      );
     }
     if (test.ml && signal && typeof signal !== 'string' && signal.signalId) {
       pendingMlPayloadBySignalId.set(
@@ -288,7 +337,7 @@ export const createBacktestSession = async ({
   };
 
   const flush = async () => {
-    if (!test.ml && !test.ai) return;
+    if (!test.ml && !test.ai && !test.researchTrace) return;
     const batch = await testConnector.drainMlResultsBatch();
     for (const resultRecord of batch) {
       const payload = pendingMlPayloadBySignalId.get(resultRecord.signalId);
@@ -318,8 +367,62 @@ export const createBacktestSession = async ({
             payload: buildAiPayload(aiSignal),
             profit: resultRecord.profit,
             tradeResult: resultRecord.tradeResult,
+            research: {
+              schema: 'tradejs-core-research-row/v1',
+              ...resolveCoreResearchSetupIdentity(aiSignal),
+            },
           },
         });
+      }
+      const researchSetup = pendingResearchSetupBySignalId.get(
+        resultRecord.signalId,
+      );
+      if (test.researchTrace && researchSetup && resultRecord.tradeResult) {
+        pendingResearchSetupBySignalId.delete(resultRecord.signalId);
+        await appendCoreResearchTraceEvent({
+          strategyName: test.strategyName,
+          chunkId,
+          event: {
+            schema: 'tradejs-core-research-trace/v1',
+            event: 'entry_executed',
+            timestamp: resultRecord.tradeResult.entryTimestamp,
+            strategy: test.strategyName,
+            symbol: test.symbol,
+            direction: resultRecord.tradeResult.direction,
+            signalId: resultRecord.signalId,
+            configId: test.configId,
+            backtestRunId: test.backtestRunId,
+            backtestTestKey: test.backtestTestKey,
+            ...researchSetup,
+          },
+        });
+        researchEventCounts.set(
+          'entry_executed',
+          (researchEventCounts.get('entry_executed') ?? 0) + 1,
+        );
+        await appendCoreResearchTraceEvent({
+          strategyName: test.strategyName,
+          chunkId,
+          event: {
+            schema: 'tradejs-core-research-trace/v1',
+            event: 'position_exited',
+            timestamp: resultRecord.tradeResult.exitTimestamp,
+            strategy: test.strategyName,
+            symbol: test.symbol,
+            direction: resultRecord.tradeResult.direction,
+            signalId: resultRecord.signalId,
+            configId: test.configId,
+            backtestRunId: test.backtestRunId,
+            backtestTestKey: test.backtestTestKey,
+            netProfit: resultRecord.tradeResult.netProfit,
+            exitReason: resultRecord.tradeResult.exitReason,
+            ...researchSetup,
+          },
+        });
+        researchEventCounts.set(
+          'position_exited',
+          (researchEventCounts.get('position_exited') ?? 0) + 1,
+        );
       }
     }
   };
@@ -366,16 +469,44 @@ export const createBacktestSession = async ({
     flush: () => monitor.run('flush closed results', flush),
     result: async () => {
       await monitor.run('flush closed results', flush);
+      if (test.researchTrace) {
+        await appendCoreResearchTraceEvent({
+          strategyName: test.strategyName,
+          chunkId,
+          event: {
+            schema: 'tradejs-core-research-trace/v1',
+            event: 'skip_summary',
+            timestamp: test.options.end ?? test.options.start ?? 0,
+            strategy: test.strategyName,
+            symbol: test.symbol,
+            configId: test.configId,
+            backtestRunId: test.backtestRunId,
+            backtestTestKey: test.backtestTestKey,
+            skipCounts: Object.fromEntries(
+              [...researchSkipCounts.entries()].sort(([left], [right]) =>
+                left < right ? -1 : left > right ? 1 : 0,
+              ),
+            ),
+          },
+        });
+      }
       const result = await monitor.run('collect result', () =>
         testConnector.getResult(),
       );
+      const researchTraceSummary = test.researchTrace
+        ? {
+            events: Object.fromEntries(researchEventCounts),
+            skipCounts: Object.fromEntries(researchSkipCounts),
+          }
+        : undefined;
       return replayEvaluations
         ? {
             ...result,
             warningCounts,
             inlineReplaySignalEvaluations: replayEvaluations,
+            researchTraceSummary,
           }
-        : { ...result, warningCounts };
+        : { ...result, warningCounts, researchTraceSummary };
     },
   };
 };

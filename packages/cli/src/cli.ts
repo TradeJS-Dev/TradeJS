@@ -46,6 +46,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   'research:auto': () => import('./scripts/researchAuto'),
+  'research:core': () => import('./scripts/coreResearch'),
   results: () => import('./scripts/results'),
   'replay-runtime-evidence': () => import('./scripts/replayRuntimeEvidence'),
   'runtime-evidence': () => import('./scripts/runtimeEvidence'),

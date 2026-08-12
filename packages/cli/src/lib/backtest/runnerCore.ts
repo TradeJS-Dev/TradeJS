@@ -436,6 +436,7 @@ export const buildPreparedTestSuite = async ({
       },
       ml: mlEnabled,
       ai: aiEnabled,
+      researchTrace: Boolean(flags.researchTrace),
       fast: isFastMode,
       timeoutMs: testItemTimeoutMs,
     }))

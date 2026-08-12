@@ -32,4 +32,9 @@ export interface AiDatasetRow {
   backtestRunId?: string;
   backtestTestKey?: string;
   backtestChunkId?: string;
+  research?: {
+    schema: 'tradejs-core-research-row/v1';
+    setupIdentity: string;
+    setupIdentitySource: 'strategy-context' | 'signal-time-fallback';
+  };
 }

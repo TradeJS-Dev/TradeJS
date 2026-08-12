@@ -7,6 +7,7 @@ export default defineConfig({
     'src/aiLanguages.ts',
     'src/aiModels.ts',
     'src/backtestArtifacts.ts',
+    'src/coreResearch.ts',
     'src/files.ts',
     'src/http.ts',
     'src/logger.ts',

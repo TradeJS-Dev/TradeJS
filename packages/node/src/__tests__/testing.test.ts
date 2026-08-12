@@ -43,6 +43,9 @@ const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 const mockAppendAiDatasetRow = jest.fn((_params?: unknown) => undefined);
+const mockAppendCoreResearchTraceEvent = jest.fn(
+  (_params?: unknown) => undefined,
+);
 const mockEnrichSignalWithDerivativesContext = jest.fn(async (params: any) => {
   params.signal.additionalIndicators = {
     ...(params.signal.additionalIndicators ?? {}),
@@ -132,6 +135,11 @@ jest.mock('../strategyHelpers/hyperliquidWhaleContext', () => ({
 
 jest.mock('@tradejs/infra/ai', () => ({
   appendAiDatasetRow: (params: unknown) => mockAppendAiDatasetRow(params),
+}));
+
+jest.mock('@tradejs/infra/coreResearch', () => ({
+  appendCoreResearchTraceEvent: (params: unknown) =>
+    mockAppendCoreResearchTraceEvent(params),
 }));
 
 jest.mock('@tradejs/infra/ml', () => ({
@@ -782,6 +790,64 @@ describe('testing backtest flow', () => {
         }),
       }),
     );
+  });
+
+  it('writes an opt-in compact research funnel and checkpoint summary', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 'research-s1',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+        additionalIndicators: { pattern: { setupId: 'causal-setup' } },
+      })
+      .mockResolvedValueOnce('NO_PATTERN');
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      {
+        signalId: 'research-s1',
+        profit: 4,
+        tradeResult: {
+          direction: 'LONG',
+          entryTimestamp: 1_000_151,
+          exitTimestamp: 1_000_200,
+          netProfit: 4,
+          exitReason: 'take_profit',
+        },
+      },
+    ]);
+
+    const result = await testing(
+      createTest({
+        researchTrace: true,
+        chunkId: '202606201200-aaaaaaaa-research',
+        backtestRunId: '202606201200-aaaaaaaa',
+        backtestTestKey: 'research-key',
+      }),
+    );
+
+    expect(
+      mockAppendCoreResearchTraceEvent.mock.calls.map(
+        ([call]) => (call as any).event.event,
+      ),
+    ).toEqual([
+      'signal_emitted',
+      'entry_executed',
+      'position_exited',
+      'skip_summary',
+    ]);
+    expect(result?.researchTraceSummary).toEqual({
+      events: {
+        signal_emitted: 1,
+        entry_executed: 1,
+        position_exited: 1,
+      },
+      skipCounts: { NO_PATTERN: 1 },
+    });
   });
 
   it('snapshots AI payload source before later strategy mutations', async () => {

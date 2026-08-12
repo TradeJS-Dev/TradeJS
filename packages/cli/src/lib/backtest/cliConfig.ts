@@ -131,6 +131,11 @@ args.option(
   false,
 );
 args.option(
+  'researchTrace',
+  'Write compact setup/entry/exit/skip research trace JSONL',
+  false,
+);
+args.option(
   ['K', 'continue'],
   'Continue latest compatible interrupted backtest run',
   false,

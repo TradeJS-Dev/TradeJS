@@ -103,7 +103,7 @@ type BacktestReportRow = {
 
 type PersistedBacktestResultEntry = Pick<
   TestWorkerResult,
-  'orderLogId' | 'stat' | 'executionCostModel'
+  'orderLogId' | 'stat' | 'executionCostModel' | 'researchTraceSummary'
 > & {
   test: Pick<
     TestWorkerResult['test'],
@@ -133,6 +133,7 @@ export const toPersistedBacktestResultEntry = (
   orderLogId: result.orderLogId,
   stat: result.stat,
   executionCostModel: result.executionCostModel,
+  researchTraceSummary: result.researchTraceSummary,
   test: {
     userName: result.test.userName,
     name: result.test.name,
@@ -710,6 +711,7 @@ export const backtest = async () => {
       cacheOnly: Boolean(flags.cacheOnly),
       fast: Boolean(flags.fast),
       ml: Boolean(flags.ml),
+      researchTrace: Boolean(flags.researchTrace),
     },
     marketContextPreparedAt: new Date().toISOString(),
     testSuite,
