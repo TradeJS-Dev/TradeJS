@@ -11,12 +11,13 @@ import {
   buildCompletedBacktestDatasetAttemptKeys,
   isBacktestDatasetRowForCompletedAttempt,
   loadBacktestCheckpointResults,
+  loadBacktestRunManifest,
 } from './backtest/checkpoint';
 
 export type AiExportStrategyParams = {
   outDir: string;
   strategyName: string;
-  keepChunks: boolean;
+  keepChunks?: boolean;
   partMonths: number;
   requestedRunId?: string;
   userName: string;
@@ -66,6 +67,13 @@ const resolveRunScopedAiChunks = async ({
     return null;
   }
 
+  const manifest = await loadBacktestRunManifest({ runId, userName });
+  if (manifest?.status === 'running') {
+    throw new Error(
+      `AI export run "${runId}" is still running; wait for completion before merging its chunks`,
+    );
+  }
+
   const chunkFiles = await listAiChunkFiles({ strategyName, outDir, runId });
   if (!chunkFiles.length) {
     return {
@@ -89,7 +97,7 @@ export const exportAiStrategy = async (
   const {
     outDir,
     strategyName,
-    keepChunks,
+    keepChunks = true,
     requestedRunId,
     userName,
     now = Date.now,

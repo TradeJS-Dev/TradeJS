@@ -21,8 +21,8 @@ args.option(['o', 'outDir'], 'Dataset directory', 'data/ai/export');
 args.option(['s', 'strategy'], 'Strategy name', '');
 args.option(
   ['k', 'keepChunks'],
-  'Keep source chunk files after successful merge',
-  false,
+  'Keep source chunk files after successful merge (safe default for active writers)',
+  true,
 );
 args.option(
   'partMonths',

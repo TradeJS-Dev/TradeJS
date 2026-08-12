@@ -112,6 +112,65 @@ describe('aiDatasetFile', () => {
     expect(content.trim().split('\n')).toHaveLength(2);
   });
 
+  it('preserves concurrent first rows for the same chunk file', async () => {
+    const rows = [
+      { signalId: 'first', symbol: 'ETHUSDT' },
+      { signalId: 'second', symbol: 'BTCUSDT' },
+    ].map(({ signalId, symbol }, index) => ({
+      signalId,
+      strategyName: 'TrendLine',
+      symbol,
+      direction: 'LONG' as const,
+      timestamp: index + 1,
+      profit: 1,
+      payload: makePayload({
+        signalId,
+        symbol,
+        direction: 'LONG',
+        timestamp: index + 1,
+      }),
+    }));
+    const appendRow = (chunkId: string, row: (typeof rows)[number]) =>
+      appendAiDatasetRow({
+        strategyName: 'TrendLine',
+        chunkId,
+        outDir: tempDir,
+        row,
+      });
+
+    for (const row of rows) {
+      await appendRow('sequential-chunk', row);
+    }
+    const sequentialPath = getAiChunkFilePath(
+      'TrendLine',
+      'sequential-chunk',
+      tempDir,
+    );
+    await closeAiDatasetWriter(sequentialPath);
+
+    await Promise.all(rows.map((row) => appendRow('concurrent-chunk', row)));
+    const concurrentPath = getAiChunkFilePath(
+      'TrendLine',
+      'concurrent-chunk',
+      tempDir,
+    );
+    await closeAiDatasetWriter(concurrentPath);
+
+    const [sequentialContent, concurrentContent] = await Promise.all([
+      fs.readFile(sequentialPath, 'utf8'),
+      fs.readFile(concurrentPath, 'utf8'),
+    ]);
+    expect(concurrentContent).toBe(sequentialContent);
+    const serializedRows = concurrentContent
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(serializedRows.map((row) => row.signalId)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
   it('normalizes file tokens and chunk file path', () => {
     expect(toFileToken('  Trend Line / V2  ')).toBe('trend_line_v2');
     expect(getAiChunkFilePath('Trend Line', 'Shard 01', '/tmp/out')).toBe(

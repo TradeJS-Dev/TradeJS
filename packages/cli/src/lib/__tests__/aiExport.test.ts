@@ -9,6 +9,20 @@ import {
   type AiExportStrategyResult,
 } from '../aiExport';
 
+jest.mock('../backtest/checkpoint', () => {
+  const actual = jest.requireActual('../backtest/checkpoint');
+  return {
+    ...actual,
+    loadBacktestRunManifest: jest.fn(),
+  };
+});
+
+const { loadBacktestRunManifest } = jest.requireMock(
+  '../backtest/checkpoint',
+) as {
+  loadBacktestRunManifest: jest.Mock;
+};
+
 type FixtureRow = {
   signalId: string;
   strategyName: string;
@@ -86,6 +100,8 @@ describe('AI export sequencing', () => {
 
   beforeEach(async () => {
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-export-all-'));
+    loadBacktestRunManifest.mockReset();
+    loadBacktestRunManifest.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -93,6 +109,65 @@ describe('AI export sequencing', () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('preserves source chunks by default so an active writer cannot lose earlier rows', async () => {
+    const outDir = path.join(tempRoot, 'active-writer');
+    await fs.mkdir(outDir, { recursive: true });
+    const chunkPath = path.join(outDir, 'ai-dataset-alpha-chunk-active.jsonl');
+    const firstRow = createFixtureRows('alpha', [
+      { signalId: 'before-export', timestamp: Date.UTC(2026, 0, 1) },
+    ])[0];
+    const secondRow = createFixtureRows('alpha', [
+      { signalId: 'after-export', timestamp: Date.UTC(2026, 0, 2) },
+    ])[0];
+    await fs.writeFile(chunkPath, `${JSON.stringify(firstRow)}\n`, 'utf8');
+
+    const result = await exportAiStrategy({
+      outDir,
+      strategyName: 'alpha',
+      partMonths: 0,
+      userName: 'root',
+      now: () => 123456789,
+    });
+    await fs.appendFile(chunkPath, `${JSON.stringify(secondRow)}\n`, 'utf8');
+
+    expect(result?.deleteChunks).toBe(false);
+    await expect(fs.readFile(chunkPath, 'utf8')).resolves.toBe(
+      `${JSON.stringify(firstRow)}\n${JSON.stringify(secondRow)}\n`,
+    );
+  });
+
+  it.each([
+    ['explicit', '202601010000-aaaaaaaa'],
+    ['implicit latest-run discovery', undefined],
+  ])(
+    'refuses an %s export while the backtest manifest is still running',
+    async (_mode, requestedRunId) => {
+      const outDir = path.join(tempRoot, 'running-run');
+      const runId = '202601010000-aaaaaaaa';
+      await fs.mkdir(outDir, { recursive: true });
+      await fs.writeFile(
+        path.join(outDir, `ai-dataset-alpha-chunk-${runId}-worker.jsonl`),
+        `${JSON.stringify(
+          createFixtureRows('alpha', [
+            { signalId: 'partial', timestamp: Date.UTC(2026, 0, 1) },
+          ])[0],
+        )}\n`,
+        'utf8',
+      );
+      loadBacktestRunManifest.mockResolvedValue({ status: 'running' });
+
+      await expect(
+        exportAiStrategy({
+          outDir,
+          strategyName: 'alpha',
+          requestedRunId,
+          partMonths: 0,
+          userName: 'root',
+        }),
+      ).rejects.toThrow('still running');
+    },
+  );
 
   it('exports all strategies exactly like separate sequential exports without mixing or losing rows', async () => {
     const allDir = path.join(tempRoot, 'all');

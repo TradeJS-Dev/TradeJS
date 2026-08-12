@@ -7,13 +7,16 @@ import { fileURLToPath } from 'node:url';
 import { calculateAdvancedTradeMetrics } from '@tradejs/core/backtest';
 import {
   closeRedisConnection,
+  getData,
   getHashJsonValues,
   redisKeys,
 } from '@tradejs/infra/redis';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_PERIODS = [180, 90, 30, 7];
+const DEFAULT_PERIODS = [365, 180, 90, 30, 7];
 const ARTIFACT_READ_CONCURRENCY = 8;
+const WORST_SYMBOL_DRAWDOWN_WARNING =
+  'worstSymbolMaxDrawdownPct is the maximum stat.maxDrawdown across individual results/symbols; it is not portfolio MaxDD.';
 
 const resolveProjectRoot = () =>
   path.resolve(String(process.env.PROJECT_CWD || process.cwd()));
@@ -237,11 +240,184 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return results;
 };
 
+export const summarizeResultStats = ({
+  results,
+  startTimestamp,
+  endTimestamp,
+  projectedUniverse = null,
+}) => {
+  const resultCount = results.length;
+  const windowDays = (endTimestamp - startTimestamp) / DAY_MS;
+  let netProfit = 0;
+  let orders = 0;
+  let wins = 0;
+  let losses = 0;
+  let worstSymbolMaxDrawdownPct = null;
+
+  for (const result of results) {
+    const stat = result?.stat ?? {};
+    netProfit += toFiniteNumber(stat.netProfit ?? stat.profit);
+    orders += toFiniteNumber(stat.orders);
+    wins += toFiniteNumber(stat.wins);
+    losses += toFiniteNumber(stat.losses);
+
+    const maxDrawdown = toFiniteNumber(stat.maxDrawdown, Number.NaN);
+    if (Number.isFinite(maxDrawdown)) {
+      worstSymbolMaxDrawdownPct = Math.max(
+        worstSymbolMaxDrawdownPct ?? Number.NEGATIVE_INFINITY,
+        maxDrawdown,
+      );
+    }
+  }
+
+  const closedOutcomes = wins + losses;
+  const observedCadenceTradesPerDay =
+    windowDays > 0 ? orders / windowDays : null;
+  const projectedCadence =
+    projectedUniverse != null &&
+    resultCount > 0 &&
+    observedCadenceTradesPerDay != null
+      ? {
+          label: `projected cadence for ${projectedUniverse} results`,
+          projectedUniverse,
+          actualResultCount: resultCount,
+          scaleFactor: projectedUniverse / resultCount,
+          tradesPerDay:
+            observedCadenceTradesPerDay * (projectedUniverse / resultCount),
+        }
+      : null;
+
+  return {
+    source: 'redis-result-stat',
+    authoritativeAggregate: true,
+    resultCount,
+    startTimestamp,
+    endTimestamp,
+    windowDays,
+    netProfit,
+    orders,
+    wins,
+    losses,
+    winRatePct: closedOutcomes > 0 ? (wins / closedOutcomes) * 100 : null,
+    pnlPerTrade: orders > 0 ? netProfit / orders : null,
+    observedCadenceTradesPerDay,
+    projectedCadence,
+    worstSymbolMaxDrawdownPct,
+    warnings: [WORST_SYMBOL_DRAWDOWN_WARNING],
+  };
+};
+
+const normalizeConfigId = (test) => {
+  const configId = String(test?.configId ?? '').trim();
+  return configId || '<missing-config-id>';
+};
+
+const uniqueSymbolCount = (tests) =>
+  new Set(
+    tests.map((test) => String(test?.symbol ?? '').trim()).filter(Boolean),
+  ).size;
+
+export const buildConfigStatSummaries = ({
+  results,
+  manifest,
+  startTimestamp,
+  endTimestamp,
+  projectedUniverse = null,
+}) => {
+  const plannedTests = Array.isArray(manifest?.testSuite)
+    ? manifest.testSuite
+    : [];
+  const resultsByConfig = new Map();
+  const plannedByConfig = new Map();
+
+  for (const test of plannedTests) {
+    const configId = normalizeConfigId(test);
+    const bucket = plannedByConfig.get(configId) ?? [];
+    bucket.push(test);
+    plannedByConfig.set(configId, bucket);
+  }
+  for (const result of results) {
+    const configId = normalizeConfigId(result?.test);
+    const bucket = resultsByConfig.get(configId) ?? [];
+    bucket.push(result);
+    resultsByConfig.set(configId, bucket);
+  }
+
+  const configIds = [
+    ...new Set([...plannedByConfig.keys(), ...resultsByConfig.keys()]),
+  ].sort((left, right) => left.localeCompare(right));
+  const manifestStatus = String(manifest?.status ?? 'missing');
+  const statSummariesByConfig = Object.fromEntries(
+    configIds.map((configId) => {
+      const configResults = resultsByConfig.get(configId) ?? [];
+      const configPlannedTests = plannedByConfig.get(configId) ?? [];
+      const planned = configPlannedTests.length;
+      const completed = configResults.length;
+      const missing = Math.max(0, planned - completed);
+      const extra = Math.max(0, completed - planned);
+      const authoritativeAggregate =
+        planned > 0 && completed === planned && manifestStatus === 'completed';
+      const completionWarning = authoritativeAggregate
+        ? null
+        : `Config ${configId} is not an authoritative complete aggregate: manifest status=${manifestStatus}, completed=${completed}, planned=${planned}.`;
+      const errorPersistenceWarning =
+        'Worker error counts are not persisted in the backtest run manifest; inspect the terminal/report log for actual worker errors.';
+      const summary = summarizeResultStats({
+        results: configResults,
+        startTimestamp,
+        endTimestamp,
+        projectedUniverse,
+      });
+
+      return [
+        configId,
+        {
+          ...summary,
+          configId,
+          authoritativeAggregate,
+          completion: {
+            status: authoritativeAggregate ? 'complete' : 'partial',
+            manifestStatus,
+            planned,
+            completed,
+            missing,
+            extra,
+            plannedSymbols: uniqueSymbolCount(configPlannedTests),
+            completedSymbols: uniqueSymbolCount(
+              configResults.map((result) => result.test),
+            ),
+            errors: null,
+            errorStatus: 'not_persisted',
+          },
+          warnings: [
+            ...summary.warnings,
+            errorPersistenceWarning,
+            ...(completionWarning ? [completionWarning] : []),
+          ],
+        },
+      ];
+    }),
+  );
+  const multipleConfigsWarning =
+    configIds.length > 1
+      ? `Run contains multiple configId buckets (${configIds.join(', ')}); top-level statSummary is null and config metrics are reported separately.`
+      : null;
+
+  return {
+    configIds,
+    statSummary:
+      configIds.length === 1 ? statSummariesByConfig[configIds[0]] : null,
+    statSummariesByConfig,
+    warnings: multipleConfigsWarning ? [multipleConfigsWarning] : [],
+  };
+};
+
 const parseArgs = (argv) => {
   const parsed = {
     runId: null,
     userName: 'root',
     periods: DEFAULT_PERIODS,
+    projectedUniverse: null,
     json: false,
   };
 
@@ -254,6 +430,12 @@ const parseArgs = (argv) => {
         .split(',')
         .map((value) => Number.parseInt(value.trim(), 10))
         .filter((value) => Number.isFinite(value) && value > 0);
+    } else if (arg === '--projected-universe') {
+      const projectedUniverse = Number(argv[++index] ?? '');
+      if (!Number.isInteger(projectedUniverse) || projectedUniverse <= 0) {
+        throw new Error('--projected-universe must be a positive integer');
+      }
+      parsed.projectedUniverse = projectedUniverse;
     } else if (arg === '--json') parsed.json = true;
   }
 
@@ -282,17 +464,40 @@ const formatSummaryTable = (report) => {
   return rows.join('\n');
 };
 
+const formatStatSummary = (statSummary) => {
+  const projected = statSummary.projectedCadence
+    ? `${formatNumber(statSummary.projectedCadence.tradesPerDay)} trades/day (${statSummary.projectedCadence.label}; scale=${formatNumber(statSummary.projectedCadence.scaleFactor, 4)})`
+    : 'not requested';
+
+  return [
+    `Redis result.stat aggregate for config ${statSummary.configId ?? '<unknown>'} (${statSummary.authoritativeAggregate ? 'authoritative' : 'partial'}, including --fast runs):`,
+    ...(statSummary.completion
+      ? [
+          `completion: ${statSummary.completion.completed}/${statSummary.completion.planned} tests; missing=${statSummary.completion.missing}; symbols=${statSummary.completion.completedSymbols}/${statSummary.completion.plannedSymbols}; manifest=${statSummary.completion.manifestStatus}; errors=${statSummary.completion.errorStatus}`,
+        ]
+      : []),
+    `results/window: ${statSummary.resultCount}/${formatNumber(statSummary.windowDays, 2)}d`,
+    `PnL/N/W/L/WR: ${formatNumber(statSummary.netProfit)}/${statSummary.orders}/${statSummary.wins}/${statSummary.losses}/${formatNumber(statSummary.winRatePct)}%`,
+    `PnL/trade: ${formatNumber(statSummary.pnlPerTrade, 4)}`,
+    `observed cadence: ${formatNumber(statSummary.observedCadenceTradesPerDay)} trades/day`,
+    `projected cadence: ${projected}`,
+    `worst symbol MaxDD: ${formatNumber(statSummary.worstSymbolMaxDrawdownPct)}% (not portfolio MaxDD)`,
+  ].join('\n');
+};
+
 export const buildRunReport = async ({
   runId,
   userName = 'root',
   periods = DEFAULT_PERIODS,
+  projectedUniverse = null,
 }) => {
-  const envelopes = await getHashJsonValues(
-    redisKeys.backtestRunResults(userName, runId),
-  );
+  const [manifest, envelopes] = await Promise.all([
+    getData(redisKeys.backtestRun(userName, runId), null),
+    getHashJsonValues(redisKeys.backtestRunResults(userName, runId)),
+  ]);
   const results = envelopes
     .map((entry) => entry?.result ?? entry)
-    .filter((entry) => entry?.orderLogId && entry?.test);
+    .filter((entry) => entry?.test && entry?.stat);
 
   if (!results.length) {
     throw new Error(`No backtest results found for run ${runId}`);
@@ -302,6 +507,7 @@ export const buildRunReport = async ({
     results,
     ARTIFACT_READ_CONCURRENCY,
     async (result) => {
+      if (!result.orderLogId) return null;
       const orderLog = await readCachedOrderLog({
         userName,
         orderLogId: result.orderLogId,
@@ -338,38 +544,61 @@ export const buildRunReport = async ({
   const startTimestamp = Math.min(...startTimestamps);
   const endTimestamp = Math.max(...endTimestamps);
   const fullDays = (endTimestamp - startTimestamp) / DAY_MS;
+  const configStats = buildConfigStatSummaries({
+    results,
+    manifest,
+    startTimestamp,
+    endTimestamp,
+    projectedUniverse,
+  });
   const periodSpecs = [
     { label: `full (${formatNumber(fullDays, 0)}d)`, days: null },
     ...periods
       .filter((days) => days < fullDays - 0.5)
       .map((days) => ({ label: `${days}d`, days })),
   ];
+  const artifactMetricsAvailable =
+    configStats.configIds.length === 1 &&
+    availableArtifacts.length === results.length;
+  const artifactMetricsWarning = artifactMetricsAvailable
+    ? null
+    : configStats.configIds.length > 1
+      ? `Artifact-derived periods are disabled for grid runs with multiple configId buckets (${configStats.configIds.join(', ')}) to avoid aggregating configs.`
+      : `Artifact-derived periods are incomplete (${availableArtifacts.length}/${results.length} order logs); for --fast --ai runs use fast-ai-export-metrics.mjs instead.`;
 
   return {
     runId,
     userName,
+    manifestStatus: manifest?.status ?? null,
     results: results.length,
+    statSummary: configStats.statSummary,
+    statSummariesByConfig: configStats.statSummariesByConfig,
+    statSummaryWarnings: configStats.warnings,
     artifacts: availableArtifacts.length,
     missingArtifacts: results.length - availableArtifacts.length,
     incompleteCycles: reconstructed.incompleteCycles,
     trades: reconstructed.trades.length,
     increases: reconstructed.increaseEvents.length,
-    periods: periodSpecs.map(({ label, days }) => {
-      const periodStart =
-        days == null
-          ? startTimestamp
-          : Math.max(startTimestamp, endTimestamp - days * DAY_MS);
-      return {
-        label,
-        startTimestamp: periodStart,
-        endTimestamp,
-        metrics: summarizeTradeWindow({
-          ...reconstructed,
+    periods: (artifactMetricsAvailable ? periodSpecs : []).map(
+      ({ label, days }) => {
+        const periodStart =
+          days == null
+            ? startTimestamp
+            : Math.max(startTimestamp, endTimestamp - days * DAY_MS);
+        return {
+          label,
           startTimestamp: periodStart,
           endTimestamp,
-        }),
-      };
-    }),
+          metrics: summarizeTradeWindow({
+            ...reconstructed,
+            startTimestamp: periodStart,
+            endTimestamp,
+          }),
+        };
+      },
+    ),
+    artifactMetricsAvailable,
+    artifactMetricsWarning,
   };
 };
 
@@ -385,8 +614,16 @@ const main = async () => {
     process.stdout.write(
       [
         `run: ${report.runId}`,
+        ...(report.statSummary
+          ? [formatStatSummary(report.statSummary)]
+          : Object.values(report.statSummariesByConfig).map(formatStatSummary)),
+        ...report.statSummaryWarnings,
+        '',
         `results/artifacts: ${report.results}/${report.artifacts} (missing=${report.missingArtifacts}, incomplete=${report.incompleteCycles})`,
         `trades/increases: ${report.trades}/${report.increases}`,
+        ...(report.artifactMetricsWarning
+          ? [report.artifactMetricsWarning]
+          : []),
         '',
         formatSummaryTable(report),
         '',

@@ -44,7 +44,7 @@ type SortedRunHead = {
   reader: readline.Interface;
 };
 
-const writerByPath = new Map<string, WriterState>();
+const writerByPath = new Map<string, Promise<WriterState>>();
 
 export { mergeJsonlFiles, toFileToken };
 
@@ -84,21 +84,33 @@ export const appendAiDatasetRow = async (params: {
 }) => {
   const { strategyName, chunkId, row, outDir = DEFAULT_DIR } = params;
   const filePath = getAiChunkFilePath(strategyName, chunkId, outDir);
-  let state = writerByPath.get(filePath);
-  if (!state) {
-    await fs.mkdir(outDir, { recursive: true });
-    const stream = createWriteStream(filePath, {
-      encoding: 'utf8',
-      flags: 'a',
-    });
-    state = {
-      filePath,
-      stream,
-      buffer: [],
-      writeQueue: Promise.resolve(),
-      closed: false,
-    };
-    writerByPath.set(filePath, state);
+  let statePromise = writerByPath.get(filePath);
+  if (!statePromise) {
+    statePromise = (async () => {
+      await fs.mkdir(outDir, { recursive: true });
+      const stream = createWriteStream(filePath, {
+        encoding: 'utf8',
+        flags: 'a',
+      });
+      return {
+        filePath,
+        stream,
+        buffer: [],
+        writeQueue: Promise.resolve(),
+        closed: false,
+      } satisfies WriterState;
+    })();
+    writerByPath.set(filePath, statePromise);
+  }
+
+  let state: WriterState;
+  try {
+    state = await statePromise;
+  } catch (error) {
+    if (writerByPath.get(filePath) === statePromise) {
+      writerByPath.delete(filePath);
+    }
+    throw error;
   }
   if (state.closed) {
     throw new Error(`AI dataset writer is closed: ${filePath}`);
@@ -123,10 +135,12 @@ const flushState = async (state: WriterState) => {
 };
 
 export const flushAiDatasetWriter = async (filePath: string) => {
-  const state = writerByPath.get(filePath);
-  if (!state || state.closed) {
+  const statePromise = writerByPath.get(filePath);
+  if (!statePromise) {
     return;
   }
+  const state = await statePromise;
+  if (state.closed) return;
   state.writeQueue = state.writeQueue.then(() => flushState(state));
   await state.writeQueue;
 };
@@ -145,13 +159,16 @@ const closeState = async (state: WriterState) => {
 };
 
 export const closeAiDatasetWriter = async (filePath: string) => {
-  const state = writerByPath.get(filePath);
-  if (!state) {
+  const statePromise = writerByPath.get(filePath);
+  if (!statePromise) {
     return;
   }
+  const state = await statePromise;
   state.writeQueue = state.writeQueue.then(() => closeState(state));
   await state.writeQueue;
-  writerByPath.delete(filePath);
+  if (writerByPath.get(filePath) === statePromise) {
+    writerByPath.delete(filePath);
+  }
 };
 
 export const closeAllAiDatasetWriters = async () => {
