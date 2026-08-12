@@ -1,5 +1,6 @@
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { strategyEvidenceSha256 } from '@tradejs/infra/strategyReleaseEvidence';
 import {
   listTradingAccounts,
   resolveTradingAccount,
@@ -35,13 +36,12 @@ import {
 } from '#app/lib/runtimeStrategies';
 import {
   assignLegacyRuntimeTradeAccountScopes,
-  buildRuntimeStrategyAiGateChanges,
   buildRuntimeStrategyIdentityKey,
-  buildRuntimeStrategyMaxLossValueTimeline,
-  getRuntimeStrategyAiGateObservedFrom,
-  isRuntimeStrategyLineageScope,
-  type RuntimeStrategyLineageScope,
 } from '#app/lib/runtimeStrategyLineage';
+import {
+  loadStrategyEvidenceTimelines,
+  strategyEvidenceTimelineSelectorKey,
+} from '#app/lib/strategyEvidenceTimeline';
 import {
   isRuntimeTradeInConnectorScope,
   syncRuntimeTrades,
@@ -53,7 +53,6 @@ const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 90;
 const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
 const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
-const RUNTIME_LINEAGE_HISTORY_MS = 30 * 24 * 60 * 60 * 1000;
 
 const coerceHours = (value: string | number | null | undefined) => {
   const parsed = Number(value ?? Number.NaN);
@@ -150,25 +149,6 @@ const loadRuntimeTrades = async (
     .filter(filterByWindow)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
-
-const loadRuntimeLineageScopes = async (
-  userName: string,
-  endTime: number,
-): Promise<RuntimeStrategyLineageScope[]> =>
-  (
-    await Promise.all(
-      getRuntimeStorageDayKeys(
-        Math.max(0, endTime - RUNTIME_LINEAGE_HISTORY_MS),
-        endTime,
-      ).map((dayKey) =>
-        getHashJsonValues<RuntimeStrategyLineageScope>(
-          redisKeys.runtimeLineageScopeBucket(userName, dayKey),
-        ),
-      ),
-    )
-  )
-    .flat()
-    .filter(isRuntimeStrategyLineageScope);
 
 const buildExchangeTimeRanges = (startTime: number, endTime: number) => {
   const ranges: Array<{ startTime: number; endTime: number }> = [];
@@ -399,7 +379,6 @@ export const loadRuntimeDashboard = async ({
     openPositionsSnapshot,
     runtimeDeployments,
     tradingAccounts,
-    runtimeLineageScopes,
   ] = await Promise.all([
     loadRuntimeStrategyConfigs(userName),
     loadConfiguredStrategyNames(projectRoot),
@@ -420,7 +399,6 @@ export const loadRuntimeDashboard = async ({
     loadOpenPositions(connector, exchangeErrors),
     listRuntimeDeployments(userName),
     listTradingAccounts(userName),
-    loadRuntimeLineageScopes(userName, endTime),
   ]);
   const relevantTrades = selectTradesForWindow(
     runtimeTrades,
@@ -491,6 +469,11 @@ export const loadRuntimeDashboard = async ({
       enabled?: boolean;
       config?: Record<string, unknown>;
       connected?: boolean;
+      gitSha?: string;
+      configFingerprint?: string;
+      gateFingerprint?: string;
+      contextFingerprint?: string;
+      maxLossValue?: number;
     }
   >();
   const runtimeConfigAccountScopes = new Array<{
@@ -521,6 +504,7 @@ export const loadRuntimeDashboard = async ({
         enabled: deployment.enabled && deploymentStrategy.enabled !== false,
         config: deploymentStrategy.config,
         connected: false,
+        configFingerprint: strategyEvidenceSha256(deploymentStrategy.config),
       });
     }
   }
@@ -561,6 +545,7 @@ export const loadRuntimeDashboard = async ({
       enabled: isRuntimeStrategyConfigEnabled(runtimeConfig.config),
       config: runtimeConfig.config,
       connected: true,
+      configFingerprint: strategyEvidenceSha256(runtimeConfig.config),
     });
   }
   const accountScopedTrades = assignLegacyRuntimeTradeAccountScopes(
@@ -581,8 +566,29 @@ export const loadRuntimeDashboard = async ({
         : undefined,
       deploymentId: trade.deploymentId,
       policyProfileId: trade.policyProfileId,
+      configFingerprint: trade.runtimeLineage?.configFingerprint,
+      gateFingerprint: trade.runtimeLineage?.gateFingerprint,
+      contextFingerprint: trade.runtimeLineage?.contextFingerprint,
+      gitSha: trade.runtimeLineage?.gitSha ?? undefined,
+      maxLossValue: trade.runtimeLineage?.maxLossValue ?? undefined,
     });
   }
+
+  const evidenceTimelines = await loadStrategyEvidenceTimelines({
+    projectRoot,
+    markerDir: process.env.STRATEGY_RELEASE_MARKER_DIR,
+    selectors: [...identityByKey.values()].map((identity) => ({
+      strategy: identity.strategyName,
+      configFingerprint: identity.configFingerprint,
+      gateFingerprint: identity.gateFingerprint,
+      contextFingerprint: identity.contextFingerprint,
+      gitSha: identity.gitSha,
+      maxLossValue: identity.maxLossValue,
+      requireCompleteLineage: true,
+    })),
+    startTime,
+    endTime,
+  });
 
   const strategies = await Promise.all(
     [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
@@ -600,13 +606,6 @@ export const loadRuntimeDashboard = async ({
         .map((trade) => toRuntimeTradeView(trade, endTime));
       const analytics = buildRuntimeStrategyAnalytics({
         trades: strategyTrades,
-        startTime,
-        endTime,
-      });
-      const maxLossValueTimeline = buildRuntimeStrategyMaxLossValueTimeline({
-        scopes: runtimeLineageScopes,
-        strategyName,
-        configId: identity.configId,
         startTime,
         endTime,
       });
@@ -633,20 +632,21 @@ export const loadRuntimeDashboard = async ({
         stat: analytics.stat,
         summary: analytics.summary,
         orderLog: analytics.orderLog,
-        aiGateObservedFrom: getRuntimeStrategyAiGateObservedFrom({
-          scopes: runtimeLineageScopes,
-          strategyName,
-          configId: identity.configId,
-          endTime,
-        }),
-        aiGateChanges: buildRuntimeStrategyAiGateChanges({
-          scopes: runtimeLineageScopes,
-          strategyName,
-          configId: identity.configId,
-          startTime,
-          endTime,
-        }),
-        maxLossValueTimeline,
+        evidenceTimeline: evidenceTimelines.get(
+          strategyEvidenceTimelineSelectorKey({
+            strategy: strategyName,
+            configFingerprint: identity.configFingerprint,
+            gateFingerprint: identity.gateFingerprint,
+            contextFingerprint: identity.contextFingerprint,
+            gitSha: identity.gitSha,
+            maxLossValue: identity.maxLossValue,
+            requireCompleteLineage: true,
+          }),
+        ) ?? {
+          status: 'missing',
+          observedFrom: null,
+          markers: [],
+        },
         recentTrades: strategyTrades
           .slice(0, 8)
           .map((trade) => toRuntimeTradeView(trade, endTime)),

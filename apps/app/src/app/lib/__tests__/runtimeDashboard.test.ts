@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 const mockLoadRuntimeStrategyConfigs = jest.fn();
 const mockListRuntimeDeployments = jest.fn();
 const mockListTradingAccounts = jest.fn();
@@ -70,10 +75,15 @@ jest.mock('@tradejs/infra/logger', () => ({
 }));
 
 import { loadRuntimeDashboard } from '../runtimeDashboard';
+import { canonicalStrategyEvidenceJson } from '../strategyEvidenceTimeline';
 
 describe('runtime dashboard', () => {
+  const temporaryRoots: string[] = [];
+  const originalMarkerDir = process.env.STRATEGY_RELEASE_MARKER_DIR;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.STRATEGY_RELEASE_MARKER_DIR;
     mockLoadRuntimeStrategyConfigs.mockResolvedValue([
       {
         key: 'users:root:strategies:TrendLine:config',
@@ -99,6 +109,22 @@ describe('runtime dashboard', () => {
         accountId: 'crypto-main',
       })),
     );
+  });
+
+  afterEach(async () => {
+    await Promise.all(
+      temporaryRoots
+        .splice(0)
+        .map((root) => fs.rm(root, { recursive: true, force: true })),
+    );
+  });
+
+  afterAll(() => {
+    if (originalMarkerDir === undefined) {
+      delete process.env.STRATEGY_RELEASE_MARKER_DIR;
+    } else {
+      process.env.STRATEGY_RELEASE_MARKER_DIR = originalMarkerDir;
+    }
   });
 
   it('builds the complete dashboard read model through one interface', async () => {
@@ -142,6 +168,11 @@ describe('runtime dashboard', () => {
           config: { INTERVAL: '15', ENABLE: true },
           symbols: [],
           orders: [],
+          evidenceTimeline: {
+            status: 'missing',
+            observedFrom: null,
+            markers: [],
+          },
         },
       ],
     });
@@ -154,5 +185,78 @@ describe('runtime dashboard', () => {
       loadRuntimeDashboard({ userName: 'root', provider: 'missing' }),
     ).rejects.toThrow('No connector available for provider "missing"');
     expect(mockLoadRuntimeStrategyConfigs).not.toHaveBeenCalled();
+  });
+
+  it('does not attach immutable evidence without exact runtime lineage', async () => {
+    const projectRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'runtime-dashboard-evidence-'),
+    );
+    temporaryRoots.push(projectRoot);
+    const createdAt = 1_699_999_500_000;
+    const payload = {
+      strategy: 'TrendLine',
+      createdAt,
+      markers: [
+        {
+          id: 'release-1:gate',
+          type: 'G',
+          timestamp: createdAt,
+          label: 'Composition frozen',
+          summary: 'TrendLine composition',
+          artifactId: 'release-1',
+          artifactSha256: 'a'.repeat(64),
+          configFingerprint: createHash('sha256')
+            .update(
+              canonicalStrategyEvidenceJson({ INTERVAL: '15', ENABLE: true }),
+            )
+            .digest('hex'),
+        },
+      ],
+      sourceArtifacts: [
+        {
+          artifactId: 'source-1',
+          sha256: 'b'.repeat(64),
+          path: '/private/evidence/source.json',
+        },
+      ],
+    };
+    const payloadSha256 = createHash('sha256')
+      .update(canonicalStrategyEvidenceJson(payload))
+      .digest('hex');
+    const artifactId = `TrendLine_20231114T220500Z_${payloadSha256.slice(0, 16)}`;
+    const markerDir = path.join(
+      projectRoot,
+      'data/strategy-release/markers/TrendLine',
+    );
+    await fs.mkdir(markerDir, { recursive: true });
+    await fs.writeFile(
+      path.join(markerDir, `${artifactId}.json`),
+      JSON.stringify({
+        schema: 'tradejs-strategy-evidence-markers/v1',
+        artifactId,
+        payloadSha256,
+        payload,
+      }),
+    );
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot,
+    });
+
+    expect(response.strategies[0]?.evidenceTimeline).toEqual({
+      status: 'missing',
+      observedFrom: null,
+      markers: [],
+    });
+    expect(JSON.stringify(response)).not.toContain('/private/evidence');
+    expect(
+      mockGetHashJsonValues.mock.calls.some(([key]) =>
+        String(key).startsWith('runtime-lineage:'),
+      ),
+    ).toBe(false);
   });
 });

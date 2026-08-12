@@ -10,14 +10,11 @@ import type {
   RuntimeTradeRecord,
   SimpleOrderLogData,
   StrategyConfig,
+  StrategyEvidenceTimeline,
   TestStat,
   MarketUniverse,
   Interval,
 } from '@tradejs/types';
-import type {
-  RuntimeStrategyAiGateChange,
-  RuntimeStrategyMaxLossValueTimeline,
-} from './runtimeStrategyLineage';
 import {
   takeExactClosedPnlMatch,
   type ClosedPnlRecordWithOrderLinkId,
@@ -106,9 +103,7 @@ export interface RuntimeStrategyView {
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
-  aiGateObservedFrom: number | null;
-  aiGateChanges: RuntimeStrategyAiGateChange[];
-  maxLossValueTimeline: RuntimeStrategyMaxLossValueTimeline;
+  evidenceTimeline: StrategyEvidenceTimeline;
   recentTrades: RuntimeStrategyTradeView[];
   orders: RuntimeStrategyTradeView[];
 }
