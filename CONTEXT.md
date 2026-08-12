@@ -44,7 +44,7 @@ The repository-local Codex workflow with `release` and `diagnose-live` modes tha
 _Avoid_: Portfolio optimizer, autonomous trading agent
 
 **Research Budget**:
-The fixed search allowance for one Strategy Release run: at most three causal hypothesis families, five variants per family, one isolated-long finalist, and one AI-gate tuning round.
+The fixed search allowance for one Strategy Release run: three sequential core-improvement rounds across at most three causal hypothesis families, allocated as one anchor plus two evidence-driven variants in each of two refinement rounds per surviving family; at most five candidates per family and fifteen total, then one isolated-long finalist and one AI-gate tuning round. Every child round is derived from the prior immutable metric/matching/trace analysis while the final chronological core tail remains sealed.
 _Avoid_: Keep tuning until profitable
 
 **Available Candle Window**:

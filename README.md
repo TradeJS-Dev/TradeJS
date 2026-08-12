@@ -254,10 +254,30 @@ but exposes the tail; it cannot later be relabelled an untouched release test.
 
 The repository-local `$strategy-release` skill turns verified core and gate
 evidence into one composition-level decision. It has `release` and
-`diagnose-live` modes. The fixed budget is three causal core families with at
-most five variants each, one isolated-long finalist, and one deterministic gate
-tuning round. Every historical backtest uses `--cacheOnly` and the maximum
-common candle window already available for the frozen universe.
+`diagnose-live` modes. Release mode runs three sequential core-improvement
+rounds within the fixed budget: one anchor candidate for each of three causal
+families, then two evidence-driven child candidates per still-viable family in
+each of two refinement rounds. This remains at most five candidates per family
+and 15 total, followed by one isolated-long finalist and one deterministic gate
+tuning round.
+
+Each round uses `yarn research:core` with `--researchTrace` and must finish a
+full result analysis before the next specs are frozen: ALL/LONG/SHORT metrics,
+payoff and drawdown tails, matched/control-only/candidate-only/changed trades,
+occupancy spillover, deterministic setup identities, signal/rejection→execution
+→exit trace conversion, skip reasons, time folds/months, causal signal-time
+regimes, concentration, cost stress, and statistical/overfitting diagnostics. Round-2 variants cite
+round 1; round-3 variants cite rounds 1 and 2 through immutable parent research
+IDs and state their predicted trace/metric effects. A chronological release
+tail stays sealed during these rounds and is opened once after round 3 for the
+single long finalist over the maximum common cached window. Every historical
+backtest uses `--cacheOnly`.
+
+Each family/round also persists a hashed causal handoff containing the parent
+result hashes, eligible carried control, predicted-versus-observed effect,
+`supported|falsified|inconclusive` mechanism verdict, remaining failure mode,
+and the exact next config deltas. This makes the next Codex iteration dependent
+on immutable evidence rather than on a remembered PnL ranking.
 
 Create a draft JSON that references verified core, gate, runtime-parity, and
 execution-calibration artifacts. It also freezes equal-length historical

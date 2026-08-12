@@ -12,7 +12,11 @@ Redis/export reconciliation, setup-identity fallback rate, and evidence matrix
 in the immutable note. Record the explicit spec stage (`screen`,
 `isolated_long`, or `confirmation`); never infer it from elapsed days or file
 names. For later stages include parent research IDs and the family stage-index
-lineage. The bundle does not replace the note: embed the full
+lineage. Iterative `$strategy-release` child screens also include their direct
+parent research IDs, round number, hashed causal-handoff payload, eligible
+carried control, parent result hashes, mechanism verdict, predicted-versus-
+observed trace/metric effect, remaining failure mode, and preregistered child
+config deltas. The bundle does not replace the note: embed the full
 resolved config and structured metrics needed for `reproduction: complete`
 because `data/research` may be cleaned. Never copy a PASS label without target,
 aggregate, and non-target verdicts separately.

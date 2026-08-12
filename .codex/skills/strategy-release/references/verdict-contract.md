@@ -46,8 +46,11 @@ Use only when all conditions hold:
 
 - the one final core plus deterministic gate composition is immutable and
   completely reconciled;
-- the bounded 3×5 core search, one isolated-long finalist, and one gate round
-  followed the preregistered rules without reopening the held-out evidence;
+- the bounded three-round core loop used one anchor plus two evidence-driven
+  refinement pairs per surviving family, never exceeded 3×5 candidates, and
+  completed full metric/match/trace analysis before each child round;
+- one isolated-long finalist and one gate round followed the preregistered
+  rules without reopening the held-out evidence;
 - BOTH directions stayed enabled and ALL/LONG/SHORT passed their explicit
   release rules, or every allowed side exception was preregistered and remains
   visible for later direction-aware AI-gate evaluation;

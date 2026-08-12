@@ -33,8 +33,10 @@ Create an immutable experiment id and preregister:
 - strategy and current control composition;
 - exact release acceptance rule and current-market terminal windows;
 - three causally distinct core hypothesis families;
-- exactly five variants in each family, with resolved configs and one stated
-  mechanism per variant;
+- the three-round allocation for every family: one anchor candidate in round 1,
+  two child candidates in round 2, and two child candidates in round 3;
+- the round-1 resolved configs plus the rule that turns prior metric, matching,
+  and trace evidence into the two next-round variants;
 - candidate ranking and tie-break rules;
 - non-target-side invariance or occupancy-spillover rule;
 - the one allowed deterministic gate tuning round;
@@ -42,7 +44,10 @@ Create an immutable experiment id and preregister:
 - required evidence and terminal conditions.
 
 Treat the common control as a separate frozen reference. The research budget is
-15 core variants total, not a rolling invitation to add nearby thresholds after
+five candidate variants per family and 15 total at most. Exact round-2 and
+round-3 configs are intentionally not guessed before their parent evidence
+exists, but each must be preregistered in a new immutable child spec before its
+run. The allocation is not a rolling invitation to add nearby thresholds after
 seeing results. Record every attempted, failed, rejected, and retained cell in
 the same trial ledger.
 
@@ -53,6 +58,14 @@ for the complete ordered ticker universe. Freeze the maximum common half-open
 window `[start, end)` and its proof. Use that same window, universe, connector,
 interval, fees, slippage, entry delay, and context settings for every historical
 control and candidate comparison.
+
+Inside that maximum cached envelope, freeze a timestamp-grouped chronological
+core release tail before round 1. Core improvement rounds may use only the
+development/tuning interval ending before that tail. Commands must not print,
+rank, or otherwise expose tail economics. After round 3 freezes the finalist,
+the isolated-long/final comparison opens the tail exactly once and evaluates
+the complete maximum cached window. This preserves an untouched test while
+still using every available candle in the terminal release matrix.
 
 Every historical backtest command must include:
 
@@ -87,21 +100,104 @@ completed-trade rows. Report full-window and preregistered terminal metrics for
 Do not disable a weak side. Record separate control statuses for ALL, LONG, and
 SHORT so the later deterministic AI gate can evaluate side cohorts explicitly.
 
-## 4. Screen the bounded core families
+## 4. Run and analyze three causal core rounds
 
-Evaluate all 15 preregistered variants on the frozen common window. Preserve
-each `configId`; never combine cells into one result. Use isolated cells when
-the strategy's state identity does not prove grid isolation.
+Run every release-core candidate with `--researchTrace`. The compact trace is
+required here because each later round must be derived from observed
+setup/entry/skip transitions, not from a PnL leaderboard. Preserve each
+`configId`; never combine cells into one result. Use isolated cells when the
+strategy's state identity does not prove grid isolation.
 
-For each family:
+Use one immutable `stage=screen` research lineage per family and round:
 
-1. Compare every variant with the same control.
-2. Match trade/setup identities where stable identity exists.
-3. Report matched, control-only, candidate-only, changed-outcome, and occupancy
-   spillover cohorts.
-4. Attribute deltas only to causal signal-time regime/context fields frozen in
-   the preregistration.
-5. Apply the preregistered target-side and aggregate guardrails.
+1. **Round 1 — mechanism anchors.** Compare the original frozen control with
+   one distinct anchor candidate for each of the three causal families.
+2. **Round 2 — evidence-driven alternatives.** For every still-viable family,
+   carry its round-1 winner as the exact matched control and freeze two child
+   candidates: one intervention addressing the primary diagnosed failure and
+   one alternative/ablation that can falsify the explanation.
+3. **Round 3 — refinement plus robustness.** Carry the round-2 winner as the
+   exact control and freeze two new child candidates from the combined prior
+   evidence: one refinement of the supported mechanism and one robustness
+   variant targeting its remaining side/regime/cost/occupancy weakness.
+
+Every round-2/round-3 screen spec must use a new `researchId`, name its direct
+`parentResearchIds` both at the spec root and in lineage, keep the same
+hypothesis family, and state the exact parent metric/trace observation that
+motivates each config delta. Run `prepare`, regenerate `research:core index`
+before execution to validate the parent/family chain, then `run`, `verify`, and
+regenerate the index after completion.
+
+After **each** round, complete this analysis before writing a child spec:
+
+1. Verify manifest/checkpoint completeness, run-scoped export hashes,
+   reconciliation, duplicate/conflict counts, and trace coverage.
+2. Report fixed ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD, and
+   cadence for the round window, terminal development slices, folds, and
+   months; include payoff/tail, holding time, loss streak, and equity/DD curves.
+3. Match stable setup/trade identities and report matched, control-only,
+   candidate-only, changed-outcome, and occupancy-spillover cohorts by side.
+4. Compare the compact trace funnel across signal emission or entry rejection,
+   execution, exit, and per-test skip summaries; use deterministic setup
+   identities from completed rows for pre-entry matching. Attribute top skip
+   deltas and verify the candidate changed the intended transition rather than
+   an unrelated lifecycle.
+5. Break deltas down by causal signal-time regime, symbol/concentration,
+   direction, time fold, and cost stress. Review calendar-cluster bootstrap,
+   family-aware Holm, DSR/PBO, and no-op/reset contamination warnings.
+6. Write a causal mechanism verdict — `supported`, `falsified`, or
+   `inconclusive` — plus the predicted versus observed trace/metric effect and
+   the exact reason each family continues or retires.
+
+Persist that conclusion as the round's immutable causal handoff. At minimum it
+contains this machine-readable payload alongside the normal research note:
+
+```json
+{
+  "round": 1,
+  "researchId": "<immutable id>",
+  "parentResearchIds": [],
+  "controlVariantId": "<id>",
+  "candidateVariantIds": ["<id>"],
+  "resultSha256": "<sha256>",
+  "traceCoverage": "complete",
+  "mechanismVerdict": "supported|falsified|inconclusive",
+  "predictedEffect": "<frozen before run>",
+  "observedEffect": "<metrics + identities + trace transition>",
+  "failureMode": "<remaining causal weakness or null>",
+  "familyDecision": "continue|retire",
+  "nextVariants": [
+    {
+      "role": "primary_fix|falsification|refinement|robustness",
+      "configDelta": {},
+      "causalClaim": "<why this follows from the parent>",
+      "predictedTraceEffect": "<event/skip conversion>",
+      "predictedMetricEffect": "<target and guardrails>"
+    }
+  ]
+}
+```
+
+Round 1 uses one candidate per family and therefore records two frozen
+`nextVariants` when the family continues. Round 2 also records two. Round 3
+records no further core candidates; it records only `select_for_isolated_long`
+or `retire`. Hash the payload and cite it in the child research note/spec
+lineage so another Codex run can reconstruct why the child exists without
+reading an informal narrative.
+
+Do not derive a child from displayed losers, outcome fields, or the sealed core
+release tail. Do not create “best value ± epsilon” variants without a causal
+transition hypothesis. Complete rounds 2 and 3 for every still-viable family
+even when an earlier candidate is already profitable. A family may retire
+early only when immutable evidence is invalid, the intervention is a no-op,
+the mechanism is falsified, required point-in-time context is unavailable, or
+no causal signal remains to test. If all families retire, stop rather than
+manufacturing variants.
+
+The carried control is the best **eligible** parent under the frozen rule. A
+failed candidate is never relabelled a winner: if its trace supports another
+causal test but its economics fail, retain the preceding control and record the
+failed candidate only as diagnostic parent evidence for the two child variants.
 
 When a direction-targeted policy is architecturally isolated, require exact
 non-target identities/N and PnL equality within documented rounding. When
@@ -111,14 +207,20 @@ rule instead.
 
 ## 5. Select one isolated-long finalist
 
-Select at most one core finalist across all families using only the frozen rule.
-If none qualifies, do not invent a compromise candidate. Rerun the selected
-cell alone over the same maximum common cached window and frozen universe. This
-is the only isolated-long finalist run allowed in the lineage.
+After round 3, select at most one core finalist across all families using only
+the frozen rule and cumulative family ledger. If none qualifies, do not invent
+a compromise candidate. Rerun the selected cell alone over the complete maximum
+common cached window and frozen universe, opening the chronological core release
+tail for the first and only time. This is the only isolated-long finalist run
+allowed in the lineage.
 
 Require complete run/export reconciliation and agreement with the screened
 cell within the preregistered reset/grid tolerance. Investigate any difference
 as state/reset contamination; do not choose the more favorable run.
+
+The isolated-long result may confirm or reject the frozen finalist. It may not
+generate a fourth core-improvement round. Any new hypothesis after the tail is
+opened starts a new release lineage with a future unexposed tail.
 
 ## 6. Use one gate tuning round
 

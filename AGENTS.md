@@ -450,10 +450,27 @@ Keep them aligned with:
   deterministic AI-gate composition or diagnose that exact composition live.
   This contour is strategy-local; portfolio allocation and daily-loss policy are
   out of scope. `MAX_LOSS_VALUE` remains user-selected.
-- Bound release research to at most three preregistered causal families, five
-  variants per family, one isolated-long finalist, and one deterministic gate
-  tuning round. Every historical comparison uses `--cacheOnly` over the maximum
-  common cached half-open window for the frozen ordered universe.
+- Bound release core research to three sequential improvement rounds across at
+  most three causal families: one anchor candidate per family, then two
+  evidence-driven child candidates per still-viable family in each of two
+  refinement rounds. Keep at most five candidates per family and 15 total, one
+  isolated-long finalist, and one deterministic gate tuning round. Freeze a
+  chronological core release tail before round 1; improvement rounds may not
+  inspect it, while the post-round-3 finalist opens it once on the maximum
+  common cached half-open window. Every historical command uses `--cacheOnly`.
+- After every core round, review the authoritative `research:core` metrics,
+  normalized trades, matches, and compact research trace before specifying the
+  next variants. Preserve ALL/LONG/SHORT and payoff/DD/cadence, matched/added/
+  removed/changed outcomes, occupancy spillover, trace-funnel/skip deltas,
+  signal-time regimes, folds/months, concentration, cost stress, bootstrap,
+  Holm, DSR/PBO, and a `supported|falsified|inconclusive` mechanism verdict.
+  A child round must name parent research IDs, exact config deltas, and the
+  predicted trace/metric effect before it runs. Never continue from a PnL-only
+  leaderboard or create adjacent threshold nudges without a causal mechanism.
+  Persist and hash one causal-handoff payload per family/round with its eligible
+  carried control, parent result hashes, mechanism verdict, remaining failure
+  mode, and next variant deltas. A candidate that failed the frozen economic
+  rule may motivate a child but cannot be relabelled the next control.
 - For the final composition, always produce one full-statistics matrix for
   trailing 1095d, 1460d, 1825d-or-exact-maximum-available, 365d, 180d, 90d,
   30d, and 7d. Record requested and covered days when the maximum cache is

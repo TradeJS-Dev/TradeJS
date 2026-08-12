@@ -36,6 +36,17 @@ screen→isolated-long→confirmation history, including rejected branches.
 Preparation also requires the later-stage candidate to retain the canonical
 config SHA of a candidate that passed its direct parent stage.
 
+`$strategy-release` may also chain several immutable `stage=screen` specs in
+one hypothesis family. Such a child screen names direct `parentResearchIds` in
+the spec and lineage; the stage index validates that the parent exists and stays
+inside the family. Before the child is frozen, its parent analysis must be
+complete and summarized in a hashed causal handoff containing the carried
+eligible control, mechanism verdict, predicted-versus-observed metric/trace
+effect, and exact next config deltas. A failed candidate may motivate a child
+but cannot become its control. Release mode allocates one anchor plus two
+round-2 and two round-3 candidates per surviving family, never more than five
+candidate hypotheses in the cumulative family ledger.
+
 ```bash
 yarn research:core prepare --spec data/research/specs/my-hypothesis.json
 yarn research:core analyze --spec data/research/specs/my-hypothesis.json
@@ -113,6 +124,11 @@ variant fields; missing stages remain `missing` in the evidence matrix.
 `skip_summary`. It does not log every candle. Completed AI rows also carry a
 deterministic setup identity. Trace summaries remain in Redis checkpoint rows
 even when trace JSONL is later removed.
+
+For release iterations, trace capture is mandatory: the next variants must cite
+the observed signal/rejection/execution/exit or skip-summary transition they
+intend to change. Trace alone is not economic evidence; pair it with the fixed
+ALL/LONG/SHORT metrics and stable setup-identity matched/added/removed cohorts.
 
 A passing report is not production promotion. Promotion still requires the
 preregistered screen, isolated long run, terminals, cold-start sensitivity for

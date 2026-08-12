@@ -250,6 +250,18 @@ contour in `CORE_RESEARCH.md`:
    embedding the complete resolved config and structured metrics required by
    the note schema.
 
+When `$strategy-release` invokes this contour, screen research is a three-round
+parented DAG rather than one flat sweep. Use one anchor candidate per family in
+round 1, then two evidence-derived child candidates in round 2 and two in round
+3 for each still-viable family. Keep at most five candidates per family across
+the ledger. Before preparing a child screen, complete the parent's metric,
+setup-matching, occupancy, signal-time regime, cost/statistical, and compact
+trace analysis; record `supported|falsified|inconclusive`, exact config delta,
+and predicted trace/metric effect. Put direct `parentResearchIds` in both the
+child spec and lineage, and regenerate the stage index before and after its run.
+Do not use a failed candidate as the carried control or derive adjacent
+threshold nudges from a PnL leaderboard.
+
 After changing the contour itself, use its public test seam:
 
 ```bash

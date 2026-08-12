@@ -25,9 +25,17 @@ Retain:
 
 - experiment id, question, mode, preregistered acceptance rules, verdict, and
   timestamp when each result partition was opened;
-- append-only trial ledger containing the common control, all 3 causal families
-  and 15 variants, statuses, resolved configs, selection rank, and rejection
-  reason;
+- append-only trial ledger containing the common control, all 3 causal families,
+  three round indices, parent research IDs, and every attempted candidate up to
+  the 15-variant cap, with status, resolved config, selection rank, mechanism
+  verdict, and rejection reason;
+- per-round authoritative metrics, setup matching, matched/added/removed/
+  changed-outcome and occupancy cohorts, trace-funnel/skip deltas, causal
+  regimes, cost stress, statistical guardrails, predicted-versus-observed
+  effects, and the evidence rationale for each next-round child variant;
+- each round's hashed causal-handoff payload, including direct parents,
+  eligible carried control, mechanism verdict, failure mode, family decision,
+  and preregistered primary/falsification or refinement/robustness child deltas;
 - selected isolated-long finalist and final core-plus-gate composition;
 - exact git SHA/dirty diff inventory, config/gate/context fingerprints, and
   tool/metric implementation SHA;
