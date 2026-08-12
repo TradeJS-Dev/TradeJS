@@ -364,10 +364,13 @@ Interpretation:
 - `ai-pocket-search` uses a time-ordered row holdout by default
   (`--validationSplit 0.25`) and ranks candidates on that holdout. Treat it as
   tuning evidence, not an untouched test. For direction-specific discovery use
-  `--direction LONG` or `--direction SHORT`. Reserve a timestamp-grouped tail
-  with `--testSplit`; the search excludes it from candidate ranking so it can be
-  opened later by a fixed-rule ablation. Use `--validationSplit 0` only for
-  legacy full-sample exploration.
+  `--direction LONG` or `--direction SHORT`. For release research, reserve a
+  timestamp-grouped tail with `--testSplit ... --sealTest`; the report retains
+  only its timestamp/count bounds and excludes its rows from current-gate and
+  pocket economics. Open it once later with a frozen `ai-gate-ablation.mjs`
+  spec. Plain `--testSplit` still prints test metrics and is therefore an opened
+  historical test, not sealed release evidence. Use `--validationSplit 0` only
+  for legacy full-sample exploration.
 - `ai-pocket-search` uses `--coverageMode auto` by default. It keeps the
   full-history search for non-provider features and runs separate CMC and
   Coinalyze cohorts over rows where that context is usable. Each cohort gets

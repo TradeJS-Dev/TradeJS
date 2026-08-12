@@ -43,7 +43,8 @@ Retain:
 - control/candidate matched, removed, added, changed-outcome, occupancy, regime,
   month, symbol, event, concentration, and capacity evidence;
 - gate train/tuning/test boundaries, feature provenance, threshold rounding,
-  ablation, support, and one-round selection decision;
+  sealed-test flag/open timestamp, ablation, support, and one-round selection
+  decision; record any accidental early test exposure permanently;
 - LLM comparison scope/provider/model/prompt/cost/fingerprint when enabled,
   explicitly labelled advisory.
 

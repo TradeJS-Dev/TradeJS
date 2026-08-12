@@ -91,6 +91,9 @@ Freeze the isolated finalist's raw-core export and the current deterministic
 gate as control. Use one time-grouped, time-ordered train/tuning/test design.
 Audit existing gate rules, run pocket discovery/ablation without outcome or
 execution leakage, and preregister rounded thresholds before opening the test.
+`ai-pocket-search` must reserve the test with `--sealTest`; its discovery report
+may contain only sealed test counts/bounds, never test economics. Store the
+complete five-variant spec before the fixed ablation opens that tail once.
 
 Select one deterministic gate candidate, or retain the frozen current gate if
 no candidate passes. Do not perform a second search after viewing the held-out
@@ -123,6 +126,14 @@ Freeze exactly five gate variants before looking at tuning/test outcomes:
 5. direction-aware replacement: best preregistered policy per side, including
    raw pass-through where it is the frozen candidate.
 
+Use the permanent direction-aware ablation syntax rather than a proxy feature:
+
+```text
+short-pass-through::add@4[SHORT]::true
+short-pocket::add@4[SHORT]::<rounded causal expression>
+direction-aware::replace@4::(derived.direction == LONG && <long rule>) || (derived.direction == SHORT && <short rule>)
+```
+
 Run pocket discovery separately for `LONG` and `SHORT`. Select variants using
 train and tuning only, then open the one chronological test tail once. Require:
 
@@ -132,6 +143,12 @@ train and tuning only, then open the one chronological test tail once. Require:
 - explicit aggregate portfolio guardrails;
 - explicit non-target identity or occupancy-spillover comparison;
 - full/180d/90d/30d/7d tables, retaining zero rows.
+
+If the sealed test was opened during discovery, intentionally or by an older
+tool version, it is exposed forever for that lineage. Finish and record the
+fixed comparison as diagnostic evidence, but do not retune on it, relabel it as
+untouched, or use it to justify `READY_FOR_RUNTIME`. The candidate may enter a
+new post-cutoff forward incubation lineage.
 
 Raw pass-through is a candidate, never an automatic promotion. If it wins the
 historical comparison but the exposed terminal tail fails, retain it only as an
@@ -209,7 +226,7 @@ yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
 
 yarn ai-pocket-search --strategy <Strategy> \
   --file <merged-export-part1.jsonl> -n 0 --validationSplit 0.2 \
-  --testSplit 0.2 --maxDepth 2 --minSupport 25
+  --testSplit 0.2 --sealTest --maxDepth 2 --minSupport 25
 
 yarn strategy:release profile --input <trades.jsonl> --variant <finalist-id> \
   --startTime <start-ms> --endTime <end-ms> --days 7,30,90 \

@@ -127,9 +127,11 @@ ranges, and categories. Do not use `--includeGateContext` for discovery; it is
 only for auditing current gate output fields.
 
 For direction-specific discovery, use `yarn ai-pocket-search --direction LONG`
-or `--direction SHORT`. Reserve an untouched chronological tail with
-`--testSplit`; the search ranks pockets using only the preceding train and
-validation rows, and the withheld rows remain available for the later fixed-rule
+or `--direction SHORT`. For release evidence reserve an untouched chronological
+tail with `--testSplit ... --sealTest`; the search ranks pockets using only the
+preceding train and validation rows and reports only the sealed test bounds.
+Plain `--testSplit` exposes test metrics and cannot be called untouched after
+the report is read. Open the sealed tail once with the frozen fixed-rule
 ablation.
 
 ## Cross-Strategy Feasibility

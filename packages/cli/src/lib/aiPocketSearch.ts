@@ -277,6 +277,13 @@ export type AiPocketSearchRunReport = {
   objective?: AiPocketSearchObjective;
   validationSplit: number;
   testSplit: number;
+  sealedTest?: {
+    sealed: boolean;
+    rows: number;
+    events: number;
+    startTimestamp: number | null;
+    endTimestamp: number | null;
+  };
   minValidationSupport: number;
   reportPath: string;
   search: {
@@ -3027,6 +3034,21 @@ export const buildAiPocketMarkdownReport = ({
         ['test_rows', run.testRows],
         ['validation_split', formatMdPercent(run.validationSplit)],
         ['test_split', formatMdPercent(run.testSplit)],
+        ['test_sealed', run.sealedTest?.sealed ? 'yes' : 'no'],
+        ['sealed_test_rows', run.sealedTest?.rows ?? run.testRows],
+        ['sealed_test_events', run.sealedTest?.events ?? 'n/a'],
+        [
+          'sealed_test_start',
+          run.sealedTest?.startTimestamp == null
+            ? 'n/a'
+            : new Date(run.sealedTest.startTimestamp).toISOString(),
+        ],
+        [
+          'sealed_test_end',
+          run.sealedTest?.endTimestamp == null
+            ? 'n/a'
+            : new Date(run.sealedTest.endTimestamp).toISOString(),
+        ],
         ['min_validation_support', run.minValidationSupport],
         ['failed', run.failed],
         ['recent', run.recent === 0 ? 'all' : run.recent],

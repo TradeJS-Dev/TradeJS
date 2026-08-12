@@ -3620,6 +3620,16 @@ export const buildAblationReport = ({
   const minTimestamp = rows[0].timestamp;
   const maxTimestamp = rows.at(-1).timestamp;
   const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  const partitionEvidence = (partitionRows) => ({
+    rows: partitionRows.length,
+    events: new Set(partitionRows.map((row) => row.timestamp)).size,
+    startTimestamp: partitionRows.length
+      ? new Date(partitionRows[0].timestamp).toISOString()
+      : null,
+    endTimestamp: partitionRows.length
+      ? new Date(partitionRows.at(-1).timestamp).toISOString()
+      : null,
+  });
   const summaryOptions = { capacities, maxLossValue };
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
   const baseline = {
@@ -3729,6 +3739,11 @@ export const buildAblationReport = ({
       trainEvents: new Set(split.train.map((row) => row.timestamp)).size,
       tuningEvents: new Set(split.tuning.map((row) => row.timestamp)).size,
       testEvents: new Set(split.test.map((row) => row.timestamp)).size,
+      partitions: {
+        train: partitionEvidence(split.train),
+        tuning: partitionEvidence(split.tuning),
+        test: partitionEvidence(split.test),
+      },
       minTimestamp: new Date(minTimestamp).toISOString(),
       maxTimestamp: new Date(maxTimestamp).toISOString(),
       spanDays: (maxTimestamp - minTimestamp) / DAY_MS,

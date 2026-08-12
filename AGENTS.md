@@ -444,6 +444,12 @@ Keep them aligned with:
   direction-aware repair variants (control, side pass-through, causal side
   pocket, protected side pocket, direction-aware replacement). Do not reject a
   strategy merely because its current gate discarded an existing side edge.
+- In release gate discovery, reserve the chronological test tail with
+  `ai-pocket-search --testSplit <ratio> --sealTest`. Discovery may retain only
+  the sealed tail's bounds/counts; open its economics exactly once after the
+  five gate variants are frozen in the permanent ablation spec. An already
+  exposed test is permanently historical evidence and cannot support
+  `READY_FOR_RUNTIME` in that lineage.
 - Build equal-length historical drawdown envelopes with
   `yarn strategy:release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity

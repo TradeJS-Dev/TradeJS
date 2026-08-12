@@ -47,6 +47,7 @@ import {
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS,
   readAiPocketSearchCliOption,
   resolveAiPocketCadenceProfile,
+  sealAiPocketTestPartition,
   splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
@@ -144,6 +145,11 @@ args.option(
   ['T', 'testSplit'],
   'Trailing timestamp-grouped scope share withheld as untouched test',
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.testSplit,
+);
+args.option(
+  ['w', 'sealTest'],
+  'Reserve test bounds without exposing its rows or economics to discovery',
+  false,
 );
 args.option(
   ['N', 'minValidationSupport'],
@@ -901,6 +907,10 @@ export const main = async () => {
         0,
       )
     : 0;
+  const sealTest = Boolean(flags.sealTest);
+  if (sealTest && testSplit <= 0) {
+    throw new Error('--sealTest requires a positive --testSplit');
+  }
   const explicitMinValidationSupport = normalizeInt(
     flags.minValidationSupport,
     0,
@@ -1118,17 +1128,24 @@ export const main = async () => {
     validationSplit,
     testSplit,
   );
+  const sealedFullSplit = sealAiPocketTestPartition(fullSplit, sealTest);
+  const discoveryRows = sealedFullSplit.discoveryRows;
   const trainRows = resolveScopeRows(fullSplit.trainRows, scope);
   const validationRows = resolveScopeRows(fullSplit.validationRows, scope);
-  const testRows = resolveScopeRows(fullSplit.testRows, scope);
+  const testRows = resolveScopeRows(sealedFullSplit.searchTestRows, scope);
   const baselineRows = fullSplit.trainRows.filter((row) => row.aiApproved);
   const validationBaselineRows = fullSplit.validationRows.filter(
     (row) => row.aiApproved,
   );
-  const testBaselineRows = fullSplit.testRows.filter((row) => row.aiApproved);
-  const currentGateSummary = summarizeAiTrainEvaluations(rows);
+  const testBaselineRows = sealedFullSplit.searchTestRows.filter(
+    (row) => row.aiApproved,
+  );
+  const currentGateSummary = summarizeAiTrainEvaluations(discoveryRows);
   const currentGateQualityThresholds =
-    summarizeAiTrainEvaluationsByQualityThreshold(rows, qualityThresholds);
+    summarizeAiTrainEvaluationsByQualityThreshold(
+      discoveryRows,
+      qualityThresholds,
+    );
 
   const runSearch = ({
     label,
@@ -1264,12 +1281,19 @@ export const main = async () => {
         validationSplit,
         testSplit,
       );
+      const sealedCohortSplit = sealAiPocketTestPartition(
+        cohortSplit,
+        sealTest,
+      );
       const cohortTrainRows = resolveScopeRows(cohortSplit.trainRows, scope);
       const cohortValidationRows = resolveScopeRows(
         cohortSplit.validationRows,
         scope,
       );
-      const cohortTestRows = resolveScopeRows(cohortSplit.testRows, scope);
+      const cohortTestRows = resolveScopeRows(
+        sealedCohortSplit.searchTestRows,
+        scope,
+      );
       const cohortSearch = runSearch({
         label: family,
         train: cohortTrainRows,
@@ -1279,14 +1303,21 @@ export const main = async () => {
         validationBaseline: cohortSplit.validationRows.filter(
           (row) => row.aiApproved,
         ),
-        testBaseline: cohortSplit.testRows.filter((row) => row.aiApproved),
+        testBaseline: sealedCohortSplit.searchTestRows.filter(
+          (row) => row.aiApproved,
+        ),
         requiredFeatureFamilies: [family],
       });
       coverageSearches.push({
         family,
-        coverage: summarizeAiPocketFeatureCoverage(directionRows, family),
+        coverage: summarizeAiPocketFeatureCoverage(
+          sealedCohortSplit.discoveryRows,
+          family,
+        ),
         scopeRows: resolveScopeRows(
-          directionRows.filter((row) => row.featureCoverage?.[family] === true),
+          sealedCohortSplit.discoveryRows.filter(
+            (row) => row.featureCoverage?.[family] === true,
+          ),
           scope,
         ).length,
         trainRows: cohortTrainRows.length,
@@ -1355,6 +1386,7 @@ export const main = async () => {
       objective,
       validationSplit,
       testSplit,
+      sealedTest: sealedFullSplit.evidence,
       minValidationSupport: search.stats.cadence.minValidationSupport,
       reportPath,
       search: {
@@ -1495,6 +1527,14 @@ export const main = async () => {
         ['max_combinations', chalk.magenta(String(maxCombinations))],
         ['validation_split', chalk.magenta(formatRatio(validationSplit))],
         ['test_split', chalk.magenta(formatRatio(testSplit))],
+        [
+          'test_evidence',
+          sealedFullSplit.evidence.sealed
+            ? chalk.green(
+                `sealed (${sealedFullSplit.evidence.rows} rows / ${sealedFullSplit.evidence.events} events)`,
+              )
+            : chalk.yellow('open'),
+        ],
         [
           'min_validation_support',
           chalk.magenta(String(search.stats.cadence.minValidationSupport)),

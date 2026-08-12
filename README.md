@@ -232,7 +232,9 @@ export be used for gate research. Discover causal pockets with a time-ordered
 holdout, then replay the deterministic local gate over all selected rows:
 
 ```bash
-yarn ai-pocket-search --strategy MyStrategy -n 0 --maxDepth 2 --minSupport 25
+yarn ai-pocket-search --strategy MyStrategy -n 0 \
+  --validationSplit 0.2 --testSplit 0.2 --sealTest \
+  --maxDepth 2 --minSupport 25
 yarn ai-train --strategy MyStrategy --localOnly -n 0 --minQuality 4 --json
 ```
 
@@ -241,6 +243,12 @@ separately. Gate inputs must exist at signal time; delayed fills, exit reasons,
 and realized PnL are outcomes, never features. `AI_MODE=gate` is comparable to
 `ai-train --localOnly`; `AI_MODE=llm` requires provider-backed evidence and must
 not inherit local-gate claims.
+
+For a release lineage, `--sealTest` keeps the final timestamp-grouped tail out
+of discovery and current-gate economics while recording its immutable bounds.
+Freeze the five gate variants, then open that tail exactly once with the shared
+gate-ablation tool. Plain `--testSplit` produces useful historical diagnostics
+but exposes the tail; it cannot later be relabelled an untouched release test.
 
 ### 4. Issue A Strategy Release Verdict
 

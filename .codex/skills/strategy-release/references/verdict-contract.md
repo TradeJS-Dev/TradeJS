@@ -12,6 +12,11 @@ causal findings, limitations, and approval-safe next action.
 - A current gate that approves zero/negligible rows from a profitable raw side
   is incomplete evidence. Do not return a final market-unsuitable verdict until
   the mandatory five-variant side-rescue round has been executed and recorded.
+- `READY_FOR_RUNTIME` requires a genuinely sealed chronological gate test:
+  pocket discovery may know its count and time bounds but not its PnL or feature
+  outcomes. A test opened before variant freeze is permanently exposed and can
+  support only historical diagnosis/forward-candidate selection in that
+  lineage.
 - Treat `MAX_LOSS_VALUE` as risk scale rather than decision-logic identity.
   Preserve its immutable change history, normalize monetary comparisons to the
   release risk unit, and return `INSUFFICIENT_EVIDENCE` when either scale is

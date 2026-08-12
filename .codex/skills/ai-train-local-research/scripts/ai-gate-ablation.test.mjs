@@ -938,6 +938,26 @@ test('builds full and terminal period comparisons for a candidate', () => {
   assert.equal(report.run.trainEvents, 1);
   assert.equal(report.run.tuningEvents, 1);
   assert.equal(report.run.testEvents, 0);
+  assert.deepEqual(report.run.partitions, {
+    train: {
+      rows: 1,
+      events: 1,
+      startTimestamp: new Date(start).toISOString(),
+      endTimestamp: new Date(start).toISOString(),
+    },
+    tuning: {
+      rows: 1,
+      events: 1,
+      startTimestamp: new Date(start + 200 * 24 * 60 * 60 * 1000).toISOString(),
+      endTimestamp: new Date(start + 200 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    test: {
+      rows: 0,
+      events: 0,
+      startTimestamp: null,
+      endTimestamp: null,
+    },
+  });
   assert.match(formatMarkdownReport(report), /## Baseline/);
   assert.match(formatMarkdownReport(report), /Baseline Cadence and Fan-out/);
   assert.match(formatMarkdownReport(report), /Baseline Validation/);

@@ -11,6 +11,7 @@ import {
 import {
   readAiPocketSearchCliOption,
   resolveAiPocketCadenceProfile,
+  sealAiPocketTestPartition,
   splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
@@ -137,6 +138,45 @@ describe('aiPocketSearch', () => {
     ]);
     expect(split.validationRows.map((row) => row.id)).toEqual(['d']);
     expect(split.testRows.map((row) => row.id)).toEqual(['e']);
+  });
+
+  it('seals the test partition from discovery while retaining immutable bounds', () => {
+    const split = {
+      trainRows: [{ id: 'train', timestamp: 1 }],
+      validationRows: [{ id: 'tuning', timestamp: 2 }],
+      testRows: [
+        { id: 'test-a', timestamp: 3 },
+        { id: 'test-b', timestamp: 3 },
+        { id: 'test-c', timestamp: 4 },
+      ],
+    };
+
+    expect(sealAiPocketTestPartition(split, true)).toEqual({
+      discoveryRows: [split.trainRows[0], split.validationRows[0]],
+      searchTestRows: [],
+      evidence: {
+        sealed: true,
+        rows: 3,
+        events: 2,
+        startTimestamp: 3,
+        endTimestamp: 4,
+      },
+    });
+    expect(sealAiPocketTestPartition(split, false)).toEqual({
+      discoveryRows: [
+        split.trainRows[0],
+        split.validationRows[0],
+        ...split.testRows,
+      ],
+      searchTestRows: split.testRows,
+      evidence: {
+        sealed: false,
+        rows: 3,
+        events: 2,
+        startTimestamp: 3,
+        endTimestamp: 4,
+      },
+    });
   });
 
   it('collects causal payload fields and derived directional indicator support', () => {

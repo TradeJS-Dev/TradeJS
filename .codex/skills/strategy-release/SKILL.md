@@ -90,6 +90,13 @@ inside a diagnostic lineage.
   workflow. A profitable raw side may be retained unchanged only after the same
   chronological validation and aggregate/non-target guardrails as every other
   candidate.
+- Reserve the gate test tail with `ai-pocket-search --testSplit <ratio>
+--sealTest`. Discovery may see train and tuning economics plus only the sealed
+  tail's timestamp/count bounds. It must not print, rank on, or otherwise expose
+  test PnL before the five variants are frozen. Open that test exactly once with
+  the fixed `ai-gate-ablation.mjs` spec. If any earlier command exposed the test
+  economics, preserve the run as partial evidence and do not claim an untouched
+  holdout or `READY_FOR_RUNTIME` from that lineage.
 - Treat AI-gate evaluation as a later stage over the frozen core export. Do not
   let outcome or delayed-execution fields enter signal-time approval.
 - Configure optional LLM comparison as `off` or `ai-approved`. Default to

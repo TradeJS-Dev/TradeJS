@@ -212,6 +212,40 @@ export const splitAiPocketCoverageRowsByTimestamp = <
     testSplit,
   );
 
+export const sealAiPocketTestPartition = <
+  T extends { timestamp?: number | null },
+>(
+  split: {
+    trainRows: T[];
+    validationRows: T[];
+    testRows: T[];
+  },
+  sealed: boolean,
+) => {
+  const finiteTimestamps = split.testRows
+    .map((row) => row.timestamp)
+    .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
+  return {
+    discoveryRows: [
+      ...split.trainRows,
+      ...split.validationRows,
+      ...(sealed ? [] : split.testRows),
+    ],
+    searchTestRows: sealed ? [] : split.testRows,
+    evidence: {
+      sealed,
+      rows: split.testRows.length,
+      events: countIndependentEvents(split.testRows),
+      startTimestamp: finiteTimestamps.length
+        ? Math.min(...finiteTimestamps)
+        : null,
+      endTimestamp: finiteTimestamps.length
+        ? Math.max(...finiteTimestamps)
+        : null,
+    },
+  };
+};
+
 export const readAiPocketSearchCliOption = ({
   argv,
   longName,
