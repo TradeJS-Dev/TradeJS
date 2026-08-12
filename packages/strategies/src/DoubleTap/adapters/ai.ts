@@ -1513,23 +1513,30 @@ Interpretation rules for DoubleTap:
 export const doubleTapAiAdapter = withStrategyLocalAiGate(
   doubleTapBaseAiAdapter,
   {
-    id: 'double_tap_long_dispersion_momentum',
+    id: 'double_tap_direction_aware_release_candidate',
     approves: ({ signal, payload }) => {
       const altDispersion24h = getAiPayloadNumber(
         payload,
         'additionalIndicators.doubleTapContext.altDispersion24h',
       );
-      const roc1h = getAiPayloadNumber(
+      const pricePositionInChannel = getAiPayloadNumber(
         payload,
-        'additionalIndicators.baseContext.regime.momentum.roc1h',
+        'additionalIndicators.baseContext.regime.trend.adaptiveChannel.pricePositionInChannel',
+      );
+      const barsSinceSwingHigh = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.structure.pivots.barsSinceSwingHigh',
       );
 
       return (
-        signal.direction === 'LONG' &&
-        altDispersion24h != null &&
-        altDispersion24h >= 0.032 &&
-        roc1h != null &&
-        roc1h >= 0
+        (signal.direction === 'LONG' &&
+          altDispersion24h != null &&
+          altDispersion24h >= 0.0285 &&
+          pricePositionInChannel != null &&
+          pricePositionInChannel >= 0.757) ||
+        (signal.direction === 'SHORT' &&
+          barsSinceSwingHigh != null &&
+          barsSinceSwingHigh <= 47)
       );
     },
   },
