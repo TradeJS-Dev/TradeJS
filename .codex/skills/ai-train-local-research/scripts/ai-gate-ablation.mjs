@@ -950,7 +950,7 @@ const summarizeSplit = (rows, selector, summaryOptions) =>
 
 const summarizeDirections = (rows, selector, summaryOptions) =>
   Object.fromEntries(
-    [...new Set(rows.map((row) => row.direction))].sort().map((direction) => [
+    ['LONG', 'SHORT'].map((direction) => [
       direction,
       summarizeRows(
         selectRows(rows, (row) => row.direction === direction && selector(row)),
@@ -959,6 +959,30 @@ const summarizeDirections = (rows, selector, summaryOptions) =>
       ),
     ]),
   );
+
+const buildPeriodDirectionSummaries = ({
+  rows,
+  selector,
+  windows,
+  maxTimestamp,
+  summaryOptions,
+}) => {
+  const result = {
+    full: summarizeDirections(rows, selector, {
+      ...summaryOptions,
+      calendarDays: getCalendarDays(rows),
+    }),
+  };
+  for (const days of windows) {
+    const from = maxTimestamp - days * DAY_MS;
+    const periodRows = selectRows(rows, (row) => row.timestamp >= from);
+    result[`${days}d`] = summarizeDirections(periodRows, selector, {
+      ...summaryOptions,
+      calendarDays: getCalendarDays(periodRows),
+    });
+  }
+  return result;
+};
 
 const summarizeMonths = (rows, selector, summaryOptions) => {
   const months = [
@@ -3641,6 +3665,13 @@ export const buildAblationReport = ({
       maxTimestamp,
       summaryOptions,
     }),
+    periodDirections: buildPeriodDirectionSummaries({
+      rows,
+      selector: baselineSelector,
+      windows: terminalWindows,
+      maxTimestamp,
+      summaryOptions,
+    }),
     train: summarizeSplit(split.train, baselineSelector, summaryOptions),
     tuning: summarizeSplit(split.tuning, baselineSelector, summaryOptions),
     test: summarizeSplit(split.test, baselineSelector, summaryOptions),
@@ -3676,6 +3707,13 @@ export const buildAblationReport = ({
         selector: candidateSelector,
         windows: terminalWindows,
         minTimestamp,
+        maxTimestamp,
+        summaryOptions,
+      }),
+      periodDirections: buildPeriodDirectionSummaries({
+        rows,
+        selector: candidateSelector,
+        windows: terminalWindows,
         maxTimestamp,
         summaryOptions,
       }),

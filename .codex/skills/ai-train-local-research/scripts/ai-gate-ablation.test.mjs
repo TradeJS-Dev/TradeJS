@@ -932,7 +932,15 @@ test('builds full and terminal period comparisons for a candidate', () => {
     '7d',
   ]);
   assert.equal(report.baseline.periods.full.trades, 2);
+  assert.equal(report.baseline.periodDirections.full.LONG.trades, 1);
+  assert.equal(report.baseline.periodDirections.full.SHORT.trades, 1);
+  assert.equal(report.baseline.periodDirections['180d'].LONG.trades, 0);
+  assert.equal(report.baseline.periodDirections['180d'].SHORT.trades, 1);
   assert.equal(report.variants[0].periods.full.trades, 1);
+  assert.equal(report.variants[0].periodDirections.full.LONG.trades, 1);
+  assert.equal(report.variants[0].periodDirections.full.SHORT.trades, 0);
+  assert.equal(report.variants[0].periodDirections['180d'].LONG.trades, 0);
+  assert.equal(report.variants[0].periodDirections['180d'].SHORT.trades, 0);
   assert.equal(report.variants[0].direction, 'SHORT');
   assert.equal(report.variants[0].removed.trades, 1);
   assert.equal(report.run.trainEvents, 1);
