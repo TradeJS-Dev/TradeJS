@@ -26,7 +26,7 @@ Options:
   --file <path>                 Any shard from a merged AI export
   --strategy <name>            Latest merged export for this strategy token
   --outDir <path>              Dataset directory (default: data/ai/export)
-  --variant <spec>             name::mode[@quality]::expression (repeatable)
+  --variant <spec>             name::mode[@quality][LONG|SHORT]::expression (repeatable)
   --spec <path>                JSON file with a { "variants": [...] } array
   --minQuality <n>             Main baseline threshold (default: 4)
   --qualityThresholds <list>   qN+ summaries (default: 3,4,5)
@@ -449,6 +449,9 @@ export const parseRuleExpression = (expression) => {
       return nested;
     }
     const feature = consume();
+    if (feature.type === 'value' && typeof feature.value === 'boolean') {
+      return { kind: 'constant', value: feature.value };
+    }
     if (feature.type !== 'identifier') {
       throw new Error(`Expected feature path at token ${index - 1}`);
     }
@@ -492,6 +495,7 @@ export const parseRuleExpression = (expression) => {
 };
 
 export const evaluateRule = (rule, features) => {
+  if (rule.kind === 'constant') return rule.value;
   if (rule.kind === 'and') {
     return (
       evaluateRule(rule.left, features) && evaluateRule(rule.right, features)
@@ -529,7 +533,15 @@ export const parseVariant = (input) => {
   const name = input.slice(0, firstSeparator).trim();
   const modeInput = input.slice(firstSeparator + 2, secondSeparator).trim();
   const expression = input.slice(secondSeparator + 2).trim();
-  const [mode, qualityInput] = modeInput.split('@');
+  const directionMatch = modeInput.match(/\[(LONG|SHORT|[^\]]+)\]$/);
+  const direction = directionMatch?.[1] ?? null;
+  if (direction != null && direction !== 'LONG' && direction !== 'SHORT') {
+    throw new Error(`Invalid direction scope in variant ${name}`);
+  }
+  const scopedModeInput = directionMatch
+    ? modeInput.slice(0, directionMatch.index)
+    : modeInput;
+  const [mode, qualityInput] = scopedModeInput.split('@');
   if (!name || !expression) {
     throw new Error('Variant name and expression must not be empty');
   }
@@ -547,6 +559,7 @@ export const parseVariant = (input) => {
     name,
     mode,
     quality: quality == null ? null : Math.trunc(quality),
+    direction,
     expression,
     rule: parseRuleExpression(expression),
   };
@@ -568,9 +581,11 @@ const loadVariants = async (inlineVariants, specPath) => {
     }
     const qualitySuffix =
       entry.quality == null ? '' : `@${Math.trunc(Number(entry.quality))}`;
+    const directionSuffix =
+      entry.direction == null ? '' : `[${String(entry.direction)}]`;
     variants.push(
       parseVariant(
-        `${entry.name}::${entry.mode}${qualitySuffix}::${entry.expression}`,
+        `${entry.name}::${entry.mode}${qualitySuffix}${directionSuffix}::${entry.expression}`,
       ),
     );
   }
@@ -828,9 +843,13 @@ export const isVariantSelected = ({
   variant,
   baselineSelected,
   matches,
+  direction,
   threshold,
   defaultQuality,
 }) => {
+  if (variant.direction != null && variant.direction !== direction) {
+    return baselineSelected;
+  }
   if (variant.mode === 'filter') return baselineSelected && matches;
   if (variant.mode === 'exclude') return baselineSelected && !matches;
   const variantQuality = variant.quality ?? defaultQuality;
@@ -853,6 +872,7 @@ const candidateSelectedAt = (
     variant,
     baselineSelected: baselineSelectedAt(row, threshold),
     matches: row.variantMatches[variantIndex],
+    direction: row.direction,
     threshold,
     defaultQuality: minQuality,
   });
@@ -1163,6 +1183,7 @@ const loadResearchRows = async ({
           includeGateContext,
           featureProfile: 'all',
         });
+        features['derived.direction'] = String(source.direction).toUpperCase();
         updateFeatureInventory(featureInventory, features, featurePattern);
         const timestamp = Number(source.timestamp);
         const profit = Number(source.profit);
@@ -3638,6 +3659,7 @@ export const buildAblationReport = ({
       name: variant.name,
       mode: variant.mode,
       quality: variant.quality,
+      direction: variant.direction,
       expression: variant.expression,
       periods: buildPeriodSummaries({
         rows,

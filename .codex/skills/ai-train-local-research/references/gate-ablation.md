@@ -37,7 +37,7 @@ merge id.
 Pass each hypothesis as:
 
 ```text
-name::mode[@quality]::expression
+name::mode[@quality][LONG|SHORT]::expression
 ```
 
 Modes:
@@ -48,6 +48,13 @@ Modes:
   assigned quality.
 - `replace`: ignore the current gate and approve only matching rows at the
   optional assigned quality.
+
+Append `[LONG]` or `[SHORT]` to scope a variant to one direction. Rows from the
+other direction retain the current gate decision. Use this for release
+side-rescue studies instead of encoding direction through an unrelated feature.
+Use the literal expression `true` for an explicit direction-scoped pass-through.
+For a single replacement policy with different rules per side, use the causal
+metadata feature `derived.direction` in the expression.
 
 When `@quality` is omitted, `add` and `replace` use `--minQuality`.
 
@@ -61,6 +68,14 @@ node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
   --validationSplit 0.2 \
   --testSplit 0.2 \
   --output data/ai/output/liquiditytails-near-ma-and-zone.md
+```
+
+Direction-aware repair example:
+
+```text
+short-rescue::add@4[SHORT]::additionalIndicators.baseContext.structure.zones.resistance.ageBars <= 42
+short-pass-through::add@4[SHORT]::true
+direction-aware::replace@4::(derived.direction == LONG && derived.stopDistanceBps <= 465) || (derived.direction == SHORT && structure.pivots.barsSinceSwingHigh <= 47)
 ```
 
 Repeat `--variant` to compare several rules in one dataset pass. For a reusable

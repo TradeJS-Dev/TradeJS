@@ -696,6 +696,31 @@ test('evaluates numeric, string, boolean, and null predicates with precedence', 
   assert.equal(evaluateRule(rule, {}), false);
 });
 
+test('supports explicit pass-through and direction-aware policies', () => {
+  assert.equal(evaluateRule(parseRuleExpression('true'), {}), true);
+  assert.equal(evaluateRule(parseRuleExpression('false'), {}), false);
+
+  const rule = parseRuleExpression(
+    '(derived.direction == LONG && trend.distance <= 1) || (derived.direction == SHORT && structure.ageBars <= 47)',
+  );
+  assert.equal(
+    evaluateRule(rule, {
+      'derived.direction': 'SHORT',
+      'structure.ageBars': 42,
+      'trend.distance': 3,
+    }),
+    true,
+  );
+  assert.equal(
+    evaluateRule(rule, {
+      'derived.direction': 'LONG',
+      'structure.ageBars': 42,
+      'trend.distance': 3,
+    }),
+    false,
+  );
+});
+
 test('parses variant mode and optional assigned quality', () => {
   const variant = parseVariant(
     'q3-recovery::add@4::context.bodyStrength >= 0.65',
@@ -710,12 +735,51 @@ test('parses variant mode and optional assigned quality', () => {
   );
 });
 
+test('parses and enforces an optional direction scope for gate repair', () => {
+  const variant = parseVariant(
+    'short-rescue::add@4[SHORT]::structure.ageBars <= 42',
+  );
+
+  assert.equal(variant.direction, 'SHORT');
+  assert.equal(
+    isVariantSelected({
+      variant,
+      baselineSelected: false,
+      matches: true,
+      direction: 'SHORT',
+      threshold: 4,
+      defaultQuality: 4,
+    }),
+    true,
+  );
+  assert.equal(
+    isVariantSelected({
+      variant,
+      baselineSelected: false,
+      matches: true,
+      direction: 'LONG',
+      threshold: 4,
+      defaultQuality: 4,
+    }),
+    false,
+  );
+  assert.throws(
+    () => parseVariant('bad::add@4[SIDEWAYS]::feature.value == true'),
+    /Invalid direction scope/,
+  );
+  assert.equal(
+    evaluateRule(parseVariant('short-pass::add@4[SHORT]::true').rule, {}),
+    true,
+  );
+});
+
 test('applies filter, exclude, add, and replace selection semantics', () => {
   const selected = (mode, baselineSelected, matches, quality = null) =>
     isVariantSelected({
       variant: { mode, quality },
       baselineSelected,
       matches,
+      direction: 'LONG',
       threshold: 4,
       defaultQuality: 4,
     });
@@ -827,7 +891,7 @@ test('groups split and fan-out metrics by decision timestamp', () => {
 
 test('builds full and terminal period comparisons for a candidate', () => {
   const start = Date.UTC(2025, 0, 1);
-  const variants = [parseVariant('keep::filter::feature.keep == true')];
+  const variants = [parseVariant('keep::filter[SHORT]::feature.keep == true')];
   const rows = [
     {
       timestamp: start,
@@ -869,6 +933,7 @@ test('builds full and terminal period comparisons for a candidate', () => {
   ]);
   assert.equal(report.baseline.periods.full.trades, 2);
   assert.equal(report.variants[0].periods.full.trades, 1);
+  assert.equal(report.variants[0].direction, 'SHORT');
   assert.equal(report.variants[0].removed.trades, 1);
   assert.equal(report.run.trainEvents, 1);
   assert.equal(report.run.tuningEvents, 1);
