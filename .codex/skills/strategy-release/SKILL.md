@@ -74,6 +74,11 @@ inside a diagnostic lineage.
 - Freeze exact timestamps, ordered ticker universe and checksum, cached-coverage
   proof, configs, git/dirty lineage, gate/context fingerprints, fees, slippage,
   entry delay, connector, interval, and commands before viewing outcomes.
+- Bind every evidence artifact to the complete Composition Lineage: clean git
+  SHA, canonical core-config/core-export SHA-256, gate config-id/gate/context
+  fingerprints, effective runtime config/context fingerprints, composition id
+  when deployed, and MAX_LOSS_VALUE. Do not reuse one hash in several identity
+  fields or accept a checksum-valid artifact from another lineage.
 - Treat AI-gate evaluation as a later stage over the frozen core export. Do not
   let outcome or delayed-execution fields enter signal-time approval.
 - Configure optional LLM comparison as `off` or `ai-approved`. Default to

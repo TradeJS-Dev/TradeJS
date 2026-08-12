@@ -281,6 +281,14 @@ release envelope plus compact G/L/E/D/R chart markers under the ignored
 `INSUFFICIENT_EVIDENCE`. No verdict changes runtime config, `MAX_LOSS_VALUE`,
 orders, daemons, or promotion state.
 
+The frozen composition records separate identities for the canonical resolved
+core config (`coreConfigSha256`), the exact core JSONL export
+(`coreExportSha256`), deterministic-gate config IDs and context, and the
+effective runtime config/context. `create` derives the same identities from the
+referenced artifacts and rejects cross-lineage evidence; a checksum-valid gate,
+parity, or execution report from another git/config/context/MAX_LOSS lineage
+cannot certify the release.
+
 The profile generator scans the selected normalized JSONL variant once, then
 calculates daily-stepped equal-length drawdown windows with indexed timestamp
 lookups. The draft also freezes its prospective sample floor, minimum parity
@@ -320,6 +328,11 @@ Every runtime evaluation, signal, and trade in the scorecard must resolve to one
 clean git/config/gate/context/MAX_LOSS lineage equal to the release manifest.
 Missing, dirty, conflicting, or different lineage is runtime divergence, not an
 economic result.
+For an explicitly approved deployment, set its strategy-local
+`releaseCompositionId` to the verified manifest's `compositionId`. This is
+identity metadata, not promotion authority: without the exact id the UI keeps
+immutable release markers missing even when shorter fingerprints happen to
+match.
 
 The Strategies UI reads only checksum-verified marker envelopes from
 `STRATEGY_RELEASE_MARKER_DIR` (default `data/strategy-release/markers`). Its
@@ -327,8 +340,8 @@ compact **Evidence** popover contains the G/L/E/D/P/R legend, optional P/R
 filters, event details, and hash provenance. Missing or invalid evidence is
 explicit and never falls back to mutable Redis lineage.
 Release markers are attached to a strategy card only when its current runtime
-lineage is complete and exactly matches git/config/gate/context/MAX_LOSS (or the
-frozen composition id). A config-only card therefore reports missing evidence
+lineage is complete and exactly matches composition id plus
+git/config/gate/context/MAX_LOSS. A config-only card therefore reports missing evidence
 instead of borrowing another composition's markers.
 
 Retention defaults are 3 days for operational Redis evidence, 14 days for

@@ -128,8 +128,22 @@ itself; draft `verified` and gate booleans are never trusted as authority.
 Reconciled final core evidence, complete robustness, positive deterministic-gate
 terminal evidence, exact parity, and measured execution residual are mandatory
 for `READY_FOR_RUNTIME`.
+The core evidence reference must point to `result.json` inside its completed
+core-research bundle. Release verification rehashes every artifact named by the
+adjacent completed manifest; an isolated result JSON is not release evidence.
+The draft freezes separate canonical core-config and core-export SHA-256 values,
+deterministic-gate config/context fingerprints, and effective runtime
+config/context fingerprints. The command derives these identities from the
+evidence and rejects any cross-lineage artifact; do not copy one fingerprint
+into another field merely because both describe the same conceptual strategy.
 Incomplete evidence must produce `INSUFFICIENT_EVIDENCE`, even when the partial
 economics look unsuitable.
+
+When a user later authorizes a runtime deployment, copy the verified
+`compositionId` into that deployment strategy's `releaseCompositionId`. The
+runtime lineage and UI marker selector then require that id in addition to
+git/config/gate/context/MAX_LOSS_VALUE. Omitting it keeps release markers
+explicitly missing and cannot borrow another composition's evidence.
 
 ## Command shapes
 

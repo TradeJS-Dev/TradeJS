@@ -64,6 +64,14 @@ _Avoid_: Auto-tuner, auto-promotion, automatic kill switch
 The boundary after which any change to core logic, resolved core config, gate logic, gate threshold, regime policy, or causal feature set creates a new Strategy Composition and prospective cohort.
 _Avoid_: Minor live tweak, same experiment
 
+**Composition Lineage**:
+The complete immutable identity of one Strategy Composition: composition id,
+clean git SHA, canonical core config and export SHA-256 values, deterministic
+gate config-id/gate/context fingerprints, effective runtime config/context
+fingerprints, and user-selected MAX_LOSS_VALUE. Evidence missing any required
+identity is not comparable.
+_Avoid_: Config hash, current strategy name, same code approximately
+
 **Regime Attribution**:
 Signal-time market-state labels retained for analysis, coverage, and drift diagnostics but not used to change the current Strategy Composition's trading decision.
 _Avoid_: Regime filter, regime training

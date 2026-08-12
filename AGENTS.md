@@ -462,7 +462,8 @@ Keep them aligned with:
   prospective shadow-raw-core expectancy, deterministic-gate expectancy, and
   causal regime coverage; do not guess a subtype when those books are missing.
 - Require one clean runtime lineage across every scoped evaluation, signal, and
-  trade. Compare git SHA, core-config, gate, context, and `MAX_LOSS_VALUE` with
+  trade. Compare composition id (when bound), git SHA, effective runtime config,
+  gate, context, and `MAX_LOSS_VALUE` with
   the frozen manifest; missing, dirty, conflicting, or different lineage blocks
   economic attribution as `RUNTIME_DIVERGENCE`.
 - Keep micro-live, shadow composition, shadow raw core, and gate-comparison
@@ -628,6 +629,7 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
 - Any claim about expected production cadence must include terminal dataset windows for at least the last `30d` and `7d`, anchored to the export maximum timestamp. Use `yarn ai-train ... -n 0`; its default terminal-window report also includes `90d`.
 - Record the export minimum/maximum timestamps and data lag. If the export does not overlap the production period being discussed, report live cadence as unknown instead of extrapolating the full-history average.
 - Compare runtime and `ai-train` gate behavior only when git SHA, gate fingerprint, config-id fingerprint, context fingerprint, `MIN_AI_QUALITY`, and the relevant context env agree. Treat a mismatch as a different experiment.
+- A strategy release must also bind the canonical resolved core-config SHA-256 and exact core-export SHA-256. Keep AI-research config/context fingerprints separate from effective runtime config/context fingerprints; they hash different representations and must not be substituted for each other. Release evidence from another git/config/export/gate/context/MAX_LOSS lineage is invalid even when its file checksum and economics are valid.
 - A zero-approval terminal window must be reported explicitly even when full-history cadence is healthy. Investigate top reject reasons and current feature availability before changing thresholds.
 - After changing a deterministic AI gate, regenerate the terminal-window report and create a new `notes/<Strategy>/YYYY-MM-DD-<slug>.md` record with the resolved config and structured metric snapshot; old notes are not evidence for the new gate lineage.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
