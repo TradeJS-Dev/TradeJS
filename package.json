@@ -124,6 +124,7 @@
     "runtime:evidence:publish": "yarn runtime:evidence --daily --publishDir \"${RUNTIME_EVIDENCE_PUBLISH_DIR:-output/runtime-evidence}\" --deployment \"${RUNTIME_EVIDENCE_DEPLOYMENT_ID:-production}\"",
     "runtime:evidence:sync": "yarn cli:node8g runtime-evidence-sync",
     "runtime:scorecard": "yarn cli:node8g runtime-scorecard",
+    "strategy:release": "yarn cli:node8g strategy-release",
     "signals:cron": "yarn cli:node8g signals",
     "signals:summary": "yarn cli:node8g signals-summary",
     "signals:sandbox": "yarn signals",

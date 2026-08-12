@@ -54,6 +54,92 @@ const extractRuntimeRows = (artifact: unknown) => {
   };
 };
 
+const buildRuntimeLineageSummary = (rows: {
+  evaluations: JsonRecord[];
+  signals: JsonRecord[];
+  trades: JsonRecord[];
+}) => {
+  const lineageRows = [...rows.evaluations, ...rows.signals, ...rows.trades];
+  const lineages = lineageRows
+    .map((row) => asRecord(row.runtimeLineage))
+    .filter((lineage): lineage is JsonRecord => lineage != null);
+  const identities = new Map<string, JsonRecord>();
+  for (const lineage of lineages) {
+    const identity = {
+      gitSha: finiteString(lineage.gitSha),
+      gitDirty: typeof lineage.gitDirty === 'boolean' ? lineage.gitDirty : null,
+      gateFingerprint: finiteString(lineage.gateFingerprint),
+      configFingerprint: finiteString(lineage.configFingerprint),
+      contextFingerprint: finiteString(lineage.contextFingerprint),
+      maxLossValue: finiteNumber(lineage.maxLossValue),
+    };
+    identities.set(JSON.stringify(identity), identity);
+  }
+  const identity = identities.size === 1 ? [...identities.values()][0] : null;
+  const complete =
+    lineageRows.length > 0 &&
+    lineages.length === lineageRows.length &&
+    identity != null &&
+    identity.gitSha != null &&
+    identity.gitDirty === false &&
+    identity.gateFingerprint != null &&
+    identity.configFingerprint != null &&
+    identity.contextFingerprint != null &&
+    identity.maxLossValue != null;
+  return {
+    complete,
+    conflicts: identities.size > 1,
+    rows: lineageRows.length,
+    rowsWithLineage: lineages.length,
+    gitSha: finiteString(identity?.gitSha),
+    gitDirty:
+      typeof identity?.gitDirty === 'boolean' ? identity.gitDirty : null,
+    gateFingerprint: finiteString(identity?.gateFingerprint),
+    configFingerprint: finiteString(identity?.configFingerprint),
+    contextFingerprint: finiteString(identity?.contextFingerprint),
+    maxLossValue: finiteNumber(identity?.maxLossValue),
+  };
+};
+
+const belongsToStrategy = (row: JsonRecord, strategy: string | null) =>
+  strategy == null || finiteString(row.strategy) === strategy;
+
+const filterArtifactByStrategy = (
+  artifact: unknown,
+  strategy: string | null,
+) => {
+  if (!strategy) return artifact;
+  const root = asRecord(artifact) ?? {};
+  const runtime = runtimePayload(artifact);
+  return {
+    ...root,
+    runtime: {
+      ...runtime,
+      evaluations: asArray(runtime.evaluations).filter((item) =>
+        belongsToStrategy(
+          asRecord(asRecord(item)?.evaluation) ?? asRecord(item) ?? {},
+          strategy,
+        ),
+      ),
+      signals: asArray(runtime.signals).filter((item) =>
+        belongsToStrategy(
+          asRecord(asRecord(item)?.signal) ?? asRecord(item) ?? {},
+          strategy,
+        ),
+      ),
+      trades: asArray(runtime.trades).filter((item) =>
+        belongsToStrategy(
+          asRecord(asRecord(item)?.trade) ?? asRecord(item) ?? {},
+          strategy,
+        ),
+      ),
+      evaluationStatsBuckets: asArray(runtime.evaluationStatsBuckets).filter(
+        (item) => belongsToStrategy(asRecord(item) ?? {}, strategy),
+      ),
+    },
+  };
+};
+
 const countBy = (
   items: JsonRecord[],
   getter: (item: JsonRecord) => string | null,
@@ -206,15 +292,49 @@ const getReplayComparison = (artifact: unknown) => {
   return asRecord(asRecord(root.replay)?.runtimeComparison) ?? null;
 };
 
+const replayCountsForStrategy = (
+  replayComparison: JsonRecord | null,
+  strategy: string | null,
+) => {
+  if (strategy) {
+    const byStrategy = asRecord(replayComparison?.byStrategy);
+    const strategyCounts = asRecord(byStrategy?.[strategy]);
+    if (strategyCounts) {
+      return {
+        matched: finiteNumber(strategyCounts.matched) ?? 0,
+        backtestOnly: finiteNumber(strategyCounts.backtestOnly) ?? 0,
+        runtimeOnly: finiteNumber(strategyCounts.runtimeOnly) ?? 0,
+      };
+    }
+  }
+  const counts = asRecord(replayComparison?.counts);
+  return {
+    matched: finiteNumber(counts?.matched) ?? 0,
+    backtestOnly: finiteNumber(counts?.backtestOnly) ?? 0,
+    runtimeOnly: finiteNumber(counts?.runtimeOnly) ?? 0,
+  };
+};
+
 const getCalibrationSummary = (artifact: unknown) => {
   const root = asRecord(artifact) ?? {};
   return asRecord(asRecord(root.summary)?.all) ?? null;
+};
+
+const getProspectiveSummary = (artifact: unknown) => {
+  const root = asRecord(artifact);
+  if (!root || root.reportType !== 'strategy-prospective-evidence') return null;
+  return {
+    rawCoreExpectancy: finiteNumber(root.rawCoreExpectancy),
+    aiGateExpectancy: finiteNumber(root.aiGateExpectancy),
+    regimeCoverage: finiteNumber(root.regimeCoverage),
+  };
 };
 
 export const buildRuntimeScorecard = ({
   runtimeArtifact,
   replayEvidenceArtifact,
   calibrationArtifact,
+  prospectiveEvidenceArtifact,
   historyRuntimeArtifacts = [],
   thresholds = {
     minimumParityRatio: 0.95,
@@ -223,15 +343,28 @@ export const buildRuntimeScorecard = ({
     minimumExpectancy: 0,
   },
   generatedAt = Date.now(),
+  strategy = null,
+  llmComparatorPolicy = 'ai_approved_only',
 }: {
   runtimeArtifact: unknown;
   replayEvidenceArtifact?: unknown;
   calibrationArtifact?: unknown;
+  prospectiveEvidenceArtifact?: unknown;
   historyRuntimeArtifacts?: unknown[];
   thresholds?: RuntimeScorecardThresholds;
   generatedAt?: number;
+  strategy?: string | null;
+  llmComparatorPolicy?: 'ai_approved_only' | 'all_core_candidates' | 'disabled';
 }) => {
-  const rows = extractRuntimeRows(runtimeArtifact);
+  const scopedRuntimeArtifact = filterArtifactByStrategy(
+    runtimeArtifact,
+    strategy,
+  );
+  const scopedHistoryArtifacts = historyRuntimeArtifacts.map((artifact) =>
+    filterArtifactByStrategy(artifact, strategy),
+  );
+  const rows = extractRuntimeRows(scopedRuntimeArtifact);
+  const runtimeLineage = buildRuntimeLineageSummary(rows);
   const window = runtimeWindow(runtimeArtifact);
   const startTime = finiteNumber(window.startTime) ?? generatedAt - 86_400_000;
   const endTime = finiteNumber(window.endTime) ?? generatedAt;
@@ -247,6 +380,32 @@ export const buildRuntimeScorecard = ({
     }))
     .filter(
       ({ decision }) => decision === 'approved' || decision === 'rejected',
+    );
+  const llmEligibleEvaluations =
+    llmComparatorPolicy === 'disabled'
+      ? []
+      : llmComparatorPolicy === 'ai_approved_only'
+        ? signalEvaluations.filter(
+            (evaluation) =>
+              finiteString(asRecord(evaluation.aiAnalysis)?.gateDecision) ===
+              'approved',
+          )
+        : signalEvaluations;
+  const gateComparisons = llmEligibleEvaluations
+    .map((evaluation) => {
+      const analysis = asRecord(evaluation.aiAnalysis);
+      const gateDecision = finiteString(analysis?.gateDecision);
+      const llmDecision = finiteString(analysis?.llmDecision);
+      if (
+        (gateDecision !== 'approved' && gateDecision !== 'rejected') ||
+        (llmDecision !== 'approved' && llmDecision !== 'rejected')
+      ) {
+        return null;
+      }
+      return { gateDecision, llmDecision };
+    })
+    .filter((comparison): comparison is NonNullable<typeof comparison> =>
+      Boolean(comparison),
     );
   const allocatorDecisions = signalEvaluations
     .map((evaluation) => asRecord(evaluation.allocatorDecision))
@@ -268,27 +427,32 @@ export const buildRuntimeScorecard = ({
     );
   });
   const replayComparison = getReplayComparison(replayEvidenceArtifact);
-  const replayCounts = asRecord(replayComparison?.counts);
-  const matched = finiteNumber(replayCounts?.matched) ?? 0;
-  const backtestOnly = finiteNumber(replayCounts?.backtestOnly) ?? 0;
-  const runtimeOnly = finiteNumber(replayCounts?.runtimeOnly) ?? 0;
+  const replayCounts = replayCountsForStrategy(replayComparison, strategy);
+  const matched = replayCounts.matched;
+  const backtestOnly = replayCounts.backtestOnly;
+  const runtimeOnly = replayCounts.runtimeOnly;
   const comparisonTotal = matched + backtestOnly + runtimeOnly;
   const parityRatio = comparisonTotal > 0 ? matched / comparisonTotal : null;
   const lineage = asRecord(replayComparison?.lineage);
   const lineageReason = finiteString(lineage?.reason);
-  const calibration = getCalibrationSummary(calibrationArtifact);
+  const calibrationRoot = asRecord(calibrationArtifact) ?? {};
+  const calibrationSummary = asRecord(calibrationRoot.summary);
+  const calibration = strategy
+    ? asRecord(asRecord(calibrationSummary?.byStrategy)?.[strategy])
+    : getCalibrationSummary(calibrationArtifact);
   const actualSlippageBps = finiteNumber(
     asRecord(calibration?.signalToFillAdverseBps)?.avg,
   );
   const residualVsModelBps = finiteNumber(
     asRecord(calibration?.residualVsCurrentModelBps)?.avg,
   );
+  const prospective = getProspectiveSummary(prospectiveEvidenceArtifact);
   const historyTrades = dedupeTrades([
-    ...historyRuntimeArtifacts,
-    runtimeArtifact,
+    ...scopedHistoryArtifacts,
+    scopedRuntimeArtifact,
   ]);
   const currentDistributions = buildDistributions(rows);
-  const previousArtifact = historyRuntimeArtifacts
+  const previousArtifact = scopedHistoryArtifacts
     .map((artifact) => ({ artifact, window: runtimeWindow(artifact) }))
     .filter(({ window: candidateWindow }) => {
       const candidateEndTime = finiteNumber(candidateWindow.endTime);
@@ -372,6 +536,8 @@ export const buildRuntimeScorecard = ({
     schemaVersion: 1,
     generatedAt,
     window: { startTime, endTime },
+    strategy,
+    lineage: runtimeLineage,
     promotionStatus,
     thresholds,
     funnel: {
@@ -436,6 +602,30 @@ export const buildRuntimeScorecard = ({
         currentClosedTrades.map((trade) => finiteNumber(trade.fundingFee)),
       ),
     },
+    gateComparison: {
+      policy: llmComparatorPolicy,
+      eligible: llmEligibleEvaluations.length,
+      compared: gateComparisons.length,
+      coverage: llmEligibleEvaluations.length
+        ? round(gateComparisons.length / llmEligibleEvaluations.length)
+        : null,
+      agreements: gateComparisons.filter(
+        (comparison) => comparison.gateDecision === comparison.llmDecision,
+      ).length,
+      disagreements: gateComparisons.filter(
+        (comparison) => comparison.gateDecision !== comparison.llmDecision,
+      ).length,
+      gateApprovedLlmRejected: gateComparisons.filter(
+        (comparison) =>
+          comparison.gateDecision === 'approved' &&
+          comparison.llmDecision === 'rejected',
+      ).length,
+      gateRejectedLlmApproved: gateComparisons.filter(
+        (comparison) =>
+          comparison.gateDecision === 'rejected' &&
+          comparison.llmDecision === 'approved',
+      ).length,
+    },
     parity: {
       available: comparisonTotal > 0,
       matched,
@@ -449,6 +639,7 @@ export const buildRuntimeScorecard = ({
       actualSignalToFillSlippageBps: actualSlippageBps,
       residualVsCurrentModelBps: residualVsModelBps,
     },
+    prospective,
     rolling,
     distributions: currentDistributions,
     distributionChanges: {
@@ -512,5 +703,5 @@ export const formatRuntimeScorecardMarkdown = (scorecard: RuntimeScorecard) => {
     )
     .join('\n');
 
-  return `# Runtime scorecard\n\nStatus: **${scorecard.promotionStatus}**\n\nWindow: ${new Date(scorecard.window.startTime).toISOString()} — ${new Date(scorecard.window.endTime).toISOString()}\n\n## Funnel\n\n- Evaluations: ${scorecard.funnel.evaluations}\n- Core candidates: ${scorecard.funnel.coreCandidates}\n- Gate approvals/rejects: ${scorecard.funnel.gate.approved}/${scorecard.funnel.gate.rejected}\n- Allocator approvals/rejects: ${scorecard.funnel.allocator.available ? `${scorecard.funnel.allocator.approved}/${scorecard.funnel.allocator.rejected}` : 'unavailable'}\n- Risk approvals/rejects: ${scorecard.funnel.risk.available ? `${scorecard.funnel.risk.approved}/${scorecard.funnel.risk.rejected}` : 'unavailable'}\n- Order attempts/failures: ${scorecard.funnel.orderAttempts}/${scorecard.funnel.orderFailures}\n- Fills: ${scorecard.funnel.fills}\n- Closed trades: ${scorecard.funnel.closedTrades}\n\n## Replay and execution\n\n- Parity: ${scorecard.parity.ratio == null ? 'n/a' : `${round(scorecard.parity.ratio * 100, 2)}%`}\n- Runtime/replay mismatches: ${scorecard.parity.backtestOnly + scorecard.parity.runtimeOnly}\n- Actual signal-to-fill slippage: ${scorecard.execution.actualSignalToFillSlippageBps ?? 'n/a'} bps\n- Residual vs current model: ${scorecard.execution.residualVsCurrentModelBps ?? 'n/a'} bps\n\n## Rolling performance\n\n| Window | Closed | Realized PnL | Expectancy | Max drawdown |\n| --- | ---: | ---: | ---: | ---: |\n${rollingRows}\n\n## Distribution changes\n\n${scorecard.distributionChanges.available ? distributionChanges || '- No distribution changes.' : '- Previous comparable artifact is unavailable.'}\n\n## Reactions\n\n${reactions}\n`;
+  return `# Runtime scorecard\n\nStatus: **${scorecard.promotionStatus}**\n\nWindow: ${new Date(scorecard.window.startTime).toISOString()} — ${new Date(scorecard.window.endTime).toISOString()}\n\n## Funnel\n\n- Evaluations: ${scorecard.funnel.evaluations}\n- Core candidates: ${scorecard.funnel.coreCandidates}\n- Gate approvals/rejects: ${scorecard.funnel.gate.approved}/${scorecard.funnel.gate.rejected}\n- AI / LLM disagreement: ${scorecard.gateComparison.disagreements}/${scorecard.gateComparison.compared}\n- Allocator approvals/rejects: ${scorecard.funnel.allocator.available ? `${scorecard.funnel.allocator.approved}/${scorecard.funnel.allocator.rejected}` : 'unavailable'}\n- Risk approvals/rejects: ${scorecard.funnel.risk.available ? `${scorecard.funnel.risk.approved}/${scorecard.funnel.risk.rejected}` : 'unavailable'}\n- Order attempts/failures: ${scorecard.funnel.orderAttempts}/${scorecard.funnel.orderFailures}\n- Fills: ${scorecard.funnel.fills}\n- Closed trades: ${scorecard.funnel.closedTrades}\n\n## Replay and execution\n\n- Parity: ${scorecard.parity.ratio == null ? 'n/a' : `${round(scorecard.parity.ratio * 100, 2)}%`}\n- Runtime/replay mismatches: ${scorecard.parity.backtestOnly + scorecard.parity.runtimeOnly}\n- Actual signal-to-fill slippage: ${scorecard.execution.actualSignalToFillSlippageBps ?? 'n/a'} bps\n- Residual vs current model: ${scorecard.execution.residualVsCurrentModelBps ?? 'n/a'} bps\n\n## Rolling performance\n\n| Window | Closed | Realized PnL | Expectancy | Max drawdown |\n| --- | ---: | ---: | ---: | ---: |\n${rollingRows}\n\n## Distribution changes\n\n${scorecard.distributionChanges.available ? distributionChanges || '- No distribution changes.' : '- Previous comparable artifact is unavailable.'}\n\n## Reactions\n\n${reactions}\n`;
 };

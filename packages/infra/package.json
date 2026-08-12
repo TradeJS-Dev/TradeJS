@@ -89,6 +89,11 @@
       "import": "./dist/runtimeDeployments.mjs",
       "require": "./dist/runtimeDeployments.js"
     },
+    "./strategyReleaseEvidence": {
+      "types": "./dist/strategyReleaseEvidence.d.ts",
+      "import": "./dist/strategyReleaseEvidence.mjs",
+      "require": "./dist/strategyReleaseEvidence.js"
+    },
     "./userSettings": {
       "types": "./dist/userSettings.d.ts",
       "import": "./dist/userSettings.mjs",

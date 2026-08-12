@@ -52,6 +52,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'runtime-evidence': () => import('./scripts/runtimeEvidence'),
   'runtime-evidence-sync': () => import('./scripts/runtimeEvidenceSync'),
   'runtime-scorecard': () => import('./scripts/runtimeScorecard'),
+  'strategy-release': () => import('./scripts/strategyRelease'),
   'server-health': () => import('./scripts/serverHealth'),
   'runtime-parity': () => import('./scripts/runtimeParity'),
   signals: () => import('./scripts/signals'),

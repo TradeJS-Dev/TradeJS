@@ -1,0 +1,314 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { collectReleaseEvidenceReferences } from '../lib/strategyRelease';
+import { runStrategyReleaseCommand } from '../scripts/strategyRelease';
+
+const SHA = 'a'.repeat(64);
+
+describe('strategy-release command', () => {
+  it('creates and verifies an immutable release from a draft', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-cli-'),
+    );
+    const draftPath = path.join(rootDir, 'draft.json');
+    await fs.writeFile(
+      draftPath,
+      JSON.stringify({
+        strategy: 'DoubleTap',
+        createdAt: Date.UTC(2026, 7, 12),
+        composition: {
+          gitSha: 'deadbeef',
+          coreConfigFingerprint: SHA,
+          gateFingerprint: SHA,
+          contextFingerprint: SHA,
+          maxLossValue: 10,
+          longEnabled: true,
+          shortEnabled: true,
+        },
+        marketWindow: {
+          startTime: 1,
+          endTime: 2,
+          universeSha256: SHA,
+          symbols: 507,
+          cacheOnly: true,
+          terminalDays: [180, 90, 30, 7],
+        },
+        researchBudget: {
+          hypothesisFamilies: 3,
+          maximumVariantsPerFamily: 5,
+          isolatedLongFinalists: 1,
+          aiGateTuningRounds: 1,
+        },
+        evidence: [],
+        gates: {
+          coreEdgeVerified: false,
+          aiGateAddsValue: false,
+          currentMarketSuitable: false,
+          runtimeParityVerified: false,
+          executionModelVerified: false,
+        },
+        monitoring: {
+          minimumProspectiveClosedTrades: 20,
+          minimumParityRatio: 0.95,
+          maximumOrderFailureRate: 0.05,
+          minimumRegimeCoverage: 0.5,
+          drawdownEnvelopes: [{ days: 7, p95: 10, maximum: 20 }],
+          rawCoreExpectancy: null,
+          aiGateExpectancy: null,
+          overfitProbability: null,
+        },
+        summary: 'Evidence does not support release.',
+        prospective: {
+          status: 'not_started',
+          evidenceBooks: ['micro_live'],
+          llmComparatorPolicy: 'ai_approved_only',
+        },
+      }),
+    );
+
+    const created = await runStrategyReleaseCommand({
+      command: 'create',
+      inputPath: draftPath,
+      rootDir: path.join(rootDir, 'evidence'),
+    });
+    expect(created.kind).toBe('created');
+    if (created.kind !== 'created') throw new Error('expected create result');
+
+    const verified = await runStrategyReleaseCommand({
+      command: 'verify',
+      inputPath: created.releasePath,
+    });
+    expect(verified).toMatchObject({
+      kind: 'verified',
+      verdict: 'INSUFFICIENT_EVIDENCE',
+    });
+  });
+
+  it('writes an advisory diagnosis without mutating runtime', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-diagnosis-cli-'),
+    );
+    const inputPath = path.join(rootDir, 'diagnosis-input.json');
+    const outputPath = path.join(rootDir, 'diagnosis.json');
+    await fs.writeFile(
+      inputPath,
+      JSON.stringify({
+        strategy: 'DoubleTap',
+        compositionId: 'DoubleTap_1',
+        createdAt: 1,
+        lineageComparable: true,
+        parityRatio: 1,
+        orderFailureRate: 0,
+        observedDrawdown: 5,
+        historicalDrawdownP95: 10,
+        historicalDrawdownMaximum: 20,
+        closedTrades: 30,
+        rawCoreExpectancyDelta: 0,
+        aiGateAddedValue: 1,
+        regimeCoverage: 1,
+        overfitProbability: 0,
+      }),
+    );
+
+    const result = await runStrategyReleaseCommand({
+      command: 'diagnose',
+      inputPath,
+      outputPath,
+    });
+
+    expect(result).toMatchObject({
+      kind: 'diagnosed',
+      verdict: 'EXPECTED_DRAWDOWN',
+      outputPath,
+    });
+    expect(JSON.parse(await fs.readFile(outputPath, 'utf8'))).toMatchObject({
+      verdict: 'EXPECTED_DRAWDOWN',
+    });
+  });
+
+  it('verifies evidence files instead of trusting the draft flag', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-evidence-'),
+    );
+    const evidencePath = path.join(rootDir, 'core.json');
+    const draftPath = path.join(rootDir, 'draft.json');
+    await fs.writeFile(evidencePath, '{"verified":true}\n');
+    const wrongSha = 'f'.repeat(64);
+    const draft = {
+      strategy: 'DoubleTap',
+      createdAt: 1,
+      composition: {
+        gitSha: 'deadbeef',
+        coreConfigFingerprint: SHA,
+        gateFingerprint: SHA,
+        contextFingerprint: SHA,
+        maxLossValue: 10,
+        longEnabled: true,
+        shortEnabled: true,
+      },
+      marketWindow: {
+        startTime: 1,
+        endTime: 2,
+        universeSha256: SHA,
+        symbols: 507,
+        cacheOnly: true,
+        terminalDays: [180, 90, 30, 7],
+      },
+      researchBudget: {
+        hypothesisFamilies: 1,
+        maximumVariantsPerFamily: 1,
+        isolatedLongFinalists: 0,
+        aiGateTuningRounds: 0,
+      },
+      evidence: [
+        {
+          kind: 'core_research',
+          artifactId: 'core',
+          path: evidencePath,
+          sha256: wrongSha,
+          verified: true,
+        },
+      ],
+      gates: {
+        coreEdgeVerified: true,
+        aiGateAddsValue: false,
+        currentMarketSuitable: false,
+        runtimeParityVerified: false,
+        executionModelVerified: false,
+      },
+      monitoring: {
+        minimumProspectiveClosedTrades: 20,
+        minimumParityRatio: 0.95,
+        maximumOrderFailureRate: 0.05,
+        minimumRegimeCoverage: 0.5,
+        drawdownEnvelopes: [{ days: 7, p95: 10, maximum: 20 }],
+        rawCoreExpectancy: null,
+        aiGateExpectancy: null,
+        overfitProbability: null,
+      },
+      summary: 'Must not trust the draft.',
+      prospective: {
+        status: 'not_started',
+        evidenceBooks: ['micro_live'],
+        llmComparatorPolicy: 'ai_approved_only',
+      },
+    };
+    await fs.writeFile(draftPath, JSON.stringify(draft));
+
+    await expect(
+      runStrategyReleaseCommand({
+        command: 'create',
+        inputPath: draftPath,
+        rootDir: path.join(rootDir, 'evidence'),
+      }),
+    ).rejects.toThrow('checksum mismatch');
+  });
+
+  it('rejects checksum-valid evidence with the wrong semantic contract', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-semantic-evidence-'),
+    );
+    const evidencePath = path.join(rootDir, 'core.json');
+    const content = '{"verified":true}\n';
+    await fs.writeFile(evidencePath, content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+
+    await expect(
+      collectReleaseEvidenceReferences([
+        {
+          kind: 'core_research',
+          artifactId: 'not-core-research',
+          path: evidencePath,
+          sha256,
+          verified: true,
+        },
+      ]),
+    ).rejects.toThrow('does not match core_research');
+  });
+
+  it('creates a historical monitoring profile from one core variant', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-profile-cli-'),
+    );
+    const inputPath = path.join(rootDir, 'trades.jsonl');
+    const outputPath = path.join(rootDir, 'profile.json');
+    const day = 86_400_000;
+    await fs.writeFile(
+      inputPath,
+      [
+        { variantId: 'control', exitTimestamp: day, netProfit: 10 },
+        { variantId: 'candidate', exitTimestamp: day, netProfit: 100 },
+        { variantId: 'control', exitTimestamp: 2 * day, netProfit: -5 },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n'),
+    );
+
+    const result = await runStrategyReleaseCommand({
+      command: 'profile',
+      inputPath,
+      outputPath,
+      variantId: 'control',
+      startTime: 0,
+      endTime: 3 * day,
+      days: [2],
+    });
+
+    expect(result).toMatchObject({
+      kind: 'profiled',
+      trades: 2,
+      outputPath,
+      profile: { rawCoreExpectancy: 2.5 },
+    });
+    expect(JSON.parse(await fs.readFile(outputPath, 'utf8'))).toMatchObject({
+      rawCoreExpectancy: 2.5,
+    });
+  });
+
+  it('keeps retention advisory unless apply is explicit', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-retention-cli-'),
+    );
+    const inventoryPath = path.join(rootDir, 'inventory.json');
+    const oldPath = path.join(rootDir, 'old.json');
+    await fs.writeFile(oldPath, 'old');
+    await fs.writeFile(
+      inventoryPath,
+      JSON.stringify({
+        now: 100 * 86_400_000,
+        entries: [
+          {
+            path: oldPath,
+            kind: 'verified_runtime_bundle',
+            createdAt: 0,
+            verified: true,
+            aggregated: true,
+            bytes: 3,
+          },
+        ],
+      }),
+    );
+
+    const dryRun = await runStrategyReleaseCommand({
+      command: 'retention',
+      inputPath: inventoryPath,
+      apply: false,
+    });
+    expect(dryRun).toMatchObject({
+      kind: 'retention',
+      applied: false,
+      deleteCount: 1,
+    });
+    await expect(fs.readFile(oldPath, 'utf8')).resolves.toBe('old');
+
+    const applied = await runStrategyReleaseCommand({
+      command: 'retention',
+      inputPath: inventoryPath,
+      apply: true,
+    });
+    expect(applied).toMatchObject({ applied: true, deleteCount: 1 });
+    await expect(fs.access(oldPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});

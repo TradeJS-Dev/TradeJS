@@ -8,3 +8,4 @@ export * from './strategyAdapters';
 export * from './strategyCharts';
 export * from './market';
 export * from './selection';
+export * from './strategyRelease';

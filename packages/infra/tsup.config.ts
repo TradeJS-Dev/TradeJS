@@ -15,6 +15,7 @@ export default defineConfig({
     'src/redis.ts',
     'src/runtimeStrategyConfigs.ts',
     'src/runtimeDeployments.ts',
+    'src/strategyReleaseEvidence.ts',
     'src/userSettings.ts',
     'src/timescale.ts',
     'src/timescale/client.ts',
