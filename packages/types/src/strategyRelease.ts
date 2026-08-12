@@ -88,6 +88,19 @@ export type StrategyReleaseEvidenceReference = {
   path: string;
   sha256: string;
   verified: boolean;
+  lineage?: {
+    strategy: string | null;
+    gitSha: string | null;
+    gitDirty: boolean | null;
+    coreConfigSha256: string | null;
+    gateConfigIdsFingerprint: string | null;
+    gateFingerprint: string | null;
+    runtimeConfigFingerprint: string | null;
+    gateContextFingerprint: string | null;
+    runtimeContextFingerprint: string | null;
+    maxLossValue: number | null;
+    sourceSha256s: string[];
+  };
   releaseAssertions?: Partial<{
     coreEdgeVerified: boolean;
     aiGateAddsValue: boolean;
@@ -105,9 +118,13 @@ export type StrategyReleaseManifest = {
   composition: {
     compositionId: string;
     gitSha: string;
-    coreConfigFingerprint: string;
+    coreConfigSha256: string;
+    coreExportSha256: string;
+    gateConfigIdsFingerprint: string;
+    runtimeConfigFingerprint: string;
     gateFingerprint: string;
-    contextFingerprint: string;
+    gateContextFingerprint: string;
+    runtimeContextFingerprint: string;
     maxLossValue: number;
     longEnabled: boolean;
     shortEnabled: boolean;

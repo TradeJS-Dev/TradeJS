@@ -875,6 +875,7 @@ export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
 
 export interface RuntimeLineage {
   schemaVersion: 1;
+  compositionId?: string | null;
   gitSha: string | null;
   gitDirty: boolean | null;
   gateFingerprint: string;

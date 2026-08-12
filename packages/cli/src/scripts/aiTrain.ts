@@ -10,6 +10,7 @@ import {
   streamAiDatasetRows,
   toFileToken,
 } from '@tradejs/infra/ai';
+import { strategyEvidenceFileSha256 } from '@tradejs/infra/strategyReleaseEvidence';
 import { redisKeys, setData } from '@tradejs/infra/redis';
 import {
   DEFAULT_AI_MODEL,
@@ -967,6 +968,7 @@ export const main = async () => {
       String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd(),
     strategyName,
     configIds: finalEvaluations.map((evaluation) => evaluation.configId),
+    sourceSha256s: await Promise.all(filePaths.map(strategyEvidenceFileSha256)),
     runContext: {
       mode: localOnly ? 'local-deterministic' : 'llm',
       model: localOnly ? 'local-deterministic' : model,

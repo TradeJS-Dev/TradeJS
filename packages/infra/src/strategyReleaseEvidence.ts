@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import {
   STRATEGY_EVIDENCE_MARKERS_SCHEMA,
   type StrategyEvidenceMarkerEnvelope,
@@ -7,6 +8,7 @@ import {
 } from '@tradejs/types';
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
+const LINEAGE_FINGERPRINT_RE = /^[a-f0-9]{16}$/;
 const MARKER_TYPES = new Set<StrategyEvidenceMarkerType>([
   'G',
   'L',
@@ -46,6 +48,15 @@ export const strategyEvidenceSha256 = (value: unknown) =>
   createHash('sha256')
     .update(canonicalStrategyEvidenceJson(value))
     .digest('hex');
+
+export const strategyEvidenceFingerprint = (value: unknown) =>
+  strategyEvidenceSha256(value).slice(0, 16);
+
+export const strategyEvidenceFileSha256 = async (filePath: string) => {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest('hex');
+};
 
 export const safeStrategyEvidenceSegment = (
   value: string,
@@ -108,13 +119,13 @@ export const verifyStrategyEvidenceMarkerEnvelope = (
       (marker.gitSha !== undefined && !isString(marker.gitSha)) ||
       (marker.gateFingerprint !== undefined &&
         (!isString(marker.gateFingerprint) ||
-          !SHA256_RE.test(marker.gateFingerprint))) ||
+          !LINEAGE_FINGERPRINT_RE.test(marker.gateFingerprint))) ||
       (marker.configFingerprint !== undefined &&
         (!isString(marker.configFingerprint) ||
-          !SHA256_RE.test(marker.configFingerprint))) ||
+          !LINEAGE_FINGERPRINT_RE.test(marker.configFingerprint))) ||
       (marker.contextFingerprint !== undefined &&
         (!isString(marker.contextFingerprint) ||
-          !SHA256_RE.test(marker.contextFingerprint))) ||
+          !LINEAGE_FINGERPRINT_RE.test(marker.contextFingerprint))) ||
       (marker.maxLossValue !== undefined && !isNumber(marker.maxLossValue)) ||
       (marker.coverage !== undefined &&
         (!coverage ||

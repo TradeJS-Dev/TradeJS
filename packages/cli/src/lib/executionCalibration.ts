@@ -6,6 +6,7 @@ import {
 import { intervalToMs } from '@tradejs/core/data';
 import { calculateDelayRiskBps } from '@tradejs/core/trade';
 import type { Direction, Interval } from '@tradejs/types';
+import type { RuntimeLineage } from '@tradejs/types';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -66,6 +67,7 @@ export type ExecutionCalibrationSample = {
   currentModelEntrySlippageBps: number | null;
   residualVsCurrentModelBps: number | null;
   replayEntryResidualBps: number | null;
+  runtimeLineage: RuntimeLineage | null;
 };
 
 export type ExecutionCalibrationCountBreakdown = Record<string, number>;
@@ -140,6 +142,7 @@ export type ExecutionCalibrationReport = {
 type RuntimeTradeRow = {
   trade: JsonRecord;
   signal: JsonRecord | null;
+  runtimeLineage: RuntimeLineage | null;
 };
 
 type ReplayMatch = {
@@ -349,6 +352,8 @@ const extractRuntimeTradeRows = (
       return {
         trade,
         signal,
+        runtimeLineage:
+          (asRecord(trade.runtimeLineage) as RuntimeLineage | null) ?? null,
       };
     })
     .filter((row): row is RuntimeTradeRow => row != null);
@@ -762,6 +767,7 @@ const buildSample = ({
       expectedPrice: match?.backtestPrice ?? null,
       actualPrice: match?.runtimePrice ?? null,
     }),
+    runtimeLineage: row.runtimeLineage,
   };
 };
 
@@ -812,6 +818,7 @@ const buildReplayOnlySample = (
     expectedPrice: match.backtestPrice,
     actualPrice: match.runtimePrice,
   }),
+  runtimeLineage: null,
 });
 
 const hasTelemetry = (sample: ExecutionCalibrationSample) =>

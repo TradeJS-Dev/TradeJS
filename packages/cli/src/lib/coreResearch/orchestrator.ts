@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { listCoreResearchTraceFiles } from '@tradejs/infra/coreResearch';
 import { writeCoreResearchMatches, writeCoreResearchTrades } from './artifacts';
 import {
@@ -298,6 +299,7 @@ const analyzeCoreResearchPrepared = async (
     stage: spec.stage,
     generatedAt: new Date().toISOString(),
     specSha256,
+    lineage: spec.lineage,
     semantics: {
       cohortOrder: ['ALL', 'LONG', 'SHORT'],
       pnlPerTrade: 'cohort PnL / cohort completed positions',
@@ -446,6 +448,37 @@ export const createCoreResearchSpecTemplate = (params: {
   outputPath: string;
 }) => {
   const rootDir = 'data/research/core';
+  const projectRoot = process.cwd();
+  const lineage = (() => {
+    try {
+      const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      const dirtyDiff = execFileSync(
+        'git',
+        ['diff', '--binary', '--no-ext-diff', 'HEAD'],
+        {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      );
+      return {
+        gitSha,
+        ...(dirtyDiff
+          ? {
+              dirtyDiffSha256: createHash('sha256')
+                .update(dirtyDiff)
+                .digest('hex'),
+            }
+          : {}),
+      };
+    } catch {
+      return {};
+    }
+  })();
   return {
     schema: 'tradejs-core-research/v1',
     researchId: params.researchId,
@@ -532,7 +565,7 @@ export const createCoreResearchSpecTemplate = (params: {
       rootDir,
       ledgerPath: `${rootDir}/trials.jsonl`,
     },
-    lineage: {},
+    lineage,
     outputPath: params.outputPath,
   } satisfies CoreResearchSpec & { outputPath: string };
 };

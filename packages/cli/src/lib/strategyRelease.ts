@@ -20,11 +20,13 @@ import {
   compactStrategyEvidenceTimestamp,
   createStrategyEvidenceMarkerEnvelope,
   safeStrategyEvidenceSegment,
+  strategyEvidenceFileSha256,
   strategyEvidenceSha256,
   verifyStrategyEvidenceMarkerEnvelope as verifyMarkerEnvelope,
 } from '@tradejs/infra/strategyReleaseEvidence';
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
+const LINEAGE_FINGERPRINT_RE = /^[a-f0-9]{16}$/;
 const DAY_MS = 86_400_000;
 
 const safeSegment = safeStrategyEvidenceSegment;
@@ -42,6 +44,12 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const assertFingerprint = (value: string, label: string) =>
   assert(SHA256_RE.test(value), `${label} must be a lowercase SHA-256`);
+
+const assertLineageFingerprint = (value: string, label: string) =>
+  assert(
+    LINEAGE_FINGERPRINT_RE.test(value),
+    `${label} must be a 16-character lowercase lineage fingerprint`,
+  );
 
 type StrategyReleaseInput = Omit<
   StrategyReleaseManifest,
@@ -106,6 +114,176 @@ const deriveReleaseGates = (
     runtimeParityVerified: asserted('runtimeParityVerified'),
     executionModelVerified: asserted('executionModelVerified'),
   };
+};
+
+const verifyEvidenceComposition = (
+  strategy: string,
+  composition: StrategyReleaseInput['composition'],
+  evidence: StrategyReleaseEvidenceReference[],
+) => {
+  const requireEqual = (
+    actual: string | number | boolean | null | undefined,
+    expected: string | number | boolean,
+    label: string,
+    artifactId: string,
+  ) =>
+    assert(
+      actual === expected,
+      `evidence ${artifactId} ${label} does not match the frozen composition`,
+    );
+
+  for (const reference of evidence) {
+    const lineage = reference.lineage;
+    if (reference.kind === 'core_research') {
+      requireEqual(
+        lineage?.strategy,
+        strategy,
+        'strategy',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.coreConfigSha256,
+        composition.coreConfigSha256,
+        'coreConfigSha256',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gitSha,
+        composition.gitSha,
+        'gitSha',
+        reference.artifactId,
+      );
+      requireEqual(lineage?.gitDirty, false, 'gitDirty', reference.artifactId);
+      requireEqual(
+        lineage?.maxLossValue,
+        composition.maxLossValue,
+        'MAX_LOSS_VALUE',
+        reference.artifactId,
+      );
+      assert(
+        lineage?.sourceSha256s.includes(composition.coreExportSha256),
+        `evidence ${reference.artifactId} does not include the frozen core export`,
+      );
+      continue;
+    }
+    if (reference.kind === 'ai_gate') {
+      requireEqual(
+        lineage?.strategy,
+        strategy,
+        'strategy',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gitSha,
+        composition.gitSha,
+        'gitSha',
+        reference.artifactId,
+      );
+      requireEqual(lineage?.gitDirty, false, 'gitDirty', reference.artifactId);
+      requireEqual(
+        lineage?.gateConfigIdsFingerprint,
+        composition.gateConfigIdsFingerprint,
+        'gateConfigIdsFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gateFingerprint,
+        composition.gateFingerprint,
+        'gateFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gateContextFingerprint,
+        composition.gateContextFingerprint,
+        'gateContextFingerprint',
+        reference.artifactId,
+      );
+      assert(
+        lineage?.sourceSha256s.includes(composition.coreExportSha256),
+        `evidence ${reference.artifactId} does not use the frozen core export`,
+      );
+      continue;
+    }
+    if (reference.kind === 'runtime_parity') {
+      requireEqual(
+        lineage?.strategy,
+        strategy,
+        'strategy',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gitSha,
+        composition.gitSha,
+        'gitSha',
+        reference.artifactId,
+      );
+      requireEqual(lineage?.gitDirty, false, 'gitDirty', reference.artifactId);
+      requireEqual(
+        lineage?.gateFingerprint,
+        composition.gateFingerprint,
+        'gateFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.runtimeConfigFingerprint,
+        composition.runtimeConfigFingerprint,
+        'runtimeConfigFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.runtimeContextFingerprint,
+        composition.runtimeContextFingerprint,
+        'runtimeContextFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.maxLossValue,
+        composition.maxLossValue,
+        'MAX_LOSS_VALUE',
+        reference.artifactId,
+      );
+      continue;
+    }
+    if (reference.kind === 'execution_calibration') {
+      requireEqual(
+        lineage?.strategy,
+        strategy,
+        'strategy',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.gitSha,
+        composition.gitSha,
+        'gitSha',
+        reference.artifactId,
+      );
+      requireEqual(lineage?.gitDirty, false, 'gitDirty', reference.artifactId);
+      requireEqual(
+        lineage?.gateFingerprint,
+        composition.gateFingerprint,
+        'gateFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.runtimeConfigFingerprint,
+        composition.runtimeConfigFingerprint,
+        'runtimeConfigFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.runtimeContextFingerprint,
+        composition.runtimeContextFingerprint,
+        'runtimeContextFingerprint',
+        reference.artifactId,
+      );
+      requireEqual(
+        lineage?.maxLossValue,
+        composition.maxLossValue,
+        'MAX_LOSS_VALUE',
+        reference.artifactId,
+      );
+    }
+  }
 };
 
 export const createStrategyReleaseManifest = (
@@ -178,16 +356,33 @@ export const createStrategyReleaseManifest = (
       ),
     'monitoring drawdown envelopes are invalid',
   );
-  assertFingerprint(
-    input.composition.coreConfigFingerprint,
-    'coreConfigFingerprint',
+  assertFingerprint(input.composition.coreConfigSha256, 'coreConfigSha256');
+  assertFingerprint(input.composition.coreExportSha256, 'coreExportSha256');
+  assertLineageFingerprint(
+    input.composition.gateConfigIdsFingerprint,
+    'gateConfigIdsFingerprint',
   );
-  assertFingerprint(input.composition.gateFingerprint, 'gateFingerprint');
-  assertFingerprint(input.composition.contextFingerprint, 'contextFingerprint');
+  assertLineageFingerprint(
+    input.composition.runtimeConfigFingerprint,
+    'runtimeConfigFingerprint',
+  );
+  assertLineageFingerprint(
+    input.composition.gateFingerprint,
+    'gateFingerprint',
+  );
+  assertLineageFingerprint(
+    input.composition.gateContextFingerprint,
+    'gateContextFingerprint',
+  );
+  assertLineageFingerprint(
+    input.composition.runtimeContextFingerprint,
+    'runtimeContextFingerprint',
+  );
   assertFingerprint(input.marketWindow.universeSha256, 'universeSha256');
   for (const entry of input.evidence) {
     assertFingerprint(entry.sha256, `evidence ${entry.artifactId}`);
   }
+  verifyEvidenceComposition(input.strategy, input.composition, input.evidence);
   const evidenceGates = deriveReleaseGates(input.evidence);
   assert(
     canonicalStrategyReleaseJson(input.gates) ===
@@ -198,9 +393,13 @@ export const createStrategyReleaseManifest = (
   const compositionIdentity = {
     strategy: input.strategy,
     gitSha: input.composition.gitSha,
-    coreConfigFingerprint: input.composition.coreConfigFingerprint,
+    coreConfigSha256: input.composition.coreConfigSha256,
+    coreExportSha256: input.composition.coreExportSha256,
+    gateConfigIdsFingerprint: input.composition.gateConfigIdsFingerprint,
+    runtimeConfigFingerprint: input.composition.runtimeConfigFingerprint,
     gateFingerprint: input.composition.gateFingerprint,
-    contextFingerprint: input.composition.contextFingerprint,
+    gateContextFingerprint: input.composition.gateContextFingerprint,
+    runtimeContextFingerprint: input.composition.runtimeContextFingerprint,
     maxLossValue: input.composition.maxLossValue,
   };
   const compositionId = `${safeSegment(input.strategy, 'strategy')}_${strategyReleaseSha256(compositionIdentity).slice(0, 16)}`;
@@ -296,9 +495,13 @@ export const verifyStrategyReleaseEnvelope = async (
     createdAt: manifest.createdAt,
     composition: {
       gitSha: manifest.composition.gitSha,
-      coreConfigFingerprint: manifest.composition.coreConfigFingerprint,
+      coreConfigSha256: manifest.composition.coreConfigSha256,
+      coreExportSha256: manifest.composition.coreExportSha256,
+      gateConfigIdsFingerprint: manifest.composition.gateConfigIdsFingerprint,
+      runtimeConfigFingerprint: manifest.composition.runtimeConfigFingerprint,
       gateFingerprint: manifest.composition.gateFingerprint,
-      contextFingerprint: manifest.composition.contextFingerprint,
+      gateContextFingerprint: manifest.composition.gateContextFingerprint,
+      runtimeContextFingerprint: manifest.composition.runtimeContextFingerprint,
       maxLossValue: manifest.composition.maxLossValue,
       longEnabled: manifest.composition.longEnabled,
       shortEnabled: manifest.composition.shortEnabled,
@@ -339,8 +542,8 @@ const releaseMarkers = (manifest: StrategyReleaseManifest) => {
     compositionId: manifest.composition.compositionId,
     gitSha: manifest.composition.gitSha,
     gateFingerprint: manifest.composition.gateFingerprint,
-    configFingerprint: manifest.composition.coreConfigFingerprint,
-    contextFingerprint: manifest.composition.contextFingerprint,
+    configFingerprint: manifest.composition.runtimeConfigFingerprint,
+    contextFingerprint: manifest.composition.runtimeContextFingerprint,
     maxLossValue: manifest.composition.maxLossValue,
   };
   return [
@@ -582,6 +785,7 @@ export const buildStrategyLiveDiagnosisFromScorecard = ({
     lineage?: {
       complete: boolean;
       conflicts: boolean;
+      compositionId: string | null;
       gitSha: string | null;
       gitDirty: boolean | null;
       gateFingerprint: string | null;
@@ -616,11 +820,14 @@ export const buildStrategyLiveDiagnosisFromScorecard = ({
     scorecard.parity.lineageReason == null &&
     lineage?.complete === true &&
     lineage.conflicts === false &&
+    lineage.compositionId === manifest.composition.compositionId &&
     lineage.gitDirty === false &&
     lineage.gitSha === manifest.composition.gitSha &&
-    lineage.configFingerprint === manifest.composition.coreConfigFingerprint &&
+    lineage.configFingerprint ===
+      manifest.composition.runtimeConfigFingerprint &&
     lineage.gateFingerprint === manifest.composition.gateFingerprint &&
-    lineage.contextFingerprint === manifest.composition.contextFingerprint &&
+    lineage.contextFingerprint ===
+      manifest.composition.runtimeContextFingerprint &&
     lineage.maxLossValue === manifest.composition.maxLossValue;
   return buildStrategyLiveDiagnosis({
     strategy: manifest.strategy,
@@ -810,9 +1017,9 @@ export const publishStrategyLiveDiagnosis = async ({
     ...(composition
       ? {
           gitSha: composition.gitSha,
-          configFingerprint: composition.coreConfigFingerprint,
+          configFingerprint: composition.runtimeConfigFingerprint,
           gateFingerprint: composition.gateFingerprint,
-          contextFingerprint: composition.contextFingerprint,
+          contextFingerprint: composition.runtimeContextFingerprint,
           maxLossValue: composition.maxLossValue,
         }
       : {}),
@@ -901,20 +1108,296 @@ export const planStrategyEvidenceRetention = ({
   };
 };
 
+type StrategyReleaseEvidenceLineage = NonNullable<
+  StrategyReleaseEvidenceReference['lineage']
+>;
+
+const finiteString = (value: unknown) =>
+  typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const finiteNumber = (value: unknown) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const uniqueStrings = (values: unknown[]) => [
+  ...new Set(
+    values.map(finiteString).filter((value): value is string => value != null),
+  ),
+];
+
+const incompleteEvidenceLineage = (): StrategyReleaseEvidenceLineage => ({
+  strategy: null,
+  gitSha: null,
+  gitDirty: null,
+  coreConfigSha256: null,
+  gateConfigIdsFingerprint: null,
+  gateFingerprint: null,
+  runtimeConfigFingerprint: null,
+  gateContextFingerprint: null,
+  runtimeContextFingerprint: null,
+  maxLossValue: null,
+  sourceSha256s: [],
+});
+
+const extractEvidenceLineage = ({
+  artifact,
+  reference,
+  nested,
+  array,
+}: {
+  artifact: Record<string, unknown>;
+  reference: StrategyReleaseEvidenceReference;
+  nested: (value: unknown) => Record<string, unknown> | null;
+  array: (value: unknown) => unknown[];
+}): StrategyReleaseEvidenceLineage => {
+  const empty = incompleteEvidenceLineage();
+  if (reference.kind === 'core_research') {
+    const variants = array(artifact.variants)
+      .map(nested)
+      .filter((entry): entry is Record<string, unknown> => entry != null);
+    const selectedCandidateIds = uniqueStrings(
+      array(artifact.comparisons)
+        .map(nested)
+        .filter(
+          (comparison): comparison is Record<string, unknown> =>
+            comparison != null && nested(comparison.selection)?.passed === true,
+        )
+        .map((comparison) => comparison.candidateId),
+    );
+    const selectedVariants =
+      selectedCandidateIds.length === 1
+        ? variants.filter(
+            (variant) =>
+              finiteString(nested(variant.variant)?.id) ===
+              selectedCandidateIds[0],
+          )
+        : [];
+    const configShas = uniqueStrings(
+      selectedVariants.map((variant) => nested(variant.variant)?.configSha256),
+    );
+    const maxLossValues = [
+      ...new Set(
+        selectedVariants
+          .map((variant) =>
+            finiteNumber(
+              nested(nested(variant.variant)?.resolvedConfig)?.MAX_LOSS_VALUE,
+            ),
+          )
+          .filter((value): value is number => value != null),
+      ),
+    ];
+    const sourceSha256s = uniqueStrings(
+      selectedVariants.flatMap((variant) =>
+        array(variant.files).map((file) => nested(file)?.sha256),
+      ),
+    );
+    const resultLineage = nested(artifact.lineage);
+    const strategies = uniqueStrings(
+      selectedVariants.map(
+        (variant) =>
+          finiteString(nested(variant.variant)?.configName)?.split(':')[0],
+      ),
+    );
+    return {
+      ...empty,
+      strategy: strategies.length === 1 ? strategies[0] : null,
+      gitSha: finiteString(resultLineage?.gitSha),
+      gitDirty:
+        resultLineage?.gitSha != null
+          ? finiteString(resultLineage?.dirtyDiffSha256) != null
+          : null,
+      coreConfigSha256: configShas.length === 1 ? configShas[0] : null,
+      maxLossValue: maxLossValues.length === 1 ? maxLossValues[0] : null,
+      sourceSha256s,
+    };
+  }
+  if (reference.kind === 'ai_gate') {
+    const lineage = nested(nested(artifact.research)?.lineage);
+    return {
+      ...empty,
+      strategy: finiteString(nested(artifact.run)?.strategy),
+      gitSha: finiteString(lineage?.gitSha),
+      gitDirty:
+        typeof lineage?.gitDirty === 'boolean' ? lineage.gitDirty : null,
+      gateConfigIdsFingerprint: finiteString(lineage?.configIdsFingerprint),
+      gateFingerprint: finiteString(lineage?.gateFingerprint),
+      gateContextFingerprint: finiteString(lineage?.contextFingerprint),
+      sourceSha256s: uniqueStrings(array(lineage?.sourceSha256s)),
+    };
+  }
+  if (reference.kind === 'runtime_parity') {
+    const comparison = nested(nested(artifact.replay)?.runtimeComparison);
+    const replayLineages = array(nested(comparison?.lineage)?.replay)
+      .map(nested)
+      .map((entry) => nested(entry?.lineage))
+      .filter((entry): entry is Record<string, unknown> => entry != null);
+    const one = (key: string) => {
+      const values = uniqueStrings(replayLineages.map((entry) => entry[key]));
+      return values.length === 1 ? values[0] : null;
+    };
+    const maxLossValues = [
+      ...new Set(
+        replayLineages
+          .map((entry) => finiteNumber(entry.maxLossValue))
+          .filter((value): value is number => value != null),
+      ),
+    ];
+    const dirtyValues = [
+      ...new Set(
+        replayLineages
+          .map((entry) => entry.gitDirty)
+          .filter((value): value is boolean => typeof value === 'boolean'),
+      ),
+    ];
+    return {
+      ...empty,
+      strategy: (() => {
+        const strategies = uniqueStrings(
+          array(nested(comparison?.lineage)?.replay).map(
+            (entry) => nested(entry)?.strategy,
+          ),
+        );
+        return strategies.length === 1 ? strategies[0] : null;
+      })(),
+      gitSha: one('gitSha'),
+      gitDirty: dirtyValues.length === 1 ? dirtyValues[0] : null,
+      gateFingerprint: one('gateFingerprint'),
+      runtimeConfigFingerprint: one('configFingerprint'),
+      runtimeContextFingerprint: one('contextFingerprint'),
+      maxLossValue: maxLossValues.length === 1 ? maxLossValues[0] : null,
+    };
+  }
+  if (reference.kind === 'execution_calibration') {
+    const samples = [
+      ...array(artifact.samples),
+      ...array(artifact.replayOnlySamples),
+    ].map(nested);
+    const lineages = samples
+      .map((sample) => nested(sample?.runtimeLineage))
+      .filter((lineage): lineage is Record<string, unknown> => lineage != null);
+    const one = (key: string) => {
+      const values = uniqueStrings(lineages.map((lineage) => lineage[key]));
+      return values.length === 1 ? values[0] : null;
+    };
+    const dirtyValues = [
+      ...new Set(
+        lineages
+          .map((lineage) => lineage.gitDirty)
+          .filter((value): value is boolean => typeof value === 'boolean'),
+      ),
+    ];
+    const maxLossValues = [
+      ...new Set(
+        lineages
+          .map((lineage) => finiteNumber(lineage.maxLossValue))
+          .filter((value): value is number => value != null),
+      ),
+    ];
+    return {
+      ...empty,
+      strategy: (() => {
+        const strategies = uniqueStrings(
+          samples.map((sample) => sample?.strategy),
+        );
+        return strategies.length === 1 ? strategies[0] : null;
+      })(),
+      gitSha: one('gitSha'),
+      gitDirty: dirtyValues.length === 1 ? dirtyValues[0] : null,
+      gateFingerprint: one('gateFingerprint'),
+      runtimeConfigFingerprint: one('configFingerprint'),
+      runtimeContextFingerprint: one('contextFingerprint'),
+      maxLossValue: maxLossValues.length === 1 ? maxLossValues[0] : null,
+      sourceSha256s: uniqueStrings([
+        ...array(nested(artifact.sources)?.sha256s),
+        ...array(artifact.sourceSha256s),
+      ]),
+    };
+  }
+  return empty;
+};
+
+const verifyCompletedCoreResearchBundle = async ({
+  artifact,
+  resultPath,
+  resultSha256,
+}: {
+  artifact: Record<string, unknown>;
+  resultPath: string;
+  resultSha256: string;
+}) => {
+  const researchId = finiteString(artifact.researchId);
+  const specSha256 = finiteString(artifact.specSha256);
+  assert(researchId != null, 'core result researchId is required');
+  assert(specSha256 != null, 'core result specSha256 is required');
+  const researchDir = path.dirname(resultPath);
+  const manifestPath = path.join(researchDir, 'manifest.json');
+  const specPath = path.join(researchDir, 'spec.json');
+  const manifestBytes = await fs.readFile(manifestPath).catch(() => null);
+  const specBytes = await fs.readFile(specPath).catch(() => null);
+  assert(
+    manifestBytes != null && specBytes != null,
+    'core result must belong to a completed core research bundle',
+  );
+  const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<
+    string,
+    unknown
+  >;
+  const artifactHashes =
+    manifest.artifactHashes != null &&
+    typeof manifest.artifactHashes === 'object' &&
+    !Array.isArray(manifest.artifactHashes)
+      ? (manifest.artifactHashes as Record<string, unknown>)
+      : null;
+  const parsedSpec = JSON.parse(specBytes.toString('utf8')) as unknown;
+  assert(
+    manifest.schema === 'tradejs-core-research-manifest/v1' &&
+      manifest.status === 'completed' &&
+      manifest.researchId === researchId &&
+      manifest.specSha256 === specSha256 &&
+      artifactHashes?.['result.json'] === resultSha256 &&
+      createHash('sha256')
+        .update(canonicalStrategyReleaseJson(parsedSpec))
+        .digest('hex') === specSha256,
+    'core result is not bound by its completed core research manifest',
+  );
+  for (const [relativePath, expectedSha256] of Object.entries(
+    artifactHashes ?? {},
+  )) {
+    assert(
+      !path.isAbsolute(relativePath) &&
+        !relativePath.split(/[\\/]/).includes('..'),
+      `core bundle artifact ${relativePath} escapes its research directory`,
+    );
+    assert(
+      typeof expectedSha256 === 'string' && SHA256_RE.test(expectedSha256),
+      `core bundle artifact ${relativePath} has an invalid checksum`,
+    );
+    const actualSha256 = await strategyEvidenceFileSha256(
+      path.join(researchDir, relativePath),
+    );
+    assert(
+      actualSha256 === expectedSha256,
+      `core bundle artifact ${relativePath} checksum mismatch`,
+    );
+  }
+};
+
 export async function collectReleaseEvidenceReferences(
   references: StrategyReleaseEvidenceReference[],
 ) {
   return Promise.all(
     references.map(async (reference) => {
-      const bytes = await fs.readFile(reference.path);
-      const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+      const actualSha256 = await strategyEvidenceFileSha256(reference.path);
       assert(
         actualSha256 === reference.sha256,
         `evidence ${reference.artifactId} checksum mismatch`,
       );
       let artifact: Record<string, unknown>;
       try {
-        const parsed = JSON.parse(bytes.toString('utf8')) as unknown;
+        const parsed = JSON.parse(
+          await fs.readFile(reference.path, 'utf8'),
+        ) as unknown;
         assert(
           parsed != null &&
             typeof parsed === 'object' &&
@@ -954,6 +1437,16 @@ export async function collectReleaseEvidenceReferences(
         semanticallyValid,
         `evidence ${reference.artifactId} does not match ${reference.kind}`,
       );
+      if (
+        reference.kind === 'core_research' &&
+        artifact.schema === 'tradejs-core-research-result/v1'
+      ) {
+        await verifyCompletedCoreResearchBundle({
+          artifact,
+          resultPath: reference.path,
+          resultSha256: actualSha256,
+        });
+      }
       const releaseAssertions = (() => {
         if (reference.kind === 'core_research') {
           const evidence = nested(artifact.evidence);
@@ -963,6 +1456,24 @@ export async function collectReleaseEvidenceReferences(
           const variants = array(artifact.variants)
             .map(nested)
             .filter((entry): entry is Record<string, unknown> => entry != null);
+          const hasCohorts = (value: unknown) => {
+            const cohorts = nested(value);
+            return ['ALL', 'LONG', 'SHORT'].every(
+              (cohort) => nested(cohorts?.[cohort]) != null,
+            );
+          };
+          const directionalEvidenceComplete =
+            variants.length > 0 &&
+            variants.every(
+              (variant) =>
+                hasCohorts(nested(variant.full)?.cohorts) &&
+                array(variant.terminal).every((window) =>
+                  hasCohorts(nested(window)?.cohorts),
+                ) &&
+                array(variant.folds).every((window) =>
+                  hasCohorts(nested(window)?.cohorts),
+                ),
+            );
           const evidenceComplete = [
             'terminals',
             'folds',
@@ -977,17 +1488,23 @@ export async function collectReleaseEvidenceReferences(
             variants.every(
               (variant) => nested(variant.reconciliation)?.status === 'match',
             );
-          const selected =
-            comparisons.length === 0
-              ? variants.length === 1
-              : comparisons.some(
-                  (comparison) => nested(comparison.selection)?.passed === true,
-                );
+          const selectedCandidateIds = uniqueStrings(
+            comparisons
+              .filter(
+                (comparison) => nested(comparison.selection)?.passed === true,
+              )
+              .map((comparison) => comparison.candidateId),
+          );
+          const selected = selectedCandidateIds.length === 1;
           const finalStage =
             artifact.stage === 'isolated_long' ||
             artifact.stage === 'confirmation';
           const verified =
-            finalStage && evidenceComplete && reconciled && selected;
+            finalStage &&
+            evidenceComplete &&
+            directionalEvidenceComplete &&
+            reconciled &&
+            selected;
           return {
             coreEdgeVerified: verified,
             currentMarketSuitable: verified,
@@ -1001,6 +1518,24 @@ export async function collectReleaseEvidenceReferences(
           )
             .map(nested)
             .filter((entry): entry is Record<string, unknown> => entry != null);
+          const hasLongShortDirections = (value: unknown) => {
+            const directions = new Map(
+              array(value)
+                .map(nested)
+                .filter(
+                  (entry): entry is Record<string, unknown> => entry != null,
+                )
+                .map((entry) => [finiteString(entry.direction), entry]),
+            );
+            return ['LONG', 'SHORT'].every(
+              (direction) => nested(directions.get(direction)?.summary) != null,
+            );
+          };
+          const directionalEvidenceComplete =
+            hasLongShortDirections(artifact.byDirection) &&
+            terminalWindows.every((window) =>
+              hasLongShortDirections(window.byDirection),
+            );
           const terminalsPass =
             terminalWindows.length > 0 &&
             terminalWindows.every((window) => {
@@ -1022,6 +1557,7 @@ export async function collectReleaseEvidenceReferences(
                 0 &&
               Number(approvedRisk?.profitFactor ?? Number.NEGATIVE_INFINITY) >
                 1 &&
+              directionalEvidenceComplete &&
               terminalsPass,
           };
         }
@@ -1054,7 +1590,13 @@ export async function collectReleaseEvidenceReferences(
         }
         return {};
       })();
-      return { ...reference, verified: true, releaseAssertions };
+      const lineage = extractEvidenceLineage({
+        artifact,
+        reference,
+        nested,
+        array,
+      });
+      return { ...reference, verified: true, lineage, releaseAssertions };
     }),
   );
 }

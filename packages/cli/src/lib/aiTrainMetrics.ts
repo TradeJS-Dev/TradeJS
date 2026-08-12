@@ -469,7 +469,10 @@ const isDirectionMatchAtThreshold = (
 export const summarizeAiTrainEvaluationsByDirection = (
   evaluations: AiTrainEvaluation[],
 ): AiTrainDirectionSummary[] => {
-  const grouped = new Map<string, AiTrainEvaluation[]>();
+  const grouped = new Map<string, AiTrainEvaluation[]>([
+    ['LONG', []],
+    ['SHORT', []],
+  ]);
 
   for (const evaluation of evaluations) {
     const direction =

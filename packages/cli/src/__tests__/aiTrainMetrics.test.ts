@@ -230,6 +230,28 @@ describe('aiTrainMetrics', () => {
     ]);
   });
 
+  it('always emits explicit LONG and SHORT books even when one side is empty', () => {
+    const summaries = summarizeAiTrainEvaluationsByDirection([
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        direction: 'LONG',
+      },
+    ]);
+
+    expect(summaries.map(({ direction }) => direction)).toEqual([
+      'LONG',
+      'SHORT',
+    ]);
+    expect(summaries[1].summary).toMatchObject({
+      approved: 0,
+      rejected: 0,
+      approvedRisk: { trades: 0, totalProfit: 0 },
+    });
+  });
+
   it('splits approved risk summaries by month', () => {
     const summaries = summarizeAiTrainEvaluationsByMonth([
       {

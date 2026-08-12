@@ -139,6 +139,7 @@ export const createSignalsTickerEvaluator =
         strategyName,
         configId,
         strategyCreator,
+        releaseCompositionId,
         sourceStrategyConfig,
         strategyConfig,
         strategyResults,
@@ -153,6 +154,7 @@ export const createSignalsTickerEvaluator =
       const runtimeLineage = await buildRuntimeLineage({
         projectRoot,
         strategyName,
+        compositionId: releaseCompositionId,
         config: { configId, strategyConfig, symbolResultConfig },
         runContext: {
           connectorName: connectorName.toLowerCase(),

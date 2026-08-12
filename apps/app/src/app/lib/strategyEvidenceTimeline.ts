@@ -73,28 +73,24 @@ const discoverJsonFiles = async (rootDir: string): Promise<string[]> => {
 
 const inferMatchingStrategies = ({
   filePath,
+  rootDir,
   parsed,
   strategies,
 }: {
   filePath: string;
+  rootDir: string;
   parsed: unknown;
   strategies: string[];
 }) => {
-  const root = asRecord(parsed);
-  const payload = asRecord(root?.payload);
+  const payload = asRecord(asRecord(parsed)?.payload);
   const declaredStrategy = isNonEmptyString(payload?.strategy)
     ? payload.strategy
     : null;
-  const artifactId = isNonEmptyString(root?.artifactId)
-    ? root.artifactId
-    : path.basename(filePath, '.json');
-  const parentSegment = path.basename(path.dirname(filePath));
-
+  const directoryStrategy = path.relative(rootDir, filePath).split(path.sep)[0];
   return strategies.filter(
     (strategy) =>
       strategy === declaredStrategy ||
-      artifactId.startsWith(`${safeStrategyEvidenceSegment(strategy)}_`) ||
-      parentSegment === safeStrategyEvidenceSegment(strategy),
+      directoryStrategy === safeStrategyEvidenceSegment(strategy),
   );
 };
 
@@ -145,19 +141,7 @@ export const loadStrategyEvidenceTimelines = async ({
     : path.resolve(projectRoot, configuredDir);
   let files: string[];
   try {
-    files = [
-      ...new Set(
-        (
-          await Promise.all(
-            strategies.map((strategy) =>
-              discoverJsonFiles(
-                path.join(rootDir, safeStrategyEvidenceSegment(strategy)),
-              ),
-            ),
-          )
-        ).flat(),
-      ),
-    ].sort();
+    files = await discoverJsonFiles(rootDir);
   } catch {
     for (const selector of selectors) {
       timelines.set(
@@ -181,6 +165,7 @@ export const loadStrategyEvidenceTimelines = async ({
     } catch {
       for (const strategy of inferMatchingStrategies({
         filePath,
+        rootDir,
         parsed,
         strategies,
       })) {
@@ -191,6 +176,7 @@ export const loadStrategyEvidenceTimelines = async ({
 
     const matchingStrategies = inferMatchingStrategies({
       filePath,
+      rootDir,
       parsed,
       strategies,
     });
@@ -228,12 +214,12 @@ export const loadStrategyEvidenceTimelines = async ({
     const envelopes = envelopesByStrategy.get(strategy) ?? [];
     if (!envelopes.length) continue;
     const hasCompleteSelector =
-      Boolean(selector.compositionId) ||
-      (Boolean(selector.gitSha) &&
-        Boolean(selector.gateFingerprint) &&
-        Boolean(selector.configFingerprint) &&
-        Boolean(selector.contextFingerprint) &&
-        selector.maxLossValue != null);
+      Boolean(selector.compositionId) &&
+      Boolean(selector.gitSha) &&
+      Boolean(selector.gateFingerprint) &&
+      Boolean(selector.configFingerprint) &&
+      Boolean(selector.contextFingerprint) &&
+      selector.maxLossValue != null;
     if (selector.requireCompleteLineage && !hasCompleteSelector) continue;
 
     const markersById = new Map<string, StrategyEvidenceMarker>();

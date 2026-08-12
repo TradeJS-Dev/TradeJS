@@ -6,6 +6,7 @@ import { collectReleaseEvidenceReferences } from '../lib/strategyRelease';
 import { runStrategyReleaseCommand } from '../scripts/strategyRelease';
 
 const SHA = 'a'.repeat(64);
+const FP = '1'.repeat(16);
 
 describe('strategy-release command', () => {
   it('creates and verifies an immutable release from a draft', async () => {
@@ -20,9 +21,13 @@ describe('strategy-release command', () => {
         createdAt: Date.UTC(2026, 7, 12),
         composition: {
           gitSha: 'deadbeef',
-          coreConfigFingerprint: SHA,
-          gateFingerprint: SHA,
-          contextFingerprint: SHA,
+          coreConfigSha256: SHA,
+          coreExportSha256: SHA,
+          gateConfigIdsFingerprint: FP,
+          runtimeConfigFingerprint: FP,
+          gateFingerprint: FP,
+          gateContextFingerprint: FP,
+          runtimeContextFingerprint: FP,
           maxLossValue: 10,
           longEnabled: true,
           shortEnabled: true,
@@ -141,9 +146,13 @@ describe('strategy-release command', () => {
       createdAt: 1,
       composition: {
         gitSha: 'deadbeef',
-        coreConfigFingerprint: SHA,
-        gateFingerprint: SHA,
-        contextFingerprint: SHA,
+        coreConfigSha256: SHA,
+        coreExportSha256: SHA,
+        gateConfigIdsFingerprint: FP,
+        runtimeConfigFingerprint: FP,
+        gateFingerprint: FP,
+        gateContextFingerprint: FP,
+        runtimeContextFingerprint: FP,
         maxLossValue: 10,
         longEnabled: true,
         shortEnabled: true,
@@ -226,6 +235,145 @@ describe('strategy-release command', () => {
         },
       ]),
     ).rejects.toThrow('does not match core_research');
+  });
+
+  it('rejects a core result that is not bound by its completed bundle manifest', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-core-bundle-'),
+    );
+    const evidencePath = path.join(rootDir, 'result.json');
+    const content = JSON.stringify({
+      schema: 'tradejs-core-research-result/v1',
+      researchId: 'core-release',
+      stage: 'isolated_long',
+      specSha256: 'b'.repeat(64),
+      variants: [],
+      comparisons: [],
+      evidence: {},
+    });
+    await fs.writeFile(evidencePath, content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+
+    await expect(
+      collectReleaseEvidenceReferences([
+        {
+          kind: 'core_research',
+          artifactId: 'unbound-core-result',
+          path: evidencePath,
+          sha256,
+          verified: false,
+        },
+      ]),
+    ).rejects.toThrow('completed core research bundle');
+  });
+
+  it('derives gate lineage and rejects a draft bound to another export', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-gate-lineage-'),
+    );
+    const evidencePath = path.join(rootDir, 'gate.json');
+    const content = JSON.stringify({
+      run: { strategy: 'DoubleTap', mode: 'local-deterministic' },
+      outcome: {
+        expectancyDelta: 1,
+        approvedRisk: { totalProfit: 1, profitFactor: 2 },
+      },
+      byDirection: [
+        { direction: 'LONG', summary: { approved: 1 } },
+        { direction: 'SHORT', summary: { approved: 0 } },
+      ],
+      research: {
+        lineage: {
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          gateFingerprint: FP,
+          configIdsFingerprint: FP,
+          contextFingerprint: FP,
+          sourceSha256s: ['b'.repeat(64)],
+        },
+        terminalWindows: [
+          {
+            complete: true,
+            outcome: { approved: 1, approvedRisk: { totalProfit: 1 } },
+            byDirection: [
+              { direction: 'LONG', summary: { approved: 1 } },
+              { direction: 'SHORT', summary: { approved: 0 } },
+            ],
+          },
+        ],
+      },
+    });
+    await fs.writeFile(evidencePath, content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const [evidence] = await collectReleaseEvidenceReferences([
+      {
+        kind: 'ai_gate',
+        artifactId: 'gate',
+        path: evidencePath,
+        sha256,
+        verified: false,
+      },
+    ]);
+
+    expect(evidence).toMatchObject({
+      verified: true,
+      lineage: {
+        strategy: 'DoubleTap',
+        gitSha: 'deadbeef',
+        gitDirty: false,
+        gateConfigIdsFingerprint: FP,
+        gateFingerprint: FP,
+        gateContextFingerprint: FP,
+        sourceSha256s: ['b'.repeat(64)],
+      },
+      releaseAssertions: { aiGateAddsValue: true },
+    });
+  });
+
+  it('fails AI release assertions when directional evidence is incomplete', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-gate-directions-'),
+    );
+    const evidencePath = path.join(rootDir, 'gate.json');
+    const content = JSON.stringify({
+      run: { strategy: 'DoubleTap', mode: 'local-deterministic' },
+      outcome: {
+        expectancyDelta: 1,
+        approvedRisk: { totalProfit: 1, profitFactor: 2 },
+      },
+      byDirection: [{ direction: 'LONG', summary: { approved: 1 } }],
+      research: {
+        lineage: {
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          gateFingerprint: FP,
+          configIdsFingerprint: FP,
+          contextFingerprint: FP,
+          sourceSha256s: ['b'.repeat(64)],
+        },
+        terminalWindows: [
+          {
+            complete: true,
+            outcome: { approved: 1, approvedRisk: { totalProfit: 1 } },
+            byDirection: [{ direction: 'LONG', summary: { approved: 1 } }],
+          },
+        ],
+      },
+    });
+    await fs.writeFile(evidencePath, content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+
+    const [evidence] = await collectReleaseEvidenceReferences([
+      {
+        kind: 'ai_gate',
+        artifactId: 'gate-without-short',
+        path: evidencePath,
+        sha256,
+        verified: false,
+      },
+    ]);
+
+    expect(evidence.releaseAssertions).toEqual({ aiGateAddsValue: false });
   });
 
   it('creates a historical monitoring profile from one core variant', async () => {

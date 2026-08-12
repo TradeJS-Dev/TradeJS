@@ -13,6 +13,7 @@ import {
   analyzeCoreResearch,
   validateCoreResearchRunCommand,
 } from '../orchestrator';
+import { collectReleaseEvidenceReferences } from '../../strategyRelease';
 import type { CoreResearchSpec } from '../types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -284,6 +285,7 @@ describe('core research orchestrator', () => {
         rootDir: path.join(tempRoot, 'artifacts'),
         ledgerPath: path.join(tempRoot, 'artifacts', 'trials.jsonl'),
       },
+      lineage: { gitSha: 'fixture-git-sha' },
     };
 
     const analyzed = await analyzeCoreResearch(spec);
@@ -315,6 +317,7 @@ describe('core research orchestrator', () => {
       screen: 'present',
       isolatedLong: 'missing',
     });
+    expect(analyzed.result.lineage).toEqual({ gitSha: 'fixture-git-sha' });
     expect(candidate?.traceFunnel.skipCounts).toEqual({ NO_PATTERN: 7 });
     expect(candidate?.costStress).toHaveLength(1);
     await expect(
@@ -327,6 +330,32 @@ describe('core research orchestrator', () => {
       researchId: 'fixture-research',
       artifacts: 6,
     });
+    const [releaseEvidence] = await collectReleaseEvidenceReferences([
+      {
+        kind: 'core_research',
+        artifactId: 'fixture-research-result',
+        path: analyzed.paths.resultPath,
+        sha256: analyzed.artifactHashes['result.json'],
+        verified: false,
+      },
+    ]);
+    expect(releaseEvidence).toMatchObject({
+      verified: true,
+      lineage: {
+        strategy: 'FixtureStrategy',
+        gitSha: 'fixture-git-sha',
+        gitDirty: false,
+        coreConfigSha256: spec.variants[1].configSha256,
+        maxLossValue: 10,
+      },
+      releaseAssertions: {
+        coreEdgeVerified: false,
+        currentMarketSuitable: false,
+      },
+    });
+    expect(releaseEvidence.lineage?.sourceSha256s).toEqual([
+      candidate?.files[0].sha256,
+    ]);
     await expect(
       fs.readFile(analyzed.paths.tradesPath, 'utf8'),
     ).resolves.not.toContain('candidate-outside-window');

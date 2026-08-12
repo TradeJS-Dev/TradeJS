@@ -6,6 +6,7 @@ import {
   AiTrainEvaluation,
   AiTrainSummary,
   summarizeAiTrainEvaluations,
+  summarizeAiTrainEvaluationsByDirection,
 } from './aiTrainMetrics';
 import {
   getHyperliquidPerpUniverseSnapshot,
@@ -74,6 +75,7 @@ export type AiTrainTerminalWindowSummary = {
   selected: number;
   approvedPerCalendarDay: number;
   outcome: AiTrainSummary;
+  byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
   topRejectReasons: Array<{ reason: string; count: number }>;
 };
 
@@ -86,6 +88,7 @@ export type AiTrainLineage = {
   configIds: string[];
   contextFingerprint: string;
   context: Record<string, string | number | boolean | null>;
+  sourceSha256s: string[];
 };
 
 export const writeAiTrainResearchSnapshot = async ({
@@ -226,6 +229,7 @@ export const summarizeAiTrainTerminalWindows = (
       selected: selected.length,
       approvedPerCalendarDay: outcome.approved / coverageDays,
       outcome,
+      byDirection: summarizeAiTrainEvaluationsByDirection(selected),
       topRejectReasons: summarizeAiTrainRejectReasons(selected),
     };
   });
@@ -314,12 +318,14 @@ export const buildAiTrainLineage = async ({
   strategyName,
   configIds,
   runContext,
+  sourceSha256s = [],
   env = process.env,
 }: {
   projectRoot: string;
   strategyName: string;
   configIds: string[];
   runContext: Record<string, string | number | boolean | null>;
+  sourceSha256s?: string[];
   env?: NodeJS.ProcessEnv;
 }): Promise<AiTrainLineage> => {
   const { gitSha, gitDirty } = getGitLineage(projectRoot);
@@ -351,5 +357,6 @@ export const buildAiTrainLineage = async ({
     configIds: normalizedConfigIds,
     contextFingerprint: fingerprintResearchValue(context),
     context,
+    sourceSha256s: [...new Set(sourceSha256s.filter(Boolean))].sort(),
   };
 };

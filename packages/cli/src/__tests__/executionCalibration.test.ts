@@ -29,6 +29,15 @@ describe('execution calibration helpers', () => {
               fillSource: 'exchange_position',
               fillTime: 901_120,
               telemetryQuality: 'full',
+              runtimeLineage: {
+                schemaVersion: 1,
+                gitSha: 'deadbeef',
+                gitDirty: false,
+                gateFingerprint: 'a'.repeat(16),
+                configFingerprint: 'b'.repeat(16),
+                contextFingerprint: 'c'.repeat(16),
+                maxLossValue: 10,
+              },
               fee: 0.2024,
               entryPrice: 101.2,
               entryTimestamp: 1_000,
@@ -140,6 +149,10 @@ describe('execution calibration helpers', () => {
       }),
     );
     expect(report.samples[0].currentDelayRiskBps).toBe(0);
+    expect(report.samples[0].runtimeLineage).toMatchObject({
+      gitSha: 'deadbeef',
+      maxLossValue: 10,
+    });
     expect(report.samples[0].replayEntryResidualBps).toBeCloseTo(-19.724, 3);
     expect(report.samples[1]).toEqual(
       expect.objectContaining({

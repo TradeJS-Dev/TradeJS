@@ -209,7 +209,8 @@ describe('runtime dashboard', () => {
             .update(
               canonicalStrategyEvidenceJson({ INTERVAL: '15', ENABLE: true }),
             )
-            .digest('hex'),
+            .digest('hex')
+            .slice(0, 16),
         },
       ],
       sourceArtifacts: [

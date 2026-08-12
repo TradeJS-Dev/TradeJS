@@ -32,10 +32,6 @@ args.option(
   'output/replay-runtime-evidence.json',
 );
 
-const flags = args.parse(process.argv);
-const projectRoot =
-  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
-
 type JsonRecord = Record<string, any>;
 
 const toEpochMs = (value: unknown): number | null => {
@@ -53,7 +49,7 @@ const toEpochMs = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const resolveWindow = () => {
+const resolveWindow = (flags: JsonRecord) => {
   const endTime = toEpochMs(flags.endTime) ?? Date.now();
   const hours = Math.max(
     1,
@@ -154,7 +150,7 @@ const resolveItemStrategy = (item: JsonRecord) =>
   item.inferredStrategy ??
   null;
 
-const summarizeReplayComparison = (
+export const summarizeReplayComparison = (
   runtimeComparison: unknown,
   strategies: string[],
 ) => {
@@ -187,10 +183,17 @@ const summarizeReplayComparison = (
             .filter((value): value is string => typeof value === 'string'),
         ),
       ].sort((left, right) => left.localeCompare(right));
+  const comparisonLineage = asRecord(comparison.lineage);
+  const replayLineage = asArray(comparisonLineage.replay).filter(
+    (entry) =>
+      !useFilter || strategySet.has(String(asRecord(entry).strategy ?? '')),
+  );
 
   return {
     mode: comparison.mode ?? null,
-    lineage: comparison.lineage ?? null,
+    lineage: comparisonLineage
+      ? { ...comparisonLineage, replay: replayLineage }
+      : null,
     rows: asArray(comparison.rows).filter(
       (row) => !useFilter || strategySet.has(String(row.strategyName ?? '')),
     ),
@@ -307,14 +310,20 @@ const loadRuntimePayload = async ({
   startTime,
   endTime,
   strategies,
+  userName,
+  runtimeEvidenceFile,
+  projectRoot,
 }: {
   startTime: number;
   endTime: number;
   strategies: string[];
+  userName: string;
+  runtimeEvidenceFile: unknown;
+  projectRoot: string;
 }) => {
   const runtimeEvidencePath =
-    typeof flags.runtimeEvidence === 'string' && flags.runtimeEvidence.trim()
-      ? path.resolve(projectRoot, flags.runtimeEvidence.trim())
+    typeof runtimeEvidenceFile === 'string' && runtimeEvidenceFile.trim()
+      ? path.resolve(projectRoot, runtimeEvidenceFile.trim())
       : null;
 
   if (runtimeEvidencePath) {
@@ -330,7 +339,7 @@ const loadRuntimePayload = async ({
   }
 
   const runtimeEvidence = await collectRuntimeDebugEvidence({
-    userName: flags.user,
+    userName,
     startTime,
     endTime,
     strategies: strategies.length ? strategies : undefined,
@@ -340,7 +349,7 @@ const loadRuntimePayload = async ({
     source: 'local-redis',
     path: null,
     payload: buildRuntimeEvidenceReportPayload({
-      userName: flags.user,
+      userName,
       startTime,
       endTime,
       signals: runtimeEvidence.signals,
@@ -353,9 +362,13 @@ const loadRuntimePayload = async ({
 };
 
 export const replayRuntimeEvidence = async () => {
-  const { startTime, endTime, source } = resolveWindow();
+  const flags = args.parse(process.argv) as JsonRecord;
+  const projectRoot =
+    String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+  const userName = String(flags.user ?? 'root');
+  const { startTime, endTime, source } = resolveWindow(flags);
   const replay = await loadReplayResult({
-    userName: flags.user,
+    userName,
     replayKey:
       typeof flags.replayKey === 'string' && flags.replayKey.trim()
         ? flags.replayKey.trim()
@@ -369,12 +382,15 @@ export const replayRuntimeEvidence = async () => {
     startTime,
     endTime,
     strategies,
+    userName,
+    runtimeEvidenceFile: flags.runtimeEvidence,
+    projectRoot,
   });
   const replayValue = asRecord(replay.value);
   const artifact = {
     reportType: 'replay-runtime-evidence',
     generatedAt: Date.now(),
-    userName: flags.user,
+    userName,
     window: {
       startTime,
       endTime,

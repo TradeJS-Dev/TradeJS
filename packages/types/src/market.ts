@@ -73,6 +73,7 @@ export interface TradingAccountRef {
 export interface RuntimeDeploymentStrategy {
   strategyName: string;
   policyProfileId: string;
+  releaseCompositionId?: string;
   enabled?: boolean;
   config?: Record<string, unknown>;
 }

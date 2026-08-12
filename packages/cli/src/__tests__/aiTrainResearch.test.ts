@@ -20,6 +20,7 @@ describe('aiTrainResearch', () => {
         profitableTrade: true,
         aiApproved: true,
         quality: 5,
+        direction: 'LONG',
         timestamp: 0,
       },
       {
@@ -27,6 +28,7 @@ describe('aiTrainResearch', () => {
         profitableTrade: false,
         aiApproved: false,
         quality: 3,
+        direction: 'SHORT',
         timestamp: 25 * DAY_MS,
         rejectReason: 'missing derivatives; weak participation',
       },
@@ -35,6 +37,7 @@ describe('aiTrainResearch', () => {
         profitableTrade: false,
         aiApproved: false,
         quality: 3,
+        direction: 'SHORT',
         timestamp: 29 * DAY_MS,
         rejectReason: 'missing derivatives',
       },
@@ -43,6 +46,7 @@ describe('aiTrainResearch', () => {
         profitableTrade: true,
         aiApproved: true,
         quality: 4,
+        direction: 'LONG',
         timestamp: 30 * DAY_MS,
       },
     ];
@@ -79,6 +83,10 @@ describe('aiTrainResearch', () => {
         topRejectReasons: [
           { reason: 'missing derivatives', count: 2 },
           { reason: 'weak participation', count: 1 },
+        ],
+        byDirection: [
+          expect.objectContaining({ direction: 'LONG' }),
+          expect.objectContaining({ direction: 'SHORT' }),
         ],
       }),
     );
@@ -128,6 +136,7 @@ describe('aiTrainResearch', () => {
       projectRoot: '/path/that/does/not/exist',
       strategyName: 'TrendFollow',
       configIds: ['cfg-b', 'cfg-a', 'cfg-a', ''],
+      sourceSha256s: ['b'.repeat(64), 'a'.repeat(64), 'b'.repeat(64)],
       runContext: { mode: 'local-deterministic', minQuality: 4 },
       env: {
         AI_MODE: 'gate',
@@ -155,6 +164,7 @@ describe('aiTrainResearch', () => {
     expect(lineage.gateFingerprint).toMatch(/^[a-f0-9]{16}$/);
     expect(lineage.gateFingerprintFiles).toEqual([]);
     expect(lineage.contextFingerprint).toMatch(/^[a-f0-9]{16}$/);
+    expect(lineage.sourceSha256s).toEqual(['a'.repeat(64), 'b'.repeat(64)]);
   });
 
   it('writes a formatted structured research snapshot', async () => {

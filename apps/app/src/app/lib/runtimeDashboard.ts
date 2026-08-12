@@ -1,6 +1,6 @@
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { strategyEvidenceSha256 } from '@tradejs/infra/strategyReleaseEvidence';
+import { strategyEvidenceFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
 import {
   listTradingAccounts,
   resolveTradingAccount,
@@ -466,6 +466,7 @@ export const loadRuntimeDashboard = async ({
       accountLabel?: string;
       deploymentId?: string;
       policyProfileId?: string;
+      releaseCompositionId?: string;
       enabled?: boolean;
       config?: Record<string, unknown>;
       connected?: boolean;
@@ -501,10 +502,13 @@ export const loadRuntimeDashboard = async ({
         accountLabel: accountsById.get(deployment.accountId)?.label,
         deploymentId: deployment.id,
         policyProfileId: deploymentStrategy.policyProfileId,
+        releaseCompositionId: deploymentStrategy.releaseCompositionId,
         enabled: deployment.enabled && deploymentStrategy.enabled !== false,
         config: deploymentStrategy.config,
         connected: false,
-        configFingerprint: strategyEvidenceSha256(deploymentStrategy.config),
+        configFingerprint: strategyEvidenceFingerprint(
+          deploymentStrategy.config,
+        ),
       });
     }
   }
@@ -545,7 +549,7 @@ export const loadRuntimeDashboard = async ({
       enabled: isRuntimeStrategyConfigEnabled(runtimeConfig.config),
       config: runtimeConfig.config,
       connected: true,
-      configFingerprint: strategyEvidenceSha256(runtimeConfig.config),
+      configFingerprint: strategyEvidenceFingerprint(runtimeConfig.config),
     });
   }
   const accountScopedTrades = assignLegacyRuntimeTradeAccountScopes(
@@ -554,6 +558,15 @@ export const loadRuntimeDashboard = async ({
   );
   for (const trade of accountScopedTrades) {
     const key = runtimeIdentityKey(trade);
+    const configuredCompositionId =
+      identityByKey.get(key)?.releaseCompositionId;
+    const observedCompositionId = trade.runtimeLineage?.compositionId;
+    const releaseCompositionId =
+      configuredCompositionId &&
+      observedCompositionId &&
+      configuredCompositionId !== observedCompositionId
+        ? undefined
+        : observedCompositionId ?? configuredCompositionId;
     identityByKey.set(key, {
       ...identityByKey.get(key),
       strategyName: trade.strategy,
@@ -566,6 +579,7 @@ export const loadRuntimeDashboard = async ({
         : undefined,
       deploymentId: trade.deploymentId,
       policyProfileId: trade.policyProfileId,
+      releaseCompositionId,
       configFingerprint: trade.runtimeLineage?.configFingerprint,
       gateFingerprint: trade.runtimeLineage?.gateFingerprint,
       contextFingerprint: trade.runtimeLineage?.contextFingerprint,
@@ -579,6 +593,7 @@ export const loadRuntimeDashboard = async ({
     markerDir: process.env.STRATEGY_RELEASE_MARKER_DIR,
     selectors: [...identityByKey.values()].map((identity) => ({
       strategy: identity.strategyName,
+      compositionId: identity.releaseCompositionId,
       configFingerprint: identity.configFingerprint,
       gateFingerprint: identity.gateFingerprint,
       contextFingerprint: identity.contextFingerprint,
@@ -635,6 +650,7 @@ export const loadRuntimeDashboard = async ({
         evidenceTimeline: evidenceTimelines.get(
           strategyEvidenceTimelineSelectorKey({
             strategy: strategyName,
+            compositionId: identity.releaseCompositionId,
             configFingerprint: identity.configFingerprint,
             gateFingerprint: identity.gateFingerprint,
             contextFingerprint: identity.contextFingerprint,

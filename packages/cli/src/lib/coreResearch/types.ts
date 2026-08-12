@@ -331,6 +331,7 @@ export type CoreResearchResult = {
   stage: CoreResearchSpec['stage'];
   generatedAt: string;
   specSha256: string;
+  lineage?: CoreResearchSpec['lineage'];
   semantics: {
     cohortOrder: CoreResearchCohort[];
     pnlPerTrade: 'cohort PnL / cohort completed positions';

@@ -66,6 +66,7 @@ const buildRuntimeLineageSummary = (rows: {
   const identities = new Map<string, JsonRecord>();
   for (const lineage of lineages) {
     const identity = {
+      compositionId: finiteString(lineage.compositionId),
       gitSha: finiteString(lineage.gitSha),
       gitDirty: typeof lineage.gitDirty === 'boolean' ? lineage.gitDirty : null,
       gateFingerprint: finiteString(lineage.gateFingerprint),
@@ -80,6 +81,7 @@ const buildRuntimeLineageSummary = (rows: {
     lineageRows.length > 0 &&
     lineages.length === lineageRows.length &&
     identity != null &&
+    identity.compositionId != null &&
     identity.gitSha != null &&
     identity.gitDirty === false &&
     identity.gateFingerprint != null &&
@@ -91,6 +93,7 @@ const buildRuntimeLineageSummary = (rows: {
     conflicts: identities.size > 1,
     rows: lineageRows.length,
     rowsWithLineage: lineages.length,
+    compositionId: finiteString(identity?.compositionId),
     gitSha: finiteString(identity?.gitSha),
     gitDirty:
       typeof identity?.gitDirty === 'boolean' ? identity.gitDirty : null,

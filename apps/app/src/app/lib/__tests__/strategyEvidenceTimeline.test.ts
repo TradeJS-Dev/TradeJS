@@ -280,14 +280,14 @@ describe('strategy evidence timeline', () => {
     const root = await createRoot();
     const markerDir = path.join(root, 'markers', 'TrendLine');
     await fs.mkdir(markerDir, { recursive: true });
-    const configA = 'b'.repeat(64);
-    const configB = 'c'.repeat(64);
+    const configA = 'b'.repeat(16);
+    const configB = 'c'.repeat(16);
     const value = envelope({
       markers: [
         {
           ...marker('gate', 'G', 200),
           compositionId: 'composition-a',
-          gateFingerprint: 'd'.repeat(64),
+          gateFingerprint: 'd'.repeat(16),
           configFingerprint: configA,
         },
       ],
@@ -323,10 +323,11 @@ describe('strategy evidence timeline', () => {
     await fs.mkdir(markerDir, { recursive: true });
     const exact = {
       strategy: 'TrendLine',
+      compositionId: 'TrendLine_release_1',
       gitSha: 'deadbeef',
-      gateFingerprint: 'b'.repeat(64),
-      configFingerprint: 'c'.repeat(64),
-      contextFingerprint: 'd'.repeat(64),
+      gateFingerprint: 'b'.repeat(16),
+      configFingerprint: 'c'.repeat(16),
+      contextFingerprint: 'd'.repeat(16),
       maxLossValue: 10,
       requireCompleteLineage: true,
     };
@@ -334,6 +335,7 @@ describe('strategy evidence timeline', () => {
       markers: [
         {
           ...marker('gate', 'G', 200),
+          compositionId: exact.compositionId,
           gitSha: exact.gitSha,
           gateFingerprint: exact.gateFingerprint,
           configFingerprint: exact.configFingerprint,
@@ -347,7 +349,12 @@ describe('strategy evidence timeline', () => {
       JSON.stringify(value),
     );
 
-    const selectors = [exact, { ...exact, contextFingerprint: null }];
+    const selectors = [
+      exact,
+      { ...exact, contextFingerprint: null },
+      { ...exact, compositionId: null },
+      { ...exact, compositionId: 'another-release' },
+    ];
     const timelines = await loadStrategyEvidenceTimelines({
       projectRoot: root,
       markerDir: path.join(root, 'markers'),
@@ -361,6 +368,12 @@ describe('strategy evidence timeline', () => {
     ).toBe('verified');
     expect(
       timelines.get(strategyEvidenceTimelineSelectorKey(selectors[1]))?.status,
+    ).toBe('missing');
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(selectors[2]))?.status,
+    ).toBe('missing');
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(selectors[3]))?.status,
     ).toBe('missing');
   });
 });

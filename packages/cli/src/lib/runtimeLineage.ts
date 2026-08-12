@@ -268,12 +268,14 @@ const resolveGateFingerprint = async ({
 export const buildRuntimeLineage = async ({
   projectRoot,
   strategyName,
+  compositionId,
   config,
   runContext,
   env = process.env,
 }: {
   projectRoot: string;
   strategyName: string;
+  compositionId?: string | null;
   config: unknown;
   runContext?: Record<string, string | number | boolean | null>;
   env?: NodeJS.ProcessEnv;
@@ -307,6 +309,7 @@ export const buildRuntimeLineage = async ({
 
   return {
     schemaVersion: 1,
+    compositionId: compositionId?.trim() || null,
     ...git,
     gateFingerprint: await resolveGateFingerprint({
       projectRoot,
@@ -322,6 +325,7 @@ export const buildRuntimeLineage = async ({
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
   [
     lineage.schemaVersion,
+    lineage.compositionId ?? 'unbound-composition',
     lineage.gitSha ?? 'unknown',
     lineage.gitDirty == null ? 'unknown' : lineage.gitDirty ? 'dirty' : 'clean',
     lineage.gateFingerprint,

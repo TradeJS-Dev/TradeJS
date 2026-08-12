@@ -19,16 +19,25 @@ const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
 const SHA_C = 'c'.repeat(64);
 const SHA_D = 'd'.repeat(64);
+const FP_A = '1'.repeat(16);
+const FP_B = '2'.repeat(16);
+const FP_C = '3'.repeat(16);
+const FP_D = '4'.repeat(16);
 const matchingRuntimeLineage = {
   complete: true,
   conflicts: false,
+  compositionId: 'set-from-manifest',
   gitSha: 'deadbeef',
   gitDirty: false,
-  gateFingerprint: SHA_B,
-  configFingerprint: SHA_A,
-  contextFingerprint: SHA_C,
+  gateFingerprint: FP_B,
+  configFingerprint: FP_C,
+  contextFingerprint: FP_D,
   maxLossValue: 10,
 };
+const runtimeLineageFor = (manifest: ReturnType<typeof buildRelease>) => ({
+  ...matchingRuntimeLineage,
+  compositionId: manifest.composition.compositionId,
+});
 
 const buildRelease = () =>
   createStrategyReleaseManifest({
@@ -36,9 +45,13 @@ const buildRelease = () =>
     createdAt: Date.UTC(2026, 7, 12, 12),
     composition: {
       gitSha: 'deadbeef',
-      coreConfigFingerprint: SHA_A,
-      gateFingerprint: SHA_B,
-      contextFingerprint: SHA_C,
+      coreConfigSha256: SHA_A,
+      coreExportSha256: SHA_B,
+      gateConfigIdsFingerprint: FP_A,
+      runtimeConfigFingerprint: FP_C,
+      gateFingerprint: FP_B,
+      gateContextFingerprint: FP_C,
+      runtimeContextFingerprint: FP_D,
       maxLossValue: 10,
       longEnabled: true,
       shortEnabled: true,
@@ -64,6 +77,19 @@ const buildRelease = () =>
         path: 'data/research/core/core-1/manifest.json',
         sha256: SHA_A,
         verified: true,
+        lineage: {
+          strategy: 'DoubleTap',
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          coreConfigSha256: SHA_A,
+          gateConfigIdsFingerprint: null,
+          gateFingerprint: null,
+          runtimeConfigFingerprint: null,
+          gateContextFingerprint: null,
+          runtimeContextFingerprint: null,
+          maxLossValue: 10,
+          sourceSha256s: [SHA_B],
+        },
         releaseAssertions: {
           coreEdgeVerified: true,
           currentMarketSuitable: true,
@@ -75,6 +101,19 @@ const buildRelease = () =>
         path: 'data/ai/output/gate-1.json',
         sha256: SHA_B,
         verified: true,
+        lineage: {
+          strategy: 'DoubleTap',
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          coreConfigSha256: null,
+          gateConfigIdsFingerprint: FP_A,
+          gateFingerprint: FP_B,
+          runtimeConfigFingerprint: null,
+          gateContextFingerprint: FP_C,
+          runtimeContextFingerprint: null,
+          maxLossValue: null,
+          sourceSha256s: [SHA_B],
+        },
         releaseAssertions: { aiGateAddsValue: true },
       },
       {
@@ -83,6 +122,19 @@ const buildRelease = () =>
         path: 'output/parity-1.json',
         sha256: SHA_C,
         verified: true,
+        lineage: {
+          strategy: 'DoubleTap',
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          coreConfigSha256: null,
+          gateConfigIdsFingerprint: null,
+          gateFingerprint: FP_B,
+          runtimeConfigFingerprint: FP_C,
+          gateContextFingerprint: null,
+          runtimeContextFingerprint: FP_D,
+          maxLossValue: 10,
+          sourceSha256s: [],
+        },
         releaseAssertions: { runtimeParityVerified: true },
       },
       {
@@ -91,6 +143,19 @@ const buildRelease = () =>
         path: 'output/execution-1.json',
         sha256: SHA_D,
         verified: true,
+        lineage: {
+          strategy: 'DoubleTap',
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          coreConfigSha256: null,
+          gateConfigIdsFingerprint: null,
+          gateFingerprint: FP_B,
+          runtimeConfigFingerprint: FP_C,
+          gateContextFingerprint: null,
+          runtimeContextFingerprint: FP_D,
+          maxLossValue: 10,
+          sourceSha256s: [],
+        },
         releaseAssertions: { executionModelVerified: true },
       },
     ],
@@ -166,9 +231,14 @@ describe('strategy release evidence', () => {
         ...ready,
         composition: {
           gitSha: ready.composition.gitSha,
-          coreConfigFingerprint: ready.composition.coreConfigFingerprint,
+          coreConfigSha256: ready.composition.coreConfigSha256,
+          coreExportSha256: ready.composition.coreExportSha256,
+          gateConfigIdsFingerprint: ready.composition.gateConfigIdsFingerprint,
+          runtimeConfigFingerprint: ready.composition.runtimeConfigFingerprint,
           gateFingerprint: ready.composition.gateFingerprint,
-          contextFingerprint: ready.composition.contextFingerprint,
+          gateContextFingerprint: ready.composition.gateContextFingerprint,
+          runtimeContextFingerprint:
+            ready.composition.runtimeContextFingerprint,
           maxLossValue: ready.composition.maxLossValue,
           longEnabled: ready.composition.longEnabled,
           shortEnabled: ready.composition.shortEnabled,
@@ -179,6 +249,41 @@ describe('strategy release evidence', () => {
         summary: ready.verdict.summary,
       }),
     ).toThrow('derived from verified evidence assertions');
+  });
+
+  it('rejects verified evidence from a different frozen composition', () => {
+    const ready = buildRelease();
+    expect(() =>
+      createStrategyReleaseManifest({
+        ...ready,
+        composition: {
+          gitSha: ready.composition.gitSha,
+          coreConfigSha256: ready.composition.coreConfigSha256,
+          coreExportSha256: ready.composition.coreExportSha256,
+          gateConfigIdsFingerprint: ready.composition.gateConfigIdsFingerprint,
+          runtimeConfigFingerprint: ready.composition.runtimeConfigFingerprint,
+          gateFingerprint: ready.composition.gateFingerprint,
+          gateContextFingerprint: ready.composition.gateContextFingerprint,
+          runtimeContextFingerprint:
+            ready.composition.runtimeContextFingerprint,
+          maxLossValue: ready.composition.maxLossValue,
+          longEnabled: ready.composition.longEnabled,
+          shortEnabled: ready.composition.shortEnabled,
+        },
+        evidence: ready.evidence.map((entry) =>
+          entry.kind === 'ai_gate'
+            ? {
+                ...entry,
+                lineage: {
+                  ...entry.lineage!,
+                  gateFingerprint: FP_D,
+                },
+              }
+            : entry,
+        ),
+        summary: ready.verdict.summary,
+      }),
+    ).toThrow('gateFingerprint does not match the frozen composition');
   });
 
   it('keeps incomplete evidence above unfavorable economics in verdict precedence', () => {
@@ -418,12 +523,13 @@ describe('strategy live diagnosis', () => {
   });
 
   it('uses the release drawdown envelope for scorecard diagnosis', () => {
+    const manifest = buildRelease();
     const diagnosis = buildStrategyLiveDiagnosisFromScorecard({
-      manifest: buildRelease(),
+      manifest,
       scorecard: {
         generatedAt: 100,
         parity: { ratio: 1, lineageReason: null },
-        lineage: matchingRuntimeLineage,
+        lineage: runtimeLineageFor(manifest),
         funnel: { orderAttempts: 30, orderFailures: 0 },
         rolling: [
           { days: 7, closedTrades: 25, maxDrawdown: 80, expectancy: 1.5 },
@@ -445,7 +551,7 @@ describe('strategy live diagnosis', () => {
       scorecard: {
         generatedAt: 100,
         parity: { ratio: 0.98, lineageReason: null },
-        lineage: matchingRuntimeLineage,
+        lineage: runtimeLineageFor(manifest),
         funnel: { orderAttempts: 30, orderFailures: 0 },
         rolling: [
           { days: 7, closedTrades: 30, maxDrawdown: 80, expectancy: 1.5 },
@@ -458,12 +564,39 @@ describe('strategy live diagnosis', () => {
   });
 
   it('blocks economic attribution when runtime composition lineage differs', () => {
+    const manifest = buildRelease();
     const diagnosis = buildStrategyLiveDiagnosisFromScorecard({
-      manifest: buildRelease(),
+      manifest,
       scorecard: {
         generatedAt: 100,
         parity: { ratio: 1, lineageReason: null },
-        lineage: { ...matchingRuntimeLineage, contextFingerprint: SHA_D },
+        lineage: {
+          ...runtimeLineageFor(manifest),
+          contextFingerprint: FP_A,
+        },
+        funnel: { orderAttempts: 30, orderFailures: 0 },
+        rolling: [
+          { days: 7, closedTrades: 30, maxDrawdown: 80, expectancy: 1.5 },
+        ],
+      },
+      days: 7,
+    });
+
+    expect(diagnosis.verdict).toBe('RUNTIME_DIVERGENCE');
+    expect(diagnosis.evidence.lineageComparable).toBe(false);
+  });
+
+  it('blocks economic attribution when a bound runtime composition id differs', () => {
+    const manifest = buildRelease();
+    const diagnosis = buildStrategyLiveDiagnosisFromScorecard({
+      manifest,
+      scorecard: {
+        generatedAt: 100,
+        parity: { ratio: 1, lineageReason: null },
+        lineage: {
+          ...runtimeLineageFor(manifest),
+          compositionId: 'another-composition',
+        },
         funnel: { orderAttempts: 30, orderFailures: 0 },
         rolling: [
           { days: 7, closedTrades: 30, maxDrawdown: 80, expectancy: 1.5 },
