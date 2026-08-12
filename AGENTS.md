@@ -428,6 +428,63 @@ Keep them aligned with:
   active days. Treat CSCV/PBO as unavailable when candidate fold vectors are
   identical and no selection ranking exists.
 
+### Strategy release and prospective diagnosis
+
+- Use `.codex/skills/strategy-release/SKILL.md` to evaluate one frozen core plus
+  deterministic AI-gate composition or diagnose that exact composition live.
+  This contour is strategy-local; portfolio allocation and daily-loss policy are
+  out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- Bound release research to at most three preregistered causal families, five
+  variants per family, one isolated-long finalist, and one deterministic gate
+  tuning round. Every historical comparison uses `--cacheOnly` over the maximum
+  common cached half-open window for the frozen ordered universe.
+- Build equal-length historical drawdown envelopes with
+  `yarn strategy:release profile` from the finalist's normalized
+  `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity
+  ratio, maximum order-failure rate, core/gate expectancy, and overfit estimate
+  plus minimum causal-regime coverage in the release manifest; do not diagnose
+  against mutable thresholds.
+- `yarn strategy:release create` must independently hash and semantically
+  validate every referenced artifact, derive gate results from the measured
+  core/gate/parity/execution payloads, and reject draft booleans that disagree.
+  Missing, invalid, unreconciled, or incomplete evidence takes
+  precedence over an economic verdict and yields `INSUFFICIENT_EVIDENCE`.
+  `READY_FOR_RUNTIME` is advisory and never authorizes runtime config writes,
+  `MAX_LOSS_VALUE` changes, orders, daemons, deployment, or promotion.
+- In prospective diagnosis, establish immutable lineage and runtime/replay/
+  execution parity before economic attribution. A material known mismatch is
+  `RUNTIME_DIVERGENCE`; an adequately supported comparable loss inside the
+  frozen equal-length envelope is `EXPECTED_DRAWDOWN`; an adequate comparable
+  breach is `GENERALIZATION_FAILURE`; unresolved completeness stays
+  `INSUFFICIENT_EVIDENCE`.
+- Scope every runtime scorecard to exactly one strategy and bind it to the same
+  release-manifest strategy before diagnosis. A generalization subtype requires
+  prospective shadow-raw-core expectancy, deterministic-gate expectancy, and
+  causal regime coverage; do not guess a subtype when those books are missing.
+- Require one clean runtime lineage across every scoped evaluation, signal, and
+  trade. Compare git SHA, core-config, gate, context, and `MAX_LOSS_VALUE` with
+  the frozen manifest; missing, dirty, conflicting, or different lineage blocks
+  economic attribution as `RUNTIME_DIVERGENCE`.
+- Keep micro-live, shadow composition, shadow raw core, and gate-comparison
+  evidence distinct. LLM comparison defaults to AI-approved candidates only and
+  is advisory; persist disagreements without letting the LLM affect deterministic
+  trading decisions.
+- Publish G/L/E/D/P/R chart events only through checksum- and artifact-id-
+  verified marker envelopes. Producers and the app must share
+  `@tradejs/infra/strategyReleaseEvidence`; missing or invalid evidence has no
+  mutable Redis fallback. Dashboard binding requires the exact composition id
+  or complete matching git/config/gate/context/MAX_LOSS runtime lineage; a
+  config-only card must show missing evidence.
+- Retention defaults to 3 days for operational Redis evidence, 14 days for
+  verbose payloads, 90 days for verified aggregate bundles, and permanent
+  compact ledgers/manifests/outcomes/disagreements/markers. Cleanup is dry-run
+  unless `--apply` is explicit and never deletes unverified or unaggregated
+  evidence.
+- Treat release manifests, monitoring profiles, diagnosis decisions, marker
+  envelopes, retention plans, and dashboard timeline normalization as public
+  testing seams. Prefer contract-level tests; mock only filesystem, time,
+  process execution, Redis, or other true boundaries.
+
 Keep these conventions stable unless explicitly changing the ML pipeline.
 
 - Use `yarn ml-train:latest -- --strategy <Strategy> --model <model>` for model training; legacy `ml-train:trendline:*` package scripts are not CLI dispatch commands.

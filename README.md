@@ -242,7 +242,106 @@ and realized PnL are outcomes, never features. `AI_MODE=gate` is comparable to
 `ai-train --localOnly`; `AI_MODE=llm` requires provider-backed evidence and must
 not inherit local-gate claims.
 
-### 4. Promote And Launch Gradually
+### 4. Issue A Strategy Release Verdict
+
+The repository-local `$strategy-release` skill turns verified core and gate
+evidence into one composition-level decision. It has `release` and
+`diagnose-live` modes. The fixed budget is three causal core families with at
+most five variants each, one isolated-long finalist, and one deterministic gate
+tuning round. Every historical backtest uses `--cacheOnly` and the maximum
+common candle window already available for the frozen universe.
+
+Create a draft JSON that references verified core, gate, runtime-parity, and
+execution-calibration artifacts. It also freezes equal-length historical
+drawdown envelopes and baseline core/gate expectancy for later live diagnosis:
+
+```bash
+yarn strategy:release profile \
+  --input data/research/core/<research-id>/trades.jsonl \
+  --variant <finalist-id> --startTime <ms> --endTime <ms> \
+  --days 7,30,90 --out data/research/releases/DoubleTap-profile.json
+
+yarn strategy:release create \
+  --input data/research/releases/DoubleTap-draft.json \
+  --root data/strategy-release
+
+yarn strategy:release verify \
+  --input data/strategy-release/releases/DoubleTap/<release-id>.json
+```
+
+`create` reads, hashes, validates, and derives the release gates from every
+referenced evidence file itself. Draft `verified` and gate booleans are
+cross-checks, never authority: core readiness comes from a reconciled final
+core-research result and complete robustness matrix; gate value comes from the
+local-deterministic gate result and complete positive terminal windows; parity
+and execution safety come from their measured artifacts. It writes a
+release envelope plus compact G/L/E/D/R chart markers under the ignored
+`data/strategy-release` tree. The only release verdicts are
+`READY_FOR_RUNTIME`, `UNSUITABLE_FOR_CURRENT_MARKET`, and
+`INSUFFICIENT_EVIDENCE`. No verdict changes runtime config, `MAX_LOSS_VALUE`,
+orders, daemons, or promotion state.
+
+The profile generator scans the selected normalized JSONL variant once, then
+calculates daily-stepped equal-length drawdown windows with indexed timestamp
+lookups. The draft also freezes its prospective sample floor, minimum parity
+ratio, and maximum acceptable order-failure rate; live diagnosis therefore does
+not depend on mutable defaults. It also freezes the minimum causal-regime
+coverage required for a generalization attribution.
+
+### 5. Forward-Test And Diagnose Without Retuning
+
+Collect prospective evidence for the exact released composition in four books:
+micro-live executions, shadow composition, shadow raw core, and deterministic
+gate versus LLM comparator. The comparator is advisory and initially runs only
+on AI-approved candidates.
+
+```bash
+yarn runtime:evidence --daily \
+  --publishDir output/runtime-evidence --deployment production
+yarn runtime:evidence:sync --source <runtime-host-ready-directory> \
+  --deployment production
+yarn replay:evidence -- --startTime <ms> --endTime <ms> --cacheOnly
+yarn runtime:scorecard \
+  --strategy <Strategy> \
+  --runtimeEvidence <verified-runtime-evidence.json> \
+  --replayEvidence <replay-runtime-evidence.json> \
+  --calibration <execution-calibration.json> \
+  --prospectiveEvidence <raw-core-gate-regime-summary.json> \
+  --releaseManifest <verified-release-envelope.json> \
+  --diagnosisDays 7 --strategyReleaseRoot data/strategy-release
+```
+
+The scorecard reports the causal funnel, execution residual, rolling outcomes,
+and AI-versus-LLM disagreements. With a release manifest it emits one advisory
+diagnosis: `RUNTIME_DIVERGENCE`, `EXPECTED_DRAWDOWN`,
+`GENERALIZATION_FAILURE`, or `INSUFFICIENT_EVIDENCE`. Runtime divergence has
+priority over economics; a non-parity period cannot prove generalization.
+Every runtime evaluation, signal, and trade in the scorecard must resolve to one
+clean git/config/gate/context/MAX_LOSS lineage equal to the release manifest.
+Missing, dirty, conflicting, or different lineage is runtime divergence, not an
+economic result.
+
+The Strategies UI reads only checksum-verified marker envelopes from
+`STRATEGY_RELEASE_MARKER_DIR` (default `data/strategy-release/markers`). Its
+compact **Evidence** popover contains the G/L/E/D/P/R legend, optional P/R
+filters, event details, and hash provenance. Missing or invalid evidence is
+explicit and never falls back to mutable Redis lineage.
+Release markers are attached to a strategy card only when its current runtime
+lineage is complete and exactly matches git/config/gate/context/MAX_LOSS (or the
+frozen composition id). A config-only card therefore reports missing evidence
+instead of borrowing another composition's markers.
+
+Retention defaults are 3 days for operational Redis evidence, 14 days for
+verbose payloads, 90 days for verified aggregated runtime bundles, and forever
+for compact ledgers/manifests/markers. Cleanup is dry-run unless `--apply` is
+explicit and never deletes unverified or unaggregated evidence:
+
+```bash
+yarn strategy:release retention --input <retention-inventory.json>
+yarn strategy:release retention --input <retention-inventory.json> --apply
+```
+
+### 6. Promote And Launch Gradually
 
 Promote only one fully resolved config. Backtest configs are value grids;
 runtime configs are plain objects. Review the existing runtime config before
@@ -254,19 +353,21 @@ screen at `http://localhost:3000/routes/strategies`.
 Use an explicit rollout ladder:
 
 ```bash
-# 1. Build and validate the exact working tree.
+# 1. Build and validate the exact released working tree.
 yarn checks
 
-# 2. Evaluate one closed-candle cycle without notifications or orders.
+# 2. Only after explicit user approval, save the reviewed runtime config.
+
+# 3. Evaluate one closed-candle cycle without notifications or orders.
 yarn signals -- --user root --connector bybit --cacheOnly
 
-# 3. Compare recent replay/backtest entries with recorded runtime evidence.
+# 4. Compare recent replay/backtest entries with recorded runtime evidence.
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
 
-# 4. Observe notifications, still without order placement.
+# 5. Observe notifications, still without order placement.
 yarn signals:daemon -- --user root --connector bybit --notify
 
-# 5. Enable orders only after the earlier stages and account/risk review pass.
+# 6. Enable orders only after the earlier stages and account/risk review pass.
 yarn signals:daemon -- --user root --connector bybit --notify --makeOrders
 ```
 
@@ -325,9 +426,13 @@ yarn backtest
 yarn research:core
 yarn research:core:test
 yarn research:core:coverage
+yarn strategy:release
 yarn results
 yarn signals
 yarn signals:daemon -- --notify --makeOrders
+yarn runtime:evidence
+yarn runtime:evidence:sync
+yarn runtime:scorecard
 yarn signals:summary -- --printOnly
 yarn bot
 ```

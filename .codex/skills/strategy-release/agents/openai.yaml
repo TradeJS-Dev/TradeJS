@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Strategy Release'
+  short_description: 'Release and diagnose TradeJS strategies'
+  default_prompt: 'Use $strategy-release to evaluate one TradeJS core plus deterministic AI-gate composition for release or diagnose its live behavior with immutable evidence.'

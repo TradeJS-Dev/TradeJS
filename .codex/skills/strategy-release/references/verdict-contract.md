@@ -1,0 +1,114 @@
+# Verdict contract
+
+Return exactly one mode-specific verdict. Put the verdict first, then the
+composition/incident identity, evidence completeness, ALL/LONG/SHORT table,
+causal findings, limitations, and approval-safe next action.
+
+## Shared rules
+
+- Treat a verdict as an evidence classification, not an authorization token.
+- Keep ALL, LONG, and SHORT statuses separate. A positive aggregate cannot hide
+  a failed side, and a negative side cannot be silently disabled.
+- Use aggregate portfolio MaxDD for ALL and side-only realized MaxDD for each
+  direction.
+- Prefer `INSUFFICIENT_EVIDENCE` over extrapolation when lineage, completeness,
+  parity, point-in-time validity, independent support, or reconciliation fails.
+- Keep any unapproved next composition in forward incubation/advisory mode.
+
+## Release verdicts
+
+### `READY_FOR_RUNTIME`
+
+Use only when all conditions hold:
+
+- the one final core plus deterministic gate composition is immutable and
+  completely reconciled;
+- the bounded 3×5 core search, one isolated-long finalist, and one gate round
+  followed the preregistered rules without reopening the held-out evidence;
+- BOTH directions stayed enabled and ALL/LONG/SHORT passed their explicit
+  release rules, or every allowed side exception was preregistered and remains
+  visible for later direction-aware AI-gate evaluation;
+- full, terminal, cold-start/reset, concentration, capacity, causality, and
+  current-market evidence satisfy the release contract;
+- no unresolved runtime-parity or data-lineage blocker remains.
+
+Meaning: the composition is ready for a user-authorized runtime review. Do not
+write runtime config, change `MAX_LOSS_VALUE`, deploy, start a daemon, promote,
+or place orders.
+
+### `UNSUITABLE_FOR_CURRENT_MARKET`
+
+Use when evidence is complete and valid, but the final composition fails the
+preregistered current-market or release economics/robustness rule. Typical
+evidence includes terminal regime decay, failed side metrics, unacceptable
+portfolio DD/capacity, or no qualifying isolated finalist.
+
+Meaning: preserve the composition and failures as immutable research. Keep any
+continued observation advisory/forward-only; do not tune around the exposed
+period inside the same lineage.
+
+### `INSUFFICIENT_EVIDENCE`
+
+Use when a release conclusion cannot be supported, including partial/OOM/error
+runs, missing common cached coverage, incomplete side cohorts, export/Redis
+mismatch, unavailable point-in-time inputs, stale/open holdout, inadequate
+independent support, missing cold-start evidence, or ambiguous lineage.
+
+Meaning: identify the smallest missing evidence item. Do not convert uncertainty
+into current-market unsuitability or readiness.
+
+## Diagnose-live verdict precedence
+
+Apply this order:
+
+1. Return `INSUFFICIENT_EVIDENCE` when the released composition, incident
+   evidence, or comparison completeness cannot be established.
+2. Return `RUNTIME_DIVERGENCE` when material runtime/replay/config/context/
+   execution non-parity explains or invalidates the observed sample.
+3. With parity established, return `GENERALIZATION_FAILURE` when adequate new
+   post-cutoff evidence breaches the preregistered generalization bounds.
+4. With parity and adequate support established, return `EXPECTED_DRAWDOWN`
+   when the observation remains inside the frozen release distribution.
+
+### `RUNTIME_DIVERGENCE`
+
+Require concrete mismatched evidence such as closed-candle boundary, config or
+fingerprint, state restoration, causal context, deterministic gate decision,
+allocator/risk/order lifecycle, fill, fee/slippage, or exit differences.
+
+Do not call a strategy generalized or failed while material parity divergence
+remains unresolved.
+
+### `EXPECTED_DRAWDOWN`
+
+Require exact composition parity, adequate incident/forward support, and losses,
+streak, drawdown, cadence, concentration, sides, and regimes within the frozen
+release bounds. This verdict does not imply future recovery or authorize higher
+risk.
+
+### `GENERALIZATION_FAILURE`
+
+Require exact composition parity and adequate independent post-selection
+evidence outside the release cutoff. Show which preregistered ALL/LONG/SHORT,
+regime, concentration, or drawdown bound failed. Do not use an exposed tuning
+window or a handful of correlated symbol rows as proof.
+
+### `INSUFFICIENT_EVIDENCE`
+
+Use when runtime evidence is remote/unavailable, ids cannot be linked, the
+incident window is incomplete, parity is unknown, sample/event support is too
+small, release bounds are missing, or evidence has conflicting lineage.
+
+## Required final shape
+
+```text
+VERDICT: <exact enum>
+MODE: <release|diagnose-live>
+COMPOSITION: <core fingerprint> + <deterministic gate fingerprint>
+EVIDENCE: <complete|incomplete> — <one-line reason>
+
+ALL/LONG/SHORT: N, PnL, PnL/trade, PF, WR, realized MaxDD, cadence/day
+CAUSAL/PARITY FINDING: <bounded evidence statement>
+LIMITATIONS: <material limitations or none>
+NEXT ACTION: <advisory evidence step or explicit approval request; no mutation>
+```
