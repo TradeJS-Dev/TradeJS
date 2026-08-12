@@ -77,8 +77,19 @@ inside a diagnostic lineage.
 - Bind every evidence artifact to the complete Composition Lineage: clean git
   SHA, canonical core-config/core-export SHA-256, gate config-id/gate/context
   fingerprints, effective runtime config/context fingerprints, composition id
-  when deployed, and MAX_LOSS_VALUE. Do not reuse one hash in several identity
-  fields or accept a checksum-valid artifact from another lineage.
+  when deployed. Freeze `MAX_LOSS_VALUE` as separate risk-scale evidence: it is
+  required for economic normalization and immutable `L` markers, but changing
+  it alone must not hide or invalidate unchanged core + gate logic history. Do
+  not reuse one hash in several identity fields or accept a checksum-valid
+  artifact from another logic lineage.
+- Before accepting a deterministic gate, compare raw-core and approved `ALL`,
+  `LONG`, and `SHORT` cohorts. If a raw side has positive or materially useful
+  edge but the gate approves zero or negligible rows, treat this as an
+  incomplete gate, not proof that the strategy is unsuitable. Spend the one
+  gate round on the five direction-aware repair variants defined in the release
+  workflow. A profitable raw side may be retained unchanged only after the same
+  chronological validation and aggregate/non-target guardrails as every other
+  candidate.
 - Treat AI-gate evaluation as a later stage over the frozen core export. Do not
   let outcome or delayed-execution fields enter signal-time approval.
 - Configure optional LLM comparison as `off` or `ai-approved`. Default to

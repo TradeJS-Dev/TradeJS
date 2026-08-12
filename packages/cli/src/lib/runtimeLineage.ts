@@ -66,6 +66,21 @@ const normalizeForStableJson = (value: unknown): unknown => {
   return value;
 };
 
+const normalizeRuntimeLogicConfig = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(normalizeRuntimeLogicConfig);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== 'MAX_LOSS_VALUE')
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeRuntimeLogicConfig(entry)]),
+    );
+  }
+  return value;
+};
+
 const resolveRuntimeMaxLossValue = (config: unknown) => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return null;
@@ -285,7 +300,11 @@ export const buildRuntimeLineage = async ({
         gitSha: git.gitSha,
       })
     ).gateFingerprint,
-    configFingerprint: fingerprintRuntimeValue(config),
+    // Position risk is tracked separately so changing trade size does not
+    // masquerade as a change to the core + gate decision logic.
+    configFingerprint: fingerprintRuntimeValue(
+      normalizeRuntimeLogicConfig(config),
+    ),
     contextFingerprint: fingerprintRuntimeValue(context),
     maxLossValue: resolveRuntimeMaxLossValue(config),
   };

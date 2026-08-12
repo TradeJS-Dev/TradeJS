@@ -9,6 +9,13 @@ causal findings, limitations, and approval-safe next action.
 - Treat a verdict as an evidence classification, not an authorization token.
 - Keep ALL, LONG, and SHORT statuses separate. A positive aggregate cannot hide
   a failed side, and a negative side cannot be silently disabled.
+- A current gate that approves zero/negligible rows from a profitable raw side
+  is incomplete evidence. Do not return a final market-unsuitable verdict until
+  the mandatory five-variant side-rescue round has been executed and recorded.
+- Treat `MAX_LOSS_VALUE` as risk scale rather than decision-logic identity.
+  Preserve its immutable change history, normalize monetary comparisons to the
+  release risk unit, and return `INSUFFICIENT_EVIDENCE` when either scale is
+  unavailable. Never compare unnormalized dollar drawdowns across risk scales.
 - Use aggregate portfolio MaxDD for ALL and side-only realized MaxDD for each
   direction.
 - Prefer `INSUFFICIENT_EVIDENCE` over extrapolation when lineage, completeness,

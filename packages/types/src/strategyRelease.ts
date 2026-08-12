@@ -213,9 +213,14 @@ export type StrategyLiveDiagnosis = {
   confidence: 'low' | 'medium' | 'high';
   evidence: {
     lineageComparable: boolean;
+    riskScaleComparable: boolean;
+    releaseMaxLossValue: number | null;
+    runtimeMaxLossValue: number | null;
+    riskScaleRatio: number | null;
     parityRatio: number | null;
     orderFailureRate: number | null;
     observedDrawdown: number | null;
+    normalizedObservedDrawdown: number | null;
     historicalDrawdownP95: number | null;
     historicalDrawdownMaximum: number | null;
     closedTrades: number;

@@ -97,6 +97,48 @@ no candidate passes. Do not perform a second search after viewing the held-out
 test. The release unit is then exactly one core snapshot plus one deterministic
 gate fingerprint.
 
+### Mandatory side-rescue checkpoint
+
+Before freezing the five gate variants, build this coverage table for raw core
+and current qN+ approvals in every full/terminal window:
+
+```text
+ALL/LONG/SHORT: raw N, PnL, PnL/trade, PF, WR, MaxDD, cadence
+ALL/LONG/SHORT: gate-approved N, approval share, same economics
+```
+
+A side requires rescue analysis when its raw cohort is positive or passes the
+preregistered side edge rule while the current gate approves zero/negligible
+support, or when removing that side materially destroys aggregate edge. Do not
+call the strategy unsuitable merely because the current gate discarded such a
+side.
+
+Freeze exactly five gate variants before looking at tuning/test outcomes:
+
+1. current deterministic gate control;
+2. current gate plus raw pass-through for the target side;
+3. current gate plus one rounded causal target-side pocket found on train only;
+4. current gate plus the target-side pocket and one preregistered protective
+   exclusion;
+5. direction-aware replacement: best preregistered policy per side, including
+   raw pass-through where it is the frozen candidate.
+
+Run pocket discovery separately for `LONG` and `SHORT`. Select variants using
+train and tuning only, then open the one chronological test tail once. Require:
+
+- no outcome/execution leakage;
+- minimum independent events and cadence in the target side;
+- target-side PnL and PnL/trade improvement with PF/WR/MaxDD guardrails;
+- explicit aggregate portfolio guardrails;
+- explicit non-target identity or occupancy-spillover comparison;
+- full/180d/90d/30d/7d tables, retaining zero rows.
+
+Raw pass-through is a candidate, never an automatic promotion. If it wins the
+historical comparison but the exposed terminal tail fails, retain it only as an
+immutable forward candidate and return `INSUFFICIENT_EVIDENCE` or
+`UNSUITABLE_FOR_CURRENT_MARKET` according to the evidence contract. Never use a
+zero-approval side as a silent substitute for completing this checkpoint.
+
 If `llmComparison=ai-approved`, compare LLM output only on rows approved by the
 final deterministic gate. Record provider/model/prompt lineage and cost. Treat
 the comparison as advisory; never use it to tune, approve, reject, or promote
@@ -142,8 +184,11 @@ economics look unsuitable.
 When a user later authorizes a runtime deployment, copy the verified
 `compositionId` into that deployment strategy's `releaseCompositionId`. The
 runtime lineage and UI marker selector then require that id in addition to
-git/config/gate/context/MAX_LOSS_VALUE. Omitting it keeps release markers
-explicitly missing and cannot borrow another composition's evidence.
+git/config/gate/context logic fingerprints. `MAX_LOSS_VALUE` is recorded as a
+separate immutable risk-scale timeline and used to normalize PnL/drawdown to the
+release risk unit; it does not select or hide the logic timeline. Omitting the
+composition id keeps release markers explicitly missing and cannot borrow
+another composition's evidence.
 
 ## Command shapes
 

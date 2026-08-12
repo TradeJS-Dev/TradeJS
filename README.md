@@ -286,8 +286,15 @@ core config (`coreConfigSha256`), the exact core JSONL export
 (`coreExportSha256`), deterministic-gate config IDs and context, and the
 effective runtime config/context. `create` derives the same identities from the
 referenced artifacts and rejects cross-lineage evidence; a checksum-valid gate,
-parity, or execution report from another git/config/context/MAX_LOSS lineage
+parity, or execution report from another git/config/context logic lineage
 cannot certify the release.
+
+`MAX_LOSS_VALUE` is frozen in each research/economic artifact but is tracked as
+a separate risk-scale lineage. Changing it does not create a new core + gate
+logic identity or hide the prior evidence timeline. Instead it creates a
+checksum-verified `L` marker; live PnL and drawdown are divided by the
+runtime/release risk-scale ratio before comparison with historical envelopes.
+If either scale is unknown, economic attribution remains insufficient.
 
 The profile generator scans the selected normalized JSONL variant once, then
 calculates daily-stepped equal-length drawdown windows with indexed timestamp
@@ -325,9 +332,9 @@ diagnosis: `RUNTIME_DIVERGENCE`, `EXPECTED_DRAWDOWN`,
 `GENERALIZATION_FAILURE`, or `INSUFFICIENT_EVIDENCE`. Runtime divergence has
 priority over economics; a non-parity period cannot prove generalization.
 Every runtime evaluation, signal, and trade in the scorecard must resolve to one
-clean git/config/gate/context/MAX_LOSS lineage equal to the release manifest.
-Missing, dirty, conflicting, or different lineage is runtime divergence, not an
-economic result.
+clean git/config/gate/context logic lineage equal to the release manifest, plus
+a valid risk scale. Missing, dirty, conflicting, or different logic lineage is
+runtime divergence; missing risk scale leaves economic attribution insufficient.
 For an explicitly approved deployment, set its strategy-local
 `releaseCompositionId` to the verified manifest's `compositionId`. This is
 identity metadata, not promotion authority: without the exact id the UI keeps
@@ -340,8 +347,9 @@ compact **Evidence** popover contains the G/L/E/D/P/R legend, optional P/R
 filters, event details, and hash provenance. Missing or invalid evidence is
 explicit and never falls back to mutable Redis lineage.
 Release markers are attached to a strategy card only when its current runtime
-lineage is complete and exactly matches composition id plus
-git/config/gate/context/MAX_LOSS. A config-only card therefore reports missing evidence
+logic lineage is complete and exactly matches composition id plus
+git/config/gate/context. `L` markers preserve the separate risk-scale history.
+A config-only card therefore reports missing evidence
 instead of borrowing another composition's markers.
 
 Retention defaults are 3 days for operational Redis evidence, 14 days for

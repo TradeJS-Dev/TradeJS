@@ -47,6 +47,11 @@ Retain:
 - LLM comparison scope/provider/model/prompt/cost/fingerprint when enabled,
   explicitly labelled advisory.
 
+Preserve risk-scale changes as compact permanent `L` markers. Do not fork or
+hide the unchanged core + gate evidence timeline merely because
+`MAX_LOSS_VALUE` changed; retain the old/new values, timestamp, source artifact,
+and normalization ratio.
+
 Do not overwrite rejected hypotheses. Preserve partial/OOM/error runs with an
 invalid-for-selection label so they are not silently retried as new evidence.
 

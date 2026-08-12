@@ -656,7 +656,19 @@ type StrategyLiveDiagnosisInput = Omit<
   | 'explanation'
   | 'recommendations'
 > &
-  StrategyLiveDiagnosis['evidence'] & {
+  Omit<
+    StrategyLiveDiagnosis['evidence'],
+    | 'riskScaleComparable'
+    | 'releaseMaxLossValue'
+    | 'runtimeMaxLossValue'
+    | 'riskScaleRatio'
+    | 'normalizedObservedDrawdown'
+  > & {
+    riskScaleComparable?: boolean;
+    releaseMaxLossValue?: number | null;
+    runtimeMaxLossValue?: number | null;
+    riskScaleRatio?: number | null;
+    normalizedObservedDrawdown?: number | null;
     minimumClosedTrades?: number;
     minimumParityRatio?: number;
     maximumOrderFailureRate?: number;
@@ -670,6 +682,12 @@ export const buildStrategyLiveDiagnosis = (
   const minimumParityRatio = input.minimumParityRatio ?? 0.95;
   const maximumOrderFailureRate = input.maximumOrderFailureRate ?? 0.05;
   const minimumRegimeCoverage = input.minimumRegimeCoverage ?? 0.5;
+  const hasExplicitRiskScale = input.riskScaleComparable != null;
+  const comparisonObservedDrawdown = hasExplicitRiskScale
+    ? input.riskScaleComparable
+      ? input.normalizedObservedDrawdown ?? null
+      : null
+    : input.observedDrawdown;
   const runtimeDivergence =
     !input.lineageComparable ||
     (input.parityRatio != null && input.parityRatio < minimumParityRatio) ||
@@ -678,12 +696,12 @@ export const buildStrategyLiveDiagnosis = (
   const insufficient =
     input.closedTrades < minimumClosedTrades ||
     input.parityRatio == null ||
-    input.observedDrawdown == null ||
+    comparisonObservedDrawdown == null ||
     input.historicalDrawdownP95 == null;
   const expected =
     !runtimeDivergence &&
     !insufficient &&
-    input.observedDrawdown! <= input.historicalDrawdownP95!;
+    comparisonObservedDrawdown! <= input.historicalDrawdownP95!;
   const verdict = runtimeDivergence
     ? 'RUNTIME_DIVERGENCE'
     : insufficient
@@ -757,9 +775,14 @@ export const buildStrategyLiveDiagnosis = (
           : 'low',
     evidence: {
       lineageComparable: input.lineageComparable,
+      riskScaleComparable: input.riskScaleComparable ?? false,
+      releaseMaxLossValue: input.releaseMaxLossValue ?? null,
+      runtimeMaxLossValue: input.runtimeMaxLossValue ?? null,
+      riskScaleRatio: input.riskScaleRatio ?? null,
       parityRatio: input.parityRatio,
       orderFailureRate: input.orderFailureRate,
       observedDrawdown: input.observedDrawdown,
+      normalizedObservedDrawdown: input.normalizedObservedDrawdown ?? null,
       historicalDrawdownP95: input.historicalDrawdownP95,
       historicalDrawdownMaximum: input.historicalDrawdownMaximum,
       closedTrades: input.closedTrades,
@@ -827,30 +850,51 @@ export const buildStrategyLiveDiagnosisFromScorecard = ({
       manifest.composition.runtimeConfigFingerprint &&
     lineage.gateFingerprint === manifest.composition.gateFingerprint &&
     lineage.contextFingerprint ===
-      manifest.composition.runtimeContextFingerprint &&
-    lineage.maxLossValue === manifest.composition.maxLossValue;
+      manifest.composition.runtimeContextFingerprint;
+  const releaseMaxLossValue = manifest.composition.maxLossValue;
+  const runtimeMaxLossValue = lineage?.maxLossValue ?? null;
+  const riskScaleComparable =
+    Number.isFinite(releaseMaxLossValue) &&
+    releaseMaxLossValue > 0 &&
+    runtimeMaxLossValue != null &&
+    Number.isFinite(runtimeMaxLossValue) &&
+    runtimeMaxLossValue > 0;
+  const riskScaleRatio = riskScaleComparable
+    ? runtimeMaxLossValue / releaseMaxLossValue
+    : null;
+  const normalizedObservedDrawdown =
+    rolling != null && riskScaleRatio != null
+      ? rolling.maxDrawdown / riskScaleRatio
+      : null;
+  const normalizeRuntimeEconomics = (value: number | null | undefined) =>
+    value != null && riskScaleRatio != null ? value / riskScaleRatio : null;
   return buildStrategyLiveDiagnosis({
     strategy: manifest.strategy,
     compositionId: manifest.composition.compositionId,
     createdAt: scorecard.generatedAt,
     lineageComparable,
+    riskScaleComparable,
+    releaseMaxLossValue,
+    runtimeMaxLossValue,
+    riskScaleRatio,
     parityRatio: scorecard.parity.ratio,
     orderFailureRate,
     observedDrawdown: rolling?.maxDrawdown ?? null,
+    normalizedObservedDrawdown,
     historicalDrawdownP95: envelope?.p95 ?? null,
     historicalDrawdownMaximum: envelope?.maximum ?? null,
     closedTrades: rolling?.closedTrades ?? 0,
     rawCoreExpectancyDelta:
       scorecard.prospective?.rawCoreExpectancy != null &&
       manifest.monitoring.rawCoreExpectancy != null
-        ? scorecard.prospective.rawCoreExpectancy -
+        ? normalizeRuntimeEconomics(scorecard.prospective.rawCoreExpectancy)! -
           manifest.monitoring.rawCoreExpectancy
         : null,
     aiGateAddedValue:
       scorecard.prospective?.rawCoreExpectancy != null &&
       scorecard.prospective.aiGateExpectancy != null
-        ? scorecard.prospective.aiGateExpectancy -
-          scorecard.prospective.rawCoreExpectancy
+        ? normalizeRuntimeEconomics(scorecard.prospective.aiGateExpectancy)! -
+          normalizeRuntimeEconomics(scorecard.prospective.rawCoreExpectancy)!
         : null,
     regimeCoverage: scorecard.prospective?.regimeCoverage ?? null,
     overfitProbability: manifest.monitoring.overfitProbability,
@@ -1025,6 +1069,21 @@ export const publishStrategyLiveDiagnosis = async ({
       : {}),
   };
   const markers: StrategyEvidenceMarker[] = [
+    ...(diagnosis.evidence.runtimeMaxLossValue != null &&
+    diagnosis.evidence.runtimeMaxLossValue !==
+      diagnosis.evidence.releaseMaxLossValue
+      ? [
+          {
+            ...common,
+            id: `${diagnosisId}:loss`,
+            type: 'L' as const,
+            label: 'Trade loss value changed',
+            summary: `MAX_LOSS_VALUE ${diagnosis.evidence.runtimeMaxLossValue}`,
+            maxLossValue: diagnosis.evidence.runtimeMaxLossValue,
+            severity: 'info' as const,
+          },
+        ]
+      : []),
     ...(diagnosis.verdict === 'RUNTIME_DIVERGENCE'
       ? [
           {

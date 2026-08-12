@@ -16,6 +16,13 @@ The frozen strategy-local acceptance constraints for a Strategy Composition, inc
 The user-selected nominal loss budget used to size one strategy trade. It is the only risk limit owned by Strategy Release; daily loss protection remains an external Bybit control.
 _Avoid_: Portfolio risk limit, guaranteed maximum loss
 
+**Risk Scale Lineage**:
+The immutable history of `MAX_LOSS_VALUE` changes for one unchanged Strategy
+Composition. It produces `L` evidence markers and a scale ratio for normalizing
+PnL/drawdown to the release risk unit; it is not part of core + gate decision
+identity.
+_Avoid_: New strategy composition, reset research history
+
 **Forward Incubation**:
 A prospective live stage in which a frozen Strategy Composition trades with its user-selected MAX*LOSS_VALUE and produces immutable runtime, execution, and outcome evidence without being retuned.
 \_Avoid*: Paper backtest, continued optimization
@@ -68,8 +75,9 @@ _Avoid_: Minor live tweak, same experiment
 The complete immutable identity of one Strategy Composition: composition id,
 clean git SHA, canonical core config and export SHA-256 values, deterministic
 gate config-id/gate/context fingerprints, effective runtime config/context
-fingerprints, and user-selected MAX_LOSS_VALUE. Evidence missing any required
-identity is not comparable.
+fingerprints. The associated Risk Scale Lineage is required for monetary
+comparison but does not change this logic identity. Evidence missing either
+logic identity or risk scale cannot support economic comparison.
 _Avoid_: Config hash, current strategy name, same code approximately
 
 **Regime Attribution**:

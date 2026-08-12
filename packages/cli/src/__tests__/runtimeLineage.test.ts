@@ -2,6 +2,7 @@ import {
   buildRuntimeLineage,
   resetRuntimeLineageCachesForTests,
   runtimeLineageKey,
+  runtimeLineagesMatch,
 } from '../lib/runtimeLineage';
 import { buildAiTrainLineage } from '../lib/aiTrainResearch';
 
@@ -24,6 +25,37 @@ describe('runtime lineage', () => {
 
     expect(lineage.maxLossValue).toBe(12.5);
     expect(lineage.compositionId).toBe('LiquidityTails_release_1');
+  });
+
+  it('keeps logic lineage stable when only MAX_LOSS_VALUE changes', async () => {
+    const smallRisk = await buildRuntimeLineage({
+      projectRoot: process.cwd(),
+      strategyName: 'DoubleTap',
+      compositionId: 'DoubleTap_release_1',
+      config: {
+        strategyConfig: {
+          MAX_LOSS_VALUE: 1,
+          DOUBLE_TAP_WINDOW: 40,
+        },
+      },
+    });
+    const largeRisk = await buildRuntimeLineage({
+      projectRoot: process.cwd(),
+      strategyName: 'DoubleTap',
+      compositionId: 'DoubleTap_release_1',
+      config: {
+        strategyConfig: {
+          MAX_LOSS_VALUE: 10,
+          DOUBLE_TAP_WINDOW: 40,
+        },
+      },
+    });
+
+    expect(smallRisk.maxLossValue).toBe(1);
+    expect(largeRisk.maxLossValue).toBe(10);
+    expect(smallRisk.configFingerprint).toBe(largeRisk.configFingerprint);
+    expect(runtimeLineageKey(smallRisk)).toBe(runtimeLineageKey(largeRisk));
+    expect(runtimeLineagesMatch(smallRisk, largeRisk)).toBe(true);
   });
 
   it('treats two release compositions as different runtime lineages', async () => {

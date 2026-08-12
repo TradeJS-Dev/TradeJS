@@ -36,7 +36,6 @@ export const strategyEvidenceTimelineSelectorKey = (
     selector.gateFingerprint ?? '',
     selector.configFingerprint ?? '',
     selector.contextFingerprint ?? '',
-    selector.maxLossValue ?? '',
     selector.requireCompleteLineage ? 'exact' : 'partial',
   ].join(':');
 
@@ -218,8 +217,7 @@ export const loadStrategyEvidenceTimelines = async ({
       Boolean(selector.gitSha) &&
       Boolean(selector.gateFingerprint) &&
       Boolean(selector.configFingerprint) &&
-      Boolean(selector.contextFingerprint) &&
-      selector.maxLossValue != null;
+      Boolean(selector.contextFingerprint);
     if (selector.requireCompleteLineage && !hasCompleteSelector) continue;
 
     const markersById = new Map<string, StrategyEvidenceMarker>();
@@ -245,7 +243,7 @@ export const loadStrategyEvidenceTimelines = async ({
       continue;
     }
 
-    const markers = [...markersById.values()]
+    const matchingMarkers = [...markersById.values()]
       .filter(
         (marker) =>
           (!selector.compositionId ||
@@ -257,8 +255,6 @@ export const loadStrategyEvidenceTimelines = async ({
             marker.configFingerprint === selector.configFingerprint) &&
           (!selector.contextFingerprint ||
             marker.contextFingerprint === selector.contextFingerprint) &&
-          (selector.maxLossValue == null ||
-            marker.maxLossValue === selector.maxLossValue) &&
           marker.timestamp >= startTime &&
           marker.timestamp < endTime,
       )
@@ -268,14 +264,24 @@ export const loadStrategyEvidenceTimelines = async ({
           left.type.localeCompare(right.type) ||
           left.id.localeCompare(right.id),
       );
+    let lastLossValue: number | null | undefined;
+    let hasLastLossValue = false;
+    const markers = matchingMarkers.filter((marker) => {
+      if (marker.type !== 'L') return true;
+      if (hasLastLossValue && marker.maxLossValue === lastLossValue) {
+        return false;
+      }
+      hasLastLossValue = true;
+      lastLossValue = marker.maxLossValue;
+      return true;
+    });
     if (
       !markers.length &&
       (selector.compositionId ||
         selector.gitSha ||
         selector.gateFingerprint ||
         selector.configFingerprint ||
-        selector.contextFingerprint ||
-        selector.maxLossValue != null)
+        selector.contextFingerprint)
     ) {
       continue;
     }

@@ -376,4 +376,60 @@ describe('strategy evidence timeline', () => {
       timelines.get(strategyEvidenceTimelineSelectorKey(selectors[3]))?.status,
     ).toBe('missing');
   });
+
+  it('keeps logic evidence and loss-scale markers across MAX_LOSS_VALUE changes', async () => {
+    const root = await createRoot();
+    const markerDir = path.join(root, 'markers', 'TrendLine');
+    await fs.mkdir(markerDir, { recursive: true });
+    const logic = {
+      strategy: 'TrendLine',
+      compositionId: 'TrendLine_release_1',
+      gitSha: 'deadbeef',
+      gateFingerprint: 'b'.repeat(16),
+      configFingerprint: 'c'.repeat(16),
+      contextFingerprint: 'd'.repeat(16),
+      maxLossValue: 1,
+      requireCompleteLineage: true,
+    };
+    const value = envelope({
+      markers: [
+        {
+          ...marker('gate', 'G', 200),
+          ...logic,
+          maxLossValue: 10,
+        },
+        {
+          ...marker('loss-10', 'L', 210),
+          ...logic,
+          maxLossValue: 10,
+        },
+      ],
+    });
+    await fs.writeFile(
+      path.join(markerDir, `${value.artifactId}.json`),
+      JSON.stringify(value),
+    );
+
+    const timelines = await loadStrategyEvidenceTimelines({
+      projectRoot: root,
+      markerDir: path.join(root, 'markers'),
+      selectors: [logic],
+      startTime: 0,
+      endTime: 1_000,
+    });
+
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(logic)),
+    ).toMatchObject({
+      status: 'verified',
+      markers: [
+        expect.objectContaining({ id: 'gate', type: 'G' }),
+        expect.objectContaining({
+          id: 'loss-10',
+          type: 'L',
+          maxLossValue: 10,
+        }),
+      ],
+    });
+  });
 });

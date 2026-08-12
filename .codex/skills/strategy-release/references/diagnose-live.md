@@ -15,9 +15,12 @@ Load the immutable release record and verify:
 - release acceptance bounds, terminal windows, and forward-incubation cutoff.
 
 Require every scoped runtime evaluation, signal, and trade to carry one clean
-lineage. Git SHA, core-config fingerprint, gate fingerprint, context fingerprint,
-and `MAX_LOSS_VALUE` must equal the release manifest. Missing, dirty, conflicting,
-or different lineage is `RUNTIME_DIVERGENCE` and blocks economic attribution.
+logic lineage. Git SHA, core-config fingerprint, gate fingerprint, and context
+fingerprint must equal the release manifest. Track `MAX_LOSS_VALUE` separately:
+different values are allowed, produce immutable `L` evidence, and require all
+monetary observations to be normalized by `runtime / release` risk scale.
+Missing/invalid risk scale yields `INSUFFICIENT_EVIDENCE`; missing, dirty,
+conflicting, or different logic lineage is `RUNTIME_DIVERGENCE`.
 
 Do not infer live execution from the current local Redis config. Production
 signals may run on another server. Request or inspect remote runtime artifacts

@@ -205,6 +205,34 @@ describe('strategy release evidence', () => {
     });
   });
 
+  it('keeps a release immutable while runtime risk scale is compared separately', () => {
+    const original = buildRelease();
+    const { compositionId: _compositionId, ...scaledComposition } =
+      original.composition;
+    const scaled = createStrategyReleaseManifest({
+      ...original,
+      composition: {
+        ...scaledComposition,
+        maxLossValue: 1,
+      },
+      evidence: original.evidence.map((entry) => ({
+        ...entry,
+        lineage: entry.lineage
+          ? {
+              ...entry.lineage,
+              maxLossValue: entry.lineage.maxLossValue == null ? null : 1,
+            }
+          : undefined,
+      })),
+      summary: 'Same logic composition at a smaller risk scale.',
+    });
+
+    expect(scaled.composition.compositionId).not.toBe(
+      original.composition.compositionId,
+    );
+    expect(scaled.composition.maxLossValue).toBe(1);
+  });
+
   it('cannot report ready when a required evidence class is missing', () => {
     const ready = buildRelease();
     const manifest = createStrategyReleaseManifest({
@@ -540,6 +568,76 @@ describe('strategy live diagnosis', () => {
 
     expect(diagnosis.verdict).toBe('EXPECTED_DRAWDOWN');
     expect(diagnosis.evidence.historicalDrawdownP95).toBe(100);
+  });
+
+  it('normalizes drawdown when runtime risk scale differs from research', () => {
+    const manifest = buildRelease();
+    const diagnosis = buildStrategyLiveDiagnosisFromScorecard({
+      manifest,
+      scorecard: {
+        generatedAt: 100,
+        parity: { ratio: 1, lineageReason: null },
+        lineage: {
+          ...runtimeLineageFor(manifest),
+          maxLossValue: 20,
+        },
+        funnel: { orderAttempts: 30, orderFailures: 0 },
+        rolling: [
+          { days: 7, closedTrades: 25, maxDrawdown: 160, expectancy: 3 },
+        ],
+      },
+      days: 7,
+    });
+
+    expect(diagnosis.verdict).toBe('EXPECTED_DRAWDOWN');
+    expect(diagnosis.evidence.lineageComparable).toBe(true);
+    expect(diagnosis.evidence).toMatchObject({
+      observedDrawdown: 160,
+      normalizedObservedDrawdown: 80,
+      releaseMaxLossValue: 10,
+      runtimeMaxLossValue: 20,
+      riskScaleRatio: 2,
+    });
+  });
+
+  it('publishes a verified loss-scale marker without changing composition lineage', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-risk-scale-'),
+    );
+    const manifest = buildRelease();
+    const diagnosis = buildStrategyLiveDiagnosisFromScorecard({
+      manifest,
+      scorecard: {
+        generatedAt: 100,
+        parity: { ratio: 1, lineageReason: null },
+        lineage: {
+          ...runtimeLineageFor(manifest),
+          maxLossValue: 20,
+        },
+        funnel: { orderAttempts: 30, orderFailures: 0 },
+        rolling: [
+          { days: 7, closedTrades: 25, maxDrawdown: 160, expectancy: 3 },
+        ],
+      },
+      days: 7,
+    });
+    const published = await publishStrategyLiveDiagnosis({
+      rootDir,
+      diagnosis,
+      composition: manifest.composition,
+      sourceArtifacts: [],
+    });
+
+    expect(published.markerEnvelope.payload.markers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'L',
+          compositionId: manifest.composition.compositionId,
+          maxLossValue: 20,
+          summary: 'MAX_LOSS_VALUE 20',
+        }),
+      ]),
+    );
   });
 
   it('uses the release sample and parity thresholds for diagnosis', () => {

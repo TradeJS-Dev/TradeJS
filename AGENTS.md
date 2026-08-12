@@ -438,6 +438,12 @@ Keep them aligned with:
   variants per family, one isolated-long finalist, and one deterministic gate
   tuning round. Every historical comparison uses `--cacheOnly` over the maximum
   common cached half-open window for the frozen ordered universe.
+- Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT.
+  If the current gate approves zero or negligible support from a profitable raw
+  side, the single gate round must test exactly five preregistered
+  direction-aware repair variants (control, side pass-through, causal side
+  pocket, protected side pocket, direction-aware replacement). Do not reject a
+  strategy merely because its current gate discarded an existing side edge.
 - Build equal-length historical drawdown envelopes with
   `yarn strategy:release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity
@@ -461,11 +467,14 @@ Keep them aligned with:
   release-manifest strategy before diagnosis. A generalization subtype requires
   prospective shadow-raw-core expectancy, deterministic-gate expectancy, and
   causal regime coverage; do not guess a subtype when those books are missing.
-- Require one clean runtime lineage across every scoped evaluation, signal, and
-  trade. Compare composition id (when bound), git SHA, effective runtime config,
-  gate, context, and `MAX_LOSS_VALUE` with
-  the frozen manifest; missing, dirty, conflicting, or different lineage blocks
-  economic attribution as `RUNTIME_DIVERGENCE`.
+- Require one clean logic lineage across every scoped evaluation, signal, and
+  trade. Compare composition id (when bound), git SHA, effective runtime logic
+  config, gate, and context with the frozen manifest. Track `MAX_LOSS_VALUE` as
+  a separate immutable risk-scale lineage: a change alone does not invalidate
+  logic evidence, but PnL/drawdown must be normalized by the runtime/release
+  scale ratio. Missing or invalid risk scale blocks economic attribution as
+  `INSUFFICIENT_EVIDENCE`; missing, dirty, conflicting, or different logic
+  lineage is `RUNTIME_DIVERGENCE`.
 - Keep micro-live, shadow composition, shadow raw core, and gate-comparison
   evidence distinct. LLM comparison defaults to AI-approved candidates only and
   is advisory; persist disagreements without letting the LLM affect deterministic
@@ -474,7 +483,7 @@ Keep them aligned with:
   verified marker envelopes. Producers and the app must share
   `@tradejs/infra/strategyReleaseEvidence`; missing or invalid evidence has no
   mutable Redis fallback. Dashboard binding requires the exact composition id
-  or complete matching git/config/gate/context/MAX_LOSS runtime lineage; a
+  or complete matching git/config/gate/context logic lineage; a
   config-only card must show missing evidence.
 - Retention defaults to 3 days for operational Redis evidence, 14 days for
   verbose payloads, 90 days for verified aggregate bundles, and permanent
