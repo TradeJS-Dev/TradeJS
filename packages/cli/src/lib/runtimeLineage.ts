@@ -10,6 +10,7 @@ import {
   getHyperliquidPerpUniverseSnapshot,
   getHyperliquidWhaleRegistrySnapshot,
 } from '@tradejs/node/strategies';
+import { resolveStrategyGateFingerprint } from './strategyGateFingerprint';
 
 const RUNTIME_CONTEXT_ENV_KEYS = [
   'AI_MODE',
@@ -95,7 +96,10 @@ const gitLineageCache = new Map<
   string,
   Pick<RuntimeLineage, 'gitSha' | 'gitDirty'>
 >();
-const gateFingerprintCache = new Map<string, string>();
+const gateFingerprintCache = new Map<
+  string,
+  Awaited<ReturnType<typeof resolveStrategyGateFingerprint>>
+>();
 const binanceBreadthFingerprintCache = new Map<string, string | null>();
 const snapshotFingerprintCache = new Map<string, string | null>();
 
@@ -211,58 +215,21 @@ const resolveSnapshotFingerprint = async (
   return result;
 };
 
-const resolveGateFingerprint = async ({
+const resolveRuntimeGateFingerprint = async ({
   projectRoot,
   strategyName,
   gitSha,
-}: {
-  projectRoot: string;
-  strategyName: string;
-  gitSha: string | null;
-}) => {
+}: Parameters<typeof resolveStrategyGateFingerprint>[0]) => {
   const cacheKey = `${projectRoot}:${strategyName}:${gitSha ?? 'unknown'}`;
   const cached = gateFingerprintCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const relativeCandidates = [
-    `packages/strategies/src/${strategyName}/adapters/ai.ts`,
-    `packages/strategies/src/${strategyName}/guardrails.ts`,
-    `packages/strategies/src/${strategyName}/pockets.ts`,
-    `packages/strategies/src/${strategyName}/config.ts`,
-    'packages/node/src/ai.ts',
-    'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
-  ];
-  const optionalEntries = await Promise.all(
-    relativeCandidates.map(async (relativePath) => {
-      const content = await readOptionalFile(
-        path.join(projectRoot, relativePath),
-      );
-      return content == null ? null : { relativePath, content };
-    }),
-  );
-  const sourceEntries: Array<NonNullable<(typeof optionalEntries)[number]>> =
-    [];
-  for (const entry of optionalEntries) {
-    if (entry != null) {
-      sourceEntries.push(entry);
-    }
-  }
-
-  const hash = createHash('sha256');
-  hash.update(strategyName);
-  if (sourceEntries.length) {
-    for (const entry of sourceEntries) {
-      hash.update(entry.relativePath);
-      hash.update(entry.content);
-    }
-  } else {
-    hash.update(gitSha ?? 'unknown-git-sha');
-  }
-  const fingerprint = hash.digest('hex').slice(0, 16);
-  gateFingerprintCache.set(cacheKey, fingerprint);
-  return fingerprint;
+  if (cached) return cached;
+  const result = await resolveStrategyGateFingerprint({
+    projectRoot,
+    strategyName,
+    gitSha,
+  });
+  gateFingerprintCache.set(cacheKey, result);
+  return result;
 };
 
 export const buildRuntimeLineage = async ({
@@ -311,11 +278,13 @@ export const buildRuntimeLineage = async ({
     schemaVersion: 1,
     compositionId: compositionId?.trim() || null,
     ...git,
-    gateFingerprint: await resolveGateFingerprint({
-      projectRoot,
-      strategyName,
-      gitSha: git.gitSha,
-    }),
+    gateFingerprint: (
+      await resolveRuntimeGateFingerprint({
+        projectRoot,
+        strategyName,
+        gitSha: git.gitSha,
+      })
+    ).gateFingerprint,
     configFingerprint: fingerprintRuntimeValue(config),
     contextFingerprint: fingerprintRuntimeValue(context),
     maxLossValue: resolveRuntimeMaxLossValue(config),

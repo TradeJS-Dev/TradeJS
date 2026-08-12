@@ -13,6 +13,7 @@ import {
   getHyperliquidWhaleRegistrySnapshot,
 } from '@tradejs/node/strategies';
 import { HYPERLIQUID_WHALE_DATA_MODEL_VERSION } from '@tradejs/types';
+import { resolveStrategyGateFingerprint } from './strategyGateFingerprint';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -265,54 +266,6 @@ const getGitLineage = (projectRoot: string) => {
   }
 };
 
-const resolveGateFingerprint = async (
-  projectRoot: string,
-  strategyName: string,
-  gitSha: string | null,
-) => {
-  const relativeCandidates = [
-    `packages/strategies/src/${strategyName}/adapters/ai.ts`,
-    `packages/strategies/src/${strategyName}/guardrails.ts`,
-    `packages/strategies/src/${strategyName}/pockets.ts`,
-    `packages/strategies/src/${strategyName}/config.ts`,
-    'packages/strategies/src/shared/localAiGate.ts',
-    'packages/node/src/ai.ts',
-  ];
-  const optionalSourceEntries = await Promise.all(
-    relativeCandidates.map(async (relativePath) => {
-      const content = await readOptionalFile(
-        path.join(projectRoot, relativePath),
-      );
-      return content == null ? null : { relativePath, content };
-    }),
-  );
-  const sourceEntries: Array<{
-    relativePath: string;
-    content: Uint8Array;
-  }> = [];
-  for (const entry of optionalSourceEntries) {
-    if (entry != null) {
-      sourceEntries.push(entry);
-    }
-  }
-
-  const hash = createHash('sha256');
-  hash.update(strategyName);
-  if (sourceEntries.length) {
-    for (const entry of sourceEntries) {
-      hash.update(entry.relativePath);
-      hash.update(entry.content);
-    }
-  } else {
-    hash.update(gitSha ?? 'unknown-git-sha');
-  }
-
-  return {
-    gateFingerprint: hash.digest('hex').slice(0, 16),
-    gateFingerprintFiles: sourceEntries.map((entry) => entry.relativePath),
-  };
-};
-
 export const buildAiTrainLineage = async ({
   projectRoot,
   strategyName,
@@ -329,7 +282,11 @@ export const buildAiTrainLineage = async ({
   env?: NodeJS.ProcessEnv;
 }): Promise<AiTrainLineage> => {
   const { gitSha, gitDirty } = getGitLineage(projectRoot);
-  const gate = await resolveGateFingerprint(projectRoot, strategyName, gitSha);
+  const gate = await resolveStrategyGateFingerprint({
+    projectRoot,
+    strategyName,
+    gitSha,
+  });
   const normalizedConfigIds = [...new Set(configIds.filter(Boolean))].sort();
   const hyperliquidPerpUniverseFingerprint =
     typeof getHyperliquidPerpUniverseSnapshot === 'function'

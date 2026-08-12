@@ -3,6 +3,7 @@ import {
   resetRuntimeLineageCachesForTests,
   runtimeLineageKey,
 } from '../lib/runtimeLineage';
+import { buildAiTrainLineage } from '../lib/aiTrainResearch';
 
 describe('runtime lineage', () => {
   afterEach(() => {
@@ -45,5 +46,27 @@ describe('runtime lineage', () => {
     });
 
     expect(lineage.maxLossValue).toBeNull();
+  });
+
+  it('uses the same deterministic gate fingerprint as AI research', async () => {
+    const runtime = await buildRuntimeLineage({
+      projectRoot: process.cwd(),
+      strategyName: 'DoubleTap',
+      config: { strategyConfig: { MAX_LOSS_VALUE: 10 } },
+    });
+    const research = await buildAiTrainLineage({
+      projectRoot: process.cwd(),
+      strategyName: 'DoubleTap',
+      configIds: ['fixture'],
+      runContext: { mode: 'local-deterministic' },
+    });
+
+    expect(runtime.gateFingerprint).toBe(research.gateFingerprint);
+    expect(research.gateFingerprintFiles).toEqual(
+      expect.arrayContaining([
+        'packages/strategies/src/shared/localAiGate.ts',
+        'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
+      ]),
+    );
   });
 });
