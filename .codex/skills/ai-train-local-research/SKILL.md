@@ -352,6 +352,35 @@ Interpretation:
   with `--testSplit`; the search excludes it from candidate ranking so it can be
   opened later by a fixed-rule ablation. Use `--validationSplit 0` only for
   legacy full-sample exploration.
+- `ai-pocket-search` uses `--coverageMode auto` by default. It keeps the
+  full-history search for non-provider features and runs separate CMC and
+  Coinalyze cohorts over rows where that context is usable. Each cohort gets
+  its own timestamp-grouped train/tuning/test split, and every reported cohort
+  pocket must contain a predicate from that provider family. Use
+  `--coverageMode full` only when intentionally reproducing the legacy single
+  full-period search.
+- `ai-pocket-search` uses `--cadenceMode auto` by default. For a sparse train
+  partition it scales discovery-only `minSupport` / `minEvents` down from the
+  legacy 20 / 10 defaults using the number of independent timestamp events.
+  A train partition below 200 events uses
+  `minSupport=clamp(ceil(events*0.1),3,20)` and
+  `minEvents=clamp(ceil(minSupport*0.5),3,10)`; the default maximum event share
+  relaxes only as far as one third. Each provider coverage cohort gets its own
+  thresholds. Explicit
+  `--minSupport`, `--minEvents`, `--minValidationSupport`,
+  `--minValidationEvents`, and `--maxEventCountShare` values always win. Use
+  `--cadenceMode fixed` to reproduce the legacy fixed thresholds.
+- Adaptive thresholds make low-cadence hypothesis discovery possible; they do
+  not lower the production evidence bar. Every pocket is marked
+  `research-only` when it has fewer than 25 independent train events, fewer
+  than 25 matching events in the untouched test, or no untouched test at all.
+  `production-candidate` means only that these sample-size prerequisites were
+  met, not that the pocket is automatically safe to ship.
+- Coverage flags, coverage start/end, and cohort sizes are data-quality
+  metadata only. They select the research cohort and appear in the report, but
+  they are never eligible pocket predicates. Missing or stale provider context
+  must not be flattened into fallback market states such as derivatives
+  `pressure=neutral`.
 - use `--includeGateContext` only for auditing existing gate output fields, not for discovering new future approval rules
 - use `--scope approved` with a smaller `--minSupport` to find sub-pockets inside the current qN+ approved stream; use `--scope all` or `--scope candidates` to look for expansion candidates
 - when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows

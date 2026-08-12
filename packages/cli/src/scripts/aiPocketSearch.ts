@@ -29,8 +29,12 @@ import {
 } from '../lib/aiTrainOptions';
 import {
   buildAiPocketMarkdownReport,
-  collectAiPocketFeatures,
+  collectAiPocketFeatureSnapshot,
   searchAiPockets,
+  summarizeAiPocketFeatureCoverage,
+  type AiPocketCadenceMode,
+  type AiPocketCoverageFamily,
+  type AiPocketCoverageSearchResult,
   type AiPocketResult,
   type AiPocketFeaturePolicy,
   type AiPocketExcludedFeatureClassification,
@@ -42,6 +46,8 @@ import {
 import {
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS,
   readAiPocketSearchCliOption,
+  resolveAiPocketCadenceProfile,
+  splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
 
@@ -99,7 +105,11 @@ args.option(
   '',
 );
 args.option(['d', 'maxDepth'], 'Maximum predicate-combination depth', 2);
-args.option(['m', 'minSupport'], 'Minimum rows required for a pocket', 20);
+args.option(
+  ['m', 'minSupport'],
+  'Minimum rows override; cadence auto derives it when omitted',
+  20,
+);
 args.option(
   ['F', 'minProfitFactor'],
   'Minimum profit factor required for positive pockets',
@@ -201,6 +211,16 @@ args.option(
   ['K', 'featurePolicy'],
   'Feature policy: causal-stationary or all',
   'causal-stationary',
+);
+args.option(
+  ['Q', 'coverageMode'],
+  'Coverage-aware search mode: auto or full',
+  'auto',
+);
+args.option(
+  ['c', 'cadenceMode'],
+  'Cadence thresholds: auto adapts discovery support, fixed keeps legacy defaults',
+  'auto',
 );
 args.option(
   ['r', 'reportDir'],
@@ -362,6 +382,30 @@ const normalizeFeaturePolicy = (value: unknown): AiPocketFeaturePolicy => {
     );
   }
   return normalized as AiPocketFeaturePolicy;
+};
+
+const normalizeCoverageMode = (value: unknown): 'auto' | 'full' => {
+  const normalized = String(value || 'auto')
+    .trim()
+    .toLowerCase();
+  if (!['auto', 'full'].includes(normalized)) {
+    throw new Error(
+      `Unsupported --coverageMode "${normalized}". Use auto or full.`,
+    );
+  }
+  return normalized as 'auto' | 'full';
+};
+
+const normalizeCadenceMode = (value: unknown): AiPocketCadenceMode => {
+  const normalized = String(value || 'auto')
+    .trim()
+    .toLowerCase();
+  if (!['auto', 'fixed'].includes(normalized)) {
+    throw new Error(
+      `Unsupported --cadenceMode "${normalized}". Use auto or fixed.`,
+    );
+  }
+  return normalized as AiPocketCadenceMode;
 };
 
 const normalizeObjective = (
@@ -687,6 +731,9 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
       ? chalk.cyan(String(pocket.validationSummary.support))
       : chalk.gray('n/a'),
     pocket.validationSummary
+      ? chalk.cyan(String(pocket.validationSummary.events))
+      : chalk.gray('n/a'),
+    pocket.validationSummary
       ? colorizeRatio(pocket.validationSummary.winRate)
       : chalk.gray('n/a'),
     pocket.validationSummary
@@ -697,6 +744,9 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
       : chalk.gray('n/a'),
     pocket.testSummary
       ? chalk.cyan(String(pocket.testSummary.support))
+      : chalk.gray('n/a'),
+    pocket.testSummary
+      ? chalk.cyan(String(pocket.testSummary.events))
       : chalk.gray('n/a'),
     pocket.testSummary
       ? colorizeNumber(pocket.testSummary.profitFactor)
@@ -710,6 +760,12 @@ const buildPocketRows = (pockets: AiPocketResult[]) =>
     colorizeNumber(pocket.summary.avgTradesPerDay),
     chalk.yellow(String(pocket.summary.losingMonths)),
     colorizeNumber(pocket.score),
+    pocket.readiness === 'production-candidate'
+      ? chalk.green(pocket.readiness)
+      : chalk.yellow(pocket.readiness),
+    pocket.readinessReasons.length
+      ? chalk.yellow(pocket.readinessReasons.join('; '))
+      : chalk.gray('none'),
     pocket.condition,
   ]);
 
@@ -792,7 +848,9 @@ export const main = async () => {
     );
   }
   const maxDepth = normalizePositiveInt(flags.maxDepth, 2);
-  const minSupport = normalizePositiveInt(flags.minSupport, 20);
+  const explicitMinSupport = hasCliOption('minSupport', 'm')
+    ? normalizePositiveInt(flags.minSupport, 20)
+    : undefined;
   const minProfitFactor = normalizeNonNegativeNumber(
     readAiPocketSearchCliOption({
       argv: process.argv,
@@ -880,6 +938,8 @@ export const main = async () => {
   const includeGateContext = Boolean(flags.includeGateContext);
   const featureProfile = normalizeFeatureProfile(flags.featureProfile);
   const featurePolicy = normalizeFeaturePolicy(flags.featurePolicy);
+  const coverageMode = normalizeCoverageMode(flags.coverageMode);
+  const cadenceMode = normalizeCadenceMode(flags.cadenceMode);
   const jsonOutput = Boolean(flags.json);
   const outputPath = String(flags.output || '').trim();
   const reportDir = String(flags.reportDir || 'data/ai/output').trim();
@@ -1000,6 +1060,19 @@ export const main = async () => {
             : null;
         const modelDirectionMatches = modelDirection === row.direction;
         const profit = Number(row.profit);
+        const featureSnapshot = collectAiPocketFeatureSnapshot({
+          payload,
+          gateContext,
+          includeSymbol,
+          includeGateContext,
+          featureProfile,
+          featurePolicy,
+          onFeatureExcluded: ({ path: featurePath, classification }) => {
+            const paths = excludedFeaturePaths.get(classification) ?? new Set();
+            paths.add(featurePath);
+            excludedFeaturePaths.set(classification, paths);
+          },
+        });
         rows.push({
           signalId: row.signalId,
           strategy: row.strategyName,
@@ -1012,20 +1085,8 @@ export const main = async () => {
           quality,
           modelDirectionMatches,
           modelCandidate: getDeterministicModelCandidate(signal),
-          features: collectAiPocketFeatures({
-            payload,
-            gateContext,
-            includeSymbol,
-            includeGateContext,
-            featureProfile,
-            featurePolicy,
-            onFeatureExcluded: ({ path: featurePath, classification }) => {
-              const paths =
-                excludedFeaturePaths.get(classification) ?? new Set();
-              paths.add(featurePath);
-              excludedFeaturePaths.set(classification, paths);
-            },
-          }),
+          features: featureSnapshot.features,
+          featureCoverage: featureSnapshot.featureCoverage,
         });
         bar?.tick(1, {
           symbol: chalk.gray(row.symbol),
@@ -1052,102 +1113,189 @@ export const main = async () => {
     ? rows.filter((row) => row.direction === direction)
     : rows;
   const scopeRows = resolveScopeRows(directionRows, scope);
-  const split = splitAiPocketResearchRowsByTimestamp(
+  const fullSplit = splitAiPocketResearchRowsByTimestamp(
     directionRows,
     validationSplit,
     testSplit,
   );
-  const trainRows = resolveScopeRows(split.trainRows, scope);
-  const validationRows = resolveScopeRows(split.validationRows, scope);
-  const testRows = resolveScopeRows(split.testRows, scope);
-  const baselineRows = split.trainRows.filter((row) => row.aiApproved);
-  const validationBaselineRows = split.validationRows.filter(
+  const trainRows = resolveScopeRows(fullSplit.trainRows, scope);
+  const validationRows = resolveScopeRows(fullSplit.validationRows, scope);
+  const testRows = resolveScopeRows(fullSplit.testRows, scope);
+  const baselineRows = fullSplit.trainRows.filter((row) => row.aiApproved);
+  const validationBaselineRows = fullSplit.validationRows.filter(
     (row) => row.aiApproved,
   );
-  const testBaselineRows = split.testRows.filter((row) => row.aiApproved);
-  const minValidationSupport =
-    explicitMinValidationSupport > 0
-      ? explicitMinValidationSupport
-      : validationRows.length
-        ? Math.max(3, Math.ceil(minSupport * validationSplit * 0.5))
-        : 0;
-  const minEvents =
-    explicitMinEvents > 0
-      ? explicitMinEvents
-      : Math.max(5, Math.ceil(minSupport * 0.5));
-  const minValidationEvents =
-    explicitMinValidationEvents > 0
-      ? explicitMinValidationEvents
-      : validationRows.length
-        ? Math.max(2, Math.ceil(minEvents * validationSplit * 0.5))
-        : 0;
+  const testBaselineRows = fullSplit.testRows.filter((row) => row.aiApproved);
   const currentGateSummary = summarizeAiTrainEvaluations(rows);
   const currentGateQualityThresholds =
     summarizeAiTrainEvaluationsByQualityThreshold(rows, qualityThresholds);
-  let searchBar: ProgressBar | null = null;
-  let searchBarPhase: AiPocketSearchProgressPhase | null = null;
-  const search = searchAiPockets(trainRows, {
-    minSupport,
-    minProfitFactor,
-    minTotalProfit,
-    minWinRate,
-    maxDepth,
-    maxAtomicPredicates,
-    maxCombinations,
-    top,
-    validationRows,
-    testRows,
-    minValidationSupport,
-    minEvents,
-    minValidationEvents,
-    ...(maxBatch > 0 ? { maxBatch } : {}),
-    maxEventCountShare,
-    maxSymbolCountShare,
-    objective,
-    baselineRows,
-    validationBaselineRows,
-    testBaselineRows,
-    allowRiskRegression,
-    requireValidationEligibility,
-    dedupeEquivalentSelections,
-    progressInterval: 250,
-    onProgress: (progress) => {
-      if (searchBar && searchBarPhase !== progress.phase) {
-        tickProgressBarTo(searchBar, searchBar.total, {
-          status: chalk.gray('done'),
-        });
-        searchBar = null;
-      }
 
-      if (!searchBar) {
-        searchBarPhase = progress.phase;
-        const label = searchPhaseLabels[progress.phase].padEnd(8, ' ');
-        console.error(
-          chalk.gray(
-            `stage: ${searchPhaseLabels[progress.phase]} (${progress.total})`,
-          ),
-        );
-        searchBar = new ProgressBar(
-          `${label} :current/:total [:bar] :percent :status`,
-          {
-            total: Math.max(progress.total, 1),
-            width: 20,
-            stream: process.stderr,
-          },
-        );
-      }
+  const runSearch = ({
+    label,
+    train,
+    validation,
+    test,
+    trainBaseline,
+    validationBaseline,
+    testBaseline,
+    requiredFeatureFamilies = [],
+    excludedFeatureFamilies = [],
+  }: {
+    label: string;
+    train: AiPocketSearchRow[];
+    validation: AiPocketSearchRow[];
+    test: AiPocketSearchRow[];
+    trainBaseline: AiPocketSearchRow[];
+    validationBaseline: AiPocketSearchRow[];
+    testBaseline: AiPocketSearchRow[];
+    requiredFeatureFamilies?: AiPocketCoverageFamily[];
+    excludedFeatureFamilies?: AiPocketCoverageFamily[];
+  }) => {
+    const cadenceProfile = resolveAiPocketCadenceProfile({
+      trainRows: train,
+      validationRows: validation,
+      testRows: test,
+      mode: cadenceMode,
+      validationSplit,
+      ...(explicitMinSupport != null ? { minSupport: explicitMinSupport } : {}),
+      ...(explicitMinEvents > 0 ? { minEvents: explicitMinEvents } : {}),
+      ...(explicitMinValidationSupport > 0
+        ? { minValidationSupport: explicitMinValidationSupport }
+        : {}),
+      ...(explicitMinValidationEvents > 0
+        ? { minValidationEvents: explicitMinValidationEvents }
+        : {}),
+      maxEventCountShare,
+      explicitMaxEventCountShare: hasCliOption('maxEventCountShare', 'U'),
+    });
+    let searchBar: ProgressBar | null = null;
+    let searchBarPhase: AiPocketSearchProgressPhase | null = null;
+    return searchAiPockets(train, {
+      minSupport: cadenceProfile.minSupport,
+      minProfitFactor,
+      minTotalProfit,
+      minWinRate,
+      maxDepth,
+      maxAtomicPredicates,
+      maxCombinations,
+      top,
+      validationRows: validation,
+      testRows: test,
+      minValidationSupport: cadenceProfile.minValidationSupport,
+      minEvents: cadenceProfile.minEvents,
+      minValidationEvents: cadenceProfile.minValidationEvents,
+      ...(maxBatch > 0 ? { maxBatch } : {}),
+      maxEventCountShare: cadenceProfile.maxEventCountShare,
+      maxSymbolCountShare,
+      objective,
+      baselineRows: trainBaseline,
+      validationBaselineRows: validationBaseline,
+      testBaselineRows: testBaseline,
+      allowRiskRegression,
+      requireValidationEligibility,
+      dedupeEquivalentSelections,
+      requiredFeatureFamilies,
+      excludedFeatureFamilies,
+      cadenceProfile,
+      progressInterval: 250,
+      onProgress: (progress) => {
+        if (searchBar && searchBarPhase !== progress.phase) {
+          tickProgressBarTo(searchBar, searchBar.total, {
+            status: chalk.gray('done'),
+          });
+          searchBar = null;
+        }
 
-      tickProgressBarTo(searchBar, progress.current, {
-        status: progress.truncated ? chalk.yellow('truncated') : 'running',
-      });
-      if (progress.done) {
-        tickProgressBarTo(searchBar, searchBar.total, {
-          status: progress.truncated ? chalk.yellow('truncated') : 'done',
+        if (!searchBar) {
+          searchBarPhase = progress.phase;
+          const phaseLabel = searchPhaseLabels[progress.phase].padEnd(8, ' ');
+          console.error(
+            chalk.gray(
+              `stage: ${label}/${searchPhaseLabels[progress.phase]} (${progress.total})`,
+            ),
+          );
+          searchBar = new ProgressBar(
+            `${phaseLabel} :current/:total [:bar] :percent :status`,
+            {
+              total: Math.max(progress.total, 1),
+              width: 20,
+              stream: process.stderr,
+            },
+          );
+        }
+
+        tickProgressBarTo(searchBar, progress.current, {
+          status: progress.truncated ? chalk.yellow('truncated') : 'running',
         });
-        searchBar = null;
-      }
-    },
+        if (progress.done) {
+          tickProgressBarTo(searchBar, searchBar.total, {
+            status: progress.truncated ? chalk.yellow('truncated') : 'done',
+          });
+          searchBar = null;
+        }
+      },
+    });
+  };
+
+  const search = runSearch({
+    label: 'full',
+    train: trainRows,
+    validation: validationRows,
+    test: testRows,
+    trainBaseline: baselineRows,
+    validationBaseline: validationBaselineRows,
+    testBaseline: testBaselineRows,
+    ...(coverageMode === 'auto'
+      ? {
+          excludedFeatureFamilies: [
+            'cmc',
+            'coinalyze',
+          ] satisfies AiPocketCoverageFamily[],
+        }
+      : {}),
   });
+
+  const coverageSearches: AiPocketCoverageSearchResult[] = [];
+  if (coverageMode === 'auto') {
+    for (const family of ['cmc', 'coinalyze'] as const) {
+      const cohortSplit = splitAiPocketCoverageRowsByTimestamp(
+        directionRows,
+        family,
+        validationSplit,
+        testSplit,
+      );
+      const cohortTrainRows = resolveScopeRows(cohortSplit.trainRows, scope);
+      const cohortValidationRows = resolveScopeRows(
+        cohortSplit.validationRows,
+        scope,
+      );
+      const cohortTestRows = resolveScopeRows(cohortSplit.testRows, scope);
+      const cohortSearch = runSearch({
+        label: family,
+        train: cohortTrainRows,
+        validation: cohortValidationRows,
+        test: cohortTestRows,
+        trainBaseline: cohortSplit.trainRows.filter((row) => row.aiApproved),
+        validationBaseline: cohortSplit.validationRows.filter(
+          (row) => row.aiApproved,
+        ),
+        testBaseline: cohortSplit.testRows.filter((row) => row.aiApproved),
+        requiredFeatureFamilies: [family],
+      });
+      coverageSearches.push({
+        family,
+        coverage: summarizeAiPocketFeatureCoverage(directionRows, family),
+        scopeRows: resolveScopeRows(
+          directionRows.filter((row) => row.featureCoverage?.[family] === true),
+          scope,
+        ).length,
+        trainRows: cohortTrainRows.length,
+        validationRows: cohortValidationRows.length,
+        testRows: cohortTestRows.length,
+        search: cohortSearch,
+      });
+    }
+  }
   const result = {
     generatedAt,
     run: {
@@ -1176,6 +1324,25 @@ export const main = async () => {
       includeGateContext,
       featureProfile,
       featurePolicy,
+      coverageMode,
+      cadenceMode,
+      coverageSearches: coverageSearches.map(
+        ({
+          family,
+          coverage,
+          scopeRows,
+          trainRows,
+          validationRows,
+          testRows,
+        }) => ({
+          family,
+          coverage,
+          scopeRows,
+          trainRows,
+          validationRows,
+          testRows,
+        }),
+      ),
       featurePolicyAudit: Object.fromEntries(
         [...excludedFeaturePaths.entries()].map(([classification, paths]) => [
           classification,
@@ -1188,26 +1355,26 @@ export const main = async () => {
       objective,
       validationSplit,
       testSplit,
-      minValidationSupport,
+      minValidationSupport: search.stats.cadence.minValidationSupport,
       reportPath,
       search: {
         maxDepth,
-        minSupport,
+        minSupport: search.stats.cadence.minSupport,
         minProfitFactor,
         minWinRate,
         minTotalProfit,
         maxAtomicPredicates,
         maxCombinations,
-        minEvents,
-        minValidationEvents,
+        minEvents: search.stats.cadence.minEvents,
+        minValidationEvents: search.stats.cadence.minValidationEvents,
         ...(maxBatch > 0 ? { maxBatch } : {}),
-        maxEventCountShare,
+        maxEventCountShare: search.stats.cadence.maxEventCountShare,
         maxSymbolCountShare,
         allowRiskRegression,
         requireValidationEligibility,
+        cadence: search.stats.cadence,
         validationSplit,
         testSplit,
-        minValidationSupport,
         dedupeEquivalentSelections,
         top,
       },
@@ -1217,6 +1384,7 @@ export const main = async () => {
       qualityThresholds: currentGateQualityThresholds,
     },
     pocketSearch: search,
+    coverageSearches,
     errors,
   };
 
@@ -1284,17 +1452,53 @@ export const main = async () => {
         ],
         ['min_quality', chalk.magenta(String(minQuality))],
         ['max_depth', chalk.magenta(String(maxDepth))],
-        ['min_support', chalk.magenta(String(minSupport))],
-        ['min_events', chalk.magenta(String(minEvents))],
-        ['min_validation_events', chalk.magenta(String(minValidationEvents))],
+        ['cadence_mode', chalk.magenta(cadenceMode)],
+        [
+          'low_cadence',
+          search.stats.cadence.lowCadence
+            ? chalk.yellow('yes')
+            : chalk.green('no'),
+        ],
+        [
+          'sparse_sample',
+          search.stats.cadence.sparseSample
+            ? chalk.yellow('yes')
+            : chalk.green('no'),
+        ],
+        [
+          'adaptive_thresholds',
+          search.stats.cadence.adaptiveThresholds
+            ? chalk.yellow('on')
+            : chalk.gray('off'),
+        ],
+        [
+          'train_events',
+          chalk.magenta(String(search.stats.cadence.trainEvents)),
+        ],
+        [
+          'train_events_per_day',
+          chalk.magenta(formatNumber(search.stats.cadence.trainEventsPerDay)),
+        ],
+        ['min_support', chalk.magenta(String(search.stats.cadence.minSupport))],
+        ['min_events', chalk.magenta(String(search.stats.cadence.minEvents))],
+        [
+          'min_validation_events',
+          chalk.magenta(String(search.stats.cadence.minValidationEvents)),
+        ],
         ['max_batch', chalk.magenta(maxBatch > 0 ? String(maxBatch) : 'off')],
-        ['max_event_share', chalk.magenta(formatRatio(maxEventCountShare))],
+        [
+          'max_event_share',
+          chalk.magenta(formatRatio(search.stats.cadence.maxEventCountShare)),
+        ],
         ['max_symbol_share', chalk.magenta(formatRatio(maxSymbolCountShare))],
         ['max_atomic_predicates', chalk.magenta(String(maxAtomicPredicates))],
         ['max_combinations', chalk.magenta(String(maxCombinations))],
         ['validation_split', chalk.magenta(formatRatio(validationSplit))],
         ['test_split', chalk.magenta(formatRatio(testSplit))],
-        ['min_validation_support', chalk.magenta(String(minValidationSupport))],
+        [
+          'min_validation_support',
+          chalk.magenta(String(search.stats.cadence.minValidationSupport)),
+        ],
         [
           'dedupe_equivalent',
           dedupeEquivalentSelections ? chalk.green('on') : chalk.gray('off'),
@@ -1309,6 +1513,7 @@ export const main = async () => {
         ],
         ['feature_profile', chalk.magenta(featureProfile)],
         ['feature_policy', chalk.magenta(featurePolicy)],
+        ['coverage_mode', chalk.magenta(coverageMode)],
         [
           'allow_risk_regression',
           allowRiskRegression ? chalk.yellow('on') : chalk.green('off'),
@@ -1393,6 +1598,14 @@ export const main = async () => {
           chalk.cyan(search.stats.featureFamiliesUsed.join(', ')),
         ],
         [
+          'required_feature_families',
+          chalk.cyan(search.stats.requiredFeatureFamilies.join(', ') || 'none'),
+        ],
+        [
+          'excluded_feature_families',
+          chalk.cyan(search.stats.excludedFeatureFamilies.join(', ') || 'none'),
+        ],
+        [
           'estimated_combinations',
           chalk.cyan(String(search.stats.estimatedCombinations)),
         ],
@@ -1402,6 +1615,27 @@ export const main = async () => {
         ],
         ['validation_rows', chalk.cyan(String(search.stats.validationRows))],
         ['test_rows', chalk.cyan(String(search.stats.testRows))],
+        ['train_events', chalk.cyan(String(search.stats.cadence.trainEvents))],
+        [
+          'train_events_per_day',
+          chalk.cyan(formatNumber(search.stats.cadence.trainEventsPerDay)),
+        ],
+        [
+          'effective_min_support',
+          chalk.cyan(String(search.stats.cadence.minSupport)),
+        ],
+        [
+          'effective_min_events',
+          chalk.cyan(String(search.stats.cadence.minEvents)),
+        ],
+        [
+          'effective_min_validation_support',
+          chalk.cyan(String(search.stats.cadence.minValidationSupport)),
+        ],
+        [
+          'effective_min_validation_events',
+          chalk.cyan(String(search.stats.cadence.minValidationEvents)),
+        ],
         [
           'duplicate_pockets_skipped',
           chalk.cyan(String(search.stats.duplicatePocketsSkipped)),
@@ -1429,16 +1663,20 @@ export const main = async () => {
         chalk.gray('OBJ_PNL'),
         chalk.gray('MAX_DD'),
         chalk.gray('VAL_N'),
+        chalk.gray('VAL_EVENTS'),
         chalk.gray('VAL_WR'),
         chalk.gray('VAL_PF'),
         chalk.gray('VAL_PNL'),
         chalk.gray('TEST_N'),
+        chalk.gray('TEST_EVENTS'),
         chalk.gray('TEST_PF'),
         chalk.gray('TEST_PNL'),
         chalk.gray('TEST_OBJ'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),
+        chalk.gray('READINESS'),
+        chalk.gray('REASONS'),
         chalk.gray('POCKET'),
       ],
       buildPocketRows(search.positivePockets),
@@ -1460,21 +1698,166 @@ export const main = async () => {
         chalk.gray('OBJ_PNL'),
         chalk.gray('MAX_DD'),
         chalk.gray('VAL_N'),
+        chalk.gray('VAL_EVENTS'),
         chalk.gray('VAL_WR'),
         chalk.gray('VAL_PF'),
         chalk.gray('VAL_PNL'),
         chalk.gray('TEST_N'),
+        chalk.gray('TEST_EVENTS'),
         chalk.gray('TEST_PF'),
         chalk.gray('TEST_PNL'),
         chalk.gray('TEST_OBJ'),
         chalk.gray('TR/D'),
         chalk.gray('LOSS_M'),
         chalk.gray('SCORE'),
+        chalk.gray('READINESS'),
+        chalk.gray('REASONS'),
         chalk.gray('POCKET'),
       ],
       buildPocketRows(search.negativePockets),
     ),
   );
+
+  for (const cohort of coverageSearches) {
+    const title = cohort.family === 'cmc' ? 'CMC' : 'COINALYZE';
+    printSection(
+      `${title} COVERAGE COHORT`,
+      createTable(
+        [chalk.gray('FIELD'), chalk.gray('VALUE')],
+        [
+          ['coverage_rows', chalk.cyan(String(cohort.coverage.rows))],
+          ['coverage_ratio', chalk.cyan(formatRatio(cohort.coverage.rowRatio))],
+          ['coverage_events', chalk.cyan(String(cohort.coverage.events))],
+          ['event_ratio', chalk.cyan(formatRatio(cohort.coverage.eventRatio))],
+          [
+            'coverage_from',
+            cohort.coverage.minTimestamp == null
+              ? chalk.gray('n/a')
+              : chalk.gray(
+                  new Date(cohort.coverage.minTimestamp).toISOString(),
+                ),
+          ],
+          [
+            'coverage_to',
+            cohort.coverage.maxTimestamp == null
+              ? chalk.gray('n/a')
+              : chalk.gray(
+                  new Date(cohort.coverage.maxTimestamp).toISOString(),
+                ),
+          ],
+          ['scope_rows', chalk.cyan(String(cohort.scopeRows))],
+          ['train_rows', chalk.cyan(String(cohort.trainRows))],
+          ['validation_rows', chalk.cyan(String(cohort.validationRows))],
+          ['test_rows', chalk.cyan(String(cohort.testRows))],
+          [
+            'low_cadence',
+            cohort.search.stats.cadence.lowCadence
+              ? chalk.yellow('yes')
+              : chalk.green('no'),
+          ],
+          [
+            'sparse_sample',
+            cohort.search.stats.cadence.sparseSample
+              ? chalk.yellow('yes')
+              : chalk.green('no'),
+          ],
+          [
+            'adaptive_thresholds',
+            cohort.search.stats.cadence.adaptiveThresholds
+              ? chalk.yellow('on')
+              : chalk.gray('off'),
+          ],
+          [
+            'train_events',
+            chalk.cyan(String(cohort.search.stats.cadence.trainEvents)),
+          ],
+          [
+            'effective_min_support',
+            chalk.cyan(String(cohort.search.stats.cadence.minSupport)),
+          ],
+          [
+            'effective_min_events',
+            chalk.cyan(String(cohort.search.stats.cadence.minEvents)),
+          ],
+        ],
+      ),
+    );
+    printSection(
+      `${title} TRAIN BASELINE`,
+      createTable(
+        [chalk.gray('METRIC'), chalk.gray('VALUE')],
+        buildSummaryRows(cohort.search.baseline),
+      ),
+    );
+    printSection(
+      `${title} TOP POSITIVE POCKETS`,
+      createTable(
+        [
+          chalk.gray('#'),
+          chalk.gray('N'),
+          chalk.gray('EVENTS'),
+          chalk.gray('MAX_B'),
+          chalk.gray('SUP'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('OBJ_PNL'),
+          chalk.gray('MAX_DD'),
+          chalk.gray('VAL_N'),
+          chalk.gray('VAL_EVENTS'),
+          chalk.gray('VAL_WR'),
+          chalk.gray('VAL_PF'),
+          chalk.gray('VAL_PNL'),
+          chalk.gray('TEST_N'),
+          chalk.gray('TEST_EVENTS'),
+          chalk.gray('TEST_PF'),
+          chalk.gray('TEST_PNL'),
+          chalk.gray('TEST_OBJ'),
+          chalk.gray('TR/D'),
+          chalk.gray('LOSS_M'),
+          chalk.gray('SCORE'),
+          chalk.gray('READINESS'),
+          chalk.gray('REASONS'),
+          chalk.gray('POCKET'),
+        ],
+        buildPocketRows(cohort.search.positivePockets),
+      ),
+    );
+    printSection(
+      `${title} TOP LOSS POCKETS`,
+      createTable(
+        [
+          chalk.gray('#'),
+          chalk.gray('N'),
+          chalk.gray('EVENTS'),
+          chalk.gray('MAX_B'),
+          chalk.gray('SUP'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('OBJ_PNL'),
+          chalk.gray('MAX_DD'),
+          chalk.gray('VAL_N'),
+          chalk.gray('VAL_EVENTS'),
+          chalk.gray('VAL_WR'),
+          chalk.gray('VAL_PF'),
+          chalk.gray('VAL_PNL'),
+          chalk.gray('TEST_N'),
+          chalk.gray('TEST_EVENTS'),
+          chalk.gray('TEST_PF'),
+          chalk.gray('TEST_PNL'),
+          chalk.gray('TEST_OBJ'),
+          chalk.gray('TR/D'),
+          chalk.gray('LOSS_M'),
+          chalk.gray('SCORE'),
+          chalk.gray('READINESS'),
+          chalk.gray('REASONS'),
+          chalk.gray('POCKET'),
+        ],
+        buildPocketRows(cohort.search.negativePockets),
+      ),
+    );
+  }
 
   if (errors.length) {
     console.log(chalk.yellow('Errors:'));

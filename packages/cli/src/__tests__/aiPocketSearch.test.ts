@@ -1,17 +1,93 @@
 import type { AiPayload } from '@tradejs/types';
 import {
   buildAiPocketMarkdownReport,
+  classifyAiPocketCoverageFeaturePath,
   classifyAiPocketFeaturePath,
+  collectAiPocketFeatureSnapshot,
   collectAiPocketFeatures,
   searchAiPockets,
   type AiPocketSearchRow,
 } from '../lib/aiPocketSearch';
 import {
   readAiPocketSearchCliOption,
+  resolveAiPocketCadenceProfile,
+  splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
 
 describe('aiPocketSearch', () => {
+  it('adapts discovery thresholds for sparse independent events', () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const trainRows = Array.from({ length: 40 }, (_, index) => ({
+      timestamp: index * 5 * dayMs,
+    }));
+    const validationRows = Array.from({ length: 10 }, (_, index) => ({
+      timestamp: (200 + index * 5) * dayMs,
+    }));
+
+    const profile = resolveAiPocketCadenceProfile({
+      trainRows,
+      validationRows,
+    });
+
+    expect(profile).toEqual(
+      expect.objectContaining({
+        mode: 'auto',
+        lowCadence: true,
+        adaptiveThresholds: true,
+        trainEvents: 40,
+        validationEvents: 10,
+        minSupport: 4,
+        minEvents: 3,
+        minValidationSupport: 3,
+        minValidationEvents: 3,
+        maxEventCountShare: 1 / 3,
+      }),
+    );
+    expect(profile.trainEventsPerDay).toBeCloseTo(40 / 195);
+  });
+
+  it('keeps fixed and explicit cadence thresholds unchanged', () => {
+    const rows = Array.from({ length: 40 }, (_, timestamp) => ({ timestamp }));
+
+    const fixed = resolveAiPocketCadenceProfile({
+      trainRows: rows,
+      validationRows: rows.slice(0, 10),
+      mode: 'fixed',
+    });
+    const explicit = resolveAiPocketCadenceProfile({
+      trainRows: rows,
+      validationRows: rows.slice(0, 10),
+      minSupport: 12,
+      minEvents: 9,
+      minValidationSupport: 4,
+      minValidationEvents: 4,
+      maxEventCountShare: 0.2,
+      explicitMaxEventCountShare: true,
+    });
+
+    expect(fixed).toEqual(
+      expect.objectContaining({
+        adaptiveThresholds: false,
+        minSupport: 20,
+        minEvents: 10,
+        minValidationSupport: 3,
+        minValidationEvents: 2,
+        maxEventCountShare: 0.25,
+      }),
+    );
+    expect(explicit).toEqual(
+      expect.objectContaining({
+        adaptiveThresholds: false,
+        minSupport: 12,
+        minEvents: 9,
+        minValidationSupport: 4,
+        minValidationEvents: 4,
+        maxEventCountShare: 0.2,
+      }),
+    );
+  });
+
   it('preserves fractional research thresholds passed through the CLI parser', () => {
     const argv = [
       'node',
@@ -368,6 +444,286 @@ describe('aiPocketSearch', () => {
         }),
       ]),
     );
+  });
+
+  it('treats missing external context as coverage metadata, not market state', () => {
+    const missingPayload = {
+      signal: {
+        symbol: 'ETHUSDT',
+        signalId: 'missing-context',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1,
+        strategy: 'TrendShift',
+      },
+      figures: {},
+      indicators: {},
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            intervals: {},
+            summary: {
+              pressure: 'neutral',
+              riskFlags: ['missing_derivatives'],
+            },
+          },
+          relative: {},
+        },
+        trendShiftContext: {
+          derivativesPressure: 'neutral',
+        },
+      },
+    } as AiPayload;
+
+    const missing = collectAiPocketFeatureSnapshot({
+      payload: missingPayload,
+      featurePolicy: 'causal-stationary',
+    });
+
+    expect(missing.featureCoverage).toEqual({
+      cmc: false,
+      coinalyze: false,
+    });
+    expect(
+      missing.features[
+        'additionalIndicators.baseContext.derivatives.summary.pressure'
+      ],
+    ).toBeUndefined();
+    expect(
+      missing.features[
+        'additionalIndicators.trendShiftContext.derivativesPressure'
+      ],
+    ).toBeUndefined();
+
+    const referenceOnlyPayload = {
+      ...missingPayload,
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            intervals: {},
+            summary: {
+              pressure: 'neutral',
+              riskFlags: ['missing_derivatives'],
+            },
+            referenceContexts: {
+              ETHUSDT: {
+                intervals: {
+                  '1h': {
+                    stale: false,
+                    fundingRateChangePct: 0.1,
+                  },
+                },
+                summary: { riskFlags: [] },
+              },
+            },
+          },
+          relative: {},
+        },
+      },
+    } as AiPayload;
+    const referenceOnly = collectAiPocketFeatureSnapshot({
+      payload: referenceOnlyPayload,
+      featurePolicy: 'causal-stationary',
+    });
+
+    expect(referenceOnly.featureCoverage.coinalyze).toBe(true);
+    expect(
+      referenceOnly.features[
+        'additionalIndicators.baseContext.derivatives.summary.pressure'
+      ],
+    ).toBeUndefined();
+    expect(
+      referenceOnly.features[
+        'additionalIndicators.baseContext.derivatives.referenceContexts.ETHUSDT.intervals.1h.fundingRateChangePct'
+      ],
+    ).toBe(0.1);
+
+    const availablePayload = {
+      ...missingPayload,
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            intervals: {
+              '1h': {
+                stale: false,
+                points: 120,
+                oiChangePct1h: 0.25,
+              },
+            },
+            summary: {
+              pressure: 'neutral',
+              riskFlags: [],
+            },
+          },
+          relative: {
+            cmcGlobal: {
+              source: 'coinmarketcap_global',
+              stale: false,
+              btcDominanceChange24hPct: 0.4,
+            },
+          },
+        },
+      },
+    } as AiPayload;
+    const available = collectAiPocketFeatureSnapshot({
+      payload: availablePayload,
+      featurePolicy: 'causal-stationary',
+    });
+
+    expect(available.featureCoverage).toEqual({
+      cmc: true,
+      coinalyze: true,
+    });
+    expect(
+      available.features[
+        'additionalIndicators.baseContext.derivatives.intervals.1h.oiChangePct1h'
+      ],
+    ).toBe(0.25);
+    expect(
+      available.features[
+        'additionalIndicators.baseContext.derivatives.intervals.1h.points'
+      ],
+    ).toBeUndefined();
+    expect(
+      classifyAiPocketCoverageFeaturePath(
+        'additionalIndicators.baseContext.relative.cmcGlobal.btcDominanceChange24hPct',
+      ),
+    ).toBe('cmc');
+    expect(
+      classifyAiPocketCoverageFeaturePath(
+        'additionalIndicators.baseContext.derivatives.intervals.1h.oiChangePct1h',
+      ),
+    ).toBe('coinalyze');
+    expect(
+      classifyAiPocketCoverageFeaturePath(
+        'additionalIndicators.trendShiftContext.shortAsiaLowCmcBreadthRisk',
+      ),
+    ).toBe('cmc');
+  });
+
+  it('splits partial provider history inside its own coverage cohort', () => {
+    const derivativesFeature =
+      'additionalIndicators.baseContext.derivatives.intervals.1h.oiChangePct1h';
+    const rows: AiPocketSearchRow[] = Array.from({ length: 60 }, (_, index) => {
+      const covered = index >= 51;
+      const coveredIndex = index - 51;
+      const positive = covered && coveredIndex < 6;
+      const features: AiPocketSearchRow['features'] = {};
+      if (covered) {
+        features[derivativesFeature] = positive ? 2 : -2;
+      }
+      return {
+        profit: positive ? 10 : -5,
+        profitableTrade: positive,
+        aiApproved: false,
+        quality: 2,
+        timestamp: index,
+        featureCoverage: {
+          cmc: false,
+          coinalyze: covered,
+        },
+        features,
+      };
+    });
+    const globalSplit = splitAiPocketResearchRowsByTimestamp(rows, 0.25);
+    const cohortSplit = splitAiPocketCoverageRowsByTimestamp(
+      rows,
+      'coinalyze',
+      0.25,
+    );
+
+    expect(globalSplit.trainRows).toHaveLength(45);
+    expect(
+      globalSplit.trainRows.some(
+        (row) => row.featureCoverage?.coinalyze === true,
+      ),
+    ).toBe(false);
+    expect(cohortSplit.trainRows).toHaveLength(7);
+    expect(cohortSplit.validationRows).toHaveLength(2);
+
+    const globalSearch = searchAiPockets(globalSplit.trainRows, {
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      requiredFeatureFamilies: ['coinalyze'],
+    });
+    const cohortSearch = searchAiPockets(cohortSplit.trainRows, {
+      validationRows: cohortSplit.validationRows,
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      requiredFeatureFamilies: ['coinalyze'],
+    });
+
+    expect(globalSearch.predicates).toHaveLength(0);
+    expect(cohortSearch.predicates.length).toBeGreaterThan(0);
+    expect(cohortSearch.positivePockets.length).toBeGreaterThan(0);
+    expect(
+      cohortSearch.positivePockets.every((pocket) =>
+        pocket.predicates.some(
+          (predicate) => predicate.featureKey === derivativesFeature,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps external-provider predicates out of the full-history search', () => {
+    const rows: AiPocketSearchRow[] = [
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 1,
+        features: {
+          'additionalIndicators.baseContext.regime.trend': 'up',
+          'additionalIndicators.baseContext.derivatives.summary.pressure':
+            'short_flush',
+        },
+      },
+      {
+        profit: 8,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 2,
+        features: {
+          'additionalIndicators.baseContext.regime.trend': 'up',
+          'additionalIndicators.baseContext.derivatives.summary.pressure':
+            'short_flush',
+        },
+      },
+      {
+        profit: -5,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 2,
+        timestamp: 3,
+        features: {
+          'additionalIndicators.baseContext.regime.trend': 'down',
+          'additionalIndicators.baseContext.derivatives.summary.pressure':
+            'neutral',
+        },
+      },
+    ];
+
+    const result = searchAiPockets(rows, {
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+      excludedFeatureFamilies: ['cmc', 'coinalyze'],
+    });
+
+    expect(result.stats.excludedFeatureFamilies).toEqual(['cmc', 'coinalyze']);
+    expect(
+      result.predicates.every(
+        (predicate) =>
+          classifyAiPocketCoverageFeaturePath(predicate.featureKey) == null,
+      ),
+    ).toBe(true);
   });
 
   it('summarizes independent events and rejects concentrated timestamp batches', () => {
@@ -850,6 +1206,73 @@ describe('aiPocketSearch', () => {
     );
   });
 
+  it('marks small pockets as research-only and requires an untouched test', () => {
+    const rows: AiPocketSearchRow[] = Array.from({ length: 12 }, (_, index) => {
+      const selected = index < 8;
+      return {
+        profit: selected ? 5 : -2,
+        profitableTrade: selected,
+        aiApproved: selected,
+        quality: selected ? 5 : 2,
+        timestamp: index,
+        features: { sparseSignal: selected },
+      };
+    });
+
+    const result = searchAiPockets(rows, {
+      minSupport: 3,
+      minEvents: 3,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    });
+
+    expect(result.positivePockets[0]).toEqual(
+      expect.objectContaining({
+        readiness: 'research-only',
+        readinessReasons: ['train events 8 < 25', 'untouched test missing'],
+      }),
+    );
+  });
+
+  it('requires 25 train and test events for production-candidate status', () => {
+    const buildRows = (timestampOffset: number): AiPocketSearchRow[] =>
+      Array.from({ length: 50 }, (_, index) => {
+        const selected = index < 25;
+        return {
+          profit: selected ? 5 : -2,
+          profitableTrade: selected,
+          aiApproved: selected,
+          quality: selected ? 5 : 2,
+          timestamp: timestampOffset + index,
+          features: { stableSignal: selected },
+        };
+      });
+    const trainRows = buildRows(0);
+    const testRows = buildRows(100);
+
+    const result = searchAiPockets(trainRows, {
+      testRows,
+      minSupport: 25,
+      minEvents: 25,
+      maxDepth: 1,
+      maxAtomicPredicates: 10,
+      maxCombinations: 20,
+    });
+    const pocket = result.positivePockets.find((candidate) =>
+      candidate.condition.includes('stableSignal == true'),
+    );
+
+    expect(pocket).toEqual(
+      expect.objectContaining({
+        readiness: 'production-candidate',
+        readinessReasons: [],
+        summary: expect.objectContaining({ events: 25 }),
+        testSummary: expect.objectContaining({ events: 25 }),
+      }),
+    );
+  });
+
   it('builds a markdown report with run, baseline, and pocket sections', () => {
     const rows: AiPocketSearchRow[] = [
       {
@@ -904,6 +1327,7 @@ describe('aiPocketSearch', () => {
         qualityThresholds: [4],
         includeSymbol: false,
         includeGateContext: false,
+        coverageMode: 'auto',
         validationSplit: 0,
         testSplit: 0,
         minValidationSupport: 0,
@@ -939,6 +1363,25 @@ describe('aiPocketSearch', () => {
         ],
       },
       pocketSearch: search,
+      coverageSearches: [
+        {
+          family: 'cmc',
+          coverage: {
+            family: 'cmc',
+            rows: 1,
+            rowRatio: 0.5,
+            events: 1,
+            eventRatio: 0.5,
+            minTimestamp: 0,
+            maxTimestamp: 0,
+          },
+          scopeRows: 1,
+          trainRows: 1,
+          validationRows: 0,
+          testRows: 0,
+          search,
+        },
+      ],
       errors: [],
     });
 
@@ -946,6 +1389,10 @@ describe('aiPocketSearch', () => {
     expect(markdown).toContain('| strategy | Example |');
     expect(markdown).toContain('## Current Gate qN+ Baseline');
     expect(markdown).toContain('## Top Positive Pockets');
+    expect(markdown).toContain('## Coverage Cohort: CMC');
+    expect(markdown).toContain('| coverage_row_ratio | 50.0% |');
+    expect(markdown).toContain('| cadence_mode | fixed |');
+    expect(markdown).toContain('Readiness reasons');
     expect(markdown).toContain('data/ai/output/report.md');
   });
 });
