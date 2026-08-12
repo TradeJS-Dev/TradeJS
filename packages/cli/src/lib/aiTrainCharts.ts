@@ -578,3 +578,19 @@ export const buildAiChartSnapshot = (params: {
     strategies: cards,
   } satisfies StrategyChartsSnapshotResponse;
 };
+
+export const buildAiChartPersistenceReceipt = (params: {
+  snapshot: Pick<
+    StrategyChartsSnapshotResponse,
+    'mode' | 'generatedAt' | 'strategies'
+  >;
+  datasetId: string | null;
+  ttlMs: number;
+}) => ({
+  persisted: true as const,
+  mode: params.snapshot.mode,
+  datasetId: params.datasetId,
+  generatedAt: params.snapshot.generatedAt,
+  cardIds: params.snapshot.strategies.map((card) => card.cardId),
+  ttlMs: params.ttlMs,
+});

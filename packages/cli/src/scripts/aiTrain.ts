@@ -24,6 +24,7 @@ import {
 import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
 import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
 import {
+  buildAiChartPersistenceReceipt,
   buildAiChartSnapshot,
   type AiTrainEvaluatedRowForChart,
 } from '../lib/aiTrainCharts';
@@ -466,6 +467,7 @@ type AiTrainResult = {
     topRejectReasons: ReturnType<typeof summarizeAiTrainRejectReasons>;
     lineage: Awaited<ReturnType<typeof buildAiTrainLineage>>;
   };
+  chart: ReturnType<typeof buildAiChartPersistenceReceipt> | null;
   errors: {
     failed: number;
     providerErrors: string[];
@@ -1012,18 +1014,12 @@ export const main = async () => {
       topRejectReasons,
       lineage,
     },
+    chart: null,
     errors: {
       failed,
       providerErrors: errorMessages,
     },
   };
-
-  if (jsonOutputPath) {
-    await writeAiTrainResearchSnapshot({
-      outputPath: jsonOutputPath,
-      result,
-    });
-  }
 
   if (dumpEvaluationsPath) {
     await fs.mkdir(path.dirname(path.resolve(dumpEvaluationsPath)), {
@@ -1060,7 +1056,7 @@ export const main = async () => {
   }
 
   if (saveChart) {
-    await persistAiChartSnapshot({
+    const snapshot = await persistAiChartSnapshot({
       strategyName,
       evaluatedRows,
       minQuality,
@@ -1068,6 +1064,18 @@ export const main = async () => {
       mode: localOnly ? 'local-deterministic' : 'llm',
       userName,
       datasetId,
+    });
+    result.chart = buildAiChartPersistenceReceipt({
+      snapshot,
+      datasetId: datasetId ?? null,
+      ttlMs: TTL_1M,
+    });
+  }
+
+  if (jsonOutputPath) {
+    await writeAiTrainResearchSnapshot({
+      outputPath: jsonOutputPath,
+      result,
     });
   }
 

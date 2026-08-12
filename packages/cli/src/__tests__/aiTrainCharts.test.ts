@@ -1,4 +1,7 @@
-import { buildAiChartSnapshot } from '../lib/aiTrainCharts';
+import {
+  buildAiChartPersistenceReceipt,
+  buildAiChartSnapshot,
+} from '../lib/aiTrainCharts';
 
 describe('aiTrainCharts', () => {
   const baseRow = {
@@ -9,6 +12,31 @@ describe('aiTrainCharts', () => {
     modelDirection: 'LONG',
     strategyName: 'trendshift',
   };
+
+  it('builds an immutable persistence receipt for the structured report', () => {
+    expect(
+      buildAiChartPersistenceReceipt({
+        snapshot: {
+          mode: 'ai',
+          generatedAt: 123,
+          runLabel: 'local-deterministic',
+          strategies: [
+            { cardId: 'DoubleTap-q4-123' },
+            { cardId: 'DoubleTap-q5-123' },
+          ],
+        } as never,
+        datasetId: 'merge-1',
+        ttlMs: 2_600_000,
+      }),
+    ).toEqual({
+      persisted: true,
+      mode: 'ai',
+      datasetId: 'merge-1',
+      generatedAt: 123,
+      cardIds: ['DoubleTap-q4-123', 'DoubleTap-q5-123'],
+      ttlMs: 2_600_000,
+    });
+  });
 
   it('aggregates different symbols into one card when configId is the same', () => {
     const snapshot = buildAiChartSnapshot({
