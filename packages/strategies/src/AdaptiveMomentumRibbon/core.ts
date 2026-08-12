@@ -120,8 +120,14 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi }) => {
-  const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
-    config;
+  const {
+    LONG,
+    SHORT,
+    AMR_EXIT_ON_OPPOSITE_SIGNAL,
+    AMR_EXIT_ON_INVALIDATION,
+    MAX_LOSS_VALUE,
+    FEE_PERCENT,
+  } = config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
   const lookbackBars = asPositiveInt(config.AMR_LOOKBACK_BARS, 0);
   const initialCandles = Array.isArray(initialData) ? initialData : [];
@@ -214,8 +220,12 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 
     if (positionExists && position) {
       if (
-        (position.direction === 'LONG' && amr.entryShort) ||
-        (position.direction === 'SHORT' && amr.entryLong)
+        (Boolean(AMR_EXIT_ON_OPPOSITE_SIGNAL) &&
+          position.direction === 'LONG' &&
+          amr.entryShort) ||
+        (Boolean(AMR_EXIT_ON_OPPOSITE_SIGNAL) &&
+          position.direction === 'SHORT' &&
+          amr.entryLong)
       ) {
         return strategyApi.exit({
           code: 'CLOSE_BY_AMR_SIGNAL',

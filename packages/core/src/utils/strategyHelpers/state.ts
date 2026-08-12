@@ -16,26 +16,69 @@ export interface CreateLastTradeControllerParams {
   cooldownMs?: number;
 }
 
-export const createLastTradeController = ({
+export interface LastTradeControllerState {
+  lastTradeTimestamp: number | null;
+}
+
+interface LastTradeControllerStateStore {
+  get: () => LastTradeControllerState;
+  update: (fn: (state: LastTradeControllerState) => void) => void;
+}
+
+export interface ResolvedLastTradeControllerParams {
+  enabled: boolean;
+  cooldownMs: number;
+}
+
+export const resolveLastTradeControllerParams = ({
   env,
   enabled = env ? env === 'BACKTEST' : true,
   cooldownMs = 86_400_000,
-}: CreateLastTradeControllerParams): LastTradeController => {
-  let lastTradeTimestamp: number | null = null;
+}: CreateLastTradeControllerParams): ResolvedLastTradeControllerParams => ({
+  enabled,
+  cooldownMs,
+});
+
+export const createStateBackedLastTradeController = ({
+  state,
+  enabled,
+  cooldownMs,
+}: ResolvedLastTradeControllerParams & {
+  state: LastTradeControllerStateStore;
+}): LastTradeController => {
+  const getLastTradeTimestamp = () => state.get().lastTradeTimestamp;
 
   return {
-    isInCooldown: (timestamp: number) =>
-      Boolean(
+    isInCooldown: (timestamp: number) => {
+      const lastTradeTimestamp = getLastTradeTimestamp();
+      return Boolean(
         enabled &&
           lastTradeTimestamp != null &&
           timestamp <= lastTradeTimestamp + cooldownMs,
-      ),
+      );
+    },
     markTrade: (timestamp: number) => {
       if (!enabled) return;
-      lastTradeTimestamp = timestamp;
+      state.update((current) => {
+        current.lastTradeTimestamp = timestamp;
+      });
     },
-    getLastTradeTimestamp: () => lastTradeTimestamp,
+    getLastTradeTimestamp,
   };
+};
+
+export const createLastTradeController = (
+  params: CreateLastTradeControllerParams,
+): LastTradeController => {
+  const state: LastTradeControllerState = { lastTradeTimestamp: null };
+
+  return createStateBackedLastTradeController({
+    ...resolveLastTradeControllerParams(params),
+    state: {
+      get: () => state,
+      update: (fn) => fn(state),
+    },
+  });
 };
 
 type StrategyStateControllerStore<TState, TResult> = {

@@ -32,6 +32,12 @@ const makeBullFlipCandle = (timestamp: number) =>
 const makeBearFlipCandle = (timestamp: number) =>
   makeCandle(timestamp, 145, 146, 80, 82);
 
+const makeStableBearCandle = (timestamp: number, close: number) =>
+  makeCandle(timestamp, close + 10, close + 11, close - 2, close);
+
+const makeBullRecoveryCandle = (timestamp: number) =>
+  makeCandle(timestamp, 82, 151, 80, 150);
+
 let activeIndicatorsState: any;
 
 const getMockIndicatorsContext = () => {
@@ -45,9 +51,11 @@ const getMockIndicatorsContext = () => {
 const makeStrategyApi = ({
   marketData,
   currentPosition = null,
+  createStateController = createTestStateController(),
 }: {
   marketData: any;
   currentPosition?: any;
+  createStateController?: ReturnType<typeof createTestStateController>;
 }) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
@@ -74,7 +82,7 @@ const makeStrategyApi = ({
       markTrade: jest.fn(),
       getLastTradeTimestamp: () => null,
     })),
-    createStateController: createTestStateController(),
+    createStateController,
     entry: jest.fn(async (params: any) => ({
       kind: 'entry',
       code: params.code,
@@ -284,18 +292,171 @@ describe('TrendShift core', () => {
     expect(strategyApi.entry).toHaveBeenCalledTimes(1);
   });
 
-  it('exits open long on confirmed bearish flip', async () => {
+  it('isolates detector and exit lifecycle state by the resolved entry and lifecycle config', async () => {
+    const initialCandles = makeFlatCandles(220);
+    const marketData = {
+      timestamp: initialCandles[initialCandles.length - 1].timestamp,
+      currentPrice: 100,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+
+    await createTrendShiftCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: 2,
+      } as any,
+      data: initialCandles,
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const detectorConfigKey = (strategyApi.createStateController as jest.Mock)
+      .mock.calls[0][2].configKey;
+    const lifecycleConfigKey = (strategyApi.createStateController as jest.Mock)
+      .mock.calls[1][2].configKey;
+    const parsed = JSON.parse(detectorConfigKey);
+
+    expect(lifecycleConfigKey).toBe(detectorConfigKey);
+    expect(parsed.entry).toEqual(
+      expect.objectContaining({
+        minSignalBodyStrength:
+          DEFAULT_CONFIG.TRENDSHIFT_MIN_SIGNAL_BODY_STRENGTH,
+        targetRMultLong: DEFAULT_CONFIG.TRENDSHIFT_TARGET_R_MULT_LONG,
+        targetRMultShort: DEFAULT_CONFIG.TRENDSHIFT_TARGET_R_MULT_SHORT,
+        maxLossValue: 10,
+        long: DEFAULT_CONFIG.LONG,
+        short: DEFAULT_CONFIG.SHORT,
+      }),
+    );
+    expect(parsed.lifecycle).toEqual({
+      exitOnOppositeFlip: true,
+      oppositeExitConfirmationBars: 2,
+    });
+  });
+
+  it.each([
+    ['explicit zero', 0],
+    ['omitted legacy default', undefined],
+  ])(
+    'exits open long immediately on confirmed bearish flip with %s confirmation',
+    async (_label, confirmationBars) => {
+      const initialCandles = [
+        ...makeFlatCandles(220),
+        makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+      ];
+      const currentCandle = makeBearFlipCandle(
+        initialCandles[initialCandles.length - 1].timestamp + 60_000,
+      );
+      const marketData = {
+        fullData: [...initialCandles, currentCandle],
+        timestamp: currentCandle.timestamp,
+        currentPrice: currentCandle.close,
+      };
+      const strategyApi = makeStrategyApi({
+        marketData,
+        currentPosition: {
+          direction: 'LONG',
+          price: 145,
+          qty: 1,
+        },
+      });
+      const testConfig = {
+        ...DEFAULT_CONFIG,
+        TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: confirmationBars,
+      } as any;
+
+      const core = await createTrendShiftCore({
+        config: testConfig,
+        data: initialCandles,
+        strategyApi,
+        indicatorsState: makeIndicatorsState(),
+      });
+
+      const result = await core(currentCandle as any, currentCandle as any);
+
+      expect(result.kind).toBe('exit');
+      expect((result as any).code).toBe('TRENDSHIFT_OPPOSITE_FLIP_EXIT');
+      expect(strategyApi.exit).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [1, 1],
+    [2, 2],
+  ])(
+    'requires exactly %i subsequent stable opposite-trend bars before exit',
+    async (confirmationBars, expectedStableBars) => {
+      const initialCandles = [
+        ...makeFlatCandles(220),
+        makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+      ];
+      const armCandle = makeBearFlipCandle(
+        initialCandles[initialCandles.length - 1].timestamp + 60_000,
+      );
+      const marketData = {
+        fullData: [...initialCandles, armCandle],
+        timestamp: armCandle.timestamp,
+        currentPrice: armCandle.close,
+      };
+      const strategyApi = makeStrategyApi({
+        marketData,
+        currentPosition: {
+          direction: 'LONG',
+          price: 145,
+          qty: 1,
+        },
+      });
+      const core = await createTrendShiftCore({
+        config: {
+          ...DEFAULT_CONFIG,
+          TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: confirmationBars,
+        } as any,
+        data: initialCandles,
+        strategyApi,
+        indicatorsState: makeIndicatorsState(),
+      });
+
+      expect(await core(armCandle as any, armCandle as any)).toEqual({
+        kind: 'skip',
+        code: 'POSITION_EXISTS',
+      });
+
+      for (let index = 1; index <= expectedStableBars; index += 1) {
+        const candle = makeStableBearCandle(
+          armCandle.timestamp + index * 60_000,
+          82 - index * 10,
+        );
+        marketData.timestamp = candle.timestamp;
+        marketData.currentPrice = candle.close;
+        const result = await core(candle as any, candle as any);
+
+        if (index < expectedStableBars) {
+          expect(result).toEqual({
+            kind: 'skip',
+            code: 'POSITION_EXISTS',
+          });
+        } else {
+          expect(result.kind).toBe('exit');
+          expect((result as any).code).toBe('TRENDSHIFT_OPPOSITE_FLIP_EXIT');
+        }
+      }
+
+      expect(strategyApi.exit).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('cancels a pending opposite exit when trend state returns to the position direction', async () => {
     const initialCandles = [
       ...makeFlatCandles(220),
       makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
     ];
-    const currentCandle = makeBearFlipCandle(
+    const armCandle = makeBearFlipCandle(
       initialCandles[initialCandles.length - 1].timestamp + 60_000,
     );
     const marketData = {
-      fullData: [...initialCandles, currentCandle],
-      timestamp: currentCandle.timestamp,
-      currentPrice: currentCandle.close,
+      fullData: [...initialCandles, armCandle],
+      timestamp: armCandle.timestamp,
+      currentPrice: armCandle.close,
     };
     const strategyApi = makeStrategyApi({
       marketData,
@@ -307,17 +468,143 @@ describe('TrendShift core', () => {
     });
 
     const core = await createTrendShiftCore({
-      config: DEFAULT_CONFIG as any,
+      config: {
+        ...DEFAULT_CONFIG,
+        TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: 2,
+      } as any,
       data: initialCandles,
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
 
-    const result = await core(currentCandle as any, currentCandle as any);
+    expect(await core(armCandle as any, armCandle as any)).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+
+    const recoveryCandle = makeBullRecoveryCandle(armCandle.timestamp + 60_000);
+    marketData.timestamp = recoveryCandle.timestamp;
+    marketData.currentPrice = recoveryCandle.close;
+    expect(await core(recoveryCandle as any, recoveryCandle as any)).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+
+    const lifecycleController = (strategyApi.createStateController as jest.Mock)
+      .mock.results[1].value;
+    expect(lifecycleController.get()).toEqual({ pending: null });
+
+    const newOppositeFlip = makeBearFlipCandle(
+      recoveryCandle.timestamp + 60_000,
+    );
+    marketData.timestamp = newOppositeFlip.timestamp;
+    marketData.currentPrice = newOppositeFlip.close;
+    const result = await core(newOppositeFlip as any, newOppositeFlip as any);
+
+    expect(result).toEqual({ kind: 'skip', code: 'POSITION_EXISTS' });
+    expect(strategyApi.exit).not.toHaveBeenCalled();
+    expect(lifecycleController.get().pending).toEqual(
+      expect.objectContaining({ stableBars: 0 }),
+    );
+  });
+
+  it('does not count a repeated timestamp as a subsequent confirmation bar', async () => {
+    const initialCandles = [
+      ...makeFlatCandles(220),
+      makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+    ];
+    const armCandle = makeBearFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, armCandle],
+      timestamp: armCandle.timestamp,
+      currentPrice: armCandle.close,
+    };
+    const strategyApi = makeStrategyApi({
+      marketData,
+      currentPosition: { direction: 'LONG', price: 145, qty: 1 },
+    });
+    const core = await createTrendShiftCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: 1,
+      } as any,
+      data: initialCandles,
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    expect((await core(armCandle as any, armCandle as any)).kind).toBe('skip');
+    expect((await core(armCandle as any, armCandle as any)).kind).toBe('skip');
+
+    const lifecycleController = (strategyApi.createStateController as jest.Mock)
+      .mock.results[1].value;
+    expect(lifecycleController.get().pending.stableBars).toBe(0);
+
+    const stableCandle = makeStableBearCandle(armCandle.timestamp + 60_000, 72);
+    marketData.timestamp = stableCandle.timestamp;
+    marketData.currentPrice = stableCandle.close;
+    expect((await core(stableCandle as any, stableCandle as any)).kind).toBe(
+      'exit',
+    );
+  });
+
+  it('preserves pending exit confirmation across a shared core recreation', async () => {
+    const initialCandles = [
+      ...makeFlatCandles(220),
+      makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+    ];
+    const armCandle = makeBearFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, armCandle],
+      timestamp: armCandle.timestamp,
+      currentPrice: armCandle.close,
+    };
+    const sharedStateController = createTestStateController();
+    const currentPosition = { direction: 'LONG', price: 145, qty: 1 };
+    const config = {
+      ...DEFAULT_CONFIG,
+      TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS: 1,
+    } as any;
+    const firstStrategyApi = makeStrategyApi({
+      marketData,
+      currentPosition,
+      createStateController: sharedStateController,
+    });
+    const firstCore = await createTrendShiftCore({
+      config,
+      data: initialCandles,
+      strategyApi: firstStrategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    expect((await firstCore(armCandle as any, armCandle as any)).kind).toBe(
+      'skip',
+    );
+
+    const secondStrategyApi = makeStrategyApi({
+      marketData,
+      currentPosition,
+      createStateController: sharedStateController,
+    });
+    const secondCore = await createTrendShiftCore({
+      config,
+      data: [...initialCandles, armCandle],
+      strategyApi: secondStrategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+    const stableCandle = makeStableBearCandle(armCandle.timestamp + 60_000, 72);
+    marketData.timestamp = stableCandle.timestamp;
+    marketData.currentPrice = stableCandle.close;
+
+    const result = await secondCore(stableCandle as any, stableCandle as any);
 
     expect(result.kind).toBe('exit');
     expect((result as any).code).toBe('TRENDSHIFT_OPPOSITE_FLIP_EXIT');
-    expect(strategyApi.exit).toHaveBeenCalledTimes(1);
+    expect(secondStrategyApi.exit).toHaveBeenCalledTimes(1);
   });
 
   it('skips long entry when crowded-long derivatives are anti-aligned', async () => {

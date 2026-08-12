@@ -72,7 +72,7 @@ const makeCore = async () => {
 };
 
 describe('LiquidityZones core', () => {
-  it('reuses detector output when the same timestamp is evaluated twice', async () => {
+  it('reuses detector output but does not emit a duplicate entry at the same timestamp', async () => {
     const { candles, core, runtimeData } = await makeCore();
     const currentCandle = candles[candles.length - 1];
     runtimeData.push(currentCandle);
@@ -81,9 +81,11 @@ describe('LiquidityZones core', () => {
     const second = await core(currentCandle as any, currentCandle as any);
 
     expect(first.kind).toBe('entry');
-    expect(second.kind).toBe('entry');
+    expect(second).toEqual({
+      kind: 'skip',
+      code: 'DEV_TRADE_COOLDOWN',
+    });
     expect((first as any).code).toBe('LIQUIDITY_ZONES_SWING_LOW_RETEST');
-    expect((second as any).code).toBe('LIQUIDITY_ZONES_SWING_LOW_RETEST');
   });
 
   it('rejects non-monotonic detector timestamps through the state controller', async () => {

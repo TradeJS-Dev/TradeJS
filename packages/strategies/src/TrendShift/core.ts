@@ -18,6 +18,17 @@ import {
 } from '../shared/structureRisk';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
+type TrendShiftOppositeExitPending = {
+  positionDirection: Position['direction'];
+  oppositeTrendState: 1 | -1;
+  armedAtTimestamp: number;
+  stableBars: number;
+};
+
+type TrendShiftOppositeExitState = {
+  pending: TrendShiftOppositeExitPending | null;
+};
+
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
     position &&
@@ -31,14 +42,44 @@ const isOpenPosition = (position: Position | null): position is Position =>
 
 const buildTrendShiftStateKey = (config: TrendShiftConfig) =>
   JSON.stringify({
-    mult: config.TRENDSHIFT_MULTIPLICATIVE_FACTOR,
-    slope: config.TRENDSHIFT_SLOPE,
-    atrLength: config.TRENDSHIFT_ATR_LENGTH,
-    widthPct: config.TRENDSHIFT_WIDTH_PCT,
-    minFlipAtr: config.TRENDSHIFT_MIN_FLIP_DISTANCE_ATR,
-    confirmFlipWithClose: config.TRENDSHIFT_CONFIRM_FLIP_WITH_CLOSE,
-    maxFigurePoints: config.TRENDSHIFT_MAX_FIGURE_POINTS,
+    detector: {
+      mult: config.TRENDSHIFT_MULTIPLICATIVE_FACTOR,
+      slope: config.TRENDSHIFT_SLOPE,
+      atrLength: config.TRENDSHIFT_ATR_LENGTH,
+      widthPct: config.TRENDSHIFT_WIDTH_PCT,
+      minFlipAtr: config.TRENDSHIFT_MIN_FLIP_DISTANCE_ATR,
+      confirmFlipWithClose: config.TRENDSHIFT_CONFIRM_FLIP_WITH_CLOSE,
+      maxFigurePoints: config.TRENDSHIFT_MAX_FIGURE_POINTS,
+    },
+    entry: {
+      minSignalBodyStrength: config.TRENDSHIFT_MIN_SIGNAL_BODY_STRENGTH,
+      minAdx: config.TRENDSHIFT_MIN_ADX,
+      stopAtrBufferMult: config.TRENDSHIFT_STOP_ATR_BUFFER_MULT,
+      stopBufferPct: config.TRENDSHIFT_STOP_BUFFER_PCT,
+      targetRMult: config.TRENDSHIFT_TARGET_R_MULT,
+      targetRMultLong: config.TRENDSHIFT_TARGET_R_MULT_LONG,
+      targetRMultShort: config.TRENDSHIFT_TARGET_R_MULT_SHORT,
+      maxLossValue: config.MAX_LOSS_VALUE,
+      feePercent: config.FEE_PERCENT,
+      slippageBaseBps: config.SLIPPAGE_BASE_BPS,
+      slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
+      long: config.LONG,
+      short: config.SHORT,
+    },
+    lifecycle: {
+      exitOnOppositeFlip: config.TRENDSHIFT_EXIT_ON_OPPOSITE_FLIP,
+      oppositeExitConfirmationBars:
+        config.TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS,
+    },
   });
+
+const resolveOppositeExitConfirmationBars = (config: TrendShiftConfig) => {
+  const parsed = Number(config.TRENDSHIFT_OPPOSITE_EXIT_CONFIRMATION_BARS ?? 0);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+};
+
+const trendStateForDirection = (direction: Position['direction']): 1 | -1 =>
+  direction === 'LONG' ? 1 : -1;
 
 export const createTrendShiftCore: CreateStrategyCore<
   TrendShiftConfig,
@@ -61,7 +102,18 @@ export const createTrendShiftCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const stateKey = buildTrendShiftStateKey(config);
+  const oppositeExitState = strategyApi.createStateController<
+    TrendShiftOppositeExitState,
+    boolean
+  >('TrendShiftOppositeExit', () => ({ pending: null }), {
+    configKey: stateKey,
+  });
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
+  const oppositeExitConfirmationBars =
+    resolveOppositeExitConfirmationBars(config);
   const nextDetectorState = (
     candle: Parameters<ReturnType<typeof createTrendShiftEngine>['next']>[0],
   ) =>
@@ -83,10 +135,12 @@ export const createTrendShiftCore: CreateStrategyCore<
         position.direction === 'SHORT' && snapshot.bullFlip;
       const oppositeBearExit =
         position.direction === 'LONG' && snapshot.bearFlip;
+      const confirmedOppositeFlip = oppositeBullExit || oppositeBearExit;
 
       if (
         Boolean(config.TRENDSHIFT_EXIT_ON_OPPOSITE_FLIP) &&
-        (oppositeBullExit || oppositeBearExit)
+        oppositeExitConfirmationBars === 0 &&
+        confirmedOppositeFlip
       ) {
         return strategyApi.exit({
           code: 'TRENDSHIFT_OPPOSITE_FLIP_EXIT',
@@ -94,7 +148,62 @@ export const createTrendShiftCore: CreateStrategyCore<
         });
       }
 
+      const delayedOppositeExit =
+        Boolean(config.TRENDSHIFT_EXIT_ON_OPPOSITE_FLIP) &&
+        oppositeExitConfirmationBars > 0 &&
+        oppositeExitState.oncePerTimestamp(candle.timestamp, (state) => {
+          const positionTrendState = trendStateForDirection(position.direction);
+          const oppositeTrendState = positionTrendState === 1 ? -1 : 1;
+
+          if (snapshot.trendState === positionTrendState) {
+            state.pending = null;
+            return false;
+          }
+
+          if (
+            state.pending?.positionDirection !== position.direction ||
+            state.pending.oppositeTrendState !== oppositeTrendState
+          ) {
+            state.pending = null;
+          }
+
+          if (!state.pending) {
+            if (!confirmedOppositeFlip) {
+              return false;
+            }
+            state.pending = {
+              positionDirection: position.direction,
+              oppositeTrendState,
+              armedAtTimestamp: candle.timestamp,
+              stableBars: 0,
+            };
+            return false;
+          }
+
+          state.pending.stableBars += 1;
+          if (state.pending.stableBars < oppositeExitConfirmationBars) {
+            return false;
+          }
+
+          state.pending = null;
+          return true;
+        });
+
+      if (delayedOppositeExit) {
+        return strategyApi.exit({
+          code: 'TRENDSHIFT_OPPOSITE_FLIP_EXIT',
+          direction: position.direction,
+        });
+      }
+
       return strategyApi.skip('POSITION_EXISTS');
+    }
+
+    if (oppositeExitConfirmationBars > 0) {
+      oppositeExitState.oncePerTimestamp(candle.timestamp, (state) => {
+        state.pending = null;
+        return false;
+      });
     }
 
     if (lastTradeController.isInCooldown(candle.timestamp)) {

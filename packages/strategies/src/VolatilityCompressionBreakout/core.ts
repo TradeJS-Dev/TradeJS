@@ -357,7 +357,9 @@ export const createVolatilityCompressionBreakoutCore: CreateStrategyCore<
   VolatilityCompressionBreakoutConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, strategyApi }) => {
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
 
   return async () => {
     const baseContext = strategyApi.getBaseContext();

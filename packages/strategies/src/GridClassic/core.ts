@@ -11,6 +11,7 @@ import {
   buildGridClassicSignalContext,
   createGridClassicEngine,
   type GridClassicSnapshot,
+  type GridClassicSetupFamily,
 } from './engine';
 import {
   buildGridClassicFigures,
@@ -37,6 +38,7 @@ interface PendingGridClassicEntry {
 
 interface GridClassicCycle {
   mode: GridClassicConfig['GRIDCLASSIC_MODE'];
+  setupFamily?: GridClassicSetupFamily;
   direction: Direction;
   geometry: CausalRangeGeometry;
   plan: GridClassicGridPlan;
@@ -183,6 +185,77 @@ const buildContinuationPlan = ({
   };
 };
 
+const buildFailedBreakoutReversalPlan = ({
+  direction,
+  entryPrice,
+  projectedBoundary,
+  projectedCenter,
+  sweepExtreme,
+  candidateAtr,
+  breakoutToleranceAtr,
+  maxLossValue,
+  feeRate,
+  slippageRate,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  projectedBoundary: number;
+  projectedCenter: number;
+  sweepExtreme: number;
+  candidateAtr: number;
+  breakoutToleranceAtr: number;
+  maxLossValue: number;
+  feeRate: number;
+  slippageRate: number;
+}): GridClassicGridPlan | null => {
+  if (
+    ![
+      entryPrice,
+      projectedBoundary,
+      projectedCenter,
+      sweepExtreme,
+      candidateAtr,
+    ].every(Number.isFinite) ||
+    candidateAtr <= Number.EPSILON
+  ) {
+    return null;
+  }
+  const buffer = candidateAtr * Math.max(0, breakoutToleranceAtr);
+  const stopLossPrice =
+    direction === 'LONG'
+      ? Math.min(sweepExtreme, projectedBoundary) - buffer
+      : Math.max(sweepExtreme, projectedBoundary) + buffer;
+  const takeProfitPrice = projectedCenter;
+  if (
+    !isDirectionalStop(direction, stopLossPrice, entryPrice) ||
+    !isDirectionalTarget(direction, takeProfitPrice, entryPrice)
+  ) {
+    return null;
+  }
+  const unitLoss = calculateGridClassicUnitLoss({
+    entryPrice,
+    stopLossPrice,
+    feeRate,
+    slippageRate,
+  });
+  const qty = unitLoss > 0 ? maxLossValue / unitLoss : 0;
+  if (!Number.isFinite(qty) || qty <= Number.EPSILON) return null;
+  return {
+    stopLossPrice,
+    takeProfitPrice,
+    stepDistance: Math.abs(projectedBoundary - projectedCenter),
+    levels: [
+      {
+        level: 1,
+        price: entryPrice,
+        qty,
+        worstCaseLoss: qty * unitLoss,
+      },
+    ],
+    worstCaseLoss: qty * unitLoss,
+  };
+};
+
 const buildExecutionStateKey = (config: GridClassicConfig) =>
   JSON.stringify({
     detector: buildGridClassicDetectorKey(config),
@@ -212,6 +285,15 @@ const buildExecutionStateKey = (config: GridClassicConfig) =>
     minNetRiskRatio: config.GRIDCLASSIC_MIN_NET_RISK_RATIO,
     breakevenTriggerFraction: config.GRIDCLASSIC_BREAKEVEN_TRIGGER_FRACTION,
     breakevenOffsetBps: config.GRIDCLASSIC_BREAKEVEN_OFFSET_BPS,
+    ...(config.GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED
+      ? {
+          failedBreakoutReversal: {
+            enabled: true,
+            long: config.LONG,
+            short: config.SHORT,
+          },
+        }
+      : {}),
     ...getRiskRates(config),
   });
 
@@ -229,6 +311,7 @@ const freezeCycle = ({
   timestamp: number;
 }): GridClassicCycle => ({
   mode: snapshot.strategyMode,
+  ...(snapshot.setupFamily ? { setupFamily: snapshot.setupFamily } : {}),
   direction,
   geometry: cloneGeometry(snapshot.geometry),
   plan: {
@@ -753,11 +836,13 @@ export const createGridClassicCore: CreateStrategyCore<
           : snapshot.close <= currentCycle.takeProfitPrice;
       if (targetReached) {
         const targetCode =
-          currentCycle.mode === 'breakout_continuation'
-            ? 'GRIDCLASSIC_CONTINUATION_TP_EXIT'
-            : config.GRIDCLASSIC_TP_MODE === 'opposite_edge'
-              ? 'GRIDCLASSIC_OPPOSITE_EDGE_TP_EXIT'
-              : 'GRIDCLASSIC_CENTER_TP_EXIT';
+          currentCycle.setupFamily === 'failed_breakout_reversal'
+            ? 'GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_TP_EXIT'
+            : currentCycle.mode === 'breakout_continuation'
+              ? 'GRIDCLASSIC_CONTINUATION_TP_EXIT'
+              : config.GRIDCLASSIC_TP_MODE === 'opposite_edge'
+                ? 'GRIDCLASSIC_OPPOSITE_EDGE_TP_EXIT'
+                : 'GRIDCLASSIC_CENTER_TP_EXIT';
         executionState.update((draft) => {
           if (draft.cycle) draft.cycle.exitCode = targetCode;
         });
@@ -952,8 +1037,14 @@ export const createGridClassicCore: CreateStrategyCore<
     ) {
       return strategyApi.skip('GRIDCLASSIC_COOLDOWN');
     }
-    const continuationMode = snapshot.strategyMode === 'breakout_continuation';
-    const entryGeometry = continuationMode
+    const failedBreakoutReversal =
+      Boolean(config.GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED) &&
+      snapshot.setupFamily === 'failed_breakout_reversal';
+    const continuationMode =
+      snapshot.strategyMode === 'breakout_continuation' &&
+      !failedBreakoutReversal;
+    const frozenSetupMode = continuationMode || failedBreakoutReversal;
+    const entryGeometry = frozenSetupMode
       ? snapshot.setupGeometry
       : snapshot.geometry;
     if (!entryGeometry?.ready) {
@@ -997,22 +1088,36 @@ export const createGridClassicCore: CreateStrategyCore<
       snapshot.breakoutLevel == null ||
       Math.abs(currentPrice - snapshot.breakoutLevel) <=
         continuationMaxEntryDistance;
-    const stillNearEdge = continuationMode
-      ? direction === 'LONG'
-        ? currentPrice >= (snapshot.breakoutLevel ?? upperPrice) &&
-          continuationDistanceAccepted
-        : currentPrice <= (snapshot.breakoutLevel ?? lowerPrice) &&
-          continuationDistanceAccepted
-      : direction === 'LONG'
-        ? currentPosition >=
-            -Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
-              Math.max(entryGeometry.widthAtr ?? 1, Number.EPSILON) &&
-          currentPosition <= edgeZoneFraction
-        : currentPosition <=
-            1 +
-              Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
+    const stillNearEdge = failedBreakoutReversal
+      ? snapshot.failedBreakoutLevel != null &&
+        snapshot.projectedBreakoutBoundary != null &&
+        (direction === 'LONG'
+          ? currentPrice >
+            Math.max(
+              snapshot.failedBreakoutLevel,
+              snapshot.projectedBreakoutBoundary,
+            )
+          : currentPrice <
+            Math.min(
+              snapshot.failedBreakoutLevel,
+              snapshot.projectedBreakoutBoundary,
+            ))
+      : continuationMode
+        ? direction === 'LONG'
+          ? currentPrice >= (snapshot.breakoutLevel ?? upperPrice) &&
+            continuationDistanceAccepted
+          : currentPrice <= (snapshot.breakoutLevel ?? lowerPrice) &&
+            continuationDistanceAccepted
+        : direction === 'LONG'
+          ? currentPosition >=
+              -Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
                 Math.max(entryGeometry.widthAtr ?? 1, Number.EPSILON) &&
-          currentPosition >= 1 - edgeZoneFraction;
+            currentPosition <= edgeZoneFraction
+          : currentPosition <=
+              1 +
+                Number(config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR) /
+                  Math.max(entryGeometry.widthAtr ?? 1, Number.EPSILON) &&
+            currentPosition >= 1 - edgeZoneFraction;
     if (!stillNearEdge) {
       return strategyApi.skip(
         continuationMode && !continuationDistanceAccepted
@@ -1021,39 +1126,54 @@ export const createGridClassicCore: CreateStrategyCore<
       );
     }
 
-    const plan = continuationMode
-      ? buildContinuationPlan({
+    const plan = failedBreakoutReversal
+      ? buildFailedBreakoutReversalPlan({
           direction,
           entryPrice: currentPrice,
-          geometry: entryGeometry,
+          projectedBoundary: Number(snapshot.projectedBreakoutBoundary),
+          projectedCenter: Number(snapshot.projectedRangeCenter),
+          sweepExtreme: Number(snapshot.sweepExtreme),
+          candidateAtr: Number(snapshot.candidateAtr),
+          breakoutToleranceAtr: Number(
+            config.GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR,
+          ),
           maxLossValue,
           feeRate,
           slippageRate,
-          targetRangeMult: Number(
-            config.GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT,
-          ),
-          stopInsideRangeFraction: Number(
-            config.GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION,
-          ),
         })
-      : buildGridClassicGridPlan({
-          direction,
-          entryPrice: currentPrice,
-          lowerPrice,
-          upperPrice,
-          atr: snapshot.atr,
-          levels,
-          stepAtr: Number(config.GRIDCLASSIC_GRID_STEP_ATR),
-          stepRangeFraction: Number(
-            config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION,
-          ),
-          levelSizeDecay: Number(config.GRIDCLASSIC_LEVEL_SIZE_DECAY),
-          stopAtrBuffer: Number(config.GRIDCLASSIC_STOP_ATR_BUFFER),
-          takeProfitMode: config.GRIDCLASSIC_TP_MODE,
-          maxLossValue,
-          feeRate,
-          slippageRate,
-        });
+      : continuationMode
+        ? buildContinuationPlan({
+            direction,
+            entryPrice: currentPrice,
+            geometry: entryGeometry,
+            maxLossValue,
+            feeRate,
+            slippageRate,
+            targetRangeMult: Number(
+              config.GRIDCLASSIC_CONTINUATION_TARGET_RANGE_MULT,
+            ),
+            stopInsideRangeFraction: Number(
+              config.GRIDCLASSIC_CONTINUATION_STOP_INSIDE_RANGE_FRACTION,
+            ),
+          })
+        : buildGridClassicGridPlan({
+            direction,
+            entryPrice: currentPrice,
+            lowerPrice,
+            upperPrice,
+            atr: snapshot.atr,
+            levels,
+            stepAtr: Number(config.GRIDCLASSIC_GRID_STEP_ATR),
+            stepRangeFraction: Number(
+              config.GRIDCLASSIC_GRID_STEP_RANGE_FRACTION,
+            ),
+            levelSizeDecay: Number(config.GRIDCLASSIC_LEVEL_SIZE_DECAY),
+            stopAtrBuffer: Number(config.GRIDCLASSIC_STOP_ATR_BUFFER),
+            takeProfitMode: config.GRIDCLASSIC_TP_MODE,
+            maxLossValue,
+            feeRate,
+            slippageRate,
+          });
     const firstLevel = plan?.levels[0];
     if (!plan || !firstLevel || firstLevel.qty <= Number.EPSILON) {
       return strategyApi.skip('GRIDCLASSIC_INVALID_GRID_PLAN');
@@ -1104,13 +1224,17 @@ export const createGridClassicCore: CreateStrategyCore<
     const { indicators } = strategyApi.getCurrentIndicatorsContext();
 
     return strategyApi.entry({
-      code: continuationMode
-        ? direction === 'LONG'
-          ? 'GRIDCLASSIC_UPPER_BREAKOUT_CONTINUATION_LONG'
-          : 'GRIDCLASSIC_LOWER_BREAKOUT_CONTINUATION_SHORT'
-        : direction === 'LONG'
-          ? 'GRIDCLASSIC_LOWER_EDGE_LONG'
-          : 'GRIDCLASSIC_UPPER_EDGE_SHORT',
+      code: failedBreakoutReversal
+        ? snapshot.failedBreakoutDirection === 'LONG'
+          ? 'GRIDCLASSIC_UPPER_FAILED_BREAKOUT_REVERSAL_SHORT'
+          : 'GRIDCLASSIC_LOWER_FAILED_BREAKOUT_REVERSAL_LONG'
+        : continuationMode
+          ? direction === 'LONG'
+            ? 'GRIDCLASSIC_UPPER_BREAKOUT_CONTINUATION_LONG'
+            : 'GRIDCLASSIC_LOWER_BREAKOUT_CONTINUATION_SHORT'
+          : direction === 'LONG'
+            ? 'GRIDCLASSIC_LOWER_EDGE_LONG'
+            : 'GRIDCLASSIC_UPPER_EDGE_SHORT',
       direction: sideConfig.direction,
       indicators,
       additionalIndicators: {

@@ -77,18 +77,38 @@ const makeBaseContext = (
     mtf: {},
   }) as BaseStrategyContextSnapshot;
 
+const makeLastTradeControllerFactory = () => {
+  let lastTradeTimestamp: number | null = null;
+
+  return jest.fn(
+    ({ enabled, cooldownMs }: { enabled: boolean; cooldownMs: number }) => ({
+      isInCooldown: (currentTimestamp: number) =>
+        Boolean(
+          enabled &&
+            lastTradeTimestamp != null &&
+            currentTimestamp <= lastTradeTimestamp + cooldownMs,
+        ),
+      markTrade: (currentTimestamp: number) => {
+        if (enabled) lastTradeTimestamp = currentTimestamp;
+      },
+      getLastTradeTimestamp: () => lastTradeTimestamp,
+    }),
+  );
+};
+
 const makeStrategyApi = ({
   baseContext = makeBaseContext(),
   position = null,
+  decisionTimestamp = timestamp,
+  lastTradeControllerFactory = makeLastTradeControllerFactory(),
 }: {
   baseContext?: BaseStrategyContextSnapshot | undefined;
   position?: any;
+  decisionTimestamp?: number;
+  lastTradeControllerFactory?: ReturnType<
+    typeof makeLastTradeControllerFactory
+  >;
 } = {}) => {
-  const lastTradeController = {
-    isInCooldown: jest.fn(() => false),
-    markTrade: jest.fn(),
-    getLastTradeTimestamp: jest.fn(() => null),
-  };
   const strategyApi = {
     skip: jest.fn((code: string) => ({ kind: 'skip', code })),
     entry: jest.fn(async (params: any) => ({ kind: 'entry', ...params })),
@@ -101,16 +121,16 @@ const makeStrategyApi = ({
     getBaseContext: jest.fn(() => baseContext),
     getDecisionBaseContext: jest.fn(async () => baseContext),
     getDecisionPriceContext: jest.fn(async () => ({
-      timestamp,
+      timestamp: decisionTimestamp,
       currentPrice: 100,
-      candle,
+      candle: { ...candle, timestamp: decisionTimestamp },
     })),
     getCurrentPosition: jest.fn(async () => position),
     getDirectionalTpSlPrices: jest.fn(),
-    createLastTradeController: jest.fn(() => lastTradeController),
+    createLastTradeController: lastTradeControllerFactory,
     createStateController: jest.fn(),
   } as any;
-  return { strategyApi, lastTradeController };
+  return { strategyApi, lastTradeControllerFactory };
 };
 
 const createCore = async (strategyApi: any, overrides = {}) =>
@@ -123,7 +143,7 @@ const createCore = async (strategyApi: any, overrides = {}) =>
 
 describe('createHyperliquidConsensusCore', () => {
   it('creates a risk-sized LONG entry with causal consensus evidence', async () => {
-    const { strategyApi, lastTradeController } = makeStrategyApi();
+    const { strategyApi, lastTradeControllerFactory } = makeStrategyApi();
     const core = await createCore(strategyApi);
 
     const decision = await core(candle as any, candle as any);
@@ -148,8 +168,78 @@ describe('createHyperliquidConsensusCore', () => {
     expect((decision as any).figures.annotations[0].kind).toBe(
       'hyperliquid_consensus_entry_evidence',
     );
-    expect(lastTradeController.markTrade).toHaveBeenCalledWith(timestamp);
+    expect(lastTradeControllerFactory).toHaveBeenCalledWith({
+      enabled: true,
+      cooldownMs: config.HLC_ENTRY_COOLDOWN_MS,
+    });
+    expect(
+      lastTradeControllerFactory.mock.results[0]?.value.getLastTradeTimestamp(),
+    ).toBe(timestamp);
     expect(strategyApi.getCurrentIndicatorsContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the exact cooldown boundary across repeated core wrappers', async () => {
+    const lastTradeControllerFactory = makeLastTradeControllerFactory();
+    const firstApi = makeStrategyApi({
+      lastTradeControllerFactory,
+    }).strategyApi;
+    const firstCore = await createCore(firstApi);
+
+    await expect(
+      firstCore(candle as any, candle as any),
+    ).resolves.toMatchObject({ kind: 'entry' });
+
+    const boundaryTimestamp = timestamp + config.HLC_ENTRY_COOLDOWN_MS;
+    const boundaryApi = makeStrategyApi({
+      decisionTimestamp: boundaryTimestamp,
+      lastTradeControllerFactory,
+    }).strategyApi;
+    const boundaryCore = await createCore(boundaryApi);
+
+    await expect(boundaryCore(candle as any, candle as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'DEV_TRADE_COOLDOWN',
+    });
+    expect(boundaryApi.entry).not.toHaveBeenCalled();
+  });
+
+  it('allows a repeated core wrapper immediately after the cooldown boundary', async () => {
+    const lastTradeControllerFactory = makeLastTradeControllerFactory();
+    const firstApi = makeStrategyApi({
+      lastTradeControllerFactory,
+    }).strategyApi;
+    const firstCore = await createCore(firstApi);
+    await firstCore(candle as any, candle as any);
+
+    const postBoundaryTimestamp = timestamp + config.HLC_ENTRY_COOLDOWN_MS + 1;
+    const postBoundaryApi = makeStrategyApi({
+      decisionTimestamp: postBoundaryTimestamp,
+      lastTradeControllerFactory,
+    }).strategyApi;
+    const postBoundaryCore = await createCore(postBoundaryApi);
+
+    await expect(
+      postBoundaryCore(candle as any, candle as any),
+    ).resolves.toMatchObject({ kind: 'entry' });
+    expect(
+      lastTradeControllerFactory.mock.results[1]?.value.getLastTradeTimestamp(),
+    ).toBe(postBoundaryTimestamp);
+  });
+
+  it('does not mark cooldown state when the entry risk plan is invalid', async () => {
+    const { strategyApi, lastTradeControllerFactory } = makeStrategyApi();
+    const core = await createCore(strategyApi, {
+      HLC_STOP_ATR_MULT: 0,
+      HLC_STOP_BUFFER_PCT: 0,
+    });
+
+    await expect(core(candle as any, candle as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'INVALID_STOP',
+    });
+    expect(
+      lastTradeControllerFactory.mock.results[0]?.value.getLastTradeTimestamp(),
+    ).toBeNull();
   });
 
   it('exits a LONG when fresh consensus reverses to SHORT', async () => {

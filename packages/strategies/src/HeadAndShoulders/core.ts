@@ -84,7 +84,9 @@ export const createHeadAndShouldersCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const nextDetectorState = (
     candle: Parameters<
       ReturnType<typeof createHeadAndShouldersEngine>['next']

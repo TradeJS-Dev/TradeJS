@@ -64,12 +64,36 @@ export interface StructureZonesSignal {
   structureBias: 'up' | 'down' | 'range';
   timestamp: number;
   close: number;
+  confirmation?: StructureZonesConfirmation;
+}
+
+export interface StructureZonesConfirmation {
+  setupId: string;
+  candidateTimestamp: number;
+  confirmationTimestamp: number;
+  confirmationAge: number;
+  mode: 'support_retest_hold' | 'resistance_failed_reclaim';
+  boundary: number;
+  candidateClose: number;
+  confirmationClose: number;
+  held: true;
+}
+
+export interface StructureZonesPendingConfirmation {
+  setupId: string;
+  candidateTimestamp: number;
+  candidateBarIndex: number;
+  ageBars: number;
+  signal: StructureZonesSignal;
+  swingPoints: StrategyFigurePoint[];
 }
 
 export interface StructureZonesRuntimeState {
   signal: StructureZonesSignal | null;
   snapshot: StructureZonesSnapshot | null;
   swingPoints: StrategyFigurePoint[];
+  signalSwingPoints?: StrategyFigurePoint[] | null;
+  pendingConfirmation?: StructureZonesPendingConfirmation | null;
 }
 
 type AtrState = {
@@ -96,7 +120,9 @@ type EngineState = {
   supportWasTouched: boolean;
   resistanceWasTouched: boolean;
   lastSignalKey: string | null;
+  pendingConfirmation: StructureZonesPendingConfirmation | null;
   signal: StructureZonesSignal | null;
+  signalSwingPoints: StrategyFigurePoint[] | null;
   snapshot: StructureZonesSnapshot | null;
   swingPoints: StrategyFigurePoint[];
 };
@@ -247,6 +273,12 @@ const getConfigNumbers = (config: StructureZonesConfig) => ({
   maxTouchOrdinal: Math.max(
     0,
     Math.floor(Number(config.STRUCTURE_ZONES_MAX_TOUCH_ORDINAL ?? 0)),
+  ),
+  pendingConfirmationMaxBars: Math.max(
+    0,
+    Math.floor(
+      Number(config.STRUCTURE_ZONES_PENDING_CONFIRMATION_MAX_BARS ?? 0),
+    ),
   ),
   tradeTransitionBreakouts: Boolean(
     config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
@@ -406,6 +438,19 @@ export const buildStructureZonesSignalContext = (
   reactionCloseDistancePct: signal.reactionCloseDistancePct,
   reactionBodyAligned: signal.reactionBodyAligned,
   currentPrice: signal.close,
+  ...(signal.confirmation
+    ? {
+        setupId: signal.confirmation.setupId,
+        candidateTimestamp: signal.confirmation.candidateTimestamp,
+        confirmationTimestamp: signal.confirmation.confirmationTimestamp,
+        confirmationAge: signal.confirmation.confirmationAge,
+        confirmationMode: signal.confirmation.mode,
+        confirmationBoundary: signal.confirmation.boundary,
+        candidateClose: signal.confirmation.candidateClose,
+        confirmationClose: signal.confirmation.confirmationClose,
+        held: signal.confirmation.held,
+      }
+    : {}),
 });
 
 export type StructureZonesSignalContext = ReturnType<
@@ -437,6 +482,7 @@ export const createStructureZonesEngine = ({
     maxZoneAgeBars,
     minTouchOrdinal,
     maxTouchOrdinal,
+    pendingConfirmationMaxBars,
     tradeTransitionBreakouts,
     maxFigurePoints,
   } = getConfigNumbers(config);
@@ -460,13 +506,16 @@ export const createStructureZonesEngine = ({
     supportWasTouched: false,
     resistanceWasTouched: false,
     lastSignalKey: null,
+    pendingConfirmation: null,
     signal: null,
+    signalSwingPoints: null,
     snapshot: null,
     swingPoints: [],
   };
 
   const apply = (candle: Candle): StructureZonesRuntimeState => {
     state.signal = null;
+    state.signalSwingPoints = null;
     const close = Number(candle.close);
     const tr = calculateTrueRange(candle, state.prevClose);
     state.atrState = updateAtrState({
@@ -755,9 +804,94 @@ export const createStructureZonesEngine = ({
       const signalKey = signal
         ? `${signal.kind}:${signal.zone.sourcePivotTimestamp}`
         : null;
-      if (signal && signalKey !== state.lastSignalKey) {
-        state.signal = signal;
+      const pendingAtBarStart = state.pendingConfirmation;
+      if (pendingAtBarStart) {
+        const ageBars = Math.max(
+          0,
+          currentIndex - pendingAtBarStart.candidateBarIndex,
+        );
+        const agedPending = { ...pendingAtBarStart, ageBars };
+        state.pendingConfirmation = agedPending;
+        const frozenSignal = pendingAtBarStart.signal;
+        const boundary =
+          frozenSignal.direction === 'LONG'
+            ? frozenSignal.zone.top
+            : frozenSignal.zone.bottom;
+        const boundaryTouched =
+          Number(candle.low) <= boundary && Number(candle.high) >= boundary;
+        const held =
+          frozenSignal.direction === 'LONG'
+            ? close > boundary
+            : close < boundary;
+        const invalidated =
+          frozenSignal.direction === 'LONG'
+            ? close < frozenSignal.zone.bottom
+            : close > frozenSignal.zone.top;
+        const currentZone =
+          frozenSignal.direction === 'LONG'
+            ? state.supportZone
+            : state.resistanceZone;
+        const zoneIdentityChanged =
+          currentZone?.sourcePivotTimestamp !==
+          frozenSignal.zone.sourcePivotTimestamp;
+        if (
+          ageBars > 0 &&
+          (zoneIdentityChanged || marketState === 'Transition' || invalidated)
+        ) {
+          state.pendingConfirmation = null;
+        } else if (ageBars > 0 && boundaryTouched && held) {
+          state.signal = {
+            ...frozenSignal,
+            timestamp: candle.timestamp,
+            close,
+            confirmation: {
+              setupId: pendingAtBarStart.setupId,
+              candidateTimestamp: pendingAtBarStart.candidateTimestamp,
+              confirmationTimestamp: candle.timestamp,
+              confirmationAge: ageBars,
+              mode:
+                frozenSignal.direction === 'LONG'
+                  ? 'support_retest_hold'
+                  : 'resistance_failed_reclaim',
+              boundary,
+              candidateClose: frozenSignal.close,
+              confirmationClose: close,
+              held: true,
+            },
+          };
+          state.signalSwingPoints = pendingAtBarStart.swingPoints.map(
+            (point) => ({ ...point }),
+          );
+          state.pendingConfirmation = null;
+        } else if (ageBars > 0 && boundaryTouched) {
+          state.pendingConfirmation = null;
+        } else if (ageBars >= pendingConfirmationMaxBars) {
+          state.pendingConfirmation = null;
+        }
+      } else if (signal && signalKey !== state.lastSignalKey) {
         state.lastSignalKey = signalKey;
+        const isReaction =
+          signal.kind === 'support_reaction' ||
+          signal.kind === 'resistance_reaction';
+        if (pendingConfirmationMaxBars > 0 && isReaction) {
+          state.pendingConfirmation = {
+            setupId: signalKey!,
+            candidateTimestamp: candle.timestamp,
+            candidateBarIndex: currentIndex,
+            ageBars: 0,
+            signal: {
+              ...signal,
+              zone: { ...signal.zone },
+              supportZone: { ...signal.supportZone },
+              resistanceZone: { ...signal.resistanceZone },
+              lastHigh: { ...signal.lastHigh },
+              lastLow: { ...signal.lastLow },
+            },
+            swingPoints: state.swingPoints.map((point) => ({ ...point })),
+          };
+        } else {
+          state.signal = signal;
+        }
       }
     }
 
@@ -790,6 +924,12 @@ export const createStructureZonesEngine = ({
       signal: state.signal,
       snapshot: state.snapshot,
       swingPoints: state.swingPoints,
+      ...(pendingConfirmationMaxBars > 0
+        ? {
+            pendingConfirmation: state.pendingConfirmation,
+            signalSwingPoints: state.signalSwingPoints,
+          }
+        : {}),
     };
   };
 
@@ -803,6 +943,12 @@ export const createStructureZonesEngine = ({
       signal: state.signal,
       snapshot: state.snapshot,
       swingPoints: state.swingPoints,
+      ...(pendingConfirmationMaxBars > 0
+        ? {
+            pendingConfirmation: state.pendingConfirmation,
+            signalSwingPoints: state.signalSwingPoints,
+          }
+        : {}),
     }),
   };
 };

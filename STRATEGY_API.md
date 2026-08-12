@@ -276,7 +276,14 @@ Shared TP/SL/risk helper. Returns:
 
 ### `strategyApi.createLastTradeController(params?)`
 
-Creates reusable trade cooldown state controller.
+Creates a bounded trade-cooldown controller. Pass `enabled` explicitly when
+the cooldown is part of strategy behavior; omitting it retains the legacy
+BACKTEST-only default. The cooldown boundary is inclusive.
+
+BACKTEST config cells and PARITY runtimes keep isolated controller state.
+The signals daemon reuses it across reconstructed CRON wrappers through the
+lifecycle-scoped strategy state key. A one-shot CRON process or daemon restart
+without a restored lifecycle checkpoint starts with an empty cooldown.
 
 ### Runtime Notes
 
@@ -294,8 +301,7 @@ return async () => {
     return strategyApi.skip('POSITION_EXISTS');
   }
 
-  const { indicators, baseContext } =
-    strategyApi.getCurrentIndicatorsContext();
+  const { indicators, baseContext } = strategyApi.getCurrentIndicatorsContext();
   if (!indicators || !baseContext) {
     return strategyApi.skip('WAIT_DATA');
   }

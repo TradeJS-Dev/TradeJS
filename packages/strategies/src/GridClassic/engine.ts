@@ -16,7 +16,13 @@ export type GridClassicEntrySignalStage =
   | 'immediate'
   | 'breakout_candidate'
   | 'breakout_accepted'
-  | 'breakout_retest_confirmed';
+  | 'breakout_retest_confirmed'
+  | 'failed_breakout_reclaimed';
+
+export type GridClassicSetupFamily =
+  | 'mean_reversion'
+  | 'breakout_continuation'
+  | 'failed_breakout_reversal';
 
 export interface GridClassicSnapshot {
   timestamp: number;
@@ -43,6 +49,18 @@ export interface GridClassicSnapshot {
   entrySignalStage: GridClassicEntrySignalStage;
   entryConfirmationAgeBars: number | null;
   entryDirection: Direction | null;
+  setupFamily?: GridClassicSetupFamily | null;
+  failedBreakoutDirection?: Direction | null;
+  reversalDirection?: Direction | null;
+  candidateTimestamp?: number | null;
+  acceptedTimestamp?: number | null;
+  reclaimTimestamp?: number | null;
+  reclaimAgeBars?: number | null;
+  failedBreakoutLevel?: number | null;
+  projectedBreakoutBoundary?: number | null;
+  projectedRangeCenter?: number | null;
+  sweepExtreme?: number | null;
+  candidateAtr?: number | null;
 }
 
 export interface GridClassicRuntimeState {
@@ -69,6 +87,20 @@ type PendingContinuation = {
   breakoutBarIndex: number;
   acceptedAtIndex: number | null;
   geometry: CausalRangeGeometry;
+};
+
+type PendingFailedBreakout = {
+  setupId: string;
+  breakoutDirection: Direction;
+  reversalDirection: Direction;
+  fixedLevel: number;
+  breakoutBarIndex: number;
+  candidateTimestamp: number;
+  candidateAtr: number;
+  acceptedAtIndex: number | null;
+  acceptedTimestamp: number | null;
+  geometry: CausalRangeGeometry;
+  sweepExtreme: number;
 };
 
 const finite = (value: unknown, fallback: number) => {
@@ -173,6 +205,9 @@ export const buildGridClassicDetectorKey = (config: GridClassicConfig) =>
   JSON.stringify({
     geometry: getGridClassicGeometryOptions(config),
     engine: getEngineOptions(config),
+    ...(config.GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED
+      ? { failedBreakoutReversal: { enabled: true } }
+      : {}),
   });
 
 const updateAtr = (state: AtrState, candle: Candle, period: number): number => {
@@ -216,6 +251,98 @@ const projectLine = (line: CausalRangeLine, timestamp: number) => {
   const progress = (timestamp - line.startTimestamp) / duration;
   return line.startPrice + (line.endPrice - line.startPrice) * progress;
 };
+
+const projectGeometryPrice = ({
+  geometry,
+  timestamp,
+  kind,
+}: {
+  geometry: CausalRangeGeometry;
+  timestamp: number;
+  kind: 'upper' | 'lower' | 'center';
+}) => {
+  const line =
+    kind === 'upper'
+      ? geometry.upperLine
+      : kind === 'lower'
+        ? geometry.lowerLine
+        : geometry.centerLine;
+  const price =
+    kind === 'upper'
+      ? geometry.upperPrice
+      : kind === 'lower'
+        ? geometry.lowerPrice
+        : geometry.centerPrice;
+  const projected = line ? projectLine(line, timestamp) : price;
+  return projected != null && Number.isFinite(projected) ? projected : null;
+};
+
+const projectGeometry = (
+  geometry: CausalRangeGeometry,
+  timestamp: number,
+): CausalRangeGeometry | null => {
+  const upperPrice = projectGeometryPrice({
+    geometry,
+    timestamp,
+    kind: 'upper',
+  });
+  const lowerPrice = projectGeometryPrice({
+    geometry,
+    timestamp,
+    kind: 'lower',
+  });
+  const centerPrice = projectGeometryPrice({
+    geometry,
+    timestamp,
+    kind: 'center',
+  });
+  if (
+    upperPrice == null ||
+    lowerPrice == null ||
+    centerPrice == null ||
+    upperPrice <= lowerPrice
+  ) {
+    return null;
+  }
+  return {
+    ...cloneGeometry(geometry),
+    upperPrice,
+    lowerPrice,
+    centerPrice,
+  };
+};
+
+const isOutsideBothBoundaries = ({
+  direction,
+  close,
+  fixedLevel,
+  projectedBoundary,
+}: {
+  direction: Direction;
+  close: number;
+  fixedLevel: number;
+  projectedBoundary: number;
+}) =>
+  direction === 'LONG'
+    ? close > Math.max(fixedLevel, projectedBoundary)
+    : close < Math.min(fixedLevel, projectedBoundary);
+
+const isFullBoundaryReclaim = ({
+  candle,
+  direction,
+  fixedLevel,
+  projectedBoundary,
+}: {
+  candle: Candle;
+  direction: Direction;
+  fixedLevel: number;
+  projectedBoundary: number;
+}) =>
+  direction === 'LONG'
+    ? candle.close < Math.min(fixedLevel, projectedBoundary) &&
+      candle.high >= Math.max(fixedLevel, projectedBoundary)
+    : candle.close > Math.max(fixedLevel, projectedBoundary) &&
+      candle.low <= Math.min(fixedLevel, projectedBoundary);
 
 const cloneGeometry = (geometry: CausalRangeGeometry): CausalRangeGeometry => ({
   ...geometry,
@@ -391,6 +518,22 @@ export const buildGridClassicSignalContext = ({
         ? null
         : Math.abs(snapshot.close - geometry.centerPrice),
     distanceToStop: Math.abs(snapshot.close - stopLossPrice),
+    ...(snapshot.setupFamily === 'failed_breakout_reversal'
+      ? {
+          setupFamily: snapshot.setupFamily,
+          failedBreakoutDirection: snapshot.failedBreakoutDirection ?? null,
+          reversalDirection: snapshot.reversalDirection ?? null,
+          candidateTimestamp: snapshot.candidateTimestamp ?? null,
+          acceptedTimestamp: snapshot.acceptedTimestamp ?? null,
+          reclaimTimestamp: snapshot.reclaimTimestamp ?? null,
+          reclaimAgeBars: snapshot.reclaimAgeBars ?? null,
+          failedBreakoutLevel: snapshot.failedBreakoutLevel ?? null,
+          projectedBreakoutBoundary: snapshot.projectedBreakoutBoundary ?? null,
+          projectedRangeCenter: snapshot.projectedRangeCenter ?? null,
+          sweepExtreme: snapshot.sweepExtreme ?? null,
+          candidateAtr: snapshot.candidateAtr ?? null,
+        }
+      : {}),
   };
 };
 
@@ -425,6 +568,7 @@ export const createGridClassicEngine = ({
   let snapshot: GridClassicSnapshot | null = null;
   let pendingEntryConfirmation: PendingEntryConfirmation | null = null;
   let pendingContinuation: PendingContinuation | null = null;
+  let pendingFailedBreakout: PendingFailedBreakout | null = null;
   let lastMatureGeometry: CausalRangeGeometry | null = null;
 
   const next = (candle: Candle): GridClassicRuntimeState => {
@@ -537,6 +681,21 @@ export const createGridClassicEngine = ({
     let setupGeometry: CausalRangeGeometry | null = null;
     let breakoutLevel: number | null = null;
     let breakoutAgeBars: number | null = null;
+    const failedBreakoutReversalEnabled = Boolean(
+      config.GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED,
+    );
+    let setupFamily: GridClassicSetupFamily | null = null;
+    let failedBreakoutDirection: Direction | null = null;
+    let reversalDirection: Direction | null = null;
+    let candidateTimestamp: number | null = null;
+    let acceptedTimestamp: number | null = null;
+    let reclaimTimestamp: number | null = null;
+    let reclaimAgeBars: number | null = null;
+    let failedBreakoutLevel: number | null = null;
+    let projectedBreakoutBoundary: number | null = null;
+    let projectedRangeCenter: number | null = null;
+    let sweepExtreme: number | null = null;
+    let candidateAtr: number | null = null;
 
     if (engineOptions.strategyMode === 'mean_reversion') {
       if (engineOptions.entryConfirmationBars > 0 && pendingEntryConfirmation) {
@@ -607,6 +766,12 @@ export const createGridClassicEngine = ({
             engineOptions.continuationRetestMaxBars;
         if (invalidated || expired || volatilityShock) {
           pendingContinuation = null;
+          if (
+            pendingFailedBreakout?.setupId === pending.setupId &&
+            pendingFailedBreakout.acceptedAtIndex == null
+          ) {
+            pendingFailedBreakout = null;
+          }
         } else if (pending.acceptedAtIndex == null) {
           const accepted =
             ageBars >= engineOptions.continuationAcceptanceBars &&
@@ -616,9 +781,58 @@ export const createGridClassicEngine = ({
           entrySignalStage = accepted
             ? 'breakout_accepted'
             : 'breakout_candidate';
-          if (accepted) pending.acceptedAtIndex = barIndex;
+          if (accepted) {
+            pending.acceptedAtIndex = barIndex;
+            if (pendingFailedBreakout?.setupId === pending.setupId) {
+              const projectedBoundary = projectGeometryPrice({
+                geometry: pendingFailedBreakout.geometry,
+                timestamp: candle.timestamp,
+                kind:
+                  pendingFailedBreakout.breakoutDirection === 'LONG'
+                    ? 'upper'
+                    : 'lower',
+              });
+              if (
+                projectedBoundary != null &&
+                isOutsideBothBoundaries({
+                  direction: pendingFailedBreakout.breakoutDirection,
+                  close: candle.close,
+                  fixedLevel: pendingFailedBreakout.fixedLevel,
+                  projectedBoundary,
+                })
+              ) {
+                pendingFailedBreakout.acceptedAtIndex = barIndex;
+                pendingFailedBreakout.acceptedTimestamp = candle.timestamp;
+              }
+            }
+          }
         } else if (barIndex > pending.acceptedAtIndex) {
           entrySignalStage = 'breakout_accepted';
+          if (
+            pendingFailedBreakout?.setupId === pending.setupId &&
+            pendingFailedBreakout.acceptedAtIndex == null
+          ) {
+            const projectedBoundary = projectGeometryPrice({
+              geometry: pendingFailedBreakout.geometry,
+              timestamp: candle.timestamp,
+              kind:
+                pendingFailedBreakout.breakoutDirection === 'LONG'
+                  ? 'upper'
+                  : 'lower',
+            });
+            if (
+              projectedBoundary != null &&
+              isOutsideBothBoundaries({
+                direction: pendingFailedBreakout.breakoutDirection,
+                close: candle.close,
+                fixedLevel: pendingFailedBreakout.fixedLevel,
+                projectedBoundary,
+              })
+            ) {
+              pendingFailedBreakout.acceptedAtIndex = barIndex;
+              pendingFailedBreakout.acceptedTimestamp = candle.timestamp;
+            }
+          }
           const held =
             pending.direction === 'LONG'
               ? candle.low <= pending.level + tolerance &&
@@ -635,9 +849,10 @@ export const createGridClassicEngine = ({
             entryDirection = pending.direction;
             entrySignalStage = 'breakout_retest_confirmed';
             pendingContinuation = null;
+            pendingFailedBreakout = null;
           }
         }
-      } else if (lastMatureGeometry) {
+      } else if (lastMatureGeometry && pendingFailedBreakout == null) {
         const upperLevel = lastMatureGeometry.upperLine
           ? projectLine(lastMatureGeometry.upperLine, candle.timestamp)
           : lastMatureGeometry.upperPrice;
@@ -661,12 +876,103 @@ export const createGridClassicEngine = ({
             acceptedAtIndex: null,
             geometry: cloneGeometry(lastMatureGeometry),
           };
+          if (failedBreakoutReversalEnabled && pendingFailedBreakout == null) {
+            pendingFailedBreakout = {
+              setupId: nextSetupId,
+              breakoutDirection: direction,
+              reversalDirection: direction === 'LONG' ? 'SHORT' : 'LONG',
+              fixedLevel: level,
+              breakoutBarIndex: barIndex,
+              candidateTimestamp: candle.timestamp,
+              candidateAtr: atr,
+              acceptedAtIndex: null,
+              acceptedTimestamp: null,
+              geometry: cloneGeometry(lastMatureGeometry),
+              sweepExtreme: direction === 'LONG' ? candle.high : candle.low,
+            };
+          }
           setupId = nextSetupId;
           setupGeometry = cloneGeometry(lastMatureGeometry);
           breakoutLevel = level;
           breakoutAgeBars = 0;
           entrySignalStage = 'breakout_candidate';
           entryConfirmationAgeBars = 0;
+        }
+      }
+
+      if (failedBreakoutReversalEnabled && pendingFailedBreakout) {
+        const failed = pendingFailedBreakout;
+        failed.sweepExtreme =
+          failed.breakoutDirection === 'LONG'
+            ? Math.max(failed.sweepExtreme, candle.high)
+            : Math.min(failed.sweepExtreme, candle.low);
+        const boundary = projectGeometryPrice({
+          geometry: failed.geometry,
+          timestamp: candle.timestamp,
+          kind: failed.breakoutDirection === 'LONG' ? 'upper' : 'lower',
+        });
+        const center = projectGeometryPrice({
+          geometry: failed.geometry,
+          timestamp: candle.timestamp,
+          kind: 'center',
+        });
+        const acceptedAge =
+          failed.acceptedAtIndex == null
+            ? null
+            : barIndex - failed.acceptedAtIndex;
+        const failedExpired =
+          acceptedAge != null &&
+          acceptedAge > engineOptions.continuationRetestMaxBars;
+
+        if (boundary == null || center == null || volatilityShock) {
+          pendingFailedBreakout = null;
+        } else if (failedExpired) {
+          pendingFailedBreakout = null;
+        } else {
+          setupId = failed.setupId;
+          setupGeometry = cloneGeometry(failed.geometry);
+          breakoutLevel = failed.fixedLevel;
+          breakoutAgeBars = barIndex - failed.breakoutBarIndex;
+          setupFamily = 'failed_breakout_reversal';
+          failedBreakoutDirection = failed.breakoutDirection;
+          reversalDirection = failed.reversalDirection;
+          candidateTimestamp = failed.candidateTimestamp;
+          acceptedTimestamp = failed.acceptedTimestamp;
+          failedBreakoutLevel = failed.fixedLevel;
+          projectedBreakoutBoundary = boundary;
+          projectedRangeCenter = center;
+          sweepExtreme = failed.sweepExtreme;
+          candidateAtr = failed.candidateAtr;
+
+          if (
+            entryDirection == null &&
+            acceptedAge != null &&
+            acceptedAge >= 1 &&
+            isFullBoundaryReclaim({
+              candle,
+              direction: failed.breakoutDirection,
+              fixedLevel: failed.fixedLevel,
+              projectedBoundary: boundary,
+            })
+          ) {
+            const projectedGeometry = projectGeometry(
+              failed.geometry,
+              candle.timestamp,
+            );
+            if (projectedGeometry) {
+              entryDirection = failed.reversalDirection;
+              entrySignalStage = 'failed_breakout_reclaimed';
+              entryConfirmationAgeBars = acceptedAge;
+              setupId = failed.setupId;
+              setupGeometry = projectedGeometry;
+              breakoutLevel = failed.fixedLevel;
+              breakoutAgeBars = barIndex - failed.breakoutBarIndex;
+              reclaimTimestamp = candle.timestamp;
+              reclaimAgeBars = acceptedAge;
+              pendingContinuation = null;
+              pendingFailedBreakout = null;
+            }
+          }
         }
       }
     }
@@ -701,6 +1007,22 @@ export const createGridClassicEngine = ({
       entrySignalStage,
       entryConfirmationAgeBars,
       entryDirection,
+      ...(failedBreakoutReversalEnabled
+        ? {
+            setupFamily,
+            failedBreakoutDirection,
+            reversalDirection,
+            candidateTimestamp,
+            acceptedTimestamp,
+            reclaimTimestamp,
+            reclaimAgeBars,
+            failedBreakoutLevel,
+            projectedBreakoutBoundary,
+            projectedRangeCenter,
+            sweepExtreme,
+            candidateAtr,
+          }
+        : {}),
     };
     return { snapshot, closeSeries: closeSeries.slice() };
   };

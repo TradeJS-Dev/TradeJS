@@ -212,7 +212,11 @@ describe('Grid core', () => {
       expect.objectContaining({
         kind: 'entry',
         code: 'GRID_BREAKOUT_RETEST_ENTRY',
-        orderPlan: expect.objectContaining({ qty: 1 }),
+        orderPlan: expect.objectContaining({
+          qty: 1,
+          stopLossPrice: 90,
+          takeProfits: [{ rate: 1, price: 102.5 }],
+        }),
       }),
     );
     expect(result.signal.additionalIndicators.gridContext).toEqual(
@@ -223,6 +227,291 @@ describe('Grid core', () => {
         breakoutLevel: 99,
       }),
     );
+  });
+
+  it.each([
+    {
+      direction: 'LONG' as const,
+      breakoutLevel: 99,
+      expectedStop: 98.8,
+      expectedTarget: 101.2,
+    },
+    {
+      direction: 'SHORT' as const,
+      breakoutLevel: 101,
+      expectedStop: 101.2,
+      expectedTarget: 98.8,
+    },
+  ])(
+    'builds a frozen retest-structure plan for $direction continuation',
+    async ({ direction, breakoutLevel, expectedStop, expectedTarget }) => {
+      const state = makeRuntimeState({
+        timestamp: 1,
+        close: 100,
+        entryDirection: direction,
+        entryMode: 'breakout_retest',
+        entryStage: 'breakout_retest_held',
+        breakoutLevel,
+        regimeDirection: direction,
+      });
+      mockRuntimeStates([state]);
+      const strategyApi = makeStrategyApi(() => null);
+      const core = await createGridCore({
+        config: {
+          ...DEFAULT_CONFIG,
+          GRID_ENTRY_MODE: 'breakout_retest',
+          GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+          GRID_CONTINUATION_STOP_BUFFER_ATR: 0.1,
+          GRID_CONTINUATION_MIN_STOP_DISTANCE_ATR: 0.35,
+          GRID_CONTINUATION_TARGET_R: 1,
+          FEE_PERCENT: 0,
+          MAX_LOSS_VALUE: 10,
+        } as unknown as GridConfig,
+        data: [],
+        strategyApi,
+      } as any);
+
+      const result = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          kind: 'entry',
+          code: 'GRID_BREAKOUT_RETEST_ENTRY',
+          orderPlan: expect.objectContaining({
+            stopLossPrice: expectedStop,
+            takeProfits: [{ rate: 1, price: expectedTarget }],
+          }),
+        }),
+      );
+      expect(result.orderPlan.qty).toBeCloseTo(
+        10 / Math.abs(100 - expectedStop),
+      );
+      expect(result.signal.additionalIndicators.gridContext).toEqual(
+        expect.objectContaining({
+          stopLossPrice: expectedStop,
+          takeProfitPrice: expectedTarget,
+          grossRiskRatio: 1,
+        }),
+      );
+    },
+  );
+
+  it('clamps a continuation stop to the configured minimum ATR distance', async () => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      entryMode: 'breakout_retest',
+      entryStage: 'breakout_retest_held',
+      breakoutLevel: 99.9,
+    });
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => null);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+        GRID_CONTINUATION_STOP_BUFFER_ATR: 0,
+        GRID_CONTINUATION_MIN_STOP_DISTANCE_ATR: 0.35,
+        GRID_CONTINUATION_TARGET_R: 1.25,
+        FEE_PERCENT: 0,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+
+    expect(result.orderPlan.stopLossPrice).toBeCloseTo(99.3);
+    expect(result.orderPlan.takeProfits[0].price).toBeCloseTo(100.875);
+  });
+
+  it('keeps continuation protection immutable when later ATR and step change', async () => {
+    const openState = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      entryMode: 'breakout_retest',
+      entryStage: 'breakout_retest_held',
+      breakoutLevel: 99,
+    });
+    const laterState = makeRuntimeState({
+      timestamp: 2,
+      close: 100,
+      entryMode: 'breakout_retest',
+    });
+    laterState.snapshot!.atr = 20;
+    laterState.snapshot!.stepDistance = 50;
+    mockRuntimeStates([openState, laterState]);
+    let position: any = null;
+    const strategyApi = makeStrategyApi(() => position);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+        FEE_PERCENT: 0,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: opened.orderPlan.qty,
+      slPrice: opened.orderPlan.stopLossPrice,
+      tpPrice: opened.orderPlan.takeProfits[0].price,
+    };
+
+    await expect(core(makeCandle(2, 100) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRID_WAIT_NEXT_LEVEL',
+    });
+    expect(strategyApi.protect).not.toHaveBeenCalled();
+  });
+
+  it('keeps the initial structural target when continuation scale-in is enabled', async () => {
+    const openState = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      entryMode: 'breakout_retest',
+      entryStage: 'breakout_retest_held',
+      breakoutLevel: 90,
+    });
+    const increaseState = makeRuntimeState({
+      timestamp: 2,
+      close: 97.5,
+      entryMode: 'breakout_retest',
+    });
+    mockRuntimeStates([openState, increaseState]);
+    let position: any = null;
+    const strategyApi = makeStrategyApi(() => position);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+        GRID_CONTINUATION_ALLOW_SCALE_IN: true,
+        GRID_MAX_LEVELS: 4,
+        FEE_PERCENT: 0,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const opened = (await core(makeCandle(1, 100) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: opened.orderPlan.qty,
+      slPrice: opened.orderPlan.stopLossPrice,
+      tpPrice: opened.orderPlan.takeProfits[0].price,
+    };
+    const increased = (await core(
+      makeCandle(2, 97.5) as any,
+      {} as any,
+    )) as any;
+
+    expect(increased).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRID_SCALE_IN_2',
+        orderPlan: expect.objectContaining({
+          positionIntent: 'increase',
+          stopLossPrice: opened.orderPlan.stopLossPrice,
+          takeProfits: opened.orderPlan.takeProfits,
+        }),
+      }),
+    );
+  });
+
+  it('recovers frozen continuation protection from exchange position prices', async () => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryMode: 'breakout_retest',
+    });
+    state.snapshot!.atr = 20;
+    state.snapshot!.stepDistance = 50;
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => ({
+      symbol: 'TESTUSDT',
+      direction: 'LONG',
+      price: 100,
+      qty: 1,
+      slPrice: 98,
+      tpPrice: 104,
+    }));
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+        GRID_EXIT_ON_REGIME_FLIP: false,
+        GRID_EXIT_ON_VOLATILITY_SHOCK: false,
+      } as unknown as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    await expect(core(makeCandle(1, 100) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRID_WAIT_NEXT_LEVEL',
+    });
+    expect(strategyApi.protect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: 'missing breakout geometry',
+      mutate: () => undefined,
+      config: {},
+      expectedCode: 'GRID_INVALID_CONTINUATION_GEOMETRY',
+    },
+    {
+      name: 'non-positive net reward after costs',
+      mutate: (state: GridRuntimeState) => {
+        state.snapshot!.breakoutLevel = 99;
+      },
+      config: {
+        GRID_CONTINUATION_TARGET_R: 0.01,
+        FEE_PERCENT: 0.01,
+      },
+      expectedCode: 'GRID_INVALID_CONTINUATION_ECONOMICS',
+    },
+  ])('rejects $name', async ({ mutate, config, expectedCode }) => {
+    const state = makeRuntimeState({
+      timestamp: 1,
+      close: 100,
+      entryDirection: 'LONG',
+      entryMode: 'breakout_retest',
+      entryStage: 'breakout_retest_held',
+    });
+    mutate(state);
+    mockRuntimeStates([state]);
+    const strategyApi = makeStrategyApi(() => null);
+    const core = await createGridCore({
+      config: {
+        ...DEFAULT_CONFIG,
+        GRID_ENTRY_MODE: 'breakout_retest',
+        GRID_CONTINUATION_RISK_MODE: 'retest_structure',
+        ...config,
+      } as GridConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    await expect(core(makeCandle(1, 100) as any, {} as any)).resolves.toEqual({
+      kind: 'skip',
+      code: expectedCode,
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
   });
 
   it('rebuilds the same next grid level from the exchange basket after restart', async () => {

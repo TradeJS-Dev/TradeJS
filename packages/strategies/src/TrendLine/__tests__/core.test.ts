@@ -253,6 +253,9 @@ describe('createTrendLineCore', () => {
     const result = await core(candle as any, candle as any);
 
     expect(result).toEqual({ kind: 'skip', code: 'NO_TRENDLINE' });
+    expect(strategyApi.createLastTradeController).toHaveBeenCalledWith({
+      enabled: true,
+    });
   });
 
   it('returns entry decision for valid trendline setup', async () => {

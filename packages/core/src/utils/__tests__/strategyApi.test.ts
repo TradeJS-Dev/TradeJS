@@ -938,4 +938,126 @@ describe('createStrategyAPI', () => {
     expect(second.get()).toEqual({ calls: 2 });
     expect(cronController.get()).toEqual({ calls: 3 });
   });
+
+  it.each(['BACKTEST', 'PARITY', 'CRON'])(
+    'createLastTradeController honors explicit enablement and the exact boundary in %s',
+    (env) => {
+      const strategyApi = createStrategyAPI({
+        strategy: 'TrendLine' as any,
+        symbol: 'TESTUSDT',
+        interval: '15' as any,
+        env,
+        connector: {
+          kline: jest.fn(),
+          getPosition: jest.fn(),
+        } as any,
+        cachedData: [makeCandle(1_700_000_000_000, 100)],
+      });
+      const controller = strategyApi.createLastTradeController({
+        enabled: true,
+        cooldownMs: 10,
+      });
+
+      controller.markTrade(1_000);
+
+      expect(controller.getLastTradeTimestamp()).toBe(1_000);
+      expect(controller.isInCooldown(1_010)).toBe(true);
+      expect(controller.isInCooldown(1_011)).toBe(false);
+    },
+  );
+
+  it.each(['BACKTEST', 'PARITY'])(
+    'createLastTradeController isolates %s APIs even when detector replay state is shared',
+    (env) => {
+      const createApi = () =>
+        createStrategyAPI({
+          strategy: 'TrendLine' as any,
+          symbol: 'TESTUSDT',
+          interval: '15' as any,
+          env,
+          connector: {
+            kline: jest.fn(),
+            getPosition: jest.fn(),
+          } as any,
+          cachedData: [makeCandle(1_700_000_000_000, 100)],
+          sharedReplayKey: 'test-state:last-trade-isolated',
+          getSharedReplayState: getSharedStrategyReplayState,
+        });
+      const first = createApi().createLastTradeController({
+        enabled: true,
+        cooldownMs: 10,
+      });
+      const second = createApi().createLastTradeController({
+        enabled: true,
+        cooldownMs: 10,
+      });
+
+      first.markTrade(1_000);
+
+      expect(first.isInCooldown(1_005)).toBe(true);
+      expect(second.getLastTradeTimestamp()).toBeNull();
+      expect(second.isInCooldown(1_005)).toBe(false);
+    },
+  );
+
+  it('createLastTradeController shares CRON lifecycle state and isolates different lifecycle keys', () => {
+    const createApi = (sharedReplayKey?: string) =>
+      createStrategyAPI({
+        strategy: 'TrendLine' as any,
+        symbol: 'TESTUSDT',
+        interval: '15' as any,
+        env: 'CRON',
+        connector: {
+          kline: jest.fn(),
+          getPosition: jest.fn(),
+        } as any,
+        cachedData: [makeCandle(1_700_000_000_000, 100)],
+        sharedReplayKey,
+        getSharedReplayState: getSharedStrategyReplayState,
+      });
+    const first = createApi(
+      'test-state:last-trade-cron:a',
+    ).createLastTradeController({ enabled: true, cooldownMs: 10 });
+    const rebuilt = createApi(
+      'test-state:last-trade-cron:a',
+    ).createLastTradeController({ enabled: true, cooldownMs: 10 });
+    const differentLifecycle = createApi(
+      'test-state:last-trade-cron:b',
+    ).createLastTradeController({ enabled: true, cooldownMs: 10 });
+
+    first.markTrade(1_000);
+
+    expect(rebuilt.getLastTradeTimestamp()).toBe(1_000);
+    expect(rebuilt.isInCooldown(1_010)).toBe(true);
+    expect(differentLifecycle.getLastTradeTimestamp()).toBeNull();
+  });
+
+  it('createLastTradeController keeps one-shot CRON APIs local without a lifecycle key', () => {
+    const createApi = () =>
+      createStrategyAPI({
+        strategy: 'TrendLine' as any,
+        symbol: 'TESTUSDT',
+        interval: '15' as any,
+        env: 'CRON',
+        connector: {
+          kline: jest.fn(),
+          getPosition: jest.fn(),
+        } as any,
+        cachedData: [makeCandle(1_700_000_000_000, 100)],
+        getSharedReplayState: getSharedStrategyReplayState,
+      });
+    const first = createApi().createLastTradeController({
+      enabled: true,
+      cooldownMs: 10,
+    });
+    const second = createApi().createLastTradeController({
+      enabled: true,
+      cooldownMs: 10,
+    });
+
+    first.markTrade(1_000);
+
+    expect(first.getLastTradeTimestamp()).toBe(1_000);
+    expect(second.getLastTradeTimestamp()).toBeNull();
+  });
 });

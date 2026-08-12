@@ -57,6 +57,15 @@ export interface MarketFlushReversalSignalContext {
   setupTimestamp?: number;
   entryDelayBars?: number;
   priceImprovementAtr?: number | null;
+  pendingStopSource?: 'frozen_setup';
+  setupSweepExtremePrice?: number | null;
+  setupStopAnchorPrice?: number | null;
+  setupStopLossPrice?: number;
+  confirmationStopLossPrice?: number;
+  selectedStopLossPrice?: number;
+  setupStopDistanceAtr?: number | null;
+  confirmationStopDistanceAtr?: number | null;
+  stopDistanceDeltaAtr?: number | null;
 }
 
 const getMarketRiskFlags = (baseContext: BaseStrategyContextSnapshot) =>
@@ -380,7 +389,7 @@ export const detectMarketFlushReversalSignal = ({
   };
 };
 
-const buildStopLoss = ({
+const buildStopGeometry = ({
   baseContext,
   direction,
   currentPrice,
@@ -401,6 +410,9 @@ const buildStopLoss = ({
   const candle = baseContext.candle;
   const support = baseContext.structure?.zones?.support;
   const resistance = baseContext.structure?.zones?.resistance;
+  const setupSweepExtremePrice = toFiniteNumberOrNull(
+    direction === 'LONG' ? candle.low : candle.high,
+  );
   const candidates =
     direction === 'LONG'
       ? [candle.low, support?.lower, baseContext.raw?.levels?.lowLevel]
@@ -415,18 +427,29 @@ const buildStopLoss = ({
           );
 
   if (candidates.length) {
-    return direction === 'LONG'
-      ? Math.min(...candidates) - buffer
-      : Math.max(...candidates) + buffer;
+    const setupStopAnchorPrice =
+      direction === 'LONG' ? Math.min(...candidates) : Math.max(...candidates);
+    return {
+      stopLossPrice:
+        direction === 'LONG'
+          ? setupStopAnchorPrice - buffer
+          : setupStopAnchorPrice + buffer,
+      setupSweepExtremePrice,
+      setupStopAnchorPrice,
+    };
   }
 
-  return buildAtrFallbackStop({
-    direction,
-    currentPrice,
-    atr,
-    atrMult: Number(config.MFR_FALLBACK_STOP_ATR_MULT ?? 1.4),
-    bufferPct: Number(config.MFR_STOP_BUFFER_PCT ?? 0.05),
-  });
+  return {
+    stopLossPrice: buildAtrFallbackStop({
+      direction,
+      currentPrice,
+      atr,
+      atrMult: Number(config.MFR_FALLBACK_STOP_ATR_MULT ?? 1.4),
+      bufferPct: Number(config.MFR_STOP_BUFFER_PCT ?? 0.05),
+    }),
+    setupSweepExtremePrice,
+    setupStopAnchorPrice: null,
+  };
 };
 
 const getEntryReferencePrice = ({
@@ -447,7 +470,7 @@ const getEntryReferencePrice = ({
   );
 };
 
-const buildEntryStateKey = (config: MarketFlushReversalConfig) =>
+const buildLegacyEntryStateKey = (config: MarketFlushReversalConfig) =>
   JSON.stringify({
     entryMode: config.MFR_ENTRY_MODE,
     confirmationBars: config.MFR_CONFIRMATION_BARS,
@@ -459,6 +482,11 @@ const buildEntryStateKey = (config: MarketFlushReversalConfig) =>
     stopBufferPct: config.MFR_STOP_BUFFER_PCT,
     fallbackStopAtrMult: config.MFR_FALLBACK_STOP_ATR_MULT,
   });
+
+const buildEntryStateKey = (config: MarketFlushReversalConfig) =>
+  Boolean(config.MFR_USE_FROZEN_PENDING_STOP)
+    ? JSON.stringify(config)
+    : buildLegacyEntryStateKey(config);
 
 export const createMarketFlushReversalCore: CreateStrategyCore<
   MarketFlushReversalConfig,
@@ -480,7 +508,9 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const nextEntryState = (
     candle: Candle,
     candidate: MarketFlushReversalEntryCandidate | null,
@@ -550,18 +580,25 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
           atr > 0 &&
           referencePrice != null
         ) {
+          const stopGeometry = buildStopGeometry({
+            baseContext,
+            direction: signal.signalDirection,
+            currentPrice: setupPrice,
+            config,
+          });
           candidate = {
             direction: signal.signalDirection,
             setupTimestamp: baseContext.candle.timestamp,
             setupPrice,
             referencePrice,
             atr,
-            stopLossPrice: buildStopLoss({
-              baseContext,
-              direction: signal.signalDirection,
-              currentPrice: setupPrice,
-              config,
-            }),
+            stopLossPrice: stopGeometry.stopLossPrice,
+            ...(Boolean(config.MFR_USE_FROZEN_PENDING_STOP)
+              ? {
+                  setupSweepExtremePrice: stopGeometry.setupSweepExtremePrice,
+                  setupStopAnchorPrice: stopGeometry.setupStopAnchorPrice,
+                }
+              : {}),
             context: signal,
           };
         } else {
@@ -597,12 +634,18 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
-    const stopLossPrice = buildStopLoss({
+    const confirmationStopGeometry = buildStopGeometry({
       baseContext,
       direction: entrySignal.direction,
       currentPrice,
       config,
     });
+    const useFrozenPendingStop =
+      Boolean(config.MFR_USE_FROZEN_PENDING_STOP) &&
+      entrySignal.entryMode === 'confirmation';
+    const stopLossPrice = useFrozenPendingStop
+      ? entrySignal.stopLossPrice
+      : confirmationStopGeometry.stopLossPrice;
     const riskOrder = buildContextRiskOrder({
       currentPrice,
       direction: modeConfig.direction,
@@ -627,6 +670,35 @@ export const createMarketFlushReversalCore: CreateStrategyCore<
       setupTimestamp: entrySignal.setupTimestamp,
       entryDelayBars: entrySignal.entryDelayBars,
       priceImprovementAtr: entrySignal.priceImprovementAtr,
+      ...(useFrozenPendingStop
+        ? {
+            pendingStopSource: 'frozen_setup' as const,
+            setupSweepExtremePrice: entrySignal.setupSweepExtremePrice ?? null,
+            setupStopAnchorPrice: entrySignal.setupStopAnchorPrice ?? null,
+            setupStopLossPrice: entrySignal.stopLossPrice,
+            confirmationStopLossPrice: confirmationStopGeometry.stopLossPrice,
+            selectedStopLossPrice: stopLossPrice,
+            setupStopDistanceAtr:
+              entrySignal.atr > 0
+                ? Math.abs(currentPrice - entrySignal.stopLossPrice) /
+                  entrySignal.atr
+                : null,
+            confirmationStopDistanceAtr:
+              entrySignal.atr > 0
+                ? Math.abs(
+                    currentPrice - confirmationStopGeometry.stopLossPrice,
+                  ) / entrySignal.atr
+                : null,
+            stopDistanceDeltaAtr:
+              entrySignal.atr > 0
+                ? (Math.abs(currentPrice - entrySignal.stopLossPrice) -
+                    Math.abs(
+                      currentPrice - confirmationStopGeometry.stopLossPrice,
+                    )) /
+                  entrySignal.atr
+                : null,
+          }
+        : {}),
     };
 
     lastTradeController.markTrade(timestamp);

@@ -35,6 +35,7 @@ const buildAdaptiveTrendChannelStateKey = (
     envelopeBars: config.ADAPTIVE_TREND_CHANNEL_ENVELOPE_BARS,
     atrStretch: config.ADAPTIVE_TREND_CHANNEL_ATR_STRETCH,
     volatilityLookback: config.ADAPTIVE_TREND_CHANNEL_VOLATILITY_LOOKBACK,
+    flipConfirmationBars: config.ADAPTIVE_TREND_CHANNEL_FLIP_CONFIRMATION_BARS,
     maxFigurePoints: config.ADAPTIVE_TREND_CHANNEL_MAX_FIGURE_POINTS,
   });
 
@@ -59,7 +60,9 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const nextDetectorState = (
     candle: Parameters<
       ReturnType<typeof createAdaptiveTrendChannelEngine>['next']

@@ -231,7 +231,9 @@ export const createRelativeRotationCore: CreateStrategyCore<
   RelativeRotationConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, strategyApi }) => {
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
 
   return async () => {
     const baseContext = strategyApi.getBaseContext();

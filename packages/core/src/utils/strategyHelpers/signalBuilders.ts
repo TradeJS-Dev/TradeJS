@@ -31,8 +31,9 @@ import {
 } from '@tradejs/types';
 import { calculateRiskRatio, getDirectionalTpSlPrices } from './market';
 import {
-  createLastTradeController,
+  createStateBackedLastTradeController,
   createStrategyStateControllerFactory,
+  resolveLastTradeControllerParams,
 } from './state';
 import { IdGenerator, uuid } from '../uuid';
 
@@ -1331,6 +1332,7 @@ export const createStrategyAPI = <
     sharedReplayKey,
     getSharedReplayState,
   });
+  let lastTradeControllerIndex = 0;
   const getBaseContextFromIndicators = (
     indicators: unknown,
   ): BaseStrategyContextSnapshot | undefined =>
@@ -1510,11 +1512,27 @@ export const createStrategyAPI = <
     getDecisionPriceContext,
     getCurrentPosition,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),
-    createLastTradeController: (params?: StrategyLastTradeControllerParams) =>
-      createLastTradeController({
+    createLastTradeController: (params?: StrategyLastTradeControllerParams) => {
+      const resolvedParams = resolveLastTradeControllerParams({
         env,
         ...params,
-      }),
+      });
+      const controllerIndex = lastTradeControllerIndex;
+      lastTradeControllerIndex += 1;
+      const state = createStateController(
+        `__tradejs:last-trade:${controllerIndex}`,
+        () => ({ lastTradeTimestamp: null }),
+        {
+          configKey: JSON.stringify(resolvedParams),
+          sharedReplay: env === 'CRON',
+        },
+      );
+
+      return createStateBackedLastTradeController({
+        ...resolvedParams,
+        state,
+      });
+    },
     createStateController,
   };
 };

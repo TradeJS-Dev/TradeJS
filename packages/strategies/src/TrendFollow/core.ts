@@ -59,7 +59,9 @@ export const createTrendFollowCore: CreateStrategyCore<
       snapshot: (state) => state.engine.getState(),
     },
   );
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const nextDetectorState = (
     candle: Parameters<ReturnType<typeof createTrendFollowEngine>['next']>[0],
   ) =>

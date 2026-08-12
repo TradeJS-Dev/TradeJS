@@ -13,6 +13,7 @@ export interface GridSideConfig {
 }
 
 export type GridEntryMode = 'pullback_recovery' | 'breakout_retest';
+export type GridContinuationRiskMode = 'legacy_step' | 'retest_structure';
 
 export const config = {
   ENV: 'BACKTEST',
@@ -57,6 +58,10 @@ export const config = {
   GRID_BREAKOUT_RETEST_TOLERANCE_ATR: 0.3,
   GRID_BREAKOUT_RETEST_MAX_CLOSE_DISTANCE_ATR: 0,
   GRID_CONTINUATION_ALLOW_SCALE_IN: false,
+  GRID_CONTINUATION_RISK_MODE: 'legacy_step' as GridContinuationRiskMode,
+  GRID_CONTINUATION_STOP_BUFFER_ATR: 0.1,
+  GRID_CONTINUATION_MIN_STOP_DISTANCE_ATR: 0.35,
+  GRID_CONTINUATION_TARGET_R: 1,
   GRID_STEP_ATR_MULT: 0.8,
   GRID_MIN_STEP_PCT: 0.35,
   GRID_STOP_ATR_MULT: 4.5,
@@ -96,10 +101,15 @@ export const config = {
 export type GridConfig = StrategyConfig &
   Omit<
     typeof config,
-    'BACKTEST_PRICE_MODE' | 'GRID_ENTRY_MODE' | 'LONG' | 'SHORT'
+    | 'BACKTEST_PRICE_MODE'
+    | 'GRID_ENTRY_MODE'
+    | 'GRID_CONTINUATION_RISK_MODE'
+    | 'LONG'
+    | 'SHORT'
   > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     GRID_ENTRY_MODE: GridEntryMode;
+    GRID_CONTINUATION_RISK_MODE: GridContinuationRiskMode;
     LONG: GridSideConfig;
     SHORT: GridSideConfig;
   };

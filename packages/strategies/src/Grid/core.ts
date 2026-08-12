@@ -1,10 +1,11 @@
 import type {
+  Candle,
   CreateStrategyCore,
   Direction,
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';
-import { GridConfig } from './config';
+import { GridConfig, GridContinuationRiskMode } from './config';
 import {
   buildGridDetectorKey,
   buildGridSignalContext,
@@ -24,6 +25,7 @@ interface PendingGridEntry {
 interface GridCycle {
   direction: Direction;
   stopLossPrice: number;
+  takeProfitPrice: number | null;
   levelQty: number;
   levelsFilled: number;
   levelReferencePrice: number;
@@ -152,6 +154,85 @@ const isDirectionalStopValid = (
     ? stopLossPrice < referencePrice
     : stopLossPrice > referencePrice;
 
+const isDirectionalTargetValid = (
+  direction: Direction,
+  takeProfitPrice: number,
+  referencePrice: number,
+) =>
+  takeProfitPrice > 0 &&
+  (direction === 'LONG'
+    ? takeProfitPrice > referencePrice
+    : takeProfitPrice < referencePrice);
+
+interface ContinuationStructureRiskPlan {
+  stopLossPrice: number;
+  takeProfitPrice: number;
+  takeProfitDistance: number;
+}
+
+const buildContinuationStructureRiskPlan = ({
+  candle,
+  direction,
+  entryPrice,
+  breakoutLevel,
+  atr,
+  stopBufferAtr,
+  minStopDistanceAtr,
+  targetR,
+}: {
+  candle: Candle;
+  direction: Direction;
+  entryPrice: number;
+  breakoutLevel: number | null;
+  atr: number;
+  stopBufferAtr: number;
+  minStopDistanceAtr: number;
+  targetR: number;
+}): ContinuationStructureRiskPlan | null => {
+  const high = Number(candle.high);
+  const low = Number(candle.low);
+  const level = Number(breakoutLevel);
+  if (
+    ![entryPrice, high, low, level, atr].every(Number.isFinite) ||
+    entryPrice <= 0 ||
+    high < entryPrice ||
+    low > entryPrice ||
+    high < low ||
+    level <= 0 ||
+    atr <= 0 ||
+    !Number.isFinite(targetR) ||
+    targetR <= 0
+  ) {
+    return null;
+  }
+
+  const stopBuffer = atr * Math.max(0, stopBufferAtr);
+  const minStopDistance = atr * Math.max(0, minStopDistanceAtr);
+  const structureStop =
+    direction === 'LONG'
+      ? Math.min(low, level) - stopBuffer
+      : Math.max(high, level) + stopBuffer;
+  const stopLossPrice =
+    direction === 'LONG'
+      ? Math.min(structureStop, entryPrice - minStopDistance)
+      : Math.max(structureStop, entryPrice + minStopDistance);
+  const initialRisk = Math.abs(entryPrice - stopLossPrice);
+  const takeProfitDistance = initialRisk * targetR;
+  const takeProfitPrice = getDirectionalPrice(
+    direction,
+    entryPrice,
+    takeProfitDistance,
+    'target',
+  );
+
+  return stopLossPrice > 0 &&
+    Number.isFinite(takeProfitPrice) &&
+    isDirectionalStopValid(direction, stopLossPrice, entryPrice) &&
+    isDirectionalTargetValid(direction, takeProfitPrice, entryPrice)
+    ? { stopLossPrice, takeProfitPrice, takeProfitDistance }
+    : null;
+};
+
 const isRangeActionBlocked = ({
   direction,
   geometry,
@@ -186,6 +267,11 @@ const buildExecutionStateKey = (config: GridConfig) =>
     slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
     entryMode: config.GRID_ENTRY_MODE,
     continuationAllowScaleIn: config.GRID_CONTINUATION_ALLOW_SCALE_IN,
+    continuationRiskMode: config.GRID_CONTINUATION_RISK_MODE,
+    continuationStopBufferAtr: config.GRID_CONTINUATION_STOP_BUFFER_ATR,
+    continuationMinStopDistanceAtr:
+      config.GRID_CONTINUATION_MIN_STOP_DISTANCE_ATR,
+    continuationTargetR: config.GRID_CONTINUATION_TARGET_R,
     takeProfitStepMultLong: config.GRID_TAKE_PROFIT_STEP_MULT_LONG,
     takeProfitStepMultShort: config.GRID_TAKE_PROFIT_STEP_MULT_SHORT,
     rangeFilterMode: config.GRID_RANGE_FILTER_MODE,
@@ -198,12 +284,16 @@ const buildRecoveredCycle = ({
   maxLossValue,
   maxLevels,
   feeRate,
+  freezeContinuationProtection,
+  continuationTargetR,
 }: {
   position: Position;
   snapshot: GridSnapshot;
   maxLossValue: number;
   maxLevels: number;
   feeRate: number;
+  freezeContinuationProtection: boolean;
+  continuationTargetR: number;
 }): GridCycle => {
   const reportedStop = getPositionStopLoss(position);
   const stopLossPrice =
@@ -227,10 +317,34 @@ const buildRecoveredCycle = ({
     Number.EPSILON,
     Math.min(position.qty, calculatedLevelQty || position.qty),
   );
+  const reportedTarget = getPositionTakeProfit(position);
+  const fallbackTarget = getDirectionalPrice(
+    position.direction,
+    position.price,
+    Math.abs(position.price - stopLossPrice) * continuationTargetR,
+    'target',
+  );
+  const takeProfitPrice = freezeContinuationProtection
+    ? reportedTarget != null &&
+      isDirectionalTargetValid(
+        position.direction,
+        reportedTarget,
+        position.price,
+      )
+      ? reportedTarget
+      : isDirectionalTargetValid(
+            position.direction,
+            fallbackTarget,
+            position.price,
+          )
+        ? fallbackTarget
+        : null
+    : null;
 
   return {
     direction: position.direction,
     stopLossPrice,
+    takeProfitPrice,
     levelQty,
     levelsFilled: Math.min(
       maxLevels,
@@ -315,6 +429,23 @@ export const createGridCore: CreateStrategyCore<
     !Boolean(config.GRID_CONTINUATION_ALLOW_SCALE_IN)
       ? 1
       : configuredMaxLevels;
+  const continuationRiskMode = (
+    config.GRID_CONTINUATION_RISK_MODE === 'retest_structure'
+      ? 'retest_structure'
+      : 'legacy_step'
+  ) as GridContinuationRiskMode;
+  const freezeContinuationProtection =
+    config.GRID_ENTRY_MODE === 'breakout_retest' &&
+    continuationRiskMode === 'retest_structure';
+  const continuationStopBufferAtr = Math.max(
+    0,
+    Number(config.GRID_CONTINUATION_STOP_BUFFER_ATR ?? 0.1),
+  );
+  const continuationMinStopDistanceAtr = Math.max(
+    0,
+    Number(config.GRID_CONTINUATION_MIN_STOP_DISTANCE_ATR ?? 0.35),
+  );
+  const continuationTargetR = Number(config.GRID_CONTINUATION_TARGET_R ?? 1);
   const maxLossValue = Math.max(0, Number(config.MAX_LOSS_VALUE ?? 0));
   const feeRate = Math.max(0, Number(config.FEE_PERCENT ?? 0));
   const slippageBps = Math.max(
@@ -361,6 +492,8 @@ export const createGridCore: CreateStrategyCore<
             maxLossValue,
             maxLevels,
             feeRate: executionCostRate,
+            freezeContinuationProtection,
+            continuationTargetR,
           });
         });
       } else if (state.cycle.pending) {
@@ -453,17 +586,20 @@ export const createGridCore: CreateStrategyCore<
         });
       }
 
-      const takeProfitDistance = getTakeProfitDistance({
+      const legacyTakeProfitDistance = getTakeProfitDistance({
         config,
         direction,
         stepDistance: snapshot.stepDistance,
       });
-      const targetPrice = getDirectionalPrice(
-        direction,
-        position.price,
-        takeProfitDistance,
-        'target',
-      );
+      const targetPrice =
+        cycle.takeProfitPrice ??
+        getDirectionalPrice(
+          direction,
+          position.price,
+          legacyTakeProfitDistance,
+          'target',
+        );
+      const takeProfitDistance = Math.abs(targetPrice - position.price);
       const adverseLevelReached =
         direction === 'LONG'
           ? snapshot.close <= cycle.levelReferencePrice - snapshot.stepDistance
@@ -514,12 +650,14 @@ export const createGridCore: CreateStrategyCore<
           entryQty: qty,
         });
         const projectedQty = position.qty + qty;
-        const projectedTargetPrice = getDirectionalPrice(
-          direction,
-          projectedAveragePrice,
-          takeProfitDistance,
-          'target',
-        );
+        const projectedTargetPrice =
+          cycle.takeProfitPrice ??
+          getDirectionalPrice(
+            direction,
+            projectedAveragePrice,
+            legacyTakeProfitDistance,
+            'target',
+          );
         const projectedEconomics = buildTradeEconomics({
           entryPrice: projectedAveragePrice,
           stopLossPrice,
@@ -527,6 +665,13 @@ export const createGridCore: CreateStrategyCore<
           feeRate,
           slippageBps,
         });
+        if (
+          freezeContinuationProtection &&
+          (!Number.isFinite(projectedEconomics.netRiskRatio) ||
+            projectedEconomics.rewardPerUnit <= Number.EPSILON)
+        ) {
+          return strategyApi.skip('GRID_INVALID_CONTINUATION_ECONOMICS');
+        }
         if (projectedEconomics.netRiskRatio < minNetRiskRatio) {
           return strategyApi.skip(
             `GRID_NET_RISK_RATIO:${projectedEconomics.netRiskRatio.toFixed(2)}`,
@@ -643,23 +788,44 @@ export const createGridCore: CreateStrategyCore<
       return strategyApi.skip('GRID_RANGE_ENTRY_BLOCKED');
     }
 
-    const stopLossPrice = getDirectionalPrice(
-      direction,
-      snapshot.close,
-      snapshot.stopDistance,
-      'stop',
-    );
-    const takeProfitDistance = getTakeProfitDistance({
-      config,
-      direction,
-      stepDistance: snapshot.stepDistance,
-    });
-    const takeProfitPrice = getDirectionalPrice(
-      direction,
-      snapshot.close,
-      takeProfitDistance,
-      'target',
-    );
+    const structureRiskPlan = freezeContinuationProtection
+      ? buildContinuationStructureRiskPlan({
+          candle,
+          direction,
+          entryPrice: snapshot.close,
+          breakoutLevel: snapshot.breakoutLevel,
+          atr: snapshot.atr,
+          stopBufferAtr: continuationStopBufferAtr,
+          minStopDistanceAtr: continuationMinStopDistanceAtr,
+          targetR: continuationTargetR,
+        })
+      : null;
+    if (freezeContinuationProtection && !structureRiskPlan) {
+      return strategyApi.skip('GRID_INVALID_CONTINUATION_GEOMETRY');
+    }
+    const stopLossPrice =
+      structureRiskPlan?.stopLossPrice ??
+      getDirectionalPrice(
+        direction,
+        snapshot.close,
+        snapshot.stopDistance,
+        'stop',
+      );
+    const takeProfitDistance =
+      structureRiskPlan?.takeProfitDistance ??
+      getTakeProfitDistance({
+        config,
+        direction,
+        stepDistance: snapshot.stepDistance,
+      });
+    const takeProfitPrice =
+      structureRiskPlan?.takeProfitPrice ??
+      getDirectionalPrice(
+        direction,
+        snapshot.close,
+        takeProfitDistance,
+        'target',
+      );
     const economics = buildTradeEconomics({
       entryPrice: snapshot.close,
       stopLossPrice,
@@ -667,6 +833,14 @@ export const createGridCore: CreateStrategyCore<
       feeRate,
       slippageBps,
     });
+    if (
+      freezeContinuationProtection &&
+      (!Number.isFinite(economics.netRiskRatio) ||
+        economics.lossPerUnit <= Number.EPSILON ||
+        economics.rewardPerUnit <= Number.EPSILON)
+    ) {
+      return strategyApi.skip('GRID_INVALID_CONTINUATION_ECONOMICS');
+    }
     if (economics.netRiskRatio < minNetRiskRatio) {
       return strategyApi.skip(
         `GRID_NET_RISK_RATIO:${economics.netRiskRatio.toFixed(2)}`,
@@ -687,6 +861,7 @@ export const createGridCore: CreateStrategyCore<
       draft.cycle = {
         direction,
         stopLossPrice,
+        takeProfitPrice: structureRiskPlan?.takeProfitPrice ?? null,
         levelQty: qty,
         levelsFilled: 0,
         levelReferencePrice: snapshot.close,

@@ -437,6 +437,30 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     });
   });
 
+  it('holds an open position when opposite-signal exits are disabled', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryShort: true,
+        activeSell: true,
+        signalOsc: -0.6,
+        kcMidline: 99,
+        kcUpper: 100,
+        kcLower: 98,
+        invalidationLevel: 101,
+      }),
+    );
+
+    const { core, candles } = await makeRuntime({
+      configOverrides: { AMR_EXIT_ON_OPPOSITE_SIGNAL: false },
+      currentPosition: { direction: 'LONG', qty: 1 },
+      candles: makeCandles({ bullishLast: false }),
+    });
+
+    await expect(
+      core(candles[candles.length - 1], candles[candles.length - 1]),
+    ).resolves.toEqual({ kind: 'skip', code: 'POSITION_HELD' });
+  });
+
   it('returns exit decision by invalidation on open position', async () => {
     mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
       makeEvaluation({
@@ -483,6 +507,26 @@ describe('createAdaptiveMomentumRibbonCore', () => {
         direction: 'LONG',
       },
     });
+  });
+
+  it('holds an open position when invalidation exits are disabled', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        invalidated: true,
+        activeBuy: true,
+        signalOsc: 0.1,
+        invalidationLevel: 98,
+      }),
+    );
+
+    const { core, candles } = await makeRuntime({
+      configOverrides: { AMR_EXIT_ON_INVALIDATION: false },
+      currentPosition: { direction: 'LONG', qty: 1 },
+    });
+
+    await expect(
+      core(candles[candles.length - 1], candles[candles.length - 1]),
+    ).resolves.toEqual({ kind: 'skip', code: 'POSITION_HELD' });
   });
 
   it('returns skip NO_SIGNAL when AMR has no entry signal', async () => {

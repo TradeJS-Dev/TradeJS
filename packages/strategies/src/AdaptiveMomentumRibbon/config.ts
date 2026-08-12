@@ -50,6 +50,7 @@ export const config = {
   AMR_ATR_MULTIPLIER: 2,
   AMR_STOP_BUFFER_PCT: 0.05,
   AMR_TARGET_R_MULT: 2.4,
+  AMR_EXIT_ON_OPPOSITE_SIGNAL: true,
   AMR_EXIT_ON_INVALIDATION: true,
   AMR_LINE_PLOTS: ['kcMidline', 'kcUpper', 'kcLower', 'invalidationLevel'],
   LONG: {

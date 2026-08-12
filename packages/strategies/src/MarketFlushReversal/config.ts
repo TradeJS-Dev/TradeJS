@@ -73,6 +73,7 @@ export const config = {
   MFR_CONFIRMATION_BARS_SHORT: 3,
   MFR_PENDING_MAX_BARS: 4,
   MFR_REQUIRE_DIRECTIONAL_CONFIRMATION_BODY: true,
+  MFR_USE_FROZEN_PENDING_STOP: false,
   MFR_EXIT_ON_OPPOSITE_SIGNAL: false,
   LONG: {
     enable: true,
@@ -87,9 +88,13 @@ export const config = {
 } as const;
 
 export type MarketFlushReversalConfig = StrategyConfig &
-  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
+  Omit<
+    typeof config,
+    'BACKTEST_PRICE_MODE' | 'MFR_USE_FROZEN_PENDING_STOP' | 'LONG' | 'SHORT'
+  > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     MFR_ENTRY_MODE: MarketFlushReversalEntryMode;
+    MFR_USE_FROZEN_PENDING_STOP: boolean;
     LONG: MarketFlushReversalSideConfig;
     SHORT: MarketFlushReversalSideConfig;
   };

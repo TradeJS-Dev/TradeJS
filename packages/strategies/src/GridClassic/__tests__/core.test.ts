@@ -92,6 +92,18 @@ const runtimeState = ({
   setupGeometry = null,
   breakoutLevel = null,
   entrySignalStage,
+  setupFamily,
+  failedBreakoutDirection,
+  reversalDirection,
+  candidateTimestamp,
+  acceptedTimestamp,
+  reclaimTimestamp,
+  reclaimAgeBars,
+  failedBreakoutLevel,
+  projectedBreakoutBoundary,
+  projectedRangeCenter,
+  sweepExtreme,
+  candidateAtr,
 }: {
   timestamp: number;
   close: number;
@@ -110,7 +122,20 @@ const runtimeState = ({
     | 'immediate'
     | 'breakout_candidate'
     | 'breakout_accepted'
-    | 'breakout_retest_confirmed';
+    | 'breakout_retest_confirmed'
+    | 'failed_breakout_reclaimed';
+  setupFamily?: 'failed_breakout_reversal';
+  failedBreakoutDirection?: 'LONG' | 'SHORT';
+  reversalDirection?: 'LONG' | 'SHORT';
+  candidateTimestamp?: number;
+  acceptedTimestamp?: number;
+  reclaimTimestamp?: number;
+  reclaimAgeBars?: number;
+  failedBreakoutLevel?: number;
+  projectedBreakoutBoundary?: number;
+  projectedRangeCenter?: number;
+  sweepExtreme?: number;
+  candidateAtr?: number;
 }): GridClassicRuntimeState => ({
   snapshot: {
     timestamp,
@@ -138,6 +163,22 @@ const runtimeState = ({
       entrySignalStage ?? (entryDirection ? 'immediate' : 'none'),
     entryConfirmationAgeBars: entryDirection ? 0 : null,
     entryDirection,
+    ...(setupFamily
+      ? {
+          setupFamily,
+          failedBreakoutDirection: failedBreakoutDirection ?? null,
+          reversalDirection: reversalDirection ?? null,
+          candidateTimestamp: candidateTimestamp ?? null,
+          acceptedTimestamp: acceptedTimestamp ?? null,
+          reclaimTimestamp: reclaimTimestamp ?? null,
+          reclaimAgeBars: reclaimAgeBars ?? null,
+          failedBreakoutLevel: failedBreakoutLevel ?? null,
+          projectedBreakoutBoundary: projectedBreakoutBoundary ?? null,
+          projectedRangeCenter: projectedRangeCenter ?? null,
+          sweepExtreme: sweepExtreme ?? null,
+          candidateAtr: candidateAtr ?? null,
+        }
+      : {}),
   },
   closeSeries: [{ timestamp, value: close }],
 });
@@ -163,9 +204,11 @@ const mockStates = (states: GridClassicRuntimeState[]) => {
 const makeStrategyApi = ({
   getPosition,
   getCurrentPrice,
+  stateController = createTestStateController(),
 }: {
   getPosition: () => Position | null;
   getCurrentPrice: () => number;
+  stateController?: ReturnType<typeof createTestStateController>;
 }) => {
   const api = {
     skip: (code: string) => ({ kind: 'skip', code }),
@@ -214,7 +257,7 @@ const makeStrategyApi = ({
       candle: candle(1, getCurrentPrice()),
     })),
     getCurrentPosition: jest.fn(async () => getPosition()),
-    createStateController: createTestStateController(),
+    createStateController: stateController,
   };
   return api;
 };
@@ -352,6 +395,327 @@ describe('GridClassic core', () => {
         remainingLevels: 0,
       }),
     );
+    expect(
+      result.signal.additionalIndicators.gridClassicContext,
+    ).not.toHaveProperty('setupFamily');
+  });
+
+  it('builds a fee-aware one-shot SHORT reversal after an accepted upper breakout reclaim', async () => {
+    const setupGeometry = geometry({
+      upperPrice: 105.4,
+      lowerPrice: 94.6,
+      centerPrice: 100,
+      position: 0.94,
+    });
+    mockStates([
+      runtimeState({
+        timestamp: 3,
+        close: 104.8,
+        entryDirection: 'SHORT',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'failed_breakout_reclaimed',
+        setupId: 'gridclassic-continuation:LONG:1:105.40000000',
+        setupGeometry,
+        breakoutLevel: 105.4,
+        rangeGeometry: geometry({ detected: false }),
+        setupFamily: 'failed_breakout_reversal',
+        failedBreakoutDirection: 'LONG',
+        reversalDirection: 'SHORT',
+        candidateTimestamp: 1,
+        acceptedTimestamp: 2,
+        reclaimTimestamp: 3,
+        reclaimAgeBars: 1,
+        failedBreakoutLevel: 105.4,
+        projectedBreakoutBoundary: 105.4,
+        projectedRangeCenter: 100,
+        sweepExtreme: 108,
+        candidateAtr: 2,
+      }),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 104.8,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MODE: 'breakout_continuation',
+        GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED: true,
+        GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR: 0.25,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 10,
+        FEE_PERCENT: 0.001,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(candle(3, 104.8) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRIDCLASSIC_UPPER_FAILED_BREAKOUT_REVERSAL_SHORT',
+        orderPlan: {
+          qty: expect.closeTo(10 / 4.1266, 10),
+          stopLossPrice: 108.5,
+          takeProfits: [{ rate: 1, price: 100 }],
+        },
+      }),
+    );
+    expect(result.signal.additionalIndicators.gridClassicContext).toEqual(
+      expect.objectContaining({
+        setupFamily: 'failed_breakout_reversal',
+        failedBreakoutDirection: 'LONG',
+        reversalDirection: 'SHORT',
+        candidateTimestamp: 1,
+        acceptedTimestamp: 2,
+        reclaimTimestamp: 3,
+        reclaimAgeBars: 1,
+        projectedBreakoutBoundary: 105.4,
+        projectedRangeCenter: 100,
+        sweepExtreme: 108,
+        candidateAtr: 2,
+        remainingLevels: 0,
+      }),
+    );
+  });
+
+  it('builds the mirrored one-shot LONG reversal after an accepted lower breakout reclaim', async () => {
+    const setupGeometry = geometry({
+      upperPrice: 105.4,
+      lowerPrice: 94.6,
+      centerPrice: 100,
+      position: 0.06,
+    });
+    mockStates([
+      runtimeState({
+        timestamp: 3,
+        close: 95.2,
+        entryDirection: 'LONG',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'failed_breakout_reclaimed',
+        setupId: 'gridclassic-continuation:SHORT:1:94.60000000',
+        setupGeometry,
+        breakoutLevel: 94.6,
+        rangeGeometry: geometry({ detected: false }),
+        setupFamily: 'failed_breakout_reversal',
+        failedBreakoutDirection: 'SHORT',
+        reversalDirection: 'LONG',
+        candidateTimestamp: 1,
+        acceptedTimestamp: 2,
+        reclaimTimestamp: 3,
+        reclaimAgeBars: 1,
+        failedBreakoutLevel: 94.6,
+        projectedBreakoutBoundary: 94.6,
+        projectedRangeCenter: 100,
+        sweepExtreme: 92,
+        candidateAtr: 2,
+      }),
+    ]);
+    const strategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 95.2,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MODE: 'breakout_continuation',
+        GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED: true,
+        GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR: 0.25,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+        FEE_PERCENT: 0,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+
+    const result = (await core(candle(3, 95.2) as any, {} as any)) as any;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'entry',
+        code: 'GRIDCLASSIC_LOWER_FAILED_BREAKOUT_REVERSAL_LONG',
+        orderPlan: {
+          qty: expect.closeTo(10 / 3.7, 10),
+          stopLossPrice: 91.5,
+          takeProfits: [{ rate: 1, price: 100 }],
+        },
+      }),
+    );
+  });
+
+  it('uses a distinct target exit for a failed-breakout reversal cycle', async () => {
+    const setupGeometry = geometry({
+      upperPrice: 105.4,
+      lowerPrice: 94.6,
+      centerPrice: 100,
+      position: 0.94,
+    });
+    mockStates([
+      runtimeState({
+        timestamp: 3,
+        close: 104.8,
+        entryDirection: 'SHORT',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'failed_breakout_reclaimed',
+        setupId: 'gridclassic-continuation:LONG:1:105.40000000',
+        setupGeometry,
+        breakoutLevel: 105.4,
+        setupFamily: 'failed_breakout_reversal',
+        failedBreakoutDirection: 'LONG',
+        reversalDirection: 'SHORT',
+        candidateTimestamp: 1,
+        acceptedTimestamp: 2,
+        reclaimTimestamp: 3,
+        reclaimAgeBars: 1,
+        failedBreakoutLevel: 105.4,
+        projectedBreakoutBoundary: 105.4,
+        projectedRangeCenter: 100,
+        sweepExtreme: 108,
+        candidateAtr: 2,
+      }),
+      runtimeState({ timestamp: 4, close: 100 }),
+    ]);
+    let position: Position | null = null;
+    let currentPrice = 104.8;
+    const strategyApi = makeStrategyApi({
+      getPosition: () => position,
+      getCurrentPrice: () => currentPrice,
+    });
+    const core = await createGridClassicCore({
+      config: {
+        ...BASE_TEST_CONFIG,
+        GRIDCLASSIC_MODE: 'breakout_continuation',
+        GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED: true,
+        GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR: 0.25,
+        GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+        FEE_PERCENT: 0,
+      } as GridClassicConfig,
+      data: [],
+      strategyApi,
+    } as any);
+    const entry = (await core(candle(3, 104.8) as any, {} as any)) as any;
+    position = {
+      symbol: 'TESTUSDT',
+      direction: 'SHORT',
+      price: 104.8,
+      qty: entry.orderPlan.qty,
+      slPrice: entry.orderPlan.stopLossPrice,
+      tpPrice: entry.orderPlan.takeProfits[0].price,
+    };
+    currentPrice = 100;
+
+    await expect(core(candle(4, 100) as any, {} as any)).resolves.toEqual(
+      expect.objectContaining({
+        kind: 'exit',
+        code: 'GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_TP_EXIT',
+      }),
+    );
+  });
+
+  it('is idempotent through wrapper recreation and isolates execution economics', async () => {
+    const setupGeometry = geometry({
+      upperPrice: 105.4,
+      lowerPrice: 94.6,
+      centerPrice: 100,
+      position: 0.94,
+    });
+    mockStates([
+      runtimeState({
+        timestamp: 3,
+        close: 104.8,
+        entryDirection: 'SHORT',
+        strategyMode: 'breakout_continuation',
+        entrySignalStage: 'failed_breakout_reclaimed',
+        setupId: 'gridclassic-continuation:LONG:1:105.40000000',
+        setupGeometry,
+        breakoutLevel: 105.4,
+        setupFamily: 'failed_breakout_reversal',
+        failedBreakoutDirection: 'LONG',
+        reversalDirection: 'SHORT',
+        candidateTimestamp: 1,
+        acceptedTimestamp: 2,
+        reclaimTimestamp: 3,
+        reclaimAgeBars: 1,
+        failedBreakoutLevel: 105.4,
+        projectedBreakoutBoundary: 105.4,
+        projectedRangeCenter: 100,
+        sweepExtreme: 108,
+        candidateAtr: 2,
+      }),
+    ]);
+    const sharedStateController = createTestStateController();
+    const config = {
+      ...BASE_TEST_CONFIG,
+      GRIDCLASSIC_MODE: 'breakout_continuation',
+      GRIDCLASSIC_FAILED_BREAKOUT_REVERSAL_ENABLED: true,
+      GRIDCLASSIC_BREAKOUT_TOLERANCE_ATR: 0.25,
+      GRIDCLASSIC_RISK_SLIPPAGE_BPS: 0,
+      FEE_PERCENT: 0,
+    } as GridClassicConfig;
+    const firstApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 104.8,
+      stateController: sharedStateController,
+    });
+    const firstCore = await createGridClassicCore({
+      config,
+      data: [],
+      strategyApi: firstApi,
+    } as any);
+
+    await expect(
+      firstCore(candle(3, 104.8) as any, {} as any),
+    ).resolves.toEqual(expect.objectContaining({ kind: 'entry' }));
+
+    const recreatedApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 104.8,
+      stateController: sharedStateController,
+    });
+    const recreatedCore = await createGridClassicCore({
+      config,
+      data: [],
+      strategyApi: recreatedApi,
+    } as any);
+    await expect(
+      recreatedCore(candle(3, 104.8) as any, {} as any),
+    ).resolves.toEqual({
+      kind: 'skip',
+      code: 'GRIDCLASSIC_ORDER_PENDING',
+    });
+    expect(recreatedApi.entry).not.toHaveBeenCalled();
+
+    const isolatedApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 104.8,
+      stateController: sharedStateController,
+    });
+    const isolatedCore = await createGridClassicCore({
+      config: { ...config, FEE_PERCENT: 0.002 },
+      data: [],
+      strategyApi: isolatedApi,
+    } as any);
+    await expect(
+      isolatedCore(candle(3, 104.8) as any, {} as any),
+    ).resolves.toEqual(expect.objectContaining({ kind: 'entry' }));
+
+    const disabledSideApi = makeStrategyApi({
+      getPosition: () => null,
+      getCurrentPrice: () => 104.8,
+      stateController: sharedStateController,
+    });
+    const disabledSideCore = await createGridClassicCore({
+      config: {
+        ...config,
+        SHORT: { enable: false, direction: 'SHORT' },
+      },
+      data: [],
+      strategyApi: disabledSideApi,
+    } as any);
+    await expect(
+      disabledSideCore(candle(3, 104.8) as any, {} as any),
+    ).resolves.toEqual({ kind: 'skip', code: 'STRATEGY_DISABLED' });
   });
 
   it('rejects an extended continuation entry after the confirmed retest', async () => {

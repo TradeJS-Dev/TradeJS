@@ -57,6 +57,11 @@ type AtrState = {
   count: number;
 };
 
+type PendingFlip = {
+  direction: Direction;
+  remainingBars: number;
+};
+
 type EngineState = {
   barsSeen: number;
   atrState: AtrState;
@@ -66,6 +71,7 @@ type EngineState = {
   bullSupportTrail: number | null;
   bearResistanceTrail: number | null;
   prevRegimeValue: number | null;
+  pendingFlip: PendingFlip | null;
   signal: AdaptiveTrendChannelSignal | null;
   snapshot: AdaptiveTrendChannelSnapshot | null;
   series: AdaptiveTrendChannelFigureSeries;
@@ -78,6 +84,11 @@ const asFiniteNumber = (value: unknown): number | null => {
 
 const clampPositive = (value: number, fallback: number) =>
   Number.isFinite(value) && value > 0 ? value : fallback;
+
+const asNonNegativeInteger = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+};
 
 const calculateTrueRange = (candle: Candle, prevClose: number | null) => {
   const high = asFiniteNumber(candle.high);
@@ -162,6 +173,9 @@ const getConfigNumbers = (config: AdaptiveTrendChannelConfig) => ({
     1,
     Math.floor(config.ADAPTIVE_TREND_CHANNEL_VOLATILITY_LOOKBACK ?? 100),
   ),
+  flipConfirmationBars: asNonNegativeInteger(
+    config.ADAPTIVE_TREND_CHANNEL_FLIP_CONFIRMATION_BARS,
+  ),
   maxFigurePoints: Math.max(
     20,
     Math.floor(config.ADAPTIVE_TREND_CHANNEL_MAX_FIGURE_POINTS ?? 180),
@@ -226,6 +240,7 @@ export const createAdaptiveTrendChannelEngine = ({
     envelopeBars,
     atrStretch,
     volatilityLookback,
+    flipConfirmationBars,
     maxFigurePoints,
   } = getConfigNumbers(config);
   const state: EngineState = {
@@ -237,6 +252,7 @@ export const createAdaptiveTrendChannelEngine = ({
     bullSupportTrail: null,
     bearResistanceTrail: null,
     prevRegimeValue: null,
+    pendingFlip: null,
     signal: null,
     snapshot: null,
     series: {
@@ -363,6 +379,33 @@ export const createAdaptiveTrendChannelEngine = ({
     const floor = state.centerline - halfChannel;
     const flipUp = prevRegimeValue < 0 && state.regime > 0;
     const flipDown = prevRegimeValue > 0 && state.regime < 0;
+    const rawFlipDirection: Direction | null = flipUp
+      ? 'LONG'
+      : flipDown
+        ? 'SHORT'
+        : null;
+    let confirmedFlipDirection: Direction | null = null;
+
+    if (flipConfirmationBars === 0) {
+      state.pendingFlip = null;
+      confirmedFlipDirection = rawFlipDirection;
+    } else if (rawFlipDirection) {
+      state.pendingFlip = {
+        direction: rawFlipDirection,
+        remainingBars: flipConfirmationBars,
+      };
+    } else if (state.pendingFlip) {
+      const regimeDirection: Direction = state.regime === 1 ? 'LONG' : 'SHORT';
+      if (regimeDirection !== state.pendingFlip.direction) {
+        state.pendingFlip = null;
+      } else {
+        state.pendingFlip.remainingBars -= 1;
+        if (state.pendingFlip.remainingBars <= 0) {
+          confirmedFlipDirection = state.pendingFlip.direction;
+          state.pendingFlip = null;
+        }
+      }
+    }
     const channelWidthPct =
       state.centerline !== 0
         ? ((roof - floor) / Math.abs(state.centerline)) * 100
@@ -393,13 +436,13 @@ export const createAdaptiveTrendChannelEngine = ({
     );
 
     if (
-      (flipUp || flipDown) &&
+      confirmedFlipDirection != null &&
       breakoutDistancePct != null &&
       breakoutDistanceAtr != null &&
       channelWidthPct != null
     ) {
       state.signal = {
-        direction: flipUp ? 'LONG' : 'SHORT',
+        direction: confirmedFlipDirection,
         regime: state.regime,
         centerline: state.centerline,
         roof,

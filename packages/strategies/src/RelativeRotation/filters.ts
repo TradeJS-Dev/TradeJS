@@ -66,5 +66,22 @@ export const getRelativeRotationCoreFilterSkipCode = ({
     }
   }
 
+  const maxVolumeRel20 = asPositiveThreshold(
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'RR_MAX_VOLUME_REL20',
+      direction,
+      fallback: 0,
+    }),
+  );
+  if (
+    maxVolumeRel20 != null &&
+    signal.volumeRel20 != null &&
+    Number.isFinite(signal.volumeRel20) &&
+    signal.volumeRel20 > maxVolumeRel20
+  ) {
+    return 'RR_VOLUME_CLIMAX';
+  }
+
   return null;
 };

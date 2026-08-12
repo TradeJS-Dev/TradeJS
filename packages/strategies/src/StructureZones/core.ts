@@ -24,7 +24,7 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
-const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
+const buildLegacyStructureZonesStateKey = (config: StructureZonesConfig) =>
   JSON.stringify({
     pivotLength: config.STRUCTURE_ZONES_PIVOT_LENGTH,
     atrLength: config.STRUCTURE_ZONES_ATR_LENGTH,
@@ -46,6 +46,16 @@ const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
     tradeTransitionBreakouts: config.STRUCTURE_ZONES_TRADE_TRANSITION_BREAKOUTS,
     maxFigurePoints: config.STRUCTURE_ZONES_MAX_FIGURE_POINTS,
   });
+
+const buildStructureZonesStateKey = (config: StructureZonesConfig) =>
+  Math.max(
+    0,
+    Math.floor(
+      Number(config.STRUCTURE_ZONES_PENDING_CONFIRMATION_MAX_BARS ?? 0),
+    ),
+  ) > 0
+    ? JSON.stringify(config)
+    : buildLegacyStructureZonesStateKey(config);
 
 export const createStructureZonesCore: CreateStrategyCore<
   StructureZonesConfig,
@@ -69,6 +79,7 @@ export const createStructureZonesCore: CreateStrategyCore<
     },
   );
   const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
     cooldownMs:
       Math.max(0, Number(config.STRUCTURE_ZONES_COOLDOWN_HOURS ?? 72)) *
       3_600_000,
@@ -194,7 +205,7 @@ export const createStructureZonesCore: CreateStrategyCore<
       },
       figures: buildStructureZonesFigures({
         signal,
-        swingPoints: runtimeState.swingPoints,
+        swingPoints: runtimeState.signalSwingPoints ?? runtimeState.swingPoints,
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
         stopLossPrice,

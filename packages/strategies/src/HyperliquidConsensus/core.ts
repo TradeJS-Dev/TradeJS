@@ -18,7 +18,11 @@ export const createHyperliquidConsensusCore: CreateStrategyCore<
   HyperliquidConsensusConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, strategyApi }) => {
-  const lastTradeController = strategyApi.createLastTradeController();
+  const entryCooldownMs = Math.max(0, Number(config.HLC_ENTRY_COOLDOWN_MS));
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+    cooldownMs: entryCooldownMs,
+  });
 
   return async () => {
     const baseContext = await strategyApi.getDecisionBaseContext();

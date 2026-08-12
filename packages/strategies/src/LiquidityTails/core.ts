@@ -290,6 +290,7 @@ const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
       config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
+    exitOnScaleInRetest: config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
   });
 
 export const createLiquidityTailsCore: CreateStrategyCore<
@@ -320,7 +321,9 @@ export const createLiquidityTailsCore: CreateStrategyCore<
   >('LiquidityTailsExecution', () => ({ cycle: null }), {
     configKey: buildExecutionStateKey(config),
   });
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const nextDetectorState = (
     candle: Parameters<
       ReturnType<typeof createLiquidityTailsEngine>['next']

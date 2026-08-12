@@ -185,7 +185,9 @@ export const createReverseTrendLineCore: CreateStrategyCore<
 > = async ({ config, data: cachedData, strategyApi, indicatorsState }) => {
   const { TRENDLINE, FEE_PERCENT, MAX_LOSS_VALUE, HIGHS, LOWS } = config;
 
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,

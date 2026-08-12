@@ -14,6 +14,8 @@ export interface MarketFlushReversalEntryCandidate {
   referencePrice: number;
   atr: number;
   stopLossPrice: number;
+  setupSweepExtremePrice?: number | null;
+  setupStopAnchorPrice?: number | null;
   context: MarketFlushReversalSignalContext;
 }
 

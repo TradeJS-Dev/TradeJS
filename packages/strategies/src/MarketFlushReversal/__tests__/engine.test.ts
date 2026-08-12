@@ -63,6 +63,8 @@ const candidate: MarketFlushReversalEntryCandidate = {
   referencePrice: 102,
   atr: 2,
   stopLossPrice: 106,
+  setupSweepExtremePrice: 104,
+  setupStopAnchorPrice: 105.5,
   context: context as any,
 };
 
@@ -187,6 +189,9 @@ describe('MarketFlushReversal entry engine', () => {
     expect(accepted.signal).toMatchObject({
       entryMode: 'confirmation',
       entryDelayBars: 2,
+      setupSweepExtremePrice: 104,
+      setupStopAnchorPrice: 105.5,
+      stopLossPrice: 106,
     });
     expect(continuous.next(confirmation)).toEqual(accepted);
 

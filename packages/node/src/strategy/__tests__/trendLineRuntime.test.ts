@@ -332,9 +332,10 @@ describe('TrendlineStrategyCreator', () => {
       makeCandle(1_700_000_000_000, 100),
       makeCandle(1_700_000_000_000, 20000),
     );
+    const afterTradeCooldown = 1_700_000_000_000 + 86_400_001;
     const signalB = await strategy(
-      makeCandle(1_700_000_900_000, 101),
-      makeCandle(1_700_000_900_000, 20001),
+      makeCandle(afterTradeCooldown, 101),
+      makeCandle(afterTradeCooldown, 20001),
     );
 
     expect(typeof signalA).toBe('object');

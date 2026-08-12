@@ -693,7 +693,9 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     BEARISH,
   } = config;
 
-  const lastTradeController = strategyApi.createLastTradeController();
+  const lastTradeController = strategyApi.createLastTradeController({
+    enabled: true,
+  });
   const maxHistorySize = getRequiredHistorySize({
     normalizationLength: NORMALIZATION_LENGTH,
     lookbackLeft: PIVOT_LOOKBACK_LEFT,
