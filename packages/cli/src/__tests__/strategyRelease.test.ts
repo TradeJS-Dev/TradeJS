@@ -279,6 +279,7 @@ describe('strategy release evidence', () => {
       action: 'START_MICRO_FORWARD',
       maxLossValue: 1,
       repairAllowed: false,
+      requiresRuntimeBinding: false,
     });
   });
 
@@ -337,6 +338,7 @@ describe('strategy release evidence', () => {
       action: 'REPAIR_RECENT_DIRECTION',
       repairAllowed: true,
       targetDirection: 'SHORT',
+      requiresRuntimeBinding: false,
     });
   });
 
@@ -393,6 +395,7 @@ describe('strategy release evidence', () => {
     ).toMatchObject({
       action: 'FORWARD_BLOCKED',
       blockers: ['FULL_PERIOD_CHART_MISSING'],
+      requiresRuntimeBinding: false,
     });
   });
 

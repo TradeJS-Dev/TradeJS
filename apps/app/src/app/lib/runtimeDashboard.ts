@@ -1,6 +1,6 @@
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { strategyEvidenceFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
+import { strategyLogicConfigFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
 import {
   listTradingAccounts,
   resolveTradingAccount,
@@ -506,7 +506,7 @@ export const loadRuntimeDashboard = async ({
         enabled: deployment.enabled && deploymentStrategy.enabled !== false,
         config: deploymentStrategy.config,
         connected: false,
-        configFingerprint: strategyEvidenceFingerprint(
+        configFingerprint: strategyLogicConfigFingerprint(
           deploymentStrategy.config,
         ),
       });
@@ -549,7 +549,7 @@ export const loadRuntimeDashboard = async ({
       enabled: isRuntimeStrategyConfigEnabled(runtimeConfig.config),
       config: runtimeConfig.config,
       connected: true,
-      configFingerprint: strategyEvidenceFingerprint(runtimeConfig.config),
+      configFingerprint: strategyLogicConfigFingerprint(runtimeConfig.config),
     });
   }
   const accountScopedTrades = assignLegacyRuntimeTradeAccountScopes(

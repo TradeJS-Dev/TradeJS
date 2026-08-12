@@ -21,6 +21,13 @@ causal findings, limitations, and approval-safe next action.
   Preserve its immutable change history, normalize monetary comparisons to the
   release risk unit, and return `INSUFFICIENT_EVIDENCE` when either scale is
   unavailable. Never compare unnormalized dollar drawdowns across risk scales.
+- Treat local Redis config names/ids and deployment/account ids, and
+  server credentials as environment binding rather than composition logic.
+  Never infer production absence from missing local keys. A locally unbound but
+  otherwise verified candidate is `MICRO_FORWARD_READY` with
+  `requiresRuntimeBinding=true`; bind and reverify it on the runtime server.
+  Activation (`ENABLE`) remains execution-critical and must equal the
+  authorized handoff before forward execution.
 - Use aggregate portfolio MaxDD for ALL and side-only realized MaxDD for each
   direction.
 - Prefer `INSUFFICIENT_EVIDENCE` over extrapolation when lineage, completeness,

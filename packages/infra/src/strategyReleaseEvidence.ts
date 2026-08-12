@@ -17,6 +17,14 @@ const MARKER_TYPES = new Set<StrategyEvidenceMarkerType>([
   'P',
   'R',
 ]);
+const STRATEGY_LOGIC_BINDING_KEYS = new Set([
+  'ACCOUNT_ID',
+  'DEPLOYMENT_ID',
+  'MAX_LOSS_VALUE',
+  'configId',
+]);
+const SECRET_CONFIG_KEY_RE =
+  /(?:^|_)(?:API_KEY|API_SECRET|TOKEN|PASSWORD|PRIVATE_KEY)$/i;
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -51,6 +59,29 @@ export const strategyEvidenceSha256 = (value: unknown) =>
 
 export const strategyEvidenceFingerprint = (value: unknown) =>
   strategyEvidenceSha256(value).slice(0, 16);
+
+const normalizeStrategyLogicConfig = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(normalizeStrategyLogicConfig);
+  const record = asRecord(value);
+  if (!record) return value;
+  return Object.fromEntries(
+    Object.entries(record)
+      .filter(
+        ([key]) =>
+          !STRATEGY_LOGIC_BINDING_KEYS.has(key) &&
+          !SECRET_CONFIG_KEY_RE.test(key),
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, normalizeStrategyLogicConfig(entry)]),
+  );
+};
+
+/**
+ * Fingerprints strategy decision semantics without local/runtime bindings,
+ * credentials, config identity, or position-risk scale.
+ */
+export const strategyLogicConfigFingerprint = (value: unknown) =>
+  strategyEvidenceFingerprint(normalizeStrategyLogicConfig(value));
 
 export const strategyEvidenceFileSha256 = async (filePath: string) => {
   const hash = createHash('sha256');

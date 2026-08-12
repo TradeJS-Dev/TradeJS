@@ -3,6 +3,29 @@
 Use this workflow to evaluate one frozen core plus deterministic AI-gate
 composition. Do not use it to promote the composition.
 
+## Environment boundary
+
+Historical research, exports, and local Redis configs live on the research
+machine. Production accounts, credentials, deployments, signals, and trades
+live on the runtime server. Missing local runtime keys are not evidence that
+their production counterparts do not exist. Never copy credentials into
+research evidence.
+
+The local output is a portable composition handoff. Match committed source plus
+canonical core-config, gate, runtime-logic, and context fingerprints across
+machines. `configId`, `ACCOUNT_ID`, `DEPLOYMENT_ID`, and
+`MAX_LOSS_VALUE` are operational binding/risk fields: preserve them separately,
+but do not let differences create a false logic mismatch. API credentials are
+server secrets: never export, hash, or compare them as research identity.
+`ENABLE`, `AI_ENABLED`,
+`AI_MODE`, `MIN_AI_QUALITY`, detector/side policy, interval/universe, fees, and
+execution/context semantics remain parity-critical.
+
+Do not create a new release manifest when only runtime `MAX_LOSS_VALUE`
+changes. Preserve the deployed release's existing `compositionId`, record the
+new scale as a separate `L` marker, and normalize monetary runtime evidence
+back to the release risk unit; do not reset the composition's logic history.
+
 ## 1. Freeze the release question
 
 Create an immutable experiment id and preregister:
@@ -257,6 +280,10 @@ date narrowing, and a non-empty full-export scan. Never copy a plausible hash
 into the input without the file. Likewise, `forwardTest.runtimeTarget` is
 either null or the exact `{ userName, deploymentId, accountId,
 strategyConfigName }`; do not substitute a self-declared “resolved” boolean.
+Null on the research machine yields `MICRO_FORWARD_READY` with
+`requiresRuntimeBinding=true`, not failed evidence. Transfer the secret-free
+handoff to the runtime server, resolve its IDs there, verify the portable
+fingerprints, then rerun `decide` there.
 
 Case handling is deterministic:
 
@@ -268,17 +295,20 @@ Case handling is deterministic:
    variants; pass-through is allowed but must pass chronological guardrails.
 4. Positive aggregate hiding a failed long-window side: do not hide the side;
    repair within budget or stop.
-5. Incomplete 3y/4y/max coverage, reconciliation, chart, implementation, or
-   runtime target: return the explicit blocker rather than “wait”.
+5. Incomplete 3y/4y/max coverage, reconciliation, chart, or implementation:
+   return the explicit blocker rather than “wait”. A server-owned target that
+   is unavailable locally produces a ready handoff, not a blocker.
 6. Risk-only changes: keep the same logic lineage and add immutable loss-scale
    evidence; never discard earlier logic history.
 
-For an authorized `START_MICRO_FORWARD`, verify the exact runtime
+For an authorized local `MICRO_FORWARD_READY`, transfer the immutable handoff
+without credentials to the runtime server. There, verify the exact runtime
 deployment/account/connector/strategy target, freeze the candidate fingerprints,
-set only its `MAX_LOSS_VALUE=1`, retain both directions, and start the existing
-forward runner. Do not promote the composition, increase risk, change unrelated
-runtime config, or manually place orders. If the target is ambiguous, the
-decision must remain `FORWARD_BLOCKED`.
+set only its `MAX_LOSS_VALUE=1`, retain both directions, rerun `decide`, and
+start the forward runner only after `START_MICRO_FORWARD`. Do not promote the
+composition, increase risk, change unrelated runtime config, or manually place
+orders. If the target is ambiguous on the runtime server, report that binding
+problem separately from research validity.
 
 When a user later authorizes a runtime deployment, copy the verified
 `compositionId` into that deployment strategy's `releaseCompositionId`. The

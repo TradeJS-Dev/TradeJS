@@ -22,7 +22,6 @@ export type StrategyReleaseResearchDecisionBlocker =
   | 'CANDIDATE_NOT_IMPLEMENTED'
   | 'FULL_PERIOD_CHART_MISSING'
   | 'FORWARD_NOT_AUTHORIZED'
-  | 'RUNTIME_TARGET_UNRESOLVED'
   | 'FORWARD_RISK_MUST_BE_ONE';
 
 export type StrategyReleaseHistoricalWindow = {
@@ -68,6 +67,7 @@ export type StrategyReleaseResearchDecision = {
   repairAllowed: boolean;
   targetDirection: 'LONG' | 'SHORT' | null;
   maxLossValue: 1 | null;
+  requiresRuntimeBinding: boolean;
   blockers: StrategyReleaseResearchDecisionBlocker[];
   summary: string;
 };

@@ -96,8 +96,9 @@ describe('strategy-release command', () => {
     await expect(
       runStrategyReleaseCommand({ command: 'decide', inputPath }),
     ).resolves.toMatchObject({
-      action: 'FORWARD_BLOCKED',
-      blockers: ['RUNTIME_TARGET_UNRESOLVED'],
+      action: 'MICRO_FORWARD_READY',
+      requiresRuntimeBinding: true,
+      blockers: [],
     });
 
     unresolvedInput.forwardTest.runtimeTarget = {

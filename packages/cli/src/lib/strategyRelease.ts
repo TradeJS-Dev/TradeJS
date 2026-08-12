@@ -138,6 +138,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       repairAllowed: false,
       targetDirection: input.recentFailure?.direction ?? null,
       maxLossValue: null,
+      requiresRuntimeBinding: false,
       blockers,
       summary:
         'The final composition does not have complete positive ALL/LONG/SHORT evidence on the frozen 3y/4y/max-window matrix.',
@@ -158,6 +159,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       repairAllowed: true,
       targetDirection: input.recentFailure!.direction,
       maxLossValue: null,
+      requiresRuntimeBinding: false,
       blockers: [],
       summary:
         'Spend the single terminal-direction repair round on the preregistered causal mechanism, then rebuild the full evidence matrix.',
@@ -178,6 +180,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       repairAllowed: false,
       targetDirection: input.recentFailure?.direction ?? null,
       maxLossValue: null,
+      requiresRuntimeBinding: false,
       blockers,
       summary:
         'Complete the frozen candidate implementation and full-period chart before any micro-forward execution.',
@@ -190,6 +193,9 @@ export const deriveStrategyReleaseResearchDecision = async (
       repairAllowed: false,
       targetDirection: input.recentFailure?.direction ?? null,
       maxLossValue: 1,
+      requiresRuntimeBinding: !hasExactRuntimeTarget(
+        input.forwardTest.runtimeTarget,
+      ),
       blockers: ['FORWARD_NOT_AUTHORIZED'],
       summary:
         'The candidate is ready for a separately authorized micro-forward test at MAX_LOSS_VALUE=1.',
@@ -198,13 +204,14 @@ export const deriveStrategyReleaseResearchDecision = async (
   if (!hasExactRuntimeTarget(input.forwardTest.runtimeTarget)) {
     return {
       strategy: input.strategy,
-      action: 'FORWARD_BLOCKED',
+      action: 'MICRO_FORWARD_READY',
       repairAllowed: false,
       targetDirection: input.recentFailure?.direction ?? null,
       maxLossValue: 1,
-      blockers: ['RUNTIME_TARGET_UNRESOLVED'],
+      requiresRuntimeBinding: true,
+      blockers: [],
       summary:
-        'Forward testing is authorized, but an exact runtime deployment/account target must be resolved first.',
+        "The portable micro-forward handoff is ready. Bind it on the runtime server to that server's deployment/account ids and verify canonical composition fingerprints there.",
     };
   }
   return {
@@ -213,6 +220,7 @@ export const deriveStrategyReleaseResearchDecision = async (
     repairAllowed: false,
     targetDirection: input.recentFailure?.direction ?? null,
     maxLossValue: 1,
+    requiresRuntimeBinding: false,
     blockers: [],
     summary:
       'Start the exact frozen composition as a micro-forward test at MAX_LOSS_VALUE=1; do not retune an underpowered or exposed recent tail.',

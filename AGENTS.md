@@ -233,6 +233,22 @@ Runtime AI config conventions:
 - Delayed-entry execution telemetry such as `backtestExecution.executionPrice`, `entryDelayMoveBps`, delayed entry timestamps, realized exit reason, or final trade result may be exported and analyzed after the fact, but must not be used as inputs to AI-gate approval, deterministic quality, or prompt-time decision context for the same signal.
 - `BACKTEST_ENTRY_DELAY_BARS` may change fill timing, execution price, and PnL. It must not change the signal-time gate decision unless an equivalent live/runtime pre-entry re-evaluation path exists and is used by both `yarn signals` and `yarn backtest`.
 - `yarn signals` runs on a separate runtime server in the current production workflow. The local Redis in this checkout is not the source of truth for live runtime signals, runtime signal evaluations, or runtime trade records unless the user explicitly says they synced/copied runtime data locally.
+- Local research Redis does not own production deployment/account bindings.
+  Missing local deployment, account, credential, signal, or trade keys are not
+  production blockers and are not evidence of absence. Produce a secret-free
+  portable release handoff locally; resolve and verify deployment/account
+  identity only against the runtime server before forward or live execution.
+- Cross-machine composition matching compares committed source plus canonical
+  core/gate/runtime-logic/context identity. Operational config key/id,
+  `ACCOUNT_ID`, `DEPLOYMENT_ID`, and `MAX_LOSS_VALUE` are separate
+  binding/risk provenance and must not cause a false logic mismatch.
+  API credentials are server secrets and must never be exported, hashed into
+  release evidence, or compared between environments.
+  Do not create a new release when only runtime `MAX_LOSS_VALUE` or a server
+  binding changes. Preserve its deployed `compositionId` and retain those
+  changes as separate immutable markers.
+  `ENABLE`, `AI_ENABLED`, `AI_MODE`, quality thresholds, detector/side policy,
+  interval/universe, and execution/context semantics still require parity.
 - Do not conclude that a strategy did not run in live runtime just because local Redis has no `users:root:runtime:signals:*` or `users:root:runtime:signal-evaluations:*` keys. Ask for or inspect the remote runtime server data/artifacts when live-runtime evidence is required.
 - `yarn signals` runs over the full active ticker universe by default; use explicit ticker filters only when the task asks for a narrowed run.
 - Keep `yarn backtest`, `yarn replay`, and `yarn signals` using the same strategy runtime path where practical. Avoid separate indicator or AI/ML payload logic for only one execution mode.
@@ -467,8 +483,10 @@ Keep them aligned with:
   action as an unbounded “wait”.
 - The `strategy:release decide` input must point to the structured chart report
   by path and SHA; the command must recompute and validate that artifact rather
-  than trust a self-declared checksum. Represent a forward target by exact
-  user/deployment/account/strategy-config identity, never by a resolved boolean.
+  than trust a self-declared checksum. Local research may leave the server-owned
+  target null and return a portable `MICRO_FORWARD_READY` handoff. On the runtime
+  server bind exact user/deployment/account/strategy-config identity and rerun
+  the decision; never use a self-declared resolved boolean.
 - When the user has explicitly authorized automatic forward testing, the exact
   frozen candidate may start only on the resolved forward account/deployment at
   `MAX_LOSS_VALUE=1`. Preserve both directions, logic fingerprints, immutable
@@ -669,7 +687,7 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
 - Any claim about expected production cadence must include terminal dataset windows for at least the last `30d` and `7d`, anchored to the export maximum timestamp. Use `yarn ai-train ... -n 0`; its default terminal-window report also includes `90d`.
 - Record the export minimum/maximum timestamps and data lag. If the export does not overlap the production period being discussed, report live cadence as unknown instead of extrapolating the full-history average.
 - Compare runtime and `ai-train` gate behavior only when git SHA, gate fingerprint, config-id fingerprint, context fingerprint, `MIN_AI_QUALITY`, and the relevant context env agree. Treat a mismatch as a different experiment.
-- A strategy release must also bind the canonical resolved core-config SHA-256 and exact core-export SHA-256. Keep AI-research config/context fingerprints separate from effective runtime config/context fingerprints; they hash different representations and must not be substituted for each other. Release evidence from another git/config/export/gate/context/MAX_LOSS lineage is invalid even when its file checksum and economics are valid.
+- A strategy release must also bind the canonical resolved core-config SHA-256 and exact core-export SHA-256. Keep AI-research config/context fingerprints separate from effective runtime config/context fingerprints; they hash different representations and must not be substituted for each other. Release evidence from another git/config/export/gate/context logic lineage is invalid even when its file checksum and economics are valid. A different `MAX_LOSS_VALUE` is not logic drift, but it must remain explicit and all monetary comparisons must use the recorded risk-scale normalization.
 - A zero-approval terminal window must be reported explicitly even when full-history cadence is healthy. Investigate top reject reasons and current feature availability before changing thresholds.
 - After changing a deterministic AI gate, regenerate the terminal-window report and create a new `notes/<Strategy>/YYYY-MM-DD-<slug>.md` record with the resolved config and structured metric snapshot; old notes are not evidence for the new gate lineage.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.

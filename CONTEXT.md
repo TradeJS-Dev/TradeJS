@@ -80,6 +80,15 @@ comparison but does not change this logic identity. Evidence missing either
 logic identity or risk scale cannot support economic comparison.
 _Avoid_: Config hash, current strategy name, same code approximately
 
+**Portable Composition Handoff**:
+The secret-free local release output that carries one Strategy Composition to
+the separate runtime server. Local config keys, deployment/account ids, API
+credentials, and `MAX_LOSS_VALUE` are not composition logic; the server binds
+its own operational identity and risk scale, then verifies the same composition
+id plus git/core/gate/context semantics and `ENABLE=true` before execution.
+_Avoid_: Missing local deployment means production is blocked, copy server keys
+into research evidence, ignore activation state
+
 **Regime Attribution**:
 Signal-time market-state labels retained for analysis, coverage, and drift diagnostics but not used to change the current Strategy Composition's trading decision.
 _Avoid_: Regime filter, regime training

@@ -331,7 +331,19 @@ The decision input references the chart report as
 validates that the report is a successful full-period local deterministic run.
 It also requires an exact `runtimeTarget` object (`userName`, `deploymentId`,
 `accountId`, `strategyConfigName`) before returning `START_MICRO_FORWARD`.
-Use `null` when that identity is not available; do not use a boolean shortcut.
+Research normally uses local Redis while production bindings live on a separate
+runtime server. Use `null` locally to produce a portable
+`MICRO_FORWARD_READY` handoff with `requiresRuntimeBinding=true`; this is not a
+failed research verdict. On the server, resolve its own IDs, verify the same
+core/gate/runtime-logic/context fingerprints, and rerun the decision. Account,
+deployment, config-key, and `MAX_LOSS_VALUE` differences remain
+separate binding/risk provenance rather than logic mismatches. API credentials
+stay on the server and are never included in the handoff or its fingerprints.
+Activation remains execution-critical: `ENABLE` must match the authorized
+handoff before execution.
+When only runtime `MAX_LOSS_VALUE` changes, keep the deployed release's
+`compositionId`; the UI keeps the logic history and adds a separate loss-scale
+marker instead of creating a new release.
 
 `decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
 or stop. When the user has authorized automatic forward testing and the exact

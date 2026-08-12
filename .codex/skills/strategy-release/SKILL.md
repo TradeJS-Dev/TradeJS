@@ -29,6 +29,11 @@ runtime target, risk scale, and immutable evidence are resolved.
 - Stop selection on partial manifests, OOM, worker errors, missing exports,
   reconciliation failure, lineage mismatch, or contaminated point-in-time
   evidence. Return the appropriate insufficient-evidence verdict.
+- Research runs in the local checkout/Redis; live signals and deployments run
+  on the runtime server. Never infer that a production deployment, account,
+  credential, signal, or trade is absent because it is missing locally. Produce
+  a portable handoff locally, then resolve server-owned bindings on that server.
+  Never copy or compare API credentials through release evidence.
 
 ## Select the mode
 
@@ -113,7 +118,7 @@ inside a diagnostic lineage.
   advisory. It cannot choose the core, tune the deterministic gate, change a
   verdict, or authorize runtime action.
 - End every completed release research run with `yarn ai-train --localOnly
-  --chart -n 0` over the full frozen export. Persist the structured report and
+--chart -n 0` over the full frozen export. Persist the structured report and
   hash its chart/evaluation lineage into immutable evidence. Missing or stale
   chart evidence blocks forward execution.
 
@@ -126,8 +131,10 @@ historical matrix and chart are frozen.
 The decision input must reference the structured chart report by both `path`
 and `sha256`; `decide` recomputes the file hash and verifies that it is a
 successful full-period local-deterministic chart run for the same strategy. A
-forward target is not a boolean: record its exact `userName`, `deploymentId`,
-`accountId`, and `strategyConfigName`, or leave `runtimeTarget` null.
+forward target is not a boolean. Local research normally leaves `runtimeTarget`
+null and returns `MICRO_FORWARD_READY`; on the runtime server bind the handoff
+to that server's exact `userName`, `deploymentId`, `accountId`, and
+`strategyConfigName`, then rerun `decide` there.
 
 - `REPAIR_RECENT_DIRECTION`: spend the single repair round, then rebuild all
   historical/chart evidence. Never tune on a handful of trades.
@@ -135,7 +142,10 @@ forward target is not a boolean: record its exact `userName`, `deploymentId`,
   `MAX_LOSS_VALUE=1` when authorization and target are present. An exposed test
   may still support this prospective action; it cannot support
   `READY_FOR_RUNTIME`.
-- `MICRO_FORWARD_READY`: request the missing mutation authorization.
+- `MICRO_FORWARD_READY`: request missing mutation authorization, or when
+  `requiresRuntimeBinding=true`, bind and verify the portable handoff on the
+  runtime server. A missing server-owned binding in local Redis is not an
+  evidence blocker.
 - `FORWARD_BLOCKED`: resolve the named implementation/chart/runtime-target
   blocker; do not silently wait.
 - `STOP_RESEARCH`: preserve the evidence and explain which 3y/4y/max-window or

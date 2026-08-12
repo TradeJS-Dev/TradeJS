@@ -76,6 +76,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 import { loadRuntimeDashboard } from '../runtimeDashboard';
 import { canonicalStrategyEvidenceJson } from '../strategyEvidenceTimeline';
+import { strategyLogicConfigFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
 
 describe('runtime dashboard', () => {
   const temporaryRoots: string[] = [];
@@ -205,12 +206,12 @@ describe('runtime dashboard', () => {
           summary: 'TrendLine composition',
           artifactId: 'release-1',
           artifactSha256: 'a'.repeat(64),
-          configFingerprint: createHash('sha256')
-            .update(
-              canonicalStrategyEvidenceJson({ INTERVAL: '15', ENABLE: true }),
-            )
-            .digest('hex')
-            .slice(0, 16),
+          configFingerprint: strategyLogicConfigFingerprint({
+            INTERVAL: '15',
+            ENABLE: false,
+            ACCOUNT_ID: 'another-machine',
+            MAX_LOSS_VALUE: 10,
+          }),
         },
       ],
       sourceArtifacts: [

@@ -1,4 +1,4 @@
 interface:
   display_name: 'Strategy Release'
   short_description: 'Release and diagnose TradeJS strategies'
-  default_prompt: 'Use $strategy-release to evaluate one TradeJS core plus deterministic AI-gate composition on 3y, 4y, and maximum cached history, rescue profitable raw direction cohorts, persist a full-period AI chart, choose a deterministic next action, and start an explicitly authorized micro-forward only at MAX_LOSS_VALUE=1.'
+  default_prompt: 'Use $strategy-release to evaluate one TradeJS core plus deterministic AI-gate composition on 3y, 4y, and maximum cached history, rescue profitable raw direction cohorts, persist a full-period AI chart, produce a portable local-to-runtime handoff, and start an explicitly authorized micro-forward only at MAX_LOSS_VALUE=1.'
