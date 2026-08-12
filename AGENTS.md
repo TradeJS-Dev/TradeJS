@@ -438,6 +438,11 @@ Keep them aligned with:
   variants per family, one isolated-long finalist, and one deterministic gate
   tuning round. Every historical comparison uses `--cacheOnly` over the maximum
   common cached half-open window for the frozen ordered universe.
+- For the final composition, always produce one full-statistics matrix for
+  trailing 1095d, 1460d, 1825d-or-exact-maximum-available, 365d, 180d, 90d,
+  30d, and 7d. Record requested and covered days when the maximum cache is
+  shorter than five years. Every window includes ALL/LONG/SHORT N, PnL,
+  PnL/trade, PF, WR, realized MaxDD, and cadence.
 - Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT.
   If the current gate approves zero or negligible support from a profitable raw
   side, the single gate round must test exactly five preregistered
@@ -450,6 +455,26 @@ Keep them aligned with:
   five gate variants are frozen in the permanent ablation spec. An already
   exposed test is permanently historical evidence and cannot support
   `READY_FOR_RUNTIME` in that lineage.
+- A recent failing direction gets at most one repair round, and only with at
+  least 20 independent target-side trades, a preregistered causal signal-time
+  mechanism, an untouched evaluation tail, and no prior repair. Do not fit a
+  condition to a sparse/exposed 30d or 7d loser set; retain the long-window edge
+  and move it to prospective micro-forward evidence instead.
+- End every completed release research run with full-export
+  `yarn ai-train --localOnly --chart -n 0` and persist/hash its structured
+  output plus chart lineage. A missing or different-lineage chart blocks a
+  forward action. Then run `yarn strategy:release decide`; never leave the next
+  action as an unbounded “wait”.
+- The `strategy:release decide` input must point to the structured chart report
+  by path and SHA; the command must recompute and validate that artifact rather
+  than trust a self-declared checksum. Represent a forward target by exact
+  user/deployment/account/strategy-config identity, never by a resolved boolean.
+- When the user has explicitly authorized automatic forward testing, the exact
+  frozen candidate may start only on the resolved forward account/deployment at
+  `MAX_LOSS_VALUE=1`. Preserve both directions, logic fingerprints, immutable
+  evidence, and risk-scale history. This authorization does not permit
+  promotion, risk increases, unrelated runtime edits, manual orders, or a
+  production-daemon launch on an ambiguous target.
 - Build equal-length historical drawdown envelopes with
   `yarn strategy:release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity

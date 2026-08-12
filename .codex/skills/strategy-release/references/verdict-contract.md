@@ -26,6 +26,10 @@ causal findings, limitations, and approval-safe next action.
 - Prefer `INSUFFICIENT_EVIDENCE` over extrapolation when lineage, completeness,
   parity, point-in-time validity, independent support, or reconciliation fails.
 - Keep any unapproved next composition in forward incubation/advisory mode.
+- A verdict never means “wait”. Pair it with the deterministic research action:
+  bounded recent-direction repair, authorized risk-1 micro-forward, a concrete
+  blocker, or stop. An exposed holdout blocks `READY_FOR_RUNTIME` but does not
+  block prospective micro-forward evidence.
 
 ## Release verdicts
 
@@ -122,5 +126,5 @@ EVIDENCE: <complete|incomplete> — <one-line reason>
 ALL/LONG/SHORT: N, PnL, PnL/trade, PF, WR, realized MaxDD, cadence/day
 CAUSAL/PARITY FINDING: <bounded evidence statement>
 LIMITATIONS: <material limitations or none>
-NEXT ACTION: <advisory evidence step or explicit approval request; no mutation>
+NEXT ACTION: <REPAIR_RECENT_DIRECTION|START_MICRO_FORWARD|MICRO_FORWARD_READY|FORWARD_BLOCKED|STOP_RESEARCH> — <bounded reason>
 ```

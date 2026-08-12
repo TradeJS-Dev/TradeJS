@@ -1,6 +1,6 @@
 ---
 name: strategy-release
-description: Evaluate one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, and approval-safe handoff without changing runtime configuration or placing orders.
+description: Evaluate one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, full-period chart handoff, and prospective testing.
 ---
 
 # Strategy Release
@@ -9,9 +9,9 @@ Evaluate exactly one composition:
 
 `frozen core config + frozen deterministic AI gate + frozen execution/context assumptions`
 
-Operate in one explicit mode: `release` or `diagnose-live`. Keep research
-read-only with respect to runtime until the user separately approves a specific
-mutation.
+Operate in one explicit mode: `release` or `diagnose-live`. A release run may
+end in an authorized micro-forward action, but only after the exact candidate,
+runtime target, risk scale, and immutable evidence are resolved.
 
 ## Non-negotiable safety boundary
 
@@ -19,10 +19,11 @@ mutation.
 - Run every historical backtest with `--cacheOnly` over the maximum common
   cached window frozen for the experiment. Never refresh or silently shorten
   history to rescue a result.
-- Do not change a runtime strategy config, `MAX_LOSS_VALUE`, order state,
-  daemon, scheduler, deployment, or promotion status without explicit user
-  approval. `READY_FOR_RUNTIME` is a recommendation, not permission.
-- Do not place, cancel, or close orders.
+- Do not change runtime state without explicit user approval. When the user has
+  authorized automatic forward testing, the only permitted mutation is the
+  exact frozen candidate on the resolved forward deployment with
+  `MAX_LOSS_VALUE=1`; do not alter another strategy, account, deployment, or
+  risk limit. Never place, cancel, or close an order manually.
 - Keep unpromoted candidates in forward incubation or advisory/shadow mode
   only. Never make an advisory LLM comparison part of deterministic execution.
 - Stop selection on partial manifests, OOM, worker errors, missing exports,
@@ -43,6 +44,9 @@ Use the fixed research budget:
 - five variants per family;
 - one total isolated-long core finalist;
 - one deterministic AI-gate tuning round;
+- one optional recent-direction repair round, only when the failed window has
+  at least 20 independent target-side trades, a preregistered causal mechanism,
+  an unexposed evaluation tail, and no earlier repair round;
 - one final core-plus-gate composition and one release verdict.
 
 Do not add a sixteenth core variant, reopen a viewed holdout, tune another gate
@@ -63,6 +67,11 @@ inside a diagnostic lineage.
 ## Shared metric and evidence rules
 
 - Use completed-trade economics and exact run-scoped exports.
+- Use the full-statistics workflow from `$strategy-backtest-research`. In
+  addition to the maximum cached window, always report the same final
+  composition on trailing 3-year, 4-year, and 5-year-or-maximum-available
+  slices. In the current cache, label the 1800-day maximum honestly rather than
+  pretending it contains 1825 days.
 - Show `N`, net `PnL`, `PnL/trade`, `PF`, `WR`, realized MaxDD, and cadence/day
   for `ALL`, `LONG`, and `SHORT` in every reported window. Calculate aggregate
   `PnL/trade` as aggregate PnL divided by aggregate N, never as the mean of side
@@ -103,6 +112,34 @@ inside a diagnostic lineage.
   `off`; `ai-approved` evaluates only deterministic-gate-approved rows and is
   advisory. It cannot choose the core, tune the deterministic gate, change a
   verdict, or authorize runtime action.
+- End every completed release research run with `yarn ai-train --localOnly
+  --chart -n 0` over the full frozen export. Persist the structured report and
+  hash its chart/evaluation lineage into immutable evidence. Missing or stale
+  chart evidence blocks forward execution.
+
+## Mandatory post-verdict action
+
+The release verdict and the next action are separate. Run
+`yarn strategy:release decide --input <decision-input.json>` after the final
+historical matrix and chart are frozen.
+
+The decision input must reference the structured chart report by both `path`
+and `sha256`; `decide` recomputes the file hash and verifies that it is a
+successful full-period local-deterministic chart run for the same strategy. A
+forward target is not a boolean: record its exact `userName`, `deploymentId`,
+`accountId`, and `strategyConfigName`, or leave `runtimeTarget` null.
+
+- `REPAIR_RECENT_DIRECTION`: spend the single repair round, then rebuild all
+  historical/chart evidence. Never tune on a handful of trades.
+- `START_MICRO_FORWARD`: start the exact resolved forward deployment with
+  `MAX_LOSS_VALUE=1` when authorization and target are present. An exposed test
+  may still support this prospective action; it cannot support
+  `READY_FOR_RUNTIME`.
+- `MICRO_FORWARD_READY`: request the missing mutation authorization.
+- `FORWARD_BLOCKED`: resolve the named implementation/chart/runtime-target
+  blocker; do not silently wait.
+- `STOP_RESEARCH`: preserve the evidence and explain which 3y/4y/max-window or
+  direction edge failed.
 
 ## Return one verdict
 
@@ -128,7 +165,7 @@ an intermediate production label.
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. Use only --cacheOnly historical backtests over the maximum common cached window, keep LONG and SHORT enabled, apply the fixed 3 causal families × 5 variants budget, select one isolated-long finalist, and allow one gate tuning round. Set llmComparison=off. Produce immutable evidence and one release verdict. Do not change runtime config, MAX_LOSS_VALUE, orders, daemon, deployment, or promotion state.
+Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. Use only --cacheOnly historical backtests over the maximum common cached window; report 3y, 4y, and 5y-or-maximum-available plus terminal ALL/LONG/SHORT statistics; keep LONG and SHORT enabled; apply the fixed 3 causal families × 5 variants budget, one isolated-long finalist, one gate round, and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy:release decide`. If the decision is START_MICRO_FORWARD and the exact target is resolved, start only that forward deployment at MAX_LOSS_VALUE=1; never promote it or increase risk automatically.
 ```
 
 Diagnose live:

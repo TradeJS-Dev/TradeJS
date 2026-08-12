@@ -304,6 +304,42 @@ checksum-verified `L` marker; live PnL and drawdown are divided by the
 runtime/release risk-scale ratio before comparison with historical envelopes.
 If either scale is unknown, economic attribution remains insufficient.
 
+The final composition is also reported on trailing 3-year, 4-year, and
+5-year-or-maximum-available cached slices. If the cache contains 1800 rather
+than 1825 days, the report says `requested=1825, covered=1800`; it never calls
+that a complete five-year sample. Every slice keeps fixed ALL/LONG/SHORT
+cohorts. A negative 30d side with only a handful of trades is not a license to
+fit another threshold: a terminal-direction repair requires at least 20
+independent target-side trades, a preregistered causal mechanism, an untouched
+tail, and an unused repair round.
+
+Finish release research by persisting the exact final gate's full-period chart
+and deriving a separate next action:
+
+```bash
+yarn ai-train --strategy DoubleTap --file <merged-part1.jsonl> \
+  --localOnly --chart --json --output output/DoubleTap-full-chart.json \
+  -n 0 --minQuality 4 --terminalWindows=1460,1095,365,180,90,30,7
+
+yarn strategy:release decide \
+  --input data/research/releases/DoubleTap-decision-input.json \
+  --out data/research/releases/DoubleTap-decision.json
+```
+
+The decision input references the chart report as
+`chartArtifact: { path, sha256 }`; the command recomputes the checksum and
+validates that the report is a successful full-period local deterministic run.
+It also requires an exact `runtimeTarget` object (`userName`, `deploymentId`,
+`accountId`, `strategyConfigName`) before returning `START_MICRO_FORWARD`.
+Use `null` when that identity is not available; do not use a boolean shortcut.
+
+`decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
+or stop. When the user has authorized automatic forward testing and the exact
+runtime account/deployment target is resolved, an exposed holdout or sparse
+recent tail does not mean “wait”: the frozen candidate starts prospective
+testing with `MAX_LOSS_VALUE=1`. This does not promote the strategy, increase
+risk, or permit unrelated runtime changes.
+
 The profile generator scans the selected normalized JSONL variant once, then
 calculates daily-stepped equal-length drawdown windows with indexed timestamp
 lookups. The draft also freezes its prospective sample floor, minimum parity

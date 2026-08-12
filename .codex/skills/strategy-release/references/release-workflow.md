@@ -42,6 +42,18 @@ state that BACKTEST does not apply the AI quality gate. Never refresh data,
 change membership, or fall back to a shorter available subset. If the common
 window is inadequate, return `INSUFFICIENT_EVIDENCE`.
 
+For the final composition, the full-statistics matrix is mandatory:
+
+- trailing 1095 days (3y);
+- trailing 1460 days (4y);
+- trailing 1825 days (5y), or the exact maximum available cached coverage when
+  it is shorter; record both requested and covered days;
+- 365d, 180d, 90d, 30d, and 7d terminal slices.
+
+Each row contains ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD,
+and cadence. Use the permanent metrics tooling from
+`$strategy-backtest-research`; do not reconstruct a favorable subset manually.
+
 ## 3. Capture the control
 
 Run the frozen control as a complete, run-scoped experiment. Export only after
@@ -150,6 +162,23 @@ fixed comparison as diagnostic evidence, but do not retune on it, relabel it as
 untouched, or use it to justify `READY_FOR_RUNTIME`. The candidate may enter a
 new post-cutoff forward incubation lineage.
 
+### One bounded recent-direction repair
+
+After the one gate round, a failing 30d/7d direction may receive exactly one
+repair round only when all are true:
+
+- the failed window has at least 20 independent target-side closed trades;
+- a causal signal-time mechanism was preregistered from train/tuning and regime
+  diagnostics, not inferred by filtering the displayed losers;
+- the evaluation tail was not exposed;
+- no earlier terminal repair round was used.
+
+Freeze five repair variants and preserve non-target/aggregate guardrails. When
+support is below 20, the tail is exposed, or the mechanism is unknown, do not
+fit another condition. A four-trade SHORT loss is a forward-monitoring question,
+not a new threshold. Preserve the profitable long-window side and proceed to
+the post-verdict action.
+
 Raw pass-through is a candidate, never an automatic promotion. If it wins the
 historical comparison but the exposed terminal tail fails, retain it only as an
 immutable forward candidate and return `INSUFFICIENT_EVIDENCE` or
@@ -198,6 +227,59 @@ into another field merely because both describe the same conceptual strategy.
 Incomplete evidence must produce `INSUFFICIENT_EVIDENCE`, even when the partial
 economics look unsuitable.
 
+## 8. Persist the full-period chart and choose an action
+
+The last research computation is mandatory and uses the exact final gate over
+the full frozen export:
+
+```bash
+yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
+  --localOnly --chart --json --output <full-period-ai-train.json> \
+  -n 0 --minQuality 4 --terminalWindows=1460,1095,365,180,90,30,7
+```
+
+The command must scan the full dataset (`-n 0`), persist the UI chart snapshot,
+and write structured output. Record the dataset/export SHA, gate/context
+fingerprints, selected time bounds, output SHA, and chart persistence result in
+immutable evidence. A chart from another gate/config lineage is not acceptable.
+
+Then write the final historical/forward decision input and run:
+
+```bash
+yarn strategy:release decide --input <decision-input.json> \
+  --out <decision.json>
+```
+
+Reference the report as `chartArtifact: { path, sha256 }`. The command hashes
+and parses that exact file and requires a persisted chart, zero evaluation
+errors, the same strategy, `local-deterministic` mode, `recent=0`, no explicit
+date narrowing, and a non-empty full-export scan. Never copy a plausible hash
+into the input without the file. Likewise, `forwardTest.runtimeTarget` is
+either null or the exact `{ userName, deploymentId, accountId,
+strategyConfigName }`; do not substitute a self-declared “resolved” boolean.
+
+Case handling is deterministic:
+
+1. Complete positive ALL/LONG/SHORT on 3y/4y/max, sparse or exposed recent
+   loss, candidate implemented, chart present: micro-forward at risk 1.
+2. Supported causal recent direction failure with an untouched tail: one repair
+   round, then rerun the full matrix and chart.
+3. Profitable raw side hidden by the current gate: complete the five side-rescue
+   variants; pass-through is allowed but must pass chronological guardrails.
+4. Positive aggregate hiding a failed long-window side: do not hide the side;
+   repair within budget or stop.
+5. Incomplete 3y/4y/max coverage, reconciliation, chart, implementation, or
+   runtime target: return the explicit blocker rather than “wait”.
+6. Risk-only changes: keep the same logic lineage and add immutable loss-scale
+   evidence; never discard earlier logic history.
+
+For an authorized `START_MICRO_FORWARD`, verify the exact runtime
+deployment/account/connector/strategy target, freeze the candidate fingerprints,
+set only its `MAX_LOSS_VALUE=1`, retain both directions, and start the existing
+forward runner. Do not promote the composition, increase risk, change unrelated
+runtime config, or manually place orders. If the target is ambiguous, the
+decision must remain `FORWARD_BLOCKED`.
+
 When a user later authorizes a runtime deployment, copy the verified
 `compositionId` into that deployment strategy's `releaseCompositionId`. The
 runtime lineage and UI marker selector then require that id in addition to
@@ -222,7 +304,8 @@ yarn node -r dotenv/config \
   --file <merged-export.jsonl> --run <completed-run-id> --json
 
 yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
-  --localOnly --json -n 0 --terminalWindows=365,180,90,30,7
+  --localOnly --chart --json --output <full-period-ai-train.json> -n 0 \
+  --terminalWindows=1460,1095,365,180,90,30,7
 
 yarn ai-pocket-search --strategy <Strategy> \
   --file <merged-export-part1.jsonl> -n 0 --validationSplit 0.2 \
@@ -237,6 +320,9 @@ yarn strategy:release create --input <release-draft.json> \
 
 yarn strategy:release verify \
   --input data/strategy-release/releases/<Strategy>/<release-id>.json
+
+yarn strategy:release decide --input <decision-input.json> \
+  --out <decision.json>
 ```
 
 Use `ai-gate-ablation.mjs` for the fixed gate candidate and its held-out
