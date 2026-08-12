@@ -5,6 +5,7 @@ import {
 
 const runtimeLineage = {
   schemaVersion: 1,
+  compositionId: 'release-composition-trendline-v1',
   gitSha: 'deadbeef',
   gitDirty: false,
   gateFingerprint: 'a'.repeat(64),
@@ -150,6 +151,7 @@ describe('runtime scorecard', () => {
     expect(scorecard.lineage).toMatchObject({
       complete: true,
       conflicts: false,
+      compositionId: 'release-composition-trendline-v1',
       gitSha: 'deadbeef',
       maxLossValue: 10,
     });
