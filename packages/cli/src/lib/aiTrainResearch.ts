@@ -236,14 +236,6 @@ export const summarizeAiTrainTerminalWindows = (
   });
 };
 
-const readOptionalFile = async (filePath: string) => {
-  try {
-    return await fs.readFile(filePath);
-  } catch {
-    return null;
-  }
-};
-
 const getGitLineage = (projectRoot: string) => {
   try {
     const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
