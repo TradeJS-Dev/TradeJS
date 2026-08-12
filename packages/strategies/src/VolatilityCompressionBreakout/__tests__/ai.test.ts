@@ -1,4 +1,9 @@
-import type { BaseStrategyContextSnapshot } from '@tradejs/types';
+import type {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  Signal,
+} from '@tradejs/types';
+import { volatilityCompressionBreakoutAiAdapter } from '../adapters/ai';
 import { buildVolatilityCompressionBreakoutGuardrailContext } from '../guardrails';
 
 const buildContext = ({
@@ -78,5 +83,25 @@ describe('VolatilityCompressionBreakout AI guardrail', () => {
     expect(context.approvalAllowedNow).toBe(false);
     expect(context.deterministicQuality).toBe(3);
     expect(context.approvalBlockReasons.length).toBeGreaterThan(0);
+  });
+
+  it('rejects legacy local approvals after the 1800d rebuild', () => {
+    expect(
+      volatilityCompressionBreakoutAiAdapter.postProcessLocalAnalysis?.({
+        signal: {
+          direction: 'SHORT',
+          prices: { takeProfitPrice: 90, stopLossPrice: 105 },
+        } as Signal,
+        payload: { additionalIndicators: {} } as AiPayload,
+        analysis: { direction: 'SHORT', quality: 5 },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 3,
+        approved: false,
+        gateDecision: 'rejected',
+      }),
+    );
   });
 });

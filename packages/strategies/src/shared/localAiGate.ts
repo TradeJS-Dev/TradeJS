@@ -22,6 +22,15 @@ export type StrategyLocalAiGateRule = {
   approves: (params: Pick<LocalGateParams, 'signal' | 'payload'>) => boolean;
 };
 
+export type StrategyLocalAiGateFilter = {
+  id: string;
+  allows: (
+    params: Pick<LocalGateParams, 'signal' | 'payload'> & {
+      analysis: GateAnalysis;
+    },
+  ) => boolean;
+};
+
 const normalizeQuality = (quality: unknown) => {
   const parsed = Number(quality);
   return Number.isFinite(parsed) ? Math.round(parsed) : 3;
@@ -35,7 +44,7 @@ const getPriorLocalAnalysis = (
     params.analysis) as GateAnalysis;
 
 const buildDecisionReason = (ruleId: string, approved: boolean) =>
-  `ai_gate_rebuild_2026_08_10; rule=${ruleId}; decision=${
+  `strategy_local_ai_gate; rule=${ruleId}; decision=${
     approved ? 'approved' : 'rejected'
   }`;
 
@@ -120,4 +129,30 @@ export const withStrategyLocalAiGate = (
       rule.id,
       rule.approves(params),
     ),
+});
+
+const isPriorAnalysisApproved = (analysis: GateAnalysis, signal: Signal) =>
+  analysis.approved !== false &&
+  analysis.direction === signal.direction &&
+  normalizeQuality(analysis.quality) >= 4;
+
+export const withStrategyLocalAiGateFilter = (
+  adapter: StrategyAiAdapter,
+  filter: StrategyLocalAiGateFilter,
+): StrategyAiAdapter => ({
+  ...adapter,
+  postProcessLocalAnalysis: (params) => {
+    const priorAnalysis = getPriorLocalAnalysis(adapter, params);
+    const allowed =
+      isPriorAnalysisApproved(priorAnalysis, params.signal) &&
+      filter.allows({
+        signal: params.signal,
+        payload: params.payload,
+        analysis: priorAnalysis,
+      });
+
+    return allowed
+      ? priorAnalysis
+      : applyRuleDecision(priorAnalysis, params, filter.id, false);
+  },
 });

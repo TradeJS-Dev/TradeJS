@@ -8,6 +8,7 @@ import {
 import { LiquidityTailsConfig } from '../config';
 import { LiquidityTailsSignalContext } from '../engine';
 import { buildLiquidityTailsGuardrailContext } from '../guardrails';
+import { withStrategyLocalAiGateFilter } from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
@@ -51,7 +52,7 @@ const withLiquidityTailsGateFeatures = ({
         liquidityTailsGateFeatures: typeof context.liquidityTailsGateFeatures;
       });
 
-export const liquidityTailsAiAdapter: StrategyAiAdapter = {
+const liquidityTailsBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const baseAdditional =
       (basePayload.additionalIndicators as
@@ -209,3 +210,11 @@ Interpretation rules for Liquidity Tails:
       >,
     ),
 };
+
+export const liquidityTailsAiAdapter = withStrategyLocalAiGateFilter(
+  liquidityTailsBaseAiAdapter,
+  {
+    id: 'liquidity_tails_long_only_2026_08_12',
+    allows: ({ signal }) => signal.direction === 'LONG',
+  },
+);

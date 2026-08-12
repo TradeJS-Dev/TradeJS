@@ -10,6 +10,7 @@ import {
   buildVolatilityCompressionBreakoutGuardrailContext,
   getVolatilityCompressionBreakoutGuardrailRejectReason,
 } from '../guardrails';
+import { withStrategyLocalAiGateFilter } from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -31,7 +32,7 @@ const getVolatilityCompressionBreakoutContext = (payload: AiPayload) => {
   });
 };
 
-export const volatilityCompressionBreakoutAiAdapter: StrategyAiAdapter = {
+const volatilityCompressionBreakoutBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }): AiPayload => {
     const payload = {
       ...basePayload,
@@ -105,3 +106,9 @@ Additional VolatilityCompressionBreakout context:
       >,
     ),
 };
+
+export const volatilityCompressionBreakoutAiAdapter =
+  withStrategyLocalAiGateFilter(volatilityCompressionBreakoutBaseAiAdapter, {
+    id: 'volatility_compression_breakout_disabled_2026_08_12',
+    allows: () => false,
+  });

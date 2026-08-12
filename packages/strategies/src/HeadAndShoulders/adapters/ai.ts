@@ -2,6 +2,10 @@ import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import type { AiPayload, StrategyAiAdapter } from '@tradejs/types';
 import type { HeadAndShouldersConfig } from '../config';
 import type { HeadAndShouldersSignalContext } from '../engine';
+import {
+  getAiPayloadNumber,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -13,7 +17,7 @@ const getContext = (payload: AiPayload) =>
     asRecord(payload.additionalIndicators).headAndShouldersContext,
   ) as Partial<HeadAndShouldersSignalContext>;
 
-export const headAndShouldersAiAdapter: StrategyAiAdapter = {
+const headAndShouldersBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => ({
     ...basePayload,
     additionalIndicators: {
@@ -61,3 +65,28 @@ Interpretation rules for HeadAndShoulders:
       >,
     ),
 };
+
+export const headAndShouldersAiAdapter = withStrategyLocalAiGate(
+  headAndShouldersBaseAiAdapter,
+  {
+    id: 'head_and_shoulders_short_wick_breadth_2026_08_12',
+    approves: ({ signal, payload }) => {
+      const upperWickPct = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.structure.candleQuality.upperWickPct',
+      );
+      const altBasketReturn24h = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.relative.btcAltRegime.altBasketReturn24h',
+      );
+
+      return (
+        signal.direction === 'SHORT' &&
+        upperWickPct != null &&
+        upperWickPct <= 0.3 &&
+        altBasketReturn24h != null &&
+        altBasketReturn24h >= -0.005
+      );
+    },
+  },
+);

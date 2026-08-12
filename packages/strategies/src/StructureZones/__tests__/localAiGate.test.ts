@@ -25,13 +25,13 @@ const evaluate = ({
   });
 
 describe('StructureZones local AI gate', () => {
-  it('approves the calibrated boundary', () => {
+  it('rejects the previously calibrated approval pocket', () => {
     expect(evaluate({ mtfAlignment: 'aligned_bull', decliners: 1 })).toEqual(
       expect.objectContaining({
-        direction: 'LONG',
-        quality: 4,
-        approved: true,
-        gateDecision: 'approved',
+        direction: null,
+        quality: 3,
+        approved: false,
+        gateDecision: 'rejected',
       }),
     );
   });

@@ -7,6 +7,7 @@ import {
 import { LiquidityZonesConfig } from '../config';
 import { LiquidityZonesSignalContext } from '../engine';
 import { buildLiquidityZonesGuardrailContext } from '../guardrails';
+import { withStrategyLocalAiGateFilter } from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
@@ -26,7 +27,7 @@ const getLiquidityZonesContext = (payload: AiPayload) => {
   });
 };
 
-export const liquidityZonesAiAdapter: StrategyAiAdapter = {
+const liquidityZonesBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const payload = {
       ...basePayload,
@@ -166,3 +167,11 @@ Interpretation rules for Liquidity Zones:
       >,
     ),
 };
+
+export const liquidityZonesAiAdapter = withStrategyLocalAiGateFilter(
+  liquidityZonesBaseAiAdapter,
+  {
+    id: 'liquidity_zones_disabled_2026_08_12',
+    allows: () => false,
+  },
+);

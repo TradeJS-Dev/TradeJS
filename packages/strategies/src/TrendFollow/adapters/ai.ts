@@ -7,6 +7,10 @@ import {
 import { TrendFollowConfig } from '../config';
 import { TrendFollowSignalContext } from '../engine';
 import { buildTrendFollowGuardrailContext } from '../guardrails';
+import {
+  getAiPayloadNumber,
+  withStrategyLocalAiGate,
+} from '../../shared/localAiGate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
@@ -27,7 +31,7 @@ const getTrendFollowContext = (payload: AiPayload) => {
   });
 };
 
-export const trendFollowAiAdapter: StrategyAiAdapter = {
+const trendFollowBaseAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const payload = {
       ...basePayload,
@@ -164,3 +168,28 @@ Interpretation rules for TrendFollow:
       >,
     ),
 };
+
+export const trendFollowAiAdapter = withStrategyLocalAiGate(
+  trendFollowBaseAiAdapter,
+  {
+    id: 'trend_follow_short_breadth_2026_08_12',
+    approves: ({ signal, payload }) => {
+      const advancers = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.relative.marketBreadth.advancers',
+      );
+      const top5Unchanged = getAiPayloadNumber(
+        payload,
+        'additionalIndicators.baseContext.relative.marketBreadths.top5.unchanged',
+      );
+
+      return (
+        signal.direction === 'SHORT' &&
+        advancers != null &&
+        advancers >= 2 &&
+        top5Unchanged != null &&
+        top5Unchanged <= 0
+      );
+    },
+  },
+);

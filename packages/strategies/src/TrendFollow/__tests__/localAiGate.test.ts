@@ -1,16 +1,16 @@
 import type { AiPayload, Direction, Signal } from '@tradejs/types';
-import { headAndShouldersAiAdapter } from '../adapters/ai';
+import { trendFollowAiAdapter } from '../adapters/ai';
 
-const evaluateLocalGate = ({
+const evaluate = ({
   direction = 'SHORT',
-  upperWickPct = 0.3,
-  altBasketReturn24h = -0.005,
+  advancers = 2,
+  top5Unchanged = 0,
 }: {
   direction?: Direction;
-  upperWickPct?: number;
-  altBasketReturn24h?: number;
+  advancers?: number;
+  top5Unchanged?: number;
 } = {}) =>
-  headAndShouldersAiAdapter.postProcessLocalAnalysis?.({
+  trendFollowAiAdapter.postProcessLocalAnalysis?.({
     signal: {
       direction,
       prices: { takeProfitPrice: 90, stopLossPrice: 105 },
@@ -18,34 +18,19 @@ const evaluateLocalGate = ({
     payload: {
       additionalIndicators: {
         baseContext: {
-          structure: { candleQuality: { upperWickPct } },
-          relative: { btcAltRegime: { altBasketReturn24h } },
+          relative: {
+            marketBreadth: { advancers },
+            marketBreadths: { top5: { unchanged: top5Unchanged } },
+          },
         },
       },
     } as unknown as AiPayload,
     analysis: { direction, quality: 5 },
   });
 
-describe('HeadAndShoulders AI adapter', () => {
-  it('copies strategy geometry into the AI payload', () => {
-    const context = {
-      patternKind: 'head_and_shoulders',
-      shoulderDifferencePct: 5,
-    };
-    const payload = headAndShouldersAiAdapter.buildPayload?.({
-      signal: {
-        additionalIndicators: { headAndShouldersContext: context },
-      } as any,
-      basePayload: { additionalIndicators: { baseContext: {} } } as any,
-    });
-
-    expect((payload as any).additionalIndicators.headAndShouldersContext).toBe(
-      context,
-    );
-  });
-
-  it('approves the rounded SHORT wick/breadth boundary', () => {
-    expect(evaluateLocalGate()).toEqual(
+describe('TrendFollow local AI gate', () => {
+  it('approves the calibrated SHORT breadth boundary', () => {
+    expect(evaluate()).toEqual(
       expect.objectContaining({
         direction: 'SHORT',
         quality: 4,
@@ -57,10 +42,10 @@ describe('HeadAndShoulders AI adapter', () => {
 
   it.each([
     ['LONG direction', { direction: 'LONG' as Direction }],
-    ['upper wick above boundary', { upperWickPct: 0.300001 }],
-    ['breadth below boundary', { altBasketReturn24h: -0.005001 }],
+    ['too few advancers', { advancers: 1 }],
+    ['unchanged top-five member', { top5Unchanged: 1 }],
   ])('rejects %s', (_name, overrides) => {
-    expect(evaluateLocalGate(overrides)).toEqual(
+    expect(evaluate(overrides)).toEqual(
       expect.objectContaining({
         direction: null,
         quality: 3,
@@ -71,7 +56,7 @@ describe('HeadAndShoulders AI adapter', () => {
   });
 
   it('rejects when a required causal feature is missing', () => {
-    const result = headAndShouldersAiAdapter.postProcessLocalAnalysis?.({
+    const result = trendFollowAiAdapter.postProcessLocalAnalysis?.({
       signal: {
         direction: 'SHORT',
         prices: { takeProfitPrice: 90, stopLossPrice: 105 },
