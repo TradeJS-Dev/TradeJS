@@ -9,6 +9,69 @@ export type StrategyReleaseVerdict =
   | 'UNSUITABLE_FOR_CURRENT_MARKET'
   | 'INSUFFICIENT_EVIDENCE';
 
+export type StrategyReleaseResearchDecisionAction =
+  | 'REPAIR_RECENT_DIRECTION'
+  | 'START_MICRO_FORWARD'
+  | 'MICRO_FORWARD_READY'
+  | 'FORWARD_BLOCKED'
+  | 'STOP_RESEARCH';
+
+export type StrategyReleaseResearchDecisionBlocker =
+  | 'HISTORICAL_MATRIX_INCOMPLETE'
+  | 'HISTORICAL_EDGE_FAILED'
+  | 'CANDIDATE_NOT_IMPLEMENTED'
+  | 'FULL_PERIOD_CHART_MISSING'
+  | 'FORWARD_NOT_AUTHORIZED'
+  | 'RUNTIME_TARGET_UNRESOLVED'
+  | 'FORWARD_RISK_MUST_BE_ONE';
+
+export type StrategyReleaseHistoricalWindow = {
+  days: number;
+  coveredDays?: number;
+  pnl: number;
+  profitFactor: number;
+  long: { pnl: number; profitFactor: number };
+  short: { pnl: number; profitFactor: number };
+};
+
+export type StrategyReleaseResearchDecisionInput = {
+  strategy: string;
+  historicalWindows: StrategyReleaseHistoricalWindow[];
+  candidateImplemented: boolean;
+  exposedEvaluation: boolean;
+  chartArtifact: {
+    path: string;
+    sha256: string;
+  } | null;
+  recentFailure: {
+    days: number;
+    direction: 'LONG' | 'SHORT';
+    closedTrades: number;
+    causalMechanismIdentified: boolean;
+    repairRoundsUsed: number;
+  } | null;
+  forwardTest: {
+    authorized: boolean;
+    runtimeTarget: {
+      userName: string;
+      deploymentId: string;
+      accountId: string;
+      strategyConfigName: string;
+    } | null;
+    maxLossValue: number;
+  };
+};
+
+export type StrategyReleaseResearchDecision = {
+  strategy: string;
+  action: StrategyReleaseResearchDecisionAction;
+  repairAllowed: boolean;
+  targetDirection: 'LONG' | 'SHORT' | null;
+  maxLossValue: 1 | null;
+  blockers: StrategyReleaseResearchDecisionBlocker[];
+  summary: string;
+};
+
 export type StrategyReleaseReason =
   | 'NO_VERIFIED_CORE_EDGE'
   | 'AI_GATE_ADDS_NO_VALUE'

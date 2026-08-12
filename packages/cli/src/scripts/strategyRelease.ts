@@ -8,6 +8,7 @@ import {
   buildStrategyMonitoringProfile,
   collectReleaseEvidenceReferences,
   createStrategyReleaseManifest,
+  deriveStrategyReleaseResearchDecision,
   planStrategyEvidenceRetention,
   publishStrategyRelease,
   publishStrategyLiveDiagnosis,
@@ -18,6 +19,7 @@ type StrategyReleaseCommand =
   | 'create'
   | 'verify'
   | 'diagnose'
+  | 'decide'
   | 'profile'
   | 'retention';
 
@@ -110,6 +112,17 @@ export const runStrategyReleaseCommand = async (options: {
     };
   }
   const input = JSON.parse(await fs.readFile(inputPath, 'utf8')) as any;
+  if (options.command === 'decide') {
+    const decision = await deriveStrategyReleaseResearchDecision(input);
+    if (options.outputPath) {
+      await writeJsonAtomic(path.resolve(options.outputPath), decision);
+    }
+    return {
+      kind: 'decided' as const,
+      ...decision,
+      outputPath: options.outputPath ? path.resolve(options.outputPath) : null,
+    };
+  }
   if (options.command === 'retention') {
     const plan = planStrategyEvidenceRetention(input);
     if (options.apply) {
@@ -166,6 +179,7 @@ const printUsage = () =>
   console.log(`Usage:
   yarn strategy:release create --input <draft.json> [--root data/strategy-release]
   yarn strategy:release verify --input <release.json>
+  yarn strategy:release decide --input <research-decision.json> [--out <decision.json>]
   yarn strategy:release profile --input <trades.jsonl> --variant <id> --startTime <ms> --endTime <ms> [--days 7,30,90] [--out <profile.json>]
   yarn strategy:release diagnose --input <diagnosis-input.json> [--out output/diagnosis.json]
   yarn strategy:release retention --input <inventory.json> [--apply]`);
@@ -175,7 +189,14 @@ export const main = async () => {
   const command = argv[0] as StrategyReleaseCommand | undefined;
   if (
     !command ||
-    !['create', 'verify', 'diagnose', 'profile', 'retention'].includes(command)
+    ![
+      'create',
+      'verify',
+      'diagnose',
+      'decide',
+      'profile',
+      'retention',
+    ].includes(command)
   ) {
     printUsage();
     if (command) process.exitCode = 1;

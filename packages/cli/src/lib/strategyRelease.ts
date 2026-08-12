@@ -14,6 +14,9 @@ import {
   type StrategyReleaseEvidenceReference,
   type StrategyReleaseManifest,
   type StrategyReleaseReason,
+  type StrategyReleaseResearchDecision,
+  type StrategyReleaseResearchDecisionBlocker,
+  type StrategyReleaseResearchDecisionInput,
 } from '@tradejs/types';
 import {
   canonicalStrategyEvidenceJson,
@@ -28,9 +31,193 @@ import {
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const LINEAGE_FINGERPRINT_RE = /^[a-f0-9]{16}$/;
 const DAY_MS = 86_400_000;
+const REQUIRED_LONG_WINDOWS = [1095, 1460, 1825] as const;
+const REQUIRED_STABLE_TERMINAL_WINDOWS = [365, 180, 90] as const;
+const MIN_RECENT_DIRECTION_REPAIR_TRADES = 20;
 
 const safeSegment = safeStrategyEvidenceSegment;
 const compactTimestamp = compactStrategyEvidenceTimestamp;
+
+const verifyFullPeriodChartArtifact = async (
+  input: StrategyReleaseResearchDecisionInput,
+) => {
+  const artifact = input.chartArtifact;
+  if (!artifact?.path || !SHA256_RE.test(artifact.sha256)) return false;
+  try {
+    const artifactPath = path.resolve(artifact.path);
+    if ((await strategyEvidenceFileSha256(artifactPath)) !== artifact.sha256) {
+      return false;
+    }
+    const report = JSON.parse(await fs.readFile(artifactPath, 'utf8')) as {
+      chart?: { persisted?: boolean; cardIds?: unknown[] } | null;
+      errors?: { failed?: number };
+      run?: {
+        strategy?: string;
+        mode?: string;
+        recent?: number;
+        since?: number | null;
+        until?: number | null;
+        sourceRows?: number;
+      };
+    };
+    return Boolean(
+      report.chart?.persisted === true &&
+        report.chart.cardIds?.length &&
+        report.errors?.failed === 0 &&
+        report.run?.strategy === input.strategy &&
+        report.run.mode === 'local-deterministic' &&
+        report.run.recent === 0 &&
+        report.run.since == null &&
+        report.run.until == null &&
+        Number(report.run.sourceRows) > 0,
+    );
+  } catch {
+    return false;
+  }
+};
+
+const hasExactRuntimeTarget = (
+  target: StrategyReleaseResearchDecisionInput['forwardTest']['runtimeTarget'],
+) =>
+  Boolean(
+    target?.userName.trim() &&
+      target.deploymentId.trim() &&
+      target.accountId.trim() &&
+      target.strategyConfigName.trim(),
+  );
+
+export const deriveStrategyReleaseResearchDecision = async (
+  input: StrategyReleaseResearchDecisionInput,
+): Promise<StrategyReleaseResearchDecision> => {
+  const blockers: StrategyReleaseResearchDecisionBlocker[] = [];
+  const byDays = new Map(
+    input.historicalWindows.map((entry) => [entry.days, entry]),
+  );
+  if (REQUIRED_LONG_WINDOWS.some((days) => !byDays.has(days))) {
+    blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
+  }
+  if (REQUIRED_STABLE_TERMINAL_WINDOWS.some((days) => !byDays.has(days))) {
+    blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
+  }
+  const longWindows = REQUIRED_LONG_WINDOWS.map((days) =>
+    byDays.get(days),
+  ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  if (
+    longWindows.some(
+      (entry) =>
+        entry.pnl <= 0 ||
+        entry.profitFactor < 1 ||
+        entry.long.pnl <= 0 ||
+        entry.long.profitFactor < 1 ||
+        entry.short.pnl <= 0 ||
+        entry.short.profitFactor < 1,
+    )
+  ) {
+    blockers.push('HISTORICAL_EDGE_FAILED');
+  }
+  const stableTerminalWindows = REQUIRED_STABLE_TERMINAL_WINDOWS.map((days) =>
+    byDays.get(days),
+  ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  if (
+    stableTerminalWindows.some(
+      (entry) =>
+        entry.pnl <= 0 ||
+        entry.profitFactor < 1 ||
+        entry.long.pnl <= 0 ||
+        entry.long.profitFactor < 1 ||
+        entry.short.pnl <= 0 ||
+        entry.short.profitFactor < 1,
+    )
+  ) {
+    blockers.push('HISTORICAL_EDGE_FAILED');
+  }
+  if (blockers.length) {
+    return {
+      strategy: input.strategy,
+      action: 'STOP_RESEARCH',
+      repairAllowed: false,
+      targetDirection: input.recentFailure?.direction ?? null,
+      maxLossValue: null,
+      blockers,
+      summary:
+        'The final composition does not have complete positive ALL/LONG/SHORT evidence on the frozen 3y/4y/max-window matrix.',
+    };
+  }
+
+  const repairAllowed = Boolean(
+    input.recentFailure &&
+      input.recentFailure.closedTrades >= MIN_RECENT_DIRECTION_REPAIR_TRADES &&
+      input.recentFailure.causalMechanismIdentified &&
+      input.recentFailure.repairRoundsUsed === 0 &&
+      !input.exposedEvaluation,
+  );
+  if (repairAllowed) {
+    return {
+      strategy: input.strategy,
+      action: 'REPAIR_RECENT_DIRECTION',
+      repairAllowed: true,
+      targetDirection: input.recentFailure!.direction,
+      maxLossValue: null,
+      blockers: [],
+      summary:
+        'Spend the single terminal-direction repair round on the preregistered causal mechanism, then rebuild the full evidence matrix.',
+    };
+  }
+
+  if (!input.candidateImplemented) blockers.push('CANDIDATE_NOT_IMPLEMENTED');
+  if (!(await verifyFullPeriodChartArtifact(input))) {
+    blockers.push('FULL_PERIOD_CHART_MISSING');
+  }
+  if (input.forwardTest.maxLossValue !== 1) {
+    blockers.push('FORWARD_RISK_MUST_BE_ONE');
+  }
+  if (blockers.length) {
+    return {
+      strategy: input.strategy,
+      action: 'FORWARD_BLOCKED',
+      repairAllowed: false,
+      targetDirection: input.recentFailure?.direction ?? null,
+      maxLossValue: null,
+      blockers,
+      summary:
+        'Complete the frozen candidate implementation and full-period chart before any micro-forward execution.',
+    };
+  }
+  if (!input.forwardTest.authorized) {
+    return {
+      strategy: input.strategy,
+      action: 'MICRO_FORWARD_READY',
+      repairAllowed: false,
+      targetDirection: input.recentFailure?.direction ?? null,
+      maxLossValue: 1,
+      blockers: ['FORWARD_NOT_AUTHORIZED'],
+      summary:
+        'The candidate is ready for a separately authorized micro-forward test at MAX_LOSS_VALUE=1.',
+    };
+  }
+  if (!hasExactRuntimeTarget(input.forwardTest.runtimeTarget)) {
+    return {
+      strategy: input.strategy,
+      action: 'FORWARD_BLOCKED',
+      repairAllowed: false,
+      targetDirection: input.recentFailure?.direction ?? null,
+      maxLossValue: 1,
+      blockers: ['RUNTIME_TARGET_UNRESOLVED'],
+      summary:
+        'Forward testing is authorized, but an exact runtime deployment/account target must be resolved first.',
+    };
+  }
+  return {
+    strategy: input.strategy,
+    action: 'START_MICRO_FORWARD',
+    repairAllowed: false,
+    targetDirection: input.recentFailure?.direction ?? null,
+    maxLossValue: 1,
+    blockers: [],
+    summary:
+      'Start the exact frozen composition as a micro-forward test at MAX_LOSS_VALUE=1; do not retune an underpowered or exposed recent tail.',
+  };
+};
 
 export const canonicalStrategyReleaseJson = (value: unknown) =>
   canonicalStrategyEvidenceJson(value);

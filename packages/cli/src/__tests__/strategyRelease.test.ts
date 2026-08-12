@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -7,6 +8,7 @@ import {
   buildStrategyMonitoringProfile,
   createStrategyEvidenceMarkerEnvelope,
   createStrategyReleaseManifest,
+  deriveStrategyReleaseResearchDecision,
   planStrategyEvidenceRetention,
   publishStrategyLiveDiagnosis,
   publishStrategyRelease,
@@ -193,6 +195,207 @@ const buildRelease = () =>
   });
 
 describe('strategy release evidence', () => {
+  it('starts an authorized micro-forward instead of tuning four exposed recent losses', async () => {
+    const chartPath = path.join(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'strategy-release-chart-')),
+      'chart.json',
+    );
+    await fs.writeFile(
+      chartPath,
+      JSON.stringify({
+        chart: { persisted: true, cardIds: ['DoubleTap-q4'] },
+        errors: { failed: 0 },
+        run: {
+          strategy: 'DoubleTap',
+          mode: 'local-deterministic',
+          recent: 0,
+          since: null,
+          until: null,
+          sourceRows: 541,
+        },
+      }),
+    );
+    expect(
+      await deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows: [
+          {
+            days: 1095,
+            pnl: 1036,
+            profitFactor: 1.39,
+            long: { pnl: 608, profitFactor: 1.49 },
+            short: { pnl: 429, profitFactor: 1.37 },
+          },
+          {
+            days: 1460,
+            pnl: 1125,
+            profitFactor: 1.4,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 501, profitFactor: 1.33 },
+          },
+          {
+            days: 1825,
+            coveredDays: 1800,
+            pnl: 1084,
+            profitFactor: 1.39,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 460, profitFactor: 1.31 },
+          },
+          ...[365, 180, 90].map((days) => ({
+            days,
+            pnl: 100,
+            profitFactor: 1.2,
+            long: { pnl: 60, profitFactor: 1.2 },
+            short: { pnl: 40, profitFactor: 1.1 },
+          })),
+        ],
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        chartArtifact: {
+          path: chartPath,
+          sha256: createHash('sha256')
+            .update(await fs.readFile(chartPath))
+            .digest('hex'),
+        },
+        recentFailure: {
+          days: 30,
+          direction: 'SHORT',
+          closedTrades: 4,
+          causalMechanismIdentified: false,
+          repairRoundsUsed: 0,
+        },
+        forwardTest: {
+          authorized: true,
+          runtimeTarget: {
+            userName: 'root',
+            deploymentId: 'forward-doubletap',
+            accountId: 'bybit-forward',
+            strategyConfigName: 'DoubleTap',
+          },
+          maxLossValue: 1,
+        },
+      }),
+    ).toMatchObject({
+      action: 'START_MICRO_FORWARD',
+      maxLossValue: 1,
+      repairAllowed: false,
+    });
+  });
+
+  it('spends one bounded repair round on a supported causal side failure', async () => {
+    expect(
+      await deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows: [
+          {
+            days: 1095,
+            pnl: 1036,
+            profitFactor: 1.39,
+            long: { pnl: 608, profitFactor: 1.49 },
+            short: { pnl: 429, profitFactor: 1.37 },
+          },
+          {
+            days: 1460,
+            pnl: 1125,
+            profitFactor: 1.4,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 501, profitFactor: 1.33 },
+          },
+          {
+            days: 1825,
+            coveredDays: 1800,
+            pnl: 1084,
+            profitFactor: 1.39,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 460, profitFactor: 1.31 },
+          },
+          ...[365, 180, 90].map((days) => ({
+            days,
+            pnl: 100,
+            profitFactor: 1.2,
+            long: { pnl: 60, profitFactor: 1.2 },
+            short: { pnl: 40, profitFactor: 1.1 },
+          })),
+        ],
+        candidateImplemented: true,
+        exposedEvaluation: false,
+        chartArtifact: null,
+        recentFailure: {
+          days: 30,
+          direction: 'SHORT',
+          closedTrades: 24,
+          causalMechanismIdentified: true,
+          repairRoundsUsed: 0,
+        },
+        forwardTest: {
+          authorized: true,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).toMatchObject({
+      action: 'REPAIR_RECENT_DIRECTION',
+      repairAllowed: true,
+      targetDirection: 'SHORT',
+    });
+  });
+
+  it('blocks forward execution until the mandatory full-period chart exists', async () => {
+    expect(
+      await deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows: [
+          {
+            days: 1095,
+            pnl: 1036,
+            profitFactor: 1.39,
+            long: { pnl: 608, profitFactor: 1.49 },
+            short: { pnl: 429, profitFactor: 1.37 },
+          },
+          {
+            days: 1460,
+            pnl: 1125,
+            profitFactor: 1.4,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 501, profitFactor: 1.33 },
+          },
+          {
+            days: 1825,
+            coveredDays: 1800,
+            pnl: 1084,
+            profitFactor: 1.39,
+            long: { pnl: 624, profitFactor: 1.5 },
+            short: { pnl: 460, profitFactor: 1.31 },
+          },
+          ...[365, 180, 90].map((days) => ({
+            days,
+            pnl: 100,
+            profitFactor: 1.2,
+            long: { pnl: 60, profitFactor: 1.2 },
+            short: { pnl: 40, profitFactor: 1.1 },
+          })),
+        ],
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        chartArtifact: null,
+        recentFailure: null,
+        forwardTest: {
+          authorized: true,
+          runtimeTarget: {
+            userName: 'root',
+            deploymentId: 'forward-doubletap',
+            accountId: 'bybit-forward',
+            strategyConfigName: 'DoubleTap',
+          },
+          maxLossValue: 1,
+        },
+      }),
+    ).toMatchObject({
+      action: 'FORWARD_BLOCKED',
+      blockers: ['FULL_PERIOD_CHART_MISSING'],
+    });
+  });
+
   it('derives an immutable ready manifest from verified bounded research', () => {
     const manifest = buildRelease();
 

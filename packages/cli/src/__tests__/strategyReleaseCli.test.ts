@@ -9,6 +9,113 @@ const SHA = 'a'.repeat(64);
 const FP = '1'.repeat(16);
 
 describe('strategy-release command', () => {
+  it('writes a deterministic micro-forward decision', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-decision-'),
+    );
+    const inputPath = path.join(rootDir, 'decision-input.json');
+    const outputPath = path.join(rootDir, 'decision.json');
+    const chartPath = path.join(rootDir, 'chart.json');
+    await fs.writeFile(
+      chartPath,
+      JSON.stringify({
+        chart: { persisted: true, cardIds: ['DoubleTap-q4'] },
+        errors: { failed: 0 },
+        run: {
+          strategy: 'DoubleTap',
+          mode: 'local-deterministic',
+          recent: 0,
+          since: null,
+          until: null,
+          sourceRows: 541,
+        },
+      }),
+    );
+    await fs.writeFile(
+      inputPath,
+      JSON.stringify({
+        strategy: 'DoubleTap',
+        historicalWindows: [1095, 1460, 1825, 365, 180, 90].map((days) => ({
+          days,
+          coveredDays: days === 1825 ? 1800 : undefined,
+          pnl: 100,
+          profitFactor: 1.1,
+          long: { pnl: 60, profitFactor: 1.1 },
+          short: { pnl: 40, profitFactor: 1.1 },
+        })),
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        chartArtifact: {
+          path: chartPath,
+          sha256: createHash('sha256')
+            .update(await fs.readFile(chartPath))
+            .digest('hex'),
+        },
+        recentFailure: {
+          days: 30,
+          direction: 'SHORT',
+          closedTrades: 4,
+          causalMechanismIdentified: false,
+          repairRoundsUsed: 0,
+        },
+        forwardTest: {
+          authorized: true,
+          runtimeTarget: {
+            userName: 'root',
+            deploymentId: 'forward-doubletap',
+            accountId: 'bybit-forward',
+            strategyConfigName: 'DoubleTap',
+          },
+          maxLossValue: 1,
+        },
+      }),
+    );
+
+    const result = await runStrategyReleaseCommand({
+      command: 'decide',
+      inputPath,
+      outputPath,
+    });
+
+    expect(result).toMatchObject({
+      kind: 'decided',
+      action: 'START_MICRO_FORWARD',
+      maxLossValue: 1,
+      outputPath,
+    });
+    expect(JSON.parse(await fs.readFile(outputPath, 'utf8'))).toMatchObject({
+      action: 'START_MICRO_FORWARD',
+      maxLossValue: 1,
+    });
+
+    const unresolvedInput = JSON.parse(
+      await fs.readFile(inputPath, 'utf8'),
+    ) as any;
+    unresolvedInput.forwardTest.runtimeTarget = null;
+    await fs.writeFile(inputPath, JSON.stringify(unresolvedInput));
+    await expect(
+      runStrategyReleaseCommand({ command: 'decide', inputPath }),
+    ).resolves.toMatchObject({
+      action: 'FORWARD_BLOCKED',
+      blockers: ['RUNTIME_TARGET_UNRESOLVED'],
+    });
+
+    unresolvedInput.forwardTest.runtimeTarget = {
+      userName: 'root',
+      deploymentId: 'forward-doubletap',
+      accountId: 'bybit-forward',
+      strategyConfigName: 'DoubleTap',
+    };
+    await fs.writeFile(inputPath, JSON.stringify(unresolvedInput));
+    await fs.appendFile(chartPath, '\n');
+    await expect(
+      runStrategyReleaseCommand({ command: 'decide', inputPath }),
+    ).resolves.toMatchObject({
+      action: 'FORWARD_BLOCKED',
+      blockers: ['FULL_PERIOD_CHART_MISSING'],
+    });
+  });
+
   it('creates and verifies an immutable release from a draft', async () => {
     const rootDir = await fs.mkdtemp(
       path.join(os.tmpdir(), 'strategy-release-cli-'),
