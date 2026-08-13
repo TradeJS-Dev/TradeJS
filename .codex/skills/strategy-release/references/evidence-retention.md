@@ -25,10 +25,18 @@ Retain:
 
 - experiment id, question, mode, preregistered acceptance rules, verdict, and
   timestamp when each result partition was opened;
+- the hashed strategy-history hypothesis inventory: behavior-relevant commits
+  and dirty patches, semantic/config hashes, evidence matches, classification,
+  bridge status, selected anchors, excluded duplicates/refactors, and unresolved
+  backlog;
+- the prior-result bridge table with source/config/window/universe/cost lineage,
+  ALL/LONG/SHORT metrics, comparability class, rerun ids, and explanation for
+  every material regression or reproduction;
 - append-only trial ledger containing the common control, all 3 causal families,
-  three round indices, parent research IDs, and every attempted candidate up to
-  the 15-variant cap, with status, resolved config, selection rank, mechanism
-  verdict, and rejection reason;
+  three refinement-round indices, rescue-board index, parent research IDs, and
+  every attempted candidate up to the 18-variant cap, with status, resolved
+  config, selection rank, cadence region, mechanism verdict, and rejection
+  reason;
 - per-round authoritative metrics, setup matching, matched/added/removed/
   changed-outcome and occupancy cohorts, trace-funnel/skip deltas, causal
   regimes, cost stress, statistical guardrails, predicted-versus-observed
@@ -36,6 +44,9 @@ Retain:
 - each round's hashed causal-handoff payload, including direct parents,
   eligible carried control, mechanism verdict, failure mode, family decision,
   and preregistered primary/falsification or refinement/robustness child deltas;
+- the post-round-3 rescue board: complete candidate frontier, cadence-diverse
+  seed-selection inputs, each seed's dominant failure, one predicted rescue
+  delta per seed, rescue result, and the hard reason for any unused slot;
 - selected isolated-long finalist and final core-plus-gate composition;
 - exact git SHA/dirty diff inventory, config/gate/context fingerprints, and
   tool/metric implementation SHA;

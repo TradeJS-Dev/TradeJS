@@ -3,6 +3,11 @@
 Use this workflow to evaluate one frozen core plus deterministic AI-gate
 composition. Do not use it to promote the composition.
 
+Before this workflow, complete
+[historical-hypothesis-audit.md](historical-hypothesis-audit.md). Existing
+evidence and untested strategy commits are inputs to hypothesis selection, not
+optional background reading.
+
 ## Environment boundary
 
 Historical research, exports, and local Redis configs live on the research
@@ -33,8 +38,12 @@ Create an immutable experiment id and preregister:
 - strategy and current control composition;
 - exact release acceptance rule and current-market terminal windows;
 - three causally distinct core hypothesis families;
+- the SHA of the complete historical hypothesis inventory, the bridge table for
+  every stronger prior result, and the disposition of each untested behavior;
 - the three-round allocation for every family: one anchor candidate in round 1,
   two child candidates in round 2, and two child candidates in round 3;
+- the deterministic post-round-3 rescue rule: seed ranking, cadence-diversity
+  rule, one child per seed, and acceptance/stop criteria;
 - the round-1 resolved configs plus the rule that turns prior metric, matching,
   and trace evidence into the two next-round variants;
 - candidate ranking and tie-break rules;
@@ -43,13 +52,15 @@ Create an immutable experiment id and preregister:
 - `llmComparison: off | ai-approved`;
 - required evidence and terminal conditions.
 
-Treat the common control as a separate frozen reference. The research budget is
-five candidate variants per family and 15 total at most. Exact round-2 and
-round-3 configs are intentionally not guessed before their parent evidence
-exists, but each must be preregistered in a new immutable child spec before its
-run. The allocation is not a rolling invitation to add nearby thresholds after
-seeing results. Record every attempted, failed, rejected, and retained cell in
-the same trial ledger.
+Treat the common control as a separate frozen reference. The first three rounds
+allow five candidate variants per family and 15 total at most. The mandatory
+rescue board may add exactly one child for each of up to three selected seeds,
+for 18 core candidates total at most. Exact round-2, round-3, and rescue configs
+are intentionally not guessed before their parent evidence exists, but each
+must be preregistered in a new immutable child spec before its run. The
+allocation is not a rolling invitation to add nearby thresholds after seeing
+results. Record every attempted, failed, rejected, and retained cell in the same
+trial ledger.
 
 ## 2. Freeze cached historical coverage
 
@@ -60,12 +71,27 @@ interval, fees, slippage, entry delay, and context settings for every historical
 control and candidate comparison.
 
 Inside that maximum cached envelope, freeze a timestamp-grouped chronological
-core release tail before round 1. Core improvement rounds may use only the
-development/tuning interval ending before that tail. Commands must not print,
-rank, or otherwise expose tail economics. After round 3 freezes the finalist,
-the isolated-long/final comparison opens the tail exactly once and evaluates
-the complete maximum cached window. This preserves an untouched test while
-still using every available candle in the terminal release matrix.
+core release tail before round 1. Core improvement and rescue rounds may use
+only the development/tuning interval ending before that tail. Commands must not
+print, rank, or otherwise expose tail economics. After rescue freezes the
+finalist, the isolated-long/final comparison opens the tail exactly once and
+evaluates the complete maximum cached window. This preserves an untouched test
+while still using every available candle in the terminal release matrix.
+
+Before accepting the current control, bridge every previously strong result to
+this contract. A result from another duration, ticker cohort, cost model, or
+source/config lineage is not directly comparable, but it is also not disposable.
+Rerun its exact causal config under the current frozen dimensions when it
+dominates or materially challenges the baseline. Do not proceed to novel
+hypotheses until the bridge explains why a prior positive strategy result became
+weaker, or reproduces it as a current candidate.
+
+A bridge rerun that tests a different core behavior/config consumes a candidate
+slot and belongs in the multiple-testing ledger. Prefer it as a round-1 anchor;
+when discovered later, it may occupy a rescue slot. Recomputing the exact frozen
+control or translating metadata without changing behavior does not consume a
+candidate slot. This keeps prior evidence mandatory without turning it into
+unaccounted extra search.
 
 Every historical backtest command must include:
 
@@ -165,7 +191,7 @@ contains this machine-readable payload alongside the normal research note:
   "predictedEffect": "<frozen before run>",
   "observedEffect": "<metrics + identities + trace transition>",
   "failureMode": "<remaining causal weakness or null>",
-  "familyDecision": "continue|retire",
+  "familyDecision": "continue|retire|nominate_for_rescue",
   "nextVariants": [
     {
       "role": "primary_fix|falsification|refinement|robustness",
@@ -180,10 +206,12 @@ contains this machine-readable payload alongside the normal research note:
 
 Round 1 uses one candidate per family and therefore records two frozen
 `nextVariants` when the family continues. Round 2 also records two. Round 3
-records no further core candidates; it records only `select_for_isolated_long`
-or `retire`. Hash the payload and cite it in the child research note/spec
-lineage so another Codex run can reconstruct why the child exists without
-reading an informal narrative.
+records no same-family refinement children; it records only
+`nominate_for_rescue` or `retire`. The cross-family rescue board, not an
+individual round-3 family, chooses the next children and the eventual isolated
+finalist. Hash the payload and cite it in the child research note/spec lineage
+so another Codex run can reconstruct why the child exists without reading an
+informal narrative.
 
 Do not derive a child from displayed losers, outcome fields, or the sealed core
 release tail. Do not create “best value ± epsilon” variants without a causal
@@ -191,8 +219,8 @@ transition hypothesis. Complete rounds 2 and 3 for every still-viable family
 even when an earlier candidate is already profitable. A family may retire
 early only when immutable evidence is invalid, the intervention is a no-op,
 the mechanism is falsified, required point-in-time context is unavailable, or
-no causal signal remains to test. If all families retire, stop rather than
-manufacturing variants.
+no causal signal remains to test. If all families retire, continue to the
+rescue-board decision rather than manufacturing variants or stopping early.
 
 The carried control is the best **eligible** parent under the frozen rule. A
 failed candidate is never relabelled a winner: if its trace supports another
@@ -205,14 +233,64 @@ position occupancy, cooldown, or order lifecycle can affect the opposite side,
 measure added/removed identities and require the preregistered non-regression
 rule instead.
 
+### Mandatory post-round-3 core rescue board
+
+Build this board even when no candidate passed the frozen economic rule. Use
+only complete, reconciled, non-no-op development evidence; keep the release tail
+sealed.
+
+1. Build the Pareto frontier across PnL/trade, PF, realized MaxDD, support,
+   terminal pass count, cost stress, Holm-adjusted evidence, and cadence.
+2. Select up to three diagnostic seeds while maximizing cadence separation.
+   Prefer one seed from each observed cadence tercile; if a tercile is empty,
+   fill the slot with the candidate farthest in cadence from already selected
+   seeds. For direction-targeted families, form cadence regions from the target
+   side and keep ALL cadence as an aggregate guardrail; for whole-strategy
+   families, use ALL cadence. When fewer than three valid seeds exist, record why
+   every missing slot is impossible.
+3. For each seed, identify one dominant causal failure using trade identities,
+   matched/added/removed outcomes, occupancy, trace skips/conversions, side,
+   regime, fold/month, concentration, payoff tail, and cost stress.
+4. Freeze exactly one rescue child per seed. The child must address that failure
+   through a new causal transition or payoff mechanism and state its predicted
+   trace and metric effect. An adjacent threshold nudge is invalid unless a
+   measured discontinuity makes that threshold causal.
+5. Run each child against the original frozen authoritative control. Use the
+   seed's prior artifact as a diagnostic comparator, not as an eligible carried
+   control unless the seed already passed the frozen rule.
+
+The rescue board is bounded to three new variants and raises the lineage cap to 18. It is not a fourth unconstrained search round. After its analysis, select a
+finalist only if it passes the original frozen rule. `STOP_RESEARCH` is allowed
+only when all rescue slots have completed or are impossible for recorded hard
+reasons and the historical inventory contains no stronger unbridged result that
+could occupy a slot. A remaining reconstructable historical backlog after the
+18-variant cap yields incomplete evidence, not a claim that no strategy edge
+exists.
+
+Here, `valid seed` means only complete, reconciled, behavior-changing, and
+non-no-op. It does **not** mean release-eligible. Low support/cadence, failed
+Holm, negative terminals, or negative PnL are measured rescue failure modes,
+not reasons to leave a slot empty. A slot may be impossible only when there is
+no such candidate in a distinct cadence region or no causal point-in-time child
+can address its diagnosed failure.
+
+Decision regression: suppose one dense candidate has 244 target-side trades but
+negative PnL/PF, one sparse candidate has 80 target-side trades and positive
+PnL/PF but fails support/terminals/Holm, and a prior higher-cadence positive
+configuration was tested on a different universe. The correct action is not
+`STOP_RESEARCH`. Put the dense and sparse candidates on the diagnostic frontier,
+bridge the prior configuration to the frozen contract, choose up to three
+cadence-diverse seeds, and spend one causal rescue child per selected seed. Only
+the children that pass the original rule can become finalists.
+
 ## 5. Select one isolated-long finalist
 
-After round 3, select at most one core finalist across all families using only
-the frozen rule and cumulative family ledger. If none qualifies, do not invent
-a compromise candidate. Rerun the selected cell alone over the complete maximum
-common cached window and frozen universe, opening the chronological core release
-tail for the first and only time. This is the only isolated-long finalist run
-allowed in the lineage.
+After the rescue board, select at most one core finalist across all families
+using only the frozen rule and cumulative family ledger. If none qualifies, do
+not invent a compromise candidate. Rerun the selected cell alone over the
+complete maximum common cached window and frozen universe, opening the
+chronological core release tail for the first and only time. This is the only
+isolated-long finalist run allowed in the lineage.
 
 Require complete run/export reconciliation and agreement with the screened
 cell within the preregistered reset/grid tolerance. Investigate any difference

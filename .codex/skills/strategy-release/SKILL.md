@@ -1,6 +1,6 @@
 ---
 name: strategy-release
-description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, perform three evidence-driven core rounds with full metric/trace analysis, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, full-period chart handoff, and prospective testing.
+description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, audit prior Git hypotheses and results, perform three evidence-driven core rounds plus a cadence-diverse rescue round, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, full-period chart handoff, and prospective testing.
 ---
 
 # Strategy Release
@@ -40,6 +40,7 @@ runtime target, risk scale, and immutable evidence are resolved.
 ### Release
 
 Read [references/release-workflow.md](references/release-workflow.md),
+[references/historical-hypothesis-audit.md](references/historical-hypothesis-audit.md),
 [references/verdict-contract.md](references/verdict-contract.md), and
 [references/evidence-retention.md](references/evidence-retention.md) completely.
 
@@ -50,7 +51,12 @@ Use the fixed research budget:
   evidence-driven refinement rounds for every still-viable family;
 - one anchor candidate per family in round 1, then two distinct child variants
   per surviving family in rounds 2 and 3;
-- five candidate variants per family across all rounds, 15 total at most;
+- five candidate variants per family across the first three rounds, 15 total at
+  most;
+- one mandatory post-round-3 rescue child for each of up to three best
+  diagnostic seeds, selected from different cadence regions when available;
+  seeds need complete/reconciled/non-no-op evidence but do not need to pass the
+  release rule; 18 core candidates total at most;
 - one total isolated-long core finalist;
 - one deterministic AI-gate tuning round;
 - one optional recent-direction repair round, only when the failed window has
@@ -61,9 +67,11 @@ Use the fixed research budget:
 Do not skip the two refinement rounds merely because an initial candidate is
 profitable. Retire a family early only for a recorded hard stop such as invalid
 evidence, a no-op, or a falsified causal mechanism; never invent variants just
-to fill the budget. Do not add a sixteenth core variant, reopen a viewed
-holdout, tune another gate round, or substitute a different core/gate snapshot
-without starting a new immutable release lineage.
+to fill the budget. Do not stop after round 3 merely because no cell passed the
+release rule. Build the cadence-diverse rescue board and test its three causal
+children before selecting a finalist. Do not add a nineteenth core variant,
+reopen a viewed holdout, tune another gate round, or substitute a different
+core/gate snapshot without starting a new immutable release lineage.
 
 ### Diagnose live behavior
 
@@ -79,6 +87,13 @@ inside a diagnostic lineage.
 ## Shared metric and evidence rules
 
 - Use completed-trade economics and exact run-scoped exports.
+- Apply `evidence-first, novelty-second`. Before inventing hypotheses, audit the
+  strategy's Git history, notes, core-research ledger/index, configs, and release
+  artifacts. Persist a hash-linked hypothesis inventory. Reproduce any stronger
+  prior result whose window/universe/config/cost lineage differs before treating
+  a weaker current baseline as authoritative. Untested behavior-changing
+  commits take priority as causally distinct anchors; refactors, duplicates,
+  and already rejected hypotheses do not consume new trial slots.
 - Use the full-statistics workflow from `$strategy-backtest-research`. In
   addition to the maximum cached window, always report the same final
   composition on trailing 3-year, 4-year, and 5-year-or-maximum-available
@@ -105,11 +120,28 @@ inside a diagnostic lineage.
   predicted trace/metric effect, and a frozen selection rule before execution.
   Preserve the previous winner as the next round's matched control. Adjacent
   threshold nudges without a causal explanation are not new variants.
+- After round 3, rank all complete reconciled non-no-op candidates on the
+  preregistered multi-objective evidence frontier. Select up to three diagnostic
+  seeds while maximizing cadence separation; prefer one from each observed
+  cadence tercile when possible. For a direction-targeted family, use
+  target-side cadence for separation and retain ALL cadence as a guardrail; use
+  ALL cadence for whole-strategy families. For every seed, diagnose its dominant
+  failure from metrics, identities, trace, terminals, regimes, and cost stress,
+  then freeze one new core rescue child with a predicted causal transition. A
+  failed seed remains diagnostic evidence and never becomes an eligible control
+  merely because it ranked in the top three. Compare every rescue child to the
+  frozen authoritative control and its seed evidence. Only after these attempts
+  may the core stage conclude that no finalist exists.
+- Failing support, cadence, Holm, terminal, or profitability eligibility does
+  not by itself make a diagnostic seed unavailable. Those failures are the
+  inputs to rescue design. A rescue slot is absent only when no complete,
+  reconciled, behavior-changing candidate exists for that slot or when no
+  causal point-in-time intervention can address the measured failure.
 - Keep the chronological core release tail sealed throughout all three
-  improvement rounds. The rounds may inspect development/tuning metrics and
-  traces only. Freeze the finalist after round 3, then open the tail once in the
-  isolated-long/final matrix. Never use that tail to design another variant in
-  the same lineage.
+  improvement rounds and the rescue round. These rounds may inspect
+  development/tuning metrics and traces only. Freeze the finalist after rescue,
+  then open the tail once in the isolated-long/final matrix. Never use that tail
+  to design another variant in the same lineage.
 - Freeze exact timestamps, ordered ticker universe and checksum, cached-coverage
   proof, configs, git/dirty lineage, gate/context fingerprints, fees, slippage,
   entry delay, connector, interval, and commands before viewing outcomes.
@@ -174,7 +206,10 @@ to that server's exact `userName`, `deploymentId`, `accountId`, and
 - `FORWARD_BLOCKED`: resolve the named implementation/chart/runtime-target
   blocker; do not silently wait.
 - `STOP_RESEARCH`: preserve the evidence and explain which 3y/4y/max-window or
-  direction edge failed.
+  direction edge failed. This action is forbidden until the historical
+  hypothesis inventory is bridged, the three-round ledger is complete, and the
+  cadence-diverse rescue board has been attempted or has fewer than three valid
+  seeds for explicit recorded reasons.
 
 ## Return one verdict
 
@@ -200,7 +235,7 @@ an intermediate production label.
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds, never exceeding five candidates per family. After round 3 freeze one isolated-long finalist, open the tail once, and report 3y, 4y, 5y-or-maximum-available plus terminal ALL/LONG/SHORT statistics. Keep LONG and SHORT enabled, use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy:release decide`. If the decision is START_MICRO_FORWARD and the exact target is resolved, start only that forward deployment at MAX_LOSS_VALUE=1; never promote it or increase risk automatically.
+Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule, run one evidence-driven core rescue child for each, and only then freeze one isolated-long finalist and open the tail once. Never exceed 18 core candidates. Report 3y, 4y, 5y-or-maximum-available plus terminal ALL/LONG/SHORT statistics. Keep LONG and SHORT enabled, use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy:release decide`. If the decision is START_MICRO_FORWARD and the exact target is resolved, start only that forward deployment at MAX_LOSS_VALUE=1; never promote it or increase risk automatically.
 ```
 
 Diagnose live:

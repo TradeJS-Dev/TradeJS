@@ -450,14 +450,26 @@ Keep them aligned with:
   deterministic AI-gate composition or diagnose that exact composition live.
   This contour is strategy-local; portfolio allocation and daily-loss policy are
   out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- Before inventing release hypotheses, audit the strategy's full Git history,
+  imported shared helpers, immutable notes, research ledger/index, config
+  snapshots, and release artifacts. Persist a hash-linked inventory that
+  classifies behavior changes as verified, rejected, partial, untested,
+  refactor-only, duplicate, or unreconstructable. Bridge every materially
+  stronger prior result to the current frozen window/universe/config/cost
+  contract. A weaker current baseline cannot silently replace an unexplained
+  historical result.
 - Bound release core research to three sequential improvement rounds across at
   most three causal families: one anchor candidate per family, then two
   evidence-driven child candidates per still-viable family in each of two
-  refinement rounds. Keep at most five candidates per family and 15 total, one
-  isolated-long finalist, and one deterministic gate tuning round. Freeze a
-  chronological core release tail before round 1; improvement rounds may not
-  inspect it, while the post-round-3 finalist opens it once on the maximum
-  common cached half-open window. Every historical command uses `--cacheOnly`.
+  refinement rounds. Use causally distinct untested historical changes before
+  novel anchors. Keep at most five candidates per family in these rounds, then
+  run one mandatory cadence-diverse rescue child for each of up to three best
+  valid diagnostic seeds, for 18 core candidates total at most. Keep one
+  isolated-long finalist and one deterministic gate tuning round. Freeze a
+  chronological core release tail before round 1; improvement and rescue rounds
+  may not inspect it, while the post-rescue finalist opens it once on the
+  maximum common cached half-open window. Every historical command uses
+  `--cacheOnly`.
 - After every core round, review the authoritative `research:core` metrics,
   normalized trades, matches, and compact research trace before specifying the
   next variants. Preserve ALL/LONG/SHORT and payoff/DD/cadence, matched/added/
@@ -471,6 +483,23 @@ Keep them aligned with:
   carried control, parent result hashes, mechanism verdict, remaining failure
   mode, and next variant deltas. A candidate that failed the frozen economic
   rule may motivate a child but cannot be relabelled the next control.
+- After round 3, build a Pareto frontier from every complete reconciled non-no-op
+  candidate and select up to three seeds while maximizing cadence separation,
+  preferably one per observed cadence tercile. Use target-side cadence for a
+  direction-targeted family and ALL cadence otherwise; retain ALL cadence as a
+  guardrail in either case. Diagnose each seed's dominant failure from metrics,
+  identity matching, occupancy, traces, terminals, regimes, and cost stress;
+  preregister exactly one causal rescue child per seed. Compare rescue children
+  to the original authoritative control and use failed seeds only as diagnostic
+  parents. Do not emit `STOP_RESEARCH` before this rescue board and the
+  historical bridge are complete. If the 18-variant cap leaves a stronger
+  reconstructable historical backlog, report incomplete evidence rather than
+  claiming the strategy has no edge.
+- Rescue seeds do not need to pass the release rule. Low support/cadence, failed
+  Holm, negative terminals, or negative PnL are failure modes to diagnose, not
+  reasons to skip a rescue slot. A seed needs only complete, reconciled,
+  behavior-changing, non-no-op evidence; leave a slot empty only when no such
+  cadence-distinct seed or causal point-in-time child exists.
 - For the final composition, always produce one full-statistics matrix for
   trailing 1095d, 1460d, 1825d-or-exact-maximum-available, 365d, 180d, 90d,
   30d, and 7d. Record requested and covered days when the maximum cache is

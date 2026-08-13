@@ -254,12 +254,28 @@ but exposes the tail; it cannot later be relabelled an untouched release test.
 
 The repository-local `$strategy-release` skill turns verified core and gate
 evidence into one composition-level decision. It has `release` and
-`diagnose-live` modes. Release mode runs three sequential core-improvement
+`diagnose-live` modes. Release mode starts with a strategy-history audit: it
+maps behavior-changing Git commits and dirty patches to immutable research
+evidence, rejects refactor-only/duplicate/already-tested entries, and bridges
+every stronger prior result onto the current frozen window, universe, config,
+cost, and context contract. It then runs three sequential core-improvement
 rounds within the fixed budget: one anchor candidate for each of three causal
 families, then two evidence-driven child candidates per still-viable family in
-each of two refinement rounds. This remains at most five candidates per family
-and 15 total, followed by one isolated-long finalist and one deterministic gate
-tuning round.
+each of two refinement rounds. Untested historical mechanisms take priority
+over novel anchors.
+
+After round 3, the skill must build a Pareto rescue board from all complete,
+reconciled, non-no-op candidates. It selects up to three diagnostic seeds with
+different cadence (one per observed cadence tercile when possible), diagnoses
+each seed's dominant metric/identity/trace failure, and runs one causal core
+rescue child per seed. The resulting cap is 18 candidates: 15 across the three
+family rounds plus three rescue attempts. Only after this board may it freeze
+one isolated-long finalist or conclude that no finalist exists. A failed seed
+is diagnostic evidence, not a silently promoted control. Rescue seeds need not
+pass the release rule: low support/cadence, failed Holm, negative terminals, or
+negative PnL are precisely the failure modes the bounded child must address.
+Direction-targeted families separate seeds by target-side cadence and preserve
+ALL cadence as an aggregate guardrail; whole-strategy families use ALL cadence.
 
 Each round uses `yarn research:core` with `--researchTrace` and must finish a
 full result analysis before the next specs are frozen: ALL/LONG/SHORT metrics,
@@ -269,9 +285,9 @@ occupancy spillover, deterministic setup identities, signal/rejection→executio
 regimes, concentration, cost stress, and statistical/overfitting diagnostics. Round-2 variants cite
 round 1; round-3 variants cite rounds 1 and 2 through immutable parent research
 IDs and state their predicted trace/metric effects. A chronological release
-tail stays sealed during these rounds and is opened once after round 3 for the
-single long finalist over the maximum common cached window. Every historical
-backtest uses `--cacheOnly`.
+tail stays sealed during these rounds and the rescue board and is opened once
+after rescue for the single long finalist over the maximum common cached
+window. Every historical backtest uses `--cacheOnly`.
 
 Each family/round also persists a hashed causal handoff containing the parent
 result hashes, eligible carried control, predicted-versus-observed effect,

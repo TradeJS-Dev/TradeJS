@@ -9,6 +9,12 @@ causal findings, limitations, and approval-safe next action.
 - Treat a verdict as an evidence classification, not an authorization token.
 - Keep ALL, LONG, and SHORT statuses separate. A positive aggregate cannot hide
   a failed side, and a negative side cannot be silently disabled.
+- Apply `evidence-first, novelty-second`. A release verdict is incomplete until
+  the historical commit/evidence inventory is hashed, every stronger prior
+  result is classified and bridged to the current window/universe/config/cost
+  contract, and every selected untested historical behavior has a recorded
+  disposition. Do not call a weaker new search exhaustive while comparable
+  prior evidence remains unexplained.
 - A current gate that approves zero/negligible rows from a profitable raw side
   is incomplete evidence. Do not return a final market-unsuitable verdict until
   the mandatory five-variant side-rescue round has been executed and recorded.
@@ -46,9 +52,10 @@ Use only when all conditions hold:
 
 - the one final core plus deterministic gate composition is immutable and
   completely reconciled;
-- the bounded three-round core loop used one anchor plus two evidence-driven
-  refinement pairs per surviving family, never exceeded 3×5 candidates, and
-  completed full metric/match/trace analysis before each child round;
+- the bounded core loop used one anchor plus two evidence-driven refinement
+  pairs per surviving family, then completed the mandatory cadence-diverse
+  rescue board, never exceeded 3×5+3 candidates, and completed full
+  metric/match/trace analysis before each child;
 - one isolated-long finalist and one gate round followed the preregistered
   rules without reopening the held-out evidence;
 - BOTH directions stayed enabled and ALL/LONG/SHORT passed their explicit
@@ -69,6 +76,11 @@ preregistered current-market or release economics/robustness rule. Typical
 evidence includes terminal regime decay, failed side metrics, unacceptable
 portfolio DD/capacity, or no qualifying isolated finalist.
 
+Do not use this verdict merely because the first three rounds produced no
+eligible finalist. It requires the historical bridge and all available rescue
+slots to be complete. A stronger unbridged prior result or an unresolved
+reconstructable historical hypothesis makes the evidence incomplete instead.
+
 Meaning: preserve the composition and failures as immutable research. Keep any
 continued observation advisory/forward-only; do not tune around the exposed
 period inside the same lineage.
@@ -78,7 +90,9 @@ period inside the same lineage.
 Use when a release conclusion cannot be supported, including partial/OOM/error
 runs, missing common cached coverage, incomplete side cohorts, export/Redis
 mismatch, unavailable point-in-time inputs, stale/open holdout, inadequate
-independent support, missing cold-start evidence, or ambiguous lineage.
+independent support, missing cold-start evidence, ambiguous lineage, an
+incomplete historical hypothesis audit, or a bounded trial cap reached while a
+stronger reconstructable historical backlog remains.
 
 Meaning: identify the smallest missing evidence item. Do not convert uncertainty
 into current-market unsuitability or readiness.
@@ -132,6 +146,9 @@ VERDICT: <exact enum>
 MODE: <release|diagnose-live>
 COMPOSITION: <core fingerprint> + <deterministic gate fingerprint>
 EVIDENCE: <complete|incomplete> — <one-line reason>
+HISTORY AUDIT: <inventory SHA> — <bridged/excluded/unresolved counts>
+PRIOR BRIDGE: <strongest prior result and current-contract disposition>
+RESCUE BOARD: <up to 3 seed cadence/failure/child/result rows, or hard reason per empty slot>
 
 ALL/LONG/SHORT: N, PnL, PnL/trade, PF, WR, realized MaxDD, cadence/day
 CAUSAL/PARITY FINDING: <bounded evidence statement>
