@@ -24,6 +24,7 @@ import {
 import { logger } from '@tradejs/infra/logger';
 import { getDataEdgesForSymbols } from '@tradejs/infra/timescale/candles';
 import { askAI } from './ai';
+import { ensureStrategyPluginsLoaded } from './strategy/manifests';
 import { screenDashboard } from './screenshot';
 import {
   sendDocumentToTG,
@@ -386,6 +387,7 @@ export const makeScreenshots = async (
 };
 
 export const sendToAI = async (signals: Signal[], userName = 'root') => {
+  await ensureStrategyPluginsLoaded();
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -478,6 +480,7 @@ export const sendToTG = async (
   imgInterval: Interval,
   userName = 'root',
 ) => {
+  await ensureStrategyPluginsLoaded();
   const strategyConfigCache = new Map<string, any>();
   const resolveStrategyConfig = async (strategyName: string) => {
     if (strategyConfigCache.has(strategyName)) {

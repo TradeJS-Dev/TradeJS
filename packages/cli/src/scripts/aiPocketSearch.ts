@@ -11,10 +11,10 @@ import {
 } from '@tradejs/infra/ai';
 import {
   buildAiPayload,
-  ensureAiStrategyPluginsLoaded,
   getDeterministicAiGateContext,
   runAiPromptLocal,
 } from '@tradejs/node/ai';
+import { ensureStrategyPluginsLoaded } from '@tradejs/node/registry';
 import type { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
 import { extractSignalFromAiDatasetRow } from '../lib/aiTrainDataset';
 import {
@@ -960,7 +960,7 @@ export const main = async () => {
     Set<string>
   >();
 
-  await ensureAiStrategyPluginsLoaded();
+  await ensureStrategyPluginsLoaded();
   const filePaths = await resolveMergedDatasetFiles({
     outDir,
     strategyName,

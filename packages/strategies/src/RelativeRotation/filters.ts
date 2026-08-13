@@ -1,6 +1,6 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { RelativeRotationConfig } from './config';
-import type { RelativeRotationSignalContext } from './core';
+import type { RelativeRotationSignalContext } from './contracts';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const asPositiveThreshold = (value: unknown): number | null => {

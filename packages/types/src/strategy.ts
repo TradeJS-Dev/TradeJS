@@ -17,7 +17,6 @@ import {
   OrderPositionIntent,
 } from './trade';
 import { StrategyConfig } from './backtest';
-import { StrategyManifest } from './strategyAdapters';
 
 export interface StrategySignalMetaParams {
   symbol: string;
@@ -1276,18 +1275,6 @@ export type CreateStrategyCore<
     StrategyIndicatorsState<TNext, TSnapshot>
   >,
 ) => Promise<StrategyCoreRunner> | StrategyCoreRunner;
-
-export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
-  manifest: StrategyManifest;
-  defaults: TConfig;
-  createCore: CreateStrategyCore<TConfig, any, any>;
-  detectorKey?: (config: TConfig) => string | undefined;
-  detectorNoSignalSkipReason?: string;
-}
-
-export interface StrategyPluginDefinition {
-  strategyEntries: StrategyRegistryEntry[];
-}
 
 export interface IndicatorPluginComputeParams {
   candle: Candle;

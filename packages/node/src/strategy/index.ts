@@ -1,3 +1,8 @@
+import { createStrategyRuntime } from '../strategyRuntime';
+import { setStrategyRuntimeFactory } from './manifests';
+
+setStrategyRuntimeFactory(createStrategyRuntime);
+
 export {
   ensureStrategyPluginsLoaded,
   ensureIndicatorPluginsLoaded,

@@ -22,7 +22,7 @@ import {
   Textarea,
 } from '@chakra-ui/react';
 import type { MarketUniverse } from '@tradejs/types';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
+import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
 import {
   DEFAULT_RUNTIME_STRATEGY_MANAGED_PARAMETERS,
   mergeRuntimeStrategyManagedParameters,

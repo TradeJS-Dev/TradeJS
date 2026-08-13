@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/core",
-  "version": "2.0.21",
+  "version": "3.0.0",
   "description": "MIT-licensed browser-safe API for TradeJS config, strategy authoring, figures, and shared helpers.",
   "keywords": [
     "tradejs",
@@ -28,6 +28,21 @@
     "#constants": "./src/constants/index.ts"
   },
   "exports": {
+    "./aiEndpoints": {
+      "types": "./dist/aiEndpoints.d.ts",
+      "import": "./dist/aiEndpoints.mjs",
+      "require": "./dist/aiEndpoints.js"
+    },
+    "./aiLanguages": {
+      "types": "./dist/aiLanguages.d.ts",
+      "import": "./dist/aiLanguages.mjs",
+      "require": "./dist/aiLanguages.js"
+    },
+    "./aiModels": {
+      "types": "./dist/aiModels.d.ts",
+      "import": "./dist/aiModels.mjs",
+      "require": "./dist/aiModels.js"
+    },
     "./api": {
       "types": "./dist/api.d.ts",
       "import": "./dist/api.mjs",

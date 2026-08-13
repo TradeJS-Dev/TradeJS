@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/node",
-  "version": "2.0.21",
+  "version": "3.0.0",
   "description": "Node-only runtime for the TradeJS TypeScript framework: strategies, backtests, Pine strategy loading, and plugin registries.",
   "keywords": [
     "tradejs",

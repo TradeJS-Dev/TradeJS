@@ -1,9 +1,3 @@
-import {
-  DEFAULT_AI_RESPONSE_LANGUAGE,
-  normalizeAiResponseLanguage,
-} from './aiLanguages';
-import { normalizeAiModel } from './aiModels';
-import { normalizeAiEndpoint } from './aiEndpoints';
 import { getData, redisKeys, setData } from './redis';
 
 export interface UserRecord extends Record<string, unknown> {
@@ -57,10 +51,6 @@ export const getUserSettings = async (
   userName: string,
 ): Promise<UserSettings> => {
   const record = await getUserRecord(userName);
-  const aiApiEndpoint = normalizeAiEndpoint(
-    readUserString(record, 'AI_API_ENDPOINT'),
-  );
-
   return {
     userName,
     BYBIT_API_KEY: readUserString(record, 'BYBIT_API_KEY'),
@@ -68,15 +58,9 @@ export const getUserSettings = async (
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
     COINMARKETCAP_API_KEY: readUserString(record, 'COINMARKETCAP_API_KEY'),
     AI_API_KEY: readUserString(record, 'AI_API_KEY'),
-    AI_API_ENDPOINT: aiApiEndpoint,
-    AI_MODEL: normalizeAiModel(
-      readUserString(record, 'AI_MODEL'),
-      aiApiEndpoint,
-    ),
-    AI_RESPONSE_LANGUAGE:
-      normalizeAiResponseLanguage(
-        readUserString(record, 'AI_RESPONSE_LANGUAGE'),
-      ) || DEFAULT_AI_RESPONSE_LANGUAGE,
+    AI_API_ENDPOINT: readUserString(record, 'AI_API_ENDPOINT'),
+    AI_MODEL: readUserString(record, 'AI_MODEL'),
+    AI_RESPONSE_LANGUAGE: readUserString(record, 'AI_RESPONSE_LANGUAGE'),
     TG_BOT_TOKEN: readUserString(record, 'TG_BOT_TOKEN'),
     TG_CHAT_ID: readUserString(record, 'TG_CHAT_ID'),
   };

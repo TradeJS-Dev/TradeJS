@@ -1,6 +1,6 @@
 import { API } from '@tradejs/core/api';
 import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
-import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
+import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategyContracts';
 
 const API_PATH = '/api/strategies/runtime';
 const REPLAY_API_PATH = '/api/strategies/replay';

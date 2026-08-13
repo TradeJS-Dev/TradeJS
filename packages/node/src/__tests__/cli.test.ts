@@ -4,6 +4,10 @@ import path from 'node:path';
 
 export {};
 
+jest.mock('../strategy/manifests', () => ({
+  ensureStrategyPluginsLoaded: jest.fn(async () => undefined),
+}));
+
 const flushMicrotasks = async (steps = 5) => {
   for (let index = 0; index < steps; index += 1) {
     await Promise.resolve();

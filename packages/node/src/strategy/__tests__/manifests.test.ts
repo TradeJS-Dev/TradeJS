@@ -39,7 +39,10 @@ describe('strategy manifests registry', () => {
         createCore,
     }));
 
-    return import('../manifests');
+    const manifests = await import('../manifests');
+    const { createStrategyRuntime } = await import('../../strategyRuntime');
+    manifests.setStrategyRuntimeFactory(createStrategyRuntime as any);
+    return manifests;
   };
 
   it('starts empty and supports runtime registration + proxy access', async () => {

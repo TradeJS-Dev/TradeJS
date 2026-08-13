@@ -1,6 +1,6 @@
 import type { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import type { GridClassicConfig, GridClassicMode } from './config';
-import type { GridClassicEntryEconomics } from './guardrails';
+import type { GridClassicEntryEconomics } from './contracts';
 import {
   createCausalRangeGeometryEngine,
   type CausalRangeGeometry,

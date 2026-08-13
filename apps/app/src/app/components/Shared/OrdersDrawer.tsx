@@ -25,6 +25,7 @@ export interface OrdersDrawerMetric {
   title: string;
   value: ReactNode;
   detail?: ReactNode;
+  detailLines?: readonly string[];
   color?: string;
 }
 
@@ -339,6 +340,7 @@ const OrderMetric = ({
   title,
   value,
   detail,
+  detailLines,
   color = 'gray.300',
 }: OrdersDrawerMetric) => (
   <Box minW="0">
@@ -362,7 +364,7 @@ const OrderMetric = ({
     >
       {value}
     </Text>
-    {detail ? (
+    {detail || detailLines?.length ? (
       <Box
         mt={1}
         color="gray.500"
@@ -370,7 +372,7 @@ const OrderMetric = ({
         lineHeight="1.3"
         wordBreak="break-word"
       >
-        {detail}
+        {detailLines?.map((line) => <Text key={line}>{line}</Text>) ?? detail}
       </Box>
     ) : null}
   </Box>

@@ -16,11 +16,11 @@ import {
   DEFAULT_AI_MODEL,
   buildAiPayload,
   buildAiPrompts,
-  ensureAiStrategyPluginsLoaded,
   getDeterministicAiGateContext,
   runAiPrompt,
   runAiPromptLocal,
 } from '@tradejs/node/ai';
+import { ensureStrategyPluginsLoaded } from '@tradejs/node/registry';
 import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
 import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
 import {
@@ -701,7 +701,7 @@ export const main = async () => {
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
-  await ensureAiStrategyPluginsLoaded();
+  await ensureStrategyPluginsLoaded();
   const filePaths = await resolveDatasetFiles();
   const datasetId = getMergedGroupId(filePaths[0] || '')?.mergeId;
   const { totalRows, selectedRows } = await countAiDatasetRows({

@@ -1,5 +1,5 @@
 import type { Direction, StrategyEntryModelFigures } from '@tradejs/types';
-import type { RelativeRotationSignalContext } from './core';
+import type { RelativeRotationSignalContext } from './contracts';
 import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,

@@ -1,8 +1,11 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
-import { normalizeAiResponseLanguage } from '@tradejs/infra/aiLanguages';
-import { normalizeAiEndpoint } from '@tradejs/infra/aiEndpoints';
-import { normalizeAiModel } from '@tradejs/infra/aiModels';
+import {
+  DEFAULT_AI_RESPONSE_LANGUAGE,
+  normalizeAiResponseLanguage,
+} from '@tradejs/core/aiLanguages';
+import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
+import { normalizeAiModel } from '@tradejs/core/aiModels';
 import {
   getUserRecord,
   getUserSettings,
@@ -79,31 +82,46 @@ const maskSecret = (value: string) => {
   return `${'*'.repeat(12)}${trimmed.slice(-4) || trimmed}`;
 };
 
-const toResponse = (settings: UserSettings) => ({
-  userName: settings.userName,
-  settings: {
-    bybit: {
-      apiKey: maskSecret(settings.BYBIT_API_KEY),
-      apiSecret: maskSecret(settings.BYBIT_API_SECRET),
+const normalizeSettingsForResponse = (settings: UserSettings): UserSettings => {
+  const endpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
+  return {
+    ...settings,
+    AI_API_ENDPOINT: endpoint,
+    AI_MODEL: normalizeAiModel(settings.AI_MODEL, endpoint),
+    AI_RESPONSE_LANGUAGE:
+      normalizeAiResponseLanguage(settings.AI_RESPONSE_LANGUAGE) ||
+      DEFAULT_AI_RESPONSE_LANGUAGE,
+  };
+};
+
+const toResponse = (rawSettings: UserSettings) => {
+  const settings = normalizeSettingsForResponse(rawSettings);
+  return {
+    userName: settings.userName,
+    settings: {
+      bybit: {
+        apiKey: maskSecret(settings.BYBIT_API_KEY),
+        apiSecret: maskSecret(settings.BYBIT_API_SECRET),
+      },
+      coinalyze: {
+        apiKey: maskSecret(settings.COINALYZE_API_KEY),
+      },
+      coinmarketcap: {
+        apiKey: maskSecret(settings.COINMARKETCAP_API_KEY),
+      },
+      ai: {
+        apiKey: maskSecret(settings.AI_API_KEY),
+        apiEndpoint: settings.AI_API_ENDPOINT,
+        model: settings.AI_MODEL,
+        responseLanguage: settings.AI_RESPONSE_LANGUAGE,
+      },
+      telegram: {
+        botToken: maskSecret(settings.TG_BOT_TOKEN),
+        chatId: settings.TG_CHAT_ID,
+      },
     },
-    coinalyze: {
-      apiKey: maskSecret(settings.COINALYZE_API_KEY),
-    },
-    coinmarketcap: {
-      apiKey: maskSecret(settings.COINMARKETCAP_API_KEY),
-    },
-    ai: {
-      apiKey: maskSecret(settings.AI_API_KEY),
-      apiEndpoint: settings.AI_API_ENDPOINT,
-      model: settings.AI_MODEL,
-      responseLanguage: settings.AI_RESPONSE_LANGUAGE,
-    },
-    telegram: {
-      botToken: maskSecret(settings.TG_BOT_TOKEN),
-      chatId: settings.TG_CHAT_ID,
-    },
-  },
-});
+  };
+};
 
 const hasKeys = (patch: Partial<UserRecord>) => Object.keys(patch).length > 0;
 
@@ -198,7 +216,9 @@ export const PATCH = async (request: Request) => {
   }
 
   if (body.section === 'ai') {
-    const currentSettings = await getUserSettings(userName);
+    const currentSettings = normalizeSettingsForResponse(
+      await getUserSettings(userName),
+    );
     const patch: Partial<UserRecord> = {};
     const apiKey = cleanOptionalText(body.data?.apiKey);
     const apiEndpoint = normalizeAiEndpoint(body.data?.apiEndpoint);

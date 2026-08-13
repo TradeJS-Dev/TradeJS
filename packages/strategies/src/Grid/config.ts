@@ -5,7 +5,12 @@ import {
   Interval,
   StrategyConfig,
 } from '@tradejs/types';
-import type { GridRangeFilterMode } from './rangeGeometry';
+
+export type GridRangeFilterMode =
+  | 'off'
+  | 'block_entries'
+  | 'block_all'
+  | 'edge_all';
 
 export interface GridSideConfig {
   enable: boolean;

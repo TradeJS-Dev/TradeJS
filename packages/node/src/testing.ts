@@ -19,7 +19,7 @@ import {
 } from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { getStrategyCreator } from './strategy/manifests';
+import { getStrategyCreator } from './strategy';
 import {
   BUILTIN_CONNECTOR_NAMES,
   getConnectorCreatorByName,

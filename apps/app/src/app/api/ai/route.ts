@@ -7,7 +7,12 @@ import {
 } from '@langchain/core/messages';
 import { TTL_1M } from '@tradejs/core/constants';
 import { toJson } from '@tradejs/core/data';
-import { getAiResponseLanguagePromptName } from '@tradejs/infra/aiLanguages';
+import {
+  getAiResponseLanguagePromptName,
+  normalizeAiResponseLanguage,
+} from '@tradejs/core/aiLanguages';
+import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
+import { normalizeAiModel } from '@tradejs/core/aiModels';
 import { DEFAULT_AI_MODEL, getOpenRouterModelKwargs } from '@tradejs/node/ai';
 import {
   AIChatHistory,
@@ -98,19 +103,21 @@ const buildMessages = (
 
 const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
   const settings = await getUserSettings(userName);
-  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
+  const endpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
+  if (!settings.AI_API_KEY || !endpoint) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
 
-  const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
+  const modelKwargs = getOpenRouterModelKwargs(endpoint);
 
   const model = new ChatOpenAI({
     temperature: 0.7,
-    modelName: settings.AI_MODEL || DEFAULT_AI_MODEL,
+    modelName:
+      normalizeAiModel(settings.AI_MODEL, endpoint) || DEFAULT_AI_MODEL,
     apiKey: settings.AI_API_KEY,
     ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
     configuration: {
-      baseURL: settings.AI_API_ENDPOINT,
+      baseURL: endpoint,
     },
   });
 
@@ -200,7 +207,7 @@ export const POST = async (request: NextRequest) => {
       filters,
       message,
       data.slice(-100),
-      settings.AI_RESPONSE_LANGUAGE,
+      normalizeAiResponseLanguage(settings.AI_RESPONSE_LANGUAGE),
     );
 
     const response = await invokeChatModel(chatMessages, userName);

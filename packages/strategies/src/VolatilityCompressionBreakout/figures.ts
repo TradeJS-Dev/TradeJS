@@ -3,7 +3,7 @@ import type {
   StrategyEntryModelFigures,
   StrategyFigurePoints,
 } from '@tradejs/types';
-import type { VolatilityCompressionBreakoutSignalContext } from './core';
+import type { VolatilityCompressionBreakoutSignalContext } from './contracts';
 import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,

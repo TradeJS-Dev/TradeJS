@@ -9,6 +9,39 @@ reconstructed release by release.
 
 ## Unreleased
 
+## 3.0.0 - 2026-08-13
+
+### Changed
+
+- Moved browser-safe AI endpoint, language, and model configuration from
+  `@tradejs/infra/aiEndpoints`, `@tradejs/infra/aiLanguages`, and
+  `@tradejs/infra/aiModels` to the equivalent `@tradejs/core/*` subpaths.
+  Infra user settings now return raw stored values; runtime and UI composition
+  layers normalize them through `@tradejs/core`.
+- Replaced the aggregate `@tradejs/infra/timescale` entrypoint with focused
+  `@tradejs/infra/timescale/*` subpaths. Import candles, derivatives, spread,
+  market context, Hyperliquid whale context, or the client explicitly.
+- Removed the runtime-backed `Test` connector from `@tradejs/connectors`, so
+  that connector plugins no longer depend on `@tradejs/node`. Backtest callers
+  that need a test connector should use `createTestConnector` from
+  `@tradejs/node/backtest`.
+- Removed `ensureAiStrategyPluginsLoaded` from `@tradejs/node/ai`. Composition
+  roots should call `ensureStrategyPluginsLoaded` from `@tradejs/node/registry`;
+  the built-in CLI AI and Telegram paths now do this explicitly.
+- Package and intra-package dependency cycles are now rejected by
+  `yarn architecture`, including transitive client imports of server-only
+  packages.
+
+### Migration
+
+- Replace `@tradejs/infra/aiEndpoints` with `@tradejs/core/aiEndpoints`.
+- Replace `@tradejs/infra/aiLanguages` with `@tradejs/core/aiLanguages`.
+- Replace `@tradejs/infra/aiModels` with `@tradejs/core/aiModels`.
+- Replace `@tradejs/infra/timescale` imports with the narrowest matching
+  `@tradejs/infra/timescale/*` subpath.
+- Replace `ConnectorNames.Test` and `connectors.Test` with an explicit
+  `createTestConnector` call from `@tradejs/node/backtest`.
+
 ## 2.0.0 - 2026-07-17
 
 ### Changed

@@ -1,6 +1,6 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { MarketFlushReversalConfig } from './config';
-import type { MarketFlushReversalEntrySignal } from './engine';
+import type { MarketFlushReversalEntrySignal } from './contracts';
 import { getAverageTurnover20 } from '../shared/baseContext';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 

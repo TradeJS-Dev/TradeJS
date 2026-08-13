@@ -1,7 +1,6 @@
 import { ByBitConnectorCreator } from './ByBit';
 import { BinanceConnectorCreator } from './Binance';
 import { CoinbaseConnectorCreator } from './Coinbase';
-import { TestConnectorCreator } from './Test';
 
 import { ConnectorCreator, ConnectorRegistryEntry } from '@tradejs/types';
 
@@ -9,7 +8,6 @@ export enum ConnectorNames {
   ByBit = 'ByBit',
   Binance = 'Binance',
   Coinbase = 'Coinbase',
-  Test = 'Test',
 }
 
 export enum ConnectorProviders {
@@ -43,7 +41,6 @@ export const connectors = {
   [ConnectorNames.ByBit]: ByBitConnectorCreator,
   [ConnectorNames.Binance]: BinanceConnectorCreator,
   [ConnectorNames.Coinbase]: CoinbaseConnectorCreator,
-  [ConnectorNames.Test]: TestConnectorCreator,
 } as const;
 
 export const connectorEntries: ConnectorRegistryEntry[] = [

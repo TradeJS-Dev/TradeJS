@@ -88,7 +88,7 @@ describe('user settings utils', () => {
     );
   });
 
-  it('drops invalid AI endpoints from resolved settings', async () => {
+  it('keeps AI settings raw so policy stays outside the storage adapter', async () => {
     const getData = jest.fn().mockResolvedValue({
       userName: 'alice',
       AI_API_ENDPOINT: 'not-a-url',
@@ -107,14 +107,14 @@ describe('user settings utils', () => {
 
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
-        AI_API_ENDPOINT: '',
+        AI_API_ENDPOINT: 'not-a-url',
         AI_MODEL: '',
-        AI_RESPONSE_LANGUAGE: 'en',
+        AI_RESPONSE_LANGUAGE: '',
       }),
     );
   });
 
-  it('keeps custom valid AI endpoints in resolved settings', async () => {
+  it('keeps custom AI endpoints in the stored representation', async () => {
     const getData = jest.fn().mockResolvedValue({
       userName: 'alice',
       AI_API_ENDPOINT: 'https://api.continue.example/v1',
@@ -139,7 +139,7 @@ describe('user settings utils', () => {
     );
   });
 
-  it('drops localhost and private-network AI endpoints from resolved settings', async () => {
+  it('does not apply endpoint policy while reading storage records', async () => {
     const getData = jest
       .fn()
       .mockResolvedValueOnce({
@@ -164,12 +164,12 @@ describe('user settings utils', () => {
 
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
-        AI_API_ENDPOINT: '',
+        AI_API_ENDPOINT: 'https://localhost:11434/v1',
       }),
     );
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
-        AI_API_ENDPOINT: '',
+        AI_API_ENDPOINT: 'https://192.168.1.10/v1',
       }),
     );
   });

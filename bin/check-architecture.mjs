@@ -31,7 +31,6 @@ const allowedWorkspaceDependencies = new Map([
     new Set([
       '@tradejs/core',
       '@tradejs/infra',
-      '@tradejs/node',
       '@tradejs/types',
     ]),
   ],
@@ -161,6 +160,99 @@ const extractSpecifiers = (source, file) => {
   return [...new Set(specifiers)];
 };
 
+const resolveSourceFile = (basePath, fileSet) => {
+  const candidates = [
+    basePath,
+    ...[...sourceExtensions].map((extension) => `${basePath}${extension}`),
+    ...[...sourceExtensions].map((extension) =>
+      path.join(basePath, `index${extension}`),
+    ),
+  ];
+  return candidates.find((candidate) => fileSet.has(candidate)) ?? null;
+};
+
+const resolvePackageLocalImport = ({
+  file,
+  specifier,
+  manifest,
+  fileSet,
+  directory,
+}) => {
+  if (specifier.startsWith('.')) {
+    return resolveSourceFile(path.resolve(path.dirname(file), specifier), fileSet);
+  }
+  if (!specifier.startsWith('#')) return null;
+
+  for (const [pattern, target] of Object.entries(manifest.imports ?? {})) {
+    const wildcardIndex = pattern.indexOf('*');
+    const matches =
+      wildcardIndex < 0
+        ? specifier === pattern
+        : specifier.startsWith(pattern.slice(0, wildcardIndex)) &&
+          specifier.endsWith(pattern.slice(wildcardIndex + 1));
+    if (!matches || typeof target !== 'string') continue;
+
+    const wildcard =
+      wildcardIndex < 0
+        ? ''
+        : specifier.slice(
+            wildcardIndex,
+            specifier.length - (pattern.length - wildcardIndex - 1),
+          );
+    const resolvedTarget = target.replace('*', wildcard);
+    return resolveSourceFile(path.resolve(directory, resolvedTarget), fileSet);
+  }
+
+  return null;
+};
+
+const findStronglyConnectedComponents = (graph) => {
+  let nextIndex = 0;
+  const indices = new Map();
+  const lowLinks = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const components = [];
+
+  const visit = (node) => {
+    indices.set(node, nextIndex);
+    lowLinks.set(node, nextIndex);
+    nextIndex += 1;
+    stack.push(node);
+    onStack.add(node);
+
+    for (const dependency of graph.get(node) ?? []) {
+      if (!indices.has(dependency)) {
+        visit(dependency);
+        lowLinks.set(
+          node,
+          Math.min(lowLinks.get(node), lowLinks.get(dependency)),
+        );
+      } else if (onStack.has(dependency)) {
+        lowLinks.set(
+          node,
+          Math.min(lowLinks.get(node), indices.get(dependency)),
+        );
+      }
+    }
+
+    if (lowLinks.get(node) !== indices.get(node)) return;
+    const component = [];
+    let current;
+    do {
+      current = stack.pop();
+      onStack.delete(current);
+      component.push(current);
+    } while (current !== node);
+    if (component.length > 1) components.push(component);
+  };
+
+  for (const node of graph.keys()) {
+    if (!indices.has(node)) visit(node);
+  }
+  return components;
+};
+
 const isTestFile = (file) =>
   file.includes(`${path.sep}__tests__${path.sep}`) ||
   /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file);
@@ -219,15 +311,6 @@ for (const packageInfo of packages) {
       if (/^@tradejs\/(?:core|node|infra)\/src(?:\/|$)/.test(specifier)) {
         errors.push(`${relativeFile}: non-public deep import is forbidden: ${specifier}`);
       }
-      if (
-        specifier === '@tradejs/infra/timescale' &&
-        manifest.name !== '@tradejs/infra'
-      ) {
-        errors.push(
-          `${relativeFile}: use a focused @tradejs/infra/timescale/* subpath`,
-        );
-      }
-
       const dependency = packageNameFromSpecifier(specifier);
       if (!dependency || builtins.has(specifier) || builtins.has(dependency)) continue;
 
@@ -272,6 +355,78 @@ for (const packageInfo of packages) {
       errors.push(
         `${path.relative(root, directory)}/package.json: @tradejs/types must not have runtime dependencies`,
       );
+    }
+  }
+}
+
+for (const packageInfo of packages) {
+  const productionFiles = packageInfo.files.filter((file) => !isTestFile(file));
+  const fileSet = new Set(productionFiles);
+  const sources = new Map(
+    await Promise.all(
+      productionFiles.map(async (file) => [file, await readFile(file, 'utf8')]),
+    ),
+  );
+  const graph = new Map(productionFiles.map((file) => [file, new Set()]));
+
+  for (const file of productionFiles) {
+    for (const specifier of extractSpecifiers(sources.get(file), file)) {
+      const dependency = resolvePackageLocalImport({
+        file,
+        specifier,
+        manifest: packageInfo.manifest,
+        fileSet,
+        directory: packageInfo.directory,
+      });
+      if (dependency) graph.get(file).add(dependency);
+    }
+  }
+
+  for (const component of findStronglyConnectedComponents(graph)) {
+    errors.push(
+      `${packageInfo.manifest.name}: intra-package import cycle: ${component
+        .map((file) => path.relative(packageInfo.directory, file))
+        .sort()
+        .join(' <-> ')}`,
+    );
+  }
+
+  if (packageInfo.manifest.name !== '@tradejs/app') continue;
+  const forbiddenClientPackages = new Set([
+    '@tradejs/connectors',
+    '@tradejs/infra',
+    '@tradejs/node',
+    '@tradejs/strategies',
+  ]);
+  const clientEntries = productionFiles.filter((file) =>
+    /^\s*['"]use client['"];?/m.test(sources.get(file)),
+  );
+
+  for (const entry of clientEntries) {
+    const visited = new Set();
+    const queue = [entry];
+    while (queue.length) {
+      const file = queue.shift();
+      if (!file || visited.has(file)) continue;
+      visited.add(file);
+      for (const specifier of extractSpecifiers(sources.get(file), file)) {
+        const dependencyName = packageNameFromSpecifier(specifier);
+        if (dependencyName && forbiddenClientPackages.has(dependencyName)) {
+          errors.push(
+            `${path.relative(root, entry)}: client graph reaches server package ${specifier} via ${path.relative(root, file)}`,
+          );
+        }
+        const localDependency = resolvePackageLocalImport({
+          file,
+          specifier,
+          manifest: packageInfo.manifest,
+          fileSet,
+          directory: packageInfo.directory,
+        });
+        if (localDependency && !visited.has(localDependency)) {
+          queue.push(localDependency);
+        }
+      }
     }
   }
 }

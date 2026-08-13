@@ -20,7 +20,7 @@ import {
   BulkDeleteToolbar,
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
-import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
+import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategyContracts';
 import { CARD_PAGE_CONTENT_MAX_WIDTH } from '#app/lib/cardPageLayout';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 

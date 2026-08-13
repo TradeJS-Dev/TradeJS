@@ -2,7 +2,10 @@ import type { BaseMessageLike } from '@langchain/core/messages';
 import {
   DEFAULT_AI_RESPONSE_LANGUAGE,
   getAiResponseLanguagePromptName,
-} from '@tradejs/infra/aiLanguages';
+  normalizeAiResponseLanguage,
+} from '@tradejs/core/aiLanguages';
+import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
+import { normalizeAiModel } from '@tradejs/core/aiModels';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import {
   getUserSettings,
@@ -15,7 +18,6 @@ import {
   postProcessAiAnalysisByStrategy,
   postProcessLocalAiAnalysisByStrategy,
 } from './strategyAdapters/ai';
-import { ensureStrategyPluginsLoaded } from './strategy/manifests';
 import {
   AiPayload,
   AiPromptPair,
@@ -434,7 +436,17 @@ export const getOpenRouterModelKwargs = (
 const getAiSettings = async (userName = 'root') => {
   let settingsPromise = userSettingsCache.get(userName);
   if (!settingsPromise) {
-    settingsPromise = getUserSettings(userName);
+    settingsPromise = getUserSettings(userName).then((settings) => {
+      const endpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
+      return {
+        ...settings,
+        AI_API_ENDPOINT: endpoint,
+        AI_MODEL: normalizeAiModel(settings.AI_MODEL, endpoint),
+        AI_RESPONSE_LANGUAGE: normalizeAiResponseLanguage(
+          settings.AI_RESPONSE_LANGUAGE,
+        ),
+      };
+    });
     settingsPromise.catch(() => {
       userSettingsCache.delete(userName);
     });
@@ -503,10 +515,6 @@ export const resetAiRuntimeCache = () => {
   userSettingsCache.clear();
 };
 
-export const ensureAiStrategyPluginsLoaded = async () => {
-  await ensureStrategyPluginsLoaded();
-};
-
 export const buildAiPrompts = (signal: Signal): AiPromptPair => {
   const payload = buildAiPayload(signal);
   return {
@@ -519,10 +527,6 @@ export const runAiPrompt = async (
   { systemPrompt, humanPrompt }: AiPromptPair,
   options: AiRequestOptions = {},
 ): Promise<Partial<SignalAnalysis>> => {
-  if (options.signal) {
-    await ensureAiStrategyPluginsLoaded();
-  }
-
   const [{ HumanMessage, SystemMessage }, model, settings] = await Promise.all([
     import('@langchain/core/messages'),
     getAiModel(options.userName, options.model),
@@ -580,7 +584,6 @@ export const runAiPromptLocal = async (
   signal: Signal,
   options: Omit<AiRequestOptions, 'model' | 'userName'> = {},
 ): Promise<Partial<SignalAnalysis>> => {
-  await ensureAiStrategyPluginsLoaded();
   const payload = options.payload ?? buildAiPayload(signal);
   const gateContext = getDeterministicAiGateContext(payload);
   const signalDirection = getSignalDirection(signal);
@@ -610,7 +613,6 @@ export const runAiPromptLocal = async (
 
 export const askAI = async (signal: Signal, options: AiRequestOptions = {}) => {
   const { symbol } = signal;
-  await ensureAiStrategyPluginsLoaded();
   const payload = buildAiPayload(signal);
   const content = await runAiPrompt(
     {

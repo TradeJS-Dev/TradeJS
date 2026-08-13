@@ -4,44 +4,21 @@ import type {
   MarketFlushReversalConfig,
   MarketFlushReversalEntryMode,
 } from './config';
-import type { MarketFlushReversalSignalContext } from './core';
+import type {
+  MarketFlushReversalEntryCandidate,
+  MarketFlushReversalEntryEngineState,
+  MarketFlushReversalEntryEvent,
+  MarketFlushReversalEntrySignal,
+  MarketFlushReversalPendingEntry,
+} from './contracts';
+export type {
+  MarketFlushReversalEntryCandidate,
+  MarketFlushReversalEntryEngineState,
+  MarketFlushReversalEntryEvent,
+  MarketFlushReversalEntrySignal,
+  MarketFlushReversalPendingEntry,
+} from './contracts';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
-
-export interface MarketFlushReversalEntryCandidate {
-  direction: Direction;
-  setupTimestamp: number;
-  setupPrice: number;
-  referencePrice: number;
-  atr: number;
-  stopLossPrice: number;
-  setupSweepExtremePrice?: number | null;
-  setupStopAnchorPrice?: number | null;
-  context: MarketFlushReversalSignalContext;
-}
-
-export interface MarketFlushReversalPendingEntry
-  extends MarketFlushReversalEntryCandidate {
-  ageBars: number;
-}
-
-export interface MarketFlushReversalEntrySignal
-  extends MarketFlushReversalEntryCandidate {
-  entryMode: MarketFlushReversalEntryMode;
-  entryTimestamp: number;
-  entryDelayBars: number;
-  priceImprovementAtr: number | null;
-}
-
-export interface MarketFlushReversalEntryEvent {
-  candle: Candle;
-  candidate: MarketFlushReversalEntryCandidate | null;
-}
-
-export interface MarketFlushReversalEntryEngineState {
-  pending: MarketFlushReversalPendingEntry | null;
-  signal: MarketFlushReversalEntrySignal | null;
-  timestamp: number | null;
-}
 
 const cloneCandidate = <T extends MarketFlushReversalEntryCandidate>(
   candidate: T,

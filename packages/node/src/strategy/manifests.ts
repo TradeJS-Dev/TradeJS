@@ -11,7 +11,6 @@ import {
   resetIndicatorRegistryCache,
 } from '@tradejs/core/indicators';
 import { logger } from '@tradejs/infra/logger';
-import { createStrategyRuntime } from '../strategyRuntime';
 import {
   getTradejsProjectCwd,
   loadTradejsConfig,
@@ -22,12 +21,26 @@ import * as tradejsConfig from '../tradejsConfig';
 type StrategyRegistryState = {
   strategyCreators: Map<string, StrategyCreator>;
   strategyManifestsMap: Map<string, StrategyManifest>;
+  strategyEntriesMap: Map<string, StrategyRegistryEntry>;
   pluginsLoadPromise: Promise<void> | null;
 };
+
+type StrategyRuntimeFactory = (params: {
+  strategyName: string;
+  defaults: StrategyRegistryEntry['defaults'];
+  createCore: StrategyRegistryEntry['createCore'];
+  manifest: StrategyManifest;
+  detectorKey?: StrategyRegistryEntry['detectorKey'];
+  detectorNoSignalSkipReason?: string;
+  resolveRegisteredManifest: (name: string) => StrategyManifest | undefined;
+}) => StrategyCreator;
+
+let strategyRuntimeFactory: StrategyRuntimeFactory | undefined;
 
 const createStrategyRegistryState = (): StrategyRegistryState => ({
   strategyCreators: new Map<string, StrategyCreator>(),
   strategyManifestsMap: new Map<string, StrategyManifest>(),
+  strategyEntriesMap: new Map<string, StrategyRegistryEntry>(),
   pluginsLoadPromise: null,
 });
 
@@ -132,19 +145,42 @@ const registerEntries = (
       continue;
     }
     state.strategyManifestsMap.set(strategyName, entry.manifest);
-    state.strategyCreators.set(
+    state.strategyEntriesMap.set(strategyName, entry);
+    materializeStrategyCreator(strategyName, state);
+  }
+};
+
+const materializeStrategyCreator = (
+  strategyName: string,
+  state: StrategyRegistryState,
+) => {
+  if (state.strategyCreators.has(strategyName) || !strategyRuntimeFactory) {
+    return;
+  }
+
+  const entry = state.strategyEntriesMap.get(strategyName);
+  if (!entry) return;
+
+  state.strategyCreators.set(
+    strategyName,
+    strategyRuntimeFactory({
       strategyName,
-      createStrategyRuntime({
-        strategyName,
-        defaults: entry.defaults,
-        createCore: entry.createCore,
-        manifest: entry.manifest,
-        detectorKey: entry.detectorKey,
-        detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
-        resolveRegisteredManifest: (name) =>
-          state.strategyManifestsMap.get(name),
-      }),
-    );
+      defaults: entry.defaults,
+      createCore: entry.createCore,
+      manifest: entry.manifest,
+      detectorKey: entry.detectorKey,
+      detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
+      resolveRegisteredManifest: (name) => state.strategyManifestsMap.get(name),
+    }),
+  );
+};
+
+export const setStrategyRuntimeFactory = (factory: StrategyRuntimeFactory) => {
+  strategyRuntimeFactory = factory;
+  for (const state of registryStateByProjectRoot.values()) {
+    for (const strategyName of state.strategyEntriesMap.keys()) {
+      materializeStrategyCreator(strategyName, state);
+    }
   }
 };
 

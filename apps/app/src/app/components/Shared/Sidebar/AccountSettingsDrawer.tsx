@@ -20,18 +20,18 @@ import { FiEdit2, FiSettings } from 'react-icons/fi';
 import {
   AI_RESPONSE_LANGUAGE_OPTIONS,
   normalizeAiResponseLanguage,
-} from '@tradejs/infra/aiLanguages';
+} from '@tradejs/core/aiLanguages';
 import {
   AI_CUSTOM_ENDPOINT_VALUE,
   AI_ENDPOINT_OPTIONS,
   normalizeAiEndpoint,
-} from '@tradejs/infra/aiEndpoints';
+} from '@tradejs/core/aiEndpoints';
 import {
   AI_CUSTOM_MODEL_VALUE,
   getAiModelOptionsForEndpoint,
   hasPresetAiModelsForEndpoint,
   normalizeAiModel,
-} from '@tradejs/infra/aiModels';
+} from '@tradejs/core/aiModels';
 import { toaster } from '#ui';
 import { TradingAccountsPanel } from './TradingAccountsPanel';
 

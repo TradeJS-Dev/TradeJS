@@ -1,7 +1,7 @@
 import type { StrategyChartSnapshot } from '@tradejs/types';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
-import { buildStrategySnapshotCardViewModel } from '../StrategySnapshotCard';
-import { buildRuntimeStrategyCardViewModel } from '../RuntimeStrategyCard';
+import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
+import { buildStrategySnapshotCardViewModel } from '../StrategySnapshotCard.presenter';
+import { buildRuntimeStrategyCardViewModel } from '../RuntimeStrategyCard.presenter';
 
 describe('strategy card presenters', () => {
   it('projects snapshot labels, rankings, and orders through one interface', () => {

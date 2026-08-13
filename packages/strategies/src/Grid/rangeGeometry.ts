@@ -1,15 +1,10 @@
 import type { Candle } from '@tradejs/types';
 import type { GridConfig } from './config';
+export type { GridRangeFilterMode } from './config';
 import {
   createCausalRangeGeometryEngine,
   type CausalRangeGeometry,
 } from '../shared/causalRangeGeometry';
-
-export type GridRangeFilterMode =
-  | 'off'
-  | 'block_entries'
-  | 'block_all'
-  | 'edge_all';
 
 export interface GridRangeGeometry {
   ready: boolean;

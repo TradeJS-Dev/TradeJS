@@ -5,16 +5,15 @@ import type {
   Direction,
   IndicatorsHistorySnapshot,
 } from '@tradejs/types';
-import {
-  MarketFlushReversalConfig,
-  MarketFlushReversalEntryMode,
-} from './config';
-import {
-  createMarketFlushReversalEntryEngine,
-  MarketFlushReversalEntryCandidate,
-} from './engine';
+import { MarketFlushReversalConfig } from './config';
+import { createMarketFlushReversalEntryEngine } from './engine';
 import { buildMarketFlushReversalFigures } from './figures';
 import { getMarketFlushReversalEntryFilterSkipCode } from './filters';
+import type {
+  MarketFlushReversalEntryCandidate,
+  MarketFlushReversalSignalContext,
+} from './contracts';
+export type { MarketFlushReversalSignalContext } from './contracts';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
@@ -29,44 +28,6 @@ import {
   getMarketFlushReversalLongReboundPocketFeatures,
   isMarketFlushReversalCalibratedLongReboundPocket,
 } from './pockets';
-
-export interface MarketFlushReversalSignalContext {
-  signalDirection: Direction;
-  marketPressure: string | null;
-  marketRiskFlags: string[];
-  marketLiqSpikeRatio: number | null;
-  marketLiqImbalance: number | null;
-  marketFundingZScore: number | null;
-  marketPriceOiDivergenceType: string | null;
-  marketFlushConfirmed: boolean;
-  minMarketLiqSpikeRatio: number;
-  rejectionClosePosition: number | null;
-  rejectionBodyAtr: number | null;
-  rejectionConfirmed: boolean;
-  sweepState: string | null;
-  breakoutState: string | null;
-  tailSide: string | null;
-  rangePosition20: number | null;
-  sweepWickPct: number | null;
-  volumeRel20: number | null;
-  buyPressurePct: number | null;
-  deltaDivergenceVsPrice: string | null;
-  structureConfirmed: boolean;
-  participationConfirmed: boolean;
-  entryMode?: MarketFlushReversalEntryMode;
-  setupTimestamp?: number;
-  entryDelayBars?: number;
-  priceImprovementAtr?: number | null;
-  pendingStopSource?: 'frozen_setup';
-  setupSweepExtremePrice?: number | null;
-  setupStopAnchorPrice?: number | null;
-  setupStopLossPrice?: number;
-  confirmationStopLossPrice?: number;
-  selectedStopLossPrice?: number;
-  setupStopDistanceAtr?: number | null;
-  confirmationStopDistanceAtr?: number | null;
-  stopDistanceDeltaAtr?: number | null;
-}
 
 const getMarketRiskFlags = (baseContext: BaseStrategyContextSnapshot) =>
   Array.isArray(baseContext.derivatives?.summary?.riskFlags)

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { TTL_1M } from '@tradejs/core/constants';
+import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
 import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { sendTelegramReport } from '../lib/telegramReports';
@@ -299,36 +300,34 @@ const requestAgentDiff = async (
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
 ) => {
   const settings = await getUserSettings(userName);
-  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
+  const aiApiEndpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
+  if (!settings.AI_API_KEY || !aiApiEndpoint) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
-  if (!isOpenRouterEndpoint(settings.AI_API_ENDPOINT)) {
+  if (!isOpenRouterEndpoint(aiApiEndpoint)) {
     throw new Error(
-      `Research agent requires OpenRouter endpoint, got: ${settings.AI_API_ENDPOINT}`,
+      `Research agent requires OpenRouter endpoint, got: ${aiApiEndpoint}`,
     );
   }
 
-  const response = await fetch(
-    resolveChatCompletionsUrl(settings.AI_API_ENDPOINT),
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${settings.AI_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://tradejs.dev',
-        'X-Title': 'TradeJS Research Agent',
-      },
-      body: JSON.stringify({
-        model: RESEARCH_AGENT_MODEL,
-        messages,
-        reasoning: {
-          effort: RESEARCH_AGENT_REASONING_EFFORT,
-          exclude: true,
-        },
-        temperature: 0.2,
-      }),
+  const response = await fetch(resolveChatCompletionsUrl(aiApiEndpoint), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${settings.AI_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://tradejs.dev',
+      'X-Title': 'TradeJS Research Agent',
     },
-  );
+    body: JSON.stringify({
+      model: RESEARCH_AGENT_MODEL,
+      messages,
+      reasoning: {
+        effort: RESEARCH_AGENT_REASONING_EFFORT,
+        exclude: true,
+      },
+      temperature: 0.2,
+    }),
+  });
 
   if (!response.ok) {
     throw new Error(

@@ -1,5 +1,6 @@
 import {
   StrategyDecision,
+  CreateStrategyCore,
   StrategyEntryOrderPlan,
   StrategyEntrySignalContext,
   StrategyEntryRuntimeOptions,
@@ -315,4 +316,16 @@ export interface StrategyManifest {
   };
   aiAdapter?: StrategyAiAdapter;
   mlAdapter?: StrategyMlAdapter;
+}
+
+export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
+  manifest: StrategyManifest;
+  defaults: TConfig;
+  createCore: CreateStrategyCore<TConfig, any, any>;
+  detectorKey?: (config: TConfig) => string | undefined;
+  detectorNoSignalSkipReason?: string;
+}
+
+export interface StrategyPluginDefinition {
+  strategyEntries: StrategyRegistryEntry[];
 }

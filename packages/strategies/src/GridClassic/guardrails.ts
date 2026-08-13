@@ -1,5 +1,10 @@
 import type { BaseStrategyContextSnapshot, Direction } from '@tradejs/types';
 import type { GridClassicSignalContext } from './engine';
+import type { GridClassicEntryEconomics } from './contracts';
+export type {
+  GridClassicEconomicsRejectReason,
+  GridClassicEntryEconomics,
+} from './contracts';
 
 export type GridClassicGateFeatures = {
   signalDirection: Direction | null;
@@ -180,21 +185,6 @@ export interface GridClassicGridPlan {
   stepDistance: number;
   levels: GridClassicPlannedLevel[];
   worstCaseLoss: number;
-}
-
-export type GridClassicEconomicsRejectReason =
-  | 'target_distance'
-  | 'net_risk_ratio';
-
-export interface GridClassicEntryEconomics {
-  accepted: boolean;
-  rejectReason: GridClassicEconomicsRejectReason | null;
-  targetDistanceBps: number;
-  grossReward: number;
-  executionCosts: number;
-  netReward: number;
-  netRisk: number;
-  netRiskRatio: number;
 }
 
 export const calculateGridClassicUnitLoss = ({

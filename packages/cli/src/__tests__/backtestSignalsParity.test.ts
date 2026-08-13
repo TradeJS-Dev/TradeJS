@@ -393,6 +393,7 @@ const runBacktestPath = async () => {
     getConnectorCreatorByName: jest.fn(async () => async () => connector),
   }));
   jest.doMock('../../../node/src/strategy/manifests', () => ({
+    setStrategyRuntimeFactory: jest.fn(),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('../../../node/src/testConnector', () => ({

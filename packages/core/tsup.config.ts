@@ -2,6 +2,9 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/aiEndpoints.ts',
+    'src/aiLanguages.ts',
+    'src/aiModels.ts',
     'src/api.ts',
     'src/async.ts',
     'src/backtest.ts',

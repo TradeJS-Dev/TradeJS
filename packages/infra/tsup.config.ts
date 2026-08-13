@@ -3,9 +3,6 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: [
     'src/ai.ts',
-    'src/aiEndpoints.ts',
-    'src/aiLanguages.ts',
-    'src/aiModels.ts',
     'src/backtestArtifacts.ts',
     'src/coreResearch.ts',
     'src/files.ts',
@@ -17,7 +14,6 @@ export default defineConfig({
     'src/runtimeDeployments.ts',
     'src/strategyReleaseEvidence.ts',
     'src/userSettings.ts',
-    'src/timescale.ts',
     'src/timescale/client.ts',
     'src/timescale/candles.ts',
     'src/timescale/derivatives.ts',

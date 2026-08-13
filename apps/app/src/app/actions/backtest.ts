@@ -5,7 +5,7 @@ import type {
   BacktestConfigSummary,
   BacktestJobRecord,
   BacktestJobRequest,
-} from '#app/lib/backtestJobs';
+} from '#app/lib/backtestJobContracts';
 
 const API_BASE = '/api/backtest';
 

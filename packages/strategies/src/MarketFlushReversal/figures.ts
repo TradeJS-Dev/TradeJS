@@ -3,7 +3,7 @@ import type {
   StrategyEntryModelFigures,
   StrategyFigurePoints,
 } from '@tradejs/types';
-import type { MarketFlushReversalSignalContext } from './core';
+import type { MarketFlushReversalSignalContext } from './contracts';
 import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,

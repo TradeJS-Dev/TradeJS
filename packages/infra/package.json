@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/infra",
-  "version": "2.0.21",
+  "version": "3.0.0",
   "description": "MIT-licensed server infrastructure adapters for TradeJS: Redis, Timescale, ML, logging, and IO.",
   "keywords": [
     "tradejs",
@@ -28,21 +28,6 @@
       "types": "./dist/ai.d.ts",
       "import": "./dist/ai.mjs",
       "require": "./dist/ai.js"
-    },
-    "./aiEndpoints": {
-      "types": "./dist/aiEndpoints.d.ts",
-      "import": "./dist/aiEndpoints.mjs",
-      "require": "./dist/aiEndpoints.js"
-    },
-    "./aiLanguages": {
-      "types": "./dist/aiLanguages.d.ts",
-      "import": "./dist/aiLanguages.mjs",
-      "require": "./dist/aiLanguages.js"
-    },
-    "./aiModels": {
-      "types": "./dist/aiModels.d.ts",
-      "import": "./dist/aiModels.mjs",
-      "require": "./dist/aiModels.js"
     },
     "./backtestArtifacts": {
       "types": "./dist/backtestArtifacts.d.ts",
@@ -98,11 +83,6 @@
       "types": "./dist/userSettings.d.ts",
       "import": "./dist/userSettings.mjs",
       "require": "./dist/userSettings.js"
-    },
-    "./timescale": {
-      "types": "./dist/timescale.d.ts",
-      "import": "./dist/timescale.mjs",
-      "require": "./dist/timescale.js"
     },
     "./timescale/client": {
       "types": "./dist/timescale/client.d.ts",
