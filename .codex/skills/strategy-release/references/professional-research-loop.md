@@ -62,6 +62,12 @@ The opportunity map must identify:
 - the main tail/drawdown source;
 - the cheapest experiment that distinguishes two competing explanations.
 
+When one isolated global config change improves one side and worsens the other,
+record a directional-parameter opportunity. Use the dedicated classifier and
+[directional-parameter-split.md](directional-parameter-split.md) rather than
+discarding the field, accepting the aggregate compromise, or duplicating every
+parameter speculatively.
+
 Persist and hash this map before round 1. Do not confuse a report containing
 many metrics with a diagnosis that ranks actionable causes.
 

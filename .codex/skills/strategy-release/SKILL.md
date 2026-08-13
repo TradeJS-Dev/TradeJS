@@ -53,6 +53,8 @@ Load the other references only at their decision seam:
   while inventorying/bridging history;
 - read [references/direction-policy.md](references/direction-policy.md) when a
   side checkpoint is triggered;
+- read [references/directional-parameter-split.md](references/directional-parameter-split.md)
+  when an isolated global field improves one direction and worsens the other;
 - read [references/evidence-limitations.md](references/evidence-limitations.md)
   when classifying data/holdout/runtime limitations;
 - read [references/verdict-contract.md](references/verdict-contract.md) and
@@ -159,6 +161,11 @@ inside a diagnostic lineage.
   conversion, side, time, regime, concentration, payoff tail, cost stress, and
   statistical guardrails. Record a mechanism verdict of `supported`,
   `falsified`, or `inconclusive` before proposing the next variants.
+- When an isolated field produces a supported opposing LONG/SHORT effect, run
+  the directional-parameter classifier and test a backward-compatible
+  `FIELD_LONG`/`FIELD_SHORT` split inside the existing child/rescue budget. Do
+  not split fields automatically or use a simple post-signal resolver for
+  detector state that was already built with the global value.
 - Derive round-2 variants only from round-1 evidence and round-3 variants only
   from the combined round-1/round-2 evidence. Each follow-up gets a new
   immutable `researchId`, parent research IDs, an exact config delta, a

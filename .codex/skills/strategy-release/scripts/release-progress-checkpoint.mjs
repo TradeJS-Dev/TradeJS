@@ -60,6 +60,14 @@ export function evaluateReleaseProgress(input) {
   assertBoolean(input?.hypothesisPortfolioFrozen, 'hypothesisPortfolioFrozen');
   assertBoolean(input?.rescueBoardComplete, 'rescueBoardComplete');
   assertBoolean(
+    input?.directionalParameterCheckpoint?.required,
+    'directionalParameterCheckpoint.required',
+  );
+  assertBoolean(
+    input?.directionalParameterCheckpoint?.complete,
+    'directionalParameterCheckpoint.complete',
+  );
+  assertBoolean(
     input?.directionPolicyCheckpoint?.required,
     'directionPolicyCheckpoint.required',
   );
@@ -126,6 +134,16 @@ export function evaluateReleaseProgress(input) {
       'FREEZE_HYPOTHESIS_PORTFOLIO',
       'diagnosis',
       'Choose strategy-specific exploit, repair, and explore/falsify mechanisms before round 1.',
+    );
+  }
+  if (
+    input.directionalParameterCheckpoint.required &&
+    !input.directionalParameterCheckpoint.complete
+  ) {
+    return result(
+      'FREEZE_DIRECTIONAL_PARAMETER_SPLIT',
+      'core',
+      'A supported opposing side effect requires a directional parameter ablation before more adaptation.',
     );
   }
 

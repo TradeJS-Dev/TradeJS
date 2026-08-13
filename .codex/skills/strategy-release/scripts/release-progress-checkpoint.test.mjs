@@ -14,6 +14,7 @@ const input = (overrides = {}) => ({
     { id: 'participation', status: 'active', roundsCompleted: 0 },
   ],
   rescueBoardComplete: false,
+  directionalParameterCheckpoint: { required: false, complete: false },
   directionPolicyCheckpoint: { required: false, complete: false },
   fullAiReportComplete: false,
   chartComplete: false,
@@ -91,6 +92,18 @@ test('requires causal diagnosis rather than jumping from audit to variants', () 
 
   assert.equal(result.nextAction, 'BUILD_OPPORTUNITY_MAP');
   assert.equal(result.phase, 'diagnosis');
+});
+
+test('requires a supported directional parameter split before the next round', () => {
+  const result = evaluateReleaseProgress(
+    input({
+      directionalParameterCheckpoint: { required: true, complete: false },
+    }),
+  );
+
+  assert.equal(result.nextAction, 'FREEZE_DIRECTIONAL_PARAMETER_SPLIT');
+  assert.equal(result.phase, 'core');
+  assert.equal(result.verdictAllowed, false);
 });
 
 test('runs round 1 across families before starting round 2', () => {

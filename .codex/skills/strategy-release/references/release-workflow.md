@@ -205,6 +205,14 @@ After **each** round, complete this analysis before writing a child spec:
    `inconclusive` — plus the predicted versus observed trace/metric effect and
    the exact reason each family continues or retires.
 
+If a matched one-field comparison has an opposing supported LONG/SHORT effect,
+run `directional-parameter-checkpoint.mjs` before freezing the next children.
+Follow [directional-parameter-split.md](directional-parameter-split.md). A
+target-only override or required detector-state isolation consumes the normal
+child/rescue budget; it does not grant extra trials. Preserve the global field
+as the exact legacy fallback and audit non-target identity or occupancy
+spillover.
+
 Persist that conclusion as the round's immutable causal handoff. At minimum it
 contains this machine-readable payload alongside the normal research note:
 
