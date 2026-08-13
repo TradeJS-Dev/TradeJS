@@ -35,7 +35,23 @@ type StrategyRuntimeFactory = (params: {
   resolveRegisteredManifest: (name: string) => StrategyManifest | undefined;
 }) => StrategyCreator;
 
-let strategyRuntimeFactory: StrategyRuntimeFactory | undefined;
+type SharedStrategyRegistryState = {
+  registryStateByProjectRoot: Map<string, StrategyRegistryState>;
+  strategyRuntimeFactory?: StrategyRuntimeFactory;
+};
+
+const SHARED_STRATEGY_REGISTRY_KEY =
+  '__tradejsNodeSharedStrategyRegistryV1__' as const;
+
+const sharedRegistryScope = globalThis as typeof globalThis & {
+  [SHARED_STRATEGY_REGISTRY_KEY]?: SharedStrategyRegistryState;
+};
+
+const sharedStrategyRegistry: SharedStrategyRegistryState =
+  sharedRegistryScope[SHARED_STRATEGY_REGISTRY_KEY] ??
+  (sharedRegistryScope[SHARED_STRATEGY_REGISTRY_KEY] = {
+    registryStateByProjectRoot: new Map<string, StrategyRegistryState>(),
+  });
 
 const createStrategyRegistryState = (): StrategyRegistryState => ({
   strategyCreators: new Map<string, StrategyCreator>(),
@@ -44,7 +60,8 @@ const createStrategyRegistryState = (): StrategyRegistryState => ({
   pluginsLoadPromise: null,
 });
 
-const registryStateByProjectRoot = new Map<string, StrategyRegistryState>();
+const registryStateByProjectRoot =
+  sharedStrategyRegistry.registryStateByProjectRoot;
 
 const getStrategyRegistryState = (
   cwd = getTradejsProjectCwd(),
@@ -154,7 +171,10 @@ const materializeStrategyCreator = (
   strategyName: string,
   state: StrategyRegistryState,
 ) => {
-  if (state.strategyCreators.has(strategyName) || !strategyRuntimeFactory) {
+  if (
+    state.strategyCreators.has(strategyName) ||
+    !sharedStrategyRegistry.strategyRuntimeFactory
+  ) {
     return;
   }
 
@@ -163,7 +183,7 @@ const materializeStrategyCreator = (
 
   state.strategyCreators.set(
     strategyName,
-    strategyRuntimeFactory({
+    sharedStrategyRegistry.strategyRuntimeFactory({
       strategyName,
       defaults: entry.defaults,
       createCore: entry.createCore,
@@ -176,7 +196,7 @@ const materializeStrategyCreator = (
 };
 
 export const setStrategyRuntimeFactory = (factory: StrategyRuntimeFactory) => {
-  strategyRuntimeFactory = factory;
+  sharedStrategyRegistry.strategyRuntimeFactory = factory;
   for (const state of registryStateByProjectRoot.values()) {
     for (const strategyName of state.strategyEntriesMap.keys()) {
       materializeStrategyCreator(strategyName, state);

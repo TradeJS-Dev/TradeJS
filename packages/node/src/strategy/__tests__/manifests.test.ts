@@ -4,8 +4,14 @@ describe('strategy manifests registry', () => {
   const resetIndicatorRegistryCacheMock = jest.fn();
   const warnMock = jest.fn();
   const logMock = jest.fn();
+  const resetSharedRegistry = () => {
+    delete (globalThis as Record<string, unknown>)[
+      '__tradejsNodeSharedStrategyRegistryV1__'
+    ];
+  };
 
   beforeEach(() => {
+    resetSharedRegistry();
     jest.resetModules();
     loadTradejsConfigMock.mockReset();
     registerIndicatorEntriesMock.mockReset();
@@ -17,6 +23,8 @@ describe('strategy manifests registry', () => {
       indicators: [],
     });
   });
+
+  afterEach(resetSharedRegistry);
 
   const loadModule = async () => {
     jest.doMock('../../tradejsConfig', () => ({
@@ -44,6 +52,24 @@ describe('strategy manifests registry', () => {
     manifests.setStrategyRuntimeFactory(createStrategyRuntime as any);
     return manifests;
   };
+
+  it('shares registry state across separately evaluated package entrypoints', async () => {
+    const firstEntrypoint = await loadModule();
+    firstEntrypoint.registerStrategyEntries([
+      {
+        manifest: { name: 'SharedStrategy' } as any,
+        defaults: {},
+        createCore: jest.fn(async () => ({}) as any),
+      },
+    ]);
+
+    jest.resetModules();
+    const secondEntrypoint = await import('../manifests');
+
+    expect(secondEntrypoint.getStrategyManifest('SharedStrategy')?.name).toBe(
+      'SharedStrategy',
+    );
+  });
 
   it('starts empty and supports runtime registration + proxy access', async () => {
     const manifests = await loadModule();
