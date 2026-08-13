@@ -1,5 +1,7 @@
 import {
+  assertAiTrainDirectionPolicy,
   hasCliOption,
+  parseAiTrainDirectionPolicy,
   parseDumpFeatureMode,
   parseQualityThresholds,
   parseTerminalWindowDays,
@@ -50,6 +52,46 @@ describe('aiTrainOptions', () => {
     expect(parseTerminalWindowDays(undefined)).toEqual([90, 30, 7]);
     expect(parseTerminalWindowDays('7,30,11,7,0,x')).toEqual([30, 11, 7]);
     expect(parseTerminalWindowDays('')).toEqual([]);
+  });
+
+  it('parses and verifies an explicit LONG-only gate policy', () => {
+    expect(parseAiTrainDirectionPolicy(undefined)).toBe('both');
+    expect(parseAiTrainDirectionPolicy('long-only')).toBe('long_only');
+    expect(parseAiTrainDirectionPolicy('direction_aware')).toBe(
+      'direction_aware',
+    );
+    expect(() => parseAiTrainDirectionPolicy('hidden')).toThrow(
+      /Invalid --directionPolicy/,
+    );
+
+    expect(() =>
+      assertAiTrainDirectionPolicy({
+        directionPolicy: 'long_only',
+        byDirection: [
+          { direction: 'LONG', summary: { approved: 10 } },
+          { direction: 'SHORT', summary: { approved: 1 } },
+        ],
+        terminalWindows: [],
+      }),
+    ).toThrow(/SHORT approved rows/);
+    expect(() =>
+      assertAiTrainDirectionPolicy({
+        directionPolicy: 'long_only',
+        byDirection: [
+          { direction: 'LONG', summary: { approved: 10 } },
+          { direction: 'SHORT', summary: { approved: 0 } },
+        ],
+        terminalWindows: [
+          {
+            label: '30d',
+            byDirection: [
+              { direction: 'LONG', summary: { approved: 2 } },
+              { direction: 'SHORT', summary: { approved: 0 } },
+            ],
+          },
+        ],
+      }),
+    ).not.toThrow();
   });
 
   it('parses dump feature snapshot modes', () => {

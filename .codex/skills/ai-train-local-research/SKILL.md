@@ -360,6 +360,12 @@ Interpretation:
 - if a partial replay is genuinely needed, use native `ai-train` selection
   options rather than assuming one shard equals one isolated window
 - `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
+- Release evidence with an explicit one-side gate must pass
+  `--directionPolicy long_only|short_only`. This flag is evidence metadata, not
+  a filter: `ai-train` rejects the report unless the actual evaluated gate has
+  zero approved rows for the suppressed direction in full and terminal
+  windows. Use `both` (default) or `direction_aware` for policies that retain
+  both approved sides.
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
 - `ai-pocket-search` uses a time-ordered row holdout by default
   (`--validationSplit 0.25`) and ranks candidates on that holdout. Treat it as

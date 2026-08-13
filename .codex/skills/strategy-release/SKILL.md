@@ -1,6 +1,6 @@
 ---
 name: strategy-release
-description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, audit prior Git hypotheses and results, perform three evidence-driven core rounds plus a cadence-diverse rescue round, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, full-period chart handoff, and prospective testing.
+description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, audit prior Git hypotheses and results, perform three evidence-driven core rounds plus cadence-diverse rescue, test an explicit long-only or short-only direction policy when one side carries the edge, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, full-period and AI-gate reporting, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, chart handoff, and prospective testing.
 ---
 
 # Strategy Release
@@ -15,7 +15,10 @@ runtime target, risk scale, and immutable evidence are resolved.
 
 ## Non-negotiable safety boundary
 
-- Keep `LONG` and `SHORT` enabled. Report `ALL`, `LONG`, and `SHORT` separately.
+- Keep `LONG` and `SHORT` enabled in authoritative raw-core research and report
+  `ALL`, `LONG`, and `SHORT` separately. A final composition may explicitly
+  suppress a failing side only through the tested direction-policy checkpoint;
+  never erase that side from raw evidence.
 - Run every historical backtest with `--cacheOnly` over the maximum common
   cached window frozen for the experiment. Never refresh or silently shorten
   history to rescue a result.
@@ -27,8 +30,11 @@ runtime target, risk scale, and immutable evidence are resolved.
 - Keep unpromoted candidates in forward incubation or advisory/shadow mode
   only. Never make an advisory LLM comparison part of deterministic execution.
 - Stop selection on partial manifests, OOM, worker errors, missing exports,
-  reconciliation failure, lineage mismatch, or contaminated point-in-time
-  evidence. Return the appropriate insufficient-evidence verdict.
+  reconciliation failure, lineage mismatch, or actual signal-time causal
+  leakage. Classify universe/holdout/provenance limitations with
+  [references/evidence-limitations.md](references/evidence-limitations.md): a
+  retrospective current-universe cohort caps claims but still permits matched
+  research and prospective risk-1 selection.
 - Research runs in the local checkout/Redis; live signals and deployments run
   on the runtime server. Never infer that a production deployment, account,
   credential, signal, or trade is absent because it is missing locally. Produce
@@ -39,10 +45,19 @@ runtime target, risk scale, and immutable evidence are resolved.
 
 ### Release
 
-Read [references/release-workflow.md](references/release-workflow.md),
-[references/historical-hypothesis-audit.md](references/historical-hypothesis-audit.md),
-[references/verdict-contract.md](references/verdict-contract.md), and
-[references/evidence-retention.md](references/evidence-retention.md) completely.
+Read [references/professional-research-loop.md](references/professional-research-loop.md)
+and [references/release-workflow.md](references/release-workflow.md) completely.
+Load the other references only at their decision seam:
+
+- read [references/historical-hypothesis-audit.md](references/historical-hypothesis-audit.md)
+  while inventorying/bridging history;
+- read [references/direction-policy.md](references/direction-policy.md) when a
+  side checkpoint is triggered;
+- read [references/evidence-limitations.md](references/evidence-limitations.md)
+  when classifying data/holdout/runtime limitations;
+- read [references/verdict-contract.md](references/verdict-contract.md) and
+  [references/evidence-retention.md](references/evidence-retention.md) only when
+  preparing the final decision, handoff, or immutable record.
 
 Use the fixed research budget:
 
@@ -58,6 +73,9 @@ Use the fixed research budget:
   seeds need complete/reconciled/non-no-op evidence but do not need to pass the
   release rule; 18 core candidates total at most;
 - one total isolated-long core finalist;
+- one mandatory direction-policy checkpoint when one raw side is useful and the
+  opposite side or current gate destroys the composition; this is part of the
+  single gate round, not an extra unbounded search;
 - one deterministic AI-gate tuning round;
 - one optional recent-direction repair round, only when the failed window has
   at least 20 independent target-side trades, a preregistered causal mechanism,
@@ -72,6 +90,33 @@ release rule. Build the cadence-diverse rescue board and test its three causal
 children before selecting a finalist. Do not add a nineteenth core variant,
 reopen a viewed holdout, tune another gate round, or substitute a different
 core/gate snapshot without starting a new immutable release lineage.
+
+The history audit, report generation, architecture diagnosis, and bug fixing
+are prerequisites, not substitutes for the requested improvement attempt. When
+the user asks to bring a strategy toward runtime or propose improvements, do
+not return after those activities while a valid bounded core/gate action
+remains. Execute the next stage or name a hard execution blocker. A limitation
+that merely caps the evidence at prospective micro-forward is not such a
+blocker.
+
+Persist a progress payload and run:
+
+```bash
+node .codex/skills/strategy-release/scripts/release-progress-checkpoint.mjs \
+  --input <release-progress.json> > <release-progress-decision.json>
+```
+
+Run it after audit/baseline, after every round, and before the final response.
+Its required next action is binding. A final market verdict is forbidden while
+`verdictAllowed=false`.
+
+Before freezing round-1 families, follow
+[references/professional-research-loop.md](references/professional-research-loop.md):
+write the trading thesis, build and hash the opportunity map, generate competing
+mechanisms, and choose an exploit/repair/explore-or-falsify portfolio. After
+every round update the belief ledger and choose the next experiment from the
+new evidence. The fixed budget bounds creativity; it must not replace judgment
+with a parameter grid.
 
 ### Diagnose live behavior
 
@@ -161,6 +206,14 @@ inside a diagnostic lineage.
   workflow. A profitable raw side may be retained unchanged only after the same
   chronological validation and aggregate/non-target guardrails as every other
   candidate.
+- Do not require aggregate raw-core eligibility before testing a direction
+  policy. After the rescue board, if one side passes the frozen useful-side
+  rule and the other side is the dominant loss, carry the best complete
+  side-qualified core handoff into the one gate round and run the five variants
+  from [references/direction-policy.md](references/direction-policy.md). Prefer
+  an explicit deterministic-gate block so raw counterfactual telemetry remains
+  available. This checkpoint may produce the single composition finalist; it
+  cannot waive retained-side terminals, cost stress, support, or holdout rules.
 - Reserve the gate test tail with `ai-pocket-search --testSplit <ratio>
 --sealTest`. Discovery may see train and tuning economics plus only the sealed
   tail's timestamp/count bounds. It must not print, rank on, or otherwise expose
@@ -174,10 +227,15 @@ inside a diagnostic lineage.
   `off`; `ai-approved` evaluates only deterministic-gate-approved rows and is
   advisory. It cannot choose the core, tune the deterministic gate, change a
   verdict, or authorize runtime action.
-- End every completed release research run with `yarn ai-train --localOnly
---chart -n 0` over the full frozen export. Persist the structured report and
-  hash its chart/evaluation lineage into immutable evidence. Missing or stale
-  chart evidence blocks forward execution.
+- End every completed release research run with the full reporting contract
+  from `$ai-train-local-research`, followed by `yarn ai-train --localOnly
+--chart -n 0` over the full frozen export. This requirement does not disappear
+  when no finalist exists: report the authoritative control plus the best
+  aggregate/LONG/SHORT and direction-policy candidates, then chart the selected
+  composition or the frozen current-gate control as explicitly diagnostic.
+  Persist the structured report and hash its chart/evaluation lineage into
+  immutable evidence. Missing or stale chart evidence blocks forward execution
+  and forbids a `complete` market-unsuitable verdict.
 
 ## Mandatory post-verdict action
 
@@ -209,7 +267,8 @@ to that server's exact `userName`, `deploymentId`, `accountId`, and
   direction edge failed. This action is forbidden until the historical
   hypothesis inventory is bridged, the three-round ledger is complete, and the
   cadence-diverse rescue board has been attempted or has fewer than three valid
-  seeds for explicit recorded reasons.
+  seeds for explicit recorded reasons. It is also forbidden while a required
+  direction-policy checkpoint or full AI-gate report remains unfinished.
 
 ## Return one verdict
 
@@ -235,7 +294,7 @@ an intermediate production label.
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule, run one evidence-driven core rescue child for each, and only then freeze one isolated-long finalist and open the tail once. Never exceed 18 core candidates. Report 3y, 4y, 5y-or-maximum-available plus terminal ALL/LONG/SHORT statistics. Keep LONG and SHORT enabled, use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy:release decide`. If the decision is START_MICRO_FORWARD and the exact target is resolved, start only that forward deployment at MAX_LOSS_VALUE=1; never promote it or increase risk automatically.
+Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy:release decide`. If the decision is START_MICRO_FORWARD and the exact target is resolved, start only that forward deployment at MAX_LOSS_VALUE=1; never promote it or increase risk automatically.
 ```
 
 Diagnose live:

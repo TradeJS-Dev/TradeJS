@@ -39,7 +39,9 @@ import {
   type AiTrainEvaluationFeatureSnapshot,
 } from '../lib/aiTrainEvaluationDump';
 import {
+  assertAiTrainDirectionPolicy,
   parseDumpFeatureMode,
+  parseAiTrainDirectionPolicy,
   parseQualityThresholds,
   parseTerminalWindowDays,
   parseTimestampFilter,
@@ -93,6 +95,11 @@ args.option(
   ['M', 'minQuality'],
   'Minimum AI quality required to approve entry',
   4,
+);
+args.option(
+  ['Y', 'directionPolicy'],
+  'Evidence label for the enforced gate policy: both, long_only, short_only, or direction_aware',
+  'both',
 );
 args.option(
   ['l', 'localOnly'],
@@ -448,6 +455,7 @@ type AiTrainResult = {
     parallel: number;
     dumpFeatures: ReturnType<typeof parseDumpFeatureMode>;
     terminalWindows: number[];
+    directionPolicy: ReturnType<typeof parseAiTrainDirectionPolicy>;
   };
   outcome: ReturnType<typeof summarizeAiTrainEvaluations>;
   byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
@@ -679,6 +687,7 @@ export const main = async () => {
   });
   const qualityThresholds = parseQualityThresholds(flags.qualityThresholds);
   const terminalWindowDays = parseTerminalWindowDays(flags.terminalWindows);
+  const directionPolicy = parseAiTrainDirectionPolicy(flags.directionPolicy);
   const dumpEvaluationsPath = String(flags.dumpEvaluations || '').trim();
   const dumpFeatureMode = parseDumpFeatureMode(flags.dumpFeatures);
   if (dumpFeatureMode !== 'none' && !dumpEvaluationsPath) {
@@ -964,19 +973,31 @@ export const main = async () => {
     finalEvaluations,
     terminalWindowDays,
   );
-  const topRejectReasons = summarizeAiTrainRejectReasons(finalEvaluations);
-  const lineage = await buildAiTrainLineage({
-    projectRoot:
-      String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd(),
-    strategyName,
-    configIds: finalEvaluations.map((evaluation) => evaluation.configId),
-    sourceSha256s: await Promise.all(filePaths.map(strategyEvidenceFileSha256)),
-    runContext: {
-      mode: localOnly ? 'local-deterministic' : 'llm',
-      model: localOnly ? 'local-deterministic' : model,
-      minQuality,
-    },
+  assertAiTrainDirectionPolicy({
+    directionPolicy,
+    byDirection: directionSummaries,
+    terminalWindows,
   });
+  const topRejectReasons = summarizeAiTrainRejectReasons(finalEvaluations);
+  const lineage = {
+    ...(await buildAiTrainLineage({
+      projectRoot:
+        String(process.env.PROJECT_CWD || process.cwd()).trim() ||
+        process.cwd(),
+      strategyName,
+      configIds: finalEvaluations.map((evaluation) => evaluation.configId),
+      sourceSha256s: await Promise.all(
+        filePaths.map(strategyEvidenceFileSha256),
+      ),
+      runContext: {
+        mode: localOnly ? 'local-deterministic' : 'llm',
+        model: localOnly ? 'local-deterministic' : model,
+        minQuality,
+        directionPolicy,
+      },
+    })),
+    directionPolicy,
+  };
   const evaluated = summary.correct + summary.incorrect;
   const result: AiTrainResult = {
     run: {
@@ -999,6 +1020,7 @@ export const main = async () => {
       parallel: concurrency,
       dumpFeatures: dumpFeatureMode,
       terminalWindows: terminalWindowDays,
+      directionPolicy,
     },
     outcome: summary,
     byDirection: directionSummaries,

@@ -195,6 +195,34 @@ const buildRelease = () =>
   });
 
 describe('strategy release evidence', () => {
+  it('keeps a verified LONG-only composition eligible for forward evidence', async () => {
+    expect(
+      await deriveStrategyReleaseResearchDecision({
+        strategy: 'RelativeRotation',
+        directionPolicy: 'long_only',
+        historicalWindows: [1095, 1460, 1825, 365, 180, 90].map((days) => ({
+          days,
+          pnl: 120,
+          profitFactor: 1.2,
+          long: { trades: 180, pnl: 120, profitFactor: 1.2 },
+          short: { trades: 0, pnl: 0, profitFactor: 0 },
+        })),
+        candidateImplemented: false,
+        exposedEvaluation: true,
+        chartArtifact: null,
+        recentFailure: null,
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).toMatchObject({
+      action: 'FORWARD_BLOCKED',
+      blockers: ['CANDIDATE_NOT_IMPLEMENTED', 'FULL_PERIOD_CHART_MISSING'],
+    });
+  });
+
   it('starts an authorized micro-forward instead of tuning four exposed recent losses', async () => {
     const chartPath = path.join(
       await fs.mkdtemp(path.join(os.tmpdir(), 'strategy-release-chart-')),
@@ -409,6 +437,44 @@ describe('strategy release evidence', () => {
       reasons: [],
       summary: 'DoubleTap composition cleared every frozen evidence gate.',
     });
+  });
+
+  it('binds an explicit direction policy to gate and runtime evidence lineage', () => {
+    const ready = buildRelease();
+    const { compositionId: _, ...composition } = ready.composition;
+    const evidence = ready.evidence.map((entry) => ({
+      ...entry,
+      lineage:
+        entry.kind === 'core_research'
+          ? entry.lineage
+          : { ...entry.lineage!, directionPolicy: 'long_only' as const },
+    }));
+    const manifest = createStrategyReleaseManifest({
+      ...ready,
+      composition: { ...composition, directionPolicy: 'long_only' },
+      evidence,
+      summary: ready.verdict.summary,
+    });
+
+    expect(manifest.composition.directionPolicy).toBe('long_only');
+    expect(() =>
+      createStrategyReleaseManifest({
+        ...ready,
+        composition: { ...composition, directionPolicy: 'long_only' },
+        evidence: evidence.map((entry) =>
+          entry.kind === 'ai_gate'
+            ? {
+                ...entry,
+                lineage: {
+                  ...entry.lineage!,
+                  directionPolicy: 'short_only' as const,
+                },
+              }
+            : entry,
+        ),
+        summary: ready.verdict.summary,
+      }),
+    ).toThrow('directionPolicy does not match the frozen composition');
   });
 
   it('keeps a release immutable while runtime risk scale is compared separately', () => {

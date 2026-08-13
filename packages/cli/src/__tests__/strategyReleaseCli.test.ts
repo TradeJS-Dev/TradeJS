@@ -381,7 +381,11 @@ describe('strategy-release command', () => {
     );
     const evidencePath = path.join(rootDir, 'gate.json');
     const content = JSON.stringify({
-      run: { strategy: 'DoubleTap', mode: 'local-deterministic' },
+      run: {
+        strategy: 'DoubleTap',
+        mode: 'local-deterministic',
+        directionPolicy: 'long_only',
+      },
       outcome: {
         expectancyDelta: 1,
         approvedRisk: { totalProfit: 1, profitFactor: 2 },
@@ -394,6 +398,7 @@ describe('strategy-release command', () => {
         lineage: {
           gitSha: 'deadbeef',
           gitDirty: false,
+          directionPolicy: 'long_only',
           gateFingerprint: FP,
           configIdsFingerprint: FP,
           contextFingerprint: FP,
@@ -432,6 +437,7 @@ describe('strategy-release command', () => {
         gateConfigIdsFingerprint: FP,
         gateFingerprint: FP,
         gateContextFingerprint: FP,
+        directionPolicy: 'long_only',
         sourceSha256s: ['b'.repeat(64)],
       },
       releaseAssertions: { aiGateAddsValue: true },
@@ -477,6 +483,59 @@ describe('strategy-release command', () => {
         artifactId: 'gate-without-short',
         path: evidencePath,
         sha256,
+        verified: false,
+      },
+    ]);
+
+    expect(evidence.releaseAssertions).toEqual({ aiGateAddsValue: false });
+  });
+
+  it('rejects a self-declared LONG-only gate that still approves SHORT rows', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'strategy-release-gate-policy-'),
+    );
+    const evidencePath = path.join(rootDir, 'gate.json');
+    const byDirection = [
+      { direction: 'LONG', summary: { approved: 10 } },
+      { direction: 'SHORT', summary: { approved: 1 } },
+    ];
+    const content = JSON.stringify({
+      run: {
+        strategy: 'RelativeRotation',
+        mode: 'local-deterministic',
+        directionPolicy: 'long_only',
+      },
+      outcome: {
+        expectancyDelta: 1,
+        approvedRisk: { totalProfit: 10, profitFactor: 1.2 },
+      },
+      byDirection,
+      research: {
+        lineage: {
+          gitSha: 'deadbeef',
+          gitDirty: false,
+          directionPolicy: 'long_only',
+          gateFingerprint: FP,
+          configIdsFingerprint: FP,
+          contextFingerprint: FP,
+          sourceSha256s: ['b'.repeat(64)],
+        },
+        terminalWindows: [
+          {
+            complete: true,
+            outcome: { approved: 11, approvedRisk: { totalProfit: 10 } },
+            byDirection,
+          },
+        ],
+      },
+    });
+    await fs.writeFile(evidencePath, content);
+    const [evidence] = await collectReleaseEvidenceReferences([
+      {
+        kind: 'ai_gate',
+        artifactId: 'false-long-only',
+        path: evidencePath,
+        sha256: createHash('sha256').update(content).digest('hex'),
         verified: false,
       },
     ]);

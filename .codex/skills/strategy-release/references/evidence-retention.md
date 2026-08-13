@@ -23,6 +23,12 @@ inventory only.
 
 Retain:
 
+- every `tradejs-release-progress/v1` input/output pair, including evidence
+  ceiling and the next stage that prevented a premature final verdict;
+- the evidence-limitation classification (`hard invalidation`,
+  `research-grade provenance`, or `operational`) and sensitivity results;
+- the trading thesis, opportunity map, hypothesis-role portfolio, and per-round
+  belief-ledger updates that explain why each experiment was worth running;
 - experiment id, question, mode, preregistered acceptance rules, verdict, and
   timestamp when each result partition was opened;
 - the hashed strategy-history hypothesis inventory: behavior-relevant commits
@@ -47,6 +53,9 @@ Retain:
 - the post-round-3 rescue board: complete candidate frontier, cadence-diverse
   seed-selection inputs, each seed's dominant failure, one predicted rescue
   delta per seed, rescue result, and the hard reason for any unused slot;
+- the mandatory direction-policy checkpoint: frozen useful-side rule, raw side
+  statuses, trigger, five gate variants, raw-versus-approved ALL/LONG/SHORT,
+  policy/config/result hashes, and selected/rejected reason;
 - selected isolated-long finalist and final core-plus-gate composition;
 - exact git SHA/dirty diff inventory, config/gate/context fingerprints, and
   tool/metric implementation SHA;
@@ -59,11 +68,17 @@ Retain:
   config ids, export merge/part ids, hashes, and Redis reconciliation;
 - complete machine-readable ALL/LONG/SHORT metrics for full and required
   terminal/cold-start windows, including zero-trade cohorts;
+- the full diagnostic matrix even when no finalist qualifies: authoritative
+  control, best aggregate, best LONG, best SHORT, and every rescue/policy
+  attempt over full/3y/4y/max-covered/365d/180d/90d/30d/7d windows;
 - control/candidate matched, removed, added, changed-outcome, occupancy, regime,
   month, symbol, event, concentration, and capacity evidence;
 - gate train/tuning/test boundaries, feature provenance, threshold rounding,
   sealed-test flag/open timestamp, ablation, support, and one-round selection
   decision; record any accidental early test exposure permanently;
+- the complete `$ai-train-local-research` report sections and structured
+  full-period `ai-train --localOnly --chart -n 0` output, labelled
+  `diagnostic-only` when no composition qualifies;
 - LLM comparison scope/provider/model/prompt/cost/fingerprint when enabled,
   explicitly labelled advisory.
 

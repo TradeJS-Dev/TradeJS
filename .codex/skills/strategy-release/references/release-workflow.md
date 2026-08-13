@@ -1,5 +1,14 @@
 # Release workflow
 
+## Contents
+
+1. Environment boundary and frozen release question
+2. Historical audit, universe, and baseline
+3. Three causal core rounds and belief updates
+4. Cadence-diverse rescue and direction policy
+5. Isolated-long, gate research, and recent repair
+6. Full report, chart, release evidence, and prospective action
+
 Use this workflow to evaluate one frozen core plus deterministic AI-gate
 composition. Do not use it to promote the composition.
 
@@ -7,6 +16,11 @@ Before this workflow, complete
 [historical-hypothesis-audit.md](historical-hypothesis-audit.md). Existing
 evidence and untested strategy commits are inputs to hypothesis selection, not
 optional background reading.
+
+Then complete the thesis, opportunity map, hypothesis portfolio, and adaptive
+belief updates from
+[professional-research-loop.md](professional-research-loop.md). These artifacts
+make the three families strategy-specific rather than a generic sweep.
 
 ## Environment boundary
 
@@ -37,6 +51,11 @@ Create an immutable experiment id and preregister:
 
 - strategy and current control composition;
 - exact release acceptance rule and current-market terminal windows;
+- an evidence-limitation classification and claim ceiling from
+  [evidence-limitations.md](evidence-limitations.md); never collapse
+  retrospective-universe provenance into causal leakage;
+- the trading thesis, opportunity-map SHA, protected edge, dominant loss
+  source, cadence bottleneck, and exploit/repair/explore-or-falsify roles;
 - three causally distinct core hypothesis families;
 - the SHA of the complete historical hypothesis inventory, the bridge table for
   every stronger prior result, and the disposition of each untested behavior;
@@ -115,6 +134,10 @@ For the final composition, the full-statistics matrix is mandatory:
 Each row contains ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD,
 and cadence. Use the permanent metrics tooling from
 `$strategy-backtest-research`; do not reconstruct a favorable subset manually.
+When no composition qualifies, the same matrix remains mandatory for the
+authoritative control, best aggregate candidate, best LONG candidate, best
+SHORT candidate, and every rescue child. A failed verdict is not permission to
+replace the tables with a leaderboard or artifact link.
 
 ## 3. Capture the control
 
@@ -123,10 +146,17 @@ the manifest finishes and keep chunks. Reconcile Redis N/W/L/PnL against
 completed-trade rows. Report full-window and preregistered terminal metrics for
 `ALL`, `LONG`, and `SHORT`, including zero-trade cohorts.
 
-Do not disable a weak side. Record separate control statuses for ALL, LONG, and
-SHORT so the later deterministic AI gate can evaluate side cohorts explicitly.
+Do not disable a weak side inside the authoritative raw-core result. Record
+separate control statuses for ALL, LONG, and SHORT so the later deterministic
+AI gate can evaluate side cohorts explicitly. An explicit direction-policy
+candidate may later suppress that side while keeping this raw evidence visible.
 
 ## 4. Run and analyze three causal core rounds
+
+Audit and infrastructure repairs do not count as a core round. If a parity or
+package-boundary defect is discovered, fix and verify it, rebuild the frozen
+control if necessary, then continue from round 1. Do not present the bug fix as
+the strategy-improvement result.
 
 Run every release-core candidate with `--researchTrace`. The compact trace is
 required here because each later round must be derived from observed
@@ -218,9 +248,15 @@ release tail. Do not create “best value ± epsilon” variants without a causa
 transition hypothesis. Complete rounds 2 and 3 for every still-viable family
 even when an earlier candidate is already profitable. A family may retire
 early only when immutable evidence is invalid, the intervention is a no-op,
-the mechanism is falsified, required point-in-time context is unavailable, or
+the mechanism is falsified, required causal signal-time context is unavailable, or
 no causal signal remains to test. If all families retire, continue to the
 rescue-board decision rather than manufacturing variants or stopping early.
+
+Missing effective-dated exchange membership is not the same as missing causal
+signal-time context. Keep the identical retrospective current cohort for
+control/candidate matching, run membership-age/incumbent sensitivity where the
+cache supports it, cap the claim at `micro_forward_only`, and continue. Do not
+retune the symbol cohort after seeing candidate economics.
 
 The carried control is the best **eligible** parent under the frozen rule. A
 failed candidate is never relabelled a winner: if its trace supports another
@@ -283,22 +319,51 @@ bridge the prior configuration to the frozen contract, choose up to three
 cadence-diverse seeds, and spend one causal rescue child per selected seed. Only
 the children that pass the original rule can become finalists.
 
-## 5. Select one isolated-long finalist
+### Mandatory direction-policy checkpoint
 
-After the rescue board, select at most one core finalist across all families
-using only the frozen rule and cumulative family ledger. If none qualifies, do
-not invent a compromise candidate. Rerun the selected cell alone over the
-complete maximum common cached window and frozen universe, opening the
-chronological core release tail for the first and only time. This is the only
-isolated-long finalist run allowed in the lineage.
+After the rescue board, read and apply
+[direction-policy.md](direction-policy.md). Do this before concluding that no
+composition finalist exists.
+
+If one raw side passes the preregistered useful-side rule while the other side
+is the dominant aggregate loss, nominate the best complete side-qualified core
+handoff even when raw ALL failed. The handoff is not an eligible raw-core winner
+and must remain labelled as such; it exists so the single gate round can test
+whether an explicit direction policy salvages the composition. The same rule
+applies when the current gate hides a useful raw side.
+
+Persist the checkpoint for all three outcomes:
+
+- `losing_side_contamination`;
+- `profitable_side_hidden`;
+- `no_side_salvage`.
+
+Neither `UNSUITABLE_FOR_CURRENT_MARKET` nor `STOP_RESEARCH` is valid while a
+triggered checkpoint is absent. A useful retained side that later fails
+terminal or cost rules is a legitimate rejection; skipping its policy test is
+not.
+
+## 5. Select one isolated-long finalist or side-qualified handoff
+
+After the rescue board and direction-policy checkpoint, select at most one raw
+core finalist across all families using the frozen rule. When none qualifies,
+the checkpoint may instead select at most one complete side-qualified handoff
+whose useful side passed the frozen useful-side rule. Do not relabel it a core
+winner. If neither exists, use the authoritative control as the diagnostic
+handoff so the required full report and chart still have an exact lineage.
+
+Rerun the chosen cell alone over the complete maximum common cached window and
+frozen universe, opening the chronological core release tail for the first and
+only time. This is the only isolated-long/handoff run allowed in the lineage.
 
 Require complete run/export reconciliation and agreement with the screened
 cell within the preregistered reset/grid tolerance. Investigate any difference
 as state/reset contamination; do not choose the more favorable run.
 
-The isolated-long result may confirm or reject the frozen finalist. It may not
-generate a fourth core-improvement round. Any new hypothesis after the tail is
-opened starts a new release lineage with a future unexposed tail.
+The isolated-long result may confirm or reject the frozen finalist or quantify
+the side-qualified handoff. It may not generate a fourth core-improvement
+round. Any new hypothesis after the tail is opened starts a new release lineage
+with a future unexposed tail.
 
 ## 6. Use one gate tuning round
 
@@ -315,7 +380,7 @@ no candidate passes. Do not perform a second search after viewing the held-out
 test. The release unit is then exactly one core snapshot plus one deterministic
 gate fingerprint.
 
-### Mandatory side-rescue checkpoint
+### Mandatory side recovery and containment checkpoint
 
 Before freezing the five gate variants, build this coverage table for raw core
 and current qN+ approvals in every full/terminal window:
@@ -325,13 +390,16 @@ ALL/LONG/SHORT: raw N, PnL, PnL/trade, PF, WR, MaxDD, cadence
 ALL/LONG/SHORT: gate-approved N, approval share, same economics
 ```
 
-A side requires rescue analysis when its raw cohort is positive or passes the
+A side requires recovery analysis when its raw cohort is positive or passes the
 preregistered side edge rule while the current gate approves zero/negligible
-support, or when removing that side materially destroys aggregate edge. Do not
-call the strategy unsuitable merely because the current gate discarded such a
-side.
+support, or when removing that side materially destroys aggregate edge. A side
+requires containment analysis when it is the dominant loss while the opposite
+raw side passes the useful-side rule. Do not call the strategy unsuitable
+merely because the current gate discarded a useful side or because raw ALL
+mixed it with a losing side.
 
-Freeze exactly five gate variants before looking at tuning/test outcomes:
+For recovery, freeze exactly five gate variants before looking at tuning/test
+outcomes:
 
 1. current deterministic gate control;
 2. current gate plus raw pass-through for the target side;
@@ -340,6 +408,13 @@ Freeze exactly five gate variants before looking at tuning/test outcomes:
    exclusion;
 5. direction-aware replacement: best preregistered policy per side, including
    raw pass-through where it is the frozen candidate.
+
+For containment, use the five variants and semantics frozen in
+[direction-policy.md](direction-policy.md): current gate, failing-side hard
+block, retained-side pass-through plus block, causal failing-side repair, and
+direction-aware replacement. Prefer the explicit gate block over mutating the
+raw core side toggle. If a core-toggle equivalence candidate is tested, keep it
+separate and require entry-identity equivalence.
 
 Use the permanent direction-aware ablation syntax rather than a proxy feature:
 
@@ -397,7 +472,17 @@ the composition.
 
 Report the final composition on the frozen full window and required terminal
 windows, plus standalone cold-start/reset checks when the strategy is stateful.
-Keep continuous-run terminal slices distinct from standalone horizons.
+Keep continuous-run terminal slices distinct from standalone horizons. When no
+composition qualifies, report the authoritative control and best
+aggregate/LONG/SHORT/direction-policy attempts with the same matrix before
+issuing a negative verdict.
+
+Then apply the complete chat/report contract from
+`$ai-train-local-research/references/reporting.md`: outcome/tail risk, cadence
+and fan-out, risk-adjusted metrics, quality and direction, runtime execution
+bridge, validation, acceptance checks, reject reasons, and conclusion. Use
+explicit `n/a` values for unavailable fields; do not omit the sections because
+the composition was rejected.
 
 Apply [verdict-contract.md](verdict-contract.md). Write the immutable evidence
 bundle before returning the verdict. `READY_FOR_RUNTIME` authorizes only a
@@ -433,12 +518,16 @@ economics look unsuitable.
 ## 8. Persist the full-period chart and choose an action
 
 The last research computation is mandatory and uses the exact final gate over
-the full frozen export:
+the full frozen export. If no gate candidate qualifies, use the frozen current
+gate over the authoritative control or selected side-qualified handoff and
+label the output `diagnostic-only`; the command and full report are still
+required:
 
 ```bash
 yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
   --localOnly --chart --json --output <full-period-ai-train.json> \
-  -n 0 --minQuality 4 --terminalWindows=1460,1095,365,180,90,30,7
+  -n 0 --minQuality 4 --directionPolicy <policy> \
+  --terminalWindows=1460,1095,365,180,90,30,7
 ```
 
 The command must scan the full dataset (`-n 0`), persist the UI chart snapshot,
@@ -467,18 +556,23 @@ fingerprints, then rerun `decide` there.
 
 Case handling is deterministic:
 
-1. Complete positive ALL/LONG/SHORT on 3y/4y/max, sparse or exposed recent
+1. Complete positive ALL plus every active approved side on 3y/4y/max, with an
+   explicit zero row for any policy-suppressed side, sparse or exposed recent
    loss, candidate implemented, chart present: micro-forward at risk 1.
 2. Supported causal recent direction failure with an untouched tail: one repair
    round, then rerun the full matrix and chart.
 3. Profitable raw side hidden by the current gate: complete the five side-rescue
    variants; pass-through is allowed but must pass chronological guardrails.
-4. Positive aggregate hiding a failed long-window side: do not hide the side;
+4. Useful raw side mixed with a losing side: complete the five direction-policy
+   variants. The losing raw side stays visible, while a tested `long_only` or
+   `short_only` gate may become the composition policy if the retained side and
+   aggregate approved stream pass every guardrail.
+5. Positive aggregate hiding a failed long-window side: do not hide the side;
    repair within budget or stop.
-5. Incomplete 3y/4y/max coverage, reconciliation, chart, or implementation:
+6. Incomplete 3y/4y/max coverage, reconciliation, chart, or implementation:
    return the explicit blocker rather than “wait”. A server-owned target that
    is unavailable locally produces a ready handoff, not a blocker.
-6. Risk-only changes: keep the same logic lineage and add immutable loss-scale
+7. Risk-only changes: keep the same logic lineage and add immutable loss-scale
    evidence; never discard earlier logic history.
 
 For an authorized local `MICRO_FORWARD_READY`, transfer the immutable handoff
@@ -515,6 +609,7 @@ yarn node -r dotenv/config \
 
 yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
   --localOnly --chart --json --output <full-period-ai-train.json> -n 0 \
+  --directionPolicy <both|long_only|short_only|direction_aware> \
   --terminalWindows=1460,1095,365,180,90,30,7
 
 yarn ai-pocket-search --strategy <Strategy> \

@@ -450,6 +450,15 @@ Keep them aligned with:
   deterministic AI-gate composition or diagnose that exact composition live.
   This contour is strategy-local; portfolio allocation and daily-loss policy are
   out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- Treat release work as causal trading research, not an audit checklist. Before
+  round 1 write the market thesis, build an opportunity map across formation,
+  timing, risk geometry, lifecycle, side/regime, concentration, and execution,
+  then choose exploit/repair/explore-or-falsify families from competing
+  mechanisms. After every round update the belief ledger from metrics,
+  identities, traces, regimes, costs, and support before selecting children.
+  Audit, report generation, bug fixes, and infrastructure work do not consume a
+  strategy-improvement round or justify a final answer while a safe bounded
+  experiment remains.
 - Before inventing release hypotheses, audit the strategy's full Git history,
   imported shared helpers, immutable notes, research ledger/index, config
   snapshots, and release artifacts. Persist a hash-linked inventory that
@@ -504,13 +513,23 @@ Keep them aligned with:
   trailing 1095d, 1460d, 1825d-or-exact-maximum-available, 365d, 180d, 90d,
   30d, and 7d. Record requested and covered days when the maximum cache is
   shorter than five years. Every window includes ALL/LONG/SHORT N, PnL,
-  PnL/trade, PF, WR, realized MaxDD, and cadence.
+  PnL/trade, PF, WR, realized MaxDD, and cadence. When no composition qualifies,
+  the matrix is still mandatory for the authoritative control, best aggregate,
+  best LONG, best SHORT, rescue children, and direction-policy attempts.
 - Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT.
   If the current gate approves zero or negligible support from a profitable raw
   side, the single gate round must test exactly five preregistered
   direction-aware repair variants (control, side pass-through, causal side
   pocket, protected side pocket, direction-aware replacement). Do not reject a
   strategy merely because its current gate discarded an existing side edge.
+- Before concluding that no composition finalist exists, run the mandatory
+  direction-policy checkpoint when one raw side passes the frozen useful-side
+  rule and the opposite side is the dominant aggregate loss. Keep both sides in
+  authoritative raw-core evidence, then test exactly five deterministic-gate
+  variants: current gate, failing-side hard block, retained-side pass-through
+  plus block, causal repair of the failing side, and direction-aware
+  replacement. A tested `long_only` or `short_only` gate may become composition
+  policy; silently disabling the core side or skipping gate research may not.
 - In release gate discovery, reserve the chronological test tail with
   `ai-pocket-search --testSplit <ratio> --sealTest`. Discovery may retain only
   the sealed tail's bounds/counts; open its economics exactly once after the
@@ -522,11 +541,15 @@ Keep them aligned with:
   mechanism, an untouched evaluation tail, and no prior repair. Do not fit a
   condition to a sparse/exposed 30d or 7d loser set; retain the long-window edge
   and move it to prospective micro-forward evidence instead.
-- End every completed release research run with full-export
-  `yarn ai-train --localOnly --chart -n 0` and persist/hash its structured
-  output plus chart lineage. A missing or different-lineage chart blocks a
-  forward action. Then run `yarn strategy:release decide`; never leave the next
-  action as an unbounded “wait”.
+- End every completed release research run with the complete
+  `$ai-train-local-research` report and full-export
+  `yarn ai-train --localOnly --chart -n 0`. This remains mandatory for a
+  negative verdict: use the frozen current gate/control or side-qualified
+  handoff and label it diagnostic-only when no candidate qualifies. Persist and
+  hash the structured output plus chart lineage. A missing or
+  different-lineage report/chart blocks a complete market-unsuitable verdict
+  and any forward action. Then run `yarn strategy:release decide`; never leave
+  the next action as an unbounded “wait”.
 - The `strategy:release decide` input must point to the structured chart report
   by path and SHA; the command must recompute and validate that artifact rather
   than trust a self-declared checksum. Local research may leave the server-owned
@@ -631,8 +654,11 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
 - Keep both `LONG` and `SHORT` enabled throughout raw-core research and in the
   resulting core config. Do not silently disable, omit, or hide a negative
   direction. The later AI-gate stage evaluates the reconciled LONG and SHORT
-  cohorts separately and may apply an explicit direction-aware gate; it does
-  not retroactively change the raw-core report.
+  cohorts separately and may apply an explicit held-out-tested `long_only`,
+  `short_only`, or direction-aware gate; it does not retroactively change the
+  raw-core report. Prefer a gate block because it preserves raw counterfactual
+  telemetry. A core side toggle is only an explicit equivalence candidate and
+  requires separate runtime authorization.
 - For a direction-targeted hypothesis, preregister the target side, the
   supposedly unaffected side, and the matched-control acceptance rule before
   running it. Judge the causal hypothesis primarily on the target cohort:
@@ -712,12 +738,14 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
   so future sweeps do not silently repeat them.
 - Treat membership inputs selected outside price candles—wallet registries,
   top-symbol/perp universes, benchmark baskets, allowlists, and similar
-  snapshots—as point-in-time data. A backtest may use only a version whose
-  `effectiveFrom` is at or before the evaluated candle. Applying one current or
-  future membership snapshot across older history is survivor/activity
-  lookahead even when the selector excludes PnL. Mark long-window robustness
-  blocked until effective-dated history exists; do not tune thresholds from the
-  contaminated run.
+  snapshots—as point-in-time data. A current cohort applied retrospectively is
+  a provenance limitation, not signal-time causal leakage. Label its estimand
+  honestly, keep control/candidates on the identical cohort, emphasize matched
+  deltas, and run incumbent/history-age/concentration sensitivity without
+  inventing listing dates. It blocks an unconditional historical robustness
+  claim, but not bounded core/gate research or selection of one immutable
+  `MAX_LOSS_VALUE=1` prospective candidate. Effective-dated membership remains
+  required before claiming exchange-wide historical robustness.
 - Label a core candidate `strictly robust` only when PnL is non-negative,
   PF is at least 1, and the cadence floor is met on the full window and every
   required terminal window. A still-negative strategy may be retained as an

@@ -31,7 +31,7 @@ explicitly asks for preliminary numbers.
 Decision: `<implement|observe|research-only|rollback|blocked>` — <one sentence>.
 
 Dataset: `<merge_id>` (`<part_count>` parts), rows `<rows>`, `<min_ts>` .. `<max_ts>`, lag `<data_lag_days>d`.
-Lineage: git `<sha>< dirty marker>`, gate `<gate_fingerprint>`, config `<config_ids_fingerprint>`, context `<context_fingerprint>`, `AI_MODE=<mode>`, `MIN_AI_QUALITY=<n>`.
+Lineage: git `<sha>< dirty marker>`, gate `<gate_fingerprint>`, config `<config_ids_fingerprint>`, context `<context_fingerprint>`, `AI_MODE=<mode>`, `MIN_AI_QUALITY=<n>`, `DIRECTION_POLICY=<both|long_only|short_only|direction_aware>`.
 Runtime comparison: `<comparable|different experiment|not checked>` — <one sentence>.
 ```
 
@@ -74,6 +74,10 @@ Use the same windows and gate-row order. Do not omit unavailable ratios.
 
 Use rows `qN+ total`, `q(N+1)+`, `LONG qN+`, and `SHORT qN+`, in that order.
 When `N=5`, keep `q(N+1)+` as `n/a`.
+
+For `long_only` or `short_only`, retain the suppressed direction as an explicit
+zero-approval row. The raw-core direction metrics belong beside the approved
+table in release research; never omit the losing or blocked counterfactual.
 
 ```md
 ### Quality and direction

@@ -1,4 +1,4 @@
 interface:
   display_name: 'Strategy Release'
-  short_description: 'Release and diagnose TradeJS strategies'
-  default_prompt: 'Use $strategy-release to audit prior strategy evidence, bridge stronger historical results, run three causal core rounds, then rescue up to three complete cadence-diverse diagnostic seeds even when they failed release eligibility before validating one core plus deterministic AI-gate composition.'
+  short_description: 'Improve and validate one strategy composition'
+  default_prompt: 'Use $strategy-release as a professional algo researcher: build a causal market thesis and opportunity map, actively improve one core plus deterministic gate through evidence-driven rounds, and finish with complete evidence and a concrete action.'

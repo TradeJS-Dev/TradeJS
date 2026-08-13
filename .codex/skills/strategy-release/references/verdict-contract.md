@@ -8,7 +8,9 @@ causal findings, limitations, and approval-safe next action.
 
 - Treat a verdict as an evidence classification, not an authorization token.
 - Keep ALL, LONG, and SHORT statuses separate. A positive aggregate cannot hide
-  a failed side, and a negative side cannot be silently disabled.
+  a failed side, and a negative side cannot be silently disabled. An explicit
+  tested `long_only` or `short_only` deterministic-gate policy is allowed, but
+  the suppressed raw side and its zero approved row must remain visible.
 - Apply `evidence-first, novelty-second`. A release verdict is incomplete until
   the historical commit/evidence inventory is hashed, every stronger prior
   result is classified and bridged to the current window/universe/config/cost
@@ -18,6 +20,10 @@ causal findings, limitations, and approval-safe next action.
 - A current gate that approves zero/negligible rows from a profitable raw side
   is incomplete evidence. Do not return a final market-unsuitable verdict until
   the mandatory five-variant side-rescue round has been executed and recorded.
+- A raw aggregate that fails because one side is the dominant loss is not a
+  final verdict while the opposite side passes the frozen useful-side rule.
+  Complete the five-variant direction-containment checkpoint before rejecting
+  the composition.
 - `READY_FOR_RUNTIME` requires a genuinely sealed chronological gate test:
   pocket discovery may know its count and time bounds but not its PnL or feature
   outcomes. A test opened before variant freeze is permanently exposed and can
@@ -36,8 +42,15 @@ causal findings, limitations, and approval-safe next action.
   authorized handoff before forward execution.
 - Use aggregate portfolio MaxDD for ALL and side-only realized MaxDD for each
   direction.
+- A complete release verdict, including `UNSUITABLE_FOR_CURRENT_MARKET`,
+  requires the full window matrix and the complete `$ai-train-local-research`
+  report. A negative verdict cannot replace omitted statistics with an artifact
+  link or a short rescue leaderboard.
 - Prefer `INSUFFICIENT_EVIDENCE` over extrapolation when lineage, completeness,
   parity, point-in-time validity, independent support, or reconciliation fails.
+- This classifies the historical claim; it does not automatically mean stop.
+  Retrospective-universe or exposed-holdout limitations require continued
+  bounded research and may end in a risk-1 prospective handoff.
 - Keep any unapproved next composition in forward incubation/advisory mode.
 - A verdict never means “wait”. Pair it with the deterministic research action:
   bounded recent-direction repair, authorized risk-1 micro-forward, a concrete
@@ -58,9 +71,11 @@ Use only when all conditions hold:
   metric/match/trace analysis before each child;
 - one isolated-long finalist and one gate round followed the preregistered
   rules without reopening the held-out evidence;
-- BOTH directions stayed enabled and ALL/LONG/SHORT passed their explicit
-  release rules, or every allowed side exception was preregistered and remains
-  visible for later direction-aware AI-gate evaluation;
+- BOTH directions stayed enabled in raw evidence and ALL/LONG/SHORT were
+  reported; the approved composition either passes its explicit rules for both
+  sides or uses a preregistered, held-out-tested `long_only`/`short_only` gate
+  policy whose retained side and ALL stream pass while the suppressed side is
+  shown explicitly as zero approved support;
 - full, terminal, cold-start/reset, concentration, capacity, causality, and
   current-market evidence satisfy the release contract;
 - no unresolved runtime-parity or data-lineage blocker remains.
@@ -78,7 +93,9 @@ portfolio DD/capacity, or no qualifying isolated finalist.
 
 Do not use this verdict merely because the first three rounds produced no
 eligible finalist. It requires the historical bridge and all available rescue
-slots to be complete. A stronger unbridged prior result or an unresolved
+slots to be complete. It also requires the direction-policy checkpoint, the
+maximum-window diagnostic handoff, the full window matrix, and the complete
+AI-gate report. A stronger unbridged prior result or an unresolved
 reconstructable historical hypothesis makes the evidence incomplete instead.
 
 Meaning: preserve the composition and failures as immutable research. Keep any
@@ -94,8 +111,12 @@ independent support, missing cold-start evidence, ambiguous lineage, an
 incomplete historical hypothesis audit, or a bounded trial cap reached while a
 stronger reconstructable historical backlog remains.
 
-Meaning: identify the smallest missing evidence item. Do not convert uncertainty
-into current-market unsuitability or readiness.
+Meaning: identify the smallest missing evidence item and its action ceiling.
+Hard-invalid evidence must be repaired. Retrospective-universe, exposed-tail,
+and prospective-support limitations do not justify waiting for perfect history:
+complete the bounded contour and prepare/start the separately authorized
+`MAX_LOSS_VALUE=1` micro-forward candidate. Do not convert uncertainty into
+current-market unsuitability or historical readiness.
 
 ## Diagnose-live verdict precedence
 
@@ -149,9 +170,16 @@ EVIDENCE: <complete|incomplete> — <one-line reason>
 HISTORY AUDIT: <inventory SHA> — <bridged/excluded/unresolved counts>
 PRIOR BRIDGE: <strongest prior result and current-contract disposition>
 RESCUE BOARD: <up to 3 seed cadence/failure/child/result rows, or hard reason per empty slot>
+DIRECTION POLICY: <trigger, five variants, selected/rejected policy, checkpoint SHA>
 
 ALL/LONG/SHORT: N, PnL, PnL/trade, PF, WR, realized MaxDD, cadence/day
+WINDOW MATRIX: <full/3y/4y/max-covered/365d/180d/90d/30d/7d for control and best aggregate/LONG/SHORT/policy attempts>
+AI-GATE REPORT: <decision, qN+, full/terminal outcome, cadence/fan-out, risk-adjusted, quality/direction, validation, artifact SHA>
 CAUSAL/PARITY FINDING: <bounded evidence statement>
 LIMITATIONS: <material limitations or none>
 NEXT ACTION: <REPAIR_RECENT_DIRECTION|START_MICRO_FORWARD|MICRO_FORWARD_READY|FORWARD_BLOCKED|STOP_RESEARCH> — <bounded reason>
 ```
+
+Also cite the immutable `tradejs-release-progress/v1` artifact. If it reports
+`verdictAllowed=false`, do not emit this final shape yet; perform its next
+action first.

@@ -228,8 +228,12 @@ must never be committed.
 ### 3. Research The AI Gate Separately
 
 Only after the core candidate has valid evidence should the same immutable
-export be used for gate research. Discover causal pockets with a time-ordered
-holdout, then replay the deterministic local gate over all selected rows:
+export be used for gate research. A side-qualified handoff is also valid input
+when one raw direction has a frozen useful edge and the opposite direction is
+the dominant aggregate loss; it remains labelled as a failed raw aggregate
+until an explicit direction policy is tested. Discover causal pockets with a
+time-ordered holdout, then replay the deterministic local gate over all
+selected rows:
 
 ```bash
 yarn ai-pocket-search --strategy MyStrategy -n 0 \
@@ -243,6 +247,17 @@ separately. Gate inputs must exist at signal time; delayed fills, exit reasons,
 and realized PnL are outcomes, never features. `AI_MODE=gate` is comparable to
 `ai-train --localOnly`; `AI_MODE=llm` requires provider-backed evidence and must
 not inherit local-gate claims.
+
+Do not silently turn `SHORT.enable=false` or `LONG.enable=false` to make raw
+metrics look better. Keep both directions in the raw export, then test an
+explicit deterministic-gate policy (`both`, `long_only`, `short_only`, or a
+direction-aware rule). This preserves the rejected side as counterfactual
+evidence while allowing a retained side to become the released composition.
+When one side is useful and the other supplies the dominant loss, the release
+workflow must run five frozen variants: current gate, failing-side block,
+retained-side pass-through plus block, causal repair of the failing side, and a
+direction-aware replacement. Recent-window and cost failures can still reject
+the one-side composition; they are not a reason to skip the experiment.
 
 For a release lineage, `--sealTest` keeps the final timestamp-grouped tail out
 of discovery and current-gate economics while recording its immutable bounds.
@@ -287,6 +302,15 @@ all available rescue slots are complete. An unused rescue slot requires a
 recorded hard reason: no cadence-distinct complete candidate or no causal
 point-in-time child capable of addressing its measured failure.
 
+Before a no-finalist conclusion, the skill must also run the mandatory
+direction-policy checkpoint. A positive raw LONG mixed with a losing SHORT (or
+the reverse) is a composition-design question, not an automatic
+`STOP_RESEARCH`. The best complete side-qualified handoff may consume the
+single isolated-long slot and enter the one gate round without being relabelled
+an eligible raw-core winner. `UNSUITABLE_FOR_CURRENT_MARKET` is valid only after
+that policy is tested or a frozen useful-side rule proves that neither side can
+be salvaged.
+
 Each round uses `yarn research:core` with `--researchTrace` and must finish a
 full result analysis before the next specs are frozen: ALL/LONG/SHORT metrics,
 payoff and drawdown tails, matched/control-only/candidate-only/changed trades,
@@ -310,6 +334,39 @@ The final response must expose the audit instead of hiding it in artifacts:
 `PRIOR BRIDGE` states what happened to the strongest earlier result, and
 `RESCUE BOARD` lists every selected seed's cadence, failure, child, and result
 or the hard reason an available slot could not be used.
+
+An audit, architecture fix, or data-quality discovery is not itself a strategy
+improvement attempt. The release skill writes a progress payload and runs
+`release-progress-checkpoint.mjs` after the baseline and every round. When the
+checkpoint says `RUN_CORE_ROUND_1`, `RUN_CADENCE_RESCUE_BOARD`, or
+`RUN_DIRECTION_POLICY_CHECKPOINT`, Codex must perform that bounded action before
+returning a final verdict.
+
+The bounded loop still requires professional judgment. Before round 1, Codex
+writes the strategy's market thesis and an opportunity map across setup
+formation, entry timing, risk geometry, lifecycle, side/regime, concentration,
+and execution. It chooses one exploit family, one repair family, and one
+explore/falsify family from competing mechanisms. After each round it updates a
+belief ledger from metric, identity, regime, cost, and trace evidence. This
+prevents both random threshold grids and rigid checklist execution.
+
+Historical universe provenance controls the claim ceiling rather than acting
+as a generic stop switch. A current deployable cohort replayed through older
+cached candles may support matched control/candidate research and a prospective
+risk-1 handoff, but not an unconditional exchange-wide historical robustness
+claim. Record it as `micro_forward_only`, run available membership sensitivity,
+and resolve the remaining uncertainty with forward evidence instead of waiting
+for a perfect historical membership archive.
+
+The response must also expose `DIRECTION POLICY`, a complete window matrix,
+and the standard AI-gate report. This remains mandatory when the result is
+negative. Show the authoritative control, best aggregate, best LONG, best
+SHORT, and rescue/policy attempts over full, 3y, 4y,
+5y-or-maximum-covered, 365d, 180d, 90d, 30d, and 7d windows. Then follow the
+`$ai-train-local-research` tables for outcome/tail risk, cadence/fan-out,
+risk-adjusted metrics, quality/direction, execution bridge, validation,
+acceptance checks, and reject reasons. Use `n/a`; never omit a section or leave
+the detailed statistics only inside an ignored note.
 
 Create a draft JSON that references verified core, gate, runtime-parity, and
 execution-calibration artifacts. It also freezes equal-length historical
@@ -371,7 +428,8 @@ and deriving a separate next action:
 ```bash
 yarn ai-train --strategy DoubleTap --file <merged-part1.jsonl> \
   --localOnly --chart --json --output output/DoubleTap-full-chart.json \
-  -n 0 --minQuality 4 --terminalWindows=1460,1095,365,180,90,30,7
+  -n 0 --minQuality 4 --directionPolicy <policy> \
+  --terminalWindows=1460,1095,365,180,90,30,7
 
 yarn strategy:release decide \
   --input data/research/releases/DoubleTap-decision-input.json \

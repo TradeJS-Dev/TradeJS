@@ -24,17 +24,24 @@ export type StrategyReleaseResearchDecisionBlocker =
   | 'FORWARD_NOT_AUTHORIZED'
   | 'FORWARD_RISK_MUST_BE_ONE';
 
+export type StrategyDirectionPolicy =
+  | 'both'
+  | 'long_only'
+  | 'short_only'
+  | 'direction_aware';
+
 export type StrategyReleaseHistoricalWindow = {
   days: number;
   coveredDays?: number;
   pnl: number;
   profitFactor: number;
-  long: { pnl: number; profitFactor: number };
-  short: { pnl: number; profitFactor: number };
+  long: { trades?: number; pnl: number; profitFactor: number };
+  short: { trades?: number; pnl: number; profitFactor: number };
 };
 
 export type StrategyReleaseResearchDecisionInput = {
   strategy: string;
+  directionPolicy?: StrategyDirectionPolicy;
   historicalWindows: StrategyReleaseHistoricalWindow[];
   candidateImplemented: boolean;
   exposedEvaluation: boolean;
@@ -162,6 +169,7 @@ export type StrategyReleaseEvidenceReference = {
     gateContextFingerprint: string | null;
     runtimeContextFingerprint: string | null;
     maxLossValue: number | null;
+    directionPolicy?: StrategyDirectionPolicy | null;
     sourceSha256s: string[];
   };
   releaseAssertions?: Partial<{
@@ -191,6 +199,7 @@ export type StrategyReleaseManifest = {
     maxLossValue: number;
     longEnabled: boolean;
     shortEnabled: boolean;
+    directionPolicy?: StrategyDirectionPolicy;
   };
   marketWindow: {
     startTime: number;

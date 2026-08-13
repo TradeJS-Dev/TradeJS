@@ -90,6 +90,31 @@ export const deriveStrategyReleaseResearchDecision = async (
   input: StrategyReleaseResearchDecisionInput,
 ): Promise<StrategyReleaseResearchDecision> => {
   const blockers: StrategyReleaseResearchDecisionBlocker[] = [];
+  const directionPolicy = input.directionPolicy ?? 'both';
+  const activeDirections =
+    directionPolicy === 'long_only'
+      ? (['long'] as const)
+      : directionPolicy === 'short_only'
+        ? (['short'] as const)
+        : (['long', 'short'] as const);
+  const suppressedDirection =
+    directionPolicy === 'long_only'
+      ? ('short' as const)
+      : directionPolicy === 'short_only'
+        ? ('long' as const)
+        : null;
+  const hasHistoricalEdge = (
+    entry: StrategyReleaseResearchDecisionInput['historicalWindows'][number],
+  ) =>
+    entry.pnl > 0 &&
+    entry.profitFactor >= 1 &&
+    activeDirections.every(
+      (direction) =>
+        entry[direction].pnl > 0 && entry[direction].profitFactor >= 1,
+    ) &&
+    (suppressedDirection == null ||
+      (entry[suppressedDirection].trades === 0 &&
+        entry[suppressedDirection].pnl === 0));
   const byDays = new Map(
     input.historicalWindows.map((entry) => [entry.days, entry]),
   );
@@ -102,33 +127,13 @@ export const deriveStrategyReleaseResearchDecision = async (
   const longWindows = REQUIRED_LONG_WINDOWS.map((days) =>
     byDays.get(days),
   ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  if (
-    longWindows.some(
-      (entry) =>
-        entry.pnl <= 0 ||
-        entry.profitFactor < 1 ||
-        entry.long.pnl <= 0 ||
-        entry.long.profitFactor < 1 ||
-        entry.short.pnl <= 0 ||
-        entry.short.profitFactor < 1,
-    )
-  ) {
+  if (longWindows.some((entry) => !hasHistoricalEdge(entry))) {
     blockers.push('HISTORICAL_EDGE_FAILED');
   }
   const stableTerminalWindows = REQUIRED_STABLE_TERMINAL_WINDOWS.map((days) =>
     byDays.get(days),
   ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  if (
-    stableTerminalWindows.some(
-      (entry) =>
-        entry.pnl <= 0 ||
-        entry.profitFactor < 1 ||
-        entry.long.pnl <= 0 ||
-        entry.long.profitFactor < 1 ||
-        entry.short.pnl <= 0 ||
-        entry.short.profitFactor < 1,
-    )
-  ) {
+  if (stableTerminalWindows.some((entry) => !hasHistoricalEdge(entry))) {
     blockers.push('HISTORICAL_EDGE_FAILED');
   }
   if (blockers.length) {
@@ -140,8 +145,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       maxLossValue: null,
       requiresRuntimeBinding: false,
       blockers,
-      summary:
-        'The final composition does not have complete positive ALL/LONG/SHORT evidence on the frozen 3y/4y/max-window matrix.',
+      summary: `The final ${directionPolicy} composition does not have complete positive evidence for ALL and every active direction on the frozen 3y/4y/max-window matrix.`,
     };
   }
 
@@ -316,6 +320,7 @@ const verifyEvidenceComposition = (
   composition: StrategyReleaseInput['composition'],
   evidence: StrategyReleaseEvidenceReference[],
 ) => {
+  const directionPolicy = composition.directionPolicy ?? 'both';
   const requireEqual = (
     actual: string | number | boolean | null | undefined,
     expected: string | number | boolean,
@@ -393,6 +398,14 @@ const verifyEvidenceComposition = (
         'gateContextFingerprint',
         reference.artifactId,
       );
+      if (directionPolicy !== 'both' || lineage?.directionPolicy != null) {
+        requireEqual(
+          lineage?.directionPolicy,
+          directionPolicy,
+          'directionPolicy',
+          reference.artifactId,
+        );
+      }
       assert(
         lineage?.sourceSha256s.includes(composition.coreExportSha256),
         `evidence ${reference.artifactId} does not use the frozen core export`,
@@ -437,6 +450,14 @@ const verifyEvidenceComposition = (
         'MAX_LOSS_VALUE',
         reference.artifactId,
       );
+      if (directionPolicy !== 'both' || lineage?.directionPolicy != null) {
+        requireEqual(
+          lineage?.directionPolicy,
+          directionPolicy,
+          'directionPolicy',
+          reference.artifactId,
+        );
+      }
       continue;
     }
     if (reference.kind === 'execution_calibration') {
@@ -477,6 +498,14 @@ const verifyEvidenceComposition = (
         'MAX_LOSS_VALUE',
         reference.artifactId,
       );
+      if (directionPolicy !== 'both' || lineage?.directionPolicy != null) {
+        requireEqual(
+          lineage?.directionPolicy,
+          directionPolicy,
+          'directionPolicy',
+          reference.artifactId,
+        );
+      }
     }
   }
 };
@@ -514,6 +543,13 @@ export const createStrategyReleaseManifest = (
   assert(
     input.composition.longEnabled && input.composition.shortEnabled,
     'LONG and SHORT must both remain enabled',
+  );
+  assert(
+    input.composition.directionPolicy == null ||
+      ['both', 'long_only', 'short_only', 'direction_aware'].includes(
+        input.composition.directionPolicy,
+      ),
+    'composition.directionPolicy is invalid',
   );
   assert(
     Number.isInteger(input.monitoring.minimumProspectiveClosedTrades) &&
@@ -596,6 +632,9 @@ export const createStrategyReleaseManifest = (
     gateContextFingerprint: input.composition.gateContextFingerprint,
     runtimeContextFingerprint: input.composition.runtimeContextFingerprint,
     maxLossValue: input.composition.maxLossValue,
+    ...(input.composition.directionPolicy == null
+      ? {}
+      : { directionPolicy: input.composition.directionPolicy }),
   };
   const compositionId = `${safeSegment(input.strategy, 'strategy')}_${strategyReleaseSha256(compositionIdentity).slice(0, 16)}`;
   const reasons = releaseReasons({ ...input, gates: evidenceGates });
@@ -700,6 +739,7 @@ export const verifyStrategyReleaseEnvelope = async (
       maxLossValue: manifest.composition.maxLossValue,
       longEnabled: manifest.composition.longEnabled,
       shortEnabled: manifest.composition.shortEnabled,
+      directionPolicy: manifest.composition.directionPolicy,
     },
     marketWindow: manifest.marketWindow,
     researchBudget: manifest.researchBudget,
@@ -1374,6 +1414,13 @@ const finiteNumber = (value: unknown) => {
   return Number.isFinite(number) ? number : null;
 };
 
+const finiteDirectionPolicy = (value: unknown) =>
+  ['both', 'long_only', 'short_only', 'direction_aware'].includes(String(value))
+    ? (value as NonNullable<
+        StrategyReleaseEvidenceReference['lineage']
+      >['directionPolicy'])
+    : null;
+
 const uniqueStrings = (values: unknown[]) => [
   ...new Set(
     values.map(finiteString).filter((value): value is string => value != null),
@@ -1391,6 +1438,7 @@ const incompleteEvidenceLineage = (): StrategyReleaseEvidenceLineage => ({
   gateContextFingerprint: null,
   runtimeContextFingerprint: null,
   maxLossValue: null,
+  directionPolicy: null,
   sourceSha256s: [],
 });
 
@@ -1477,6 +1525,7 @@ const extractEvidenceLineage = ({
       gateConfigIdsFingerprint: finiteString(lineage?.configIdsFingerprint),
       gateFingerprint: finiteString(lineage?.gateFingerprint),
       gateContextFingerprint: finiteString(lineage?.contextFingerprint),
+      directionPolicy: finiteDirectionPolicy(lineage?.directionPolicy),
       sourceSha256s: uniqueStrings(array(lineage?.sourceSha256s)),
     };
   }
@@ -1520,6 +1569,7 @@ const extractEvidenceLineage = ({
       runtimeConfigFingerprint: one('configFingerprint'),
       runtimeContextFingerprint: one('contextFingerprint'),
       maxLossValue: maxLossValues.length === 1 ? maxLossValues[0] : null,
+      directionPolicy: finiteDirectionPolicy(one('directionPolicy')),
     };
   }
   if (reference.kind === 'execution_calibration') {
@@ -1562,6 +1612,7 @@ const extractEvidenceLineage = ({
       runtimeConfigFingerprint: one('configFingerprint'),
       runtimeContextFingerprint: one('contextFingerprint'),
       maxLossValue: maxLossValues.length === 1 ? maxLossValues[0] : null,
+      directionPolicy: finiteDirectionPolicy(one('directionPolicy')),
       sourceSha256s: uniqueStrings([
         ...array(nested(artifact.sources)?.sha256s),
         ...array(artifact.sourceSha256s),
@@ -1767,9 +1818,10 @@ export async function collectReleaseEvidenceReferences(
         if (reference.kind === 'ai_gate') {
           const outcome = nested(artifact.outcome);
           const approvedRisk = nested(outcome?.approvedRisk);
-          const terminalWindows = array(
-            nested(artifact.research)?.terminalWindows,
-          )
+          const run = nested(artifact.run);
+          const research = nested(artifact.research);
+          const researchLineage = nested(research?.lineage);
+          const terminalWindows = array(research?.terminalWindows)
             .map(nested)
             .filter((entry): entry is Record<string, unknown> => entry != null);
           const hasLongShortDirections = (value: unknown) => {
@@ -1790,6 +1842,36 @@ export async function collectReleaseEvidenceReferences(
             terminalWindows.every((window) =>
               hasLongShortDirections(window.byDirection),
             );
+          const directionPolicy =
+            finiteDirectionPolicy(researchLineage?.directionPolicy) ?? 'both';
+          const runDirectionPolicy =
+            finiteDirectionPolicy(run?.directionPolicy) ?? 'both';
+          const suppressedDirection =
+            directionPolicy === 'long_only'
+              ? 'SHORT'
+              : directionPolicy === 'short_only'
+                ? 'LONG'
+                : null;
+          const approvedForDirection = (value: unknown, direction: string) => {
+            const entry = array(value)
+              .map(nested)
+              .find((candidate) => candidate?.direction === direction);
+            return Number(nested(entry?.summary)?.approved ?? Number.NaN);
+          };
+          const directionPolicyValid =
+            runDirectionPolicy === directionPolicy &&
+            (suppressedDirection == null ||
+              (approvedForDirection(
+                artifact.byDirection,
+                suppressedDirection,
+              ) === 0 &&
+                terminalWindows.every(
+                  (window) =>
+                    approvedForDirection(
+                      window.byDirection,
+                      suppressedDirection,
+                    ) === 0,
+                )));
           const terminalsPass =
             terminalWindows.length > 0 &&
             terminalWindows.every((window) => {
@@ -1812,6 +1894,7 @@ export async function collectReleaseEvidenceReferences(
               Number(approvedRisk?.profitFactor ?? Number.NEGATIVE_INFINITY) >
                 1 &&
               directionalEvidenceComplete &&
+              directionPolicyValid &&
               terminalsPass,
           };
         }

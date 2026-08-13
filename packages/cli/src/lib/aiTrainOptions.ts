@@ -1,3 +1,5 @@
+import type { StrategyDirectionPolicy } from '@tradejs/types';
+
 export const parseTimestampFilter = (value: unknown): number | null => {
   if (value == null || String(value).trim() === '') {
     return null;
@@ -68,6 +70,68 @@ export const parseTerminalWindowDays = (value: unknown) => {
     .filter((part) => part > 0);
 
   return [...new Set(raw)].sort((left, right) => right - left);
+};
+
+export const parseAiTrainDirectionPolicy = (
+  value: unknown,
+): StrategyDirectionPolicy => {
+  const normalized = String(value ?? 'both')
+    .trim()
+    .toLowerCase()
+    .replaceAll('-', '_');
+  if (
+    normalized === 'both' ||
+    normalized === 'long_only' ||
+    normalized === 'short_only' ||
+    normalized === 'direction_aware'
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    `Invalid --directionPolicy value "${String(value)}". Use both, long_only, short_only, or direction_aware.`,
+  );
+};
+
+type AiTrainDirectionSummaryLike = {
+  direction: string;
+  summary: { approved: number };
+};
+
+export const assertAiTrainDirectionPolicy = ({
+  directionPolicy,
+  byDirection,
+  terminalWindows,
+}: {
+  directionPolicy: StrategyDirectionPolicy;
+  byDirection: AiTrainDirectionSummaryLike[];
+  terminalWindows: Array<{
+    label: string;
+    byDirection: AiTrainDirectionSummaryLike[];
+  }>;
+}) => {
+  const suppressedDirection =
+    directionPolicy === 'long_only'
+      ? 'SHORT'
+      : directionPolicy === 'short_only'
+        ? 'LONG'
+        : null;
+  if (!suppressedDirection) return;
+
+  for (const scope of [{ label: 'full', byDirection }, ...terminalWindows]) {
+    const summary = scope.byDirection.find(
+      (entry) => entry.direction === suppressedDirection,
+    );
+    if (!summary) {
+      throw new Error(
+        `${scope.label} ${suppressedDirection} direction summary is required for ${directionPolicy}`,
+      );
+    }
+    if (summary.summary.approved !== 0) {
+      throw new Error(
+        `${scope.label} has ${summary.summary.approved} ${suppressedDirection} approved rows under ${directionPolicy}`,
+      );
+    }
+  }
 };
 
 export type AiTrainDumpFeatureMode = 'none' | 'gateFeatures' | 'baseContext';
