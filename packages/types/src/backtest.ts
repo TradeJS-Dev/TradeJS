@@ -331,6 +331,8 @@ export type TestTradeExitReason = 'take_profit' | 'stop_loss' | 'exit';
 
 export interface TestTradeResult {
   signalId: string;
+  /** Stable id shared by every entry leg belonging to one position lifecycle. */
+  positionCycleId?: string;
   direction: Direction;
   qty: number;
   closedQty: number;

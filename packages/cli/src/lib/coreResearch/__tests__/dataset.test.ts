@@ -3,7 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { readCoreResearchVariant, resolveCoreResearchRegime } from '../dataset';
 import { sha256File } from '../io';
-import { makeDatasetRow, makeVariant, START } from '../__fixtures__/fixtures';
+import {
+  DAY_MS,
+  makeDatasetRow,
+  makeVariant,
+  START,
+} from '../__fixtures__/fixtures';
 
 const writeRows = async (filePath: string, rows: unknown[]) => {
   await fs.writeFile(
@@ -135,6 +140,78 @@ describe('core research dataset reader', () => {
         }),
       ),
     ).rejects.toThrow('Conflicting completed trades share identity');
+  });
+
+  it('aggregates separately attributed scale-in legs into one position cycle', async () => {
+    const filePath = path.join(tempRoot, 'scale-in.jsonl');
+    await writeRows(filePath, [
+      makeDatasetRow({
+        signalId: 'grid-open',
+        setupIdentity: 'open-setup',
+        positionCycleId: 'grid-open',
+        timestamp: START,
+        qty: 1,
+        entryPrice: 100,
+        exitTimestamp: START + DAY_MS / 2,
+        netProfit: 1.25,
+      }),
+      makeDatasetRow({
+        signalId: 'grid-increase-2',
+        setupIdentity: 'increase-setup',
+        positionCycleId: 'grid-open',
+        timestamp: START + 1_000,
+        qty: 2,
+        entryPrice: 90,
+        exitTimestamp: START + DAY_MS / 2,
+        netProfit: 2.75,
+      }),
+    ]);
+
+    const loaded = await readCoreResearchVariant(
+      makeVariant({
+        id: 'candidate',
+        role: 'candidate',
+        files: [filePath],
+      }),
+    );
+
+    expect(loaded.files[0]).toEqual(
+      expect.objectContaining({ selectedTrades: 2 }),
+    );
+    expect(loaded.trades).toEqual([
+      expect.objectContaining({
+        signalId: 'grid-open',
+        positionCycleId: 'grid-open',
+        setupIdentity: 'open-setup',
+        signalTimestamp: START,
+        entryTimestamp: START + 1_000,
+        entryPrice: (100 + 90 * 2) / 3,
+        qty: 3,
+        netProfit: 4,
+        grossProfit: 8,
+        totalFee: 4,
+      }),
+    ]);
+  });
+
+  it('rejects an incomplete position cycle without its opening row', async () => {
+    const filePath = path.join(tempRoot, 'orphan-increase.jsonl');
+    await writeRows(filePath, [
+      makeDatasetRow({
+        signalId: 'grid-increase-2',
+        positionCycleId: 'grid-open',
+      }),
+    ]);
+
+    await expect(
+      readCoreResearchVariant(
+        makeVariant({
+          id: 'candidate',
+          role: 'candidate',
+          files: [filePath],
+        }),
+      ),
+    ).rejects.toThrow('must contain exactly one opening row');
   });
 
   it('rejects completed rows without a stable signal identity', async () => {

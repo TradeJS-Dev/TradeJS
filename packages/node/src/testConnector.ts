@@ -181,6 +181,7 @@ export const createTestConnector: TestConnectorCreator = (
 
   const createOpenTradeResult = ({
     signalId,
+    positionCycleId,
     direction,
     qty,
     timestamp,
@@ -191,6 +192,7 @@ export const createTestConnector: TestConnectorCreator = (
     entrySlippageCost,
   }: {
     signalId: string;
+    positionCycleId: string;
     direction: 'LONG' | 'SHORT';
     qty: number;
     timestamp: number;
@@ -201,6 +203,7 @@ export const createTestConnector: TestConnectorCreator = (
     entrySlippageCost: number;
   }): OpenTradeResult => ({
     signalId,
+    positionCycleId,
     direction,
     qty,
     closedQty: 0,
@@ -1097,6 +1100,7 @@ export const createTestConnector: TestConnectorCreator = (
         currentEntryLegResults.push(
           createOpenTradeResult({
             signalId: increaseSignalId,
+            positionCycleId: currentSignalId ?? increaseSignalId,
             direction: order.direction,
             qty: orderQty,
             timestamp: order.timestamp,
@@ -1213,6 +1217,7 @@ export const createTestConnector: TestConnectorCreator = (
       currentPositionProfit = profit;
       const openTradeResult = createOpenTradeResult({
         signalId: currentSignalId ?? '',
+        positionCycleId: currentSignalId ?? '',
         direction: order.direction,
         qty: orderQty,
         timestamp: order.timestamp,

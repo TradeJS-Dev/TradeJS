@@ -168,6 +168,11 @@ const normalizeCompletedTrade = (params: {
     runId: row.backtestRunId ?? null,
     configId: row.configId?.trim() || '<missing-config-id>',
     signalId,
+    positionCycleId:
+      typeof result.positionCycleId === 'string' &&
+      result.positionCycleId.trim()
+        ? result.positionCycleId.trim()
+        : null,
     setupIdentity,
     setupIdentitySource: explicitIdentity
       ? 'research.setupIdentity'
@@ -200,6 +205,87 @@ const normalizeCompletedTrade = (params: {
 
 const completedTradeIdentity = (trade: CoreResearchTrade) =>
   [trade.runId ?? '', trade.configId, trade.signalId, trade.symbol].join('|');
+
+const positionCycleIdentity = (trade: CoreResearchTrade) =>
+  trade.positionCycleId
+    ? [
+        trade.runId ?? '',
+        trade.configId,
+        trade.strategy,
+        trade.symbol,
+        trade.direction,
+        trade.positionCycleId,
+      ].join('|')
+    : null;
+
+const sumBy = (
+  trades: CoreResearchTrade[],
+  select: (trade: CoreResearchTrade) => number,
+) => trades.reduce((sum, trade) => sum + select(trade), 0);
+
+const weightedPrice = (
+  trades: CoreResearchTrade[],
+  select: (trade: CoreResearchTrade) => number | null,
+) => {
+  const withPrice = trades.filter((trade) => select(trade) != null);
+  const qty = sumBy(withPrice, (trade) => trade.qty);
+  if (qty <= 0) return null;
+  return sumBy(withPrice, (trade) => Number(select(trade)) * trade.qty) / qty;
+};
+
+const aggregatePositionCycles = (trades: CoreResearchTrade[]) => {
+  const standalone: CoreResearchTrade[] = [];
+  const cycles = new Map<string, CoreResearchTrade[]>();
+  for (const trade of trades) {
+    const identity = positionCycleIdentity(trade);
+    if (!identity) {
+      standalone.push(trade);
+      continue;
+    }
+    const cycle = cycles.get(identity) ?? [];
+    cycle.push(trade);
+    cycles.set(identity, cycle);
+  }
+
+  for (const [identity, cycle] of cycles) {
+    const primaryRows = cycle.filter(
+      (trade) => trade.signalId === trade.positionCycleId,
+    );
+    if (primaryRows.length !== 1) {
+      throw new Error(
+        `Position cycle ${identity} must contain exactly one opening row; found ${primaryRows.length}`,
+      );
+    }
+    const primary = primaryRows[0];
+    if (
+      cycle.some(
+        (trade) =>
+          trade.exitTimestamp !== primary.exitTimestamp ||
+          trade.exitReason !== primary.exitReason,
+      )
+    ) {
+      throw new Error(
+        `Position cycle ${identity} contains inconsistent final exits`,
+      );
+    }
+    if (cycle.length === 1) {
+      standalone.push(primary);
+      continue;
+    }
+    standalone.push({
+      ...primary,
+      entryTimestamp: Math.min(...cycle.map((trade) => trade.entryTimestamp)),
+      entryPrice: weightedPrice(cycle, (trade) => trade.entryPrice) ?? 0,
+      exitPrice: weightedPrice(cycle, (trade) => trade.exitPrice),
+      qty: sumBy(cycle, (trade) => trade.qty),
+      netProfit: sumBy(cycle, (trade) => trade.netProfit),
+      grossProfit: sumBy(cycle, (trade) => trade.grossProfit),
+      totalFee: sumBy(cycle, (trade) => trade.totalFee),
+      totalSlippageCost: sumBy(cycle, (trade) => trade.totalSlippageCost),
+    });
+  }
+  return standalone;
+};
 
 const compareText = (left: string, right: string) =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -290,6 +376,6 @@ export const readCoreResearchVariant = async (variant: CoreResearchVariant) => {
     variant,
     files: sources,
     duplicateRowsDropped,
-    trades: trades.sort(compareTrades),
+    trades: aggregatePositionCycles(trades).sort(compareTrades),
   };
 };

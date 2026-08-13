@@ -345,6 +345,7 @@ describe('testConnector', () => {
         profit: -40,
         tradeResult: expect.objectContaining({
           signalId: 'grid-short',
+          positionCycleId: 'grid-short',
           direction: 'SHORT',
           qty: 2,
           closedQty: 2,
@@ -362,6 +363,7 @@ describe('testConnector', () => {
         profit: -10,
         tradeResult: expect.objectContaining({
           signalId: 'grid-short-increase-2',
+          positionCycleId: 'grid-short',
           direction: 'SHORT',
           qty: 1,
           closedQty: 1,

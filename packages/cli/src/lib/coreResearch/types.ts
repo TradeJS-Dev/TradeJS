@@ -108,6 +108,7 @@ export type CoreResearchTrade = {
   runId: string | null;
   configId: string;
   signalId: string;
+  positionCycleId: string | null;
   setupIdentity: string;
   setupIdentitySource:
     | 'research.setupIdentity'

@@ -1103,8 +1103,12 @@ const newestSourceMtime = async (sourcePath) => {
   return Math.max(0, ...mtimes);
 };
 
-const ensureRuntimeBuild = async (projectRoot, strategyName) => {
+export const ensureRuntimeBuild = async (projectRoot, strategyName) => {
   const aiModulePath = path.join(projectRoot, 'packages/node/dist/ai.mjs');
+  const registryModulePath = path.join(
+    projectRoot,
+    'packages/node/dist/registry.mjs',
+  );
   const pocketModulePath = path.join(
     projectRoot,
     'packages/cli/dist/lib/aiPocketSearch.js',
@@ -1113,7 +1117,12 @@ const ensureRuntimeBuild = async (projectRoot, strategyName) => {
     projectRoot,
     'packages/strategies/dist/index.mjs',
   );
-  const required = [aiModulePath, pocketModulePath, strategiesModulePath];
+  const required = [
+    aiModulePath,
+    registryModulePath,
+    pocketModulePath,
+    strategiesModulePath,
+  ];
   for (const filePath of required) {
     try {
       await fsp.access(filePath);
@@ -1133,6 +1142,11 @@ const ensureRuntimeBuild = async (projectRoot, strategyName) => {
         path.join(projectRoot, 'packages/node/src/aiShared.ts'),
         path.join(projectRoot, 'packages/node/src/strategyAdapters'),
       ],
+      command: 'yarn workspace @tradejs/node build',
+    },
+    {
+      output: registryModulePath,
+      sources: [path.join(projectRoot, 'packages/node/src/strategy')],
       command: 'yarn workspace @tradejs/node build',
     },
     {
@@ -1163,7 +1177,7 @@ const ensureRuntimeBuild = async (projectRoot, strategyName) => {
       );
     }
   }
-  return { aiModulePath, pocketModulePath };
+  return { aiModulePath, registryModulePath, pocketModulePath };
 };
 
 const loadResearchRows = async ({
@@ -1175,14 +1189,13 @@ const loadResearchRows = async ({
   featurePattern,
 }) => {
   const strategyName = await readDatasetStrategy(filePaths[0]);
-  const { aiModulePath, pocketModulePath } = await ensureRuntimeBuild(
-    projectRoot,
-    strategyName,
-  );
+  const { aiModulePath, registryModulePath, pocketModulePath } =
+    await ensureRuntimeBuild(projectRoot, strategyName);
   const aiModule = await import(pathToFileURL(aiModulePath).href);
+  const registryModule = await import(pathToFileURL(registryModulePath).href);
   const require = createRequire(import.meta.url);
   const { collectAiPocketFeatures } = require(pocketModulePath);
-  await aiModule.ensureAiStrategyPluginsLoaded();
+  await registryModule.ensureStrategyPluginsLoaded();
 
   const rows = [];
   const featureInventory = new Map();

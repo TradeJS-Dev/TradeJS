@@ -17,6 +17,7 @@ import {
   collectSavedCrossStrategyFeatures,
   evaluateRule,
   evaluateCrossPocket,
+  ensureRuntimeBuild,
   filterSharedCrossStrategyFeatures,
   formatCrossStrategyMarkdown,
   formatMarkdownReport,
@@ -31,6 +32,36 @@ import {
   summarizeRows,
   summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
+
+test('requires the public registry runtime module for plugin loading', async () => {
+  const projectRoot = await fsp.mkdtemp(
+    path.join(os.tmpdir(), 'ai-gate-runtime-build-'),
+  );
+  const requiredFiles = [
+    'packages/node/dist/ai.mjs',
+    'packages/cli/dist/lib/aiPocketSearch.js',
+    'packages/strategies/dist/index.mjs',
+  ];
+
+  for (const relativePath of requiredFiles) {
+    const filePath = path.join(projectRoot, relativePath);
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, '', 'utf8');
+  }
+
+  await assert.rejects(
+    ensureRuntimeBuild(projectRoot, null),
+    /packages\/node\/dist\/registry\.mjs/,
+  );
+
+  const registryModulePath = path.join(
+    projectRoot,
+    'packages/node/dist/registry.mjs',
+  );
+  await fsp.writeFile(registryModulePath, '', 'utf8');
+  const resolved = await ensureRuntimeBuild(projectRoot, null);
+  assert.equal(resolved.registryModulePath, registryModulePath);
+});
 
 test('parses repeated variants and research windows', () => {
   const options = parseCliArgs([

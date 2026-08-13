@@ -14,7 +14,19 @@ import {
   validateCoreResearchRunCommand,
 } from '../orchestrator';
 import { collectReleaseEvidenceReferences } from '../../strategyRelease';
+import {
+  loadBacktestCheckpointResults,
+  loadBacktestRunManifest,
+} from '../../backtest/checkpoint';
 import type { CoreResearchSpec } from '../types';
+
+jest.mock('../../backtest/checkpoint', () => ({
+  loadBacktestCheckpointResults: jest.fn(),
+  loadBacktestRunManifest: jest.fn(),
+}));
+
+const mockedManifest = jest.mocked(loadBacktestRunManifest);
+const mockedCompleted = jest.mocked(loadBacktestCheckpointResults);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2026, 0, 1);
@@ -124,6 +136,7 @@ describe('core research orchestrator', () => {
   let tempRoot = '';
 
   beforeEach(async () => {
+    jest.resetAllMocks();
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'core-research-'));
   });
 
@@ -403,6 +416,171 @@ describe('core research orchestrator', () => {
     expect(() => verifyCoreResearchLedger(records)).toThrow(
       'invalid record hash',
     );
+  });
+
+  it('keeps metrics half-open while reconciling a terminal close at window.end', async () => {
+    const controlPath = path.join(tempRoot, 'control.jsonl');
+    const candidatePath = path.join(tempRoot, 'candidate.jsonl');
+    await writeJsonl(controlPath, [
+      makeRow({
+        signalId: 'control-inside',
+        setupIdentity: 'inside',
+        symbol: 'AAAUSDT',
+        direction: 'LONG',
+        timestamp: START + DAY_MS,
+        netProfit: 5,
+        runId: 'control-run',
+      }),
+    ]);
+    await writeJsonl(candidatePath, [
+      makeRow({
+        signalId: 'candidate-inside',
+        setupIdentity: 'inside',
+        symbol: 'AAAUSDT',
+        direction: 'LONG',
+        timestamp: START + DAY_MS,
+        netProfit: 5,
+        runId: 'candidate-run',
+      }),
+      makeRow({
+        signalId: 'candidate-terminal-close',
+        setupIdentity: 'terminal-close',
+        symbol: 'AAAUSDT',
+        direction: 'LONG',
+        timestamp: END - DAY_MS / 2,
+        netProfit: -9.43,
+        runId: 'candidate-run',
+      }),
+    ]);
+
+    const symbols = ['AAAUSDT'];
+    const candidateConfig = { MODE: 'candidate', MAX_LOSS_VALUE: 10 };
+    const spec: CoreResearchSpec = {
+      schema: 'tradejs-core-research/v1',
+      researchId: 'terminal-close-reconciliation',
+      stage: 'screen',
+      strategy: 'FixtureStrategy',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      hypothesis: {
+        family: 'terminal-close-family',
+        claim: 'Reconcile the complete run without changing half-open metrics.',
+        mechanism: 'Separate run capture completeness from metric selection.',
+        target: 'ALL',
+      },
+      universe: { symbols, sha256: sha256Json(symbols) },
+      window: { start: START, end: END, terminalDays: [5], folds: 2 },
+      execution: {
+        connector: 'Test',
+        interval: '15',
+        maxLossValue: 10,
+      },
+      variants: [
+        {
+          id: 'control',
+          label: 'Control',
+          role: 'control',
+          configName: 'FixtureStrategy:control',
+          resolvedConfig: { MODE: 'control', MAX_LOSS_VALUE: 10 },
+          configSha256: sha256Json({
+            MODE: 'control',
+            MAX_LOSS_VALUE: 10,
+          }),
+          files: [controlPath],
+        },
+        {
+          id: 'candidate',
+          label: 'Candidate',
+          role: 'candidate',
+          configName: 'FixtureStrategy:candidate',
+          resolvedConfig: candidateConfig,
+          configSha256: sha256Json(candidateConfig),
+          files: [candidatePath],
+          runId: 'candidate-run',
+        },
+      ],
+      selection: {
+        minimumTrades: 1,
+        minimumCadencePerDay: 0,
+        targetRules: [],
+        aggregateRules: [],
+        nonTargetRules: [],
+      },
+      robustness: {
+        bootstrapIterations: 100,
+        confidenceLevel: 0.9,
+        clusterDays: 1,
+        minimumFoldTrades: 1,
+        costStressBps: [],
+      },
+      artifacts: {
+        rootDir: path.join(tempRoot, 'artifacts'),
+        ledgerPath: path.join(tempRoot, 'artifacts', 'trials.jsonl'),
+      },
+      lineage: { gitSha: 'fixture-git-sha' },
+    };
+    mockedManifest.mockResolvedValue({
+      runId: 'candidate-run',
+      status: 'completed',
+      userName: 'root',
+      config: 'FixtureStrategy:candidate',
+      command: [],
+      createdAt: spec.createdAt,
+      updatedAt: spec.createdAt,
+      connectorName: 'Test',
+      interval: '15',
+      window: { ...spec.window, source: 'explicit' },
+      preloadStart: START,
+      flags: {
+        ai: true,
+        backtestEntryDelayBars: 1,
+        backtestPriceMode: 'open',
+        cacheOnly: true,
+        fast: true,
+        ml: false,
+      },
+      testSuite: [
+        {
+          symbol: 'AAAUSDT',
+          strategyName: 'FixtureStrategy',
+          strategyConfig: candidateConfig,
+        },
+      ] as never,
+    });
+    mockedCompleted.mockResolvedValue([
+      {
+        status: 'success',
+        testKey: 'aaa',
+        updatedAt: spec.createdAt,
+        result: {
+          test: {
+            symbol: 'AAAUSDT',
+            strategyName: 'FixtureStrategy',
+            configId: 'fixture',
+            strategyConfig: candidateConfig,
+          },
+          stat: {
+            orders: 2,
+            wins: 1,
+            losses: 1,
+            netProfit: -4.43,
+          },
+        },
+      } as never,
+    ]);
+
+    const analyzed = await analyzeCoreResearch(spec);
+    const candidate = analyzed.result.variants.find(
+      (variant) => variant.variant.id === 'candidate',
+    );
+    expect(candidate?.full.cohorts.ALL).toMatchObject({ trades: 1, pnl: 5 });
+    expect(candidate?.reconciliation).toMatchObject({
+      status: 'match',
+      export: { trades: 2, wins: 1, losses: 1, pnl: -4.43 },
+      delta: { trades: 0, wins: 0, losses: 0 },
+    });
+    await expect(
+      fs.readFile(analyzed.paths.tradesPath, 'utf8'),
+    ).resolves.not.toContain('candidate-terminal-close');
   });
 
   it('rejects non-causal or drifted run commands before a backtest starts', () => {

@@ -90,6 +90,7 @@ export const makeTrade = (
   runId: 'fixture-run',
   configId: 'fixture-config',
   signalId: 'signal-1',
+  positionCycleId: null,
   setupIdentity: 'setup-1',
   setupIdentitySource: 'research.setupIdentity',
   strategy: 'FixtureStrategy',
@@ -127,6 +128,10 @@ export const makeDatasetRow = (
     runId?: string;
     strategyContext?: Record<string, unknown>;
     includeTradeResult?: boolean;
+    positionCycleId?: string;
+    qty?: number;
+    entryPrice?: number;
+    exitTimestamp?: number;
   } = {},
 ): AiDatasetRow => {
   const direction = params.direction ?? 'LONG';
@@ -183,14 +188,17 @@ export const makeDatasetRow = (
         ? undefined
         : {
             signalId,
+            ...(params.positionCycleId
+              ? { positionCycleId: params.positionCycleId }
+              : {}),
             direction,
-            qty: 1,
-            closedQty: 1,
+            qty: params.qty ?? 1,
+            closedQty: params.qty ?? 1,
             entryTimestamp: timestamp + 1_000,
-            exitTimestamp: timestamp + DAY_MS / 2,
+            exitTimestamp: params.exitTimestamp ?? timestamp + DAY_MS / 2,
             exitReason: netProfit > 0 ? 'take_profit' : 'stop_loss',
             requestedEntryPrice: 100,
-            entryPrice: 100,
+            entryPrice: params.entryPrice ?? 100,
             requestedExitPrice: netProfit > 0 ? 110 : 90,
             exitPrice: netProfit > 0 ? 110 : 90,
             grossProfit: netProfit + 2,

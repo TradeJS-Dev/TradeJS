@@ -23,6 +23,7 @@ import {
   buildRegimeMetrics,
   buildTerminalWindows,
   DAY_MS,
+  summarizeCoreResearchCohorts,
   summarizeCoreResearchWindow,
 } from './metrics';
 import { buildCoreResearchHtml } from './report';
@@ -94,15 +95,19 @@ const analyzeCoreResearchPrepared = async (
   const loaded = await Promise.all(
     analysisSpec.variants.map(readCoreResearchVariant),
   );
+  const periodDays = (spec.window.end - spec.window.start) / DAY_MS;
   const windowed = loaded.map((entry) => ({
     ...entry,
+    reconciliationMetrics: summarizeCoreResearchCohorts(
+      entry.trades,
+      periodDays,
+    ).ALL,
     trades: entry.trades.filter(
       (trade) =>
         trade.exitTimestamp >= spec.window.start &&
         trade.exitTimestamp < spec.window.end,
     ),
   }));
-  const periodDays = (spec.window.end - spec.window.start) / DAY_MS;
   const analyses: CoreResearchVariantAnalysis[] = await Promise.all(
     windowed.map(async (entry) => ({
       variant: entry.variant,
@@ -164,12 +169,9 @@ const analyzeCoreResearchPrepared = async (
       reconciliation: await reconcileCoreResearchVariant({
         variant: entry.variant,
         spec,
-        exportMetrics: summarizeCoreResearchWindow({
-          trades: entry.trades,
-          label: 'full',
-          start: spec.window.start,
-          end: spec.window.end,
-        }).cohorts.ALL,
+        // Redis result.stat includes the runner's terminal close at window.end.
+        // Keep half-open research metrics, but reconcile the complete run export.
+        exportMetrics: entry.reconciliationMetrics,
       }),
       supplemental: {
         coldStart: Object.fromEntries(
