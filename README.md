@@ -264,6 +264,12 @@ families, then two evidence-driven child candidates per still-viable family in
 each of two refinement rounds. Untested historical mechanisms take priority
 over novel anchors.
 
+A bridge rerun of a different core behavior/config is a real candidate and
+counts in the same family-aware trial ledger; rebuilding the unchanged control
+or normalizing its metadata does not. If the 18-candidate cap is exhausted
+while a stronger reconstructable historical result remains unbridged, the
+result is `INSUFFICIENT_EVIDENCE`, not a claim that the strategy has no edge.
+
 After round 3, the skill must build a Pareto rescue board from all complete,
 reconciled, non-no-op candidates. It selects up to three diagnostic seeds with
 different cadence (one per observed cadence tercile when possible), diagnoses
@@ -276,6 +282,10 @@ pass the release rule: low support/cadence, failed Holm, negative terminals, or
 negative PnL are precisely the failure modes the bounded child must address.
 Direction-targeted families separate seeds by target-side cadence and preserve
 ALL cadence as an aggregate guardrail; whole-strategy families use ALL cadence.
+`STOP_RESEARCH` is forbidden until the history bridge, three core rounds, and
+all available rescue slots are complete. An unused rescue slot requires a
+recorded hard reason: no cadence-distinct complete candidate or no causal
+point-in-time child capable of addressing its measured failure.
 
 Each round uses `yarn research:core` with `--researchTrace` and must finish a
 full result analysis before the next specs are frozen: ALL/LONG/SHORT metrics,
@@ -294,6 +304,12 @@ result hashes, eligible carried control, predicted-versus-observed effect,
 `supported|falsified|inconclusive` mechanism verdict, remaining failure mode,
 and the exact next config deltas. This makes the next Codex iteration dependent
 on immutable evidence rather than on a remembered PnL ranking.
+
+The final response must expose the audit instead of hiding it in artifacts:
+`HISTORY AUDIT` identifies the inventory SHA and resolved/unresolved counts,
+`PRIOR BRIDGE` states what happened to the strongest earlier result, and
+`RESCUE BOARD` lists every selected seed's cadence, failure, child, and result
+or the hard reason an available slot could not be used.
 
 Create a draft JSON that references verified core, gate, runtime-parity, and
 execution-calibration artifacts. It also freezes equal-length historical
