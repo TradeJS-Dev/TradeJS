@@ -13,6 +13,10 @@ import {
 } from './engine';
 import { buildLiquidityTailsFigures } from './figures';
 import { buildTradeEconomics } from '../shared/structureRisk';
+import {
+  resolveDirectionalConfigBoolean,
+  resolveDirectionalConfigNumber,
+} from '../shared/directionalConfig';
 
 interface PendingLiquidityTailsEntry {
   timestamp: number;
@@ -154,12 +158,16 @@ const buildExecutionStateKey = (config: LiquidityTailsConfig) =>
     slippageBaseBps: config.SLIPPAGE_BASE_BPS,
     slippageMarketImpactBps: config.SLIPPAGE_MARKET_IMPACT_BPS,
     targetR: config.LIQUIDITY_TAILS_TARGET_R_MULT,
+    targetRLong: config.LIQUIDITY_TAILS_TARGET_R_MULT_LONG,
+    targetRShort: config.LIQUIDITY_TAILS_TARGET_R_MULT_SHORT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
     initialRiskFraction: config.LIQUIDITY_TAILS_INITIAL_RISK_FRACTION,
     scaleInMinImprovementAtr:
       config.LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR,
     exitOnInvalidation: config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION,
+    exitOnInvalidationLong: config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION_LONG,
+    exitOnInvalidationShort: config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION_SHORT,
     exitOnScaleInRetest: config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
   });
 
@@ -283,11 +291,30 @@ const buildLiquidityTailsStateKey = (config: LiquidityTailsConfig) =>
     maxRetestDistancePctShort:
       config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT_SHORT,
     minRetestAgeBars: config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS,
+    minRetestAgeBarsLong: config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS_LONG,
+    minRetestAgeBarsShort: config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS_SHORT,
     minZoneTouches: config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES,
+    minZoneTouchesLong: config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES_LONG,
+    minZoneTouchesShort: config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES_SHORT,
     maxEntryRetestOrdinal: config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL,
+    maxEntryRetestOrdinalLong:
+      config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL_LONG,
+    maxEntryRetestOrdinalShort:
+      config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL_SHORT,
     maxEntryZoneAgeBars: config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS,
+    maxEntryZoneAgeBarsLong:
+      config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS_LONG,
+    maxEntryZoneAgeBarsShort:
+      config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS_SHORT,
     minRejectionEfficiencyRatio:
       config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO,
+    minRejectionEfficiencyRatioLong:
+      config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO_LONG,
+    minRejectionEfficiencyRatioShort:
+      config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO_SHORT,
+    closeHoldBars: config.LIQUIDITY_TAILS_CLOSE_HOLD_BARS,
+    closeHoldBarsLong: config.LIQUIDITY_TAILS_CLOSE_HOLD_BARS_LONG,
+    closeHoldBarsShort: config.LIQUIDITY_TAILS_CLOSE_HOLD_BARS_SHORT,
     scaleInEnabled: config.LIQUIDITY_TAILS_SCALE_IN_ENABLED,
     scaleInCount: config.LIQUIDITY_TAILS_SCALE_IN_COUNT,
     exitOnScaleInRetest: config.LIQUIDITY_TAILS_EXIT_ON_SCALE_IN_RETEST,
@@ -372,10 +399,23 @@ export const createLiquidityTailsCore: CreateStrategyCore<
     0,
     Number(config.LIQUIDITY_TAILS_SCALE_IN_MIN_IMPROVEMENT_ATR ?? 1),
   );
-  const targetR = Math.max(
-    0,
-    Number(config.LIQUIDITY_TAILS_TARGET_R_MULT ?? 2),
-  );
+  const getTargetR = (direction: Direction) =>
+    Math.max(
+      0,
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_TARGET_R_MULT',
+        direction,
+        fallback: 2,
+      }),
+    );
+  const exitsOnInvalidation = (direction: Direction) =>
+    resolveDirectionalConfigBoolean({
+      config,
+      key: 'LIQUIDITY_TAILS_EXIT_ON_INVALIDATION',
+      direction,
+      fallback: false,
+    });
 
   return async (candle) => {
     const runtimeState = nextDetectorState(candle);
@@ -390,7 +430,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
             position,
             maxLossValue,
             feeRate: executionCostRate,
-            targetR,
+            targetR: getTargetR(position.direction),
             initialRiskFraction,
             maxLevels,
           });
@@ -428,7 +468,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
         signal != null && signal.direction !== position.direction;
 
       if (
-        Boolean(config.LIQUIDITY_TAILS_EXIT_ON_INVALIDATION) &&
+        exitsOnInvalidation(position.direction) &&
         cycle?.invalidationPrice != null &&
         (position.direction === 'LONG'
           ? Number(candle.close) < cycle.invalidationPrice
@@ -650,6 +690,7 @@ export const createLiquidityTailsCore: CreateStrategyCore<
 
     const { timestamp, currentPrice } =
       await strategyApi.getDecisionPriceContext();
+    const targetR = getTargetR(signal.direction);
     const indicators = indicatorsState.snapshot();
     const buffer = Math.max(
       signal.atr *

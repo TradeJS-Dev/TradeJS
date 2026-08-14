@@ -148,6 +148,103 @@ describe('Liquidity Tails engine', () => {
     expect(states.at(-1)?.signal).toBeNull();
   });
 
+  it('waits for a closed bar to hold beyond a buy-pressure zone', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({ LIQUIDITY_TAILS_CLOSE_HOLD_BARS_LONG: 1 }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 101, 103, 100.5, 102),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states[3].signal).toBeNull();
+    expect(states[4].signal).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        timestamp: candles[4].timestamp,
+        close: 102,
+        confirmationBars: 1,
+      }),
+    );
+  });
+
+  it('cancels close-hold confirmation when the frozen zone is invalidated', () => {
+    const engine = createLiquidityTailsEngine({
+      config: makeConfig({ LIQUIDITY_TAILS_CLOSE_HOLD_BARS_LONG: 1 }),
+    });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 101, 103, 94.5, 102),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+
+    expect(states.at(-1)?.signal).toBeNull();
+  });
+
+  it('replays pending close-hold confirmation from initial candles', () => {
+    const config = makeConfig({ LIQUIDITY_TAILS_CLOSE_HOLD_BARS_LONG: 1 });
+    const candles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(4, 101, 103, 100.5, 102),
+    ];
+    const continuous = createLiquidityTailsEngine({ config });
+    const expected = candles.reduce(
+      (_, candle) => continuous.next(candle as any),
+      continuous.getState(),
+    );
+    const resumed = createLiquidityTailsEngine({
+      config,
+      initialCandles: candles.slice(0, -1) as any,
+    });
+
+    expect(resumed.next(candles.at(-1) as any)).toEqual(expected);
+  });
+
+  it('uses a directional rejection threshold without changing the other side', () => {
+    const config = makeConfig({
+      LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO: 0,
+      LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO_SHORT: 100,
+    });
+    const longEngine = createLiquidityTailsEngine({ config });
+    const shortEngine = createLiquidityTailsEngine({ config });
+    const longCandles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 100, 102, 95, 101),
+      makeCandle(3, 99.5, 102, 99, 101),
+    ];
+    const shortCandles = [
+      makeCandle(0, 100, 101, 99, 100),
+      makeCandle(1, 100, 101, 99, 100),
+      makeCandle(2, 101, 107, 100, 100),
+      makeCandle(3, 101.5, 106, 99, 100),
+    ];
+
+    const longState = longCandles.reduce(
+      (_, candle) => longEngine.next(candle as any),
+      longEngine.getState(),
+    );
+    const shortState = shortCandles.reduce(
+      (_, candle) => shortEngine.next(candle as any),
+      shortEngine.getState(),
+    );
+
+    expect(longState.signal?.direction).toBe('LONG');
+    expect(shortState.signal).toBeNull();
+  });
+
   it('emits one separated secondary retest when scale-in is enabled', () => {
     const engine = createLiquidityTailsEngine({ config: makeConfig() });
     const candles = [

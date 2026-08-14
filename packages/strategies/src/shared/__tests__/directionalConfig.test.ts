@@ -1,6 +1,9 @@
 /** @jest-environment node */
 
-import { resolveDirectionalConfigNumber } from '../directionalConfig';
+import {
+  resolveDirectionalConfigBoolean,
+  resolveDirectionalConfigNumber,
+} from '../directionalConfig';
 
 describe('resolveDirectionalConfigNumber', () => {
   it('uses direction overrides without changing the opposite side', () => {
@@ -45,5 +48,29 @@ describe('resolveDirectionalConfigNumber', () => {
         fallback: 0.75,
       }),
     ).toBe(0.75);
+  });
+});
+
+describe('resolveDirectionalConfigBoolean', () => {
+  it('uses the base value when the directional override is absent', () => {
+    expect(
+      resolveDirectionalConfigBoolean({
+        config: { ENABLED: true },
+        key: 'ENABLED',
+        direction: 'LONG',
+        fallback: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('preserves an explicit false directional override', () => {
+    expect(
+      resolveDirectionalConfigBoolean({
+        config: { ENABLED: true, ENABLED_SHORT: false },
+        key: 'ENABLED',
+        direction: 'SHORT',
+        fallback: true,
+      }),
+    ).toBe(false);
   });
 });

@@ -514,6 +514,57 @@ describe('LiquidityTails core scale-in cycle', () => {
     ).toBeCloseTo(10);
   });
 
+  it('uses directional target R and falls back to the shared target', async () => {
+    mockRuntimeStates([
+      makeRuntimeState(makeSignal({ timestamp: 1, close: 100 })),
+    ]);
+    const longStrategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getDecision: () => ({ timestamp: 1, currentPrice: 100 }),
+    });
+    const longCore = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_SCALE_IN_ENABLED: false,
+        LIQUIDITY_TAILS_TARGET_R_MULT_LONG: 2,
+      }),
+      data: [],
+      strategyApi: longStrategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const longEntry = (await longCore(
+      makeCandle(1, 100) as any,
+      {} as any,
+    )) as any;
+
+    mockRuntimeStates([
+      makeRuntimeState(
+        makeSignal({ timestamp: 2, close: 100, direction: 'SHORT' }),
+      ),
+    ]);
+    const shortStrategyApi = makeStrategyApi({
+      getPosition: () => null,
+      getDecision: () => ({ timestamp: 2, currentPrice: 100 }),
+    });
+    const shortCore = await createLiquidityTailsCore({
+      config: makeCoreConfig({
+        LIQUIDITY_TAILS_SCALE_IN_ENABLED: false,
+        LIQUIDITY_TAILS_TARGET_R_MULT_LONG: 2,
+      }),
+      data: [],
+      strategyApi: shortStrategyApi,
+      indicatorsState: { snapshot: jest.fn(() => ({})) },
+    } as any);
+
+    const shortEntry = (await shortCore(
+      makeCandle(2, 100) as any,
+      {} as any,
+    )) as any;
+
+    expect(longEntry.orderPlan.takeProfits[0].price).toBe(120);
+    expect(shortEntry.orderPlan.takeProfits[0].price).toBe(84);
+  });
+
   it('requires at least the configured ATR improvement for scale-in', async () => {
     mockRuntimeStates([
       makeRuntimeState(
@@ -671,7 +722,8 @@ describe('LiquidityTails core scale-in cycle', () => {
     });
     const core = await createLiquidityTailsCore({
       config: makeCoreConfig({
-        LIQUIDITY_TAILS_EXIT_ON_INVALIDATION: true,
+        LIQUIDITY_TAILS_EXIT_ON_INVALIDATION: false,
+        LIQUIDITY_TAILS_EXIT_ON_INVALIDATION_LONG: true,
         LIQUIDITY_TAILS_STOP_ATR_BUFFER_MULT: 1,
       } as unknown as Partial<LiquidityTailsConfig>),
       data: [],

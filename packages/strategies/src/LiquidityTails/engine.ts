@@ -50,6 +50,7 @@ export interface LiquidityTailsSignal {
   rejectionEfficiencyRatio: number;
   reactionBodyAligned: boolean;
   retestOrdinal: number;
+  confirmationBars?: number;
 }
 
 export interface LiquidityTailsExecutionContext {
@@ -91,6 +92,11 @@ type EngineState = {
   lastFireIndex: number;
   zones: LiquidityTailsZone[];
   signal: LiquidityTailsSignal | null;
+  pendingEntry: {
+    signal: LiquidityTailsSignal;
+    dueIndex: number;
+    holdBars: number;
+  } | null;
   lastTimestamp: number | null;
 };
 
@@ -213,25 +219,133 @@ const getConfigNumbers = (config: LiquidityTailsConfig) => ({
       fallback: 1.2,
     }),
   ),
-  minRetestAgeBars: Math.max(
+  minRetestAgeBarsLong: Math.max(
     1,
-    Math.floor(config.LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS ?? 1),
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS',
+        direction: 'LONG',
+        fallback: 1,
+      }),
+    ),
   ),
-  minZoneTouches: Math.max(
+  minRetestAgeBarsShort: Math.max(
     1,
-    Math.floor(config.LIQUIDITY_TAILS_MIN_ZONE_TOUCHES ?? 1),
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MIN_RETEST_AGE_BARS',
+        direction: 'SHORT',
+        fallback: 1,
+      }),
+    ),
   ),
-  maxEntryRetestOrdinal: Math.max(
+  minZoneTouchesLong: Math.max(
     1,
-    Math.floor(config.LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL ?? 1),
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MIN_ZONE_TOUCHES',
+        direction: 'LONG',
+        fallback: 1,
+      }),
+    ),
   ),
-  maxEntryZoneAgeBars: Math.max(
+  minZoneTouchesShort: Math.max(
+    1,
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MIN_ZONE_TOUCHES',
+        direction: 'SHORT',
+        fallback: 1,
+      }),
+    ),
+  ),
+  maxEntryRetestOrdinalLong: Math.max(
+    1,
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL',
+        direction: 'LONG',
+        fallback: 1,
+      }),
+    ),
+  ),
+  maxEntryRetestOrdinalShort: Math.max(
+    1,
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MAX_ENTRY_RETEST_ORDINAL',
+        direction: 'SHORT',
+        fallback: 1,
+      }),
+    ),
+  ),
+  maxEntryZoneAgeBarsLong: Math.max(
     0,
-    Math.floor(config.LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS ?? 0),
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS',
+        direction: 'LONG',
+        fallback: 0,
+      }),
+    ),
   ),
-  minRejectionEfficiencyRatio: Math.max(
+  maxEntryZoneAgeBarsShort: Math.max(
     0,
-    Number(config.LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO ?? 0),
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_MAX_ENTRY_ZONE_AGE_BARS',
+        direction: 'SHORT',
+        fallback: 0,
+      }),
+    ),
+  ),
+  minRejectionEfficiencyRatioLong: Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO',
+      direction: 'LONG',
+      fallback: 0,
+    }),
+  ),
+  minRejectionEfficiencyRatioShort: Math.max(
+    0,
+    resolveDirectionalConfigNumber({
+      config,
+      key: 'LIQUIDITY_TAILS_MIN_REJECTION_EFFICIENCY_RATIO',
+      direction: 'SHORT',
+      fallback: 0,
+    }),
+  ),
+  closeHoldBarsLong: Math.max(
+    0,
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_CLOSE_HOLD_BARS',
+        direction: 'LONG',
+        fallback: 0,
+      }),
+    ),
+  ),
+  closeHoldBarsShort: Math.max(
+    0,
+    Math.floor(
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'LIQUIDITY_TAILS_CLOSE_HOLD_BARS',
+        direction: 'SHORT',
+        fallback: 0,
+      }),
+    ),
   ),
   scaleInEnabled: Boolean(config.LIQUIDITY_TAILS_SCALE_IN_ENABLED),
   scaleInCount: Math.max(
@@ -358,6 +472,7 @@ const buildRetestSignal = ({
     rejectionEfficiencyRatio,
     reactionBodyAligned,
     retestOrdinal,
+    confirmationBars: 0,
   };
 };
 
@@ -391,6 +506,7 @@ export const buildLiquidityTailsSignalContext = (
   reactionCloseDistancePct: signal.reactionCloseDistancePct,
   rejectionEfficiencyRatio: signal.rejectionEfficiencyRatio,
   reactionBodyAligned: signal.reactionBodyAligned,
+  confirmationBars: signal.confirmationBars ?? 0,
   action: executionContext?.action ?? 'open',
   level: executionContext?.level ?? 1,
   levelsFilled: executionContext?.levelsFilled ?? 0,
@@ -441,11 +557,18 @@ export const createLiquidityTailsEngine = ({
     requireReactionBody,
     maxRetestDistancePctLong,
     maxRetestDistancePctShort,
-    minRetestAgeBars,
-    minZoneTouches,
-    maxEntryRetestOrdinal,
-    maxEntryZoneAgeBars,
-    minRejectionEfficiencyRatio,
+    minRetestAgeBarsLong,
+    minRetestAgeBarsShort,
+    minZoneTouchesLong,
+    minZoneTouchesShort,
+    maxEntryRetestOrdinalLong,
+    maxEntryRetestOrdinalShort,
+    maxEntryZoneAgeBarsLong,
+    maxEntryZoneAgeBarsShort,
+    minRejectionEfficiencyRatioLong,
+    minRejectionEfficiencyRatioShort,
+    closeHoldBarsLong,
+    closeHoldBarsShort,
     scaleInEnabled,
     scaleInCount,
     exitOnScaleInRetest,
@@ -457,6 +580,7 @@ export const createLiquidityTailsEngine = ({
     lastFireIndex: 0,
     zones: [],
     signal: null,
+    pendingEntry: null,
     lastTimestamp: null,
   };
 
@@ -575,6 +699,42 @@ export const createLiquidityTailsEngine = ({
       });
     }
 
+    if (state.pendingEntry) {
+      const pending = state.pendingEntry;
+      const isLong = pending.signal.direction === 'LONG';
+      const invalidated = isLong
+        ? low < pending.signal.zone.bottom
+        : high > pending.signal.zone.top;
+      const closeHeld = isLong
+        ? close > pending.signal.zone.top
+        : close < pending.signal.zone.bottom;
+      if (invalidated || !closeHeld) {
+        state.pendingEntry = null;
+      } else if (state.index >= pending.dueIndex) {
+        const activeWick = isLong ? bottomShadow : topShadow;
+        const oppositeWick = isLong ? topShadow : bottomShadow;
+        const reactionDistance = isLong
+          ? Math.max(0, close - pending.signal.zone.top)
+          : Math.max(0, pending.signal.zone.bottom - close);
+        state.signal = {
+          ...pending.signal,
+          timestamp: candle.timestamp,
+          close,
+          atr,
+          topShadow,
+          bottomShadow,
+          candleBody,
+          wickBodyRatio: activeWick / Math.max(candleBody, 1e-9),
+          wickDominanceRatio: activeWick / Math.max(oppositeWick, 1e-9),
+          reactionCloseDistancePct:
+            (reactionDistance / Math.max(close, 1e-9)) * 100,
+          reactionBodyAligned: isLong ? close > open : close < open,
+          confirmationBars: pending.holdBars,
+        };
+        state.pendingEntry = null;
+      }
+    }
+
     for (let index = state.zones.length - 1; index >= 0; index -= 1) {
       const zone = state.zones[index];
       if (!zone) {
@@ -611,8 +771,16 @@ export const createLiquidityTailsEngine = ({
 
       const retestSeparated =
         zone.lastRetestIndex < 0 || state.index - zone.lastRetestIndex > 2;
-      if (retestSeparated && state.signal == null) {
+      if (
+        retestSeparated &&
+        state.signal == null &&
+        state.pendingEntry == null
+      ) {
         const retestOrdinal = zone.retestsObserved + 1;
+        const maxEntryRetestOrdinal =
+          zone.direction === 'LONG'
+            ? maxEntryRetestOrdinalLong
+            : maxEntryRetestOrdinalShort;
         const observesInitialCandidate =
           zone.entryCandidatesEmitted === 0 &&
           retestOrdinal <= maxEntryRetestOrdinal;
@@ -633,8 +801,14 @@ export const createLiquidityTailsEngine = ({
             zone.direction === 'LONG'
               ? maxRetestDistancePctLong
               : maxRetestDistancePctShort,
-          maxEntryZoneAgeBars,
-          minRejectionEfficiencyRatio,
+          maxEntryZoneAgeBars:
+            zone.direction === 'LONG'
+              ? maxEntryZoneAgeBarsLong
+              : maxEntryZoneAgeBarsShort,
+          minRejectionEfficiencyRatio:
+            zone.direction === 'LONG'
+              ? minRejectionEfficiencyRatioLong
+              : minRejectionEfficiencyRatioShort,
           retestOrdinal,
           candidateAction,
           candidateOrdinal,
@@ -643,8 +817,14 @@ export const createLiquidityTailsEngine = ({
           zone.retestsObserved += 1;
           zone.lastRetestIndex = state.index;
           const mature =
-            observed.zoneAgeBars >= minRetestAgeBars &&
-            zone.touches >= minZoneTouches;
+            observed.zoneAgeBars >=
+              (zone.direction === 'LONG'
+                ? minRetestAgeBarsLong
+                : minRetestAgeBarsShort) &&
+            zone.touches >=
+              (zone.direction === 'LONG'
+                ? minZoneTouchesLong
+                : minZoneTouchesShort);
           const scaleInCandidateAllowed =
             candidateAction === 'scale_in' &&
             ((scaleInEnabled && zone.scaleInCandidatesEmitted < scaleInCount) ||
@@ -662,11 +842,22 @@ export const createLiquidityTailsEngine = ({
             zone.scaleInCandidatesEmitted += 1;
           }
           zone.lastSignalIndex = state.index;
-          state.signal = {
+          const emittedSignal = {
             ...observed,
             candidateOrdinal: zone.candidatesEmitted,
             zone: cloneZone(zone),
           };
+          const closeHoldBars =
+            zone.direction === 'LONG' ? closeHoldBarsLong : closeHoldBarsShort;
+          if (candidateAction === 'initial_entry' && closeHoldBars > 0) {
+            state.pendingEntry = {
+              signal: emittedSignal,
+              dueIndex: state.index + closeHoldBars,
+              holdBars: closeHoldBars,
+            };
+          } else {
+            state.signal = emittedSignal;
+          }
         }
       }
     }
