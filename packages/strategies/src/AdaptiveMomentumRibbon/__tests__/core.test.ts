@@ -210,6 +210,7 @@ const makeEvaluation = (
     kcMidline: 100,
     kcUpper: 101,
     kcLower: 99,
+    atrValue: 1.6,
     invalidationLevel: 98,
     lineValues: {
       kcMidline: 100,
@@ -725,6 +726,110 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision).toEqual({
       kind: 'skip',
       code: 'INVALID_QTY',
+    });
+  });
+
+  it('skips entries when signal-time take-profit distance is too small', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryLong: true,
+        activeBuy: true,
+        invalidationLevel: 99.5,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      marketDataOverrides: {
+        currentPrice: 100,
+      },
+      configOverrides: {
+        AMR_TARGET_R_MULT: 1,
+        AMR_STOP_BUFFER_PCT: 0,
+        AMR_MIN_TP_DISTANCE_BPS: 60,
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_TP_DISTANCE_TOO_SMALL:50',
+    });
+  });
+
+  it('skips short entries when signal-time delay risk is too large versus take-profit distance', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryShort: true,
+        activeSell: true,
+        invalidationLevel: 101,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: false });
+    const { core } = await makeRuntime({
+      candles,
+      marketDataOverrides: {
+        currentPrice: 100,
+      },
+      configOverrides: {
+        AMR_TARGET_R_MULT: 1,
+        AMR_STOP_BUFFER_PCT: 0,
+        AMR_MAX_DELAY_RISK_TP_RATIO_SHORT: 0.5,
+      },
+      indicatorsSnapshotOverrides: {
+        baseContext: {
+          raw: {
+            volatility: {
+              atr: 0.8,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.2,
+            },
+          },
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: null,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: true,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 90,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_DELAY_RISK_TP_RATIO:0.80',
     });
   });
 

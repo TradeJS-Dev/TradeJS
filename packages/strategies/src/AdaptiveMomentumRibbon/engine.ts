@@ -28,6 +28,7 @@ export type AdaptiveMomentumRibbonSnapshot = {
   kcMidline: number | null;
   kcUpper: number | null;
   kcLower: number | null;
+  atrValue: number | null;
   invalidationLevel: number | null;
   lineValues: Record<string, number | null>;
 };
@@ -459,6 +460,7 @@ export const createAdaptiveMomentumRibbonEngine = ({
     kcMidline: null,
     kcUpper: null,
     kcLower: null,
+    atrValue: null,
     invalidationLevel: null,
     lineValues: Object.fromEntries(
       linePlots.map((plotName) => [plotName, null]),
@@ -706,6 +708,7 @@ export const createAdaptiveMomentumRibbonEngine = ({
       kcMidline: toFinite(displayedKcMidline),
       kcUpper: toFinite(displayedKcUpper),
       kcLower: toFinite(displayedKcLower),
+      atrValue: toFinite(atrValue),
       invalidationLevel: toFinite(displayedInvalidationLevel),
       lineValues: currentLineValues,
     };

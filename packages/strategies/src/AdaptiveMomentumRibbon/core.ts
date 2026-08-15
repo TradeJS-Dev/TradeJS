@@ -1,6 +1,7 @@
 import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
 import type {
   BaseStrategyContextSnapshot,
+  Candle,
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
 } from '@tradejs/types';
@@ -85,6 +86,77 @@ const resolveLinePlots = (value: unknown): string[] => {
   return value
     .map((item) => String(item ?? '').trim())
     .filter((item) => item.length > 0);
+};
+
+const calculateDistanceBps = ({
+  fromPrice,
+  toPrice,
+}: {
+  fromPrice: number;
+  toPrice: number;
+}) =>
+  fromPrice > 0 && Number.isFinite(fromPrice) && Number.isFinite(toPrice)
+    ? (Math.abs(toPrice - fromPrice) / fromPrice) * 10_000
+    : null;
+
+const calculateMoveBps = ({
+  currentPrice,
+  priceMove,
+}: {
+  currentPrice: number;
+  priceMove: number | null;
+}) =>
+  currentPrice > 0 &&
+  priceMove != null &&
+  Number.isFinite(currentPrice) &&
+  Number.isFinite(priceMove)
+    ? (Math.abs(priceMove) / currentPrice) * 10_000
+    : null;
+
+const resolveSignalTimeExpectedDelayMove = ({
+  baseContext,
+  amr,
+  candle,
+  multiplier,
+}: {
+  baseContext: BaseStrategyContextSnapshot | undefined;
+  amr: Record<string, unknown>;
+  candle: Candle | undefined;
+  multiplier: number;
+}): { priceMove: number | null; source: string | null } => {
+  if (multiplier <= 0) {
+    return { priceMove: 0, source: 'disabled' };
+  }
+
+  const raw = getRecord(baseContext?.raw);
+  const volatility = getRecord(raw?.volatility);
+  const baseAtr = getNumberOrNull(volatility?.atr);
+
+  if (baseAtr != null && baseAtr > 0) {
+    return {
+      priceMove: baseAtr * multiplier,
+      source: 'baseContext.raw.volatility.atr',
+    };
+  }
+
+  const amrAtr = getNumberOrNull(amr.atrValue);
+  if (amrAtr != null && amrAtr > 0) {
+    return {
+      priceMove: amrAtr * multiplier,
+      source: 'amr.atrValue',
+    };
+  }
+
+  const high = getNumberOrNull(candle?.high);
+  const low = getNumberOrNull(candle?.low);
+  if (high != null && low != null && high > low) {
+    return {
+      priceMove: (high - low) * multiplier,
+      source: 'signalCandle.range',
+    };
+  }
+
+  return { priceMove: null, source: null };
 };
 
 const buildAdaptiveMomentumRibbonStateKey = ({
@@ -262,7 +334,9 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip(structuralRejectCode);
     }
 
-    const { currentPrice, timestamp } = await getPriceContext();
+    const priceContext = await getPriceContext();
+    const { currentPrice, timestamp } = priceContext;
+    const decisionCandle = priceContext.candle ?? candle;
     const structuralStopBase =
       modeConfig.direction === 'LONG'
         ? amr.invalidationLevel ?? amr.kcLower
@@ -289,20 +363,93 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('INVALID_STOP');
     }
 
-    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
-      currentPrice,
-      direction: modeConfig.direction,
-      stopLossPrice,
-      targetR: Number(config.AMR_TARGET_R_MULT ?? 2),
-      maxLossValue: MAX_LOSS_VALUE,
-      feeRate: Number(FEE_PERCENT ?? 0),
-      slippageBps:
-        Number(config.SLIPPAGE_BASE_BPS ?? 0) +
-        Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
-    });
+    const { takeProfitPrice, grossRiskRatio, riskRatio, qty } =
+      buildStructureRiskPlan({
+        currentPrice,
+        direction: modeConfig.direction,
+        stopLossPrice,
+        targetR: Number(config.AMR_TARGET_R_MULT ?? 2),
+        maxLossValue: MAX_LOSS_VALUE,
+        feeRate: Number(FEE_PERCENT ?? 0),
+        slippageBps:
+          Number(config.SLIPPAGE_BASE_BPS ?? 0) +
+          Number(config.SLIPPAGE_MARKET_IMPACT_BPS ?? 0),
+      });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');
+    }
+
+    const takeProfitDistanceBps = calculateDistanceBps({
+      fromPrice: currentPrice,
+      toPrice: takeProfitPrice,
+    });
+    const stopLossDistanceBps = calculateDistanceBps({
+      fromPrice: currentPrice,
+      toPrice: stopLossPrice,
+    });
+    const minTakeProfitDistanceBps = Math.max(
+      0,
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'AMR_MIN_TP_DISTANCE_BPS',
+        direction: modeConfig.direction,
+        fallback: 0,
+      }),
+    );
+    const maxDelayRiskTpRatio = Math.max(
+      0,
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'AMR_MAX_DELAY_RISK_TP_RATIO',
+        direction: modeConfig.direction,
+        fallback: 0,
+      }),
+    );
+    const delayRiskMoveMultiplier = Math.max(
+      0,
+      resolveDirectionalConfigNumber({
+        config,
+        key: 'AMR_DELAY_RISK_MOVE_MULT',
+        direction: modeConfig.direction,
+        fallback: 1,
+      }),
+    );
+    const expectedDelayMove = resolveSignalTimeExpectedDelayMove({
+      baseContext,
+      amr: amr as unknown as Record<string, unknown>,
+      candle: decisionCandle,
+      multiplier: delayRiskMoveMultiplier,
+    });
+    const expectedDelayMoveBps = calculateMoveBps({
+      currentPrice,
+      priceMove: expectedDelayMove.priceMove,
+    });
+    const delayRiskTpRatio =
+      expectedDelayMoveBps != null &&
+      takeProfitDistanceBps != null &&
+      takeProfitDistanceBps > 0
+        ? expectedDelayMoveBps / takeProfitDistanceBps
+        : null;
+
+    if (
+      minTakeProfitDistanceBps > 0 &&
+      takeProfitDistanceBps != null &&
+      takeProfitDistanceBps < minTakeProfitDistanceBps
+    ) {
+      return strategyApi.skip(
+        `AMR_TP_DISTANCE_TOO_SMALL:${takeProfitDistanceBps.toFixed(0)}`,
+      );
+    }
+
+    if (
+      maxDelayRiskTpRatio > 0 &&
+      delayRiskTpRatio != null &&
+      delayRiskTpRatio > maxDelayRiskTpRatio
+    ) {
+      return strategyApi.skip(
+        `AMR_DELAY_RISK_TP_RATIO:${delayRiskTpRatio.toFixed(2)}`,
+      );
     }
 
     if (riskRatio <= modeConfig.minRiskRatio) {
@@ -354,6 +501,22 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
           kcLength: asPositiveInt(config.AMR_KC_LENGTH, 20),
           atrLength: asPositiveInt(config.AMR_ATR_LENGTH, 14),
           atrMultiplier: asPositiveNumber(config.AMR_ATR_MULTIPLIER, 2),
+          minTakeProfitDistanceBps,
+          maxDelayRiskTpRatio,
+          delayRiskMoveMultiplier,
+        },
+        amrRisk: {
+          stopLossPrice,
+          takeProfitPrice,
+          grossRiskRatio,
+          netRiskRatio: riskRatio,
+          stopLossDistanceBps,
+          takeProfitDistanceBps,
+          minTakeProfitDistanceBps,
+          expectedDelayMoveBps,
+          expectedDelayMoveSource: expectedDelayMove.source,
+          delayRiskTpRatio,
+          maxDelayRiskTpRatio,
         },
       },
       orderPlan: {

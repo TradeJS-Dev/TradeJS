@@ -24,6 +24,7 @@ describe('buildAdaptiveMomentumRibbonFigures', () => {
         kcUpper: 104,
         kcLower: 96,
         invalidationLevel: 95,
+        atrValue: 1.2,
         lineValues: {},
       },
     });
