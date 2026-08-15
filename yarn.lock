@@ -2882,7 +2882,6 @@ __metadata:
   dependencies:
     "@tradejs/core": "workspace:^"
     "@tradejs/infra": "workspace:^"
-    "@tradejs/node": "workspace:^"
     "@tradejs/types": "workspace:^"
     bybit-api: "npm:^4.7.1"
     chalk: "npm:4.1.2"
