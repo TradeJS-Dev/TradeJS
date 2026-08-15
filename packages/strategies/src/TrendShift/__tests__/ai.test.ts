@@ -1075,6 +1075,111 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('recovers narrow q4 SHORT fear-stress pockets when derivatives data is available', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 3,
+              },
+            },
+            relative: {
+              cmcFearGreed: {
+                value: 20,
+                valueChange7d: -12,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('does not recover SHORT fear-stress pockets when derivatives data is unavailable', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 3,
+              },
+            },
+            relative: {
+              cmcFearGreed: {
+                value: 20,
+                valueChange7d: -12,
+                stale: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: ['missing_derivatives'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect(getRejectReason(result)).toContain(
+      'benchmark derivatives data is missing or stale during CMC stress',
+    );
+  });
+
   it('recovers narrow neutral-context SHORT CMC liquidity-chop pockets', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

@@ -228,6 +228,7 @@ export const createTrendShiftCore: CreateStrategyCore<
     const coreFilterSkipCode = getTrendShiftCoreFilterSkipCode({
       config,
       baseContext,
+      direction,
     });
     if (coreFilterSkipCode) {
       return strategyApi.skip(coreFilterSkipCode);

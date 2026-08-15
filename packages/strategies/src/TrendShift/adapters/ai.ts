@@ -176,6 +176,7 @@ Additional TrendShift context:
 - q4ShortBreadthShockLiquidationRecoveryCandidate=${String(context.q4ShortBreadthShockLiquidationRecoveryCandidate)}
 - q4LongAltLeadershipRecoveryCandidate=${String(context.q4LongAltLeadershipRecoveryCandidate)}
 - q4ShortCmcLiquidityNeutralContextRecoveryCandidate=${String(context.q4ShortCmcLiquidityNeutralContextRecoveryCandidate)}
+- q4ShortFearStressRecoveryCandidate=${String(context.q4ShortFearStressRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -219,6 +220,7 @@ Interpretation rules for TrendShift:
 - A narrow SHORT q4 recovery may pass during a market breadth shock only when marketBreadthReturn <= -0.0112952 and 1h liqShort <= 0.208; this does not override existing hard blockers or the low-Bollinger-width defensive cut.
 - A narrow LONG q4 recovery may pass only when alt leadership is clear (btcVsAltReturn24h <= -0.00503054 and btcVsAltReturn1h <= -0.00581403), fear/greed is not falling hard, and the only blockers are the tested OI/benchmark-derivatives or defensive reward-to-volatility blockers.
 - A narrow SHORT q4 recovery may pass in neutral context when the only blockers are mixed/neutral OI, defensive reward-to-volatility, and CMC exchange-liquidity chop, but it must not override low Fear&Greed, weekly Fear&Greed deterioration, crowded-long pressure, extreme ATR/high-BB, or low-Bollinger-width cuts.
+- A narrow SHORT q4 recovery may pass in capitulation context only when Fear&Greed <= 29, 7d Fear&Greed change <= -10, benchmark derivatives data is available, and the remaining blockers are the tested SHORT fear-stress blockers.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

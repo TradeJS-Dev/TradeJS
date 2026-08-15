@@ -84,6 +84,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   q4ShortBreadthShockLiquidationRecoveryCandidate: boolean;
   q4LongAltLeadershipRecoveryCandidate: boolean;
   q4ShortCmcLiquidityNeutralContextRecoveryCandidate: boolean;
+  q4ShortFearStressRecoveryCandidate: boolean;
   breakoutState: string | null;
   swingBias: string | null;
   volumeRel20: number | null;
@@ -140,6 +141,7 @@ const BNB_REFERENCE_OI_CHANGE_PCT_4H_RISK_MIN = 0;
 const DERIVATIVES_DATA_UNAVAILABLE_STRESS_CMC_FEAR_GREED_MAX = 25;
 const CMC_FEAR_GREED_APPROVAL_MIN = 29;
 const CMC_FEAR_GREED_VALUE_CHANGE_7D_APPROVAL_MIN = 0;
+const SHORT_FEAR_STRESS_RECOVERY_VALUE_CHANGE_7D_MAX = -10;
 
 const toMtfAlignmentForTrendShift = ({
   direction,
@@ -1138,13 +1140,42 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.every((reason) =>
       q4ShortCmcLiquidityNeutralContextRecoveryAllowedReasons.includes(reason),
     );
+  const q4ShortFearStressRecoveryAllowedReasons = [
+    'flat_or_mixed_oi',
+    'neutral_derivatives_pressure',
+    'us_short_oi_not_expanding',
+    'short_pressure_conflict',
+    'reward_to_volatility_below_defensive_threshold',
+    'cmc_exchange_liquidity_volume_change_risk',
+    'cmc_fear_greed_low_value_risk',
+    'cmc_fear_greed_weekly_deterioration_risk',
+  ];
+  const q4ShortFearStressRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.signalDirection === 'SHORT' &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    cmcFearGreedStale !== true &&
+    cmcFearGreedValue != null &&
+    cmcFearGreedValue <= CMC_FEAR_GREED_APPROVAL_MIN &&
+    cmcFearGreedValueChange7d != null &&
+    cmcFearGreedValueChange7d <=
+      SHORT_FEAR_STRESS_RECOVERY_VALUE_CHANGE_7D_MAX &&
+    !derivativesDataUnavailableStressRisk &&
+    !shortExtremeAtrHighBbRisk &&
+    !shortLowBollingerWidthRisk &&
+    hardBlockReasons.length > 0 &&
+    hardBlockReasons.every((reason) =>
+      q4ShortFearStressRecoveryAllowedReasons.includes(reason),
+    );
 
   if (
     q4TrendShiftGateFeaturesRecoveryCandidate ||
     q4UsClosingOiConfirmationRecoveryCandidate ||
     q4ShortBreadthShockLiquidationRecoveryCandidate ||
     q4LongAltLeadershipRecoveryCandidate ||
-    q4ShortCmcLiquidityNeutralContextRecoveryCandidate
+    q4ShortCmcLiquidityNeutralContextRecoveryCandidate ||
+    q4ShortFearStressRecoveryCandidate
   ) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
@@ -1197,6 +1228,7 @@ export const buildTrendShiftGuardrailContext = ({
     q4ShortBreadthShockLiquidationRecoveryCandidate,
     q4LongAltLeadershipRecoveryCandidate,
     q4ShortCmcLiquidityNeutralContextRecoveryCandidate,
+    q4ShortFearStressRecoveryCandidate,
     breakoutState,
     swingBias,
     volumeRel20,

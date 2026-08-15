@@ -17,6 +17,7 @@ describe('getTrendShiftCoreFilterSkipCode', () => {
       getTrendShiftCoreFilterSkipCode({
         config: DEFAULT_CONFIG as any,
         baseContext: makeBaseContext(),
+        direction: 'LONG',
       }),
     ).toBeNull();
   });
@@ -26,13 +27,38 @@ describe('getTrendShiftCoreFilterSkipCode', () => {
       getTrendShiftCoreFilterSkipCode({
         config: DEFAULT_CONFIG as any,
         baseContext: makeBaseContext({ bodyStrength: 0.69 }),
+        direction: 'LONG',
       }),
     ).toBe('TRENDSHIFT_SIGNAL_BODY_TOO_WEAK');
     expect(
       getTrendShiftCoreFilterSkipCode({
         config: DEFAULT_CONFIG as any,
         baseContext: makeBaseContext({ adx: 24.9 }),
+        direction: 'LONG',
       }),
     ).toBe('TRENDSHIFT_TREND_STRENGTH_TOO_LOW');
+  });
+
+  it('applies directional overrides only to the matching side', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      TRENDSHIFT_MIN_ADX_SHORT: 40,
+      TRENDSHIFT_MIN_SIGNAL_BODY_STRENGTH_SHORT: 0.9,
+    };
+
+    expect(
+      getTrendShiftCoreFilterSkipCode({
+        config: config as any,
+        baseContext: makeBaseContext({ bodyStrength: 0.85, adx: 35 }),
+        direction: 'LONG',
+      }),
+    ).toBeNull();
+    expect(
+      getTrendShiftCoreFilterSkipCode({
+        config: config as any,
+        baseContext: makeBaseContext({ bodyStrength: 0.85, adx: 35 }),
+        direction: 'SHORT',
+      }),
+    ).toBe('TRENDSHIFT_SIGNAL_BODY_TOO_WEAK');
   });
 });
