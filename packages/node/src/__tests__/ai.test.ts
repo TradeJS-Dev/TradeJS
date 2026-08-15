@@ -67,6 +67,7 @@ const {
   buildAiSystemPrompt,
   getDeterministicAiGateContext,
   getOpenRouterModelKwargs,
+  invokeAiChat,
   resetAiRuntimeCache,
   runAiPrompt,
   runAiPromptLocal,
@@ -4482,6 +4483,29 @@ describe('ai helpers', () => {
       expect(getUserSettingsMock).toHaveBeenCalledTimes(1);
       expect(chatOpenAICtorMock).toHaveBeenCalledTimes(1);
       expect(invokeMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('invokes generic chat messages through the shared provider client', async () => {
+      invokeMock.mockResolvedValue({ content: 'shared response' });
+
+      await expect(
+        invokeAiChat({
+          userName: 'root',
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: 'system' },
+            { role: 'user', content: 'hello' },
+          ],
+        }),
+      ).resolves.toEqual({ content: 'shared response' });
+
+      expect(chatOpenAICtorMock).toHaveBeenCalledWith(
+        expect.objectContaining({ temperature: 0.7 }),
+      );
+      expect(invokeMock).toHaveBeenCalledWith([
+        expect.any(MockSystemMessage),
+        expect.any(MockHumanMessage),
+      ]);
     });
 
     it('uses the user-selected default model when no override is provided', async () => {

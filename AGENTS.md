@@ -218,7 +218,7 @@ Runtime AI config conventions:
 
 ### Market Context / Timescale
 
-- Timescale bulk upserts must stay below PostgreSQL bind-parameter limits. Use the existing chunking pattern in `packages/infra/src/timescale.ts` for market trade flow, order book depth, and market breadth rows instead of building one huge INSERT.
+- Timescale bulk upserts must stay below PostgreSQL bind-parameter limits. Use the focused command modules under `packages/infra/src/timescale/marketContext/commands.ts` and `packages/infra/src/timescale/hyperliquidWhales/commands.ts` for market trade flow, order book depth, market breadth, and whale rows instead of building one huge INSERT.
 
 ### Signals / Backtest Parity Rules
 

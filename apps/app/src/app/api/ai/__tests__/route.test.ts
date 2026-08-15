@@ -3,7 +3,7 @@ const mockGetData = jest.fn();
 const mockSetData = jest.fn();
 const mockGetUserSettings = jest.fn();
 const mockGetConnectorCreatorByProvider = jest.fn();
-const mockModelInvoke = jest.fn();
+const mockInvokeAiChat = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -14,10 +14,8 @@ jest.mock('next/server', () => ({
   },
 }));
 
-jest.mock('@langchain/openai', () => ({
-  ChatOpenAI: jest.fn().mockImplementation(() => ({
-    invoke: (...args: unknown[]) => mockModelInvoke(...args),
-  })),
+jest.mock('@tradejs/node/ai', () => ({
+  invokeAiChat: (...args: unknown[]) => mockInvokeAiChat(...args),
 }));
 
 jest.mock('@tradejs/node/connectors', () => ({
@@ -95,7 +93,7 @@ describe('ai route', () => {
         kline: async () => [{ close: 100 }, { close: 101 }],
       }),
     );
-    mockModelInvoke.mockResolvedValue({ content: 'AI response' });
+    mockInvokeAiChat.mockResolvedValue({ content: 'AI response' });
 
     const response = await POST({
       json: async () => ({
@@ -148,9 +146,6 @@ describe('ai route', () => {
   });
 
   it('uses the user-selected ai model for chat replies', async () => {
-    const { ChatOpenAI } = jest.requireMock('@langchain/openai') as {
-      ChatOpenAI: jest.Mock;
-    };
     mockGetData.mockResolvedValue([]);
     mockSetData.mockResolvedValue(undefined);
     mockGetConnectorCreatorByProvider.mockResolvedValue(() =>
@@ -158,7 +153,7 @@ describe('ai route', () => {
         kline: async () => [{ close: 100 }],
       }),
     );
-    mockModelInvoke.mockResolvedValue({ content: 'AI response' });
+    mockInvokeAiChat.mockResolvedValue({ content: 'AI response' });
 
     await POST({
       json: async () => ({
@@ -173,9 +168,14 @@ describe('ai route', () => {
       }),
     } as any);
 
-    expect(ChatOpenAI).toHaveBeenCalledWith(
+    expect(mockInvokeAiChat).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelName: 'gpt-5-mini',
+        userName: 'alice',
+        temperature: 0.7,
+        messages: expect.arrayContaining([
+          expect.objectContaining({ role: 'system' }),
+          { role: 'user', content: 'Trend?' },
+        ]),
       }),
     );
   });

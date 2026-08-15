@@ -1,4 +1,4 @@
-import { createTimescaleCachedKline } from '../timescaleKlineCache';
+import { createTimescaleCachedKline } from '../timescaleCachedKline';
 import { delay } from '@tradejs/core/async';
 import {
   getCandlesRange,

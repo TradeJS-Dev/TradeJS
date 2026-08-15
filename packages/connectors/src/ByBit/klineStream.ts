@@ -1,8 +1,15 @@
 import { WebsocketClient, WSKlineEventV5, WSKlineV5 } from 'bybit-api';
 import { formatUnix } from '@tradejs/core/time';
-import { logger } from '@tradejs/infra/logger';
-import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
-import type { ConnectorConfig, Interval, KlineChartItem } from '@tradejs/types';
+import type {
+  ConnectorConfig,
+  ConnectorRuntime,
+  Interval,
+  KlineChartItem,
+} from '@tradejs/types';
+import {
+  getConnectorAccountResolver,
+  getConnectorLogger,
+} from '../shared/runtime';
 
 const CATEGORY = 'linear' as const;
 const SUBSCRIPTION_BATCH_SIZE = 100;
@@ -96,9 +103,11 @@ export const parseBybitKlineEvent = (
 export const createBybitKlineStreamWithClient = ({
   client,
   onEvent,
+  logger = getConnectorLogger(),
 }: {
   client: WebsocketClientLike;
   onEvent: (event: BybitKlineStreamEvent) => Promise<void> | void;
+  logger?: ReturnType<typeof getConnectorLogger>;
 }): BybitKlineStream => {
   let topics = new Set<ReturnType<typeof buildBybitKlineTopic>>();
   let closed = false;
@@ -164,10 +173,13 @@ export const createBybitKlineStreamWithClient = ({
 export const createBybitKlineStream = async ({
   config,
   onEvent,
+  runtime,
 }: {
   config: ConnectorConfig;
   onEvent: (event: BybitKlineStreamEvent) => Promise<void> | void;
+  runtime?: ConnectorRuntime;
 }): Promise<BybitKlineStream> => {
+  const resolveTradingAccount = getConnectorAccountResolver(runtime);
   const account = config.accountId
     ? await resolveTradingAccount({
         userName: config.userName,
@@ -183,5 +195,9 @@ export const createBybitKlineStream = async ({
       Number(process.env.BYBIT_WS_RECONNECT_TIMEOUT_MS ?? 1_000),
     ),
   });
-  return createBybitKlineStreamWithClient({ client, onEvent });
+  return createBybitKlineStreamWithClient({
+    client,
+    onEvent,
+    logger: getConnectorLogger(runtime),
+  });
 };

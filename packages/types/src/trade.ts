@@ -6,6 +6,7 @@ import type {
   InstrumentQuery,
   MarketUniverse,
   TickerQuery,
+  TradingAccountRef,
   TradingFeeRate,
 } from './market';
 
@@ -471,14 +472,45 @@ export type OrderType =
   | 'STOP_LOSS_LONG'
   | 'STOP_LOSS_SHORT';
 
-export type ConnectorCreator = (config: ConnectorConfig) => Promise<Connector>;
-
 export interface ConnectorConfig {
   userName: string;
   accountId?: string;
   deploymentId?: string;
   universe?: MarketUniverse;
 }
+
+export interface ConnectorLogger {
+  log: (level: string, message: string, ...meta: unknown[]) => unknown;
+  info: (message: string, ...meta: unknown[]) => unknown;
+  warn: (message: string, ...meta: unknown[]) => unknown;
+  error: (message: string, ...meta: unknown[]) => unknown;
+}
+
+export type ConnectorAccountResolver = (params: {
+  userName: string;
+  accountId?: string;
+  provider: string;
+  universe?: MarketUniverse;
+}) => Promise<TradingAccountRef | null>;
+
+export type ConnectorCachedKlineFactory = (options: {
+  provider: string;
+  request: Kline;
+  intervalToMinutes: (interval: Interval) => number | null;
+  limit?: number;
+  cacheFallbackWindow?: number;
+}) => Kline;
+
+export interface ConnectorRuntime {
+  logger: ConnectorLogger;
+  resolveTradingAccount: ConnectorAccountResolver;
+  createCachedKline: ConnectorCachedKlineFactory;
+}
+
+export type ConnectorCreator = (
+  config: ConnectorConfig,
+  runtime?: ConnectorRuntime,
+) => Promise<Connector>;
 
 export interface ConnectorRegistryEntry {
   name: string;
@@ -947,6 +979,48 @@ export interface RuntimeTradeRecord {
   totalFee?: number | null;
   aiAnalysis?: Partial<SignalAnalysis> | null;
   lastSyncedAt?: number;
+}
+
+export interface RuntimeStrategyTradeSummary {
+  totalTrades: number;
+  activeTrades: number;
+  closedTrades: number;
+  wins: number;
+  losses: number;
+  activePnl: number;
+  closedPnl: number;
+  totalPnl: number;
+  symbolConcentrationTop1: number | null;
+  symbolConcentrationTop5: number | null;
+}
+
+export interface RuntimeStrategyTradeView {
+  orderId: string;
+  symbol: string;
+  direction: RuntimeTradeRecord['direction'];
+  status: RuntimeTradeRecord['status'];
+  qty: number;
+  entryTimestamp: number;
+  entryPrice: number;
+  actualEntryPrice: number | null;
+  exitTimestamp: number | null;
+  exitPrice: number | null;
+  actualExitPrice: number | null;
+  currentPrice: number | null;
+  pnl: number | null;
+  durationHours: number | null;
+  entrySlippagePercent: number | null;
+  exitSlippagePercent: number | null;
+  exitType: RuntimeTradeRecord['exitType'] | null;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  takeProfitPercent: number | null;
+  stopLossPercent: number | null;
+  openFee: number | null;
+  closeFee: number | null;
+  fundingFee: number | null;
+  totalFee: number | null;
+  lastSyncedAt: number | null;
 }
 
 export interface RuntimeStrategyCloseNotification {

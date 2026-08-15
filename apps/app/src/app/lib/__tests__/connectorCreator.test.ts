@@ -1,15 +1,9 @@
 const mockGetRegisteredConnectorCreatorByProvider = jest.fn();
-const mockGetBuiltinConnectorCreatorByProvider = jest.fn();
 const mockResolveTradingAccount = jest.fn();
 
 jest.mock('@tradejs/node/connectors', () => ({
   getConnectorCreatorByProvider: (...args: unknown[]) =>
     mockGetRegisteredConnectorCreatorByProvider(...args),
-}));
-
-jest.mock('@tradejs/connectors', () => ({
-  getConnectorCreatorByProvider: (...args: unknown[]) =>
-    mockGetBuiltinConnectorCreatorByProvider(...args),
 }));
 
 jest.mock('@tradejs/infra/tradingAccounts', () => ({
@@ -44,15 +38,13 @@ describe('resolveConnectorCreatorByProvider', () => {
       'binance',
       '/tmp/project',
     );
-    expect(mockGetBuiltinConnectorCreatorByProvider).not.toHaveBeenCalled();
   });
 
-  it('falls back to built-in connectors when project registry has no connector', async () => {
+  it('falls back to the default provider through the project registry', async () => {
     const builtinCreator = jest.fn();
-    mockGetRegisteredConnectorCreatorByProvider.mockResolvedValue(undefined);
-    mockGetBuiltinConnectorCreatorByProvider
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(builtinCreator);
+    mockGetRegisteredConnectorCreatorByProvider
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(builtinCreator);
 
     const result = await resolveConnectorCreatorByProvider(
       'unknown-provider',
@@ -70,19 +62,10 @@ describe('resolveConnectorCreatorByProvider', () => {
       DEFAULT_CONNECTOR_PROVIDER,
       '/tmp/project',
     );
-    expect(mockGetBuiltinConnectorCreatorByProvider).toHaveBeenNthCalledWith(
-      1,
-      'unknown-provider',
-    );
-    expect(mockGetBuiltinConnectorCreatorByProvider).toHaveBeenNthCalledWith(
-      2,
-      DEFAULT_CONNECTOR_PROVIDER,
-    );
   });
 
-  it('returns null when neither registry nor built-ins can resolve the provider', async () => {
+  it('returns null when the registry cannot resolve either provider', async () => {
     mockGetRegisteredConnectorCreatorByProvider.mockResolvedValue(undefined);
-    mockGetBuiltinConnectorCreatorByProvider.mockReturnValue(null);
 
     await expect(
       resolveConnectorCreatorByProvider('unknown-provider', '/tmp/project'),

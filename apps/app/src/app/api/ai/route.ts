@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChatOpenAI } from '@langchain/openai';
-import {
-  BaseMessage,
-  HumanMessage,
-  SystemMessage,
-} from '@langchain/core/messages';
 import { TTL_1M } from '@tradejs/core/constants';
 import { toJson } from '@tradejs/core/data';
 import {
   getAiResponseLanguagePromptName,
   normalizeAiResponseLanguage,
 } from '@tradejs/core/aiLanguages';
-import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
-import { normalizeAiModel } from '@tradejs/core/aiModels';
-import { DEFAULT_AI_MODEL, getOpenRouterModelKwargs } from '@tradejs/node/ai';
+import { invokeAiChat, type AiChatMessage } from '@tradejs/node/ai';
 import {
   AIChatHistory,
   AIChatMessage,
@@ -74,54 +66,29 @@ const buildMessages = (
   historyData: unknown,
   responseLanguage: string,
 ) => {
-  const messages = new Array<BaseMessage>();
+  const messages: AiChatMessage[] = [];
 
-  messages.push(
-    new SystemMessage(
-      `You are a crypto trader assistant. Reply in ${getAiResponseLanguagePromptName(
-        responseLanguage,
-      )}.`,
-    ),
-  );
+  messages.push({
+    role: 'system',
+    content: `You are a crypto trader assistant. Reply in ${getAiResponseLanguagePromptName(
+      responseLanguage,
+    )}.`,
+  });
 
-  messages.push(
-    new SystemMessage(
-      `Here is the market data for ${filters.symbol}: ${toJson(historyData)}`,
-    ),
-  );
+  messages.push({
+    role: 'system',
+    content: `Here is the market data for ${filters.symbol}: ${toJson(historyData)}`,
+  });
 
   if (historyEntry.command === '/line') {
-    messages.push(new HumanMessage(historyEntry.text));
+    messages.push({ role: 'user', content: historyEntry.text });
   }
 
   if (historyEntry.command === 'prompt') {
-    messages.push(new HumanMessage(historyEntry.text));
+    messages.push({ role: 'user', content: historyEntry.text });
   }
 
   return messages;
-};
-
-const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
-  const settings = await getUserSettings(userName);
-  const endpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
-  if (!settings.AI_API_KEY || !endpoint) {
-    throw new Error(`AI settings are incomplete for user ${userName}`);
-  }
-
-  const modelKwargs = getOpenRouterModelKwargs(endpoint);
-
-  const model = new ChatOpenAI({
-    temperature: 0.7,
-    modelName:
-      normalizeAiModel(settings.AI_MODEL, endpoint) || DEFAULT_AI_MODEL,
-    apiKey: settings.AI_API_KEY,
-    ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
-    configuration: {
-      baseURL: endpoint,
-    },
-  });
-
-  return model.invoke(messages);
 };
 
 export const GET = async (request: NextRequest) => {
@@ -210,7 +177,11 @@ export const POST = async (request: NextRequest) => {
       normalizeAiResponseLanguage(settings.AI_RESPONSE_LANGUAGE),
     );
 
-    const response = await invokeChatModel(chatMessages, userName);
+    const response = await invokeAiChat({
+      messages: chatMessages,
+      userName,
+      temperature: 0.7,
+    });
 
     const responseMessage: AIChatMessage = {
       from: 'ai',

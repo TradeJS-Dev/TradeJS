@@ -1,6 +1,3 @@
-'use server';
-
-import { fetchWithRetry } from '@tradejs/infra/http';
 import {
   ConnectorCreator,
   Interval,
@@ -9,8 +6,9 @@ import {
   Ticker,
   resolveConnectorUniverse,
 } from '@tradejs/types';
-import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
+import { decorateConnectorKline } from '../shared/runtime';
 import { getBinancePublicApiUrl } from '../shared/binancePublicApi';
+import { fetchWithRetry } from '../shared/fetchWithRetry';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m',
@@ -64,7 +62,10 @@ const capabilities = {
   defaultUniverse: 'crypto',
 } as const;
 
-export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
+export const BinanceConnectorCreator: ConnectorCreator = async (
+  config,
+  runtime,
+) => {
   let state: Record<string, unknown> = {};
   const universe = resolveConnectorUniverse(capabilities, config.universe);
 
@@ -213,7 +214,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async (config) => {
       state = { ...state, ...newState };
     },
 
-    kline: createTimescaleCachedKline({
+    kline: decorateConnectorKline(runtime, {
       provider: 'binance',
       request: requestKline,
       intervalToMinutes,

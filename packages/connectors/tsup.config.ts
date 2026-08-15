@@ -10,7 +10,6 @@ export default defineConfig({
   target: 'node24',
   external: [
     '@tradejs/core',
-    '@tradejs/infra',
     '@tradejs/node',
     '@tradejs/types',
     'bybit-api',

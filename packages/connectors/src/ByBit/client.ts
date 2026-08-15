@@ -1,10 +1,9 @@
-'use server';
-
 import { RestClientV5 } from 'bybit-api';
-
-import { logger } from '@tradejs/infra/logger';
-import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
-import { ConnectorConfig } from '@tradejs/types';
+import type { ConnectorConfig, ConnectorRuntime } from '@tradejs/types';
+import {
+  getConnectorAccountResolver,
+  getConnectorLogger,
+} from '../shared/runtime';
 
 const PRIVATE_RECV_WINDOW_MS = 10_000;
 
@@ -13,7 +12,10 @@ export type ByBitRestAccess = 'private' | 'public';
 export const getClient = async (
   config: ConnectorConfig,
   access: ByBitRestAccess = 'private',
+  runtime?: ConnectorRuntime,
 ) => {
+  const logger = getConnectorLogger(runtime);
+  const resolveTradingAccount = getConnectorAccountResolver(runtime);
   const account =
     access === 'public' && !config.accountId
       ? null

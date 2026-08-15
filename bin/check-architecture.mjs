@@ -5,6 +5,9 @@ import path from 'node:path';
 import process from 'node:process';
 import { build } from 'esbuild';
 import ts from 'typescript';
+import architectureGraph from './architectureGraph.cjs';
+
+const { validateManifestWorkspaceGraph } = architectureGraph;
 
 const root = process.cwd();
 const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs']);
@@ -28,11 +31,7 @@ const allowedWorkspaceDependencies = new Map([
   ],
   [
     '@tradejs/connectors',
-    new Set([
-      '@tradejs/core',
-      '@tradejs/infra',
-      '@tradejs/types',
-    ]),
+    new Set(['@tradejs/core', '@tradejs/types']),
   ],
   [
     '@tradejs/base',
@@ -60,7 +59,6 @@ const allowedWorkspaceDependencies = new Map([
   [
     '@tradejs/app',
     new Set([
-      '@tradejs/connectors',
       '@tradejs/core',
       '@tradejs/indicators',
       '@tradejs/infra',
@@ -274,6 +272,12 @@ const packagesByName = new Map(packages.map((item) => [item.manifest.name, item]
 const productionWorkspaceGraph = new Map(
   packages.map(({ manifest }) => [manifest.name, new Set()]),
 );
+
+const manifestGraphValidation = validateManifestWorkspaceGraph({
+  packages,
+  allowedWorkspaceDependencies,
+});
+errors.push(...manifestGraphValidation.errors);
 
 for (const packageInfo of packages) {
   const { directory, files, manifest } = packageInfo;

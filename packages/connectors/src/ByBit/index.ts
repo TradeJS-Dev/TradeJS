@@ -1,5 +1,3 @@
-'use server';
-
 import _ from 'lodash';
 import chalk from 'chalk';
 import { delay } from '@tradejs/core/async';
@@ -8,10 +6,8 @@ import { toJson } from '@tradejs/core/data';
 import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
-import { logger } from '@tradejs/infra/logger';
-
 import { getClient } from './client';
-import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
+import { decorateConnectorKline, getConnectorLogger } from '../shared/runtime';
 import {
   mapKlineToChartData,
   normalizePrice,
@@ -21,6 +17,7 @@ import {
 } from './utils';
 import {
   ClosedPnlRecord,
+  ConnectorLogger,
   KlineRequest,
   ConnectorCreator,
   Direction,
@@ -170,11 +167,13 @@ const loadFundingFeeRows = async ({
   startTime,
   endTime,
   symbol,
+  logger,
 }: {
   client: { getTransactionLog?: (params?: any) => Promise<any> };
   startTime: number;
   endTime: number;
   symbol?: string;
+  logger: ConnectorLogger;
 }): Promise<FundingFeeRow[]> => {
   if (typeof client.getTransactionLog !== 'function') {
     return [];
@@ -310,7 +309,11 @@ const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
   return backoffMs + jitterMs;
 };
 
-export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
+export const ByBitConnectorCreator: ConnectorCreator = async (
+  config,
+  runtime,
+) => {
+  const logger = getConnectorLogger(runtime);
   let state: Record<string, unknown> = {};
   const universe = resolveConnectorUniverse(
     BYBIT_CAPABILITIES,
@@ -329,12 +332,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   const inflightPositionSnapshots = new Map<string, Promise<Position | null>>();
 
   const getPublicClient = async () => {
-    publicClientPromise ??= getClient(config, 'public');
+    publicClientPromise ??= getClient(config, 'public', runtime);
     return publicClientPromise;
   };
 
   const getPrivateClient = async () => {
-    privateClientPromise ??= getClient(config, 'private');
+    privateClientPromise ??= getClient(config, 'private', runtime);
     return privateClientPromise;
   };
 
@@ -887,7 +890,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       state = { ...state, ...newState };
     },
 
-    kline: createTimescaleCachedKline({
+    kline: decorateConnectorKline(runtime, {
       provider: 'bybit',
       request,
       intervalToMinutes,
@@ -1051,6 +1054,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         startTime,
         endTime,
         symbol,
+        logger,
       });
 
       return closedPnlRows
@@ -1174,6 +1178,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         startTime,
         endTime,
         symbol,
+        logger,
       });
 
       return executionRows

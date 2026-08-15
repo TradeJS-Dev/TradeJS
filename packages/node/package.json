@@ -58,6 +58,11 @@
       "import": "./dist/registry.mjs",
       "require": "./dist/registry.js"
     },
+    "./runtimeTrades": {
+      "types": "./dist/runtimeTrades.d.ts",
+      "import": "./dist/runtimeTrades.mjs",
+      "require": "./dist/runtimeTrades.js"
+    },
     "./strategies": {
       "types": "./dist/strategies.d.ts",
       "import": "./dist/strategies.mjs",

@@ -1,7 +1,7 @@
 import { CoinbaseConnectorCreator } from '..';
-import { fetchWithRetry } from '@tradejs/infra/http';
+import { fetchWithRetry } from '../../shared/fetchWithRetry';
 
-jest.mock('@tradejs/infra/http', () => ({
+jest.mock('../../shared/fetchWithRetry', () => ({
   fetchWithRetry: jest.fn(),
 }));
 

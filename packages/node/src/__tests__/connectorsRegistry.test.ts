@@ -24,6 +24,10 @@ describe('connectors registry', () => {
       },
     }));
 
+    jest.doMock('../connectorRuntime', () => ({
+      bindConnectorRuntime: (creator: unknown) => creator,
+    }));
+
     const module = await import('../connectorsRegistry');
     return { module };
   };

@@ -10,6 +10,7 @@ import {
   resolvePluginModuleSpecifier,
 } from './tradejsConfig';
 import * as tradejsConfig from './tradejsConfig';
+import { bindConnectorRuntime } from './connectorRuntime';
 
 type ConnectorRegistryState = {
   connectorCreators: Map<string, ConnectorCreator>;
@@ -146,7 +147,10 @@ const registerEntry = (
     return;
   }
 
-  state.connectorCreators.set(connectorName, entry.creator);
+  state.connectorCreators.set(
+    connectorName,
+    bindConnectorRuntime(entry.creator),
+  );
   const providers = normalizeProviders(entry.providers, connectorName);
   for (const provider of providers) {
     registerProvider(

@@ -1,6 +1,3 @@
-'use server';
-
-import { fetchWithRetry } from '@tradejs/infra/http';
 import {
   ConnectorCreator,
   Interval,
@@ -9,7 +6,8 @@ import {
   Ticker,
   resolveConnectorUniverse,
 } from '@tradejs/types';
-import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
+import { fetchWithRetry } from '../shared/fetchWithRetry';
+import { decorateConnectorKline } from '../shared/runtime';
 
 const INTERVAL_MS: Record<string, number> = {
   '1': 60_000,
@@ -84,7 +82,10 @@ const capabilities = {
   defaultUniverse: 'crypto',
 } as const;
 
-export const CoinbaseConnectorCreator: ConnectorCreator = async (config) => {
+export const CoinbaseConnectorCreator: ConnectorCreator = async (
+  config,
+  runtime,
+) => {
   let state: Record<string, unknown> = {};
   const universe = resolveConnectorUniverse(capabilities, config.universe);
 
@@ -234,7 +235,7 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async (config) => {
       state = { ...state, ...newState };
     },
 
-    kline: createTimescaleCachedKline({
+    kline: decorateConnectorKline(runtime, {
       provider: 'coinbase',
       request: requestKline,
       intervalToMinutes,

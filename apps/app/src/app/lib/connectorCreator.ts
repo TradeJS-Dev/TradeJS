@@ -1,4 +1,3 @@
-import { getConnectorCreatorByProvider as getBuiltinConnectorCreatorByProvider } from '@tradejs/connectors';
 import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
 import { getConnectorCreatorByProvider as getRegisteredConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { ConnectorCreator, MarketUniverse } from '@tradejs/types';
@@ -35,13 +34,5 @@ export const resolveConnectorCreatorByProvider = async (
       projectRoot,
     ));
 
-  if (registeredConnector) {
-    return registeredConnector as ConnectorCreator;
-  }
-
-  return (
-    getBuiltinConnectorCreatorByProvider(provider) ||
-    getBuiltinConnectorCreatorByProvider(fallbackProvider) ||
-    null
-  );
+  return (registeredConnector as ConnectorCreator | null) ?? null;
 };

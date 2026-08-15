@@ -387,8 +387,11 @@ export const DEFAULT_AI_MODEL = 'openai/gpt-5-mini';
 const userSettingsCache = new Map<string, Promise<UserSettings>>();
 const aiModelCache = new Map<string, Promise<AiModel>>();
 
-const getAiModelCacheKey = (userName: string, modelName: string) =>
-  `${userName}::${modelName}`;
+const getAiModelCacheKey = (
+  userName: string,
+  modelName: string,
+  temperature: number,
+) => `${userName}::${modelName}::${temperature}`;
 
 const resolveAiModelName = (
   settings: UserSettings,
@@ -464,10 +467,11 @@ const getAiSettings = async (userName = 'root') => {
 const createAiModel = async (
   userName = 'root',
   requestedModelName?: string,
+  temperature = 0.2,
 ) => {
   const settings = await getAiSettings(userName);
   const modelName = resolveAiModelName(settings, requestedModelName);
-  const cacheKey = getAiModelCacheKey(userName, modelName);
+  const cacheKey = getAiModelCacheKey(userName, modelName, temperature);
   let modelPromise = aiModelCache.get(cacheKey);
   if (!modelPromise) {
     modelPromise = (async () => {
@@ -475,7 +479,7 @@ const createAiModel = async (
       const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
 
       return new ChatOpenAI({
-        temperature: 0.2,
+        temperature,
         modelName,
         apiKey: settings.AI_API_KEY,
         ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
@@ -497,14 +501,20 @@ const createAiModel = async (
   return modelPromise;
 };
 
-const getAiModel = async (userName = 'root', requestedModelName?: string) => {
+const getAiModel = async (
+  userName = 'root',
+  requestedModelName?: string,
+  temperature = 0.2,
+) => {
   const settings = await getAiSettings(userName);
   const resolvedModelName = resolveAiModelName(settings, requestedModelName);
 
   try {
-    return await createAiModel(userName, resolvedModelName);
+    return await createAiModel(userName, resolvedModelName, temperature);
   } catch (error) {
-    aiModelCache.delete(getAiModelCacheKey(userName, resolvedModelName));
+    aiModelCache.delete(
+      getAiModelCacheKey(userName, resolvedModelName, temperature),
+    );
     userSettingsCache.delete(userName);
     throw error;
   }
@@ -513,6 +523,46 @@ const getAiModel = async (userName = 'root', requestedModelName?: string) => {
 export const resetAiRuntimeCache = () => {
   aiModelCache.clear();
   userSettingsCache.clear();
+};
+
+export interface AiChatMessage {
+  role: 'system' | 'user';
+  content: string;
+}
+
+export interface InvokeAiChatOptions {
+  messages: AiChatMessage[];
+  userName?: string;
+  model?: string;
+  temperature?: number;
+}
+
+export const invokeAiChat = async ({
+  messages,
+  userName = 'root',
+  model,
+  temperature = 0.2,
+}: InvokeAiChatOptions): Promise<{ content: string | object }> => {
+  const [{ HumanMessage, SystemMessage }, aiModel] = await Promise.all([
+    import('@langchain/core/messages'),
+    getAiModel(userName, model, temperature),
+  ]);
+  const providerMessages: BaseMessageLike[] = messages.map((message) =>
+    message.role === 'system'
+      ? new SystemMessage(message.content)
+      : new HumanMessage(message.content),
+  );
+
+  try {
+    const response = await aiModel.invoke(providerMessages);
+    const content = normalizeResponseContent(response?.content);
+    if (isEmptyResponseContent(content)) {
+      throw new Error('AI provider returned an empty chat completion');
+    }
+    return { content };
+  } catch (error) {
+    throw getAiInvocationError(error);
+  }
 };
 
 export const buildAiPrompts = (signal: Signal): AiPromptPair => {

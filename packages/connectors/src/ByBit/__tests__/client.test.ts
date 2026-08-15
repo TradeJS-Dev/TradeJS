@@ -9,18 +9,19 @@ jest.mock('bybit-api', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/tradingAccounts', () => ({
-  resolveTradingAccount: (...args: unknown[]) =>
-    mockResolveTradingAccount(...args),
-}));
-
-jest.mock('@tradejs/infra/logger', () => ({
-  logger: {
-    log: (...args: unknown[]) => mockLoggerLog(...args),
-  },
-}));
-
 import { getClient } from '../client';
+import type { ConnectorRuntime } from '@tradejs/types';
+
+const runtime: ConnectorRuntime = {
+  logger: {
+    log: (...args) => mockLoggerLog(...args),
+    info: (...args) => mockLoggerLog('info', ...args),
+    warn: (...args) => mockLoggerLog('warn', ...args),
+    error: (...args) => mockLoggerLog('error', ...args),
+  },
+  resolveTradingAccount: (...args) => mockResolveTradingAccount(...args),
+  createCachedKline: ({ request }) => request,
+};
 
 describe('ByBit getClient', () => {
   beforeEach(() => {
@@ -28,7 +29,7 @@ describe('ByBit getClient', () => {
   });
 
   it('creates public client without credentials', async () => {
-    const client = await getClient({ userName: 'root' }, 'public');
+    const client = await getClient({ userName: 'root' }, 'public', runtime);
 
     expect(mockResolveTradingAccount).not.toHaveBeenCalled();
     expect(mockRestClientV5Calls).toHaveBeenCalledWith({
@@ -53,7 +54,7 @@ describe('ByBit getClient', () => {
       environment: 'mainnet',
     });
 
-    const client = await getClient({ userName: 'root' }, 'private');
+    const client = await getClient({ userName: 'root' }, 'private', runtime);
 
     expect(mockResolveTradingAccount).toHaveBeenCalledWith({
       userName: 'root',
@@ -87,7 +88,7 @@ describe('ByBit getClient', () => {
     mockResolveTradingAccount.mockResolvedValue(null);
 
     await expect(
-      getClient({ userName: 'root' }, 'private'),
+      getClient({ userName: 'root' }, 'private', runtime),
     ).resolves.toBeNull();
     expect(mockLoggerLog).toHaveBeenCalledWith(
       'error',
@@ -109,8 +110,8 @@ describe('ByBit getClient', () => {
       universe: 'tradfi' as const,
     };
 
-    await getClient(config, 'public');
-    await getClient(config, 'private');
+    await getClient(config, 'public', runtime);
+    await getClient(config, 'private', runtime);
 
     expect(mockResolveTradingAccount).toHaveBeenNthCalledWith(1, {
       userName: 'root',
@@ -139,6 +140,7 @@ describe('ByBit getClient', () => {
       getClient(
         { userName: 'root', accountId: 'missing', universe: 'tradfi' },
         'private',
+        runtime,
       ),
     ).resolves.toBeNull();
     expect(mockLoggerLog).toHaveBeenCalledWith(

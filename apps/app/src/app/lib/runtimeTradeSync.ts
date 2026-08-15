@@ -13,7 +13,7 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
-import { takeClosedPnlMatch } from './runtimeTradeReconciliation';
+import { takeClosedPnlMatch } from '@tradejs/node/runtimeTrades';
 
 export type ClosedPnlRecordWithOrderLinkId = ClosedPnlRecord & {
   orderLinkId?: string;

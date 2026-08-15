@@ -9,15 +9,11 @@ export type ClosedPnlRecordWithOrderLinkId = ClosedPnlRecord & {
 const toNonEmptyString = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
-const removeFromExactMaps = ({
-  exactByOrderLinkId,
-  exactByOrderId,
-  row,
-}: {
-  exactByOrderLinkId: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  exactByOrderId: Map<string, ClosedPnlRecordWithOrderLinkId>;
-  row: ClosedPnlRecordWithOrderLinkId;
-}) => {
+const removeFromExactMaps = (
+  exactByOrderLinkId: Map<string, ClosedPnlRecordWithOrderLinkId>,
+  exactByOrderId: Map<string, ClosedPnlRecordWithOrderLinkId>,
+  row: ClosedPnlRecordWithOrderLinkId,
+) => {
   for (const [key, value] of exactByOrderLinkId) {
     if (value === row) exactByOrderLinkId.delete(key);
   }
@@ -48,24 +44,20 @@ export const takeExactClosedPnlMatch = ({
   orderLinkId?: string | null;
   orderId?: string | null;
 }) => {
-  const exactKeys: Array<
+  const keys: Array<
     [Map<string, ClosedPnlRecordWithOrderLinkId>, string | null | undefined]
   > = [
     [exactByOrderLinkId, orderLinkId],
     [exactByOrderId, orderId],
   ];
-  for (const [bucket, key] of exactKeys) {
+  for (const [bucket, key] of keys) {
     const normalizedKey = toNonEmptyString(key);
     if (!normalizedKey) continue;
-    const exactMatch = bucket.get(normalizedKey);
-    if (!exactMatch) continue;
-    removeFromExactMaps({
-      exactByOrderLinkId,
-      exactByOrderId,
-      row: exactMatch,
-    });
-    removeFromSymbolBuckets(symbolBuckets, exactMatch);
-    return exactMatch;
+    const match = bucket.get(normalizedKey);
+    if (!match) continue;
+    removeFromExactMaps(exactByOrderLinkId, exactByOrderId, match);
+    removeFromSymbolBuckets(symbolBuckets, match);
+    return match;
   }
   return null;
 };
@@ -106,8 +98,6 @@ export const takeClosedPnlMatch = ({
   }, -1);
   if (matchIndex < 0) return null;
   const [row] = rows.splice(matchIndex, 1);
-  if (row) {
-    removeFromExactMaps({ exactByOrderLinkId, exactByOrderId, row });
-  }
+  if (row) removeFromExactMaps(exactByOrderLinkId, exactByOrderId, row);
   return row ?? null;
 };

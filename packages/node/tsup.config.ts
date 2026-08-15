@@ -9,6 +9,7 @@ export default defineConfig({
     'src/constants.ts',
     'src/pine.ts',
     'src/registry.ts',
+    'src/runtimeTrades.ts',
     'src/strategies.ts',
   ],
   format: ['cjs', 'esm'],
