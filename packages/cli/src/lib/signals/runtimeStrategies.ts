@@ -46,9 +46,10 @@ export const loadRuntimeStrategies = async ({
   interval?: Interval;
 }): Promise<StrategyRuntimeConfig[]> => {
   const deploymentStrategies = new Map(
-    (deployment?.strategies ?? [])
-      .filter(({ enabled }) => enabled !== false)
-      .map((strategy) => [strategy.strategyName, strategy]),
+    (deployment?.strategies ?? []).map((strategy) => [
+      strategy.strategyName,
+      strategy,
+    ]),
   );
   const strategyConfigs = await Promise.all(
     (await loadRuntimeStrategyConfigs(userName)).map(
@@ -61,7 +62,13 @@ export const loadRuntimeStrategies = async ({
         const deploymentStrategy = deployment
           ? deploymentStrategies.get(strategyName)
           : undefined;
-        if (deployment && !deploymentStrategy) return null;
+        if (deploymentStrategy?.enabled === false) {
+          logger.info(
+            'Skip deployment-disabled strategy config: %s',
+            strategyName,
+          );
+          return null;
+        }
         if (!isRuntimeStrategyEnabled(strategyConfig)) {
           logger.info(
             'Skip inactive strategy config by ENABLE=false: %s',

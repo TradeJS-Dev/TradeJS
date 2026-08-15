@@ -663,9 +663,9 @@ export const backtest = async () => {
       const deploymentStrategy = preparedRun.deployment?.strategies.find(
         ({ strategyName }) => strategyName === config.strategyName,
       );
-      if (preparedRun.deployment && !deploymentStrategy) {
+      if (deploymentStrategy?.enabled === false) {
         throw new Error(
-          `Strategy ${config.strategyName} is not enabled in deployment ${preparedRun.deployment.id}`,
+          `Strategy ${config.strategyName} is disabled in deployment ${preparedRun.deployment?.id}`,
         );
       }
       const policyProfileId =
