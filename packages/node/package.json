@@ -63,6 +63,11 @@
       "import": "./dist/runtimeTrades.mjs",
       "require": "./dist/runtimeTrades.js"
     },
+    "./runtimeDashboard": {
+      "types": "./dist/runtimeDashboard.d.ts",
+      "import": "./dist/runtimeDashboard.mjs",
+      "require": "./dist/runtimeDashboard.js"
+    },
     "./strategies": {
       "types": "./dist/strategies.d.ts",
       "import": "./dist/strategies.mjs",

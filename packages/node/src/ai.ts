@@ -1,16 +1,8 @@
-import type { BaseMessageLike } from '@langchain/core/messages';
 import {
   DEFAULT_AI_RESPONSE_LANGUAGE,
   getAiResponseLanguagePromptName,
-  normalizeAiResponseLanguage,
 } from '@tradejs/core/aiLanguages';
-import { normalizeAiEndpoint } from '@tradejs/core/aiEndpoints';
-import { normalizeAiModel } from '@tradejs/core/aiModels';
 import { setData, redisKeys } from '@tradejs/infra/redis';
-import {
-  getUserSettings,
-  type UserSettings,
-} from '@tradejs/infra/userSettings';
 import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,
@@ -24,6 +16,14 @@ import {
   Signal,
   SignalAnalysis,
 } from '@tradejs/types';
+import { getAiUserSettings, invokeAiChat } from './aiProvider';
+export {
+  DEFAULT_AI_MODEL,
+  getOpenRouterModelKwargs,
+  invokeAiChat,
+  resetAiRuntimeCache,
+} from './aiProvider';
+export type { AiChatMessage, InvokeAiChatOptions } from './aiProvider';
 export {
   buildCompactAiIndicatorsSnapshot,
   MAX_AI_SERIES_POINTS,
@@ -50,24 +50,6 @@ const parseAIResponse = (input: string | object): object => {
     console.log('Raw AI response:', input);
     return {};
   }
-};
-
-const normalizeResponseContent = (content: unknown): string | object => {
-  if (typeof content === 'string' || (content && typeof content === 'object')) {
-    if (typeof content !== 'object' || !Array.isArray(content)) {
-      return content as string | object;
-    }
-  }
-
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
-      .join('\n')
-      .trim();
-    return text;
-  }
-
-  return String(content ?? '');
 };
 
 const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
@@ -354,217 +336,6 @@ interface AiRequestOptions {
   model?: string;
 }
 
-type AiModel = {
-  invoke: (messages: BaseMessageLike[]) => Promise<{ content: unknown }>;
-};
-
-const getAiInvocationError = (error: unknown) => {
-  const details =
-    error instanceof Error && error.message.trim()
-      ? error.message.trim()
-      : String(error);
-  const isEmptyCompletion =
-    error instanceof TypeError &&
-    /Cannot read properties of undefined \(reading ['"]message['"]\)/.test(
-      details,
-    );
-  const wrapped = new Error(
-    isEmptyCompletion
-      ? 'AI provider returned an empty chat completion'
-      : `AI model invocation failed: ${details}`,
-  ) as Error & { cause?: unknown };
-  wrapped.cause = error;
-  return wrapped;
-};
-
-const isEmptyResponseContent = (content: string | object) =>
-  typeof content === 'string'
-    ? content.trim().length === 0
-    : Object.keys(content).length === 0;
-
-export const DEFAULT_AI_MODEL = 'openai/gpt-5-mini';
-
-const userSettingsCache = new Map<string, Promise<UserSettings>>();
-const aiModelCache = new Map<string, Promise<AiModel>>();
-
-const getAiModelCacheKey = (
-  userName: string,
-  modelName: string,
-  temperature: number,
-) => `${userName}::${modelName}::${temperature}`;
-
-const resolveAiModelName = (
-  settings: UserSettings,
-  requestedModelName?: string,
-) => {
-  const explicitModelName =
-    typeof requestedModelName === 'string' ? requestedModelName.trim() : '';
-
-  if (explicitModelName) {
-    return explicitModelName;
-  }
-
-  const settingsModelName =
-    typeof settings.AI_MODEL === 'string' ? settings.AI_MODEL.trim() : '';
-
-  return settingsModelName || DEFAULT_AI_MODEL;
-};
-
-export const getOpenRouterModelKwargs = (
-  apiEndpoint?: string | null,
-): Record<string, unknown> => {
-  const endpoint = String(apiEndpoint ?? '').trim();
-  if (!endpoint) {
-    return {};
-  }
-
-  let hostname = '';
-  try {
-    hostname = new URL(endpoint).hostname;
-  } catch {
-    hostname = endpoint;
-  }
-
-  if (!hostname.toLowerCase().includes('openrouter')) {
-    return {};
-  }
-
-  return {
-    provider: {
-      ignore: ['azure'],
-    },
-  };
-};
-
-const getAiSettings = async (userName = 'root') => {
-  let settingsPromise = userSettingsCache.get(userName);
-  if (!settingsPromise) {
-    settingsPromise = getUserSettings(userName).then((settings) => {
-      const endpoint = normalizeAiEndpoint(settings.AI_API_ENDPOINT);
-      return {
-        ...settings,
-        AI_API_ENDPOINT: endpoint,
-        AI_MODEL: normalizeAiModel(settings.AI_MODEL, endpoint),
-        AI_RESPONSE_LANGUAGE: normalizeAiResponseLanguage(
-          settings.AI_RESPONSE_LANGUAGE,
-        ),
-      };
-    });
-    settingsPromise.catch(() => {
-      userSettingsCache.delete(userName);
-    });
-    userSettingsCache.set(userName, settingsPromise);
-  }
-
-  const settings = await settingsPromise;
-  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
-    throw new Error(`AI settings are incomplete for user ${userName}`);
-  }
-
-  return settings;
-};
-
-const createAiModel = async (
-  userName = 'root',
-  requestedModelName?: string,
-  temperature = 0.2,
-) => {
-  const settings = await getAiSettings(userName);
-  const modelName = resolveAiModelName(settings, requestedModelName);
-  const cacheKey = getAiModelCacheKey(userName, modelName, temperature);
-  let modelPromise = aiModelCache.get(cacheKey);
-  if (!modelPromise) {
-    modelPromise = (async () => {
-      const { ChatOpenAI } = await import('@langchain/openai');
-      const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
-
-      return new ChatOpenAI({
-        temperature,
-        modelName,
-        apiKey: settings.AI_API_KEY,
-        ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
-        configuration: {
-          baseURL: settings.AI_API_ENDPOINT,
-          defaultHeaders: {
-            'HTTP-Referer': 'https://tradejs.dev',
-            'X-Title': 'Inv',
-          },
-        },
-      }) as AiModel;
-    })();
-    modelPromise.catch(() => {
-      aiModelCache.delete(cacheKey);
-    });
-    aiModelCache.set(cacheKey, modelPromise);
-  }
-
-  return modelPromise;
-};
-
-const getAiModel = async (
-  userName = 'root',
-  requestedModelName?: string,
-  temperature = 0.2,
-) => {
-  const settings = await getAiSettings(userName);
-  const resolvedModelName = resolveAiModelName(settings, requestedModelName);
-
-  try {
-    return await createAiModel(userName, resolvedModelName, temperature);
-  } catch (error) {
-    aiModelCache.delete(
-      getAiModelCacheKey(userName, resolvedModelName, temperature),
-    );
-    userSettingsCache.delete(userName);
-    throw error;
-  }
-};
-
-export const resetAiRuntimeCache = () => {
-  aiModelCache.clear();
-  userSettingsCache.clear();
-};
-
-export interface AiChatMessage {
-  role: 'system' | 'user';
-  content: string;
-}
-
-export interface InvokeAiChatOptions {
-  messages: AiChatMessage[];
-  userName?: string;
-  model?: string;
-  temperature?: number;
-}
-
-export const invokeAiChat = async ({
-  messages,
-  userName = 'root',
-  model,
-  temperature = 0.2,
-}: InvokeAiChatOptions): Promise<{ content: string | object }> => {
-  const [{ HumanMessage, SystemMessage }, aiModel] = await Promise.all([
-    import('@langchain/core/messages'),
-    getAiModel(userName, model, temperature),
-  ]);
-  const providerMessages: BaseMessageLike[] = messages.map((message) =>
-    message.role === 'system'
-      ? new SystemMessage(message.content)
-      : new HumanMessage(message.content),
-  );
-
-  try {
-    const response = await aiModel.invoke(providerMessages);
-    const content = normalizeResponseContent(response?.content);
-    if (isEmptyResponseContent(content)) {
-      throw new Error('AI provider returned an empty chat completion');
-    }
-    return { content };
-  } catch (error) {
-    throw getAiInvocationError(error);
-  }
-};
-
 export const buildAiPrompts = (signal: Signal): AiPromptPair => {
   const payload = buildAiPayload(signal);
   return {
@@ -577,46 +348,24 @@ export const runAiPrompt = async (
   { systemPrompt, humanPrompt }: AiPromptPair,
   options: AiRequestOptions = {},
 ): Promise<Partial<SignalAnalysis>> => {
-  const [{ HumanMessage, SystemMessage }, model, settings] = await Promise.all([
-    import('@langchain/core/messages'),
-    getAiModel(options.userName, options.model),
-    getAiSettings(options.userName),
-  ]);
-  const messages: BaseMessageLike[] = [];
+  const settings = await getAiUserSettings(options.userName);
   const responseLanguage = getAiResponseLanguagePromptName(
     settings.AI_RESPONSE_LANGUAGE || DEFAULT_AI_RESPONSE_LANGUAGE,
   );
 
-  messages.push(new SystemMessage(systemPrompt));
-  messages.push(
-    new SystemMessage(
-      `Write all user-visible text fields in ${responseLanguage}. Keep field names and JSON syntax unchanged.`,
-    ),
-  );
-  messages.push(
-    new HumanMessage({
-      content: [
-        {
-          type: 'text',
-          text: humanPrompt,
-        },
-      ],
-    }),
-  );
-
-  let response: { content: unknown };
-  try {
-    response = await model.invoke(messages);
-  } catch (error) {
-    throw getAiInvocationError(error);
-  }
-
-  const responseContent = normalizeResponseContent(response?.content);
-  if (isEmptyResponseContent(responseContent)) {
-    throw new Error('AI provider returned an empty chat completion');
-  }
-
-  const parsed = parseAIResponse(responseContent) as any;
+  const response = await invokeAiChat({
+    userName: options.userName,
+    model: options.model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'system',
+        content: `Write all user-visible text fields in ${responseLanguage}. Keep field names and JSON syntax unchanged.`,
+      },
+      { role: 'user', content: humanPrompt, format: 'text-block' },
+    ],
+  });
+  const parsed = parseAIResponse(response.content) as any;
   const normalized = normalizeAnalysis(parsed);
 
   if (!options.signal) {

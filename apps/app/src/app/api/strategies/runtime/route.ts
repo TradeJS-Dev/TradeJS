@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@tradejs/infra/logger';
+import { loadRuntimeDashboard } from '@tradejs/node/runtimeDashboard';
 import { getCurrentUserName } from '#app/lib/currentUser';
-import { loadRuntimeDashboard } from '#app/lib/runtimeDashboard';
 
 export const dynamic = 'force-dynamic';
 

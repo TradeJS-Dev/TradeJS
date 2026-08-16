@@ -7,13 +7,28 @@ import { build } from 'esbuild';
 import ts from 'typescript';
 import architectureGraph from './architectureGraph.cjs';
 
-const { validateManifestWorkspaceGraph } = architectureGraph;
+const {
+  getPublicExportEntries,
+  validateManifestWorkspaceGraph,
+  validatePublicExportShape,
+} = architectureGraph;
 
 const root = process.cwd();
 const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs']);
 const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
+]);
+const ignoredSourceDirectories = new Set([
+  '.next',
+  '.yarn',
+  'dist',
+  'node_modules',
+]);
+const subpathFirstPackageNames = new Set([
+  '@tradejs/core',
+  '@tradejs/infra',
+  '@tradejs/node',
 ]);
 
 const allowedWorkspaceDependencies = new Map([
@@ -89,7 +104,11 @@ const listSourceFiles = async (directory) => {
   const files = await Promise.all(
     entries.map(async (entry) => {
       const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) return listSourceFiles(entryPath);
+      if (entry.isDirectory()) {
+        return ignoredSourceDirectories.has(entry.name)
+          ? []
+          : listSourceFiles(entryPath);
+      }
       return sourceExtensions.has(path.extname(entry.name)) ? [entryPath] : [];
     }),
   );
@@ -278,6 +297,54 @@ const manifestGraphValidation = validateManifestWorkspaceGraph({
   allowedWorkspaceDependencies,
 });
 errors.push(...manifestGraphValidation.errors);
+errors.push(
+  ...validatePublicExportShape({ packages, subpathFirstPackageNames }),
+);
+
+for (const { directory, manifest } of packages) {
+  const publicExports = getPublicExportEntries(manifest);
+  if (publicExports.length === 0) continue;
+
+  const tsupConfigPath = path.join(directory, 'tsup.config.ts');
+  if (!existsSync(tsupConfigPath)) {
+    errors.push(
+      `${path.relative(root, directory)}/package.json: public exports require tsup.config.ts`,
+    );
+    continue;
+  }
+
+  const tsupConfig = await readFile(tsupConfigPath, 'utf8');
+  const tsupEntrypoints = new Set(
+    [...tsupConfig.matchAll(/['"](src\/[^'"]+\.[cm]?[jt]sx?)['"]/g)].map(
+      ([, entrypoint]) => entrypoint,
+    ),
+  );
+
+  for (const [subpath] of publicExports) {
+    const sourceName = subpath === '.' ? 'index' : subpath.slice(2);
+    const sourceCandidates = [
+      `src/${sourceName}.ts`,
+      `src/${sourceName}.tsx`,
+      `src/${sourceName}/index.ts`,
+      `src/${sourceName}/index.tsx`,
+    ];
+    const sourceEntrypoint = sourceCandidates.find((candidate) =>
+      existsSync(path.join(directory, candidate)),
+    );
+
+    if (!sourceEntrypoint) {
+      errors.push(
+        `${path.relative(root, directory)}/package.json: export ${subpath} has no matching source entry`,
+      );
+      continue;
+    }
+    if (!tsupEntrypoints.has(sourceEntrypoint)) {
+      errors.push(
+        `${path.relative(root, tsupConfigPath)}: export ${subpath} source ${sourceEntrypoint} is missing from tsup entrypoints`,
+      );
+    }
+  }
+}
 
 for (const packageInfo of packages) {
   const { directory, files, manifest } = packageInfo;
@@ -359,6 +426,63 @@ for (const packageInfo of packages) {
       errors.push(
         `${path.relative(root, directory)}/package.json: @tradejs/types must not have runtime dependencies`,
       );
+    }
+  }
+}
+
+const sandboxDirectory = path.join(root, 'examples/sandbox');
+const sandboxManifestPath = path.join(sandboxDirectory, 'package.json');
+if (existsSync(sandboxManifestPath)) {
+  const sandboxManifest = JSON.parse(await readFile(sandboxManifestPath, 'utf8'));
+  const sandboxDependencies = {
+    ...sandboxManifest.dependencies,
+    ...sandboxManifest.devDependencies,
+  };
+
+  for (const [dependency, version] of Object.entries(sandboxDependencies)) {
+    if (
+      dependency.startsWith('@tradejs/') &&
+      /^(?:file|link|portal|workspace):/.test(version)
+    ) {
+      errors.push(
+        `examples/sandbox/package.json: ${dependency} must consume a published package version`,
+      );
+    }
+  }
+
+  const sandboxFiles = await listSourceFiles(sandboxDirectory);
+  for (const file of sandboxFiles) {
+    const relativeFile = path.relative(root, file);
+    const source = await readFile(file, 'utf8');
+    for (const specifier of extractSpecifiers(source, file)) {
+      if (/^@tradejs\/(?:core|node|infra)$/.test(specifier)) {
+        errors.push(
+          `${relativeFile}: external sandbox uses forbidden root package import ${specifier}`,
+        );
+      }
+      if (/^@tradejs\/(?:core|node|infra)\/src(?:\/|$)/.test(specifier)) {
+        errors.push(
+          `${relativeFile}: external sandbox uses non-public deep import ${specifier}`,
+        );
+      }
+
+      const dependency = packageNameFromSpecifier(specifier);
+      const workspaceDependency = dependency
+        ? packagesByName.get(dependency)
+        : undefined;
+      if (!dependency || !workspaceDependency) continue;
+
+      if (!Object.prototype.hasOwnProperty.call(sandboxDependencies, dependency)) {
+        errors.push(
+          `${relativeFile}: ${dependency} is imported but not declared by ${sandboxManifest.name}`,
+        );
+      }
+      const subpath = packageSubpathFromSpecifier(specifier, dependency);
+      if (!isExportedSubpath(workspaceDependency.manifest, subpath)) {
+        errors.push(
+          `${relativeFile}: ${specifier} is not exported by ${dependency}`,
+        );
+      }
     }
   }
 }

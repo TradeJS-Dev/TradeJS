@@ -13,12 +13,11 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { getFormatted } from '@tradejs/core/backtest';
-import type { TestThresholdsKey } from '@tradejs/types';
+import type { RuntimeStrategyView, TestThresholdsKey } from '@tradejs/types';
 import {
   formatDateTime,
   OrdersDrawerPanel,
 } from '#components/Shared/OrdersDrawer';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
 import { RuntimeStrategyConfigDrawer } from './RuntimeStrategyConfigDrawer';
 import { RuntimeStrategyStatsDrawer } from './RuntimeStrategyStatsDrawer';

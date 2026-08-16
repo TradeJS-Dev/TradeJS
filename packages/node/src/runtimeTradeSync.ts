@@ -13,10 +13,69 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
-import { takeClosedPnlMatch } from '@tradejs/node/runtimeTrades';
+import { takeClosedPnlMatch } from './runtimeTrades';
 
-export type ClosedPnlRecordWithOrderLinkId = ClosedPnlRecord & {
-  orderLinkId?: string;
+export interface RuntimeTradeStore {
+  getActiveOrderId(input: {
+    userName: string;
+    symbol: string;
+    scopeId?: string;
+  }): Promise<string | null>;
+  saveTrade(input: {
+    userName: string;
+    trade: RuntimeTradeRecord;
+    expire: number;
+  }): Promise<void>;
+  saveClosedTrade(input: {
+    userName: string;
+    trade: RuntimeTradeRecord;
+    expire: number;
+  }): Promise<void>;
+  deleteActiveTrade(input: {
+    userName: string;
+    symbol: string;
+    scopeId?: string;
+  }): Promise<void>;
+}
+
+export const redisRuntimeTradeStore: RuntimeTradeStore = {
+  async getActiveOrderId({ userName, symbol, scopeId }) {
+    const value = (await getData(
+      redisKeys.runtimeActiveTrade(userName, symbol, scopeId),
+      null,
+    )) as { orderId?: string } | null;
+    return typeof value?.orderId === 'string' ? value.orderId : null;
+  },
+  async saveTrade({ userName, trade, expire }) {
+    await Promise.all([
+      setData(redisKeys.runtimeTrade(userName, trade.orderId), trade, {
+        expire,
+      }),
+      setHashJsonField(
+        redisKeys.runtimeTradeBucket(
+          userName,
+          getRuntimeStorageDayKey(trade.entryTimestamp),
+        ),
+        trade.orderId,
+        trade,
+        { expire },
+      ),
+    ]);
+  },
+  async saveClosedTrade({ userName, trade, expire }) {
+    await setHashJsonField(
+      redisKeys.runtimeClosedTradeBucket(
+        userName,
+        getRuntimeStorageDayKey(trade.exitTimestamp!),
+      ),
+      trade.orderId,
+      trade,
+      { expire },
+    );
+  },
+  async deleteActiveTrade({ userName, symbol, scopeId }) {
+    await delKey(redisKeys.runtimeActiveTrade(userName, symbol, scopeId));
+  },
 };
 
 const getRuntimeTradeScopeId = (trade: RuntimeTradeRecord) =>
@@ -85,6 +144,7 @@ export const syncRuntimeTrades = async ({
   openPositions,
   openPositionsReliable,
   closedPnlRows,
+  store = redisRuntimeTradeStore,
 }: {
   userName: string;
   connector: Connector;
@@ -92,34 +152,32 @@ export const syncRuntimeTrades = async ({
   endTime: number;
   openPositions: PositionPnlSnapshot[];
   openPositionsReliable: boolean;
-  closedPnlRows: ClosedPnlRecordWithOrderLinkId[];
+  closedPnlRows: ClosedPnlRecord[];
+  store?: RuntimeTradeStore;
 }) => {
   const openPositionsBySymbol = new Map(
     openPositions.map((position) => [position.symbol, position]),
   );
-  const activeOrderIdByKey = new Map<string, string | null>();
-  const activeTradeKeys = [
-    ...new Set(
+  const activeOrderIdByScope = new Map<string, string | null>();
+  const activeTradeScopes = [
+    ...new Map(
       trades
         .filter((trade) => isRuntimeTradeInConnectorScope(trade, connector))
-        .map((trade) =>
-          redisKeys.runtimeActiveTrade(
-            userName,
-            trade.symbol,
-            getRuntimeTradeScopeId(trade),
-          ),
-        ),
-    ),
+        .map((trade) => {
+          const scope = {
+            symbol: trade.symbol,
+            scopeId: getRuntimeTradeScopeId(trade),
+          };
+          return [`${scope.scopeId ?? ''}:${scope.symbol}`, scope] as const;
+        }),
+    ).values(),
   ];
 
   await Promise.all(
-    activeTradeKeys.map(async (key) => {
-      const activeRef = (await getData(key, null)) as {
-        orderId?: string;
-      } | null;
-      activeOrderIdByKey.set(
-        key,
-        typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
+    activeTradeScopes.map(async ({ symbol, scopeId }) => {
+      activeOrderIdByScope.set(
+        `${scopeId ?? ''}:${symbol}`,
+        await store.getActiveOrderId({ userName, symbol, scopeId }),
       );
     }),
   );
@@ -127,9 +185,7 @@ export const syncRuntimeTrades = async ({
   const exactByOrderLinkId = new Map(
     closedPnlRows
       .filter(
-        (
-          row,
-        ): row is ClosedPnlRecordWithOrderLinkId & { orderLinkId: string } =>
+        (row): row is ClosedPnlRecord & { orderLinkId: string } =>
           typeof row.orderLinkId === 'string' && row.orderLinkId.length > 0,
       )
       .map((row) => [row.orderLinkId, row]),
@@ -137,12 +193,12 @@ export const syncRuntimeTrades = async ({
   const exactByOrderId = new Map(
     closedPnlRows
       .filter(
-        (row): row is ClosedPnlRecordWithOrderLinkId & { orderId: string } =>
+        (row): row is ClosedPnlRecord & { orderId: string } =>
           typeof row.orderId === 'string' && row.orderId.length > 0,
       )
       .map((row) => [row.orderId, row]),
   );
-  const symbolBuckets = new Map<string, ClosedPnlRecordWithOrderLinkId[]>();
+  const symbolBuckets = new Map<string, ClosedPnlRecord[]>();
 
   for (const row of closedPnlRows) {
     const bucket = symbolBuckets.get(row.symbol) ?? [];
@@ -158,17 +214,18 @@ export const syncRuntimeTrades = async ({
       continue;
     }
 
-    const activeTradeKey = redisKeys.runtimeActiveTrade(
-      userName,
-      trade.symbol,
-      getRuntimeTradeScopeId(trade),
-    );
+    const scopeId = getRuntimeTradeScopeId(trade);
     const isCurrentActiveTrade =
-      activeOrderIdByKey.get(activeTradeKey) === trade.orderId;
+      activeOrderIdByScope.get(`${scopeId ?? ''}:${trade.symbol}`) ===
+      trade.orderId;
 
     if (hasExchangeCloseDetails(trade)) {
       if (isCurrentActiveTrade) {
-        await delKey(activeTradeKey);
+        await store.deleteActiveTrade({
+          userName,
+          symbol: trade.symbol,
+          scopeId,
+        });
       }
       syncedTrades.push(trade);
       continue;
@@ -199,20 +256,7 @@ export const syncRuntimeTrades = async ({
         lastSyncedAt: endTime,
       };
 
-      await Promise.all([
-        setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
-          expire: 0,
-        }),
-        setHashJsonField(
-          redisKeys.runtimeTradeBucket(
-            userName,
-            getRuntimeStorageDayKey(trade.entryTimestamp),
-          ),
-          trade.orderId,
-          nextTrade,
-          { expire: 0 },
-        ),
-      ]);
+      await store.saveTrade({ userName, trade: nextTrade, expire: 0 });
       syncedTrades.push(nextTrade);
       continue;
     }
@@ -250,28 +294,17 @@ export const syncRuntimeTrades = async ({
     };
 
     await Promise.all([
-      setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
-        expire: TTL_1M,
-      }),
-      setHashJsonField(
-        redisKeys.runtimeTradeBucket(
-          userName,
-          getRuntimeStorageDayKey(trade.entryTimestamp),
-        ),
-        trade.orderId,
-        nextTrade,
-        { expire: TTL_1M },
-      ),
-      setHashJsonField(
-        redisKeys.runtimeClosedTradeBucket(
-          userName,
-          getRuntimeStorageDayKey(nextTrade.exitTimestamp!),
-        ),
-        trade.orderId,
-        nextTrade,
-        { expire: TTL_1M },
-      ),
-      ...(isCurrentActiveTrade ? [delKey(activeTradeKey)] : []),
+      store.saveTrade({ userName, trade: nextTrade, expire: TTL_1M }),
+      store.saveClosedTrade({ userName, trade: nextTrade, expire: TTL_1M }),
+      ...(isCurrentActiveTrade
+        ? [
+            store.deleteActiveTrade({
+              userName,
+              symbol: trade.symbol,
+              scopeId,
+            }),
+          ]
+        : []),
     ]);
     syncedTrades.push(nextTrade);
   }

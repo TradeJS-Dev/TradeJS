@@ -44,11 +44,6 @@
       "import": "./dist/files.mjs",
       "require": "./dist/files.js"
     },
-    "./http": {
-      "types": "./dist/http.d.ts",
-      "import": "./dist/http.mjs",
-      "require": "./dist/http.js"
-    },
     "./logger": {
       "types": "./dist/logger.d.ts",
       "import": "./dist/logger.mjs",

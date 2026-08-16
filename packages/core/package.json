@@ -83,6 +83,11 @@
       "import": "./dist/grid.mjs",
       "require": "./dist/grid.js"
     },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.mjs",
+      "require": "./dist/http.js"
+    },
     "./indicators": {
       "types": "./dist/indicators.d.ts",
       "import": "./dist/indicators.mjs",
@@ -92,6 +97,11 @@
       "types": "./dist/math.d.ts",
       "import": "./dist/math.mjs",
       "require": "./dist/math.js"
+    },
+    "./runtimeTrades": {
+      "types": "./dist/runtimeTrades.d.ts",
+      "import": "./dist/runtimeTrades.mjs",
+      "require": "./dist/runtimeTrades.js"
     },
     "./strategies": {
       "types": "./dist/strategies.d.ts",

@@ -6,7 +6,6 @@ import {
   resolveTradingAccount,
 } from '@tradejs/infra/tradingAccounts';
 import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
-import { strategyEntries } from '@tradejs/strategies';
 import { loadRuntimeStrategyConfigs as loadStoredRuntimeStrategyConfigs } from '@tradejs/infra/runtimeStrategyConfigs';
 import {
   getData,
@@ -18,36 +17,30 @@ import type {
   Connector,
   RuntimeTradeRecord,
   Interval,
+  RuntimeStrategiesResponse,
   StrategyConfig,
 } from '@tradejs/types';
-import { getAvailableStrategyNames } from '@tradejs/node/strategies';
-import {
-  DEFAULT_CONNECTOR_PROVIDER,
-  resolveConnectorAccountId,
-  resolveConnectorCreatorByProvider,
-} from '#app/lib/connectorCreator';
+import { getAvailableStrategyNames } from './strategies';
+import { getConnectorCreatorByProvider } from './connectorsRegistry';
 import {
   buildRuntimeStrategyAnalytics,
-  buildExchangeFallbackRuntimeTrades,
   isRuntimeTradeRecord,
-  RuntimeStrategiesResponse,
   selectTradesForWindow,
   toRuntimeTradeView,
-} from '#app/lib/runtimeStrategies';
-import {
   assignLegacyRuntimeTradeAccountScopes,
   buildRuntimeStrategyIdentityKey,
-} from '#app/lib/runtimeStrategyLineage';
+} from '@tradejs/core/runtimeTrades';
 import {
   loadStrategyEvidenceTimelines,
   strategyEvidenceTimelineSelectorKey,
-} from '#app/lib/strategyEvidenceTimeline';
+} from './strategyEvidenceTimeline';
 import {
   isRuntimeTradeInConnectorScope,
   syncRuntimeTrades,
-} from '#app/lib/runtimeTradeSync';
+} from './runtimeTradeSync';
+import { buildExchangeFallbackRuntimeTrades } from './runtimeTrades';
 
-const DEFAULT_PROVIDER = DEFAULT_CONNECTOR_PROVIDER;
+const DEFAULT_PROVIDER = 'bybit';
 const DEFAULT_HOURS = 168;
 const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 90;
@@ -82,25 +75,38 @@ const loadRuntimeStrategyConfigs = async (userName: string) => {
 
 const loadConfiguredStrategyNames = async (projectRoot: string) => {
   try {
-    const names = await getAvailableStrategyNames(projectRoot);
-    const builtInNames = strategyEntries
-      .map((entry) => entry.manifest?.name)
-      .filter((value): value is string => Boolean(value));
-
-    return [...new Set([...names, ...builtInNames])].sort((left, right) =>
-      left.localeCompare(right),
-    );
+    return await getAvailableStrategyNames(projectRoot);
   } catch (error) {
     logger.warn(
       'strategies runtime: failed to load configured strategies: %s',
       (error as Error)?.message || String(error),
     );
-    return strategyEntries
-      .map((entry) => entry.manifest?.name)
-      .filter((value): value is string => Boolean(value))
-      .sort((left, right) => left.localeCompare(right));
+    return [];
   }
 };
+
+const resolveConnectorCreatorByProvider = async (
+  provider: string,
+  projectRoot: string,
+) =>
+  (await getConnectorCreatorByProvider(provider, projectRoot)) ??
+  (await getConnectorCreatorByProvider(DEFAULT_PROVIDER, projectRoot)) ??
+  null;
+
+const resolveConnectorAccountId = async ({
+  userName,
+  provider,
+}: {
+  userName: string;
+  provider: string;
+}) =>
+  (
+    await resolveTradingAccount({
+      userName,
+      provider,
+      universe: 'crypto',
+    })
+  )?.id;
 
 const loadRuntimeTrades = async (
   userName: string,
@@ -351,7 +357,6 @@ export const loadRuntimeDashboard = async ({
   const connectorCreator = await resolveConnectorCreatorByProvider(
     provider,
     projectRoot,
-    DEFAULT_PROVIDER,
   );
 
   if (!connectorCreator) {
@@ -361,7 +366,6 @@ export const loadRuntimeDashboard = async ({
   const connectorAccountId = await resolveConnectorAccountId({
     userName,
     provider,
-    universe: 'crypto',
   });
   const connector = await connectorCreator({
     userName,

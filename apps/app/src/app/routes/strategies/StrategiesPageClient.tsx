@@ -4,7 +4,10 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Button, ClientOnly, Flex } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
-import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
+import type {
+  RuntimeStrategiesResponse,
+  StrategyChartsSnapshotResponse,
+} from '@tradejs/types';
 import {
   deleteStrategyCard,
   getAiStrategies,
@@ -20,7 +23,6 @@ import {
   BulkDeleteToolbar,
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
-import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategyContracts';
 import { CARD_PAGE_CONTENT_MAX_WIDTH } from '#app/lib/cardPageLayout';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 

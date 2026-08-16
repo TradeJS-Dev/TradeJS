@@ -1,5 +1,7 @@
-import type { StrategyChartSnapshot } from '@tradejs/types';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
+import type {
+  RuntimeStrategyView,
+  StrategyChartSnapshot,
+} from '@tradejs/types';
 import { buildStrategySnapshotCardViewModel } from '../StrategySnapshotCard.presenter';
 import { buildRuntimeStrategyCardViewModel } from '../RuntimeStrategyCard.presenter';
 

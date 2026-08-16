@@ -35,7 +35,6 @@ npm i @tradejs/infra @tradejs/types
 Import only explicit subpaths:
 
 - `@tradejs/infra/files`
-- `@tradejs/infra/http`
 - `@tradejs/infra/logger`
 - `@tradejs/infra/ml`
 - `@tradejs/infra/redis`

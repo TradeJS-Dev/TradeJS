@@ -94,4 +94,83 @@ describe('runtime exchange trade reconstruction', () => {
     expect(exactByOrderId.size).toBe(0);
     expect(symbolBuckets.get('ETHUSDT')).toEqual([]);
   });
+
+  it('reconstructs an active exchange trade with risk levels and fees', () => {
+    const orderLinkId = `${createRuntimeOrderLinkPrefix('TrendShift')}active123456`;
+    const trades = buildExchangeFallbackRuntimeTrades({
+      entryRows: [
+        {
+          symbol: 'ETHUSDT',
+          qty: 2,
+          entryPrice: 100,
+          entryTimestamp: 1_000,
+          direction: 'SHORT',
+          orderLinkId,
+          openFee: 0.1,
+          fundingFee: -0.02,
+        },
+      ],
+      closedPnlRows: [],
+      openPositions: [
+        {
+          symbol: 'ETHUSDT',
+          qty: 2,
+          price: 100,
+          currentPrice: 95,
+          unrealizedPnl: 10,
+          direction: 'SHORT',
+          takeProfitPrice: 90,
+          stopLossPrice: 105,
+        },
+      ],
+      strategyNames: ['TrendShift'],
+      existingTrades: [],
+      endTime: 2_000,
+    });
+
+    expect(trades).toEqual([
+      expect.objectContaining({
+        orderId: orderLinkId,
+        status: 'active',
+        currentPnl: 10,
+        openFee: 0.1,
+        fundingFee: -0.02,
+        aiAnalysis: { takeProfitPrice: 90, stopLossPrice: 105 },
+      }),
+    ]);
+  });
+
+  it('reconstructs closed trades even when entry executions are unavailable', () => {
+    const orderLinkId = `${createRuntimeOrderLinkPrefix('DoubleTap')}closed123456`;
+    const trades = buildExchangeFallbackRuntimeTrades({
+      entryRows: [],
+      closedPnlRows: [
+        {
+          symbol: 'SOLUSDT',
+          qty: 3,
+          entryPrice: 100,
+          exitPrice: 110,
+          closedPnl: 30,
+          closedAt: 2_000,
+          direction: 'LONG',
+          entryTimestamp: 1_000,
+          orderLinkId,
+        },
+      ],
+      openPositions: [],
+      strategyNames: ['DoubleTap'],
+      existingTrades: [],
+      endTime: 3_000,
+    });
+
+    expect(trades).toEqual([
+      expect.objectContaining({
+        strategy: 'DoubleTap',
+        status: 'closed',
+        entryTimestamp: 1_000,
+        exitTimestamp: 2_000,
+        closedPnl: 30,
+      }),
+    ]);
+  });
 });

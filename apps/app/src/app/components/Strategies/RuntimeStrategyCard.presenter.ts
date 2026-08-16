@@ -3,7 +3,11 @@ import {
   getFormatted,
   type AdvancedTradeInput,
 } from '@tradejs/core/backtest';
-import type { TestThresholdsKey, ThresholdLevel } from '@tradejs/types';
+import type {
+  RuntimeStrategyView,
+  TestThresholdsKey,
+  ThresholdLevel,
+} from '@tradejs/types';
 import {
   formatCompactNumber,
   formatFee,
@@ -16,7 +20,6 @@ import {
   type OrdersDrawerOrder,
   type OrdersDrawerSummaryItem,
 } from '#components/Shared/OrdersDrawer';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
 import {
   buildStrategyPerformanceViewModel,
   calculateMaxLossStreak,

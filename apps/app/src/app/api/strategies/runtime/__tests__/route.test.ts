@@ -16,7 +16,7 @@ jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
 }));
 
-jest.mock('#app/lib/runtimeDashboard', () => ({
+jest.mock('@tradejs/node/runtimeDashboard', () => ({
   loadRuntimeDashboard: (...args: unknown[]) =>
     mockLoadRuntimeDashboard(...args),
 }));

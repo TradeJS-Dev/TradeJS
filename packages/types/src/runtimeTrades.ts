@@ -1,12 +1,7 @@
-import type {
-  Interval,
-  MarketUniverse,
-  RuntimeTradeRecord,
-  SimpleOrderLogData,
-  StrategyConfig,
-  StrategyEvidenceTimeline,
-  TestStat,
-} from '@tradejs/types';
+import type { SimpleOrderLogData, StrategyConfig, TestStat } from './backtest';
+import type { MarketUniverse } from './market';
+import type { StrategyEvidenceTimeline } from './strategyRelease';
+import type { Interval, RuntimeTradeRecord } from './trade';
 
 export interface RuntimeStrategyTradeSummary {
   totalTrades: number;

@@ -8,7 +8,7 @@ import {
 } from '@tradejs/types';
 import { decorateConnectorKline } from '../shared/runtime';
 import { getBinancePublicApiUrl } from '../shared/binancePublicApi';
-import { fetchWithRetry } from '../shared/fetchWithRetry';
+import { fetchWithRetry } from '@tradejs/core/http';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m',

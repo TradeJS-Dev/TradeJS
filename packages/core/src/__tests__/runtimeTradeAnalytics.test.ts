@@ -1,9 +1,11 @@
 import type { RuntimeTradeRecord } from '@tradejs/types';
 import {
   buildRuntimeStrategyAnalytics,
+  resolveStrategyNameByOrderLinkId,
   selectTradesForWindow,
   toRuntimeTradeView,
-} from '../backtest';
+} from '../runtimeTrades';
+import { createRuntimeOrderLinkPrefix } from '../trade';
 
 describe('runtime trade analytics', () => {
   const trades = [
@@ -70,5 +72,55 @@ describe('runtime trade analytics', () => {
       exitSlippagePercent: 0.9091,
       takeProfitPercent: 10,
     });
+  });
+
+  it('excludes stale active trades unless runtime storage still marks them active', () => {
+    const activeTrades = [
+      { ...trades[1], orderId: 'stale', entryTimestamp: 10 },
+      { ...trades[1], orderId: 'current', entryTimestamp: 20 },
+    ];
+
+    expect(
+      selectTradesForWindow(activeTrades, 200, new Set(['current'])).map(
+        ({ orderId }) => orderId,
+      ),
+    ).toEqual(['current']);
+  });
+
+  it('maps directional levels, fees and execution slippage', () => {
+    const view = toRuntimeTradeView(
+      {
+        ...trades[0],
+        entryPrice: 100,
+        actualEntryPrice: 101,
+        exitPrice: 95,
+        actualExitPrice: 94,
+        exitType: 'sl',
+        openFee: 1,
+        closeFee: 2,
+        fundingFee: -0.5,
+        aiAnalysis: { takeProfitPrice: 105, stopLossPrice: 95 },
+      },
+      400,
+    );
+
+    expect(view).toMatchObject({
+      takeProfitPercent: 5,
+      stopLossPercent: 5,
+      entrySlippagePercent: 1,
+      exitSlippagePercent: -1.0526,
+      totalFee: 2.5,
+    });
+  });
+
+  it('resolves strategy names from canonical runtime order links', () => {
+    const orderLinkId = `${createRuntimeOrderLinkPrefix('TrendShift')}abc123def456`;
+
+    expect(
+      resolveStrategyNameByOrderLinkId({
+        orderLinkId,
+        strategyNames: ['TrendLine', 'TrendShift'],
+      }),
+    ).toBe('TrendShift');
   });
 });

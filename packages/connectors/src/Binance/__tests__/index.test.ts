@@ -1,7 +1,7 @@
-import { fetchWithRetry } from '../../shared/fetchWithRetry';
+import { fetchWithRetry } from '@tradejs/core/http';
 import { BinanceConnectorCreator } from '..';
 
-jest.mock('../../shared/fetchWithRetry', () => ({
+jest.mock('@tradejs/core/http', () => ({
   fetchWithRetry: jest.fn(),
 }));
 

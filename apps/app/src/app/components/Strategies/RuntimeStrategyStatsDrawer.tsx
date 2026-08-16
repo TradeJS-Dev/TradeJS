@@ -10,7 +10,7 @@ import {
   SimpleGrid,
   Text,
 } from '@chakra-ui/react';
-import type { ThresholdLevel } from '@tradejs/types';
+import type { RuntimeStrategyView, ThresholdLevel } from '@tradejs/types';
 import {
   formatInteger,
   formatPercent,
@@ -18,7 +18,6 @@ import {
   getPnlColor,
   type OrdersDrawerSummaryItem,
 } from '#components/Shared/OrdersDrawer';
-import type { RuntimeStrategyView } from '#app/lib/runtimeStrategyContracts';
 import { buildQuarterlyMonthlyStats } from '#app/lib/strategyPerformance';
 import { AdvancedMetricsPanel } from './AdvancedMetricsPanel';
 import {

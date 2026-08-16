@@ -1,19 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '@tradejs/core/api';
 import { toaster } from '#ui';
-import {
-  buildDerivativesDashboardRequest,
-  FIXED_SYMBOLS,
-  type ChartWindow,
-} from './derivativesDashboardConfig';
+import { FIXED_SYMBOLS, type ChartWindow } from './derivativesDashboardConfig';
+import { loadDerivativesDashboardData } from './derivativesDashboardLoader';
 import {
   buildDerivativesDashboardViewModel,
   type DerivativesInterval,
-  type DetailResponse,
   type DetailRow,
-  type PriceResponse,
   type PriceRow,
   type SummaryResponse,
 } from './derivativesViewModel';
@@ -36,90 +31,45 @@ export const useDerivativesDashboard = () => {
       endTimestamp,
     };
   });
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState('');
-  const [detailError, setDetailError] = useState('');
-
-  const loadSummary = useCallback(async () => {
-    setSummaryLoading(true);
-    setSummaryError('');
-    const request = buildDerivativesDashboardRequest({
-      hours,
-      selectedInterval,
-    });
-    try {
-      setSummary(await API.get<SummaryResponse>(request.summaryPath));
-    } catch (error) {
-      const message = (error as Error)?.message || 'Failed to load derivatives';
-      setSummaryError(message);
-      toaster.error({
-        title: 'Failed to load derivatives',
-        description: message,
-      });
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, [hours, selectedInterval]);
-
-  const loadDetails = useCallback(async () => {
-    setDetailLoading(true);
-    setDetailError('');
-    const request = buildDerivativesDashboardRequest({
-      hours,
-      selectedInterval,
-    });
-    try {
-      const responses = await Promise.all(
-        request.details.map(async (detailRequest) => {
-          const [derivativesResponse, priceResponse] = await Promise.all([
-            API.get<DetailResponse>(detailRequest.derivativesPath),
-            API.post<PriceResponse>(
-              detailRequest.pricePath,
-              detailRequest.priceBody,
-            ),
-          ]);
-          return [
-            detailRequest.symbol,
-            {
-              detailRows: derivativesResponse.rows,
-              priceRows: priceResponse.data ?? [],
-            },
-          ] as const;
-        }),
-      );
-      setDetailsBySymbol(
-        Object.fromEntries(
-          responses.map(([symbol, payload]) => [symbol, payload.detailRows]),
-        ),
-      );
-      setPricesBySymbol(
-        Object.fromEntries(
-          responses.map(([symbol, payload]) => [symbol, payload.priceRows]),
-        ),
-      );
-      setChartWindow(request.chartWindow);
-    } catch (error) {
-      const message =
-        (error as Error)?.message ||
-        'Failed to load symbol derivatives and price data';
-      setDetailError(message);
-      toaster.error({
-        title: 'Failed to load derivative details',
-        description: message,
-      });
-    } finally {
-      setDetailLoading(false);
-    }
-  }, [hours, selectedInterval]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const requestRevision = useRef(0);
 
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
+    const revision = ++requestRevision.current;
+    setLoading(true);
+    setError('');
 
-  useEffect(() => {
-    void loadDetails();
-  }, [loadDetails]);
+    void loadDerivativesDashboardData({
+      hours,
+      selectedInterval,
+      client: API,
+    })
+      .then((data) => {
+        if (requestRevision.current !== revision) return;
+        setSummary(data.summary);
+        setDetailsBySymbol(data.detailsBySymbol);
+        setPricesBySymbol(data.pricesBySymbol);
+        setChartWindow(data.chartWindow);
+      })
+      .catch((loadError) => {
+        if (requestRevision.current !== revision) return;
+        const message =
+          (loadError as Error)?.message || 'Failed to load derivatives';
+        setError(message);
+        toaster.error({
+          title: 'Failed to load derivatives',
+          description: message,
+        });
+      })
+      .finally(() => {
+        if (requestRevision.current === revision) setLoading(false);
+      });
+
+    return () => {
+      if (requestRevision.current === revision) requestRevision.current += 1;
+    };
+  }, [hours, selectedInterval]);
 
   const dashboard = useMemo(
     () =>
@@ -129,20 +79,18 @@ export const useDerivativesDashboard = () => {
         summary,
         detailsBySymbol,
         pricesBySymbol,
-        summaryLoading,
-        detailLoading,
-        summaryError,
-        detailError,
+        summaryLoading: loading,
+        detailLoading: loading,
+        summaryError: error,
+        detailError: error,
       }),
     [
-      detailError,
-      detailLoading,
       detailsBySymbol,
+      error,
+      loading,
       pricesBySymbol,
       selectedInterval,
       summary,
-      summaryError,
-      summaryLoading,
     ],
   );
 

@@ -1,4 +1,4 @@
-import { fetchWithRetry } from '@tradejs/infra/http';
+import { fetchWithRetry } from '../http';
 
 type MockResponse = {
   ok: boolean;

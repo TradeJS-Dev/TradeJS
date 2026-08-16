@@ -1,11 +1,11 @@
-import { fetchWithRetry } from '../../shared/fetchWithRetry';
+import { fetchWithRetry } from '@tradejs/core/http';
 import {
   mapBinanceKline,
   mapCoinbaseKline,
   spotKlineProviders,
 } from '../spotKlineProviders';
 
-jest.mock('../../shared/fetchWithRetry', () => ({
+jest.mock('@tradejs/core/http', () => ({
   fetchWithRetry: jest.fn(),
 }));
 

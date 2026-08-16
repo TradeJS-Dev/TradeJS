@@ -1,6 +1,6 @@
 import { KlineChartData, DerivativesInterval } from '@tradejs/types';
+import { fetchWithRetry } from '@tradejs/core/http';
 import { getBinancePublicApiUrl } from '../shared/binancePublicApi';
-import { fetchWithRetry } from '../shared/fetchWithRetry';
 
 export type SpotKlineRequest = {
   symbol: string;

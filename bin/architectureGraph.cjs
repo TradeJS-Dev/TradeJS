@@ -71,9 +71,59 @@ const validateManifestWorkspaceGraph = ({
   return { errors, graph };
 };
 
+const getPublicExportEntries = (manifest) =>
+  Object.entries(manifest.exports ?? {}).filter(([subpath]) =>
+    subpath === '.' || subpath.startsWith('./'),
+  );
+
+const validatePublicExportShape = ({
+  packages,
+  subpathFirstPackageNames,
+}) => {
+  const errors = [];
+
+  for (const { manifest } of packages) {
+    const exportEntries = getPublicExportEntries(manifest);
+    if (
+      subpathFirstPackageNames.has(manifest.name) &&
+      exportEntries.some(([subpath]) => subpath === '.')
+    ) {
+      errors.push(`${manifest.name}: root package export is forbidden`);
+    }
+
+    for (const [subpath, descriptor] of exportEntries) {
+      const outputName = subpath === '.' ? 'index' : subpath.slice(2);
+      const expectedTargets = {
+        types: `./dist/${outputName}.d.ts`,
+        import: `./dist/${outputName}.mjs`,
+        require: `./dist/${outputName}.js`,
+      };
+
+      if (!descriptor || typeof descriptor !== 'object') {
+        errors.push(
+          `${manifest.name}: export ${subpath} must declare types/import/require targets`,
+        );
+        continue;
+      }
+
+      for (const [condition, expectedTarget] of Object.entries(expectedTargets)) {
+        if (descriptor[condition] !== expectedTarget) {
+          errors.push(
+            `${manifest.name}: export ${subpath} ${condition} target must be ${expectedTarget}`,
+          );
+        }
+      }
+    }
+  }
+
+  return errors;
+};
+
 module.exports = {
   buildManifestWorkspaceGraph,
   findWorkspaceDependencyCycles,
+  getPublicExportEntries,
   getRuntimeWorkspaceDependencies,
   validateManifestWorkspaceGraph,
+  validatePublicExportShape,
 };

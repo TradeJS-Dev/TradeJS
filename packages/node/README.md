@@ -63,6 +63,8 @@ Import only explicit subpaths:
 - `@tradejs/node/connectors`
 - `@tradejs/node/cli`
 - `@tradejs/node/constants`
+- `@tradejs/node/runtimeTrades`
+- `@tradejs/node/runtimeDashboard`
 
 There is no root `@tradejs/node` import surface.
 

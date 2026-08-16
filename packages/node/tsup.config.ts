@@ -10,6 +10,7 @@ export default defineConfig({
     'src/pine.ts',
     'src/registry.ts',
     'src/runtimeTrades.ts',
+    'src/runtimeDashboard.ts',
     'src/strategies.ts',
   ],
   format: ['cjs', 'esm'],

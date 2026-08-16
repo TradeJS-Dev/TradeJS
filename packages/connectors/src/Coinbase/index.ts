@@ -6,7 +6,7 @@ import {
   Ticker,
   resolveConnectorUniverse,
 } from '@tradejs/types';
-import { fetchWithRetry } from '../shared/fetchWithRetry';
+import { fetchWithRetry } from '@tradejs/core/http';
 import { decorateConnectorKline } from '../shared/runtime';
 
 const INTERVAL_MS: Record<string, number> = {

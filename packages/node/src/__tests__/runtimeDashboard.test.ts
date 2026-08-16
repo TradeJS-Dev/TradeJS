@@ -8,8 +8,7 @@ const mockListRuntimeDeployments = jest.fn();
 const mockListTradingAccounts = jest.fn();
 const mockResolveTradingAccount = jest.fn();
 const mockGetAvailableStrategyNames = jest.fn();
-const mockResolveConnectorAccountId = jest.fn();
-const mockResolveConnectorCreatorByProvider = jest.fn();
+const mockGetConnectorCreatorByProvider = jest.fn();
 const mockGetData = jest.fn();
 const mockGetHashJsonValues = jest.fn();
 const mockGetKeys = jest.fn();
@@ -31,21 +30,14 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
     mockResolveTradingAccount(...args),
 }));
 
-jest.mock('@tradejs/node/strategies', () => ({
+jest.mock('../strategies', () => ({
   getAvailableStrategyNames: (...args: unknown[]) =>
     mockGetAvailableStrategyNames(...args),
 }));
 
-jest.mock('@tradejs/strategies', () => ({
-  strategyEntries: [],
-}));
-
-jest.mock('#app/lib/connectorCreator', () => ({
-  DEFAULT_CONNECTOR_PROVIDER: 'bybit',
-  resolveConnectorAccountId: (...args: unknown[]) =>
-    mockResolveConnectorAccountId(...args),
-  resolveConnectorCreatorByProvider: (...args: unknown[]) =>
-    mockResolveConnectorCreatorByProvider(...args),
+jest.mock('../connectorsRegistry', () => ({
+  getConnectorCreatorByProvider: (...args: unknown[]) =>
+    mockGetConnectorCreatorByProvider(...args),
 }));
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -63,7 +55,7 @@ jest.mock('@tradejs/infra/redis', () => ({
   },
 }));
 
-jest.mock('#app/lib/runtimeTradeSync', () => ({
+jest.mock('../runtimeTradeSync', () => ({
   isRuntimeTradeInConnectorScope: jest.fn(() => true),
   syncRuntimeTrades: (...args: unknown[]) => mockSyncRuntimeTrades(...args),
 }));
@@ -103,8 +95,7 @@ describe('runtime dashboard', () => {
     mockGetHashJsonValues.mockResolvedValue([]);
     mockGetKeys.mockResolvedValue([]);
     mockSyncRuntimeTrades.mockImplementation(async ({ trades }) => trades);
-    mockResolveConnectorAccountId.mockResolvedValue('crypto-main');
-    mockResolveConnectorCreatorByProvider.mockResolvedValue(
+    mockGetConnectorCreatorByProvider.mockResolvedValue(
       jest.fn(async () => ({
         universe: 'crypto',
         accountId: 'crypto-main',
@@ -137,16 +128,10 @@ describe('runtime dashboard', () => {
       projectRoot: '/project',
     });
 
-    expect(mockResolveConnectorCreatorByProvider).toHaveBeenCalledWith(
+    expect(mockGetConnectorCreatorByProvider).toHaveBeenCalledWith(
       'bybit',
       '/project',
-      'bybit',
     );
-    expect(mockResolveConnectorAccountId).toHaveBeenCalledWith({
-      userName: 'root',
-      provider: 'bybit',
-      universe: 'crypto',
-    });
     expect(response).toMatchObject({
       provider: 'bybit',
       hours: 6,
@@ -180,7 +165,7 @@ describe('runtime dashboard', () => {
   });
 
   it('fails before reading sources when the connector is unavailable', async () => {
-    mockResolveConnectorCreatorByProvider.mockResolvedValue(null);
+    mockGetConnectorCreatorByProvider.mockResolvedValue(null);
 
     await expect(
       loadRuntimeDashboard({ userName: 'root', provider: 'missing' }),

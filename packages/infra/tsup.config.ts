@@ -6,7 +6,6 @@ export default defineConfig({
     'src/backtestArtifacts.ts',
     'src/coreResearch.ts',
     'src/files.ts',
-    'src/http.ts',
     'src/logger.ts',
     'src/ml.ts',
     'src/redis.ts',

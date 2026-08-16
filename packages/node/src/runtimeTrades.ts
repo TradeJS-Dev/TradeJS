@@ -1,4 +1,4 @@
-import { resolveStrategyNameByOrderLinkId } from '@tradejs/core/backtest';
+import { resolveStrategyNameByOrderLinkId } from '@tradejs/core/runtimeTrades';
 import type {
   ExchangeEntryRecord,
   PositionPnlSnapshot,
