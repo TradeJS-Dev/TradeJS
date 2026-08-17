@@ -13,11 +13,11 @@ import {
   getSignalSessionPrimary,
 } from '@tradejs/strategy-kit/context';
 import {
-  buildTrendlineStructuralContext,
   getBias,
   getSpreadPct,
   getTrendLineFromPayload,
-} from '../guardrails';
+} from '@tradejs/strategy-trendline-kit';
+import { buildTrendlineStructuralContext } from '../guardrails';
 
 /**
  * TrendLine AI adapter extends the shared AI pipeline (`src/utils/ai.ts`):

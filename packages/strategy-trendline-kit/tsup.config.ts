@@ -8,12 +8,4 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: 'es2022',
-  external: [
-    '@tradejs/core',
-    '@tradejs/indicators',
-    '@tradejs/strategy-kit',
-    '@tradejs/strategy-trendline-kit',
-    '@tradejs/types',
-    'technicalindicators',
-  ],
 });

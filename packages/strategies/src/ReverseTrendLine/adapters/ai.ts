@@ -8,8 +8,8 @@ import { ReverseTrendLineConfig } from '../config';
 import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
-  getTrendLineFromPayload,
 } from '../guardrails';
+import { getTrendLineFromPayload } from '@tradejs/strategy-trendline-kit';
 
 const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
 ReverseTrendLine addon:

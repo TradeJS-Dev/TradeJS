@@ -18,6 +18,7 @@
     "packages/node/README.md",
     "packages/strategies/README.md",
     "packages/strategy-kit/README.md",
+    "packages/strategy-trendline-kit/README.md",
     "packages/types/README.md"
   ],
   "targetRepositoryRequirements": [

@@ -11,15 +11,7 @@ import {
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
   type SignalDirection,
-} from '../shared/trendlineGuardrails';
-
-export {
-  getBias,
-  getLastFiniteNumber,
-  getSpreadPct,
-  getTrendLineFromPayload,
-  toFiniteNumberOrNull,
-} from '../shared/trendlineGuardrails';
+} from '@tradejs/strategy-trendline-kit';
 
 const TRENDLINE_CLEAR_BREAK_PCT = 0.35;
 const TRENDLINE_TIMING_WINDOW = 6;

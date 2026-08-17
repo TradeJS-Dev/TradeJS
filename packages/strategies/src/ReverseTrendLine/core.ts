@@ -7,8 +7,8 @@ import { getReverseTrendLineCoreFilterSkipCode } from './filters';
 import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
-  toFiniteNumberOrNull,
 } from './guardrails';
+import { toFiniteNumberOrNull } from '@tradejs/strategy-trendline-kit';
 import { buildReverseTrendlineRiskPlan } from './risk';
 import {
   appendRecentCandle,

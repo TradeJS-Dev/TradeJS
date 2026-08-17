@@ -6,11 +6,7 @@ import {
   getSpreadPct,
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
-} from '../trendlineGuardrails';
-import {
-  clampNumber,
-  normalizePositiveNumber,
-} from '@tradejs/strategy-kit/numbers';
+} from '..';
 
 describe('shared trendline guardrail helpers', () => {
   it('normalizes finite numbers and tails', () => {
@@ -43,11 +39,5 @@ describe('shared trendline guardrail helpers', () => {
       { timestamp: 3, value: 130 },
     ]);
     expect(buildTrendLineEvaluator(trendLine)?.evaluate(2)).toBe(120);
-  });
-
-  it('normalizes risk numbers', () => {
-    expect(clampNumber(5, 1, 3)).toBe(3);
-    expect(normalizePositiveNumber(-1, 2)).toBe(2);
-    expect(normalizePositiveNumber(1.5, 2)).toBe(1.5);
   });
 });

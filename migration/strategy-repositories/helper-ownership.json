@@ -183,8 +183,8 @@
     },
     {
       "id": "trendlineGuardrails",
-      "sourcePath": "packages/strategies/src/shared/trendlineGuardrails.ts",
-      "state": "strategies-shared",
+      "sourcePath": "packages/strategy-trendline-kit/src/index.ts",
+      "state": "family-kit-extracted",
       "target": {
         "kind": "family-package",
         "packageName": "@tradejs/strategy-trendline-kit"

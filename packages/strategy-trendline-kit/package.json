@@ -1,19 +1,20 @@
 {
-  "name": "@tradejs/strategies",
-  "version": "3.0.1",
-  "description": "Built-in strategy plugin catalog for the TradeJS TypeScript framework.",
+  "name": "@tradejs/strategy-trendline-kit",
+  "version": "3.0.0",
+  "description": "Shared trendline payload and guardrail primitives for the TradeJS TrendLine strategy family.",
   "keywords": [
     "tradejs",
     "trading",
-    "backtesting",
-    "strategies",
-    "plugin",
-    "algorithmic-trading"
+    "strategy",
+    "trendline",
+    "guardrails",
+    "backtesting"
   ],
+  "homepage": "https://tradejs.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/TradeJS-Dev/TradeJS",
-    "directory": "packages/strategies"
+    "directory": "packages/strategy-trendline-kit"
   },
   "bugs": {
     "url": "https://github.com/tradejs-dev/tradejs/issues"
@@ -30,14 +31,6 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }
-  },
-  "dependencies": {
-    "@tradejs/core": "workspace:^",
-    "@tradejs/indicators": "workspace:^",
-    "@tradejs/strategy-kit": "workspace:^",
-    "@tradejs/strategy-trendline-kit": "workspace:^",
-    "@tradejs/types": "workspace:^",
-    "technicalindicators": "^3.1.0"
   },
   "devDependencies": {
     "tsup": "^8.5.1",

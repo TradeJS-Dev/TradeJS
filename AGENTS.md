@@ -27,6 +27,8 @@ Main areas:
 - `packages/types` — shared contracts and types
 - `packages/infra` — Redis / Timescale / ML / IO adapters
 - `packages/strategy-kit` — browser-safe strategy-neutral authoring helpers
+- `packages/strategy-trendline-kit` — TrendLine-family payload and guardrail
+  primitives
 - `packages/strategies` — built-in strategy plugins
 - `packages/indicators` — built-in indicators
 - `packages/connectors` — built-in connectors and market data providers
@@ -94,6 +96,8 @@ If a feature is not publish-ready for external users, document that limitation e
 - `@tradejs/infra` contains infra adapters and storage/network integrations.
 - `@tradejs/strategy-kit` contains browser-safe, strategy-neutral authoring
   helpers and must not own registry, infra, or order-placement behavior.
+- `@tradejs/strategy-trendline-kit` contains only TrendLine-family payload and
+  guardrail primitives; entry policy remains in each strategy package.
 
 Do not blur these boundaries without explicit request.
 
@@ -127,6 +131,8 @@ For production code:
 - import infra adapters from public `@tradejs/infra/*` subpaths
 - import strategy-neutral authoring helpers from public
   `@tradejs/strategy-kit/*` subpaths
+- import shared TrendLine-family primitives from
+  `@tradejs/strategy-trendline-kit`
 - import shared contracts from `@tradejs/types`
 - inside `packages/core`, import core-internal helpers through package-local `imports` such as `#utils/*` and `#constants`
 - inside `apps/app`, prefer app-local `imports` such as `#app/*`, `#actions/*`, `#store`, `#shared/*`, `#ui`, `#components/*`
@@ -303,7 +309,9 @@ Default preset:
   and bounded-state helpers live behind explicit `@tradejs/strategy-kit/*`
   subpaths. Add their tests to `packages/strategy-kit`, not to a consuming
   strategy package.
-- TrendLine and ReverseTrendLine share guardrail logic through `packages/strategies/src/shared/trendlineGuardrails.ts`; change shared trendline guardrail behavior there unless the divergence is intentionally strategy-specific.
+- TrendLine and ReverseTrendLine share payload and guardrail primitives through
+  `@tradejs/strategy-trendline-kit`; change family-wide parsing/evaluation there
+  unless the divergence is intentionally strategy-specific.
 - TrendLine and ReverseTrendLine use the public Strategy Kit number helpers;
   do not move their family-specific guardrails into Strategy Kit.
 - Shared causal range geometry is strategy-neutral and lives behind

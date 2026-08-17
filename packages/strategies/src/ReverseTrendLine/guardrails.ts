@@ -12,15 +12,7 @@ import {
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
   type SignalDirection,
-} from '../shared/trendlineGuardrails';
-
-export {
-  getBias,
-  getLastFiniteNumber,
-  getSpreadPct,
-  getTrendLineFromPayload,
-  toFiniteNumberOrNull,
-} from '../shared/trendlineGuardrails';
+} from '@tradejs/strategy-trendline-kit';
 
 const REVERSE_TRENDLINE_NEAR_LINE_PCT = 0.45;
 const REVERSE_TRENDLINE_FAILED_BOUNCE_PCT = 0.35;
