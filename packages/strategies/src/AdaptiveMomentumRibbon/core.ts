@@ -11,7 +11,7 @@ import { buildAdaptiveMomentumRibbonFigures } from './figures';
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
-} from '../shared/structureRisk';
+} from '@tradejs/strategy-kit/risk';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 const getRecord = (value: unknown): Record<string, unknown> | null =>

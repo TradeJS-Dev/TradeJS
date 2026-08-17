@@ -15,7 +15,7 @@ import {
 import { buildGridFigures } from './figures';
 import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
-import { buildTradeEconomics } from '../shared/structureRisk';
+import { buildTradeEconomics } from '@tradejs/strategy-kit/risk';
 
 interface PendingGridEntry {
   timestamp: number;

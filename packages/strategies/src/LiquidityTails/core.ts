@@ -12,7 +12,7 @@ import {
   LiquidityTailsExecutionContext,
 } from './engine';
 import { buildLiquidityTailsFigures } from './figures';
-import { buildTradeEconomics } from '../shared/structureRisk';
+import { buildTradeEconomics } from '@tradejs/strategy-kit/risk';
 import {
   resolveDirectionalConfigBoolean,
   resolveDirectionalConfigNumber,

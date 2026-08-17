@@ -32,6 +32,7 @@
       "@tradejs/infra/*": ["./packages/infra/src/*"],
       "@tradejs/base": ["./packages/base/src/index"],
       "@tradejs/strategies": ["./packages/strategies/src/index"],
+      "@tradejs/strategy-kit/*": ["./packages/strategy-kit/src/*"],
       "@tradejs/indicators": ["./packages/indicators/src/index"],
       "@tradejs/types": ["./packages/types/src/index"],
       "@tradejs/types/*": ["./packages/types/src/*"]

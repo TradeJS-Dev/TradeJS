@@ -18,13 +18,13 @@ import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
   resolveAtrBuffer,
-} from '../shared/strategyKit/risk';
+} from '@tradejs/strategy-kit/risk';
 import {
   isDirectionAligned,
   isPressureAligned,
-} from '../shared/strategyKit/context';
-import { isOpenPosition } from '../shared/strategyKit/positions';
-import { toFiniteNumberOrNull } from '../shared/strategyKit/numbers';
+} from '@tradejs/strategy-kit/context';
+import { isOpenPosition } from '@tradejs/strategy-kit/positions';
+import { toFiniteNumberOrNull } from '@tradejs/strategy-kit/numbers';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import {
   getMarketFlushReversalLongReboundPocketFeatures,

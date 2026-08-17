@@ -12,7 +12,7 @@ import {
 import {
   buildEntryEvidenceAnnotation,
   formatFigureMetric,
-} from '../shared/strategyKit/figures';
+} from '@tradejs/strategy-kit/figures';
 
 interface BuildAdaptiveMomentumRibbonFiguresParams {
   plotSeries: Partial<

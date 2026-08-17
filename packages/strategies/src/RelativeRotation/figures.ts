@@ -4,7 +4,7 @@ import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,
   formatFigureMetric,
-} from '../shared/strategyKit/figures';
+} from '@tradejs/strategy-kit/figures';
 
 export const buildRelativeRotationFigures = ({
   direction,

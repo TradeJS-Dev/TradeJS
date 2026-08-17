@@ -5,7 +5,7 @@ import {
   buildEntryStopTargetFigures,
   formatFigureMetric,
   formatFigureRatioAsPercent,
-} from '../shared/strategyKit/figures';
+} from '@tradejs/strategy-kit/figures';
 
 export const buildHyperliquidConsensusFigures = ({
   direction,

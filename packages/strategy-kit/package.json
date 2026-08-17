@@ -1,0 +1,66 @@
+{
+  "name": "@tradejs/strategy-kit",
+  "version": "3.0.0",
+  "description": "MIT-licensed browser-safe helpers for independently packaged TradeJS strategies.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "strategy",
+    "plugin",
+    "risk-management",
+    "backtesting"
+  ],
+  "homepage": "https://tradejs.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TradeJS-Dev/TradeJS",
+    "directory": "packages/strategy-kit"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.mjs",
+      "require": "./dist/context.js"
+    },
+    "./figures": {
+      "types": "./dist/figures.d.ts",
+      "import": "./dist/figures.mjs",
+      "require": "./dist/figures.js"
+    },
+    "./numbers": {
+      "types": "./dist/numbers.d.ts",
+      "import": "./dist/numbers.mjs",
+      "require": "./dist/numbers.js"
+    },
+    "./positions": {
+      "types": "./dist/positions.d.ts",
+      "import": "./dist/positions.mjs",
+      "require": "./dist/positions.js"
+    },
+    "./risk": {
+      "types": "./dist/risk.d.ts",
+      "import": "./dist/risk.mjs",
+      "require": "./dist/risk.js"
+    }
+  },
+  "dependencies": {
+    "@tradejs/core": "workspace:^",
+    "@tradejs/types": "workspace:^"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.9"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

@@ -17,7 +17,7 @@ import {
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
-} from '../shared/structureRisk';
+} from '@tradejs/strategy-kit/risk';
 import {
   getVolumeDivergenceCoreFilterSkipCode,
   getVolumeDivergenceStrength,

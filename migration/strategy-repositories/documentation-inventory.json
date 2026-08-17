@@ -17,6 +17,7 @@
     "packages/ml/README.md",
     "packages/node/README.md",
     "packages/strategies/README.md",
+    "packages/strategy-kit/README.md",
     "packages/types/README.md"
   ],
   "targetRepositoryRequirements": [

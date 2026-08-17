@@ -15,7 +15,7 @@ import {
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
-} from '../shared/structureRisk';
+} from '@tradejs/strategy-kit/risk';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 
 type TrendShiftOppositeExitPending = {

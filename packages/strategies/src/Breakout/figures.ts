@@ -6,7 +6,7 @@ import type {
 import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,
-} from '../shared/strategyKit/figures';
+} from '@tradejs/strategy-kit/figures';
 
 type BreakoutSignalRule = {
   weight: number;

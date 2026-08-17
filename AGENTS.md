@@ -26,6 +26,7 @@ Main areas:
 - `packages/node` — Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/types` — shared contracts and types
 - `packages/infra` — Redis / Timescale / ML / IO adapters
+- `packages/strategy-kit` — browser-safe strategy-neutral authoring helpers
 - `packages/strategies` — built-in strategy plugins
 - `packages/indicators` — built-in indicators
 - `packages/connectors` — built-in connectors and market data providers
@@ -91,15 +92,19 @@ If a feature is not publish-ready for external users, document that limitation e
 - `@tradejs/node` is Node/server runtime.
 - `@tradejs/types` contains shared contracts.
 - `@tradejs/infra` contains infra adapters and storage/network integrations.
+- `@tradejs/strategy-kit` contains browser-safe, strategy-neutral authoring
+  helpers and must not own registry, infra, or order-placement behavior.
 
 Do not blur these boundaries without explicit request.
 
 ### Public Surface Rules
 
-- `@tradejs/core`, `@tradejs/node`, and `@tradejs/infra` are subpath-first packages.
+- `@tradejs/core`, `@tradejs/node`, `@tradejs/infra`, and
+  `@tradejs/strategy-kit` are subpath-first packages.
 - `@tradejs/core` has no root export.
 - `@tradejs/node` has no root export.
 - `@tradejs/infra` has no root export.
+- `@tradejs/strategy-kit` has no root export.
 
 Keep public APIs expressed through explicit subpaths such as:
 
@@ -109,6 +114,8 @@ Keep public APIs expressed through explicit subpaths such as:
 - `@tradejs/node/registry`
 - `@tradejs/infra/redis`
 - `@tradejs/infra/logger`
+- `@tradejs/strategy-kit/figures`
+- `@tradejs/strategy-kit/risk`
 
 ### Import Rules
 
@@ -118,6 +125,8 @@ For production code:
 - import browser-safe helpers from public `@tradejs/core/*` subpaths
 - import Node runtime helpers from public `@tradejs/node/*` subpaths
 - import infra adapters from public `@tradejs/infra/*` subpaths
+- import strategy-neutral authoring helpers from public
+  `@tradejs/strategy-kit/*` subpaths
 - import shared contracts from `@tradejs/types`
 - inside `packages/core`, import core-internal helpers through package-local `imports` such as `#utils/*` and `#constants`
 - inside `apps/app`, prefer app-local `imports` such as `#app/*`, `#actions/*`, `#store`, `#shared/*`, `#ui`, `#components/*`
@@ -126,7 +135,8 @@ Do not:
 
 - use non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
 - use non-public deep imports like `@tradejs/infra/src/*`
-- reintroduce root imports like `@tradejs/core`, `@tradejs/node`, or `@tradejs/infra`
+- reintroduce root imports like `@tradejs/core`, `@tradejs/node`,
+  `@tradejs/infra`, or `@tradejs/strategy-kit`
 - add global root-level TypeScript aliases for package-internal modules like `@utils/*` or `@constants`; keep package-internal aliases package-local
 
 ### Build Isolation Rules
@@ -289,8 +299,13 @@ Default preset:
 
 ### Shared Strategy Helpers
 
+- Strategy-neutral figure, context, position, number, and structure-risk helpers
+  live behind explicit `@tradejs/strategy-kit/*` subpaths. Add their tests to
+  `packages/strategy-kit`, not to a consuming strategy package.
 - TrendLine and ReverseTrendLine share guardrail logic through `packages/strategies/src/shared/trendlineGuardrails.ts`; change shared trendline guardrail behavior there unless the divergence is intentionally strategy-specific.
-- Shared risk helpers live in `packages/strategies/src/shared/risk.ts`; prefer them over duplicating strategy-local risk math.
+- TrendLine and ReverseTrendLine normalization helpers remain in
+  `packages/strategies/src/shared/risk.ts` until the family helper extraction;
+  do not move family-specific guardrails into Strategy Kit.
 
 ## External User Reality Check
 

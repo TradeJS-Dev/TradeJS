@@ -157,24 +157,35 @@ for (const strategyName of characterizationContract.completedStrategies) {
 }
 
 assert(
-  helperOwnership.schema === 'tradejs-strategy-helper-ownership/v1',
+  helperOwnership.schema === 'tradejs-strategy-helper-ownership/v2',
   'Unsupported helper ownership schema',
 );
 const sharedRoot = path.join(strategiesSourceRoot, 'shared');
-const discoveredHelpers = walkFiles(sharedRoot)
+const strategyKitSourceRoot = path.join(
+  repositoryRoot,
+  'packages/strategy-kit/src',
+);
+const discoveredHelperSourcePaths = [sharedRoot, strategyKitSourceRoot]
+  .flatMap((root) => walkFiles(root))
   .filter(
     (filePath) =>
       filePath.endsWith('.ts') &&
       !filePath.split(path.sep).includes('__tests__'),
   )
   .map((filePath) =>
-    path
-      .relative(sharedRoot, filePath)
-      .replaceAll(path.sep, '/')
-      .replace(/\.ts$/, ''),
+    path.relative(repositoryRoot, filePath).replaceAll(path.sep, '/'),
   );
 const helperIds = helperOwnership.helpers.map((helper) => helper.id);
-assertSameValues('Shared helper modules', helperIds, discoveredHelpers);
+assertUnique('Helper ids', helperIds);
+assertSameValues(
+  'Strategy helper source modules',
+  helperOwnership.helpers.map((helper) => helper.sourcePath),
+  discoveredHelperSourcePaths,
+);
+
+const strategyKitManifest = readJson(
+  '../../packages/strategy-kit/package.json',
+);
 
 const strategyFiles = walkFiles(strategiesSourceRoot).filter(
   (filePath) => filePath.endsWith('.ts') && !filePath.startsWith(sharedRoot),
@@ -184,7 +195,25 @@ for (const helper of helperOwnership.helpers) {
     fs.existsSync(path.join(repositoryRoot, helper.sourcePath)),
     `${helper.id}: source helper is missing`,
   );
-  const importNeedle = `/shared/${helper.id}`;
+  assert(
+    helper.state === 'strategies-shared' ||
+      helper.state === 'strategy-kit-extracted',
+    `${helper.id}: unsupported helper state ${helper.state}`,
+  );
+  if (helper.state === 'strategy-kit-extracted') {
+    assert(
+      helper.target.packageName === '@tradejs/strategy-kit',
+      `${helper.id}: extracted helper must be owned by @tradejs/strategy-kit`,
+    );
+    assert(
+      Object.hasOwn(strategyKitManifest.exports, `./${helper.target.subpath}`),
+      `${helper.id}: missing @tradejs/strategy-kit/${helper.target.subpath} export`,
+    );
+  }
+  const importNeedle =
+    helper.state === 'strategy-kit-extracted'
+      ? `@tradejs/strategy-kit/${helper.target.subpath}`
+      : `/shared/${helper.id}`;
   const consumers = new Set();
   for (const filePath of strategyFiles) {
     const contents = fs.readFileSync(filePath, 'utf8');
@@ -271,7 +300,8 @@ for (const [repositoryName, relativePath] of optionalSiblingRepositories) {
 console.log(
   [
     `Validated ${strategyNames.length} strategy repository mappings`,
-    `${helperIds.length} shared helper ownership records`,
+    `${helperIds.length} strategy helper ownership records`,
+    `${helperOwnership.helpers.filter((helper) => helper.state === 'strategy-kit-extracted').length} extracted Strategy Kit modules`,
     `${documentationInventory.currentTradejsFiles.length} TradeJS documentation files`,
     `${inventoriedTradejsCredentials.length} TradeJS workflow credential references`,
     `${validatedSiblingRepositories} sibling repository credential inventories`,

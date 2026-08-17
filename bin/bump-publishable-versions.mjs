@@ -14,6 +14,7 @@ const PUBLISHABLE_MANIFESTS = [
   'packages/infra/package.json',
   'packages/core/package.json',
   'packages/node/package.json',
+  'packages/strategy-kit/package.json',
   'packages/indicators/package.json',
   'packages/strategies/package.json',
   'packages/connectors/package.json',

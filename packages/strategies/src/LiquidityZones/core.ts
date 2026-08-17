@@ -15,7 +15,7 @@ import { getLiquidityZonesFilterSkipCode } from './filters';
 import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
-} from '../shared/structureRisk';
+} from '@tradejs/strategy-kit/risk';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(

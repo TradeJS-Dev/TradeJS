@@ -29,16 +29,23 @@ const subpathFirstPackageNames = new Set([
   '@tradejs/core',
   '@tradejs/infra',
   '@tradejs/node',
+  '@tradejs/strategy-kit',
 ]);
 
 const allowedWorkspaceDependencies = new Map([
   ['@tradejs/types', new Set()],
   ['@tradejs/core', new Set(['@tradejs/types'])],
   ['@tradejs/infra', new Set(['@tradejs/types'])],
+  ['@tradejs/strategy-kit', new Set(['@tradejs/core', '@tradejs/types'])],
   ['@tradejs/indicators', new Set(['@tradejs/core', '@tradejs/types'])],
   [
     '@tradejs/strategies',
-    new Set(['@tradejs/core', '@tradejs/indicators', '@tradejs/types']),
+    new Set([
+      '@tradejs/core',
+      '@tradejs/indicators',
+      '@tradejs/strategy-kit',
+      '@tradejs/types',
+    ]),
   ],
   [
     '@tradejs/node',

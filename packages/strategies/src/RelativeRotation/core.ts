@@ -9,10 +9,10 @@ import { buildRelativeRotationFigures } from './figures';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
-} from '../shared/strategyKit/risk';
-import { isDirectionAligned } from '../shared/strategyKit/context';
-import { isOpenPosition } from '../shared/strategyKit/positions';
-import { toFiniteNumberOrNull } from '../shared/strategyKit/numbers';
+} from '@tradejs/strategy-kit/risk';
+import { isDirectionAligned } from '@tradejs/strategy-kit/context';
+import { isOpenPosition } from '@tradejs/strategy-kit/positions';
+import { toFiniteNumberOrNull } from '@tradejs/strategy-kit/numbers';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import { getRelativeRotationCoreFilterSkipCode } from './filters';
 import type { RelativeRotationSignalContext } from './contracts';

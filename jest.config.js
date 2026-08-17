@@ -30,6 +30,7 @@ const customJestConfig = {
     '^@tradejs/infra/(.*)$': '<rootDir>/packages/infra/src/$1',
     '^@tradejs/base$': '<rootDir>/packages/base/src/index',
     '^@tradejs/strategies$': '<rootDir>/packages/strategies/src/index',
+    '^@tradejs/strategy-kit/(.*)$': '<rootDir>/packages/strategy-kit/src/$1',
     '^@tradejs/indicators$': '<rootDir>/packages/indicators/src/index',
     '^@tradejs/types$': '<rootDir>/packages/types/src/index',
     '^@tradejs/types/(.*)$': '<rootDir>/packages/types/src/$1',

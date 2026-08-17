@@ -8,8 +8,9 @@ It is an internal migration contour, not public user documentation.
 
 - `catalog.json` maps every current strategy to its future repository and npm
   package.
-- `helper-ownership.json` records the current consumers and intended owner of
-  each shared strategy helper.
+- `helper-ownership.json` records the current consumers, source owner, and
+  intended destination of each strategy helper. Extracted Strategy Kit modules
+  remain in this inventory until the repository split is complete.
 - `characterization-contract.json` defines the behavior-preservation evidence
   required before helper refactoring or repository extraction can complete.
 - `documentation-inventory.json` records documentation that must move or be
@@ -24,8 +25,8 @@ yarn migration:strategy-repositories:validate
 ```
 
 The validator deliberately checks the current source tree against these files.
-Changing, adding, or removing a strategy or shared helper therefore requires an
-explicit migration decision.
+Changing, adding, extracting, or removing a strategy helper therefore requires
+an explicit migration decision.
 
 The first implementation phase is complete only when the catalog and
 inventories validate. Helper refactoring starts by filling the characterization
