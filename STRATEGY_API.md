@@ -24,7 +24,8 @@ Strategy/plugin code should import runtime helpers from explicit public `@tradej
 
 ## Strategy File Layout
 
-Recommended structure for `packages/strategies/src/<Strategy>` (built-ins) or `src/strategies/<Strategy>` (user plugin):
+Recommended structure for `src/<Strategy>` in a standalone strategy repository
+or `src/strategies/<Strategy>` in a user project:
 
 - `config.ts`
 - `core.ts`

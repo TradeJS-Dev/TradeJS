@@ -26,11 +26,8 @@ Main areas:
 - `packages/node` — Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/types` — shared contracts and types
 - `packages/infra` — Redis / Timescale / ML / IO adapters
-- `packages/strategy-kit` — browser-safe strategy-neutral authoring helpers
-- `packages/strategies` — built-in strategy plugins
 - `packages/indicators` — built-in indicators
 - `packages/connectors` — built-in connectors and market data providers
-- `packages/base` — default preset wiring built-ins
 - `packages/cli` — operational commands
 - `examples/sandbox` — standalone deterministic external-user style example app that installs published `@tradejs/*` packages from npm
 
@@ -41,11 +38,29 @@ Public web repos now live outside this monorepo:
 
 This monorepo no longer carries the source code for those public web surfaces.
 
+Public package and operations repos also live outside this monorepo:
+
+- `TradeJS-Base` — `@tradejs/base`
+- `TradeJS-Strategy-Kit` — `@tradejs/strategy-kit`
+- `TradeJS-Strategy-*` — one repository/package per strategy, except the
+  combined TrendLine/ReverseTrendLine family
+- `TradeJS-Project` — generated personal composition, runtime config, and app image
+- `TradeJS-Deploy` — production Compose, TLS, volumes, and server lifecycle
+- `TradeJS-Workflows` — reusable CI and publication workflows
+- `TradeJS-Strategy-Template` — template for new strategy repositories
+
+See `REPOSITORIES.md` and `GITHUB_CONFIGURATION.md` for the canonical ownership
+and credential-routing maps.
+
 Local checkouts for those repos in this environment:
 
 - `TradeJS`: `~/dev/investing`
 - `TradeJS-Site`: `~/dev/tradejs-site`
 - `TradeJS-Docs`: `~/dev/tradejs-docs`
+- `TradeJS-Base`: `~/dev/tradejs-base`
+- `TradeJS-Project`: `~/dev/tradejs-project`
+- `TradeJS-Deploy`: `~/dev/tradejs-deploy`
+- `TradeJS-Strategy-Kit`: `~/dev/tradejs-strategy-kit`
 
 Local clone policy for `TradeJS-Dev` repositories:
 
@@ -74,7 +89,7 @@ If a feature is not publish-ready for external users, document that limitation e
 
 - Everything under `notes/` is local-only and permanently ignored by Git. Never stage, commit, or force-add any file from `notes/`.
 - Internal research notes and audit-style markdown files live under strategy/category directories, never directly under `notes/` or in the repo root.
-- Strategy research path: `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`, using the exact strategy directory name from `packages/strategies/src`.
+- Strategy research path: `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`, using the exact strategy name exported by its package.
 - Repository-wide architecture/ML records live under `notes/Shared/`; one comparison spanning several strategies lives under `notes/CrossStrategy/`.
 - One research question plus one immutable run/export lineage equals one file. A new export, run, hypothesis family, or decision requires a new file; do not append dated entries to a rolling strategy log.
 - Every new record must follow `.codex/skills/strategy-backtest-research/references/research-notes.md` and begin with `schema: tradejs-research/v1` frontmatter.
@@ -93,7 +108,8 @@ If a feature is not publish-ready for external users, document that limitation e
 - `@tradejs/types` contains shared contracts.
 - `@tradejs/infra` contains infra adapters and storage/network integrations.
 - `@tradejs/strategy-kit` contains browser-safe, strategy-neutral authoring
-  helpers and must not own registry, infra, or order-placement behavior.
+  helpers, is owned by `TradeJS-Strategy-Kit`, and must not own registry,
+  infra, or order-placement behavior.
 
 Do not blur these boundaries without explicit request.
 
@@ -301,12 +317,13 @@ Default preset:
 
 - Strategy-neutral AI-gate, config, context, figure, number, position, risk,
   and bounded-state helpers live behind explicit `@tradejs/strategy-kit/*`
-  subpaths. Add their tests to `packages/strategy-kit`, not to a consuming
-  strategy package.
+  subpaths. Change and test them in `TradeJS-Strategy-Kit`, not in this
+  monorepo or a consuming strategy package.
 - TrendLine and ReverseTrendLine are the single combined strategy-package
   exception. Their family-wide payload and guardrail primitives live in
-  `packages/strategies/src/TrendLine/family.ts` and move with both strategies
-  into `@tradejs/strategy-trend-line`; do not create a separate family-kit.
+  `src/TrendLine/family.ts` in `TradeJS-Strategy-TrendLine` and ship with both
+  strategies in `@tradejs/strategy-trend-line`; do not create a separate
+  family-kit.
 - TrendLine and ReverseTrendLine use the public Strategy Kit number helpers;
   do not move their family-specific guardrails into Strategy Kit.
 - Shared causal range geometry is strategy-neutral and lives behind

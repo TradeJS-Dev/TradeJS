@@ -9,6 +9,27 @@ reconstructed release by release.
 
 ## Unreleased
 
+### Changed
+
+- Moved every built-in strategy into an independently versioned
+  `@tradejs/strategy-*` package and repository. TrendLine and ReverseTrendLine
+  intentionally remain one atomic `@tradejs/strategy-trend-line` family.
+- Moved `@tradejs/strategy-kit` and the non-empty `@tradejs/base` preset to
+  dedicated repositories.
+- Moved the personal production app image and secret-free runtime defaults to
+  `TradeJS-Project`; `TradeJS-Deploy` remains responsible for server rollout,
+  secrets, Compose, TLS, and volumes.
+- Research-agent changes now target the owning strategy repository and require
+  that repository's full `yarn checks` before creating a pull request.
+
+### Migration
+
+- Replace the retired `@tradejs/strategies` aggregate with either
+  `@tradejs/base` or explicit `@tradejs/strategy-*` packages in
+  `tradejs.config.ts`.
+- Move personal runtime composition and production app-container changes to
+  `TradeJS-Project`.
+
 ## 3.0.0 - 2026-08-13
 
 ### Changed

@@ -13,11 +13,13 @@ License 1.1 (`BUSL-1.1`) with the Additional Use Grant in their `LICENSE`:
 | Path | Package or component |
 | --- | --- |
 | `apps/app` | `@tradejs/app` |
-| `packages/base` | `@tradejs/base` |
 | `packages/cli` | `@tradejs/cli` |
 | `packages/ml` | private ML runtime assets |
 | `packages/node` | `@tradejs/node` |
-| `packages/strategies` | `@tradejs/strategies` |
+
+`@tradejs/base` and individual `@tradejs/strategy-*` packages retain their own
+BUSL-1.1 license files in the separate `TradeJS-Base` and
+`TradeJS-Strategy-*` repositories.
 
 The repository root and product code outside a package-specific MIT exception
 are also covered by the root Business Source License.
@@ -45,6 +47,9 @@ available under the MIT License contained in their own `LICENSE`:
 | `packages/infra` | `@tradejs/infra` |
 | `packages/types` | `@tradejs/types` |
 | `examples/sandbox` | external-user example application |
+
+`@tradejs/strategy-kit` remains MIT-licensed in the separate
+`TradeJS-Strategy-Kit` repository.
 
 Using an MIT component does not change the license of its dependencies. Users
 must comply with the license of every TradeJS package included in their

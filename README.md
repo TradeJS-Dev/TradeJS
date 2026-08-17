@@ -27,10 +27,6 @@ It supports two first-class authoring paths:
 
 ### Published npm Packages
 
-`@tradejs/strategy-kit` is prepared for its first registry release by this
-repository migration but is not published yet. Its npm link becomes active
-after that release.
-
 - [`create-tradejs`](https://www.npmjs.com/package/create-tradejs) — one-command external project, infrastructure, login, and first-backtest UI bootstrap
 - [`@tradejs/app`](https://www.npmjs.com/package/@tradejs/app) — installable Next.js UI for dashboards, backtests, and runtime data
 - [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and AI/ML workflows
@@ -39,18 +35,23 @@ after that release.
 - [`@tradejs/node`](https://www.npmjs.com/package/@tradejs/node) — Node runtime for strategies, backtests, Pine strategy loading, and plugin registries
 - [`@tradejs/types`](https://www.npmjs.com/package/@tradejs/types) — shared TypeScript contracts for the TradeJS ecosystem
 - [`@tradejs/infra`](https://www.npmjs.com/package/@tradejs/infra) — server-only adapters for Redis, Timescale, ML, logging, and IO
-- [`@tradejs/strategies`](https://www.npmjs.com/package/@tradejs/strategies) — built-in strategy plugin catalog
 - [`@tradejs/strategy-kit`](https://www.npmjs.com/package/@tradejs/strategy-kit) — strategy-neutral authoring helpers
 - [`@tradejs/indicators`](https://www.npmjs.com/package/@tradejs/indicators) — built-in indicator plugin catalog
 - [`@tradejs/connectors`](https://www.npmjs.com/package/@tradejs/connectors) — built-in exchange connectors and market data providers
+
+Each built-in strategy is now an independently versioned
+`@tradejs/strategy-*` package and GitHub repository. TrendLine and
+ReverseTrendLine are the only deliberate exception: both ship atomically from
+`@tradejs/strategy-trend-line`. See [REPOSITORIES.md](REPOSITORIES.md) for the
+complete ownership map.
 
 ## Licensing
 
 TradeJS version 2.0.0 and later uses a mixed-license open-core model:
 
 - product components (`@tradejs/app`, `@tradejs/base`, `@tradejs/cli`,
-  `@tradejs/node`, `@tradejs/strategies`, and the private ML runtime) use the
-  Business Source License 1.1 with an Additional Use Grant
+  `@tradejs/node`, the individual strategy packages, and the private ML
+  runtime) use the Business Source License 1.1 with an Additional Use Grant
 - SDK, integration, scaffolding, and example components (`@tradejs/core`,
   `@tradejs/types`, `@tradejs/indicators`, `@tradejs/connectors`,
   `@tradejs/infra`, `@tradejs/strategy-kit`, `create-tradejs`, and
@@ -67,22 +68,26 @@ package scopes and terms.
 - `apps/app`: Next.js UI and API
 - `packages/core`: browser-safe public API, shared helpers, plugin config API
 - `packages/node`: Node-only runtime, plugin loading, backtest/pine execution helpers
-- `packages/strategies`: built-in strategy plugin package
-- `packages/strategy-kit`: strategy-neutral authoring helpers
 - `packages/indicators`: built-in indicators package
-- `packages/base`: default preset that wires built-in strategies/indicators/connectors
 - `packages/connectors`: exchange connectors and market data providers
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ai-*`, `ml-*`, `doctor`, etc.)
 - `packages/create-tradejs`: external project generator and first-backtest bootstrap
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
 
-Public web surfaces are now maintained in separate repositories:
+Public presets, strategy authoring helpers, strategies, deployment, and web
+surfaces are maintained in separate repositories:
 
+- `TradeJS-Base` for `@tradejs/base`
+- `TradeJS-Strategy-Kit` for `@tradejs/strategy-kit`
+- `TradeJS-Strategy-*` for individual strategy packages
+- `TradeJS-Project` for the generated user-owned runtime and app image
+- `TradeJS-Deploy` for production Compose, TLS, volumes, and server lifecycle
 - `TradeJS-Site` for `tradejs.dev`
 - `TradeJS-Docs` for `docs.tradejs.dev`
 
-This monorepo no longer contains the source code for those public web surfaces.
+This monorepo no longer contains strategy, Base, production app-container, or
+public web-surface source code.
 
 ## Core Concepts
 
@@ -115,7 +120,7 @@ Runtime then handles:
 Strategies are loaded as plugins via manifests and registry:
 
 - `packages/node/src/strategy/manifests.ts`
-- `packages/strategies/src/*/manifest.ts`
+- `src/<Strategy>/manifest.ts` in each strategy repository
 
 Each strategy plugin exports a declarative entry with `manifest`, `defaults`,
 and `createCore`. The Node registry turns that definition into a server runtime;
@@ -123,9 +128,10 @@ strategy packages do not construct or import the Node runtime themselves.
 
 ### Pine Strategy Support
 
-Pine strategies are stored as normal strategy modules and keep Pine source in a dedicated file:
+Pine strategies are stored as normal strategy modules and keep Pine source in
+a dedicated file in their strategy repository:
 
-- `packages/strategies/src/<Strategy>/<strategy>.pine`
+- `src/<Strategy>/<strategy>.pine`
 
 Pine file loading and execution are explicit server-side operations exposed by
 `@tradejs/node/pine`. They are not injected into the browser-safe
@@ -153,7 +159,8 @@ place orders.
 
 ### 1. Implement A Replay-Safe Strategy
 
-Built-in strategies live under `packages/strategies/src/<StrategyName>`:
+Built-in strategies live under `src/<StrategyName>` in their owning
+`TradeJS-Strategy-*` repository:
 
 - keep deterministic detector transitions in a replayable `engine.ts` when the
   strategy has pivots, pending confirmations, zones, or other rolling state
@@ -167,11 +174,10 @@ Built-in strategies live under `packages/strategies/src/<StrategyName>`:
   isolation with unit tests
 
 The complete runtime contract and examples are in [STRATEGY_API.md](STRATEGY_API.md).
-Run the focused strategy suite before starting a costly experiment:
+Run the complete repository suite before starting a costly experiment:
 
 ```bash
-yarn jest packages/strategies/src/<StrategyName> --runInBand
-yarn workspace @tradejs/strategies typecheck
+yarn checks
 ```
 
 ### 2. Preregister The Raw-Core Experiment
@@ -636,17 +642,17 @@ yarn bot
 Every push to `stable` runs `.github/workflows/publish-images.yml`. The release
 workflow:
 
-1. resolves one shared version for every public `@tradejs/*` package
+1. resolves one shared version for every public package owned by this monorepo
 2. resumes the same version after a partial or interrupted release
 3. builds, lints, typechecks, tests, and dry-runs every package archive
 4. commits synchronized package versions back to `stable`
 5. publishes packages in dependency order with npm provenance
 6. creates the matching `v<version>` tag only after every publish succeeds
 
-Repository secret `NPM_TOKEN` must contain an npm automation-capable token with
-publish access to the `@tradejs` organization. GitHub Actions also receives
-`id-token: write` permission for npm provenance. Do not add npm tokens to
-`.npmrc`, `.yarnrc.yml`, or repository files.
+The selected-repository organization secret `NPM_TOKEN` must contain an npm
+automation-capable token with publish access to the `@tradejs` organization.
+GitHub Actions also receives `id-token: write` permission for npm provenance.
+Do not add npm tokens to `.npmrc`, `.yarnrc.yml`, or repository files.
 
 The first run publishes the current local version when it is newer than npm.
 Later runs increment the patch version after the previous npm version and Git
@@ -755,6 +761,11 @@ Public documentation now lives in the standalone repository:
 Public marketing site now lives in:
 
 - [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
+
+Repository ownership and GitHub configuration are documented in:
+
+- [REPOSITORIES.md](REPOSITORIES.md)
+- [GITHUB_CONFIGURATION.md](GITHUB_CONFIGURATION.md)
 
 Use this monorepo README only for internal repository workflows.
 

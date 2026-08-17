@@ -26,12 +26,15 @@ TradeJS is a monorepo. Its main areas are:
 - `packages/node` — Node-only strategy and backtest runtime
 - `packages/types` — shared contracts
 - `packages/infra` — storage, network, and infrastructure adapters
-- `packages/strategies` — built-in strategy plugins
 - `packages/indicators` — built-in indicators
 - `packages/connectors` — exchange connectors and market data providers
-- `packages/base` — the default built-in preset
 - `packages/cli` — operational commands
 - `examples/sandbox` — an external-user-style example using published packages
+
+Built-in strategies, `@tradejs/strategy-kit`, and `@tradejs/base` are maintained
+in their own repositories. Send strategy changes to the matching
+`TradeJS-Strategy-*` repository; TrendLine and ReverseTrendLine intentionally
+share `TradeJS-Strategy-TrendLine`. See [REPOSITORIES.md](REPOSITORIES.md).
 
 Public documentation and the marketing site are maintained separately:
 
