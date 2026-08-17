@@ -50,6 +50,7 @@
     "market:ws": "yarn cli:node8g market-ws",
     "hyperliquid:whale-backfill": "yarn cli:node8g hyperliquid:whale-backfill",
     "hyperliquid:whale-ingest": "yarn cli:node8g hyperliquid:whale-ingest",
+    "migration:strategy-repositories:extract": "node ./migration/strategy-repositories/extract.mjs",
     "migration:strategy-repositories:validate": "node ./migration/strategy-repositories/validate.mjs",
     "ml-build": "docker compose -f docker-compose.ml.yml build",
     "ml-build:profile": "docker compose -f docker-compose.ml.yml build ml-profile",

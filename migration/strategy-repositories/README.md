@@ -24,6 +24,19 @@ Run the structural validation from the TradeJS root:
 yarn migration:strategy-repositories:validate
 ```
 
+Create all catalogued repository working trees under `~/dev` (or an explicit
+output root) in one deterministic pass:
+
+```bash
+yarn migration:strategy-repositories:extract
+yarn migration:strategy-repositories:extract --output-root /absolute/path
+```
+
+Extraction refuses to overwrite any existing target. The generated package
+manifests contain only registry version ranges; local validation may link the
+current workspace dependencies, but those links and their paths must never be
+committed.
+
 The validator deliberately checks the current source tree against these files.
 Changing, adding, extracting, or removing a strategy helper therefore requires
 an explicit migration decision.
