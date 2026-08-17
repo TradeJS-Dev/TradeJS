@@ -4,6 +4,8 @@ import {
   buildResearchAgentCommitMessage,
   buildResearchAgentPrBody,
   buildResearchAgentPrTitle,
+  getResearchAgentRepository,
+  getResearchAgentRepositoryName,
   getResearchAgentAllowedPathPrefixes,
   normalizeDiffOutput,
   parseChangedFilesFromDiff,
@@ -25,8 +27,23 @@ describe('research agent helpers', () => {
 
   it('allows only the strategy package path', () => {
     expect(getResearchAgentAllowedPathPrefixes('TrendLine')).toEqual([
-      'packages/strategies/src/TrendLine/',
+      'src/TrendLine/',
     ]);
+  });
+
+  it('resolves standalone repositories with one TrendLine family exception', () => {
+    expect(getResearchAgentRepositoryName('Breakout')).toBe(
+      'TradeJS-Strategy-Breakout',
+    );
+    expect(getResearchAgentRepositoryName('TrendLine')).toBe(
+      'TradeJS-Strategy-TrendLine',
+    );
+    expect(getResearchAgentRepositoryName('ReverseTrendLine')).toBe(
+      'TradeJS-Strategy-TrendLine',
+    );
+    expect(getResearchAgentRepository('TrendLine')).toBe(
+      'TradeJS-Dev/TradeJS-Strategy-TrendLine',
+    );
   });
 
   it('normalizes markdown fenced diff output', () => {
@@ -37,9 +54,9 @@ describe('research agent helpers', () => {
 
   it('parses changed files from unified diff', () => {
     const diff = [
-      'diff --git a/packages/strategies/src/TrendLine/config.ts b/packages/strategies/src/TrendLine/config.ts',
-      '--- a/packages/strategies/src/TrendLine/config.ts',
-      '+++ b/packages/strategies/src/TrendLine/config.ts',
+      'diff --git a/src/TrendLine/config.ts b/src/TrendLine/config.ts',
+      '--- a/src/TrendLine/config.ts',
+      '+++ b/src/TrendLine/config.ts',
       '@@',
       '-old',
       '+new',
@@ -51,7 +68,7 @@ describe('research agent helpers', () => {
     ].join('\n');
 
     expect(parseChangedFilesFromDiff(diff)).toEqual([
-      'packages/strategies/src/TrendLine/config.ts',
+      'src/TrendLine/config.ts',
       'notes/TrendLine/2026-08-10-test-run.md',
     ]);
   });
@@ -79,14 +96,9 @@ describe('research agent helpers', () => {
       timeframe: '15',
       days: 45,
       recent: 1000,
-      changedFiles: [
-        'packages/strategies/src/TrendLine/config.ts',
-        'packages/strategies/src/TrendLine/core.test.ts',
-      ],
+      changedFiles: ['src/TrendLine/config.ts', 'src/TrendLine/core.test.ts'],
       validation: {
-        prettify: 'passed',
-        typecheck: 'passed',
-        unit: 'passed',
+        checks: 'passed',
       },
       summary: 'Committed validated patch on branch codex/research/trend-line',
       aiTrainLocal: {
@@ -110,8 +122,8 @@ describe('research agent helpers', () => {
     expect(body).toContain('## What changed');
     expect(body).toContain('## Validation');
     expect(body).toContain('TrendLine:research');
-    expect(body).toContain('packages/strategies/src/TrendLine/config.ts');
-    expect(body).toContain('`prettify`: passed');
+    expect(body).toContain('src/TrendLine/config.ts');
+    expect(body).toContain('`checks`: passed');
   });
 
   it('rejects disallowed paths and deletions', () => {
@@ -145,8 +157,8 @@ describe('research agent helpers', () => {
     expect(() =>
       assertDiffAllowed(
         [
-          'diff --git a/packages/strategies/src/TrendLine/config.ts b/packages/strategies/src/TrendLine/config.ts',
-          '--- a/packages/strategies/src/TrendLine/config.ts',
+          'diff --git a/src/TrendLine/config.ts b/src/TrendLine/config.ts',
+          '--- a/src/TrendLine/config.ts',
           '+++ /dev/null',
         ].join('\n'),
         getResearchAgentAllowedPathPrefixes('TrendLine'),

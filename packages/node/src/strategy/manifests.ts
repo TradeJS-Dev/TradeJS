@@ -312,6 +312,15 @@ export const getStrategyCreator = async (
   return state.strategyCreators.get(name);
 };
 
+export const getStrategyDefaults = async (
+  name: string,
+  cwd = getTradejsProjectCwd(),
+): Promise<StrategyRegistryEntry['defaults'] | undefined> => {
+  await ensureStrategyPluginsLoaded(cwd);
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategyEntriesMap.get(name)?.defaults;
+};
+
 export const getAvailableStrategyNames = async (
   cwd = getTradejsProjectCwd(),
 ): Promise<string[]> => {

@@ -15,6 +15,7 @@ import {
   buildResearchAgentCommitMessage,
   buildResearchAgentPrBody,
   buildResearchAgentPrTitle,
+  getResearchAgentRepository,
   getResearchAgentAllowedPathPrefixes,
   normalizeDiffOutput,
   parseGithubRepositoryFromRemote,
@@ -25,7 +26,7 @@ import {
 
 args.example(
   'yarn cli:node8g agent-run --runId 1710000000000-trendline --strategy TrendLine',
-  'Run the OpenRouter-based research follow-up coding agent in a git worktree',
+  'Run the OpenRouter-based research follow-up coding agent in a strategy repository',
 );
 
 args.option(['U', 'user'], 'Use user config', 'root');
@@ -68,12 +69,12 @@ type ResearchRunRecord = {
   };
 };
 
-type ValidationKey = 'prettify' | 'typecheck' | 'unit';
+type ValidationKey = 'checks';
 
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
-const AGENT_SYSTEM_PROMPT = `You are a senior TypeScript trading research coding agent working inside the TradeJS monorepo.
+const AGENT_SYSTEM_PROMPT = `You are a senior TypeScript trading research coding agent working inside a standalone TradeJS strategy repository.
 
 Output ONLY one of:
 1. A unified git diff relative to repo root that can be applied with git apply.
@@ -197,13 +198,7 @@ const collectStrategyContextFiles = async (
   worktreePath: string,
   strategy: string,
 ) => {
-  const strategyRoot = path.join(
-    worktreePath,
-    'packages',
-    'strategies',
-    'src',
-    strategy,
-  );
+  const strategyRoot = path.join(worktreePath, 'src', strategy);
   const strategyFiles = await listFilesRecursive(strategyRoot);
   const files = strategyFiles.filter((filePath) =>
     /\.(ts|tsx|md)$/.test(filePath),
@@ -395,15 +390,11 @@ const runValidationSuite = async (
   agentRun: ResearchAgentRunRecord,
 ) => {
   const commands: Array<[ValidationKey, string[]]> = [
-    ['prettify', ['yarn', 'prettify']],
-    ['typecheck', ['yarn', 'typecheck']],
-    ['unit', ['yarn', 'unit']],
+    ['checks', ['yarn', 'checks']],
   ];
 
   agentRun.validation = {
-    prettify: 'pending',
-    typecheck: 'pending',
-    unit: 'pending',
+    checks: 'pending',
   };
 
   for (const [key, command] of commands) {
@@ -529,10 +520,6 @@ const saveAgentRun = async (
 };
 
 const resolveGithubRepository = async (worktreePath: string) => {
-  if (process.env.AGENT_GITHUB_REPOSITORY?.trim()) {
-    return process.env.AGENT_GITHUB_REPOSITORY.trim();
-  }
-
   const remote = await runCommandOrThrow(
     'git',
     ['-C', worktreePath, 'remote', 'get-url', 'origin'],
@@ -563,7 +550,7 @@ const createGithubPullRequest = async (params: {
     throw new Error(`Invalid GitHub repository value: ${repository}`);
   }
 
-  const baseBranch = process.env.AGENT_GITHUB_BASE_BRANCH?.trim() || 'stable';
+  const baseBranch = process.env.AGENT_GITHUB_BASE_BRANCH?.trim() || 'main';
   const head = `${owner}:${params.branchName}`;
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -631,34 +618,39 @@ const createGithubPullRequest = async (params: {
   };
 };
 
-const createWorktree = async (branchName: string) => {
-  const worktreeToken = branchName.replace(/[/:]+/g, '--');
-  const worktreeRoot = path.join(projectRoot, '.agent-worktrees');
-  const worktreePath = path.join(worktreeRoot, worktreeToken);
-  await fs.mkdir(worktreeRoot, { recursive: true });
+const createStrategyCheckout = async (strategy: string, branchName: string) => {
+  const organization =
+    process.env.AGENT_GITHUB_ORGANIZATION?.trim() || 'TradeJS-Dev';
+  const repository = getResearchAgentRepository(strategy, organization);
+  const baseBranch = process.env.AGENT_GITHUB_BASE_BRANCH?.trim() || 'main';
+  const checkoutRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-strategy-agent-'),
+  );
+  const checkoutPath = path.join(checkoutRoot, 'repository');
 
-  await runCommand('git', ['worktree', 'remove', '--force', worktreePath], {
-    cwd: projectRoot,
-  });
-  await runCommandOrThrow('git', ['fetch', 'origin', 'stable'], {
-    cwd: projectRoot,
-  });
   await runCommandOrThrow(
     'git',
-    ['worktree', 'add', '-B', branchName, worktreePath, 'origin/stable'],
-    {
-      cwd: projectRoot,
-    },
+    [
+      'clone',
+      '--branch',
+      baseBranch,
+      '--single-branch',
+      `git@github.com:${repository}.git`,
+      checkoutPath,
+    ],
+    { cwd: checkoutRoot },
+  );
+  await runCommandOrThrow(
+    'git',
+    ['-C', checkoutPath, 'switch', '-c', branchName],
+    { cwd: checkoutPath },
   );
 
-  return worktreePath;
+  return { checkoutPath, checkoutRoot, repository };
 };
 
-const cleanupWorktree = async (worktreePath: string) => {
-  await runCommand('git', ['worktree', 'remove', '--force', worktreePath], {
-    cwd: projectRoot,
-  });
-};
+const cleanupStrategyCheckout = async (checkoutRoot: string) =>
+  fs.rm(checkoutRoot, { recursive: true, force: true });
 
 export const main = async () => {
   const userName = String(flags.user || 'root').trim() || 'root';
@@ -686,12 +678,19 @@ export const main = async () => {
     summary: 'Awaiting model patch',
     startedAt: new Date().toISOString(),
   };
+  let checkoutRoot = '';
   let worktreePath = '';
 
   await saveAgentRun(userName, run.runId, run.strategy, agentRun);
 
   try {
-    worktreePath = await createWorktree(branchName);
+    const checkout = await createStrategyCheckout(run.strategy, branchName);
+    checkoutRoot = checkout.checkoutRoot;
+    worktreePath = checkout.checkoutPath;
+    agentRun.repository = checkout.repository;
+    await runCommandOrThrow('yarn', ['install', '--immutable'], {
+      cwd: worktreePath,
+    });
     const userPrompt = await buildPrompt(worktreePath, run, allowedPrefixes);
     const messages: Array<{
       role: 'system' | 'user' | 'assistant';
@@ -878,8 +877,8 @@ export const main = async () => {
     }
     process.exit(1);
   } finally {
-    if (worktreePath) {
-      await cleanupWorktree(worktreePath);
+    if (checkoutRoot) {
+      await cleanupStrategyCheckout(checkoutRoot);
     }
   }
 };

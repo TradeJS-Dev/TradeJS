@@ -7,8 +7,8 @@ import {
   fetchMlThreshold,
   trimMlTrainingRowWindows,
 } from '@tradejs/infra/ml';
+import { getStrategyDefaults } from '@tradejs/node/registry';
 import { Signal, TrendLine } from '@tradejs/types';
-import { trendLineDefaultConfig as DEFAULT_CONFIG } from '@tradejs/strategies';
 
 const now = Date.now();
 const INTERVAL_MIN = 15;
@@ -69,6 +69,12 @@ const buildTrendline = (entryTs: number, price: number): TrendLine => ({
 });
 
 export const main = async () => {
+  const defaultConfig = await getStrategyDefaults('TrendLine', process.cwd());
+  if (!defaultConfig) {
+    throw new Error(
+      'TrendLine is not registered by the current tradejs.config.ts',
+    );
+  }
   const startTs = now - CANDLES * INTERVAL_MIN * 60_000;
   const candles = makeCandles(120, startTs);
   const btcCandles = makeCandles(42000, startTs);
@@ -122,7 +128,7 @@ export const main = async () => {
     },
   };
 
-  const { TRENDLINE, HIGHS, LOWS, ML_THRESHOLD } = DEFAULT_CONFIG;
+  const { TRENDLINE, HIGHS, LOWS, ML_THRESHOLD } = defaultConfig;
 
   const fullRow = buildMlTrainingRow(
     {

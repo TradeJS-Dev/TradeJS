@@ -1,6 +1,7 @@
 export const RESEARCH_AGENT_MODEL = 'openai/gpt-5.4';
 export const RESEARCH_AGENT_REASONING_EFFORT = 'medium';
 export const RESEARCH_AGENT_BRANCH_PREFIX = 'codex/research';
+export const RESEARCH_AGENT_DEFAULT_GITHUB_ORGANIZATION = 'TradeJS-Dev';
 
 export type ResearchAgentStatus =
   | 'pending'
@@ -19,6 +20,7 @@ export interface ResearchAgentRunRecord {
   pullRequestNumber?: number;
   pullRequestUrl?: string;
   pullRequestTitle?: string;
+  repository?: string;
   changedFiles?: string[];
   validation?: Record<string, 'pending' | 'passed' | 'failed' | 'skipped'>;
   model?: string;
@@ -56,8 +58,21 @@ export const buildResearchAgentCommitMessage = (
 export const buildResearchAgentPrTitle = (strategy: string, runId: string) =>
   `Research agent: ${strategy} follow-up for ${runId}`;
 
+export const getResearchAgentRepositoryName = (strategy: string) => {
+  if (strategy === 'TrendLine' || strategy === 'ReverseTrendLine') {
+    return 'TradeJS-Strategy-TrendLine';
+  }
+
+  return `TradeJS-Strategy-${strategy}`;
+};
+
+export const getResearchAgentRepository = (
+  strategy: string,
+  organization = RESEARCH_AGENT_DEFAULT_GITHUB_ORGANIZATION,
+) => `${organization}/${getResearchAgentRepositoryName(strategy)}`;
+
 export const getResearchAgentAllowedPathPrefixes = (strategy: string) => [
-  `packages/strategies/src/${strategy}/`,
+  `src/${strategy}/`,
 ];
 
 export const parseGithubRepositoryFromRemote = (value: string) => {
@@ -149,7 +164,7 @@ export const buildResearchAgentPrBody = (params: {
   lines.push('');
   lines.push('## Notes');
   lines.push('- Created automatically by the TradeJS research agent.');
-  lines.push('- Base branch: `stable`.');
+  lines.push('- Base branch: `main`.');
 
   return lines.join('\n');
 };

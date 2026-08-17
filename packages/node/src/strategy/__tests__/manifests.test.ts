@@ -78,10 +78,11 @@ describe('strategy manifests registry', () => {
     expect(names).toEqual([]);
 
     const runtimeCreator = jest.fn(async () => ({}) as any);
+    const defaults = { ENABLE: true, INTERVAL: '15' };
     manifests.registerStrategyEntries([
       {
         manifest: { name: 'RuntimeStrategy' } as any,
-        defaults: {},
+        defaults,
         createCore: runtimeCreator,
       },
     ]);
@@ -95,6 +96,12 @@ describe('strategy manifests registry', () => {
     );
     expect(manifests.strategies.RuntimeStrategy).toBe(runtimeCreator);
     expect(Object.keys(manifests.strategies)).toContain('RuntimeStrategy');
+    expect(await manifests.getStrategyDefaults('RuntimeStrategy')).toBe(
+      defaults,
+    );
+    expect(await manifests.getStrategyDefaults('UnknownStrategy')).toBe(
+      undefined,
+    );
 
     manifests.registerStrategyEntries([
       {

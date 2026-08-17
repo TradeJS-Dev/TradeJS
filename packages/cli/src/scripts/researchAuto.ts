@@ -8,8 +8,8 @@ import { TTL_1M } from '@tradejs/core/constants';
 import { toFileToken } from '@tradejs/infra/ai';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
+import { getStrategyDefaults } from '@tradejs/node/registry';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
-import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
 import {
   isRuntimeStrategyEnabled,
   loadRuntimeStrategyConfigs,
@@ -891,7 +891,7 @@ export const main = async () => {
     );
     const backtestConfigKey = redisKeys.backtestConfig(userName, target.config);
     const defaults =
-      (getBuiltInStrategyDefaultConfig(target.strategy) as
+      ((await getStrategyDefaults(target.strategy, projectRoot)) as
         | StrategyConfig
         | undefined) || {};
     const userStrategyConfig = (await getData(

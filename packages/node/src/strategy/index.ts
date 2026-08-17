@@ -10,6 +10,7 @@ export {
   getRegisteredStrategies,
   getRegisteredManifests,
   registerStrategyEntries,
+  getStrategyDefaults,
   getStrategyCreator,
   resetStrategyRegistryCache,
   strategies,
