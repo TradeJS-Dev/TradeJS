@@ -7,7 +7,10 @@ import {
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
 } from '../trendlineGuardrails';
-import { clampNumber, normalizePositiveNumber } from '../risk';
+import {
+  clampNumber,
+  normalizePositiveNumber,
+} from '@tradejs/strategy-kit/numbers';
 
 describe('shared trendline guardrail helpers', () => {
   it('normalizes finite numbers and tails', () => {

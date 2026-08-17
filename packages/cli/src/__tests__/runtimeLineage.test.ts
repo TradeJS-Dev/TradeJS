@@ -185,7 +185,7 @@ describe('runtime lineage', () => {
     expect(runtime.gateFingerprint).toBe(research.gateFingerprint);
     expect(research.gateFingerprintFiles).toEqual(
       expect.arrayContaining([
-        'packages/strategies/src/shared/localAiGate.ts',
+        'packages/strategy-kit/src/ai-gate.ts',
         'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
       ]),
     );

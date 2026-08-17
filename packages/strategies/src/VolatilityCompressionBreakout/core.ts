@@ -17,7 +17,7 @@ import {
 } from '@tradejs/strategy-kit/context';
 import { isOpenPosition } from '@tradejs/strategy-kit/positions';
 import { toFiniteNumberOrNull } from '@tradejs/strategy-kit/numbers';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 import type { VolatilityCompressionBreakoutSignalContext } from './contracts';
 export type { VolatilityCompressionBreakoutSignalContext } from './contracts';
 

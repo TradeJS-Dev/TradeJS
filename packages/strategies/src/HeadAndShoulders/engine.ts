@@ -1,6 +1,6 @@
 import { Candle, Direction } from '@tradejs/types';
 import { HeadAndShouldersConfig, HeadAndShouldersEntryMode } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export type HeadAndShouldersPatternKind =
   | 'head_and_shoulders'

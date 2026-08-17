@@ -5,7 +5,10 @@ import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
 } from './guardrails';
-import { clampNumber, normalizePositiveNumber } from '../shared/risk';
+import {
+  clampNumber,
+  normalizePositiveNumber,
+} from '@tradejs/strategy-kit/numbers';
 
 type ReverseStructuralContext = ReturnType<
   typeof buildReverseTrendlineStructuralContext

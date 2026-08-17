@@ -10,7 +10,7 @@ import { buildRelativeRotationGuardrailContext } from '../guardrails';
 import {
   getAiPayloadNumber,
   withStrategyLocalAiGate,
-} from '../../shared/localAiGate';
+} from '@tradejs/strategy-kit/ai-gate';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)

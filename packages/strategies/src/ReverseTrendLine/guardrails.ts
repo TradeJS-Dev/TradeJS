@@ -4,7 +4,7 @@ import {
   getSignalBtcMaSlow,
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
-} from '../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import {
   buildTrendLineEvaluator,
   getBias,

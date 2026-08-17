@@ -8,7 +8,12 @@ import {
   formatFigureMetric,
   formatFigureRatioAsPercent,
 } from '../figures';
-import { isFiniteNumber, toFiniteNumberOrNull } from '../numbers';
+import {
+  clampNumber,
+  isFiniteNumber,
+  normalizePositiveNumber,
+  toFiniteNumberOrNull,
+} from '../numbers';
 import { isOpenPosition } from '../positions';
 import {
   buildAtrFallbackStop,
@@ -24,6 +29,8 @@ describe('strategy kit number helpers', () => {
     expect(isFiniteNumber(Number.NaN)).toBe(false);
     expect(toFiniteNumberOrNull('12.5')).toBe(12.5);
     expect(toFiniteNumberOrNull(undefined)).toBeNull();
+    expect(clampNumber(12, 0, 10)).toBe(10);
+    expect(normalizePositiveNumber(-1, 3)).toBe(3);
   });
 });
 

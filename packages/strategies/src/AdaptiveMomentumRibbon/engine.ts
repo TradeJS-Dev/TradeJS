@@ -4,7 +4,7 @@ import type {
   AdaptiveMomentumRibbonConfig,
   AdaptiveMomentumRibbonKcMaType,
 } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export type AdaptiveMomentumRibbonPlotName =
   | 'signalOsc'

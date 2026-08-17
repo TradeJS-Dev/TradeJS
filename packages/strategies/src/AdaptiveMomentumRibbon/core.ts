@@ -12,7 +12,7 @@ import {
   buildStructureRiskPlan,
   isStopLossOnCorrectSide,
 } from '@tradejs/strategy-kit/risk';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)

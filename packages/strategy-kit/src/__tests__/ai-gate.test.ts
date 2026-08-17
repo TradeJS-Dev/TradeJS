@@ -1,5 +1,5 @@
 import type { AiPayload, Signal, StrategyAiAdapter } from '@tradejs/types';
-import { withStrategyLocalAiGateFilter } from '../localAiGate';
+import { withStrategyLocalAiGateFilter } from '../ai-gate';
 
 const signal = {
   direction: 'LONG',

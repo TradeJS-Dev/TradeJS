@@ -8,8 +8,8 @@ import type {
   IndicatorsHistorySnapshot,
   KlineChartData,
 } from '@tradejs/types';
-import { getIndicatorsCorrelation } from '../shared/baseContext';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { getIndicatorsCorrelation } from '@tradejs/strategy-kit/context';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export interface CrossState {
   kind: 'bullish' | 'bearish';

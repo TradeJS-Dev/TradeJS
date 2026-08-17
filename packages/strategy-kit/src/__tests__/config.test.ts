@@ -3,7 +3,7 @@
 import {
   resolveDirectionalConfigBoolean,
   resolveDirectionalConfigNumber,
-} from '../directionalConfig';
+} from '../config';
 
 describe('resolveDirectionalConfigNumber', () => {
   it('uses direction overrides without changing the opposite side', () => {

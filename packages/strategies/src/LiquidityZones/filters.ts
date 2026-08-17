@@ -1,7 +1,7 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { LiquidityZonesConfig } from './config';
 import type { LiquidityZonesSignal } from './engine';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const asPositiveThreshold = (value: unknown): number | null => {
   const parsed = Number(value);

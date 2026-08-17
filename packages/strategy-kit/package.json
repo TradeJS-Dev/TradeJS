@@ -23,6 +23,16 @@
     "dist"
   ],
   "exports": {
+    "./ai-gate": {
+      "types": "./dist/ai-gate.d.ts",
+      "import": "./dist/ai-gate.mjs",
+      "require": "./dist/ai-gate.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.mjs",
+      "require": "./dist/config.js"
+    },
     "./context": {
       "types": "./dist/context.d.ts",
       "import": "./dist/context.mjs",
@@ -47,6 +57,11 @@
       "types": "./dist/risk.d.ts",
       "import": "./dist/risk.mjs",
       "require": "./dist/risk.js"
+    },
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "import": "./dist/state.mjs",
+      "require": "./dist/state.js"
     }
   },
   "dependencies": {

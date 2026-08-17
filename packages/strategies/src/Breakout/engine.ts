@@ -1,7 +1,7 @@
 import type { Candle, Direction } from '@tradejs/types';
 
 import type { BreakoutConfig, BreakoutEntryMode } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export interface BreakoutEngineSignal {
   direction: Direction;

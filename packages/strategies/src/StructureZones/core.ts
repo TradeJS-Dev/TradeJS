@@ -11,7 +11,7 @@ import {
 } from './engine';
 import { buildStructureZonesFigures } from './figures';
 import { getStructureZonesCoreFilterSkipCode } from './filters';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(

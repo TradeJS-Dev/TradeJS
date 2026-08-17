@@ -6,7 +6,10 @@ import {
 } from './guardrails';
 import { TrendLineConfig } from './config';
 import { Direction } from '@tradejs/types';
-import { clampNumber, normalizePositiveNumber } from '../shared/risk';
+import {
+  clampNumber,
+  normalizePositiveNumber,
+} from '@tradejs/strategy-kit/numbers';
 
 type TrendlineStructuralContext = ReturnType<
   typeof buildTrendlineStructuralContext

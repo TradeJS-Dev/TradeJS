@@ -11,7 +11,7 @@ import {
   getSignalDerivativesContext,
   getSignalSessionIsOverlap,
   getSignalSessionPrimary,
-} from '../../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import {
   buildTrendlineStructuralContext,
   getBias,

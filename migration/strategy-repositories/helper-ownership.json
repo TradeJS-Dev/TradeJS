@@ -2,25 +2,6 @@
   "schema": "tradejs-strategy-helper-ownership/v2",
   "helpers": [
     {
-      "id": "baseContext",
-      "sourcePath": "packages/strategies/src/shared/baseContext.ts",
-      "state": "strategies-shared",
-      "target": {
-        "kind": "strategy-kit",
-        "packageName": "@tradejs/strategy-kit",
-        "subpath": "context"
-      },
-      "consumers": [
-        "AdaptiveMomentumRibbon",
-        "MaStrategy",
-        "MarketFlushReversal",
-        "ReverseTrendLine",
-        "TrendLine",
-        "TrendShift",
-        "VolumeDivergence"
-      ]
-    },
-    {
       "id": "causalRangeGeometry",
       "sourcePath": "packages/strategies/src/shared/causalRangeGeometry.ts",
       "state": "strategies-shared",
@@ -36,15 +17,22 @@
       "id": "strategyKit/context",
       "sourcePath": "packages/strategy-kit/src/context.ts",
       "state": "strategy-kit-extracted",
+      "mergedFrom": ["baseContext", "strategyKit/context"],
       "target": {
         "kind": "strategy-kit",
         "packageName": "@tradejs/strategy-kit",
         "subpath": "context"
       },
       "consumers": [
+        "AdaptiveMomentumRibbon",
+        "MaStrategy",
         "MarketFlushReversal",
         "RelativeRotation",
-        "VolatilityCompressionBreakout"
+        "ReverseTrendLine",
+        "TrendLine",
+        "TrendShift",
+        "VolatilityCompressionBreakout",
+        "VolumeDivergence"
       ]
     },
     {
@@ -70,6 +58,7 @@
       "id": "strategyKit/numbers",
       "sourcePath": "packages/strategy-kit/src/numbers.ts",
       "state": "strategy-kit-extracted",
+      "mergedFrom": ["risk", "strategyKit/numbers"],
       "target": {
         "kind": "strategy-kit",
         "packageName": "@tradejs/strategy-kit",
@@ -78,6 +67,8 @@
       "consumers": [
         "MarketFlushReversal",
         "RelativeRotation",
+        "ReverseTrendLine",
+        "TrendLine",
         "VolatilityCompressionBreakout"
       ]
     },
@@ -126,9 +117,10 @@
       ]
     },
     {
-      "id": "directionalConfig",
-      "sourcePath": "packages/strategies/src/shared/directionalConfig.ts",
-      "state": "strategies-shared",
+      "id": "strategyKit/config",
+      "sourcePath": "packages/strategy-kit/src/config.ts",
+      "state": "strategy-kit-extracted",
+      "mergedFrom": ["directionalConfig"],
       "target": {
         "kind": "strategy-kit",
         "packageName": "@tradejs/strategy-kit",
@@ -156,9 +148,10 @@
       ]
     },
     {
-      "id": "localAiGate",
-      "sourcePath": "packages/strategies/src/shared/localAiGate.ts",
-      "state": "strategies-shared",
+      "id": "strategyKit/ai-gate",
+      "sourcePath": "packages/strategy-kit/src/ai-gate.ts",
+      "state": "strategy-kit-extracted",
+      "mergedFrom": ["localAiGate"],
       "target": {
         "kind": "strategy-kit",
         "packageName": "@tradejs/strategy-kit",
@@ -177,24 +170,14 @@
       ]
     },
     {
-      "id": "recentCandles",
-      "sourcePath": "packages/strategies/src/shared/recentCandles.ts",
-      "state": "strategies-shared",
+      "id": "strategyKit/state",
+      "sourcePath": "packages/strategy-kit/src/state.ts",
+      "state": "strategy-kit-extracted",
+      "mergedFrom": ["recentCandles"],
       "target": {
         "kind": "strategy-kit",
         "packageName": "@tradejs/strategy-kit",
         "subpath": "state"
-      },
-      "consumers": ["ReverseTrendLine", "TrendLine"]
-    },
-    {
-      "id": "risk",
-      "sourcePath": "packages/strategies/src/shared/risk.ts",
-      "state": "strategies-shared",
-      "target": {
-        "kind": "strategy-kit",
-        "packageName": "@tradejs/strategy-kit",
-        "subpath": "numbers"
       },
       "consumers": ["ReverseTrendLine", "TrendLine"]
     },

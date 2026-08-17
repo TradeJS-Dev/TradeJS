@@ -13,7 +13,7 @@ import {
 import { isDirectionAligned } from '@tradejs/strategy-kit/context';
 import { isOpenPosition } from '@tradejs/strategy-kit/positions';
 import { toFiniteNumberOrNull } from '@tradejs/strategy-kit/numbers';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 import { getRelativeRotationCoreFilterSkipCode } from './filters';
 import type { RelativeRotationSignalContext } from './contracts';
 export type { RelativeRotationSignalContext } from './contracts';

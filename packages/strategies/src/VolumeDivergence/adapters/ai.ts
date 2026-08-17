@@ -12,7 +12,7 @@ import {
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
   getSignalDerivativesContext,
-} from '../../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import {
   DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS,
   getVolumeDivergenceAiThresholds,

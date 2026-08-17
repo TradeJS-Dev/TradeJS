@@ -10,7 +10,7 @@ import { buildTrendFollowGuardrailContext } from '../guardrails';
 import {
   getAiPayloadNumber,
   withStrategyLocalAiGate,
-} from '../../shared/localAiGate';
+} from '@tradejs/strategy-kit/ai-gate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)

@@ -16,7 +16,7 @@ import { buildTradeEconomics } from '@tradejs/strategy-kit/risk';
 import {
   resolveDirectionalConfigBoolean,
   resolveDirectionalConfigNumber,
-} from '../shared/directionalConfig';
+} from '@tradejs/strategy-kit/config';
 
 interface PendingLiquidityTailsEntry {
   timestamp: number;

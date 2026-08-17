@@ -7,7 +7,7 @@ import {
 import { StructureZonesConfig } from '../config';
 import { StructureZonesSignalContext } from '../engine';
 import { buildStructureZonesGuardrailContext } from '../guardrails';
-import { withStrategyLocalAiGate } from '../../shared/localAiGate';
+import { withStrategyLocalAiGate } from '@tradejs/strategy-kit/ai-gate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)

@@ -14,7 +14,7 @@ import {
 } from './engine';
 import { buildGridFigures } from './figures';
 import type { GridRangeFilterMode, GridRangeGeometry } from './rangeGeometry';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 import { buildTradeEconomics } from '@tradejs/strategy-kit/risk';
 
 interface PendingGridEntry {

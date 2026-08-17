@@ -7,7 +7,7 @@ import {
 import { LiquidityZonesConfig } from '../config';
 import { LiquidityZonesSignalContext } from '../engine';
 import { buildLiquidityZonesGuardrailContext } from '../guardrails';
-import { withStrategyLocalAiGateFilter } from '../../shared/localAiGate';
+import { withStrategyLocalAiGateFilter } from '@tradejs/strategy-kit/ai-gate';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)

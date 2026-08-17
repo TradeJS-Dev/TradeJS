@@ -7,7 +7,7 @@ const gateFingerprintRelativePaths = (strategyName: string) => [
   `packages/strategies/src/${strategyName}/guardrails.ts`,
   `packages/strategies/src/${strategyName}/pockets.ts`,
   `packages/strategies/src/${strategyName}/config.ts`,
-  'packages/strategies/src/shared/localAiGate.ts',
+  'packages/strategy-kit/src/ai-gate.ts',
   'packages/node/src/ai.ts',
   'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
 ];

@@ -1,8 +1,8 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { MarketFlushReversalConfig } from './config';
 import type { MarketFlushReversalEntrySignal } from './contracts';
-import { getAverageTurnover20 } from '../shared/baseContext';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { getAverageTurnover20 } from '@tradejs/strategy-kit/context';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const asPositiveThreshold = (value: unknown): number | null => {
   const parsed = Number(value);

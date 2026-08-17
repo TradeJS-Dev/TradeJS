@@ -8,7 +8,7 @@ import {
   KlineChartData,
 } from '@tradejs/types';
 import type { TrendLineConfig } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 type TrendLineStructuralFilterContext = {
   breakVsAtrRatio: number | null;

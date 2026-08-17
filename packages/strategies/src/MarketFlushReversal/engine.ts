@@ -18,7 +18,7 @@ export type {
   MarketFlushReversalEntrySignal,
   MarketFlushReversalPendingEntry,
 } from './contracts';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const cloneCandidate = <T extends MarketFlushReversalEntryCandidate>(
   candidate: T,

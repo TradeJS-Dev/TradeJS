@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { appendRecentCandle, takeRecentCandles } from '../recentCandles';
+import { appendRecentCandle, takeRecentCandles } from '../state';
 
 const makeCandle = (timestamp: number, close = 100) => ({
   timestamp,

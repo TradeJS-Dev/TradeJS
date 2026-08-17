@@ -3,7 +3,7 @@ import {
   getSignalBtcMaFast,
   getSignalBtcMaSlow,
   getSignalVolumeRel20,
-} from '../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import {
   buildTrendLineEvaluator,
   getBias,

@@ -14,7 +14,7 @@ import {
   appendRecentCandle,
   takeRecentCandles,
   type RecentCandle,
-} from '../shared/recentCandles';
+} from '@tradejs/strategy-kit/state';
 import {
   CreateStrategyCore,
   Direction,

@@ -13,11 +13,11 @@ import {
   getSignalCoinMaSlow,
   getSignalDerivativesContext,
   getSignalSessionPrimary,
-} from '../../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import {
   getAiPayloadNumber,
   withStrategyLocalAiGate,
-} from '../../shared/localAiGate';
+} from '@tradejs/strategy-kit/ai-gate';
 
 const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
 AdaptiveMomentumRibbon addon:

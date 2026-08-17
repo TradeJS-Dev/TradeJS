@@ -1,5 +1,5 @@
 import { BreakoutConfig } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 import { createBreakoutEngine } from './engine';
 import { buildBreakoutFigures } from './figures';
 import {

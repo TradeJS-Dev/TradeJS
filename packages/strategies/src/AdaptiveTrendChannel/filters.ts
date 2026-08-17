@@ -1,7 +1,7 @@
 import { BaseStrategyContextSnapshot } from '@tradejs/types';
 import { AdaptiveTrendChannelConfig } from './config';
 import { AdaptiveTrendChannelSignal } from './engine';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);

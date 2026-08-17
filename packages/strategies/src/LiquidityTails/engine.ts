@@ -1,6 +1,6 @@
 import { Candle, Direction } from '@tradejs/types';
 import { LiquidityTailsConfig } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export type LiquidityTailsZoneKind = 'buy_pressure' | 'sell_pressure';
 

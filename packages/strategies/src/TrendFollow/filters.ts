@@ -1,7 +1,7 @@
 import type { BaseStrategyContextSnapshot } from '@tradejs/types';
 import type { TrendFollowConfig } from './config';
 import type { TrendFollowSignal } from './engine';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 const asPositiveThreshold = (value: unknown): number | null => {
   const parsed = Number(value);

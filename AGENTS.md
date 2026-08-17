@@ -299,13 +299,15 @@ Default preset:
 
 ### Shared Strategy Helpers
 
-- Strategy-neutral figure, context, position, number, and structure-risk helpers
-  live behind explicit `@tradejs/strategy-kit/*` subpaths. Add their tests to
-  `packages/strategy-kit`, not to a consuming strategy package.
+- Strategy-neutral AI-gate, config, context, figure, number, position, risk,
+  and bounded-state helpers live behind explicit `@tradejs/strategy-kit/*`
+  subpaths. Add their tests to `packages/strategy-kit`, not to a consuming
+  strategy package.
 - TrendLine and ReverseTrendLine share guardrail logic through `packages/strategies/src/shared/trendlineGuardrails.ts`; change shared trendline guardrail behavior there unless the divergence is intentionally strategy-specific.
-- TrendLine and ReverseTrendLine normalization helpers remain in
-  `packages/strategies/src/shared/risk.ts` until the family helper extraction;
-  do not move family-specific guardrails into Strategy Kit.
+- TrendLine and ReverseTrendLine use the public Strategy Kit number helpers;
+  do not move their family-specific guardrails into Strategy Kit.
+- `packages/strategies/src/shared/causalRangeGeometry.ts` remains an indicator
+  candidate pending neutrality review; do not expose it through Strategy Kit.
 
 ## External User Reality Check
 

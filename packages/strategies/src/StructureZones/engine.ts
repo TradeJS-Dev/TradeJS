@@ -1,6 +1,6 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import { StructureZonesConfig } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export type StructureZonesMarketState = 'Trend' | 'Range' | 'Transition';
 export type StructureZonesSignalKind =

@@ -3,7 +3,7 @@ import { TrendShiftConfig } from './config';
 import {
   getIndicatorsCoinMaFast,
   getIndicatorsCoinMaSlow,
-} from '../shared/baseContext';
+} from '@tradejs/strategy-kit/context';
 import { TrendShiftSignalContext } from './guardrails';
 
 export interface TrendShiftSnapshot {

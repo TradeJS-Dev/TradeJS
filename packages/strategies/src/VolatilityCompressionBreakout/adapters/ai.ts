@@ -10,7 +10,7 @@ import {
   buildVolatilityCompressionBreakoutGuardrailContext,
   getVolatilityCompressionBreakoutGuardrailRejectReason,
 } from '../guardrails';
-import { withStrategyLocalAiGateFilter } from '../../shared/localAiGate';
+import { withStrategyLocalAiGateFilter } from '@tradejs/strategy-kit/ai-gate';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)

@@ -10,7 +10,7 @@ import { DoubleTapSignalContext } from '../engine';
 import {
   getAiPayloadNumber,
   withStrategyLocalAiGate,
-} from '../../shared/localAiGate';
+} from '@tradejs/strategy-kit/ai-gate';
 
 type Direction = 'LONG' | 'SHORT';
 

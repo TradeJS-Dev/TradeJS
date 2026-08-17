@@ -1,6 +1,6 @@
 import type { Direction } from '@tradejs/types';
 import type { VolumeDivergenceConfig } from './config';
-import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
+import { resolveDirectionalConfigNumber } from '@tradejs/strategy-kit/config';
 
 export const getVolumeDivergenceStrength = ({
   direction,
