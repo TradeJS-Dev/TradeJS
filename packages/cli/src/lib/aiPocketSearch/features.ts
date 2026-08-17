@@ -17,7 +17,7 @@ import type {
   AiPocketSummary,
 } from './contracts';
 
-export type FeatureCollectionOptions = {
+type FeatureCollectionOptions = {
   includeSymbol?: boolean;
   includeGateContext?: boolean;
   featureProfile?: 'compact' | 'all';
@@ -54,7 +54,7 @@ export type FeatureBucket = {
   >;
 };
 
-export const OUTCOME_SEGMENTS = new Set([
+const OUTCOME_SEGMENTS = new Set([
   'actual',
   'aiapproved',
   'approvalallowednow',
@@ -99,23 +99,19 @@ export const OUTCOME_SEGMENTS = new Set([
   'traderesult',
 ]);
 
-export const isPlainRecord = (
-  value: unknown,
-): value is Record<string, unknown> =>
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 export const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-export const isFeaturePrimitive = (
-  value: unknown,
-): value is AiPocketPrimitive =>
+const isFeaturePrimitive = (value: unknown): value is AiPocketPrimitive =>
   value == null ||
   typeof value === 'string' ||
   typeof value === 'boolean' ||
   isFiniteNumber(value);
 
-export const normalizeFeaturePrimitive = (
+const normalizeFeaturePrimitive = (
   value: AiPocketPrimitive,
 ): AiPocketPrimitive | undefined => {
   if (typeof value === 'string') {
@@ -128,10 +124,10 @@ export const normalizeFeaturePrimitive = (
   return value;
 };
 
-export const isOutcomePath = (segments: string[]) =>
+const isOutcomePath = (segments: string[]) =>
   segments.some((segment) => OUTCOME_SEGMENTS.has(segment.toLowerCase()));
 
-export const DATA_QUALITY_LEAVES = new Set([
+const DATA_QUALITY_LEAVES = new Set([
   'age',
   'agems',
   'available',
@@ -147,7 +143,7 @@ export const DATA_QUALITY_LEAVES = new Set([
   'windowendts',
 ]);
 
-export const METADATA_LEAVES = new Set([
+const METADATA_LEAVES = new Set([
   'connector',
   'exchange',
   'fingerprint',
@@ -160,7 +156,7 @@ export const METADATA_LEAVES = new Set([
   'universe',
 ]);
 
-export const normalizeFeaturePath = (path: string | string[]) =>
+const normalizeFeaturePath = (path: string | string[]) =>
   (Array.isArray(path) ? path : path.split('.'))
     .filter(Boolean)
     .map((segment) => segment.toLowerCase());
@@ -191,7 +187,7 @@ export const classifyAiPocketCoverageFeaturePath = (
   return null;
 };
 
-export const hasUsableContextPrimitive = (value: unknown): boolean => {
+const hasUsableContextPrimitive = (value: unknown): boolean => {
   if (Array.isArray(value) || value == null) {
     return false;
   }
@@ -216,15 +212,13 @@ export const hasUsableContextPrimitive = (value: unknown): boolean => {
   });
 };
 
-export const isUsableCmcContext = (value: unknown) =>
+const isUsableCmcContext = (value: unknown) =>
   isPlainRecord(value) &&
   value.available !== false &&
   value.stale !== true &&
   hasUsableContextPrimitive(value);
 
-export const hasUsableCmcContext = (
-  baseContext: Record<string, unknown> | null,
-) => {
+const hasUsableCmcContext = (baseContext: Record<string, unknown> | null) => {
   const relative = isPlainRecord(baseContext?.relative)
     ? baseContext.relative
     : null;
@@ -237,7 +231,7 @@ export const hasUsableCmcContext = (
   );
 };
 
-export const isUsableDerivativesContext = (
+const isUsableDerivativesContext = (
   context: Record<string, unknown> | null,
 ) => {
   if (!context) {
@@ -267,7 +261,7 @@ export const isUsableDerivativesContext = (
   );
 };
 
-export const hasUsableCoinalyzeContext = (
+const hasUsableCoinalyzeContext = (
   baseContext: Record<string, unknown> | null,
 ) => {
   const derivatives = isPlainRecord(baseContext?.derivatives)
@@ -311,7 +305,7 @@ export const resolveAiPocketFeatureCoverage = (
   };
 };
 
-export const isAiPocketCoverageFeatureUsable = ({
+const isAiPocketCoverageFeatureUsable = ({
   payload,
   segments,
   family,
@@ -392,7 +386,7 @@ export const isAiPocketCoverageFeatureUsable = ({
   return isUsableDerivativesContext(derivatives);
 };
 
-export const DERIVED_POLICY_FRAGMENTS = [
+const DERIVED_POLICY_FRAGMENTS = [
   'approval',
   'decisionhint',
   'gatefeature',
@@ -404,7 +398,7 @@ export const DERIVED_POLICY_FRAGMENTS = [
   'riskflag',
 ];
 
-export const RAW_NONSTATIONARY_LEAVES = new Set([
+const RAW_NONSTATIONARY_LEAVES = new Set([
   'activeassets',
   'activemarkets',
   'close',
@@ -513,10 +507,10 @@ export const classifyAiPocketFeaturePath = (
   return 'eligible';
 };
 
-export const isFeaturePathPrefix = (segments: string[], prefix: string[]) =>
+const isFeaturePathPrefix = (segments: string[], prefix: string[]) =>
   prefix.every((segment, index) => segments[index] === segment);
 
-export const isCompactFeaturePathSkipped = (segments: string[]) => {
+const isCompactFeaturePathSkipped = (segments: string[]) => {
   if (!segments.length) {
     return false;
   }
@@ -573,7 +567,7 @@ export const isCompactFeaturePathSkipped = (segments: string[]) => {
   return false;
 };
 
-export const addFlattenedFeatures = ({
+const addFlattenedFeatures = ({
   output,
   value,
   segments,
@@ -624,7 +618,7 @@ export const addFlattenedFeatures = ({
   }
 };
 
-export const findFeatureNumber = (
+const findFeatureNumber = (
   features: AiPocketFeatureMap,
   aliases: string[],
   requiredPathFragments: string[] = [],
@@ -655,10 +649,7 @@ export const findFeatureNumber = (
   return null;
 };
 
-export const findFeatureString = (
-  features: AiPocketFeatureMap,
-  aliases: string[],
-) => {
+const findFeatureString = (features: AiPocketFeatureMap, aliases: string[]) => {
   const normalizedAliases = new Set(
     aliases.map((alias) => alias.toLowerCase()),
   );
@@ -674,7 +665,7 @@ export const findFeatureString = (
   return null;
 };
 
-export const addDirectionalDerivedFeatures = (features: AiPocketFeatureMap) => {
+const addDirectionalDerivedFeatures = (features: AiPocketFeatureMap) => {
   const direction = String(features['signal.direction'] ?? '').toUpperCase();
   const directionSign =
     direction === 'LONG' ? 1 : direction === 'SHORT' ? -1 : null;
@@ -809,7 +800,7 @@ export const addDirectionalDerivedFeatures = (features: AiPocketFeatureMap) => {
   features['derived.directIndicatorSupportCount'] = supportCount;
 };
 
-export const addSignalRiskDistanceFeatures = ({
+const addSignalRiskDistanceFeatures = ({
   features,
   signal,
 }: {

@@ -16,14 +16,33 @@ import {
   Signal,
   SignalAnalysis,
 } from '@tradejs/types';
-import { getAiUserSettings, invokeAiChat } from './aiProvider';
+import {
+  getAiUserSettings,
+  invokeCompatibleAiChat,
+  invokeAiPromptChat,
+  type AiChatMessage as ProviderAiChatMessage,
+  type InvokeAiChatOptions as ProviderInvokeAiChatOptions,
+} from './aiProvider';
 export {
   DEFAULT_AI_MODEL,
   getOpenRouterModelKwargs,
-  invokeAiChat,
   resetAiRuntimeCache,
 } from './aiProvider';
-export type { AiChatMessage, InvokeAiChatOptions } from './aiProvider';
+
+export interface AiChatMessage extends ProviderAiChatMessage {
+  /** @deprecated Provider formatting is retained for API compatibility only. */
+  format?: 'plain' | 'text-block';
+}
+
+export type InvokeAiChatOptions = Omit<
+  ProviderInvokeAiChatOptions,
+  'messages'
+> & {
+  messages: AiChatMessage[];
+};
+
+export const invokeAiChat = (options: InvokeAiChatOptions) =>
+  invokeCompatibleAiChat(options);
 export {
   buildCompactAiIndicatorsSnapshot,
   MAX_AI_SERIES_POINTS,
@@ -353,7 +372,7 @@ export const runAiPrompt = async (
     settings.AI_RESPONSE_LANGUAGE || DEFAULT_AI_RESPONSE_LANGUAGE,
   );
 
-  const response = await invokeAiChat({
+  const response = await invokeAiPromptChat({
     userName: options.userName,
     model: options.model,
     messages: [
@@ -362,7 +381,7 @@ export const runAiPrompt = async (
         role: 'system',
         content: `Write all user-visible text fields in ${responseLanguage}. Keep field names and JSON syntax unchanged.`,
       },
-      { role: 'user', content: humanPrompt, format: 'text-block' },
+      { role: 'user', content: humanPrompt },
     ],
   });
   const parsed = parseAIResponse(response.content) as any;

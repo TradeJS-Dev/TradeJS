@@ -14,7 +14,6 @@ type AiModel = {
 export interface AiChatMessage {
   role: 'system' | 'user';
   content: string;
-  format?: 'plain' | 'text-block';
 }
 
 export interface InvokeAiChatOptions {
@@ -167,12 +166,17 @@ export const resetAiRuntimeCache = () => {
   userSettingsCache.clear();
 };
 
-export const invokeAiChat = async ({
-  messages,
-  userName = 'root',
-  model,
-  temperature = 0.2,
-}: InvokeAiChatOptions): Promise<{ content: string | object }> => {
+const invokeAiChatWithUserMessageEncoding = async (
+  {
+    messages,
+    userName = 'root',
+    model,
+    temperature = 0.2,
+  }: InvokeAiChatOptions,
+  resolveUserMessageEncoding: (
+    message: AiChatMessage,
+  ) => 'plain' | 'text-block',
+): Promise<{ content: string | object }> => {
   const [{ HumanMessage, SystemMessage }, aiModel] = await Promise.all([
     import('@langchain/core/messages'),
     getAiModel(userName, model, temperature),
@@ -181,10 +185,8 @@ export const invokeAiChat = async ({
     message.role === 'system'
       ? new SystemMessage(message.content)
       : new HumanMessage(
-          message.format === 'text-block'
-            ? {
-                content: [{ type: 'text', text: message.content }],
-              }
+          resolveUserMessageEncoding(message) === 'text-block'
+            ? { content: [{ type: 'text', text: message.content }] }
             : message.content,
         ),
   );
@@ -199,3 +201,24 @@ export const invokeAiChat = async ({
     throw getAiInvocationError(error);
   }
 };
+
+export const invokeAiChat = (options: InvokeAiChatOptions) =>
+  invokeAiChatWithUserMessageEncoding(options, () => 'plain');
+
+export const invokeAiPromptChat = (options: InvokeAiChatOptions) =>
+  invokeAiChatWithUserMessageEncoding(options, () => 'text-block');
+
+type CompatibleAiChatMessage = AiChatMessage & {
+  format?: 'plain' | 'text-block';
+};
+
+export const invokeCompatibleAiChat = (
+  options: Omit<InvokeAiChatOptions, 'messages'> & {
+    messages: CompatibleAiChatMessage[];
+  },
+) =>
+  invokeAiChatWithUserMessageEncoding(
+    options,
+    (message) =>
+      (message as CompatibleAiChatMessage).format ?? ('plain' as const),
+  );

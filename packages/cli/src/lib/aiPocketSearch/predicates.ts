@@ -22,7 +22,7 @@ import {
   summarizeRowIndexes,
 } from './summary';
 
-export const matchesPredicate = (
+const matchesPredicate = (
   value: AiPocketPrimitive | undefined,
   predicate: AiPocketPredicate,
 ) => {

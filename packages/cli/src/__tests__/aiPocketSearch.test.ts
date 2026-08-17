@@ -15,8 +15,124 @@ import {
   splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../lib/aiPocketSearchCli';
+import { resolveAiPocketSearchCommandOptions } from '../lib/aiPocketSearch/commandOptions';
+import { runAiPocketSearchResearch } from '../lib/aiPocketSearch/research';
 
 describe('aiPocketSearch', () => {
+  it('normalizes command options without leaking argv parsing into the workflow', () => {
+    const argv = [
+      'node',
+      'ai-pocket-search',
+      '--minProfitFactor=1.35',
+      '-m',
+      '12',
+      '-V',
+      '0.2',
+      '-T',
+      '0.1',
+      '-U',
+      '0.3',
+    ];
+
+    const options = resolveAiPocketSearchCommandOptions({
+      argv,
+      flags: {
+        recent: 50,
+        qualityThresholds: '3,4,5',
+        scope: 'approved',
+        objective: 'auto',
+        minSupport: 12,
+        minProfitFactor: 1,
+        validationSplit: 1,
+        testSplit: 1,
+        sealTest: true,
+        maxEventCountShare: 1,
+      },
+    });
+
+    expect(options).toEqual(
+      expect.objectContaining({
+        recent: 50,
+        qualityThresholds: [3, 4, 5],
+        scope: 'approved',
+        objective: 'filter-gate',
+        explicitMinSupport: 12,
+        minProfitFactor: 1.35,
+        validationSplit: 0.2,
+        testSplit: 0.1,
+        sealTest: true,
+        maxEventCountShare: 0.3,
+        explicitMaxEventCountShare: true,
+      }),
+    );
+  });
+
+  it('keeps dataset partition and search behavior behind the research boundary', () => {
+    const options = resolveAiPocketSearchCommandOptions({
+      argv: ['node', 'ai-pocket-search', '-m', '1', '-V', '0.25', '-T', '0.25'],
+      flags: {
+        recent: 0,
+        qualityThresholds: '4',
+        scope: 'all',
+        maxDepth: 1,
+        minSupport: 1,
+        minProfitFactor: 0,
+        minWinRate: 0,
+        minTotalProfit: 0,
+        maxAtomicPredicates: 10,
+        maxCombinations: 20,
+        validationSplit: 0.25,
+        testSplit: 0.25,
+        sealTest: true,
+        maxBatch: 0,
+        maxEventCountShare: 1,
+        maxSymbolCountShare: 1,
+        objective: 'standalone',
+        dedupeEquivalentSelections: true,
+        top: 10,
+        featurePolicy: 'all',
+        coverageMode: 'full',
+        cadenceMode: 'fixed',
+      },
+    });
+    const rows: AiPocketSearchRow[] = Array.from({ length: 8 }, (_, index) => ({
+      profit: index % 2 === 0 ? 5 : -2,
+      profitableTrade: index % 2 === 0,
+      aiApproved: index % 2 === 0,
+      quality: index % 2 === 0 ? 5 : 2,
+      timestamp: index,
+      features: { alternating: index % 2 === 0 },
+    }));
+    const progress: string[] = [];
+
+    const result = runAiPocketSearchResearch({
+      rows,
+      options,
+      onProgress: ({ label, progress: event }) => {
+        progress.push(`${label}:${event.phase}`);
+      },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        scopeRows: rows,
+        trainRows: rows.slice(0, 4),
+        validationRows: rows.slice(4, 6),
+        testRows: [],
+        sealedTest: {
+          sealed: true,
+          rows: 2,
+          events: 2,
+          startTimestamp: 6,
+          endTimestamp: 7,
+        },
+        coverageSearches: [],
+      }),
+    );
+    expect(result.currentGateSummary.approved).toBe(3);
+    expect(progress).toContain('full:combinations');
+  });
+
   it('adapts discovery thresholds for sparse independent events', () => {
     const dayMs = 24 * 60 * 60 * 1000;
     const trainRows = Array.from({ length: 40 }, (_, index) => ({

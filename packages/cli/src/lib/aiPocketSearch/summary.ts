@@ -63,7 +63,7 @@ export const getPeriodDays = (rows: AiPocketSearchRow[]) => {
   return Math.max((maxTimestamp - minTimestamp) / DAY_MS, 1);
 };
 
-export type AiPocketSummaryAccumulator = {
+type AiPocketSummaryAccumulator = {
   support: number;
   grossProfit: number;
   grossLoss: number;
@@ -159,7 +159,7 @@ export const addSummaryRow = (
   accumulator.equityPoints.push({ timestamp, profit });
 };
 
-export const emptyAiPocketSummary = ({
+const emptyAiPocketSummary = ({
   fullPeriodDays,
   supportRatio,
 }: {
@@ -353,7 +353,7 @@ export const finalizeAiPocketSummary = ({
   };
 };
 
-export const summarizeSelectedRows = (
+const summarizeSelectedRows = (
   rows: AiPocketSearchRow[],
   selected: AiPocketSearchRow[],
 ): AiPocketSummary => {

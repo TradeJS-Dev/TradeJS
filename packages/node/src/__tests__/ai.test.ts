@@ -4506,6 +4506,24 @@ describe('ai helpers', () => {
         expect.any(MockSystemMessage),
         expect.any(MockHumanMessage),
       ]);
+      const messages = invokeMock.mock.calls[0]?.[0] as any[];
+      expect(messages[1].content).toBe('hello');
+    });
+
+    it('preserves the legacy text-block option at the public boundary', async () => {
+      invokeMock.mockResolvedValue({ content: 'shared response' });
+
+      await invokeAiChat({
+        messages: [
+          { role: 'system', content: 'system' },
+          { role: 'user', content: 'hello', format: 'text-block' },
+        ],
+      });
+
+      const messages = invokeMock.mock.calls[0]?.[0] as any[];
+      expect(messages[1].content).toEqual({
+        content: [{ type: 'text', text: 'hello' }],
+      });
     });
 
     it('uses the user-selected default model when no override is provided', async () => {
