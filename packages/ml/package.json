@@ -2,6 +2,11 @@
   "name": "@tradejs/ml",
   "version": "2.0.0",
   "description": "Private ML runtime assets and Python build helpers for the TradeJS TypeScript framework.",
+  "keywords": [
+    "ai",
+    "claude",
+    "codex"
+  ],
   "private": true,
   "scripts": {
     "build": "mkdir -p dist && echo 'ml: python/docker module' > dist/.build.txt"

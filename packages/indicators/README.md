@@ -55,3 +55,5 @@ strategy or on StrategyAPI.
 ## For Custom Indicators
 
 Use `defineIndicatorPlugin(...)` from `@tradejs/core/config` in your own package and add that package to `indicators` in `tradejs.config.ts`.
+
+Keywords: ai, claude, codex.

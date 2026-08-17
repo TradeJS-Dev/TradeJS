@@ -68,3 +68,5 @@ after npm publication and before image publication:
 - assert backtest snapshot is exactly stable
 - run deterministic signals
 - assert signals snapshot is exactly stable
+
+Keywords: ai, claude, codex.

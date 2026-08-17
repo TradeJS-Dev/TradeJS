@@ -807,3 +807,5 @@ Keep these files aligned with:
 - current package boundaries
 - current public entrypoints
 - current canonical docs URLs
+
+Keywords: ai, claude, codex.

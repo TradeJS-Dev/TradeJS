@@ -9,7 +9,10 @@
     "node",
     "runtime",
     "strategy",
-    "pine-script"
+    "pine-script",
+    "ai",
+    "claude",
+    "codex"
   ],
   "repository": {
     "type": "git",

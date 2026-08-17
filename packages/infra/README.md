@@ -54,3 +54,5 @@ import { logger } from '@tradejs/infra/logger';
 - `@tradejs/infra` is server-only. Do not import it into browser/client code.
 - Environment loading should happen in your app/runtime entrypoint, not inside shared library code.
 - If you are following the standard external quickstart, start with `@tradejs/app`, `@tradejs/core`, `@tradejs/node`, `@tradejs/base`, and `@tradejs/cli` instead of adding `@tradejs/infra` manually.
+
+Keywords: ai, claude, codex.

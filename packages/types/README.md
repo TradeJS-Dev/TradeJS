@@ -40,3 +40,5 @@ import type {
 ```
 
 Use this package for type imports shared between `@tradejs/core`, `@tradejs/node`, plugins, and external applications.
+
+Keywords: ai, claude, codex.

@@ -2,6 +2,11 @@
   "name": "tradejs",
   "version": "2.0.0",
   "private": true,
+  "keywords": [
+    "ai",
+    "claude",
+    "codex"
+  ],
   "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)",
   "engines": {

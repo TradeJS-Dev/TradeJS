@@ -9,7 +9,10 @@
     "connectors",
     "exchange",
     "market-data",
-    "bybit"
+    "bybit",
+    "ai",
+    "claude",
+    "codex"
   ],
   "repository": {
     "type": "git",

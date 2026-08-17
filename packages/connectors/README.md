@@ -43,3 +43,5 @@ export default defineConfig({
 ## For Custom Connectors
 
 Use `defineConnectorPlugin(...)` from `@tradejs/core/config` in your own package and add that package to `connectors` in `tradejs.config.ts`.
+
+Keywords: ai, claude, codex.

@@ -9,7 +9,10 @@
     "infrastructure",
     "redis",
     "timescale",
-    "ml"
+    "ml",
+    "ai",
+    "claude",
+    "codex"
   ],
   "repository": {
     "type": "git",

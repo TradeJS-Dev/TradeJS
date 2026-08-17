@@ -83,3 +83,5 @@ npx tradejs-app dev
 - `@tradejs/cli` expects project wiring from `tradejs.config.ts` via `@tradejs/core/config`.
 - Local infrastructure is created through `infra-init` and started through `infra-up`.
 - Use `npx @tradejs/cli <command> --help` for command-specific flags.
+
+Keywords: ai, claude, codex.

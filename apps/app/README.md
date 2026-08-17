@@ -42,3 +42,5 @@ before starting or building the app with:
 ```bash
 NEXT_PUBLIC_TRADEJS_TELEMETRY_DISABLED=1
 ```
+
+Keywords: ai, claude, codex.

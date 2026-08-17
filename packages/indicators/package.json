@@ -8,7 +8,10 @@
     "backtesting",
     "indicators",
     "plugin",
-    "technical-analysis"
+    "technical-analysis",
+    "ai",
+    "claude",
+    "codex"
   ],
   "repository": {
     "type": "git",

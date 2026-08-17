@@ -26,3 +26,5 @@ Use the documented ML flow through:
 - docs at https://docs.tradejs.dev/ai-ml
 
 Do not import `@tradejs/ml` directly in project code.
+
+Keywords: ai, claude, codex.

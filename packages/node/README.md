@@ -80,3 +80,5 @@ import { createStrategyRuntime } from '@tradejs/node/strategies';
 - Do not import it into browser/client bundles.
 - For plugin/config declaration and browser-safe helpers, use `@tradejs/core`.
 - For shared contracts, use `@tradejs/types`.
+
+Keywords: ai, claude, codex.

@@ -9,7 +9,10 @@
     "cli",
     "signals",
     "bot",
-    "automation"
+    "automation",
+    "ai",
+    "claude",
+    "codex"
   ],
   "homepage": "https://tradejs.dev",
   "repository": {

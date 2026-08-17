@@ -9,7 +9,10 @@
     "app",
     "dashboard",
     "nextjs",
-    "signals"
+    "signals",
+    "ai",
+    "claude",
+    "codex"
   ],
   "files": [
     "README.md",

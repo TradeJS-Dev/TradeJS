@@ -24,3 +24,5 @@ The `create-tradejs` scaffolder remains MIT-licensed. Generated projects
 install TradeJS packages with mixed MIT and Business Source License 1.1 terms;
 see the
 [TradeJS licensing policy](https://github.com/TradeJS-Dev/TradeJS/blob/stable/LICENSING.md).
+
+Keywords: ai, claude, codex.
