@@ -1,0 +1,17 @@
+name: Publish indicators package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    uses: TradeJS-Dev/TradeJS-Workflows/.github/workflows/monorepo-package-publish.yml@v1
+    with:
+      workspace-name: '@tradejs/indicators'
+      package-directory: packages/indicators
+    secrets:
+      npm-token: ${{ secrets.NPM_TOKEN }}
