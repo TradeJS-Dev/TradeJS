@@ -165,9 +165,12 @@ import { createStrategyRuntime } from '../strategyRuntime';
 import { createStrategyAPI } from '@tradejs/core/strategies';
 import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
-import { strategyEntries } from '@tradejs/strategies';
+import { strategyEntries as hyperliquidConsensusEntries } from '@tradejs/strategy-hyperliquid-consensus';
+import { strategyEntries as trendLineEntries } from '@tradejs/strategy-trend-line';
 import { BACKTEST_WARNING_CODES } from '@tradejs/types';
 import { resetDerivativesContextRuntimeState } from '../strategyHelpers/derivativesContext';
+
+const strategyEntries = [...hyperliquidConsensusEntries, ...trendLineEntries];
 
 const realGetStrategyManifest = (
   jest.requireActual('../strategy/manifests') as typeof manifestsModule

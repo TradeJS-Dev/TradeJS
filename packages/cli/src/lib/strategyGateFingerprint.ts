@@ -1,15 +1,24 @@
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const gateFingerprintRelativePaths = (strategyName: string) => [
-  `packages/strategies/src/${strategyName}/adapters/ai.ts`,
-  `packages/strategies/src/${strategyName}/guardrails.ts`,
-  `packages/strategies/src/${strategyName}/pockets.ts`,
-  `packages/strategies/src/${strategyName}/config.ts`,
-  'packages/strategy-kit/src/ai-gate.ts',
-  'packages/node/src/ai.ts',
-  'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
+const toPackageToken = (strategyName: string) =>
+  strategyName
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .replace(/([a-z\d])([A-Z])/g, '$1-$2')
+    .toLowerCase();
+
+export const getStrategyPackageName = (strategyName: string) =>
+  strategyName === 'TrendLine' || strategyName === 'ReverseTrendLine'
+    ? '@tradejs/strategy-trend-line'
+    : `@tradejs/strategy-${toPackageToken(strategyName)}`;
+
+const gateFingerprintSpecifiers = (strategyName: string) => [
+  getStrategyPackageName(strategyName),
+  '@tradejs/strategy-kit/ai-gate',
+  '@tradejs/node/ai',
+  '@tradejs/core/strategies',
 ];
 
 export const resolveStrategyGateFingerprint = async ({
@@ -21,14 +30,28 @@ export const resolveStrategyGateFingerprint = async ({
   strategyName: string;
   gitSha: string | null;
 }) => {
-  const candidates = await Promise.all(
-    gateFingerprintRelativePaths(strategyName).map(async (relativePath) => {
-      const content = await fs
-        .readFile(path.join(projectRoot, relativePath))
-        .catch(() => null);
-      return content == null ? null : { relativePath, content };
-    }),
-  );
+  const projectManifestPath = path.join(projectRoot, 'package.json');
+  const projectExists = await fs
+    .access(projectManifestPath)
+    .then(() => true)
+    .catch(() => false);
+  const requireFromProject = projectExists
+    ? createRequire(projectManifestPath)
+    : null;
+  const candidates = requireFromProject
+    ? await Promise.all(
+        gateFingerprintSpecifiers(strategyName).map(async (specifier) => {
+          let resolvedPath: string;
+          try {
+            resolvedPath = requireFromProject.resolve(specifier);
+          } catch {
+            return null;
+          }
+          const content = await fs.readFile(resolvedPath).catch(() => null);
+          return content == null ? null : { specifier, content };
+        }),
+      )
+    : [];
   const sourceEntries = candidates.filter(
     (entry): entry is NonNullable<(typeof candidates)[number]> => entry != null,
   );
@@ -36,7 +59,7 @@ export const resolveStrategyGateFingerprint = async ({
   hash.update(strategyName);
   if (sourceEntries.length) {
     for (const entry of sourceEntries) {
-      hash.update(entry.relativePath);
+      hash.update(entry.specifier);
       hash.update(entry.content);
     }
   } else {
@@ -44,6 +67,6 @@ export const resolveStrategyGateFingerprint = async ({
   }
   return {
     gateFingerprint: hash.digest('hex').slice(0, 16),
-    gateFingerprintFiles: sourceEntries.map((entry) => entry.relativePath),
+    gateFingerprintFiles: sourceEntries.map((entry) => entry.specifier),
   };
 };

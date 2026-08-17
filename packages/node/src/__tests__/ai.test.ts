@@ -77,7 +77,20 @@ const {
   registerStrategyEntries,
   resetStrategyRegistryCache,
 } = require('../strategy/manifests');
-const { strategyEntries } = require('@tradejs/strategies');
+const {
+  strategyEntries: adaptiveMomentumRibbonEntries,
+} = require('@tradejs/strategy-adaptive-momentum-ribbon');
+const {
+  strategyEntries: trendLineEntries,
+} = require('@tradejs/strategy-trend-line');
+const {
+  strategyEntries: volumeDivergenceEntries,
+} = require('@tradejs/strategy-volume-divergence');
+const strategyEntries = [
+  ...adaptiveMomentumRibbonEntries,
+  ...trendLineEntries,
+  ...volumeDivergenceEntries,
+];
 
 const makeCandle = (timestamp: number) => ({
   timestamp,

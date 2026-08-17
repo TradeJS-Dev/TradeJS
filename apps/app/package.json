@@ -53,7 +53,6 @@
     "@tradejs/indicators": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/node": "workspace:^",
-    "@tradejs/strategies": "workspace:^",
     "@tradejs/types": "workspace:^",
     "@types/bcryptjs": "2.4.6",
     "@types/lodash": "4.17.24",

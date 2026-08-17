@@ -27,12 +27,11 @@
       "@tradejs/node/pine": ["./packages/node/src/pine"],
       "@tradejs/node/registry": ["./packages/node/src/registry"],
       "@tradejs/node/runtimeTrades": ["./packages/node/src/runtimeTrades"],
-      "@tradejs/node/runtimeDashboard": ["./packages/node/src/runtimeDashboard"],
+      "@tradejs/node/runtimeDashboard": [
+        "./packages/node/src/runtimeDashboard"
+      ],
       "@tradejs/node/strategies": ["./packages/node/src/strategies"],
       "@tradejs/infra/*": ["./packages/infra/src/*"],
-      "@tradejs/base": ["./packages/base/src/index"],
-      "@tradejs/strategies": ["./packages/strategies/src/index"],
-      "@tradejs/strategy-kit/*": ["./packages/strategy-kit/src/*"],
       "@tradejs/indicators": ["./packages/indicators/src/index"],
       "@tradejs/indicators/range-geometry": [
         "./packages/indicators/src/range-geometry"

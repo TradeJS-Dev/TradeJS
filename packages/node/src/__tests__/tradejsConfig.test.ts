@@ -151,14 +151,14 @@ export default {
 
     fs.writeFileSync(
       configPath,
-      `export default { strategies: ['@tradejs/strategies'] };`,
+      `export default { strategies: ['@tradejs/strategy-trend-line'] };`,
       'utf8',
     );
 
     const config = await loadTradejsConfig(childDir);
 
     expect(config).toEqual({
-      strategies: ['@tradejs/strategies'],
+      strategies: ['@tradejs/strategy-trend-line'],
       indicators: [],
       connectors: [],
     });
@@ -218,35 +218,38 @@ export default {
     expect(moduleExports.join('a', 'b')).toBe(path.join('a', 'b'));
   });
 
-  it('loads workspace modules via tsconfig paths', async () => {
+  it('loads preset modules via tsconfig paths', async () => {
     const cwd = createTempDir();
     const tsconfigPath = path.join(cwd, 'tsconfig.json');
-    const baseModulePath = path.join(cwd, 'packages', 'base', 'src');
+    const presetModulePath = path.join(cwd, 'packages', 'preset', 'src');
 
-    fs.mkdirSync(baseModulePath, { recursive: true });
+    fs.mkdirSync(presetModulePath, { recursive: true });
     fs.writeFileSync(
       tsconfigPath,
       JSON.stringify({
         compilerOptions: {
           baseUrl: '.',
           paths: {
-            '@tradejs/base': ['./packages/base/src/index.ts'],
+            '@example/preset': ['./packages/preset/src/index.ts'],
           },
         },
       }),
       'utf8',
     );
     fs.writeFileSync(
-      path.join(baseModulePath, 'index.ts'),
+      path.join(presetModulePath, 'index.ts'),
       `export const basePreset = {
-  strategies: ['@tradejs/strategies'],
+  strategies: ['@tradejs/strategy-trend-line'],
   indicators: ['@tradejs/indicators'],
   connectors: ['@tradejs/connectors']
 };`,
       'utf8',
     );
 
-    const moduleExports = (await importTradejsModule('@tradejs/base', cwd)) as {
+    const moduleExports = (await importTradejsModule(
+      '@example/preset',
+      cwd,
+    )) as {
       basePreset?: {
         strategies?: string[];
         indicators?: string[];
@@ -255,7 +258,7 @@ export default {
     };
 
     expect(moduleExports.basePreset).toEqual({
-      strategies: ['@tradejs/strategies'],
+      strategies: ['@tradejs/strategy-trend-line'],
       indicators: ['@tradejs/indicators'],
       connectors: ['@tradejs/connectors'],
     });

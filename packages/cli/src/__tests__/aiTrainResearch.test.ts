@@ -9,6 +9,7 @@ import {
   summarizeAiTrainTerminalWindows,
   writeAiTrainResearchSnapshot,
 } from '../lib/aiTrainResearch';
+import { getStrategyPackageName } from '../lib/strategyGateFingerprint';
 
 describe('aiTrainResearch', () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -128,6 +129,18 @@ describe('aiTrainResearch', () => {
   it('uses stable fingerprints for equivalent key ordering', () => {
     expect(fingerprintResearchValue({ a: 1, b: { c: 2 } })).toBe(
       fingerprintResearchValue({ b: { c: 2 }, a: 1 }),
+    );
+  });
+
+  it('resolves strategy package names with one TrendLine family exception', () => {
+    expect(getStrategyPackageName('AdaptiveMomentumRibbon')).toBe(
+      '@tradejs/strategy-adaptive-momentum-ribbon',
+    );
+    expect(getStrategyPackageName('TrendLine')).toBe(
+      '@tradejs/strategy-trend-line',
+    );
+    expect(getStrategyPackageName('ReverseTrendLine')).toBe(
+      '@tradejs/strategy-trend-line',
     );
   });
 

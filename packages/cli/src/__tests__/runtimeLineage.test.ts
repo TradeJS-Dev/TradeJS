@@ -185,8 +185,9 @@ describe('runtime lineage', () => {
     expect(runtime.gateFingerprint).toBe(research.gateFingerprint);
     expect(research.gateFingerprintFiles).toEqual(
       expect.arrayContaining([
-        'packages/strategy-kit/src/ai-gate.ts',
-        'packages/core/src/utils/strategyHelpers/signalBuilders.ts',
+        '@tradejs/strategy-double-tap',
+        '@tradejs/strategy-kit/ai-gate',
+        '@tradejs/core/strategies',
       ]),
     );
   });

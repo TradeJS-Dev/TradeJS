@@ -29,13 +29,12 @@
     "tradejs": "dist/cli.js"
   },
   "dependencies": {
-    "@tradejs/base": "workspace:^",
     "@tradejs/connectors": "workspace:^",
     "@tradejs/core": "workspace:^",
     "@tradejs/indicators": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/node": "workspace:^",
-    "@tradejs/strategies": "workspace:^",
+    "@tradejs/strategy-kit": "^3.0.0",
     "@tradejs/types": "workspace:^",
     "args": "^5.0.3",
     "bcryptjs": "^2.4.3",

@@ -3,7 +3,7 @@ import {
   registerStrategyEntries,
   resetStrategyRegistryCache,
 } from '../strategy/manifests';
-import { strategyEntries } from '@tradejs/strategies';
+import { strategyEntries } from '@tradejs/strategy-trend-line';
 
 const makeCandle = (timestamp: number) => ({
   timestamp,

@@ -1,4 +1,4 @@
-import { strategyEntries } from '@tradejs/strategies';
+import { strategyEntries } from '@tradejs/strategy-trend-line';
 import { askAI, createStrategyRuntime } from '@tradejs/node/strategies';
 import {
   calculateCoinBtcCorrelation,

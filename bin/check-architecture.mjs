@@ -14,7 +14,14 @@ const {
 } = architectureGraph;
 
 const root = process.cwd();
-const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs']);
+const sourceExtensions = new Set([
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.mjs',
+]);
 const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
@@ -29,52 +36,26 @@ const subpathFirstPackageNames = new Set([
   '@tradejs/core',
   '@tradejs/infra',
   '@tradejs/node',
-  '@tradejs/strategy-kit',
 ]);
 
 const allowedWorkspaceDependencies = new Map([
   ['@tradejs/types', new Set()],
   ['@tradejs/core', new Set(['@tradejs/types'])],
   ['@tradejs/infra', new Set(['@tradejs/types'])],
-  ['@tradejs/strategy-kit', new Set(['@tradejs/core', '@tradejs/types'])],
   ['@tradejs/indicators', new Set(['@tradejs/core', '@tradejs/types'])],
-  [
-    '@tradejs/strategies',
-    new Set([
-      '@tradejs/core',
-      '@tradejs/indicators',
-      '@tradejs/strategy-kit',
-      '@tradejs/types',
-    ]),
-  ],
   [
     '@tradejs/node',
     new Set(['@tradejs/core', '@tradejs/infra', '@tradejs/types']),
   ],
-  [
-    '@tradejs/connectors',
-    new Set(['@tradejs/core', '@tradejs/types']),
-  ],
-  [
-    '@tradejs/base',
-    new Set([
-      '@tradejs/connectors',
-      '@tradejs/core',
-      '@tradejs/indicators',
-      '@tradejs/node',
-      '@tradejs/strategies',
-    ]),
-  ],
+  ['@tradejs/connectors', new Set(['@tradejs/core', '@tradejs/types'])],
   [
     '@tradejs/cli',
     new Set([
-      '@tradejs/base',
       '@tradejs/connectors',
       '@tradejs/core',
       '@tradejs/indicators',
       '@tradejs/infra',
       '@tradejs/node',
-      '@tradejs/strategies',
       '@tradejs/types',
     ]),
   ],
@@ -85,7 +66,6 @@ const allowedWorkspaceDependencies = new Map([
       '@tradejs/indicators',
       '@tradejs/infra',
       '@tradejs/node',
-      '@tradejs/strategies',
       '@tradejs/types',
     ]),
   ],
@@ -93,9 +73,7 @@ const allowedWorkspaceDependencies = new Map([
   ['@tradejs/ml', new Set()],
 ]);
 
-const allowedTestWorkspaceDependencies = new Map([
-  ['@tradejs/node', new Set(['@tradejs/strategies'])],
-]);
+const allowedTestWorkspaceDependencies = new Map();
 
 const errors = [];
 
@@ -125,7 +103,8 @@ const listSourceFiles = async (directory) => {
 
 const packageNameFromSpecifier = (specifier) => {
   if (specifier.startsWith('.') || specifier.startsWith('#')) return null;
-  if (specifier.startsWith('@')) return specifier.split('/').slice(0, 2).join('/');
+  if (specifier.startsWith('@'))
+    return specifier.split('/').slice(0, 2).join('/');
   return specifier.split('/')[0];
 };
 
@@ -137,7 +116,8 @@ const packageSubpathFromSpecifier = (specifier, packageName) => {
 const isExportedSubpath = (manifest, subpath) => {
   const packageExports = manifest.exports;
   if (!packageExports || typeof packageExports !== 'object') return false;
-  if (Object.prototype.hasOwnProperty.call(packageExports, subpath)) return true;
+  if (Object.prototype.hasOwnProperty.call(packageExports, subpath))
+    return true;
 
   return Object.keys(packageExports).some((candidate) => {
     if (!candidate.includes('*')) return false;
@@ -148,7 +128,11 @@ const isExportedSubpath = (manifest, subpath) => {
 
 const isWithinDirectory = (file, directory) => {
   const relative = path.relative(directory, file);
-  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  return (
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 };
 
 const extractSpecifiers = (source, file) => {
@@ -172,7 +156,8 @@ const extractSpecifiers = (source, file) => {
     ) {
       addModuleSpecifier(node.moduleReference.expression);
     } else if (ts.isCallExpression(node) && node.arguments.length === 1) {
-      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isDynamicImport =
+        node.expression.kind === ts.SyntaxKind.ImportKeyword;
       const isRequire =
         ts.isIdentifier(node.expression) && node.expression.text === 'require';
       if (isDynamicImport || isRequire) addModuleSpecifier(node.arguments[0]);
@@ -203,7 +188,10 @@ const resolvePackageLocalImport = ({
   directory,
 }) => {
   if (specifier.startsWith('.')) {
-    return resolveSourceFile(path.resolve(path.dirname(file), specifier), fileSet);
+    return resolveSourceFile(
+      path.resolve(path.dirname(file), specifier),
+      fileSet,
+    );
   }
   if (!specifier.startsWith('#')) return null;
 
@@ -289,12 +277,16 @@ const packageDirectories = [
 const packages = await Promise.all(
   packageDirectories.map(async (directory) => ({
     directory,
-    manifest: JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')),
+    manifest: JSON.parse(
+      await readFile(path.join(directory, 'package.json'), 'utf8'),
+    ),
     files: await listSourceFiles(path.join(directory, 'src')),
   })),
 );
 const workspaceNames = new Set(packages.map(({ manifest }) => manifest.name));
-const packagesByName = new Map(packages.map((item) => [item.manifest.name, item]));
+const packagesByName = new Map(
+  packages.map((item) => [item.manifest.name, item]),
+);
 const productionWorkspaceGraph = new Map(
   packages.map(({ manifest }) => [manifest.name, new Set()]),
 );
@@ -384,13 +376,18 @@ for (const packageInfo of packages) {
         }
       }
       if (/^@tradejs\/(?:core|node|infra)$/.test(specifier)) {
-        errors.push(`${relativeFile}: root package import is forbidden: ${specifier}`);
+        errors.push(
+          `${relativeFile}: root package import is forbidden: ${specifier}`,
+        );
       }
       if (/^@tradejs\/(?:core|node|infra)\/src(?:\/|$)/.test(specifier)) {
-        errors.push(`${relativeFile}: non-public deep import is forbidden: ${specifier}`);
+        errors.push(
+          `${relativeFile}: non-public deep import is forbidden: ${specifier}`,
+        );
       }
       const dependency = packageNameFromSpecifier(specifier);
-      if (!dependency || builtins.has(specifier) || builtins.has(dependency)) continue;
+      if (!dependency || builtins.has(specifier) || builtins.has(dependency))
+        continue;
 
       const workspaceDependency = packagesByName.get(dependency);
       if (workspaceDependency) {
@@ -414,7 +411,9 @@ for (const packageInfo of packages) {
         if (!isTestFile(file)) {
           productionWorkspaceGraph.get(manifest.name)?.add(dependency);
         }
-        const testDependencies = allowedTestWorkspaceDependencies.get(manifest.name);
+        const testDependencies = allowedTestWorkspaceDependencies.get(
+          manifest.name,
+        );
         const allowedForFile =
           allowedWorkspace?.has(dependency) ||
           (isTestFile(file) && testDependencies?.has(dependency));
@@ -440,7 +439,9 @@ for (const packageInfo of packages) {
 const sandboxDirectory = path.join(root, 'examples/sandbox');
 const sandboxManifestPath = path.join(sandboxDirectory, 'package.json');
 if (existsSync(sandboxManifestPath)) {
-  const sandboxManifest = JSON.parse(await readFile(sandboxManifestPath, 'utf8'));
+  const sandboxManifest = JSON.parse(
+    await readFile(sandboxManifestPath, 'utf8'),
+  );
   const sandboxDependencies = {
     ...sandboxManifest.dependencies,
     ...sandboxManifest.devDependencies,
@@ -479,7 +480,9 @@ if (existsSync(sandboxManifestPath)) {
         : undefined;
       if (!dependency || !workspaceDependency) continue;
 
-      if (!Object.prototype.hasOwnProperty.call(sandboxDependencies, dependency)) {
+      if (
+        !Object.prototype.hasOwnProperty.call(sandboxDependencies, dependency)
+      ) {
         errors.push(
           `${relativeFile}: ${dependency} is imported but not declared by ${sandboxManifest.name}`,
         );
@@ -531,7 +534,6 @@ for (const packageInfo of packages) {
     '@tradejs/connectors',
     '@tradejs/infra',
     '@tradejs/node',
-    '@tradejs/strategies',
   ]);
   const clientEntries = productionFiles.filter((file) =>
     /^\s*['"]use client['"];?/m.test(sources.get(file)),
