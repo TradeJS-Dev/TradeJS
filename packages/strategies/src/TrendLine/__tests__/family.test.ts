@@ -6,7 +6,7 @@ import {
   getSpreadPct,
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
-} from '..';
+} from '../family';
 
 describe('shared trendline guardrail helpers', () => {
   it('normalizes finite numbers and tails', () => {

@@ -11,7 +11,7 @@ import {
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
   type SignalDirection,
-} from '@tradejs/strategy-trendline-kit';
+} from './family';
 
 const TRENDLINE_CLEAR_BREAK_PCT = 0.35;
 const TRENDLINE_TIMING_WINDOW = 6;

@@ -37,7 +37,6 @@ const allowedWorkspaceDependencies = new Map([
   ['@tradejs/core', new Set(['@tradejs/types'])],
   ['@tradejs/infra', new Set(['@tradejs/types'])],
   ['@tradejs/strategy-kit', new Set(['@tradejs/core', '@tradejs/types'])],
-  ['@tradejs/strategy-trendline-kit', new Set()],
   ['@tradejs/indicators', new Set(['@tradejs/core', '@tradejs/types'])],
   [
     '@tradejs/strategies',
@@ -45,7 +44,6 @@ const allowedWorkspaceDependencies = new Map([
       '@tradejs/core',
       '@tradejs/indicators',
       '@tradejs/strategy-kit',
-      '@tradejs/strategy-trendline-kit',
       '@tradejs/types',
     ]),
   ],

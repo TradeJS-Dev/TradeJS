@@ -8,7 +8,7 @@ import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
 } from './guardrails';
-import { toFiniteNumberOrNull } from '@tradejs/strategy-trendline-kit';
+import { toFiniteNumberOrNull } from '../TrendLine/family';
 import { buildReverseTrendlineRiskPlan } from './risk';
 import {
   appendRecentCandle,

@@ -33,9 +33,6 @@
       "@tradejs/base": ["./packages/base/src/index"],
       "@tradejs/strategies": ["./packages/strategies/src/index"],
       "@tradejs/strategy-kit/*": ["./packages/strategy-kit/src/*"],
-      "@tradejs/strategy-trendline-kit": [
-        "./packages/strategy-trendline-kit/src/index"
-      ],
       "@tradejs/indicators": ["./packages/indicators/src/index"],
       "@tradejs/indicators/range-geometry": [
         "./packages/indicators/src/range-geometry"

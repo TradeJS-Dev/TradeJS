@@ -12,7 +12,7 @@ import {
   getTrendLineFromPayload,
   toFiniteNumberOrNull,
   type SignalDirection,
-} from '@tradejs/strategy-trendline-kit';
+} from '../TrendLine/family';
 
 const REVERSE_TRENDLINE_NEAR_LINE_PCT = 0.45;
 const REVERSE_TRENDLINE_FAILED_BOUNCE_PCT = 0.35;

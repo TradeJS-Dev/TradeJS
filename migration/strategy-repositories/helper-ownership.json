@@ -183,11 +183,12 @@
     },
     {
       "id": "trendlineGuardrails",
-      "sourcePath": "packages/strategy-trendline-kit/src/index.ts",
-      "state": "family-kit-extracted",
+      "sourcePath": "packages/strategies/src/TrendLine/family.ts",
+      "state": "strategy-family-owned",
       "target": {
-        "kind": "family-package",
-        "packageName": "@tradejs/strategy-trendline-kit"
+        "kind": "combined-strategy-package",
+        "repository": "TradeJS-Strategy-TrendLine",
+        "packageName": "@tradejs/strategy-trend-line"
       },
       "consumers": ["ReverseTrendLine", "TrendLine"]
     }

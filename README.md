@@ -27,9 +27,9 @@ It supports two first-class authoring paths:
 
 ### Published npm Packages
 
-`@tradejs/strategy-kit` and `@tradejs/strategy-trendline-kit` are prepared for
-their first registry release by this repository migration but are not published
-yet. Their npm links become active after that release.
+`@tradejs/strategy-kit` is prepared for its first registry release by this
+repository migration but is not published yet. Its npm link becomes active
+after that release.
 
 - [`create-tradejs`](https://www.npmjs.com/package/create-tradejs) — one-command external project, infrastructure, login, and first-backtest UI bootstrap
 - [`@tradejs/app`](https://www.npmjs.com/package/@tradejs/app) — installable Next.js UI for dashboards, backtests, and runtime data
@@ -41,7 +41,6 @@ yet. Their npm links become active after that release.
 - [`@tradejs/infra`](https://www.npmjs.com/package/@tradejs/infra) — server-only adapters for Redis, Timescale, ML, logging, and IO
 - [`@tradejs/strategies`](https://www.npmjs.com/package/@tradejs/strategies) — built-in strategy plugin catalog
 - [`@tradejs/strategy-kit`](https://www.npmjs.com/package/@tradejs/strategy-kit) — strategy-neutral authoring helpers
-- [`@tradejs/strategy-trendline-kit`](https://www.npmjs.com/package/@tradejs/strategy-trendline-kit) — shared payload and guardrail primitives for the TrendLine family
 - [`@tradejs/indicators`](https://www.npmjs.com/package/@tradejs/indicators) — built-in indicator plugin catalog
 - [`@tradejs/connectors`](https://www.npmjs.com/package/@tradejs/connectors) — built-in exchange connectors and market data providers
 
@@ -50,9 +49,8 @@ yet. Their npm links become active after that release.
 TradeJS version 2.0.0 and later uses a mixed-license open-core model:
 
 - product components (`@tradejs/app`, `@tradejs/base`, `@tradejs/cli`,
-  `@tradejs/node`, `@tradejs/strategies`,
-  `@tradejs/strategy-trendline-kit`, and the private ML runtime) use the Business
-  Source License 1.1 with an Additional Use Grant
+  `@tradejs/node`, `@tradejs/strategies`, and the private ML runtime) use the
+  Business Source License 1.1 with an Additional Use Grant
 - SDK, integration, scaffolding, and example components (`@tradejs/core`,
   `@tradejs/types`, `@tradejs/indicators`, `@tradejs/connectors`,
   `@tradejs/infra`, `@tradejs/strategy-kit`, `create-tradejs`, and
@@ -71,7 +69,6 @@ package scopes and terms.
 - `packages/node`: Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/strategies`: built-in strategy plugin package
 - `packages/strategy-kit`: strategy-neutral authoring helpers
-- `packages/strategy-trendline-kit`: shared TrendLine-family payload helpers
 - `packages/indicators`: built-in indicators package
 - `packages/base`: default preset that wires built-in strategies/indicators/connectors
 - `packages/connectors`: exchange connectors and market data providers

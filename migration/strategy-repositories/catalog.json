@@ -1,7 +1,17 @@
 {
-  "schema": "tradejs-strategy-repositories/v1",
+  "schema": "tradejs-strategy-repositories/v2",
   "packageScope": "@tradejs",
   "pluginExport": "strategyEntries",
+  "groupPolicy": "single-explicit-exception",
+  "repositoryGroups": [
+    {
+      "id": "trendline-family",
+      "repository": "TradeJS-Strategy-TrendLine",
+      "packageName": "@tradejs/strategy-trend-line",
+      "strategies": ["ReverseTrendLine", "TrendLine"],
+      "rationale": "Both strategies share the same trendline mechanics and must version family behavior atomically."
+    }
+  ],
   "strategies": [
     {
       "name": "AdaptiveMomentumRibbon",
@@ -104,8 +114,9 @@
     {
       "name": "ReverseTrendLine",
       "sourcePath": "packages/strategies/src/ReverseTrendLine",
-      "repository": "TradeJS-Strategy-ReverseTrendLine",
-      "packageName": "@tradejs/strategy-reverse-trend-line",
+      "repository": "TradeJS-Strategy-TrendLine",
+      "packageName": "@tradejs/strategy-trend-line",
+      "repositoryGroup": "trendline-family",
       "visibility": "public"
     },
     {
@@ -127,6 +138,7 @@
       "sourcePath": "packages/strategies/src/TrendLine",
       "repository": "TradeJS-Strategy-TrendLine",
       "packageName": "@tradejs/strategy-trend-line",
+      "repositoryGroup": "trendline-family",
       "visibility": "public"
     },
     {

@@ -60,7 +60,7 @@ const githubEnvironmentInventory = readJson(
 );
 
 assert(
-  catalog.schema === 'tradejs-strategy-repositories/v1',
+  catalog.schema === 'tradejs-strategy-repositories/v2',
   'Unsupported strategy catalog schema',
 );
 assert(catalog.strategies.length > 0, 'Strategy catalog must not be empty');
@@ -68,14 +68,73 @@ assert(catalog.strategies.length > 0, 'Strategy catalog must not be empty');
 const strategyNames = catalog.strategies.map((strategy) => strategy.name);
 const repositories = catalog.strategies.map((strategy) => strategy.repository);
 const packageNames = catalog.strategies.map((strategy) => strategy.packageName);
+const repositoryGroups = catalog.repositoryGroups ?? [];
+const repositoryGroupIds = repositoryGroups.map((group) => group.id);
 assertUnique('Strategy names', strategyNames);
-assertUnique('Repositories', repositories);
-assertUnique('Package names', packageNames);
+assert(
+  catalog.groupPolicy === 'single-explicit-exception',
+  'Unsupported grouped repository policy',
+);
+assert(
+  repositoryGroups.length === 1,
+  'Exactly one grouped repository exception is allowed',
+);
+assertUnique('Repository group ids', repositoryGroupIds);
+assertUnique(
+  'Repository group repositories',
+  repositoryGroups.map((group) => group.repository),
+);
+assertUnique(
+  'Repository group package names',
+  repositoryGroups.map((group) => group.packageName),
+);
+
+const repositoryGroupsById = new Map(
+  repositoryGroups.map((group) => [group.id, group]),
+);
+const groupedStrategyNames = repositoryGroups.flatMap(
+  (group) => group.strategies,
+);
+assertUnique('Grouped strategy names', groupedStrategyNames);
+
+for (const group of repositoryGroups) {
+  assert(
+    group.strategies.length > 1,
+    `${group.id}: group must not be singular`,
+  );
+  assert(
+    typeof group.rationale === 'string' && group.rationale.trim().length > 0,
+    `${group.id}: grouped exception requires a rationale`,
+  );
+  for (const strategyName of group.strategies) {
+    assert(
+      strategyNames.includes(strategyName),
+      `${group.id}: unknown grouped strategy ${strategyName}`,
+    );
+  }
+  assertSameValues(
+    `${group.id} strategy membership`,
+    group.strategies,
+    catalog.strategies
+      .filter((strategy) => strategy.repositoryGroup === group.id)
+      .map((strategy) => strategy.name),
+  );
+}
 
 for (const strategy of catalog.strategies) {
   const expectedSourcePath = `packages/strategies/src/${strategy.name}`;
-  const expectedRepository = `TradeJS-Strategy-${strategy.name}`;
-  const expectedPackageName = `@tradejs/strategy-${toKebabCase(strategy.name)}`;
+  const repositoryGroup = strategy.repositoryGroup
+    ? repositoryGroupsById.get(strategy.repositoryGroup)
+    : null;
+  assert(
+    !strategy.repositoryGroup || repositoryGroup,
+    `${strategy.name}: unknown repository group ${strategy.repositoryGroup}`,
+  );
+  const expectedRepository =
+    repositoryGroup?.repository ?? `TradeJS-Strategy-${strategy.name}`;
+  const expectedPackageName =
+    repositoryGroup?.packageName ??
+    `@tradejs/strategy-${toKebabCase(strategy.name)}`;
   assert(
     strategy.sourcePath === expectedSourcePath,
     `${strategy.name}: expected sourcePath ${expectedSourcePath}`,
@@ -93,6 +152,20 @@ for (const strategy of catalog.strategies) {
     `${strategy.name}: source directory is missing`,
   );
 }
+
+const repositoryPackagePairs = new Map();
+for (const strategy of catalog.strategies) {
+  const knownPackageName = repositoryPackagePairs.get(strategy.repository);
+  assert(
+    knownPackageName == null || knownPackageName === strategy.packageName,
+    `${strategy.repository}: repository maps to multiple package names`,
+  );
+  repositoryPackagePairs.set(strategy.repository, strategy.packageName);
+}
+assert(
+  repositoryPackagePairs.size === new Set(packageNames).size,
+  'Repository and package units must have a one-to-one mapping',
+);
 
 const strategiesSourceRoot = path.join(
   repositoryRoot,
@@ -180,7 +253,7 @@ const discoveredHelperSourcePaths = [sharedRoot, strategyKitSourceRoot]
       .filter(
         (helper) =>
           helper.state === 'indicator-extracted' ||
-          helper.state === 'family-kit-extracted',
+          helper.state === 'strategy-family-owned',
       )
       .map((helper) => helper.sourcePath),
   );
@@ -196,9 +269,6 @@ const strategyKitManifest = readJson(
   '../../packages/strategy-kit/package.json',
 );
 const indicatorsManifest = readJson('../../packages/indicators/package.json');
-const trendlineKitManifest = readJson(
-  '../../packages/strategy-trendline-kit/package.json',
-);
 
 const strategyFiles = walkFiles(strategiesSourceRoot).filter(
   (filePath) => filePath.endsWith('.ts') && !filePath.startsWith(sharedRoot),
@@ -212,7 +282,7 @@ for (const helper of helperOwnership.helpers) {
     helper.state === 'strategies-shared' ||
       helper.state === 'strategy-kit-extracted' ||
       helper.state === 'indicator-extracted' ||
-      helper.state === 'family-kit-extracted',
+      helper.state === 'strategy-family-owned',
     `${helper.id}: unsupported helper state ${helper.state}`,
   );
   if (helper.state === 'strategy-kit-extracted') {
@@ -239,32 +309,39 @@ for (const helper of helperOwnership.helpers) {
       `${helper.id}: missing @tradejs/indicators/${helper.target.subpath} export`,
     );
   }
-  if (helper.state === 'family-kit-extracted') {
-    assert(
-      helper.target.kind === 'family-package',
-      `${helper.id}: family helper must target a family package`,
+  if (helper.state === 'strategy-family-owned') {
+    const targetGroup = repositoryGroups.find(
+      (group) => group.packageName === helper.target.packageName,
     );
     assert(
-      helper.target.packageName === '@tradejs/strategy-trendline-kit',
-      `${helper.id}: unexpected TrendLine family package owner`,
+      helper.target.kind === 'combined-strategy-package',
+      `${helper.id}: family helper must target a combined strategy package`,
     );
     assert(
-      Object.hasOwn(trendlineKitManifest.exports, '.'),
-      `${helper.id}: missing @tradejs/strategy-trendline-kit root export`,
+      targetGroup,
+      `${helper.id}: combined package is missing from repository groups`,
+    );
+    assert(
+      targetGroup.repository === helper.target.repository,
+      `${helper.id}: combined repository does not match its catalog group`,
     );
   }
-  const importNeedle =
+  const importNeedles =
     helper.state === 'strategy-kit-extracted'
-      ? `@tradejs/strategy-kit/${helper.target.subpath}`
+      ? [`@tradejs/strategy-kit/${helper.target.subpath}`]
       : helper.state === 'indicator-extracted'
-        ? `@tradejs/indicators/${helper.target.subpath}`
-        : helper.state === 'family-kit-extracted'
-          ? helper.target.packageName
-          : `/shared/${helper.id}`;
+        ? [`@tradejs/indicators/${helper.target.subpath}`]
+        : helper.state === 'strategy-family-owned'
+          ? ["from './family'", "from '../family'", 'TrendLine/family']
+          : [`/shared/${helper.id}`];
   const consumers = new Set();
   for (const filePath of strategyFiles) {
     const contents = fs.readFileSync(filePath, 'utf8');
-    if (!contents.includes(importNeedle)) continue;
+    if (
+      !importNeedles.some((importNeedle) => contents.includes(importNeedle))
+    ) {
+      continue;
+    }
     const relativePath = path.relative(strategiesSourceRoot, filePath);
     const strategyName = relativePath.split(path.sep)[0];
     if (strategyNames.includes(strategyName)) consumers.add(strategyName);
@@ -346,11 +423,11 @@ for (const [repositoryName, relativePath] of optionalSiblingRepositories) {
 
 console.log(
   [
-    `Validated ${strategyNames.length} strategy repository mappings`,
+    `Validated ${strategyNames.length} strategy mappings across ${repositoryPackagePairs.size} repository/package units`,
     `${helperIds.length} strategy helper ownership records`,
     `${helperOwnership.helpers.filter((helper) => helper.state === 'strategy-kit-extracted').length} extracted Strategy Kit modules`,
     `${helperOwnership.helpers.filter((helper) => helper.state === 'indicator-extracted').length} extracted indicator modules`,
-    `${helperOwnership.helpers.filter((helper) => helper.state === 'family-kit-extracted').length} extracted family-kit modules`,
+    `${helperOwnership.helpers.filter((helper) => helper.state === 'strategy-family-owned').length} strategy-family-owned modules`,
     `${documentationInventory.currentTradejsFiles.length} TradeJS documentation files`,
     `${inventoriedTradejsCredentials.length} TradeJS workflow credential references`,
     `${validatedSiblingRepositories} sibling repository credential inventories`,

@@ -35,7 +35,6 @@
     "@tradejs/core": "workspace:^",
     "@tradejs/indicators": "workspace:^",
     "@tradejs/strategy-kit": "workspace:^",
-    "@tradejs/strategy-trendline-kit": "workspace:^",
     "@tradejs/types": "workspace:^",
     "technicalindicators": "^3.1.0"
   },

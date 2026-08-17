@@ -12,7 +12,6 @@ export default defineConfig({
     '@tradejs/core',
     '@tradejs/indicators',
     '@tradejs/strategy-kit',
-    '@tradejs/strategy-trendline-kit',
     '@tradejs/types',
     'technicalindicators',
   ],

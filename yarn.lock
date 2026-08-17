@@ -2969,7 +2969,6 @@ __metadata:
     "@tradejs/core": "workspace:^"
     "@tradejs/indicators": "workspace:^"
     "@tradejs/strategy-kit": "workspace:^"
-    "@tradejs/strategy-trendline-kit": "workspace:^"
     "@tradejs/types": "workspace:^"
     technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
@@ -2983,15 +2982,6 @@ __metadata:
   dependencies:
     "@tradejs/core": "workspace:^"
     "@tradejs/types": "workspace:^"
-    tsup: "npm:^8.5.1"
-    typescript: "npm:^5.9"
-  languageName: unknown
-  linkType: soft
-
-"@tradejs/strategy-trendline-kit@workspace:^, @tradejs/strategy-trendline-kit@workspace:packages/strategy-trendline-kit":
-  version: 0.0.0-use.local
-  resolution: "@tradejs/strategy-trendline-kit@workspace:packages/strategy-trendline-kit"
-  dependencies:
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.9"
   languageName: unknown

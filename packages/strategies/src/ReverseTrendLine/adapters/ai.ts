@@ -9,7 +9,7 @@ import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
 } from '../guardrails';
-import { getTrendLineFromPayload } from '@tradejs/strategy-trendline-kit';
+import { getTrendLineFromPayload } from '../../TrendLine/family';
 
 const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
 ReverseTrendLine addon:

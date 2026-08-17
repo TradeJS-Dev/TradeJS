@@ -12,11 +12,7 @@ import {
   getSignalSessionIsOverlap,
   getSignalSessionPrimary,
 } from '@tradejs/strategy-kit/context';
-import {
-  getBias,
-  getSpreadPct,
-  getTrendLineFromPayload,
-} from '@tradejs/strategy-trendline-kit';
+import { getBias, getSpreadPct, getTrendLineFromPayload } from '../family';
 import { buildTrendlineStructuralContext } from '../guardrails';
 
 /**
