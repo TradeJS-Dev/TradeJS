@@ -4,7 +4,7 @@ export type { GridRangeFilterMode } from './config';
 import {
   createCausalRangeGeometryEngine,
   type CausalRangeGeometry,
-} from '../shared/causalRangeGeometry';
+} from '@tradejs/indicators/range-geometry';
 
 export interface GridRangeGeometry {
   ready: boolean;

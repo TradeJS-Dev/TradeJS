@@ -4,7 +4,7 @@ import type { Candle } from '@tradejs/types';
 import {
   createCausalRangeGeometryEngine,
   type CausalRangeGeometryOptions,
-} from '../causalRangeGeometry';
+} from '../range-geometry';
 
 const makeCandle = (index: number, close: number): Candle => ({
   timestamp: 1_700_000_000_000 + index * 900_000,

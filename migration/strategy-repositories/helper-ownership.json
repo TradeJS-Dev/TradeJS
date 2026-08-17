@@ -3,13 +3,13 @@
   "helpers": [
     {
       "id": "causalRangeGeometry",
-      "sourcePath": "packages/strategies/src/shared/causalRangeGeometry.ts",
-      "state": "strategies-shared",
+      "sourcePath": "packages/indicators/src/range-geometry.ts",
+      "state": "indicator-extracted",
       "target": {
-        "kind": "indicator-candidate",
+        "kind": "indicator",
         "packageName": "@tradejs/indicators",
         "subpath": "range-geometry",
-        "decision": "pending-neutrality-review"
+        "decision": "approved-neutral"
       },
       "consumers": ["Grid", "GridClassic"]
     },

@@ -29,6 +29,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./range-geometry": {
+      "types": "./dist/range-geometry.d.ts",
+      "import": "./dist/range-geometry.mjs",
+      "require": "./dist/range-geometry.js"
     }
   },
   "dependencies": {

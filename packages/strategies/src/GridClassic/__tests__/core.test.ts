@@ -7,7 +7,7 @@ import {
   createGridClassicEngine,
   type GridClassicRuntimeState,
 } from '../engine';
-import type { CausalRangeGeometry } from '../../shared/causalRangeGeometry';
+import type { CausalRangeGeometry } from '@tradejs/indicators/range-geometry';
 import { createTestStateController } from '../../testUtils/stateControllerTestUtils';
 
 jest.mock('../engine', () => {

@@ -306,8 +306,9 @@ Default preset:
 - TrendLine and ReverseTrendLine share guardrail logic through `packages/strategies/src/shared/trendlineGuardrails.ts`; change shared trendline guardrail behavior there unless the divergence is intentionally strategy-specific.
 - TrendLine and ReverseTrendLine use the public Strategy Kit number helpers;
   do not move their family-specific guardrails into Strategy Kit.
-- `packages/strategies/src/shared/causalRangeGeometry.ts` remains an indicator
-  candidate pending neutrality review; do not expose it through Strategy Kit.
+- Shared causal range geometry is strategy-neutral and lives behind
+  `@tradejs/indicators/range-geometry`. Keep Grid-specific config translation
+  in the strategy package and detector behavior in the indicator module.
 
 ## External User Reality Check
 

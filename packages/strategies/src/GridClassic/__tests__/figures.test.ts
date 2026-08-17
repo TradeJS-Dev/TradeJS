@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import type { CausalRangeGeometry } from '../../shared/causalRangeGeometry';
+import type { CausalRangeGeometry } from '@tradejs/indicators/range-geometry';
 import { buildGridClassicFigures } from '../figures';
 import { buildGridClassicGridPlan } from '../guardrails';
 

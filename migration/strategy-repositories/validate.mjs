@@ -174,6 +174,11 @@ const discoveredHelperSourcePaths = [sharedRoot, strategyKitSourceRoot]
   )
   .map((filePath) =>
     path.relative(repositoryRoot, filePath).replaceAll(path.sep, '/'),
+  )
+  .concat(
+    helperOwnership.helpers
+      .filter((helper) => helper.state === 'indicator-extracted')
+      .map((helper) => helper.sourcePath),
   );
 const helperIds = helperOwnership.helpers.map((helper) => helper.id);
 assertUnique('Helper ids', helperIds);
@@ -186,6 +191,7 @@ assertSameValues(
 const strategyKitManifest = readJson(
   '../../packages/strategy-kit/package.json',
 );
+const indicatorsManifest = readJson('../../packages/indicators/package.json');
 
 const strategyFiles = walkFiles(strategiesSourceRoot).filter(
   (filePath) => filePath.endsWith('.ts') && !filePath.startsWith(sharedRoot),
@@ -197,7 +203,8 @@ for (const helper of helperOwnership.helpers) {
   );
   assert(
     helper.state === 'strategies-shared' ||
-      helper.state === 'strategy-kit-extracted',
+      helper.state === 'strategy-kit-extracted' ||
+      helper.state === 'indicator-extracted',
     `${helper.id}: unsupported helper state ${helper.state}`,
   );
   if (helper.state === 'strategy-kit-extracted') {
@@ -210,9 +217,25 @@ for (const helper of helperOwnership.helpers) {
       `${helper.id}: missing @tradejs/strategy-kit/${helper.target.subpath} export`,
     );
   }
+  if (helper.state === 'indicator-extracted') {
+    assert(
+      helper.target.packageName === '@tradejs/indicators',
+      `${helper.id}: indicator helper must be owned by @tradejs/indicators`,
+    );
+    assert(
+      helper.target.decision === 'approved-neutral',
+      `${helper.id}: indicator helper neutrality must be approved`,
+    );
+    assert(
+      Object.hasOwn(indicatorsManifest.exports, `./${helper.target.subpath}`),
+      `${helper.id}: missing @tradejs/indicators/${helper.target.subpath} export`,
+    );
+  }
   const importNeedle =
     helper.state === 'strategy-kit-extracted'
       ? `@tradejs/strategy-kit/${helper.target.subpath}`
+      : helper.state === 'indicator-extracted'
+        ? `@tradejs/indicators/${helper.target.subpath}`
       : `/shared/${helper.id}`;
   const consumers = new Set();
   for (const filePath of strategyFiles) {
@@ -302,6 +325,7 @@ console.log(
     `Validated ${strategyNames.length} strategy repository mappings`,
     `${helperIds.length} strategy helper ownership records`,
     `${helperOwnership.helpers.filter((helper) => helper.state === 'strategy-kit-extracted').length} extracted Strategy Kit modules`,
+    `${helperOwnership.helpers.filter((helper) => helper.state === 'indicator-extracted').length} extracted indicator modules`,
     `${documentationInventory.currentTradejsFiles.length} TradeJS documentation files`,
     `${inventoriedTradejsCredentials.length} TradeJS workflow credential references`,
     `${validatedSiblingRepositories} sibling repository credential inventories`,

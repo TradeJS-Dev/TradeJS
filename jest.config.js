@@ -31,6 +31,8 @@ const customJestConfig = {
     '^@tradejs/base$': '<rootDir>/packages/base/src/index',
     '^@tradejs/strategies$': '<rootDir>/packages/strategies/src/index',
     '^@tradejs/strategy-kit/(.*)$': '<rootDir>/packages/strategy-kit/src/$1',
+    '^@tradejs/indicators/range-geometry$':
+      '<rootDir>/packages/indicators/src/range-geometry',
     '^@tradejs/indicators$': '<rootDir>/packages/indicators/src/index',
     '^@tradejs/types$': '<rootDir>/packages/types/src/index',
     '^@tradejs/types/(.*)$': '<rootDir>/packages/types/src/$1',

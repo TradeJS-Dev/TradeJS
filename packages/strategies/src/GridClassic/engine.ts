@@ -6,7 +6,7 @@ import {
   type CausalRangeGeometry,
   type CausalRangeLine,
   type CausalRangeGeometryOptions,
-} from '../shared/causalRangeGeometry';
+} from '@tradejs/indicators/range-geometry';
 
 export type GridClassicEntrySignalStage =
   | 'none'

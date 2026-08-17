@@ -34,6 +34,9 @@
       "@tradejs/strategies": ["./packages/strategies/src/index"],
       "@tradejs/strategy-kit/*": ["./packages/strategy-kit/src/*"],
       "@tradejs/indicators": ["./packages/indicators/src/index"],
+      "@tradejs/indicators/range-geometry": [
+        "./packages/indicators/src/range-geometry"
+      ],
       "@tradejs/types": ["./packages/types/src/index"],
       "@tradejs/types/*": ["./packages/types/src/*"]
     }

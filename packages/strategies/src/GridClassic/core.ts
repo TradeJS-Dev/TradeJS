@@ -4,7 +4,7 @@ import type {
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';
-import type { CausalRangeGeometry } from '../shared/causalRangeGeometry';
+import type { CausalRangeGeometry } from '@tradejs/indicators/range-geometry';
 import type { GridClassicConfig } from './config';
 import {
   buildGridClassicDetectorKey,

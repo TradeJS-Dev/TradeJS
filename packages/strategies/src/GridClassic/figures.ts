@@ -4,7 +4,7 @@ import type {
   StrategyFigureLine,
   StrategyFigurePoints,
 } from '@tradejs/types';
-import type { CausalRangeGeometry } from '../shared/causalRangeGeometry';
+import type { CausalRangeGeometry } from '@tradejs/indicators/range-geometry';
 import type { GridClassicPlannedLevel } from './guardrails';
 
 export interface GridClassicExecutedLevel {
