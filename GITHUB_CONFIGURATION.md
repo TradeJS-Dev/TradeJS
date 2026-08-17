@@ -45,7 +45,19 @@ copy or migrate them.
 | When | Name | Repository | Required scope |
 | --- | --- | --- | --- |
 | A strategy package becomes private | `NPM_READ_TOKEN` | `TradeJS-Project` | Read-only access to the required private npm packages; never reuse `NPM_TOKEN`. |
-| The Project app image becomes private to a different package consumer | `GHCR_PULL_TOKEN` | `TradeJS-Deploy` | Packages read-only. |
+| The Project app image remains private | `GHCR_PULL_TOKEN` | `TradeJS-Deploy` | Packages read-only; add an explicit GHCR login step on the server before enabling dispatch. |
+
+The first `TradeJS-Project` workflow has published
+`ghcr.io/tradejs-dev/tradejs-project-app`, but an anonymous pull is currently
+denied. Before enabling production dispatch, choose one path:
+
+1. In the GitHub package settings, make `tradejs-project-app` public so the
+   current anonymous Compose pull works.
+2. Keep the image private, create a read-only `GHCR_PULL_TOKEN` in
+   `TradeJS-Deploy`, and add authenticated `docker login ghcr.io` handling.
+
+Changing a package to public is an external visibility decision; do not perform
+it as an automatic bootstrap side effect.
 
 ## Environment-variable ownership
 
@@ -83,4 +95,3 @@ Keep deployment-specific values in `TradeJS-Deploy`: production URLs, service
 addresses and ports, container memory limits, server paths, volume locations,
 TLS configuration, and secret injection. Project defaults may be overridden by
 Deploy only when the override is environment-specific and documented.
-
