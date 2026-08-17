@@ -11,8 +11,8 @@ import { buildHyperliquidConsensusFigures } from './figures';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
-  isOpenPosition,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/risk';
+import { isOpenPosition } from '../shared/strategyKit/positions';
 
 export const createHyperliquidConsensusCore: CreateStrategyCore<
   HyperliquidConsensusConfig,

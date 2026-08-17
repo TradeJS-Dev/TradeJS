@@ -9,10 +9,10 @@ import { buildRelativeRotationFigures } from './figures';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
-  isDirectionAligned,
-  isOpenPosition,
-  toFiniteNumberOrNull,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/risk';
+import { isDirectionAligned } from '../shared/strategyKit/context';
+import { isOpenPosition } from '../shared/strategyKit/positions';
+import { toFiniteNumberOrNull } from '../shared/strategyKit/numbers';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import { getRelativeRotationCoreFilterSkipCode } from './filters';
 import type { RelativeRotationSignalContext } from './contracts';

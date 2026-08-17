@@ -9,12 +9,14 @@ import { buildVolatilityCompressionBreakoutFigures } from './figures';
 import {
   buildAtrFallbackStop,
   buildContextRiskOrder,
-  isDirectionAligned,
-  isOpenPosition,
-  isPressureAligned,
   resolveAtrBuffer,
-  toFiniteNumberOrNull,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/risk';
+import {
+  isDirectionAligned,
+  isPressureAligned,
+} from '../shared/strategyKit/context';
+import { isOpenPosition } from '../shared/strategyKit/positions';
+import { toFiniteNumberOrNull } from '../shared/strategyKit/numbers';
 import { resolveDirectionalConfigNumber } from '../shared/directionalConfig';
 import type { VolatilityCompressionBreakoutSignalContext } from './contracts';
 export type { VolatilityCompressionBreakoutSignalContext } from './contracts';

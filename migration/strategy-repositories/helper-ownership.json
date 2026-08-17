@@ -1,0 +1,211 @@
+{
+  "schema": "tradejs-strategy-helper-ownership/v1",
+  "helpers": [
+    {
+      "id": "baseContext",
+      "sourcePath": "packages/strategies/src/shared/baseContext.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "context"
+      },
+      "consumers": [
+        "AdaptiveMomentumRibbon",
+        "MaStrategy",
+        "MarketFlushReversal",
+        "ReverseTrendLine",
+        "TrendLine",
+        "TrendShift",
+        "VolumeDivergence"
+      ]
+    },
+    {
+      "id": "causalRangeGeometry",
+      "sourcePath": "packages/strategies/src/shared/causalRangeGeometry.ts",
+      "target": {
+        "kind": "indicator-candidate",
+        "packageName": "@tradejs/indicators",
+        "subpath": "range-geometry",
+        "decision": "pending-neutrality-review"
+      },
+      "consumers": ["Grid", "GridClassic"]
+    },
+    {
+      "id": "strategyKit/context",
+      "sourcePath": "packages/strategies/src/shared/strategyKit/context.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "context"
+      },
+      "consumers": [
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "VolatilityCompressionBreakout"
+      ]
+    },
+    {
+      "id": "strategyKit/figures",
+      "sourcePath": "packages/strategies/src/shared/strategyKit/figures.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "figures"
+      },
+      "consumers": [
+        "AdaptiveMomentumRibbon",
+        "Breakout",
+        "HyperliquidConsensus",
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "VolatilityCompressionBreakout",
+        "VolumeDivergence"
+      ]
+    },
+    {
+      "id": "strategyKit/numbers",
+      "sourcePath": "packages/strategies/src/shared/strategyKit/numbers.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "context"
+      },
+      "consumers": [
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "VolatilityCompressionBreakout"
+      ]
+    },
+    {
+      "id": "strategyKit/positions",
+      "sourcePath": "packages/strategies/src/shared/strategyKit/positions.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "positions"
+      },
+      "consumers": [
+        "HyperliquidConsensus",
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "VolatilityCompressionBreakout"
+      ]
+    },
+    {
+      "id": "strategyKit/risk",
+      "sourcePath": "packages/strategies/src/shared/strategyKit/risk.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "risk"
+      },
+      "consumers": [
+        "HyperliquidConsensus",
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "VolatilityCompressionBreakout"
+      ]
+    },
+    {
+      "id": "directionalConfig",
+      "sourcePath": "packages/strategies/src/shared/directionalConfig.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "config"
+      },
+      "consumers": [
+        "AdaptiveMomentumRibbon",
+        "AdaptiveTrendChannel",
+        "Breakout",
+        "DoubleTap",
+        "Grid",
+        "HeadAndShoulders",
+        "LiquidityTails",
+        "LiquidityZones",
+        "MaStrategy",
+        "MarketFlushReversal",
+        "RelativeRotation",
+        "ReverseTrendLine",
+        "StructureZones",
+        "TrendFollow",
+        "TrendLine",
+        "TrendShift",
+        "VolatilityCompressionBreakout",
+        "VolumeDivergence"
+      ]
+    },
+    {
+      "id": "localAiGate",
+      "sourcePath": "packages/strategies/src/shared/localAiGate.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "ai-gate"
+      },
+      "consumers": [
+        "AdaptiveMomentumRibbon",
+        "DoubleTap",
+        "HeadAndShoulders",
+        "LiquidityTails",
+        "LiquidityZones",
+        "RelativeRotation",
+        "StructureZones",
+        "TrendFollow",
+        "VolatilityCompressionBreakout"
+      ]
+    },
+    {
+      "id": "recentCandles",
+      "sourcePath": "packages/strategies/src/shared/recentCandles.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "state"
+      },
+      "consumers": ["ReverseTrendLine", "TrendLine"]
+    },
+    {
+      "id": "risk",
+      "sourcePath": "packages/strategies/src/shared/risk.ts",
+      "target": {
+        "kind": "merge-required",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "risk",
+        "mergeWith": "structureRisk"
+      },
+      "consumers": ["ReverseTrendLine", "TrendLine"]
+    },
+    {
+      "id": "structureRisk",
+      "sourcePath": "packages/strategies/src/shared/structureRisk.ts",
+      "target": {
+        "kind": "strategy-kit",
+        "packageName": "@tradejs/strategy-kit",
+        "subpath": "risk"
+      },
+      "consumers": [
+        "AdaptiveMomentumRibbon",
+        "AdaptiveTrendChannel",
+        "CupAndHandle",
+        "DoubleTap",
+        "Grid",
+        "HeadAndShoulders",
+        "LiquidityTails",
+        "LiquidityZones",
+        "TrendFollow",
+        "TrendShift",
+        "VolumeDivergence"
+      ]
+    },
+    {
+      "id": "trendlineGuardrails",
+      "sourcePath": "packages/strategies/src/shared/trendlineGuardrails.ts",
+      "target": {
+        "kind": "family-package",
+        "packageName": "@tradejs/strategy-trendline-kit"
+      },
+      "consumers": ["ReverseTrendLine", "TrendLine"]
+    }
+  ]
+}

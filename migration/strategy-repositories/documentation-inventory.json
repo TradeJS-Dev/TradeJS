@@ -1,0 +1,66 @@
+{
+  "schema": "tradejs-documentation-migration/v1",
+  "currentTradejsFiles": [
+    "AGENTS.md",
+    "QUICKSTART.md",
+    "README.md",
+    "STRATEGY_API.md",
+    "apps/app/README.md",
+    "examples/sandbox/README.md",
+    "packages/base/README.md",
+    "packages/cli/README.md",
+    "packages/connectors/README.md",
+    "packages/core/README.md",
+    "packages/create-tradejs/README.md",
+    "packages/indicators/README.md",
+    "packages/infra/README.md",
+    "packages/ml/README.md",
+    "packages/node/README.md",
+    "packages/strategies/README.md",
+    "packages/types/README.md"
+  ],
+  "targetRepositoryRequirements": [
+    {
+      "repositoryPattern": "TradeJS-Strategy-*",
+      "requiredFiles": ["README.md", "AGENTS.md"]
+    },
+    {
+      "repository": "TradeJS-Strategy-Kit",
+      "requiredFiles": ["README.md", "AGENTS.md"]
+    },
+    {
+      "repository": "TradeJS-Base",
+      "requiredFiles": ["README.md", "AGENTS.md"]
+    },
+    {
+      "repository": "TradeJS-Project",
+      "requiredFiles": ["README.md", "AGENTS.md", ".env.example"]
+    },
+    {
+      "repository": "TradeJS-Deploy",
+      "requiredFiles": ["README.md", "AGENTS.md", ".env.example"]
+    },
+    {
+      "repository": "TradeJS-Strategy-Template",
+      "requiredFiles": ["README.md", "AGENTS.md"]
+    },
+    {
+      "repository": "TradeJS-Workflows",
+      "requiredFiles": ["README.md", "AGENTS.md"]
+    }
+  ],
+  "publicKnowledgeBase": {
+    "repository": "TradeJS-Docs",
+    "aiDiscoveryFiles": ["static/llms.txt", "static/llms-full.txt"]
+  },
+  "publicSite": {
+    "repository": "TradeJS-Site",
+    "aiDiscoveryFiles": ["public/llms.txt", "public/llms-full.txt"]
+  },
+  "staleReferencePatterns": [
+    "@tradejs/strategies",
+    "packages/strategies",
+    "getBuiltInStrategyDefaultConfig",
+    "AGENT_GITHUB_REPOSITORY=TradeJS-Dev/TradeJS"
+  ]
+}

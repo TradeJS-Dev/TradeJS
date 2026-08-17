@@ -12,7 +12,7 @@ import {
 import {
   buildEntryEvidenceAnnotation,
   formatFigureMetric,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/figures';
 
 interface BuildAdaptiveMomentumRibbonFiguresParams {
   plotSeries: Partial<

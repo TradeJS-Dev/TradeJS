@@ -1,0 +1,37 @@
+{
+  "schema": "tradejs-strategy-characterization/v1",
+  "baselineGitCommit": "0fc6932396c27d393898df66849d6a30a2d9d435",
+  "scope": "all-catalog-strategies",
+  "status": "pending",
+  "requiredEvidence": [
+    {
+      "id": "unit",
+      "description": "Existing strategy unit tests pass without behavior changes."
+    },
+    {
+      "id": "plugin-contract",
+      "description": "Manifest name, defaults, exported strategyEntries, and runtime adapter shape remain equivalent."
+    },
+    {
+      "id": "replay-state",
+      "description": "Continuous execution matches initial history plus next-candle restoration, including pending confirmation."
+    },
+    {
+      "id": "same-timestamp-idempotence",
+      "description": "Repeated evaluation of the same closed candle does not advance detector state twice."
+    },
+    {
+      "id": "backtest",
+      "description": "Trade identities, directions, timestamps, figures, and economics match the frozen baseline."
+    },
+    {
+      "id": "ai-gate",
+      "description": "Local AI gate decisions, quality, and rejection reasons match the frozen baseline."
+    },
+    {
+      "id": "build-isolation",
+      "description": "The strategy builds without source access to another strategy directory."
+    }
+  ],
+  "completedStrategies": []
+}

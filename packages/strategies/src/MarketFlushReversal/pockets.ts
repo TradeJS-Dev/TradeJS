@@ -1,5 +1,5 @@
 import type { BaseStrategyContextSnapshot, Direction } from '@tradejs/types';
-import { toFiniteNumberOrNull } from '../shared/contextStrategy';
+import { toFiniteNumberOrNull } from '../shared/strategyKit/numbers';
 
 export type MarketFlushReversalLongReboundPocketFeatures = {
   targetVsBtcRatioReturn24h: number | null;

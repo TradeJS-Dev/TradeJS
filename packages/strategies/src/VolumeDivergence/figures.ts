@@ -2,7 +2,7 @@ import type { Candle, StrategyEntryModelFigures } from '@tradejs/types';
 import {
   buildEntryEvidenceAnnotation,
   formatFigureMetric,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/figures';
 
 type BuildVolumeDivergenceFiguresParams = {
   kind: 'bullish' | 'bearish';

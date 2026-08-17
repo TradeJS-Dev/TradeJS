@@ -6,7 +6,7 @@ import type {
 import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/figures';
 
 type BreakoutSignalRule = {
   weight: number;

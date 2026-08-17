@@ -4,7 +4,7 @@ import {
   buildEntryEvidenceAnnotation,
   buildEntryStopTargetFigures,
   formatFigureMetric,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/figures';
 
 export const buildRelativeRotationFigures = ({
   direction,

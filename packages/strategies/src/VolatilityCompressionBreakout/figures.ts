@@ -9,7 +9,7 @@ import {
   buildEntryStopTargetFigures,
   formatFigureMetric,
   formatFigureRatioAsPercent,
-} from '../shared/contextStrategy';
+} from '../shared/strategyKit/figures';
 
 export const buildVolatilityCompressionBreakoutFigures = ({
   direction,
