@@ -81,7 +81,8 @@ surfaces are maintained in separate repositories:
 - `TradeJS-Base` for `@tradejs/base`
 - `TradeJS-Strategy-Kit` for `@tradejs/strategy-kit`
 - `TradeJS-Strategy-*` for individual strategy packages
-- `TradeJS-Project` for the generated user-owned runtime and app image
+- `TradeJS-Project` for the generated user-owned runtime, local Compose,
+  ignored research artifacts/notes, and app image
 - `TradeJS-Deploy` for production Compose, TLS, volumes, and server lifecycle
 - `TradeJS-Site` for `tradejs.dev`
 - `TradeJS-Docs` for `docs.tradejs.dev`
@@ -156,6 +157,18 @@ Treat strategy implementation, raw-core research, AI-gate research, and live
 deployment as four separate stages. A profitable gate cannot repair an invalid
 or non-causal core experiment, and a promising backtest is not permission to
 place orders.
+
+Personal operational commands run from `TradeJS-Project`. In research tooling,
+`PROJECT_CWD` identifies that project/artifact root, while
+`TRADEJS_SOURCE_REPOSITORY_ROOT` identifies the source repository used for Git
+lineage and unreleased framework builds. They intentionally may differ:
+
+```bash
+cd ~/dev/tradejs/tradejs-project
+PROJECT_CWD="$PWD" \
+TRADEJS_SOURCE_REPOSITORY_ROOT=~/dev/tradejs/investing \
+yarn research:core --help
+```
 
 ### 1. Implement A Replay-Safe Strategy
 
@@ -235,8 +248,8 @@ yarn node -r dotenv/config \
 
 The full spec, artifact, statistical, performance, and verification contract is
 in [CORE_RESEARCH.md](CORE_RESEARCH.md). Immutable local findings belong in
-`notes/<Strategy>/YYYY-MM-DD-<slug>.md`; `notes/` is intentionally ignored and
-must never be committed.
+`TradeJS-Project` at `notes/<Strategy>/YYYY-MM-DD-<slug>.md`; `notes/` is
+intentionally ignored and must never be committed.
 
 ### 3. Research The AI Gate Separately
 

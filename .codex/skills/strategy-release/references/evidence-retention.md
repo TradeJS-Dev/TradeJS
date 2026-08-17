@@ -12,7 +12,7 @@ decision to an older result record.
 Store internal research under the existing repository note contract:
 
 ```text
-notes/<Strategy>/YYYY-MM-DD-<release-or-diagnose-slug>.md
+$PROJECT_CWD/notes/<Strategy>/YYYY-MM-DD-<release-or-diagnose-slug>.md
 ```
 
 Keep `notes/` ignored and never stage or force-add it. Embed the complete

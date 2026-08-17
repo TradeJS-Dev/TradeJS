@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import type { AiDatasetRow, Direction } from '@tradejs/types';
 import {
   readCoreResearchLedger,
@@ -11,6 +12,7 @@ import {
 } from '../io';
 import {
   analyzeCoreResearch,
+  createCoreResearchSpecTemplate,
   validateCoreResearchRunCommand,
 } from '../orchestrator';
 import { collectReleaseEvidenceReferences } from '../../strategyRelease';
@@ -142,6 +144,69 @@ describe('core research orchestrator', () => {
 
   afterEach(async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
+  });
+
+  it('reads git lineage from the source repository while keeping artifacts project-relative', async () => {
+    const projectRoot = path.join(tempRoot, 'tradejs-project');
+    const sourceRepositoryRoot = path.join(tempRoot, 'strategy-source');
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.mkdir(sourceRepositoryRoot, { recursive: true });
+    execFileSync('git', ['init'], { cwd: sourceRepositoryRoot });
+    execFileSync('git', ['config', 'user.name', 'TradeJS Test'], {
+      cwd: sourceRepositoryRoot,
+    });
+    execFileSync('git', ['config', 'user.email', 'test@tradejs.dev'], {
+      cwd: sourceRepositoryRoot,
+    });
+    await fs.writeFile(
+      path.join(sourceRepositoryRoot, 'source.ts'),
+      'export {}',
+    );
+    execFileSync('git', ['add', 'source.ts'], { cwd: sourceRepositoryRoot });
+    execFileSync('git', ['commit', '-m', 'fixture'], {
+      cwd: sourceRepositoryRoot,
+    });
+    execFileSync(
+      'git',
+      [
+        'remote',
+        'add',
+        'origin',
+        'git@github.com:TradeJS-Dev/TradeJS-Strategy-Fixture.git',
+      ],
+      { cwd: sourceRepositoryRoot },
+    );
+
+    const spec = createCoreResearchSpecTemplate({
+      researchId: 'fixture-roots',
+      strategy: 'FixtureStrategy',
+      symbols: ['AAAUSDT'],
+      start: START,
+      end: END,
+      outputPath: path.join(
+        projectRoot,
+        'data',
+        'research',
+        'core',
+        'fixture-roots',
+        'spec.json',
+      ),
+      projectRoot,
+      sourceRepositoryRoot,
+    });
+
+    expect(spec.artifacts).toEqual({
+      rootDir: 'data/research/core',
+      ledgerPath: 'data/research/core/trials.jsonl',
+    });
+    expect(spec.lineage).toMatchObject({
+      gitSha: execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: sourceRepositoryRoot,
+        encoding: 'utf8',
+      }).trim(),
+      sourceRepository:
+        'git@github.com:TradeJS-Dev/TradeJS-Strategy-Fixture.git',
+    });
   });
 
   it('builds immutable ALL/LONG/SHORT, matching, regime, robustness, report, and ledger artifacts', async () => {

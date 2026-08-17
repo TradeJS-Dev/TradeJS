@@ -235,17 +235,26 @@ const findProjectRootFrom = (startPath) => {
   }
 };
 
-export const findProjectRoot = () => {
+export const findSourceRepositoryRoot = () => {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const explicitSourceRoot = String(
+    process.env.TRADEJS_SOURCE_REPOSITORY_ROOT || '',
+  ).trim();
   const root =
-    findProjectRootFrom(process.cwd()) ?? findProjectRootFrom(scriptDirectory);
+    (explicitSourceRoot
+      ? findProjectRootFrom(explicitSourceRoot)
+      : findProjectRootFrom(process.cwd())) ??
+    findProjectRootFrom(scriptDirectory);
   if (!root) {
     throw new Error(
-      'TradeJS project root was not found. Run from the repository.',
+      'TradeJS source repository root was not found. Set TRADEJS_SOURCE_REPOSITORY_ROOT or run from the repository.',
     );
   }
   return root;
 };
+
+export const resolveArtifactProjectRoot = () =>
+  path.resolve(String(process.env.PROJECT_CWD || process.cwd()).trim());
 
 const parseDatasetName = (filePath) => {
   const match = path
@@ -326,7 +335,7 @@ export const resolveDatasetFiles = async ({
   strategy,
 }) => {
   if (file) {
-    const explicitPath = path.resolve(process.cwd(), file);
+    const explicitPath = path.resolve(projectRoot, file);
     await fsp.access(explicitPath);
     const parsed = parseDatasetName(explicitPath);
     if (!parsed) return [explicitPath];
@@ -1068,19 +1077,6 @@ const signalFromRow = (row) => ({
   prices: row.payload.signal.prices,
 });
 
-const readDatasetStrategy = async (filePath) => {
-  const reader = readline.createInterface({
-    input: fs.createReadStream(filePath),
-    crlfDelay: Infinity,
-  });
-  for await (const line of reader) {
-    if (!line.trim()) continue;
-    const row = JSON.parse(line);
-    return row.payload?.signal?.strategy ?? row.strategyName ?? null;
-  }
-  return null;
-};
-
 const newestSourceMtime = async (sourcePath) => {
   let stat;
   try {
@@ -1103,32 +1099,26 @@ const newestSourceMtime = async (sourcePath) => {
   return Math.max(0, ...mtimes);
 };
 
-export const ensureRuntimeBuild = async (projectRoot, strategyName) => {
-  const aiModulePath = path.join(projectRoot, 'packages/node/dist/ai.mjs');
+export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
+  const aiModulePath = path.join(
+    sourceRepositoryRoot,
+    'packages/node/dist/ai.mjs',
+  );
   const registryModulePath = path.join(
-    projectRoot,
+    sourceRepositoryRoot,
     'packages/node/dist/registry.mjs',
   );
   const pocketModulePath = path.join(
-    projectRoot,
+    sourceRepositoryRoot,
     'packages/cli/dist/lib/aiPocketSearch.js',
   );
-  const strategiesModulePath = path.join(
-    projectRoot,
-    'packages/strategies/dist/index.mjs',
-  );
-  const required = [
-    aiModulePath,
-    registryModulePath,
-    pocketModulePath,
-    strategiesModulePath,
-  ];
+  const required = [aiModulePath, registryModulePath, pocketModulePath];
   for (const filePath of required) {
     try {
       await fsp.access(filePath);
     } catch {
       throw new Error(
-        `Missing ${path.relative(projectRoot, filePath)}. Run yarn build first.`,
+        `Missing ${path.relative(sourceRepositoryRoot, filePath)}. Run yarn build first.`,
       );
     }
   }
@@ -1137,35 +1127,31 @@ export const ensureRuntimeBuild = async (projectRoot, strategyName) => {
     {
       output: aiModulePath,
       sources: [
-        path.join(projectRoot, 'packages/node/src/ai.ts'),
-        path.join(projectRoot, 'packages/node/src/aiMarketContext.ts'),
-        path.join(projectRoot, 'packages/node/src/aiShared.ts'),
-        path.join(projectRoot, 'packages/node/src/strategyAdapters'),
+        path.join(sourceRepositoryRoot, 'packages/node/src/ai.ts'),
+        path.join(sourceRepositoryRoot, 'packages/node/src/aiMarketContext.ts'),
+        path.join(sourceRepositoryRoot, 'packages/node/src/aiShared.ts'),
+        path.join(sourceRepositoryRoot, 'packages/node/src/strategyAdapters'),
       ],
       command: 'yarn workspace @tradejs/node build',
     },
     {
       output: registryModulePath,
-      sources: [path.join(projectRoot, 'packages/node/src/strategy')],
+      sources: [
+        path.join(sourceRepositoryRoot, 'packages/node/src/strategy'),
+      ],
       command: 'yarn workspace @tradejs/node build',
     },
     {
       output: pocketModulePath,
       sources: [
-        path.join(projectRoot, 'packages/cli/src/lib/aiPocketSearch.ts'),
+        path.join(
+          sourceRepositoryRoot,
+          'packages/cli/src/lib/aiPocketSearch.ts',
+        ),
       ],
       command: 'yarn workspace @tradejs/cli build',
     },
   ];
-  if (strategyName) {
-    freshnessChecks.push({
-      output: strategiesModulePath,
-      sources: [
-        path.join(projectRoot, 'packages/strategies/src', strategyName),
-      ],
-      command: 'yarn workspace @tradejs/strategies build',
-    });
-  }
   for (const check of freshnessChecks) {
     const [outputStat, ...sourceMtimes] = await Promise.all([
       fsp.stat(check.output),
@@ -1173,7 +1159,7 @@ export const ensureRuntimeBuild = async (projectRoot, strategyName) => {
     ]);
     if (Math.max(0, ...sourceMtimes) > outputStat.mtimeMs) {
       throw new Error(
-        `Stale ${path.relative(projectRoot, check.output)} for current sources. Run ${check.command}.`,
+        `Stale ${path.relative(sourceRepositoryRoot, check.output)} for current sources. Run ${check.command}.`,
       );
     }
   }
@@ -1182,15 +1168,15 @@ export const ensureRuntimeBuild = async (projectRoot, strategyName) => {
 
 const loadResearchRows = async ({
   projectRoot,
+  sourceRepositoryRoot = projectRoot,
   filePaths,
   variants,
   minQuality,
   includeGateContext,
   featurePattern,
 }) => {
-  const strategyName = await readDatasetStrategy(filePaths[0]);
   const { aiModulePath, registryModulePath, pocketModulePath } =
-    await ensureRuntimeBuild(projectRoot, strategyName);
+    await ensureRuntimeBuild(sourceRepositoryRoot);
   const aiModule = await import(pathToFileURL(aiModulePath).href);
   const registryModule = await import(pathToFileURL(registryModulePath).href);
   const require = createRequire(import.meta.url);
@@ -3210,6 +3196,7 @@ const hasValidationSign = (pocket, expectedSign, minValidationSupport) => {
 
 export const buildCrossStrategyReport = async ({
   projectRoot,
+  sourceRepositoryRoot = projectRoot,
   groups,
   validationSplit,
   testSplit,
@@ -3236,7 +3223,7 @@ export const buildCrossStrategyReport = async ({
   }
   const require = createRequire(import.meta.url);
   const pocketModulePath = path.join(
-    projectRoot,
+    sourceRepositoryRoot,
     'packages/cli/dist/lib/aiPocketSearch.js',
   );
   await fsp.access(pocketModulePath);
@@ -4773,7 +4760,8 @@ export const main = async () => {
     console.log(usage);
     return;
   }
-  const projectRoot = findProjectRoot();
+  const sourceRepositoryRoot = findSourceRepositoryRoot();
+  const projectRoot = resolveArtifactProjectRoot();
   const outDir = path.resolve(projectRoot, options.outDir);
   if (options.list) {
     const groups = await listDatasetGroups(outDir);
@@ -4795,6 +4783,7 @@ export const main = async () => {
     );
     const report = await buildCrossStrategyReport({
       projectRoot,
+      sourceRepositoryRoot,
       groups,
       validationSplit: options.validationSplit,
       testSplit: options.testSplit,
@@ -4816,7 +4805,7 @@ export const main = async () => {
       ? `${JSON.stringify(report, null, 2)}\n`
       : markdown;
     if (options.output) {
-      const outputPath = path.resolve(process.cwd(), options.output);
+      const outputPath = path.resolve(projectRoot, options.output);
       await fsp.mkdir(path.dirname(outputPath), { recursive: true });
       await fsp.writeFile(
         outputPath,
@@ -4859,6 +4848,7 @@ export const main = async () => {
   }
   const loaded = await loadResearchRows({
     projectRoot,
+    sourceRepositoryRoot,
     filePaths,
     variants: options.movingAverageStudy ? [] : variants,
     minQuality: options.minQuality,
@@ -4908,7 +4898,7 @@ export const main = async () => {
     ? `${JSON.stringify(report, null, 2)}\n`
     : markdown;
   if (options.output) {
-    const outputPath = path.resolve(process.cwd(), options.output);
+    const outputPath = path.resolve(projectRoot, options.output);
     await fsp.mkdir(path.dirname(outputPath), { recursive: true });
     await fsp.writeFile(
       outputPath,

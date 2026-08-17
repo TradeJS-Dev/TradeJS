@@ -28,6 +28,7 @@ import {
   parseRuleExpression,
   parseVariant,
   partitionCrossStrategyFeatures,
+  resolveArtifactProjectRoot,
   splitRowsByTimestamp,
   summarizeRows,
   summarizeMovingAverageRedundancy,
@@ -40,7 +41,6 @@ test('requires the public registry runtime module for plugin loading', async () 
   const requiredFiles = [
     'packages/node/dist/ai.mjs',
     'packages/cli/dist/lib/aiPocketSearch.js',
-    'packages/strategies/dist/index.mjs',
   ];
 
   for (const relativePath of requiredFiles) {
@@ -61,6 +61,17 @@ test('requires the public registry runtime module for plugin loading', async () 
   await fsp.writeFile(registryModulePath, '', 'utf8');
   const resolved = await ensureRuntimeBuild(projectRoot, null);
   assert.equal(resolved.registryModulePath, registryModulePath);
+});
+
+test('resolves datasets and reports from PROJECT_CWD independently of source cwd', () => {
+  const previousProjectCwd = process.env.PROJECT_CWD;
+  process.env.PROJECT_CWD = '/workspace/tradejs-project';
+  assert.equal(
+    resolveArtifactProjectRoot(),
+    path.resolve('/workspace/tradejs-project'),
+  );
+  if (previousProjectCwd == null) delete process.env.PROJECT_CWD;
+  else process.env.PROJECT_CWD = previousProjectCwd;
 });
 
 test('parses repeated variants and research windows', () => {

@@ -5,6 +5,11 @@ description: Run strategy-neutral TradeJS AI-gate research with `yarn ai-train -
 
 # AI Train Local Research
 
+Run these commands with `PROJECT_CWD` pointing to `TradeJS-Project`, which owns
+`data/`, `notes/`, `.env`, and `tradejs.config.ts`. Set
+`TRADEJS_SOURCE_REPOSITORY_ROOT` to the source repository whose current build
+and Git lineage are under study. Never infer one root from the other.
+
 Use this skill when the user asks to:
 
 - run `ai-train` for a strategy
@@ -17,7 +22,7 @@ Use this skill when the user asks to:
 - compare current results with previous TrendLine / ReverseTrendLine style investigations
 - break down false positives / false negatives
 - save each conclusion in a new
-  `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md` research record
+  `$PROJECT_CWD/notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md` research record
 - tune approval cadence toward roughly 2-3 approved trades per day when possible, with ~1 approved trade per day as the practical lower bound for narrow high-quality pockets; if a gate approves more, look for filters that lower approvals and raise winrate
 
 ## Reusable Research Tooling

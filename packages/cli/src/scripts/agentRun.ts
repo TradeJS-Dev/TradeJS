@@ -23,6 +23,10 @@ import {
   RESEARCH_AGENT_REASONING_EFFORT,
   ResearchAgentRunRecord,
 } from '../lib/researchAgent';
+import {
+  resolveResearchRoots,
+  SOURCE_REPOSITORY_ROOT_ENV,
+} from '../lib/researchRoots';
 
 args.example(
   'yarn cli:node8g agent-run --runId 1710000000000-trendline --strategy TrendLine',
@@ -71,8 +75,7 @@ type ResearchRunRecord = {
 
 type ValidationKey = 'checks';
 
-const projectRoot =
-  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+const { projectRoot } = resolveResearchRoots();
 
 const AGENT_SYSTEM_PROMPT = `You are a senior TypeScript trading research coding agent working inside a standalone TradeJS strategy repository.
 
@@ -401,7 +404,8 @@ const runValidationSuite = async (
     const result = await runCommand(command[0], command.slice(1), {
       cwd: worktreePath,
       env: {
-        PROJECT_CWD: worktreePath,
+        PROJECT_CWD: projectRoot,
+        [SOURCE_REPOSITORY_ROOT_ENV]: worktreePath,
         DOTENV_CONFIG_PATH: process.env.DOTENV_CONFIG_PATH,
       },
     });
@@ -623,9 +627,14 @@ const createStrategyCheckout = async (strategy: string, branchName: string) => {
     process.env.AGENT_GITHUB_ORGANIZATION?.trim() || 'TradeJS-Dev';
   const repository = getResearchAgentRepository(strategy, organization);
   const baseBranch = process.env.AGENT_GITHUB_BASE_BRANCH?.trim() || 'main';
-  const checkoutRoot = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'tradejs-strategy-agent-'),
+  const checkoutBase = path.join(
+    projectRoot,
+    'data',
+    'cache',
+    'research-agent-checkouts',
   );
+  await fs.mkdir(checkoutBase, { recursive: true });
+  const checkoutRoot = await fs.mkdtemp(path.join(checkoutBase, 'strategy-'));
   const checkoutPath = path.join(checkoutRoot, 'repository');
 
   await runCommandOrThrow(

@@ -477,9 +477,9 @@ describe('research:auto helpers', () => {
       stderr: 'warn 1\n',
     });
     expect(mockSpawn).toHaveBeenCalledWith(
-      'bash',
+      process.execPath,
       [
-        './bin/run-cli-runtime.sh',
+        path.resolve(process.argv[1]),
         'backtest',
         '--config',
         'TrendLine:research',
@@ -528,9 +528,9 @@ describe('research:auto helpers', () => {
       exitCode: 0,
     });
     expect(mockSpawn).toHaveBeenCalledWith(
-      'bash',
+      process.execPath,
       [
-        './bin/run-cli-runtime.sh',
+        path.resolve(process.argv[1]),
         'backtest',
         '--config',
         'TrendLine:research',

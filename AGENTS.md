@@ -2,7 +2,7 @@
 
 ## Scope
 
-These repository rules apply to `/Users/aleksnick/dev/investing`.
+These repository rules apply to `/Users/aleksnick/dev/tradejs/investing`.
 
 ## Purpose
 
@@ -44,7 +44,8 @@ Public package and operations repos also live outside this monorepo:
 - `TradeJS-Strategy-Kit` — `@tradejs/strategy-kit`
 - `TradeJS-Strategy-*` — one repository/package per strategy, except the
   combined TrendLine/ReverseTrendLine family
-- `TradeJS-Project` — generated personal composition, runtime config, and app image
+- `TradeJS-Project` — generated personal composition, runtime config, local
+  Compose, research artifacts/notes, and app image
 - `TradeJS-Deploy` — production Compose, TLS, volumes, and server lifecycle
 - `TradeJS-Workflows` — reusable CI and publication workflows
 - `TradeJS-Strategy-Template` — template for new strategy repositories
@@ -54,17 +55,17 @@ and credential-routing maps.
 
 Local checkouts for those repos in this environment:
 
-- `TradeJS`: `~/dev/investing`
-- `TradeJS-Site`: `~/dev/tradejs-site`
-- `TradeJS-Docs`: `~/dev/tradejs-docs`
-- `TradeJS-Base`: `~/dev/tradejs-base`
-- `TradeJS-Project`: `~/dev/tradejs-project`
-- `TradeJS-Deploy`: `~/dev/tradejs-deploy`
-- `TradeJS-Strategy-Kit`: `~/dev/tradejs-strategy-kit`
+- `TradeJS`: `~/dev/tradejs/investing`
+- `TradeJS-Site`: `~/dev/tradejs/tradejs-site`
+- `TradeJS-Docs`: `~/dev/tradejs/tradejs-docs`
+- `TradeJS-Base`: `~/dev/tradejs/tradejs-base`
+- `TradeJS-Project`: `~/dev/tradejs/tradejs-project`
+- `TradeJS-Deploy`: `~/dev/tradejs/tradejs-deploy`
+- `TradeJS-Strategy-Kit`: `~/dev/tradejs/tradejs-strategy-kit`
 
 Local clone policy for `TradeJS-Dev` repositories:
 
-- keep local clones under `~/dev/...`
+- keep local clones under `~/dev/tradejs/...`
 - do not clone or stage working copies under `/tmp`
 
 ## Audience Rules For Documentation
@@ -74,7 +75,7 @@ This rule is important and should be treated as architectural, not editorial.
 - `TradeJS-Docs` is for external package users.
 - package `README.md` files are also for external package users.
 - When a user asks to update public docs articles or site content, search and edit the external repo directly instead of adding surrogate notes in this monorepo.
-- If the user says "docs", "knowledge base", "documentation", or similar user-facing wording without explicitly saying "internal", default to the external `TradeJS-Docs` repo at `~/dev/tradejs-docs`, not to internal markdown, notes, skills, or `AGENTS.md` in this monorepo.
+- If the user says "docs", "knowledge base", "documentation", or similar user-facing wording without explicitly saying "internal", default to the external `TradeJS-Docs` repo at `~/dev/tradejs/tradejs-docs`, not to internal markdown, notes, skills, or `AGENTS.md` in this monorepo.
 - Do not document repo-only flows in `TradeJS-Docs`.
 - Do not tell external users to run monorepo-only commands like `yarn dev`, `yarn workspace @tradejs/app dev`, or similar internal workflows in public docs unless the package flow truly supports them.
 - Internal repository workflows belong in root markdown files:
@@ -87,7 +88,9 @@ If a feature is not publish-ready for external users, document that limitation e
 
 ## Internal Notes
 
-- Everything under `notes/` is local-only and permanently ignored by Git. Never stage, commit, or force-add any file from `notes/`.
+- Internal notes live under `$PROJECT_CWD/notes/` in `TradeJS-Project`, not in
+  this source repository. Everything there is local-only and permanently
+  ignored by Git. Never stage, commit, or force-add a research note.
 - Internal research notes and audit-style markdown files live under strategy/category directories, never directly under `notes/` or in the repo root.
 - Strategy research path: `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`, using the exact strategy name exported by its package.
 - Repository-wide architecture/ML records live under `notes/Shared/`; one comparison spanning several strategies lives under `notes/CrossStrategy/`.
@@ -98,6 +101,18 @@ If a feature is not publish-ready for external users, document that limitation e
 - Migrated historical examples now live under paths such as `notes/TrendLine/`, `notes/Shared/`, and `notes/CrossStrategy/`.
 - Keep root markdown focused on stable repository guidance and runnable internal workflows.
 - Strategy-specific agent workflows may live under `.codex/skills/` when they capture repeatable internal research or tuning procedures.
+
+## Research Roots
+
+- `PROJECT_CWD` is the personal project and artifact root. Resolve `.env`,
+  `tradejs.config.ts`, `data/`, `notes/`, and research output relative to it.
+- `TRADEJS_SOURCE_REPOSITORY_ROOT` is the source repository whose Git SHA,
+  remote, dirty diff, code, and build artifacts provide experiment lineage.
+- The two roots may be the same for a standalone developer checkout, but
+  research tooling must not assume that they are.
+- Run personal backtest, replay, AI, and research commands from
+  `TradeJS-Project`; use this repository as the source root when exercising
+  unreleased framework changes.
 
 ## Architecture Rules
 

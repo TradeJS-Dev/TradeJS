@@ -7,12 +7,12 @@ location, decides where a change belongs.
 
 | Repository | Owns |
 | --- | --- |
-| [TradeJS](https://github.com/TradeJS-Dev/TradeJS) | Framework engine, public runtime packages, UI package, CLI, indicators, connectors, ML implementation, and local research database/artifacts |
+| [TradeJS](https://github.com/TradeJS-Dev/TradeJS) | Framework engine, public runtime packages, UI package, CLI, indicators, connectors, ML implementation, and strategy-neutral research tooling |
 | [TradeJS-Base](https://github.com/TradeJS-Dev/TradeJS-Base) | Non-empty `@tradejs/base` preset and the default public plugin composition |
 | [TradeJS-Strategy-Kit](https://github.com/TradeJS-Dev/TradeJS-Strategy-Kit) | Strategy-neutral `@tradejs/strategy-kit/*` authoring helpers |
 | [TradeJS-Strategy-Template](https://github.com/TradeJS-Dev/TradeJS-Strategy-Template) | Template for new strategy repositories |
 | [TradeJS-Workflows](https://github.com/TradeJS-Dev/TradeJS-Workflows) | Reusable CI and npm publication workflows |
-| [TradeJS-Project](https://github.com/TradeJS-Dev/TradeJS-Project) | Generated personal project, exact package composition, `tradejs.config.ts`, secret-free runtime defaults, app image, and deploy dispatch |
+| [TradeJS-Project](https://github.com/TradeJS-Dev/TradeJS-Project) | Generated personal project, exact package composition, `tradejs.config.ts`, secret-free runtime defaults, local Compose, ignored `data/` and `notes/`, app image, and deploy dispatch |
 | [TradeJS-Deploy](https://github.com/TradeJS-Dev/TradeJS-Deploy) | Production Compose, SSH, TLS, persistent volumes, server secrets, resource limits, and rollout lifecycle |
 | [TradeJS-Docs](https://github.com/TradeJS-Dev/TradeJS-Docs) | Public knowledge base at `docs.tradejs.dev` |
 | [TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site) | Public site at `tradejs.dev` |
@@ -56,7 +56,8 @@ atomically. Do not introduce a separate trendline family kit.
 - Change neutral strategy authoring helpers in `TradeJS-Strategy-Kit`.
 - Change the default strategy list in `TradeJS-Base`.
 - Change a personal strategy selection or runtime default in `TradeJS-Project`.
+- Run personal backtests/replay/AI/research and keep local databases, artifacts,
+  and immutable ignored research notes in `TradeJS-Project`.
 - Change production topology, secrets, volumes, TLS, or server resource policy
   in `TradeJS-Deploy`.
 - Change shared runtime semantics or public framework contracts in `TradeJS`.
-

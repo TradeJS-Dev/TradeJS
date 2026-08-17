@@ -21,8 +21,8 @@ resolved config and structured metrics needed for `reproduction: complete`
 because `data/research` may be cleaned. Never copy a PASS label without target,
 aggregate, and non-target verdicts separately.
 
-Everything under `notes/` is local-only and permanently ignored by Git. Never
-stage, commit, or force-add a research note. The local note is the durable
+Everything under `$PROJECT_CWD/notes/` in `TradeJS-Project` is local-only and
+permanently ignored by Git. Never stage, commit, or force-add a research note. The local note is the durable
 result record relative to export JSONL, Redis entries, backtest cache,
 evaluation dumps, and `data/ai/output` reports, which are disposable inputs.
 Deleting those inputs must not erase the exact configuration, lineage, or
@@ -32,7 +32,7 @@ reported aggregate metrics of a completed study from the local note.
 
 - Strategy-specific research lives at
   `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`. Use the exact strategy
-  directory name from `packages/strategies/src`.
+  name exported by its package for the directory name.
 - Repository-wide architecture and ML records live under `notes/Shared/`.
 - One comparison whose question spans several strategies lives under
   `notes/CrossStrategy/`; do not duplicate it into every strategy directory.

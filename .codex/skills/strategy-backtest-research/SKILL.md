@@ -5,6 +5,11 @@ description: Build, tune, and backtest TradeJS strategies, including StrategyAPI
 
 # Strategy Backtest Research
 
+Run operational research commands from `TradeJS-Project`, with `PROJECT_CWD`
+as the artifact/config root and `TRADEJS_SOURCE_REPOSITORY_ROOT` as the Git and
+build lineage root. Store `data/` and ignored `notes/` only under the project
+root.
+
 Use this skill when working on strategy implementation, figures, or backtest configuration in `packages/strategies/src/<StrategyName>`.
 
 Do not use this skill for general `ai-train --localOnly` gate research. Use `ai-train-local-research` for local deterministic AI gate investigations across strategies.

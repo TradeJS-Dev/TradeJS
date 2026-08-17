@@ -13,6 +13,7 @@ import {
   createCoreResearchSpecTemplate,
   runCoreResearch,
 } from '../lib/coreResearch/orchestrator';
+import { resolveResearchRoots } from '../lib/researchRoots';
 
 type Command = 'init' | 'prepare' | 'analyze' | 'run' | 'verify' | 'index';
 
@@ -34,11 +35,11 @@ const parseTimestamp = (value: string | undefined, name: string) => {
   return numeric;
 };
 
-const readSymbols = async (argv: string[]) => {
+const readSymbols = async (argv: string[], projectRoot: string) => {
   const symbolsFile = valueAfter(argv, '--symbolsFile');
   if (symbolsFile) {
     const parsed = JSON.parse(
-      await fs.readFile(path.resolve(symbolsFile), 'utf8'),
+      await fs.readFile(path.resolve(projectRoot, symbolsFile), 'utf8'),
     ) as unknown;
     if (
       !Array.isArray(parsed) ||
@@ -67,6 +68,8 @@ The run command executes only variants with an explicit command[] in the preregi
 };
 
 export const main = async () => {
+  const roots = resolveResearchRoots();
+  process.chdir(roots.projectRoot);
   const argv = process.argv.slice(2);
   const command = argv[0] as Command | undefined;
   if (
@@ -79,6 +82,7 @@ export const main = async () => {
   }
   if (command === 'index') {
     const rootDir = path.resolve(
+      roots.projectRoot,
       required(valueAfter(argv, '--root'), '--root'),
     );
     const index = await writeCoreResearchStageIndex(rootDir);
@@ -91,15 +95,18 @@ export const main = async () => {
   }
   if (command === 'init') {
     const outputPath = path.resolve(
+      roots.projectRoot,
       required(valueAfter(argv, '--out'), '--out'),
     );
     const spec = createCoreResearchSpecTemplate({
       researchId: required(valueAfter(argv, '--researchId'), '--researchId'),
       strategy: required(valueAfter(argv, '--strategy'), '--strategy'),
-      symbols: await readSymbols(argv),
+      symbols: await readSymbols(argv, roots.projectRoot),
       start: parseTimestamp(valueAfter(argv, '--start'), '--start'),
       end: parseTimestamp(valueAfter(argv, '--end'), '--end'),
       outputPath,
+      projectRoot: roots.projectRoot,
+      sourceRepositoryRoot: roots.sourceRepositoryRoot,
     });
     const { outputPath: _outputPath, ...persisted } = spec;
     await writeJsonAtomic(outputPath, persisted);
@@ -111,7 +118,10 @@ export const main = async () => {
     );
     return;
   }
-  const specPath = required(valueAfter(argv, '--spec'), '--spec');
+  const specPath = path.resolve(
+    roots.projectRoot,
+    required(valueAfter(argv, '--spec'), '--spec'),
+  );
   const loaded = await loadCoreResearchSpec(specPath);
   if (command === 'prepare') {
     const result = await prepareCoreResearch(loaded.spec);
@@ -130,7 +140,11 @@ export const main = async () => {
     return;
   }
   if (command === 'run') {
-    const analyzed = await runCoreResearch({ spec: loaded.spec });
+    const analyzed = await runCoreResearch({
+      spec: loaded.spec,
+      cwd: roots.projectRoot,
+      sourceRepositoryRoot: roots.sourceRepositoryRoot,
+    });
     console.log(
       chalk.green(`Core research report: ${analyzed.paths.reportPath}`),
     );

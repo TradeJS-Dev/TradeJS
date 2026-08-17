@@ -1,5 +1,10 @@
 # TradeJS Quickstart
 
+Use this monorepo for framework development and package verification. Run the
+personal app, infrastructure, backtest, replay, AI, and research workflows from
+`~/dev/tradejs/tradejs-project`; that project owns `.env`,
+`tradejs.config.ts`, `data/`, `notes/`, and local Compose.
+
 ## 1. Prerequisites
 
 - Node.js `24.17.0` (from `.nvmrc`)
@@ -116,12 +121,15 @@ Summary reports:
 
 ```cron
 CRON_TZ=Europe/Moscow
-0 0 * * * cd /Users/aleksnick/dev/investing && /usr/bin/env bash -lc 'yarn research:auto -- --user root --connector bybit --timeframe 15 --days 45 --recent 1000'
+0 0 * * * cd /Users/aleksnick/dev/tradejs/tradejs-project && /usr/bin/env bash -lc 'yarn research:auto -- --user root --connector bybit --timeframe 15 --days 45 --recent 1000'
 ```
 
 - `yarn research:auto` picks the strategy with the oldest missing/stale research run, snapshots the current strategy config into backtest config `<Strategy>:research`, runs `clean-tests -> clean-dir --dir ai/export -> backtest --ai -> ai-export -> ai-train --localOnly`, stores the structured run in Redis, always sends a Telegram report, and then directly invokes `yarn agent-run`
 - `yarn agent-run` requires `AI_API_ENDPOINT` to point to OpenRouter and uses `openai/gpt-5.4` with `reasoning.effort=medium`
-- the agent runs in a dedicated `git worktree` from `origin/stable`, creates a separate review branch under `codex/research/*`, validates with `yarn prettify && yarn typecheck && yarn unit`, pushes the branch, and sends a dedicated Telegram report
+- the agent checks out the owning source repository under the project's ignored
+  `data/cache/research-agent-checkouts/`, creates a separate review branch under
+  `codex/research/*`, validates with that repository's `yarn checks`, pushes the
+  branch, and sends a dedicated Telegram report
 - in production the nightly research job runs inside the separate `agent` container, not the main `app` container
 - hosted deploy wiring for the production `agent` container now lives in the separate `TradeJS-Deploy` repository, not in this monorepo quickstart
 - required runtime user settings in Redis for `root`:

@@ -97,6 +97,7 @@ export type CoreResearchSpec = {
   lineage?: {
     gitSha?: string;
     dirtyDiffSha256?: string;
+    sourceRepository?: string;
     parentResearchIds?: string[];
   };
 };

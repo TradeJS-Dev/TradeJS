@@ -18,6 +18,10 @@ import {
 } from '../lib/runtimeRedis';
 import { BACKTEST_CLI_RUNTIME_CONFIG_KEYS } from '../lib/runtimeStrategyBacktest';
 import type { ResearchAgentRunRecord } from '../lib/researchAgent';
+import {
+  resolveResearchRoots,
+  SOURCE_REPOSITORY_ROOT_ENV,
+} from '../lib/researchRoots';
 import { sendTelegramReport } from '../lib/telegramReports';
 
 args.example(
@@ -113,8 +117,7 @@ type ResearchRunLockRecord = {
   argv: string[];
 };
 
-const projectRoot =
-  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+const { projectRoot, sourceRepositoryRoot } = resolveResearchRoots();
 const dotenvPath =
   String(
     process.env.DOTENV_CONFIG_PATH || path.join(projectRoot, '.env'),
@@ -529,6 +532,7 @@ export const runCliCommand = async (params: {
   const env = {
     ...process.env,
     PROJECT_CWD: projectRoot,
+    [SOURCE_REPOSITORY_ROOT_ENV]: sourceRepositoryRoot,
     DOTENV_CONFIG_PATH: dotenvPath,
     ...(params.nodeHeapMb
       ? {
@@ -541,8 +545,8 @@ export const runCliCommand = async (params: {
 
   return new Promise((resolve, reject) => {
     const child = spawn(
-      'bash',
-      ['./bin/run-cli-runtime.sh', params.command, ...params.args],
+      process.execPath,
+      [path.resolve(process.argv[1]), params.command, ...params.args],
       {
         cwd: projectRoot,
         env,

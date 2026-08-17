@@ -41,6 +41,7 @@ import {
   type CoreResearchSpec,
   type CoreResearchVariantAnalysis,
 } from './types';
+import { SOURCE_REPOSITORY_ROOT_ENV } from '../researchRoots';
 
 const summarizeSupplementalFiles = async (params: {
   variant: CoreResearchSpec['variants'][number];
@@ -448,13 +449,19 @@ export const createCoreResearchSpecTemplate = (params: {
   start: number;
   end: number;
   outputPath: string;
+  projectRoot: string;
+  sourceRepositoryRoot: string;
 }) => {
-  const rootDir = 'data/research/core';
-  const projectRoot = process.cwd();
+  const rootDir = path
+    .relative(
+      path.resolve(params.projectRoot),
+      path.join(path.resolve(params.projectRoot), 'data', 'research', 'core'),
+    )
+    .replace(/\\/g, '/');
   const lineage = (() => {
     try {
       const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: projectRoot,
+        cwd: params.sourceRepositoryRoot,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
       }).trim();
@@ -462,13 +469,23 @@ export const createCoreResearchSpecTemplate = (params: {
         'git',
         ['diff', '--binary', '--no-ext-diff', 'HEAD'],
         {
-          cwd: projectRoot,
+          cwd: params.sourceRepositoryRoot,
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'ignore'],
         },
       );
+      const sourceRepository = execFileSync(
+        'git',
+        ['remote', 'get-url', 'origin'],
+        {
+          cwd: params.sourceRepositoryRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      ).trim();
       return {
         gitSha,
+        ...(sourceRepository ? { sourceRepository } : {}),
         ...(dirtyDiff
           ? {
               dirtyDiffSha256: createHash('sha256')
@@ -579,6 +596,7 @@ const runCommand = async (params: {
   command: string[];
   cwd: string;
   logPath: string;
+  env?: Record<string, string | undefined>;
   onLine?: (line: string) => void;
 }) => {
   if (!params.command.length) throw new Error('Cannot run an empty command');
@@ -586,7 +604,7 @@ const runCommand = async (params: {
   const chunks: string[] = [];
   const child = spawn(params.command[0], params.command.slice(1), {
     cwd: params.cwd,
-    env: process.env,
+    env: { ...process.env, ...params.env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const capture = (chunk: Buffer) => {
@@ -671,6 +689,7 @@ export const validateCoreResearchRunCommand = (params: {
 export const runCoreResearch = async (params: {
   spec: CoreResearchSpec;
   cwd?: string;
+  sourceRepositoryRoot?: string;
 }) => {
   const { spec } = params;
   const cwd = path.resolve(params.cwd ?? process.cwd());
@@ -700,6 +719,16 @@ export const runCoreResearch = async (params: {
         command: variant.command,
         cwd,
         logPath: backtestLogPath,
+        env: {
+          PROJECT_CWD: cwd,
+          ...(params.sourceRepositoryRoot
+            ? {
+                [SOURCE_REPOSITORY_ROOT_ENV]: path.resolve(
+                  params.sourceRepositoryRoot,
+                ),
+              }
+            : {}),
+        },
         onLine: (line) => {
           const match = line.match(
             /backtest run id:\s*([0-9]{12}-[a-f0-9]{8})/i,
@@ -732,6 +761,16 @@ export const runCoreResearch = async (params: {
         ],
         cwd,
         logPath: exportLogPath,
+        env: {
+          PROJECT_CWD: cwd,
+          ...(params.sourceRepositoryRoot
+            ? {
+                [SOURCE_REPOSITORY_ROOT_ENV]: path.resolve(
+                  params.sourceRepositoryRoot,
+                ),
+              }
+            : {}),
+        },
         onLine: (line) => {
           const match = line.match(/^part\d+:\s+(.+)$/);
           if (match) exportParts.push(path.resolve(cwd, match[1].trim()));
