@@ -1,4 +1,8 @@
-import { buildBootstrapRuntimeDeployment } from '../scripts/runtimeConfig';
+import {
+  buildBootstrapRuntimeDeployment,
+  isEquivalentRuntimeStrategyRelease,
+  pointRuntimeDeploymentAtRelease,
+} from '../scripts/runtimeConfig';
 
 describe('runtime-config bootstrap', () => {
   it('creates a paused release pointer without embedding strategy config', () => {
@@ -35,5 +39,75 @@ describe('runtime-config bootstrap', () => {
       ],
     });
     expect(deployment.strategies[0]).not.toHaveProperty('config');
+  });
+});
+
+describe('runtime-config rollout', () => {
+  it('does not allocate a release when config and package versions match', () => {
+    expect(
+      isEquivalentRuntimeStrategyRelease({
+        release: {
+          config: {
+            UNIVERSE: 'crypto',
+            INTERVAL: '15',
+            LONG: { enable: true, minRiskRatio: 1.5 },
+          },
+          strategyPackage: '@tradejs/strategy-double-tap',
+          strategyPackageVersion: '3.0.0',
+          runtimePackageVersion: '3.1.2',
+        },
+        config: {
+          LONG: { minRiskRatio: 1.5, enable: true },
+          INTERVAL: '15',
+          UNIVERSE: 'crypto',
+        },
+        strategyPackage: '@tradejs/strategy-double-tap',
+        strategyPackageVersion: '3.0.0',
+        runtimePackageVersion: '3.1.2',
+      }),
+    ).toBe(true);
+  });
+
+  it('switches only the selected strategy to a paused version pointer', () => {
+    const deployment = pointRuntimeDeploymentAtRelease({
+      deployment: {
+        id: 'multi-forward',
+        label: 'Multi forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'bybit-default',
+        universe: 'crypto',
+        interval: '15',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            releaseVersion: 1,
+            controlState: 'active',
+            config: { SHOULD_NOT_SURVIVE: true },
+          },
+          {
+            strategyName: 'Grid',
+            releaseVersion: 4,
+            controlState: 'active',
+          },
+        ],
+      },
+      strategyName: 'DoubleTap',
+      releaseVersion: 2,
+    });
+
+    expect(deployment.strategies).toEqual([
+      {
+        strategyName: 'DoubleTap',
+        releaseVersion: 2,
+        controlState: 'entries_paused',
+      },
+      {
+        strategyName: 'Grid',
+        releaseVersion: 4,
+        controlState: 'active',
+      },
+    ]);
   });
 });

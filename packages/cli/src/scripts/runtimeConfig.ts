@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   getRuntimeDeployment,
   listRuntimeDeployments,
@@ -8,6 +9,7 @@ import {
 } from '@tradejs/infra/runtimeDeployments';
 import { getRuntimeStrategyConfig } from '@tradejs/infra/runtimeStrategyConfigs';
 import {
+  getRuntimeStrategyRelease,
   getRuntimeStrategyDraft,
   listRuntimeStrategyReleases,
   publishRuntimeStrategyRelease,
@@ -130,6 +132,55 @@ export const buildBootstrapRuntimeDeployment = ({
       controlState: 'entries_paused',
     },
   ],
+});
+
+export const isEquivalentRuntimeStrategyRelease = ({
+  release,
+  config,
+  strategyPackage,
+  strategyPackageVersion,
+  runtimePackageVersion,
+}: {
+  release: {
+    config: StrategyConfig;
+    strategyPackage?: string | null;
+    strategyPackageVersion?: string | null;
+    runtimePackageVersion?: string | null;
+  } | null;
+  config: StrategyConfig;
+  strategyPackage?: string | null;
+  strategyPackageVersion?: string | null;
+  runtimePackageVersion?: string | null;
+}) =>
+  Boolean(
+    release &&
+      isDeepStrictEqual(release.config, config) &&
+      (release.strategyPackage ?? null) === (strategyPackage ?? null) &&
+      (release.strategyPackageVersion ?? null) ===
+        (strategyPackageVersion ?? null) &&
+      (release.runtimePackageVersion ?? null) ===
+        (runtimePackageVersion ?? null),
+  );
+
+export const pointRuntimeDeploymentAtRelease = ({
+  deployment,
+  strategyName,
+  releaseVersion,
+}: {
+  deployment: RuntimeDeployment;
+  strategyName: string;
+  releaseVersion: number;
+}): RuntimeDeployment => ({
+  ...deployment,
+  strategies: deployment.strategies.map((strategy) =>
+    strategy.strategyName === strategyName
+      ? {
+          strategyName,
+          releaseVersion,
+          controlState: 'entries_paused',
+        }
+      : strategy,
+  ),
 });
 
 const bootstrap = async () => {
@@ -273,6 +324,96 @@ const migrate = async () => {
   );
 };
 
+const rollout = async () => {
+  const strategyName = required('strategy');
+  const deploymentId = required('deployment');
+  const configFile = path.resolve(projectRoot, required('file'));
+  const [deployment, sourceConfig] = await Promise.all([
+    getRuntimeDeployment(userName, deploymentId),
+    readFile(configFile, 'utf8').then(
+      (value) => JSON.parse(value) as StrategyConfig,
+    ),
+  ]);
+  if (!deployment) throw new Error(`Deployment not found: ${deploymentId}`);
+  const reference = deployment.strategies.find(
+    (strategy) => strategy.strategyName === strategyName,
+  );
+  if (!reference?.releaseVersion) {
+    throw new Error(`${strategyName} is not a versioned deployment reference`);
+  }
+  const [config, metadata, currentRelease] = await Promise.all([
+    toReleaseConfig(strategyName, sourceConfig),
+    getRuntimeStrategyPackageMetadata({ strategyName, projectRoot }),
+    getRuntimeStrategyRelease(userName, strategyName, reference.releaseVersion),
+  ]);
+  const unchanged = isEquivalentRuntimeStrategyRelease({
+    release: currentRelease,
+    config,
+    ...metadata,
+  });
+  const preview = {
+    deploymentId,
+    strategyName,
+    currentReleaseVersion: reference.releaseVersion,
+    nextControlState: 'entries_paused' as const,
+    unchanged,
+    config,
+    ...metadata,
+  };
+  if (!hasFlag('write')) {
+    console.log(JSON.stringify({ dryRun: true, ...preview }, null, 2));
+    return;
+  }
+  if (unchanged) {
+    console.log(
+      JSON.stringify(
+        {
+          rolledOut: false,
+          reason: 'release_config_and_packages_unchanged',
+          release: currentRelease,
+          deployment,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const backupPath = await writeMigrationBackup({
+    userName,
+    capturedAt: Date.now(),
+    reason: 'rollout',
+    deployment,
+    currentRelease,
+    sourceConfig,
+  });
+  const release = await publishRuntimeStrategyRelease({
+    userName,
+    strategyName,
+    config,
+    ...metadata,
+    createdBy: `cli:${userName}`,
+  });
+  const updatedDeployment = pointRuntimeDeploymentAtRelease({
+    deployment,
+    strategyName,
+    releaseVersion: release.releaseVersion,
+  });
+  await saveRuntimeDeployment(userName, updatedDeployment);
+  console.log(
+    JSON.stringify(
+      {
+        rolledOut: true,
+        backupPath,
+        release,
+        deployment: updatedDeployment,
+      },
+      null,
+      2,
+    ),
+  );
+};
+
 const publishDraft = async () => {
   const strategyName = required('strategy');
   const draft = await getRuntimeStrategyDraft(userName, strategyName);
@@ -401,6 +542,7 @@ const inspect = async () => {
 export const runtimeConfig = async () => {
   if (action === 'bootstrap') return bootstrap();
   if (action === 'migrate') return migrate();
+  if (action === 'rollout') return rollout();
   if (action === 'publish-draft') return publishDraft();
   if (action === 'verify') return verify();
   if (action === 'pause') return updateControlState('entries_paused');
@@ -408,7 +550,7 @@ export const runtimeConfig = async () => {
   if (action === 'rollback') return rollback();
   if (action === 'inspect') return inspect();
   throw new Error(
-    'Usage: tradejs runtime-config inspect|verify|bootstrap|migrate|publish-draft|pause|resume|rollback',
+    'Usage: tradejs runtime-config inspect|verify|bootstrap|migrate|rollout|publish-draft|pause|resume|rollback',
   );
 };
 
