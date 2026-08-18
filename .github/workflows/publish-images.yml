@@ -110,7 +110,6 @@ jobs:
           beta_version="$(node -e 'const {resolveBetaVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveBetaVersion(process.argv[1], process.argv[2]))' "$baseline" "$GITHUB_RUN_NUMBER")"
           yarn bump:packages "$beta_version"
           echo "beta_version=$beta_version" >> "$GITHUB_OUTPUT"
-      - run: yarn install --immutable
       - run: yarn build
       - run: yarn lint
       - run: yarn typecheck

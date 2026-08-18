@@ -20,6 +20,11 @@ describe('npm release workflows', () => {
     expect(workflow).not.toContain('yarn bump:packages auto');
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('Tag successful release');
+    const postVersionResolution = workflow.slice(
+      workflow.indexOf('Resolve beta version'),
+      workflow.indexOf('- run: yarn build'),
+    );
+    expect(postVersionResolution).not.toContain('yarn install --immutable');
   });
 
   it('promotes the current verified beta on a weekly schedule', () => {
