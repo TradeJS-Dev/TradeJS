@@ -196,6 +196,7 @@ export const createSignalsTickerEvaluator =
               userName,
               connectorName,
               runtimeConfigId: configId,
+              runtimeLineage,
               runtimeConfigSnapshot: {
                 userConfig: sourceStrategyConfig,
                 symbolResultConfig,

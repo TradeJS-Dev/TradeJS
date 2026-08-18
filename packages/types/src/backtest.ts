@@ -10,6 +10,7 @@ import {
   Order,
   OrderType,
   RuntimeStrategyCloseNotification,
+  RuntimeLineage,
   RuntimeSignalEvaluationRecord,
   Signal,
 } from './trade';
@@ -126,6 +127,7 @@ export interface StrategyCreatorParams {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
+  runtimeLineage?: RuntimeLineage;
   runtimeConfigSnapshot?: RuntimeStrategyConfigSnapshot;
   config: StrategyConfig;
   connector: Connector;

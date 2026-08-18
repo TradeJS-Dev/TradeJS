@@ -799,6 +799,38 @@ describe('signals script', () => {
     );
   });
 
+  it('passes runtime lineage into the strategy before evaluating the signal', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    const creatorParams =
+      mocks.strategyCreatorMap.get('TrendLine')?.mock.calls[0]?.[0];
+    expect(creatorParams).toEqual(
+      expect.objectContaining({
+        runtimeLineage: expect.objectContaining({
+          schemaVersion: 1,
+          gateFingerprint: expect.any(String),
+          configFingerprint: expect.any(String),
+          contextFingerprint: expect.any(String),
+        }),
+      }),
+    );
+  });
+
   it('loads primary BTC/ETH history once per cycle and reuses warmup arrays across strategies', async () => {
     const { signals, mocks } = await loadScript({
       tickers: ['SOLUSDT', 'XRPUSDT'],

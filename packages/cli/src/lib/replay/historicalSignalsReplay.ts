@@ -417,6 +417,7 @@ export const runHistoricalSignalsReplay = async ({
               userName: replayUserName,
               connectorName,
               runtimeConfigId: 'config',
+              runtimeLineage,
               config: buildReplayStrategyConfig({
                 strategyConfig,
                 interval: interval as any,

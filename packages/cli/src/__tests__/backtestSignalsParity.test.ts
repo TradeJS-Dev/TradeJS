@@ -2,6 +2,7 @@
 
 import {
   Candle,
+  RuntimeLineage,
   RuntimeSignalEvaluationRecord,
   Signal,
   Test,
@@ -19,6 +20,7 @@ type StrategyTranscript = {
   initBtcDataTimestamps: number[];
   initEthDataTimestamps: number[];
   initConfig?: Record<string, unknown>;
+  initRuntimeLineage?: RuntimeLineage;
   connectorFlags?: {
     replay: boolean;
     test: boolean;
@@ -325,6 +327,7 @@ const createTranscriptStrategy = (transcript: StrategyTranscript) => {
       (candle: Candle) => candle.timestamp,
     );
     transcript.initConfig = params.config;
+    transcript.initRuntimeLineage = params.runtimeLineage;
     transcript.connectorFlags = {
       replay: Boolean(params.connector?.__tradejsReplayConnector),
       test: Boolean(params.connector?.__tradejsTestConnector),
@@ -918,6 +921,9 @@ describe('backtest/signals runtime parity', () => {
     });
     expect(replayRun.transcript.sharedIndicatorsReplayKey).toBe(
       `replay:root:bybit:ETHUSDT:15:${CLOSED_1_TS}:${CLOSED_2_TS}`,
+    );
+    expect(replayRun.transcript.initRuntimeLineage).toEqual(
+      replayRun.result.runtimeLineages[0]?.lineage,
     );
     expect(replayRun.signals.map(toSignalSnapshot)).toEqual([
       {

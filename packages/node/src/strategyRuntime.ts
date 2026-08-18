@@ -143,6 +143,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     deploymentId: requestedDeploymentId,
     policyProfileId,
     runtimeConfigId,
+    runtimeLineage,
     runtimeConfigSnapshot,
     data,
     btcData,
@@ -1018,6 +1019,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
       const signal = decision.signal;
       if (signal) {
+        if (runtimeLineage) signal.runtimeLineage = runtimeLineage;
         if (universe) signal.universe = universe;
         if (assetClass) signal.assetClass = assetClass;
         if (accountId) signal.accountId = accountId;

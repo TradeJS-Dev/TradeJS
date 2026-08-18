@@ -167,7 +167,7 @@ import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries as hyperliquidConsensusEntries } from '@tradejs/strategy-hyperliquid-consensus';
 import { strategyEntries as trendLineEntries } from '@tradejs/strategy-trend-line';
-import { BACKTEST_WARNING_CODES } from '@tradejs/types';
+import { BACKTEST_WARNING_CODES, type RuntimeLineage } from '@tradejs/types';
 import { resetDerivativesContextRuntimeState } from '../strategyHelpers/derivativesContext';
 
 const strategyEntries = [...hyperliquidConsensusEntries, ...trendLineEntries];
@@ -274,6 +274,7 @@ const makeRuntime = async (
     accountId?: string;
     deploymentId?: string;
     policyProfileId?: string;
+    runtimeLineage?: RuntimeLineage;
   } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
@@ -313,6 +314,7 @@ const makeRuntime = async (
     accountId: options.accountId,
     deploymentId: options.deploymentId,
     policyProfileId: options.policyProfileId,
+    runtimeLineage: options.runtimeLineage,
     config: {},
     data: [],
     btcData: [],
@@ -820,6 +822,38 @@ describe('strategyRuntime', () => {
 
     expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
     expect(connector.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it('attaches runtime lineage before executing an entry order', async () => {
+    const runtimeLineage = {
+      schemaVersion: 1,
+      compositionId: 'TrendLine_test',
+      gitSha: 'abc123',
+      gitDirty: false,
+      gateFingerprint: 'gate',
+      configFingerprint: 'config',
+      contextFingerprint: 'context',
+      maxLossValue: 1,
+    } satisfies RuntimeLineage;
+    const { strategy } = await makeRuntime(
+      () =>
+        makeDecisionEntry({
+          runtime: {
+            ai: { enabled: false },
+            ml: { enabled: false },
+          },
+        }),
+      {},
+      { runtimeLineage },
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signal: expect.objectContaining({ runtimeLineage }),
+      }),
+    );
   });
 
   it('marks entry as skipped when MAKE_ORDERS is disabled', async () => {
