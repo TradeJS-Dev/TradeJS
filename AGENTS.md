@@ -9,6 +9,21 @@ These repository rules apply to `/Users/aleksnick/dev/tradejs/investing`.
 Use this file as the default operating guide for automated agents in this repo.
 Keep changes small, respect package boundaries, and align with the current TradeJS architecture.
 
+## Workspace Routing
+
+- The canonical workspace map is `~/dev/tradejs/AGENTS.md`. Do not enumerate
+  sibling repositories when that map already identifies the owner.
+- This checkout owns framework packages, CLI/runtime behavior, the app package,
+  indicators, connectors, infra adapters, and TradeJS-specific research skills.
+- Strategy behavior lives in the matching standalone
+  `~/dev/tradejs/tradejs-strategy-*` repository. Shared strategy-neutral helpers
+  live in `~/dev/tradejs/tradejs-strategy-kit`.
+- Run personal backtest, replay, Redis, evidence, and research operations from
+  `~/dev/tradejs/tradejs-project`; keep this checkout as
+  `TRADEJS_SOURCE_REPOSITORY_ROOT` when its code/lineage is under study.
+- User-facing docs and landing changes go directly to `tradejs-docs` and
+  `tradejs-site` respectively.
+
 ## Repository Shape
 
 TradeJS is a monorepo for:
@@ -608,9 +623,10 @@ Keep them aligned with:
   handoff and label it diagnostic-only when no candidate qualifies. Persist and
   hash the structured output plus chart lineage. A missing or
   different-lineage report/chart blocks a complete market-unsuitable verdict
-  and any forward action. Then run `yarn strategy:release decide`; never leave
+  and any forward action. From TradeJS-Project, run
+  `yarn strategy-release decide`; never leave
   the next action as an unbounded “wait”.
-- The `strategy:release decide` input must point to the structured chart report
+- The `strategy-release decide` input must point to the structured chart report
   by path and SHA; the command must recompute and validate that artifact rather
   than trust a self-declared checksum. Local research may leave the server-owned
   target null and return a portable `MICRO_FORWARD_READY` handoff. On the runtime
@@ -623,12 +639,12 @@ Keep them aligned with:
   promotion, risk increases, unrelated runtime edits, manual orders, or a
   production-daemon launch on an ambiguous target.
 - Build equal-length historical drawdown envelopes with
-  `yarn strategy:release profile` from the finalist's normalized
+  `yarn strategy-release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity
   ratio, maximum order-failure rate, core/gate expectancy, and overfit estimate
   plus minimum causal-regime coverage in the release manifest; do not diagnose
   against mutable thresholds.
-- `yarn strategy:release create` must independently hash and semantically
+- `yarn strategy-release create` must independently hash and semantically
   validate every referenced artifact, derive gate results from the measured
   core/gate/parity/execution payloads, and reject draft booleans that disagree.
   Missing, invalid, unreconciled, or incomplete evidence takes
