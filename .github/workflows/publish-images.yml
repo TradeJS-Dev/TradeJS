@@ -186,7 +186,15 @@ jobs:
             @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
             create-tradejs
           do
-            [ "$(npm view "${package_name}@beta" version)" = "$BETA_VERSION" ] || exit 1
+            verified=false
+            for attempt in $(seq 1 12); do
+              if [ "$(npm view "${package_name}@beta" version 2>/dev/null || true)" = "$BETA_VERSION" ]; then
+                verified=true
+                break
+              fi
+              [ "$attempt" -lt 12 ] && sleep 10
+            done
+            [ "$verified" = true ] || exit 1
           done
           printf 'Validated beta %s from %s\n' "$BETA_VERSION" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 

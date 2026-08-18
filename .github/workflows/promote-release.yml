@@ -221,5 +221,13 @@ jobs:
             @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
             create-tradejs
           do
-            [ "$(npm view "${package_name}@latest" version)" = "$STABLE_VERSION" ] || exit 1
+            verified=false
+            for attempt in $(seq 1 12); do
+              if [ "$(npm view "${package_name}@latest" version 2>/dev/null || true)" = "$STABLE_VERSION" ]; then
+                verified=true
+                break
+              fi
+              [ "$attempt" -lt 12 ] && sleep 10
+            done
+            [ "$verified" = true ] || exit 1
           done
