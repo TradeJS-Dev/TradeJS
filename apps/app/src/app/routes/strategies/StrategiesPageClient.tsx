@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, ClientOnly, Flex } from '@chakra-ui/react';
+import { Box, ClientOnly, Flex } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type {
@@ -16,7 +16,6 @@ import {
 } from '#actions/strategies';
 import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
-import { RuntimeStrategyConfigDrawer } from '#components/Strategies/RuntimeStrategyConfigDrawer';
 import { StrategySnapshotList } from '#components/Strategies/StrategySnapshotList';
 import { BacktestResultsPageClient } from '#components/Backtest/ResultsPageClient';
 import {
@@ -85,7 +84,6 @@ const RuntimeStrategiesContent = () => {
   const [error, setError] = useState('');
   const [runtimeData, setRuntimeData] =
     useState<RuntimeStrategiesResponse | null>(null);
-  const [createRuntimeConfigOpen, setCreateRuntimeConfigOpen] = useState(false);
   const [snapshotData, setSnapshotData] =
     useState<StrategyChartsSnapshotResponse | null>(null);
   const isSnapshotMode = mode === 'replay' || mode === 'ai';
@@ -519,22 +517,7 @@ const RuntimeStrategiesContent = () => {
                   />
                 ) : null}
               </Flex>
-              {mode === 'runtime' ? (
-                <Button
-                  ml="auto"
-                  colorPalette="teal"
-                  onClick={() => setCreateRuntimeConfigOpen(true)}
-                >
-                  Create
-                </Button>
-              ) : null}
             </Flex>
-
-            <RuntimeStrategyConfigDrawer
-              open={createRuntimeConfigOpen}
-              onOpenChange={setCreateRuntimeConfigOpen}
-              onSaved={load}
-            />
 
             {isSnapshotMode ? (
               <BulkDeleteToolbar

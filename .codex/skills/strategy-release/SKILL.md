@@ -294,25 +294,37 @@ to that server's exact `userName`, `deploymentId`, `accountId`, and
 When the user says to start forward tests after a release verdict, treat that
 as authorization for the local rollout phase only:
 
-- commit and push every strategy-owned source/gate/config change for the exact
-  candidate before mutating Redis; keep unrelated repo changes out of that
-  commit unless the user explicitly includes them;
-- update local Redis to the exact runtime strategy config needed by the
-  candidate, using `$save-strategy-config-from-backtest` conventions and the
-  release `MAX_LOSS_VALUE=1` risk scale for micro-forward;
-- rerun local dry-run `signals` and stop on API, config, lineage, or private
-  position/account blockers.
+- commit and push every strategy-owned source/gate change for the exact
+  candidate; keep unrelated repo changes out of that commit unless explicitly
+  included;
+- when strategy code changed, choose and write the next package version (patch
+  unless the approved change is intentionally breaking), run that repository's
+  checks, commit and push it, publish the matching `v<version>` GitHub release,
+  and wait until that exact npm version is available; never deploy an untagged
+  strategy checkout;
+- update the strategy's direct exact dependency and lockfile in
+  `TradeJS-Project`, run Project checks, then commit and push Project so its
+  immutable SHA-tagged app image is built and dispatched to Deploy;
+- materialize the candidate from strategy defaults plus the selected config,
+  remove deployment and mode-only fields (`ENABLE`, `ACCOUNT_ID`,
+  `DEPLOYMENT_ID`, `ENV`, `MAKE_ORDERS`, `RECORD_RUNTIME_TRADES`, and
+  `AI_REPLAY_ANALYSES`), retain
+  `MAX_LOSS_VALUE=1`, and save it as a local draft or immutable per-strategy
+  `releaseVersion`;
+- run `yarn runtime-config verify` and local dry-run `signals`; stop on package
+  version, config, account, or private-position blockers.
 
 Do not update production Redis during that local phase. After the user deploys
 the pushed code to the server and replies `готово`/`ready`, treat that reply as
-authorization for the production Redis phase: verify the server is running the
-pushed strategy commit, read and backup the existing production config, write
-the same exact candidate config to production Redis, verify the saved config
-fingerprint, rerun `decide`/dry-run on the runtime server, and only then start
-the authorized `MAX_LOSS_VALUE=1` micro-forward runner if it returns
-`START_MICRO_FORWARD`. If production Redis/server access is unavailable or the
-deployed commit differs, report the exact blocker instead of changing another
-environment.
+authorization for the production Redis phase: verify
+`/app/runtime-package-manifest.json`, back up Redis, publish the candidate as
+the strategy's next immutable `releaseVersion`, and switch only the target
+deployment to `{ strategyName, releaseVersion, controlState:
+"entries_paused" }`. Run `yarn runtime-config verify` and dry-run signals,
+then resume entries only when `decide` returns `START_MICRO_FORWARD`. Never
+write `deploymentStrategy.config` or use production fingerprints/git SHAs as
+identity. Report unavailable access, package incompatibility, or an ambiguous
+target as the exact blocker.
 
 ## Return one verdict
 

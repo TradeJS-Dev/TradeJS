@@ -385,6 +385,58 @@ export const setData = async <T>(
   }
 };
 
+/** Writes a JSON value only when the key does not exist. */
+export const setDataIfAbsent = async <T>(
+  key: string,
+  data: T,
+): Promise<boolean> => {
+  if (redisUnavailable) return false;
+  const redis = await getReadyRedis();
+  if (!redis) return false;
+  try {
+    return (
+      (await redis.call('JSON.SET', key, '$', toJson(data), 'NX')) === 'OK'
+    );
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+      return false;
+    }
+    logger.log(
+      'warn',
+      'failed JSON.SET NX %s: %s (fallback to SET NX)',
+      key,
+      String(error),
+    );
+    try {
+      return (await redis.set(key, toJson(data), 'NX')) === 'OK';
+    } catch (fallbackError) {
+      if (
+        fallbackError instanceof Error &&
+        isRedisConnectivityError(fallbackError)
+      ) {
+        markRedisUnavailable(fallbackError);
+      }
+      logger.log('error', 'failed SET NX %s: %s', key, String(fallbackError));
+      return false;
+    }
+  }
+};
+
+export const incrementKey = async (key: string): Promise<number> => {
+  if (redisUnavailable) throw new Error('Redis is unavailable');
+  const redis = await getReadyRedis();
+  if (!redis) throw new Error('Redis is unavailable');
+  try {
+    return await redis.incr(key);
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+    }
+    throw error;
+  }
+};
+
 export const setHashJsonField = async <T>(
   key: string,
   field: string,
@@ -625,6 +677,22 @@ export const redisKeys = {
     strategyName: string,
     configId = 'config',
   ) => `users:${userName}:strategies:${strategyName}:${configId}`,
+  runtimeStrategyDraft: (userName: string, strategyName: string) =>
+    `users:${userName}:strategies:${strategyName}:draft`,
+  runtimeStrategyReleases: (userName: string, strategyName: string) =>
+    `users:${userName}:strategies:${strategyName}:releases:`,
+  runtimeStrategyRelease: (
+    userName: string,
+    strategyName: string,
+    releaseVersion: number,
+  ) =>
+    `users:${userName}:strategies:${strategyName}:releases:${releaseVersion}`,
+  runtimeStrategyReleaseSequence: (userName: string, strategyName: string) =>
+    `users:${userName}:strategies:${strategyName}:release-seq`,
+  runtimeStrategyControlEvents: (userName: string) =>
+    `users:${userName}:runtime:strategy-control-events:`,
+  runtimeStrategyControlEvent: (userName: string, eventId: string) =>
+    `users:${userName}:runtime:strategy-control-events:${eventId}`,
   strategyResults: (userName: string, strategyName: string) =>
     `users:${userName}:strategies:${strategyName}:results`,
   strategyCharts: (userName: string, mode: string) =>

@@ -83,6 +83,7 @@
     "runtime-evidence": "yarn run run:dist runtime-evidence",
     "runtime-evidence-sync": "yarn run run:dist runtime-evidence-sync",
     "runtime-scorecard": "yarn run run:dist runtime-scorecard",
+    "runtime-config": "yarn run run:dist runtime-config",
     "strategy-release": "yarn run run:dist strategy-release",
     "continuity": "yarn run run:dist continuity",
     "derivatives:ingest": "yarn run run:dist derivatives:ingest",

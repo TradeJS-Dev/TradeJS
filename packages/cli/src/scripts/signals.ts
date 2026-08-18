@@ -46,16 +46,9 @@ args.option(['D', 'deployment'], 'Runtime deployment id');
 const flags = args.parse(process.argv);
 
 const hasExplicitScope = process.argv.some((argument) =>
-  [
-    '-f',
-    '--timeframe',
-    '-V',
-    '--universe',
-    '-A',
-    '--account',
-    '-D',
-    '--deployment',
-  ].some((option) => argument === option || argument.startsWith(`${option}=`)),
+  ['-f', '--timeframe', '-V', '--universe', '-A', '--account'].some(
+    (option) => argument === option || argument.startsWith(`${option}=`),
+  ),
 );
 
 const config: SignalsRunnerConfig = {

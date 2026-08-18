@@ -34,7 +34,7 @@ export const buildRuntimeModeStrategyConfig = ({
   ...strategyConfig,
   ENV: env,
   MAKE_ORDERS: makeOrders,
-  INTERVAL: interval,
+  INTERVAL: strategyConfig.INTERVAL ?? interval,
   ...(typeof recordRuntimeTrades === 'boolean'
     ? { RECORD_RUNTIME_TRADES: recordRuntimeTrades }
     : {}),

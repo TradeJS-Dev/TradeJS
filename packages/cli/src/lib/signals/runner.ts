@@ -225,14 +225,23 @@ export const createSignalsRunner = (
       throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
     }
     const requestedRuntimeInterval = (scope.interval ?? interval) as Interval;
-    const runtimeInterval = (deployment?.interval ??
-      requestedRuntimeInterval) as Interval;
+    const versionedDeployment = Boolean(
+      deployment?.strategies.some(
+        (strategy) => strategy.releaseVersion != null,
+      ),
+    );
+    const runtimeInterval = (
+      versionedDeployment
+        ? requestedRuntimeInterval
+        : deployment?.interval ?? requestedRuntimeInterval
+    ) as Interval;
     const runtimeIntervalMs = Number(runtimeInterval) * 60_000;
     if (!Number.isFinite(runtimeIntervalMs) || runtimeIntervalMs <= 0) {
       throw new Error(`Invalid runtime timeframe: ${runtimeInterval}`);
     }
     if (
       deployment &&
+      !versionedDeployment &&
       String(deployment.interval) !== String(requestedRuntimeInterval)
     ) {
       throw new Error(
@@ -242,9 +251,11 @@ export const createSignalsRunner = (
     const connectorName = await resolveSignalsConnectorName(
       deployment?.connectorName ?? scope.connectorName ?? config.connectorName,
     );
-    const universe = (deployment?.universe ??
-      scope.universe ??
-      config.universe) as MarketUniverse;
+    const universe = (
+      versionedDeployment
+        ? scope.universe ?? config.universe
+        : deployment?.universe ?? scope.universe ?? config.universe
+    ) as MarketUniverse;
     const requestedAccountId =
       deployment?.accountId ?? scope.accountId ?? config.accountId;
     const connectorFactory = await getConnectorCreatorByName(
@@ -510,17 +521,18 @@ export const createSignalsRunner = (
       lifecycle.retain(
         new Set(
           tickers.flatMap((symbol) =>
-            runtimeStrategies.map(({ strategyName, configId }) =>
-              buildSignalsStrategyLifecycleKey({
-                connectorName,
-                universe: sessionUniverse,
-                accountId,
-                deploymentId: deployment?.id,
-                symbol,
-                interval,
-                strategyName,
-                configId,
-              }),
+            runtimeStrategies.map(
+              ({ strategyName, configId, releaseVersion }) =>
+                buildSignalsStrategyLifecycleKey({
+                  connectorName,
+                  universe: sessionUniverse,
+                  accountId,
+                  deploymentId: deployment?.id,
+                  symbol,
+                  interval,
+                  strategyName,
+                  configId: releaseVersion ? `v${releaseVersion}` : configId,
+                }),
             ),
           ),
         ),
@@ -764,12 +776,17 @@ export const createSignalsRunner = (
     if (
       config.updateOnly ||
       config.showTickersList ||
-      config.deploymentId ||
       hasExplicitSignalsScope()
     ) {
       return signals();
     }
-    const scopes = await loadConfiguredSignalsScopes();
+    const configuredDeployment = config.deploymentId
+      ? await getRuntimeDeployment(config.userName, config.deploymentId)
+      : null;
+    if (config.deploymentId && !configuredDeployment) {
+      throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
+    }
+    const scopes = await loadConfiguredSignalsScopes(configuredDeployment);
     if (!scopes.size) return signals();
     for (const scope of scopes.values()) {
       const session = await createSignalsSession(

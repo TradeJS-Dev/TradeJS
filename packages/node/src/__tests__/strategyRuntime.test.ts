@@ -275,6 +275,7 @@ const makeRuntime = async (
     deploymentId?: string;
     policyProfileId?: string;
     runtimeLineage?: RuntimeLineage;
+    entriesPaused?: boolean;
   } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
@@ -315,6 +316,7 @@ const makeRuntime = async (
     deploymentId: options.deploymentId,
     policyProfileId: options.policyProfileId,
     runtimeLineage: options.runtimeLineage,
+    entriesPaused: options.entriesPaused,
     config: {},
     data: [],
     btcData: [],
@@ -1553,6 +1555,28 @@ describe('strategyRuntime', () => {
     expect(connector.placeOrder).not.toHaveBeenCalled();
     expect((result as any).orderStatus).toBe('skipped');
     expect((result as any).orderSkipReason).toBe('MAKE_ORDERS_DISABLED');
+  });
+
+  it('pauses new entries without disabling strategy evaluation', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () => makeDecisionEntry(),
+      {},
+      { entriesPaused: true },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({
+        orderStatus: 'skipped',
+        orderSkipReason: 'RUNTIME_ENTRIES_PAUSED',
+      }),
+    );
   });
 
   it('can execute entry decision without signal using connector.placeOrder', async () => {

@@ -586,35 +586,32 @@ Case handling is deterministic:
 For an authorized local `MICRO_FORWARD_READY`, transfer the immutable handoff
 without credentials to the runtime server. When the user says to start forward
 tests, first complete the local rollout phase: commit and push every
-strategy-owned source/gate/config change for the exact candidate, update only
-local Redis to the exact candidate runtime strategy config, verify the local
-config fingerprint, and rerun dry-run `signals`. Use
-`$save-strategy-config-from-backtest` conversion rules for Redis promotion; for
-micro-forward the saved runtime config must use the release risk scale
-`MAX_LOSS_VALUE=1`. Do not include unrelated working-tree changes in the
-strategy commit unless the user explicitly asks.
+strategy-owned source/gate change for the exact candidate. If code changed,
+bump the strategy package version, run its checks, commit/push it, publish the
+matching `v<version>` GitHub release, and wait for that exact npm version.
+Update the direct exact dependency and lockfile in `TradeJS-Project`, run
+checks, and commit/push Project so a SHA-tagged image is built and dispatched.
+Materialize a local release draft from package defaults plus the
+candidate, remove operational fields, retain `MAX_LOSS_VALUE=1`, run
+`yarn runtime-config verify`, and rerun dry-run `signals`. Keep unrelated
+working-tree changes out of both commits unless explicitly requested.
 
 Do not mutate production Redis in the local phase. After the user deploys the
 pushed code and replies `готово`/`ready`, treat that reply as authorization for
-the production Redis phase. On the runtime server, verify that the deployed
-strategy commit/package fingerprint matches the pushed candidate, read and
-backup the current production Redis strategy config, write the same exact
-candidate config, verify the saved config fingerprint, verify the exact runtime
-deployment/account/connector/strategy target, retain both directions, rerun
-`decide`, and start the forward runner only after `START_MICRO_FORWARD`. Do not
-promote the composition, increase risk, change unrelated runtime config, or
-manually place orders. If production Redis/server access is unavailable, the
-deployed commit differs, or the target is ambiguous on the runtime server,
-report that binding problem separately from research validity.
+the production Redis phase. Verify `/app/runtime-package-manifest.json`, back
+up Redis, publish the next immutable per-strategy `releaseVersion`, and switch
+only the selected deployment pointer in `entries_paused` state. Verify the
+deployment/account/connector with `yarn runtime-config verify`, retain both
+directions, rerun `decide` and a dry-run, then resume only after
+`START_MICRO_FORWARD`. Do not increase risk, change unrelated releases, or
+manually place orders.
 
-When a user later authorizes a runtime deployment, copy the verified
-`compositionId` into that deployment strategy's `releaseCompositionId`. The
-runtime lineage and UI marker selector then require that id in addition to
-git/config/gate/context logic fingerprints. `MAX_LOSS_VALUE` is recorded as a
-separate immutable risk-scale timeline and used to normalize PnL/drawdown to the
-release risk unit; it does not select or hide the logic timeline. Omitting the
-composition id keeps release markers explicitly missing and cannot borrow
-another composition's evidence.
+When a user later authorizes a runtime deployment, bind it to
+`{ strategyName, releaseVersion, controlState }`. Runtime records and the UI
+evidence selector use that per-strategy version. Research artifacts retain
+their own internal checksums, but production identity does not use git SHA or
+config/gate/context fingerprints. Evidence remains `not_attached` until a
+checksum-verified artifact explicitly names that release version.
 
 ## Command shapes
 
@@ -657,11 +654,22 @@ git -C <strategy-source-root> status --short
 git -C <strategy-source-root> add <strategy-owned-candidate-files>
 git -C <strategy-source-root> commit -m "<strategy>: prepare micro-forward candidate"
 git -C <strategy-source-root> push
-docker exec inv-redis redis-cli JSON.GET 'users:<user>:backtests:configs:<Strategy>:ai'
-docker exec inv-redis redis-cli JSON.GET 'users:<user>:strategies:<Strategy>:config'
-docker exec inv-redis redis-cli -x JSON.SET 'users:<user>:strategies:<Strategy>:config' '$' < <candidate-runtime-config.json
+gh release create v<package-version> --repo TradeJS-Dev/<strategy-repository> \\
+  --target main --generate-notes
+npm view <strategy-package>@<package-version> version
+git -C <TradeJS-Project> add package.json yarn.lock
+git -C <TradeJS-Project> commit -m "Update <Strategy> runtime package"
+git -C <TradeJS-Project> push
+yarn runtime-config verify --user <user> --deployment <deploymentId>
 yarn signals --user <user> --deployment <deploymentId> --timeframe <interval> \
   --skipScreenshots --showSkipStats
+
+# Runtime server, after the immutable image is deployed and acknowledged.
+yarn runtime-config migrate --user <user> --strategy <Strategy> \
+  --config <legacy-config-id> --deployment <deploymentId> --write
+yarn runtime-config verify --user <user> --deployment <deploymentId>
+yarn runtime-config resume --user <user> --strategy <Strategy> \
+  --deployment <deploymentId>
 ```
 
 Use `ai-gate-ablation.mjs` for the fixed gate candidate and its held-out

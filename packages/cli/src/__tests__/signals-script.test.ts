@@ -145,6 +145,7 @@ const loadScript = async (scenario: Scenario) => {
   const releaseStrategyReplayCache = jest.fn();
   const logger = {
     info: jest.fn(),
+    log: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
   };
@@ -246,8 +247,9 @@ const loadScript = async (scenario: Scenario) => {
     strategyCreatorMap.set(strategyName, strategyCreator);
   }
 
-  const getStrategyCreator = jest.fn(async (strategyName: string) =>
-    strategyCreatorMap.get(strategyName),
+  const getStrategyCreator = jest.fn(
+    async (strategyName: string, _projectRoot?: string) =>
+      strategyCreatorMap.get(strategyName),
   );
   const getTickers = jest.fn(async () => scenario.tickers ?? ['ETHUSDT']);
   const update = jest.fn(async () => null);
@@ -421,6 +423,54 @@ const loadScript = async (scenario: Scenario) => {
     getStrategyCreator,
   }));
 
+  jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+    loadResolvedRuntimeStrategies: jest.fn(
+      async ({
+        deployment,
+        projectRoot,
+      }: {
+        deployment?: RuntimeDeployment | null;
+        projectRoot: string;
+      }) => {
+        const resolved = await Promise.all(
+          strategyEntries.map(async ({ strategyName }) => {
+            const strategyConfig = await getData(
+              `users:root:strategies:${strategyName}:config`,
+              { INTERVAL: '15' },
+            );
+            if (strategyConfig.ENABLE === false) {
+              logger.info(
+                'Skip inactive strategy config by ENABLE=false: %s',
+                strategyName,
+              );
+              return null;
+            }
+            return {
+              strategyName,
+              configId: 'config',
+              controlState: 'active',
+              interval: String(
+                strategyConfig.INTERVAL ?? deployment?.interval ?? '15',
+              ),
+              universe:
+                strategyConfig.UNIVERSE ?? deployment?.universe ?? 'crypto',
+              accountId:
+                deployment?.accountId ?? strategyConfig.ACCOUNT_ID ?? undefined,
+              strategyCreator: await getStrategyCreator(
+                strategyName,
+                projectRoot,
+              ),
+              sourceStrategyConfig: strategyConfig,
+              strategyConfig,
+              strategyResults: {},
+            };
+          }),
+        );
+        return resolved.filter(Boolean);
+      },
+    ),
+  }));
+
   jest.doMock('@tradejs/core/time', () => ({
     getTimestamp,
     getRuntimeStorageDayKey,
@@ -478,6 +528,8 @@ const loadScript = async (scenario: Scenario) => {
   return {
     createSignalsSession: signalsScriptModule.createSignalsSession,
     signals: signalsScriptModule.signals,
+    signalsConfiguredScopesOnce:
+      signalsScriptModule.signalsConfiguredScopesOnce,
     mocks: {
       backfillDerivativesContextForSignals,
       backfillBinanceMarketContextForSignals,
@@ -967,9 +1019,12 @@ describe('signals script', () => {
           },
           symbolResultConfig: null,
         },
-        config: expect.objectContaining({ CUSTOM_THRESHOLD: 99 }),
+        config: expect.objectContaining({ CUSTOM_THRESHOLD: 2 }),
       }),
     );
+    expect(
+      mocks.strategyCreatorMap.get('TrendLine')!.mock.calls.at(-1)?.[0].config,
+    ).not.toEqual(expect.objectContaining({ CUSTOM_THRESHOLD: 99 }));
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'Rebuilt signals strategy state (%s): %s %s',
       'config',
@@ -1087,16 +1142,65 @@ describe('signals script', () => {
         btcData: [],
         ethData: [],
         config: expect.objectContaining({
-          DEPLOYMENT_ONLY: true,
-          POLICY_PROFILE_ID: 'tradfi',
+          INTERVAL: '15',
         }),
       }),
     );
+    const strategyParams =
+      mocks.strategyCreatorMap.get('TrendLine')!.mock.calls[0][0];
+    expect(strategyParams.config).not.toHaveProperty('DEPLOYMENT_ONLY');
+    expect(strategyParams.config).not.toHaveProperty('POLICY_PROFILE_ID');
     expect(mocks.saveRuntimeDeploymentHeartbeat).toHaveBeenCalledWith(
       'root',
       expect.objectContaining({
         deploymentId: 'tradfi-live',
         status: 'running',
+      }),
+    );
+  });
+
+  it('derives a versioned one-shot scope from the release config', async () => {
+    const { signalsConfiguredScopesOnce, mocks } = await loadScript({
+      strategyConfig: { INTERVAL: '60', UNIVERSE: 'crypto' },
+      deployment: {
+        id: 'doubletap-forward',
+        label: 'DoubleTap forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        universe: 'tradfi',
+        interval: '5',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            releaseVersion: 2,
+            controlState: 'active',
+          },
+        ],
+      },
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: 'doubletap-forward',
+      },
+    });
+
+    await signalsConfiguredScopesOnce();
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        config: expect.objectContaining({ INTERVAL: '60' }),
       }),
     );
   });

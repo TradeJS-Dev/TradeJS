@@ -10,3 +10,4 @@ export * from './market';
 export * from './selection';
 export * from './strategyRelease';
 export * from './runtimeTrades';
+export * from './runtimeStrategyReleases';

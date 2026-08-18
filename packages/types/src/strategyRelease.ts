@@ -99,6 +99,7 @@ export type StrategyEvidenceMarker = {
   artifactId: string;
   artifactSha256: string;
   compositionId?: string;
+  releaseVersion?: number;
   gitSha?: string;
   gateFingerprint?: string;
   configFingerprint?: string;
@@ -112,13 +113,14 @@ export type StrategyEvidenceMarker = {
 };
 
 export type StrategyEvidenceTimeline = {
-  status: 'verified' | 'missing' | 'invalid';
+  status: 'verified' | 'not_attached' | 'missing' | 'invalid';
   observedFrom: number | null;
   markers: StrategyEvidenceMarker[];
 };
 
 export type StrategyEvidenceTimelineSelector = {
   strategy: string;
+  releaseVersion?: number | null;
   compositionId?: string | null;
   gitSha?: string | null;
   gateFingerprint?: string | null;

@@ -164,6 +164,50 @@ describe('runtime dashboard', () => {
     });
   });
 
+  it('keeps deployment strategies without embedded config readable', async () => {
+    mockListRuntimeDeployments.mockResolvedValue([
+      {
+        id: 'doubletap-forward',
+        label: 'Crypto forward runtime',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        interval: '15',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            policyProfileId: 'default',
+          },
+        ],
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(response.strategies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          strategyName: 'DoubleTap',
+          configId: 'deployment-doubletap-forward',
+          config: null,
+          evidenceTimeline: {
+            status: 'missing',
+            observedFrom: null,
+            markers: [],
+          },
+        }),
+      ]),
+    );
+  });
+
   it('fails before reading sources when the connector is unavailable', async () => {
     mockGetConnectorCreatorByProvider.mockResolvedValue(null);
 

@@ -147,6 +147,9 @@ export const verifyStrategyEvidenceMarkerEnvelope = (
       !isString(marker.artifactId) ||
       !isString(marker.artifactSha256) ||
       !SHA256_RE.test(marker.artifactSha256) ||
+      (marker.releaseVersion !== undefined &&
+        (!Number.isSafeInteger(marker.releaseVersion) ||
+          Number(marker.releaseVersion) <= 0)) ||
       (marker.gitSha !== undefined && !isString(marker.gitSha)) ||
       (marker.gateFingerprint !== undefined &&
         (!isString(marker.gateFingerprint) ||

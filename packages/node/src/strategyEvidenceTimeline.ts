@@ -31,6 +31,7 @@ export const strategyEvidenceTimelineSelectorKey = (
 ) =>
   [
     selector.strategy,
+    selector.releaseVersion ?? '',
     selector.compositionId ?? '',
     selector.gitSha ?? '',
     selector.gateFingerprint ?? '',
@@ -99,6 +100,12 @@ const missingTimeline = (): StrategyEvidenceTimeline => ({
   markers: [],
 });
 
+const notAttachedTimeline = (): StrategyEvidenceTimeline => ({
+  status: 'not_attached',
+  observedFrom: null,
+  markers: [],
+});
+
 const invalidTimeline = (): StrategyEvidenceTimeline => ({
   status: 'invalid',
   observedFrom: null,
@@ -129,7 +136,7 @@ export const loadStrategyEvidenceTimelines = async ({
   const timelines = new Map(
     selectors.map((selector) => [
       strategyEvidenceTimelineSelectorKey(selector),
-      missingTimeline(),
+      selector.releaseVersion ? notAttachedTimeline() : missingTimeline(),
     ]),
   );
   if (!selectors.length) return timelines;
@@ -213,11 +220,12 @@ export const loadStrategyEvidenceTimelines = async ({
     const envelopes = envelopesByStrategy.get(strategy) ?? [];
     if (!envelopes.length) continue;
     const hasCompleteSelector =
-      Boolean(selector.compositionId) &&
-      Boolean(selector.gitSha) &&
-      Boolean(selector.gateFingerprint) &&
-      Boolean(selector.configFingerprint) &&
-      Boolean(selector.contextFingerprint);
+      selector.releaseVersion != null ||
+      (Boolean(selector.compositionId) &&
+        Boolean(selector.gitSha) &&
+        Boolean(selector.gateFingerprint) &&
+        Boolean(selector.configFingerprint) &&
+        Boolean(selector.contextFingerprint));
     if (selector.requireCompleteLineage && !hasCompleteSelector) continue;
 
     const markersById = new Map<string, StrategyEvidenceMarker>();
@@ -248,6 +256,8 @@ export const loadStrategyEvidenceTimelines = async ({
         (marker) =>
           (!selector.compositionId ||
             marker.compositionId === selector.compositionId) &&
+          (!selector.releaseVersion ||
+            marker.releaseVersion === selector.releaseVersion) &&
           (!selector.gitSha || marker.gitSha === selector.gitSha) &&
           (!selector.gateFingerprint ||
             marker.gateFingerprint === selector.gateFingerprint) &&
@@ -278,6 +288,7 @@ export const loadStrategyEvidenceTimelines = async ({
     if (
       !markers.length &&
       (selector.compositionId ||
+        selector.releaseVersion ||
         selector.gitSha ||
         selector.gateFingerprint ||
         selector.configFingerprint ||

@@ -47,12 +47,44 @@ export const saveRuntimeDeployment = async (
   userName: string,
   deployment: RuntimeDeployment,
 ): Promise<RuntimeDeployment> => {
+  const hasVersionedStrategies = deployment.strategies.some(
+    (strategy) => strategy.releaseVersion != null,
+  );
+  if (
+    hasVersionedStrategies &&
+    deployment.strategies.some((strategy) => strategy.releaseVersion == null)
+  ) {
+    throw new Error('A deployment cannot mix legacy configs and releases');
+  }
+  const strategies: RuntimeDeployment['strategies'] = deployment.strategies.map(
+    (strategy) => {
+      if (!hasVersionedStrategies) return strategy;
+      if (
+        !Number.isSafeInteger(strategy.releaseVersion) ||
+        !strategy.releaseVersion ||
+        (strategy.config && Object.keys(strategy.config).length)
+      ) {
+        throw new Error(
+          `Invalid versioned strategy reference: ${strategy.strategyName}`,
+        );
+      }
+      return {
+        strategyName: strategy.strategyName,
+        releaseVersion: strategy.releaseVersion,
+        controlState:
+          strategy.controlState === 'entries_paused'
+            ? 'entries_paused'
+            : 'active',
+      };
+    },
+  );
   const normalized: RuntimeDeployment = {
     ...deployment,
     id: normalizeId(deployment.id, 'Deployment id'),
     label: deployment.label.trim(),
     provider: deployment.provider.trim().toLowerCase(),
     accountId: normalizeId(deployment.accountId, 'Account id'),
+    strategies,
   };
   await setData(
     redisKeys.runtimeDeployment(userName, normalized.id),

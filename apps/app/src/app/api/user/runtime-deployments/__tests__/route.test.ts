@@ -1,5 +1,6 @@
 const mockGetCurrentUserName = jest.fn();
 const mockGetRuntimeDeploymentHeartbeat = jest.fn();
+const mockGetRuntimeStrategyRelease = jest.fn();
 const mockGetTradingAccount = jest.fn();
 const mockListRuntimeDeployments = jest.fn();
 const mockSaveRuntimeDeployment = jest.fn();
@@ -24,6 +25,11 @@ jest.mock('@tradejs/infra/runtimeDeployments', () => ({
     mockListRuntimeDeployments(...args),
   saveRuntimeDeployment: (...args: unknown[]) =>
     mockSaveRuntimeDeployment(...args),
+}));
+
+jest.mock('@tradejs/infra/runtimeStrategyReleases', () => ({
+  getRuntimeStrategyRelease: (...args: unknown[]) =>
+    mockGetRuntimeStrategyRelease(...args),
 }));
 
 jest.mock('#app/lib/currentUser', () => ({
@@ -142,6 +148,63 @@ describe('runtime deployments route', () => {
         universe: 'tradfi',
         assetClasses: ['equity'],
         tickers: ['AAPLUSDT'],
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('persists only an immutable release reference for a versioned deployment', async () => {
+    mockGetTradingAccount.mockResolvedValue({
+      id: 'crypto-main',
+      provider: 'bybit',
+      enabled: true,
+      universes: ['crypto'],
+    });
+    mockGetRuntimeStrategyRelease.mockResolvedValue({
+      strategyName: 'DoubleTap',
+      releaseVersion: 4,
+      config: {
+        INTERVAL: '60',
+        UNIVERSE: 'crypto',
+        POLICY_PROFILE_ID: 'crypto',
+      },
+    });
+    mockSaveRuntimeDeployment.mockImplementation(
+      async (_userName: string, value: unknown) => value,
+    );
+
+    const response = await POST(
+      request({
+        id: 'doubletap-forward',
+        label: 'DoubleTap forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        universe: 'tradfi',
+        interval: '5',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            releaseVersion: 4,
+            controlState: 'entries_paused',
+          },
+        ],
+      }),
+    );
+
+    expect(mockSaveRuntimeDeployment).toHaveBeenCalledWith(
+      'root',
+      expect.objectContaining({
+        interval: '60',
+        universe: 'crypto',
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            releaseVersion: 4,
+            controlState: 'entries_paused',
+          },
+        ],
       }),
     );
     expect(response.status).toBe(200);

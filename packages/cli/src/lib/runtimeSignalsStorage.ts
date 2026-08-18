@@ -13,7 +13,12 @@ export { getRuntimeStorageDayKey, getRuntimeStorageDayKeys };
 
 export type RuntimeSignalBucketRef = Pick<
   Signal,
-  'signalId' | 'symbol' | 'strategy' | 'timestamp' | 'runtimeConfigId'
+  | 'signalId'
+  | 'symbol'
+  | 'strategy'
+  | 'timestamp'
+  | 'runtimeConfigId'
+  | 'runtimeReleaseVersion'
 >;
 
 export type StoredRuntimeSignal = Omit<
@@ -40,6 +45,7 @@ export type RuntimeLineageScopeRecord = {
   strategy: string;
   symbol: string;
   runtimeConfigId?: string;
+  runtimeReleaseVersion?: number;
   lineage: RuntimeLineage;
   firstTimestamp: number;
   lastTimestamp: number;
@@ -84,6 +90,9 @@ export const toRuntimeSignalBucketRef = (
   timestamp: signal.timestamp,
   ...(signal.runtimeConfigId && signal.runtimeConfigId !== 'config'
     ? { runtimeConfigId: signal.runtimeConfigId }
+    : {}),
+  ...(signal.runtimeReleaseVersion
+    ? { runtimeReleaseVersion: signal.runtimeReleaseVersion }
     : {}),
 });
 

@@ -11,6 +11,7 @@ export default defineConfig({
     'src/registry.ts',
     'src/runtimeTrades.ts',
     'src/runtimeDashboard.ts',
+    'src/runtimeStrategies.ts',
     'src/strategies.ts',
   ],
   format: ['cjs', 'esm'],

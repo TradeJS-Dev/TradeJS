@@ -195,6 +195,7 @@ export const isRuntimeStrategyLineageScope = (
     typeof record.lastTimestamp === 'number' &&
     Number.isFinite(record.lastTimestamp) &&
     lineage != null &&
+    lineage.schemaVersion === 1 &&
     typeof lineage.gateFingerprint === 'string' &&
     lineage.gateFingerprint.trim().length > 0
   );
@@ -226,6 +227,7 @@ export const buildRuntimeStrategyAiGateChanges = ({
     ) {
       continue;
     }
+    if (scope.lineage.schemaVersion !== 1) continue;
     const fingerprint = scope.lineage.gateFingerprint.trim();
     const existing = observationsByTimestamp.get(scope.firstTimestamp);
     if (

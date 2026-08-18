@@ -559,6 +559,21 @@ const runSignalsPath = async () => {
     enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
+  jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+    loadResolvedRuntimeStrategies: jest.fn(async () => [
+      {
+        strategyName: 'ParityStrategy',
+        configId: 'config',
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        strategyCreator,
+        sourceStrategyConfig: { INTERVAL: '15' },
+        strategyConfig: { INTERVAL: '15' },
+        strategyResults: {},
+      },
+    ]),
+  }));
   jest.doMock('@tradejs/core/async', () => ({
     runWithConcurrency: jest.fn(
       async <T>(
@@ -800,7 +815,7 @@ const runReplayPath = async () => {
           AI_MODE: 'gate',
           MIN_AI_QUALITY: 4,
           ENV: 'CRON',
-          INTERVAL: '60',
+          INTERVAL: '15',
           MAKE_ORDERS: false,
         },
       },

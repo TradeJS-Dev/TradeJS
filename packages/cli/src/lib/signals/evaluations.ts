@@ -27,25 +27,31 @@ export const buildRuntimeSignalEvaluationId = ({
   symbol,
   timestamp,
   runtimeConfigId,
+  runtimeReleaseVersion,
 }: {
   strategyName: string;
   symbol: string;
   timestamp: number;
   runtimeConfigId?: string;
+  runtimeReleaseVersion?: number;
 }) =>
-  runtimeConfigId && runtimeConfigId !== 'config'
-    ? [strategyName, runtimeConfigId, symbol, timestamp].join(':')
-    : [strategyName, symbol, timestamp].join(':');
+  runtimeReleaseVersion
+    ? [strategyName, `v${runtimeReleaseVersion}`, symbol, timestamp].join(':')
+    : runtimeConfigId && runtimeConfigId !== 'config'
+      ? [strategyName, runtimeConfigId, symbol, timestamp].join(':')
+      : [strategyName, symbol, timestamp].join(':');
 
 const buildLineageField = (scope: {
   strategy: string;
   runtimeConfigId?: string;
+  runtimeReleaseVersion?: number;
   symbol: string;
   lineage: NonNullable<RuntimeSignalEvaluationRecord['runtimeLineage']>;
 }) =>
   [
     scope.strategy,
     scope.runtimeConfigId ?? 'config',
+    scope.runtimeReleaseVersion ? `v${scope.runtimeReleaseVersion}` : 'legacy',
     scope.symbol,
     runtimeLineageKey(scope.lineage),
   ].join(':');
@@ -99,6 +105,7 @@ export const flushRuntimeSignalEvaluations = async (
       const lineageField = buildLineageField({
         strategy: evaluation.strategy,
         runtimeConfigId: evaluation.runtimeConfigId,
+        runtimeReleaseVersion: evaluation.runtimeReleaseVersion,
         symbol: evaluation.symbol,
         lineage: evaluation.runtimeLineage,
       });
@@ -108,6 +115,7 @@ export const flushRuntimeSignalEvaluations = async (
         strategy: evaluation.strategy,
         symbol: evaluation.symbol,
         runtimeConfigId: evaluation.runtimeConfigId,
+        runtimeReleaseVersion: evaluation.runtimeReleaseVersion,
         lineage: evaluation.runtimeLineage,
         firstTimestamp: Math.min(
           existing?.firstTimestamp ?? evaluation.timestamp,

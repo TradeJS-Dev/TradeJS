@@ -26,6 +26,7 @@ import {
   getColorByLevel,
   RUNTIME_ORDER_ROW_HEIGHT,
 } from './RuntimeStrategyCard.presenter';
+import { toaster } from '#ui';
 
 const StatItem = ({
   stat,
@@ -64,11 +65,42 @@ export const RuntimeStrategyCard = ({
   const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [controlSaving, setControlSaving] = useState(false);
   const viewModel = useMemo(
     () => buildRuntimeStrategyCardViewModel(strategy),
     [strategy],
   );
   const { lastTrade, runtimeOrders } = viewModel;
+  const setControlState = async (controlState: 'active' | 'entries_paused') => {
+    if (!strategy.deploymentId || !strategy.releaseVersion) return;
+    setControlSaving(true);
+    try {
+      const response = await fetch(
+        `/api/user/runtime-deployments/${encodeURIComponent(strategy.deploymentId)}/strategies/${encodeURIComponent(strategy.strategyName)}/control`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ controlState }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Update failed');
+      toaster.success({
+        title:
+          controlState === 'entries_paused'
+            ? 'New entries paused'
+            : 'Strategy resumed',
+      });
+      await onUpdated();
+    } catch (error) {
+      toaster.error({
+        title: 'Could not update strategy state',
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setControlSaving(false);
+    }
+  };
 
   return (
     <Box
@@ -91,7 +123,11 @@ export const RuntimeStrategyCard = ({
           fontFamily="mono"
           letterSpacing="0"
         >
-          {strategy.enabled ? 'enabled' : 'disabled'}
+          {strategy.controlState === 'entries_paused'
+            ? 'entries paused'
+            : strategy.enabled
+              ? 'enabled'
+              : 'disabled'}
         </Badge>
         <Badge colorPalette="blue" variant="outline">
           {strategy.universe}
@@ -99,9 +135,15 @@ export const RuntimeStrategyCard = ({
         <Badge colorPalette="cyan" variant="outline">
           TF: {strategy.interval}m
         </Badge>
-        <Badge colorPalette="gray" variant="outline">
-          config: {strategy.configId}
-        </Badge>
+        {strategy.releaseVersion ? (
+          <Badge colorPalette="gray" variant="outline">
+            release: v{strategy.releaseVersion}
+          </Badge>
+        ) : (
+          <Badge colorPalette="gray" variant="outline">
+            legacy config: {strategy.configId}
+          </Badge>
+        )}
         {strategy.accountId ? (
           <Badge colorPalette="purple" variant="outline">
             account: {strategy.accountLabel ?? strategy.accountId}
@@ -171,7 +213,24 @@ export const RuntimeStrategyCard = ({
                 <Menu.Content minW="160px">
                   {strategy.connected ? (
                     <Menu.Item value="edit" onClick={() => setConfigOpen(true)}>
-                      Edit
+                      {strategy.releaseVersion ? 'View config' : 'Edit'}
+                    </Menu.Item>
+                  ) : null}
+                  {strategy.releaseVersion && strategy.deploymentId ? (
+                    <Menu.Item
+                      value="control"
+                      disabled={controlSaving}
+                      onClick={() =>
+                        void setControlState(
+                          strategy.controlState === 'entries_paused'
+                            ? 'active'
+                            : 'entries_paused',
+                        )
+                      }
+                    >
+                      {strategy.controlState === 'entries_paused'
+                        ? 'Resume entries'
+                        : 'Pause new entries'}
                     </Menu.Item>
                   ) : null}
                   <Menu.Item value="orders" onClick={() => setOrdersOpen(true)}>

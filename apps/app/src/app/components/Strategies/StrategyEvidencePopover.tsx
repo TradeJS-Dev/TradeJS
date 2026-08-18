@@ -137,7 +137,9 @@ export const StrategyEvidencePopover = ({
                           )}.`
                       : timeline.status === 'invalid'
                         ? 'Evidence failed checksum, identity, or structure verification. No markers are rendered.'
-                        : 'No checksum-verified evidence artifact is available. No mutable fallback is used.'}
+                        : timeline.status === 'not_attached'
+                          ? 'The runtime release is published, but no checksum-verified research artifact is attached yet.'
+                          : 'No checksum-verified evidence artifact is available. No mutable fallback is used.'}
                   </Text>
                 </Box>
 

@@ -71,6 +71,11 @@
       "import": "./dist/runtimeDashboard.mjs",
       "require": "./dist/runtimeDashboard.js"
     },
+    "./runtimeStrategies": {
+      "types": "./dist/runtimeStrategies.d.ts",
+      "import": "./dist/runtimeStrategies.mjs",
+      "require": "./dist/runtimeStrategies.js"
+    },
     "./strategies": {
       "types": "./dist/strategies.d.ts",
       "import": "./dist/strategies.mjs",

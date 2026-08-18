@@ -82,12 +82,31 @@ _Avoid_: Config hash, current strategy name, same code approximately
 
 **Portable Composition Handoff**:
 The secret-free local release output that carries one Strategy Composition to
-the separate runtime server. Local config keys, deployment/account ids, API
-credentials, and `MAX_LOSS_VALUE` are not composition logic; the server binds
-its own operational identity and risk scale, then verifies the same composition
-id plus git/core/gate/context semantics and `ENABLE=true` before execution.
+the separate runtime server. Deployment/account ids and credentials are not
+part of the composition; the server binds them separately to a Runtime Strategy
+Release.
 _Avoid_: Missing local deployment means production is blocked, copy server keys
 into research evidence, ignore activation state
+
+**Runtime Strategy Release**:
+An immutable, per-strategy numbered runtime configuration that names the
+strategy and runtime package versions with which it is compatible.
+_Avoid_: Config id, current config, deployment config
+
+**Deployment Binding**:
+The operational association of a Runtime Strategy Release with a trading
+account and connector target.
+_Avoid_: Strategy config, release contents
+
+**Entry Control State**:
+The operational active-or-entries-paused state of one Deployment Binding;
+pausing entries does not suspend management of existing positions.
+_Avoid_: Enabled config, disabled strategy
+
+**Runtime Package Manifest**:
+The immutable inventory of exact TradeJS and strategy package versions in one
+runtime image.
+_Avoid_: Lockfile, latest image, git fingerprint
 
 **Regime Attribution**:
 Signal-time market-state labels retained for analysis, coverage, and drift diagnostics but not used to change the current Strategy Composition's trading decision.
@@ -102,7 +121,10 @@ A chart event loaded from a checksum-verified evidence artifact and linked to it
 _Avoid_: Inferred config-change line, best-effort marker
 
 **Evidence Timeline**:
-The verified chronological projection of composition, loss value, evidence, deployment, parity, and recommendation markers for one strategy chart; missing or invalid evidence remains explicit and has no mutable fallback.
+The verified chronological projection of release, loss value, evidence,
+deployment, parity, and recommendation markers for one strategy chart;
+unattached, missing, or invalid evidence remains explicit and has no mutable
+fallback.
 _Avoid_: Redis lineage history, chart annotation
 
 **Prospective Evidence**:

@@ -30,6 +30,9 @@
       "@tradejs/node/runtimeDashboard": [
         "./packages/node/src/runtimeDashboard"
       ],
+      "@tradejs/node/runtimeStrategies": [
+        "./packages/node/src/runtimeStrategies"
+      ],
       "@tradejs/node/strategies": ["./packages/node/src/strategies"],
       "@tradejs/infra/*": ["./packages/infra/src/*"],
       "@tradejs/indicators": ["./packages/indicators/src/index"],

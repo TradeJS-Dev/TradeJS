@@ -9,7 +9,7 @@ export interface RuntimeStrategyConfigRecord {
 }
 
 const RESERVED_STRATEGY_NAMES = new Set(['charts']);
-const RESERVED_CONFIG_IDS = new Set(['results']);
+const RESERVED_CONFIG_IDS = new Set(['results', 'draft', 'release-seq']);
 
 const isStrategyConfig = (value: unknown): value is StrategyConfig =>
   Boolean(value && typeof value === 'object' && !Array.isArray(value));

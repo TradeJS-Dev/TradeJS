@@ -23,7 +23,7 @@ describe('runtimeModeConfig', () => {
     });
   });
 
-  it('preserves detector and gate settings while overriding runtime mode fields', () => {
+  it('preserves the configured strategy interval while adding runtime mode fields', () => {
     expect(
       buildRuntimeModeStrategyConfig({
         strategyConfig: {
@@ -42,7 +42,7 @@ describe('runtimeModeConfig', () => {
       }),
     ).toEqual({
       ENV: 'PARITY',
-      INTERVAL: '15',
+      INTERVAL: '60',
       MAKE_ORDERS: true,
       RECORD_RUNTIME_TRADES: false,
       AI_ENABLED: true,

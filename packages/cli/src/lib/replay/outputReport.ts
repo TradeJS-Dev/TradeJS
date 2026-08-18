@@ -361,15 +361,28 @@ const renderLineageRows = (
       contexts: new Set<string>(),
     };
     existing.scopes += 1;
-    existing.gitShas.add(record.lineage.gitSha ?? 'unknown');
-    existing.dirty.add(
-      record.lineage.gitDirty == null
-        ? 'unknown'
-        : String(record.lineage.gitDirty),
-    );
-    existing.gates.add(record.lineage.gateFingerprint);
-    existing.configs.add(record.lineage.configFingerprint);
-    existing.contexts.add(record.lineage.contextFingerprint);
+    if (record.lineage.schemaVersion === 2) {
+      existing.gitShas.add('release-versioned');
+      existing.dirty.add('n/a');
+      existing.gates.add('release-versioned');
+      existing.configs.add(`v${record.lineage.releaseVersion}`);
+      existing.contexts.add(
+        [
+          record.lineage.strategyPackageVersion ?? 'strategy:unknown',
+          record.lineage.runtimePackageVersion ?? 'runtime:unknown',
+        ].join('/'),
+      );
+    } else {
+      existing.gitShas.add(record.lineage.gitSha ?? 'unknown');
+      existing.dirty.add(
+        record.lineage.gitDirty == null
+          ? 'unknown'
+          : String(record.lineage.gitDirty),
+      );
+      existing.gates.add(record.lineage.gateFingerprint);
+      existing.configs.add(record.lineage.configFingerprint);
+      existing.contexts.add(record.lineage.contextFingerprint);
+    }
     grouped.set(record.strategy, existing);
   }
   const formatSet = (values: Set<string>) => {

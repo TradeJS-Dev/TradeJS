@@ -276,6 +276,56 @@ describe('strategy evidence timeline', () => {
     });
   });
 
+  it('reports a published release as not attached until exact evidence exists', async () => {
+    const root = await createRoot();
+    const selector = {
+      strategy: 'TrendLine',
+      releaseVersion: 2,
+      requireCompleteLineage: true,
+    };
+    const timelines = await loadStrategyEvidenceTimelines({
+      projectRoot: root,
+      selectors: [selector],
+      startTime: 0,
+      endTime: 1_000,
+    });
+
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(selector)),
+    ).toEqual({ status: 'not_attached', observedFrom: null, markers: [] });
+  });
+
+  it('attaches evidence only to the named per-strategy release version', async () => {
+    const root = await createRoot();
+    const markerDir = path.join(root, 'markers', 'TrendLine');
+    await fs.mkdir(markerDir, { recursive: true });
+    const value = envelope({
+      markers: [{ ...marker('release-2', 'D', 200), releaseVersion: 2 }],
+    });
+    await fs.writeFile(
+      path.join(markerDir, `${value.artifactId}.json`),
+      JSON.stringify(value),
+    );
+    const selectors = [
+      { strategy: 'TrendLine', releaseVersion: 2 },
+      { strategy: 'TrendLine', releaseVersion: 3 },
+    ];
+    const timelines = await loadStrategyEvidenceTimelines({
+      projectRoot: root,
+      markerDir: path.join(root, 'markers'),
+      selectors,
+      startTime: 0,
+      endTime: 1_000,
+    });
+
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(selectors[0]))?.status,
+    ).toBe('verified');
+    expect(
+      timelines.get(strategyEvidenceTimelineSelectorKey(selectors[1]))?.status,
+    ).toBe('not_attached');
+  });
+
   it('does not attach evidence from another frozen composition', async () => {
     const root = await createRoot();
     const markerDir = path.join(root, 'markers', 'TrendLine');

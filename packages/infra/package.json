@@ -67,6 +67,11 @@
       "import": "./dist/runtimeStrategyConfigs.mjs",
       "require": "./dist/runtimeStrategyConfigs.js"
     },
+    "./runtimeStrategyReleases": {
+      "types": "./dist/runtimeStrategyReleases.d.ts",
+      "import": "./dist/runtimeStrategyReleases.mjs",
+      "require": "./dist/runtimeStrategyReleases.js"
+    },
     "./runtimeDeployments": {
       "types": "./dist/runtimeDeployments.d.ts",
       "import": "./dist/runtimeDeployments.mjs",

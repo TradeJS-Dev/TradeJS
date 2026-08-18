@@ -4,7 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
+  type LegacyRuntimeLineage,
   type RuntimeLineage,
+  type VersionedRuntimeLineage,
 } from '@tradejs/types';
 import {
   getHyperliquidPerpUniverseSnapshot,
@@ -95,7 +97,7 @@ export const fingerprintRuntimeValue = (value: unknown) =>
 
 const gitLineageCache = new Map<
   string,
-  Pick<RuntimeLineage, 'gitSha' | 'gitDirty'>
+  Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>
 >();
 const gateFingerprintCache = new Map<
   string,
@@ -106,7 +108,7 @@ const snapshotFingerprintCache = new Map<string, string | null>();
 
 const resolveGitLineage = (
   projectRoot: string,
-): Pick<RuntimeLineage, 'gitSha' | 'gitDirty'> => {
+): Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'> => {
   const cached = gitLineageCache.get(projectRoot);
   if (cached) {
     return cached;
@@ -117,7 +119,7 @@ const resolveGitLineage = (
     const result = {
       gitSha: envSha,
       gitDirty: false,
-    } satisfies Pick<RuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   }
@@ -140,14 +142,14 @@ const resolveGitLineage = (
     const result = {
       gitSha: gitSha || null,
       gitDirty: status.length > 0,
-    } satisfies Pick<RuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   } catch {
     const result = {
       gitSha: null,
       gitDirty: null,
-    } satisfies Pick<RuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   }
@@ -233,21 +235,50 @@ const resolveRuntimeGateFingerprint = async ({
   return result;
 };
 
-export const buildRuntimeLineage = async ({
-  projectRoot,
-  strategyName,
-  compositionId,
-  config,
-  runContext,
-  env = process.env,
-}: {
+type BuildRuntimeLineageParams = {
   projectRoot: string;
   strategyName: string;
   compositionId?: string | null;
+  releaseVersion?: number;
+  strategyPackageVersion?: string | null;
+  runtimePackageVersion?: string | null;
   config: unknown;
   runContext?: Record<string, string | number | boolean | null>;
   env?: NodeJS.ProcessEnv;
-}): Promise<RuntimeLineage> => {
+};
+
+export function buildRuntimeLineage(
+  params: BuildRuntimeLineageParams & { releaseVersion: number },
+): Promise<VersionedRuntimeLineage>;
+export function buildRuntimeLineage(
+  params: BuildRuntimeLineageParams & { releaseVersion?: undefined },
+): Promise<LegacyRuntimeLineage>;
+export function buildRuntimeLineage(
+  params: BuildRuntimeLineageParams,
+): Promise<RuntimeLineage>;
+export async function buildRuntimeLineage({
+  projectRoot,
+  strategyName,
+  compositionId,
+  releaseVersion,
+  strategyPackageVersion,
+  runtimePackageVersion,
+  config,
+  runContext,
+  env = process.env,
+}: BuildRuntimeLineageParams): Promise<RuntimeLineage> {
+  if (releaseVersion != null) {
+    if (!Number.isSafeInteger(releaseVersion) || releaseVersion <= 0) {
+      throw new Error(`Invalid runtime releaseVersion: ${releaseVersion}`);
+    }
+    return {
+      schemaVersion: 2,
+      releaseVersion,
+      strategyPackageVersion,
+      runtimePackageVersion,
+      maxLossValue: resolveRuntimeMaxLossValue(config),
+    };
+  }
   const git = resolveGitLineage(projectRoot);
   const hyperliquidPerpUniverseFingerprint =
     typeof getHyperliquidPerpUniverseSnapshot === 'function'
@@ -292,18 +323,24 @@ export const buildRuntimeLineage = async ({
     contextFingerprint: fingerprintRuntimeValue(context),
     maxLossValue: resolveRuntimeMaxLossValue(config),
   };
-};
+}
 
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
-  [
-    lineage.schemaVersion,
-    lineage.compositionId ?? 'unbound-composition',
-    lineage.gitSha ?? 'unknown',
-    lineage.gitDirty == null ? 'unknown' : lineage.gitDirty ? 'dirty' : 'clean',
-    lineage.gateFingerprint,
-    lineage.configFingerprint,
-    lineage.contextFingerprint,
-  ].join(':');
+  lineage.schemaVersion === 2
+    ? ['v2', lineage.releaseVersion].join(':')
+    : [
+        lineage.schemaVersion,
+        lineage.compositionId ?? 'unbound-composition',
+        lineage.gitSha ?? 'unknown',
+        lineage.gitDirty == null
+          ? 'unknown'
+          : lineage.gitDirty
+            ? 'dirty'
+            : 'clean',
+        lineage.gateFingerprint,
+        lineage.configFingerprint,
+        lineage.contextFingerprint,
+      ].join(':');
 
 export const runtimeLineagesMatch = (
   left: RuntimeLineage | null | undefined,

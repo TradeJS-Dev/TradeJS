@@ -22,6 +22,7 @@ type StrategyRegistryState = {
   strategyCreators: Map<string, StrategyCreator>;
   strategyManifestsMap: Map<string, StrategyManifest>;
   strategyEntriesMap: Map<string, StrategyRegistryEntry>;
+  strategySourcesMap: Map<string, string>;
   pluginsLoadPromise: Promise<void> | null;
 };
 
@@ -57,6 +58,7 @@ const createStrategyRegistryState = (): StrategyRegistryState => ({
   strategyCreators: new Map<string, StrategyCreator>(),
   strategyManifestsMap: new Map<string, StrategyManifest>(),
   strategyEntriesMap: new Map<string, StrategyRegistryEntry>(),
+  strategySourcesMap: new Map<string, string>(),
   pluginsLoadPromise: null,
 });
 
@@ -163,6 +165,7 @@ const registerEntries = (
     }
     state.strategyManifestsMap.set(strategyName, entry.manifest);
     state.strategyEntriesMap.set(strategyName, entry);
+    state.strategySourcesMap.set(strategyName, source);
     materializeStrategyCreator(strategyName, state);
   }
 };
@@ -319,6 +322,15 @@ export const getStrategyDefaults = async (
   await ensureStrategyPluginsLoaded(cwd);
   const { state } = getStrategyRegistryState(cwd);
   return state.strategyEntriesMap.get(name)?.defaults;
+};
+
+export const getStrategyPluginSource = async (
+  name: string,
+  cwd = getTradejsProjectCwd(),
+): Promise<string | undefined> => {
+  await ensureStrategyPluginsLoaded(cwd);
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategySourcesMap.get(name);
 };
 
 export const getAvailableStrategyNames = async (
