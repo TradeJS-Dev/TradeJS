@@ -87,9 +87,13 @@ jobs:
           [[ "$beta_run_number" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid beta run number' >&2; exit 1; }
           matching_run="$(gh api --method GET \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/publish-images.yml/runs" \
-            -f branch=stable -f status=success \
+            -f branch=stable \
             --jq ".workflow_runs[] | select(.run_number == ${beta_run_number} and .head_sha == \"${source_sha}\") | .id" | head -n 1)"
-          [ -n "$matching_run" ] || { echo 'No successful beta and production-like image run found' >&2; exit 1; }
+          [ -n "$matching_run" ] || { echo 'No matching beta workflow run found' >&2; exit 1; }
+          matching_beta_job="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${matching_run}/jobs" \
+            --jq '.jobs[] | select(.name == "beta" and .conclusion == "success") | .id' | head -n 1)"
+          [ -n "$matching_beta_job" ] || { echo 'No successful beta production-like validation job found' >&2; exit 1; }
           git fetch origin stable
           release_head_sha="$(git rev-parse origin/stable)"
           if [ "$release_head_sha" != "$source_sha" ]; then
