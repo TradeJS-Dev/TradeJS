@@ -584,13 +584,28 @@ Case handling is deterministic:
    evidence; never discard earlier logic history.
 
 For an authorized local `MICRO_FORWARD_READY`, transfer the immutable handoff
-without credentials to the runtime server. There, verify the exact runtime
-deployment/account/connector/strategy target, freeze the candidate fingerprints,
-set only its `MAX_LOSS_VALUE=1`, retain both directions, rerun `decide`, and
-start the forward runner only after `START_MICRO_FORWARD`. Do not promote the
-composition, increase risk, change unrelated runtime config, or manually place
-orders. If the target is ambiguous on the runtime server, report that binding
-problem separately from research validity.
+without credentials to the runtime server. When the user says to start forward
+tests, first complete the local rollout phase: commit and push every
+strategy-owned source/gate/config change for the exact candidate, update only
+local Redis to the exact candidate runtime strategy config, verify the local
+config fingerprint, and rerun dry-run `signals`. Use
+`$save-strategy-config-from-backtest` conversion rules for Redis promotion; for
+micro-forward the saved runtime config must use the release risk scale
+`MAX_LOSS_VALUE=1`. Do not include unrelated working-tree changes in the
+strategy commit unless the user explicitly asks.
+
+Do not mutate production Redis in the local phase. After the user deploys the
+pushed code and replies `готово`/`ready`, treat that reply as authorization for
+the production Redis phase. On the runtime server, verify that the deployed
+strategy commit/package fingerprint matches the pushed candidate, read and
+backup the current production Redis strategy config, write the same exact
+candidate config, verify the saved config fingerprint, verify the exact runtime
+deployment/account/connector/strategy target, retain both directions, rerun
+`decide`, and start the forward runner only after `START_MICRO_FORWARD`. Do not
+promote the composition, increase risk, change unrelated runtime config, or
+manually place orders. If production Redis/server access is unavailable, the
+deployed commit differs, or the target is ambiguous on the runtime server,
+report that binding problem separately from research validity.
 
 When a user later authorizes a runtime deployment, copy the verified
 `compositionId` into that deployment strategy's `releaseCompositionId`. The
@@ -636,6 +651,17 @@ yarn strategy:release verify \
 
 yarn strategy:release decide --input <decision-input.json> \
   --out <decision.json>
+
+# Local forward-test preparation after explicit user authorization.
+git -C <strategy-source-root> status --short
+git -C <strategy-source-root> add <strategy-owned-candidate-files>
+git -C <strategy-source-root> commit -m "<strategy>: prepare micro-forward candidate"
+git -C <strategy-source-root> push
+docker exec inv-redis redis-cli JSON.GET 'users:<user>:backtests:configs:<Strategy>:ai'
+docker exec inv-redis redis-cli JSON.GET 'users:<user>:strategies:<Strategy>:config'
+docker exec inv-redis redis-cli -x JSON.SET 'users:<user>:strategies:<Strategy>:config' '$' < <candidate-runtime-config.json
+yarn signals --user <user> --deployment <deploymentId> --timeframe <interval> \
+  --skipScreenshots --showSkipStats
 ```
 
 Use `ai-gate-ablation.mjs` for the fixed gate candidate and its held-out
