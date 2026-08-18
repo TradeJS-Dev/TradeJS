@@ -23,9 +23,20 @@ const runtime: ConnectorRuntime = {
   createCachedKline: ({ request }) => request,
 };
 
+const originalBybitApiRegion = process.env.TRADEJS_BYBIT_API_REGION;
+
 describe('ByBit getClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.TRADEJS_BYBIT_API_REGION;
+  });
+
+  afterAll(() => {
+    if (originalBybitApiRegion === undefined) {
+      delete process.env.TRADEJS_BYBIT_API_REGION;
+    } else {
+      process.env.TRADEJS_BYBIT_API_REGION = originalBybitApiRegion;
+    }
   });
 
   it('creates public client without credentials', async () => {
@@ -42,6 +53,44 @@ describe('ByBit getClient', () => {
           parseAPIRateLimits: true,
           testnet: false,
         },
+      }),
+    );
+  });
+
+  it('passes configured api region to public and private clients', async () => {
+    process.env.TRADEJS_BYBIT_API_REGION = ' EU ';
+    mockResolveTradingAccount.mockResolvedValue({
+      id: 'bybit-default',
+      apiKey: 'key',
+      apiSecret: 'secret',
+      environment: 'mainnet',
+    });
+
+    await getClient(
+      { userName: 'root', accountId: 'bybit-default' },
+      'public',
+      runtime,
+    );
+    await getClient(
+      { userName: 'root', accountId: 'bybit-default' },
+      'private',
+      runtime,
+    );
+
+    expect(mockRestClientV5Calls).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        apiRegion: 'EU',
+        testnet: false,
+      }),
+    );
+    expect(mockRestClientV5Calls).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        apiRegion: 'EU',
+        key: 'key',
+        secret: 'secret',
+        testnet: false,
       }),
     );
   });

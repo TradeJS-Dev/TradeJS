@@ -9,6 +9,22 @@ const PRIVATE_RECV_WINDOW_MS = 10_000;
 
 export type ByBitRestAccess = 'private' | 'public';
 
+type BybitRestClientOptions = NonNullable<
+  ConstructorParameters<typeof RestClientV5>[0]
+>;
+
+const getApiRegion = (): BybitRestClientOptions['apiRegion'] | undefined => {
+  const apiRegion = process.env.TRADEJS_BYBIT_API_REGION?.trim();
+  return apiRegion
+    ? (apiRegion as BybitRestClientOptions['apiRegion'])
+    : undefined;
+};
+
+const getApiRegionOptions = () => {
+  const apiRegion = getApiRegion();
+  return apiRegion ? { apiRegion } : {};
+};
+
 export const getClient = async (
   config: ConnectorConfig,
   access: ByBitRestAccess = 'private',
@@ -29,6 +45,7 @@ export const getClient = async (
 
   if (access === 'public') {
     return new RestClientV5({
+      ...getApiRegionOptions(),
       parseAPIRateLimits: true,
       testnet: useTestnet,
     });
@@ -50,6 +67,7 @@ export const getClient = async (
   }
 
   const client = new RestClientV5({
+    ...getApiRegionOptions(),
     key: account.apiKey,
     secret: account.apiSecret,
     parseAPIRateLimits: true,
