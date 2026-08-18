@@ -149,6 +149,7 @@ jobs:
       - name: Build and test the production-like Project image
         env:
           BETA_VERSION: ${{ steps.version.outputs.beta_version }}
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: |
           git clone --depth 1 https://github.com/TradeJS-Dev/TradeJS-Project.git ../tradejs-project-beta
           cd ../tradejs-project-beta

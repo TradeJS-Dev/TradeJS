@@ -17,6 +17,7 @@ describe('npm release workflows', () => {
     );
     expect(workflow).toContain('beta-runtime-smoke.sh');
     expect(workflow).toContain('yarn install --no-immutable');
+    expect(workflow).toContain("PUPPETEER_SKIP_DOWNLOAD: 'true'");
     expect(workflow).not.toContain('yarn bump:packages auto');
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('Tag successful release');
