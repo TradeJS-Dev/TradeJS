@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   getRuntimeDeployment,
@@ -20,6 +20,7 @@ import {
 import { getStrategyDefaults } from '@tradejs/node/strategies';
 import type {
   RuntimeDeployment,
+  MarketUniverse,
   RuntimeStrategyControlState,
   StrategyConfig,
 } from '@tradejs/types';
@@ -93,6 +94,119 @@ const publish = async ({
     ...metadata,
     createdBy: `cli:${userName}`,
   });
+};
+
+export const buildBootstrapRuntimeDeployment = ({
+  deploymentId,
+  label,
+  connectorName,
+  provider,
+  accountId,
+  strategyName,
+  releaseVersion,
+  config,
+}: {
+  deploymentId: string;
+  label: string;
+  connectorName: string;
+  provider: string;
+  accountId: string;
+  strategyName: string;
+  releaseVersion: number;
+  config: StrategyConfig;
+}): RuntimeDeployment => ({
+  id: deploymentId,
+  label,
+  connectorName,
+  provider,
+  accountId,
+  universe: config.UNIVERSE as MarketUniverse,
+  interval: String(config.INTERVAL),
+  enabled: true,
+  strategies: [
+    {
+      strategyName,
+      releaseVersion,
+      controlState: 'entries_paused',
+    },
+  ],
+});
+
+const bootstrap = async () => {
+  const strategyName = required('strategy');
+  const deploymentId = required('deployment');
+  const accountId = required('account');
+  const connectorName = option('connector') ?? 'bybit';
+  const provider = option('provider') ?? connectorName;
+  const label = option('label') ?? deploymentId;
+  const configFile = path.resolve(projectRoot, required('file'));
+  const sourceConfig = JSON.parse(
+    await readFile(configFile, 'utf8'),
+  ) as StrategyConfig;
+  const existingDeployment = await getRuntimeDeployment(userName, deploymentId);
+  if (existingDeployment) {
+    throw new Error(
+      `Deployment already exists: ${deploymentId}; publish a release and switch its pointer instead`,
+    );
+  }
+  const releaseConfig = await toReleaseConfig(strategyName, sourceConfig);
+  const previewDeployment = buildBootstrapRuntimeDeployment({
+    deploymentId,
+    label,
+    connectorName,
+    provider,
+    accountId,
+    strategyName,
+    releaseVersion: 1,
+    config: releaseConfig,
+  });
+  if (!hasFlag('write')) {
+    console.log(
+      JSON.stringify(
+        {
+          dryRun: true,
+          releaseConfig,
+          deployment: {
+            ...previewDeployment,
+            strategies: previewDeployment.strategies.map((strategy) => ({
+              ...strategy,
+              releaseVersion: '<allocated on write>',
+            })),
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const backupPath = await writeMigrationBackup({
+    userName,
+    capturedAt: Date.now(),
+    reason: 'bootstrap',
+    sourceConfig,
+  });
+  const release = await publish({ strategyName, sourceConfig });
+  const deployment = await saveRuntimeDeployment(
+    userName,
+    buildBootstrapRuntimeDeployment({
+      deploymentId,
+      label,
+      connectorName,
+      provider,
+      accountId,
+      strategyName,
+      releaseVersion: release.releaseVersion,
+      config: release.config,
+    }),
+  );
+  console.log(
+    JSON.stringify(
+      { bootstrapped: true, backupPath, release, deployment },
+      null,
+      2,
+    ),
+  );
 };
 
 const migrate = async () => {
@@ -285,6 +399,7 @@ const inspect = async () => {
 };
 
 export const runtimeConfig = async () => {
+  if (action === 'bootstrap') return bootstrap();
   if (action === 'migrate') return migrate();
   if (action === 'publish-draft') return publishDraft();
   if (action === 'verify') return verify();
@@ -293,7 +408,7 @@ export const runtimeConfig = async () => {
   if (action === 'rollback') return rollback();
   if (action === 'inspect') return inspect();
   throw new Error(
-    'Usage: tradejs runtime-config inspect|verify|migrate|publish-draft|pause|resume|rollback',
+    'Usage: tradejs runtime-config inspect|verify|bootstrap|migrate|publish-draft|pause|resume|rollback',
   );
 };
 
