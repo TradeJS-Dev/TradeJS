@@ -148,7 +148,10 @@ const resolveAccountId = async ({
     provider: deployment.provider,
     universe,
   });
-  return account?.id ?? deployment.accountId;
+  if (!account) {
+    throw new Error(`Trading account not found: ${deployment.accountId}`);
+  }
+  return account.id;
 };
 
 const loadVersionedRuntimeStrategies = async ({

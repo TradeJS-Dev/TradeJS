@@ -188,4 +188,21 @@ describe('shared versioned runtime strategy resolver', () => {
       runtimePackageVersion: '3.1.4',
     });
   });
+
+  it('rejects a deployment whose canonical trading account is missing', async () => {
+    jest.doMock('@tradejs/infra/tradingAccounts', () => ({
+      resolveTradingAccount: jest.fn(async () => null),
+    }));
+    const { loadResolvedRuntimeStrategies } = await import(
+      '../runtimeStrategies'
+    );
+
+    await expect(
+      loadResolvedRuntimeStrategies({
+        userName: 'root',
+        projectRoot: '/project',
+        deployment,
+      }),
+    ).rejects.toThrow('Trading account not found: bybit-main');
+  });
 });
