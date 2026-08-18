@@ -6,7 +6,7 @@ import {
   createTrendlineEngine,
 } from '@tradejs/core/indicators';
 import { fetchMlThreshold } from '@tradejs/infra/ml';
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import { getData } from '@tradejs/infra/redis';
 
 jest.mock('@tradejs/core/indicators', () => {
   const actual = jest.requireActual('@tradejs/core/indicators');
@@ -61,10 +61,15 @@ const trendLineDefinition = strategyEntries.find(
 );
 if (!trendLineDefinition) throw new Error('TrendLine definition is missing');
 
-const TrendlineStrategyCreator = createStrategyRuntime({
+const createTrendlineStrategy = createStrategyRuntime({
   strategyName: trendLineDefinition.manifest.name,
   ...trendLineDefinition,
 });
+const TrendlineStrategyCreator: typeof createTrendlineStrategy = (params) =>
+  createTrendlineStrategy({
+    runtimeConfigSnapshot: { userConfig: {} },
+    ...params,
+  });
 
 const makeCandle = (timestamp: number, price: number) => ({
   timestamp,
@@ -347,16 +352,11 @@ describe('TrendlineStrategyCreator', () => {
     );
   });
 
-  it('merges user strategy config from redis in non-BACKTEST mode', async () => {
-    (getData as jest.Mock).mockImplementation(async (key: string) => {
-      if (key === 'strategy:config:TrendLine') {
-        return {
-          LOWS: {
-            enable: false,
-          },
-        };
-      }
-      return {};
+  it('uses the immutable release snapshot without reading mutable Redis config', async () => {
+    (getData as jest.Mock).mockResolvedValue({
+      LOWS: {
+        enable: true,
+      },
     });
 
     (createTrendlineEngine as jest.Mock).mockImplementation(
@@ -406,6 +406,13 @@ describe('TrendlineStrategyCreator', () => {
           minRiskRatio: 0,
         },
       },
+      runtimeConfigSnapshot: {
+        userConfig: {
+          LOWS: {
+            enable: false,
+          },
+        },
+      },
       symbol: 'TESTUSDT',
       data: cachedData,
       btcData: btcCachedData,
@@ -417,42 +424,19 @@ describe('TrendlineStrategyCreator', () => {
       makeCandle(1_700_000_000_000, 20000),
     );
 
-    expect(redisKeys.strategyConfig).toHaveBeenCalledWith(
-      'test',
-      'TrendLine',
-      'config',
-    );
+    expect(getData).not.toHaveBeenCalled();
     expect(result).toBe('STRATEGY_DISABLED');
   });
 
-  it('applies backtest result config after user config and marks signal isConfigFromBacktest', async () => {
-    (getData as jest.Mock).mockImplementation(async (key: string) => {
-      if (key === 'strategy:config:TrendLine') {
-        return {
+  it('does not merge per-symbol backtest results into runtime config', async () => {
+    (getData as jest.Mock).mockResolvedValue({
+      TESTUSDT: {
+        config: {
           LOWS: {
             enable: false,
           },
-        };
-      }
-
-      if (key === 'strategy:results:TrendLine') {
-        return {
-          TESTUSDT: {
-            config: {
-              LOWS: {
-                enable: true,
-                direction: 'LONG',
-                TP: 2,
-                SL: 1,
-                minRiskRatio: 0,
-              },
-            },
-            stats: {},
-          },
-        };
-      }
-
-      return {};
+        },
+      },
     });
 
     (createTrendlineEngine as jest.Mock).mockImplementation(
@@ -520,8 +504,8 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     expect(typeof result).toBe('object');
-    expect((result as any).isConfigFromBacktest).toBe(true);
-    expect(redisKeys.strategyResults).toHaveBeenCalledWith('test', 'TrendLine');
+    expect((result as any).isConfigFromBacktest).toBe(false);
+    expect(getData).not.toHaveBeenCalled();
   });
 
   it('passes ML signal via signal.indicators without raw candles config fields', async () => {

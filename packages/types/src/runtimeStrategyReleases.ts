@@ -2,8 +2,6 @@ import type { StrategyConfig } from './backtest';
 
 export const RUNTIME_STRATEGY_RELEASE_SCHEMA =
   'tradejs-runtime-strategy-release/v2' as const;
-export const RUNTIME_STRATEGY_DRAFT_SCHEMA =
-  'tradejs-runtime-strategy-draft/v2' as const;
 
 export type RuntimeStrategyControlState = 'active' | 'entries_paused';
 
@@ -16,21 +14,12 @@ export interface RuntimeStrategyRelease {
   strategyName: string;
   releaseVersion: number;
   config: StrategyConfig;
-  strategyPackage: string | null;
-  strategyPackageVersion: string | null;
-  runtimePackageVersion: string | null;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  runtimePackageVersion: string;
   createdAt: number;
   createdBy: string;
   contentSha256: string;
-}
-
-export interface RuntimeStrategyDraft {
-  schema: typeof RUNTIME_STRATEGY_DRAFT_SCHEMA;
-  strategyName: string;
-  baseReleaseVersion: number | null;
-  config: StrategyConfig;
-  updatedAt: number;
-  updatedBy: string;
 }
 
 export interface RuntimeStrategyReleaseRef {

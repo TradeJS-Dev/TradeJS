@@ -45,12 +45,6 @@ args.option(['D', 'deployment'], 'Runtime deployment id');
 
 const flags = args.parse(process.argv);
 
-const hasExplicitScope = process.argv.some((argument) =>
-  ['-f', '--timeframe', '-V', '--universe', '-A', '--account'].some(
-    (option) => argument === option || argument.startsWith(`${option}=`),
-  ),
-);
-
 const config: SignalsRunnerConfig = {
   projectRoot:
     String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd(),
@@ -74,7 +68,6 @@ const config: SignalsRunnerConfig = {
   parallel: flags.parallel,
   watch: Boolean(flags.watch),
   settleDelayMs: flags.settleDelayMs,
-  hasExplicitScope,
 };
 
 const runner = createSignalsRunner(config);

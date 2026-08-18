@@ -4,7 +4,6 @@ import {
   listTradingAccounts,
   saveTradingAccount,
 } from '@tradejs/infra/tradingAccounts';
-import { getUserSettings } from '@tradejs/infra/userSettings';
 import { isMarketUniverse, type TradingAccountRef } from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
@@ -26,52 +25,12 @@ const toPublicAccount = (account: TradingAccountRef) => {
   };
 };
 
-const migrateLegacyBybitAccount = async (
-  userName: string,
-  accounts: TradingAccountRef[],
-) => {
-  const upgradedAccounts = await Promise.all(
-    accounts.map((account) =>
-      account.provider === 'bybit' && !account.universes?.includes('tradfi')
-        ? saveTradingAccount(userName, {
-            ...account,
-            universes: ['crypto', 'tradfi'],
-          })
-        : account,
-    ),
-  );
-  if (upgradedAccounts.some(({ provider }) => provider === 'bybit')) {
-    return upgradedAccounts;
-  }
-  const settings = await getUserSettings(userName);
-  if (!settings.BYBIT_API_KEY || !settings.BYBIT_API_SECRET) {
-    return upgradedAccounts;
-  }
-  const migrated = await saveTradingAccount(userName, {
-    id: 'bybit-default',
-    label: 'Bybit',
-    provider: 'bybit',
-    enabled: true,
-    isDefault: true,
-    universes: ['crypto', 'tradfi'],
-    environment: 'mainnet',
-    apiKey: settings.BYBIT_API_KEY,
-    apiSecret: settings.BYBIT_API_SECRET,
-  });
-  return [...upgradedAccounts, migrated].sort((left, right) =>
-    left.label.localeCompare(right.label),
-  );
-};
-
 export const GET = async () => {
   const userName = await getCurrentUserName();
   if (!userName) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const accounts = await migrateLegacyBybitAccount(
-    userName,
-    await listTradingAccounts(userName),
-  );
+  const accounts = await listTradingAccounts(userName);
   return NextResponse.json({ accounts: accounts.map(toPublicAccount) });
 };
 

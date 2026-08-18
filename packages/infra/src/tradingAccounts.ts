@@ -20,13 +20,6 @@ const isTradingAccount = (value: unknown): value is TradingAccountRef =>
       typeof (value as TradingAccountRef).provider === 'string',
   );
 
-const withProviderUniverses = (
-  account: TradingAccountRef,
-): TradingAccountRef =>
-  account.provider.toLowerCase() === 'bybit'
-    ? { ...account, universes: ['crypto', 'tradfi'] }
-    : account;
-
 export const listTradingAccounts = async (
   userName: string,
 ): Promise<TradingAccountRef[]> => {
@@ -35,7 +28,6 @@ export const listTradingAccounts = async (
   const values = await Promise.all(keys.map((key) => getData(key, null)));
   return values
     .filter(isTradingAccount)
-    .map(withProviderUniverses)
     .sort((left, right) => left.label.localeCompare(right.label));
 };
 
@@ -48,20 +40,20 @@ export const getTradingAccount = async (
     redisKeys.tradingAccount(userName, normalizedId),
     null,
   );
-  return isTradingAccount(value) ? withProviderUniverses(value) : null;
+  return isTradingAccount(value) ? value : null;
 };
 
 export const saveTradingAccount = async (
   userName: string,
   account: TradingAccountRef,
 ): Promise<TradingAccountRef> => {
-  const normalized = withProviderUniverses({
+  const normalized = {
     ...account,
     id: normalizeId(account.id, 'Account id'),
     label: account.label.trim(),
     provider: account.provider.trim().toLowerCase(),
     universes: [...new Set(account.universes)],
-  });
+  };
   if (normalized.isDefault) {
     const previousDefaults = (await listTradingAccounts(userName)).filter(
       (candidate) =>
@@ -137,30 +129,5 @@ export const resolveTradingAccount = async ({
   const selected =
     accounts.find((account) => account.isDefault) ??
     (accounts.length === 1 ? accounts[0] : null);
-  if (selected) return selected;
-
-  if (provider.toLowerCase() !== 'bybit' || accounts.length > 1) {
-    return null;
-  }
-  const legacy = (await getData(redisKeys.user(userName))) as Record<
-    string,
-    unknown
-  > | null;
-  const legacyApiKey = String(legacy?.BYBIT_API_KEY ?? '').trim();
-  const legacyApiSecret = String(legacy?.BYBIT_API_SECRET ?? '').trim();
-  if (!legacyApiKey || !legacyApiSecret) {
-    return null;
-  }
-
-  return {
-    id: 'bybit-default',
-    label: 'Bybit Default',
-    provider: 'bybit',
-    enabled: true,
-    isDefault: true,
-    universes: ['crypto', 'tradfi'],
-    environment: 'mainnet',
-    apiKey: legacyApiKey,
-    apiSecret: legacyApiSecret,
-  };
+  return selected;
 };

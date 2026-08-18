@@ -1,8 +1,4 @@
 import _ from 'lodash';
-import {
-  getRuntimeStrategyConfig,
-  getRuntimeStrategyResultConfig,
-} from '@tradejs/infra/runtimeStrategyConfigs';
 import { RuntimeStrategyConfigSnapshot, StrategyConfig } from '@tradejs/types';
 
 interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
@@ -17,11 +13,8 @@ interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {
 
 export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   strategyName,
-  userName,
-  symbol,
   baseConfig,
   defaults,
-  runtimeConfigId,
   runtimeConfigSnapshot,
 }: ResolveStrategyConfigParams<TConfig>): Promise<{
   config: TConfig;
@@ -46,29 +39,13 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   let isConfigFromBacktest = false;
 
   if (config.ENV !== 'BACKTEST') {
-    const userConfig = (
-      runtimeConfigSnapshot
-        ? runtimeConfigSnapshot.userConfig
-        : (await getRuntimeStrategyConfig(
-            userName,
-            strategyName,
-            runtimeConfigId,
-          )) ?? {}
-    ) as TConfig;
-    config = mergeIfNotEmpty(config, userConfig);
-
-    if (!runtimeConfigId || runtimeConfigId === 'config') {
-      const symbolResultConfig = runtimeConfigSnapshot
-        ? runtimeConfigSnapshot.symbolResultConfig
-        : await getRuntimeStrategyResultConfig(userName, strategyName, symbol);
-      if (symbolResultConfig && !_.isEmpty(symbolResultConfig)) {
-        config = mergeIfNotEmpty(
-          config,
-          symbolResultConfig as Partial<TConfig>,
-        );
-        isConfigFromBacktest = true;
-      }
+    if (!runtimeConfigSnapshot) {
+      throw new Error(
+        `Runtime strategy release snapshot is required for ${strategyName}`,
+      );
     }
+    const userConfig = runtimeConfigSnapshot.userConfig as TConfig;
+    config = mergeIfNotEmpty(config, userConfig);
   }
 
   return { config, isConfigFromBacktest };

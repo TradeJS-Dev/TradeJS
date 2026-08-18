@@ -227,12 +227,11 @@ describe('backtest script helpers', () => {
     expect(resolveDefaultParallel(6 * 1024 * 1024 * 1024, 8, 1536)).toBe(2);
   });
 
-  it('validates runtime deployment availability, status and interval', () => {
+  it('validates runtime deployment availability and status', () => {
     expect(() =>
       validateBacktestRuntimeDeployment({
         deployment: null,
         deploymentId: 'missing',
-        requestedInterval: '15',
       }),
     ).toThrow('Runtime deployment not found: missing');
     expect(() =>
@@ -240,32 +239,17 @@ describe('backtest script helpers', () => {
         deployment: {
           id: 'tradfi-live',
           enabled: false,
-          interval: '15',
         } as any,
         deploymentId: 'tradfi-live',
-        requestedInterval: '15',
       }),
     ).toThrow('Runtime deployment is disabled: tradfi-live');
-    expect(() =>
-      validateBacktestRuntimeDeployment({
-        deployment: {
-          id: 'tradfi-live',
-          enabled: true,
-          interval: '60',
-        } as any,
-        deploymentId: 'tradfi-live',
-        requestedInterval: '15',
-      }),
-    ).toThrow('requires timeframe 60; received 15');
     expect(
       validateBacktestRuntimeDeployment({
         deployment: {
           id: 'tradfi-live',
           enabled: true,
-          interval: '15',
         } as any,
         deploymentId: 'tradfi-live',
-        requestedInterval: '15',
       }),
     ).toEqual(expect.objectContaining({ id: 'tradfi-live' }));
   });

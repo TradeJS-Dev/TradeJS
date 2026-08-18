@@ -660,18 +660,10 @@ export const backtest = async () => {
       preparedRun.connectorName,
       interval,
     ).map((test: TestSuite[number]) => {
-      const deploymentStrategy = preparedRun.deployment?.strategies.find(
-        ({ strategyName }) => strategyName === config.strategyName,
-      );
-      if (deploymentStrategy?.enabled === false) {
-        throw new Error(
-          `Strategy ${config.strategyName} is disabled in deployment ${preparedRun.deployment?.id}`,
-        );
-      }
       const policyProfileId =
         (typeof flags.policyProfile === 'string' && flags.policyProfile.trim()
           ? flags.policyProfile.trim()
-          : deploymentStrategy?.policyProfileId) || undefined;
+          : undefined) || undefined;
       return {
         ...test,
         instrument: preparedRun.instrumentsBySymbol.get(
@@ -683,7 +675,6 @@ export const backtest = async () => {
         policyProfileId,
         strategyConfig: {
           ...test.strategyConfig,
-          ...deploymentStrategy?.config,
           ...(policyProfileId ? { POLICY_PROFILE_ID: policyProfileId } : {}),
         },
       };

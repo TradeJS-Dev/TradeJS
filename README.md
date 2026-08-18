@@ -466,20 +466,18 @@ The decision input references the chart report as
 `chartArtifact: { path, sha256 }`; the command recomputes the checksum and
 validates that the report is a successful full-period local deterministic run.
 It also requires an exact `runtimeTarget` object (`userName`, `deploymentId`,
-`accountId`, `strategyConfigName`) before returning `START_MICRO_FORWARD`.
+`accountId`, `strategyName`) before returning `START_MICRO_FORWARD`.
 Research normally uses local Redis while production bindings live on a separate
 runtime server. Use `null` locally to produce a portable
 `MICRO_FORWARD_READY` handoff with `requiresRuntimeBinding=true`; this is not a
 failed research verdict. On the server, resolve its own IDs, verify the same
-core/gate/runtime-logic/context fingerprints, and rerun the decision. Account,
-deployment, config-key, and `MAX_LOSS_VALUE` differences remain
-separate binding/risk provenance rather than logic mismatches. API credentials
-stay on the server and are never included in the handoff or its fingerprints.
-Activation remains execution-critical: `ENABLE` must match the authorized
-handoff before execution.
-When only runtime `MAX_LOSS_VALUE` changes, keep the deployed release's
-`compositionId`; the UI keeps the logic history and adds a separate loss-scale
-marker instead of creating a new release.
+package versions, publish the next immutable per-strategy `releaseVersion`, and
+rerun the decision. Account and deployment ids remain separate operational
+bindings. API credentials stay in the canonical trading-account record and are
+never included in the release. Activation remains execution-critical through
+the explicit deployment `controlState`. Any config change, including
+`MAX_LOSS_VALUE`, creates a new runtime release; it need not create a new
+research composition when trading logic is unchanged.
 
 `decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
 or stop. When the user has authorized automatic forward testing and the exact
@@ -527,22 +525,18 @@ Every runtime evaluation, signal, and trade in the scorecard must resolve to one
 clean git/config/gate/context logic lineage equal to the release manifest, plus
 a valid risk scale. Missing, dirty, conflicting, or different logic lineage is
 runtime divergence; missing risk scale leaves economic attribution insufficient.
-For an explicitly approved deployment, set its strategy-local
-`releaseCompositionId` to the verified manifest's `compositionId`. This is
-identity metadata, not promotion authority: without the exact id the UI keeps
-immutable release markers missing even when shorter fingerprints happen to
-match.
+For an explicitly approved deployment, publish evidence markers that name its
+exact per-strategy `releaseVersion`. Runtime deployment records do not contain
+composition ids, git SHAs, or config/gate/context fingerprints.
 
 The Strategies UI reads only checksum-verified marker envelopes from
 `STRATEGY_RELEASE_MARKER_DIR` (default `data/strategy-release/markers`). Its
 compact **Evidence** popover contains the G/L/E/D/P/R legend, optional P/R
 filters, event details, and hash provenance. Missing or invalid evidence is
 explicit and never falls back to mutable Redis lineage.
-Release markers are attached to a strategy card only when its current runtime
-logic lineage is complete and exactly matches composition id plus
-git/config/gate/context. `L` markers preserve the separate risk-scale history.
-A config-only card therefore reports missing evidence
-instead of borrowing another composition's markers.
+Release markers are attached to a strategy card only when the checksum-verified
+artifact explicitly names its current `releaseVersion`. Until then the card
+reports `not_attached`; it never borrows markers from another release.
 
 Retention defaults are 3 days for operational Redis evidence, 14 days for
 verbose payloads, 90 days for verified aggregated runtime bundles, and forever
@@ -556,12 +550,11 @@ yarn strategy:release retention --input <retention-inventory.json> --apply
 
 ### 6. Promote And Launch Gradually
 
-Promote only one fully resolved config. Backtest configs are value grids;
-runtime configs are plain objects. Review the existing runtime config before
-replacing it, keep `ENABLE=true`, retain both LONG and SHORT for AI-gated
-deployment, and preserve the tested `AI_ENABLED`, `AI_MODE`, and
-`MIN_AI_QUALITY`. Runtime configs can be reviewed and saved from the strategies
-screen at `http://localhost:3000/routes/strategies`.
+Promote only one fully resolved config. Backtest configs remain local research
+inputs; production runtime config exists only as an immutable per-strategy
+release. The strategies screen at
+`http://localhost:3000/routes/strategies` renders that release read-only and
+may only pause or resume new entries.
 
 Use an explicit rollout ladder:
 
@@ -569,25 +562,30 @@ Use an explicit rollout ladder:
 # 1. Build and validate the exact released working tree.
 yarn checks
 
-# 2. Only after explicit user approval, save the reviewed runtime config.
+# 2. Provision a missing deployment once, or roll out the next release.
+yarn runtime-config provision --user root --strategy <Strategy> \
+  --deployment <deployment> --account <account> --file <config.json> --write
+yarn runtime-config rollout --user root --strategy <Strategy> \
+  --deployment <deployment> --file <config.json> --write
 
 # 3. Evaluate one closed-candle cycle without notifications or orders.
-yarn signals -- --user root --connector bybit --cacheOnly
+yarn signals -- --user root --deployment <deployment> --cacheOnly
 
 # 4. Compare recent replay/backtest entries with recorded runtime evidence.
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
 
 # 5. Observe notifications, still without order placement.
-yarn signals:daemon -- --user root --connector bybit --notify
+yarn signals:daemon -- --user root --deployment <deployment> --notify
 
 # 6. Enable orders only after the earlier stages and account/risk review pass.
-yarn signals:daemon -- --user root --connector bybit --notify --makeOrders
+yarn signals:daemon -- --user root --deployment <deployment> --notify --makeOrders
 ```
 
 Monitor signal evaluations, gate-versus-LLM disagreements, order rejects,
 slippage, parity mismatches, cadence, and realized ALL/LONG/SHORT economics.
-Rollback by disabling the runtime config or removing `--makeOrders`; do not tune
-the model from an unversioned live observation. The production runtime may use
+Rollback by pointing the deployment at an earlier release in
+`entries_paused`, verifying it, and then explicitly resuming entries. The
+production runtime may use
 a different host and Redis, so verify the actual deployment source of truth
 instead of assuming this checkout's local Redis is live.
 
@@ -641,8 +639,8 @@ yarn research:core:test
 yarn research:core:coverage
 yarn strategy:release
 yarn results
-yarn signals
-yarn signals:daemon -- --notify --makeOrders
+yarn signals -- --deployment <deployment-id>
+yarn signals:daemon -- --deployment <deployment-id> --notify --makeOrders
 yarn runtime:evidence
 yarn runtime:evidence:sync
 yarn runtime:scorecard

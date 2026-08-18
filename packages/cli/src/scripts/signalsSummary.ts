@@ -236,9 +236,7 @@ const groupRuntimeTradesByConnectorScope = ({
       ? deploymentById.get(trade.deploymentId)
       : undefined;
     const connectorName = deployment?.connectorName ?? fallbackConnectorName;
-    const universe = (trade.universe ??
-      deployment?.universe ??
-      'crypto') as MarketUniverse;
+    const universe = (trade.universe ?? 'crypto') as MarketUniverse;
     const accountId = trade.accountId ?? deployment?.accountId;
     const deploymentId = trade.deploymentId;
     const scopeKey = JSON.stringify([

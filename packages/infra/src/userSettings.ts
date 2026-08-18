@@ -3,8 +3,6 @@ import { getData, redisKeys, setData } from './redis';
 export interface UserRecord extends Record<string, unknown> {
   userName?: string;
   passwordHash?: string;
-  BYBIT_API_KEY?: string;
-  BYBIT_API_SECRET?: string;
   COINALYZE_API_KEY?: string;
   COINMARKETCAP_API_KEY?: string;
   AI_API_KEY?: string;
@@ -18,8 +16,6 @@ export interface UserRecord extends Record<string, unknown> {
 
 export interface UserSettings {
   userName: string;
-  BYBIT_API_KEY: string;
-  BYBIT_API_SECRET: string;
   COINALYZE_API_KEY: string;
   COINMARKETCAP_API_KEY: string;
   AI_API_KEY: string;
@@ -53,8 +49,6 @@ export const getUserSettings = async (
   const record = await getUserRecord(userName);
   return {
     userName,
-    BYBIT_API_KEY: readUserString(record, 'BYBIT_API_KEY'),
-    BYBIT_API_SECRET: readUserString(record, 'BYBIT_API_SECRET'),
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
     COINMARKETCAP_API_KEY: readUserString(record, 'COINMARKETCAP_API_KEY'),
     AI_API_KEY: readUserString(record, 'AI_API_KEY'),

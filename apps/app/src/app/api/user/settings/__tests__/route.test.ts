@@ -35,8 +35,6 @@ describe('user settings route', () => {
     mockGetCurrentUserName.mockResolvedValue('alice');
     mockGetUserSettings.mockResolvedValue({
       userName: 'alice',
-      BYBIT_API_KEY: 'bybit-key-1234',
-      BYBIT_API_SECRET: '',
       COINALYZE_API_KEY: '',
       COINMARKETCAP_API_KEY: '',
       AI_API_KEY: 'openai-key-9876',
@@ -63,10 +61,6 @@ describe('user settings route', () => {
     expect(response.body).toEqual({
       userName: 'alice',
       settings: {
-        bybit: {
-          apiKey: '************1234',
-          apiSecret: '',
-        },
         coinalyze: {
           apiKey: '',
         },
@@ -110,8 +104,6 @@ describe('user settings route', () => {
     mockGetUserRecord.mockResolvedValue(null);
     mockGetUserSettings.mockResolvedValueOnce({
       userName: 'alice',
-      BYBIT_API_KEY: '',
-      BYBIT_API_SECRET: '',
       COINALYZE_API_KEY: '',
       COINMARKETCAP_API_KEY: '',
       AI_API_KEY: 'openai-key-9876',
@@ -152,6 +144,19 @@ describe('user settings route', () => {
     expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
       COINMARKETCAP_API_KEY: 'cmc-key',
     });
+  });
+
+  it('rejects legacy Bybit credentials in user settings', async () => {
+    const response = await PATCH({
+      json: async () => ({
+        section: 'bybit',
+        data: { apiKey: 'legacy-key', apiSecret: 'legacy-secret' },
+      }),
+    } as Request);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'Invalid payload' });
+    expect(mockUpdateUserRecord).not.toHaveBeenCalled();
   });
 
   it('rejects localhost and private-network ai endpoints', async () => {

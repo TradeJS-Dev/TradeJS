@@ -83,7 +83,6 @@ export interface SignalsRunnerConfig {
   parallel?: number | string;
   watch?: boolean;
   settleDelayMs?: number | string;
-  hasExplicitScope?: boolean;
 }
 
 export interface SignalsSession {
@@ -194,16 +193,12 @@ export const createSignalsRunner = (
     value: unknown,
   ): Promise<string> => {
     const connectorName = await resolveConnectorName(value, projectRoot);
-    if (connectorName) {
-      return connectorName;
+    if (!connectorName) {
+      throw new Error(
+        `Unknown runtime connector: ${String(value || '').trim() || String(value)}`,
+      );
     }
-
-    logger.warn(
-      'Unknown connector "%s". Fallback to %s.',
-      String(value || '').trim() || String(value),
-      DEFAULT_CONNECTOR_NAME,
-    );
-    return DEFAULT_CONNECTOR_NAME;
+    return connectorName;
   };
 
   const createSignalsSession = async (
@@ -225,37 +220,15 @@ export const createSignalsRunner = (
       throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
     }
     const requestedRuntimeInterval = (scope.interval ?? interval) as Interval;
-    const versionedDeployment = Boolean(
-      deployment?.strategies.some(
-        (strategy) => strategy.releaseVersion != null,
-      ),
-    );
-    const runtimeInterval = (
-      versionedDeployment
-        ? requestedRuntimeInterval
-        : deployment?.interval ?? requestedRuntimeInterval
-    ) as Interval;
+    const runtimeInterval = requestedRuntimeInterval;
     const runtimeIntervalMs = Number(runtimeInterval) * 60_000;
     if (!Number.isFinite(runtimeIntervalMs) || runtimeIntervalMs <= 0) {
       throw new Error(`Invalid runtime timeframe: ${runtimeInterval}`);
     }
-    if (
-      deployment &&
-      !versionedDeployment &&
-      String(deployment.interval) !== String(requestedRuntimeInterval)
-    ) {
-      throw new Error(
-        `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${requestedRuntimeInterval}`,
-      );
-    }
     const connectorName = await resolveSignalsConnectorName(
       deployment?.connectorName ?? scope.connectorName ?? config.connectorName,
     );
-    const universe = (
-      versionedDeployment
-        ? scope.universe ?? config.universe
-        : deployment?.universe ?? scope.universe ?? config.universe
-    ) as MarketUniverse;
+    const universe = (scope.universe ?? config.universe) as MarketUniverse;
     const requestedAccountId =
       deployment?.accountId ?? scope.accountId ?? config.accountId;
     const connectorFactory = await getConnectorCreatorByName(
@@ -505,7 +478,6 @@ export const createSignalsRunner = (
         userName: config.userName,
         projectRoot,
         deployment,
-        connectorName,
         universe,
         accountId,
         interval,
@@ -513,26 +485,25 @@ export const createSignalsRunner = (
       if (!runtimeStrategies.length) {
         lifecycle.clear();
         logger.warn(
-          'No strategy configs found by users:%s:strategies:*:config',
-          config.userName,
+          'No strategy releases are bound to deployment %s',
+          deployment?.id,
         );
         return;
       }
       lifecycle.retain(
         new Set(
           tickers.flatMap((symbol) =>
-            runtimeStrategies.map(
-              ({ strategyName, configId, releaseVersion }) =>
-                buildSignalsStrategyLifecycleKey({
-                  connectorName,
-                  universe: sessionUniverse,
-                  accountId,
-                  deploymentId: deployment?.id,
-                  symbol,
-                  interval,
-                  strategyName,
-                  configId: releaseVersion ? `v${releaseVersion}` : configId,
-                }),
+            runtimeStrategies.map(({ strategyName, releaseVersion }) =>
+              buildSignalsStrategyLifecycleKey({
+                connectorName,
+                universe: sessionUniverse,
+                accountId,
+                deploymentId: deployment?.id,
+                symbol,
+                interval,
+                strategyName,
+                configId: `v${releaseVersion}`,
+              }),
             ),
           ),
         ),
@@ -740,17 +711,14 @@ export const createSignalsRunner = (
     interval: Interval;
   };
 
-  const loadConfiguredSignalsScopes = async (
-    deployment?: RuntimeDeployment | null,
-  ) => {
+  const loadConfiguredSignalsScopes = async (deployment: RuntimeDeployment) => {
     const configuredStrategies = await loadRuntimeStrategies({
       userName: config.userName,
       projectRoot,
       deployment,
-      connectorName: config.connectorName,
     });
     const connectorName = await resolveSignalsConnectorName(
-      deployment?.connectorName ?? config.connectorName,
+      deployment.connectorName,
     );
     const scopes = new Map<string, ConfiguredSignalsScope>();
     for (const strategy of configuredStrategies) {
@@ -770,20 +738,18 @@ export const createSignalsRunner = (
     return scopes;
   };
 
-  const hasExplicitSignalsScope = () => Boolean(config.hasExplicitScope);
-
   const signalsConfiguredScopesOnce = async () => {
-    if (
-      config.updateOnly ||
-      config.showTickersList ||
-      hasExplicitSignalsScope()
-    ) {
+    if (config.updateOnly || config.showTickersList) {
       return signals();
     }
-    const configuredDeployment = config.deploymentId
-      ? await getRuntimeDeployment(config.userName, config.deploymentId)
-      : null;
-    if (config.deploymentId && !configuredDeployment) {
+    if (!config.deploymentId) {
+      throw new Error('Runtime deployment id is required');
+    }
+    const configuredDeployment = await getRuntimeDeployment(
+      config.userName,
+      config.deploymentId,
+    );
+    if (!configuredDeployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
     }
     const scopes = await loadConfiguredSignalsScopes(configuredDeployment);
@@ -810,10 +776,14 @@ export const createSignalsRunner = (
     }
 
     const abortController = new AbortController();
-    const daemonDeployment = config.deploymentId
-      ? await getRuntimeDeployment(config.userName, config.deploymentId)
-      : null;
-    if (config.deploymentId && !daemonDeployment) {
+    if (!config.deploymentId) {
+      throw new Error('Runtime deployment id is required');
+    }
+    const daemonDeployment = await getRuntimeDeployment(
+      config.userName,
+      config.deploymentId,
+    );
+    if (!daemonDeployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
     }
     const sessions = new Map<string, SignalsSession>();
@@ -827,10 +797,7 @@ export const createSignalsRunner = (
     process.once('SIGINT', stopOnSigint);
     process.once('SIGTERM', stopOnSigterm);
 
-    logger.info(
-      'signals daemon started (config-driven scopes, fallback interval=%s)',
-      interval,
-    );
+    logger.info('signals daemon started (deployment-driven scopes)');
     try {
       await runSignalsDaemon({
         intervalMs: 60_000,

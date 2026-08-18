@@ -24,8 +24,6 @@ const deployment: RuntimeDeployment = {
   connectorName: 'bybit',
   provider: 'bybit',
   accountId: 'bybit-main',
-  universe: 'tradfi',
-  interval: '5',
   enabled: true,
   strategies: [
     {
@@ -55,15 +53,8 @@ describe('shared versioned runtime strategy resolver', () => {
     jest.doMock('@tradejs/infra/runtimeStrategyReleases', () => ({
       getRuntimeStrategyRelease: jest.fn(async () => release),
     }));
-    jest.doMock('@tradejs/infra/runtimeStrategyConfigs', () => ({
-      loadRuntimeStrategyConfigs: jest.fn(async () => []),
-    }));
     jest.doMock('@tradejs/infra/tradingAccounts', () => ({
       resolveTradingAccount: jest.fn(async () => ({ id: 'bybit-main' })),
-    }));
-    jest.doMock('@tradejs/infra/redis', () => ({
-      getData: jest.fn(async () => ({})),
-      redisKeys: { strategyResults: jest.fn() },
     }));
     jest.doMock('../strategy/manifests', () => ({
       getStrategyCreator: jest.fn(async () => jest.fn()),
@@ -73,7 +64,7 @@ describe('shared versioned runtime strategy resolver', () => {
     }));
   });
 
-  it('uses only the immutable release config and ignores legacy deployment scope', async () => {
+  it('uses only the immutable release config', async () => {
     const { loadResolvedRuntimeStrategies } = await import(
       '../runtimeStrategies'
     );
@@ -93,10 +84,10 @@ describe('shared versioned runtime strategy resolver', () => {
         accountId: 'bybit-main',
         strategyConfig: release.config,
         sourceStrategyConfig: release.config,
-        strategyResults: {},
       }),
     );
     expect(resolved).not.toHaveProperty('configId');
+    expect(resolved).not.toHaveProperty('strategyResults');
     expect(resolved?.strategyConfig).not.toHaveProperty('ACCOUNT_ID');
   });
 
@@ -111,10 +102,48 @@ describe('shared versioned runtime strategy resolver', () => {
         deployment: {
           ...deployment,
           strategies: [
-            { ...deployment.strategies[0], config: { INTERVAL: '5' } },
+            {
+              ...deployment.strategies[0],
+              config: { INTERVAL: '5' },
+            } as any,
           ],
         },
       }),
-    ).rejects.toThrow('must not embed config');
+    ).rejects.toThrow('has invalid fields');
+  });
+
+  it('requires an explicit canonical deployment', async () => {
+    const { loadResolvedRuntimeStrategies } = await import(
+      '../runtimeStrategies'
+    );
+
+    await expect(
+      loadResolvedRuntimeStrategies({
+        userName: 'root',
+        projectRoot: '/project',
+      }),
+    ).rejects.toThrow('Runtime deployment is required');
+  });
+
+  it('rejects a release pointer without an explicit control state', async () => {
+    const { loadResolvedRuntimeStrategies } = await import(
+      '../runtimeStrategies'
+    );
+
+    await expect(
+      loadResolvedRuntimeStrategies({
+        userName: 'root',
+        projectRoot: '/project',
+        deployment: {
+          ...deployment,
+          strategies: [
+            {
+              strategyName: 'DoubleTap',
+              releaseVersion: 2,
+            } as any,
+          ],
+        },
+      }),
+    ).rejects.toThrow('has no controlState');
   });
 });

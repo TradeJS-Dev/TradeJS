@@ -33,8 +33,6 @@ describe('user settings utils', () => {
 
     await expect(getUserSettings('alice')).resolves.toEqual({
       userName: 'alice',
-      BYBIT_API_KEY: 'bybit-key',
-      BYBIT_API_SECRET: 'bybit-secret',
       COINALYZE_API_KEY: 'coinalyze-key',
       COINMARKETCAP_API_KEY: 'coinmarketcap-key',
       AI_API_KEY: 'user-openai',

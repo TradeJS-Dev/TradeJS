@@ -38,10 +38,6 @@ import { TradingAccountsPanel } from './TradingAccountsPanel';
 type SettingsResponse = {
   userName: string;
   settings: {
-    bybit: {
-      apiKey: string;
-      apiSecret: string;
-    };
     coinalyze: {
       apiKey: string;
     };
@@ -67,8 +63,6 @@ type SettingsErrorResponse = {
 
 type SettingsViewState = {
   userName: string;
-  bybitApiKey: string;
-  bybitApiSecret: string;
   coinalyzeApiKey: string;
   coinmarketcapApiKey: string;
   aiApiKey: string;
@@ -87,15 +81,12 @@ type PasswordState = {
 };
 
 type SectionName =
-  | 'bybit'
   | 'password'
   | 'coinalyze'
   | 'coinmarketcap'
   | 'ai'
   | 'telegram';
 type EditableField =
-  | 'bybitApiKey'
-  | 'bybitApiSecret'
   | 'coinalyzeApiKey'
   | 'coinmarketcapApiKey'
   | 'aiApiKey'
@@ -107,8 +98,6 @@ type EditableField =
 
 const EMPTY_SETTINGS: SettingsViewState = {
   userName: '',
-  bybitApiKey: '',
-  bybitApiSecret: '',
   coinalyzeApiKey: '',
   coinmarketcapApiKey: '',
   aiApiKey: '',
@@ -120,8 +109,6 @@ const EMPTY_SETTINGS: SettingsViewState = {
 };
 
 const EMPTY_DRAFTS: SettingsDraftState = {
-  bybitApiKey: '',
-  bybitApiSecret: '',
   coinalyzeApiKey: '',
   coinmarketcapApiKey: '',
   aiApiKey: '',
@@ -138,8 +125,6 @@ const EMPTY_PASSWORDS: PasswordState = {
 };
 
 const EMPTY_EDITING: Record<EditableField, boolean> = {
-  bybitApiKey: false,
-  bybitApiSecret: false,
   coinalyzeApiKey: false,
   coinmarketcapApiKey: false,
   aiApiKey: false,
@@ -150,20 +135,7 @@ const EMPTY_EDITING: Record<EditableField, boolean> = {
   tgChatId: false,
 };
 
-const SECTION_FIELDS: Record<
-  Exclude<SectionName, 'password'>,
-  EditableField[]
-> = {
-  bybit: ['bybitApiKey', 'bybitApiSecret'],
-  coinalyze: ['coinalyzeApiKey'],
-  coinmarketcap: ['coinmarketcapApiKey'],
-  ai: ['aiApiKey', 'aiApiEndpoint', 'aiModel', 'aiResponseLanguage'],
-  telegram: ['tgBotToken', 'tgChatId'],
-};
-
 const MASKED_FIELDS = new Set<EditableField>([
-  'bybitApiKey',
-  'bybitApiSecret',
   'coinalyzeApiKey',
   'coinmarketcapApiKey',
   'aiApiKey',
@@ -172,8 +144,6 @@ const MASKED_FIELDS = new Set<EditableField>([
 
 const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   userName: payload.userName,
-  bybitApiKey: payload.settings.bybit.apiKey || '',
-  bybitApiSecret: payload.settings.bybit.apiSecret || '',
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
   coinmarketcapApiKey: payload.settings.coinmarketcap.apiKey || '',
   aiApiKey: payload.settings.ai.apiKey || '',
@@ -349,9 +319,7 @@ export const AccountSettingsDrawer = () => {
         );
       }
 
-      return SECTION_FIELDS[section].some((field) =>
-        Boolean(drafts[field].trim()),
-      );
+      return false;
     },
     [drafts, passwords.confirmPassword, passwords.password, settings],
   );
@@ -437,56 +405,48 @@ export const AccountSettingsDrawer = () => {
 
     try {
       const body =
-        section === 'bybit'
+        section === 'coinalyze'
           ? {
               section,
               data: {
-                apiKey: getSecretUpdateValue('bybitApiKey'),
-                apiSecret: getSecretUpdateValue('bybitApiSecret'),
+                apiKey: getSecretUpdateValue('coinalyzeApiKey'),
               },
             }
-          : section === 'coinalyze'
+          : section === 'ai'
             ? {
                 section,
                 data: {
-                  apiKey: getSecretUpdateValue('coinalyzeApiKey'),
+                  apiKey: getSecretUpdateValue('aiApiKey'),
+                  apiEndpoint: drafts.aiApiEndpoint,
+                  model: drafts.aiModel.trim(),
+                  responseLanguage: drafts.aiResponseLanguage,
                 },
               }
-            : section === 'ai'
+            : section === 'coinmarketcap'
               ? {
                   section,
                   data: {
-                    apiKey: getSecretUpdateValue('aiApiKey'),
-                    apiEndpoint: drafts.aiApiEndpoint,
-                    model: drafts.aiModel.trim(),
-                    responseLanguage: drafts.aiResponseLanguage,
+                    apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
                   },
                 }
-              : section === 'coinmarketcap'
+              : section === 'telegram'
                 ? {
                     section,
                     data: {
-                      apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
+                      botToken: getSecretUpdateValue('tgBotToken'),
+                      chatId:
+                        drafts.tgChatId !== settings.tgChatId
+                          ? drafts.tgChatId.trim()
+                          : undefined,
                     },
                   }
-                : section === 'telegram'
-                  ? {
-                      section,
-                      data: {
-                        botToken: getSecretUpdateValue('tgBotToken'),
-                        chatId:
-                          drafts.tgChatId !== settings.tgChatId
-                            ? drafts.tgChatId.trim()
-                            : undefined,
-                      },
-                    }
-                  : {
-                      section,
-                      data: {
-                        password: passwords.password,
-                        confirmPassword: passwords.confirmPassword,
-                      },
-                    };
+                : {
+                    section,
+                    data: {
+                      password: passwords.password,
+                      confirmPassword: passwords.confirmPassword,
+                    },
+                  };
 
       const response = await fetch('/api/user/settings', {
         method: 'PATCH',

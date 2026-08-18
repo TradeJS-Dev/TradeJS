@@ -536,7 +536,6 @@ describe('strategyRuntime', () => {
     ] as any;
     const runtimeConfigSnapshot = {
       userConfig: { INTERVAL: '15' },
-      symbolResultConfig: { THRESHOLD: 2 },
     };
 
     const strategy = await strategyCreator({

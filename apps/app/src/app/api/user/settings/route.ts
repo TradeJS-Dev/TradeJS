@@ -19,13 +19,6 @@ export const dynamic = 'force-dynamic';
 
 type UpdateBody =
   | {
-      section: 'bybit';
-      data?: {
-        apiKey?: string;
-        apiSecret?: string;
-      };
-    }
-  | {
       section: 'coinalyze';
       data?: {
         apiKey?: string;
@@ -60,6 +53,14 @@ type UpdateBody =
         confirmPassword?: string;
       };
     };
+
+const UPDATE_SECTIONS = new Set([
+  'coinalyze',
+  'coinmarketcap',
+  'ai',
+  'telegram',
+  'password',
+]);
 
 const cleanText = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
@@ -99,10 +100,6 @@ const toResponse = (rawSettings: UserSettings) => {
   return {
     userName: settings.userName,
     settings: {
-      bybit: {
-        apiKey: maskSecret(settings.BYBIT_API_KEY),
-        apiSecret: maskSecret(settings.BYBIT_API_SECRET),
-      },
       coinalyze: {
         apiKey: maskSecret(settings.COINALYZE_API_KEY),
       },
@@ -153,7 +150,12 @@ export const PATCH = async (request: Request) => {
 
   await removeLegacyPasswordlessToken(userName);
   const body = (await request.json()) as UpdateBody | null;
-  if (!body || typeof body !== 'object' || !('section' in body)) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('section' in body) ||
+    !UPDATE_SECTIONS.has(String(body.section))
+  ) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
@@ -179,24 +181,6 @@ export const PATCH = async (request: Request) => {
     await updateUserRecord(userName, { passwordHash });
     const settings = await getUserSettings(userName);
     return NextResponse.json(toResponse(settings));
-  }
-
-  if (body.section === 'bybit') {
-    const patch: Partial<UserRecord> = {};
-    const apiKey = cleanOptionalText(body.data?.apiKey);
-    const apiSecret = cleanOptionalText(body.data?.apiSecret);
-
-    if (apiKey) {
-      patch.BYBIT_API_KEY = apiKey;
-    }
-
-    if (apiSecret) {
-      patch.BYBIT_API_SECRET = apiSecret;
-    }
-
-    if (hasKeys(patch)) {
-      await updateUserRecord(userName, patch);
-    }
   }
 
   if (body.section === 'coinalyze') {

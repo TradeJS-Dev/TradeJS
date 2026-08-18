@@ -42,13 +42,13 @@ export const PATCH = async (
   const reference = deployment.strategies.find(
     (strategy) => strategy.strategyName === strategyName,
   );
-  if (!reference?.releaseVersion) {
+  if (!reference) {
     return NextResponse.json(
       { error: 'Pause/resume requires a versioned strategy release' },
       { status: 400 },
     );
   }
-  const previousState = reference.controlState ?? 'active';
+  const previousState = reference.controlState;
   if (previousState === controlState) {
     return NextResponse.json({ deployment, controlState });
   }

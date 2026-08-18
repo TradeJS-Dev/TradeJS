@@ -113,7 +113,6 @@ export type StrategyConfigGrid = Record<string, unknown[]>;
 
 export interface RuntimeStrategyConfigSnapshot {
   userConfig: StrategyConfig;
-  symbolResultConfig?: StrategyConfig | null;
 }
 
 export interface StrategyCreatorParams {

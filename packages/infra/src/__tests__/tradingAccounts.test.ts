@@ -76,14 +76,12 @@ const makeDeployment = (
   connectorName: 'ByBit',
   provider: 'bybit',
   accountId: 'tradfi-main',
-  universe: 'tradfi',
-  interval: '15',
   enabled: true,
   strategies: [
     {
       strategyName: 'TrendLine',
-      policyProfileId: 'tradfi',
-      enabled: true,
+      releaseVersion: 1,
+      controlState: 'active',
     },
   ],
   ...overrides,
@@ -128,7 +126,7 @@ describe('trading accounts persistence', () => {
         id: 'crypto-main',
         label: 'Z account',
         provider: 'bybit',
-        universes: ['crypto', 'tradfi'],
+        universes: ['crypto'],
       }),
     );
     await expect(listTradingAccounts('root')).resolves.toEqual([
@@ -274,7 +272,7 @@ describe('trading accounts persistence', () => {
     ).resolves.toBeNull();
   });
 
-  it('uses legacy Bybit credentials for both supported universes', async () => {
+  it('does not resolve accounts from legacy user settings', async () => {
     store.set(userKey('legacy'), {
       BYBIT_API_KEY: ' legacy-key ',
       BYBIT_API_SECRET: ' legacy-secret ',
@@ -286,26 +284,14 @@ describe('trading accounts persistence', () => {
         provider: 'bybit',
         universe: 'crypto',
       }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        id: 'bybit-default',
-        universes: ['crypto', 'tradfi'],
-        apiKey: 'legacy-key',
-        apiSecret: 'legacy-secret',
-      }),
-    );
+    ).resolves.toBeNull();
     await expect(
       resolveTradingAccount({
         userName: 'legacy',
         provider: 'bybit',
         universe: 'tradfi',
       }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        id: 'bybit-default',
-        universes: ['crypto', 'tradfi'],
-      }),
-    );
+    ).resolves.toBeNull();
 
     await expect(
       resolveTradingAccount({

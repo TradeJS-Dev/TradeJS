@@ -1,10 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  RUNTIME_STRATEGY_DRAFT_SCHEMA,
   RUNTIME_STRATEGY_RELEASE_SCHEMA,
   type RuntimeStrategyControlEvent,
   type RuntimeStrategyControlState,
-  type RuntimeStrategyDraft,
   type RuntimeStrategyRelease,
   type StrategyConfig,
 } from '@tradejs/types';
@@ -61,6 +59,12 @@ const assertStrategyName = (strategyName: string) => {
   }
 };
 
+const assertPackageIdentity = (value: unknown, label: string) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} is required for a runtime strategy release`);
+  }
+};
+
 export const assertRuntimeStrategyReleaseConfig = (config: StrategyConfig) => {
   const record = asRecord(config);
   if (!record) throw new Error('Strategy release config must be an object');
@@ -103,6 +107,12 @@ const isRelease = (value: unknown): value is RuntimeStrategyRelease => {
       Number.isSafeInteger(release.releaseVersion) &&
       Number(release.releaseVersion) > 0 &&
       asRecord(release.config) &&
+      typeof release.strategyPackage === 'string' &&
+      Boolean(release.strategyPackage.trim()) &&
+      typeof release.strategyPackageVersion === 'string' &&
+      Boolean(release.strategyPackageVersion.trim()) &&
+      typeof release.runtimePackageVersion === 'string' &&
+      Boolean(release.runtimePackageVersion.trim()) &&
       typeof release.createdAt === 'number' &&
       typeof release.createdBy === 'string' &&
       typeof release.contentSha256 === 'string' &&
@@ -122,50 +132,6 @@ export const verifyRuntimeStrategyRelease = (
   }
   assertRuntimeStrategyReleaseConfig(value.config);
   return value;
-};
-
-export const getRuntimeStrategyDraft = async (
-  userName: string,
-  strategyName: string,
-): Promise<RuntimeStrategyDraft | null> => {
-  const value = await getData(
-    redisKeys.runtimeStrategyDraft(userName, strategyName),
-    null,
-  );
-  const draft = asRecord(value);
-  return draft?.schema === RUNTIME_STRATEGY_DRAFT_SCHEMA &&
-    draft.strategyName === strategyName &&
-    asRecord(draft.config)
-    ? (value as RuntimeStrategyDraft)
-    : null;
-};
-
-export const saveRuntimeStrategyDraft = async ({
-  userName,
-  strategyName,
-  config,
-  baseReleaseVersion = null,
-  updatedBy,
-}: {
-  userName: string;
-  strategyName: string;
-  config: StrategyConfig;
-  baseReleaseVersion?: number | null;
-  updatedBy: string;
-}): Promise<RuntimeStrategyDraft> => {
-  assertStrategyName(strategyName);
-  const draft: RuntimeStrategyDraft = {
-    schema: RUNTIME_STRATEGY_DRAFT_SCHEMA,
-    strategyName,
-    baseReleaseVersion,
-    config,
-    updatedAt: Date.now(),
-    updatedBy,
-  };
-  await setData(redisKeys.runtimeStrategyDraft(userName, strategyName), draft, {
-    expire: 0,
-  });
-  return draft;
 };
 
 export const getRuntimeStrategyRelease = async (
@@ -202,21 +168,24 @@ export const publishRuntimeStrategyRelease = async ({
   userName,
   strategyName,
   config,
-  strategyPackage = null,
-  strategyPackageVersion = null,
-  runtimePackageVersion = null,
+  strategyPackage,
+  strategyPackageVersion,
+  runtimePackageVersion,
   createdBy,
 }: {
   userName: string;
   strategyName: string;
   config: StrategyConfig;
-  strategyPackage?: string | null;
-  strategyPackageVersion?: string | null;
-  runtimePackageVersion?: string | null;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  runtimePackageVersion: string;
   createdBy: string;
 }): Promise<RuntimeStrategyRelease> => {
   assertStrategyName(strategyName);
   assertRuntimeStrategyReleaseConfig(config);
+  assertPackageIdentity(strategyPackage, 'strategyPackage');
+  assertPackageIdentity(strategyPackageVersion, 'strategyPackageVersion');
+  assertPackageIdentity(runtimePackageVersion, 'runtimePackageVersion');
   const releaseVersion = await incrementKey(
     redisKeys.runtimeStrategyReleaseSequence(userName, strategyName),
   );

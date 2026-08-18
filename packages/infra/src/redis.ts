@@ -677,8 +677,6 @@ export const redisKeys = {
     strategyName: string,
     configId = 'config',
   ) => `users:${userName}:strategies:${strategyName}:${configId}`,
-  runtimeStrategyDraft: (userName: string, strategyName: string) =>
-    `users:${userName}:strategies:${strategyName}:draft`,
   runtimeStrategyReleases: (userName: string, strategyName: string) =>
     `users:${userName}:strategies:${strategyName}:releases:`,
   runtimeStrategyRelease: (

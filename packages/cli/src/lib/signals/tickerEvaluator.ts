@@ -137,7 +137,6 @@ export const createSignalsTickerEvaluator =
     for (const runtimeStrategy of runtimeStrategies) {
       const {
         strategyName,
-        configId,
         releaseVersion,
         controlState,
         strategyPackageVersion,
@@ -145,12 +144,8 @@ export const createSignalsTickerEvaluator =
         strategyCreator,
         sourceStrategyConfig,
         strategyConfig,
-        strategyResults,
       } = runtimeStrategy;
-      const runtimeIdentity = releaseVersion
-        ? `v${releaseVersion}`
-        : configId ?? 'config';
-      const symbolResultConfig = strategyResults?.[symbol]?.config ?? null;
+      const runtimeIdentity = `v${releaseVersion}`;
       const runtimeConfig = buildRuntimeModeStrategyConfig({
         strategyConfig,
         env: 'CRON',
@@ -163,7 +158,7 @@ export const createSignalsTickerEvaluator =
         releaseVersion,
         strategyPackageVersion,
         runtimePackageVersion,
-        config: { configId, strategyConfig, symbolResultConfig },
+        config: { strategyConfig },
         runContext: {
           connectorName: connectorName.toLowerCase(),
           interval: String(interval),
@@ -191,7 +186,7 @@ export const createSignalsTickerEvaluator =
         evaluation = await lifecycle.evaluate({
           key: lifecycleKey,
           timestamp: lastCandle.timestamp,
-          config: { runtimeConfig, sourceStrategyConfig, symbolResultConfig },
+          config: { runtimeConfig, sourceStrategyConfig },
           btcBinanceData,
           btcCoinbaseData,
           onRuntimeClose: (event) => runtimeCloseNotifications.push(event),
@@ -203,13 +198,12 @@ export const createSignalsTickerEvaluator =
             strategyCreator({
               userName,
               connectorName,
-              runtimeConfigId: configId,
+              runtimeConfigId: runtimeIdentity,
               runtimeReleaseVersion: releaseVersion,
               entriesPaused: controlState === 'entries_paused',
               runtimeLineage,
               runtimeConfigSnapshot: {
                 userConfig: sourceStrategyConfig,
-                symbolResultConfig,
               },
               connector,
               symbol,
@@ -265,12 +259,12 @@ export const createSignalsTickerEvaluator =
             strategyName,
             symbol,
             timestamp: lastCandle.timestamp,
-            runtimeConfigId: configId,
+            runtimeConfigId: runtimeIdentity,
             runtimeReleaseVersion: releaseVersion,
           }),
           userName,
           strategy: strategyName,
-          runtimeConfigId: configId,
+          runtimeConfigId: runtimeIdentity,
           runtimeReleaseVersion: releaseVersion,
           runtimeLineage,
           symbol,
@@ -289,16 +283,9 @@ export const createSignalsTickerEvaluator =
       }
 
       if (stats) stats.signals += 1;
-      signal.runtimeConfigId = configId;
+      signal.runtimeConfigId = runtimeIdentity;
       signal.runtimeReleaseVersion = releaseVersion;
       signal.runtimeLineage = runtimeLineage;
-      if (
-        configId &&
-        configId !== 'config' &&
-        !signal.signalId.endsWith(`:${configId}`)
-      ) {
-        signal.signalId = `${signal.signalId}:${configId}`;
-      }
       if (releaseVersion && !signal.signalId.endsWith(`:v${releaseVersion}`)) {
         signal.signalId = `${signal.signalId}:v${releaseVersion}`;
       }
@@ -322,12 +309,12 @@ export const createSignalsTickerEvaluator =
           strategyName,
           symbol,
           timestamp: lastCandle.timestamp,
-          runtimeConfigId: configId,
+          runtimeConfigId: runtimeIdentity,
           runtimeReleaseVersion: releaseVersion,
         }),
         userName,
         strategy: strategyName,
-        runtimeConfigId: configId,
+        runtimeConfigId: runtimeIdentity,
         runtimeReleaseVersion: releaseVersion,
         runtimeLineage,
         symbol,

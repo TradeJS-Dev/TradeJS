@@ -3,8 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const mockLoadRuntimeStrategyConfigs = jest.fn();
 const mockListRuntimeDeployments = jest.fn();
+const mockGetRuntimeStrategyRelease = jest.fn();
 const mockListTradingAccounts = jest.fn();
 const mockResolveTradingAccount = jest.fn();
 const mockGetAvailableStrategyNames = jest.fn();
@@ -14,14 +14,14 @@ const mockGetHashJsonValues = jest.fn();
 const mockGetKeys = jest.fn();
 const mockSyncRuntimeTrades = jest.fn();
 
-jest.mock('@tradejs/infra/runtimeStrategyConfigs', () => ({
-  loadRuntimeStrategyConfigs: (...args: unknown[]) =>
-    mockLoadRuntimeStrategyConfigs(...args),
-}));
-
 jest.mock('@tradejs/infra/runtimeDeployments', () => ({
   listRuntimeDeployments: (...args: unknown[]) =>
     mockListRuntimeDeployments(...args),
+}));
+
+jest.mock('@tradejs/infra/runtimeStrategyReleases', () => ({
+  getRuntimeStrategyRelease: (...args: unknown[]) =>
+    mockGetRuntimeStrategyRelease(...args),
 }));
 
 jest.mock('@tradejs/infra/tradingAccounts', () => ({
@@ -77,15 +77,32 @@ describe('runtime dashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.STRATEGY_RELEASE_MARKER_DIR;
-    mockLoadRuntimeStrategyConfigs.mockResolvedValue([
+    mockListRuntimeDeployments.mockResolvedValue([
       {
-        key: 'users:root:strategies:TrendLine:config',
-        strategyName: 'TrendLine',
-        configId: 'config',
-        strategyConfig: { INTERVAL: '15', ENABLE: true },
+        id: 'trendline-forward',
+        label: 'TrendLine forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            releaseVersion: 2,
+            controlState: 'active',
+          },
+        ],
       },
     ]);
-    mockListRuntimeDeployments.mockResolvedValue([]);
+    mockGetRuntimeStrategyRelease.mockResolvedValue({
+      strategyName: 'TrendLine',
+      releaseVersion: 2,
+      config: {
+        INTERVAL: '15',
+        UNIVERSE: 'crypto',
+        POLICY_PROFILE_ID: 'crypto',
+      },
+    });
     mockListTradingAccounts.mockResolvedValue([
       { id: 'crypto-main', label: 'Crypto main' },
     ]);
@@ -144,18 +161,23 @@ describe('runtime dashboard', () => {
       strategies: [
         {
           strategyName: 'TrendLine',
-          configId: 'config',
+          configId: 'v2',
+          releaseVersion: 2,
           interval: '15',
           universe: 'crypto',
           accountId: 'crypto-main',
           accountLabel: 'Crypto main',
           connected: true,
           enabled: true,
-          config: { INTERVAL: '15', ENABLE: true },
+          config: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            POLICY_PROFILE_ID: 'crypto',
+          },
           symbols: [],
           orders: [],
           evidenceTimeline: {
-            status: 'missing',
+            status: 'not_attached',
             observedFrom: null,
             markers: [],
           },
@@ -164,48 +186,18 @@ describe('runtime dashboard', () => {
     });
   });
 
-  it('keeps deployment strategies without embedded config readable', async () => {
-    mockListRuntimeDeployments.mockResolvedValue([
-      {
-        id: 'doubletap-forward',
-        label: 'Crypto forward runtime',
-        connectorName: 'bybit',
+  it('fails when a deployment points to a missing release', async () => {
+    mockGetRuntimeStrategyRelease.mockResolvedValue(null);
+
+    await expect(
+      loadRuntimeDashboard({
+        userName: 'root',
         provider: 'bybit',
-        accountId: 'crypto-main',
-        universe: 'crypto',
-        interval: '15',
-        enabled: true,
-        strategies: [
-          {
-            strategyName: 'DoubleTap',
-            policyProfileId: 'default',
-          },
-        ],
-      },
-    ]);
-
-    const response = await loadRuntimeDashboard({
-      userName: 'root',
-      provider: 'bybit',
-      hours: 6,
-      now: 1_700_000_000_000,
-      projectRoot: '/project',
-    });
-
-    expect(response.strategies).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          strategyName: 'DoubleTap',
-          configId: 'deployment-doubletap-forward',
-          config: null,
-          evidenceTimeline: {
-            status: 'missing',
-            observedFrom: null,
-            markers: [],
-          },
-        }),
-      ]),
-    );
+        hours: 6,
+        now: 1_700_000_000_000,
+        projectRoot: '/project',
+      }),
+    ).rejects.toThrow('Runtime release not found: TrendLine v2');
   });
 
   it('fails before reading sources when the connector is unavailable', async () => {
@@ -214,7 +206,7 @@ describe('runtime dashboard', () => {
     await expect(
       loadRuntimeDashboard({ userName: 'root', provider: 'missing' }),
     ).rejects.toThrow('No connector available for provider "missing"');
-    expect(mockLoadRuntimeStrategyConfigs).not.toHaveBeenCalled();
+    expect(mockListRuntimeDeployments).not.toHaveBeenCalled();
   });
 
   it('does not attach immutable evidence without exact runtime lineage', async () => {
@@ -279,7 +271,7 @@ describe('runtime dashboard', () => {
     });
 
     expect(response.strategies[0]?.evidenceTimeline).toEqual({
-      status: 'missing',
+      status: 'not_attached',
       observedFrom: null,
       markers: [],
     });

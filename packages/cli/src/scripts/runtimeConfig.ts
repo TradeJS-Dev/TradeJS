@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -7,10 +7,8 @@ import {
   listRuntimeDeployments,
   saveRuntimeDeployment,
 } from '@tradejs/infra/runtimeDeployments';
-import { getRuntimeStrategyConfig } from '@tradejs/infra/runtimeStrategyConfigs';
 import {
   getRuntimeStrategyRelease,
-  getRuntimeStrategyDraft,
   listRuntimeStrategyReleases,
   publishRuntimeStrategyRelease,
   recordRuntimeStrategyControlEvent,
@@ -22,13 +20,22 @@ import {
 import { getStrategyDefaults } from '@tradejs/node/strategies';
 import type {
   RuntimeDeployment,
-  MarketUniverse,
   RuntimeStrategyControlState,
   StrategyConfig,
 } from '@tradejs/types';
 
 const argv = process.argv.slice(2);
-const action = argv[0] ?? 'inspect';
+export const RUNTIME_CONFIG_ACTIONS = [
+  'inspect',
+  'verify',
+  'provision',
+  'rollout',
+  'pause',
+  'resume',
+  'rollback',
+] as const;
+type RuntimeConfigAction = (typeof RUNTIME_CONFIG_ACTIONS)[number];
+const action = (argv[0] ?? 'inspect') as RuntimeConfigAction;
 const option = (name: string) => {
   const index = argv.indexOf(`--${name}`);
   return index >= 0 ? argv[index + 1] : undefined;
@@ -51,8 +58,27 @@ const OPERATIONAL_CONFIG_KEYS = [
   'ENV',
   'MAKE_ORDERS',
   'RECORD_RUNTIME_TRADES',
-  'configId',
 ];
+
+const requireRuntimePackageIdentity = (
+  strategyName: string,
+  metadata: Awaited<ReturnType<typeof getRuntimeStrategyPackageMetadata>>,
+) => {
+  if (
+    !metadata.strategyPackage ||
+    !metadata.strategyPackageVersion ||
+    !metadata.runtimePackageVersion
+  ) {
+    throw new Error(
+      `Runtime package manifest is incomplete for ${strategyName}`,
+    );
+  }
+  return {
+    strategyPackage: metadata.strategyPackage,
+    strategyPackageVersion: metadata.strategyPackageVersion,
+    runtimePackageVersion: metadata.runtimePackageVersion,
+  };
+};
 
 const toReleaseConfig = async (
   strategyName: string,
@@ -62,19 +88,6 @@ const toReleaseConfig = async (
   const config: StrategyConfig = { ...defaults, ...sourceConfig };
   for (const key of OPERATIONAL_CONFIG_KEYS) delete config[key];
   return config;
-};
-
-const writeMigrationBackup = async (payload: unknown) => {
-  const directory = path.join(projectRoot, 'data', 'runtime-config-backups');
-  await mkdir(directory, { recursive: true });
-  const backupPath = path.join(
-    directory,
-    `${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
-  );
-  await writeFile(backupPath, `${JSON.stringify(payload, null, 2)}\n`, {
-    flag: 'wx',
-  });
-  return backupPath;
 };
 
 const publish = async ({
@@ -89,16 +102,17 @@ const publish = async ({
     strategyName,
     projectRoot,
   });
+  const packageIdentity = requireRuntimePackageIdentity(strategyName, metadata);
   return publishRuntimeStrategyRelease({
     userName,
     strategyName,
     config,
-    ...metadata,
+    ...packageIdentity,
     createdBy: `cli:${userName}`,
   });
 };
 
-export const buildBootstrapRuntimeDeployment = ({
+export const buildProvisionedRuntimeDeployment = ({
   deploymentId,
   label,
   connectorName,
@@ -106,7 +120,6 @@ export const buildBootstrapRuntimeDeployment = ({
   accountId,
   strategyName,
   releaseVersion,
-  config,
 }: {
   deploymentId: string;
   label: string;
@@ -115,15 +128,12 @@ export const buildBootstrapRuntimeDeployment = ({
   accountId: string;
   strategyName: string;
   releaseVersion: number;
-  config: StrategyConfig;
 }): RuntimeDeployment => ({
   id: deploymentId,
   label,
   connectorName,
   provider,
   accountId,
-  universe: config.UNIVERSE as MarketUniverse,
-  interval: String(config.INTERVAL),
   enabled: true,
   strategies: [
     {
@@ -143,23 +153,21 @@ export const isEquivalentRuntimeStrategyRelease = ({
 }: {
   release: {
     config: StrategyConfig;
-    strategyPackage?: string | null;
-    strategyPackageVersion?: string | null;
-    runtimePackageVersion?: string | null;
+    strategyPackage: string;
+    strategyPackageVersion: string;
+    runtimePackageVersion: string;
   } | null;
   config: StrategyConfig;
-  strategyPackage?: string | null;
-  strategyPackageVersion?: string | null;
-  runtimePackageVersion?: string | null;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  runtimePackageVersion: string;
 }) =>
   Boolean(
     release &&
       isDeepStrictEqual(release.config, config) &&
-      (release.strategyPackage ?? null) === (strategyPackage ?? null) &&
-      (release.strategyPackageVersion ?? null) ===
-        (strategyPackageVersion ?? null) &&
-      (release.runtimePackageVersion ?? null) ===
-        (runtimePackageVersion ?? null),
+      release.strategyPackage === strategyPackage &&
+      release.strategyPackageVersion === strategyPackageVersion &&
+      release.runtimePackageVersion === runtimePackageVersion,
   );
 
 export const pointRuntimeDeploymentAtRelease = ({
@@ -183,7 +191,7 @@ export const pointRuntimeDeploymentAtRelease = ({
   ),
 });
 
-const bootstrap = async () => {
+const provision = async () => {
   const strategyName = required('strategy');
   const deploymentId = required('deployment');
   const accountId = required('account');
@@ -201,7 +209,7 @@ const bootstrap = async () => {
     );
   }
   const releaseConfig = await toReleaseConfig(strategyName, sourceConfig);
-  const previewDeployment = buildBootstrapRuntimeDeployment({
+  const previewDeployment = buildProvisionedRuntimeDeployment({
     deploymentId,
     label,
     connectorName,
@@ -209,7 +217,6 @@ const bootstrap = async () => {
     accountId,
     strategyName,
     releaseVersion: 1,
-    config: releaseConfig,
   });
   if (!hasFlag('write')) {
     console.log(
@@ -231,16 +238,10 @@ const bootstrap = async () => {
     );
     return;
   }
-  const backupPath = await writeMigrationBackup({
-    userName,
-    capturedAt: Date.now(),
-    reason: 'bootstrap',
-    sourceConfig,
-  });
   const release = await publish({ strategyName, sourceConfig });
   const deployment = await saveRuntimeDeployment(
     userName,
-    buildBootstrapRuntimeDeployment({
+    buildProvisionedRuntimeDeployment({
       deploymentId,
       label,
       connectorName,
@@ -248,79 +249,10 @@ const bootstrap = async () => {
       accountId,
       strategyName,
       releaseVersion: release.releaseVersion,
-      config: release.config,
     }),
   );
   console.log(
-    JSON.stringify(
-      { bootstrapped: true, backupPath, release, deployment },
-      null,
-      2,
-    ),
-  );
-};
-
-const migrate = async () => {
-  const strategyName = required('strategy');
-  const configId = option('config') ?? 'config';
-  const deploymentId = required('deployment');
-  const [sourceConfig, deployment] = await Promise.all([
-    getRuntimeStrategyConfig(userName, strategyName, configId),
-    getRuntimeDeployment(userName, deploymentId),
-  ]);
-  if (!sourceConfig) {
-    throw new Error(`Legacy config not found: ${strategyName}:${configId}`);
-  }
-  if (!deployment) throw new Error(`Deployment not found: ${deploymentId}`);
-  const reference = deployment.strategies.find(
-    (strategy) => strategy.strategyName === strategyName,
-  );
-  if (!reference) {
-    throw new Error(`${strategyName} is not bound to ${deploymentId}`);
-  }
-  const preview = {
-    source: { configId, config: sourceConfig },
-    releaseConfig: await toReleaseConfig(strategyName, sourceConfig),
-    deployment: {
-      id: deployment.id,
-      accountId: deployment.accountId,
-      strategy: {
-        strategyName,
-        releaseVersion: '<allocated on write>',
-        controlState: 'entries_paused',
-      },
-    },
-  };
-  if (!hasFlag('write')) {
-    console.log(JSON.stringify({ dryRun: true, ...preview }, null, 2));
-    return;
-  }
-  const backupPath = await writeMigrationBackup({
-    userName,
-    capturedAt: Date.now(),
-    deployment,
-    legacyConfig: sourceConfig,
-  });
-  const release = await publish({ strategyName, sourceConfig });
-  const updatedDeployment: RuntimeDeployment = {
-    ...deployment,
-    strategies: deployment.strategies.map((strategy) =>
-      strategy.strategyName === strategyName
-        ? {
-            strategyName,
-            releaseVersion: release.releaseVersion,
-            controlState: 'entries_paused',
-          }
-        : strategy,
-    ),
-  };
-  await saveRuntimeDeployment(userName, updatedDeployment);
-  console.log(
-    JSON.stringify(
-      { migrated: true, backupPath, release, deployment: updatedDeployment },
-      null,
-      2,
-    ),
+    JSON.stringify({ provisioned: true, release, deployment }, null, 2),
   );
 };
 
@@ -338,18 +270,18 @@ const rollout = async () => {
   const reference = deployment.strategies.find(
     (strategy) => strategy.strategyName === strategyName,
   );
-  if (!reference?.releaseVersion) {
-    throw new Error(`${strategyName} is not a versioned deployment reference`);
-  }
+  if (!reference)
+    throw new Error(`${strategyName} is not bound to ${deploymentId}`);
   const [config, metadata, currentRelease] = await Promise.all([
     toReleaseConfig(strategyName, sourceConfig),
     getRuntimeStrategyPackageMetadata({ strategyName, projectRoot }),
     getRuntimeStrategyRelease(userName, strategyName, reference.releaseVersion),
   ]);
+  const packageIdentity = requireRuntimePackageIdentity(strategyName, metadata);
   const unchanged = isEquivalentRuntimeStrategyRelease({
     release: currentRelease,
     config,
-    ...metadata,
+    ...packageIdentity,
   });
   const preview = {
     deploymentId,
@@ -358,7 +290,7 @@ const rollout = async () => {
     nextControlState: 'entries_paused' as const,
     unchanged,
     config,
-    ...metadata,
+    ...packageIdentity,
   };
   if (!hasFlag('write')) {
     console.log(JSON.stringify({ dryRun: true, ...preview }, null, 2));
@@ -379,19 +311,11 @@ const rollout = async () => {
     );
     return;
   }
-  const backupPath = await writeMigrationBackup({
-    userName,
-    capturedAt: Date.now(),
-    reason: 'rollout',
-    deployment,
-    currentRelease,
-    sourceConfig,
-  });
   const release = await publishRuntimeStrategyRelease({
     userName,
     strategyName,
     config,
-    ...metadata,
+    ...packageIdentity,
     createdBy: `cli:${userName}`,
   });
   const updatedDeployment = pointRuntimeDeploymentAtRelease({
@@ -404,7 +328,6 @@ const rollout = async () => {
     JSON.stringify(
       {
         rolledOut: true,
-        backupPath,
         release,
         deployment: updatedDeployment,
       },
@@ -412,14 +335,6 @@ const rollout = async () => {
       2,
     ),
   );
-};
-
-const publishDraft = async () => {
-  const strategyName = required('strategy');
-  const draft = await getRuntimeStrategyDraft(userName, strategyName);
-  if (!draft) throw new Error(`Draft not found: ${strategyName}`);
-  const release = await publish({ strategyName, sourceConfig: draft.config });
-  console.log(JSON.stringify({ release }, null, 2));
 };
 
 const updateControlState = async (nextState: RuntimeStrategyControlState) => {
@@ -430,10 +345,9 @@ const updateControlState = async (nextState: RuntimeStrategyControlState) => {
   const reference = deployment.strategies.find(
     (strategy) => strategy.strategyName === strategyName,
   );
-  if (!reference?.releaseVersion) {
-    throw new Error(`${strategyName} is not a versioned deployment reference`);
-  }
-  const previousState = reference.controlState ?? 'active';
+  if (!reference)
+    throw new Error(`${strategyName} is not bound to ${deploymentId}`);
+  const previousState = reference.controlState;
   const updated = await saveRuntimeDeployment(userName, {
     ...deployment,
     strategies: deployment.strategies.map((strategy) =>
@@ -471,12 +385,6 @@ const rollback = async () => {
   ).find((candidate) => candidate.releaseVersion === releaseVersion);
   if (!release)
     throw new Error(`Release not found: ${strategyName} v${releaseVersion}`);
-  const backupPath = await writeMigrationBackup({
-    userName,
-    capturedAt: Date.now(),
-    deployment,
-    reason: 'rollback',
-  });
   const updated = await saveRuntimeDeployment(userName, {
     ...deployment,
     strategies: deployment.strategies.map((strategy) =>
@@ -489,7 +397,7 @@ const rollback = async () => {
         : strategy,
     ),
   });
-  console.log(JSON.stringify({ backupPath, deployment: updated }, null, 2));
+  console.log(JSON.stringify({ deployment: updated }, null, 2));
 };
 
 const verify = async () => {
@@ -504,7 +412,6 @@ const verify = async () => {
         userName,
         projectRoot,
         deployment,
-        connectorName: deployment.connectorName,
       });
       results.push({
         deploymentId: deployment.id,
@@ -540,17 +447,15 @@ const inspect = async () => {
 };
 
 export const runtimeConfig = async () => {
-  if (action === 'bootstrap') return bootstrap();
-  if (action === 'migrate') return migrate();
+  if (action === 'provision') return provision();
   if (action === 'rollout') return rollout();
-  if (action === 'publish-draft') return publishDraft();
   if (action === 'verify') return verify();
   if (action === 'pause') return updateControlState('entries_paused');
   if (action === 'resume') return updateControlState('active');
   if (action === 'rollback') return rollback();
   if (action === 'inspect') return inspect();
   throw new Error(
-    'Usage: tradejs runtime-config inspect|verify|bootstrap|migrate|rollout|publish-draft|pause|resume|rollback',
+    `Usage: tradejs runtime-config ${RUNTIME_CONFIG_ACTIONS.join('|')}`,
   );
 };
 

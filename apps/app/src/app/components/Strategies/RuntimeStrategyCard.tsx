@@ -72,7 +72,6 @@ export const RuntimeStrategyCard = ({
   );
   const { lastTrade, runtimeOrders } = viewModel;
   const setControlState = async (controlState: 'active' | 'entries_paused') => {
-    if (!strategy.deploymentId || !strategy.releaseVersion) return;
     setControlSaving(true);
     try {
       const response = await fetch(
@@ -135,25 +134,17 @@ export const RuntimeStrategyCard = ({
         <Badge colorPalette="cyan" variant="outline">
           TF: {strategy.interval}m
         </Badge>
-        {strategy.releaseVersion ? (
-          <Badge colorPalette="gray" variant="outline">
-            release: v{strategy.releaseVersion}
-          </Badge>
-        ) : (
-          <Badge colorPalette="gray" variant="outline">
-            legacy config: {strategy.configId}
-          </Badge>
-        )}
+        <Badge colorPalette="gray" variant="outline">
+          release: v{strategy.releaseVersion}
+        </Badge>
         {strategy.accountId ? (
           <Badge colorPalette="purple" variant="outline">
             account: {strategy.accountLabel ?? strategy.accountId}
           </Badge>
         ) : null}
-        {strategy.deploymentId ? (
-          <Badge colorPalette="orange" variant="outline">
-            deployment: {strategy.deploymentId}
-          </Badge>
-        ) : null}
+        <Badge colorPalette="orange" variant="outline">
+          deployment: {strategy.deploymentId}
+        </Badge>
         {strategy.policyProfileId ? (
           <Badge colorPalette="cyan" variant="outline">
             policy: {strategy.policyProfileId}
@@ -211,28 +202,24 @@ export const RuntimeStrategyCard = ({
             <Portal>
               <Menu.Positioner>
                 <Menu.Content minW="160px">
-                  {strategy.connected ? (
-                    <Menu.Item value="edit" onClick={() => setConfigOpen(true)}>
-                      {strategy.releaseVersion ? 'View config' : 'Edit'}
-                    </Menu.Item>
-                  ) : null}
-                  {strategy.releaseVersion && strategy.deploymentId ? (
-                    <Menu.Item
-                      value="control"
-                      disabled={controlSaving}
-                      onClick={() =>
-                        void setControlState(
-                          strategy.controlState === 'entries_paused'
-                            ? 'active'
-                            : 'entries_paused',
-                        )
-                      }
-                    >
-                      {strategy.controlState === 'entries_paused'
-                        ? 'Resume entries'
-                        : 'Pause new entries'}
-                    </Menu.Item>
-                  ) : null}
+                  <Menu.Item value="config" onClick={() => setConfigOpen(true)}>
+                    View config
+                  </Menu.Item>
+                  <Menu.Item
+                    value="control"
+                    disabled={controlSaving}
+                    onClick={() =>
+                      void setControlState(
+                        strategy.controlState === 'entries_paused'
+                          ? 'active'
+                          : 'entries_paused',
+                      )
+                    }
+                  >
+                    {strategy.controlState === 'entries_paused'
+                      ? 'Resume entries'
+                      : 'Pause new entries'}
+                  </Menu.Item>
                   <Menu.Item value="orders" onClick={() => setOrdersOpen(true)}>
                     Orders
                   </Menu.Item>
@@ -258,7 +245,6 @@ export const RuntimeStrategyCard = ({
         open={configOpen}
         strategy={strategy}
         onOpenChange={setConfigOpen}
-        onSaved={onUpdated}
       />
 
       <RuntimeStrategyStatsDrawer

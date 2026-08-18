@@ -333,22 +333,15 @@ export const loadReplayStrategies = async (): Promise<
 export const validateBacktestRuntimeDeployment = ({
   deployment,
   deploymentId,
-  requestedInterval,
 }: {
   deployment: RuntimeDeployment | null;
   deploymentId?: string;
-  requestedInterval: string;
 }) => {
   if (deploymentId && !deployment) {
     throw new Error(`Runtime deployment not found: ${deploymentId}`);
   }
   if (deployment && !deployment.enabled) {
     throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
-  }
-  if (deployment && String(deployment.interval) !== String(requestedInterval)) {
-    throw new Error(
-      `Deployment ${deployment.id} requires timeframe ${deployment.interval}; received ${requestedInterval}`,
-    );
   }
   return deployment;
 };
@@ -361,7 +354,6 @@ export const prepareRunEnvironment =
         : null,
       deploymentId:
         typeof flags.deployment === 'string' ? flags.deployment : undefined,
-      requestedInterval: interval,
     });
     const preparedRun = await prepareRunEnvironmentShared({
       connector: deployment?.connectorName ?? flags.connector,
@@ -376,7 +368,7 @@ export const prepareRunEnvironment =
       cacheOnly: flags.cacheOnly,
       interval,
       projectRoot,
-      universe: deployment?.universe ?? marketUniverse,
+      universe: marketUniverse,
       accountId: deployment?.accountId ?? flags.account,
       deploymentId: deployment?.id,
       assetClasses: deployment?.assetClasses,

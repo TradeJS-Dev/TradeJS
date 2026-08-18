@@ -1,5 +1,4 @@
 import { logger } from '@tradejs/infra/logger';
-import { redisKeys, setData } from '@tradejs/infra/redis';
 import { FEE_PERCENT } from '@tradejs/core/constants';
 import {
   buildMlFeatures,

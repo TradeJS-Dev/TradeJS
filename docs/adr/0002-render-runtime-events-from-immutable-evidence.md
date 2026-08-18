@@ -4,7 +4,8 @@ Runtime strategy charts will render composition, gate, `MAX_LOSS_VALUE`, deploym
 
 To keep strategy cards compact, the chart shows labeled vertical markers while their legend, filters, and provenance live in an `Evidence` popover. Composition, loss-value, deployment, and evidence-boundary events are always available; parity and advisory recommendation markers can be hidden by the user.
 
-The dashboard binds a ledger only by the frozen composition id or a complete
-runtime identity containing clean git SHA, core-config fingerprint, deterministic
-gate fingerprint, context fingerprint, and `MAX_LOSS_VALUE`. Strategy name or
-config alone is insufficient; config-only cards display missing evidence.
+For production runtime cards, ADR 0005 replaces composition/fingerprint
+selection with the explicit per-strategy `releaseVersion`. A verified artifact
+must name that version; otherwise the UI reports `not_attached`. Research
+artifacts retain their internal hashes for verification, but they are not
+runtime selectors.

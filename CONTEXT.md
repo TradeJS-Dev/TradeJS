@@ -93,15 +93,22 @@ An immutable, per-strategy numbered runtime configuration that names the
 strategy and runtime package versions with which it is compatible.
 _Avoid_: Config id, current config, deployment config
 
+The only production strategy-config record. Runtime does not read mutable
+`users:<user>:strategies:<Strategy>:<configId>` values, symbol-result overlays,
+drafts, embedded deployment config, or legacy account credentials.
+
 **Deployment Binding**:
 The operational association of a Runtime Strategy Release with a trading
 account and connector target.
-_Avoid_: Strategy config, release contents
+Its strategy reference is exactly `{ strategyName, releaseVersion,
+controlState }`; interval, universe, policy, and risk remain release-owned.
+_Avoid_: Strategy config, release contents, scope defaults
 
 **Entry Control State**:
 The operational active-or-entries-paused state of one Deployment Binding;
 pausing entries does not suspend management of existing positions.
-_Avoid_: Enabled config, disabled strategy
+It is always explicit and never defaults to active.
+_Avoid_: Enabled config, disabled strategy, missing means active
 
 **Runtime Package Manifest**:
 The immutable inventory of exact TradeJS and strategy package versions in one

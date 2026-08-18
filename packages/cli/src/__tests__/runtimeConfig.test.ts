@@ -1,12 +1,25 @@
 import {
-  buildBootstrapRuntimeDeployment,
+  RUNTIME_CONFIG_ACTIONS,
+  buildProvisionedRuntimeDeployment,
   isEquivalentRuntimeStrategyRelease,
   pointRuntimeDeploymentAtRelease,
 } from '../scripts/runtimeConfig';
 
-describe('runtime-config bootstrap', () => {
+describe('runtime-config canonical commands', () => {
+  it('has no legacy migration or fallback actions', () => {
+    expect(RUNTIME_CONFIG_ACTIONS).toEqual([
+      'inspect',
+      'verify',
+      'provision',
+      'rollout',
+      'pause',
+      'resume',
+      'rollback',
+    ]);
+  });
+
   it('creates a paused release pointer without embedding strategy config', () => {
-    const deployment = buildBootstrapRuntimeDeployment({
+    const deployment = buildProvisionedRuntimeDeployment({
       deploymentId: 'doubletap-forward',
       label: 'DoubleTap forward',
       connectorName: 'bybit',
@@ -14,11 +27,6 @@ describe('runtime-config bootstrap', () => {
       accountId: 'bybit-default',
       strategyName: 'DoubleTap',
       releaseVersion: 7,
-      config: {
-        INTERVAL: '15',
-        UNIVERSE: 'crypto',
-        POLICY_PROFILE_ID: 'crypto',
-      },
     });
 
     expect(deployment).toEqual({
@@ -27,8 +35,6 @@ describe('runtime-config bootstrap', () => {
       connectorName: 'bybit',
       provider: 'bybit',
       accountId: 'bybit-default',
-      universe: 'crypto',
-      interval: '15',
       enabled: true,
       strategies: [
         {
@@ -76,15 +82,12 @@ describe('runtime-config rollout', () => {
         connectorName: 'bybit',
         provider: 'bybit',
         accountId: 'bybit-default',
-        universe: 'crypto',
-        interval: '15',
         enabled: true,
         strategies: [
           {
             strategyName: 'DoubleTap',
             releaseVersion: 1,
             controlState: 'active',
-            config: { SHOULD_NOT_SURVIVE: true },
           },
           {
             strategyName: 'Grid',

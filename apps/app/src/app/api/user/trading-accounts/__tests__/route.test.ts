@@ -2,7 +2,6 @@ const mockGetCurrentUserName = jest.fn();
 const mockGetTradingAccount = jest.fn();
 const mockListTradingAccounts = jest.fn();
 const mockSaveTradingAccount = jest.fn();
-const mockGetUserSettings = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -19,10 +18,6 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
   saveTradingAccount: (...args: unknown[]) => mockSaveTradingAccount(...args),
 }));
 
-jest.mock('@tradejs/infra/userSettings', () => ({
-  getUserSettings: (...args: unknown[]) => mockGetUserSettings(...args),
-}));
-
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
 }));
@@ -37,10 +32,6 @@ describe('trading accounts route', () => {
     jest.clearAllMocks();
     mockGetCurrentUserName.mockResolvedValue('root');
     mockGetTradingAccount.mockResolvedValue(null);
-    mockGetUserSettings.mockResolvedValue({
-      BYBIT_API_KEY: '',
-      BYBIT_API_SECRET: '',
-    });
   });
 
   it('requires an authenticated user', async () => {
@@ -90,36 +81,13 @@ describe('trading accounts route', () => {
     expect(response.body.accounts[0]).not.toHaveProperty('apiSecret');
   });
 
-  it('migrates legacy Bybit credentials into a trading account', async () => {
+  it('does not synthesize accounts from legacy user settings', async () => {
     mockListTradingAccounts.mockResolvedValue([]);
-    mockGetUserSettings.mockResolvedValue({
-      BYBIT_API_KEY: 'legacy-key-1234',
-      BYBIT_API_SECRET: 'legacy-secret-5678',
-    });
-    mockSaveTradingAccount.mockImplementation(
-      async (_userName: string, account: Record<string, unknown>) => account,
-    );
 
     const response = await GET();
 
-    expect(mockSaveTradingAccount).toHaveBeenCalledWith(
-      'root',
-      expect.objectContaining({
-        id: 'bybit-default',
-        provider: 'bybit',
-        apiKey: 'legacy-key-1234',
-        apiSecret: 'legacy-secret-5678',
-      }),
-    );
-    expect(response.body.accounts).toEqual([
-      expect.objectContaining({
-        id: 'bybit-default',
-        maskedApiKey: '************1234',
-        maskedApiSecret: '************5678',
-      }),
-    ]);
-    expect(response.body.accounts[0]).not.toHaveProperty('apiKey');
-    expect(response.body.accounts[0]).not.toHaveProperty('apiSecret');
+    expect(response).toEqual({ status: 200, body: { accounts: [] } });
+    expect(mockSaveTradingAccount).not.toHaveBeenCalled();
   });
 
   it('validates required fields and credentials for new accounts', async () => {

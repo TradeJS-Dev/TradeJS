@@ -6,10 +6,32 @@ import {
 } from '@tradejs/infra/runtimeDeployments';
 import { getTradingAccount } from '@tradejs/infra/tradingAccounts';
 import { getRuntimeStrategyRelease } from '@tradejs/infra/runtimeStrategyReleases';
-import { isMarketUniverse, type RuntimeDeployment } from '@tradejs/types';
+import type {
+  MarketUniverse,
+  RuntimeDeployment,
+  RuntimeDeploymentStrategy,
+} from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
+
+const isRuntimeStrategyReference = (
+  value: unknown,
+): value is RuntimeDeploymentStrategy => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.strategyName === 'string' &&
+    record.strategyName.trim().length > 0 &&
+    Number.isSafeInteger(record.releaseVersion) &&
+    Number(record.releaseVersion) > 0 &&
+    (record.controlState === 'active' ||
+      record.controlState === 'entries_paused') &&
+    Object.keys(record).every((key) =>
+      ['strategyName', 'releaseVersion', 'controlState'].includes(key),
+    )
+  );
+};
 
 export const GET = async () => {
   const userName = await getCurrentUserName();
@@ -33,60 +55,38 @@ export const POST = async (request: NextRequest) => {
   }
   try {
     const body = (await request.json()) as Partial<RuntimeDeployment>;
-    const hasVersionedStrategies = Boolean(
-      body.strategies?.some((strategy) => strategy.releaseVersion != null),
-    );
     if (
-      hasVersionedStrategies &&
-      body.strategies?.some((strategy) => strategy.releaseVersion == null)
+      !Array.isArray(body.strategies) ||
+      !body.strategies.length ||
+      !body.strategies.every(isRuntimeStrategyReference)
     ) {
       return NextResponse.json(
-        { error: 'A deployment cannot mix legacy configs and releases' },
+        { error: 'Invalid runtime strategy reference' },
         { status: 400 },
       );
     }
-    const releases = hasVersionedStrategies
-      ? await Promise.all(
-          (body.strategies ?? []).map(async (strategy) => {
-            if (
-              !Number.isSafeInteger(strategy.releaseVersion) ||
-              !strategy.releaseVersion ||
-              (strategy.config && Object.keys(strategy.config).length)
-            ) {
-              throw new Error('Invalid versioned strategy reference');
-            }
-            const release = await getRuntimeStrategyRelease(
-              userName,
-              strategy.strategyName,
-              strategy.releaseVersion,
-            );
-            if (!release) {
-              throw new Error(
-                `Release not found: ${strategy.strategyName} v${strategy.releaseVersion}`,
-              );
-            }
-            return release;
-          }),
-        )
-      : [];
-    const universe = releases[0]?.config.UNIVERSE ?? body.universe;
-    const interval = releases[0]?.config.INTERVAL ?? body.interval;
+    const releases = await Promise.all(
+      body.strategies.map(async (strategy) => {
+        const release = await getRuntimeStrategyRelease(
+          userName,
+          strategy.strategyName,
+          strategy.releaseVersion,
+        );
+        if (!release) {
+          throw new Error(
+            `Release not found: ${strategy.strategyName} v${strategy.releaseVersion}`,
+          );
+        }
+        return release;
+      }),
+    );
     if (
       !body.id ||
       !body.label ||
       !body.connectorName ||
       !body.provider ||
       !body.accountId ||
-      !interval ||
-      !isMarketUniverse(universe) ||
-      !Array.isArray(body.strategies) ||
-      !body.strategies.length ||
-      body.strategies.some((strategy) =>
-        hasVersionedStrategies
-          ? !String(strategy.strategyName ?? '').trim()
-          : !String(strategy.strategyName ?? '').trim() ||
-            !String(strategy.policyProfileId ?? '').trim(),
-      )
+      typeof body.enabled !== 'boolean'
     ) {
       return NextResponse.json(
         { error: 'Invalid runtime deployment' },
@@ -104,9 +104,14 @@ export const POST = async (request: NextRequest) => {
         { status: 400 },
       );
     }
-    if (!account.universes.includes(universe)) {
+    const unsupportedUniverse = releases
+      .map((release) => release.config.UNIVERSE as MarketUniverse)
+      .find((universe) => !account.universes.includes(universe));
+    if (unsupportedUniverse) {
       return NextResponse.json(
-        { error: `Account ${account.id} does not support ${universe}` },
+        {
+          error: `Account ${account.id} does not support ${unsupportedUniverse}`,
+        },
         { status: 400 },
       );
     }
@@ -116,18 +121,8 @@ export const POST = async (request: NextRequest) => {
       connectorName: body.connectorName,
       provider: body.provider,
       accountId: body.accountId,
-      universe,
-      interval: String(interval),
-      enabled: body.enabled !== false,
-      strategies: body.strategies.map((strategy) =>
-        hasVersionedStrategies
-          ? {
-              strategyName: strategy.strategyName,
-              releaseVersion: strategy.releaseVersion,
-              controlState: strategy.controlState ?? 'active',
-            }
-          : strategy,
-      ),
+      enabled: body.enabled,
+      strategies: body.strategies,
       assetClasses: body.assetClasses,
       tickers: body.tickers,
     });

@@ -46,14 +46,12 @@ const deployment = (overrides: Record<string, unknown> = {}) => ({
   connectorName: 'bybit',
   provider: 'bybit',
   accountId: 'tradfi-main',
-  universe: 'tradfi',
-  interval: '15',
   enabled: true,
   strategies: [
     {
       strategyName: 'TrendLine',
-      policyProfileId: 'tradfi',
-      enabled: true,
+      releaseVersion: 2,
+      controlState: 'active',
     },
   ],
   ...overrides,
@@ -68,6 +66,11 @@ describe('runtime deployments route', () => {
       provider: 'bybit',
       enabled: true,
       universes: ['tradfi'],
+    });
+    mockGetRuntimeStrategyRelease.mockResolvedValue({
+      strategyName: 'TrendLine',
+      releaseVersion: 2,
+      config: { INTERVAL: '15', UNIVERSE: 'tradfi' },
     });
   });
 
@@ -93,7 +96,7 @@ describe('runtime deployments route', () => {
     const malformed = await POST(request(deployment({ strategies: [] })));
     expect(malformed).toEqual({
       status: 400,
-      body: { error: 'Invalid runtime deployment' },
+      body: { error: 'Invalid runtime strategy reference' },
     });
 
     mockGetTradingAccount.mockResolvedValue({
@@ -145,7 +148,6 @@ describe('runtime deployments route', () => {
       expect.objectContaining({
         id: 'tradfi-live',
         accountId: 'tradfi-main',
-        universe: 'tradfi',
         assetClasses: ['equity'],
         tickers: ['AAPLUSDT'],
       }),
@@ -196,8 +198,6 @@ describe('runtime deployments route', () => {
     expect(mockSaveRuntimeDeployment).toHaveBeenCalledWith(
       'root',
       expect.objectContaining({
-        interval: '60',
-        universe: 'crypto',
         strategies: [
           {
             strategyName: 'DoubleTap',
@@ -207,6 +207,41 @@ describe('runtime deployments route', () => {
         ],
       }),
     );
+    expect(mockSaveRuntimeDeployment.mock.calls[0]?.[1]).not.toHaveProperty(
+      'interval',
+    );
+    expect(mockSaveRuntimeDeployment.mock.calls[0]?.[1]).not.toHaveProperty(
+      'universe',
+    );
     expect(response.status).toBe(200);
+  });
+
+  it('rejects release references without an explicit control state', async () => {
+    mockGetTradingAccount.mockResolvedValue({
+      id: 'crypto-main',
+      provider: 'bybit',
+      enabled: true,
+      universes: ['crypto'],
+    });
+
+    const response = await POST(
+      request({
+        id: 'doubletap-forward',
+        label: 'DoubleTap forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        interval: '15',
+        enabled: true,
+        strategies: [{ strategyName: 'DoubleTap', releaseVersion: 4 }],
+      }),
+    );
+
+    expect(response).toEqual({
+      status: 400,
+      body: { error: 'Invalid runtime strategy reference' },
+    });
+    expect(mockSaveRuntimeDeployment).not.toHaveBeenCalled();
   });
 });

@@ -134,7 +134,6 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
   const creator: StrategyCreator = async ({
     userName,
-    connectorName,
     config: baseConfig,
     symbol,
     universe: requestedUniverse,

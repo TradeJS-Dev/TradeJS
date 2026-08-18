@@ -62,10 +62,11 @@ Use the created credentials on `/routes/signin`.
 
 After sign in, open the gear icon in the left sidebar.
 
-User profile settings are stored in Redis under the user record and now include:
+Exchange credentials are stored only in canonical trading-account records.
+Create a Bybit account in the **Trading accounts** section and bind its id to a
+runtime deployment. User profile settings contain shared service settings,
+including:
 
-- `BYBIT_API_KEY`
-- `BYBIT_API_SECRET`
 - `AI_API_KEY`
 - `AI_API_ENDPOINT`
 - `TG_BOT_TOKEN`
@@ -73,7 +74,7 @@ User profile settings are stored in Redis under the user record and now include:
 
 Use the drawer to:
 
-- rotate Bybit credentials
+- create, rotate, disable, and select trading accounts
 - change the password
 - set per-user OpenAI provider settings
 - set per-user Telegram bot delivery settings
@@ -85,8 +86,8 @@ yarn build:ci
 yarn backtest
 yarn backtest -- --days 3 --config TrendLine:prod
 yarn results
-yarn signals
-yarn signals:daemon
+yarn signals -- --deployment <deployment-id>
+yarn signals:daemon -- --deployment <deployment-id>
 yarn signals:summary -- --printOnly
 yarn runtime-parity -- --days 3
 yarn bot
@@ -143,8 +144,8 @@ CRON_TZ=Europe/Moscow
 Useful manual checks:
 
 ```bash
-yarn signals -- --notify --user root --connector bybit
-yarn signals:daemon -- --notify --makeOrders --user root --connector bybit
+yarn signals -- --notify --user root --deployment <deployment-id>
+yarn signals:daemon -- --notify --makeOrders --user root --deployment <deployment-id>
 yarn signals:summary -- --user root --connector bybit --printOnly
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
 ```

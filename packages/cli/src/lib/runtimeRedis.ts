@@ -18,7 +18,6 @@ export {
   resolveStrategyNameByConfigKey,
   type RuntimeStrategyConfigRecord,
 } from '@tradejs/infra/runtimeStrategyConfigs';
-
 export const isRuntimeStrategyEnabled = (strategyConfig: StrategyConfig) => {
   const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
   return enabled !== false;

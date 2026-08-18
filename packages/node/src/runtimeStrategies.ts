@@ -1,8 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getData, redisKeys } from '@tradejs/infra/redis';
 import { getRuntimeStrategyRelease } from '@tradejs/infra/runtimeStrategyReleases';
-import { loadRuntimeStrategyConfigs } from '@tradejs/infra/runtimeStrategyConfigs';
 import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
 import type {
   Interval,
@@ -12,7 +10,6 @@ import type {
   RuntimeStrategyRelease,
   StrategyConfig,
   StrategyCreator,
-  StrategyResults,
 } from '@tradejs/types';
 import {
   getStrategyCreator,
@@ -21,20 +18,17 @@ import {
 
 export interface ResolvedRuntimeStrategy {
   strategyName: string;
-  /** Legacy-only Redis config identity. */
-  configId?: string;
-  releaseVersion?: number;
+  releaseVersion: number;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
   universe: MarketUniverse;
   accountId?: string;
-  strategyPackage?: string | null;
-  strategyPackageVersion?: string | null;
-  runtimePackageVersion?: string | null;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  runtimePackageVersion: string;
   strategyCreator: StrategyCreator;
   sourceStrategyConfig: StrategyConfig;
   strategyConfig: StrategyConfig;
-  strategyResults: StrategyResults;
 }
 
 type RuntimePackageManifest = {
@@ -99,21 +93,17 @@ const validateReleaseRuntimeCompatibility = async ({
     release.strategyPackage,
     packageManifest,
   );
-  if (
-    release.strategyPackageVersion &&
-    installedStrategyVersion &&
-    release.strategyPackageVersion !== installedStrategyVersion
-  ) {
+  if (release.strategyPackageVersion !== installedStrategyVersion) {
     throw new Error(
       `${release.strategyName} v${release.releaseVersion} requires ${release.strategyPackage}@${release.strategyPackageVersion}, image has ${installedStrategyVersion}`,
     );
   }
-  const installedRuntimeVersion = packageManifest.packages?.['@tradejs/node'];
-  if (
-    release.runtimePackageVersion &&
-    installedRuntimeVersion &&
-    release.runtimePackageVersion !== installedRuntimeVersion
-  ) {
+  const installedRuntimeVersion = await resolveInstalledPackageVersion(
+    projectRoot,
+    '@tradejs/node',
+    packageManifest,
+  );
+  if (release.runtimePackageVersion !== installedRuntimeVersion) {
     throw new Error(
       `${release.strategyName} v${release.releaseVersion} requires @tradejs/node@${release.runtimePackageVersion}, image has ${installedRuntimeVersion}`,
     );
@@ -123,36 +113,29 @@ const validateReleaseRuntimeCompatibility = async ({
 const resolveAccountId = async ({
   userName,
   deployment,
-  connectorName,
   universe,
-  legacyAccountId,
 }: {
   userName: string;
-  deployment?: RuntimeDeployment | null;
-  connectorName: string;
+  deployment: RuntimeDeployment;
   universe: MarketUniverse;
-  legacyAccountId?: string;
 }) => {
-  const requestedAccountId = deployment?.accountId ?? legacyAccountId;
   const account = await resolveTradingAccount({
     userName,
-    accountId: requestedAccountId,
-    provider: deployment?.provider ?? connectorName,
+    accountId: deployment.accountId,
+    provider: deployment.provider,
     universe,
   });
-  return account?.id ?? requestedAccountId;
+  return account?.id ?? deployment.accountId;
 };
 
 const loadVersionedRuntimeStrategies = async ({
   userName,
   projectRoot,
   deployment,
-  connectorName,
 }: {
   userName: string;
   projectRoot: string;
   deployment: RuntimeDeployment;
-  connectorName: string;
 }): Promise<ResolvedRuntimeStrategy[]> => {
   const packageManifest = await readPackageManifest(projectRoot);
   return Promise.all(
@@ -165,9 +148,17 @@ const loadVersionedRuntimeStrategies = async ({
           `Deployment ${deployment.id} strategy ${reference.strategyName} has no releaseVersion`,
         );
       }
-      if (reference.config && Object.keys(reference.config).length) {
+      if (
+        Object.keys(reference).some(
+          (key) =>
+            !['strategyName', 'releaseVersion', 'controlState'].includes(key),
+        )
+      ) {
+        throw new Error(`Deployment ${deployment.id} has invalid fields`);
+      }
+      if (!reference.controlState) {
         throw new Error(
-          `Deployment ${deployment.id} must not embed config for ${reference.strategyName}`,
+          `Deployment ${deployment.id} strategy ${reference.strategyName} has no controlState`,
         );
       }
       const release = await getRuntimeStrategyRelease(
@@ -197,13 +188,12 @@ const loadVersionedRuntimeStrategies = async ({
       const accountId = await resolveAccountId({
         userName,
         deployment,
-        connectorName,
         universe,
       });
       return {
         strategyName: reference.strategyName,
         releaseVersion: release.releaseVersion,
-        controlState: reference.controlState ?? 'active',
+        controlState: reference.controlState,
         interval,
         universe,
         accountId,
@@ -213,82 +203,15 @@ const loadVersionedRuntimeStrategies = async ({
         strategyCreator,
         sourceStrategyConfig: release.config,
         strategyConfig: release.config,
-        // Symbol result configs are mutable legacy overlays and are not read by v2.
-        strategyResults: {},
       } satisfies ResolvedRuntimeStrategy;
     }),
   );
-};
-
-const loadLegacyRuntimeStrategies = async ({
-  userName,
-  projectRoot,
-  deployment,
-  connectorName,
-}: {
-  userName: string;
-  projectRoot: string;
-  deployment?: RuntimeDeployment | null;
-  connectorName: string;
-}): Promise<ResolvedRuntimeStrategy[]> => {
-  const deploymentStrategies = new Map(
-    (deployment?.strategies ?? []).map((strategy) => [
-      strategy.strategyName,
-      strategy,
-    ]),
-  );
-  const candidates = await Promise.all(
-    (await loadRuntimeStrategyConfigs(userName)).map(async (record) => {
-      const binding = deploymentStrategies.get(record.strategyName);
-      if (
-        binding?.enabled === false ||
-        record.strategyConfig.ENABLE === false
-      ) {
-        return null;
-      }
-      const universe = (
-        record.strategyConfig.UNIVERSE === 'tradfi' ? 'tradfi' : 'crypto'
-      ) as MarketUniverse;
-      const interval = String(
-        record.strategyConfig.INTERVAL ?? '15',
-      ) as Interval;
-      const accountId = await resolveAccountId({
-        userName,
-        deployment,
-        connectorName,
-        universe,
-        legacyAccountId:
-          typeof record.strategyConfig.ACCOUNT_ID === 'string'
-            ? record.strategyConfig.ACCOUNT_ID
-            : undefined,
-      });
-      const [strategyCreator, strategyResults] = await Promise.all([
-        getStrategyCreator(record.strategyName, projectRoot),
-        getData(redisKeys.strategyResults(userName, record.strategyName), {}),
-      ]);
-      if (!strategyCreator) return null;
-      return {
-        strategyName: record.strategyName,
-        configId: record.configId,
-        controlState: 'active',
-        interval,
-        universe,
-        accountId,
-        strategyCreator,
-        sourceStrategyConfig: record.strategyConfig,
-        strategyConfig: record.strategyConfig,
-        strategyResults: (strategyResults ?? {}) as StrategyResults,
-      } satisfies ResolvedRuntimeStrategy;
-    }),
-  );
-  return candidates.filter(Boolean) as ResolvedRuntimeStrategy[];
 };
 
 export const loadResolvedRuntimeStrategies = async ({
   userName,
   projectRoot,
   deployment,
-  connectorName = 'bybit',
   universe,
   accountId,
   interval,
@@ -296,35 +219,16 @@ export const loadResolvedRuntimeStrategies = async ({
   userName: string;
   projectRoot: string;
   deployment?: RuntimeDeployment | null;
-  connectorName?: string;
   universe?: MarketUniverse;
   accountId?: string;
   interval?: Interval;
 }): Promise<ResolvedRuntimeStrategy[]> => {
-  const hasVersionedReferences = Boolean(
-    deployment?.strategies.some((strategy) => strategy.releaseVersion != null),
-  );
-  if (
-    hasVersionedReferences &&
-    deployment?.strategies.some((strategy) => strategy.releaseVersion == null)
-  ) {
-    throw new Error(
-      `Deployment ${deployment.id} mixes legacy configs and versioned releases`,
-    );
-  }
-  const strategies = hasVersionedReferences
-    ? await loadVersionedRuntimeStrategies({
-        userName,
-        projectRoot,
-        deployment: deployment!,
-        connectorName,
-      })
-    : await loadLegacyRuntimeStrategies({
-        userName,
-        projectRoot,
-        deployment,
-        connectorName,
-      });
+  if (!deployment) throw new Error('Runtime deployment is required');
+  const strategies = await loadVersionedRuntimeStrategies({
+    userName,
+    projectRoot,
+    deployment,
+  });
   const filtered = strategies.filter(
     (candidate) =>
       (!universe || candidate.universe === universe) &&

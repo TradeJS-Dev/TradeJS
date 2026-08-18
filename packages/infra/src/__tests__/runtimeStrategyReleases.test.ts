@@ -17,8 +17,6 @@ jest.mock('../redis', () => ({
       `users:${user}:strategies:${strategy}:releases:${version}`,
     runtimeStrategyReleases: (user: string, strategy: string) =>
       `users:${user}:strategies:${strategy}:releases:`,
-    runtimeStrategyDraft: (user: string, strategy: string) =>
-      `users:${user}:strategies:${strategy}:draft`,
     runtimeStrategyControlEvent: (user: string, event: string) =>
       `users:${user}:runtime:strategy-control-events:${event}`,
   },
@@ -28,6 +26,12 @@ import {
   publishRuntimeStrategyRelease,
   verifyRuntimeStrategyRelease,
 } from '../runtimeStrategyReleases';
+
+const packageIdentity = {
+  strategyPackage: '@tradejs/strategy-double-tap',
+  strategyPackageVersion: '3.2.0',
+  runtimePackageVersion: '3.1.0',
+};
 
 describe('runtime strategy releases', () => {
   beforeEach(() => {
@@ -41,9 +45,7 @@ describe('runtime strategy releases', () => {
       userName: 'root',
       strategyName: 'DoubleTap',
       config: { INTERVAL: '15', UNIVERSE: 'crypto', MAX_LOSS_VALUE: 1 },
-      strategyPackage: '@tradejs/strategy-double-tap',
-      strategyPackageVersion: '3.2.0',
-      runtimePackageVersion: '3.1.0',
+      ...packageIdentity,
       createdBy: 'root',
     });
 
@@ -66,6 +68,7 @@ describe('runtime strategy releases', () => {
           UNIVERSE: 'crypto',
           ACCOUNT_ID: 'prod',
         },
+        ...packageIdentity,
         createdBy: 'root',
       }),
     ).rejects.toThrow('ACCOUNT_ID is a deployment binding');
@@ -81,6 +84,7 @@ describe('runtime strategy releases', () => {
           UNIVERSE: 'crypto',
           PROVIDER: { API_SECRET: 'must-not-be-published' },
         },
+        ...packageIdentity,
         createdBy: 'root',
       }),
     ).rejects.toThrow('PROVIDER.API_SECRET is secret material');
@@ -91,6 +95,7 @@ describe('runtime strategy releases', () => {
       userName: 'root',
       strategyName: 'DoubleTap',
       config: { INTERVAL: '15', UNIVERSE: 'crypto' },
+      ...packageIdentity,
       createdBy: 'root',
     });
     expect(() =>
@@ -99,5 +104,19 @@ describe('runtime strategy releases', () => {
         config: { ...release.config, INTERVAL: '5' },
       }),
     ).toThrow('content checksum mismatch');
+  });
+
+  it('requires exact strategy and runtime package versions', async () => {
+    await expect(
+      publishRuntimeStrategyRelease({
+        userName: 'root',
+        strategyName: 'DoubleTap',
+        config: { INTERVAL: '15', UNIVERSE: 'crypto' },
+        strategyPackage: '',
+        strategyPackageVersion: '',
+        runtimePackageVersion: '',
+        createdBy: 'root',
+      }),
+    ).rejects.toThrow('strategyPackage is required');
   });
 });

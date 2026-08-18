@@ -73,17 +73,9 @@ export interface TradingAccountRef {
 export interface RuntimeDeploymentStrategy {
   strategyName: string;
   /** Immutable per-strategy release selected for this deployment. */
-  releaseVersion?: number;
+  releaseVersion: number;
   /** New entries may be paused while exit/position management keeps running. */
-  controlState?: import('./runtimeStrategyReleases').RuntimeStrategyControlState;
-  /** @deprecated Legacy runtime identity. Use releaseVersion. */
-  policyProfileId?: string;
-  /** @deprecated Legacy evidence identity. Use releaseVersion. */
-  releaseCompositionId?: string;
-  /** @deprecated Legacy all-or-nothing switch. Use controlState. */
-  enabled?: boolean;
-  /** @deprecated Runtime config belongs to an immutable strategy release. */
-  config?: Record<string, unknown>;
+  controlState: import('./runtimeStrategyReleases').RuntimeStrategyControlState;
 }
 
 export interface RuntimeDeployment {
@@ -92,8 +84,6 @@ export interface RuntimeDeployment {
   connectorName: string;
   provider: string;
   accountId: string;
-  universe: MarketUniverse;
-  interval: string;
   enabled: boolean;
   strategies: RuntimeDeploymentStrategy[];
   assetClasses?: AssetClass[];
