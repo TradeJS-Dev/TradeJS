@@ -582,6 +582,12 @@ yarn signals:daemon -- --user root --deployment <deployment> --notify
 yarn signals:daemon -- --user root --deployment <deployment> --notify --makeOrders
 ```
 
+The signals daemon reloads the deployment and its release references on every
+cycle. A rollout, rollback, pause, resume, ticker change, or account binding
+change therefore evicts the old in-memory session and takes effect without a
+container restart. The replacement session is rebuilt from closed-candle
+warmup data before it may place a new order.
+
 Monitor signal evaluations, gate-versus-LLM disagreements, order rejects,
 slippage, parity mismatches, cadence, and realized ALL/LONG/SHORT economics.
 Rollback by pointing the deployment at an earlier release in

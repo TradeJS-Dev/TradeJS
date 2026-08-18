@@ -58,6 +58,10 @@ import {
 import { getSignalsHeartbeatStatus, runSignalsDaemon } from './daemon';
 import { createSignalsKlineFeed, type SignalsKlineFeed } from './klineFeed';
 import { createSignalsTickerEvaluator } from './tickerEvaluator';
+import {
+  buildConfiguredSignalsScopes,
+  type ConfiguredSignalsScope,
+} from './configuredScopes';
 
 const SLOW_SIGNALS_WARNING_MS = 10 * 60_000;
 
@@ -704,13 +708,6 @@ export const createSignalsRunner = (
     }
   };
 
-  type ConfiguredSignalsScope = {
-    connectorName: string;
-    universe: MarketUniverse;
-    accountId?: string;
-    interval: Interval;
-  };
-
   const loadConfiguredSignalsScopes = async (deployment: RuntimeDeployment) => {
     const configuredStrategies = await loadRuntimeStrategies({
       userName: config.userName,
@@ -720,22 +717,13 @@ export const createSignalsRunner = (
     const connectorName = await resolveSignalsConnectorName(
       deployment.connectorName,
     );
-    const scopes = new Map<string, ConfiguredSignalsScope>();
-    for (const strategy of configuredStrategies) {
-      const key = [
+    return new Map<string, ConfiguredSignalsScope>(
+      buildConfiguredSignalsScopes({
         connectorName,
-        strategy.universe,
-        strategy.accountId ?? 'default',
-        strategy.interval,
-      ].join(':');
-      scopes.set(key, {
-        connectorName,
-        universe: strategy.universe,
-        accountId: strategy.accountId,
-        interval: strategy.interval,
-      });
-    }
-    return scopes;
+        deployment,
+        strategies: configuredStrategies,
+      }).map(({ key, scope }) => [key, scope]),
+    );
   };
 
   const signalsConfiguredScopesOnce = async () => {
@@ -779,12 +767,13 @@ export const createSignalsRunner = (
     if (!config.deploymentId) {
       throw new Error('Runtime deployment id is required');
     }
-    const daemonDeployment = await getRuntimeDeployment(
+    const deploymentId = config.deploymentId;
+    const initialDeployment = await getRuntimeDeployment(
       config.userName,
-      config.deploymentId,
+      deploymentId,
     );
-    if (!daemonDeployment) {
-      throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
+    if (!initialDeployment) {
+      throw new Error(`Runtime deployment not found: ${deploymentId}`);
     }
     const sessions = new Map<string, SignalsSession>();
     const lastBoundaryByScope = new Map<string, number>();
@@ -804,7 +793,14 @@ export const createSignalsRunner = (
         settleDelayMs: resolveNonNegativeInteger(config.settleDelayMs, 5_000),
         signal: abortController.signal,
         runCycle: async () => {
-          const scopes = await loadConfiguredSignalsScopes(daemonDeployment);
+          const currentDeployment = await getRuntimeDeployment(
+            config.userName,
+            deploymentId,
+          );
+          if (!currentDeployment) {
+            throw new Error(`Runtime deployment not found: ${deploymentId}`);
+          }
+          const scopes = await loadConfiguredSignalsScopes(currentDeployment);
 
           for (const [key, staleSession] of sessions) {
             if (scopes.has(key)) continue;

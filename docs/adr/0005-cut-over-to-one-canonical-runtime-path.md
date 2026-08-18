@@ -18,6 +18,12 @@ entries. Production identity is the per-strategy `releaseVersion`; research
 artifacts may retain their own checksums and fingerprints, but those values are
 not deployment identity and never select runtime config.
 
+The daemon re-reads the deployment on every cycle. Release, control-state,
+ticker, asset-class, connector, and account changes alter the runtime session
+identity, evict the previous lifecycle, and rebuild from closed-candle warmup.
+Applying a canonical Redis change never depends on an operator restarting the
+container.
+
 This is a deliberate breaking cutover. Invalid or old Redis records fail
 verification and must be rewritten to the canonical schema before the new
 runtime image is deployed.
