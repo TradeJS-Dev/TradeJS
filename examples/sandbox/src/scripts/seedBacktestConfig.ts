@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import {
   SANDBOX_E2E_BACKTEST_CONFIG,
+  SANDBOX_E2E_DEPLOYMENT,
   SANDBOX_E2E_GRID_CONFIG,
   SANDBOX_E2E_STRATEGY_CONFIG,
   SANDBOX_E2E_SYMBOL,
@@ -76,6 +77,9 @@ const run = async () => {
     const runtimeSignalStatsBucketPrefix = `users:${SANDBOX_E2E_USER}:runtime:signal-evaluation-stats:days:*`;
     const storeSignalPrefix = `store:signals:${SANDBOX_E2E_SYMBOL}:*`;
     const analysisPrefix = `analysis:${SANDBOX_E2E_SYMBOL}:*`;
+    const runtimeDeploymentPrefix = `users:${SANDBOX_E2E_USER}:runtime:deployments:${SANDBOX_E2E_DEPLOYMENT}*`;
+    const runtimeReleasePrefix = `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:release*`;
+    const runtimeControlEventPrefix = `users:${SANDBOX_E2E_USER}:runtime:strategy-control-events:*`;
 
     const deletedTests = await deleteByPattern(strategyPrefix);
     const deletedCache = await deleteByPattern(cachePrefix);
@@ -91,6 +95,13 @@ const run = async () => {
     );
     const deletedStoreSignals = await deleteByPattern(storeSignalPrefix);
     const deletedAnalyses = await deleteByPattern(analysisPrefix);
+    const deletedRuntimeDeployments = await deleteByPattern(
+      runtimeDeploymentPrefix,
+    );
+    const deletedRuntimeReleases = await deleteByPattern(runtimeReleasePrefix);
+    const deletedRuntimeControlEvents = await deleteByPattern(
+      runtimeControlEventPrefix,
+    );
 
     const backtestConfigKey = `users:${SANDBOX_E2E_USER}:backtests:configs:${SANDBOX_E2E_BACKTEST_CONFIG}`;
     const strategyConfigKey = `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:config`;
@@ -100,7 +111,7 @@ const run = async () => {
     console.log(
       [
         `Prepared backtest config: ${backtestConfigKey}`,
-        `Prepared strategy config: ${strategyConfigKey}`,
+        `Prepared local research strategy config: ${strategyConfigKey}`,
         `Deleted tests keys: ${deletedTests}`,
         `Deleted cache keys: ${deletedCache}`,
         `Deleted backtest result keys: ${deletedResults}`,
@@ -109,6 +120,9 @@ const run = async () => {
         `Deleted runtime signal stats bucket keys: ${deletedRuntimeSignalStatsBuckets}`,
         `Deleted store signal keys: ${deletedStoreSignals}`,
         `Deleted analysis keys: ${deletedAnalyses}`,
+        `Deleted runtime deployment keys: ${deletedRuntimeDeployments}`,
+        `Deleted runtime release keys: ${deletedRuntimeReleases}`,
+        `Deleted runtime control events: ${deletedRuntimeControlEvents}`,
       ].join('\n'),
     );
   } finally {

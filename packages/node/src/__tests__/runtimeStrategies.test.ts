@@ -146,4 +146,46 @@ describe('shared versioned runtime strategy resolver', () => {
       }),
     ).rejects.toThrow('has no controlState');
   });
+
+  it('identifies a project-local strategy by the exact project package', async () => {
+    jest.doMock('node:fs/promises', () => ({
+      readFile: jest.fn(async (filePath: string) => {
+        if (filePath.endsWith('runtime-package-manifest.json')) {
+          return JSON.stringify({
+            packages: {
+              '@tradejs/example-sandbox': '1.0.0',
+              '@tradejs/node': '3.1.4',
+            },
+          });
+        }
+        if (filePath === '/project/package.json') {
+          return JSON.stringify({
+            name: '@tradejs/example-sandbox',
+            version: '1.0.0',
+          });
+        }
+        throw new Error('not found');
+      }),
+    }));
+    jest.doMock('../strategy/manifests', () => ({
+      getStrategyCreator: jest.fn(async () => jest.fn()),
+      getStrategyPluginSource: jest.fn(
+        async () => './src/plugins/sandboxStrategy.plugin.ts',
+      ),
+    }));
+    const { getRuntimeStrategyPackageMetadata } = await import(
+      '../runtimeStrategies'
+    );
+
+    await expect(
+      getRuntimeStrategyPackageMetadata({
+        strategyName: 'SandboxDeterministicSignal',
+        projectRoot: '/project',
+      }),
+    ).resolves.toEqual({
+      strategyPackage: '@tradejs/example-sandbox',
+      strategyPackageVersion: '1.0.0',
+      runtimePackageVersion: '3.1.4',
+    });
+  });
 });

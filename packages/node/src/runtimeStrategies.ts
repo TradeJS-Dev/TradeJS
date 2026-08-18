@@ -79,6 +79,29 @@ const resolveInstalledPackageVersion = async (
   }
 };
 
+const resolveStrategyPackageName = async ({
+  pluginSource,
+  projectRoot,
+}: {
+  pluginSource: string | null;
+  projectRoot: string;
+}) => {
+  if (!pluginSource) return null;
+  if (!pluginSource.startsWith('.') && !path.isAbsolute(pluginSource)) {
+    return pluginSource;
+  }
+  try {
+    const packageJson = JSON.parse(
+      await readFile(path.join(projectRoot, 'package.json'), 'utf8'),
+    ) as { name?: unknown };
+    return typeof packageJson.name === 'string' && packageJson.name.trim()
+      ? packageJson.name
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 const validateReleaseRuntimeCompatibility = async ({
   release,
   projectRoot,
@@ -254,8 +277,12 @@ export const getRuntimeStrategyPackageMetadata = async ({
   projectRoot: string;
 }) => {
   const packageManifest = await readPackageManifest(projectRoot);
-  const strategyPackage =
+  const pluginSource =
     (await getStrategyPluginSource(strategyName, projectRoot)) ?? null;
+  const strategyPackage = await resolveStrategyPackageName({
+    pluginSource,
+    projectRoot,
+  });
   return {
     strategyPackage,
     strategyPackageVersion: await resolveInstalledPackageVersion(

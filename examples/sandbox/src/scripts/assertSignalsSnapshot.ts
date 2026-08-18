@@ -1,6 +1,10 @@
 import Redis from 'ioredis';
 import {
+  SANDBOX_E2E_ACCOUNT,
+  SANDBOX_E2E_CONNECTOR_PROVIDER,
+  SANDBOX_E2E_DEPLOYMENT,
   SANDBOX_E2E_SIGNALS_EXPECTED,
+  SANDBOX_E2E_STRATEGY,
   SANDBOX_E2E_SYMBOL,
   SANDBOX_E2E_USER,
 } from './e2eConfig';
@@ -25,6 +29,23 @@ type SignalBucketRef = {
   symbol?: string;
   strategy?: string;
   timestamp?: number;
+};
+
+type RuntimeDeploymentSnapshot = {
+  id?: string;
+  connectorName?: string;
+  provider?: string;
+  accountId?: string;
+  strategies?: Array<Record<string, unknown>>;
+};
+
+type RuntimeReleaseSnapshot = {
+  strategyName?: string;
+  releaseVersion?: number;
+  config?: Record<string, unknown>;
+  strategyPackage?: string;
+  strategyPackageVersion?: string;
+  runtimePackageVersion?: string;
 };
 
 const redis = new Redis({
@@ -128,6 +149,73 @@ const run = async () => {
     );
     const storeSignalKeys = await scanKeys(
       `store:signals:${SANDBOX_E2E_SYMBOL}:*`,
+    );
+    const deployment = await readRedisJson<RuntimeDeploymentSnapshot>(
+      `users:${SANDBOX_E2E_USER}:runtime:deployments:${SANDBOX_E2E_DEPLOYMENT}`,
+    );
+    const release = await readRedisJson<RuntimeReleaseSnapshot>(
+      `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:releases:1`,
+    );
+
+    if (!deployment || !release) {
+      throw new Error('Missing canonical runtime deployment or release');
+    }
+    assertEqual('deployment id', deployment.id, SANDBOX_E2E_DEPLOYMENT);
+    assertEqual(
+      'deployment connector',
+      deployment.connectorName,
+      SANDBOX_E2E_CONNECTOR_PROVIDER,
+    );
+    assertEqual(
+      'deployment provider',
+      deployment.provider,
+      SANDBOX_E2E_CONNECTOR_PROVIDER,
+    );
+    assertEqual(
+      'deployment account',
+      deployment.accountId,
+      SANDBOX_E2E_ACCOUNT,
+    );
+    assertEqual(
+      'deployment strategies count',
+      deployment.strategies?.length,
+      1,
+    );
+    assertEqual(
+      'deployment strategy fields',
+      Object.keys(deployment.strategies?.[0] ?? {})
+        .sort()
+        .join(','),
+      'controlState,releaseVersion,strategyName',
+    );
+    assertEqual(
+      'deployment strategy control state',
+      deployment.strategies?.[0]?.controlState,
+      'active',
+    );
+    assertTrue(
+      'deployment has no release-owned config',
+      !Object.hasOwn(deployment, 'interval') &&
+        !Object.hasOwn(deployment, 'universe') &&
+        !Object.hasOwn(deployment.strategies?.[0] ?? {}, 'config'),
+    );
+    assertEqual('release strategy', release.strategyName, SANDBOX_E2E_STRATEGY);
+    assertEqual('release version', release.releaseVersion, 1);
+    assertEqual('release interval', release.config?.INTERVAL, '15');
+    assertEqual('release universe', release.config?.UNIVERSE, 'crypto');
+    assertEqual(
+      'release strategy package',
+      release.strategyPackage,
+      '@tradejs/example-sandbox',
+    );
+    assertEqual(
+      'release strategy package version',
+      release.strategyPackageVersion,
+      '1.0.0',
+    );
+    assertTrue(
+      'release runtime package version',
+      Boolean(release.runtimePackageVersion),
     );
 
     assertEqual(

@@ -23,7 +23,8 @@ MIT and Business Source License 1.1 terms; see [LICENSING.md](../../LICENSING.md
 - `src/scripts/seedBacktestConfig.ts` — writes deterministic backtest config to Redis
 - `src/scripts/runDeterministicBacktest.ts` — runs backtest with local mocked Binance/Coinbase HTTP endpoints
 - `src/scripts/assertBacktestSnapshot.ts` — validates backtest snapshot in Redis
-- `src/scripts/runDeterministicSignals.ts` — runs deterministic `signals` flow with connector `sandbox`
+- `src/scripts/runDeterministicSignals.ts` — provisions and verifies the
+  canonical runtime release/deployment, then runs deterministic `signals`
 - `src/scripts/assertSignalsSnapshot.ts` — validates runtime/store signal keys in Redis
 
 ## Environment
@@ -54,8 +55,12 @@ explicitly want to update the packages outside that release flow.
 2. Seeds deterministic backtest config `SandboxDeterministicSignal:base`.
 3. Runs backtest with connector provider `sandbox` and ticker `SANDBOXUSDT`.
 4. Validates stat snapshot from Redis (`users:sandbox:tests:SandboxDeterministicSignal:*:stat`).
-5. Runs `signals` with connector provider `sandbox`.
-6. Validates signal snapshot from Redis (`signals:SANDBOXUSDT:*`, `store:signals:SANDBOXUSDT:*`).
+5. Provisions an immutable strategy release and canonical deployment binding,
+   verifies it, and explicitly resumes new entries.
+6. Runs `signals` through that deployment; connector, account, interval, and
+   universe are resolved from the deployment plus release.
+7. Validates both the exact deployment/release shape and the signal snapshot
+   from Redis (`signals:SANDBOXUSDT:*`, `store:signals:SANDBOXUSDT:*`).
 
 ## CI Intent
 

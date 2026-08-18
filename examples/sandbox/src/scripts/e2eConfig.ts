@@ -4,6 +4,8 @@ export const SANDBOX_E2E_TOKEN = 'sandbox-token';
 
 export const SANDBOX_E2E_STRATEGY = 'SandboxDeterministicSignal';
 export const SANDBOX_E2E_BACKTEST_CONFIG = 'SandboxDeterministicSignal:base';
+export const SANDBOX_E2E_DEPLOYMENT = 'sandbox-forward';
+export const SANDBOX_E2E_ACCOUNT = 'sandbox-account';
 
 export const SANDBOX_E2E_CONNECTOR_PROVIDER = 'sandbox';
 export const SANDBOX_E2E_TICKER = 'SANDBOX';
@@ -39,6 +41,7 @@ export interface ExpectedSandboxSignalsSnapshot {
 
 export const SANDBOX_E2E_STRATEGY_CONFIG = {
   INTERVAL: SANDBOX_E2E_TIMEFRAME,
+  UNIVERSE: 'crypto',
   SANDBOX_ENTRY_EVERY_BARS: 1,
   SANDBOX_QTY: 1,
   SANDBOX_TP_PCT: 0.4,
