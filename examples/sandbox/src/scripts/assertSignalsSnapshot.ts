@@ -48,6 +48,15 @@ type RuntimeReleaseSnapshot = {
   runtimePackageVersion?: string;
 };
 
+type TradingAccountSnapshot = {
+  id?: string;
+  provider?: string;
+  enabled?: boolean;
+  universes?: string[];
+  apiKey?: string;
+  apiSecret?: string;
+};
+
 const redis = new Redis({
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: Number(process.env.REDIS_PORT || 6379),
@@ -156,10 +165,31 @@ const run = async () => {
     const release = await readRedisJson<RuntimeReleaseSnapshot>(
       `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:releases:1`,
     );
+    const tradingAccount = await readRedisJson<TradingAccountSnapshot>(
+      `users:${SANDBOX_E2E_USER}:trading-accounts:${SANDBOX_E2E_ACCOUNT}`,
+    );
 
-    if (!deployment || !release) {
-      throw new Error('Missing canonical runtime deployment or release');
+    if (!deployment || !release || !tradingAccount) {
+      throw new Error(
+        'Missing canonical runtime deployment, release, or trading account',
+      );
     }
+    assertEqual('trading account id', tradingAccount.id, SANDBOX_E2E_ACCOUNT);
+    assertEqual(
+      'trading account provider',
+      tradingAccount.provider,
+      SANDBOX_E2E_CONNECTOR_PROVIDER,
+    );
+    assertEqual('trading account enabled', tradingAccount.enabled, true);
+    assertEqual(
+      'trading account universes',
+      tradingAccount.universes?.join(','),
+      'crypto',
+    );
+    assertTrue(
+      'sandbox trading account is secret-free',
+      !tradingAccount.apiKey && !tradingAccount.apiSecret,
+    );
     assertEqual('deployment id', deployment.id, SANDBOX_E2E_DEPLOYMENT);
     assertEqual(
       'deployment connector',

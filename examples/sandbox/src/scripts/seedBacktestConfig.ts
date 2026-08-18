@@ -1,6 +1,8 @@
 import Redis from 'ioredis';
 import {
+  SANDBOX_E2E_ACCOUNT,
   SANDBOX_E2E_BACKTEST_CONFIG,
+  SANDBOX_E2E_CONNECTOR_PROVIDER,
   SANDBOX_E2E_DEPLOYMENT,
   SANDBOX_E2E_GRID_CONFIG,
   SANDBOX_E2E_STRATEGY_CONFIG,
@@ -105,13 +107,25 @@ const run = async () => {
 
     const backtestConfigKey = `users:${SANDBOX_E2E_USER}:backtests:configs:${SANDBOX_E2E_BACKTEST_CONFIG}`;
     const strategyConfigKey = `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:config`;
+    const tradingAccountKey = `users:${SANDBOX_E2E_USER}:trading-accounts:${SANDBOX_E2E_ACCOUNT}`;
     await setRedisJson(backtestConfigKey, SANDBOX_E2E_GRID_CONFIG);
     await setRedisJson(strategyConfigKey, SANDBOX_E2E_STRATEGY_CONFIG);
+    await setRedisJson(tradingAccountKey, {
+      id: SANDBOX_E2E_ACCOUNT,
+      label: 'Sandbox account',
+      provider: SANDBOX_E2E_CONNECTOR_PROVIDER,
+      enabled: true,
+      isDefault: true,
+      universes: ['crypto'],
+      environment: 'testnet',
+      readOnly: true,
+    });
 
     console.log(
       [
         `Prepared backtest config: ${backtestConfigKey}`,
         `Prepared local research strategy config: ${strategyConfigKey}`,
+        `Prepared sandbox trading account: ${tradingAccountKey}`,
         `Deleted tests keys: ${deletedTests}`,
         `Deleted cache keys: ${deletedCache}`,
         `Deleted backtest result keys: ${deletedResults}`,

@@ -55,8 +55,9 @@ explicitly want to update the packages outside that release flow.
 2. Seeds deterministic backtest config `SandboxDeterministicSignal:base`.
 3. Runs backtest with connector provider `sandbox` and ticker `SANDBOXUSDT`.
 4. Validates stat snapshot from Redis (`users:sandbox:tests:SandboxDeterministicSignal:*:stat`).
-5. Provisions an immutable strategy release and canonical deployment binding,
-   verifies it, and explicitly resumes new entries.
+5. Creates a secret-free sandbox trading account, provisions an immutable
+   strategy release and canonical deployment binding, verifies them, and
+   explicitly resumes new entries.
 6. Runs `signals` through that deployment; connector, account, interval, and
    universe are resolved from the deployment plus release.
 7. Validates both the exact deployment/release shape and the signal snapshot

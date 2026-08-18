@@ -33,6 +33,7 @@ jobs:
         with:
           filters: |
             npm_release:
+              - 'examples/sandbox/**'
               - 'apps/app/**'
               - 'packages/cli/**'
               - 'packages/connectors/**'
