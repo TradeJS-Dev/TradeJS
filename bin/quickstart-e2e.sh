@@ -16,6 +16,7 @@ PROJECT_CREATED="false"
 terminate_process_tree() {
   local parent_pid="$1"
   local child_pid
+  local attempt
 
   while IFS= read -r child_pid; do
     if [ -n "$child_pid" ]; then
@@ -24,6 +25,29 @@ terminate_process_tree() {
   done < <(pgrep -P "$parent_pid" 2>/dev/null || true)
 
   kill "$parent_pid" 2>/dev/null || true
+  for attempt in $(seq 1 50); do
+    if ! kill -0 "$parent_pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill -KILL "$parent_pid" 2>/dev/null || true
+}
+
+remove_tree() {
+  local target="$1"
+  local attempt
+
+  for attempt in $(seq 1 10); do
+    rm -rf "$target" 2>/dev/null || true
+    if [ ! -e "$target" ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "Failed to remove quickstart temporary directory: $target" >&2
+  return 1
 }
 
 cleanup() {
@@ -40,11 +64,11 @@ cleanup() {
   fi
 
   if [ "$PROJECT_CREATED" = "true" ]; then
-    rm -rf "$PROJECT_DIR"
+    remove_tree "$PROJECT_DIR"
   fi
 
   if [ -n "$NPM_EXEC_DIR" ]; then
-    rm -rf "$NPM_EXEC_DIR"
+    remove_tree "$NPM_EXEC_DIR"
   fi
 }
 
