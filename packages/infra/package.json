@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/infra",
-  "version": "3.1.6",
+  "version": "3.1.7",
   "description": "MIT-licensed server infrastructure adapters for TradeJS: Redis, Timescale, ML, logging, and IO.",
   "keywords": [
     "tradejs",
