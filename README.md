@@ -564,7 +564,8 @@ yarn checks
 
 # 2. Provision a missing deployment once, or roll out the next release.
 yarn runtime-config provision --user root --strategy <Strategy> \
-  --deployment <deployment> --account <account> --file <config.json> --write
+  --deployment <deployment> --account <account> --connector <connector> \
+  --file <config.json> --write
 yarn runtime-config rollout --user root --strategy <Strategy> \
   --deployment <deployment> --file <config.json> --write
 

@@ -3,6 +3,7 @@ import {
   buildProvisionedRuntimeDeployment,
   isEquivalentRuntimeStrategyRelease,
   pointRuntimeDeploymentAtRelease,
+  resolveProvisionConnectorName,
 } from '../scripts/runtimeConfig';
 
 describe('runtime-config canonical commands', () => {
@@ -45,6 +46,13 @@ describe('runtime-config canonical commands', () => {
       ],
     });
     expect(deployment.strategies[0]).not.toHaveProperty('config');
+  });
+
+  it('requires an explicit connector when provisioning', () => {
+    expect(() => resolveProvisionConnectorName(undefined)).toThrow(
+      '--connector is required',
+    );
+    expect(resolveProvisionConnectorName(' sandbox ')).toBe('sandbox');
   });
 });
 

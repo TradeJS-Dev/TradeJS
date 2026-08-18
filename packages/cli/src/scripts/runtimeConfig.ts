@@ -60,6 +60,12 @@ const OPERATIONAL_CONFIG_KEYS = [
   'RECORD_RUNTIME_TRADES',
 ];
 
+export const resolveProvisionConnectorName = (value: unknown) => {
+  const connectorName = String(value ?? '').trim();
+  if (!connectorName) throw new Error('--connector is required');
+  return connectorName;
+};
+
 const requireRuntimePackageIdentity = (
   strategyName: string,
   metadata: Awaited<ReturnType<typeof getRuntimeStrategyPackageMetadata>>,
@@ -195,7 +201,7 @@ const provision = async () => {
   const strategyName = required('strategy');
   const deploymentId = required('deployment');
   const accountId = required('account');
-  const connectorName = option('connector') ?? 'bybit';
+  const connectorName = resolveProvisionConnectorName(option('connector'));
   const provider = option('provider') ?? connectorName;
   const label = option('label') ?? deploymentId;
   const configFile = path.resolve(projectRoot, required('file'));
