@@ -25,27 +25,41 @@ they already exist.
 
 ## Secret routing
 
-| Current source | Name | Target | Action |
-| --- | --- | --- | --- |
-| TradeJS organization/repository publication credential | `NPM_TOKEN` | Organization secret visible only to `TradeJS`, `TradeJS-Strategy-Kit`, `TradeJS-Base`, and every `TradeJS-Strategy-*` repository | Keep one publishing credential or replace it with npm trusted publishing. Do not copy it to `TradeJS-Project` or `TradeJS-Deploy`. |
-| `TradeJS` | `RELEASE_DEPLOY_KEY` | `TradeJS` | Keep while the synchronized release workflow pushes version commits and tags over SSH. Rotate independently; do not move to Project or strategy repos. |
-| `TradeJS-Deploy` | `NEXTAUTH_SECRET` | `TradeJS-Deploy` | Keep. Deploy injects it into the Project app container at rollout time. |
-| `TradeJS-Deploy` | `REDISINSIGHT_HTPASSWD` | `TradeJS-Deploy` | Keep. It belongs to the production reverse proxy. |
-| `TradeJS-Deploy` | `GIT_SSH_PRIVATE_KEY` | `TradeJS-Deploy` under the same name | Replace with a machine-user SSH key that has read access to `TradeJS` and write access to every strategy repository the research agent may change. A single-repository deploy key is insufficient. |
-| `TradeJS-Deploy` | `AGENT_GITHUB_TOKEN` | `TradeJS-Deploy` under the same name | Replace with a least-privilege GitHub App token or fine-grained PAT covering all strategy repositories, with contents and pull-request read/write access. |
-| Credential source used for the production host | `SSH_HOST`, `SSH_USER`, `SSH_KEY` | Create in `TradeJS-Deploy` | New required repository secrets for server deployment; they are referenced by the workflow but currently absent from the visible configuration. |
-| New credential, not copied from npm publishing | `DEPLOY_REPOSITORY_TOKEN` | Create in `TradeJS-Project` | Fine-grained token or GitHub App credential limited to dispatching `TradeJS-Deploy`. |
-| New rotated database credential | `PG_PASSWORD` | Create in `TradeJS-Deploy` | Remove the checked-in `app` value, rotate the Timescale role, and inject the new secret during deploy. |
+| Current source                                         | Name                              | Target                                                                                                                           | Action                                                                                                                                                                                             |
+| ------------------------------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TradeJS organization/repository publication credential | `NPM_TOKEN`                       | Organization secret visible only to `TradeJS`, `TradeJS-Strategy-Kit`, `TradeJS-Base`, and every `TradeJS-Strategy-*` repository | Keep one publishing credential or replace it with npm trusted publishing. Do not copy it to `TradeJS-Project` or `TradeJS-Deploy`.                                                                 |
+| `TradeJS`                                              | `RELEASE_DEPLOY_KEY`              | `TradeJS`                                                                                                                        | Keep while the synchronized release workflow pushes version commits and tags over SSH. Rotate independently; do not move to Project or strategy repos.                                             |
+| `TradeJS-Deploy`                                       | `NEXTAUTH_SECRET`                 | `TradeJS-Deploy`                                                                                                                 | Keep. Deploy injects it into the Project app container at rollout time.                                                                                                                            |
+| `TradeJS-Deploy`                                       | `REDISINSIGHT_HTPASSWD`           | `TradeJS-Deploy`                                                                                                                 | Keep. It belongs to the production reverse proxy.                                                                                                                                                  |
+| `TradeJS-Deploy`                                       | `GIT_SSH_PRIVATE_KEY`             | `TradeJS-Deploy` under the same name                                                                                             | Replace with a machine-user SSH key that has read access to `TradeJS` and write access to every strategy repository the research agent may change. A single-repository deploy key is insufficient. |
+| `TradeJS-Deploy`                                       | `AGENT_GITHUB_TOKEN`              | `TradeJS-Deploy` under the same name                                                                                             | Replace with a least-privilege GitHub App token or fine-grained PAT covering all strategy repositories, with contents and pull-request read/write access.                                          |
+| Credential source used for the production host         | `SSH_HOST`, `SSH_USER`, `SSH_KEY` | Create in `TradeJS-Deploy`                                                                                                       | New required repository secrets for server deployment; they are referenced by the workflow but currently absent from the visible configuration.                                                    |
+| New credential, not copied from npm publishing         | `DEPLOY_REPOSITORY_TOKEN`         | Create in `TradeJS-Project`                                                                                                      | Fine-grained token or GitHub App credential limited to dispatching `TradeJS-Deploy`.                                                                                                               |
+| New rotated database credential                        | `PG_PASSWORD`                     | Create in `TradeJS-Deploy`                                                                                                       | Remove the checked-in `app` value, rotate the Timescale role, and inject the new secret during deploy.                                                                                             |
 
 Built-in `GITHUB_TOKEN` values are per-workflow ephemeral credentials. Do not
 copy or migrate them.
 
+Create the protected `npm-production` environment in `TradeJS`,
+`TradeJS-Project`, `TradeJS-Base`, `TradeJS-Strategy-Kit`, and each publishable
+`TradeJS-Strategy-*` repository. Beta publication does not use this environment;
+weekly stable promotion and the single weekly Project composition sync do. The
+environment must allow the scheduled job to run unattended; manual emergency
+promotion is separately guarded by an explicit confirmation input. The design
+does not require a long-lived cross-repository package-update token.
+
+Set Workflow permissions to `Read and write` in every independently published
+base/kit/strategy repository so the reusable weekly job can commit the stable
+package version and annotated tag with its scoped `GITHUB_TOKEN`. Keep “Allow
+GitHub Actions to create and approve pull requests” disabled; this release train
+does not need it.
+
 ## Future private packages and images
 
-| When | Name | Repository | Required scope |
-| --- | --- | --- | --- |
-| A strategy package becomes private | `NPM_READ_TOKEN` | `TradeJS-Project` | Read-only access to the required private npm packages; never reuse `NPM_TOKEN`. |
-| The Project app image remains private | `GHCR_PULL_TOKEN` | `TradeJS-Deploy` | Packages read-only; add an explicit GHCR login step on the server before enabling dispatch. |
+| When                                  | Name              | Repository        | Required scope                                                                              |
+| ------------------------------------- | ----------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| A strategy package becomes private    | `NPM_READ_TOKEN`  | `TradeJS-Project` | Read-only access to the required private npm packages; never reuse `NPM_TOKEN`.             |
+| The Project app image remains private | `GHCR_PULL_TOKEN` | `TradeJS-Deploy`  | Packages read-only; add an explicit GHCR login step on the server before enabling dispatch. |
 
 The first `TradeJS-Project` workflow has published
 `ghcr.io/tradejs-dev/tradejs-project-app`, but an anonymous pull is currently
@@ -83,10 +97,10 @@ to `TradeJS-Project/deploy/runtime.env`:
 
 Replace the old research-agent pair in `TradeJS-Deploy`:
 
-| Remove | Add |
-| --- | --- |
+| Remove                                        | Add                                     |
+| --------------------------------------------- | --------------------------------------- |
 | `AGENT_GITHUB_REPOSITORY=TradeJS-Dev/TradeJS` | `AGENT_GITHUB_ORGANIZATION=TradeJS-Dev` |
-| `AGENT_GITHUB_BASE_BRANCH=stable` | `AGENT_GITHUB_BASE_BRANCH=main` |
+| `AGENT_GITHUB_BASE_BRANCH=stable`             | `AGENT_GITHUB_BASE_BRANCH=main`         |
 
 The agent resolves the exact strategy repository from the strategy name;
 TrendLine and ReverseTrendLine both resolve to `TradeJS-Strategy-TrendLine`.

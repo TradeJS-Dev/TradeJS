@@ -267,9 +267,10 @@ yarn sandbox:infra-down
 `yarn sandbox:install` installs `examples/sandbox` deterministically from its
 committed lockfile.
 
-Package releases update the sandbox's direct `@tradejs/*` versions and lockfile,
-then run this e2e flow against those freshly published packages before images are
-published.
+Beta validation updates the sandbox's direct `@tradejs/*` versions and lockfile,
+then runs this e2e flow against the exact registry prerelease before it may
+receive the npm `beta` tag. Stable packages are promoted only by the weekly
+automation.
 
 Use `yarn sandbox:refresh` only when you intentionally want to update the
 published `@tradejs/*` versions used by the sandbox.
@@ -292,18 +293,13 @@ yarn infra-down
 
 ### Release smoke check
 
-The release workflow runs the root quickstart before publishing npm packages:
-
-```bash
-yarn infra-up
-yarn quickstart:smoke
-yarn infra-down
-```
-
-The smoke check waits for Redis and Timescale through `yarn doctor`, creates a
-throwaway local user, starts the already-built app, and probes the sign-in page.
-The standalone sandbox e2e runs separately after npm publication, so it verifies
-the packages downloaded from the registry rather than workspace packages.
+The beta workflow first publishes an exact prerelease under the temporary
+`beta-candidate` tag, then runs the browser quickstart, standalone sandbox, and
+the production-like `TradeJS-Project` image against packages downloaded from
+npm. The Project smoke starts isolated Redis and Timescale containers, provisions
+two immutable DoubleTap releases, verifies the minimal deployment reference and
+absence of the legacy mutable config key, and probes both app and market-ws
+health. Only then does the candidate receive the `beta` tag.
 
 ### `ECONNREFUSED` for `5432` or `6379`
 

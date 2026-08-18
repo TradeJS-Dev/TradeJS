@@ -20,6 +20,14 @@ interface ConfiguredSignalsScopeEntry {
 const sorted = (values: readonly string[] | undefined) =>
   values ? [...values].sort() : [];
 
+export const formatConfiguredStrategyIdentity = (
+  strategy: Pick<
+    ResolvedRuntimeStrategy,
+    'strategyName' | 'releaseVersion' | 'controlState'
+  >,
+) =>
+  `${strategy.strategyName}@v${strategy.releaseVersion}[${strategy.controlState}]`;
+
 export const buildConfiguredSignalsScopes = ({
   connectorName,
   deployment,
@@ -62,9 +70,7 @@ export const buildConfiguredSignalsScopes = ({
       },
       strategyIdentities: [],
     };
-    group.strategyIdentities.push(
-      `${strategy.strategyName}@${strategy.releaseVersion}:${strategy.controlState}`,
-    );
+    group.strategyIdentities.push(formatConfiguredStrategyIdentity(strategy));
     groups.set(baseKey, group);
   }
 

@@ -1,0 +1,49 @@
+name: Remove exact npm versions
+run-name: Remove npm versions ${{ inputs.versions_csv }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions_csv:
+        description: Exact comma-separated versions to unpublish
+        required: true
+        type: string
+      protected_versions_csv:
+        description: Immutable runtime versions that must remain available
+        required: true
+        default: 3.1.2,3.1.3,3.1.6,3.1.7
+        type: string
+      confirm_unpublish:
+        description: Type UNPUBLISH_EXACT_VERSIONS
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-production-release
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    environment: npm-production
+    runs-on: ubuntu-latest
+    env:
+      VERSIONS: ${{ inputs.versions_csv }}
+      PROTECTED_VERSIONS: ${{ inputs.protected_versions_csv }}
+      CONFIRM_UNPUBLISH: ${{ inputs.confirm_unpublish }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Build and inspect exact cleanup plan
+        run: node ./bin/npm-cleanup.mjs --versions "$VERSIONS" --protect "$PROTECTED_VERSIONS"
+      - name: Unpublish exact versions
+        run: |
+          [ "$CONFIRM_UNPUBLISH" = UNPUBLISH_EXACT_VERSIONS ] || { echo 'Invalid confirm_unpublish' >&2; exit 1; }
+          node ./bin/npm-cleanup.mjs --versions "$VERSIONS" --protect "$PROTECTED_VERSIONS" --apply

@@ -14,14 +14,16 @@ fi
 MODE="publish"
 RUN_CHECKS=1
 TARGET_PACKAGE=""
+NPM_TAG=""
 
 print_usage() {
   cat <<'EOF'
-Usage: ./bin/publish-packages.sh [--dry-run] [--skip-checks] [--package <workspace-name>]
+Usage: ./bin/publish-packages.sh [--dry-run] [--skip-checks] [--tag <dist-tag>] [--package <workspace-name>]
 
 Options:
   --dry-run      Run `yarn npm:publish:all:dry` instead of real publish
   --skip-checks  Skip typecheck/lint/unit/build before publishing
+  --tag           Publish under an explicit npm dist-tag such as `beta`
   --package      Publish only one workspace package, for example `@tradejs/cli`
   -h, --help     Show this help
 EOF
@@ -50,6 +52,19 @@ while [[ $# -gt 0 ]]; do
       TARGET_PACKAGE="${1#--package=}"
       shift
       ;;
+    --tag)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --tag" >&2
+        print_usage
+        exit 1
+      fi
+      NPM_TAG="$2"
+      shift 2
+      ;;
+    --tag=*)
+      NPM_TAG="${1#--tag=}"
+      shift
+      ;;
     -h|--help)
       print_usage
       exit 0
@@ -68,6 +83,11 @@ if [[ -n "$TARGET_PACKAGE" ]]; then
     echo "Package name for --package cannot be empty" >&2
     exit 1
   fi
+fi
+
+if [[ -n "$NPM_TAG" && ! "$NPM_TAG" =~ ^[a-z][a-z0-9._-]*$ ]]; then
+  echo "Invalid npm dist-tag: $NPM_TAG" >&2
+  exit 1
 fi
 
 if [[ -z "${YARN_NPM_AUTH_TOKEN:-}" ]]; then
@@ -89,15 +109,40 @@ if [[ "$RUN_CHECKS" -eq 1 ]]; then
 fi
 
 if [[ -n "$TARGET_PACKAGE" ]]; then
+  publish_args=(--access public)
+  if [[ -n "$NPM_TAG" ]]; then
+    publish_args+=(--tag "$NPM_TAG")
+  fi
   if [[ "$MODE" == "dry-run" ]]; then
     echo "[publish] Running dry-run publish for $TARGET_PACKAGE..."
-    yarn workspace "$TARGET_PACKAGE" npm publish --access public --dry-run
+    yarn workspace "$TARGET_PACKAGE" npm publish "${publish_args[@]}" --dry-run
   else
     echo "[publish] Publishing package $TARGET_PACKAGE..."
-    yarn workspace "$TARGET_PACKAGE" npm publish --access public
+    yarn workspace "$TARGET_PACKAGE" npm publish "${publish_args[@]}"
   fi
 else
-  if [[ "$MODE" == "dry-run" ]]; then
+  if [[ -n "$NPM_TAG" ]]; then
+    packages=(
+      @tradejs/types
+      @tradejs/infra
+      @tradejs/core
+      @tradejs/node
+      @tradejs/indicators
+      @tradejs/connectors
+      @tradejs/cli
+      @tradejs/app
+      create-tradejs
+    )
+    for package_name in "${packages[@]}"; do
+      publish_args=(--access public --tag "$NPM_TAG")
+      if [[ "$MODE" == "dry-run" ]]; then
+        publish_args+=(--dry-run)
+      else
+        publish_args+=(--tolerate-republish)
+      fi
+      yarn workspace "$package_name" npm publish "${publish_args[@]}"
+    done
+  elif [[ "$MODE" == "dry-run" ]]; then
     echo "[publish] Running dry-run publish..."
     yarn npm:publish:all:dry
   else

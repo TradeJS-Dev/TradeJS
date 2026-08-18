@@ -1,4 +1,4 @@
-name: Publish Release
+name: Validate beta and publish images
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: publish-release-stable
+  group: validate-beta-stable
   cancel-in-progress: false
 
 jobs:
@@ -22,27 +22,16 @@ jobs:
       agent_changed: ${{ steps.resolve.outputs.agent_changed }}
       ml_infer_changed: ${{ steps.resolve.outputs.ml_infer_changed }}
       npm_release_changed: ${{ steps.resolve.outputs.npm_release_changed }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Detect changed release inputs
-        id: filter
+      - uses: actions/checkout@v6
+      - id: filter
         uses: dorny/paths-filter@v3
         with:
           filters: |
             npm_release:
               - 'examples/sandbox/**'
               - 'apps/app/**'
-              - 'packages/cli/**'
-              - 'packages/connectors/**'
-              - 'packages/core/**'
-              - 'packages/create-tradejs/**'
-              - 'packages/indicators/**'
-              - 'packages/infra/**'
-              - 'packages/node/**'
-              - 'packages/types/**'
+              - 'packages/**'
               - 'proto/**'
               - 'bin/**'
               - 'package.json'
@@ -50,9 +39,7 @@ jobs:
               - '.yarn/**'
               - '.yarnrc.yml'
               - 'turbo.json'
-              - 'tsconfig.json'
-              - 'tsconfig.base.json'
-              - 'tsconfig.packages.json'
+              - 'tsconfig*.json'
               - 'tradejs.config.ts'
             agent:
               - 'Dockerfile.agent'
@@ -62,300 +49,189 @@ jobs:
               - 'bin/**'
               - 'package.json'
               - 'yarn.lock'
-              - '.yarn/**'
-              - '.yarnrc.yml'
-              - 'turbo.json'
-              - 'tsconfig.json'
-              - 'tsconfig.base.json'
-              - 'tsconfig.packages.json'
-              - 'tradejs.config.ts'
               - 'entrypoint.agent.sh'
               - 'cronjob.agent'
             ml_infer:
               - 'Dockerfile.infer'
               - 'packages/ml/python/**'
               - 'proto/**'
-
-      - name: Resolve image changes
-        id: resolve
+      - id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
           AGENT_FILTER: ${{ steps.filter.outputs.agent }}
           ML_INFER_FILTER: ${{ steps.filter.outputs.ml_infer }}
           NPM_RELEASE_FILTER: ${{ steps.filter.outputs.npm_release }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "agent_changed=true" >> "$GITHUB_OUTPUT"
-            echo "ml_infer_changed=true" >> "$GITHUB_OUTPUT"
-            echo "npm_release_changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo 'agent_changed=true' >> "$GITHUB_OUTPUT"
+            echo 'ml_infer_changed=true' >> "$GITHUB_OUTPUT"
+            echo 'npm_release_changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "agent_changed=${AGENT_FILTER}" >> "$GITHUB_OUTPUT"
+            echo "ml_infer_changed=${ML_INFER_FILTER}" >> "$GITHUB_OUTPUT"
+            echo "npm_release_changed=${NPM_RELEASE_FILTER}" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "agent_changed=${AGENT_FILTER}" >> "$GITHUB_OUTPUT"
-          echo "ml_infer_changed=${ML_INFER_FILTER}" >> "$GITHUB_OUTPUT"
-          echo "npm_release_changed=${NPM_RELEASE_FILTER}" >> "$GITHUB_OUTPUT"
-
-  release:
+  beta:
     needs: changes
-    if: >-
-      ${{
-        needs.changes.outputs.npm_release_changed == 'true' &&
-        (github.event.act || github.repository == 'tradejs-dev/tradejs')
-      }}
+    if: needs.changes.outputs.npm_release_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
-      release_sha: ${{ steps.release_commit.outputs.sha }}
-
+      beta_version: ${{ steps.version.outputs.beta_version }}
+      source_sha: ${{ github.sha }}
     steps:
-      - name: Checkout stable with tags
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'push' && github.sha || 'stable' }}
-          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
-
       - name: Enable Corepack
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
-          yarn --version
-
-      - name: Restore Yarn cache
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             .yarn/cache
             .yarn/install-state.gz
             examples/sandbox/.yarn/cache
             examples/sandbox/.yarn/install-state.gz
-          key: ${{ runner.os }}-yarn4-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json', 'examples/sandbox/yarn.lock', 'examples/sandbox/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn4-
-
-      - name: Restore Turbo cache
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-${{ github.ref_name }}-
-            ${{ runner.os }}-turbo-stable-
-            ${{ runner.os }}-turbo-
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Resolve synchronized release version
-        id: release
+          key: ${{ runner.os }}-beta-${{ hashFiles('yarn.lock', 'package.json', 'examples/sandbox/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-beta-
+      - run: yarn install --immutable
+      - name: Resolve beta version
+        id: version
         run: |
-          yarn bump:packages auto
-          version="$(node -p "require('./packages/types/package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Resolved npm release v$version"
-
-      - name: Verify root lockfile after version update
-        run: yarn install --immutable
-
-      - name: Build
-        run: yarn build
-
-      - name: Lint
-        run: yarn lint
-
-      - name: Typecheck
-        run: yarn typecheck
-
-      - name: Unit tests
-        run: yarn unit
-
-      - name: Preflight package archives
-        run: yarn npm:publish:all:dry
-
-      - name: Verify npm authentication
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: yarn npm whoami
-
-      - name: Persist synchronized package versions
-        env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/app/package.json packages/*/package.json examples/sandbox/package.json
-
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(release): v${RELEASE_VERSION} [skip ci]"
-          fi
-
-          git push origin HEAD:stable
-
-      - name: Publish packages in dependency order
+          baseline="$(node -p "require('./packages/types/package.json').version")"
+          beta_version="$(node -e 'const {resolveBetaVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveBetaVersion(process.argv[1], process.argv[2]))' "$baseline" "$GITHUB_RUN_NUMBER")"
+          yarn bump:packages "$beta_version"
+          echo "beta_version=$beta_version" >> "$GITHUB_OUTPUT"
+      - run: yarn install --immutable
+      - run: yarn build
+      - run: yarn lint
+      - run: yarn typecheck
+      - run: yarn unit
+      - run: yarn npm:publish:all:dry
+      - name: Publish beta candidate packages in dependency order
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           YARN_NPM_PUBLISH_PROVENANCE: 'true'
-        run: yarn npm:publish:all
-
-      - name: Wait for create-tradejs on npm
+        run: bash ./bin/publish-packages.sh --skip-checks --tag beta-candidate
+      - name: Wait for beta registry consistency
         env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
         run: |
           for attempt in $(seq 1 12); do
-            if [ "$(npm view "create-tradejs@${RELEASE_VERSION}" version 2>/dev/null)" = "$RELEASE_VERSION" ]; then
+            if [ "$(npm view "create-tradejs@${BETA_VERSION}" version 2>/dev/null)" = "$BETA_VERSION" ]; then
               exit 0
             fi
-
-            if [ "$attempt" -eq 12 ]; then
-              echo "create-tradejs@${RELEASE_VERSION} is not available after ${attempt} attempts" >&2
-              exit 1
-            fi
-
-            echo "create-tradejs@${RELEASE_VERSION} is not available yet; retrying in 10 seconds"
+            [ "$attempt" -lt 12 ] || exit 1
             sleep 10
           done
-
-      - name: Install Playwright browser
-        run: yarn playwright install --with-deps chromium
-
-      - name: Quickstart browser e2e
+      - run: yarn playwright install --with-deps chromium
+      - name: Quickstart beta browser e2e
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
-          QUICKSTART_CREATE_SPEC: create-tradejs@${{ steps.release.outputs.version }}
+          QUICKSTART_CREATE_SPEC: create-tradejs@${{ steps.version.outputs.beta_version }}
         run: yarn quickstart:e2e
-
-      - name: Install freshly published sandbox dependencies
-        run: |
-          for attempt in $(seq 1 12); do
-            if yarn sandbox:install:update; then
-              exit 0
-            fi
-
-            if [ "$attempt" -eq 12 ]; then
-              echo "Fresh npm packages were not available after ${attempt} attempts" >&2
-              exit 1
-            fi
-
-            echo "Fresh npm packages are not available yet; retrying in 10 seconds"
-            sleep 10
-          done
-
-      - name: Prepare sandbox env
-        run: cp examples/sandbox/.env.example examples/sandbox/.env
-
-      - name: Sandbox infra up
-        id: sandbox_infra_up
+      - name: Install beta sandbox dependencies
+        run: yarn sandbox:install:update
+      - run: cp examples/sandbox/.env.example examples/sandbox/.env
+      - id: sandbox_infra
         run: yarn sandbox:infra-up
-
-      - name: Sandbox deterministic e2e
-        run: yarn sandbox:e2e
-
-      - name: Sandbox infra down
-        if: ${{ always() && steps.sandbox_infra_up.outcome != 'skipped' }}
+      - run: yarn sandbox:e2e
+      - if: always() && steps.sandbox_infra.outcome != 'skipped'
         run: yarn sandbox:infra-down
-
-      - name: Persist sandbox lockfile and resolve release commit
-        id: release_commit
+      - name: Build and test the production-like Project image
         env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
         run: |
-          git add examples/sandbox/yarn.lock
-
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(release): refresh sandbox lockfile for v${RELEASE_VERSION} [skip ci]"
-            git push origin HEAD:stable
-          fi
-
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Tag successful release
+          git clone --depth 1 https://github.com/TradeJS-Dev/TradeJS-Project.git ../tradejs-project-beta
+          cd ../tradejs-project-beta
+          project_sha="$(git rev-parse HEAD)"
+          node ./scripts/set-tradejs-version.mjs "$BETA_VERSION"
+          yarn install --no-immutable
+          TRADEJS_ALLOW_PRERELEASE=true yarn checks
+          docker build \
+            --build-arg "TRADEJS_PROJECT_SHA=$project_sha" \
+            --build-arg "TRADEJS_ALLOW_PRERELEASE=true" \
+            -t "tradejs-project-beta:$GITHUB_SHA" .
+          bash ./scripts/beta-runtime-smoke.sh \
+            "tradejs-project-beta:$GITHUB_SHA" \
+            '@tradejs/app,@tradejs/cli,@tradejs/connectors,@tradejs/core,@tradejs/indicators,@tradejs/infra,@tradejs/node,@tradejs/types' \
+            "$BETA_VERSION" "$project_sha"
+      - name: Mark the fully verified candidate as current beta
         env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          tag="v${RELEASE_VERSION}"
-
-          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
-            if [ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]; then
-              echo "Tag ${tag} already points to another commit" >&2
-              exit 1
-            fi
-          else
-            git tag -a "$tag" -m "TradeJS ${tag}"
-            git push origin "refs/tags/${tag}"
-          fi
+          for package_name in \
+            @tradejs/types @tradejs/infra @tradejs/core @tradejs/node \
+            @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
+            create-tradejs
+          do
+            npm dist-tag add "${package_name}@${BETA_VERSION}" beta
+          done
+      - name: Verify beta dist-tags
+        env:
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
+        run: |
+          for package_name in \
+            @tradejs/types @tradejs/infra @tradejs/core @tradejs/node \
+            @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
+            create-tradejs
+          do
+            [ "$(npm view "${package_name}@beta" version)" = "$BETA_VERSION" ] || exit 1
+          done
+          printf 'Validated beta %s from %s\n' "$BETA_VERSION" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
   publish-images:
-    needs:
-      - changes
-      - release
+    needs: [changes, beta]
     if: >-
       ${{
-        always() &&
-        needs.changes.result == 'success' &&
-        (needs.release.result == 'success' || needs.release.result == 'skipped') &&
-        (
-          needs.changes.outputs.agent_changed == 'true' ||
-          needs.changes.outputs.ml_infer_changed == 'true'
-        )
+        always() && needs.changes.result == 'success' &&
+        (needs.beta.result == 'success' || needs.beta.result == 'skipped') &&
+        (needs.changes.outputs.agent_changed == 'true' || needs.changes.outputs.ml_infer_changed == 'true')
       }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    env:
-      AGENT_CHANGED: ${{ needs.changes.outputs.agent_changed }}
-      ML_INFER_CHANGED: ${{ needs.changes.outputs.ml_infer_changed }}
-      IMAGE_TAG: ${{ needs.release.outputs.release_sha || github.sha }}
-
     steps:
-      - name: Checkout release commit
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release.outputs.release_sha || github.sha }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push agent image
-        if: env.AGENT_CHANGED == 'true'
+      - if: needs.changes.outputs.agent_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.agent
           push: true
           tags: |
-            ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
+            ghcr.io/tradejs-dev/tradejs-agent:${{ github.sha }}
             ghcr.io/tradejs-dev/tradejs-agent:latest
-          build-args: |
-            TRADEJS_GIT_SHA=${{ env.IMAGE_TAG }}
+          build-args: TRADEJS_GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent,ignore-error=true
-
-      - name: Build and push ml-infer image
-        if: env.ML_INFER_CHANGED == 'true'
+      - if: needs.changes.outputs.ml_infer_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.infer
           push: true
           tags: |
-            ghcr.io/tradejs-dev/tradejs-ml-infer:${{ env.IMAGE_TAG }}
+            ghcr.io/tradejs-dev/tradejs-ml-infer:${{ github.sha }}
             ghcr.io/tradejs-dev/tradejs-ml-infer:latest
           cache-from: type=gha,scope=ml-infer
           cache-to: type=gha,mode=max,scope=ml-infer,ignore-error=true

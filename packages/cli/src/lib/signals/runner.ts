@@ -60,6 +60,7 @@ import { createSignalsKlineFeed, type SignalsKlineFeed } from './klineFeed';
 import { createSignalsTickerEvaluator } from './tickerEvaluator';
 import {
   buildConfiguredSignalsScopes,
+  formatConfiguredStrategyIdentity,
   type ConfiguredSignalsScope,
 } from './configuredScopes';
 
@@ -514,7 +515,7 @@ export const createSignalsRunner = (
       );
       logger.info(
         chalk.yellow(
-          `loaded strategies (user=${config.userName}): ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
+          `loaded strategies (user=${config.userName}): ${runtimeStrategies.map(formatConfiguredStrategyIdentity).join(', ')}`,
         ),
       );
       afterSignalsHookContext = {

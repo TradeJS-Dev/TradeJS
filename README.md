@@ -657,25 +657,34 @@ yarn bot
 
 ## Automated npm Releases
 
-Every push to `stable` runs `.github/workflows/publish-images.yml`. The release
-workflow:
+Every relevant push to `stable` creates an ephemeral shared next-patch version
+such as `3.1.8-beta.<workflow-run>`. The workflow builds, lints, typechecks,
+tests, dry-runs and publishes that exact prerelease under `beta-candidate`, then
+runs quickstart, sandbox, and a production-like `TradeJS-Project` Docker smoke
+against registry-installed packages. Only a fully successful run moves the npm
+`beta` tag, so a failed candidate cannot replace the last verified beta. Pushes
+never update `latest`, commit package versions, create stable Git tags, or deploy
+the beta image to production.
 
-1. resolves one shared version for every public package owned by this monorepo
-2. resumes the same version after a partial or interrupted release
-3. builds, lints, typechecks, tests, and dry-runs every package archive
-4. commits synchronized package versions back to `stable`
-5. publishes packages in dependency order with npm provenance
-6. creates the matching `v<version>` tag only after every publish succeeds
+`.github/workflows/promote-release.yml` runs Mondays at `03:00 UTC`. It resolves
+the current `beta` tag, proves that the matching source SHA completed the full
+beta workflow, promotes it to one stable patch, reruns stable checks, commits the
+shared version and creates `v<version>`. A protected manual dispatch is the
+emergency path. `TradeJS-Project` then batches all newly promoted stable
+framework, base, kit, and strategy packages at `06:00 UTC` into one exact
+composition, one image, and one production rollout. Production never consumes
+an npm prerelease.
 
 The selected-repository organization secret `NPM_TOKEN` must contain an npm
 automation-capable token with publish access to the `@tradejs` organization.
 GitHub Actions also receives `id-token: write` permission for npm provenance.
 Do not add npm tokens to `.npmrc`, `.yarnrc.yml`, or repository files.
 
-The first run publishes the current local version when it is newer than npm.
-Later runs increment the patch version after the previous npm version and Git
-tag are both complete. Manual local publishing remains available through
-`yarn publish:packages` and `yarn publish:packages:dry`.
+Routine local stable publication is not part of this release train. Use
+`yarn publish:packages:dry` for inspection; reserve real manual publication for
+an explicitly approved recovery. Exact obsolete versions are removed only by
+the protected `npm-cleanup.yml` workflow, which rejects current dist-tags and
+the configured immutable runtime versions.
 
 Data refresh and integrity:
 
@@ -759,9 +768,9 @@ yarn sandbox:infra-down
 `yarn sandbox:install` is deterministic and installs `examples/sandbox` from its
 committed lockfile.
 
-The release workflow synchronizes the sandbox's direct `@tradejs/*` versions,
-publishes the packages, refreshes the standalone lockfile, and runs this e2e flow
-before publishing Docker images.
+The beta workflow synchronizes the sandbox's direct `@tradejs/*` versions,
+publishes the exact prerelease candidate, refreshes the standalone lockfile, and
+runs this e2e flow before that candidate may receive the `beta` tag.
 
 If you intentionally want to refresh the published `@tradejs/*` packages used by
 the sandbox, run:

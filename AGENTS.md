@@ -389,8 +389,14 @@ Sandbox:
 Publishing:
 
 - `yarn publish:packages:dry`
-- `yarn publish:packages`
-- `yarn bump:packages patch|minor|major|<version>`
+- relevant pushes publish only a unique next-patch beta candidate
+- the npm `beta` tag moves only after quickstart, sandbox, and production-like
+  Project image validation succeeds
+- stable `latest` versions, version commits, and tags are created only by the
+  protected weekly promotion workflow
+- TradeJS-Project batches all promoted stable packages into one weekly image
+- use `yarn publish:packages` or `yarn bump:packages` only for an explicitly
+  approved release recovery, never as the routine development path
 
 ## Testing Expectations
 

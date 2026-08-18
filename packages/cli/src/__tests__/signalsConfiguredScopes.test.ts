@@ -1,6 +1,9 @@
 import type { ResolvedRuntimeStrategy } from '@tradejs/node/runtimeStrategies';
 import type { RuntimeDeployment } from '@tradejs/types';
-import { buildConfiguredSignalsScopes } from '../lib/signals/configuredScopes';
+import {
+  buildConfiguredSignalsScopes,
+  formatConfiguredStrategyIdentity,
+} from '../lib/signals/configuredScopes';
 
 const deployment: RuntimeDeployment = {
   id: 'doubletap-forward',
@@ -29,6 +32,12 @@ const strategy = {
 } as ResolvedRuntimeStrategy;
 
 describe('configured signals scopes', () => {
+  it('logs the immutable release and mutable control state together', () => {
+    expect(formatConfiguredStrategyIdentity(strategy)).toBe(
+      'DoubleTap@v2[entries_paused]',
+    );
+  });
+
   it('groups strategies sharing one runtime scope into one session', () => {
     const scopes = buildConfiguredSignalsScopes({
       connectorName: 'bybit',
