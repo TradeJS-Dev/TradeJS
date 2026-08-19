@@ -31,21 +31,9 @@ type SignalBucketRef = {
   timestamp?: number;
 };
 
-type RuntimeDeploymentSnapshot = {
-  id?: string;
-  connectorName?: string;
-  provider?: string;
-  accountId?: string;
-  strategies?: Array<Record<string, unknown>>;
-};
-
-type RuntimeReleaseSnapshot = {
-  strategyName?: string;
-  releaseVersion?: number;
-  config?: Record<string, unknown>;
-  strategyPackage?: string;
-  strategyPackageVersion?: string;
-  runtimePackageVersion?: string;
+type RuntimeHeartbeatSnapshot = {
+  deploymentId?: string;
+  status?: string;
 };
 
 type TradingAccountSnapshot = {
@@ -159,20 +147,27 @@ const run = async () => {
     const storeSignalKeys = await scanKeys(
       `store:signals:${SANDBOX_E2E_SYMBOL}:*`,
     );
-    const deployment = await readRedisJson<RuntimeDeploymentSnapshot>(
+    const legacyDeployment = await readRedisJson<Record<string, unknown>>(
       `users:${SANDBOX_E2E_USER}:runtime:deployments:${SANDBOX_E2E_DEPLOYMENT}`,
     );
-    const release = await readRedisJson<RuntimeReleaseSnapshot>(
+    const legacyRelease = await readRedisJson<Record<string, unknown>>(
       `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:releases:1`,
+    );
+    const legacyStrategyConfig = await readRedisJson<Record<string, unknown>>(
+      `users:${SANDBOX_E2E_USER}:strategies:${SANDBOX_E2E_STRATEGY}:config`,
+    );
+    const controls = await readRedisJson<Record<string, unknown>>(
+      `users:${SANDBOX_E2E_USER}:runtime:controls`,
+    );
+    const heartbeat = await readRedisJson<RuntimeHeartbeatSnapshot>(
+      `users:${SANDBOX_E2E_USER}:runtime:deployments:${SANDBOX_E2E_DEPLOYMENT}:heartbeat`,
     );
     const tradingAccount = await readRedisJson<TradingAccountSnapshot>(
       `users:${SANDBOX_E2E_USER}:trading-accounts:${SANDBOX_E2E_ACCOUNT}`,
     );
 
-    if (!deployment || !release || !tradingAccount) {
-      throw new Error(
-        'Missing canonical runtime deployment, release, or trading account',
-      );
+    if (!heartbeat || !tradingAccount) {
+      throw new Error('Missing runtime heartbeat or trading account');
     }
     assertEqual('trading account id', tradingAccount.id, SANDBOX_E2E_ACCOUNT);
     assertEqual(
@@ -190,62 +185,18 @@ const run = async () => {
       'sandbox trading account is secret-free',
       !tradingAccount.apiKey && !tradingAccount.apiSecret,
     );
-    assertEqual('deployment id', deployment.id, SANDBOX_E2E_DEPLOYMENT);
+    assertEqual('legacy deployment', legacyDeployment, null);
+    assertEqual('legacy release', legacyRelease, null);
+    assertEqual('legacy strategy config', legacyStrategyConfig, null);
+    assertEqual('optional controls', controls, null);
     assertEqual(
-      'deployment connector',
-      deployment.connectorName,
-      SANDBOX_E2E_CONNECTOR_PROVIDER,
-    );
-    assertEqual(
-      'deployment provider',
-      deployment.provider,
-      SANDBOX_E2E_CONNECTOR_PROVIDER,
-    );
-    assertEqual(
-      'deployment account',
-      deployment.accountId,
-      SANDBOX_E2E_ACCOUNT,
-    );
-    assertEqual(
-      'deployment strategies count',
-      deployment.strategies?.length,
-      1,
-    );
-    assertEqual(
-      'deployment strategy fields',
-      Object.keys(deployment.strategies?.[0] ?? {})
-        .sort()
-        .join(','),
-      'controlState,releaseVersion,strategyName',
-    );
-    assertEqual(
-      'deployment strategy control state',
-      deployment.strategies?.[0]?.controlState,
-      'active',
+      'heartbeat deployment',
+      heartbeat.deploymentId,
+      SANDBOX_E2E_DEPLOYMENT,
     );
     assertTrue(
-      'deployment has no release-owned config',
-      !Object.hasOwn(deployment, 'interval') &&
-        !Object.hasOwn(deployment, 'universe') &&
-        !Object.hasOwn(deployment.strategies?.[0] ?? {}, 'config'),
-    );
-    assertEqual('release strategy', release.strategyName, SANDBOX_E2E_STRATEGY);
-    assertEqual('release version', release.releaseVersion, 1);
-    assertEqual('release interval', release.config?.INTERVAL, '15');
-    assertEqual('release universe', release.config?.UNIVERSE, 'crypto');
-    assertEqual(
-      'release strategy package',
-      release.strategyPackage,
-      '@tradejs/example-sandbox',
-    );
-    assertEqual(
-      'release strategy package version',
-      release.strategyPackageVersion,
-      '1.0.0',
-    );
-    assertTrue(
-      'release runtime package version',
-      Boolean(release.runtimePackageVersion),
+      'heartbeat status',
+      ['completed', 'stopped'].includes(String(heartbeat.status)),
     );
 
     assertEqual(
