@@ -11,6 +11,11 @@ describe('npm release workflows', () => {
 
     expect(workflow).toContain('resolveBetaVersion');
     expect(workflow).toContain('--tag beta-candidate');
+    expect(workflow).toContain('wait-for-npm-packages.mjs');
+    expect(workflow).toContain('--stable-observations 2');
+    expect(
+      workflow.indexOf('Wait for complete beta registry consistency'),
+    ).toBeLessThan(workflow.indexOf('Quickstart beta browser e2e'));
     expect(workflow).toContain("YARN_NPM_PUBLISH_PROVENANCE: 'false'");
     expect(workflow).toContain('npm dist-tag add');
     expect(workflow.indexOf('beta-runtime-smoke.sh')).toBeLessThan(
@@ -38,6 +43,14 @@ describe('npm release workflows', () => {
     expect(workflow).toContain('publish-images.yml/runs');
     expect(workflow).toContain('environment: npm-production');
     expect(workflow).toContain('--tag stable-candidate');
+    expect(workflow).toContain('Wait for complete stable registry consistency');
+    expect(workflow).toContain('wait-for-npm-packages.mjs');
+    expect(workflow.indexOf('--tag stable-candidate')).toBeLessThan(
+      workflow.indexOf('Wait for complete stable registry consistency'),
+    );
+    expect(
+      workflow.indexOf('Wait for complete stable registry consistency'),
+    ).toBeLessThan(workflow.indexOf('Quickstart stable browser e2e'));
     expect(workflow.indexOf('sandbox:e2e')).toBeLessThan(
       workflow.indexOf('Promote all verified stable candidates to latest'),
     );

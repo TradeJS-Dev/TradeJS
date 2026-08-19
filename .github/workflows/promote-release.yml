@@ -123,14 +123,11 @@ jobs:
       - name: Verify beta package provenance
         if: env.PROMOTE != 'false'
         run: |
-          for package_name in \
-            @tradejs/types @tradejs/infra @tradejs/core @tradejs/node \
-            @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
-            create-tradejs
-          do
-            [ "$(npm view "${package_name}@${BETA_VERSION}" version)" = "$BETA_VERSION" ] || exit 1
-            [ "$(npm view "${package_name}@${BETA_VERSION}" gitHead)" = "$SOURCE_SHA" ] || exit 1
-          done
+          node ./bin/wait-for-npm-packages.mjs \
+            --version "$BETA_VERSION" \
+            --git-head "$SOURCE_SHA" \
+            --timeout-seconds 300 \
+            --stable-observations 2
       - if: env.PROMOTE != 'false'
         run: yarn install --immutable
       - name: Resolve stable version
@@ -162,13 +159,16 @@ jobs:
           YARN_NPM_PUBLISH_PROVENANCE: 'true'
         run: |
           bash ./bin/publish-packages.sh --skip-checks --tag stable-candidate
-          for package_name in \
-            @tradejs/types @tradejs/infra @tradejs/core @tradejs/node \
-            @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
-            create-tradejs
-          do
-            [ "$(npm view "${package_name}@${{ steps.version.outputs.stable_version }}" gitHead)" = "$RELEASE_HEAD_SHA" ] || exit 1
-          done
+      - name: Wait for complete stable registry consistency
+        if: env.PROMOTE != 'false'
+        env:
+          STABLE_VERSION: ${{ steps.version.outputs.stable_version }}
+        run: |
+          node ./bin/wait-for-npm-packages.mjs \
+            --version "$STABLE_VERSION" \
+            --git-head "$RELEASE_HEAD_SHA" \
+            --timeout-seconds 900 \
+            --stable-observations 2
       - if: env.PROMOTE != 'false'
         run: yarn playwright install --with-deps chromium
       - name: Quickstart stable browser e2e

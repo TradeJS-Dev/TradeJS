@@ -124,17 +124,15 @@ jobs:
           # retry fail permanently with a transparency-log 409.
           YARN_NPM_PUBLISH_PROVENANCE: 'false'
         run: bash ./bin/publish-packages.sh --skip-checks --tag beta-candidate
-      - name: Wait for beta registry consistency
+      - name: Wait for complete beta registry consistency
         env:
           BETA_VERSION: ${{ steps.version.outputs.beta_version }}
         run: |
-          for attempt in $(seq 1 12); do
-            if [ "$(npm view "create-tradejs@${BETA_VERSION}" version 2>/dev/null)" = "$BETA_VERSION" ]; then
-              exit 0
-            fi
-            [ "$attempt" -lt 12 ] || exit 1
-            sleep 10
-          done
+          node ./bin/wait-for-npm-packages.mjs \
+            --version "$BETA_VERSION" \
+            --git-head "$GITHUB_SHA" \
+            --timeout-seconds 600 \
+            --stable-observations 2
       - run: yarn playwright install --with-deps chromium
       - name: Quickstart beta browser e2e
         env:
