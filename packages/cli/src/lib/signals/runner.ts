@@ -330,6 +330,7 @@ export const createSignalsRunner = (
         throw new Error('TradFi connector must implement listInstruments');
       }
       const instruments =
+        (!config.cacheOnly || universe === 'tradfi') &&
         typeof marketConnector.listInstruments === 'function'
           ? await marketConnector.listInstruments({
               universe,

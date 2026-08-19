@@ -590,6 +590,7 @@ describe('signals script', () => {
 
     await signals();
 
+    expect(mocks.listInstruments).not.toHaveBeenCalled();
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
