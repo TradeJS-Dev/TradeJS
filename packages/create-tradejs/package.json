@@ -1,6 +1,6 @@
 {
   "name": "create-tradejs",
-  "version": "3.1.9",
+  "version": "3.1.10",
   "description": "Create a ready-to-run TradeJS project with local infrastructure and the Web UI.",
   "keywords": [
     "tradejs",
