@@ -30,6 +30,8 @@ const signal = (timestamp: number): Signal =>
     direction: 'LONG',
     timestamp,
     runtimeConfigId: 'config',
+    deploymentId: 'production',
+    accountId: 'bybit-default',
     runtimeLineage: lineage,
   }) as Signal;
 
@@ -43,8 +45,34 @@ const evaluation = (timestamp: number): RuntimeSignalEvaluationRecord => ({
   evaluatedAt: timestamp,
   status: 'signal',
   runtimeConfigId: 'config',
+  deploymentId: 'production',
+  accountId: 'bybit-default',
   runtimeLineage: lineage,
 });
+
+const deployment = {
+  schemaVersion: 1,
+  id: 'production',
+  label: 'Production',
+  connectorName: 'bybit',
+  provider: 'bybit',
+  accountId: 'bybit-default',
+  enabled: true,
+  strategies: [
+    {
+      strategyName: 'TrendShift',
+      version: 1,
+      enabled: true,
+      controlState: 'active',
+      interval: '15',
+      universe: 'crypto',
+      strategyPackage: '@tradejs/strategy-trend-shift',
+      strategyPackageVersion: '3.0.0',
+      runtimePackageVersion: '3.2.0',
+      strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
+    },
+  ],
+} as const;
 
 describe('runtime evidence replay source', () => {
   it('unwraps the immutable artifact and derives lineage scopes', async () => {
@@ -62,6 +90,8 @@ describe('runtime evidence replay source', () => {
       entryPrice: 100,
       entryTimestamp: 100,
       status: 'active',
+      deploymentId: 'production',
+      accountId: 'bybit-default',
     } as RuntimeTradeRecord;
 
     await fs.writeFile(
@@ -70,6 +100,7 @@ describe('runtime evidence replay source', () => {
         reportType: 'runtime-evidence',
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
+        deployment,
         runtime: {
           trades: [{ trade }],
           signals: [{ signal: signal(100) }],
@@ -88,6 +119,7 @@ describe('runtime evidence replay source', () => {
     expect(result.trades).toEqual([trade]);
     expect(result.signals).toHaveLength(1);
     expect(result.evaluations).toHaveLength(1);
+    expect(result.deployment).toEqual(deployment);
     expect(result.lineageScopes).toEqual([
       expect.objectContaining({
         strategy: 'TrendShift',
@@ -109,6 +141,7 @@ describe('runtime evidence replay source', () => {
       JSON.stringify({
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
+        deployment,
         runtime: { trades: [], signals: [], evaluations: [] },
       }),
     );
@@ -135,6 +168,7 @@ describe('runtime evidence replay source', () => {
       JSON.stringify({
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
+        deployment,
         runtime: { trades: [], signals: [], evaluations: [] },
       }),
     );
@@ -147,6 +181,53 @@ describe('runtime evidence replay source', () => {
         expectedWindow: { start: 100, end: 399 },
       }),
     ).resolves.toMatchObject({ startTime: 100, endTime: 400 });
+  });
+
+  it('uses persisted skip-only lineage scopes from immutable evidence', async () => {
+    const projectRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'tradejs-runtime-evidence-scopes-'),
+    );
+    const filePath = path.join(projectRoot, 'runtime-evidence.json');
+    const lineageScope = {
+      strategy: 'TrendShift',
+      symbol: 'ETHUSDT',
+      deploymentId: 'production',
+      accountId: 'bybit-default',
+      runtimeConfigId: 'v1',
+      runtimeVersion: 1,
+      lineage: {
+        schemaVersion: 2,
+        version: 1,
+        strategyPackageVersion: '3.0.0',
+        runtimePackageVersion: '3.2.0',
+        maxLossValue: 1,
+      },
+      firstTimestamp: 100,
+      lastTimestamp: 300,
+    };
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        userName: 'root',
+        window: { startTime: 100, endTime: 400 },
+        deployment,
+        runtime: {
+          trades: [],
+          signals: [],
+          evaluations: [],
+          lineageScopes: [lineageScope],
+        },
+      }),
+    );
+
+    await expect(
+      loadReplayRuntimeEvidenceSource({
+        filePath,
+        projectRoot,
+        expectedUserName: 'root',
+        expectedWindow: { start: 100, end: 400 },
+      }),
+    ).resolves.toMatchObject({ lineageScopes: [lineageScope] });
   });
 });
 

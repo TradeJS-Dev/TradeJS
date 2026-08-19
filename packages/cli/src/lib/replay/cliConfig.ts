@@ -55,6 +55,11 @@ args.option(
   'runtimeEvidence',
   'Immutable runtime evidence JSON used for offline runtime comparison',
 );
+args.option(
+  'deployment',
+  'Git-owned runtime deployment used when runtime evidence is omitted',
+  'production',
+);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(
@@ -89,4 +94,7 @@ export const replayRuntimeEvidencePath =
   replayFlags.runtimeEvidence.trim()
     ? replayFlags.runtimeEvidence.trim()
     : null;
+export const replayDeploymentId = String(
+  replayFlags.deployment ?? 'production',
+).trim();
 export const isReplayUpdateOnlyRun = Boolean(replayFlags.updateOnly);

@@ -53,7 +53,10 @@ import {
   type ReplayRuntimeParityRow,
   type ReplayStrategySummary,
 } from './support';
-import { runtimeLineagesMatch, runtimeLineageKey } from '../runtimeLineage';
+import {
+  runtimeLineagesComparable,
+  runtimeLineageKey,
+} from '../runtimeLineage';
 import type { ReplayRuntimeLineageRecord } from './historicalSignalsReplay';
 
 const getReplayEntryTimestampCompareOffsetMs = () => {
@@ -78,6 +81,8 @@ const buildReplaySignalEvaluations = (
     reason: signal.orderSkipReason || signal.orderStatus || 'SIGNAL',
     signalId: signal.signalId,
     direction: signal.direction,
+    accountId: signal.accountId,
+    deploymentId: signal.deploymentId,
     runtimeLineage: signal.runtimeLineage,
     orderStatus: signal.orderStatus,
     orderSkipReason: signal.orderSkipReason,
@@ -85,8 +90,18 @@ const buildReplaySignalEvaluations = (
     ...(signal.ml ? { ml: signal.ml } : {}),
   }));
 
-const lineageScopeKey = (strategy: string, symbol: string) =>
-  `${strategy}::${symbol}`;
+const lineageScopeKey = ({
+  strategy,
+  symbol,
+  deploymentId,
+  accountId,
+}: {
+  strategy: string;
+  symbol: string;
+  deploymentId?: string;
+  accountId?: string;
+}) =>
+  `${deploymentId ?? 'default-deployment'}::${accountId ?? 'default-account'}::${strategy}::${symbol}`;
 
 type ComparableLineageArtifacts = {
   runtimeTrades: RuntimeTradeRecord[];
@@ -100,26 +115,34 @@ const buildExpectedLineageByScope = (
   replayLineages: ReplayRuntimeLineageRecord[],
 ) =>
   new Map(
-    replayLineages.map((record) => [
-      lineageScopeKey(record.strategy, record.symbol),
-      record.lineage,
-    ]),
+    replayLineages.map((record) => [lineageScopeKey(record), record.lineage]),
   );
 
 const hasExpectedLineage = ({
   strategy,
   symbol,
+  deploymentId,
+  accountId,
   lineage,
   expectedByScope,
 }: {
   strategy: string;
   symbol: string;
+  deploymentId?: string;
+  accountId?: string;
   lineage?: RuntimeLineage;
   expectedByScope: Map<string, RuntimeLineage>;
 }) =>
-  runtimeLineagesMatch(
+  runtimeLineagesComparable(
     lineage,
-    expectedByScope.get(lineageScopeKey(strategy, symbol)),
+    expectedByScope.get(
+      lineageScopeKey({
+        strategy,
+        symbol,
+        deploymentId,
+        accountId,
+      }),
+    ),
   );
 
 export const filterReplayComparisonByLineage = ({
@@ -142,6 +165,8 @@ export const filterReplayComparisonByLineage = ({
     hasExpectedLineage({
       strategy: signal.strategy,
       symbol: signal.symbol,
+      deploymentId: signal.deploymentId,
+      accountId: signal.accountId,
       lineage: signal.runtimeLineage,
       expectedByScope,
     }),
@@ -151,6 +176,8 @@ export const filterReplayComparisonByLineage = ({
       hasExpectedLineage({
         strategy: evaluation.strategy,
         symbol: evaluation.symbol,
+        deploymentId: evaluation.deploymentId,
+        accountId: evaluation.accountId,
         lineage: evaluation.runtimeLineage,
         expectedByScope,
       }),
@@ -159,6 +186,8 @@ export const filterReplayComparisonByLineage = ({
     hasExpectedLineage({
       strategy: scope.strategy,
       symbol: scope.symbol,
+      deploymentId: scope.deploymentId,
+      accountId: scope.accountId,
       lineage: scope.lineage,
       expectedByScope,
     }),
@@ -168,7 +197,7 @@ export const filterReplayComparisonByLineage = ({
     { firstTimestamp: number; lastTimestamp: number }
   >();
   for (const scope of comparableRuntimeLineageScopes) {
-    const key = lineageScopeKey(scope.strategy, scope.symbol);
+    const key = lineageScopeKey(scope);
     const existing = deploymentWindows.get(key);
     deploymentWindows.set(key, {
       firstTimestamp:
@@ -200,13 +229,13 @@ export const filterReplayComparisonByLineage = ({
       return hasExpectedLineage({
         strategy: trade.strategy,
         symbol: trade.symbol,
+        deploymentId: trade.deploymentId,
+        accountId: trade.accountId,
         lineage,
         expectedByScope,
       });
     }
-    const window = deploymentWindows.get(
-      lineageScopeKey(trade.strategy, trade.symbol),
-    );
+    const window = deploymentWindows.get(lineageScopeKey(trade));
     const signalTimestamp = trade.signalTimestamp ?? trade.entryTimestamp;
     return (
       window != null &&
@@ -219,7 +248,7 @@ export const filterReplayComparisonByLineage = ({
     ...comparableRuntimeSignals,
     ...comparableRuntimeEvaluations,
   ]) {
-    const key = lineageScopeKey(artifact.strategy, artifact.symbol);
+    const key = lineageScopeKey(artifact);
     const existing = deploymentWindows.get(key);
     deploymentWindows.set(key, {
       firstTimestamp:
@@ -233,10 +262,17 @@ export const filterReplayComparisonByLineage = ({
     });
   }
 
+  const replayScopeByStrategySymbol = new Map(
+    replayLineages.map((record) => [
+      `${record.strategy}::${record.symbol}`,
+      lineageScopeKey(record),
+    ]),
+  );
   const comparableBacktestEntries = backtestEntries.filter((entry) => {
-    const window = deploymentWindows.get(
-      lineageScopeKey(entry.strategy, entry.symbol),
+    const replayScope = replayScopeByStrategySymbol.get(
+      `${entry.strategy}::${entry.symbol}`,
     );
+    const window = replayScope ? deploymentWindows.get(replayScope) : null;
     const signalTimestamp = entry.signalTimestamp ?? entry.timestamp;
     return (
       window != null &&
@@ -272,10 +308,12 @@ export const filterReplayComparisonByLineage = ({
           : 'no_runtime_artifacts_with_matching_lineage',
       replay: [...expectedByScope.entries()]
         .map(([scope, lineage]) => {
-          const separator = scope.indexOf('::');
+          const [deploymentId, accountId, strategy, symbol] = scope.split('::');
           return {
-            strategy: scope.slice(0, separator),
-            symbol: scope.slice(separator + 2),
+            deploymentId,
+            accountId,
+            strategy,
+            symbol,
             lineage,
           };
         })

@@ -327,7 +327,12 @@ export async function buildRuntimeLineage({
 
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
   lineage.schemaVersion === 2
-    ? ['v2', lineage.version].join(':')
+    ? [
+        'v2',
+        lineage.version,
+        lineage.strategyPackageVersion ?? 'strategy:unknown',
+        lineage.runtimePackageVersion ?? 'runtime:unknown',
+      ].join(':')
     : [
         lineage.schemaVersion,
         lineage.compositionId ?? 'unbound-composition',
@@ -349,6 +354,17 @@ export const runtimeLineagesMatch = (
   left != null &&
   right != null &&
   runtimeLineageKey(left) === runtimeLineageKey(right);
+
+export const runtimeLineagesComparable = (
+  left: RuntimeLineage | null | undefined,
+  right: RuntimeLineage | null | undefined,
+) =>
+  runtimeLineagesMatch(left, right) &&
+  typeof left?.maxLossValue === 'number' &&
+  Number.isFinite(left.maxLossValue) &&
+  typeof right?.maxLossValue === 'number' &&
+  Number.isFinite(right.maxLossValue) &&
+  left.maxLossValue === right.maxLossValue;
 
 export const resetRuntimeLineageCachesForTests = () => {
   gitLineageCache.clear();

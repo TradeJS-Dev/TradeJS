@@ -99,7 +99,7 @@ describe('runtimeSignalsLoader', () => {
       }
       if (prefix === 'users:root:runtime:signal-evaluation-stats:days:') {
         return [
-          'users:root:runtime:signal-evaluation-stats:days:2026-05-02:TrendLine',
+          'users:root:runtime:signal-evaluation-stats:days:2026-05-02:production:TrendLine',
         ];
       }
       return [];
@@ -177,8 +177,9 @@ describe('runtimeSignalsLoader', () => {
       loadRuntimeSignalEvaluationStatsBuckets('root'),
     ).resolves.toEqual([
       {
-        key: 'users:root:runtime:signal-evaluation-stats:days:2026-05-02:TrendLine',
+        key: 'users:root:runtime:signal-evaluation-stats:days:2026-05-02:production:TrendLine',
         dayKey: '2026-05-02',
+        deploymentId: 'production',
         strategy: 'TrendLine',
         stats: expect.objectContaining({
           evaluated: 33,

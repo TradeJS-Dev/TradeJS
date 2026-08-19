@@ -197,6 +197,7 @@ export const loadRuntimeLineageScopes = async (
 export type RuntimeSignalStatsBucketEntry = {
   key: string;
   dayKey: string;
+  deploymentId?: string;
   strategy: string;
   stats: RuntimeSignalStatsBucket;
 };
@@ -207,14 +208,20 @@ const parseBucketKey = (prefix: string, key: string) => {
   }
 
   const suffix = key.slice(prefix.length);
-  const firstColon = suffix.indexOf(':');
-  if (firstColon <= 0 || firstColon >= suffix.length - 1) {
+  const parts = suffix.split(':');
+  if (parts.length < 2 || parts.some((part) => !part)) {
     return null;
   }
 
+  const [dayKey, ...scopeParts] = parts;
+  const strategy = scopeParts.at(-1);
+  if (!dayKey || !strategy) return null;
   return {
-    dayKey: suffix.slice(0, firstColon),
-    strategy: suffix.slice(firstColon + 1),
+    dayKey,
+    ...(scopeParts.length > 1
+      ? { deploymentId: scopeParts.slice(0, -1).join(':') }
+      : {}),
+    strategy,
   };
 };
 

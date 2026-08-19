@@ -27,6 +27,7 @@ const lineage = (
   gateFingerprint: 'gate',
   configFingerprint: 'config',
   contextFingerprint: 'context',
+  maxLossValue: 1,
   ...overrides,
 });
 
@@ -153,6 +154,45 @@ describe('replay runtime lineage filtering', () => {
       excludedRuntimeLineageScopes: 1,
       excludedBacktestEntries: 1,
       reason: null,
+    });
+  });
+
+  it('excludes cross-deployment and risk-scale scopes', () => {
+    const expected = lineage();
+    const otherRisk = lineage({ maxLossValue: 10 });
+    const crossDeploymentSignal = {
+      ...signal(100, expected),
+      deploymentId: 'staging',
+      accountId: 'bybit-main',
+    };
+    const otherRiskSignal = {
+      ...signal(200, otherRisk),
+      deploymentId: 'production',
+      accountId: 'bybit-main',
+    };
+
+    const result = filterReplayComparisonByLineage({
+      replayLineages: [
+        {
+          strategy: 'TrendShift',
+          symbol: 'BTCUSDT',
+          deploymentId: 'production',
+          accountId: 'bybit-main',
+          lineage: expected,
+        },
+      ],
+      runtimeTrades: [],
+      runtimeSignals: [crossDeploymentSignal, otherRiskSignal],
+      runtimeSignalEvaluations: [],
+      runtimeLineageScopes: [],
+      backtestEntries: [],
+    });
+
+    expect(result.runtimeSignals).toEqual([]);
+    expect(result.lineage).toMatchObject({
+      comparableScopes: 0,
+      excludedRuntimeSignals: 2,
+      reason: 'no_runtime_artifacts_with_matching_lineage',
     });
   });
 });

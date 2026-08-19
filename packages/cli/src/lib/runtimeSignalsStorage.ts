@@ -44,6 +44,8 @@ export type RuntimeSignalStatsBucket = {
 export type RuntimeLineageScopeRecord = {
   strategy: string;
   symbol: string;
+  deploymentId?: string;
+  accountId?: string;
   runtimeConfigId?: string;
   runtimeVersion?: number;
   lineage: RuntimeLineage;

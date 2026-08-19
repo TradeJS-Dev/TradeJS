@@ -991,6 +991,31 @@ describe('signals script', () => {
         },
       }),
     );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.storeSignal(
+        'ETHUSDT',
+        'TrendLine-sig:crypto-live:crypto-main:v1',
+      ),
+      expect.objectContaining({
+        signalId: 'TrendLine-sig:crypto-live:crypto-main:v1',
+        deploymentId: 'crypto-live',
+        accountId: 'crypto-main',
+      }),
+      { expire: TTL_3D },
+    );
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      `crypto-live:crypto-main:TrendLine:v1:SOLUSDT:${CLOSED_2_TS}`,
+      expect.objectContaining({
+        deploymentId: 'crypto-live',
+        accountId: 'crypto-main',
+      }),
+      { expire: TTL_3D },
+    );
   });
 
   it('reuses session state and skips duplicate candle evaluation', async () => {

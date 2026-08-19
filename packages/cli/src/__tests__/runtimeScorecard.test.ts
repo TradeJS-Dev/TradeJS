@@ -264,7 +264,126 @@ describe('runtime scorecard', () => {
       orderFailures: 0,
       closedTrades: 1,
     });
-    expect(scorecard.realized.pnl).toBe(5);
+    expect(scorecard.funnel).toMatchObject({
+      comparableClosedTrades: 0,
+      nonComparableClosedTrades: 1,
+    });
+    expect(scorecard.realized.pnl).toBe(0);
     expect(scorecard.parity.ratio).toBe(0.9);
+  });
+
+  it('uses complete v2 identity while excluding unlineaged and cross-deployment trades', () => {
+    const endTime = Date.UTC(2026, 7, 19, 18);
+    const v2Lineage = {
+      schemaVersion: 2,
+      version: 5,
+      strategyPackageVersion: '3.0.1',
+      runtimePackageVersion: '3.2.0',
+      maxLossValue: 1,
+    } as const;
+    const runtimeArtifact = {
+      window: { startTime: endTime - 86_400_000, endTime },
+      deployment: { id: 'production', accountId: 'bybit-main' },
+      runtime: {
+        evaluations: [
+          {
+            strategy: 'DoubleTap',
+            status: 'signal',
+            runtimeLineage: v2Lineage,
+          },
+        ],
+        signals: [],
+        trades: [
+          {
+            strategy: 'DoubleTap',
+            orderId: 'current',
+            status: 'closed',
+            exitTimestamp: endTime - 1,
+            closedPnl: 2,
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+            runtimeLineage: v2Lineage,
+          },
+          {
+            strategy: 'DoubleTap',
+            orderId: 'current-legacy',
+            status: 'closed',
+            exitTimestamp: endTime - 2,
+            closedPnl: -25,
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+          },
+        ],
+      },
+    };
+    const historyRuntimeArtifact = {
+      window: {
+        startTime: endTime - 2 * 86_400_000,
+        endTime: endTime - 86_400_000,
+      },
+      runtime: {
+        trades: [
+          {
+            strategy: 'DoubleTap',
+            orderId: 'legacy',
+            status: 'closed',
+            exitTimestamp: endTime - 86_400_001,
+            closedPnl: -100,
+          },
+          {
+            strategy: 'DoubleTap',
+            orderId: 'matching',
+            status: 'closed',
+            exitTimestamp: endTime - 86_400_002,
+            closedPnl: 3,
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+            runtimeLineage: v2Lineage,
+          },
+          {
+            strategy: 'DoubleTap',
+            orderId: 'other-deployment',
+            status: 'closed',
+            exitTimestamp: endTime - 86_400_003,
+            closedPnl: -50,
+            deploymentId: 'staging',
+            accountId: 'bybit-main',
+            runtimeLineage: v2Lineage,
+          },
+        ],
+      },
+    };
+
+    const scorecard = buildRuntimeScorecard({
+      runtimeArtifact,
+      historyRuntimeArtifacts: [historyRuntimeArtifact],
+      strategy: 'DoubleTap',
+      generatedAt: endTime,
+    });
+
+    expect(scorecard.lineage).toMatchObject({
+      complete: false,
+      identityComplete: true,
+      coverageComplete: false,
+      schemaVersion: 2,
+      version: 5,
+      strategyPackageVersion: '3.0.1',
+      runtimePackageVersion: '3.2.0',
+      maxLossValue: 1,
+    });
+    expect(scorecard.funnel).toMatchObject({
+      closedTrades: 2,
+      comparableClosedTrades: 1,
+      nonComparableClosedTrades: 1,
+    });
+    expect(scorecard.rolling[0]).toMatchObject({
+      closedTrades: 2,
+      realizedPnl: 5,
+      expectancy: 2.5,
+    });
+    expect(scorecard.realized.pnl).toBe(2);
+    expect(scorecard.reactions.map(({ code }) => code)).toContain(
+      'RUNTIME_LINEAGE_INCOMPLETE',
+    );
   });
 });

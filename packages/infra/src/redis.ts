@@ -853,8 +853,11 @@ export const redisKeys = {
     userName: string,
     dayKey: string,
     strategyName: string,
+    deploymentId?: string,
   ) =>
-    `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
+    `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${
+      deploymentId ? `${deploymentId}:` : ''
+    }${strategyName}`,
   runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
     `users:${userName}:runtime:lineage-scopes:days:${dayKey}`,
   runtimeTrades: (userName: string) =>

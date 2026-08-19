@@ -527,6 +527,16 @@ describe('redis utils', () => {
     ).toBe(
       'users:root:runtime:signal-evaluation-stats:days:2026-05-02:TrendLine',
     );
+    expect(
+      redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '2026-05-02',
+        'TrendLine',
+        'production',
+      ),
+    ).toBe(
+      'users:root:runtime:signal-evaluation-stats:days:2026-05-02:production:TrendLine',
+    );
     expect(redisKeys.runtimeTrades('root')).toBe(
       'users:root:runtime:trade-records:',
     );

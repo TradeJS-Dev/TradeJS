@@ -5,7 +5,7 @@ import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import { createTimestamp } from '../lib/runFormatting';
 import {
-  loadReplayStrategies,
+  loadDeploymentReplayStrategies,
   prepareRunEnvironment,
 } from '../lib/runEnvironment';
 import {
@@ -23,12 +23,18 @@ import {
 } from '../lib/backtest/runState';
 import {
   isReplayUpdateOnlyRun,
+  replayDeploymentId,
   replayFlags,
   replayInterval,
   replayProjectRoot,
   replayRuntimeEvidencePath,
   replayUserName,
 } from '../lib/replay/cliConfig';
+import { loadReplayRuntimeEvidenceMetadata } from '../lib/replay/runtimeEvidenceSource';
+import {
+  activeRuntimeEvidenceStrategies,
+  runtimeDeploymentFromEvidence,
+} from '../lib/runtimeEvidenceDeployment';
 import { REPLAY_RESULTS_CONFIG } from '../lib/replay/support';
 import {
   HistoricalSignalsReplayResult,
@@ -183,10 +189,73 @@ const finishReplay = async ({
 
 export const replayBacktest = async () => {
   resetRunState();
+  const evidenceMetadata = replayRuntimeEvidencePath
+    ? await loadReplayRuntimeEvidenceMetadata({
+        filePath: replayRuntimeEvidencePath,
+        projectRoot: replayProjectRoot,
+      })
+    : null;
+  if (evidenceMetadata && evidenceMetadata.userName !== replayUserName) {
+    throw new Error(
+      `Runtime evidence user mismatch: expected=${replayUserName}, actual=${evidenceMetadata.userName || 'missing'}`,
+    );
+  }
+  const replayComposition = evidenceMetadata
+    ? {
+        deployment: runtimeDeploymentFromEvidence(evidenceMetadata.deployment),
+        strategies: activeRuntimeEvidenceStrategies(
+          evidenceMetadata.deployment,
+        ).map(
+          ({
+            strategyName,
+            version,
+            strategyPackage,
+            strategyPackageVersion,
+            runtimePackageVersion,
+            strategyConfig,
+          }) => ({
+            strategyName,
+            version,
+            strategyPackage,
+            strategyPackageVersion,
+            runtimePackageVersion,
+            strategyConfig,
+          }),
+        ),
+      }
+    : await loadDeploymentReplayStrategies({
+        userName: replayUserName,
+        projectRoot: replayProjectRoot,
+        deploymentId: replayDeploymentId,
+      });
+  const { deployment, strategies: replayStrategies } = replayComposition;
+  if (!replayStrategies.length) {
+    throw new Error(`No enabled strategies in deployment ${deployment.id}`);
+  }
+  const strategyIntervals = new Set(
+    replayStrategies.map(({ strategyConfig }) =>
+      String(strategyConfig.INTERVAL),
+    ),
+  );
+  if (strategyIntervals.size !== 1 || !strategyIntervals.has(replayInterval)) {
+    throw new Error(
+      `Replay interval does not match deployment ${deployment.id}: replay=${replayInterval}, strategies=${[...strategyIntervals].join(',')}`,
+    );
+  }
+  const strategyUniverses = new Set(
+    replayStrategies.map(({ strategyConfig }) =>
+      String(strategyConfig.UNIVERSE),
+    ),
+  );
+  if (strategyUniverses.size !== 1) {
+    throw new Error(
+      `Replay requires one deployment universe: ${[...strategyUniverses].join(',')}`,
+    );
+  }
   const preparedRun = await prepareRunEnvironment({
-    connector: replayFlags.connector,
+    connector: deployment.connectorName,
     userName: replayUserName,
-    tickers: replayFlags.tickers,
+    tickers: replayFlags.tickers ?? deployment.tickers,
     exclude: replayFlags.exclude,
     tickersLimit: replayFlags.tickersLimit,
     showTickersList: replayFlags.showTickersList,
@@ -196,6 +265,11 @@ export const replayBacktest = async () => {
     cacheOnly: replayFlags.cacheOnly,
     interval: replayInterval,
     projectRoot: replayProjectRoot,
+    universe: [...strategyUniverses][0] as 'crypto' | 'tradfi',
+    accountId: deployment.accountId,
+    deploymentId: deployment.id,
+    assetClasses: deployment.assetClasses,
+    deployment,
     closedIntervalMs: intervalToMs(replayInterval),
   });
   if (!preparedRun || isReplayUpdateOnlyRun) {
@@ -210,10 +284,6 @@ export const replayBacktest = async () => {
     },
   });
 
-  const replayStrategies = await loadReplayStrategies(replayUserName);
-  if (!replayStrategies.length) {
-    return;
-  }
   await prepareReplayBinanceMarketContext({
     ...preparedRun,
     aiEnabled: replayStrategies.some(({ strategyConfig }) =>

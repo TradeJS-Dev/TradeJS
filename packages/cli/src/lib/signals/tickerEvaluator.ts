@@ -261,6 +261,8 @@ export const createSignalsTickerEvaluator =
             timestamp: lastCandle.timestamp,
             runtimeConfigId: runtimeIdentity,
             runtimeVersion: version,
+            deploymentId,
+            accountId,
           }),
           userName,
           strategy: strategyName,
@@ -286,8 +288,17 @@ export const createSignalsTickerEvaluator =
       signal.runtimeConfigId = runtimeIdentity;
       signal.runtimeVersion = version;
       signal.runtimeLineage = runtimeLineage;
-      if (version && !signal.signalId.endsWith(`:v${version}`)) {
-        signal.signalId = `${signal.signalId}:v${version}`;
+      signal.deploymentId = deploymentId;
+      signal.accountId = accountId;
+      const signalRuntimeIdentity = [
+        ...(deploymentId ? [deploymentId, accountId ?? 'default-account'] : []),
+        ...(version ? [`v${version}`] : []),
+      ].join(':');
+      if (
+        signalRuntimeIdentity &&
+        !signal.signalId.endsWith(`:${signalRuntimeIdentity}`)
+      ) {
+        signal.signalId = `${signal.signalId}:${signalRuntimeIdentity}`;
       }
       await enrichSignalWithBinanceMarketContext({ signal, env: 'CRON' });
       if (
@@ -311,6 +322,8 @@ export const createSignalsTickerEvaluator =
           timestamp: lastCandle.timestamp,
           runtimeConfigId: runtimeIdentity,
           runtimeVersion: version,
+          deploymentId,
+          accountId,
         }),
         userName,
         strategy: strategyName,

@@ -21,11 +21,15 @@ import {
   MarketUniverse,
   RuntimeDeployment,
 } from '@tradejs/types';
-import { resolveTimeWindow } from './timeWindow';
+import {
+  getRuntimeDeployment,
+  loadResolvedRuntimeStrategies,
+} from '@tradejs/node/runtimeStrategies';
 import {
   loadRuntimeStrategyBacktestConfigs,
   RuntimeStrategyBacktestConfig,
 } from './runtimeStrategyBacktest';
+import { resolveTimeWindow } from './timeWindow';
 import { timeOperation as runTimedOperation } from './runFormatting';
 import {
   loadBtcReferenceConnectors,
@@ -94,6 +98,15 @@ const resolveRunConnectorName = async ({
   return DEFAULT_CONNECTOR_NAME;
 };
 
+export type ReplayStrategyConfig = {
+  strategyName: string;
+  version: number;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  runtimePackageVersion: string;
+  strategyConfig: import('@tradejs/types').StrategyConfig;
+};
+
 export const loadReplayStrategies = async (
   userName: string,
 ): Promise<RuntimeStrategyBacktestConfig[]> => {
@@ -104,10 +117,59 @@ export const loadReplayStrategies = async (
         `No active runtime strategy configs found by users:${userName}:strategies:*:config`,
       ),
     );
-    return [];
+  }
+  return runtimeStrategies;
+};
+
+export const loadDeploymentReplayStrategies = async ({
+  userName,
+  projectRoot,
+  deploymentId,
+}: {
+  userName: string;
+  projectRoot: string;
+  deploymentId: string;
+}): Promise<{
+  deployment: RuntimeDeployment;
+  strategies: ReplayStrategyConfig[];
+}> => {
+  const [deployment, runtimeStrategies] = await Promise.all([
+    getRuntimeDeployment({ userName, projectRoot, deploymentId }),
+    loadResolvedRuntimeStrategies({ userName, projectRoot, deploymentId }),
+  ]);
+  if (!deployment) {
+    throw new Error(`Runtime deployment not found: ${deploymentId}`);
+  }
+  const strategies = deployment.enabled
+    ? runtimeStrategies
+        .filter((strategy) => strategy.enabled)
+        .map(
+          ({
+            strategyName,
+            version,
+            strategyPackage,
+            strategyPackageVersion,
+            runtimePackageVersion,
+            sourceStrategyConfig,
+          }) => ({
+            strategyName,
+            version,
+            strategyPackage,
+            strategyPackageVersion,
+            runtimePackageVersion,
+            strategyConfig: sourceStrategyConfig,
+          }),
+        )
+    : [];
+  if (!strategies.length) {
+    console.log(
+      chalk.yellow(
+        `No enabled strategies found in runtime deployment ${deploymentId}`,
+      ),
+    );
   }
 
-  return runtimeStrategies;
+  return { deployment, strategies };
 };
 
 export const prepareRunEnvironment = async ({

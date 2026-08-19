@@ -28,27 +28,51 @@ export const buildRuntimeSignalEvaluationId = ({
   timestamp,
   runtimeConfigId,
   runtimeVersion,
+  deploymentId,
+  accountId,
 }: {
   strategyName: string;
   symbol: string;
   timestamp: number;
   runtimeConfigId?: string;
   runtimeVersion?: number;
-}) =>
-  runtimeVersion
-    ? [strategyName, `v${runtimeVersion}`, symbol, timestamp].join(':')
+  deploymentId?: string;
+  accountId?: string;
+}) => {
+  const runtimeScope = deploymentId
+    ? [deploymentId, accountId ?? 'default-account']
+    : [];
+  return runtimeVersion
+    ? [
+        ...runtimeScope,
+        strategyName,
+        `v${runtimeVersion}`,
+        symbol,
+        timestamp,
+      ].join(':')
     : runtimeConfigId && runtimeConfigId !== 'config'
-      ? [strategyName, runtimeConfigId, symbol, timestamp].join(':')
-      : [strategyName, symbol, timestamp].join(':');
+      ? [
+          ...runtimeScope,
+          strategyName,
+          runtimeConfigId,
+          symbol,
+          timestamp,
+        ].join(':')
+      : [...runtimeScope, strategyName, symbol, timestamp].join(':');
+};
 
 const buildLineageField = (scope: {
   strategy: string;
+  deploymentId?: string;
+  accountId?: string;
   runtimeConfigId?: string;
   runtimeVersion?: number;
   symbol: string;
   lineage: NonNullable<RuntimeSignalEvaluationRecord['runtimeLineage']>;
 }) =>
   [
+    scope.deploymentId ?? 'default-deployment',
+    scope.accountId ?? 'default-account',
     scope.strategy,
     scope.runtimeConfigId ?? 'config',
     scope.runtimeVersion ? `v${scope.runtimeVersion}` : 'legacy',
@@ -104,6 +128,8 @@ export const flushRuntimeSignalEvaluations = async (
     for (const evaluation of lineageEvaluations) {
       const lineageField = buildLineageField({
         strategy: evaluation.strategy,
+        deploymentId: evaluation.deploymentId,
+        accountId: evaluation.accountId,
         runtimeConfigId: evaluation.runtimeConfigId,
         runtimeVersion: evaluation.runtimeVersion,
         symbol: evaluation.symbol,
@@ -114,6 +140,10 @@ export const flushRuntimeSignalEvaluations = async (
       const scope: RuntimeLineageScopeRecord = {
         strategy: evaluation.strategy,
         symbol: evaluation.symbol,
+        ...(evaluation.deploymentId
+          ? { deploymentId: evaluation.deploymentId }
+          : {}),
+        ...(evaluation.accountId ? { accountId: evaluation.accountId } : {}),
         runtimeConfigId: evaluation.runtimeConfigId,
         runtimeVersion: evaluation.runtimeVersion,
         lineage: evaluation.runtimeLineage,
@@ -162,6 +192,7 @@ export const flushRuntimeSignalEvaluations = async (
         evaluation.userName,
         dayKey,
         evaluation.strategy,
+        evaluation.deploymentId,
       );
       const increments = statsIncrements.get(statsBucket) ?? {};
       for (const [field, increment] of Object.entries(

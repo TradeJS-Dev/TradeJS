@@ -561,6 +561,11 @@ const runSignalsPath = async () => {
   }));
   jest.doMock('@tradejs/node/runtimeStrategies', () => ({
     getRuntimeDeployment: jest.fn(async () => null),
+    getRuntimeStrategyPackageMetadata: jest.fn(async () => ({
+      strategyPackage: '@tradejs/strategy-parity',
+      strategyPackageVersion: '1.0.0',
+      runtimePackageVersion: '3.2.0',
+    })),
     loadResolvedRuntimeStrategies: jest.fn(async () => [
       {
         strategyName: 'ParityStrategy',
@@ -810,6 +815,10 @@ const runReplayPath = async () => {
     runtimeStrategies: [
       {
         strategyName: 'ParityStrategy',
+        version: 1,
+        strategyPackage: '@tradejs/strategy-parity',
+        strategyPackageVersion: '1.0.0',
+        runtimePackageVersion: '3.2.0',
         strategyConfig: {
           AI_ENABLED: true,
           AI_MODE: 'gate',

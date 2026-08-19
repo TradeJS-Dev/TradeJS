@@ -13,12 +13,14 @@ import {
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
   loadRuntimeSignalEvaluations,
+  loadRuntimeLineageScopes,
   loadRuntimeSignals,
   type RuntimeSignalStatsBucketEntry,
 } from './runtimeSignalsLoader';
 import {
   getRuntimeStorageDayKey,
   getRuntimeStorageDayKeys,
+  type RuntimeLineageScopeRecord,
 } from './runtimeSignalsStorage';
 
 export const RUNTIME_DEBUG_TIMEZONE = 'Europe/Moscow';
@@ -36,6 +38,7 @@ export type RuntimeDebugEvidence = {
   signals: Signal[];
   evaluations: RuntimeSignalEvaluationRecord[];
   evaluationStatsBuckets: RuntimeSignalStatsBucketEntry[];
+  lineageScopes: RuntimeLineageScopeRecord[];
   strategyConfigs: RuntimeDebugStrategyConfig[];
 };
 
@@ -106,11 +109,13 @@ export const collectRuntimeDebugEvidence = async ({
   startTime,
   endTime,
   strategies,
+  deploymentId,
 }: {
   userName: string;
   startTime: number;
   endTime: number;
   strategies?: string[];
+  deploymentId?: string;
 }): Promise<RuntimeDebugEvidence> => {
   const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
   const dayKeySet = new Set(dayKeys);
@@ -120,6 +125,7 @@ export const collectRuntimeDebugEvidence = async ({
     signals,
     evaluations,
     evaluationStatsBuckets,
+    lineageScopes,
     configs,
   ] = await Promise.all([
     loadRuntimeTrades(userName, { startTime, endTime }),
@@ -127,6 +133,7 @@ export const collectRuntimeDebugEvidence = async ({
     loadRuntimeSignals(userName, { startTime, endTime }),
     loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
     loadRuntimeSignalEvaluationStatsBuckets(userName),
+    loadRuntimeLineageScopes(userName, { startTime, endTime }),
     loadRuntimeStrategyConfigs(userName),
   ]);
   const tradesByOrderId = new Map(
@@ -141,19 +148,31 @@ export const collectRuntimeDebugEvidence = async ({
   const filteredStats = evaluationStatsBuckets.filter(
     (entry) =>
       dayKeySet.has(entry.dayKey) &&
+      (!deploymentId || entry.deploymentId === deploymentId) &&
       (!strategies?.length || strategies.includes(entry.strategy)),
   );
+  const matchesDeployment = (value: { deploymentId?: string }) =>
+    !deploymentId || value.deploymentId === deploymentId;
 
   return {
     dayKeys,
-    trades: filterByStrategies(trades, strategies),
-    signals: filterByStrategies(signals, strategies),
-    evaluations: filterByStrategies(evaluations, strategies),
-    evaluationStatsBuckets: filteredStats,
-    strategyConfigs: configs.filter(
-      (config) =>
-        !strategies?.length || strategies.includes(config.strategyName),
+    trades: filterByStrategies(trades, strategies).filter(matchesDeployment),
+    signals: filterByStrategies(signals, strategies).filter(matchesDeployment),
+    evaluations: filterByStrategies(evaluations, strategies).filter(
+      matchesDeployment,
     ),
+    evaluationStatsBuckets: filteredStats,
+    lineageScopes: lineageScopes
+      .filter(matchesDeployment)
+      .filter(
+        (scope) => !strategies?.length || strategies.includes(scope.strategy),
+      ),
+    strategyConfigs: deploymentId
+      ? []
+      : configs.filter(
+          (config) =>
+            !strategies?.length || strategies.includes(config.strategyName),
+        ),
   };
 };
 
@@ -166,6 +185,7 @@ export const buildRuntimeDebugReportPayload = async ({
   trades,
   strategyConfigs,
   evaluationStatsBuckets,
+  lineageScopes,
 }: {
   userName: string;
   startTime: number;
@@ -175,6 +195,7 @@ export const buildRuntimeDebugReportPayload = async ({
   trades: RuntimeTradeRecord[];
   strategyConfigs?: RuntimeDebugStrategyConfig[];
   evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
+  lineageScopes?: RuntimeLineageScopeRecord[];
 }) => {
   const signalById = new Map(
     signals.map((signal) => [signal.signalId, signal]),
@@ -332,6 +353,7 @@ export const buildRuntimeDebugReportPayload = async ({
       signals: signals.length,
       evaluations: reportEvaluations.length,
       evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
+      lineageScopes: lineageScopes?.length ?? 0,
       strategyConfigs: strategyConfigs?.length ?? 0,
     },
     trades: debugTrades,
@@ -355,6 +377,7 @@ export const buildRuntimeDebugReportPayload = async ({
       evaluation,
     })),
     evaluationStatsBuckets: evaluationStatsBuckets ?? [],
+    lineageScopes: lineageScopes ?? [],
     strategyConfigs: strategyConfigs ?? [],
   };
 };
@@ -368,6 +391,7 @@ export const buildRuntimeEvidenceReportPayload = ({
   trades,
   strategyConfigs,
   evaluationStatsBuckets,
+  lineageScopes,
 }: {
   userName: string;
   startTime: number;
@@ -377,6 +401,7 @@ export const buildRuntimeEvidenceReportPayload = ({
   trades: RuntimeTradeRecord[];
   strategyConfigs?: RuntimeDebugStrategyConfig[];
   evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
+  lineageScopes?: RuntimeLineageScopeRecord[];
 }) => ({
   reportType: 'runtime-daily-evidence' as const,
   generatedAt: Date.now(),
@@ -393,12 +418,14 @@ export const buildRuntimeEvidenceReportPayload = ({
     signals: signals.length,
     evaluations: evaluations.length,
     evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
+    lineageScopes: lineageScopes?.length ?? 0,
     strategyConfigs: strategyConfigs?.length ?? 0,
   },
   trades: trades.map((trade) => ({ trade })),
   signals: signals.map((signal) => ({ signal })),
   evaluations: evaluations.map((evaluation) => ({ evaluation })),
   evaluationStatsBuckets: evaluationStatsBuckets ?? [],
+  lineageScopes: lineageScopes ?? [],
   strategyConfigs: strategyConfigs ?? [],
 });
 

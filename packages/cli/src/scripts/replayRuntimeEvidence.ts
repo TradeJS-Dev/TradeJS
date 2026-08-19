@@ -335,6 +335,7 @@ const loadRuntimePayload = async ({
       source: 'file',
       path: runtimeEvidencePath,
       payload: artifact.runtime ?? artifact,
+      deployment: artifact.deployment ?? null,
     };
   }
 
@@ -348,6 +349,7 @@ const loadRuntimePayload = async ({
   return {
     source: 'local-redis',
     path: null,
+    deployment: null,
     payload: buildRuntimeEvidenceReportPayload({
       userName,
       startTime,
@@ -357,6 +359,7 @@ const loadRuntimePayload = async ({
       trades: runtimeEvidence.trades,
       strategyConfigs: runtimeEvidence.strategyConfigs,
       evaluationStatsBuckets: runtimeEvidence.evaluationStatsBuckets,
+      lineageScopes: runtimeEvidence.lineageScopes,
     }),
   };
 };
@@ -403,6 +406,7 @@ export const replayRuntimeEvidence = async () => {
       type: runtime.source,
       path: runtime.path,
     },
+    deployment: runtime.deployment,
     replay: {
       key: replay.key,
       availableKeys: replay.availableKeys,

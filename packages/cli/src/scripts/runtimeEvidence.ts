@@ -8,6 +8,10 @@ import {
 } from '../lib/runtimeDebugEvidence';
 import { publishRuntimeEvidenceBundle } from '../lib/runtimeEvidenceArtifacts';
 import { runtimeLineageKey } from '../lib/runtimeLineage';
+import {
+  activeRuntimeEvidenceStrategies,
+  resolveRuntimeEvidenceDeploymentSnapshot,
+} from '../lib/runtimeEvidenceDeployment';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
@@ -106,12 +110,36 @@ const parseStrategyFilter = (value: unknown): string[] =>
 
 export const runtimeEvidence = async () => {
   const { startTime, endTime, source } = resolveWindow();
-  const strategies = parseStrategyFilter(flags.strategy);
+  const deploymentId = String(flags.deployment);
+  const deployment = await resolveRuntimeEvidenceDeploymentSnapshot({
+    userName: String(flags.user),
+    projectRoot,
+    deploymentId,
+  });
+  const activeStrategies = activeRuntimeEvidenceStrategies(deployment).map(
+    ({ strategyName }) => strategyName,
+  );
+  const requestedStrategies = parseStrategyFilter(flags.strategy);
+  const strategies = requestedStrategies.length
+    ? requestedStrategies
+    : activeStrategies;
+  const declaredStrategies = new Set(
+    deployment.strategies.map(({ strategyName }) => strategyName),
+  );
+  const unknownStrategies = strategies.filter(
+    (strategyName) => !declaredStrategies.has(strategyName),
+  );
+  if (unknownStrategies.length) {
+    throw new Error(
+      `Strategies are not declared in ${deploymentId}: ${unknownStrategies.join(', ')}`,
+    );
+  }
   const evidence = await collectRuntimeDebugEvidence({
     userName: flags.user,
     startTime,
     endTime,
-    strategies: strategies.length ? strategies : undefined,
+    strategies,
+    deploymentId,
   });
   const runtime = buildRuntimeEvidenceReportPayload({
     userName: flags.user,
@@ -122,6 +150,7 @@ export const runtimeEvidence = async () => {
     trades: evidence.trades,
     strategyConfigs: evidence.strategyConfigs,
     evaluationStatsBuckets: evidence.evaluationStatsBuckets,
+    lineageScopes: evidence.lineageScopes,
   });
   const artifact = {
     reportType: 'runtime-evidence',
@@ -135,6 +164,7 @@ export const runtimeEvidence = async () => {
       source,
     },
     strategies,
+    deployment,
     runtime,
   };
   const outPath = path.resolve(projectRoot, String(flags.out));
@@ -146,7 +176,7 @@ export const runtimeEvidence = async () => {
   const published = publishDir
     ? await publishRuntimeEvidenceBundle({
         publishRoot: path.resolve(projectRoot, publishDir),
-        deploymentId: String(flags.deployment),
+        deploymentId,
         userName: String(flags.user),
         startTime,
         endTime,
@@ -158,9 +188,11 @@ export const runtimeEvidence = async () => {
             (evaluation) => evaluation.runtimeLineage,
           ),
           ...evidence.trades.map((trade) => trade.runtimeLineage),
+          ...evidence.lineageScopes.map((scope) => scope.lineage),
         ]
           .filter((lineage) => lineage != null)
-          .map(runtimeLineageKey),
+          .map(runtimeLineageKey)
+          .filter((key, index, values) => values.indexOf(key) === index),
       })
     : null;
 

@@ -30,6 +30,31 @@ describe('runtime signal evaluation buffering', () => {
     incrHashFields.mockResolvedValue(undefined);
   });
 
+  it('binds evaluation identity to deployment and account', async () => {
+    const { buildRuntimeSignalEvaluationId } = await import(
+      '../lib/signals/evaluations'
+    );
+
+    expect(
+      buildRuntimeSignalEvaluationId({
+        strategyName: 'TrendShift',
+        symbol: 'BTCUSDT',
+        timestamp: 123,
+        runtimeVersion: 2,
+        deploymentId: 'production',
+        accountId: 'bybit-main',
+      }),
+    ).toBe('production:bybit-main:TrendShift:v2:BTCUSDT:123');
+    expect(
+      buildRuntimeSignalEvaluationId({
+        strategyName: 'TrendShift',
+        symbol: 'BTCUSDT',
+        timestamp: 123,
+        runtimeVersion: 2,
+      }),
+    ).toBe('TrendShift:v2:BTCUSDT:123');
+  });
+
   it('batches lineage and stats while preserving bounded timestamps', async () => {
     const { createRuntimeSignalEvaluationBuffer } = await import(
       '../lib/signals/evaluations'

@@ -169,6 +169,31 @@ describe('runtime lineage', () => {
     expect(lineage.maxLossValue).toBeNull();
   });
 
+  it('binds versioned lineage to exact strategy and runtime packages', async () => {
+    const lineage = await buildRuntimeLineage({
+      projectRoot: process.cwd(),
+      strategyName: 'DoubleTap',
+      version: 5,
+      strategyPackageVersion: '3.0.1',
+      runtimePackageVersion: '3.2.0',
+      config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
+    });
+
+    expect(runtimeLineageKey(lineage)).toBe('v2:5:3.0.1:3.2.0');
+    expect(
+      runtimeLineagesMatch(lineage, {
+        ...lineage,
+        strategyPackageVersion: '3.0.2',
+      }),
+    ).toBe(false);
+    expect(
+      runtimeLineagesMatch(lineage, {
+        ...lineage,
+        maxLossValue: 10,
+      }),
+    ).toBe(true);
+  });
+
   it('uses the same deterministic gate fingerprint as AI research', async () => {
     const runtime = await buildRuntimeLineage({
       projectRoot: process.cwd(),

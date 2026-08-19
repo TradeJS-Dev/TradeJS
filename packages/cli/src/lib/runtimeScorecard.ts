@@ -1,3 +1,6 @@
+import type { RuntimeLineage } from '@tradejs/types';
+import { runtimeLineageKey } from './runtimeLineage';
+
 type JsonRecord = Record<string, unknown>;
 
 export type RuntimeScorecardThresholds = {
@@ -48,6 +51,7 @@ const extractRuntimeRows = (artifact: unknown) => {
     evaluations: unwrapRows(runtime.evaluations, 'evaluation'),
     signals: unwrapRows(runtime.signals, 'signal'),
     trades: unwrapRows(runtime.trades, 'trade'),
+    lineageScopes: unwrapRows(runtime.lineageScopes, 'lineageScope'),
     statsBuckets: asArray(runtime.evaluationStatsBuckets)
       .map(asRecord)
       .filter((item): item is JsonRecord => item != null),
@@ -58,41 +62,80 @@ const buildRuntimeLineageSummary = (rows: {
   evaluations: JsonRecord[];
   signals: JsonRecord[];
   trades: JsonRecord[];
+  lineageScopes: JsonRecord[];
 }) => {
-  const lineageRows = [...rows.evaluations, ...rows.signals, ...rows.trades];
+  const lineageRows = [
+    ...rows.evaluations,
+    ...rows.signals,
+    ...rows.trades,
+    ...rows.lineageScopes.map((scope) => ({
+      runtimeLineage: scope.lineage,
+    })),
+  ];
   const lineages = lineageRows
     .map((row) => asRecord(row.runtimeLineage))
     .filter((lineage): lineage is JsonRecord => lineage != null);
   const identities = new Map<string, JsonRecord>();
   for (const lineage of lineages) {
-    const identity = {
-      compositionId: finiteString(lineage.compositionId),
-      gitSha: finiteString(lineage.gitSha),
-      gitDirty: typeof lineage.gitDirty === 'boolean' ? lineage.gitDirty : null,
-      gateFingerprint: finiteString(lineage.gateFingerprint),
-      configFingerprint: finiteString(lineage.configFingerprint),
-      contextFingerprint: finiteString(lineage.contextFingerprint),
-      maxLossValue: finiteNumber(lineage.maxLossValue),
-    };
+    const identity =
+      lineage.schemaVersion === 2
+        ? {
+            schemaVersion: 2,
+            version: finiteNumber(lineage.version),
+            strategyPackageVersion: finiteString(
+              lineage.strategyPackageVersion,
+            ),
+            runtimePackageVersion: finiteString(lineage.runtimePackageVersion),
+            maxLossValue: finiteNumber(lineage.maxLossValue),
+          }
+        : {
+            schemaVersion: 1,
+            compositionId: finiteString(lineage.compositionId),
+            gitSha: finiteString(lineage.gitSha),
+            gitDirty:
+              typeof lineage.gitDirty === 'boolean' ? lineage.gitDirty : null,
+            gateFingerprint: finiteString(lineage.gateFingerprint),
+            configFingerprint: finiteString(lineage.configFingerprint),
+            contextFingerprint: finiteString(lineage.contextFingerprint),
+            maxLossValue: finiteNumber(lineage.maxLossValue),
+          };
     identities.set(JSON.stringify(identity), identity);
   }
   const identity = identities.size === 1 ? [...identities.values()][0] : null;
-  const complete =
-    lineageRows.length > 0 &&
-    lineages.length === lineageRows.length &&
+  const schemaVersion = finiteNumber(identity?.schemaVersion);
+  const identityComplete =
+    lineages.length > 0 &&
     identity != null &&
-    identity.compositionId != null &&
-    identity.gitSha != null &&
-    identity.gitDirty === false &&
-    identity.gateFingerprint != null &&
-    identity.configFingerprint != null &&
-    identity.contextFingerprint != null &&
+    ((schemaVersion === 2 &&
+      finiteNumber(identity.version) != null &&
+      finiteString(identity.strategyPackageVersion) != null &&
+      finiteString(identity.runtimePackageVersion) != null) ||
+      (schemaVersion === 1 &&
+        identity.compositionId != null &&
+        identity.gitSha != null &&
+        identity.gitDirty === false &&
+        identity.gateFingerprint != null &&
+        identity.configFingerprint != null &&
+        identity.contextFingerprint != null)) &&
     identity.maxLossValue != null;
+  const coverageComplete =
+    lineageRows.length > 0 && lineages.length === lineageRows.length;
+  const complete = identityComplete && coverageComplete;
+  const lineageKey = identityComplete
+    ? runtimeLineageKey(identity as unknown as RuntimeLineage)
+    : null;
   return {
     complete,
+    identityComplete,
+    coverageComplete,
     conflicts: identities.size > 1,
     rows: lineageRows.length,
     rowsWithLineage: lineages.length,
+    schemaVersion,
+    lineageKey,
+    version: finiteNumber(identity?.version),
+    strategyPackageVersion: finiteString(identity?.strategyPackageVersion),
+    runtimePackageVersion: finiteString(identity?.runtimePackageVersion),
     compositionId: finiteString(identity?.compositionId),
     gitSha: finiteString(identity?.gitSha),
     gitDirty:
@@ -103,6 +146,37 @@ const buildRuntimeLineageSummary = (rows: {
     maxLossValue: finiteNumber(identity?.maxLossValue),
   };
 };
+
+const belongsToRuntimeLineage = (
+  row: JsonRecord,
+  summary: ReturnType<typeof buildRuntimeLineageSummary>,
+) => {
+  if (!summary.identityComplete || !summary.lineageKey) return false;
+  const lineage = asRecord(row.runtimeLineage);
+  if (!lineage) return false;
+  return (
+    runtimeLineageKey(lineage as unknown as RuntimeLineage) ===
+      summary.lineageKey &&
+    finiteNumber(lineage.maxLossValue) === summary.maxLossValue
+  );
+};
+
+const runtimeDeploymentBinding = (artifact: unknown) => {
+  const deployment = asRecord(asRecord(artifact)?.deployment);
+  return {
+    deploymentId: finiteString(deployment?.id),
+    accountId: finiteString(deployment?.accountId),
+  };
+};
+
+const belongsToRuntimeDeployment = (
+  row: JsonRecord,
+  binding: ReturnType<typeof runtimeDeploymentBinding>,
+) =>
+  binding.deploymentId == null && binding.accountId == null
+    ? true
+    : finiteString(row.deploymentId) === binding.deploymentId &&
+      finiteString(row.accountId) === binding.accountId;
 
 const belongsToStrategy = (row: JsonRecord, strategy: string | null) =>
   strategy == null || finiteString(row.strategy) === strategy;
@@ -135,6 +209,9 @@ const filterArtifactByStrategy = (
           asRecord(asRecord(item)?.trade) ?? asRecord(item) ?? {},
           strategy,
         ),
+      ),
+      lineageScopes: asArray(runtime.lineageScopes).filter((item) =>
+        belongsToStrategy(asRecord(item) ?? {}, strategy),
       ),
       evaluationStatsBuckets: asArray(runtime.evaluationStatsBuckets).filter(
         (item) => belongsToStrategy(asRecord(item) ?? {}, strategy),
@@ -366,6 +443,7 @@ export const buildRuntimeScorecard = ({
   const scopedHistoryArtifacts = historyRuntimeArtifacts.map((artifact) =>
     filterArtifactByStrategy(artifact, strategy),
   );
+  const deploymentBinding = runtimeDeploymentBinding(runtimeArtifact);
   const rows = extractRuntimeRows(scopedRuntimeArtifact);
   const runtimeLineage = buildRuntimeLineageSummary(rows);
   const window = runtimeWindow(runtimeArtifact);
@@ -454,6 +532,16 @@ export const buildRuntimeScorecard = ({
     ...scopedHistoryArtifacts,
     scopedRuntimeArtifact,
   ]);
+  const comparableHistoryTrades = historyTrades.filter(
+    (trade) =>
+      belongsToRuntimeDeployment(trade, deploymentBinding) &&
+      belongsToRuntimeLineage(trade, runtimeLineage),
+  );
+  const comparableCurrentClosedTrades = currentClosedTrades.filter(
+    (trade) =>
+      belongsToRuntimeDeployment(trade, deploymentBinding) &&
+      belongsToRuntimeLineage(trade, runtimeLineage),
+  );
   const currentDistributions = buildDistributions(rows);
   const previousArtifact = scopedHistoryArtifacts
     .map((artifact) => ({ artifact, window: runtimeWindow(artifact) }))
@@ -471,7 +559,7 @@ export const buildRuntimeScorecard = ({
     : null;
   const rolling = [7, 30, 90].map((days) =>
     buildRollingPerformance({
-      trades: [...historyTrades],
+      trades: [...comparableHistoryTrades],
       anchorTime: endTime,
       days,
     }),
@@ -488,6 +576,13 @@ export const buildRuntimeScorecard = ({
       code: 'LINEAGE_NOT_COMPARABLE',
       severity: 'blocking',
       message: lineageReason,
+    });
+  }
+  if (!runtimeLineage.complete) {
+    reactions.push({
+      code: 'RUNTIME_LINEAGE_INCOMPLETE',
+      severity: 'blocking',
+      message: 'Runtime rows do not share one complete composition lineage.',
     });
   }
   if (parityRatio != null && parityRatio < thresholds.minimumParityRatio) {
@@ -540,6 +635,7 @@ export const buildRuntimeScorecard = ({
     generatedAt,
     window: { startTime, endTime },
     strategy,
+    deployment: deploymentBinding,
     lineage: runtimeLineage,
     promotionStatus,
     thresholds,
@@ -593,16 +689,25 @@ export const buildRuntimeScorecard = ({
       ).length,
       fills: rows.trades.length,
       closedTrades: currentClosedTrades.length,
+      comparableClosedTrades: comparableCurrentClosedTrades.length,
+      nonComparableClosedTrades:
+        currentClosedTrades.length - comparableCurrentClosedTrades.length,
     },
     realized: {
       pnl: sum(
-        currentClosedTrades.map((trade) => finiteNumber(trade.closedPnl)),
+        comparableCurrentClosedTrades.map((trade) =>
+          finiteNumber(trade.closedPnl),
+        ),
       ),
       fees: sum(
-        currentClosedTrades.map((trade) => finiteNumber(trade.totalFee)),
+        comparableCurrentClosedTrades.map((trade) =>
+          finiteNumber(trade.totalFee),
+        ),
       ),
       funding: sum(
-        currentClosedTrades.map((trade) => finiteNumber(trade.fundingFee)),
+        comparableCurrentClosedTrades.map((trade) =>
+          finiteNumber(trade.fundingFee),
+        ),
       ),
     },
     gateComparison: {

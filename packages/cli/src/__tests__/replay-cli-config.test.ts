@@ -20,6 +20,8 @@ describe('replay cli config', () => {
       '60',
       '--tickers',
       'BTCUSDT',
+      '--deployment',
+      'production',
     ];
 
     const module = await import('../lib/replay/cliConfig');
@@ -27,6 +29,7 @@ describe('replay cli config', () => {
     expect(module.replayFlags.days).toBe(7);
     expect(module.replayInterval).toBe('60');
     expect(module.replayFlags.tickers).toBe('BTCUSDT');
+    expect(module.replayDeploymentId).toBe('production');
   });
 
   it('rejects inherited backtest worker flags', async () => {
