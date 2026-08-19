@@ -53,6 +53,7 @@ export const StrategySnapshotCard = ({
     snapshotOrders,
     sourceLabel,
     sourceValue,
+    datasetCreatedAtLabel,
     tagsLabel,
     displaySubtitle,
     metrics,
@@ -130,6 +131,17 @@ export const StrategySnapshotCard = ({
             {sourceValue}
           </Text>
         </Flex>
+
+        {datasetCreatedAtLabel ? (
+          <Flex gap="1">
+            <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+              exported:
+            </Text>
+            <Text fontSize="sm" color="gray.300" mt={1}>
+              {datasetCreatedAtLabel}
+            </Text>
+          </Flex>
+        ) : null}
 
         {tagsLabel ? (
           <Box

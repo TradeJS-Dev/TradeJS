@@ -7,6 +7,7 @@ import type {
 } from '@tradejs/types';
 import { toFileToken } from '@tradejs/infra/ai';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
+import { getAvailableStrategyNames } from '@tradejs/node/registry';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,46 @@ const normalizeStrategyChartCard = (
   orders: Array.isArray(card.orders) ? card.orders : [],
 });
 
+const normalizeLegacyStrategyNames = async (cards: StrategyChartSnapshot[]) => {
+  let availableStrategyNames: string[] = [];
+
+  try {
+    availableStrategyNames = await getAvailableStrategyNames(getProjectRoot());
+  } catch {
+    return cards;
+  }
+
+  const canonicalNameByToken = new Map(
+    availableStrategyNames.map((strategyName) => [
+      toFileToken(strategyName),
+      strategyName,
+    ]),
+  );
+
+  return cards.map((card) => {
+    const canonicalName = canonicalNameByToken.get(
+      toFileToken(card.strategyName),
+    );
+    if (!canonicalName || canonicalName === card.strategyName) {
+      return card;
+    }
+
+    const titlePrefix = `${card.strategyName} · `;
+    const title =
+      card.title === card.strategyName
+        ? canonicalName
+        : card.title.startsWith(titlePrefix)
+          ? `${canonicalName}${card.title.slice(card.strategyName.length)}`
+          : card.title;
+
+    return {
+      ...card,
+      strategyName: canonicalName,
+      title,
+    };
+  });
+};
+
 export async function GET() {
   const userName = await getCurrentUserName();
   if (!userName) {
@@ -111,7 +152,7 @@ export async function GET() {
   }
 
   const keys = await getKeys(redisKeys.strategyChartCards(userName, 'ai'));
-  const cards = (
+  const storedCards = (
     await Promise.all(
       keys.map(
         (key) => getData(key, null) as Promise<StrategyChartSnapshot | null>,
@@ -119,13 +160,13 @@ export async function GET() {
     )
   )
     .filter((card): card is StrategyChartSnapshot => Boolean(card))
-    .map(normalizeStrategyChartCard)
-    .sort(
-      (left, right) =>
-        resolveTotalPnl(right) - resolveTotalPnl(left) ||
-        right.generatedAt - left.generatedAt ||
-        left.title.localeCompare(right.title),
-    );
+    .map(normalizeStrategyChartCard);
+  const cards = (await normalizeLegacyStrategyNames(storedCards)).sort(
+    (left, right) =>
+      resolveTotalPnl(right) - resolveTotalPnl(left) ||
+      right.generatedAt - left.generatedAt ||
+      left.title.localeCompare(right.title),
+  );
   const strategies = await attachLegacyDatasetIds(cards);
 
   const data: StrategyChartsSnapshotResponse = {

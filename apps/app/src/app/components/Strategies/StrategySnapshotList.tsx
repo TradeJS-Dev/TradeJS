@@ -7,7 +7,11 @@ import { Box } from '@chakra-ui/react';
 import type { StrategyChartSnapshot } from '@tradejs/types';
 import { StrategySnapshotCard } from './StrategySnapshotCard';
 
-const SNAPSHOT_CARD_ROW_HEIGHT = 620;
+const REPLAY_SNAPSHOT_CARD_ROW_HEIGHT = 620;
+const AI_SNAPSHOT_CARD_ROW_HEIGHT = 548;
+
+export const getSnapshotCardRowHeight = (mode: 'replay' | 'ai') =>
+  mode === 'ai' ? AI_SNAPSHOT_CARD_ROW_HEIGHT : REPLAY_SNAPSHOT_CARD_ROW_HEIGHT;
 
 interface StrategySnapshotListProps {
   strategies: StrategyChartSnapshot[];
@@ -70,7 +74,7 @@ export const StrategySnapshotList = ({
           height={height}
           width={width}
           itemCount={strategies.length}
-          itemSize={SNAPSHOT_CARD_ROW_HEIGHT}
+          itemSize={getSnapshotCardRowHeight(mode)}
           overscanCount={overscan}
           itemKey={itemKey}
         >

@@ -31,6 +31,27 @@ export {
   type SymbolPnlRank,
 } from './StrategySnapshotCard.ranking.presenter';
 
+const formatDatasetCreatedAt = (datasetId?: string) => {
+  if (!datasetId || !/^\d{12,}$/.test(datasetId)) {
+    return '';
+  }
+
+  const timestamp = Number(datasetId);
+  if (!Number.isSafeInteger(timestamp)) {
+    return '';
+  }
+
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+};
+
 export const buildStrategySnapshotCardViewModel = (
   snapshot: StrategyChartSnapshot,
   mode: 'replay' | 'ai',
@@ -88,6 +109,8 @@ export const buildStrategySnapshotCardViewModel = (
     sourceLabel: mode === 'ai' && snapshot.datasetId ? 'dataset:' : 'symbols:',
     sourceValue:
       mode === 'ai' && snapshot.datasetId ? snapshot.datasetId : symbolsLabel,
+    datasetCreatedAtLabel:
+      mode === 'ai' ? formatDatasetCreatedAt(snapshot.datasetId) : '',
     tagsLabel: snapshot.tags?.join(' · ') ?? '',
     displaySubtitle:
       mode === 'ai'

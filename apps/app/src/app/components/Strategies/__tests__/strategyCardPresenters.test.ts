@@ -13,7 +13,7 @@ describe('strategy card presenters', () => {
       strategyName: 'TrendLine',
       title: 'TrendLine q3+',
       subtitle: 'q3+ · validation',
-      datasetId: 'dataset-1',
+      datasetId: '1700000000000',
       symbols: ['BTCUSDT', 'ETHUSDT'],
       orderLog: [
         [1, 100],
@@ -39,6 +39,7 @@ describe('strategy card presenters', () => {
     const viewModel = buildStrategySnapshotCardViewModel(snapshot, 'ai');
 
     expect(viewModel.sourceLabel).toBe('dataset:');
+    expect(viewModel.datasetCreatedAtLabel).toMatch(/2023/);
     expect(viewModel.displaySubtitle).toBe('validation');
     expect(viewModel.snapshotOrders).toHaveLength(1);
     expect(viewModel.topSymbolPnlRanking[0]).toMatchObject({

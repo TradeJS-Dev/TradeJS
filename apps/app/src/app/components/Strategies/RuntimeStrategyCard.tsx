@@ -134,23 +134,6 @@ export const RuntimeStrategyCard = ({
         <Badge colorPalette="cyan" variant="outline">
           TF: {strategy.interval}m
         </Badge>
-        <Badge colorPalette="gray" variant="outline">
-          version: v{strategy.version}
-        </Badge>
-        {strategy.accountId ? (
-          <Badge colorPalette="purple" variant="outline">
-            account: {strategy.accountLabel ?? strategy.accountId}
-          </Badge>
-        ) : null}
-        <Badge colorPalette="orange" variant="outline">
-          deployment: {strategy.deploymentId}
-        </Badge>
-        {strategy.policyProfileId ? (
-          <Badge colorPalette="cyan" variant="outline">
-            policy: {strategy.policyProfileId}
-          </Badge>
-        ) : null}
-
         <Flex gap="1">
           <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
             connector:
@@ -244,6 +227,7 @@ export const RuntimeStrategyCard = ({
       <RuntimeStrategyConfigDrawer
         open={configOpen}
         strategy={strategy}
+        provider={provider}
         onOpenChange={setConfigOpen}
       />
 
