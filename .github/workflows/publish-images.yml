@@ -119,7 +119,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          YARN_NPM_PUBLISH_PROVENANCE: 'true'
+          # Candidate provenance is the validated workflow run + gitHead. Sigstore
+          # can retain an entry after npm rejects the publish, making an exact
+          # retry fail permanently with a transparency-log 409.
+          YARN_NPM_PUBLISH_PROVENANCE: 'false'
         run: bash ./bin/publish-packages.sh --skip-checks --tag beta-candidate
       - name: Wait for beta registry consistency
         env:

@@ -11,6 +11,7 @@ describe('npm release workflows', () => {
 
     expect(workflow).toContain('resolveBetaVersion');
     expect(workflow).toContain('--tag beta-candidate');
+    expect(workflow).toContain("YARN_NPM_PUBLISH_PROVENANCE: 'false'");
     expect(workflow).toContain('npm dist-tag add');
     expect(workflow.indexOf('beta-runtime-smoke.sh')).toBeLessThan(
       workflow.indexOf('npm dist-tag add'),
