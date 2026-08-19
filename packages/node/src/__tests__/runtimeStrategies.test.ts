@@ -59,7 +59,7 @@ describe('Git-owned runtime strategy resolver', () => {
     jest.doMock('@tradejs/infra/tradingAccounts', () => ({
       resolveTradingAccount: jest.fn(async () => ({ id: 'bybit-main' })),
     }));
-    jest.doMock('../strategy/manifests', () => ({
+    jest.doMock('../strategy', () => ({
       getStrategyCreator: jest.fn(async () => jest.fn()),
       getStrategyPluginSource: jest.fn(
         async () => '@tradejs/strategy-double-tap',
@@ -213,7 +213,7 @@ describe('Git-owned runtime strategy resolver', () => {
         throw new Error('not found');
       }),
     }));
-    jest.doMock('../strategy/manifests', () => ({
+    jest.doMock('../strategy', () => ({
       getStrategyCreator: jest.fn(async () => jest.fn()),
       getStrategyPluginSource: jest.fn(
         async () => './src/plugins/sandboxStrategy.plugin.ts',

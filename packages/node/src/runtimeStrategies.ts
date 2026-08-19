@@ -13,10 +13,7 @@ import type {
   StrategyCreator,
   TradejsRuntimeDeclaration,
 } from '@tradejs/types';
-import {
-  getStrategyCreator,
-  getStrategyPluginSource,
-} from './strategy/manifests';
+import { getStrategyCreator, getStrategyPluginSource } from './strategy';
 import { loadTradejsConfig } from './tradejsConfig';
 
 export interface ResolvedRuntimeStrategy {

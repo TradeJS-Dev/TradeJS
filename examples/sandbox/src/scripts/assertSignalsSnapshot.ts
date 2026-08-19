@@ -194,10 +194,7 @@ const run = async () => {
       heartbeat.deploymentId,
       SANDBOX_E2E_DEPLOYMENT,
     );
-    assertTrue(
-      'heartbeat status',
-      ['completed', 'stopped'].includes(String(heartbeat.status)),
-    );
+    assertEqual('heartbeat status', heartbeat.status, 'running');
 
     assertEqual(
       'runtime signal bucket count',
