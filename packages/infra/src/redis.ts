@@ -298,8 +298,75 @@ export const getData = async (
   }
 };
 
+const requireReadyRedis = async (): Promise<Redis> => {
+  if (redisUnavailable) {
+    throw new Error('Redis is unavailable');
+  }
+  const redis = await getReadyRedis();
+  if (!redis) {
+    throw new Error('Redis is unavailable');
+  }
+  return redis;
+};
+
+const parseJsonStrict = (key: string, raw: string): unknown => {
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Invalid JSON stored at ${key}`, { cause: error });
+  }
+};
+
+/**
+ * Reads durable operational state without treating a Redis outage or malformed
+ * JSON as a missing key. Use this for fail-closed controls, not cache reads.
+ */
+export const getDataStrict = async (key: string): Promise<unknown | null> => {
+  const redis = await requireReadyRedis();
+  try {
+    const raw = toResultString(await redis.call('JSON.GET', key));
+    return raw == null ? null : parseJsonStrict(key, raw);
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+      throw error;
+    }
+    if (error instanceof Error && error.message.startsWith('Invalid JSON')) {
+      throw error;
+    }
+    logger.log(
+      'error',
+      'failed strict JSON.GET %s: %s (fallback to GET)',
+      key,
+      String(error),
+    );
+  }
+
+  try {
+    const raw = await redis.get(key);
+    return raw == null ? null : parseJsonStrict(key, raw);
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+    }
+    throw error;
+  }
+};
+
 export const delKey = async (key: string): Promise<boolean> => {
   return delKeyWithOptions(key);
+};
+
+export const delKeyStrict = async (key: string): Promise<boolean> => {
+  const redis = await requireReadyRedis();
+  try {
+    return (await redis.del(key)) === 1;
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+    }
+    throw error;
+  }
 };
 
 export class RedisWriteBlockedError extends Error {
@@ -382,6 +449,48 @@ export const setData = async <T>(
       }
       logger.log('error', 'failed SET %s: %s', key, String(e2));
     }
+  }
+};
+
+/** Writes durable operational state and surfaces every write failure. */
+export const setDataStrict = async <T>(
+  key: string,
+  data: T,
+  options: Options = {},
+): Promise<void> => {
+  const { expire } = { ...DEFAULT_OPTIONS, ...options };
+  const redis = await requireReadyRedis();
+  const value = toJson(data);
+  try {
+    await redis.call('JSON.SET', key, '$', value);
+    if (expire) {
+      await redis.expire(key, expire);
+    }
+    return;
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+      throw error;
+    }
+    logger.log(
+      'error',
+      'failed strict JSON.SET %s: %s (fallback to SET)',
+      key,
+      String(error),
+    );
+  }
+
+  try {
+    if (expire) {
+      await redis.set(key, value, 'EX', expire);
+    } else {
+      await redis.set(key, value);
+    }
+  } catch (error) {
+    if (error instanceof Error && isRedisConnectivityError(error)) {
+      markRedisUnavailable(error);
+    }
+    throw error;
   }
 };
 
@@ -660,12 +769,9 @@ export const redisKeys = {
   tradingAccounts: (userName: string) => `users:${userName}:trading-accounts:`,
   tradingAccount: (userName: string, accountId: string) =>
     `users:${userName}:trading-accounts:${accountId}`,
-  runtimeDeployments: (userName: string) =>
-    `users:${userName}:runtime:deployments:`,
-  runtimeDeployment: (userName: string, deploymentId: string) =>
-    `users:${userName}:runtime:deployments:${deploymentId}`,
   runtimeDeploymentHeartbeat: (userName: string, deploymentId: string) =>
     `users:${userName}:runtime:deployments:${deploymentId}:heartbeat`,
+  runtimeControls: (userName: string) => `users:${userName}:runtime:controls`,
   bots: (userName: string) => `users:${userName}:bots`,
   botsPrefix: () => 'users:',
   bot: (userName: string, botId: string) => `users:${userName}:bots:${botId}`,
@@ -677,16 +783,6 @@ export const redisKeys = {
     strategyName: string,
     configId = 'config',
   ) => `users:${userName}:strategies:${strategyName}:${configId}`,
-  runtimeStrategyReleases: (userName: string, strategyName: string) =>
-    `users:${userName}:strategies:${strategyName}:releases:`,
-  runtimeStrategyRelease: (
-    userName: string,
-    strategyName: string,
-    releaseVersion: number,
-  ) =>
-    `users:${userName}:strategies:${strategyName}:releases:${releaseVersion}`,
-  runtimeStrategyReleaseSequence: (userName: string, strategyName: string) =>
-    `users:${userName}:strategies:${strategyName}:release-seq`,
   runtimeStrategyControlEvents: (userName: string) =>
     `users:${userName}:runtime:strategy-control-events:`,
   runtimeStrategyControlEvent: (userName: string, eventId: string) =>

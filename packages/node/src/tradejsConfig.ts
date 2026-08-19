@@ -6,12 +6,14 @@ import {
   type TradejsConfigHooks,
 } from '@tradejs/core/config';
 import { logger } from '@tradejs/infra/logger';
+import type { TradejsRuntimeDeclaration } from '@tradejs/types';
 
 export interface TradejsProjectConfig {
   strategies?: string[];
   indicators?: string[];
   connectors?: string[];
   hooks?: TradejsConfigHooks;
+  runtime?: TradejsRuntimeDeclaration;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -70,12 +72,19 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
   const hooks = normalizeTradejsConfigHooks(
     config.hooks as TradejsConfigHooks | undefined,
   );
+  const runtime =
+    config.runtime &&
+    typeof config.runtime === 'object' &&
+    !Array.isArray(config.runtime)
+      ? (config.runtime as TradejsRuntimeDeclaration)
+      : undefined;
 
   return {
     strategies,
     indicators,
     connectors,
     ...(hooks ? { hooks } : {}),
+    ...(runtime ? { runtime } : {}),
   };
 };
 

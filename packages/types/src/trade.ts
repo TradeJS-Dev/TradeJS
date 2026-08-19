@@ -813,7 +813,7 @@ export interface Signal {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   runtimeLineage?: RuntimeLineage;
   direction: Direction;
   timestamp: number;
@@ -859,7 +859,7 @@ export interface RuntimeSignalEvaluationRecord {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   runtimeLineage?: RuntimeLineage;
   symbol: string;
   interval: Interval;
@@ -920,7 +920,7 @@ export interface LegacyRuntimeLineage {
 
 export interface VersionedRuntimeLineage {
   schemaVersion: 2;
-  releaseVersion: number;
+  version: number;
   strategyPackageVersion?: string | null;
   runtimePackageVersion?: string | null;
   maxLossValue?: number | null;
@@ -951,7 +951,7 @@ export interface RuntimeTradeRecord {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   symbol: string;
   interval?: Interval;
   direction: Direction;

@@ -237,6 +237,45 @@ describe('redis utils', () => {
     await expect(redisModule.getData('k3', null)).resolves.toEqual({ ok: 2 });
   });
 
+  it('reads and writes operational state strictly', async () => {
+    const { redisModule, redisClient } = await setup();
+
+    redisClient.call.mockResolvedValueOnce(null);
+    await expect(redisModule.getDataStrict('missing')).resolves.toBeNull();
+
+    redisClient.call.mockResolvedValueOnce('{bad-json');
+    await expect(redisModule.getDataStrict('malformed')).rejects.toThrow(
+      'Invalid JSON stored at malformed',
+    );
+    expect(redisClient.del).not.toHaveBeenCalled();
+
+    redisClient.call.mockRejectedValueOnce(new Error('no-json-module'));
+    redisClient.get.mockResolvedValueOnce('{"paused":true}');
+    await expect(redisModule.getDataStrict('fallback')).resolves.toEqual({
+      paused: true,
+    });
+
+    redisClient.call.mockResolvedValueOnce('OK');
+    await expect(
+      redisModule.setDataStrict('controls', { paused: true }, { expire: 0 }),
+    ).resolves.toBeUndefined();
+
+    redisClient.del.mockResolvedValueOnce(1);
+    await expect(redisModule.delKeyStrict('controls')).resolves.toBe(true);
+  });
+
+  it('does not hide strict operational-state connectivity failures', async () => {
+    const { redisModule, redisClient } = await setup();
+    redisClient.call.mockRejectedValueOnce(new Error('read ECONNRESET'));
+
+    await expect(redisModule.getDataStrict('controls')).rejects.toThrow(
+      'ECONNRESET',
+    );
+    await expect(redisModule.getDataStrict('controls')).rejects.toThrow(
+      'Redis is unavailable',
+    );
+  });
+
   it('supports delKey/delKeyWithOptions and raises on MISCONF when requested', async () => {
     const { redisModule, redisClient, consoleErrorMock } = await setup();
 

@@ -88,7 +88,7 @@ export const recordRuntimeTradeOpen = async (params: {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   runtimeLineage?: RuntimeLineage;
 }) => {
   const { userName } = params;

@@ -81,34 +81,34 @@ logic identity or risk scale cannot support economic comparison.
 _Avoid_: Config hash, current strategy name, same code approximately
 
 **Portable Composition Handoff**:
-The secret-free local release output that carries one Strategy Composition to
-the separate runtime server. Deployment/account ids and credentials are not
-part of the composition; the server binds them separately to a Runtime Strategy
-Release.
+The secret-free local research output used to prepare one committed Project
+runtime declaration. Credentials are never part of the handoff.
 _Avoid_: Missing local deployment means production is blocked, copy server keys
-into research evidence, ignore activation state
+into research evidence, edit production Redis config
 
-**Runtime Strategy Release**:
-An immutable, per-strategy numbered runtime configuration that names the
-strategy and runtime package versions with which it is compatible.
-_Avoid_: Config id, current config, deployment config
+**Runtime Strategy Declaration**:
+The Git-owned `{ version, enabled, config }` entry for one strategy under a
+`tradejs.config.ts` runtime deployment. The version is an explicitly incremented
+positive integer for that strategy; the exact npm version comes from the same
+Project image manifest.
+_Avoid_: Redis release, config id, package version duplicated as runtime version
 
-The only production strategy-config record. Runtime does not read mutable
-`users:<user>:strategies:<Strategy>:<configId>` values, symbol-result overlays,
-drafts, embedded deployment config, or legacy account credentials.
+This is the only production strategy-config record. Runtime never reads
+`users:<user>:strategies:*`, result overlays, drafts, embedded Redis deployment
+config, or research evidence to select execution settings.
 
-**Deployment Binding**:
-The operational association of a Runtime Strategy Release with a trading
-account and connector target.
-Its strategy reference is exactly `{ strategyName, releaseVersion,
-controlState }`; interval, universe, policy, and risk remain release-owned.
-_Avoid_: Strategy config, release contents, scope defaults
+**Runtime Deployment Declaration**:
+The Git-owned association of strategy declarations with a connector, account
+id, optional ticker/asset-class scope, and deployment enabled state.
+_Avoid_: Redis deployment document, duplicated strategy config
 
-**Entry Control State**:
-The operational active-or-entries-paused state of one Deployment Binding;
-pausing entries does not suspend management of existing positions.
-It is always explicit and never defaults to active.
-_Avoid_: Enabled config, disabled strategy, missing means active
+**Entry Pause Override**:
+The only mutable runtime control. `users:<user>:runtime:controls` is optional;
+absence means no manual overrides. A pause stores only an `entriesPaused: true`
+override, while resume removes it and deletes an empty controls key. Pausing
+entries does not suspend management of existing positions. Invalid controls or
+unavailable Redis fail closed.
+_Avoid_: Mutable config, explicit active record, missing field is an error
 
 **Runtime Package Manifest**:
 The immutable inventory of exact TradeJS and strategy package versions in one

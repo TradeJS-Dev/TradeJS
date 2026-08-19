@@ -3,7 +3,7 @@ import {
   deleteTradingAccount,
   getTradingAccount,
 } from '@tradejs/infra/tradingAccounts';
-import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
+import { listRuntimeDeployments } from '@tradejs/node/runtimeStrategies';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const DELETE = async (
@@ -19,9 +19,11 @@ export const DELETE = async (
   if (!account) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });
   }
-  const referencedBy = (await listRuntimeDeployments(userName)).filter(
-    (deployment) => deployment.accountId === account.id,
-  );
+  const projectRoot =
+    String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+  const referencedBy = (
+    await listRuntimeDeployments({ userName, projectRoot })
+  ).filter((deployment) => deployment.accountId === account.id);
   if (referencedBy.length) {
     return NextResponse.json(
       {

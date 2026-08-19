@@ -142,7 +142,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     deploymentId: requestedDeploymentId,
     policyProfileId,
     runtimeConfigId,
-    runtimeReleaseVersion,
+    runtimeVersion,
     entriesPaused = false,
     runtimeLineage,
     runtimeConfigSnapshot,
@@ -1031,8 +1031,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             signal.signalId = `${signal.signalId}:${runtimeConfigId}`;
           }
         }
-        if (runtimeReleaseVersion) {
-          signal.runtimeReleaseVersion = runtimeReleaseVersion;
+        if (runtimeVersion) {
+          signal.runtimeVersion = runtimeVersion;
         }
         if (decisionHookCtx.policyProfileId) {
           signal.policyProfileId = decisionHookCtx.policyProfileId;
@@ -1151,7 +1151,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (signal) {
           signal.orderStatus = 'skipped';
           signal.orderSkipReason = skipReason;
-          signal.runtimeReleaseVersion = runtimeReleaseVersion;
+          signal.runtimeVersion = runtimeVersion;
         }
         return signal ?? skipReason;
       }

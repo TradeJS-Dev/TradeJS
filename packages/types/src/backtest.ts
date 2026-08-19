@@ -126,7 +126,7 @@ export interface StrategyCreatorParams {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   entriesPaused?: boolean;
   runtimeLineage?: RuntimeLineage;
   runtimeConfigSnapshot?: RuntimeStrategyConfigSnapshot;

@@ -239,7 +239,7 @@ type BuildRuntimeLineageParams = {
   projectRoot: string;
   strategyName: string;
   compositionId?: string | null;
-  releaseVersion?: number;
+  version?: number;
   strategyPackageVersion?: string | null;
   runtimePackageVersion?: string | null;
   config: unknown;
@@ -248,10 +248,10 @@ type BuildRuntimeLineageParams = {
 };
 
 export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & { releaseVersion: number },
+  params: BuildRuntimeLineageParams & { version: number },
 ): Promise<VersionedRuntimeLineage>;
 export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & { releaseVersion?: undefined },
+  params: BuildRuntimeLineageParams & { version?: undefined },
 ): Promise<LegacyRuntimeLineage>;
 export function buildRuntimeLineage(
   params: BuildRuntimeLineageParams,
@@ -260,20 +260,20 @@ export async function buildRuntimeLineage({
   projectRoot,
   strategyName,
   compositionId,
-  releaseVersion,
+  version,
   strategyPackageVersion,
   runtimePackageVersion,
   config,
   runContext,
   env = process.env,
 }: BuildRuntimeLineageParams): Promise<RuntimeLineage> {
-  if (releaseVersion != null) {
-    if (!Number.isSafeInteger(releaseVersion) || releaseVersion <= 0) {
-      throw new Error(`Invalid runtime releaseVersion: ${releaseVersion}`);
+  if (version != null) {
+    if (!Number.isSafeInteger(version) || version <= 0) {
+      throw new Error(`Invalid runtime strategy version: ${version}`);
     }
     return {
       schemaVersion: 2,
-      releaseVersion,
+      version,
       strategyPackageVersion,
       runtimePackageVersion,
       maxLossValue: resolveRuntimeMaxLossValue(config),
@@ -327,7 +327,7 @@ export async function buildRuntimeLineage({
 
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
   lineage.schemaVersion === 2
-    ? ['v2', lineage.releaseVersion].join(':')
+    ? ['v2', lineage.version].join(':')
     : [
         lineage.schemaVersion,
         lineage.compositionId ?? 'unbound-composition',

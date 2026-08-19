@@ -64,6 +64,45 @@ describe('tradejsConfig utils', () => {
     );
   });
 
+  it('loads the Git-owned runtime declaration without translating it to Redis releases', async () => {
+    const cwd = createTempDir();
+    fs.writeFileSync(
+      path.join(cwd, 'tradejs.config.ts'),
+      `export default {
+  runtime: {
+    deployments: {
+      production: {
+        connectorName: 'bybit',
+        accountId: 'bybit-default',
+        strategies: {
+          DoubleTap: {
+            version: 4,
+            enabled: true,
+            config: { INTERVAL: '15', UNIVERSE: 'crypto', MAX_LOSS_VALUE: 1 }
+          }
+        }
+      }
+    }
+  }
+};`,
+      'utf8',
+    );
+
+    const config = await loadTradejsConfig(cwd);
+
+    expect(
+      config.runtime?.deployments.production?.strategies.DoubleTap,
+    ).toEqual({
+      version: 4,
+      enabled: true,
+      config: {
+        INTERVAL: '15',
+        UNIVERSE: 'crypto',
+        MAX_LOSS_VALUE: 1,
+      },
+    });
+  });
+
   it('loads .ts config when tsconfig enables resolvePackageJsonImports', async () => {
     const cwd = createTempDir();
     const configPath = path.join(cwd, 'tradejs.config.ts');

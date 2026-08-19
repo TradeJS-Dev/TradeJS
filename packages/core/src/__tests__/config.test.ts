@@ -79,3 +79,31 @@ describe('defineConfig hooks', () => {
     });
   });
 });
+
+describe('defineConfig runtime declarations', () => {
+  it('keeps one Git-owned deployment declaration without Redis release fields', () => {
+    const runtime = {
+      deployments: {
+        production: {
+          connectorName: 'bybit',
+          accountId: 'bybit-default',
+          strategies: {
+            DoubleTap: {
+              version: 4,
+              enabled: true,
+              config: {
+                INTERVAL: '15',
+                UNIVERSE: 'crypto',
+                MAX_LOSS_VALUE: 1,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const config = defineConfig({ runtime } as any);
+
+    expect(config.runtime).toEqual(runtime);
+  });
+});

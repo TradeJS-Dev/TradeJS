@@ -1,81 +1,55 @@
 ---
 name: save-strategy-config-from-backtest
-description: Save a TradeJS runtime strategy config in Redis from an existing Redis backtest config grid. Use when the user asks to create, copy, promote, or save a users strategies config key from a backtest config such as Strategy:ai, Strategy:research, or another users backtests configs entry.
+description: Promote a TradeJS backtest config grid from research Redis into the Git-owned runtime declaration in TradeJS-Project tradejs.config.ts. Use when the user asks to copy, promote, or save a backtest candidate for runtime or forward testing.
 ---
 
-# Save Strategy Config From Backtest
+# Promote Strategy Config From Backtest
 
-## Repository roots
+## Repository boundary
 
-Run this skill from `/Users/aleksnick/dev/tradejs/tradejs-project`. Treat that
-directory as `PROJECT_CWD`; it owns the local Docker Compose/Redis environment
-and the project scripts. Use `TRADEJS_SOURCE_REPOSITORY_ROOT` only when source
-code or Git lineage must be inspected.
+Run from `/Users/aleksnick/dev/tradejs/tradejs-project`. This repository owns
+`tradejs.config.ts`, the exact package dependencies, and the runtime image.
+Research Redis is only the source of the backtest candidate; production Redis
+must never receive strategy config, deployment documents, or version pointers.
 
 ## Workflow
 
-1. Resolve inputs:
-   - user: default `root` unless specified
-   - strategy: exact strategy name, e.g. `LiquidityZones`
-   - source config: usually `<Strategy>:ai`
-   - target key: `users:<user>:strategies:<Strategy>:config`
+1. Resolve the exact user, strategy, source backtest config, target deployment,
+   and intended risk. Default the research user to `root`, but never guess a
+   production account or deployment.
+2. Read the source grid from
+   `users:<user>:backtests:configs:<Strategy>:<name>` with RedisJSON. A missing
+   source is a blocker; do not fall back to `users:*:strategies:*:config`.
+3. Convert the grid to one plain strategy config. Unwrap one-element arrays.
+   For multi-value arrays, resolve the exact winning result/config id or ask the
+   user; never choose a value arbitrarily. Preserve nested `LONG`, `SHORT`, AI,
+   detector, and risk objects.
+4. Remove operational/mode fields: `ENABLE`, `ACCOUNT_ID`, `DEPLOYMENT_ID`,
+   `ENV`, `MAKE_ORDERS`, `RECORD_RUNTIME_TRADES`, and `AI_REPLAY_ANALYSES`.
+   Keep `INTERVAL`, `UNIVERSE`, `POLICY_PROFILE_ID`, execution semantics, AI
+   mode, thresholds, and the complete strategy behavior config. For an
+   authorized micro-forward use `MAX_LOSS_VALUE=1`; otherwise preserve the
+   explicitly selected risk.
+5. Update the strategy entry under
+   `runtime.deployments.<deployment>.strategies.<Strategy>` in
+   `tradejs.config.ts`. Store exactly `{ version, enabled, config }`. Increment
+   the positive integer `version` when package behavior or effective config
+   changes; do not increment it for pause/resume. Keep account, connector,
+   tickers, and asset classes at deployment level.
+6. Ensure `package.json` and `yarn.lock` select the exact stable strategy
+   package containing the candidate. Normal development verifies a beta first;
+   committed Project and production use the protected stable promotion.
+7. Run Project validation and `yarn runtime-control verify`. A production-like
+   image smoke must prove that the config loads with no controls key, pause
+   creates only `users:<user>:runtime:controls`, and resume removes it.
 
-2. Read the backtest config grid from Redis:
+## Safety
 
-```bash
-docker exec inv-redis redis-cli JSON.GET 'users:<user>:backtests:configs:<Strategy>:<name>'
-```
-
-If `JSON.GET` returns null and the key is expected to exist, try `GET` as a fallback. If Redis container is not `inv-redis`, inspect `docker ps` or ask for the container name.
-
-3. Convert the backtest grid to a runtime strategy config:
-   - Backtest configs are grids: `{ FIELD: [value1, value2] }`.
-   - Runtime strategy config is a plain object: `{ FIELD: value }`.
-   - For every one-element array, unwrap to its only value.
-   - For multi-value arrays, do not pick arbitrarily. Use the best backtest result/config id if the user asked for best config; otherwise ask which value to promote.
-   - Preserve nested objects such as `LONG`, `SHORT`, detector configs, AI options, and risk parameters as normal values after unwrapping.
-
-4. Apply TradeJS runtime conventions before saving:
-   - Keep `ENABLE` true unless the user asked to save a disabled config.
-   - For `:ai` promotion, keep both `LONG` and `SHORT` enabled when present; let the AI gate filter sides later.
-   - For ordinary runtime promotion, if `MAX_LOSS_VALUE` exists, set/keep it
-     at `10`.
-   - When invoked from `$strategy-release` forward-test/micro-forward rollout,
-     override `MAX_LOSS_VALUE` to the release risk scale, normally `1`, and
-     record that this is a prospective micro-forward config.
-   - Preserve `AI_ENABLED`, `AI_MODE`, and `MIN_AI_QUALITY`; do not convert `AI_MODE=gate` results into `llm` expectations.
-   - Do not add backtest-only execution artifacts or outcome fields from results.
-   - Do not store grid arrays in runtime config.
-
-5. Save to Redis only after showing or checking the final object:
-
-```bash
-docker exec inv-redis redis-cli JSON.SET 'users:<user>:strategies:<Strategy>:config' '$' '<json>'
-```
-
-Use shell-safe quoting. For non-trivial JSON, write it to a temp file and pass it through `redis-cli -x JSON.SET ... '$'` or use a short Node script to avoid broken quotes.
-
-6. Verify immediately:
-
-```bash
-docker exec inv-redis redis-cli JSON.GET 'users:<user>:strategies:<Strategy>:config'
-```
-
-Confirm:
-
-- the saved config is an object, not a grid
-- `LONG` and `SHORT` are objects when the strategy uses side configs
-- `ENABLE` is not false unless intentional
-- `AI_ENABLED` / `AI_MODE` / `MIN_AI_QUALITY` match the intended runtime mode
-- no obvious backtest-only fields or arrays remain
-
-## Safety Notes
-
-- Never overwrite an existing runtime strategy config blindly. Read and compare it first; mention if the save replaces an existing config.
-- Do not infer that local Redis is production runtime. If the user asks about
-  live production, ask for the runtime server/source of truth unless the active
-  `$strategy-release` rollout context says the user has deployed the pushed
-  code and replied `готово`/`ready`; in that case, read and backup the
-  production config before writing the exact same candidate config.
-- If the source backtest config has multiple candidate values, prefer a config id from actual backtest results over manual guessing.
-- After saving, suggest running a narrow verification such as `yarn signals` only when the user wants runtime validation.
+- Never write a runtime strategy config to Redis.
+- Never copy credentials into `tradejs.config.ts` or research evidence.
+- Do not overwrite another strategy or deployment while promoting one
+  candidate.
+- A UI pause is an optional Redis override; desired activation remains the
+  committed `enabled` value.
+- Commit and push only when the user requested the rollout or the active
+  `$strategy-release` workflow authorizes its complete forward-test handshake.

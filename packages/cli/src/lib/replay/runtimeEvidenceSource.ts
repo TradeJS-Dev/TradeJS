@@ -50,14 +50,14 @@ export const buildRuntimeEvidenceLineageScopes = ({
     strategy,
     symbol,
     runtimeConfigId,
-    runtimeReleaseVersion,
+    runtimeVersion,
     timestamp,
     lineage,
   }: {
     strategy: string;
     symbol: string;
     runtimeConfigId?: string;
-    runtimeReleaseVersion?: number;
+    runtimeVersion?: number;
     timestamp: number;
     lineage?: RuntimeLineage;
   }) => {
@@ -71,7 +71,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       strategy,
       symbol,
       ...(runtimeConfigId ? { runtimeConfigId } : {}),
-      ...(runtimeReleaseVersion ? { runtimeReleaseVersion } : {}),
+      ...(runtimeVersion ? { runtimeVersion } : {}),
       lineage,
       firstTimestamp: existing
         ? Math.min(existing.firstTimestamp, timestamp)
@@ -87,7 +87,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       strategy: signal.strategy,
       symbol: signal.symbol,
       runtimeConfigId: signal.runtimeConfigId,
-      runtimeReleaseVersion: signal.runtimeReleaseVersion,
+      runtimeVersion: signal.runtimeVersion,
       timestamp: signal.timestamp,
       lineage: signal.runtimeLineage,
     });
@@ -97,7 +97,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       strategy: evaluation.strategy,
       symbol: evaluation.symbol,
       runtimeConfigId: evaluation.runtimeConfigId,
-      runtimeReleaseVersion: evaluation.runtimeReleaseVersion,
+      runtimeVersion: evaluation.runtimeVersion,
       timestamp: evaluation.timestamp,
       lineage: evaluation.runtimeLineage,
     });

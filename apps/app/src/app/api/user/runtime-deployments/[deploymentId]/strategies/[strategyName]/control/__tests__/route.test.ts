@@ -1,7 +1,8 @@
 const mockGetCurrentUserName = jest.fn();
 const mockGetRuntimeDeployment = jest.fn();
+const mockPauseRuntimeStrategy = jest.fn();
+const mockResumeRuntimeStrategy = jest.fn();
 const mockRecordRuntimeStrategyControlEvent = jest.fn();
-const mockSaveRuntimeDeployment = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -12,14 +13,16 @@ jest.mock('next/server', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/runtimeDeployments', () => ({
+jest.mock('@tradejs/node/runtimeStrategies', () => ({
   getRuntimeDeployment: (...args: unknown[]) =>
     mockGetRuntimeDeployment(...args),
-  saveRuntimeDeployment: (...args: unknown[]) =>
-    mockSaveRuntimeDeployment(...args),
 }));
 
-jest.mock('@tradejs/infra/runtimeStrategyReleases', () => ({
+jest.mock('@tradejs/infra/runtimeControls', () => ({
+  pauseRuntimeStrategy: (...args: unknown[]) =>
+    mockPauseRuntimeStrategy(...args),
+  resumeRuntimeStrategy: (...args: unknown[]) =>
+    mockResumeRuntimeStrategy(...args),
   recordRuntimeStrategyControlEvent: (...args: unknown[]) =>
     mockRecordRuntimeStrategyControlEvent(...args),
 }));
@@ -32,67 +35,79 @@ import { PATCH } from '../route';
 
 const context = {
   params: Promise.resolve({
-    deploymentId: 'doubletap-forward',
+    deploymentId: 'production',
     strategyName: 'DoubleTap',
   }),
 };
 const request = (controlState: unknown) =>
   ({ json: async () => ({ controlState }) }) as any;
+const deployment = (overrides: Record<string, unknown> = {}) => ({
+  id: 'production',
+  label: 'Production',
+  connectorName: 'bybit',
+  provider: 'bybit',
+  accountId: 'bybit-main',
+  enabled: true,
+  strategies: [
+    {
+      strategyName: 'DoubleTap',
+      version: 4,
+      enabled: true,
+      controlState: 'active',
+    },
+  ],
+  ...overrides,
+});
 
-describe('runtime strategy control route', () => {
+describe('runtime strategy manual controls', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCurrentUserName.mockResolvedValue('root');
-    mockGetRuntimeDeployment.mockResolvedValue({
-      id: 'doubletap-forward',
-      label: 'DoubleTap forward',
-      connectorName: 'bybit',
-      provider: 'bybit',
-      accountId: 'bybit-main',
-      universe: 'crypto',
-      interval: '15',
-      enabled: true,
-      strategies: [
-        {
-          strategyName: 'DoubleTap',
-          releaseVersion: 3,
-          controlState: 'active',
-        },
-      ],
-    });
-    mockSaveRuntimeDeployment.mockImplementation(
-      async (_userName: string, value: unknown) => value,
-    );
+    mockGetRuntimeDeployment.mockResolvedValue(deployment());
     mockRecordRuntimeStrategyControlEvent.mockResolvedValue({
       eventId: 'event-1',
     });
   });
 
-  it('pauses only new entries and records the control event', async () => {
+  it('pauses entries through the optional controls document', async () => {
     const response = await PATCH(request('entries_paused'), context);
 
-    expect(mockSaveRuntimeDeployment).toHaveBeenCalledWith(
-      'root',
-      expect.objectContaining({
-        strategies: [
-          expect.objectContaining({
-            strategyName: 'DoubleTap',
-            releaseVersion: 3,
-            controlState: 'entries_paused',
-          }),
-        ],
-      }),
-    );
+    expect(mockPauseRuntimeStrategy).toHaveBeenCalledWith({
+      userName: 'root',
+      deploymentId: 'production',
+      strategyName: 'DoubleTap',
+      updatedBy: 'root',
+    });
     expect(mockRecordRuntimeStrategyControlEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        deploymentId: 'doubletap-forward',
+        deploymentId: 'production',
         strategyName: 'DoubleTap',
-        releaseVersion: 3,
+        version: 4,
         previousState: 'active',
         nextState: 'entries_paused',
       }),
     );
     expect(response.status).toBe(200);
+  });
+
+  it('rejects resume when Git keeps the strategy disabled', async () => {
+    mockGetRuntimeDeployment.mockResolvedValue(
+      deployment({
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            version: 4,
+            enabled: false,
+            controlState: 'entries_paused',
+          },
+        ],
+      }),
+    );
+
+    const response = await PATCH(request('active'), context);
+
+    expect(response.status).toBe(409);
+    expect(mockResumeRuntimeStrategy).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown control state', async () => {
@@ -102,6 +117,6 @@ describe('runtime strategy control route', () => {
       status: 400,
       body: { error: 'controlState must be active or entries_paused' },
     });
-    expect(mockSaveRuntimeDeployment).not.toHaveBeenCalled();
+    expect(mockPauseRuntimeStrategy).not.toHaveBeenCalled();
   });
 });

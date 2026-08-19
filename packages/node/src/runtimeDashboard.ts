@@ -4,8 +4,6 @@ import {
   listTradingAccounts,
   resolveTradingAccount,
 } from '@tradejs/infra/tradingAccounts';
-import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
-import { getRuntimeStrategyRelease } from '@tradejs/infra/runtimeStrategyReleases';
 import {
   getData,
   getHashJsonValues,
@@ -29,14 +27,14 @@ import {
   buildRuntimeStrategyIdentityKey,
 } from '@tradejs/core/runtimeTrades';
 import {
-  loadStrategyEvidenceTimelines,
-  strategyEvidenceTimelineSelectorKey,
-} from './strategyEvidenceTimeline';
-import {
   isRuntimeTradeInConnectorScope,
   syncRuntimeTrades,
 } from './runtimeTradeSync';
 import { buildExchangeFallbackRuntimeTrades } from './runtimeTrades';
+import {
+  listRuntimeDeployments,
+  loadResolvedRuntimeStrategies,
+} from './runtimeStrategies';
 
 const DEFAULT_PROVIDER = 'bybit';
 const DEFAULT_HOURS = 168;
@@ -366,7 +364,7 @@ export const loadRuntimeDashboard = async ({
       errors: exchangeErrors,
     }),
     loadOpenPositions(connector, exchangeErrors),
-    listRuntimeDeployments(userName),
+    listRuntimeDeployments({ userName, projectRoot }),
     listTradingAccounts(userName),
   ]);
   const relevantTrades = selectTradesForWindow(
@@ -411,12 +409,25 @@ export const loadRuntimeDashboard = async ({
   const accountsById = new Map(
     tradingAccounts.map((account) => [account.id, account]),
   );
+  const resolvedStrategiesByDeployment = new Map(
+    await Promise.all(
+      runtimeDeployments.map(
+        async (deployment) =>
+          [
+            deployment.id,
+            await loadResolvedRuntimeStrategies({
+              userName,
+              projectRoot,
+              deploymentId: deployment.id,
+            }),
+          ] as const,
+      ),
+    ),
+  );
   const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
     buildRuntimeStrategyIdentityKey({
       strategyName: trade.strategy,
-      configId: trade.runtimeReleaseVersion
-        ? `v${trade.runtimeReleaseVersion}`
-        : undefined,
+      configId: trade.runtimeVersion ? `v${trade.runtimeVersion}` : undefined,
       universe: trade.universe,
       accountId: trade.accountId,
       deploymentId: trade.deploymentId,
@@ -433,7 +444,7 @@ export const loadRuntimeDashboard = async ({
       accountLabel?: string;
       deploymentId: string;
       policyProfileId?: string;
-      releaseVersion: number;
+      version: number;
       controlState: RuntimeStrategyControlState;
       enabled: boolean;
       config: StrategyConfig;
@@ -441,48 +452,37 @@ export const loadRuntimeDashboard = async ({
     }
   >();
   for (const deployment of runtimeDeployments) {
-    for (const deploymentStrategy of deployment.strategies) {
-      const release = await getRuntimeStrategyRelease(
-        userName,
-        deploymentStrategy.strategyName,
-        deploymentStrategy.releaseVersion,
-      );
-      if (!release) {
-        throw new Error(
-          `Runtime release not found: ${deploymentStrategy.strategyName} v${deploymentStrategy.releaseVersion}`,
-        );
-      }
-      const releaseUniverse =
-        release.config.UNIVERSE === 'tradfi' ? 'tradfi' : 'crypto';
-      const releaseInterval = String(release.config.INTERVAL) as Interval;
-      const releaseConfigId = `v${deploymentStrategy.releaseVersion}`;
-      const releasePolicyProfileId =
-        typeof release.config.POLICY_PROFILE_ID === 'string'
-          ? release.config.POLICY_PROFILE_ID
+    for (const resolvedStrategy of resolvedStrategiesByDeployment.get(
+      deployment.id,
+    ) ?? []) {
+      const strategyUniverse = resolvedStrategy.universe;
+      const strategyInterval = resolvedStrategy.interval;
+      const strategyConfigId = `v${resolvedStrategy.version}`;
+      const strategyPolicyProfileId =
+        typeof resolvedStrategy.strategyConfig.POLICY_PROFILE_ID === 'string'
+          ? resolvedStrategy.strategyConfig.POLICY_PROFILE_ID
           : undefined;
       const runtimeKey = buildRuntimeStrategyIdentityKey({
-        strategyName: deploymentStrategy.strategyName,
-        configId: releaseConfigId,
-        universe: releaseUniverse,
+        strategyName: resolvedStrategy.strategyName,
+        configId: strategyConfigId,
+        universe: strategyUniverse,
         accountId: deployment.accountId,
         deploymentId: deployment.id,
-        policyProfileId: releasePolicyProfileId,
+        policyProfileId: strategyPolicyProfileId,
       });
       identityByKey.set(runtimeKey, {
-        strategyName: deploymentStrategy.strategyName,
-        configId: releaseConfigId,
-        releaseVersion: deploymentStrategy.releaseVersion,
-        controlState: deploymentStrategy.controlState,
-        interval: releaseInterval,
-        universe: releaseUniverse,
+        strategyName: resolvedStrategy.strategyName,
+        configId: strategyConfigId,
+        version: resolvedStrategy.version,
+        controlState: resolvedStrategy.controlState,
+        interval: strategyInterval,
+        universe: strategyUniverse,
         accountId: deployment.accountId,
         accountLabel: accountsById.get(deployment.accountId)?.label,
         deploymentId: deployment.id,
-        policyProfileId: releasePolicyProfileId,
-        enabled:
-          deployment.enabled &&
-          deploymentStrategy.controlState !== 'entries_paused',
-        config: release.config,
+        policyProfileId: strategyPolicyProfileId,
+        enabled: resolvedStrategy.controlState !== 'entries_paused',
+        config: resolvedStrategy.strategyConfig,
         connected: deployment.enabled,
       });
     }
@@ -492,12 +492,12 @@ export const loadRuntimeDashboard = async ({
     const key = runtimeIdentityKey(trade);
     const configuredIdentity = identityByKey.get(key);
     if (!configuredIdentity) continue;
-    const releaseVersion =
-      trade.runtimeReleaseVersion ??
+    const version =
+      trade.runtimeVersion ??
       (trade.runtimeLineage?.schemaVersion === 2
-        ? trade.runtimeLineage.releaseVersion
+        ? trade.runtimeLineage.version
         : undefined);
-    if (releaseVersion !== configuredIdentity.releaseVersion) continue;
+    if (version !== configuredIdentity.version) continue;
     identityByKey.set(key, {
       ...configuredIdentity,
       interval: String(
@@ -505,18 +505,6 @@ export const loadRuntimeDashboard = async ({
       ) as Interval,
     });
   }
-
-  const evidenceTimelines = await loadStrategyEvidenceTimelines({
-    projectRoot,
-    markerDir: process.env.STRATEGY_RELEASE_MARKER_DIR,
-    selectors: [...identityByKey.values()].map((identity) => ({
-      strategy: identity.strategyName,
-      releaseVersion: identity.releaseVersion,
-      requireCompleteLineage: true,
-    })),
-    startTime,
-    endTime,
-  });
 
   const strategies = await Promise.all(
     [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
@@ -543,7 +531,7 @@ export const loadRuntimeDashboard = async ({
         runtimeKey,
         strategyName,
         configId: identity.configId,
-        releaseVersion: identity.releaseVersion,
+        version: identity.version,
         controlState: identity.controlState,
         interval: identity.interval,
         universe: identity.universe,
@@ -558,17 +546,6 @@ export const loadRuntimeDashboard = async ({
         stat: analytics.stat,
         summary: analytics.summary,
         orderLog: analytics.orderLog,
-        evidenceTimeline: evidenceTimelines.get(
-          strategyEvidenceTimelineSelectorKey({
-            strategy: strategyName,
-            releaseVersion: identity.releaseVersion,
-            requireCompleteLineage: true,
-          }),
-        ) ?? {
-          status: 'not_attached',
-          observedFrom: null,
-          markers: [],
-        },
         recentTrades: strategyTrades
           .slice(0, 8)
           .map((trade) => toRuntimeTradeView(trade, endTime)),

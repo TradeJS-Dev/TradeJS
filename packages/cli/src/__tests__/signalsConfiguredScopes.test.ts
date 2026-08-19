@@ -15,7 +15,8 @@ const deployment: RuntimeDeployment = {
   strategies: [
     {
       strategyName: 'DoubleTap',
-      releaseVersion: 2,
+      version: 2,
+      enabled: true,
       controlState: 'entries_paused',
     },
   ],
@@ -24,7 +25,8 @@ const deployment: RuntimeDeployment = {
 
 const strategy = {
   strategyName: 'DoubleTap',
-  releaseVersion: 2,
+  version: 2,
+  enabled: true,
   controlState: 'entries_paused',
   interval: '15',
   universe: 'crypto',
@@ -47,7 +49,7 @@ describe('configured signals scopes', () => {
         {
           ...strategy,
           strategyName: 'Grid',
-          releaseVersion: 4,
+          version: 4,
         },
       ],
     });
@@ -74,9 +76,9 @@ describe('configured signals scopes', () => {
       {
         deployment: {
           ...deployment,
-          strategies: [{ ...deployment.strategies[0]!, releaseVersion: 3 }],
+          strategies: [{ ...deployment.strategies[0]!, version: 3 }],
         },
-        strategy: { ...strategy, releaseVersion: 3 },
+        strategy: { ...strategy, version: 3 },
       },
       {
         deployment: {

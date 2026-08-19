@@ -30,7 +30,7 @@ export const RuntimeStrategyConfigDrawer = ({
         <Drawer.Content bg="gray.950">
           <Drawer.Header>
             <Drawer.Title>
-              {strategy.strategyName} release v{strategy.releaseVersion}
+              {strategy.strategyName} version v{strategy.version}
             </Drawer.Title>
             <Drawer.CloseTrigger asChild>
               <CloseButton size="sm" />
@@ -38,8 +38,8 @@ export const RuntimeStrategyConfigDrawer = ({
           </Drawer.Header>
           <Drawer.Body display="flex" flexDirection="column" gap={4}>
             <Text color="gray.400">
-              Published releases are immutable. Roll out a new release to change
-              this configuration.
+              This configuration is read-only here. Change it in
+              tradejs.config.ts and deploy a new Project image.
             </Text>
             <Textarea
               value={JSON.stringify(strategy.config, null, 2)}

@@ -10,7 +10,7 @@ import {
   writePersistedBacktestOrderLog,
 } from '@tradejs/infra/backtestArtifacts';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
-import { getRuntimeDeployment } from '@tradejs/infra/runtimeDeployments';
+import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import {
   BACKTEST_WARNING_CODES,
   Item,
@@ -350,7 +350,11 @@ export const prepareRunEnvironment =
   async (): Promise<PreparedRunEnvironment | null> => {
     const deployment = validateBacktestRuntimeDeployment({
       deployment: flags.deployment
-        ? await getRuntimeDeployment(userName, String(flags.deployment))
+        ? await getRuntimeDeployment({
+            userName,
+            projectRoot,
+            deploymentId: String(flags.deployment),
+          })
         : null,
       deploymentId:
         typeof flags.deployment === 'string' ? flags.deployment : undefined,

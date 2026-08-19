@@ -283,8 +283,10 @@ Runtime AI config conventions:
 - Do not retain a full strategy runtime or indicator controller per symbol/strategy in the signals daemon. Runtime wrappers and indicator history are disposable per evaluation; only bounded detector state from `createStateController` may survive between cycles.
 - Keep the production daemon heap bounded through `SIGNALS_DAEMON_HEAP_MB` and retain its per-cycle RSS/heap/state-key log line when changing process supervision.
 - The signals daemon must rebuild a strategy from the rolling warmup history after restart, a candle gap, an effective config change, or its bounded live-bar limit. Catch-up recovery must not place historical orders or send historical notifications.
-- The signals daemon must re-read its deployment binding every cycle. A release pointer, control state, ticker/asset-class selection, connector, or account change must alter the session identity and evict the old lifecycle without requiring a container restart.
-- Runtime lifecycle identity includes connector, symbol, interval, strategy, and the effective per-symbol config (`user strategy config` plus results config). Removed tickers or strategies must be evicted from the in-memory lifecycle.
+- The signals daemon must re-read the Git-owned deployment declaration and optional Redis pause controls every cycle. Pause/resume must take effect without a restart; a newly deployed Project image changes version/config/ticker/account identity and rebuilds the lifecycle.
+- Runtime lifecycle identity includes connector, symbol, interval, strategy, and the exact `tradejs.config.ts` strategy version/config. Production must not merge `users:<user>:strategies:*` config or results overlays. Removed tickers or strategies must be evicted from memory.
+- Production runtime declarations live only in `TradeJS-Project/tradejs.config.ts`. Redis owns trading accounts, optional pause overrides, audit events, heartbeats, signals, and trades; it does not own deployments, release pointers, or strategy config.
+- `users:<user>:runtime:controls` is optional. An absent key or strategy override means “follow Git enabled”; malformed controls or Redis unavailability must fail closed. Pause writes only `entriesPaused: true`; resume removes the override and deletes an empty document.
 - Do not add Redis strategy-state persistence unless every participating engine exposes a complete versioned transition checkpoint and restore path. Diagnostic `getState()` snapshots are not sufficient checkpoints.
 - AI/ML/gate approval decisions must be strictly signal-time causal. `yarn signals`, `yarn backtest`, `yarn replay`, and `ai-train --localOnly` must decide from data available at the signal candle decision time, not from later execution or outcome fields.
 - Delayed-entry execution telemetry such as `backtestExecution.executionPrice`, `entryDelayMoveBps`, delayed entry timestamps, realized exit reason, or final trade result may be exported and analyzed after the fact, but must not be used as inputs to AI-gate approval, deterministic quality, or prompt-time decision context for the same signal.
@@ -630,14 +632,15 @@ Keep them aligned with:
   by path and SHA; the command must recompute and validate that artifact rather
   than trust a self-declared checksum. Local research may leave the server-owned
   target null and return a portable `MICRO_FORWARD_READY` handoff. On the runtime
-  server bind exact user/deployment/account/strategy-config identity and rerun
-  the decision; never use a self-declared resolved boolean.
+  Project bind the exact deployment/account/strategy declaration and rerun the
+  decision; never use a self-declared resolved boolean.
 - When the user has explicitly authorized automatic forward testing, the exact
   frozen candidate may start only on the resolved forward account/deployment at
-  `MAX_LOSS_VALUE=1`. Preserve both directions, logic fingerprints, immutable
-  evidence, and risk-scale history. This authorization does not permit
-  promotion, risk increases, unrelated runtime edits, manual orders, or a
-  production-daemon launch on an ambiguous target.
+  `MAX_LOSS_VALUE=1`. Commit and push the strategy package, its Project package
+  dependency, full config, and incremented per-strategy version before deploy.
+  Production Redis config writes are forbidden. This authorization does not
+  permit promotion, risk increases, unrelated runtime edits, manual orders, or
+  a production-daemon launch on an ambiguous target.
 - Build equal-length historical drawdown envelopes with
   `yarn strategy-release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity
@@ -673,12 +676,9 @@ Keep them aligned with:
   evidence distinct. LLM comparison defaults to AI-approved candidates only and
   is advisory; persist disagreements without letting the LLM affect deterministic
   trading decisions.
-- Publish G/L/E/D/P/R chart events only through checksum- and artifact-id-
-  verified marker envelopes. Producers and the app must share
-  `@tradejs/infra/strategyReleaseEvidence`; missing or invalid evidence has no
-  mutable Redis fallback. Dashboard binding requires the exact composition id
-  or complete matching git/config/gate/context logic lineage; a
-  config-only card must show missing evidence.
+- Keep checksum-verified G/L/E/D/P/R marker envelopes in local/CI research.
+  Production configuration and the Strategies UI must not depend on them or
+  show an evidence availability state.
 - Retention defaults to 3 days for operational Redis evidence, 14 days for
   verbose payloads, 90 days for verified aggregate bundles, and permanent
   compact ledgers/manifests/outcomes/disagreements/markers. Cleanup is dry-run

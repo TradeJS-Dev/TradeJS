@@ -135,7 +135,7 @@ export const RuntimeStrategyCard = ({
           TF: {strategy.interval}m
         </Badge>
         <Badge colorPalette="gray" variant="outline">
-          release: v{strategy.releaseVersion}
+          version: v{strategy.version}
         </Badge>
         {strategy.accountId ? (
           <Badge colorPalette="purple" variant="outline">
@@ -258,7 +258,6 @@ export const RuntimeStrategyCard = ({
       <RuntimeStrategyChart
         orderLog={strategy.orderLog}
         stat={strategy.stat}
-        evidenceTimeline={strategy.evidenceTimeline}
         startTimestamp={startTimestamp}
         endTimestamp={endTimestamp}
       />

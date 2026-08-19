@@ -75,12 +75,15 @@ const verifyFullPeriodChartArtifact = async (
 
 const hasExactRuntimeTarget = (
   target: StrategyReleaseResearchDecisionInput['forwardTest']['runtimeTarget'],
+  strategyName: string,
 ) =>
   Boolean(
     target?.userName.trim() &&
       target.deploymentId.trim() &&
       target.accountId.trim() &&
-      target.strategyConfigName.trim(),
+      target.strategyName.trim() === strategyName.trim() &&
+      Number.isSafeInteger(target.version) &&
+      target.version > 0,
   );
 
 export const deriveStrategyReleaseResearchDecision = async (
@@ -196,13 +199,14 @@ export const deriveStrategyReleaseResearchDecision = async (
       maxLossValue: 1,
       requiresRuntimeBinding: !hasExactRuntimeTarget(
         input.forwardTest.runtimeTarget,
+        input.strategy,
       ),
       blockers: ['FORWARD_NOT_AUTHORIZED'],
       summary:
         'The candidate is ready for a separately authorized micro-forward test at MAX_LOSS_VALUE=1.',
     };
   }
-  if (!hasExactRuntimeTarget(input.forwardTest.runtimeTarget)) {
+  if (!hasExactRuntimeTarget(input.forwardTest.runtimeTarget, input.strategy)) {
     return {
       strategy: input.strategy,
       action: 'MICRO_FORWARD_READY',
@@ -212,7 +216,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       requiresRuntimeBinding: true,
       blockers: [],
       summary:
-        "The portable micro-forward handoff is ready. Bind it on the runtime server to that server's deployment/account ids and verify canonical composition fingerprints there.",
+        'The portable micro-forward handoff is ready. Commit its deployment, account binding, complete config, and explicit strategy version in TradeJS-Project.',
     };
   }
   return {

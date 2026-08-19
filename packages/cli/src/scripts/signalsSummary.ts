@@ -29,7 +29,7 @@ import {
   RuntimeSignalStatsBucket,
 } from '../lib/runtimeSignalsStorage';
 import { buildRuntimeDebugReportAttachment } from '../lib/runtimeDebugEvidence';
-import { listRuntimeDeployments } from '@tradejs/infra/runtimeDeployments';
+import { listRuntimeDeployments } from '@tradejs/node/runtimeStrategies';
 import {
   ConnectorCreator,
   MarketUniverse,
@@ -801,7 +801,7 @@ export const signalsSummary = async () => {
     loadRuntimeSignals(flags.user, { startTime, endTime }),
     loadRuntimeSignalEvaluationStatsBuckets(flags.user),
     loadRuntimeTrades(flags.user),
-    listRuntimeDeployments(flags.user),
+    listRuntimeDeployments({ userName: flags.user, projectRoot }),
   ]);
   const {
     trades: syncedTrades,

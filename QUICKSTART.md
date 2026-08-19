@@ -205,7 +205,10 @@ yarn runtime:scorecard -- \
 
 Runtime/backtest parity:
 
-- `yarn runtime-parity` replays recent history with the effective runtime config (`user strategy config` + per-symbol `results` patch) in `BACKTEST` mode and compares backtest entries against saved runtime trade records.
+- `yarn runtime-parity` replays recent history with the exact Git-owned Project
+  strategy declaration in `BACKTEST` mode and compares backtest entries against
+  saved runtime trade records. Production does not merge Redis strategy configs
+  or per-symbol `results` patches.
 - matching is done by `strategy + symbol + direction + timestamp` with configurable tolerance in bars; entry price is reported as drift only, not used as the primary match key.
 - if a strategy enables AI/ML gates, the command warns that standard `BACKTEST` replay covers core execution parity, not live gating parity.
 

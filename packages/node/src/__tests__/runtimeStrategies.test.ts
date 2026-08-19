@@ -1,57 +1,60 @@
-import type { RuntimeDeployment, RuntimeStrategyRelease } from '@tradejs/types';
-
-const release: RuntimeStrategyRelease = {
-  schema: 'tradejs-runtime-strategy-release/v2',
-  strategyName: 'DoubleTap',
-  releaseVersion: 2,
-  config: {
-    INTERVAL: '15',
-    UNIVERSE: 'crypto',
-    POLICY_PROFILE_ID: 'crypto',
-    MAX_LOSS_VALUE: 1,
-  },
-  strategyPackage: '@tradejs/strategy-double-tap',
-  strategyPackageVersion: '3.2.0',
-  runtimePackageVersion: '3.1.0',
-  createdAt: 1,
-  createdBy: 'root',
-  contentSha256: 'a'.repeat(64),
-};
-
-const deployment: RuntimeDeployment = {
-  id: 'doubletap-forward',
-  label: 'DoubleTap forward',
-  connectorName: 'bybit',
-  provider: 'bybit',
-  accountId: 'bybit-main',
-  enabled: true,
-  strategies: [
-    {
-      strategyName: 'DoubleTap',
-      releaseVersion: 2,
-      controlState: 'entries_paused',
+const runtimeConfig = {
+  deployments: {
+    production: {
+      label: 'Production',
+      connectorName: 'bybit',
+      accountId: 'bybit-main',
+      strategies: {
+        DoubleTap: {
+          version: 4,
+          enabled: true,
+          config: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            POLICY_PROFILE_ID: 'crypto',
+            MAX_LOSS_VALUE: 1,
+          },
+        },
+      },
     },
-  ],
+  },
 };
 
-describe('shared versioned runtime strategy resolver', () => {
+describe('Git-owned runtime strategy resolver', () => {
+  const mockLoadTradejsConfig = jest.fn(
+    async (): Promise<any> => ({
+      runtime: runtimeConfig,
+    }),
+  );
+  const mockGetRuntimeControls = jest.fn(
+    async (): Promise<any> => ({
+      schema: 'tradejs-runtime-controls/v1',
+      deployments: {},
+    }),
+  );
+
   beforeEach(() => {
     jest.resetModules();
+    mockLoadTradejsConfig.mockClear();
+    mockGetRuntimeControls.mockClear();
     jest.doMock('node:fs/promises', () => ({
       readFile: jest.fn(async (filePath: string) => {
         if (filePath.endsWith('runtime-package-manifest.json')) {
           return JSON.stringify({
             packages: {
               '@tradejs/strategy-double-tap': '3.2.0',
-              '@tradejs/node': '3.1.0',
+              '@tradejs/node': '3.2.0',
             },
           });
         }
         throw new Error('not found');
       }),
     }));
-    jest.doMock('@tradejs/infra/runtimeStrategyReleases', () => ({
-      getRuntimeStrategyRelease: jest.fn(async () => release),
+    jest.doMock('../tradejsConfig', () => ({
+      loadTradejsConfig: mockLoadTradejsConfig,
+    }));
+    jest.doMock('@tradejs/infra/runtimeControls', () => ({
+      getRuntimeControls: mockGetRuntimeControls,
     }));
     jest.doMock('@tradejs/infra/tradingAccounts', () => ({
       resolveTradingAccount: jest.fn(async () => ({ id: 'bybit-main' })),
@@ -64,55 +67,85 @@ describe('shared versioned runtime strategy resolver', () => {
     }));
   });
 
-  it('uses only the immutable release config', async () => {
+  it('loads deployments from tradejs.config and applies an optional pause override', async () => {
+    mockGetRuntimeControls.mockResolvedValueOnce({
+      schema: 'tradejs-runtime-controls/v1',
+      deployments: {
+        production: {
+          DoubleTap: {
+            entriesPaused: true,
+            updatedAt: '2026-08-19T10:00:00.000Z',
+            updatedBy: 'root',
+          },
+        },
+      },
+    });
+    const { listRuntimeDeployments } = await import('../runtimeStrategies');
+
+    await expect(
+      listRuntimeDeployments({ userName: 'root', projectRoot: '/project' }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'production',
+        provider: 'bybit',
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            version: 4,
+            enabled: true,
+            controlState: 'entries_paused',
+          },
+        ],
+      }),
+    ]);
+  });
+
+  it('uses only the strategy config declared in tradejs.config', async () => {
     const { loadResolvedRuntimeStrategies } = await import(
       '../runtimeStrategies'
     );
     const [resolved] = await loadResolvedRuntimeStrategies({
       userName: 'root',
       projectRoot: '/project',
-      deployment,
+      deploymentId: 'production',
     });
 
     expect(resolved).toEqual(
       expect.objectContaining({
         strategyName: 'DoubleTap',
-        releaseVersion: 2,
-        controlState: 'entries_paused',
+        version: 4,
+        controlState: 'active',
         interval: '15',
         universe: 'crypto',
         accountId: 'bybit-main',
-        strategyConfig: release.config,
-        sourceStrategyConfig: release.config,
+        strategyPackage: '@tradejs/strategy-double-tap',
+        strategyPackageVersion: '3.2.0',
+        runtimePackageVersion: '3.2.0',
+        strategyConfig:
+          runtimeConfig.deployments.production.strategies.DoubleTap.config,
+        sourceStrategyConfig:
+          runtimeConfig.deployments.production.strategies.DoubleTap.config,
       }),
     );
-    expect(resolved).not.toHaveProperty('configId');
-    expect(resolved).not.toHaveProperty('strategyResults');
-    expect(resolved?.strategyConfig).not.toHaveProperty('ACCOUNT_ID');
+    expect(resolved).not.toHaveProperty('releaseVersion');
   });
 
-  it('rejects embedded deployment config for a versioned reference', async () => {
-    const { loadResolvedRuntimeStrategies } = await import(
-      '../runtimeStrategies'
-    );
-    await expect(
-      loadResolvedRuntimeStrategies({
-        userName: 'root',
-        projectRoot: '/project',
-        deployment: {
-          ...deployment,
-          strategies: [
-            {
-              ...deployment.strategies[0],
-              config: { INTERVAL: '5' },
-            } as any,
-          ],
+  it('treats Git disabled as entries paused even without a controls key', async () => {
+    mockLoadTradejsConfig.mockResolvedValueOnce({
+      runtime: {
+        deployments: {
+          production: {
+            ...runtimeConfig.deployments.production,
+            strategies: {
+              DoubleTap: {
+                ...runtimeConfig.deployments.production.strategies.DoubleTap,
+                enabled: false,
+              },
+            },
+          },
         },
-      }),
-    ).rejects.toThrow('has invalid fields');
-  });
-
-  it('requires an explicit canonical deployment', async () => {
+      },
+    });
     const { loadResolvedRuntimeStrategies } = await import(
       '../runtimeStrategies'
     );
@@ -121,30 +154,43 @@ describe('shared versioned runtime strategy resolver', () => {
       loadResolvedRuntimeStrategies({
         userName: 'root',
         projectRoot: '/project',
+        deploymentId: 'production',
       }),
-    ).rejects.toThrow('Runtime deployment is required');
+    ).resolves.toEqual([
+      expect.objectContaining({ controlState: 'entries_paused' }),
+    ]);
   });
 
-  it('rejects a release pointer without an explicit control state', async () => {
-    const { loadResolvedRuntimeStrategies } = await import(
-      '../runtimeStrategies'
-    );
+  it('rejects a missing runtime declaration without a legacy fallback', async () => {
+    mockLoadTradejsConfig.mockResolvedValueOnce({});
+    const { listRuntimeDeployments } = await import('../runtimeStrategies');
 
     await expect(
-      loadResolvedRuntimeStrategies({
-        userName: 'root',
-        projectRoot: '/project',
-        deployment: {
-          ...deployment,
-          strategies: [
-            {
-              strategyName: 'DoubleTap',
-              releaseVersion: 2,
-            } as any,
-          ],
+      listRuntimeDeployments({ userName: 'root', projectRoot: '/project' }),
+    ).rejects.toThrow('Runtime declaration is required');
+  });
+
+  it('rejects release-era fields in a strategy declaration', async () => {
+    mockLoadTradejsConfig.mockResolvedValueOnce({
+      runtime: {
+        deployments: {
+          production: {
+            ...runtimeConfig.deployments.production,
+            strategies: {
+              DoubleTap: {
+                ...runtimeConfig.deployments.production.strategies.DoubleTap,
+                releaseVersion: 4,
+              },
+            },
+          },
         },
-      }),
-    ).rejects.toThrow('has no controlState');
+      },
+    });
+    const { listRuntimeDeployments } = await import('../runtimeStrategies');
+
+    await expect(
+      listRuntimeDeployments({ userName: 'root', projectRoot: '/project' }),
+    ).rejects.toThrow('Invalid runtime strategy declaration');
   });
 
   it('identifies a project-local strategy by the exact project package', async () => {
@@ -154,7 +200,7 @@ describe('shared versioned runtime strategy resolver', () => {
           return JSON.stringify({
             packages: {
               '@tradejs/example-sandbox': '1.0.0',
-              '@tradejs/node': '3.1.4',
+              '@tradejs/node': '3.2.0',
             },
           });
         }
@@ -185,7 +231,7 @@ describe('shared versioned runtime strategy resolver', () => {
     ).resolves.toEqual({
       strategyPackage: '@tradejs/example-sandbox',
       strategyPackageVersion: '1.0.0',
-      runtimePackageVersion: '3.1.4',
+      runtimePackageVersion: '3.2.0',
     });
   });
 
@@ -201,7 +247,7 @@ describe('shared versioned runtime strategy resolver', () => {
       loadResolvedRuntimeStrategies({
         userName: 'root',
         projectRoot: '/project',
-        deployment,
+        deploymentId: 'production',
       }),
     ).rejects.toThrow('Trading account not found: bybit-main');
   });

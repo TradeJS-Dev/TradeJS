@@ -379,8 +379,7 @@ const loadScript = async (scenario: Scenario) => {
         accountId ? { id: accountId } : null,
     ),
   }));
-  jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
-    getRuntimeDeployment,
+  jest.doMock('@tradejs/infra/runtimeHeartbeats', () => ({
     saveRuntimeDeploymentHeartbeat,
   }));
 
@@ -416,6 +415,7 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+    getRuntimeDeployment,
     loadResolvedRuntimeStrategies: jest.fn(
       async ({
         deployment,
@@ -432,7 +432,7 @@ const loadScript = async (scenario: Scenario) => {
             );
             return {
               strategyName,
-              releaseVersion: 1,
+              version: 1,
               controlState: 'active',
               interval: String(strategyConfig.INTERVAL ?? '15'),
               universe: strategyConfig.UNIVERSE ?? 'crypto',
@@ -619,7 +619,7 @@ describe('signals script', () => {
         strategy: 'TrendLine',
         timestamp: CLOSED_2_TS,
         runtimeConfigId: 'v1',
-        runtimeReleaseVersion: 1,
+        runtimeVersion: 1,
       },
       { expire: TTL_3D },
     );
@@ -858,7 +858,7 @@ describe('signals script', () => {
       expect.objectContaining({
         runtimeLineage: expect.objectContaining({
           schemaVersion: 2,
-          releaseVersion: 1,
+          version: 1,
         }),
       }),
     );
@@ -941,7 +941,8 @@ describe('signals script', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            releaseVersion: 1,
+            version: 1,
+            enabled: true,
             controlState: 'active',
           },
         ],
@@ -984,7 +985,7 @@ describe('signals script', () => {
     expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeConfigId: 'v1',
-        runtimeReleaseVersion: 1,
+        runtimeVersion: 1,
         runtimeConfigSnapshot: {
           userConfig: { INTERVAL: '15', CUSTOM_THRESHOLD: 1 },
         },
@@ -1034,7 +1035,8 @@ describe('signals script', () => {
       strategies: [
         {
           strategyName: 'TrendLine',
-          releaseVersion: 1,
+          version: 1,
+          enabled: true,
           controlState: 'active',
         },
       ],
@@ -1065,8 +1067,11 @@ describe('signals script', () => {
     await signals({ session });
 
     expect(mocks.getRuntimeDeployment).toHaveBeenCalledWith(
-      'root',
-      'tradfi-live',
+      expect.objectContaining({
+        userName: 'root',
+        deploymentId: 'tradfi-live',
+        projectRoot: expect.any(String),
+      }),
     );
     expect(mocks.connectorCreator).toHaveBeenCalledWith({
       userName: 'root',
@@ -1129,7 +1134,8 @@ describe('signals script', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            releaseVersion: 2,
+            version: 2,
+            enabled: true,
             controlState: 'active',
           },
         ],

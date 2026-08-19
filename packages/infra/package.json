@@ -67,15 +67,15 @@
       "import": "./dist/runtimeStrategyConfigs.mjs",
       "require": "./dist/runtimeStrategyConfigs.js"
     },
-    "./runtimeStrategyReleases": {
-      "types": "./dist/runtimeStrategyReleases.d.ts",
-      "import": "./dist/runtimeStrategyReleases.mjs",
-      "require": "./dist/runtimeStrategyReleases.js"
+    "./runtimeHeartbeats": {
+      "types": "./dist/runtimeHeartbeats.d.ts",
+      "import": "./dist/runtimeHeartbeats.mjs",
+      "require": "./dist/runtimeHeartbeats.js"
     },
-    "./runtimeDeployments": {
-      "types": "./dist/runtimeDeployments.d.ts",
-      "import": "./dist/runtimeDeployments.mjs",
-      "require": "./dist/runtimeDeployments.js"
+    "./runtimeControls": {
+      "types": "./dist/runtimeControls.d.ts",
+      "import": "./dist/runtimeControls.mjs",
+      "require": "./dist/runtimeControls.js"
     },
     "./strategyReleaseEvidence": {
       "types": "./dist/strategyReleaseEvidence.d.ts",

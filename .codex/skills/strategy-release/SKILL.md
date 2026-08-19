@@ -47,11 +47,12 @@ deterministic gate code, and keep generated evidence under `PROJECT_CWD`.
   [references/evidence-limitations.md](references/evidence-limitations.md): a
   retrospective current-universe cohort caps claims but still permits matched
   research and prospective risk-1 selection.
-- Research runs in the local checkout/Redis; live signals and deployments run
-  on the runtime server. Never infer that a production deployment, account,
-  credential, signal, or trade is absent because it is missing locally. Produce
-  a portable handoff locally, then resolve server-owned bindings on that server.
-  Never copy or compare API credentials through release evidence.
+- Research data stays in the local checkout/Redis. Desired live deployments and
+  strategy configs are committed in TradeJS-Project `tradejs.config.ts`; only
+  account secrets, optional manual pause controls, signals, and trades remain
+  server-owned. Never infer that a production account, credential, signal, or
+  trade is absent because it is missing locally. Never copy or compare API
+  credentials through release evidence.
 
 ## Select the mode
 
@@ -266,9 +267,9 @@ The decision input must reference the structured chart report by both `path`
 and `sha256`; `decide` recomputes the file hash and verifies that it is a
 successful full-period local-deterministic chart run for the same strategy. A
 forward target is not a boolean. Local research normally leaves `runtimeTarget`
-null and returns `MICRO_FORWARD_READY`; on the runtime server bind the handoff
-to that server's exact `userName`, `deploymentId`, `accountId`, and
-`strategyConfigName`, then rerun `decide` there.
+null and returns `MICRO_FORWARD_READY`; bind the handoff to the exact Git-owned
+`deploymentId`, strategy declaration, and server account, then rerun `decide`
+against that Project image.
 
 - `REPAIR_RECENT_DIRECTION`: spend the single repair round, then rebuild all
   historical/chart evidence. Never tune on a handful of trades.
@@ -293,9 +294,9 @@ to that server's exact `userName`, `deploymentId`, `accountId`, and
 
 When the user says to start forward tests after a release verdict, treat that
 as authorization for the complete rollout of that exact strategy candidate,
-including the narrowly scoped production Redis release/pointer update after the
-weekly stable image is deployed. Do not publish a production version immediately
-and do not wait for a second `готово`/`ready` message:
+including its Git-owned Project declaration and image deployment. Do not publish
+a production version immediately and do not wait for a second
+`готово`/`ready` message:
 
 - commit and push every strategy-owned source/gate change for the exact
   candidate; keep unrelated repo changes out of that commit and leave the
@@ -306,29 +307,33 @@ and do not wait for a second `готово`/`ready` message:
 - use the protected weekly stable promotion as the routine path. It publishes
   and tags one stable patch only from the current verified beta;
 - wait for the weekly Project sync to batch all promoted stable packages into
-  one exact lockfile and image, then wait for Project publish and Deploy to
-  succeed. Verify that the deployed runtime manifest names the Project SHA and
-  promoted strategy version and contains only stable exact package versions;
+  one exact dependency/lockfile update;
+- in the matching Project commit, update `tradejs.config.ts` with the complete
+  secret-free strategy config, `MAX_LOSS_VALUE=1`, the intended `enabled`
+  state, and one explicitly incremented per-strategy `version`; commit and push
+  the package manifest, lockfile, and runtime declaration together;
+- wait for both the matching Project publish workflow and repository-dispatch
+  Deploy workflow to succeed. Verify that the deployed runtime manifest names
+  the Project SHA and promoted strategy version and contains only stable exact
+  package versions;
 - materialize the candidate from strategy defaults plus the selected config,
   remove deployment and mode-only fields (`ENABLE`, `ACCOUNT_ID`,
   `DEPLOYMENT_ID`, `ENV`, `MAKE_ORDERS`, `RECORD_RUNTIME_TRADES`, and
-  `AI_REPLAY_ANALYSES`), retain `MAX_LOSS_VALUE=1`, and save the secret-free
-  candidate used for the next immutable per-strategy `releaseVersion`;
-- run `yarn runtime-config verify` and local dry-run `signals`; stop on package
+  `AI_REPLAY_ANALYSES`), retain `MAX_LOSS_VALUE=1`, and commit the secret-free
+  strategy config in the Project declaration;
+- run `yarn runtime-control verify` and local dry-run `signals`; stop on package
   version, config, account, or private-position blockers.
 
-Do not update production Redis before the exact stable image deployment
-succeeds. Once it succeeds, verify the runtime manifest, take and restore-check
-a Redis backup, then use `runtime-config rollout`. The operation must be a
-no-op when config and package versions match; otherwise it publishes the next
-strategy-local `releaseVersion` and switches only the target deployment to
-`{ strategyName, releaseVersion, controlState: "entries_paused" }`. Use
-`runtime-config provision` only for an absent binding. Run
-`runtime-config verify` and dry-run signals, then resume entries only when
-`decide` returns `START_MICRO_FORWARD`. Never write
-`deploymentStrategy.config` or use production fingerprints/git SHAs as
-identity. Report unavailable access, package incompatibility, or an ambiguous
-target as the exact blocker.
+Production Redis must never receive strategy config, deployment documents, or
+version pointers. It may contain only the optional manual pause override. If an
+existing strategy needs a guarded cutover, pause entries before replacing the
+image, verify the deployed manifest and `yarn runtime-control inspect`, then
+resume only when `decide` returns `START_MICRO_FORWARD`; resume deletes the
+override. A newly declared enabled strategy starts with the verified image.
+Local release assessment and immutable research evidence remain CI/research
+inputs and are not required by the production server or runtime UI. Report
+unavailable access, package incompatibility, account/position preflight
+failure, or an ambiguous target as the exact blocker.
 
 ## Return one verdict
 
@@ -354,7 +359,7 @@ an intermediate production label.
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy-release decide`. If the user asks to start forward tests, treat that as authorization for the exact candidate only: commit and push its strategy-owned source, wait for the beta verification, protected stable promotion, weekly Project sync, Project image publication, and Deploy rollout, verify the deployed stable runtime manifest, then perform the scoped immutable runtime-config rollout and start only after `START_MICRO_FORWARD` at MAX_LOSS_VALUE=1. Do not wait for a second ready/готово message, promote outside the protected flow, change unrelated runtime state, or increase risk automatically.
+Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy-release decide`. If the user asks to start forward tests, complete the exact strategy/package/Project commits and pushes, commit the full risk-1 config plus its explicit strategy version in `tradejs.config.ts`, wait for the matching automatic image deploy, verify it with `runtime-control inspect`, and start only the authorized forward deployment after `START_MICRO_FORWARD`; production Redis may hold only an optional manual pause override, never strategy config or version pointers.
 ```
 
 Diagnose live:

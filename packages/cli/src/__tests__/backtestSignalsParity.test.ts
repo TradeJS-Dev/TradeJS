@@ -560,6 +560,7 @@ const runSignalsPath = async () => {
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+    getRuntimeDeployment: jest.fn(async () => null),
     loadResolvedRuntimeStrategies: jest.fn(async () => [
       {
         strategyName: 'ParityStrategy',
@@ -647,8 +648,7 @@ const runSignalsPath = async () => {
   jest.doMock('@tradejs/infra/tradingAccounts', () => ({
     resolveTradingAccount: jest.fn(async () => null),
   }));
-  jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
-    getRuntimeDeployment: jest.fn(async () => null),
+  jest.doMock('@tradejs/infra/runtimeHeartbeats', () => ({
     saveRuntimeDeploymentHeartbeat: jest.fn(),
   }));
   jest.doMock('../lib/derivativesContextBackfill', () => ({

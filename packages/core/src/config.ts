@@ -10,6 +10,7 @@ import type {
   StrategyConfig,
   StrategyManifest,
   StrategyPluginDefinition,
+  TradejsRuntimeDeclaration,
 } from '@tradejs/types';
 
 export type PluginModuleSpecifier = string;
@@ -102,6 +103,7 @@ export interface TradejsConfig {
   indicators?: PluginModuleSpecifier[];
   connectors?: PluginModuleSpecifier[];
   hooks?: TradejsConfigHooks;
+  runtime?: TradejsRuntimeDeclaration;
 }
 
 const normalizePlugins = (
@@ -170,11 +172,13 @@ export const normalizeTradejsConfigHooks = (
 ): TradejsConfigHooks | undefined => mergeTradejsConfigHooks(hooks);
 
 export function defineConfig(...configs: TradejsConfig[]): TradejsConfig {
+  const runtime = configs.findLast((config) => config.runtime)?.runtime;
   return {
     strategies: mergePluginSpecifiers(...configs.map((cfg) => cfg.strategies)),
     indicators: mergePluginSpecifiers(...configs.map((cfg) => cfg.indicators)),
     connectors: mergePluginSpecifiers(...configs.map((cfg) => cfg.connectors)),
     hooks: mergeTradejsConfigHooks(...configs.map((cfg) => cfg.hooks)),
+    ...(runtime ? { runtime } : {}),
   };
 }
 

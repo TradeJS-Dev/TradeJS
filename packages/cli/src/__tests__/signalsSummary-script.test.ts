@@ -359,7 +359,7 @@ describe('signals summary script', () => {
       logger,
     }));
 
-    jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
+    jest.doMock('@tradejs/node/runtimeStrategies', () => ({
       listRuntimeDeployments: jest.fn(async () => []),
     }));
 
@@ -672,7 +672,7 @@ describe('signals summary script', () => {
       logger,
     }));
 
-    jest.doMock('@tradejs/infra/runtimeDeployments', () => ({
+    jest.doMock('@tradejs/node/runtimeStrategies', () => ({
       listRuntimeDeployments: jest.fn(async () => []),
     }));
 

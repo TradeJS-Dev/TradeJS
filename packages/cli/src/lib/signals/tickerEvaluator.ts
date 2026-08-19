@@ -137,7 +137,7 @@ export const createSignalsTickerEvaluator =
     for (const runtimeStrategy of runtimeStrategies) {
       const {
         strategyName,
-        releaseVersion,
+        version,
         controlState,
         strategyPackageVersion,
         runtimePackageVersion,
@@ -145,7 +145,7 @@ export const createSignalsTickerEvaluator =
         sourceStrategyConfig,
         strategyConfig,
       } = runtimeStrategy;
-      const runtimeIdentity = `v${releaseVersion}`;
+      const runtimeIdentity = `v${version}`;
       const runtimeConfig = buildRuntimeModeStrategyConfig({
         strategyConfig,
         env: 'CRON',
@@ -155,7 +155,7 @@ export const createSignalsTickerEvaluator =
       const runtimeLineage = await buildRuntimeLineage({
         projectRoot,
         strategyName,
-        releaseVersion,
+        version,
         strategyPackageVersion,
         runtimePackageVersion,
         config: { strategyConfig },
@@ -199,7 +199,7 @@ export const createSignalsTickerEvaluator =
               userName,
               connectorName,
               runtimeConfigId: runtimeIdentity,
-              runtimeReleaseVersion: releaseVersion,
+              runtimeVersion: version,
               entriesPaused: controlState === 'entries_paused',
               runtimeLineage,
               runtimeConfigSnapshot: {
@@ -260,12 +260,12 @@ export const createSignalsTickerEvaluator =
             symbol,
             timestamp: lastCandle.timestamp,
             runtimeConfigId: runtimeIdentity,
-            runtimeReleaseVersion: releaseVersion,
+            runtimeVersion: version,
           }),
           userName,
           strategy: strategyName,
           runtimeConfigId: runtimeIdentity,
-          runtimeReleaseVersion: releaseVersion,
+          runtimeVersion: version,
           runtimeLineage,
           symbol,
           interval,
@@ -284,10 +284,10 @@ export const createSignalsTickerEvaluator =
 
       if (stats) stats.signals += 1;
       signal.runtimeConfigId = runtimeIdentity;
-      signal.runtimeReleaseVersion = releaseVersion;
+      signal.runtimeVersion = version;
       signal.runtimeLineage = runtimeLineage;
-      if (releaseVersion && !signal.signalId.endsWith(`:v${releaseVersion}`)) {
-        signal.signalId = `${signal.signalId}:v${releaseVersion}`;
+      if (version && !signal.signalId.endsWith(`:v${version}`)) {
+        signal.signalId = `${signal.signalId}:v${version}`;
       }
       await enrichSignalWithBinanceMarketContext({ signal, env: 'CRON' });
       if (
@@ -310,12 +310,12 @@ export const createSignalsTickerEvaluator =
           symbol,
           timestamp: lastCandle.timestamp,
           runtimeConfigId: runtimeIdentity,
-          runtimeReleaseVersion: releaseVersion,
+          runtimeVersion: version,
         }),
         userName,
         strategy: strategyName,
         runtimeConfigId: runtimeIdentity,
-        runtimeReleaseVersion: releaseVersion,
+        runtimeVersion: version,
         runtimeLineage,
         symbol,
         interval,

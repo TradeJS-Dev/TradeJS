@@ -1,24 +1,28 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getRuntimeStrategyRelease } from '@tradejs/infra/runtimeStrategyReleases';
+import { getRuntimeControls } from '@tradejs/infra/runtimeControls';
 import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
 import type {
   Interval,
   MarketUniverse,
+  RuntimeControls,
   RuntimeDeployment,
+  RuntimeDeploymentDeclaration,
   RuntimeStrategyControlState,
-  RuntimeStrategyRelease,
   StrategyConfig,
   StrategyCreator,
+  TradejsRuntimeDeclaration,
 } from '@tradejs/types';
 import {
   getStrategyCreator,
   getStrategyPluginSource,
 } from './strategy/manifests';
+import { loadTradejsConfig } from './tradejsConfig';
 
 export interface ResolvedRuntimeStrategy {
   strategyName: string;
-  releaseVersion: number;
+  version: number;
+  enabled: boolean;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
   universe: MarketUniverse;
@@ -35,6 +39,43 @@ type RuntimePackageManifest = {
   packages?: Record<string, string>;
 };
 
+const INTERVALS = new Set([
+  '1',
+  '3',
+  '5',
+  '15',
+  '30',
+  '60',
+  '120',
+  '240',
+  '360',
+  '720',
+  'D',
+  'W',
+  'M',
+]);
+const RUNTIME_KEYS = new Set(['deployments']);
+const DEPLOYMENT_KEYS = new Set([
+  'label',
+  'connectorName',
+  'provider',
+  'accountId',
+  'enabled',
+  'strategies',
+  'assetClasses',
+  'tickers',
+]);
+const STRATEGY_KEYS = new Set(['version', 'enabled', 'config']);
+const FORBIDDEN_CONFIG_KEYS = new Set([
+  'ACCOUNT_ID',
+  'DEPLOYMENT_ID',
+  'CONNECTOR_NAME',
+  'ENABLE',
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
 const readPackageManifest = async (
   projectRoot: string,
 ): Promise<RuntimePackageManifest> => {
@@ -49,7 +90,7 @@ const readPackageManifest = async (
         await readFile(candidate, 'utf8'),
       ) as RuntimePackageManifest;
     } catch {
-      // A local source checkout does not have to carry a generated image manifest.
+      // Source checkouts resolve versions from installed package manifests.
     }
   }
   return { packages: {} };
@@ -102,35 +143,154 @@ const resolveStrategyPackageName = async ({
   }
 };
 
-const validateReleaseRuntimeCompatibility = async ({
-  release,
-  projectRoot,
-  packageManifest,
+const verifyStringArray = (value: unknown) =>
+  value === undefined ||
+  (Array.isArray(value) && value.every((item) => typeof item === 'string'));
+
+const verifyDeploymentDeclaration = (
+  deploymentId: string,
+  value: unknown,
+): RuntimeDeploymentDeclaration => {
+  if (
+    !deploymentId.trim() ||
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !DEPLOYMENT_KEYS.has(key)) ||
+    typeof value.connectorName !== 'string' ||
+    !value.connectorName.trim() ||
+    typeof value.accountId !== 'string' ||
+    !value.accountId.trim() ||
+    (value.label !== undefined && typeof value.label !== 'string') ||
+    (value.provider !== undefined && typeof value.provider !== 'string') ||
+    (value.enabled !== undefined && typeof value.enabled !== 'boolean') ||
+    !verifyStringArray(value.assetClasses) ||
+    !verifyStringArray(value.tickers) ||
+    !isRecord(value.strategies) ||
+    !Object.keys(value.strategies).length
+  ) {
+    throw new Error(`Invalid runtime deployment declaration: ${deploymentId}`);
+  }
+
+  for (const [strategyName, strategyValue] of Object.entries(
+    value.strategies,
+  )) {
+    if (
+      !strategyName.trim() ||
+      !isRecord(strategyValue) ||
+      Object.keys(strategyValue).some((key) => !STRATEGY_KEYS.has(key)) ||
+      !Number.isSafeInteger(strategyValue.version) ||
+      Number(strategyValue.version) <= 0 ||
+      typeof strategyValue.enabled !== 'boolean' ||
+      !isRecord(strategyValue.config) ||
+      Object.keys(strategyValue.config).some((key) =>
+        FORBIDDEN_CONFIG_KEYS.has(key),
+      ) ||
+      !INTERVALS.has(String(strategyValue.config.INTERVAL)) ||
+      !['crypto', 'tradfi'].includes(String(strategyValue.config.UNIVERSE))
+    ) {
+      throw new Error(
+        `Invalid runtime strategy declaration: ${deploymentId}/${strategyName}`,
+      );
+    }
+  }
+
+  return value as unknown as RuntimeDeploymentDeclaration;
+};
+
+export const verifyRuntimeDeclaration = (
+  value: unknown,
+): TradejsRuntimeDeclaration => {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !RUNTIME_KEYS.has(key)) ||
+    !isRecord(value.deployments) ||
+    !Object.keys(value.deployments).length
+  ) {
+    throw new Error('Invalid runtime declaration');
+  }
+  for (const [deploymentId, deployment] of Object.entries(value.deployments)) {
+    verifyDeploymentDeclaration(deploymentId, deployment);
+  }
+  return value as unknown as TradejsRuntimeDeclaration;
+};
+
+const toRuntimeDeployment = ({
+  id,
+  declaration,
+  controls,
 }: {
-  release: RuntimeStrategyRelease;
+  id: string;
+  declaration: RuntimeDeploymentDeclaration;
+  controls: RuntimeControls;
+}): RuntimeDeployment => {
+  const deploymentEnabled = declaration.enabled ?? true;
+  return {
+    id,
+    label: declaration.label?.trim() || id,
+    connectorName: declaration.connectorName.trim(),
+    provider: (declaration.provider || declaration.connectorName)
+      .trim()
+      .toLowerCase(),
+    accountId: declaration.accountId.trim(),
+    enabled: deploymentEnabled,
+    strategies: Object.entries(declaration.strategies).map(
+      ([strategyName, strategy]) => ({
+        strategyName,
+        version: strategy.version,
+        enabled: strategy.enabled,
+        controlState:
+          deploymentEnabled &&
+          strategy.enabled &&
+          !controls.deployments[id]?.[strategyName]?.entriesPaused
+            ? 'active'
+            : 'entries_paused',
+      }),
+    ),
+    ...(declaration.assetClasses
+      ? { assetClasses: declaration.assetClasses }
+      : {}),
+    ...(declaration.tickers ? { tickers: declaration.tickers } : {}),
+  };
+};
+
+const loadRuntimeDeclaration = async (projectRoot: string) => {
+  const projectConfig = await loadTradejsConfig(projectRoot);
+  if (!projectConfig.runtime) {
+    throw new Error('Runtime declaration is required in tradejs.config.ts');
+  }
+  return verifyRuntimeDeclaration(projectConfig.runtime);
+};
+
+export const listRuntimeDeployments = async ({
+  userName,
+  projectRoot,
+}: {
+  userName: string;
   projectRoot: string;
-  packageManifest: RuntimePackageManifest;
-}) => {
-  const installedStrategyVersion = await resolveInstalledPackageVersion(
-    projectRoot,
-    release.strategyPackage,
-    packageManifest,
+}): Promise<RuntimeDeployment[]> => {
+  const [runtime, controls] = await Promise.all([
+    loadRuntimeDeclaration(projectRoot),
+    getRuntimeControls(userName),
+  ]);
+  return Object.entries(runtime.deployments)
+    .map(([id, declaration]) =>
+      toRuntimeDeployment({ id, declaration, controls }),
+    )
+    .sort((left, right) => left.label.localeCompare(right.label));
+};
+
+export const getRuntimeDeployment = async ({
+  userName,
+  projectRoot,
+  deploymentId,
+}: {
+  userName: string;
+  projectRoot: string;
+  deploymentId: string;
+}): Promise<RuntimeDeployment | null> => {
+  const deployments = await listRuntimeDeployments({ userName, projectRoot });
+  return (
+    deployments.find((deployment) => deployment.id === deploymentId) ?? null
   );
-  if (release.strategyPackageVersion !== installedStrategyVersion) {
-    throw new Error(
-      `${release.strategyName} v${release.releaseVersion} requires ${release.strategyPackage}@${release.strategyPackageVersion}, image has ${installedStrategyVersion}`,
-    );
-  }
-  const installedRuntimeVersion = await resolveInstalledPackageVersion(
-    projectRoot,
-    '@tradejs/node',
-    packageManifest,
-  );
-  if (release.runtimePackageVersion !== installedRuntimeVersion) {
-    throw new Error(
-      `${release.strategyName} v${release.releaseVersion} requires @tradejs/node@${release.runtimePackageVersion}, image has ${installedRuntimeVersion}`,
-    );
-  }
 };
 
 const resolveAccountId = async ({
@@ -154,107 +314,101 @@ const resolveAccountId = async ({
   return account.id;
 };
 
-const loadVersionedRuntimeStrategies = async ({
-  userName,
-  projectRoot,
-  deployment,
-}: {
-  userName: string;
-  projectRoot: string;
-  deployment: RuntimeDeployment;
-}): Promise<ResolvedRuntimeStrategy[]> => {
-  const packageManifest = await readPackageManifest(projectRoot);
-  return Promise.all(
-    deployment.strategies.map(async (reference) => {
-      if (
-        !Number.isSafeInteger(reference.releaseVersion) ||
-        !reference.releaseVersion
-      ) {
-        throw new Error(
-          `Deployment ${deployment.id} strategy ${reference.strategyName} has no releaseVersion`,
-        );
-      }
-      if (
-        Object.keys(reference).some(
-          (key) =>
-            !['strategyName', 'releaseVersion', 'controlState'].includes(key),
-        )
-      ) {
-        throw new Error(`Deployment ${deployment.id} has invalid fields`);
-      }
-      if (!reference.controlState) {
-        throw new Error(
-          `Deployment ${deployment.id} strategy ${reference.strategyName} has no controlState`,
-        );
-      }
-      const release = await getRuntimeStrategyRelease(
-        userName,
-        reference.strategyName,
-        reference.releaseVersion,
-      );
-      if (!release) {
-        throw new Error(
-          `Runtime release not found: ${reference.strategyName} v${reference.releaseVersion}`,
-        );
-      }
-      await validateReleaseRuntimeCompatibility({
-        release,
-        projectRoot,
-        packageManifest,
-      });
-      const strategyCreator = await getStrategyCreator(
-        reference.strategyName,
-        projectRoot,
-      );
-      if (!strategyCreator) {
-        throw new Error(`Unknown strategy: ${reference.strategyName}`);
-      }
-      const interval = String(release.config.INTERVAL) as Interval;
-      const universe = release.config.UNIVERSE as MarketUniverse;
-      const accountId = await resolveAccountId({
-        userName,
-        deployment,
-        universe,
-      });
-      return {
-        strategyName: reference.strategyName,
-        releaseVersion: release.releaseVersion,
-        controlState: reference.controlState,
-        interval,
-        universe,
-        accountId,
-        strategyPackage: release.strategyPackage,
-        strategyPackageVersion: release.strategyPackageVersion,
-        runtimePackageVersion: release.runtimePackageVersion,
-        strategyCreator,
-        sourceStrategyConfig: release.config,
-        strategyConfig: release.config,
-      } satisfies ResolvedRuntimeStrategy;
-    }),
-  );
-};
-
 export const loadResolvedRuntimeStrategies = async ({
   userName,
   projectRoot,
-  deployment,
+  deploymentId,
   universe,
   accountId,
   interval,
 }: {
   userName: string;
   projectRoot: string;
-  deployment?: RuntimeDeployment | null;
+  deploymentId: string;
   universe?: MarketUniverse;
   accountId?: string;
   interval?: Interval;
 }): Promise<ResolvedRuntimeStrategy[]> => {
-  if (!deployment) throw new Error('Runtime deployment is required');
-  const strategies = await loadVersionedRuntimeStrategies({
-    userName,
-    projectRoot,
-    deployment,
+  const [runtime, controls, packageManifest] = await Promise.all([
+    loadRuntimeDeclaration(projectRoot),
+    getRuntimeControls(userName),
+    readPackageManifest(projectRoot),
+  ]);
+  const declaration = runtime.deployments[deploymentId];
+  if (!declaration) {
+    throw new Error(`Runtime deployment not found: ${deploymentId}`);
+  }
+  const deployment = toRuntimeDeployment({
+    id: deploymentId,
+    declaration,
+    controls,
   });
+  const strategies = await Promise.all(
+    Object.entries(declaration.strategies).map(
+      async ([strategyName, strategyDeclaration]) => {
+        const strategyCreator = await getStrategyCreator(
+          strategyName,
+          projectRoot,
+        );
+        if (!strategyCreator) {
+          throw new Error(`Unknown strategy: ${strategyName}`);
+        }
+        const pluginSource =
+          (await getStrategyPluginSource(strategyName, projectRoot)) ?? null;
+        const strategyPackage = await resolveStrategyPackageName({
+          pluginSource,
+          projectRoot,
+        });
+        const [strategyPackageVersion, runtimePackageVersion] =
+          await Promise.all([
+            resolveInstalledPackageVersion(
+              projectRoot,
+              strategyPackage,
+              packageManifest,
+            ),
+            resolveInstalledPackageVersion(
+              projectRoot,
+              '@tradejs/node',
+              packageManifest,
+            ),
+          ]);
+        if (!strategyPackage || !strategyPackageVersion) {
+          throw new Error(
+            `Installed strategy package not found: ${strategyName}`,
+          );
+        }
+        if (!runtimePackageVersion) {
+          throw new Error('Installed @tradejs/node package version not found');
+        }
+        const strategyView = deployment.strategies.find(
+          (candidate) => candidate.strategyName === strategyName,
+        );
+        const strategyConfig = strategyDeclaration.config;
+        const strategyUniverse = strategyConfig.UNIVERSE as MarketUniverse;
+        const resolvedAccountId = await resolveAccountId({
+          userName,
+          deployment,
+          universe: strategyUniverse,
+        });
+        return {
+          strategyName,
+          version: strategyDeclaration.version,
+          enabled: strategyDeclaration.enabled,
+          controlState: strategyView?.controlState ?? 'entries_paused',
+          interval: String(strategyConfig.INTERVAL) as Interval,
+          universe: strategyUniverse,
+          accountId: resolvedAccountId,
+          strategyPackage,
+          strategyPackageVersion,
+          runtimePackageVersion,
+          strategyCreator,
+          sourceStrategyConfig: strategyConfig,
+          strategyConfig,
+        } satisfies ResolvedRuntimeStrategy;
+      },
+    ),
+  );
+
   const filtered = strategies.filter(
     (candidate) =>
       (!universe || candidate.universe === universe) &&
@@ -293,6 +447,10 @@ export const getRuntimeStrategyPackageMetadata = async ({
       strategyPackage,
       packageManifest,
     ),
-    runtimePackageVersion: packageManifest.packages?.['@tradejs/node'] ?? null,
+    runtimePackageVersion: await resolveInstalledPackageVersion(
+      projectRoot,
+      '@tradejs/node',
+      packageManifest,
+    ),
   };
 };

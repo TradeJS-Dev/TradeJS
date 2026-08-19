@@ -1,8 +1,10 @@
 import type { RuntimeDeployment } from '@tradejs/types';
 
-jest.mock('@tradejs/infra/runtimeDeployments', () => ({
-  getRuntimeDeployment: jest.fn(),
+jest.mock('@tradejs/infra/runtimeHeartbeats', () => ({
   saveRuntimeDeploymentHeartbeat: jest.fn(),
+}));
+jest.mock('@tradejs/node/runtimeStrategies', () => ({
+  getRuntimeDeployment: jest.fn(),
 }));
 jest.mock('@tradejs/node/connectors', () => ({
   DEFAULT_CONNECTOR_NAME: 'bybit',
@@ -22,11 +24,11 @@ jest.mock('../lib/signals/daemon', () => ({
   ),
 }));
 
-import { getRuntimeDeployment } from '@tradejs/infra/runtimeDeployments';
+import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import { createSignalsRunner } from '../lib/signals/runner';
 import { loadRuntimeStrategies } from '../lib/signals/runtimeStrategies';
 
-const deployment = (releaseVersion: number): RuntimeDeployment => ({
+const deployment = (version: number): RuntimeDeployment => ({
   id: 'doubletap-forward',
   label: 'DoubleTap forward',
   connectorName: 'bybit',
@@ -36,7 +38,8 @@ const deployment = (releaseVersion: number): RuntimeDeployment => ({
   strategies: [
     {
       strategyName: 'DoubleTap',
-      releaseVersion,
+      version,
+      enabled: true,
       controlState: 'entries_paused',
     },
   ],
@@ -69,10 +72,10 @@ describe('signals daemon deployment reload', () => {
 
     expect(getRuntimeDeployment).toHaveBeenCalledTimes(3);
     expect(
-      jest.mocked(loadRuntimeStrategies).mock.calls[0]?.[0].deployment,
-    ).toBe(first);
+      jest.mocked(loadRuntimeStrategies).mock.calls[0]?.[0].deploymentId,
+    ).toBe(first.id);
     expect(
-      jest.mocked(loadRuntimeStrategies).mock.calls[1]?.[0].deployment,
-    ).toBe(second);
+      jest.mocked(loadRuntimeStrategies).mock.calls[1]?.[0].deploymentId,
+    ).toBe(second.id);
   });
 });

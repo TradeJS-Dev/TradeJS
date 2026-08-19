@@ -365,7 +365,7 @@ const renderLineageRows = (
       existing.gitShas.add('release-versioned');
       existing.dirty.add('n/a');
       existing.gates.add('release-versioned');
-      existing.configs.add(`v${record.lineage.releaseVersion}`);
+      existing.configs.add(`v${record.lineage.version}`);
       existing.contexts.add(
         [
           record.lineage.strategyPackageVersion ?? 'strategy:unknown',

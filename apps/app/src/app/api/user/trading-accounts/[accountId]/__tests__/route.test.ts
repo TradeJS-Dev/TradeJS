@@ -18,7 +18,7 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
   getTradingAccount: (...args: unknown[]) => mockGetTradingAccount(...args),
 }));
 
-jest.mock('@tradejs/infra/runtimeDeployments', () => ({
+jest.mock('@tradejs/node/runtimeStrategies', () => ({
   listRuntimeDeployments: (...args: unknown[]) =>
     mockListRuntimeDeployments(...args),
 }));
@@ -65,6 +65,10 @@ describe('trading account delete route', () => {
       error: 'Account is used by deployments: tradfi-live, tradfi-paper',
     });
     expect(mockDeleteTradingAccount).not.toHaveBeenCalled();
+    expect(mockListRuntimeDeployments).toHaveBeenCalledWith({
+      userName: 'root',
+      projectRoot: expect.any(String),
+    });
   });
 
   it('deletes an unreferenced account', async () => {

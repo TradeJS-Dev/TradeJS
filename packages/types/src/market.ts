@@ -72,10 +72,12 @@ export interface TradingAccountRef {
 
 export interface RuntimeDeploymentStrategy {
   strategyName: string;
-  /** Immutable per-strategy release selected for this deployment. */
-  releaseVersion: number;
+  /** Explicit Git-owned version of the package plus strategy configuration. */
+  version: number;
+  /** Desired entry state committed in tradejs.config.ts. */
+  enabled: boolean;
   /** New entries may be paused while exit/position management keeps running. */
-  controlState: import('./runtimeStrategyReleases').RuntimeStrategyControlState;
+  controlState: import('./runtimeControls').RuntimeStrategyControlState;
 }
 
 export interface RuntimeDeployment {

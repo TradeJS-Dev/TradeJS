@@ -64,7 +64,8 @@ describe('strategy-release command', () => {
             userName: 'root',
             deploymentId: 'forward-doubletap',
             accountId: 'bybit-forward',
-            strategyConfigName: 'DoubleTap',
+            strategyName: 'DoubleTap',
+            version: 4,
           },
           maxLossValue: 1,
         },
@@ -105,7 +106,8 @@ describe('strategy-release command', () => {
       userName: 'root',
       deploymentId: 'forward-doubletap',
       accountId: 'bybit-forward',
-      strategyConfigName: 'DoubleTap',
+      strategyName: 'DoubleTap',
+      version: 4,
     };
     await fs.writeFile(inputPath, JSON.stringify(unresolvedInput));
     await fs.appendFile(chartPath, '\n');

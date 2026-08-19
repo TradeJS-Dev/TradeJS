@@ -62,7 +62,8 @@ export type StrategyReleaseResearchDecisionInput = {
       userName: string;
       deploymentId: string;
       accountId: string;
-      strategyConfigName: string;
+      strategyName: string;
+      version: number;
     } | null;
     maxLossValue: number;
   };
@@ -99,7 +100,6 @@ export type StrategyEvidenceMarker = {
   artifactId: string;
   artifactSha256: string;
   compositionId?: string;
-  releaseVersion?: number;
   gitSha?: string;
   gateFingerprint?: string;
   configFingerprint?: string;
@@ -110,24 +110,6 @@ export type StrategyEvidenceMarker = {
     startTime: number;
     endTime: number;
   };
-};
-
-export type StrategyEvidenceTimeline = {
-  status: 'verified' | 'not_attached' | 'missing' | 'invalid';
-  observedFrom: number | null;
-  markers: StrategyEvidenceMarker[];
-};
-
-export type StrategyEvidenceTimelineSelector = {
-  strategy: string;
-  releaseVersion?: number | null;
-  compositionId?: string | null;
-  gitSha?: string | null;
-  gateFingerprint?: string | null;
-  configFingerprint?: string | null;
-  contextFingerprint?: string | null;
-  maxLossValue?: number | null;
-  requireCompleteLineage?: boolean;
 };
 
 export type StrategyEvidenceMarkerPayload = {

@@ -466,18 +466,19 @@ The decision input references the chart report as
 `chartArtifact: { path, sha256 }`; the command recomputes the checksum and
 validates that the report is a successful full-period local deterministic run.
 It also requires an exact `runtimeTarget` object (`userName`, `deploymentId`,
-`accountId`, `strategyName`) before returning `START_MICRO_FORWARD`.
-Research normally uses local Redis while production bindings live on a separate
-runtime server. Use `null` locally to produce a portable
-`MICRO_FORWARD_READY` handoff with `requiresRuntimeBinding=true`; this is not a
-failed research verdict. On the server, resolve its own IDs, verify the same
-package versions, publish the next immutable per-strategy `releaseVersion`, and
-rerun the decision. Account and deployment ids remain separate operational
-bindings. API credentials stay in the canonical trading-account record and are
-never included in the release. Activation remains execution-critical through
-the explicit deployment `controlState`. Any config change, including
-`MAX_LOSS_VALUE`, creates a new runtime release; it need not create a new
-research composition when trading logic is unchanged.
+`accountId`, `strategyName`, `version`) before returning
+`START_MICRO_FORWARD`.
+Research normally uses local Redis while production accounts live on a separate
+runtime server. Use `null` locally to produce a portable `MICRO_FORWARD_READY`
+handoff with `requiresRuntimeBinding=true`; this is not a failed research
+verdict. The authorized rollout is completed in `TradeJS-Project`: update the
+strategy package dependency and the strategy's full runtime config in the same
+`tradejs.config.ts` commit, increment its positive integer `version`, build the
+image, and deploy that immutable Project SHA. Account credentials remain in the
+server-owned trading-account record and are never committed. Any production
+config change, including `MAX_LOSS_VALUE`, increments the Project strategy
+version; it need not create a new research composition when trading logic is
+unchanged.
 
 `decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
 or stop. When the user has authorized automatic forward testing and the exact
@@ -525,18 +526,10 @@ Every runtime evaluation, signal, and trade in the scorecard must resolve to one
 clean git/config/gate/context logic lineage equal to the release manifest, plus
 a valid risk scale. Missing, dirty, conflicting, or different logic lineage is
 runtime divergence; missing risk scale leaves economic attribution insufficient.
-For an explicitly approved deployment, publish evidence markers that name its
-exact per-strategy `releaseVersion`. Runtime deployment records do not contain
-composition ids, git SHAs, or config/gate/context fingerprints.
-
-The Strategies UI reads only checksum-verified marker envelopes from
-`STRATEGY_RELEASE_MARKER_DIR` (default `data/strategy-release/markers`). Its
-compact **Evidence** popover contains the G/L/E/D/P/R legend, optional P/R
-filters, event details, and hash provenance. Missing or invalid evidence is
-explicit and never falls back to mutable Redis lineage.
-Release markers are attached to a strategy card only when the checksum-verified
-artifact explicitly names its current `releaseVersion`. Until then the card
-reports `not_attached`; it never borrows markers from another release.
+Research evidence remains a local/CI diagnostic input. Production does not
+load release artifacts or use composition ids, git SHAs, or fingerprints to
+select config. The Strategies UI therefore has no `Evidence: missing` state:
+it renders the committed Project declaration and observed runtime trades only.
 
 Retention defaults are 3 days for operational Redis evidence, 14 days for
 verbose payloads, 90 days for verified aggregated runtime bundles, and forever
@@ -550,11 +543,11 @@ yarn strategy:release retention --input <retention-inventory.json> --apply
 
 ### 6. Promote And Launch Gradually
 
-Promote only one fully resolved config. Backtest configs remain local research
-inputs; production runtime config exists only as an immutable per-strategy
-release. The strategies screen at
-`http://localhost:3000/routes/strategies` renders that release read-only and
-may only pause or resume new entries.
+Promote only one fully resolved config. Backtest configs remain local Redis
+research inputs; production runtime config exists only in the committed
+`TradeJS-Project/tradejs.config.ts` declaration. The strategies screen at
+`http://localhost:3000/routes/strategies` renders it read-only and may only
+pause or resume new entries.
 
 Use an explicit rollout ladder:
 
@@ -562,31 +555,30 @@ Use an explicit rollout ladder:
 # 1. Build and validate the exact released working tree.
 yarn checks
 
-# 2. Provision a missing deployment once, or roll out the next release.
-yarn runtime-config provision --user root --strategy <Strategy> \
-  --deployment <deployment> --account <account> --connector <connector> \
-  --file <config.json> --write
-yarn runtime-config rollout --user root --strategy <Strategy> \
-  --deployment <deployment> --file <config.json> --write
+# 2. Commit the package + config + version change in TradeJS-Project, build its
+#    production image, and deploy the immutable Project SHA.
 
-# 3. Evaluate one closed-candle cycle without notifications or orders.
+# 3. Verify the image-owned declaration and server-owned account binding.
+yarn runtime-control verify --user root --deployment <deployment>
+
+# 4. Evaluate one closed-candle cycle without notifications or orders.
 yarn signals -- --user root --deployment <deployment> --cacheOnly
 
-# 4. Compare recent replay/backtest entries with recorded runtime evidence.
+# 5. Compare recent replay/backtest entries with recorded runtime evidence.
 yarn runtime-parity -- --user root --connector bybit --days 3 --details
 
-# 5. Observe notifications, still without order placement.
+# 6. Observe notifications, still without order placement.
 yarn signals:daemon -- --user root --deployment <deployment> --notify
 
-# 6. Enable orders only after the earlier stages and account/risk review pass.
+# 7. Enable orders only after the earlier stages and account/risk review pass.
 yarn signals:daemon -- --user root --deployment <deployment> --notify --makeOrders
 ```
 
-The signals daemon reloads the deployment and its release references on every
-cycle. A rollout, rollback, pause, resume, ticker change, or account binding
-change therefore evicts the old in-memory session and takes effect without a
-container restart. The replacement session is rebuilt from closed-candle
-warmup data before it may place a new order.
+The signals daemon reloads the image-owned deployment and optional Redis pause
+overrides on every cycle. Pause/resume takes effect without a restart. Config,
+version, ticker, connector, or account declaration changes arrive only through
+a new immutable Project image, whose replacement session is rebuilt from
+closed-candle warmup data before it may place a new order.
 
 Monitor signal evaluations, gate-versus-LLM disagreements, order rejects,
 slippage, parity mismatches, cadence, and realized ALL/LONG/SHORT economics.

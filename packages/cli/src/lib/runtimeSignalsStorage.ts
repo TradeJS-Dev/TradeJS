@@ -18,7 +18,7 @@ export type RuntimeSignalBucketRef = Pick<
   | 'strategy'
   | 'timestamp'
   | 'runtimeConfigId'
-  | 'runtimeReleaseVersion'
+  | 'runtimeVersion'
 >;
 
 export type StoredRuntimeSignal = Omit<
@@ -45,7 +45,7 @@ export type RuntimeLineageScopeRecord = {
   strategy: string;
   symbol: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   lineage: RuntimeLineage;
   firstTimestamp: number;
   lastTimestamp: number;
@@ -91,9 +91,7 @@ export const toRuntimeSignalBucketRef = (
   ...(signal.runtimeConfigId && signal.runtimeConfigId !== 'config'
     ? { runtimeConfigId: signal.runtimeConfigId }
     : {}),
-  ...(signal.runtimeReleaseVersion
-    ? { runtimeReleaseVersion: signal.runtimeReleaseVersion }
-    : {}),
+  ...(signal.runtimeVersion ? { runtimeVersion: signal.runtimeVersion } : {}),
 });
 
 export const shouldStoreRuntimeSignalDiagnostics = (signal: Signal) =>

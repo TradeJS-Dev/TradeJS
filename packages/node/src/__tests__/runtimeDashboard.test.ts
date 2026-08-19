@@ -1,10 +1,5 @@
-import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
 const mockListRuntimeDeployments = jest.fn();
-const mockGetRuntimeStrategyRelease = jest.fn();
+const mockLoadResolvedRuntimeStrategies = jest.fn();
 const mockListTradingAccounts = jest.fn();
 const mockResolveTradingAccount = jest.fn();
 const mockGetAvailableStrategyNames = jest.fn();
@@ -14,14 +9,11 @@ const mockGetHashJsonValues = jest.fn();
 const mockGetKeys = jest.fn();
 const mockSyncRuntimeTrades = jest.fn();
 
-jest.mock('@tradejs/infra/runtimeDeployments', () => ({
+jest.mock('../runtimeStrategies', () => ({
   listRuntimeDeployments: (...args: unknown[]) =>
     mockListRuntimeDeployments(...args),
-}));
-
-jest.mock('@tradejs/infra/runtimeStrategyReleases', () => ({
-  getRuntimeStrategyRelease: (...args: unknown[]) =>
-    mockGetRuntimeStrategyRelease(...args),
+  loadResolvedRuntimeStrategies: (...args: unknown[]) =>
+    mockLoadResolvedRuntimeStrategies(...args),
 }));
 
 jest.mock('@tradejs/infra/tradingAccounts', () => ({
@@ -67,16 +59,9 @@ jest.mock('@tradejs/infra/logger', () => ({
 }));
 
 import { loadRuntimeDashboard } from '../runtimeDashboard';
-import { canonicalStrategyEvidenceJson } from '../strategyEvidenceTimeline';
-import { strategyLogicConfigFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
-
 describe('runtime dashboard', () => {
-  const temporaryRoots: string[] = [];
-  const originalMarkerDir = process.env.STRATEGY_RELEASE_MARKER_DIR;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    delete process.env.STRATEGY_RELEASE_MARKER_DIR;
     mockListRuntimeDeployments.mockResolvedValue([
       {
         id: 'trendline-forward',
@@ -88,21 +73,29 @@ describe('runtime dashboard', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            releaseVersion: 2,
+            version: 2,
+            enabled: true,
             controlState: 'active',
           },
         ],
       },
     ]);
-    mockGetRuntimeStrategyRelease.mockResolvedValue({
-      strategyName: 'TrendLine',
-      releaseVersion: 2,
-      config: {
-        INTERVAL: '15',
-        UNIVERSE: 'crypto',
-        POLICY_PROFILE_ID: 'crypto',
+    mockLoadResolvedRuntimeStrategies.mockResolvedValue([
+      {
+        strategyName: 'TrendLine',
+        version: 2,
+        enabled: true,
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        accountId: 'crypto-main',
+        strategyConfig: {
+          INTERVAL: '15',
+          UNIVERSE: 'crypto',
+          POLICY_PROFILE_ID: 'crypto',
+        },
       },
-    });
+    ]);
     mockListTradingAccounts.mockResolvedValue([
       { id: 'crypto-main', label: 'Crypto main' },
     ]);
@@ -118,22 +111,6 @@ describe('runtime dashboard', () => {
         accountId: 'crypto-main',
       })),
     );
-  });
-
-  afterEach(async () => {
-    await Promise.all(
-      temporaryRoots
-        .splice(0)
-        .map((root) => fs.rm(root, { recursive: true, force: true })),
-    );
-  });
-
-  afterAll(() => {
-    if (originalMarkerDir === undefined) {
-      delete process.env.STRATEGY_RELEASE_MARKER_DIR;
-    } else {
-      process.env.STRATEGY_RELEASE_MARKER_DIR = originalMarkerDir;
-    }
   });
 
   it('builds the complete dashboard read model through one interface', async () => {
@@ -162,7 +139,7 @@ describe('runtime dashboard', () => {
         {
           strategyName: 'TrendLine',
           configId: 'v2',
-          releaseVersion: 2,
+          version: 2,
           interval: '15',
           universe: 'crypto',
           accountId: 'crypto-main',
@@ -176,18 +153,15 @@ describe('runtime dashboard', () => {
           },
           symbols: [],
           orders: [],
-          evidenceTimeline: {
-            status: 'not_attached',
-            observedFrom: null,
-            markers: [],
-          },
         },
       ],
     });
   });
 
-  it('fails when a deployment points to a missing release', async () => {
-    mockGetRuntimeStrategyRelease.mockResolvedValue(null);
+  it('surfaces an invalid Git-owned runtime declaration', async () => {
+    mockLoadResolvedRuntimeStrategies.mockRejectedValue(
+      new Error('Invalid runtime strategy declaration: production/TrendLine'),
+    );
 
     await expect(
       loadRuntimeDashboard({
@@ -197,7 +171,7 @@ describe('runtime dashboard', () => {
         now: 1_700_000_000_000,
         projectRoot: '/project',
       }),
-    ).rejects.toThrow('Runtime release not found: TrendLine v2');
+    ).rejects.toThrow('Invalid runtime strategy declaration');
   });
 
   it('fails before reading sources when the connector is unavailable', async () => {
@@ -209,72 +183,16 @@ describe('runtime dashboard', () => {
     expect(mockListRuntimeDeployments).not.toHaveBeenCalled();
   });
 
-  it('does not attach immutable evidence without exact runtime lineage', async () => {
-    const projectRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'runtime-dashboard-evidence-'),
-    );
-    temporaryRoots.push(projectRoot);
-    const createdAt = 1_699_999_500_000;
-    const payload = {
-      strategy: 'TrendLine',
-      createdAt,
-      markers: [
-        {
-          id: 'release-1:gate',
-          type: 'G',
-          timestamp: createdAt,
-          label: 'Composition frozen',
-          summary: 'TrendLine composition',
-          artifactId: 'release-1',
-          artifactSha256: 'a'.repeat(64),
-          configFingerprint: strategyLogicConfigFingerprint({
-            INTERVAL: '15',
-            ENABLE: false,
-            ACCOUNT_ID: 'another-machine',
-            MAX_LOSS_VALUE: 10,
-          }),
-        },
-      ],
-      sourceArtifacts: [
-        {
-          artifactId: 'source-1',
-          sha256: 'b'.repeat(64),
-          path: '/private/evidence/source.json',
-        },
-      ],
-    };
-    const payloadSha256 = createHash('sha256')
-      .update(canonicalStrategyEvidenceJson(payload))
-      .digest('hex');
-    const artifactId = `TrendLine_20231114T220500Z_${payloadSha256.slice(0, 16)}`;
-    const markerDir = path.join(
-      projectRoot,
-      'data/strategy-release/markers/TrendLine',
-    );
-    await fs.mkdir(markerDir, { recursive: true });
-    await fs.writeFile(
-      path.join(markerDir, `${artifactId}.json`),
-      JSON.stringify({
-        schema: 'tradejs-strategy-evidence-markers/v1',
-        artifactId,
-        payloadSha256,
-        payload,
-      }),
-    );
-
+  it('does not expose local assessment evidence in the runtime response', async () => {
     const response = await loadRuntimeDashboard({
       userName: 'root',
       provider: 'bybit',
       hours: 6,
       now: 1_700_000_000_000,
-      projectRoot,
+      projectRoot: '/project',
     });
 
-    expect(response.strategies[0]?.evidenceTimeline).toEqual({
-      status: 'not_attached',
-      observedFrom: null,
-      markers: [],
-    });
+    expect(response.strategies[0]).not.toHaveProperty('evidenceTimeline');
     expect(JSON.stringify(response)).not.toContain('/private/evidence');
     expect(
       mockGetHashJsonValues.mock.calls.some(([key]) =>

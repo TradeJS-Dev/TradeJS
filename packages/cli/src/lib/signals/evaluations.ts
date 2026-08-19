@@ -27,16 +27,16 @@ export const buildRuntimeSignalEvaluationId = ({
   symbol,
   timestamp,
   runtimeConfigId,
-  runtimeReleaseVersion,
+  runtimeVersion,
 }: {
   strategyName: string;
   symbol: string;
   timestamp: number;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
 }) =>
-  runtimeReleaseVersion
-    ? [strategyName, `v${runtimeReleaseVersion}`, symbol, timestamp].join(':')
+  runtimeVersion
+    ? [strategyName, `v${runtimeVersion}`, symbol, timestamp].join(':')
     : runtimeConfigId && runtimeConfigId !== 'config'
       ? [strategyName, runtimeConfigId, symbol, timestamp].join(':')
       : [strategyName, symbol, timestamp].join(':');
@@ -44,14 +44,14 @@ export const buildRuntimeSignalEvaluationId = ({
 const buildLineageField = (scope: {
   strategy: string;
   runtimeConfigId?: string;
-  runtimeReleaseVersion?: number;
+  runtimeVersion?: number;
   symbol: string;
   lineage: NonNullable<RuntimeSignalEvaluationRecord['runtimeLineage']>;
 }) =>
   [
     scope.strategy,
     scope.runtimeConfigId ?? 'config',
-    scope.runtimeReleaseVersion ? `v${scope.runtimeReleaseVersion}` : 'legacy',
+    scope.runtimeVersion ? `v${scope.runtimeVersion}` : 'legacy',
     scope.symbol,
     runtimeLineageKey(scope.lineage),
   ].join(':');
@@ -105,7 +105,7 @@ export const flushRuntimeSignalEvaluations = async (
       const lineageField = buildLineageField({
         strategy: evaluation.strategy,
         runtimeConfigId: evaluation.runtimeConfigId,
-        runtimeReleaseVersion: evaluation.runtimeReleaseVersion,
+        runtimeVersion: evaluation.runtimeVersion,
         symbol: evaluation.symbol,
         lineage: evaluation.runtimeLineage,
       });
@@ -115,7 +115,7 @@ export const flushRuntimeSignalEvaluations = async (
         strategy: evaluation.strategy,
         symbol: evaluation.symbol,
         runtimeConfigId: evaluation.runtimeConfigId,
-        runtimeReleaseVersion: evaluation.runtimeReleaseVersion,
+        runtimeVersion: evaluation.runtimeVersion,
         lineage: evaluation.runtimeLineage,
         firstTimestamp: Math.min(
           existing?.firstTimestamp ?? evaluation.timestamp,

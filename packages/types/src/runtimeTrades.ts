@@ -1,7 +1,6 @@
 import type { SimpleOrderLogData, StrategyConfig, TestStat } from './backtest';
 import type { MarketUniverse } from './market';
-import type { RuntimeStrategyControlState } from './runtimeStrategyReleases';
-import type { StrategyEvidenceTimeline } from './strategyRelease';
+import type { RuntimeStrategyControlState } from './runtimeControls';
 import type { Interval, RuntimeTradeRecord } from './trade';
 
 export interface RuntimeStrategyTradeSummary {
@@ -50,7 +49,7 @@ export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
   configId: string;
-  releaseVersion: number;
+  version: number;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
   universe: MarketUniverse;
@@ -65,7 +64,6 @@ export interface RuntimeStrategyView {
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
-  evidenceTimeline: StrategyEvidenceTimeline;
   recentTrades: RuntimeStrategyTradeView[];
   orders: RuntimeStrategyTradeView[];
 }

@@ -23,10 +23,9 @@ const sorted = (values: readonly string[] | undefined) =>
 export const formatConfiguredStrategyIdentity = (
   strategy: Pick<
     ResolvedRuntimeStrategy,
-    'strategyName' | 'releaseVersion' | 'controlState'
+    'strategyName' | 'version' | 'controlState'
   >,
-) =>
-  `${strategy.strategyName}@v${strategy.releaseVersion}[${strategy.controlState}]`;
+) => `${strategy.strategyName}@v${strategy.version}[${strategy.controlState}]`;
 
 export const buildConfiguredSignalsScopes = ({
   connectorName,

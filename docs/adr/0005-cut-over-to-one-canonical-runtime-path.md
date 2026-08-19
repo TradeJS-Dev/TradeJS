@@ -1,5 +1,7 @@
 # Cut over to one canonical runtime path
 
+Status: superseded by ADR 0006.
+
 Production runtime accepts only an explicit deployment binding whose strategy
 references are exactly `{ strategyName, releaseVersion, controlState }`. The
 referenced immutable release owns interval, universe, policy, risk, and exact

@@ -24,18 +24,19 @@ make the three families strategy-specific rather than a generic sweep.
 
 ## Environment boundary
 
-Historical research, exports, and local Redis configs live on the research
-machine. Production accounts, credentials, deployments, signals, and trades
-live on the runtime server. Missing local runtime keys are not evidence that
-their production counterparts do not exist. Never copy credentials into
-research evidence.
+Historical research, exports, and backtest configs live on the research
+machine. Desired production deployments and complete strategy configs live in
+TradeJS-Project `tradejs.config.ts`. Account credentials, optional pause
+controls, signals, and trades live on the runtime server. Missing local runtime
+records are not evidence that their production counterparts do not exist.
+Never copy credentials into research evidence.
 
-The local output is a portable composition handoff. Match committed source plus
-canonical core-config, gate, runtime-logic, and context fingerprints across
-machines. `configId`, `ACCOUNT_ID`, `DEPLOYMENT_ID`, and
-`MAX_LOSS_VALUE` are operational binding/risk fields: preserve them separately,
-but do not let differences create a false logic mismatch. API credentials are
-server secrets: never export, hash, or compare them as research identity.
+The local output is a portable composition handoff. Research fingerprints and
+checksums validate its inputs locally; production identifies the deployed
+package plus complete config by the explicit per-strategy `version` committed
+in Project. `ACCOUNT_ID` and `DEPLOYMENT_ID` remain binding fields outside the
+strategy config. API credentials are server secrets: never export, hash, or
+compare them as research identity.
 `ENABLE`, `AI_ENABLED`,
 `AI_MODE`, `MIN_AI_QUALITY`, detector/side policy, interval/universe, fees, and
 execution/context semantics remain parity-critical.
@@ -555,12 +556,12 @@ and parses that exact file and requires a persisted chart, zero evaluation
 errors, the same strategy, `local-deterministic` mode, `recent=0`, no explicit
 date narrowing, and a non-empty full-export scan. Never copy a plausible hash
 into the input without the file. Likewise, `forwardTest.runtimeTarget` is
-either null or the exact `{ userName, deploymentId, accountId,
-strategyConfigName }`; do not substitute a self-declared “resolved” boolean.
+either null or the exact `{ userName, deploymentId, accountId, strategyName,
+version }`; do not substitute a self-declared “resolved” boolean.
 Null on the research machine yields `MICRO_FORWARD_READY` with
-`requiresRuntimeBinding=true`, not failed evidence. Transfer the secret-free
-handoff to the runtime server, resolve its IDs there, verify the portable
-fingerprints, then rerun `decide` there.
+`requiresRuntimeBinding=true`, not failed evidence. Commit the secret-free
+handoff, deployment/account binding, and explicit version in Project, deploy
+that image, then rerun `decide` against it.
 
 Case handling is deterministic:
 
@@ -583,35 +584,25 @@ Case handling is deterministic:
 7. Risk-only changes: keep the same logic lineage and add immutable loss-scale
    evidence; never discard earlier logic history.
 
-For an authorized local `MICRO_FORWARD_READY`, transfer the immutable handoff
-without credentials to the runtime server. When the user says to start forward
-tests, first complete the local rollout phase: commit and push every
-strategy-owned source/gate change for the exact candidate. If code changed,
-bump the strategy package version, run its checks, commit/push it, publish the
-matching `v<version>` GitHub release, and wait for that exact npm version.
-Update the direct exact dependency and lockfile in `TradeJS-Project`, run
-checks, and commit/push Project so a SHA-tagged image is built and dispatched.
-Materialize a local release draft from package defaults plus the
-candidate, remove operational fields, retain `MAX_LOSS_VALUE=1`, run
-`yarn runtime-config verify`, and rerun dry-run `signals`. Keep unrelated
-working-tree changes out of both commits unless explicitly requested.
+For an authorized local `MICRO_FORWARD_READY`, commit and push every
+strategy-owned source/gate change for the exact candidate, wait for its verified
+beta and protected stable promotion, then update the exact dependency and
+lockfile in TradeJS-Project. In that same Project commit, materialize the full
+candidate config, remove mode/secret fields, retain `MAX_LOSS_VALUE=1`, and
+increment the declaration's explicit strategy `version`. Run Project checks,
+`yarn runtime-control verify`, and dry-run `signals`, then push so the SHA-tagged
+image is built and dispatched. Keep unrelated changes out of both commits.
 
-Do not mutate production Redis in the local phase. After the user deploys the
-pushed code and replies `готово`/`ready`, treat that reply as authorization for
-the production Redis phase. Verify `/app/runtime-package-manifest.json`, back
-up Redis, publish the next immutable per-strategy `releaseVersion`, and switch
-only the selected deployment pointer in `entries_paused` state. Verify the
-deployment/account/connector with `yarn runtime-config verify`, retain both
-directions, rerun `decide` and a dry-run, then resume only after
-`START_MICRO_FORWARD`. Do not increase risk, change unrelated releases, or
-manually place orders.
-
-When a user later authorizes a runtime deployment, bind it to
-`{ strategyName, releaseVersion, controlState }`. Runtime records and the UI
-evidence selector use that per-strategy version. Research artifacts retain
-their own internal checksums, but production identity does not use git SHA or
-config/gate/context fingerprints. Evidence remains `not_attached` until a
-checksum-verified artifact explicitly names that release version.
+Production Redis is not a rollout phase and must never receive strategy config,
+deployment documents, or version pointers. For an existing strategy, an
+optional manual pause may guard the image replacement; after verifying
+`/app/runtime-package-manifest.json`, `runtime-control inspect`, `decide`, and a
+dry-run, resume entries after `START_MICRO_FORWARD`. Resume removes the override.
+A newly declared enabled strategy starts with the deployed image. Do not
+increase risk, change unrelated strategy declarations, or manually place
+orders. Runtime records and UI use the explicit Project strategy version;
+research artifacts keep their own internal checksums but are not a production
+server/UI dependency.
 
 ## Command shapes
 
@@ -654,21 +645,22 @@ git -C <strategy-source-root> status --short
 git -C <strategy-source-root> add <strategy-owned-candidate-files>
 git -C <strategy-source-root> commit -m "<strategy>: prepare micro-forward candidate"
 git -C <strategy-source-root> push
-gh release create v<package-version> --repo TradeJS-Dev/<strategy-repository> \\
-  --target main --generate-notes
-npm view <strategy-package>@<package-version> version
-git -C <TradeJS-Project> add package.json yarn.lock
+# Beta and stable releases are published by protected workflows.
+
+npm view <strategy-package>@beta version
+npm view <strategy-package>@latest version
+git -C <TradeJS-Project> add package.json yarn.lock tradejs.config.ts
 git -C <TradeJS-Project> commit -m "Update <Strategy> runtime package"
 git -C <TradeJS-Project> push
-yarn runtime-config verify --user <user> --deployment <deploymentId>
+yarn runtime-control verify --user <user> --deployment <deploymentId>
 yarn signals --user <user> --deployment <deploymentId> --timeframe <interval> \
   --skipScreenshots --showSkipStats
 
-# Runtime server, after the immutable image is deployed and acknowledged.
-yarn runtime-config migrate --user <user> --strategy <Strategy> \
-  --config <legacy-config-id> --deployment <deploymentId> --write
-yarn runtime-config verify --user <user> --deployment <deploymentId>
-yarn runtime-config resume --user <user> --strategy <Strategy> \
+# Optional guarded cutover for an already declared strategy.
+yarn runtime-control pause --user <user> --strategy <Strategy> \
+  --deployment <deploymentId>
+yarn runtime-control inspect --user <user> --deployment <deploymentId>
+yarn runtime-control resume --user <user> --strategy <Strategy> \
   --deployment <deploymentId>
 ```
 

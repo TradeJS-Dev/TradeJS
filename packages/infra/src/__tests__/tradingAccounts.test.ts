@@ -12,16 +12,6 @@ function tradingAccountKey(userName: string, accountId: string) {
 function tradingAccountsKey(userName: string) {
   return `users:${userName}:trading-accounts:`;
 }
-function runtimeDeploymentKey(userName: string, deploymentId: string) {
-  return `users:${userName}:runtime-deployments:${deploymentId}`;
-}
-function runtimeDeploymentsKey(userName: string) {
-  return `users:${userName}:runtime-deployments:`;
-}
-function runtimeDeploymentHeartbeatKey(userName: string, deploymentId: string) {
-  return `users:${userName}:runtime-deployments:${deploymentId}:heartbeat`;
-}
-
 jest.mock('../redis', () => ({
   delKey: (...args: unknown[]) => mockDelKey(...args),
   getData: (...args: unknown[]) => mockGetData(...args),
@@ -30,9 +20,6 @@ jest.mock('../redis', () => ({
     user: userKey,
     tradingAccount: tradingAccountKey,
     tradingAccounts: tradingAccountsKey,
-    runtimeDeployment: runtimeDeploymentKey,
-    runtimeDeployments: runtimeDeploymentsKey,
-    runtimeDeploymentHeartbeat: runtimeDeploymentHeartbeatKey,
   },
   setData: (...args: unknown[]) => mockSetData(...args),
 }));
@@ -44,15 +31,7 @@ import {
   resolveTradingAccount,
   saveTradingAccount,
 } from '../tradingAccounts';
-import {
-  deleteRuntimeDeployment,
-  getRuntimeDeployment,
-  getRuntimeDeploymentHeartbeat,
-  listRuntimeDeployments,
-  saveRuntimeDeployment,
-  saveRuntimeDeploymentHeartbeat,
-} from '../runtimeDeployments';
-import type { RuntimeDeployment, TradingAccountRef } from '@tradejs/types';
+import type { TradingAccountRef } from '@tradejs/types';
 
 const makeAccount = (
   overrides: Partial<TradingAccountRef> = {},
@@ -65,25 +44,6 @@ const makeAccount = (
   environment: 'mainnet',
   apiKey: 'key',
   apiSecret: 'secret',
-  ...overrides,
-});
-
-const makeDeployment = (
-  overrides: Partial<RuntimeDeployment> = {},
-): RuntimeDeployment => ({
-  id: 'tradfi-live',
-  label: 'TradFi Live',
-  connectorName: 'ByBit',
-  provider: 'bybit',
-  accountId: 'tradfi-main',
-  enabled: true,
-  strategies: [
-    {
-      strategyName: 'TrendLine',
-      releaseVersion: 1,
-      controlState: 'active',
-    },
-  ],
   ...overrides,
 });
 
@@ -312,66 +272,6 @@ describe('trading accounts persistence', () => {
     );
     await expect(getTradingAccount('root', '   ')).rejects.toThrow(
       'Account id is required',
-    );
-  });
-
-  it('persists normalized deployments and their heartbeat', async () => {
-    const saved = await saveRuntimeDeployment(
-      'root',
-      makeDeployment({
-        id: ' TradFi Live ',
-        label: ' TradFi Live ',
-        provider: ' ByBit ',
-        accountId: ' TradFi Main ',
-      }),
-    );
-    await saveRuntimeDeploymentHeartbeat('root', {
-      deploymentId: saved.id,
-      status: 'running',
-      pid: 42,
-      startedAt: 100,
-      lastCycleAt: 200,
-    });
-
-    expect(saved).toEqual(
-      expect.objectContaining({
-        id: 'tradfi-live',
-        label: 'TradFi Live',
-        provider: 'bybit',
-        accountId: 'tradfi-main',
-      }),
-    );
-    await expect(getRuntimeDeployment('root', 'TRADFI LIVE')).resolves.toEqual(
-      saved,
-    );
-    await expect(listRuntimeDeployments('root')).resolves.toEqual([saved]);
-    await expect(
-      getRuntimeDeploymentHeartbeat('root', 'tradfi-live'),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        deploymentId: 'tradfi-live',
-        status: 'running',
-      }),
-    );
-  });
-
-  it('deletes deployment and heartbeat together', async () => {
-    await saveRuntimeDeployment('root', makeDeployment());
-    await saveRuntimeDeploymentHeartbeat('root', {
-      deploymentId: 'tradfi-live',
-      status: 'running',
-      pid: 42,
-      startedAt: 100,
-      lastCycleAt: 200,
-    });
-
-    await deleteRuntimeDeployment('root', 'TradFi Live');
-
-    expect(mockDelKey).toHaveBeenCalledWith(
-      runtimeDeploymentKey('root', 'tradfi-live'),
-    );
-    expect(mockDelKey).toHaveBeenCalledWith(
-      runtimeDeploymentHeartbeatKey('root', 'tradfi-live'),
     );
   });
 });

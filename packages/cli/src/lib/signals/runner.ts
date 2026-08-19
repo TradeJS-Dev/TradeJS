@@ -23,10 +23,8 @@ import type {
 import { SIGNALS_CLI_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import {
-  getRuntimeDeployment,
-  saveRuntimeDeploymentHeartbeat,
-} from '@tradejs/infra/runtimeDeployments';
+import { saveRuntimeDeploymentHeartbeat } from '@tradejs/infra/runtimeHeartbeats';
+import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import {
   Connector,
   ConnectorCreator,
@@ -216,13 +214,14 @@ export const createSignalsRunner = (
     } = {},
   ): Promise<SignalsSession> => {
     const deployment = config.deploymentId
-      ? await getRuntimeDeployment(config.userName, config.deploymentId)
+      ? await getRuntimeDeployment({
+          userName: config.userName,
+          projectRoot,
+          deploymentId: config.deploymentId,
+        })
       : null;
     if (config.deploymentId && !deployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
-    }
-    if (deployment && !deployment.enabled) {
-      throw new Error(`Runtime deployment is disabled: ${deployment.id}`);
     }
     const requestedRuntimeInterval = (scope.interval ?? interval) as Interval;
     const runtimeInterval = requestedRuntimeInterval;
@@ -482,7 +481,7 @@ export const createSignalsRunner = (
       const runtimeStrategies = await loadRuntimeStrategies({
         userName: config.userName,
         projectRoot,
-        deployment,
+        deploymentId: deployment?.id ?? '',
         universe,
         accountId,
         interval,
@@ -498,7 +497,7 @@ export const createSignalsRunner = (
       lifecycle.retain(
         new Set(
           tickers.flatMap((symbol) =>
-            runtimeStrategies.map(({ strategyName, releaseVersion }) =>
+            runtimeStrategies.map(({ strategyName, version }) =>
               buildSignalsStrategyLifecycleKey({
                 connectorName,
                 universe: sessionUniverse,
@@ -507,7 +506,7 @@ export const createSignalsRunner = (
                 symbol,
                 interval,
                 strategyName,
-                configId: `v${releaseVersion}`,
+                configId: `v${version}`,
               }),
             ),
           ),
@@ -713,7 +712,7 @@ export const createSignalsRunner = (
     const configuredStrategies = await loadRuntimeStrategies({
       userName: config.userName,
       projectRoot,
-      deployment,
+      deploymentId: deployment.id,
     });
     const connectorName = await resolveSignalsConnectorName(
       deployment.connectorName,
@@ -734,10 +733,11 @@ export const createSignalsRunner = (
     if (!config.deploymentId) {
       throw new Error('Runtime deployment id is required');
     }
-    const configuredDeployment = await getRuntimeDeployment(
-      config.userName,
-      config.deploymentId,
-    );
+    const configuredDeployment = await getRuntimeDeployment({
+      userName: config.userName,
+      projectRoot,
+      deploymentId: config.deploymentId,
+    });
     if (!configuredDeployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
     }
@@ -769,10 +769,11 @@ export const createSignalsRunner = (
       throw new Error('Runtime deployment id is required');
     }
     const deploymentId = config.deploymentId;
-    const initialDeployment = await getRuntimeDeployment(
-      config.userName,
+    const initialDeployment = await getRuntimeDeployment({
+      userName: config.userName,
+      projectRoot,
       deploymentId,
-    );
+    });
     if (!initialDeployment) {
       throw new Error(`Runtime deployment not found: ${deploymentId}`);
     }
@@ -794,10 +795,11 @@ export const createSignalsRunner = (
         settleDelayMs: resolveNonNegativeInteger(config.settleDelayMs, 5_000),
         signal: abortController.signal,
         runCycle: async () => {
-          const currentDeployment = await getRuntimeDeployment(
-            config.userName,
+          const currentDeployment = await getRuntimeDeployment({
+            userName: config.userName,
+            projectRoot,
             deploymentId,
-          );
+          });
           if (!currentDeployment) {
             throw new Error(`Runtime deployment not found: ${deploymentId}`);
           }
