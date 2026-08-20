@@ -31,11 +31,19 @@ describe('npm release workflows', () => {
     );
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('Tag successful release');
-    const postVersionResolution = workflow.slice(
+    expect(workflow).toContain('Verify unchanged source tree');
+    expect(workflow).toContain('Build versioned packages');
+    expect(workflow.indexOf('Verify unchanged source tree')).toBeLessThan(
       workflow.indexOf('Resolve beta version'),
-      workflow.indexOf('- run: yarn build'),
     );
-    expect(postVersionResolution).not.toContain('yarn install --immutable');
+    expect(workflow.indexOf('Resolve beta version')).toBeLessThan(
+      workflow.indexOf('Build versioned packages'),
+    );
+    const versionedPackagePhase = workflow.slice(
+      workflow.indexOf('Resolve beta version'),
+      workflow.indexOf('Publish beta candidate packages'),
+    );
+    expect(versionedPackagePhase).not.toContain('yarn unit');
   });
 
   it('promotes the current verified beta on a weekly schedule', () => {
@@ -64,6 +72,16 @@ describe('npm release workflows', () => {
     expect(workflow).toContain("npm view '@tradejs/types@latest' version");
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('TAG_ONLY');
+    expect(workflow).toContain('Verify unchanged source tree');
+    expect(workflow).toContain('Build versioned packages');
+    expect(workflow.indexOf('Verify unchanged source tree')).toBeLessThan(
+      workflow.indexOf('Resolve stable version'),
+    );
+    const versionedPackagePhase = workflow.slice(
+      workflow.indexOf('Resolve stable version'),
+      workflow.indexOf('Publish stable package candidates'),
+    );
+    expect(versionedPackagePhase).not.toContain('yarn unit');
   });
 
   it('keeps source manifests explicitly detached from registry versions', () => {

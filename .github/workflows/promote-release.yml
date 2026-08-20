@@ -130,6 +130,9 @@ jobs:
             --stable-observations 2
       - if: env.PROMOTE != 'false'
         run: yarn install --immutable
+      - name: Verify unchanged source tree
+        if: env.PROMOTE != 'false'
+        run: yarn checks
       - name: Resolve stable version
         if: env.PROMOTE != 'false'
         id: version
@@ -143,8 +146,9 @@ jobs:
           echo "STABLE_VERSION=$stable_version" >> "$GITHUB_ENV"
       - if: env.PROMOTE != 'false'
         run: yarn install --immutable
-      - if: env.PROMOTE != 'false'
-        run: yarn checks
+      - name: Build versioned packages
+        if: env.PROMOTE != 'false'
+        run: yarn build
       - if: env.PROMOTE != 'false'
         run: yarn npm:publish:all:dry
       - name: Ensure the verified source is still the stable branch head

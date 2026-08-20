@@ -103,6 +103,8 @@ jobs:
           key: ${{ runner.os }}-beta-${{ hashFiles('yarn.lock', 'package.json', 'examples/sandbox/yarn.lock') }}
           restore-keys: ${{ runner.os }}-beta-
       - run: yarn install --immutable
+      - name: Verify unchanged source tree
+        run: yarn checks
       - name: Resolve beta version
         id: version
         run: |
@@ -110,10 +112,8 @@ jobs:
           beta_version="$(node -e 'const {resolveBetaVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveBetaVersion(process.argv[1], process.argv[2]))' "$baseline" "$GITHUB_RUN_NUMBER")"
           yarn bump:packages "$beta_version"
           echo "beta_version=$beta_version" >> "$GITHUB_OUTPUT"
-      - run: yarn build
-      - run: yarn lint
-      - run: yarn typecheck
-      - run: yarn unit
+      - name: Build versioned packages
+        run: yarn build
       - run: yarn npm:publish:all:dry
       - name: Publish beta candidate packages in dependency order
         env:
