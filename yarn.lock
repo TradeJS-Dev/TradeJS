@@ -2864,7 +2864,7 @@ __metadata:
     "@tradejs/indicators": "workspace:^"
     "@tradejs/infra": "workspace:^"
     "@tradejs/node": "workspace:^"
-    "@tradejs/strategy-kit": "npm:3.0.2"
+    "@tradejs/strategy-kit": "npm:3.0.3"
     "@tradejs/types": "workspace:^"
     "@types/node": "npm:^24"
     "@types/ws": "npm:^8.18.1"
@@ -2965,7 +2965,7 @@ __metadata:
     "@tradejs/infra": "workspace:^"
     "@tradejs/strategy-adaptive-momentum-ribbon": "npm:3.0.2"
     "@tradejs/strategy-hyperliquid-consensus": "npm:3.0.2"
-    "@tradejs/strategy-kit": "npm:3.0.2"
+    "@tradejs/strategy-kit": "npm:3.0.3"
     "@tradejs/strategy-trend-line": "npm:3.0.2"
     "@tradejs/strategy-volume-divergence": "npm:3.0.2"
     "@tradejs/types": "workspace:^"
@@ -3084,13 +3084,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/strategy-kit@npm:3.0.2":
-  version: 3.0.2
-  resolution: "@tradejs/strategy-kit@npm:3.0.2"
+"@tradejs/strategy-kit@npm:3.0.3":
+  version: 3.0.3
+  resolution: "@tradejs/strategy-kit@npm:3.0.3"
   peerDependencies:
     "@tradejs/core": ^3.0.1
     "@tradejs/types": ^3.0.1
-  checksum: 10c0/f7309b8f82e3f7d681e3107d9f938035a283903ad22d7224e8ecb8b940391dd2222541539ab047f67e36f6d566768e57917840c803c42ba2a32116dded63f596
+  checksum: 10c0/f4cb0a81b80a0646762f9f2306774d6dec0529468120a125c2d5ddcbb4aaf0a27e469b71ff83dc8f1eb7b14dd2a1315dc8cd2970cdd363eaa0fc14d3f433215d
   languageName: node
   linkType: hard
 
@@ -3185,14 +3185,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/strategy-trend-shift@npm:3.0.2":
-  version: 3.0.2
-  resolution: "@tradejs/strategy-trend-shift@npm:3.0.2"
+"@tradejs/strategy-trend-shift@npm:3.0.3":
+  version: 3.0.3
+  resolution: "@tradejs/strategy-trend-shift@npm:3.0.3"
   peerDependencies:
     "@tradejs/core": ^3.0.1
-    "@tradejs/strategy-kit": ^3.0.1
+    "@tradejs/strategy-kit": ^3.0.3
     "@tradejs/types": ^3.0.1
-  checksum: 10c0/f461b5c36874224a8d8d4ef6c300e055eb32894147d8c51ff874688f0b577158cbfc3cc2774a19900de55c33de732c00cd8baaab310805e6cfe84117d47e3646
+  checksum: 10c0/3f617cbf84b6f469aeeded7721ef7b488f392cd81e2d2ee1af92406cab1ced7f69545d7b4b1a4fcae8189cc22ff51a2bef2e4d848f2946a80b636cd2b0aabd09
   languageName: node
   linkType: hard
 
@@ -12885,7 +12885,7 @@ __metadata:
     "@tradejs/strategy-grid-classic": "npm:3.0.2"
     "@tradejs/strategy-head-and-shoulders": "npm:3.0.2"
     "@tradejs/strategy-hyperliquid-consensus": "npm:3.0.2"
-    "@tradejs/strategy-kit": "npm:3.0.2"
+    "@tradejs/strategy-kit": "npm:3.0.3"
     "@tradejs/strategy-liquidity-tails": "npm:3.0.2"
     "@tradejs/strategy-liquidity-zones": "npm:3.0.2"
     "@tradejs/strategy-ma-strategy": "npm:3.0.2"
@@ -12894,7 +12894,7 @@ __metadata:
     "@tradejs/strategy-structure-zones": "npm:3.0.2"
     "@tradejs/strategy-trend-follow": "npm:3.0.3"
     "@tradejs/strategy-trend-line": "npm:3.0.2"
-    "@tradejs/strategy-trend-shift": "npm:3.0.2"
+    "@tradejs/strategy-trend-shift": "npm:3.0.3"
     "@tradejs/strategy-volatility-compression-breakout": "npm:3.0.2"
     "@tradejs/strategy-volume-divergence": "npm:3.0.2"
     "@tradejs/types": "workspace:^"

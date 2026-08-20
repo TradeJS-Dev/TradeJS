@@ -107,7 +107,7 @@
     "@tradejs/indicators": "workspace:^",
     "@tradejs/strategy-adaptive-momentum-ribbon": "3.0.2",
     "@tradejs/strategy-hyperliquid-consensus": "3.0.2",
-    "@tradejs/strategy-kit": "3.0.2",
+    "@tradejs/strategy-kit": "3.0.3",
     "@tradejs/strategy-trend-line": "3.0.2",
     "@tradejs/strategy-volume-divergence": "3.0.2",
     "tsup": "^8.5.1"
