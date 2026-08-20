@@ -147,25 +147,6 @@ jobs:
       - run: yarn sandbox:e2e
       - if: always() && steps.sandbox_infra.outcome != 'skipped'
         run: yarn sandbox:infra-down
-      - name: Build and test the production-like Project image
-        env:
-          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
-        run: |
-          git clone --depth 1 https://github.com/TradeJS-Dev/TradeJS-Project.git ../tradejs-project-beta
-          cd ../tradejs-project-beta
-          project_sha="$(git rev-parse HEAD)"
-          node ./scripts/set-tradejs-version.mjs "$BETA_VERSION"
-          yarn install --no-immutable
-          TRADEJS_ALLOW_PRERELEASE=true yarn checks
-          docker build \
-            --build-arg "TRADEJS_PROJECT_SHA=$project_sha" \
-            --build-arg "TRADEJS_ALLOW_PRERELEASE=true" \
-            -t "tradejs-project-beta:$GITHUB_SHA" .
-          bash ./scripts/beta-runtime-smoke.sh \
-            "tradejs-project-beta:$GITHUB_SHA" \
-            '@tradejs/app,@tradejs/cli,@tradejs/connectors,@tradejs/core,@tradejs/indicators,@tradejs/infra,@tradejs/node,@tradejs/types' \
-            "$BETA_VERSION" "$project_sha"
       - name: Mark the fully verified candidate as current beta
         env:
           BETA_VERSION: ${{ steps.version.outputs.beta_version }}

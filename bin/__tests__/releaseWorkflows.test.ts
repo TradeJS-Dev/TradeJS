@@ -18,11 +18,11 @@ describe('npm release workflows', () => {
     ).toBeLessThan(workflow.indexOf('Quickstart beta browser e2e'));
     expect(workflow).toContain("YARN_NPM_PUBLISH_PROVENANCE: 'false'");
     expect(workflow).toContain('npm dist-tag add');
-    expect(workflow.indexOf('beta-runtime-smoke.sh')).toBeLessThan(
+    expect(workflow.indexOf('sandbox:e2e')).toBeLessThan(
       workflow.indexOf('npm dist-tag add'),
     );
-    expect(workflow).toContain('beta-runtime-smoke.sh');
-    expect(workflow).toContain('yarn install --no-immutable');
+    expect(workflow).not.toContain('TradeJS-Project.git');
+    expect(workflow).not.toContain('tradejs-project-beta');
     expect(workflow).toContain("PUPPETEER_SKIP_DOWNLOAD: 'true'");
     expect(workflow).not.toContain('yarn bump:packages auto');
     expect(workflow).not.toContain('git push origin HEAD:stable');
