@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
@@ -8,12 +8,7 @@ import {
   SANDBOX_E2E_USER,
 } from './e2eConfig';
 import { runTradejsCli } from './runTradejsCli';
-
-const readJson = async (filePath: string) =>
-  JSON.parse(await readFile(filePath, 'utf8')) as {
-    name?: string;
-    version?: string;
-  };
+import { collectSandboxRuntimePackageVersions } from './runtimePackageManifest';
 
 const runSignals = async (): Promise<void> => {
   const projectCwd = path.resolve(__dirname, '../..');
@@ -21,25 +16,7 @@ const runSignals = async (): Promise<void> => {
     path.join(os.tmpdir(), 'tradejs-sandbox-runtime-'),
   );
   try {
-    const [projectPackage, runtimePackage] = await Promise.all([
-      readJson(path.join(projectCwd, 'package.json')),
-      readJson(
-        path.join(
-          projectCwd,
-          'node_modules',
-          '@tradejs',
-          'node',
-          'package.json',
-        ),
-      ),
-    ]);
-    if (
-      !projectPackage.name ||
-      !projectPackage.version ||
-      !runtimePackage.version
-    ) {
-      throw new Error('Sandbox package identity is incomplete');
-    }
+    const packages = await collectSandboxRuntimePackageVersions(projectCwd);
     const manifestPath = path.join(
       temporaryRoot,
       'runtime-package-manifest.json',
@@ -52,10 +29,7 @@ const runSignals = async (): Promise<void> => {
           cwd: projectCwd,
           encoding: 'utf8',
         }).trim(),
-        packages: {
-          [projectPackage.name]: projectPackage.version,
-          '@tradejs/node': runtimePackage.version,
-        },
+        packages,
       }),
     );
     const runtimeEnv = {
