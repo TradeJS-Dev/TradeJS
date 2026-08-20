@@ -11,16 +11,25 @@ import {
   Tooltip,
   YAxis,
 } from 'recharts';
-import type { SimpleOrderLogData } from '@tradejs/types';
+import type { SimpleOrderLogData, StrategyChartOrder } from '@tradejs/types';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
+import {
+  buildEquityTradeOutcomePoints,
+  buildSnapshotTradeOutcomePoints,
+  TradeOutcomeMarkers,
+} from '#shared/Charts/TradeOutcomeMarkers';
 
 export const StrategySnapshotChart = ({
   orderLog,
+  orders,
+  mode,
   height = '350px',
   emptyText = 'No chart data for the selected run.',
 }: {
   orderLog: SimpleOrderLogData;
+  orders: StrategyChartOrder[];
+  mode: 'replay' | 'ai';
   height?: string | number;
   emptyText?: string;
 }) => {
@@ -38,6 +47,13 @@ export const StrategySnapshotChart = ({
       ],
     }),
     [orderLog],
+  );
+  const tradeOutcomePoints = useMemo(
+    () =>
+      mode === 'ai'
+        ? buildEquityTradeOutcomePoints(orderLog)
+        : buildSnapshotTradeOutcomePoints(orders),
+    [mode, orderLog, orders],
   );
 
   const chart = useChart(chartData as any);
@@ -96,6 +112,11 @@ export const StrategySnapshotChart = ({
                 activeDot={{ r: 5, strokeWidth: 2 }}
               />
             ))}
+            <TradeOutcomeMarkers
+              points={tradeOutcomePoints}
+              positiveColor={chart.color('green.400')}
+              negativeColor={chart.color('red.400')}
+            />
           </LineChart>
         </Chart.Root>
       </ResponsiveContainer>

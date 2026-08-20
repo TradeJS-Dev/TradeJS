@@ -37,6 +37,21 @@ export const StrategySnapshotList = ({
     [strategies],
   );
 
+  const renderCard = useCallback(
+    (strategy: StrategyChartSnapshot) => (
+      <StrategySnapshotCard
+        key={strategy.cardId}
+        snapshot={strategy}
+        mode={mode}
+        onDeleted={onDeleted}
+        selected={selectedCardIds.has(strategy.cardId)}
+        onToggleSelection={onToggleSelection}
+        emptyText={emptyText}
+      />
+    ),
+    [emptyText, mode, onDeleted, onToggleSelection, selectedCardIds],
+  );
+
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => {
       const strategy = strategies[index];
@@ -44,28 +59,14 @@ export const StrategySnapshotList = ({
         return null;
       }
 
-      return (
-        <Box style={style}>
-          <StrategySnapshotCard
-            snapshot={strategy}
-            mode={mode}
-            onDeleted={onDeleted}
-            selected={selectedCardIds.has(strategy.cardId)}
-            onToggleSelection={onToggleSelection}
-            emptyText={emptyText}
-          />
-        </Box>
-      );
+      return <Box style={style}>{renderCard(strategy)}</Box>;
     },
-    [
-      emptyText,
-      mode,
-      onDeleted,
-      onToggleSelection,
-      selectedCardIds,
-      strategies,
-    ],
+    [renderCard, strategies],
   );
+
+  if (mode === 'replay') {
+    return <Box w="full">{strategies.map(renderCard)}</Box>;
+  }
 
   return (
     <AutoSizer>

@@ -53,7 +53,7 @@ export const StrategySnapshotCard = ({
     snapshotOrders,
     sourceLabel,
     sourceValue,
-    datasetCreatedAtLabel,
+    generatedAtLabel,
     tagsLabel,
     displaySubtitle,
     metrics,
@@ -132,13 +132,13 @@ export const StrategySnapshotCard = ({
           </Text>
         </Flex>
 
-        {datasetCreatedAtLabel ? (
+        {generatedAtLabel ? (
           <Flex gap="1">
             <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
-              exported:
+              generated:
             </Text>
             <Text fontSize="sm" color="gray.300" mt={1}>
-              {datasetCreatedAtLabel}
+              {generatedAtLabel}
             </Text>
           </Flex>
         ) : null}
@@ -289,6 +289,8 @@ export const StrategySnapshotCard = ({
 
       <StrategySnapshotChart
         orderLog={snapshot.orderLog}
+        orders={snapshot.orders}
+        mode={mode}
         emptyText={emptyText}
       />
 

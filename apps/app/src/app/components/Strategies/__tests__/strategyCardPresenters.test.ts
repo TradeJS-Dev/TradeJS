@@ -9,7 +9,7 @@ describe('strategy card presenters', () => {
   it('projects snapshot labels, rankings, and orders through one interface', () => {
     const snapshot: StrategyChartSnapshot = {
       cardId: 'card-1',
-      generatedAt: 2,
+      generatedAt: Date.UTC(2026, 7, 20, 9, 10, 4),
       strategyName: 'TrendLine',
       title: 'TrendLine q3+',
       subtitle: 'q3+ · validation',
@@ -37,9 +37,20 @@ describe('strategy card presenters', () => {
     };
 
     const viewModel = buildStrategySnapshotCardViewModel(snapshot, 'ai');
+    const laterViewModel = buildStrategySnapshotCardViewModel(
+      {
+        ...snapshot,
+        cardId: 'card-2',
+        generatedAt: snapshot.generatedAt + 10_000,
+      },
+      'ai',
+    );
 
     expect(viewModel.sourceLabel).toBe('dataset:');
-    expect(viewModel.datasetCreatedAtLabel).toMatch(/2023/);
+    expect(viewModel.generatedAtLabel).toMatch(/2026/);
+    expect(laterViewModel.generatedAtLabel).not.toBe(
+      viewModel.generatedAtLabel,
+    );
     expect(viewModel.displaySubtitle).toBe('validation');
     expect(viewModel.snapshotOrders).toHaveLength(1);
     expect(viewModel.topSymbolPnlRanking[0]).toMatchObject({

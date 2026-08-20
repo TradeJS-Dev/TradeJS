@@ -31,13 +31,8 @@ export {
   type SymbolPnlRank,
 } from './StrategySnapshotCard.ranking.presenter';
 
-const formatDatasetCreatedAt = (datasetId?: string) => {
-  if (!datasetId || !/^\d{12,}$/.test(datasetId)) {
-    return '';
-  }
-
-  const timestamp = Number(datasetId);
-  if (!Number.isSafeInteger(timestamp)) {
+const formatGeneratedAt = (timestamp: number) => {
+  if (!Number.isFinite(timestamp)) {
     return '';
   }
 
@@ -48,7 +43,7 @@ const formatDatasetCreatedAt = (datasetId?: string) => {
 
   return new Intl.DateTimeFormat('en-GB', {
     dateStyle: 'medium',
-    timeStyle: 'short',
+    timeStyle: 'medium',
   }).format(date);
 };
 
@@ -109,8 +104,8 @@ export const buildStrategySnapshotCardViewModel = (
     sourceLabel: mode === 'ai' && snapshot.datasetId ? 'dataset:' : 'symbols:',
     sourceValue:
       mode === 'ai' && snapshot.datasetId ? snapshot.datasetId : symbolsLabel,
-    datasetCreatedAtLabel:
-      mode === 'ai' ? formatDatasetCreatedAt(snapshot.datasetId) : '',
+    generatedAtLabel:
+      mode === 'ai' ? formatGeneratedAt(snapshot.generatedAt) : '',
     tagsLabel: snapshot.tags?.join(' · ') ?? '',
     displaySubtitle:
       mode === 'ai'

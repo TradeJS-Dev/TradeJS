@@ -12,13 +12,17 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { useTestsCompare } from '#store';
+import { useBacktest, useTestsCompare } from '#store';
 import { useTestContext } from '../context';
 import { TestCompareList } from '@tradejs/types';
 import { mapOrderLogToChartData, getChartData } from './utils';
 import { getFormatted, getTimeline } from '@tradejs/core/backtest';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
+import {
+  buildBacktestTradeOutcomePoints,
+  TradeOutcomeMarkers,
+} from '#shared/Charts/TradeOutcomeMarkers';
 
 interface TestCardChartProps {
   height?: string | number;
@@ -28,6 +32,7 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
   const { testResult } = useTestContext();
   const { test, stat } = testResult;
   const { compareList } = useTestsCompare();
+  const { backtest } = useBacktest(test.name);
 
   const chartData = useMemo(() => {
     if (!compareList.length) {
@@ -56,6 +61,10 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
   ]);
 
   const chart = useChart(chartData as any);
+  const tradeOutcomePoints = useMemo(
+    () => buildBacktestTradeOutcomePoints(backtest),
+    [backtest],
+  );
 
   const { formatted: maxAmount } = getFormatted(stat, 'maxAmount');
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
@@ -122,6 +131,11 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
                 activeDot={{ r: 5, strokeWidth: 2 }}
               />
             ))}
+            <TradeOutcomeMarkers
+              points={tradeOutcomePoints}
+              positiveColor={chart.color('green.400')}
+              negativeColor={chart.color('red.400')}
+            />
           </LineChart>
         </Chart.Root>
       </ResponsiveContainer>

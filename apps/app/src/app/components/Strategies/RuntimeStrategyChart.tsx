@@ -16,6 +16,10 @@ import { getFormatted } from '@tradejs/core/backtest';
 import type { SimpleOrderLogData, TestStat } from '@tradejs/types';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
+import {
+  buildEquityTradeOutcomePoints,
+  TradeOutcomeMarkers,
+} from '#shared/Charts/TradeOutcomeMarkers';
 
 interface RuntimeStrategyChartProps {
   orderLog: SimpleOrderLogData;
@@ -45,6 +49,10 @@ export const RuntimeStrategyChart = ({
         },
       ],
     }),
+    [orderLog],
+  );
+  const tradeOutcomePoints = useMemo(
+    () => buildEquityTradeOutcomePoints(orderLog),
     [orderLog],
   );
 
@@ -114,6 +122,11 @@ export const RuntimeStrategyChart = ({
                     activeDot={{ r: 5, strokeWidth: 2 }}
                   />
                 ))}
+                <TradeOutcomeMarkers
+                  points={tradeOutcomePoints}
+                  positiveColor={chart.color('green.400')}
+                  negativeColor={chart.color('red.400')}
+                />
               </LineChart>
             </Chart.Root>
           </ResponsiveContainer>
