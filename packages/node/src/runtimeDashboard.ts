@@ -17,6 +17,7 @@ import type {
   RuntimeStrategiesResponse,
   StrategyConfig,
   RuntimeStrategyControlState,
+  RuntimeStrategySelection,
 } from '@tradejs/types';
 import { getConnectorCreatorByProvider } from './connectorsRegistry';
 import {
@@ -449,6 +450,7 @@ export const loadRuntimeDashboard = async ({
       enabled: boolean;
       config: StrategyConfig;
       connected: boolean;
+      selection?: RuntimeStrategySelection;
     }
   >();
   for (const deployment of runtimeDeployments) {
@@ -484,6 +486,9 @@ export const loadRuntimeDashboard = async ({
         enabled: resolvedStrategy.controlState !== 'entries_paused',
         config: resolvedStrategy.strategyConfig,
         connected: deployment.enabled,
+        ...(resolvedStrategy.selection
+          ? { selection: resolvedStrategy.selection }
+          : {}),
       });
     }
   }
@@ -538,6 +543,7 @@ export const loadRuntimeDashboard = async ({
         accountId: identity.accountId,
         accountLabel: identity.accountLabel,
         deploymentId: identity.deploymentId,
+        ...(identity.selection ? { selection: identity.selection } : {}),
         policyProfileId: identity.policyProfileId,
         connected: identity.connected,
         enabled: identity.enabled,

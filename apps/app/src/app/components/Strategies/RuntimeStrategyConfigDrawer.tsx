@@ -32,6 +32,10 @@ export const RuntimeStrategyConfigDrawer = ({
     { label: 'Config ID', value: strategy.configId },
     { label: 'Runtime key', value: strategy.runtimeKey },
     { label: 'Deployment', value: strategy.deploymentId },
+    {
+      label: 'Configured tickers',
+      value: strategy.selection?.tickers?.length ?? 'All available',
+    },
     { label: 'Account label', value: strategy.accountLabel ?? 'Not set' },
     { label: 'Account ID', value: strategy.accountId ?? 'Not assigned' },
     {
@@ -120,7 +124,22 @@ export const RuntimeStrategyConfigDrawer = ({
                 </SimpleGrid>
                 <Box mt={4} pt={4} borderTopWidth="1px" borderColor="gray.800">
                   <Text fontSize="xs" color="gray.500">
-                    Symbols
+                    Configured ticker selection
+                  </Text>
+                  <Text
+                    mt={1}
+                    mb={4}
+                    fontFamily="mono"
+                    fontSize="sm"
+                    color="gray.200"
+                    overflowWrap="anywhere"
+                  >
+                    {strategy.selection?.tickers?.length
+                      ? strategy.selection.tickers.join(', ')
+                      : 'All available tickers'}
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    Symbols with trades
                   </Text>
                   <Text
                     mt={1}

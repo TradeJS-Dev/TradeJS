@@ -346,53 +346,62 @@ export const validateBacktestRuntimeDeployment = ({
   return deployment;
 };
 
-export const prepareRunEnvironment =
-  async (): Promise<PreparedRunEnvironment | null> => {
-    const deployment = validateBacktestRuntimeDeployment({
-      deployment: flags.deployment
-        ? await getRuntimeDeployment({
-            userName,
-            projectRoot,
-            deploymentId: String(flags.deployment),
-          })
-        : null,
-      deploymentId:
-        typeof flags.deployment === 'string' ? flags.deployment : undefined,
-    });
-    const preparedRun = await prepareRunEnvironmentShared({
-      connector: deployment?.connectorName ?? flags.connector,
-      userName,
-      tickers: flags.tickers || deployment?.tickers?.join(','),
-      exclude: flags.exclude,
-      tickersLimit: flags.tickersLimit,
-      showTickersList: flags.showTickersList,
-      days: flags.days,
-      startTime: flags.startTime,
-      endTime: flags.endTime,
-      cacheOnly: flags.cacheOnly,
-      interval,
-      projectRoot,
-      universe: marketUniverse,
-      accountId: deployment?.accountId ?? flags.account,
-      deploymentId: deployment?.id,
-      assetClasses: deployment?.assetClasses,
-      deployment,
-    });
-    if (!preparedRun) {
-      return null;
-    }
+export const prepareRunEnvironment = async (
+  strategyName?: string,
+): Promise<PreparedRunEnvironment | null> => {
+  const deployment = validateBacktestRuntimeDeployment({
+    deployment: flags.deployment
+      ? await getRuntimeDeployment({
+          userName,
+          projectRoot,
+          deploymentId: String(flags.deployment),
+        })
+      : null,
+    deploymentId:
+      typeof flags.deployment === 'string' ? flags.deployment : undefined,
+  });
+  const runtimeStrategy = strategyName
+    ? deployment?.strategies.find(
+        (strategy) => strategy.strategyName === strategyName,
+      )
+    : undefined;
+  const preparedRun = await prepareRunEnvironmentShared({
+    connector: deployment?.connectorName ?? flags.connector,
+    userName,
+    tickers:
+      flags.tickers ||
+      runtimeStrategy?.selection?.tickers?.join(',') ||
+      deployment?.tickers?.join(','),
+    exclude: flags.exclude,
+    tickersLimit: flags.tickersLimit,
+    showTickersList: flags.showTickersList,
+    days: flags.days,
+    startTime: flags.startTime,
+    endTime: flags.endTime,
+    cacheOnly: flags.cacheOnly,
+    interval,
+    projectRoot,
+    universe: marketUniverse,
+    accountId: deployment?.accountId ?? flags.account,
+    deploymentId: deployment?.id,
+    assetClasses: deployment?.assetClasses,
+    deployment,
+  });
+  if (!preparedRun) {
+    return null;
+  }
 
-    setRuntimeCompareContext({
-      connector: preparedRun.marketConnector,
-      connectorName: preparedRun.connectorName,
-      window: {
-        start: preparedRun.window.start,
-        end: preparedRun.window.end,
-      },
-    });
+  setRuntimeCompareContext({
+    connector: preparedRun.marketConnector,
+    connectorName: preparedRun.connectorName,
+    window: {
+      start: preparedRun.window.start,
+      end: preparedRun.window.end,
+    },
+  });
 
-    return preparedRun;
-  };
+  return preparedRun;
+};
 
 export const buildPreparedTestSuite = async ({
   testSuite,

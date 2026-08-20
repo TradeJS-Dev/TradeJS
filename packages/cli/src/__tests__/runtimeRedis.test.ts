@@ -262,4 +262,56 @@ describe('runtimeRedis', () => {
     );
     expect(getKeys).toHaveBeenCalledWith(activePrefix);
   });
+
+  it('loads only valid active runtime trade records', async () => {
+    const activePrefix = 'users:root:runtime:active-trades:';
+    const getKeys = jest.fn(async () => [
+      `${activePrefix}production:BTCUSDT`,
+      `${activePrefix}production:ETHUSDT`,
+    ]);
+    const activeTrade = {
+      orderId: 'ord-active',
+      strategy: 'TrendFollow',
+      symbol: 'BTCUSDT',
+      entryTimestamp: 1,
+      entryPrice: 100,
+      qty: 1,
+      direction: 'LONG',
+      status: 'active',
+    };
+    const getData = jest.fn(async (key: string, fallback: unknown) => {
+      if (key.endsWith('production:BTCUSDT')) {
+        return { orderId: 'ord-active' };
+      }
+      if (key.endsWith('production:ETHUSDT')) {
+        return { orderId: 'ord-closed' };
+      }
+      if (key.endsWith('ord-active')) {
+        return activeTrade;
+      }
+      if (key.endsWith('ord-closed')) {
+        return { ...activeTrade, orderId: 'ord-closed', status: 'closed' };
+      }
+
+      return fallback;
+    });
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      getData,
+      getHashJsonValues: jest.fn(),
+      getKeys,
+      redisKeys: {
+        runtimeActiveTrades: (userName: string) =>
+          `users:${userName}:runtime:active-trades:`,
+        runtimeTrade: (userName: string, orderId: string) =>
+          `users:${userName}:runtime:trades:${orderId}`,
+      },
+    }));
+
+    const { loadRuntimeActiveTrades } = await import('../lib/runtimeRedis');
+
+    await expect(loadRuntimeActiveTrades('root')).resolves.toEqual([
+      activeTrade,
+    ]);
+  });
 });

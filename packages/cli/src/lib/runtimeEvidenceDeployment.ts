@@ -3,6 +3,7 @@ import type {
   Interval,
   MarketUniverse,
   RuntimeDeployment,
+  RuntimeStrategySelection,
   RuntimeStrategyControlState,
   StrategyConfig,
 } from '@tradejs/types';
@@ -23,6 +24,7 @@ export type RuntimeEvidenceStrategySnapshot = {
   strategyPackageVersion: string;
   runtimePackageVersion: string;
   strategyConfig: StrategyConfig;
+  selection?: RuntimeStrategySelection;
 };
 
 export type RuntimeEvidenceDeploymentSnapshot = {
@@ -62,6 +64,17 @@ const INTERVALS = new Set([
 
 const UNIVERSES = new Set(['crypto', 'tradfi']);
 
+const isRuntimeStrategySelection = (
+  value: unknown,
+): value is RuntimeStrategySelection =>
+  value === undefined ||
+  (isRecord(value) &&
+    Object.keys(value).length === 1 &&
+    Object.keys(value).every((key) => key === 'tickers') &&
+    Array.isArray(value.tickers) &&
+    value.tickers.length > 0 &&
+    value.tickers.every((ticker) => isNonEmptyString(ticker)));
+
 export const parseRuntimeEvidenceDeploymentSnapshot = (
   value: unknown,
 ): RuntimeEvidenceDeploymentSnapshot => {
@@ -94,7 +107,8 @@ export const parseRuntimeEvidenceDeploymentSnapshot = (
       !isNonEmptyString(candidate.strategyPackage) ||
       !isNonEmptyString(candidate.strategyPackageVersion) ||
       !isNonEmptyString(candidate.runtimePackageVersion) ||
-      !isRecord(candidate.strategyConfig)
+      !isRecord(candidate.strategyConfig) ||
+      !isRuntimeStrategySelection(candidate.selection)
     ) {
       throw new Error(
         'Runtime evidence deployment strategy snapshot is invalid',
@@ -154,11 +168,12 @@ export const runtimeDeploymentFromEvidence = (
   accountId: deployment.accountId,
   enabled: deployment.enabled,
   strategies: deployment.strategies.map(
-    ({ strategyName, version, enabled, controlState }) => ({
+    ({ strategyName, version, enabled, controlState, selection }) => ({
       strategyName,
       version,
       enabled,
       controlState,
+      ...(selection ? { selection } : {}),
     }),
   ),
   ...(deployment.assetClasses
@@ -205,6 +220,7 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
         strategyPackageVersion,
         runtimePackageVersion,
         sourceStrategyConfig,
+        selection,
       }) => ({
         strategyName,
         version,
@@ -217,6 +233,7 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
         strategyPackageVersion,
         runtimePackageVersion,
         strategyConfig: sourceStrategyConfig,
+        ...(selection ? { selection } : {}),
       }),
     ),
     ...(deployment.assetClasses

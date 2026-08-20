@@ -37,9 +37,30 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 
 import {
+  mergeRuntimeStrategySelections,
   prepareRunEnvironment,
   resolveBacktestExecutionPreloadInterval,
 } from '../lib/runEnvironment';
+
+describe('mergeRuntimeStrategySelections', () => {
+  it('returns the union when every strategy has an explicit ticker selection', () => {
+    expect(
+      mergeRuntimeStrategySelections([
+        { selection: { tickers: ['BTCUSDT', 'ETHUSDT'] } },
+        { selection: { tickers: ['ETHUSDT', 'SOLUSDT'] } },
+      ]),
+    ).toEqual({ tickers: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] });
+  });
+
+  it('returns an unbounded selection when one strategy scans all tickers', () => {
+    expect(
+      mergeRuntimeStrategySelections([
+        { selection: { tickers: ['BTCUSDT'] } },
+        {},
+      ]),
+    ).toBeUndefined();
+  });
+});
 
 const ticker = (symbol: string, volume24h: number) => ({
   symbol,

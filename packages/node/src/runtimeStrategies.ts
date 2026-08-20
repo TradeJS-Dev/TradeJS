@@ -8,6 +8,7 @@ import type {
   RuntimeControls,
   RuntimeDeployment,
   RuntimeDeploymentDeclaration,
+  RuntimeStrategySelection,
   RuntimeStrategyControlState,
   StrategyConfig,
   StrategyCreator,
@@ -30,6 +31,7 @@ export interface ResolvedRuntimeStrategy {
   strategyCreator: StrategyCreator;
   sourceStrategyConfig: StrategyConfig;
   strategyConfig: StrategyConfig;
+  selection?: RuntimeStrategySelection;
 }
 
 type RuntimePackageManifest = {
@@ -62,7 +64,8 @@ const DEPLOYMENT_KEYS = new Set([
   'assetClasses',
   'tickers',
 ]);
-const STRATEGY_KEYS = new Set(['version', 'enabled', 'config']);
+const STRATEGY_KEYS = new Set(['version', 'enabled', 'selection', 'config']);
+const SELECTION_KEYS = new Set(['tickers']);
 const FORBIDDEN_CONFIG_KEYS = new Set([
   'ACCOUNT_ID',
   'DEPLOYMENT_ID',
@@ -144,6 +147,34 @@ const verifyStringArray = (value: unknown) =>
   value === undefined ||
   (Array.isArray(value) && value.every((item) => typeof item === 'string'));
 
+const verifyStrategySelection = (value: unknown) =>
+  value === undefined ||
+  (isRecord(value) &&
+    Object.keys(value).length === 1 &&
+    Object.keys(value).every((key) => SELECTION_KEYS.has(key)) &&
+    Array.isArray(value.tickers) &&
+    value.tickers.length > 0 &&
+    value.tickers.every(
+      (ticker) => typeof ticker === 'string' && ticker.trim().length > 0,
+    ));
+
+const cloneSelection = (
+  selection: RuntimeStrategySelection | undefined,
+): RuntimeStrategySelection | undefined =>
+  selection ? { tickers: [...selection.tickers] } : undefined;
+
+const resolveStrategySelection = ({
+  deployment,
+  strategy,
+}: {
+  deployment: RuntimeDeploymentDeclaration;
+  strategy: RuntimeDeploymentDeclaration['strategies'][string];
+}): RuntimeStrategySelection | undefined =>
+  cloneSelection(
+    strategy.selection ??
+      (deployment.tickers ? { tickers: deployment.tickers } : undefined),
+  );
+
 const verifyDeploymentDeclaration = (
   deploymentId: string,
   value: unknown,
@@ -177,6 +208,7 @@ const verifyDeploymentDeclaration = (
       !Number.isSafeInteger(strategyValue.version) ||
       Number(strategyValue.version) <= 0 ||
       typeof strategyValue.enabled !== 'boolean' ||
+      !verifyStrategySelection(strategyValue.selection) ||
       !isRecord(strategyValue.config) ||
       Object.keys(strategyValue.config).some((key) =>
         FORBIDDEN_CONFIG_KEYS.has(key),
@@ -230,17 +262,24 @@ const toRuntimeDeployment = ({
     accountId: declaration.accountId.trim(),
     enabled: deploymentEnabled,
     strategies: Object.entries(declaration.strategies).map(
-      ([strategyName, strategy]) => ({
-        strategyName,
-        version: strategy.version,
-        enabled: strategy.enabled,
-        controlState:
-          deploymentEnabled &&
-          strategy.enabled &&
-          !controls.deployments[id]?.[strategyName]?.entriesPaused
-            ? 'active'
-            : 'entries_paused',
-      }),
+      ([strategyName, strategy]) => {
+        const selection = resolveStrategySelection({
+          deployment: declaration,
+          strategy,
+        });
+        return {
+          strategyName,
+          version: strategy.version,
+          enabled: strategy.enabled,
+          controlState:
+            deploymentEnabled &&
+            strategy.enabled &&
+            !controls.deployments[id]?.[strategyName]?.entriesPaused
+              ? 'active'
+              : 'entries_paused',
+          ...(selection ? { selection } : {}),
+        };
+      },
     ),
     ...(declaration.assetClasses
       ? { assetClasses: declaration.assetClasses }
@@ -380,6 +419,10 @@ export const loadResolvedRuntimeStrategies = async ({
         const strategyView = deployment.strategies.find(
           (candidate) => candidate.strategyName === strategyName,
         );
+        const selection = resolveStrategySelection({
+          deployment: declaration,
+          strategy: strategyDeclaration,
+        });
         const strategyConfig = strategyDeclaration.config;
         const strategyUniverse = strategyConfig.UNIVERSE as MarketUniverse;
         const resolvedAccountId = await resolveAccountId({
@@ -401,6 +444,7 @@ export const loadResolvedRuntimeStrategies = async ({
           strategyCreator,
           sourceStrategyConfig: strategyConfig,
           strategyConfig,
+          ...(selection ? { selection } : {}),
         } satisfies ResolvedRuntimeStrategy;
       },
     ),

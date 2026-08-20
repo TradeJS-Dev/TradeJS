@@ -6,6 +6,7 @@ import { setData, redisKeys } from '@tradejs/infra/redis';
 import { createTimestamp } from '../lib/runFormatting';
 import {
   loadDeploymentReplayStrategies,
+  mergeRuntimeStrategySelections,
   prepareRunEnvironment,
 } from '../lib/runEnvironment';
 import {
@@ -213,6 +214,7 @@ export const replayBacktest = async () => {
             strategyPackageVersion,
             runtimePackageVersion,
             strategyConfig,
+            selection,
           }) => ({
             strategyName,
             version,
@@ -220,6 +222,7 @@ export const replayBacktest = async () => {
             strategyPackageVersion,
             runtimePackageVersion,
             strategyConfig,
+            ...(selection ? { selection } : {}),
           }),
         ),
       }
@@ -252,10 +255,14 @@ export const replayBacktest = async () => {
       `Replay requires one deployment universe: ${[...strategyUniverses].join(',')}`,
     );
   }
+  const replaySelection = mergeRuntimeStrategySelections(replayStrategies);
   const preparedRun = await prepareRunEnvironment({
     connector: deployment.connectorName,
     userName: replayUserName,
-    tickers: replayFlags.tickers ?? deployment.tickers,
+    tickers:
+      replayFlags.tickers ??
+      replaySelection?.tickers?.join(',') ??
+      deployment.tickers?.join(','),
     exclude: replayFlags.exclude,
     tickersLimit: replayFlags.tickersLimit,
     showTickersList: replayFlags.showTickersList,
@@ -308,7 +315,11 @@ export const replayBacktest = async () => {
   const replayResult = await runHistoricalSignalsReplay({
     preparedRun,
     interval: replayInterval,
-    runtimeStrategies: replayStrategies,
+    runtimeStrategies: replayFlags.tickers
+      ? replayStrategies.map(
+          ({ selection: _selection, ...strategy }) => strategy,
+        )
+      : replayStrategies,
   });
 
   for (const _strategy of replayResult.strategies) {

@@ -1,10 +1,15 @@
 import type { StrategyConfig } from './backtest';
 import type { AssetClass } from './market';
 
+export interface RuntimeStrategySelection {
+  tickers: string[];
+}
+
 /** One immutable strategy package + effective project config revision. */
 export interface RuntimeStrategyDeclaration {
   version: number;
   enabled: boolean;
+  selection?: RuntimeStrategySelection;
   config: StrategyConfig;
 }
 
@@ -17,6 +22,7 @@ export interface RuntimeDeploymentDeclaration {
   enabled?: boolean;
   strategies: Record<string, RuntimeStrategyDeclaration>;
   assetClasses?: AssetClass[];
+  /** Default selection for strategy bindings that do not declare one. */
   tickers?: string[];
 }
 

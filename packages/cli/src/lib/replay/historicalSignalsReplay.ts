@@ -29,6 +29,7 @@ import {
   OrderLogData,
   PositionLogData,
   RuntimeLineage,
+  RuntimeStrategySelection,
   Signal,
   StrategyConfig,
   StrategyCreator,
@@ -62,6 +63,7 @@ type ReplayRuntimeStrategy = {
   runtimePackageVersion: string;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
+  selection?: RuntimeStrategySelection;
   strategyResults: Record<
     string,
     { config?: Record<string, unknown> | null } | undefined
@@ -135,6 +137,7 @@ const loadRuntimeStrategies = async (
         strategyPackageVersion,
         runtimePackageVersion,
         strategyConfig,
+        selection,
       } = runtimeStrategy;
       const strategyCreator = await getStrategyCreator(
         strategyName,
@@ -171,6 +174,7 @@ const loadRuntimeStrategies = async (
         strategyCreator,
         strategyConfig,
         strategyResults,
+        ...(selection ? { selection } : {}),
       };
     }),
   );
@@ -283,6 +287,18 @@ const buildAfterSignalsContext = ({
   ),
 });
 
+const strategyIncludesSymbol = (
+  strategy: Pick<ReplayRuntimeStrategy, 'selection'>,
+  symbol: string,
+) => {
+  const tickers = strategy.selection?.tickers;
+  if (!tickers) return true;
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  return tickers.some(
+    (ticker) => ticker.trim().toUpperCase() === normalizedSymbol,
+  );
+};
+
 const buildSymbolSharedReplayKey = ({
   connectorName,
   interval,
@@ -307,14 +323,7 @@ export const runHistoricalSignalsReplay = async ({
 }: {
   preparedRun: PreparedRunEnvironment;
   interval: Interval;
-  runtimeStrategies: Array<{
-    strategyName: string;
-    version: number;
-    strategyPackage: string;
-    strategyPackageVersion: string;
-    runtimePackageVersion: string;
-    strategyConfig: StrategyConfig;
-  }>;
+  runtimeStrategies: ReplayStrategyConfig[];
 }): Promise<HistoricalSignalsReplayResult> => {
   const startedAt = Date.now();
   const signals: Signal[] = [];
@@ -419,72 +428,74 @@ export const runHistoricalSignalsReplay = async ({
     sharedReplayKeyPrefixes.push(sharedIndicatorsReplayKey);
 
     const strategiesForSymbol = await Promise.all(
-      loadedStrategies.map(
-        async ({
-          strategyName,
-          version,
-          strategyPackageVersion,
-          runtimePackageVersion,
-          strategyCreator,
-          strategyConfig,
-          strategyResults,
-        }) => {
-          const runtimeLineage = await buildRuntimeLineage({
-            projectRoot: replayProjectRoot,
+      loadedStrategies
+        .filter((strategy) => strategyIncludesSymbol(strategy, symbol))
+        .map(
+          async ({
             strategyName,
             version,
             strategyPackageVersion,
             runtimePackageVersion,
-            config: {
-              configId: `v${version}`,
-              strategyConfig,
-              symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-            },
-            runContext: {
-              connectorName: connectorName.toLowerCase(),
-              interval: String(interval),
-              universe: preparedRun.universe ?? null,
-            },
-          });
-          runtimeLineages.push({
-            strategy: strategyName,
-            symbol,
-            ...(preparedRun.deploymentId
-              ? { deploymentId: preparedRun.deploymentId }
-              : {}),
-            ...(preparedRun.accountId
-              ? { accountId: preparedRun.accountId }
-              : {}),
-            lineage: runtimeLineage,
-          });
-          return {
-            strategyName,
+            strategyCreator,
             strategyConfig,
-            runtimeLineage,
-            run: await strategyCreator({
-              userName: replayUserName,
-              connectorName,
-              runtimeConfigId: `v${version}`,
-              runtimeLineage,
-              universe: preparedRun.universe,
-              accountId: preparedRun.accountId,
-              deploymentId: preparedRun.deploymentId,
-              config: buildReplayStrategyConfig({
+            strategyResults,
+          }) => {
+            const runtimeLineage = await buildRuntimeLineage({
+              projectRoot: replayProjectRoot,
+              strategyName,
+              version,
+              strategyPackageVersion,
+              runtimePackageVersion,
+              config: {
+                configId: `v${version}`,
                 strategyConfig,
-                interval: interval as any,
-              }),
+                symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
+              },
+              runContext: {
+                connectorName: connectorName.toLowerCase(),
+                interval: String(interval),
+                universe: preparedRun.universe ?? null,
+              },
+            });
+            runtimeLineages.push({
+              strategy: strategyName,
               symbol,
-              data: preparedData.prevData,
-              btcData: preparedData.btcPrevData,
-              ethData: preparedData.ethPrevData,
-              btcBinanceData: preparedData.btcBinancePrevData,
-              btcCoinbaseData: preparedData.btcCoinbasePrevData,
-              connector: replayConnector,
-              sharedIndicatorsReplayKey,
-            }),
-          };
-        },
-      ),
+              ...(preparedRun.deploymentId
+                ? { deploymentId: preparedRun.deploymentId }
+                : {}),
+              ...(preparedRun.accountId
+                ? { accountId: preparedRun.accountId }
+                : {}),
+              lineage: runtimeLineage,
+            });
+            return {
+              strategyName,
+              strategyConfig,
+              runtimeLineage,
+              run: await strategyCreator({
+                userName: replayUserName,
+                connectorName,
+                runtimeConfigId: `v${version}`,
+                runtimeLineage,
+                universe: preparedRun.universe,
+                accountId: preparedRun.accountId,
+                deploymentId: preparedRun.deploymentId,
+                config: buildReplayStrategyConfig({
+                  strategyConfig,
+                  interval: interval as any,
+                }),
+                symbol,
+                data: preparedData.prevData,
+                btcData: preparedData.btcPrevData,
+                ethData: preparedData.ethPrevData,
+                btcBinanceData: preparedData.btcBinancePrevData,
+                btcCoinbaseData: preparedData.btcCoinbasePrevData,
+                connector: replayConnector,
+                sharedIndicatorsReplayKey,
+              }),
+            };
+          },
+        ),
     );
 
     const symbolRuntime: SymbolReplayRuntime = {

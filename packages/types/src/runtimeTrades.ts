@@ -1,6 +1,7 @@
 import type { SimpleOrderLogData, StrategyConfig, TestStat } from './backtest';
 import type { MarketUniverse } from './market';
 import type { RuntimeStrategyControlState } from './runtimeControls';
+import type { RuntimeStrategySelection } from './runtimeDeclarations';
 import type { Interval, RuntimeTradeRecord } from './trade';
 
 export interface RuntimeStrategyTradeSummary {
@@ -56,6 +57,7 @@ export interface RuntimeStrategyView {
   accountId?: string;
   accountLabel?: string;
   deploymentId: string;
+  selection?: RuntimeStrategySelection;
   policyProfileId?: string;
   connected: boolean;
   enabled: boolean;

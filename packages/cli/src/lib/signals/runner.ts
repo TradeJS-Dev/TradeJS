@@ -31,10 +31,12 @@ import {
   Interval,
   MarketUniverse,
   RuntimeDeployment,
+  RuntimeStrategySelection,
   RuntimeStrategyCloseNotification,
   Signal,
 } from '@tradejs/types';
 import { getClosedCandlesForInterval } from '../marketData/windows';
+import { loadRuntimeActiveTrades } from '../runtimeRedis';
 import { timeOperation as runTimedOperation } from '../runFormatting';
 import { invokeAfterSignalsHooks, invokeBeforeSignalsHooks } from './hooks';
 import { prepareMarketContextForRun } from '../marketContextPrepare';
@@ -59,6 +61,7 @@ import { createSignalsTickerEvaluator } from './tickerEvaluator';
 import {
   buildConfiguredSignalsScopes,
   formatConfiguredStrategyIdentity,
+  getConfiguredScopeActiveSymbols,
   type ConfiguredSignalsScope,
 } from './configuredScopes';
 
@@ -95,6 +98,8 @@ export interface SignalsSession {
   interval: Interval;
   intervalMs: number;
   deployment?: RuntimeDeployment | null;
+  strategyNames?: string[];
+  selection?: RuntimeStrategySelection;
   startedAt: number;
   marketConnector: Connector;
   btcReferences: Awaited<ReturnType<typeof loadBtcReferenceConnectors>>;
@@ -110,6 +115,8 @@ export interface SignalsRunner {
       universe?: MarketUniverse;
       accountId?: string;
       connectorName?: string;
+      strategyNames?: string[];
+      selection?: RuntimeStrategySelection;
     },
   ) => Promise<SignalsSession>;
   runCycle: (options?: { session?: SignalsSession }) => Promise<void>;
@@ -211,6 +218,8 @@ export const createSignalsRunner = (
       universe?: MarketUniverse;
       accountId?: string;
       connectorName?: string;
+      strategyNames?: string[];
+      selection?: RuntimeStrategySelection;
     } = {},
   ): Promise<SignalsSession> => {
     const deployment = config.deploymentId
@@ -266,6 +275,14 @@ export const createSignalsRunner = (
       interval: runtimeInterval,
       intervalMs: runtimeIntervalMs,
       deployment,
+      ...(scope.strategyNames
+        ? { strategyNames: [...scope.strategyNames] }
+        : {}),
+      ...(scope.selection
+        ? {
+            selection: { tickers: [...scope.selection.tickers] },
+          }
+        : {}),
       startedAt: Date.now(),
       marketConnector,
       btcReferences,
@@ -304,14 +321,39 @@ export const createSignalsRunner = (
         lifecycle,
         interval,
         intervalMs,
+        strategyNames,
+        selection,
       } = session;
       const universe =
         sessionUniverse ?? marketConnector.universe ?? ('crypto' as const);
 
+      const selectedActiveSymbols =
+        !config.tickers && selection?.tickers?.length && strategyNames?.length
+          ? getConfiguredScopeActiveSymbols({
+              trades: await loadRuntimeActiveTrades(config.userName),
+              deploymentId: deployment?.id ?? '',
+              strategyNames,
+              universe,
+              accountId,
+              interval,
+            })
+          : [];
+      const selectedTickers = selection?.tickers
+        ? [...new Set([...selection.tickers, ...selectedActiveSymbols])]
+        : undefined;
+      if (selectedActiveSymbols.length) {
+        logger.info(
+          chalk.gray(
+            `strategy selection retained active symbols: ${selectedActiveSymbols.join(', ')}`,
+          ),
+        );
+      }
       const tickers = await timeOperation('tickers load', () => {
         const baseArgs = [
           marketConnector,
-          config.tickers || deployment?.tickers?.join(','),
+          config.tickers ||
+            selectedTickers?.join(',') ||
+            deployment?.tickers?.join(','),
           config.exclude,
           config.tickersLimit,
           config.chunk,
@@ -479,7 +521,7 @@ export const createSignalsRunner = (
         primaryEthClosedData.map((candle) => [candle.timestamp, candle]),
       );
 
-      const runtimeStrategies = await loadRuntimeStrategies({
+      const configuredRuntimeStrategies = await loadRuntimeStrategies({
         userName: config.userName,
         projectRoot,
         deploymentId: deployment?.id ?? '',
@@ -487,6 +529,14 @@ export const createSignalsRunner = (
         accountId,
         interval,
       });
+      const selectedStrategyNames = strategyNames?.length
+        ? new Set(strategyNames)
+        : null;
+      const runtimeStrategies = selectedStrategyNames
+        ? configuredRuntimeStrategies.filter(({ strategyName }) =>
+            selectedStrategyNames.has(strategyName),
+          )
+        : configuredRuntimeStrategies;
       if (!runtimeStrategies.length) {
         lifecycle.clear();
         logger.warn(

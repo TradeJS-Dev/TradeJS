@@ -8,6 +8,7 @@ const runtimeConfig = {
         DoubleTap: {
           version: 4,
           enabled: true,
+          selection: { tickers: ['BTCUSDT', 'ETHUSDT'] },
           config: {
             INTERVAL: '15',
             UNIVERSE: 'crypto',
@@ -94,6 +95,7 @@ describe('Git-owned runtime strategy resolver', () => {
             version: 4,
             enabled: true,
             controlState: 'entries_paused',
+            selection: { tickers: ['BTCUSDT', 'ETHUSDT'] },
           },
         ],
       }),
@@ -121,6 +123,7 @@ describe('Git-owned runtime strategy resolver', () => {
         strategyPackage: '@tradejs/strategy-double-tap',
         strategyPackageVersion: '3.2.0',
         runtimePackageVersion: '3.2.0',
+        selection: { tickers: ['BTCUSDT', 'ETHUSDT'] },
         strategyConfig:
           runtimeConfig.deployments.production.strategies.DoubleTap.config,
         sourceStrategyConfig:

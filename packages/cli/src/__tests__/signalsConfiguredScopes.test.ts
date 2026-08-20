@@ -3,11 +3,12 @@ import type { RuntimeDeployment } from '@tradejs/types';
 import {
   buildConfiguredSignalsScopes,
   formatConfiguredStrategyIdentity,
+  getConfiguredScopeActiveSymbols,
 } from '../lib/signals/configuredScopes';
 
 const deployment: RuntimeDeployment = {
-  id: 'doubletap-forward',
-  label: 'DoubleTap forward',
+  id: 'production',
+  label: 'Production',
   connectorName: 'bybit',
   provider: 'bybit',
   accountId: 'bybit-default',
@@ -60,7 +61,75 @@ describe('configured signals scopes', () => {
       universe: 'crypto',
       accountId: 'bybit-default',
       interval: '15',
+      strategyNames: ['DoubleTap', 'Grid'],
     });
+  });
+
+  it('creates separate sessions for strategy ticker selections', () => {
+    const scopes = buildConfiguredSignalsScopes({
+      connectorName: 'bybit',
+      deployment,
+      strategies: [
+        { ...strategy, selection: { tickers: ['BTCUSDT'] } },
+        {
+          ...strategy,
+          strategyName: 'Grid',
+          selection: { tickers: ['ETHUSDT'] },
+        },
+      ],
+    });
+
+    expect(scopes).toHaveLength(2);
+    expect(scopes.map(({ scope }) => scope)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          strategyNames: ['DoubleTap'],
+          selection: { tickers: ['BTCUSDT'] },
+        }),
+        expect.objectContaining({
+          strategyNames: ['Grid'],
+          selection: { tickers: ['ETHUSDT'] },
+        }),
+      ]),
+    );
+  });
+
+  it('retains only active symbols owned by the configured strategy scope', () => {
+    const activeTrade = {
+      orderId: 'ord-active',
+      strategy: 'DoubleTap',
+      deploymentId: deployment.id,
+      accountId: deployment.accountId,
+      universe: 'crypto',
+      interval: '15',
+      symbol: 'SOLUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1,
+      status: 'active',
+    } as const;
+
+    expect(
+      getConfiguredScopeActiveSymbols({
+        trades: [
+          activeTrade,
+          { ...activeTrade, orderId: 'ord-duplicate' },
+          { ...activeTrade, orderId: 'ord-other', strategy: 'Grid' },
+          {
+            ...activeTrade,
+            orderId: 'ord-deployment',
+            deploymentId: 'other-deployment',
+          },
+          { ...activeTrade, orderId: 'ord-closed', status: 'closed' },
+        ],
+        deploymentId: deployment.id,
+        strategyNames: ['DoubleTap'],
+        universe: 'crypto',
+        accountId: deployment.accountId,
+        interval: '15',
+      }),
+    ).toEqual(['SOLUSDT']);
   });
 
   it('changes the session identity after runtime binding changes', () => {

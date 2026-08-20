@@ -78,6 +78,7 @@ export interface RuntimeDeploymentStrategy {
   enabled: boolean;
   /** New entries may be paused while exit/position management keeps running. */
   controlState: import('./runtimeControls').RuntimeStrategyControlState;
+  selection?: import('./runtimeDeclarations').RuntimeStrategySelection;
 }
 
 export interface RuntimeDeployment {

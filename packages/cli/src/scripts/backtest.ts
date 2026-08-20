@@ -646,7 +646,7 @@ export const backtest = async () => {
     return;
   }
 
-  const preparedRun = await prepareRunEnvironment();
+  const preparedRun = await prepareRunEnvironment(config.strategyName);
   if (!preparedRun || flags.updateOnly) {
     return;
   }

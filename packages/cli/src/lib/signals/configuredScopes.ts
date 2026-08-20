@@ -3,6 +3,8 @@ import type {
   Interval,
   MarketUniverse,
   RuntimeDeployment,
+  RuntimeStrategySelection,
+  RuntimeTradeRecord,
 } from '@tradejs/types';
 
 export interface ConfiguredSignalsScope {
@@ -10,6 +12,8 @@ export interface ConfiguredSignalsScope {
   universe: MarketUniverse;
   accountId?: string;
   interval: Interval;
+  strategyNames: string[];
+  selection?: RuntimeStrategySelection;
 }
 
 interface ConfiguredSignalsScopeEntry {
@@ -26,6 +30,40 @@ export const formatConfiguredStrategyIdentity = (
     'strategyName' | 'version' | 'controlState'
   >,
 ) => `${strategy.strategyName}@v${strategy.version}[${strategy.controlState}]`;
+
+export const getConfiguredScopeActiveSymbols = ({
+  trades,
+  deploymentId,
+  strategyNames,
+  universe,
+  accountId,
+  interval,
+}: {
+  trades: RuntimeTradeRecord[];
+  deploymentId: string;
+  strategyNames: string[];
+  universe: MarketUniverse;
+  accountId?: string;
+  interval: Interval;
+}) => {
+  const strategyNameSet = new Set(strategyNames);
+
+  return [
+    ...new Set(
+      trades
+        .filter(
+          (trade) =>
+            trade.status === 'active' &&
+            trade.deploymentId === deploymentId &&
+            strategyNameSet.has(trade.strategy) &&
+            (trade.universe ?? 'crypto') === universe &&
+            (!trade.accountId || trade.accountId === accountId) &&
+            (!trade.interval || String(trade.interval) === String(interval)),
+        )
+        .map(({ symbol }) => symbol),
+    ),
+  ].sort();
+};
 
 export const buildConfiguredSignalsScopes = ({
   connectorName,
@@ -54,11 +92,15 @@ export const buildConfiguredSignalsScopes = ({
   >();
 
   for (const strategy of strategies) {
+    const selectionIdentity = JSON.stringify({
+      tickers: sorted(strategy.selection?.tickers),
+    });
     const baseKey = [
       connectorName,
       strategy.universe,
       strategy.accountId ?? 'default',
       strategy.interval,
+      selectionIdentity,
     ].join(':');
     const group = groups.get(baseKey) ?? {
       scope: {
@@ -66,9 +108,16 @@ export const buildConfiguredSignalsScopes = ({
         universe: strategy.universe,
         accountId: strategy.accountId,
         interval: strategy.interval,
+        strategyNames: [],
+        ...(strategy.selection
+          ? {
+              selection: { tickers: [...strategy.selection.tickers] },
+            }
+          : {}),
       },
       strategyIdentities: [],
     };
+    group.scope.strategyNames.push(strategy.strategyName);
     group.strategyIdentities.push(formatConfiguredStrategyIdentity(strategy));
     groups.set(baseKey, group);
   }
@@ -77,6 +126,9 @@ export const buildConfiguredSignalsScopes = ({
     key: [baseKey, deploymentIdentity, ...group.strategyIdentities.sort()].join(
       ':',
     ),
-    scope: group.scope,
+    scope: {
+      ...group.scope,
+      strategyNames: [...group.scope.strategyNames].sort(),
+    },
   }));
 };

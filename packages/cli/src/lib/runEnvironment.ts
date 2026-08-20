@@ -20,6 +20,7 @@ import {
   Interval,
   MarketUniverse,
   RuntimeDeployment,
+  RuntimeStrategySelection,
 } from '@tradejs/types';
 import {
   getRuntimeDeployment,
@@ -105,6 +106,22 @@ export type ReplayStrategyConfig = {
   strategyPackageVersion: string;
   runtimePackageVersion: string;
   strategyConfig: import('@tradejs/types').StrategyConfig;
+  selection?: RuntimeStrategySelection;
+};
+
+export const mergeRuntimeStrategySelections = (
+  strategies: Array<Pick<ReplayStrategyConfig, 'selection'>>,
+): RuntimeStrategySelection | undefined => {
+  if (strategies.some((strategy) => !strategy.selection?.tickers)) {
+    return undefined;
+  }
+  return {
+    tickers: [
+      ...new Set(
+        strategies.flatMap((strategy) => strategy.selection?.tickers ?? []),
+      ),
+    ],
+  };
 };
 
 export const loadReplayStrategies = async (
@@ -151,6 +168,7 @@ export const loadDeploymentReplayStrategies = async ({
             strategyPackageVersion,
             runtimePackageVersion,
             sourceStrategyConfig,
+            selection,
           }) => ({
             strategyName,
             version,
@@ -158,6 +176,7 @@ export const loadDeploymentReplayStrategies = async ({
             strategyPackageVersion,
             runtimePackageVersion,
             strategyConfig: sourceStrategyConfig,
+            ...(selection ? { selection } : {}),
           }),
         )
     : [];

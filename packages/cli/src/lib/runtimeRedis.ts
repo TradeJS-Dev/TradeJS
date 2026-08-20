@@ -164,6 +164,22 @@ export const loadRuntimeActiveTradeOrderIds = async (
   );
 };
 
+export const loadRuntimeActiveTrades = async (
+  userName: string,
+): Promise<RuntimeTradeRecord[]> => {
+  const orderIds = await loadRuntimeActiveTradeOrderIds(userName);
+  const trades = await Promise.all(
+    [...orderIds].map((orderId) =>
+      getData(redisKeys.runtimeTrade(userName, orderId), null),
+    ),
+  );
+
+  return trades.filter(
+    (trade): trade is RuntimeTradeRecord =>
+      isRuntimeTradeRecord(trade) && trade.status === 'active',
+  );
+};
+
 export const loadStrategyResultSymbols = async ({
   userName,
   strategy,
