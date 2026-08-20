@@ -10,6 +10,10 @@
     "redis",
     "timescale",
     "ml",
+    "crypto",
+    "bybit",
+    "binance",
+    "coinbase",
     "ai",
     "claude",
     "codex"

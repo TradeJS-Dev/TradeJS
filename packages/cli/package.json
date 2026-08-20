@@ -10,6 +10,10 @@
     "signals",
     "bot",
     "automation",
+    "crypto",
+    "bybit",
+    "binance",
+    "coinbase",
     "ai",
     "claude",
     "codex"

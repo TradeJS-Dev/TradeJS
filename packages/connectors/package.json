@@ -9,7 +9,10 @@
     "connectors",
     "exchange",
     "market-data",
+    "crypto",
     "bybit",
+    "binance",
+    "coinbase",
     "ai",
     "claude",
     "codex"

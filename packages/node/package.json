@@ -10,6 +10,10 @@
     "runtime",
     "strategy",
     "pine-script",
+    "crypto",
+    "bybit",
+    "binance",
+    "coinbase",
     "ai",
     "claude",
     "codex"

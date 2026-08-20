@@ -9,6 +9,10 @@
     "typescript",
     "types",
     "contracts",
+    "crypto",
+    "bybit",
+    "binance",
+    "coinbase",
     "ai",
     "claude",
     "codex"
