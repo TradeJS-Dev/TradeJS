@@ -432,10 +432,18 @@ const loadScript = async (scenario: Scenario) => {
             );
             return {
               strategyName,
-              version: 1,
+              strategyRevision: 'sr1:1111111111111111',
+              deploymentCompositionId: 'dc1:1111111111111111',
               controlState: 'active',
               interval: String(strategyConfig.INTERVAL ?? '15'),
               universe: strategyConfig.UNIVERSE ?? 'crypto',
+              strategyPackage: `@tradejs/strategy-${strategyName.toLowerCase()}`,
+              strategyPackageVersion: '3.0.2',
+              strategyDependencyVersions: {
+                '@tradejs/indicators': '3.2.0',
+                '@tradejs/strategy-kit': '3.0.2',
+              },
+              runtimePackageVersion: '3.2.0',
               accountId:
                 deployment?.accountId ?? strategyConfig.ACCOUNT_ID ?? undefined,
               strategyCreator: await getStrategyCreator(
@@ -597,30 +605,37 @@ describe('signals script', () => {
       expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
     );
     expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig:v1'),
+      mocks.redisKeys.storeSignal(
+        'ETHUSDT',
+        'TrendLine-sig:sr1:1111111111111111',
+      ),
       expect.objectContaining({
-        signalId: 'TrendLine-sig:v1',
+        signalId: 'TrendLine-sig:sr1:1111111111111111',
         symbol: 'ETHUSDT',
       }),
       { expire: TTL_3D },
     );
     const storedSignal = (mocks.setData.mock.calls as unknown[][]).find(
       ([key]) =>
-        key === mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig:v1'),
+        key ===
+        mocks.redisKeys.storeSignal(
+          'ETHUSDT',
+          'TrendLine-sig:sr1:1111111111111111',
+        ),
     )?.[1];
     expect(storedSignal).not.toHaveProperty('figures');
     expect(storedSignal).not.toHaveProperty('indicators');
     expect(storedSignal).not.toHaveProperty('additionalIndicators');
     expect(mocks.setHashJsonField).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalBucket('root', '1970-01-01', 'TrendLine'),
-      'TrendLine-sig:v1',
+      'TrendLine-sig:sr1:1111111111111111',
       {
-        signalId: 'TrendLine-sig:v1',
+        signalId: 'TrendLine-sig:sr1:1111111111111111',
         symbol: 'ETHUSDT',
         strategy: 'TrendLine',
         timestamp: CLOSED_2_TS,
-        runtimeConfigId: 'v1',
-        runtimeVersion: 1,
+        runtimeConfigId: 'sr1:1111111111111111',
+        strategyRevision: 'sr1:1111111111111111',
       },
       { expire: TTL_3D },
     );
@@ -630,14 +645,14 @@ describe('signals script', () => {
         '1970-01-01',
         'TrendLine',
       ),
-      `TrendLine:v1:ETHUSDT:${CLOSED_2_TS}`,
+      `TrendLine:sr1:1111111111111111:ETHUSDT:${CLOSED_2_TS}`,
       expect.objectContaining({
-        evaluationId: `TrendLine:v1:ETHUSDT:${CLOSED_2_TS}`,
+        evaluationId: `TrendLine:sr1:1111111111111111:ETHUSDT:${CLOSED_2_TS}`,
         strategy: 'TrendLine',
         symbol: 'ETHUSDT',
         timestamp: CLOSED_2_TS,
         status: 'signal',
-        signalId: 'TrendLine-sig:v1',
+        signalId: 'TrendLine-sig:sr1:1111111111111111',
         direction: 'LONG',
       }),
       { expire: TTL_3D },
@@ -676,14 +691,21 @@ describe('signals script', () => {
     await signals();
 
     expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig:v1'),
-      expect.objectContaining({ signalId: 'TrendLine-sig:v1' }),
+      mocks.redisKeys.storeSignal(
+        'ETHUSDT',
+        'TrendLine-sig:sr1:1111111111111111',
+      ),
+      expect.objectContaining({
+        signalId: 'TrendLine-sig:sr1:1111111111111111',
+      }),
       { expire: 86_400 },
     );
     expect(mocks.setHashJsonField).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalBucket('root', '1970-01-01', 'TrendLine'),
-      'TrendLine-sig:v1',
-      expect.objectContaining({ signalId: 'TrendLine-sig:v1' }),
+      'TrendLine-sig:sr1:1111111111111111',
+      expect.objectContaining({
+        signalId: 'TrendLine-sig:sr1:1111111111111111',
+      }),
       { expire: 86_400 },
     );
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
@@ -858,8 +880,9 @@ describe('signals script', () => {
     expect(creatorParams).toEqual(
       expect.objectContaining({
         runtimeLineage: expect.objectContaining({
-          schemaVersion: 2,
-          version: 1,
+          schemaVersion: 3,
+          strategyRevision: 'sr1:1111111111111111',
+          deploymentCompositionId: 'dc1:1111111111111111',
         }),
       }),
     );
@@ -933,6 +956,7 @@ describe('signals script', () => {
       strategyConfig: { INTERVAL: '15', CUSTOM_THRESHOLD: 1 },
       deployment: {
         id: 'crypto-live',
+        deploymentCompositionId: 'dc1:1111111111111111',
         label: 'Crypto live',
         connectorName: 'bybit',
         provider: 'bybit',
@@ -942,7 +966,7 @@ describe('signals script', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            version: 1,
+            strategyRevision: 'sr1:1111111111111111',
             enabled: true,
             controlState: 'active',
           },
@@ -985,8 +1009,8 @@ describe('signals script', () => {
 
     expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
       expect.objectContaining({
-        runtimeConfigId: 'v1',
-        runtimeVersion: 1,
+        runtimeConfigId: 'sr1:1111111111111111',
+        strategyRevision: 'sr1:1111111111111111',
         runtimeConfigSnapshot: {
           userConfig: { INTERVAL: '15', CUSTOM_THRESHOLD: 1 },
         },
@@ -995,10 +1019,10 @@ describe('signals script', () => {
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.storeSignal(
         'ETHUSDT',
-        'TrendLine-sig:crypto-live:crypto-main:v1',
+        'TrendLine-sig:crypto-live:crypto-main:sr1:1111111111111111',
       ),
       expect.objectContaining({
-        signalId: 'TrendLine-sig:crypto-live:crypto-main:v1',
+        signalId: 'TrendLine-sig:crypto-live:crypto-main:sr1:1111111111111111',
         deploymentId: 'crypto-live',
         accountId: 'crypto-main',
       }),
@@ -1010,7 +1034,7 @@ describe('signals script', () => {
         '1970-01-01',
         'TrendLine',
       ),
-      `crypto-live:crypto-main:TrendLine:v1:SOLUSDT:${CLOSED_2_TS}`,
+      `crypto-live:crypto-main:TrendLine:sr1:1111111111111111:SOLUSDT:${CLOSED_2_TS}`,
       expect.objectContaining({
         deploymentId: 'crypto-live',
         accountId: 'crypto-main',
@@ -1051,6 +1075,7 @@ describe('signals script', () => {
   it('binds a TradFi daemon session to its deployment and account', async () => {
     const runtimeDeployment: RuntimeDeployment = {
       id: 'tradfi-live',
+      deploymentCompositionId: 'dc1:1111111111111111',
       label: 'TradFi Live',
       connectorName: 'bybit',
       provider: 'bybit',
@@ -1061,7 +1086,7 @@ describe('signals script', () => {
       strategies: [
         {
           strategyName: 'TrendLine',
-          version: 1,
+          strategyRevision: 'sr1:1111111111111111',
           enabled: true,
           controlState: 'active',
         },
@@ -1152,6 +1177,7 @@ describe('signals script', () => {
       strategyConfig: { INTERVAL: '60', UNIVERSE: 'crypto' },
       deployment: {
         id: 'doubletap-forward',
+        deploymentCompositionId: 'dc1:2222222222222222',
         label: 'DoubleTap forward',
         connectorName: 'bybit',
         provider: 'bybit',
@@ -1160,7 +1186,7 @@ describe('signals script', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            version: 2,
+            strategyRevision: 'sr1:2222222222222222',
             enabled: true,
             controlState: 'active',
           },
@@ -1291,7 +1317,8 @@ describe('signals script', () => {
     expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(2);
     expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        sharedStrategyStateKey: 'bybit:ETHUSDT:15:TrendLine:v1',
+        sharedStrategyStateKey:
+          'bybit:ETHUSDT:15:TrendLine:sr1:1111111111111111',
       }),
     );
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(2);
@@ -1352,7 +1379,7 @@ describe('signals script', () => {
         '1970-01-01',
         'TrendLine',
       ),
-      `TrendLine:v1:ETHUSDT:${CLOSED_2_TS}`,
+      `TrendLine:sr1:1111111111111111:ETHUSDT:${CLOSED_2_TS}`,
       expect.objectContaining({
         orderStatus: 'skipped',
         orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
@@ -1585,7 +1612,7 @@ describe('signals script', () => {
     expect(mocks.makeScreenshots).toHaveBeenCalledWith(
       [
         expect.objectContaining({
-          signalId: 'trend-sig:v1',
+          signalId: 'trend-sig:sr1:1111111111111111',
           orderStatus: 'completed',
         }),
       ],
@@ -1595,7 +1622,12 @@ describe('signals script', () => {
     const storedTradeSignalCallIndex = (
       mocks.setData.mock.calls as unknown[][]
     ).findIndex(
-      ([key]) => key === mocks.redisKeys.storeSignal('ETHUSDT', 'trend-sig:v1'),
+      ([key]) =>
+        key ===
+        mocks.redisKeys.storeSignal(
+          'ETHUSDT',
+          'trend-sig:sr1:1111111111111111',
+        ),
     );
     const storedTradeSignal = (mocks.setData.mock.calls as unknown[][])[
       storedTradeSignalCallIndex
@@ -1633,7 +1665,7 @@ describe('signals script', () => {
     expect(mocks.sendToTG).toHaveBeenCalledWith(
       [
         expect.objectContaining({
-          signalId: 'trend-sig:v1',
+          signalId: 'trend-sig:sr1:1111111111111111',
           orderStatus: 'completed',
         }),
       ],

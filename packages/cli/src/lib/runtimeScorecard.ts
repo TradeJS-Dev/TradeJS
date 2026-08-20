@@ -26,6 +26,25 @@ const finiteNumber = (value: unknown): number | null =>
 const finiteString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
+const packageVersionMap = (value: unknown): Record<string, string> | null => {
+  const record = asRecord(value);
+  if (!record || Object.keys(record).length === 0) return null;
+  const entries = Object.entries(record);
+  if (
+    entries.some(
+      ([name, version]) =>
+        !name.startsWith('@tradejs/') || finiteString(version) == null,
+    )
+  ) {
+    return null;
+  }
+  return Object.fromEntries(
+    entries
+      .map(([name, version]) => [name, String(version).trim()] as const)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+};
+
 const round = (value: number, decimals = 6) => Number(value.toFixed(decimals));
 
 const unwrapRows = (value: unknown, key: string) =>
@@ -78,12 +97,18 @@ const buildRuntimeLineageSummary = (rows: {
   const identities = new Map<string, JsonRecord>();
   for (const lineage of lineages) {
     const identity =
-      lineage.schemaVersion === 2
+      lineage.schemaVersion === 3
         ? {
-            schemaVersion: 2,
-            version: finiteNumber(lineage.version),
+            schemaVersion: 3,
+            strategyRevision: finiteString(lineage.strategyRevision),
+            deploymentCompositionId: finiteString(
+              lineage.deploymentCompositionId,
+            ),
             strategyPackageVersion: finiteString(
               lineage.strategyPackageVersion,
+            ),
+            strategyDependencyVersions: packageVersionMap(
+              lineage.strategyDependencyVersions,
             ),
             runtimePackageVersion: finiteString(lineage.runtimePackageVersion),
             maxLossValue: finiteNumber(lineage.maxLossValue),
@@ -106,9 +131,11 @@ const buildRuntimeLineageSummary = (rows: {
   const identityComplete =
     lineages.length > 0 &&
     identity != null &&
-    ((schemaVersion === 2 &&
-      finiteNumber(identity.version) != null &&
+    ((schemaVersion === 3 &&
+      finiteString(identity.strategyRevision) != null &&
+      finiteString(identity.deploymentCompositionId) != null &&
       finiteString(identity.strategyPackageVersion) != null &&
+      packageVersionMap(identity.strategyDependencyVersions) != null &&
       finiteString(identity.runtimePackageVersion) != null) ||
       (schemaVersion === 1 &&
         identity.compositionId != null &&
@@ -133,8 +160,12 @@ const buildRuntimeLineageSummary = (rows: {
     rowsWithLineage: lineages.length,
     schemaVersion,
     lineageKey,
-    version: finiteNumber(identity?.version),
+    strategyRevision: finiteString(identity?.strategyRevision),
+    deploymentCompositionId: finiteString(identity?.deploymentCompositionId),
     strategyPackageVersion: finiteString(identity?.strategyPackageVersion),
+    strategyDependencyVersions: packageVersionMap(
+      identity?.strategyDependencyVersions,
+    ),
     runtimePackageVersion: finiteString(identity?.runtimePackageVersion),
     compositionId: finiteString(identity?.compositionId),
     gitSha: finiteString(identity?.gitSha),

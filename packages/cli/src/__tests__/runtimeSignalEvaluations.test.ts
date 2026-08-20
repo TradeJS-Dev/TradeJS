@@ -40,19 +40,19 @@ describe('runtime signal evaluation buffering', () => {
         strategyName: 'TrendShift',
         symbol: 'BTCUSDT',
         timestamp: 123,
-        runtimeVersion: 2,
+        strategyRevision: 'sr1:2222222222222222',
         deploymentId: 'production',
         accountId: 'bybit-main',
       }),
-    ).toBe('production:bybit-main:TrendShift:v2:BTCUSDT:123');
+    ).toBe('production:bybit-main:TrendShift:sr1:2222222222222222:BTCUSDT:123');
     expect(
       buildRuntimeSignalEvaluationId({
         strategyName: 'TrendShift',
         symbol: 'BTCUSDT',
         timestamp: 123,
-        runtimeVersion: 2,
+        strategyRevision: 'sr1:2222222222222222',
       }),
-    ).toBe('TrendShift:v2:BTCUSDT:123');
+    ).toBe('TrendShift:sr1:2222222222222222:BTCUSDT:123');
   });
 
   it('batches lineage and stats while preserving bounded timestamps', async () => {

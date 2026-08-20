@@ -209,17 +209,21 @@ export const replayBacktest = async () => {
         ).map(
           ({
             strategyName,
-            version,
+            strategyRevision,
             strategyPackage,
             strategyPackageVersion,
+            strategyDependencyVersions,
             runtimePackageVersion,
             strategyConfig,
             selection,
           }) => ({
             strategyName,
-            version,
+            strategyRevision,
+            deploymentCompositionId:
+              evidenceMetadata.deployment.deploymentCompositionId,
             strategyPackage,
             strategyPackageVersion,
+            strategyDependencyVersions,
             runtimePackageVersion,
             strategyConfig,
             ...(selection ? { selection } : {}),

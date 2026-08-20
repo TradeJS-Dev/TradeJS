@@ -27,9 +27,10 @@ const sorted = (values: readonly string[] | undefined) =>
 export const formatConfiguredStrategyIdentity = (
   strategy: Pick<
     ResolvedRuntimeStrategy,
-    'strategyName' | 'version' | 'controlState'
+    'strategyName' | 'strategyRevision' | 'controlState'
   >,
-) => `${strategy.strategyName}@v${strategy.version}[${strategy.controlState}]`;
+) =>
+  `${strategy.strategyName}@${strategy.strategyRevision}[${strategy.controlState}]`;
 
 export const getConfiguredScopeActiveSymbols = ({
   trades,
@@ -76,6 +77,7 @@ export const buildConfiguredSignalsScopes = ({
 }): ConfiguredSignalsScopeEntry[] => {
   const deploymentIdentity = JSON.stringify({
     id: deployment.id,
+    deploymentCompositionId: deployment.deploymentCompositionId,
     enabled: deployment.enabled,
     connectorName: deployment.connectorName,
     provider: deployment.provider,

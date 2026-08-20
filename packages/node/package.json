@@ -102,10 +102,12 @@
     "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
-    "@tradejs/strategy-adaptive-momentum-ribbon": "^3.0.0",
-    "@tradejs/strategy-hyperliquid-consensus": "^3.0.0",
-    "@tradejs/strategy-trend-line": "^3.0.0",
-    "@tradejs/strategy-volume-divergence": "^3.0.0",
+    "@tradejs/indicators": "workspace:^",
+    "@tradejs/strategy-adaptive-momentum-ribbon": "3.0.2",
+    "@tradejs/strategy-hyperliquid-consensus": "3.0.2",
+    "@tradejs/strategy-kit": "3.0.2",
+    "@tradejs/strategy-trend-line": "3.0.2",
+    "@tradejs/strategy-volume-divergence": "3.0.2",
     "@types/node": "^24",
     "tsup": "^8.5.1",
     "typescript": "^5.9"

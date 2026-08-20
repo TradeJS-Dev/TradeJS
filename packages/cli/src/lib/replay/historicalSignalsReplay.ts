@@ -57,9 +57,11 @@ import { buildRuntimeLineage } from '../runtimeLineage';
 
 type ReplayRuntimeStrategy = {
   strategyName: string;
-  version: number;
+  strategyRevision: string;
+  deploymentCompositionId: string;
   strategyPackage: string;
   strategyPackageVersion: string;
+  strategyDependencyVersions: Record<string, string>;
   runtimePackageVersion: string;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
@@ -132,9 +134,11 @@ const loadRuntimeStrategies = async (
     runtimeStrategies.map(async (runtimeStrategy) => {
       const {
         strategyName,
-        version,
+        strategyRevision,
+        deploymentCompositionId,
         strategyPackage,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
         strategyConfig,
         selection,
@@ -153,6 +157,8 @@ const loadRuntimeStrategies = async (
       if (
         installed.strategyPackage !== strategyPackage ||
         installed.strategyPackageVersion !== strategyPackageVersion ||
+        JSON.stringify(installed.strategyDependencyVersions) !==
+          JSON.stringify(strategyDependencyVersions) ||
         installed.runtimePackageVersion !== runtimePackageVersion
       ) {
         throw new Error(
@@ -167,9 +173,11 @@ const loadRuntimeStrategies = async (
 
       return {
         strategyName,
-        version,
+        strategyRevision,
+        deploymentCompositionId,
         strategyPackage,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
         strategyCreator,
         strategyConfig,
@@ -433,8 +441,10 @@ export const runHistoricalSignalsReplay = async ({
         .map(
           async ({
             strategyName,
-            version,
+            strategyRevision,
+            deploymentCompositionId,
             strategyPackageVersion,
+            strategyDependencyVersions,
             runtimePackageVersion,
             strategyCreator,
             strategyConfig,
@@ -443,11 +453,13 @@ export const runHistoricalSignalsReplay = async ({
             const runtimeLineage = await buildRuntimeLineage({
               projectRoot: replayProjectRoot,
               strategyName,
-              version,
+              strategyRevision,
+              deploymentCompositionId,
               strategyPackageVersion,
+              strategyDependencyVersions,
               runtimePackageVersion,
               config: {
-                configId: `v${version}`,
+                configId: strategyRevision,
                 strategyConfig,
                 symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
               },
@@ -475,7 +487,8 @@ export const runHistoricalSignalsReplay = async ({
               run: await strategyCreator({
                 userName: replayUserName,
                 connectorName,
-                runtimeConfigId: `v${version}`,
+                runtimeConfigId: strategyRevision,
+                strategyRevision,
                 runtimeLineage,
                 universe: preparedRun.universe,
                 accountId: preparedRun.accountId,

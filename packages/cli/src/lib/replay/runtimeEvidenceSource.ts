@@ -136,7 +136,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
     deploymentId,
     accountId,
     runtimeConfigId,
-    runtimeVersion,
+    strategyRevision,
     timestamp,
     lineage,
   }: {
@@ -145,7 +145,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
     deploymentId?: string;
     accountId?: string;
     runtimeConfigId?: string;
-    runtimeVersion?: number;
+    strategyRevision?: string;
     timestamp: number;
     lineage?: RuntimeLineage;
   }) => {
@@ -161,7 +161,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       ...(deploymentId ? { deploymentId } : {}),
       ...(accountId ? { accountId } : {}),
       ...(runtimeConfigId ? { runtimeConfigId } : {}),
-      ...(runtimeVersion ? { runtimeVersion } : {}),
+      ...(strategyRevision ? { strategyRevision } : {}),
       lineage,
       firstTimestamp: existing
         ? Math.min(existing.firstTimestamp, timestamp)
@@ -179,7 +179,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       deploymentId: signal.deploymentId,
       accountId: signal.accountId,
       runtimeConfigId: signal.runtimeConfigId,
-      runtimeVersion: signal.runtimeVersion,
+      strategyRevision: signal.strategyRevision,
       timestamp: signal.timestamp,
       lineage: signal.runtimeLineage,
     });
@@ -191,7 +191,7 @@ export const buildRuntimeEvidenceLineageScopes = ({
       deploymentId: evaluation.deploymentId,
       accountId: evaluation.accountId,
       runtimeConfigId: evaluation.runtimeConfigId,
-      runtimeVersion: evaluation.runtimeVersion,
+      strategyRevision: evaluation.strategyRevision,
       timestamp: evaluation.timestamp,
       lineage: evaluation.runtimeLineage,
     });

@@ -28,7 +28,7 @@ export const RuntimeStrategyConfigDrawer = ({
 }) => {
   const config = JSON.stringify(strategy.config, null, 2);
   const serviceInfo = [
-    { label: 'Version', value: `v${strategy.version}` },
+    { label: 'Strategy revision', value: strategy.strategyRevision },
     { label: 'Config ID', value: strategy.configId },
     { label: 'Runtime key', value: strategy.runtimeKey },
     { label: 'Deployment', value: strategy.deploymentId },

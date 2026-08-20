@@ -32,16 +32,18 @@ must never receive strategy config, deployment documents, or version pointers.
    explicitly selected risk.
 5. Update the strategy entry under
    `runtime.deployments.<deployment>.strategies.<Strategy>` in
-   `tradejs.config.ts`. Store exactly `{ version, enabled, config }`. Increment
-   the positive integer `version` when package behavior or effective config
-   changes; do not increment it for pause/resume. Keep account, connector,
-   tickers, and asset classes at deployment level.
+   `tradejs.config.ts`. Store exactly `{ generation?, enabled, selection?,
+   config }`. `generation` is optional human metadata. Never add or increment a
+   technical version: Project validation computes `strategyRevision` and
+   `deploymentCompositionId`. Keep account, connector, tickers, and asset
+   classes at deployment level.
 6. Ensure `package.json` and `yarn.lock` select the exact stable strategy
    package containing the candidate. Normal development verifies a beta first;
    committed Project and production use the protected stable promotion.
-7. Run Project validation and `yarn runtime-control verify`. A production-like
-   image smoke must prove that the config loads with no controls key, pause
-   creates only `users:<user>:runtime:controls`, and resume removes it.
+7. Run Project validation, record the computed revisions, and run
+   `yarn runtime-control verify`. A production-like image smoke must prove that
+   the config loads with no controls key, pause creates only
+   `users:<user>:runtime:controls`, and resume removes it.
 
 ## Safety
 

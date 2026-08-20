@@ -87,7 +87,7 @@ export const PATCH = async (
     userName,
     deploymentId: deployment.id,
     strategyName,
-    version: reference.version,
+    strategyRevision: reference.strategyRevision,
     previousState,
     nextState: controlState,
     createdBy: userName,

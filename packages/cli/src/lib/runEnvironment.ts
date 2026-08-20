@@ -101,9 +101,11 @@ const resolveRunConnectorName = async ({
 
 export type ReplayStrategyConfig = {
   strategyName: string;
-  version: number;
+  strategyRevision: string;
+  deploymentCompositionId: string;
   strategyPackage: string;
   strategyPackageVersion: string;
+  strategyDependencyVersions: Record<string, string>;
   runtimePackageVersion: string;
   strategyConfig: import('@tradejs/types').StrategyConfig;
   selection?: RuntimeStrategySelection;
@@ -163,17 +165,21 @@ export const loadDeploymentReplayStrategies = async ({
         .map(
           ({
             strategyName,
-            version,
+            strategyRevision,
+            deploymentCompositionId,
             strategyPackage,
             strategyPackageVersion,
+            strategyDependencyVersions,
             runtimePackageVersion,
             sourceStrategyConfig,
             selection,
           }) => ({
             strategyName,
-            version,
+            strategyRevision,
+            deploymentCompositionId,
             strategyPackage,
             strategyPackageVersion,
+            strategyDependencyVersions,
             runtimePackageVersion,
             strategyConfig: sourceStrategyConfig,
             ...(selection ? { selection } : {}),

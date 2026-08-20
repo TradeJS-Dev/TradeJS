@@ -14,7 +14,7 @@ import {
 
 export type RuntimeEvidenceStrategySnapshot = {
   strategyName: string;
-  version: number;
+  strategyRevision: string;
   enabled: boolean;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
@@ -22,14 +22,16 @@ export type RuntimeEvidenceStrategySnapshot = {
   accountId?: string;
   strategyPackage: string;
   strategyPackageVersion: string;
+  strategyDependencyVersions: Record<string, string>;
   runtimePackageVersion: string;
   strategyConfig: StrategyConfig;
   selection?: RuntimeStrategySelection;
 };
 
 export type RuntimeEvidenceDeploymentSnapshot = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
+  deploymentCompositionId: string;
   label: string;
   connectorName: string;
   provider: string;
@@ -45,6 +47,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const isPackageVersionMap = (value: unknown): value is Record<string, string> =>
+  isRecord(value) &&
+  Object.keys(value).length > 0 &&
+  Object.entries(value).every(
+    ([name, version]) =>
+      name.startsWith('@tradejs/') && isNonEmptyString(version),
+  );
 
 const INTERVALS = new Set([
   '1',
@@ -80,8 +90,10 @@ export const parseRuntimeEvidenceDeploymentSnapshot = (
 ): RuntimeEvidenceDeploymentSnapshot => {
   if (
     !isRecord(value) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
     !isNonEmptyString(value.id) ||
+    !isNonEmptyString(value.deploymentCompositionId) ||
+    !/^dc1:[a-f0-9]{16}$/.test(value.deploymentCompositionId) ||
     !isNonEmptyString(value.label) ||
     !isNonEmptyString(value.connectorName) ||
     !isNonEmptyString(value.provider) ||
@@ -98,14 +110,15 @@ export const parseRuntimeEvidenceDeploymentSnapshot = (
     if (
       !isRecord(candidate) ||
       !isNonEmptyString(candidate.strategyName) ||
-      !Number.isSafeInteger(candidate.version) ||
-      Number(candidate.version) <= 0 ||
+      !isNonEmptyString(candidate.strategyRevision) ||
+      !/^sr1:[a-f0-9]{16}$/.test(candidate.strategyRevision) ||
       typeof candidate.enabled !== 'boolean' ||
       !['active', 'entries_paused'].includes(String(candidate.controlState)) ||
       !INTERVALS.has(String(candidate.interval)) ||
       !UNIVERSES.has(String(candidate.universe)) ||
       !isNonEmptyString(candidate.strategyPackage) ||
       !isNonEmptyString(candidate.strategyPackageVersion) ||
+      !isPackageVersionMap(candidate.strategyDependencyVersions) ||
       !isNonEmptyString(candidate.runtimePackageVersion) ||
       !isRecord(candidate.strategyConfig) ||
       !isRuntimeStrategySelection(candidate.selection)
@@ -162,15 +175,16 @@ export const runtimeDeploymentFromEvidence = (
   deployment: RuntimeEvidenceDeploymentSnapshot,
 ): RuntimeDeployment => ({
   id: deployment.id,
+  deploymentCompositionId: deployment.deploymentCompositionId,
   label: deployment.label,
   connectorName: deployment.connectorName,
   provider: deployment.provider,
   accountId: deployment.accountId,
   enabled: deployment.enabled,
   strategies: deployment.strategies.map(
-    ({ strategyName, version, enabled, controlState, selection }) => ({
+    ({ strategyName, strategyRevision, enabled, controlState, selection }) => ({
       strategyName,
-      version,
+      strategyRevision,
       enabled,
       controlState,
       ...(selection ? { selection } : {}),
@@ -200,8 +214,9 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: deployment.id,
+    deploymentCompositionId: deployment.deploymentCompositionId,
     label: deployment.label,
     connectorName: deployment.connectorName,
     provider: deployment.provider,
@@ -210,7 +225,7 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
     strategies: strategies.map(
       ({
         strategyName,
-        version,
+        strategyRevision,
         enabled,
         controlState,
         interval,
@@ -218,12 +233,13 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
         accountId,
         strategyPackage,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
-        sourceStrategyConfig,
+        strategyConfig,
         selection,
       }) => ({
         strategyName,
-        version,
+        strategyRevision,
         enabled,
         controlState,
         interval,
@@ -231,8 +247,9 @@ export const resolveRuntimeEvidenceDeploymentSnapshot = async ({
         ...(accountId ? { accountId } : {}),
         strategyPackage,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
-        strategyConfig: sourceStrategyConfig,
+        strategyConfig,
         ...(selection ? { selection } : {}),
       }),
     ),

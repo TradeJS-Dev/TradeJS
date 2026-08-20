@@ -361,15 +361,15 @@ const renderLineageRows = (
       contexts: new Set<string>(),
     };
     existing.scopes += 1;
-    if (record.lineage.schemaVersion === 2) {
-      existing.gitShas.add('release-versioned');
+    if (record.lineage.schemaVersion === 3) {
+      existing.gitShas.add(record.lineage.deploymentCompositionId);
       existing.dirty.add('n/a');
-      existing.gates.add('release-versioned');
-      existing.configs.add(`v${record.lineage.version}`);
+      existing.gates.add('package-owned');
+      existing.configs.add(record.lineage.strategyRevision);
       existing.contexts.add(
         [
-          record.lineage.strategyPackageVersion ?? 'strategy:unknown',
-          record.lineage.runtimePackageVersion ?? 'runtime:unknown',
+          record.lineage.strategyPackageVersion,
+          record.lineage.runtimePackageVersion,
         ].join('/'),
       );
     } else {

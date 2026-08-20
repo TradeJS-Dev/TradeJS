@@ -56,7 +56,8 @@ const verify = async () => {
         ok: true,
         strategies: strategies.map((strategy) => ({
           strategyName: strategy.strategyName,
-          version: strategy.version,
+          strategyRevision: strategy.strategyRevision,
+          deploymentCompositionId: strategy.deploymentCompositionId,
           controlState: strategy.controlState,
           interval: strategy.interval,
           universe: strategy.universe,
@@ -144,7 +145,7 @@ const updateControlState = async (nextState: RuntimeStrategyControlState) => {
           userName,
           deploymentId,
           strategyName,
-          version: reference.version,
+          strategyRevision: reference.strategyRevision,
           previousState,
           nextState,
           createdBy: `cli:${userName}`,

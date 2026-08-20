@@ -813,7 +813,7 @@ export interface Signal {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeVersion?: number;
+  strategyRevision?: string;
   runtimeLineage?: RuntimeLineage;
   direction: Direction;
   timestamp: number;
@@ -859,7 +859,7 @@ export interface RuntimeSignalEvaluationRecord {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeVersion?: number;
+  strategyRevision?: string;
   runtimeLineage?: RuntimeLineage;
   symbol: string;
   interval: Interval;
@@ -907,7 +907,7 @@ export interface RuntimeAiAnalysisSnapshot {
 
 export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
 
-export interface LegacyRuntimeLineage {
+export interface ResearchRuntimeLineage {
   schemaVersion: 1;
   compositionId?: string | null;
   gitSha: string | null;
@@ -918,15 +918,17 @@ export interface LegacyRuntimeLineage {
   maxLossValue?: number | null;
 }
 
-export interface VersionedRuntimeLineage {
-  schemaVersion: 2;
-  version: number;
-  strategyPackageVersion?: string | null;
-  runtimePackageVersion?: string | null;
+export interface RevisionRuntimeLineage {
+  schemaVersion: 3;
+  strategyRevision: string;
+  deploymentCompositionId: string;
+  strategyPackageVersion: string;
+  strategyDependencyVersions: Record<string, string>;
+  runtimePackageVersion: string;
   maxLossValue?: number | null;
 }
 
-export type RuntimeLineage = LegacyRuntimeLineage | VersionedRuntimeLineage;
+export type RuntimeLineage = ResearchRuntimeLineage | RevisionRuntimeLineage;
 
 export type RuntimeTradeStatus = 'active' | 'closed';
 export type RuntimeTradeExitType = 'exit' | 'tp' | 'sl' | 'unknown';
@@ -951,7 +953,7 @@ export interface RuntimeTradeRecord {
   deploymentId?: string;
   policyProfileId?: string;
   runtimeConfigId?: string;
-  runtimeVersion?: number;
+  strategyRevision?: string;
   symbol: string;
   interval?: Interval;
   direction: Direction;

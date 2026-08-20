@@ -8,7 +8,7 @@ describe('signals runtime strategy resolver seam', () => {
     const loadResolvedRuntimeStrategies = jest.fn(async () => [
       {
         strategyName: 'DoubleTap',
-        version: 2,
+        strategyRevision: 'sr1:2222222222222222',
         controlState: 'active',
       },
     ]);
@@ -25,7 +25,10 @@ describe('signals runtime strategy resolver seam', () => {
       deploymentId: 'production',
     };
     await expect(loadRuntimeStrategies(input)).resolves.toEqual([
-      expect.objectContaining({ strategyName: 'DoubleTap', version: 2 }),
+      expect.objectContaining({
+        strategyName: 'DoubleTap',
+        strategyRevision: 'sr1:2222222222222222',
+      }),
     ]);
     expect(loadResolvedRuntimeStrategies).toHaveBeenCalledWith(input);
   });

@@ -27,7 +27,7 @@ export const buildRuntimeSignalEvaluationId = ({
   symbol,
   timestamp,
   runtimeConfigId,
-  runtimeVersion,
+  strategyRevision,
   deploymentId,
   accountId,
 }: {
@@ -35,21 +35,17 @@ export const buildRuntimeSignalEvaluationId = ({
   symbol: string;
   timestamp: number;
   runtimeConfigId?: string;
-  runtimeVersion?: number;
+  strategyRevision?: string;
   deploymentId?: string;
   accountId?: string;
 }) => {
   const runtimeScope = deploymentId
     ? [deploymentId, accountId ?? 'default-account']
     : [];
-  return runtimeVersion
-    ? [
-        ...runtimeScope,
-        strategyName,
-        `v${runtimeVersion}`,
-        symbol,
-        timestamp,
-      ].join(':')
+  return strategyRevision
+    ? [...runtimeScope, strategyName, strategyRevision, symbol, timestamp].join(
+        ':',
+      )
     : runtimeConfigId && runtimeConfigId !== 'config'
       ? [
           ...runtimeScope,
@@ -66,7 +62,7 @@ const buildLineageField = (scope: {
   deploymentId?: string;
   accountId?: string;
   runtimeConfigId?: string;
-  runtimeVersion?: number;
+  strategyRevision?: string;
   symbol: string;
   lineage: NonNullable<RuntimeSignalEvaluationRecord['runtimeLineage']>;
 }) =>
@@ -75,7 +71,7 @@ const buildLineageField = (scope: {
     scope.accountId ?? 'default-account',
     scope.strategy,
     scope.runtimeConfigId ?? 'config',
-    scope.runtimeVersion ? `v${scope.runtimeVersion}` : 'legacy',
+    scope.strategyRevision ?? 'research',
     scope.symbol,
     runtimeLineageKey(scope.lineage),
   ].join(':');
@@ -131,7 +127,7 @@ export const flushRuntimeSignalEvaluations = async (
         deploymentId: evaluation.deploymentId,
         accountId: evaluation.accountId,
         runtimeConfigId: evaluation.runtimeConfigId,
-        runtimeVersion: evaluation.runtimeVersion,
+        strategyRevision: evaluation.strategyRevision,
         symbol: evaluation.symbol,
         lineage: evaluation.runtimeLineage,
       });
@@ -145,7 +141,7 @@ export const flushRuntimeSignalEvaluations = async (
           : {}),
         ...(evaluation.accountId ? { accountId: evaluation.accountId } : {}),
         runtimeConfigId: evaluation.runtimeConfigId,
-        runtimeVersion: evaluation.runtimeVersion,
+        strategyRevision: evaluation.strategyRevision,
         lineage: evaluation.runtimeLineage,
         firstTimestamp: Math.min(
           existing?.firstTimestamp ?? evaluation.timestamp,

@@ -37,6 +37,7 @@ describe('read-only runtime deployments route', () => {
     mockListRuntimeDeployments.mockResolvedValue([
       {
         id: 'production',
+        deploymentCompositionId: 'dc1:4444444444444444',
         label: 'Production',
         connectorName: 'bybit',
         provider: 'bybit',
@@ -45,7 +46,7 @@ describe('read-only runtime deployments route', () => {
         strategies: [
           {
             strategyName: 'DoubleTap',
-            version: 4,
+            strategyRevision: 'sr1:4444444444444444',
             enabled: true,
             controlState: 'active',
           },

@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import {
@@ -47,7 +48,10 @@ const runSignals = async (): Promise<void> => {
       manifestPath,
       JSON.stringify({
         schema: 'tradejs-runtime-package-manifest/v1',
-        projectSha: 'sandbox-e2e',
+        projectSha: execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: projectCwd,
+          encoding: 'utf8',
+        }).trim(),
         packages: {
           [projectPackage.name]: projectPackage.version,
           '@tradejs/node': runtimePackage.version,

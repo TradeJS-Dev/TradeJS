@@ -1,7 +1,7 @@
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import type {
   RuntimeLineage,
-  LegacyRuntimeLineage,
+  ResearchRuntimeLineage,
   RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
   Signal,
@@ -19,8 +19,8 @@ jest.mock('../lib/replay/cliConfig', () => ({
 }));
 
 const lineage = (
-  overrides: Partial<LegacyRuntimeLineage> = {},
-): LegacyRuntimeLineage => ({
+  overrides: Partial<ResearchRuntimeLineage> = {},
+): ResearchRuntimeLineage => ({
   schemaVersion: 1,
   gitSha: 'abc123',
   gitDirty: false,

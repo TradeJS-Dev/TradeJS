@@ -272,12 +272,17 @@ describe('runtime scorecard', () => {
     expect(scorecard.parity.ratio).toBe(0.9);
   });
 
-  it('uses complete v2 identity while excluding unlineaged and cross-deployment trades', () => {
+  it('uses complete revision identity while excluding unlineaged and cross-deployment trades', () => {
     const endTime = Date.UTC(2026, 7, 19, 18);
-    const v2Lineage = {
-      schemaVersion: 2,
-      version: 5,
+    const revisionLineage = {
+      schemaVersion: 3,
+      strategyRevision: 'sr1:5555555555555555',
+      deploymentCompositionId: 'dc1:1111111111111111',
       strategyPackageVersion: '3.0.1',
+      strategyDependencyVersions: {
+        '@tradejs/indicators': '3.2.0',
+        '@tradejs/strategy-kit': '3.0.2',
+      },
       runtimePackageVersion: '3.2.0',
       maxLossValue: 1,
     } as const;
@@ -289,7 +294,7 @@ describe('runtime scorecard', () => {
           {
             strategy: 'DoubleTap',
             status: 'signal',
-            runtimeLineage: v2Lineage,
+            runtimeLineage: revisionLineage,
           },
         ],
         signals: [],
@@ -302,7 +307,7 @@ describe('runtime scorecard', () => {
             closedPnl: 2,
             deploymentId: 'production',
             accountId: 'bybit-main',
-            runtimeLineage: v2Lineage,
+            runtimeLineage: revisionLineage,
           },
           {
             strategy: 'DoubleTap',
@@ -338,7 +343,7 @@ describe('runtime scorecard', () => {
             closedPnl: 3,
             deploymentId: 'production',
             accountId: 'bybit-main',
-            runtimeLineage: v2Lineage,
+            runtimeLineage: revisionLineage,
           },
           {
             strategy: 'DoubleTap',
@@ -348,7 +353,7 @@ describe('runtime scorecard', () => {
             closedPnl: -50,
             deploymentId: 'staging',
             accountId: 'bybit-main',
-            runtimeLineage: v2Lineage,
+            runtimeLineage: revisionLineage,
           },
         ],
       },
@@ -365,9 +370,14 @@ describe('runtime scorecard', () => {
       complete: false,
       identityComplete: true,
       coverageComplete: false,
-      schemaVersion: 2,
-      version: 5,
+      schemaVersion: 3,
+      strategyRevision: 'sr1:5555555555555555',
+      deploymentCompositionId: 'dc1:1111111111111111',
       strategyPackageVersion: '3.0.1',
+      strategyDependencyVersions: {
+        '@tradejs/indicators': '3.2.0',
+        '@tradejs/strategy-kit': '3.0.2',
+      },
       runtimePackageVersion: '3.2.0',
       maxLossValue: 1,
     });

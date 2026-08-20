@@ -8,6 +8,7 @@ import {
 
 const deployment: RuntimeDeployment = {
   id: 'production',
+  deploymentCompositionId: 'dc1:1111111111111111',
   label: 'Production',
   connectorName: 'bybit',
   provider: 'bybit',
@@ -16,7 +17,7 @@ const deployment: RuntimeDeployment = {
   strategies: [
     {
       strategyName: 'DoubleTap',
-      version: 2,
+      strategyRevision: 'sr1:2222222222222222',
       enabled: true,
       controlState: 'entries_paused',
     },
@@ -26,7 +27,8 @@ const deployment: RuntimeDeployment = {
 
 const strategy = {
   strategyName: 'DoubleTap',
-  version: 2,
+  strategyRevision: 'sr1:2222222222222222',
+  deploymentCompositionId: 'dc1:1111111111111111',
   enabled: true,
   controlState: 'entries_paused',
   interval: '15',
@@ -37,7 +39,7 @@ const strategy = {
 describe('configured signals scopes', () => {
   it('logs the immutable release and mutable control state together', () => {
     expect(formatConfiguredStrategyIdentity(strategy)).toBe(
-      'DoubleTap@v2[entries_paused]',
+      'DoubleTap@sr1:2222222222222222[entries_paused]',
     );
   });
 
@@ -50,7 +52,7 @@ describe('configured signals scopes', () => {
         {
           ...strategy,
           strategyName: 'Grid',
-          version: 4,
+          strategyRevision: 'sr1:4444444444444444',
         },
       ],
     });
@@ -145,9 +147,17 @@ describe('configured signals scopes', () => {
       {
         deployment: {
           ...deployment,
-          strategies: [{ ...deployment.strategies[0]!, version: 3 }],
+          strategies: [
+            {
+              ...deployment.strategies[0]!,
+              strategyRevision: 'sr1:3333333333333333',
+            },
+          ],
         },
-        strategy: { ...strategy, version: 3 },
+        strategy: {
+          ...strategy,
+          strategyRevision: 'sr1:3333333333333333',
+        },
       },
       {
         deployment: {

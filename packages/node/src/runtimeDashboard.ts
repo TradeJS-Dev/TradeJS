@@ -428,7 +428,7 @@ export const loadRuntimeDashboard = async ({
   const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
     buildRuntimeStrategyIdentityKey({
       strategyName: trade.strategy,
-      configId: trade.runtimeVersion ? `v${trade.runtimeVersion}` : undefined,
+      configId: trade.strategyRevision,
       universe: trade.universe,
       accountId: trade.accountId,
       deploymentId: trade.deploymentId,
@@ -445,7 +445,7 @@ export const loadRuntimeDashboard = async ({
       accountLabel?: string;
       deploymentId: string;
       policyProfileId?: string;
-      version: number;
+      strategyRevision: string;
       controlState: RuntimeStrategyControlState;
       enabled: boolean;
       config: StrategyConfig;
@@ -459,7 +459,7 @@ export const loadRuntimeDashboard = async ({
     ) ?? []) {
       const strategyUniverse = resolvedStrategy.universe;
       const strategyInterval = resolvedStrategy.interval;
-      const strategyConfigId = `v${resolvedStrategy.version}`;
+      const strategyConfigId = resolvedStrategy.strategyRevision;
       const strategyPolicyProfileId =
         typeof resolvedStrategy.strategyConfig.POLICY_PROFILE_ID === 'string'
           ? resolvedStrategy.strategyConfig.POLICY_PROFILE_ID
@@ -475,7 +475,7 @@ export const loadRuntimeDashboard = async ({
       identityByKey.set(runtimeKey, {
         strategyName: resolvedStrategy.strategyName,
         configId: strategyConfigId,
-        version: resolvedStrategy.version,
+        strategyRevision: resolvedStrategy.strategyRevision,
         controlState: resolvedStrategy.controlState,
         interval: strategyInterval,
         universe: strategyUniverse,
@@ -497,12 +497,12 @@ export const loadRuntimeDashboard = async ({
     const key = runtimeIdentityKey(trade);
     const configuredIdentity = identityByKey.get(key);
     if (!configuredIdentity) continue;
-    const version =
-      trade.runtimeVersion ??
-      (trade.runtimeLineage?.schemaVersion === 2
-        ? trade.runtimeLineage.version
+    const strategyRevision =
+      trade.strategyRevision ??
+      (trade.runtimeLineage?.schemaVersion === 3
+        ? trade.runtimeLineage.strategyRevision
         : undefined);
-    if (version !== configuredIdentity.version) continue;
+    if (strategyRevision !== configuredIdentity.strategyRevision) continue;
     identityByKey.set(key, {
       ...configuredIdentity,
       interval: String(
@@ -536,7 +536,7 @@ export const loadRuntimeDashboard = async ({
         runtimeKey,
         strategyName,
         configId: identity.configId,
-        version: identity.version,
+        strategyRevision: identity.strategyRevision,
         controlState: identity.controlState,
         interval: identity.interval,
         universe: identity.universe,

@@ -43,6 +43,7 @@ const request = (controlState: unknown) =>
   ({ json: async () => ({ controlState }) }) as any;
 const deployment = (overrides: Record<string, unknown> = {}) => ({
   id: 'production',
+  deploymentCompositionId: 'dc1:4444444444444444',
   label: 'Production',
   connectorName: 'bybit',
   provider: 'bybit',
@@ -51,7 +52,7 @@ const deployment = (overrides: Record<string, unknown> = {}) => ({
   strategies: [
     {
       strategyName: 'DoubleTap',
-      version: 4,
+      strategyRevision: 'sr1:4444444444444444',
       enabled: true,
       controlState: 'active',
     },
@@ -82,7 +83,7 @@ describe('runtime strategy manual controls', () => {
       expect.objectContaining({
         deploymentId: 'production',
         strategyName: 'DoubleTap',
-        version: 4,
+        strategyRevision: 'sr1:4444444444444444',
         previousState: 'active',
         nextState: 'entries_paused',
       }),
@@ -96,7 +97,7 @@ describe('runtime strategy manual controls', () => {
         strategies: [
           {
             strategyName: 'DoubleTap',
-            version: 4,
+            strategyRevision: 'sr1:4444444444444444',
             enabled: false,
             controlState: 'entries_paused',
           },

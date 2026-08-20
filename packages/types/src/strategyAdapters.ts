@@ -321,6 +321,8 @@ export interface StrategyManifest {
 export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
   manifest: StrategyManifest;
   defaults: TConfig;
+  /** Parse an untrusted project declaration into a complete strategy config. */
+  parseConfig: (input: unknown) => TConfig;
   createCore: CreateStrategyCore<TConfig, any, any>;
   detectorKey?: (config: TConfig) => string | undefined;
   detectorNoSignalSkipReason?: string;

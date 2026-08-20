@@ -310,12 +310,14 @@ a production version immediately and do not wait for a second
   one exact dependency/lockfile update;
 - in the matching Project commit, update `tradejs.config.ts` with the complete
   secret-free strategy config, `MAX_LOSS_VALUE=1`, the intended `enabled`
-  state, and one explicitly incremented per-strategy `version`; commit and push
-  the package manifest, lockfile, and runtime declaration together;
-- wait for both the matching Project publish workflow and repository-dispatch
-  Deploy workflow to succeed. Verify that the deployed runtime manifest names
-  the Project SHA and promoted strategy version and contains only stable exact
-  package versions;
+  state, and optional human-facing `generation`; never add a manual runtime
+  version. Commit and push the package manifest, lockfile, and runtime
+  declaration together;
+- explicitly dispatch the matching Project publish workflow, then wait for it
+  and the repository-dispatch Deploy workflow to succeed. Verify that the
+  deployed runtime manifest names the Project SHA and promoted strategy package
+  version, contains only stable exact packages, and resolves the expected
+  `strategyRevision` and `deploymentCompositionId`;
 - materialize the candidate from strategy defaults plus the selected config,
   remove deployment and mode-only fields (`ENABLE`, `ACCOUNT_ID`,
   `DEPLOYMENT_ID`, `ENV`, `MAKE_ORDERS`, `RECORD_RUNTIME_TRADES`, and
@@ -359,7 +361,7 @@ an intermediate production label.
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy-release decide`. If the user asks to start forward tests, complete the exact strategy/package/Project commits and pushes, commit the full risk-1 config plus its explicit strategy version in `tradejs.config.ts`, wait for the matching automatic image deploy, verify it with `runtime-control inspect`, and start only the authorized forward deployment after `START_MICRO_FORWARD`; production Redis may hold only an optional manual pause override, never strategy config or version pointers.
+Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy-release decide`. If the user asks to start forward tests, complete the exact strategy/package/Project commits and pushes, commit the full risk-1 config in `tradejs.config.ts`, run strict Project composition validation, explicitly dispatch the immutable image publication, verify the computed `strategyRevision` and `deploymentCompositionId` with `runtime-control inspect`, and start only the authorized forward deployment after `START_MICRO_FORWARD`; production Redis may hold only an optional manual pause override, never strategy config or version pointers.
 ```
 
 Diagnose live:

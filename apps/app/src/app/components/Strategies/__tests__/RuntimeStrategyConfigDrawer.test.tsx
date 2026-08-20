@@ -69,10 +69,10 @@ jest.mock('@chakra-ui/react', () => {
 });
 
 const strategy = {
-  runtimeKey: 'production:DoubleTap:v5',
+  runtimeKey: 'production:DoubleTap:sr1:5555555555555555',
   strategyName: 'DoubleTap',
   configId: 'DoubleTap:production',
-  version: 5,
+  strategyRevision: 'sr1:5555555555555555',
   controlState: 'active',
   interval: 15,
   universe: 'crypto',
@@ -106,9 +106,11 @@ describe('RuntimeStrategyConfigDrawer', () => {
       />,
     );
 
-    expect(screen.getByText('v5')).toBeTruthy();
+    expect(screen.getByText('sr1:5555555555555555')).toBeTruthy();
     expect(screen.getByText('DoubleTap:production')).toBeTruthy();
-    expect(screen.getByText('production:DoubleTap:v5')).toBeTruthy();
+    expect(
+      screen.getByText('production:DoubleTap:sr1:5555555555555555'),
+    ).toBeTruthy();
     expect(screen.getByText('Bybit main')).toBeTruthy();
     expect(screen.getByText('bybit-main')).toBeTruthy();
     expect(screen.getByText('Connected')).toBeTruthy();

@@ -1,11 +1,12 @@
 # Own production runtime declarations in Project Git
 
+Status: identity and rollout-version sections superseded by ADR 0007. The
+Project/Redis ownership boundary remains accepted.
+
 Production deployments and complete strategy configs live only under
-`runtime.deployments` in `TradeJS-Project/tradejs.config.ts`. Each strategy
-entry is `{ version, enabled, config }`; `version` is a positive integer scoped
-to that strategy and is incremented whenever its production package or config
-changes. Exact npm package versions remain in the Project lockfile and image
-manifest instead of being duplicated in runtime state.
+`runtime.deployments` in `TradeJS-Project/tradejs.config.ts`. ADR 0007 replaces
+the former manual per-strategy version with computed runtime identity. Exact
+npm package versions remain in the Project lockfile and strict image manifest.
 
 The declaration owns connector, provider, account id, ticker/asset-class scope,
 interval, universe, policy, risk, and enabled defaults. Runtime validates the
@@ -27,11 +28,11 @@ and fingerprints may still exist in local/CI artifacts for scientific
 verification, but they never select production behavior.
 
 A forward-test rollout is therefore one auditable chain: publish and validate
-the candidate packages, update the exact Project dependency plus full config
-and per-strategy version in one commit, build one immutable Project image,
-deploy that SHA, verify the declaration/account binding, and only then apply an
-optional pause override. Rollback deploys an earlier Project SHA; it does not
-move a Redis release pointer.
+the candidate packages, update the exact Project dependency plus full config in
+one commit, validate the computed strategy/deployment identity, build one
+immutable Project image, deploy that SHA, verify the declaration/account
+binding, and only then apply an optional pause override. Rollback deploys an
+earlier Project SHA; it does not move a Redis release pointer.
 
 This is a breaking cutover with no legacy read fallback. After the first
 healthy deployment, obsolete production Redis deployment/config/release keys

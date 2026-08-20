@@ -10,7 +10,6 @@ import {
   registerIndicatorEntries,
   resetIndicatorRegistryCache,
 } from '@tradejs/core/indicators';
-import { logger } from '@tradejs/infra/logger';
 import {
   getTradejsProjectCwd,
   loadTradejsConfig,
@@ -144,25 +143,52 @@ const extractIndicatorPluginDefinition = (
   return indicatorEntries ? { indicatorEntries } : null;
 };
 
+const validateStrategyEntries = (
+  moduleName: string,
+  entries: readonly StrategyRegistryEntry[],
+  state: StrategyRegistryState,
+) => {
+  const issues: string[] = [];
+  const names = new Set<string>();
+  entries.forEach((entry, index) => {
+    const entryPath = `${moduleName}.strategyEntries[${index}]`;
+    const strategyName = entry?.manifest?.name;
+    if (typeof strategyName !== 'string' || !strategyName.trim()) {
+      issues.push(`${entryPath}: manifest.name is required`);
+    } else if (
+      names.has(strategyName) ||
+      state.strategyEntriesMap.has(strategyName)
+    ) {
+      issues.push(`${entryPath}: duplicate strategy ${strategyName}`);
+    } else {
+      names.add(strategyName);
+    }
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      !entry.defaults ||
+      typeof entry.defaults !== 'object' ||
+      Array.isArray(entry.defaults)
+    ) {
+      issues.push(`${entryPath}: defaults must be an object`);
+    }
+    if (typeof entry?.parseConfig !== 'function') {
+      issues.push(`${entryPath}: parseConfig is required`);
+    }
+    if (typeof entry?.createCore !== 'function') {
+      issues.push(`${entryPath}: createCore is required`);
+    }
+  });
+  return issues;
+};
+
 const registerEntries = (
   entries: readonly StrategyRegistryEntry[],
   source: string,
   state: StrategyRegistryState,
 ) => {
   for (const entry of entries) {
-    const strategyName = entry.manifest?.name;
-    if (!strategyName) {
-      logger.warn('Skip strategy entry without name from %s', source);
-      continue;
-    }
-    if (state.strategyCreators.has(strategyName)) {
-      logger.warn(
-        'Skip duplicate strategy "%s" from %s: already registered',
-        strategyName,
-        source,
-      );
-      continue;
-    }
+    const strategyName = entry.manifest.name;
     state.strategyManifestsMap.set(strategyName, entry.manifest);
     state.strategyEntriesMap.set(strategyName, entry);
     state.strategySourcesMap.set(strategyName, source);
@@ -238,6 +264,7 @@ export const ensureStrategyPluginsLoaded = async (
         return;
       }
 
+      const issues: string[] = [];
       for (const moduleName of pluginModuleNames) {
         try {
           const resolvedModuleName = resolvePluginModuleSpecifier(
@@ -252,16 +279,23 @@ export const ensureStrategyPluginsLoaded = async (
             const pluginDefinition =
               extractStrategyPluginDefinition(moduleExport);
             if (!pluginDefinition) {
-              logger.warn(
-                'Skip strategy plugin "%s": export { strategyEntries } is missing',
-                moduleName,
+              issues.push(
+                `${moduleName}: export { strategyEntries } is missing`,
               );
             } else {
-              registerEntries(
-                pluginDefinition.strategyEntries,
+              const entryIssues = validateStrategyEntries(
                 moduleName,
+                pluginDefinition.strategyEntries,
                 state,
               );
+              issues.push(...entryIssues);
+              if (entryIssues.length === 0) {
+                registerEntries(
+                  pluginDefinition.strategyEntries,
+                  moduleName,
+                  state,
+                );
+              }
             }
           }
 
@@ -269,9 +303,8 @@ export const ensureStrategyPluginsLoaded = async (
             const indicatorPluginDefinition =
               extractIndicatorPluginDefinition(moduleExport);
             if (!indicatorPluginDefinition) {
-              logger.warn(
-                'Skip indicator plugin "%s": export { indicatorEntries } is missing',
-                moduleName,
+              issues.push(
+                `${moduleName}: export { indicatorEntries } is missing`,
               );
             } else {
               registerIndicatorEntries(
@@ -283,18 +316,16 @@ export const ensureStrategyPluginsLoaded = async (
           }
 
           if (!strategySet.has(moduleName) && !indicatorSet.has(moduleName)) {
-            logger.warn(
-              'Skip plugin "%s": no strategy/indicator sections requested in config',
-              moduleName,
-            );
+            issues.push(`${moduleName}: plugin is not declared in config`);
           }
         } catch (error) {
-          logger.warn(
-            'Failed to load plugin "%s": %s',
-            moduleName,
-            String(error),
-          );
+          issues.push(`${moduleName}: failed to import: ${String(error)}`);
         }
+      }
+      if (issues.length > 0) {
+        throw new Error(
+          ['Invalid TradeJS plugin catalog:', ...issues].join('\n'),
+        );
       }
     })();
   }
@@ -322,6 +353,15 @@ export const getStrategyDefaults = async (
   await ensureStrategyPluginsLoaded(cwd);
   const { state } = getStrategyRegistryState(cwd);
   return state.strategyEntriesMap.get(name)?.defaults;
+};
+
+export const getStrategyEntry = async (
+  name: string,
+  cwd = getTradejsProjectCwd(),
+): Promise<StrategyRegistryEntry | undefined> => {
+  await ensureStrategyPluginsLoaded(cwd);
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategyEntriesMap.get(name);
 };
 
 export const getStrategyPluginSource = async (
@@ -380,6 +420,10 @@ export const registerStrategyEntries = (
   cwd = getTradejsProjectCwd(),
 ) => {
   const { state } = getStrategyRegistryState(cwd);
+  const issues = validateStrategyEntries('runtime', entries, state);
+  if (issues.length > 0) {
+    throw new Error(['Invalid TradeJS plugin catalog:', ...issues].join('\n'));
+  }
   registerEntries(entries, 'runtime', state);
 };
 

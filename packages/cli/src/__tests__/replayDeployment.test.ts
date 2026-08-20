@@ -7,6 +7,7 @@ describe('replay deployment composition', () => {
   it('loads only enabled strategies from the Git-owned deployment', async () => {
     const deployment = {
       id: 'production',
+      deploymentCompositionId: 'dc1:1111111111111111',
       label: 'Production',
       connectorName: 'bybit',
       provider: 'bybit',
@@ -18,19 +19,23 @@ describe('replay deployment composition', () => {
     const loadResolvedRuntimeStrategies = jest.fn(async () => [
       {
         strategyName: 'DoubleTap',
-        version: 5,
+        strategyRevision: 'sr1:5555555555555555',
+        deploymentCompositionId: 'dc1:1111111111111111',
         enabled: true,
         strategyPackage: '@tradejs/strategy-double-tap',
         strategyPackageVersion: '3.0.1',
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
         runtimePackageVersion: '3.2.0',
         sourceStrategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
       },
       {
         strategyName: 'TrendShift',
-        version: 1,
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentCompositionId: 'dc1:1111111111111111',
         enabled: false,
         strategyPackage: '@tradejs/strategy-trend-shift',
         strategyPackageVersion: '3.0.0',
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
         runtimePackageVersion: '3.2.0',
         sourceStrategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
       },
@@ -54,9 +59,11 @@ describe('replay deployment composition', () => {
       strategies: [
         {
           strategyName: 'DoubleTap',
-          version: 5,
+          strategyRevision: 'sr1:5555555555555555',
+          deploymentCompositionId: 'dc1:1111111111111111',
           strategyPackage: '@tradejs/strategy-double-tap',
           strategyPackageVersion: '3.0.1',
+          strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
           runtimePackageVersion: '3.2.0',
           strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
         },

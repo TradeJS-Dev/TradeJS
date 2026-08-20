@@ -19,7 +19,7 @@ export interface RuntimeStrategyControlEvent {
   eventId: string;
   deploymentId: string;
   strategyName: string;
-  version: number;
+  strategyRevision: string;
   action: RuntimeStrategyControlEventAction;
   previousState: RuntimeStrategyControlState;
   nextState: RuntimeStrategyControlState;

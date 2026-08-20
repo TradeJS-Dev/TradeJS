@@ -89,7 +89,7 @@ describe('defineConfig runtime declarations', () => {
           accountId: 'bybit-default',
           strategies: {
             DoubleTap: {
-              version: 4,
+              generation: 'forward-4',
               enabled: true,
               config: {
                 INTERVAL: '15',

@@ -7,7 +7,8 @@ export interface RuntimeStrategySelection {
 
 /** One immutable strategy package + effective project config revision. */
 export interface RuntimeStrategyDeclaration {
-  version: number;
+  /** Optional operator-facing label. It is never part of runtime identity. */
+  generation?: string;
   enabled: boolean;
   selection?: RuntimeStrategySelection;
   config: StrategyConfig;

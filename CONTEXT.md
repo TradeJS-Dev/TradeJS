@@ -87,11 +87,22 @@ _Avoid_: Missing local deployment means production is blocked, copy server keys
 into research evidence, edit production Redis config
 
 **Runtime Strategy Declaration**:
-The Git-owned `{ version, enabled, config }` entry for one strategy under a
-`tradejs.config.ts` runtime deployment. The version is an explicitly incremented
-positive integer for that strategy; the exact npm version comes from the same
-Project image manifest.
-_Avoid_: Redis release, config id, package version duplicated as runtime version
+The Git-owned `{ generation?, enabled, selection?, config }` entry for one
+strategy under a `tradejs.config.ts` runtime deployment. `generation` is an
+optional human label. Runtime materializes the config with the package parser
+and computes its technical identity.
+_Avoid_: Redis release, config id, manually incremented runtime version
+
+**Strategy Revision**:
+The `sr1:` identifier computed from the strategy name, exact strategy and
+host-provided runtime dependency versions, exact `@tradejs/node` version, and
+the complete parsed effective config.
+_Avoid_: Hand-maintained version map, package version alone
+
+**Deployment Composition ID**:
+The `dc1:` identifier computed from the execution target and sorted strategy
+bindings, revisions, enabled states, scopes, and ticker selections.
+_Avoid_: Deployment name alone, mutable Redis pointer
 
 This is the only production strategy-config record. Runtime never reads
 `users:<user>:strategies:*`, result overlays, drafts, embedded Redis deployment
@@ -112,7 +123,8 @@ _Avoid_: Mutable config, explicit active record, missing field is an error
 
 **Runtime Package Manifest**:
 The immutable inventory of exact TradeJS and strategy package versions in one
-runtime image.
+runtime image plus the exact 40-character Project Git SHA. It is validated
+against installed package manifests before any runtime composition is accepted.
 _Avoid_: Lockfile, latest image, git fingerprint
 
 **Regime Attribution**:

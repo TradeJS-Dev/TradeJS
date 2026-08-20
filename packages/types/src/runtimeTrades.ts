@@ -50,7 +50,7 @@ export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
   configId: string;
-  version: number;
+  strategyRevision: string;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
   universe: MarketUniverse;

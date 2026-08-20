@@ -5,8 +5,9 @@ import {
 } from '../lib/runtimeEvidenceDeployment';
 
 const snapshot = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'production',
+  deploymentCompositionId: 'dc1:1111111111111111',
   label: 'Production',
   connectorName: 'bybit',
   provider: 'bybit',
@@ -15,25 +16,27 @@ const snapshot = {
   strategies: [
     {
       strategyName: 'DoubleTap',
-      version: 5,
+      strategyRevision: 'sr1:5555555555555555',
       enabled: true,
       controlState: 'active',
       interval: '15',
       universe: 'crypto',
       strategyPackage: '@tradejs/strategy-double-tap',
       strategyPackageVersion: '3.0.1',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
       runtimePackageVersion: '3.2.0',
       strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
     },
     {
       strategyName: 'TrendShift',
-      version: 1,
+      strategyRevision: 'sr1:1111111111111111',
       enabled: false,
       controlState: 'entries_paused',
       interval: '15',
       universe: 'crypto',
       strategyPackage: '@tradejs/strategy-trend-shift',
       strategyPackageVersion: '3.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
       runtimePackageVersion: '3.2.0',
       strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
     },
@@ -51,14 +54,23 @@ describe('runtime evidence deployment snapshot', () => {
     ).toEqual(['DoubleTap']);
     expect(runtimeDeploymentFromEvidence(parsed)).toMatchObject({
       id: 'production',
+      deploymentCompositionId: 'dc1:1111111111111111',
       strategies: [
-        { strategyName: 'DoubleTap', version: 5, enabled: true },
-        { strategyName: 'TrendShift', version: 1, enabled: false },
+        {
+          strategyName: 'DoubleTap',
+          strategyRevision: 'sr1:5555555555555555',
+          enabled: true,
+        },
+        {
+          strategyName: 'TrendShift',
+          strategyRevision: 'sr1:1111111111111111',
+          enabled: false,
+        },
       ],
     });
   });
 
-  it('rejects evidence without package-bound versioned strategies', () => {
+  it('rejects evidence without package-bound strategy revisions', () => {
     expect(() =>
       parseRuntimeEvidenceDeploymentSnapshot({
         ...snapshot,

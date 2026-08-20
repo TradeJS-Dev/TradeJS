@@ -548,7 +548,7 @@ export const createSignalsRunner = (
       lifecycle.retain(
         new Set(
           tickers.flatMap((symbol) =>
-            runtimeStrategies.map(({ strategyName, version }) =>
+            runtimeStrategies.map(({ strategyName, strategyRevision }) =>
               buildSignalsStrategyLifecycleKey({
                 connectorName,
                 universe: sessionUniverse,
@@ -557,7 +557,7 @@ export const createSignalsRunner = (
                 symbol,
                 interval,
                 strategyName,
-                configId: `v${version}`,
+                configId: strategyRevision,
               }),
             ),
           ),

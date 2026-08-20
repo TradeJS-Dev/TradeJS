@@ -28,6 +28,8 @@ import {
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const LINEAGE_FINGERPRINT_RE = /^[a-f0-9]{16}$/;
+const STRATEGY_REVISION_RE = /^sr1:[a-f0-9]{16}$/;
+const DEPLOYMENT_COMPOSITION_ID_RE = /^dc1:[a-f0-9]{16}$/;
 const REQUIRED_LONG_WINDOWS = [1095, 1460, 1825] as const;
 const REQUIRED_STABLE_TERMINAL_WINDOWS = [365, 180, 90] as const;
 const MIN_RECENT_DIRECTION_REPAIR_TRADES = 20;
@@ -82,8 +84,8 @@ const hasExactRuntimeTarget = (
       target.deploymentId.trim() &&
       target.accountId.trim() &&
       target.strategyName.trim() === strategyName.trim() &&
-      Number.isSafeInteger(target.version) &&
-      target.version > 0,
+      STRATEGY_REVISION_RE.test(target.strategyRevision) &&
+      DEPLOYMENT_COMPOSITION_ID_RE.test(target.deploymentCompositionId),
   );
 
 export const deriveStrategyReleaseResearchDecision = async (
@@ -216,7 +218,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       requiresRuntimeBinding: true,
       blockers: [],
       summary:
-        'The portable micro-forward handoff is ready. Commit its deployment, account binding, complete config, and explicit strategy version in TradeJS-Project.',
+        'The portable micro-forward handoff is ready. Commit its deployment, account binding, and complete config in TradeJS-Project; runtime revisions are computed from the installed packages and parsed config.',
     };
   }
   return {

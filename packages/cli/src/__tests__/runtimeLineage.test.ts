@@ -169,17 +169,21 @@ describe('runtime lineage', () => {
     expect(lineage.maxLossValue).toBeNull();
   });
 
-  it('binds versioned lineage to exact strategy and runtime packages', async () => {
+  it('binds revision lineage to exact deployment and packages', async () => {
     const lineage = await buildRuntimeLineage({
       projectRoot: process.cwd(),
       strategyName: 'DoubleTap',
-      version: 5,
+      strategyRevision: 'sr1:5555555555555555',
+      deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
       strategyPackageVersion: '3.0.1',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
       runtimePackageVersion: '3.2.0',
       config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
     });
 
-    expect(runtimeLineageKey(lineage)).toBe('v2:5:3.0.1:3.2.0');
+    expect(runtimeLineageKey(lineage)).toMatch(
+      /^v3:dc1:aaaaaaaaaaaaaaaa:sr1:5555555555555555:3\.0\.1:deps:[a-f0-9]{16}:3\.2\.0$/,
+    );
     expect(
       runtimeLineagesMatch(lineage, {
         ...lineage,
@@ -189,10 +193,37 @@ describe('runtime lineage', () => {
     expect(
       runtimeLineagesMatch(lineage, {
         ...lineage,
+        strategyDependencyVersions: {
+          '@tradejs/strategy-kit': '3.0.2',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      runtimeLineagesMatch(lineage, {
+        ...lineage,
         maxLossValue: 10,
       }),
     ).toBe(true);
   });
+
+  it.each([{ strategyPackageVersion: null }, { runtimePackageVersion: null }])(
+    'rejects incomplete revision package lineage: %j',
+    async (missing) => {
+      await expect(
+        buildRuntimeLineage({
+          projectRoot: process.cwd(),
+          strategyName: 'DoubleTap',
+          strategyRevision: 'sr1:5555555555555555',
+          deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+          strategyPackageVersion: '3.0.1',
+          strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+          runtimePackageVersion: '3.2.0',
+          config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
+          ...missing,
+        }),
+      ).rejects.toThrow('Invalid revision package versions');
+    },
+  );
 
   it('uses the same deterministic gate fingerprint as AI research', async () => {
     const runtime = await buildRuntimeLineage({

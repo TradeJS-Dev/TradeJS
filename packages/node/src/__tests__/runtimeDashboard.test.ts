@@ -65,6 +65,7 @@ describe('runtime dashboard', () => {
     mockListRuntimeDeployments.mockResolvedValue([
       {
         id: 'trendline-forward',
+        deploymentCompositionId: 'dc1:2222222222222222',
         label: 'TrendLine forward',
         connectorName: 'bybit',
         provider: 'bybit',
@@ -73,7 +74,7 @@ describe('runtime dashboard', () => {
         strategies: [
           {
             strategyName: 'TrendLine',
-            version: 2,
+            strategyRevision: 'sr1:2222222222222222',
             enabled: true,
             controlState: 'active',
           },
@@ -83,7 +84,8 @@ describe('runtime dashboard', () => {
     mockLoadResolvedRuntimeStrategies.mockResolvedValue([
       {
         strategyName: 'TrendLine',
-        version: 2,
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentCompositionId: 'dc1:2222222222222222',
         enabled: true,
         controlState: 'active',
         interval: '15',
@@ -138,8 +140,8 @@ describe('runtime dashboard', () => {
       strategies: [
         {
           strategyName: 'TrendLine',
-          configId: 'v2',
-          version: 2,
+          configId: 'sr1:2222222222222222',
+          strategyRevision: 'sr1:2222222222222222',
           interval: '15',
           universe: 'crypto',
           accountId: 'crypto-main',

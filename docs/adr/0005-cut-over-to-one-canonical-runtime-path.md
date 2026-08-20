@@ -1,31 +1,19 @@
 # Cut over to one canonical runtime path
 
-Status: superseded by ADR 0006.
+Status: superseded by ADR 0006 and ADR 0007.
 
-Production runtime accepts only an explicit deployment binding whose strategy
-references are exactly `{ strategyName, releaseVersion, controlState }`. The
-referenced immutable release owns interval, universe, policy, risk, and exact
-strategy/runtime package names and versions; the deployment owns connector,
-account, tickers, and entry control.
+This ADR recorded the removal of mutable Redis strategy configuration and all
+alternate production runtime paths. That boundary remains: Project Git owns
+the complete desired declaration, while Redis owns only runtime evidence and
+an optional manual pause override.
 
-There is no runtime fallback to mutable strategy configs, result overlays,
-drafts, embedded deployment fields, missing control state, user-level exchange
-credentials, or alternate Redis persistence layouts. Initial setup uses the
-explicit `runtime-config provision` command. Later changes use `rollout`, and
-rollback is an intentional pointer change to an existing immutable release in
-`entries_paused`, not a legacy recovery path.
+ADR 0006 replaced release records with complete declarations in
+`TradeJS-Project/tradejs.config.ts`. ADR 0007 then replaced manual numeric
+versions with computed `strategyRevision` and `deploymentCompositionId` values.
+Those ADRs are the current contract; the obsolete record shape and rollout
+commands from the original decision are intentionally not retained here as an
+operational fallback.
 
-The UI renders release config read-only and can only pause or resume new
-entries. Production identity is the per-strategy `releaseVersion`; research
-artifacts may retain their own checksums and fingerprints, but those values are
-not deployment identity and never select runtime config.
-
-The daemon re-reads the deployment on every cycle. Release, control-state,
-ticker, asset-class, connector, and account changes alter the runtime session
-identity, evict the previous lifecycle, and rebuild from closed-candle warmup.
-Applying a canonical Redis change never depends on an operator restarting the
-container.
-
-This is a deliberate breaking cutover. Invalid or old Redis records fail
-verification and must be rewritten to the canonical schema before the new
-runtime image is deployed.
+The no-fallback rule is unchanged: old Redis records, mutable result overlays,
+drafts, embedded deployment strategy config, and alternate persistence layouts
+are invalid rather than migration inputs.

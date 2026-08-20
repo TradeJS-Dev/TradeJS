@@ -28,8 +28,9 @@ import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import { createSignalsRunner } from '../lib/signals/runner';
 import { loadRuntimeStrategies } from '../lib/signals/runtimeStrategies';
 
-const deployment = (version: number): RuntimeDeployment => ({
+const deployment = (revisionDigit: number): RuntimeDeployment => ({
   id: 'doubletap-forward',
+  deploymentCompositionId: `dc1:${String(revisionDigit).repeat(16)}`,
   label: 'DoubleTap forward',
   connectorName: 'bybit',
   provider: 'bybit',
@@ -38,7 +39,7 @@ const deployment = (version: number): RuntimeDeployment => ({
   strategies: [
     {
       strategyName: 'DoubleTap',
-      version,
+      strategyRevision: `sr1:${String(revisionDigit).repeat(16)}`,
       enabled: true,
       controlState: 'entries_paused',
     },

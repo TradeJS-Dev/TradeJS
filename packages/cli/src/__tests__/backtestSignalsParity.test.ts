@@ -564,6 +564,7 @@ const runSignalsPath = async () => {
     getRuntimeStrategyPackageMetadata: jest.fn(async () => ({
       strategyPackage: '@tradejs/strategy-parity',
       strategyPackageVersion: '1.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
       runtimePackageVersion: '3.2.0',
     })),
     loadResolvedRuntimeStrategies: jest.fn(async () => [
@@ -815,9 +816,11 @@ const runReplayPath = async () => {
     runtimeStrategies: [
       {
         strategyName: 'ParityStrategy',
-        version: 1,
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentCompositionId: 'dc1:1111111111111111',
         strategyPackage: '@tradejs/strategy-parity',
         strategyPackageVersion: '1.0.0',
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
         runtimePackageVersion: '3.2.0',
         strategyConfig: {
           AI_ENABLED: true,

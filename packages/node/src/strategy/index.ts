@@ -11,6 +11,7 @@ export {
   getRegisteredManifests,
   registerStrategyEntries,
   getStrategyDefaults,
+  getStrategyEntry,
   getStrategyPluginSource,
   getStrategyCreator,
   resetStrategyRegistryCache,

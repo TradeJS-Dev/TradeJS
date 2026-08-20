@@ -4,9 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
-  type LegacyRuntimeLineage,
+  type ResearchRuntimeLineage,
   type RuntimeLineage,
-  type VersionedRuntimeLineage,
+  type RevisionRuntimeLineage,
 } from '@tradejs/types';
 import {
   getHyperliquidPerpUniverseSnapshot,
@@ -97,7 +97,7 @@ export const fingerprintRuntimeValue = (value: unknown) =>
 
 const gitLineageCache = new Map<
   string,
-  Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>
+  Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>
 >();
 const gateFingerprintCache = new Map<
   string,
@@ -108,7 +108,7 @@ const snapshotFingerprintCache = new Map<string, string | null>();
 
 const resolveGitLineage = (
   projectRoot: string,
-): Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'> => {
+): Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'> => {
   const cached = gitLineageCache.get(projectRoot);
   if (cached) {
     return cached;
@@ -119,7 +119,7 @@ const resolveGitLineage = (
     const result = {
       gitSha: envSha,
       gitDirty: false,
-    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   }
@@ -142,14 +142,14 @@ const resolveGitLineage = (
     const result = {
       gitSha: gitSha || null,
       gitDirty: status.length > 0,
-    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   } catch {
     const result = {
       gitSha: null,
       gitDirty: null,
-    } satisfies Pick<LegacyRuntimeLineage, 'gitSha' | 'gitDirty'>;
+    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
     gitLineageCache.set(projectRoot, result);
     return result;
   }
@@ -239,8 +239,10 @@ type BuildRuntimeLineageParams = {
   projectRoot: string;
   strategyName: string;
   compositionId?: string | null;
-  version?: number;
+  strategyRevision?: string;
+  deploymentCompositionId?: string;
   strategyPackageVersion?: string | null;
+  strategyDependencyVersions?: Record<string, string>;
   runtimePackageVersion?: string | null;
   config: unknown;
   runContext?: Record<string, string | number | boolean | null>;
@@ -248,11 +250,17 @@ type BuildRuntimeLineageParams = {
 };
 
 export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & { version: number },
-): Promise<VersionedRuntimeLineage>;
+  params: BuildRuntimeLineageParams & {
+    strategyRevision: string;
+    deploymentCompositionId: string;
+    strategyPackageVersion: string;
+    strategyDependencyVersions: Record<string, string>;
+    runtimePackageVersion: string;
+  },
+): Promise<RevisionRuntimeLineage>;
 export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & { version?: undefined },
-): Promise<LegacyRuntimeLineage>;
+  params: BuildRuntimeLineageParams & { strategyRevision?: undefined },
+): Promise<ResearchRuntimeLineage>;
 export function buildRuntimeLineage(
   params: BuildRuntimeLineageParams,
 ): Promise<RuntimeLineage>;
@@ -260,21 +268,53 @@ export async function buildRuntimeLineage({
   projectRoot,
   strategyName,
   compositionId,
-  version,
+  strategyRevision,
+  deploymentCompositionId,
   strategyPackageVersion,
+  strategyDependencyVersions,
   runtimePackageVersion,
   config,
   runContext,
   env = process.env,
 }: BuildRuntimeLineageParams): Promise<RuntimeLineage> {
-  if (version != null) {
-    if (!Number.isSafeInteger(version) || version <= 0) {
-      throw new Error(`Invalid runtime strategy version: ${version}`);
+  if (strategyRevision != null) {
+    if (!/^sr1:[a-f0-9]{16}$/.test(strategyRevision)) {
+      throw new Error(`Invalid strategy revision: ${strategyRevision}`);
+    }
+    if (
+      typeof deploymentCompositionId !== 'string' ||
+      !/^dc1:[a-f0-9]{16}$/.test(deploymentCompositionId)
+    ) {
+      throw new Error(
+        `Invalid deployment composition id: ${String(deploymentCompositionId)}`,
+      );
+    }
+    if (
+      typeof strategyPackageVersion !== 'string' ||
+      !strategyPackageVersion.trim() ||
+      typeof runtimePackageVersion !== 'string' ||
+      !runtimePackageVersion.trim()
+    ) {
+      throw new Error('Invalid revision package versions');
+    }
+    if (
+      !strategyDependencyVersions ||
+      Object.keys(strategyDependencyVersions).length === 0 ||
+      Object.entries(strategyDependencyVersions).some(
+        ([name, version]) =>
+          !name.startsWith('@tradejs/') ||
+          typeof version !== 'string' ||
+          !version.trim(),
+      )
+    ) {
+      throw new Error('Invalid strategy dependency versions');
     }
     return {
-      schemaVersion: 2,
-      version,
+      schemaVersion: 3,
+      strategyRevision,
+      deploymentCompositionId,
       strategyPackageVersion,
+      strategyDependencyVersions,
       runtimePackageVersion,
       maxLossValue: resolveRuntimeMaxLossValue(config),
     };
@@ -326,12 +366,16 @@ export async function buildRuntimeLineage({
 }
 
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
-  lineage.schemaVersion === 2
+  lineage.schemaVersion === 3
     ? [
-        'v2',
-        lineage.version,
-        lineage.strategyPackageVersion ?? 'strategy:unknown',
-        lineage.runtimePackageVersion ?? 'runtime:unknown',
+        'v3',
+        lineage.deploymentCompositionId,
+        lineage.strategyRevision,
+        lineage.strategyPackageVersion,
+        `deps:${fingerprintRuntimeValue(
+          lineage.strategyDependencyVersions,
+        ).slice(0, 16)}`,
+        lineage.runtimePackageVersion,
       ].join(':')
     : [
         lineage.schemaVersion,

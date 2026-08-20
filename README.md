@@ -466,18 +466,24 @@ The decision input references the chart report as
 `chartArtifact: { path, sha256 }`; the command recomputes the checksum and
 validates that the report is a successful full-period local deterministic run.
 It also requires an exact `runtimeTarget` object (`userName`, `deploymentId`,
-`accountId`, `strategyName`, `version`) before returning
+`accountId`, `strategyName`, `strategyRevision`,
+`deploymentCompositionId`) before returning
 `START_MICRO_FORWARD`.
 Research normally uses local Redis while production accounts live on a separate
 runtime server. Use `null` locally to produce a portable `MICRO_FORWARD_READY`
 handoff with `requiresRuntimeBinding=true`; this is not a failed research
 verdict. The authorized rollout is completed in `TradeJS-Project`: update the
 strategy package dependency and the strategy's full runtime config in the same
-`tradejs.config.ts` commit, increment its positive integer `version`, build the
-image, and deploy that immutable Project SHA. Account credentials remain in the
-server-owned trading-account record and are never committed. Any production
-config change, including `MAX_LOSS_VALUE`, increments the Project strategy
-version; it need not create a new research composition when trading logic is
+`tradejs.config.ts` commit, run strict composition validation, build the image,
+and deploy that immutable Project SHA. Runtime computes `strategyRevision` from
+the verified package closure and parsed effective config, then computes
+`deploymentCompositionId` from the target and complete strategy bindings.
+Composition resolution requires a strict runtime package manifest containing
+that exact Project SHA; missing packages, incompatible installed versions, or
+an unresolved Project revision fail validation.
+Account credentials remain in the server-owned trading-account record and are
+never committed. A risk-only change such as `MAX_LOSS_VALUE` changes the runtime
+revision but need not create a new research composition when trading logic is
 unchanged.
 
 `decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
@@ -527,8 +533,10 @@ clean git/config/gate/context logic lineage equal to the release manifest, plus
 a valid risk scale. Missing, dirty, conflicting, or different logic lineage is
 runtime divergence; missing risk scale leaves economic attribution insufficient.
 Research evidence remains a local/CI diagnostic input. Production does not
-load release artifacts or use composition ids, git SHAs, or fingerprints to
-select config. The Strategies UI therefore has no `Evidence: missing` state:
+load research release artifacts or use research composition ids, git SHAs, or
+fingerprints to select config. It does use the computed runtime
+`strategyRevision` and `deploymentCompositionId` for identity and lineage. The
+Strategies UI therefore has no `Evidence: missing` state:
 it renders the committed Project declaration and observed runtime trades only.
 
 Retention defaults are 3 days for operational Redis evidence, 14 days for

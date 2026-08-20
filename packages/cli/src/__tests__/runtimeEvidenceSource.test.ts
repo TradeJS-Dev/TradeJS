@@ -51,8 +51,9 @@ const evaluation = (timestamp: number): RuntimeSignalEvaluationRecord => ({
 });
 
 const deployment = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'production',
+  deploymentCompositionId: 'dc1:1111111111111111',
   label: 'Production',
   connectorName: 'bybit',
   provider: 'bybit',
@@ -61,13 +62,17 @@ const deployment = {
   strategies: [
     {
       strategyName: 'TrendShift',
-      version: 1,
+      strategyRevision: 'sr1:1111111111111111',
       enabled: true,
       controlState: 'active',
       interval: '15',
       universe: 'crypto',
       strategyPackage: '@tradejs/strategy-trend-shift',
       strategyPackageVersion: '3.0.0',
+      strategyDependencyVersions: {
+        '@tradejs/indicators': '3.2.0',
+        '@tradejs/strategy-kit': '3.0.2',
+      },
       runtimePackageVersion: '3.2.0',
       strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
     },
@@ -193,11 +198,12 @@ describe('runtime evidence replay source', () => {
       symbol: 'ETHUSDT',
       deploymentId: 'production',
       accountId: 'bybit-default',
-      runtimeConfigId: 'v1',
-      runtimeVersion: 1,
+      runtimeConfigId: 'sr1:1111111111111111',
+      strategyRevision: 'sr1:1111111111111111',
       lineage: {
-        schemaVersion: 2,
-        version: 1,
+        schemaVersion: 3,
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentCompositionId: 'dc1:1111111111111111',
         strategyPackageVersion: '3.0.0',
         runtimePackageVersion: '3.2.0',
         maxLossValue: 1,

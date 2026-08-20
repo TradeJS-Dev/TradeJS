@@ -137,15 +137,17 @@ export const createSignalsTickerEvaluator =
     for (const runtimeStrategy of runtimeStrategies) {
       const {
         strategyName,
-        version,
+        strategyRevision,
+        deploymentCompositionId,
         controlState,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
         strategyCreator,
         sourceStrategyConfig,
         strategyConfig,
       } = runtimeStrategy;
-      const runtimeIdentity = `v${version}`;
+      const runtimeIdentity = strategyRevision;
       const runtimeConfig = buildRuntimeModeStrategyConfig({
         strategyConfig,
         env: 'CRON',
@@ -155,8 +157,10 @@ export const createSignalsTickerEvaluator =
       const runtimeLineage = await buildRuntimeLineage({
         projectRoot,
         strategyName,
-        version,
+        strategyRevision,
+        deploymentCompositionId,
         strategyPackageVersion,
+        strategyDependencyVersions,
         runtimePackageVersion,
         config: { strategyConfig },
         runContext: {
@@ -199,7 +203,7 @@ export const createSignalsTickerEvaluator =
               userName,
               connectorName,
               runtimeConfigId: runtimeIdentity,
-              runtimeVersion: version,
+              strategyRevision,
               entriesPaused: controlState === 'entries_paused',
               runtimeLineage,
               runtimeConfigSnapshot: {
@@ -260,14 +264,14 @@ export const createSignalsTickerEvaluator =
             symbol,
             timestamp: lastCandle.timestamp,
             runtimeConfigId: runtimeIdentity,
-            runtimeVersion: version,
+            strategyRevision,
             deploymentId,
             accountId,
           }),
           userName,
           strategy: strategyName,
           runtimeConfigId: runtimeIdentity,
-          runtimeVersion: version,
+          strategyRevision,
           runtimeLineage,
           symbol,
           interval,
@@ -286,13 +290,13 @@ export const createSignalsTickerEvaluator =
 
       if (stats) stats.signals += 1;
       signal.runtimeConfigId = runtimeIdentity;
-      signal.runtimeVersion = version;
+      signal.strategyRevision = strategyRevision;
       signal.runtimeLineage = runtimeLineage;
       signal.deploymentId = deploymentId;
       signal.accountId = accountId;
       const signalRuntimeIdentity = [
         ...(deploymentId ? [deploymentId, accountId ?? 'default-account'] : []),
-        ...(version ? [`v${version}`] : []),
+        strategyRevision,
       ].join(':');
       if (
         signalRuntimeIdentity &&
@@ -321,14 +325,14 @@ export const createSignalsTickerEvaluator =
           symbol,
           timestamp: lastCandle.timestamp,
           runtimeConfigId: runtimeIdentity,
-          runtimeVersion: version,
+          strategyRevision,
           deploymentId,
           accountId,
         }),
         userName,
         strategy: strategyName,
         runtimeConfigId: runtimeIdentity,
-        runtimeVersion: version,
+        strategyRevision,
         runtimeLineage,
         symbol,
         interval,

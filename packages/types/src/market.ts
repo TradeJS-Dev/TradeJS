@@ -72,8 +72,8 @@ export interface TradingAccountRef {
 
 export interface RuntimeDeploymentStrategy {
   strategyName: string;
-  /** Explicit Git-owned version of the package plus strategy configuration. */
-  version: number;
+  /** Canonical package + effective config identity computed by the runtime. */
+  strategyRevision: string;
   /** Desired entry state committed in tradejs.config.ts. */
   enabled: boolean;
   /** New entries may be paused while exit/position management keeps running. */
@@ -83,6 +83,7 @@ export interface RuntimeDeploymentStrategy {
 
 export interface RuntimeDeployment {
   id: string;
+  deploymentCompositionId: string;
   label: string;
   connectorName: string;
   provider: string;

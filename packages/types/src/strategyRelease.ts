@@ -63,7 +63,8 @@ export type StrategyReleaseResearchDecisionInput = {
       deploymentId: string;
       accountId: string;
       strategyName: string;
-      version: number;
+      strategyRevision: string;
+      deploymentCompositionId: string;
     } | null;
     maxLossValue: number;
   };

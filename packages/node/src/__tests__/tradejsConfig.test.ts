@@ -76,7 +76,7 @@ describe('tradejsConfig utils', () => {
         accountId: 'bybit-default',
         strategies: {
           DoubleTap: {
-            version: 4,
+            generation: 'forward-4',
             enabled: true,
             config: { INTERVAL: '15', UNIVERSE: 'crypto', MAX_LOSS_VALUE: 1 }
           }
@@ -93,7 +93,7 @@ describe('tradejsConfig utils', () => {
     expect(
       config.runtime?.deployments.production?.strategies.DoubleTap,
     ).toEqual({
-      version: 4,
+      generation: 'forward-4',
       enabled: true,
       config: {
         INTERVAL: '15',

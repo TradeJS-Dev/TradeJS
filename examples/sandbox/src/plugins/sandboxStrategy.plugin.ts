@@ -1,10 +1,13 @@
 import { defineStrategyPlugin } from '@tradejs/core/config';
 import {
+  createStrategyConfigParser,
+  type ValidatedStrategyRegistryEntry,
+} from '@tradejs/strategy-kit/config';
+import {
   type CreateStrategyCore,
   type Signal,
   type StrategyConfig,
   type StrategyManifest,
-  type StrategyRegistryEntry,
 } from '@tradejs/types';
 
 const STRATEGY_NAME = 'SandboxDeterministicSignal';
@@ -100,11 +103,16 @@ const sandboxManifest: StrategyManifest = {
   name: STRATEGY_NAME,
 };
 
-const sandboxStrategyEntry: StrategyRegistryEntry<SandboxStrategyConfig> = {
-  defaults: DEFAULT_CONFIG,
-  manifest: sandboxManifest,
-  createCore: createSandboxDeterministicCore,
-};
+const sandboxStrategyEntry: ValidatedStrategyRegistryEntry<SandboxStrategyConfig> =
+  {
+    defaults: DEFAULT_CONFIG,
+    parseConfig: createStrategyConfigParser({
+      strategyName: STRATEGY_NAME,
+      defaults: DEFAULT_CONFIG,
+    }),
+    manifest: sandboxManifest,
+    createCore: createSandboxDeterministicCore,
+  };
 
 const strategyEntries = defineStrategyPlugin({
   strategyEntries: [sandboxStrategyEntry],

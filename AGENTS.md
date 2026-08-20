@@ -283,8 +283,8 @@ Runtime AI config conventions:
 - Do not retain a full strategy runtime or indicator controller per symbol/strategy in the signals daemon. Runtime wrappers and indicator history are disposable per evaluation; only bounded detector state from `createStateController` may survive between cycles.
 - Keep the production daemon heap bounded through `SIGNALS_DAEMON_HEAP_MB` and retain its per-cycle RSS/heap/state-key log line when changing process supervision.
 - The signals daemon must rebuild a strategy from the rolling warmup history after restart, a candle gap, an effective config change, or its bounded live-bar limit. Catch-up recovery must not place historical orders or send historical notifications.
-- The signals daemon must re-read the Git-owned deployment declaration and optional Redis pause controls every cycle. Pause/resume must take effect without a restart; a newly deployed Project image changes version/config/ticker/account identity and rebuilds the lifecycle.
-- Runtime lifecycle identity includes connector, symbol, interval, strategy, and the exact `tradejs.config.ts` strategy version/config. Production must not merge `users:<user>:strategies:*` config or results overlays. Removed tickers or strategies must be evicted from memory.
+- The signals daemon must re-read the Git-owned deployment declaration and optional Redis pause controls every cycle. Pause/resume must take effect without a restart; a newly deployed Project image changes the computed revision/config/ticker/account identity and rebuilds the lifecycle.
+- Runtime lifecycle identity includes connector, symbol, interval, strategy, and the computed `strategyRevision` from verified packages plus parsed effective config. The target-level `deploymentCompositionId` binds the complete deployment. Production must not merge `users:<user>:strategies:*` config or results overlays. Removed tickers or strategies must be evicted from memory.
 - Production runtime declarations live only in `TradeJS-Project/tradejs.config.ts`. Redis owns trading accounts, optional pause overrides, audit events, heartbeats, signals, and trades; it does not own deployments, release pointers, or strategy config.
 - `users:<user>:runtime:controls` is optional. An absent key or strategy override means “follow Git enabled”; malformed controls or Redis unavailability must fail closed. Pause writes only `entriesPaused: true`; resume removes the override and deletes an empty document.
 - Do not add Redis strategy-state persistence unless every participating engine exposes a complete versioned transition checkpoint and restore path. Diagnostic `getState()` snapshots are not sufficient checkpoints.
@@ -637,7 +637,9 @@ Keep them aligned with:
 - When the user has explicitly authorized automatic forward testing, the exact
   frozen candidate may start only on the resolved forward account/deployment at
   `MAX_LOSS_VALUE=1`. Commit and push the strategy package, its Project package
-  dependency, full config, and incremented per-strategy version before deploy.
+  dependency, and full config before deploy. Run strict Project composition
+  validation and record the resulting `strategyRevision` and
+  `deploymentCompositionId`; never add a manual runtime version.
   Production Redis config writes are forbidden. This authorization does not
   permit promotion, risk increases, unrelated runtime edits, manual orders, or
   a production-daemon launch on an ambiguous target.

@@ -626,7 +626,7 @@ export const executeEntryOrder = async ({
       deploymentId: signal.deploymentId,
       policyProfileId: signal.policyProfileId,
       runtimeConfigId: signal.runtimeConfigId,
-      runtimeVersion: signal.runtimeVersion,
+      strategyRevision: signal.strategyRevision,
       runtimeLineage: signal.runtimeLineage,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     });

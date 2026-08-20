@@ -132,7 +132,7 @@ export const recordRuntimeStrategyControlEvent = async ({
   userName,
   deploymentId,
   strategyName,
-  version,
+  strategyRevision,
   previousState,
   nextState,
   createdBy,
@@ -140,7 +140,7 @@ export const recordRuntimeStrategyControlEvent = async ({
   userName: string;
   deploymentId: string;
   strategyName: string;
-  version: number;
+  strategyRevision: string;
   previousState: RuntimeStrategyControlState;
   nextState: RuntimeStrategyControlState;
   createdBy: string;
@@ -151,7 +151,7 @@ export const recordRuntimeStrategyControlEvent = async ({
     eventId: `${createdAt}-${randomUUID()}`,
     deploymentId,
     strategyName,
-    version,
+    strategyRevision,
     action,
     previousState,
     nextState,
