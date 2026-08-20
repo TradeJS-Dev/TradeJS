@@ -92,6 +92,7 @@
     "@tradejs/core": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/types": "workspace:^",
+    "@types/node": "^24",
     "chalk": "4.1.2",
     "ioredis": "5.11.1",
     "lodash": "^4.18.1",
@@ -99,7 +100,8 @@
     "progress": "^2.0.3",
     "puppeteer": "24.43.1",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0"
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.9"
   },
   "devDependencies": {
     "@tradejs/indicators": "workspace:^",
@@ -108,9 +110,7 @@
     "@tradejs/strategy-kit": "3.0.2",
     "@tradejs/strategy-trend-line": "3.0.2",
     "@tradejs/strategy-volume-divergence": "3.0.2",
-    "@types/node": "^24",
-    "tsup": "^8.5.1",
-    "typescript": "^5.9"
+    "tsup": "^8.5.1"
   },
   "scripts": {
     "build": "tsup",
