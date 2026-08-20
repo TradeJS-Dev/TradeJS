@@ -18,6 +18,7 @@ import {
   evaluateRule,
   evaluateCrossPocket,
   ensureRuntimeBuild,
+  findSourceRepositoryRoot,
   filterSharedCrossStrategyFeatures,
   formatCrossStrategyMarkdown,
   formatMarkdownReport,
@@ -33,6 +34,36 @@ import {
   summarizeRows,
   summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
+
+test('requires an explicit TradeJS engine source repository', async (t) => {
+  const previousSourceRoot = process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
+  delete process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
+  t.after(() => {
+    if (previousSourceRoot == null) {
+      delete process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
+    } else {
+      process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = previousSourceRoot;
+    }
+  });
+
+  assert.throws(
+    () => findSourceRepositoryRoot(),
+    /TRADEJS_SOURCE_REPOSITORY_ROOT is required/,
+  );
+
+  const sourceRoot = await fsp.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-source-root-'),
+  );
+  t.after(() => fsp.rm(sourceRoot, { recursive: true, force: true }));
+  await Promise.all([
+    fsp.writeFile(path.join(sourceRoot, 'package.json'), '{}\n'),
+    fsp.mkdir(path.join(sourceRoot, 'packages/node'), { recursive: true }),
+    fsp.mkdir(path.join(sourceRoot, 'packages/cli'), { recursive: true }),
+  ]);
+  process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = sourceRoot;
+
+  assert.equal(findSourceRepositoryRoot(), sourceRoot);
+});
 
 test('requires the public registry runtime module for plugin loading', async () => {
   const projectRoot = await fsp.mkdtemp(
@@ -659,6 +690,7 @@ test('builds a profiled cross-strategy report from tiny sharded exports', async 
   ];
   const report = await buildCrossStrategyReport({
     projectRoot: process.cwd(),
+    sourceRepositoryRoot: process.cwd(),
     groups,
     validationSplit: 0.2,
     testSplit: 0.2,

@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 import { createRequire } from 'node:module';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTH_DAYS = 30.4375;
@@ -236,18 +236,18 @@ const findProjectRootFrom = (startPath) => {
 };
 
 export const findSourceRepositoryRoot = () => {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const explicitSourceRoot = String(
     process.env.TRADEJS_SOURCE_REPOSITORY_ROOT || '',
   ).trim();
-  const root =
-    (explicitSourceRoot
-      ? findProjectRootFrom(explicitSourceRoot)
-      : findProjectRootFrom(process.cwd())) ??
-    findProjectRootFrom(scriptDirectory);
+  if (!explicitSourceRoot) {
+    throw new Error(
+      'TRADEJS_SOURCE_REPOSITORY_ROOT is required for AI-gate research.',
+    );
+  }
+  const root = findProjectRootFrom(explicitSourceRoot);
   if (!root) {
     throw new Error(
-      'TradeJS source repository root was not found. Set TRADEJS_SOURCE_REPOSITORY_ROOT or run from the repository.',
+      `TRADEJS_SOURCE_REPOSITORY_ROOT does not identify a TradeJS engine source repository: ${explicitSourceRoot}`,
     );
   }
   return root;
@@ -1168,7 +1168,7 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
 
 const loadResearchRows = async ({
   projectRoot,
-  sourceRepositoryRoot = projectRoot,
+  sourceRepositoryRoot,
   filePaths,
   variants,
   minQuality,
@@ -3196,7 +3196,7 @@ const hasValidationSign = (pocket, expectedSign, minValidationSupport) => {
 
 export const buildCrossStrategyReport = async ({
   projectRoot,
-  sourceRepositoryRoot = projectRoot,
+  sourceRepositoryRoot,
   groups,
   validationSplit,
   testSplit,
