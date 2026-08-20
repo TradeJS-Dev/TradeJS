@@ -19,6 +19,7 @@ import {
 import { BACKTEST_CLI_RUNTIME_CONFIG_KEYS } from '../lib/runtimeStrategyBacktest';
 import type { ResearchAgentRunRecord } from '../lib/researchAgent';
 import {
+  resolveRequiredResearchRoots,
   resolveResearchRoots,
   SOURCE_REPOSITORY_ROOT_ENV,
 } from '../lib/researchRoots';
@@ -117,7 +118,7 @@ type ResearchRunLockRecord = {
   argv: string[];
 };
 
-const { projectRoot, sourceRepositoryRoot } = resolveResearchRoots();
+const { projectRoot } = resolveResearchRoots();
 const dotenvPath =
   String(
     process.env.DOTENV_CONFIG_PATH || path.join(projectRoot, '.env'),
@@ -526,6 +527,9 @@ export const runCliCommand = async (params: {
   stderr: string;
   durationMs: number;
 }> => {
+  const { sourceRepositoryRoot } = resolveRequiredResearchRoots({
+    projectRoot,
+  });
   const startedAt = Date.now();
   const captureMode = params.captureMode || 'tail';
   const tailLimit = Math.max(512, params.tailLimit || 16_384);
@@ -767,6 +771,7 @@ const executeNonBlockingStep = async (
 };
 
 export const main = async () => {
+  resolveRequiredResearchRoots({ projectRoot });
   const userName = String(flags.user || 'root').trim() || 'root';
   const connector = String(flags.connector || 'bybit').trim() || 'bybit';
   const timeframe = String(flags.timeframe || '15').trim() || '15';

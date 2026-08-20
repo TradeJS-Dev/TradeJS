@@ -123,8 +123,9 @@ If a feature is not publish-ready for external users, document that limitation e
   `tradejs.config.ts`, `data/`, `notes/`, and research output relative to it.
 - `TRADEJS_SOURCE_REPOSITORY_ROOT` is the source repository whose Git SHA,
   remote, dirty diff, code, and build artifacts provide experiment lineage.
-- The two roots may be the same for a standalone developer checkout, but
-  research tooling must not assume that they are.
+- Source-aware research requires `TRADEJS_SOURCE_REPOSITORY_ROOT` explicitly.
+  The two roots may be the same for a standalone developer checkout, but
+  research tooling must never infer one from the other.
 - Run personal backtest, replay, AI, and research commands from
   `TradeJS-Project`; use this repository as the source root when exercising
   unreleased framework changes.

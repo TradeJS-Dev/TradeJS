@@ -13,7 +13,10 @@ import {
   createCoreResearchSpecTemplate,
   runCoreResearch,
 } from '../lib/coreResearch/orchestrator';
-import { resolveResearchRoots } from '../lib/researchRoots';
+import {
+  resolveRequiredResearchRoots,
+  resolveResearchRoots,
+} from '../lib/researchRoots';
 
 type Command = 'init' | 'prepare' | 'analyze' | 'run' | 'verify' | 'index';
 
@@ -93,6 +96,9 @@ export const main = async () => {
     );
     return;
   }
+  const { sourceRepositoryRoot } = resolveRequiredResearchRoots({
+    projectRoot: roots.projectRoot,
+  });
   if (command === 'init') {
     const outputPath = path.resolve(
       roots.projectRoot,
@@ -106,7 +112,7 @@ export const main = async () => {
       end: parseTimestamp(valueAfter(argv, '--end'), '--end'),
       outputPath,
       projectRoot: roots.projectRoot,
-      sourceRepositoryRoot: roots.sourceRepositoryRoot,
+      sourceRepositoryRoot,
     });
     const { outputPath: _outputPath, ...persisted } = spec;
     await writeJsonAtomic(outputPath, persisted);
@@ -143,7 +149,7 @@ export const main = async () => {
     const analyzed = await runCoreResearch({
       spec: loaded.spec,
       cwd: roots.projectRoot,
-      sourceRepositoryRoot: roots.sourceRepositoryRoot,
+      sourceRepositoryRoot,
     });
     console.log(
       chalk.green(`Core research report: ${analyzed.paths.reportPath}`),

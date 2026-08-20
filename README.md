@@ -161,7 +161,9 @@ place orders.
 Personal operational commands run from `TradeJS-Project`. In research tooling,
 `PROJECT_CWD` identifies that project/artifact root, while
 `TRADEJS_SOURCE_REPOSITORY_ROOT` identifies the source repository used for Git
-lineage and unreleased framework builds. They intentionally may differ:
+lineage and unreleased builds. Source-aware research requires the latter
+explicitly and never infers it from the artifact root. They intentionally may
+differ:
 
 ```bash
 cd ~/dev/tradejs/tradejs-project

@@ -5,6 +5,10 @@ export const SOURCE_REPOSITORY_ROOT_ENV =
 
 export type ResearchRoots = {
   projectRoot: string;
+  sourceRepositoryRoot?: string;
+};
+
+export type RequiredResearchRoots = ResearchRoots & {
   sourceRepositoryRoot: string;
 };
 
@@ -26,13 +30,30 @@ export const resolveResearchRoots = (
   const projectRoot = path.resolve(
     firstNonEmpty(options.projectRoot, env.PROJECT_CWD, cwd) || cwd,
   );
-  const sourceRepositoryRoot = path.resolve(
-    firstNonEmpty(
-      options.sourceRepositoryRoot,
-      env[SOURCE_REPOSITORY_ROOT_ENV],
-      cwd,
-    ) || cwd,
+  const sourceRepositoryRoot = firstNonEmpty(
+    options.sourceRepositoryRoot,
+    env[SOURCE_REPOSITORY_ROOT_ENV],
   );
 
-  return { projectRoot, sourceRepositoryRoot };
+  return {
+    projectRoot,
+    ...(sourceRepositoryRoot
+      ? { sourceRepositoryRoot: path.resolve(sourceRepositoryRoot) }
+      : {}),
+  };
+};
+
+export const resolveRequiredResearchRoots = (
+  options: ResolveResearchRootsOptions = {},
+): RequiredResearchRoots => {
+  const roots = resolveResearchRoots(options);
+  if (!roots.sourceRepositoryRoot) {
+    throw new Error(
+      `${SOURCE_REPOSITORY_ROOT_ENV} is required for source-aware research`,
+    );
+  }
+  return {
+    ...roots,
+    sourceRepositoryRoot: roots.sourceRepositoryRoot,
+  };
 };

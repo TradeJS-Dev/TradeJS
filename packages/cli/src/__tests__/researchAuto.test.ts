@@ -64,9 +64,21 @@ import {
 } from '../scripts/researchAuto';
 import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
+const sourceRepositoryRootEnv = 'TRADEJS_SOURCE_REPOSITORY_ROOT';
+const originalSourceRepositoryRoot = process.env[sourceRepositoryRootEnv];
+
 describe('research:auto helpers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env[sourceRepositoryRootEnv] = '/workspace/strategy-source';
+  });
+
+  afterAll(() => {
+    if (originalSourceRepositoryRoot == null) {
+      delete process.env[sourceRepositoryRootEnv];
+    } else {
+      process.env[sourceRepositoryRootEnv] = originalSourceRepositoryRoot;
+    }
   });
 
   afterEach(async () => {

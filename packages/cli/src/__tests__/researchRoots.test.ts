@@ -1,11 +1,12 @@
 import path from 'node:path';
 import {
+  resolveRequiredResearchRoots,
   resolveResearchRoots,
   SOURCE_REPOSITORY_ROOT_ENV,
 } from '../lib/researchRoots';
 
 describe('research roots', () => {
-  it('uses cwd for both roles by default', () => {
+  it('does not infer a source repository from the artifact root', () => {
     expect(
       resolveResearchRoots({
         cwd: '/workspace/tradejs-project',
@@ -13,8 +14,16 @@ describe('research roots', () => {
       }),
     ).toEqual({
       projectRoot: path.resolve('/workspace/tradejs-project'),
-      sourceRepositoryRoot: path.resolve('/workspace/tradejs-project'),
     });
+  });
+
+  it('requires an explicit source repository for source-aware research', () => {
+    expect(() =>
+      resolveRequiredResearchRoots({
+        cwd: '/workspace/tradejs-project',
+        env: {},
+      }),
+    ).toThrow(/TRADEJS_SOURCE_REPOSITORY_ROOT is required/);
   });
 
   it('separates project artifacts from the source repository through env', () => {
