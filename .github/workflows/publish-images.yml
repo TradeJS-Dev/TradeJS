@@ -106,7 +106,7 @@ jobs:
       - name: Resolve beta version
         id: version
         run: |
-          baseline="$(node -p "require('./packages/types/package.json').version")"
+          baseline="$(npm view '@tradejs/types@latest' version)"
           beta_version="$(node -e 'const {resolveBetaVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveBetaVersion(process.argv[1], process.argv[2]))' "$baseline" "$GITHUB_RUN_NUMBER")"
           yarn bump:packages "$beta_version"
           echo "beta_version=$beta_version" >> "$GITHUB_OUTPUT"

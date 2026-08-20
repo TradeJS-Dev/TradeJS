@@ -23,7 +23,8 @@ const PUBLISHABLE_MANIFESTS = [
 
 const E2E_SANDBOX_MANIFESTS = ['examples/sandbox/package.json'];
 
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$/;
+const SEMVER_RE =
+  /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 
 const printUsage = () => {
   console.log(`Usage: yarn bump:packages [auto|patch|minor|major|<version>] [--dry-run]
@@ -79,6 +80,7 @@ const parseSemver = (version) => {
     minor: Number(match[2]),
     patch: Number(match[3]),
     suffix: match[4] ?? '',
+    build: match[5] ?? '',
   };
 };
 
@@ -89,8 +91,8 @@ const compareSemver = (left, right) => {
   return 0;
 };
 
-const formatSemver = ({ major, minor, patch, suffix = '' }) =>
-  `${major}.${minor}.${patch}${suffix}`;
+const formatSemver = ({ major, minor, patch, suffix = '', build = '' }) =>
+  `${major}.${minor}.${patch}${suffix}${build}`;
 
 const getHighestVersion = (versions) => {
   const highest = versions
@@ -110,6 +112,7 @@ const incrementVersion = (version, target) => {
   const next = {
     ...parseSemver(version),
     suffix: '',
+    build: '',
   };
 
   if (target === 'patch') {
@@ -181,7 +184,9 @@ const resolveAutomaticVersion = async (entries) => {
     }),
   );
   const baseline = getHighestVersion([...localVersions, ...publishedVersions]);
-  const localAligned = localVersions.every((version) => version === baseline);
+  const localAligned = localVersions.every(
+    (version) => version === baseline || version.endsWith('+development'),
+  );
   const npmAligned = publishedVersions.every((version) => version === baseline);
   const tagExists = hasVersionTag(baseline);
 

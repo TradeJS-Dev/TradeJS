@@ -409,8 +409,12 @@ Publishing:
 - relevant pushes publish only a unique next-patch beta candidate
 - the npm `beta` tag moves only after quickstart, sandbox, and production-like
   Project image validation succeeds
-- stable `latest` versions, version commits, and tags are created only by the
-  protected weekly promotion workflow
+- stable `latest` versions and source tags are created only by the protected
+  weekly promotion workflow; source manifests stay on the shared
+  `3.1.0+development` compatibility version and the workflow must never push a
+  release commit to `stable`
+- resolve the next package patch from npm `latest`; do not restore a deploy key,
+  PAT, or branch-protection bypass for release bookkeeping
 - TradeJS-Project batches all promoted stable packages into one weekly image
 - use `yarn publish:packages` or `yarn bump:packages` only for an explicitly
   approved release recovery, never as the routine development path

@@ -668,9 +668,13 @@ the beta image to production.
 
 `.github/workflows/promote-release.yml` runs Mondays at `03:00 UTC`. It resolves
 the current `beta` tag, proves that the matching source SHA completed the full
-beta workflow, promotes it to one stable patch, reruns stable checks, commits the
-shared version and creates `v<version>`. A protected manual dispatch is the
-emergency path. `TradeJS-Project` then batches all newly promoted stable
+beta workflow, promotes it to one stable patch, reruns stable checks, tags the
+verified source as `v<version>`, and only then moves `latest`. Published versions
+are derived from npm `latest`; source manifests deliberately use the common
+`3.1.0+development` compatibility version and are rewritten only in the
+ephemeral release workspace. The workflow never writes a release commit to the
+protected `stable` branch and needs no deploy key. A protected manual dispatch
+is the emergency path. `TradeJS-Project` then batches all newly promoted stable
 framework, base, kit, and strategy packages at `06:00 UTC` into one exact
 composition, one image, and one production rollout. Production never consumes
 an npm prerelease.

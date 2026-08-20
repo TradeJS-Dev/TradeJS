@@ -25,6 +25,10 @@ describe('npm release workflows', () => {
     expect(workflow).not.toContain('tradejs-project-beta');
     expect(workflow).toContain("PUPPETEER_SKIP_DOWNLOAD: 'true'");
     expect(workflow).not.toContain('yarn bump:packages auto');
+    expect(workflow).toContain("npm view '@tradejs/types@latest' version");
+    expect(workflow).not.toContain(
+      "require('./packages/types/package.json').version",
+    );
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('Tag successful release');
     const postVersionResolution = workflow.slice(
@@ -52,9 +56,34 @@ describe('npm release workflows', () => {
       workflow.indexOf('Wait for complete stable registry consistency'),
     ).toBeLessThan(workflow.indexOf('Quickstart stable browser e2e'));
     expect(workflow.indexOf('sandbox:e2e')).toBeLessThan(
+      workflow.indexOf('Tag the verified stable source'),
+    );
+    expect(workflow.indexOf('Tag the verified stable source')).toBeLessThan(
       workflow.indexOf('Promote all verified stable candidates to latest'),
     );
-    expect(workflow).toContain("TAG_ONLY: 'false'");
+    expect(workflow).toContain("npm view '@tradejs/types@latest' version");
+    expect(workflow).not.toContain('git push origin HEAD:stable');
+    expect(workflow).not.toContain('TAG_ONLY');
+  });
+
+  it('keeps source manifests explicitly detached from registry versions', () => {
+    const manifests = [
+      'packages/types/package.json',
+      'packages/infra/package.json',
+      'packages/core/package.json',
+      'packages/node/package.json',
+      'packages/indicators/package.json',
+      'packages/connectors/package.json',
+      'packages/cli/package.json',
+      'apps/app/package.json',
+      'packages/create-tradejs/package.json',
+    ].map((relativePath) =>
+      JSON.parse(fs.readFileSync(path.join(root, relativePath), 'utf8')),
+    );
+
+    expect(new Set(manifests.map(({ version }) => version))).toEqual(
+      new Set(['3.1.0+development']),
+    );
   });
 
   it('keeps npm cleanup explicit, confirmed, and separate from publishing', () => {

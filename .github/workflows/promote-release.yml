@@ -33,7 +33,6 @@ jobs:
     timeout-minutes: 60
     env:
       PROMOTE: 'true'
-      TAG_ONLY: 'false'
       INPUT_BETA_VERSION: ${{ inputs.beta_version }}
       CONFIRM_PROMOTION: ${{ inputs.confirm_promotion }}
       GH_TOKEN: ${{ github.token }}
@@ -59,14 +58,23 @@ jobs:
             exit 0
           fi
           stable_target="${beta_version%%-beta.*}"
-          current_version="$(node -p "require('./packages/types/package.json').version")"
           latest_version="$(npm view '@tradejs/types@latest' version)"
-          if [ "$latest_version" = "$stable_target" ] && [ "$current_version" = "$stable_target" ]; then
+          if [ "$latest_version" = "$stable_target" ]; then
+            for package_name in \
+              @tradejs/types @tradejs/infra @tradejs/core @tradejs/node \
+              @tradejs/indicators @tradejs/connectors @tradejs/cli @tradejs/app \
+              create-tradejs
+            do
+              [ "$(npm view "${package_name}@latest" version)" = "$stable_target" ] || {
+                echo "Partial latest promotion for ${stable_target}" >&2
+                exit 1
+              }
+            done
+            [ -n "$(git tag --list "v${stable_target}")" ] || {
+              echo "Stable ${stable_target} is missing its source tag" >&2
+              exit 1
+            }
             echo 'PROMOTE=false' >> "$GITHUB_ENV"
-            if [ "$(git tag --list "v${stable_target}")" != "v${stable_target}" ]; then
-              echo 'TAG_ONLY=true' >> "$GITHUB_ENV"
-              echo "STABLE_VERSION=$stable_target" >> "$GITHUB_ENV"
-            fi
             exit 0
           fi
           LATEST_VERSION="$latest_version" STABLE_TARGET="$stable_target" node -e '
@@ -107,13 +115,6 @@ jobs:
           echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
           echo "RELEASE_HEAD_SHA=$release_head_sha" >> "$GITHUB_ENV"
           git checkout --detach "$release_head_sha"
-      - name: Restore a missing stable tag after a partial promotion
-        if: env.TAG_ONLY == 'true'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a "v${STABLE_VERSION}" -m "TradeJS v${STABLE_VERSION}"
-          git push origin "refs/tags/v${STABLE_VERSION}"
       - name: Enable Corepack
         if: env.PROMOTE != 'false'
         run: |
@@ -134,11 +135,12 @@ jobs:
         id: version
         run: |
           stable_version="$(node -e 'const {resolveStableVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveStableVersion(process.argv[1]))' "$BETA_VERSION")"
-          baseline="$(node -p "require('./packages/types/package.json').version")"
+          baseline="$(npm view '@tradejs/types@latest' version)"
           expected_beta="$(node -e 'const {resolveBetaVersion}=require("./bin/releaseChannel.cjs"); console.log(resolveBetaVersion(process.argv[1], process.argv[2].split(".").at(-1)))' "$baseline" "$BETA_VERSION")"
           [ "$expected_beta" = "$BETA_VERSION" ] || { echo 'Beta is not the next patch from this source' >&2; exit 1; }
           yarn bump:packages "$stable_version"
           echo "stable_version=$stable_version" >> "$GITHUB_OUTPUT"
+          echo "STABLE_VERSION=$stable_version" >> "$GITHUB_ENV"
       - if: env.PROMOTE != 'false'
         run: yarn install --immutable
       - if: env.PROMOTE != 'false'
@@ -187,6 +189,20 @@ jobs:
         run: yarn sandbox:e2e
       - if: env.PROMOTE != 'false' && always() && steps.sandbox_infra.outcome != 'skipped'
         run: yarn sandbox:infra-down
+      - name: Tag the verified stable source
+        if: env.PROMOTE != 'false'
+        run: |
+          git fetch origin stable --tags
+          [ "$(git rev-parse origin/stable)" = "$RELEASE_HEAD_SHA" ] || { echo 'stable advanced during promotion' >&2; exit 1; }
+          existing_tag_sha="$(git rev-list -n 1 "v${STABLE_VERSION}" 2>/dev/null || true)"
+          if [ -n "$existing_tag_sha" ]; then
+            [ "$existing_tag_sha" = "$RELEASE_HEAD_SHA" ] || { echo "v${STABLE_VERSION} points to another source" >&2; exit 1; }
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "v${STABLE_VERSION}" "$RELEASE_HEAD_SHA" -m "TradeJS v${STABLE_VERSION}"
+            git push origin "refs/tags/v${STABLE_VERSION}"
+          fi
       - name: Promote all verified stable candidates to latest
         if: env.PROMOTE != 'false'
         env:
@@ -200,20 +216,6 @@ jobs:
           do
             npm dist-tag add "${package_name}@${STABLE_VERSION}" latest
           done
-      - name: Persist and tag the verified stable release
-        if: env.PROMOTE != 'false'
-        env:
-          STABLE_VERSION: ${{ steps.version.outputs.stable_version }}
-        run: |
-          git fetch origin stable
-          [ "$(git rev-parse origin/stable)" = "$RELEASE_HEAD_SHA" ] || { echo 'stable advanced during promotion' >&2; exit 1; }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/app/package.json packages/*/package.json examples/sandbox/package.json examples/sandbox/yarn.lock
-          git commit -m "chore(release): v${STABLE_VERSION} [skip ci]"
-          git push origin HEAD:stable
-          git tag -a "v${STABLE_VERSION}" -m "TradeJS v${STABLE_VERSION}"
-          git push origin "refs/tags/v${STABLE_VERSION}"
       - name: Verify dist-tags
         if: env.PROMOTE != 'false'
         env:
