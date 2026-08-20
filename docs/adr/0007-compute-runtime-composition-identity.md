@@ -44,6 +44,10 @@ lineage remains a separate schema for non-deployment experiments; it is not a
 production fallback.
 
 This is a coordinated breaking release. All official strategy packages,
-Strategy Template, Project validation, and production-like beta smoke move to
-the contract together. Runtime does not accept entries or evidence from the
-superseded numeric-version schema.
+Strategy Template, and Project validation move to the contract together.
+Engine candidates prove the published npm path with the generated quickstart
+and engine-owned sandbox; they do not clone a mutable Project branch. Project
+consumes only stable engine packages and owns its production-image composition
+checks. This keeps the release graph acyclic while preserving both validation
+boundaries. Runtime does not accept entries or evidence from the superseded
+numeric-version schema.
