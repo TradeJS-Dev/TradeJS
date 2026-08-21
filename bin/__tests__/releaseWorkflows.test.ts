@@ -31,6 +31,13 @@ describe('npm release workflows', () => {
     );
     expect(workflow).not.toContain('git push origin HEAD:stable');
     expect(workflow).not.toContain('Tag successful release');
+    expect(workflow).toContain('dorny/paths-filter@v4');
+    expect(workflow).toContain('actions/cache@v6');
+    expect(workflow).toContain('docker/setup-buildx-action@v4');
+    expect(workflow).toContain('docker/login-action@v4');
+    expect(workflow).toContain('docker/build-push-action@v7');
+    expect(workflow).not.toContain('tradejs-agent:latest');
+    expect(workflow).not.toContain('tradejs-ml-infer:latest');
     expect(workflow).toContain('Verify unchanged source tree');
     expect(workflow).toContain('Build versioned packages');
     expect(workflow.indexOf('Verify unchanged source tree')).toBeLessThan(
@@ -51,7 +58,7 @@ describe('npm release workflows', () => {
 
     expect(workflow).toContain('schedule:');
     expect(workflow).toContain("cron: '0 3 * * 1'");
-    expect(workflow).toContain('confirm_promotion');
+    expect(workflow).not.toMatch(/confirm[_-]promotion/);
     expect(workflow).toContain('publish-images.yml/runs');
     expect(workflow).not.toMatch(/^\s*environment:/m);
     expect(workflow).toContain('--tag stable-candidate');
@@ -104,11 +111,11 @@ describe('npm release workflows', () => {
     );
   });
 
-  it('keeps npm cleanup explicit, confirmed, and separate from publishing', () => {
+  it('keeps npm cleanup exact and separate from publishing', () => {
     const workflow = readWorkflow('npm-cleanup.yml');
 
     expect(workflow).toContain('versions_csv');
-    expect(workflow).toContain('confirm_unpublish');
+    expect(workflow).not.toMatch(/confirm[_-]unpublish/);
     expect(workflow).toContain('npm-cleanup.mjs');
     expect(workflow).not.toMatch(/^\s*environment:/m);
   });

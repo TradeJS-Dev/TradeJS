@@ -10,11 +10,6 @@ on:
         description: Exact beta version; empty selects the current beta tag
         required: false
         type: string
-      confirm_promotion:
-        description: Required only for a manual promotion
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   actions: read
@@ -33,7 +28,6 @@ jobs:
     env:
       PROMOTE: 'true'
       INPUT_BETA_VERSION: ${{ inputs.beta_version }}
-      CONFIRM_PROMOTION: ${{ inputs.confirm_promotion }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -47,10 +41,6 @@ jobs:
           package-manager-cache: false
       - name: Resolve beta and validate its complete CI evidence
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$CONFIRM_PROMOTION" != true ]; then
-            echo 'confirm_promotion is required for a manual promotion' >&2
-            exit 1
-          fi
           beta_version="${INPUT_BETA_VERSION:-$(npm view '@tradejs/types@beta' version 2>/dev/null || true)}"
           if [ -z "$beta_version" ]; then
             echo 'PROMOTE=false' >> "$GITHUB_ENV"
