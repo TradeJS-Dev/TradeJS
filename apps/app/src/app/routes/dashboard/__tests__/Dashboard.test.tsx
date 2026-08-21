@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 
 const setFiltersMock = jest.fn();
 const useSearchParamsMock = jest.fn();
-const mainChartMock = jest.fn(() => null);
+const mainChartMock = jest.fn((_props: unknown) => null);
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => useSearchParamsMock(),

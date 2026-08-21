@@ -22,7 +22,6 @@ import {
   StrategyRuntimeMlOptions,
   StrategySharedReplayStateGetter,
   BaseStrategyContextSnapshot,
-  BaseContextGateFeatures,
   BaseGateFeatureConfirmation,
   BaseGateFeatureConflict,
   BaseGateFeatureEntryLocation,
@@ -385,21 +384,6 @@ export const buildBaseContextGateFeatures = ({
   const rawHyperliquidWhaleBuySharePct = asFiniteNumberOrNull(
     hyperliquidWhales?.buySharePct,
   );
-  const rawHyperliquidWhaleNetNotionalUsd = asFiniteNumberOrNull(
-    hyperliquidWhales?.netNotionalUsd,
-  );
-  const rawHyperliquidWhaleUniqueCount = asFiniteNumberOrNull(
-    hyperliquidWhales?.uniqueWhales,
-  );
-  const hyperliquidWhaleCoveredCount = asFiniteNumberOrNull(
-    hyperliquidWhales?.coveredWhales,
-  );
-  const hyperliquidWhaleExpectedCount = asFiniteNumberOrNull(
-    hyperliquidWhales?.expectedWhales,
-  );
-  const hyperliquidWhaleCoveragePct = asFiniteNumberOrNull(
-    hyperliquidWhales?.coveragePct,
-  );
   const hyperliquidWhaleCoverageSufficient =
     typeof hyperliquidWhales?.coverageSufficient === 'boolean'
       ? hyperliquidWhales.coverageSufficient
@@ -407,14 +391,6 @@ export const buildBaseContextGateFeatures = ({
   const hyperliquidWhaleBuySharePct =
     hyperliquidWhaleCoverageSufficient === true
       ? rawHyperliquidWhaleBuySharePct
-      : null;
-  const hyperliquidWhaleNetNotionalUsd =
-    hyperliquidWhaleCoverageSufficient === true
-      ? rawHyperliquidWhaleNetNotionalUsd
-      : null;
-  const hyperliquidWhaleUniqueCount =
-    hyperliquidWhaleCoverageSufficient === true
-      ? rawHyperliquidWhaleUniqueCount
       : null;
   const hyperliquidWhaleNotionalUsd =
     hyperliquidWhaleCoverageSufficient === true
@@ -441,10 +417,6 @@ export const buildBaseContextGateFeatures = ({
   const referenceTradeFlowBias = primaryReferenceTradeFlow?.stale
     ? 'unknown'
     : toPressureBias(referenceTradeFlowBuyPressurePct);
-  const hyperliquidWhaleFlowStale =
-    typeof hyperliquidWhales?.stale === 'boolean'
-      ? hyperliquidWhales.stale
-      : null;
   const hyperliquidWhaleFlowBias =
     hyperliquidWhaleSufficientActivity !== true
       ? 'unknown'

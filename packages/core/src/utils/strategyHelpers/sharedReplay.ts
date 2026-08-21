@@ -20,7 +20,6 @@ const sharedReplayProfile = {
 
 if (SHARED_REPLAY_PROFILE) {
   processLike?.once?.('exit', () => {
-    // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
         {

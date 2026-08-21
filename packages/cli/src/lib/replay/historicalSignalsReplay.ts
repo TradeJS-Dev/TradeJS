@@ -18,9 +18,7 @@ import {
   getStrategyCreator,
 } from '@tradejs/node/strategies';
 import { getRuntimeStrategyPackageMetadata } from '@tradejs/node/runtimeStrategies';
-import type { TradejsConfigHooks } from '@tradejs/core/config';
 import {
-  Candle,
   Connector,
   ConnectorCreator,
   Interval,
@@ -41,10 +39,7 @@ import {
 } from '../runEnvironment';
 import { replayProjectRoot, replayUserName } from './cliConfig';
 import { buildReplayStrategyConfig } from './support';
-import {
-  PortfolioReplayConnector,
-  createPortfolioReplayConnector,
-} from './portfolioReplayConnector';
+import { createPortfolioReplayConnector } from './portfolioReplayConnector';
 import {
   alignSymbolWithBtcReference,
   splitCandlesForReplayWindow,
@@ -388,7 +383,6 @@ export const runHistoricalSignalsReplay = async ({
 
   const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
   const sharedReplayKeyPrefixes: string[] = [];
-  let preparedSymbols = 0;
   let skippedSymbols = 0;
   const prepareBar = new ProgressBar(
     'prepare :current/:total [:bar][:percent] skipped=:skipped :etas(s) :symbol',
@@ -519,7 +513,6 @@ export const runHistoricalSignalsReplay = async ({
       currentIndex: 0,
       strategies: strategiesForSymbol,
     };
-    preparedSymbols += 1;
     prepareBar.tick(1, {
       skipped: chalk.yellow(skippedSymbols),
       symbol: chalk.gray(symbol),
@@ -553,7 +546,7 @@ export const runHistoricalSignalsReplay = async ({
   );
 
   try {
-    for (const [cycleIndex, timestamp] of orderedTimestamps.entries()) {
+    for (const timestamp of orderedTimestamps) {
       const cycleStartedAt = Date.now();
       const cycleSymbols = cycleSymbolsByTimestamp.get(timestamp) ?? [];
 

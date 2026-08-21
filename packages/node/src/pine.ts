@@ -116,12 +116,10 @@ type PinetsCjsModule = {
 const loadPinets = (): PinetsCjsModule => {
   // In Jest (jsdom), "pinets" may resolve to browser bundle by default.
   // Resolve then force CJS/node bundle path when needed.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires,global-require
   const resolvedPath = require.resolve('pinets') as string;
   const cjsPath = resolvedPath.includes('pinets.min.browser')
     ? resolvedPath.replace(/pinets\.min\.browser(\.es)?\.js$/, 'pinets.min.cjs')
     : resolvedPath;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires,global-require
   return require(cjsPath) as PinetsCjsModule;
 };
 

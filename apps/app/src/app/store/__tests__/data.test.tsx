@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, render, waitFor } from '@testing-library/react';
+import type { Filters } from '@tradejs/types';
 import { useData } from '../data';
 
 const klineMock = jest.fn();
@@ -35,14 +36,12 @@ const makeData = () => [
   makeCandle(1_710_001_800_000, 102),
 ];
 
-const makeFilters = (overrides: Record<string, unknown> = {}) => ({
+const makeFilters = (overrides: Partial<Filters> = {}): Filters => ({
   provider: 'bybit',
   symbol: 'BTCUSDT_TEST',
   interval: '15',
   start: 1_710_000_000_000,
   end: 1_710_001_800_000,
-  backtestId: null,
-  backtestStrategy: null,
   ...overrides,
 });
 

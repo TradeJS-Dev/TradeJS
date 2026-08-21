@@ -49,7 +49,7 @@
     "sandbox:assert-backtest": "yarn run:ts ./src/scripts/assertBacktestSnapshot.ts",
     "sandbox:signals": "yarn run:ts ./src/scripts/runDeterministicSignals.ts",
     "sandbox:assert-signals": "yarn run:ts ./src/scripts/assertSignalsSnapshot.ts",
-    "e2e": "yarn sandbox:user-add && yarn sandbox:seed-config && yarn sandbox:backtest && yarn sandbox:assert-backtest && yarn sandbox:signals && yarn sandbox:assert-signals"
+    "e2e": "yarn typecheck && yarn sandbox:user-add && yarn sandbox:seed-config && yarn sandbox:backtest && yarn sandbox:assert-backtest && yarn sandbox:signals && yarn sandbox:assert-signals"
   },
   "license": "MIT",
   "author": "aleksnick (https://github.com/aleksnick)"

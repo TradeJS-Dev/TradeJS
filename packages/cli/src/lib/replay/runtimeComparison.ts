@@ -979,9 +979,6 @@ const saveAndPrintReplayExchangeComparison = async ({
       toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
       signalTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
     });
-  const liveSummaryByStrategy = new Map(
-    liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
-  );
   const rowByStrategy = new Map<string, ReplayRuntimeParityRow>();
   const ensureRow = (strategyName: string) => {
     const existing = rowByStrategy.get(strategyName);

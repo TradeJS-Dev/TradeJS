@@ -4,6 +4,14 @@ const mockGetData = jest.fn();
 const mockEnsureStrategyPluginsLoaded = jest.fn();
 const mockGetAvailableStrategyNames = jest.fn();
 
+type MockJsonResponse<T> = {
+  status: number;
+  body: T;
+};
+
+const asMockJsonResponse = <T>(response: unknown) =>
+  response as MockJsonResponse<T>;
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -62,7 +70,9 @@ describe('AI strategy cards route', () => {
       tags: ['q4+'],
     });
 
-    const response = await route.GET();
+    const response = asMockJsonResponse<{
+      strategies: Array<{ strategyName: string; title: string }>;
+    }>(await route.GET());
 
     expect(response.body.strategies[0]).toEqual(
       expect.objectContaining({

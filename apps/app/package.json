@@ -97,7 +97,7 @@
     "build": "NODE_ENV=production node ./bin/tradejs-app.mjs build",
     "start": "node ./bin/tradejs-app.mjs start",
     "lint": "ESLINT_USE_FLAT_CONFIG=true yarn run -T eslint src",
-    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+    "typecheck": "tsc -p ./tsconfig.json --noEmit && tsc -p ./tsconfig.tests.json --noEmit"
   },
   "license": "BUSL-1.1",
   "author": "aleksnick (https://github.com/aleksnick)"

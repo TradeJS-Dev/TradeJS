@@ -2,7 +2,7 @@ import ProgressBar from 'progress';
 import { fork } from 'child_process';
 import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
-import { TestSuite, TestWorkerResult } from '@tradejs/types';
+import { TestSuite } from '@tradejs/types';
 
 const DEFAULT_PG_POOL_MAX = 10;
 const FAST_AI_PG_CONNECTION_BUDGET = 18;

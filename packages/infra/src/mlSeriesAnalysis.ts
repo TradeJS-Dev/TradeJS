@@ -158,7 +158,6 @@ const candleCoreSummary = (
   }
 
   const closes = candles.map((candle) => toFinite(candle.close, 0));
-  const opens = candles.map((candle) => toFinite(candle.open, 0));
   const highs = candles.map((candle) => toFinite(candle.high, 0));
   const lows = candles.map((candle) => toFinite(candle.low, 0));
   const volumes = candles.map((candle) =>

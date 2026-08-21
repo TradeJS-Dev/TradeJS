@@ -1,7 +1,6 @@
 import { KLineData } from 'klinecharts';
 
 const MERGE_THRESHOLD_PCT = 0.01;
-const WINDOW_SIZE = 500;
 
 type Level = {
   id: string;

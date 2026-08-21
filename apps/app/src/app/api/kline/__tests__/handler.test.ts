@@ -141,11 +141,11 @@ describe('kline route handler', () => {
   });
 
   it('coalesces concurrent identical requests into one connector fetch', async () => {
-    let resolveKline: ((value: unknown) => void) | null = null;
+    const deferred: { resolve?: (value: unknown) => void } = {};
     const klineMock = jest.fn(
       () =>
         new Promise((resolve) => {
-          resolveKline = resolve;
+          deferred.resolve = resolve;
         }),
     );
     mockGetConnectorCreatorByProvider.mockReturnValue(() => ({
@@ -170,13 +170,16 @@ describe('kline route handler', () => {
       },
     );
 
-    for (let index = 0; index < 10 && !resolveKline; index += 1) {
+    for (let index = 0; index < 10 && !deferred.resolve; index += 1) {
       await Promise.resolve();
     }
 
     expect(klineMock).toHaveBeenCalledTimes(1);
 
-    resolveKline?.([makeCandle(900_000, 100), makeCandle(1_800_000, 101)]);
+    if (!deferred.resolve) {
+      throw new Error('kline promise resolver was not initialized');
+    }
+    deferred.resolve([makeCandle(900_000, 100), makeCandle(1_800_000, 101)]);
 
     const [first, second] = await Promise.all([firstPromise, secondPromise]);
 

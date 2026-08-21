@@ -401,15 +401,6 @@ const safeDivide = (
 const normalizeContextNumber = (value: number | null): number | null =>
   value == null || !Number.isFinite(value) ? value : Number(value.toFixed(12));
 
-const averageLastN = (values: number[], period: number): number | null => {
-  if (values.length < period) {
-    return null;
-  }
-
-  const window = values.slice(-period);
-  return window.reduce((sum, value) => sum + value, 0) / period;
-};
-
 const calculateFullEma = (values: number[], period: number): number | null => {
   if (values.length < period) {
     return null;

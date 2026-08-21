@@ -147,7 +147,7 @@ export const listMlChunkFiles = async (params: {
   let entries: string[] = [];
   try {
     entries = await fs.readdir(outDir);
-  } catch (error) {
+  } catch {
     return [];
   }
   return entries

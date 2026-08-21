@@ -16,7 +16,6 @@ const logger = {
 
 declare global {
   // предотвращаем множественные коннекты при HMR в Next.js
-  // eslint-disable-next-line no-var
   var __redis__: Redis | undefined;
 }
 

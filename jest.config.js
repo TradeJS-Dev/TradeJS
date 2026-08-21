@@ -4,6 +4,70 @@ const createJestConfig = nextJest({ dir: './apps/app' });
 
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  collectCoverageFrom: [
+    'apps/app/src/**/*.{ts,tsx}',
+    'packages/*/src/**/*.{ts,tsx}',
+    '!**/__tests__/**',
+    '!**/*.test.{ts,tsx}',
+    '!**/*.spec.{ts,tsx}',
+    '!**/*.d.ts',
+  ],
+  coverageThreshold: {
+    './apps/app/src/': {
+      statements: 37,
+      branches: 32,
+      functions: 33,
+      lines: 38,
+    },
+    './packages/cli/src/': {
+      statements: 60,
+      branches: 52,
+      functions: 63,
+      lines: 61,
+    },
+    './packages/connectors/src/': {
+      statements: 67,
+      branches: 57,
+      functions: 61,
+      lines: 70,
+    },
+    './packages/core/src/': {
+      statements: 90,
+      branches: 76,
+      functions: 92,
+      lines: 92,
+    },
+    './packages/create-tradejs/src/': {
+      statements: 54,
+      branches: 40,
+      functions: 54,
+      lines: 54,
+    },
+    './packages/indicators/src/': {
+      statements: 96,
+      branches: 83,
+      functions: 100,
+      lines: 100,
+    },
+    './packages/infra/src/': {
+      statements: 77,
+      branches: 54,
+      functions: 81,
+      lines: 79,
+    },
+    './packages/node/src/': {
+      statements: 84,
+      branches: 70,
+      functions: 82,
+      lines: 84,
+    },
+    './packages/types/src/': {
+      statements: 95,
+      branches: 85,
+      functions: 100,
+      lines: 97,
+    },
+  },
   moduleNameMapper: {
     '^@tradejs/connectors$': '<rootDir>/packages/connectors/src/index',
     '^@tradejs/core/api$': '<rootDir>/packages/core/src/api',

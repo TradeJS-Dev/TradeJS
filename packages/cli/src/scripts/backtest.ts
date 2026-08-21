@@ -17,7 +17,6 @@ import {
   buildPreparedTestSuite,
   chunkTestSuiteBySymbol,
   createTimestamp,
-  createTable,
   executeTestSuite,
   flags,
   interval,

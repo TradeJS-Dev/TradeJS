@@ -199,8 +199,6 @@ const createConnector = async ({
 const buildReplayAiAnalyses = ({
   runtimeTrades,
   runtimeSignalEvaluations,
-  strategy,
-  symbol,
   toleranceMs,
 }: Pick<ReplayTarget, 'strategy' | 'symbol'> & {
   runtimeTrades: RuntimeTradeRecord[];
@@ -1100,7 +1098,7 @@ export const buildRuntimeParityMessage = ({
   runtimeEntriesCount,
   runtimeDuplicateEntriesCount,
   backtestEntriesCount,
-  matchedCount,
+  matchedCount: _matchedCount,
   runtimeOnlyCount,
   backtestOnlyCount,
   matchedSummary,
@@ -1258,7 +1256,7 @@ const buildRuntimeParityNoTargetsMessage = ({
   window,
   connectorName,
   replayEnv,
-  runtimeGatesEnabled,
+  runtimeGatesEnabled: _runtimeGatesEnabled,
   userName,
 }: {
   window: { start: number; end: number };

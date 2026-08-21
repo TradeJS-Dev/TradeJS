@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 
 const setFiltersMock = jest.fn();
 const useIndicatorsMock = jest.fn();
-const klineChartMock = jest.fn(() => null);
+const klineChartMock = jest.fn((_props: unknown) => null);
 
 jest.mock('#store', () => ({
   useFilters: () => ({

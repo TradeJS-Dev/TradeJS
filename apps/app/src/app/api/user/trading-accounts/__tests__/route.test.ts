@@ -3,6 +3,14 @@ const mockGetTradingAccount = jest.fn();
 const mockListTradingAccounts = jest.fn();
 const mockSaveTradingAccount = jest.fn();
 
+type MockJsonResponse<T> = {
+  status: number;
+  body: T;
+};
+
+const asMockJsonResponse = <T>(response: unknown) =>
+  response as MockJsonResponse<T>;
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -61,7 +69,9 @@ describe('trading accounts route', () => {
       },
     ]);
 
-    const response = await GET();
+    const response = asMockJsonResponse<{
+      accounts: Array<Record<string, unknown>>;
+    }>(await GET());
 
     expect(response).toEqual({
       status: 200,
@@ -84,26 +94,30 @@ describe('trading accounts route', () => {
   it('does not synthesize accounts from legacy user settings', async () => {
     mockListTradingAccounts.mockResolvedValue([]);
 
-    const response = await GET();
+    const response = asMockJsonResponse<{ accounts: unknown[] }>(await GET());
 
     expect(response).toEqual({ status: 200, body: { accounts: [] } });
     expect(mockSaveTradingAccount).not.toHaveBeenCalled();
   });
 
   it('validates required fields and credentials for new accounts', async () => {
-    const missingFields = await POST(request({ id: 'account' }));
+    const missingFields = asMockJsonResponse<{ error: string }>(
+      await POST(request({ id: 'account' })),
+    );
     expect(missingFields.status).toBe(400);
     expect(missingFields.body).toEqual({
       error: 'id, label, provider and universes are required',
     });
 
-    const missingCredentials = await POST(
-      request({
-        id: 'account',
-        label: 'Account',
-        provider: 'bybit',
-        universes: ['tradfi', 'invalid'],
-      }),
+    const missingCredentials = asMockJsonResponse<{ error: string }>(
+      await POST(
+        request({
+          id: 'account',
+          label: 'Account',
+          provider: 'bybit',
+          universes: ['tradfi', 'invalid'],
+        }),
+      ),
     );
     expect(missingCredentials.status).toBe(400);
     expect(missingCredentials.body).toEqual({
@@ -127,16 +141,20 @@ describe('trading accounts route', () => {
       async (_userName: string, account: Record<string, unknown>) => account,
     );
 
-    const response = await POST(
-      request({
-        id: 'tradfi-main',
-        label: 'New label',
-        provider: 'BYBIT',
-        universes: ['tradfi'],
-        environment: 'testnet',
-        apiKey: 'new-key',
-        apiSecret: '   ',
-      }),
+    const response = asMockJsonResponse<{
+      account: Record<string, unknown>;
+    }>(
+      await POST(
+        request({
+          id: 'tradfi-main',
+          label: 'New label',
+          provider: 'BYBIT',
+          universes: ['tradfi'],
+          environment: 'testnet',
+          apiKey: 'new-key',
+          apiSecret: '   ',
+        }),
+      ),
     );
 
     expect(mockSaveTradingAccount).toHaveBeenCalledWith(

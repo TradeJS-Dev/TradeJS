@@ -2,6 +2,14 @@ const mockGetCurrentUserName = jest.fn();
 const mockGetRuntimeDeploymentHeartbeat = jest.fn();
 const mockListRuntimeDeployments = jest.fn();
 
+type MockJsonResponse<T> = {
+  status: number;
+  body: T;
+};
+
+const asMockJsonResponse = <T>(response: unknown) =>
+  response as MockJsonResponse<T>;
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -59,7 +67,9 @@ describe('read-only runtime deployments route', () => {
       lastCycleAt: 123,
     });
 
-    const response = await route.GET();
+    const response = asMockJsonResponse<{
+      deployments: Array<Record<string, unknown>>;
+    }>(await route.GET());
 
     expect(mockListRuntimeDeployments).toHaveBeenCalledWith(
       expect.objectContaining({ userName: 'root' }),

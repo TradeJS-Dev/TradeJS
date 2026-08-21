@@ -411,7 +411,7 @@ export const sendDocumentToTG = async (
 export const formatMessage = (
   signal: Signal,
   analysis?: Partial<SignalAnalysis> | null,
-  options: {
+  _options: {
     userName?: string;
   } = {},
 ): string => {
@@ -427,14 +427,9 @@ export const formatMessage = (
     isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
-    additionalIndicators,
   } = signal;
-  const userName = options.userName || 'root';
-
   try {
     const lines: string[] = [];
-    const distance = additionalIndicators?.distance as number | undefined;
-    const touches = additionalIndicators?.touches as number | undefined;
 
     const formatPrices = () => {
       const tpPercent =

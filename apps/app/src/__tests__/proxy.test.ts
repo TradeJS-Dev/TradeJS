@@ -75,6 +75,9 @@ const createRequest = (url: string, init?: { method?: string }) => {
   } as any;
 };
 
+const runProxy = async (request: ReturnType<typeof createRequest>) =>
+  (await proxy(request)) as unknown as MockResponse;
+
 describe('proxy', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -86,7 +89,7 @@ describe('proxy', () => {
   it('returns 401 for api json-like paths without a session', async () => {
     mockGetToken.mockResolvedValue(null);
 
-    const response = await proxy(
+    const response = await runProxy(
       createRequest('https://tradejs.dev/api/signal/BTCUSDT/abc123.json'),
     );
 
@@ -99,7 +102,7 @@ describe('proxy', () => {
     mockConsumeScreenshotSessionToken.mockResolvedValue('alice');
     mockEncode.mockResolvedValue('signed-jwt');
 
-    const response = await proxy(
+    const response = await runProxy(
       createRequest(
         'https://tradejs.dev/routes/dashboard/bybit/crypto/BTCUSDT/60?screenshotToken=shot-token&foo=1',
       ),

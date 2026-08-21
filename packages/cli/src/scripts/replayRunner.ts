@@ -9,11 +9,6 @@ import {
   mergeRuntimeStrategySelections,
   prepareRunEnvironment,
 } from '../lib/runEnvironment';
-import {
-  buildReplayExchangeComparisonDetails,
-  buildReplayRuntimeComparisonDetails,
-  resolveReplayStrategyNameFromExchangeEntry,
-} from '../lib/runtimeParityDetails';
 import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
 import {
   setRuntimeCompareContext,

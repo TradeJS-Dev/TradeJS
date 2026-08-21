@@ -29,7 +29,7 @@
     "build:ci": "bash -lc 'rm -rf .turbo apps/*/.next apps/*/build apps/*/.turbo packages/*/dist packages/*/build packages/*/.turbo && yarn build'",
     "candles:migrate-provider": "yarn cli:node8g candles:migrate-provider",
     "bump:packages": "node ./bin/bump-publishable-versions.mjs",
-    "checks": "yarn prettify && yarn architecture && yarn build && yarn lint && yarn typecheck && yarn unit",
+    "checks": "yarn prettify && yarn architecture && yarn build && yarn lint && yarn typecheck && yarn unit:coverage",
     "clean-ai-export": "yarn clean-dir --dir ai/export",
     "clean-dir": "yarn cli:node8g clean-dir",
     "clean-ml-export": "yarn clean-dir --dir ml/export",

@@ -13,8 +13,6 @@ import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import {
   isRuntimeStrategyEnabled,
   loadRuntimeStrategyConfigs,
-  loadRuntimeStrategyNames as loadRuntimeStrategyNamesFromRedis,
-  resolveStrategyNameByConfigKey,
 } from '../lib/runtimeRedis';
 import { BACKTEST_CLI_RUNTIME_CONFIG_KEYS } from '../lib/runtimeStrategyBacktest';
 import type { ResearchAgentRunRecord } from '../lib/researchAgent';

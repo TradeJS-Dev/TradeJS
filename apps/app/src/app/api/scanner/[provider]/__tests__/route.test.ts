@@ -21,7 +21,7 @@ jest.mock('@tradejs/node/connectors', () => ({
 }));
 
 jest.mock('@tradejs/core/tickers', () => ({
-  getTopTickers: (...args: unknown[]) => mockGetTopTickers(...args),
+  getTopTickers: (value: unknown) => mockGetTopTickers(value),
 }));
 
 jest.mock('@tradejs/infra/logger', () => ({

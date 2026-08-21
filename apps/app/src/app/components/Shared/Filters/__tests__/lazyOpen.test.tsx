@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react';
 import { FiltersContext } from '../context';
+import type { UIFilters } from '#app/types/ui';
 import { SelectSymbol } from '../Symbol';
 import { SelectBacktest } from '../Backtest';
 import { SelectUniverse } from '../Universe';
@@ -59,6 +60,17 @@ jest.mock('#ui', () => ({
   ),
 }));
 
+const createFilters = (overrides: Partial<UIFilters> = {}): UIFilters => ({
+  provider: 'bybit',
+  symbol: 'BTCUSDT',
+  interval: '15',
+  start: 0,
+  end: 0,
+  backtestId: null,
+  backtestStrategy: null,
+  ...overrides,
+});
+
 describe('filters lazy open', () => {
   it('loads tickers only when symbol select opens', () => {
     const ensureTickersLoaded = jest.fn();
@@ -66,11 +78,11 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'bybit',
             symbol: 'BTCUSDT',
             interval: '15',
-          },
+          }),
           tickers: [],
           backtestFiles: [],
           ensureTickersLoaded,
@@ -91,12 +103,12 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'bybit',
             universe: 'tradfi',
             symbol: 'AAPLUSDT',
             interval: '15',
-          },
+          }),
           tickers: [],
           backtestFiles: [],
         }}
@@ -114,11 +126,11 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'bybit',
             symbol: 'BTCUSDT',
             interval: '15',
-          },
+          }),
           tickers: [],
           backtestFiles: [
             {
@@ -149,11 +161,11 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'bybit',
             symbol: 'BTCUSDT',
             interval: '15',
-          },
+          }),
           tickers: [],
           backtestFiles: [],
           ensureBacktestsLoaded,
@@ -172,13 +184,13 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'coinbase',
             symbol: 'BCHUSDT',
             interval: '15',
             backtestId: 'BCHUSDT_suite_test',
             backtestStrategy: 'AdaptiveMomentumRibbon',
-          },
+          }),
           tickers: [],
           backtestFiles: [],
         }}
@@ -198,12 +210,12 @@ describe('filters lazy open', () => {
     const { getByTestId } = render(
       <FiltersContext.Provider
         value={{
-          filters: {
+          filters: createFilters({
             provider: 'bybit',
             universe: 'crypto',
             symbol: 'ETHUSDT',
             interval: '15',
-          },
+          }),
           tickers: [],
           backtestFiles: [],
           onChangeFilters,

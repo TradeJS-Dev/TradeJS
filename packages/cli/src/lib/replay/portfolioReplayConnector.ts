@@ -201,7 +201,7 @@ export const createPortfolioReplayConnector = (
   };
 
   const getExecutionSlippageBreakdown = ({
-    stage,
+    stage: _stage,
     signal,
   }: {
     stage: 'entry' | 'exit';
