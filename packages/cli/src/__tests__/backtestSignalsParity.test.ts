@@ -697,7 +697,14 @@ const runSignalsPath = async () => {
   };
 };
 
-const runReplayPath = async () => {
+const runReplayPath = async ({
+  hooks = {},
+}: {
+  hooks?: {
+    beforeSignals?: jest.Mock;
+    afterSignals?: jest.Mock;
+  };
+} = {}) => {
   jest.resetModules();
 
   const transcript = createEmptyTranscript();
@@ -719,6 +726,8 @@ const runReplayPath = async () => {
     closePosition: jest.fn(async () => true),
     getTickers: jest.fn(async () => ['ETHUSDT']),
   };
+  const releaseStrategyIndicatorsReplayCache = jest.fn();
+  const releaseStrategyReplayCache = jest.fn();
 
   jest.doMock('args', () => ({
     __esModule: true,
@@ -753,7 +762,7 @@ const runReplayPath = async () => {
     getConnectorCreatorByName: jest.fn(async () => async () => connector),
   }));
   jest.doMock('@tradejs/node/cli', () => ({
-    loadTradejsConfig: jest.fn(async () => ({ hooks: {} })),
+    loadTradejsConfig: jest.fn(async () => ({ hooks })),
   }));
   jest.doMock('@tradejs/node/strategies', () => ({
     enrichSignalWithBinanceMarketContext: jest.fn(
@@ -779,8 +788,8 @@ const runReplayPath = async () => {
     }),
   }));
   jest.doMock('@tradejs/core/strategies', () => ({
-    releaseStrategyIndicatorsReplayCache: jest.fn(),
-    releaseStrategyReplayCache: jest.fn(),
+    releaseStrategyIndicatorsReplayCache,
+    releaseStrategyReplayCache,
   }));
   jest.doMock('@tradejs/core/time', () => ({
     formatUnix: (timestamp: number) => String(timestamp),
@@ -838,6 +847,8 @@ const runReplayPath = async () => {
     transcript,
     result,
     signals: result.signals,
+    releaseStrategyIndicatorsReplayCache,
+    releaseStrategyReplayCache,
   };
 };
 
@@ -966,5 +977,34 @@ describe('backtest/signals runtime parity', () => {
     expect(replayRun.signals[0]?.additionalIndicators?.baseContext).toEqual(
       backtestRun.enrichedSignals[0]?.additionalIndicators?.baseContext,
     );
+  });
+
+  it('aborts complete historical replay cycles through hooks and still releases replay caches', async () => {
+    const beforeSignals = jest.fn(async () => ({ abort: true }));
+    const afterSignals = jest.fn(async () => undefined);
+
+    const replayRun = await runReplayPath({
+      hooks: { beforeSignals, afterSignals },
+    });
+
+    expect(replayRun.result).toMatchObject({
+      signals: [],
+      cycleCount: 2,
+      abortedCycles: 2,
+    });
+    expect(replayRun.transcript.calls).toEqual([]);
+    expect(beforeSignals).toHaveBeenCalledTimes(2);
+    expect(afterSignals).toHaveBeenCalledTimes(2);
+    expect(afterSignals).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signals: [],
+        status: 'completed',
+        durationMs: expect.any(Number),
+      }),
+    );
+    expect(
+      replayRun.releaseStrategyIndicatorsReplayCache,
+    ).toHaveBeenCalledTimes(1);
+    expect(replayRun.releaseStrategyReplayCache).toHaveBeenCalledTimes(1);
   });
 });
