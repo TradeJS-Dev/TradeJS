@@ -396,4 +396,135 @@ describe('runtime scorecard', () => {
       'RUNTIME_LINEAGE_INCOMPLETE',
     );
   });
+
+  it('uses the embedded deployment lineage while keeping cutover rows non-comparable', () => {
+    const endTime = Date.UTC(2026, 7, 21, 18);
+    const currentLineage = {
+      schemaVersion: 3,
+      strategyRevision: 'sr1:5555555555555555',
+      deploymentCompositionId: 'dc1:1111111111111111',
+      strategyPackageVersion: '3.0.2',
+      strategyDependencyVersions: {
+        '@tradejs/strategy-kit': '3.0.3',
+      },
+      runtimePackageVersion: '3.2.0',
+      maxLossValue: 1,
+    } as const;
+    const runtimeArtifact = {
+      window: { startTime: endTime - 86_400_000, endTime },
+      deployment: {
+        schemaVersion: 2,
+        id: 'production',
+        deploymentCompositionId: 'dc1:1111111111111111',
+        accountId: 'bybit-main',
+        strategies: [
+          {
+            strategyName: 'DoubleTap',
+            strategyRevision: 'sr1:5555555555555555',
+            enabled: true,
+            strategyPackageVersion: '3.0.2',
+            strategyDependencyVersions: {
+              '@tradejs/strategy-kit': '3.0.3',
+            },
+            runtimePackageVersion: '3.2.0',
+          },
+        ],
+      },
+      runtime: {
+        lineageScopes: [
+          {
+            strategy: 'DoubleTap',
+            symbol: 'BTCUSDT',
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+            lineage: currentLineage,
+          },
+          {
+            strategy: 'DoubleTap',
+            symbol: 'OLDUSDT',
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+            lineage: {
+              schemaVersion: 2,
+              version: 7,
+              strategyPackageVersion: '3.0.1',
+              runtimePackageVersion: '3.1.14',
+              maxLossValue: 1,
+            },
+          },
+        ],
+        trades: [
+          {
+            strategy: 'DoubleTap',
+            orderId: 'current',
+            status: 'closed',
+            exitTimestamp: endTime - 1,
+            closedPnl: 2,
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+            runtimeLineage: currentLineage,
+          },
+          {
+            strategy: 'DoubleTap',
+            orderId: 'legacy',
+            status: 'closed',
+            exitTimestamp: endTime - 2,
+            closedPnl: -10,
+            deploymentId: 'production',
+            accountId: 'bybit-main',
+          },
+        ],
+        signals: [],
+        evaluations: [],
+      },
+    };
+    const calibrationArtifact = {
+      samples: [
+        {
+          strategy: 'DoubleTap',
+          runtimeLineage: currentLineage,
+          signalToFillAdverseBps: 2,
+          residualVsCurrentModelBps: -8,
+        },
+        {
+          strategy: 'DoubleTap',
+          runtimeLineage: null,
+          signalToFillAdverseBps: 99,
+          residualVsCurrentModelBps: 89,
+        },
+      ],
+    };
+
+    const scorecard = buildRuntimeScorecard({
+      runtimeArtifact,
+      calibrationArtifact,
+      strategy: 'DoubleTap',
+      generatedAt: endTime,
+    });
+
+    expect(scorecard.lineage).toMatchObject({
+      complete: true,
+      coverageComplete: true,
+      strategyRevision: 'sr1:5555555555555555',
+      maxLossValue: 1,
+    });
+    expect(scorecard.funnel).toMatchObject({
+      fills: 1,
+      nonComparableFills: 1,
+      comparableClosedTrades: 1,
+      nonComparableClosedTrades: 1,
+    });
+    expect(scorecard.execution).toEqual({
+      available: true,
+      actualSignalToFillSlippageBps: 2,
+      residualVsCurrentModelBps: -8,
+    });
+    expect(scorecard.rolling[0]).toMatchObject({
+      closedTrades: 1,
+      realizedPnl: 2,
+    });
+    expect(scorecard.reactions.map(({ code }) => code)).not.toContain(
+      'RUNTIME_LINEAGE_INCOMPLETE',
+    );
+  });
 });

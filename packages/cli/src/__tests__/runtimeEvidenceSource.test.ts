@@ -59,6 +59,7 @@ const deployment = {
   provider: 'bybit',
   accountId: 'bybit-default',
   enabled: true,
+  tickers: ['BTCUSDT', 'ETHUSDT'],
   strategies: [
     {
       strategyName: 'TrendShift',
@@ -205,6 +206,10 @@ describe('runtime evidence replay source', () => {
         strategyRevision: 'sr1:1111111111111111',
         deploymentCompositionId: 'dc1:1111111111111111',
         strategyPackageVersion: '3.0.0',
+        strategyDependencyVersions: {
+          '@tradejs/indicators': '3.2.0',
+          '@tradejs/strategy-kit': '3.0.2',
+        },
         runtimePackageVersion: '3.2.0',
         maxLossValue: 1,
       },
@@ -216,7 +221,7 @@ describe('runtime evidence replay source', () => {
       JSON.stringify({
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
-        deployment,
+        deployment: { ...deployment, tickers: undefined },
         runtime: {
           trades: [],
           signals: [],
@@ -233,7 +238,10 @@ describe('runtime evidence replay source', () => {
         expectedUserName: 'root',
         expectedWindow: { start: 100, end: 400 },
       }),
-    ).resolves.toMatchObject({ lineageScopes: [lineageScope] });
+    ).resolves.toMatchObject({
+      deployment: { tickers: ['ETHUSDT'] },
+      lineageScopes: [lineageScope],
+    });
   });
 });
 

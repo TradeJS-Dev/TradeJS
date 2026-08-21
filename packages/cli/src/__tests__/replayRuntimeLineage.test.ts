@@ -195,6 +195,23 @@ describe('replay runtime lineage filtering', () => {
       reason: 'no_runtime_artifacts_with_matching_lineage',
     });
   });
+
+  it('reports absent replay lineage scopes separately from lineage mismatch', () => {
+    const result = filterReplayComparisonByLineage({
+      replayLineages: [],
+      runtimeTrades: [],
+      runtimeSignals: [],
+      runtimeSignalEvaluations: [],
+      runtimeLineageScopes: [],
+      backtestEntries: [],
+    });
+
+    expect(result.lineage).toMatchObject({
+      replayScopes: 0,
+      comparableScopes: 0,
+      reason: 'replay_produced_no_lineage_scopes',
+    });
+  });
 });
 
 describe('exchange order status classification', () => {

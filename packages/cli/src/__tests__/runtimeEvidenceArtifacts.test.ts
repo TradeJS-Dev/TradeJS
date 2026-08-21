@@ -8,6 +8,7 @@ import {
 } from '../lib/runtimeEvidenceArtifacts';
 import {
   listPendingRuntimeEvidenceBundles,
+  listRuntimeEvidenceBundleStatuses,
   markRuntimeEvidenceBundleProcessed,
   syncRuntimeEvidenceBundles,
 } from '../lib/runtimeEvidenceSync';
@@ -19,6 +20,38 @@ const createArtifact = (startTime: number, endTime: number) => ({
   window: { startTime, endTime },
   runtime: {
     counts: { trades: 1, signals: 1, evaluations: 1 },
+  },
+});
+
+const createReplayableArtifact = (startTime: number, endTime: number) => ({
+  ...createArtifact(startTime, endTime),
+  deployment: {
+    schemaVersion: 2,
+    id: 'production',
+    deploymentCompositionId: 'dc1:1111111111111111',
+    label: 'Production',
+    connectorName: 'bybit',
+    provider: 'bybit',
+    accountId: 'bybit-default',
+    enabled: true,
+    tickers: ['BTCUSDT'],
+    strategies: [
+      {
+        strategyName: 'DoubleTap',
+        strategyRevision: 'sr1:5555555555555555',
+        enabled: true,
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        strategyPackage: '@tradejs/strategy-double-tap',
+        strategyPackageVersion: '3.0.2',
+        strategyDependencyVersions: {
+          '@tradejs/strategy-kit': '3.0.3',
+        },
+        runtimePackageVersion: '3.1.14',
+        strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
+      },
+    ],
   },
 });
 
@@ -42,7 +75,7 @@ describe('runtime evidence artifacts', () => {
       userName: 'root',
       startTime,
       endTime,
-      artifact: createArtifact(startTime, endTime),
+      artifact: createReplayableArtifact(startTime, endTime),
       counts: { trades: 1, signals: 1, evaluations: 1 },
       lineageKeys: ['lineage-b', 'lineage-a', 'lineage-a'],
     });
@@ -106,7 +139,7 @@ describe('runtime evidence artifacts', () => {
       userName: 'root',
       startTime,
       endTime,
-      artifact: createArtifact(startTime, endTime),
+      artifact: createReplayableArtifact(startTime, endTime),
       counts: { trades: 1 },
       lineageKeys: [],
     });
@@ -128,6 +161,7 @@ describe('runtime evidence artifacts', () => {
 
     expect(result.received).toHaveLength(1);
     expect(result.pending).toHaveLength(1);
+    expect(result.unsupported).toHaveLength(0);
     await markRuntimeEvidenceBundleProcessed({
       evidenceRoot,
       deploymentId: 'production',
@@ -140,5 +174,82 @@ describe('runtime evidence artifacts', () => {
         deploymentId: 'production',
       }),
     ).resolves.toHaveLength(0);
+  });
+
+  it('separates verified legacy bundles from replayable pending work', async () => {
+    const publishRoot = path.join(rootDir, 'server');
+    const evidenceRoot = path.join(rootDir, 'local');
+    const firstStart = Date.UTC(2026, 7, 6, 18);
+    const firstEnd = Date.UTC(2026, 7, 7, 18);
+    const secondEnd = Date.UTC(2026, 7, 8, 18);
+    const legacy = await publishRuntimeEvidenceBundle({
+      publishRoot,
+      deploymentId: 'production',
+      userName: 'root',
+      startTime: firstStart,
+      endTime: firstEnd,
+      artifact: createArtifact(firstStart, firstEnd),
+      counts: { trades: 1 },
+      lineageKeys: [],
+    });
+    const current = await publishRuntimeEvidenceBundle({
+      publishRoot,
+      deploymentId: 'production',
+      userName: 'root',
+      startTime: firstEnd,
+      endTime: secondEnd,
+      artifact: createReplayableArtifact(firstEnd, secondEnd),
+      counts: { trades: 1 },
+      lineageKeys: [],
+    });
+
+    const result = await syncRuntimeEvidenceBundles({
+      source: path.join(publishRoot, 'ready', 'production'),
+      evidenceRoot,
+      deploymentId: 'production',
+      runRsync: async (rsyncArgs) => {
+        const destination = rsyncArgs.at(-1)!.replace(/\/$/, '');
+        await fs.cp(
+          path.dirname(path.dirname(path.dirname(legacy.bundleDir))),
+          destination,
+          {
+            recursive: true,
+          },
+        );
+        return {};
+      },
+    });
+
+    expect(result.pending.map((bundle) => bundle.manifest.artifactId)).toEqual([
+      current.manifest.artifactId,
+    ]);
+    expect(
+      result.unsupported.map(({ bundle, reason }) => ({
+        artifactId: bundle.manifest.artifactId,
+        reason,
+      })),
+    ).toEqual([
+      {
+        artifactId: legacy.manifest.artifactId,
+        reason: 'Runtime evidence deployment snapshot is missing or invalid',
+      },
+    ]);
+    await expect(
+      listRuntimeEvidenceBundleStatuses({
+        evidenceRoot,
+        deploymentId: 'production',
+      }),
+    ).resolves.toMatchObject({
+      pending: [
+        { bundleDir: expect.stringContaining(current.manifest.artifactId) },
+      ],
+      unsupported: [
+        {
+          bundle: {
+            bundleDir: expect.stringContaining(legacy.manifest.artifactId),
+          },
+        },
+      ],
+    });
   });
 });

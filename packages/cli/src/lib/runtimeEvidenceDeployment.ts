@@ -3,6 +3,7 @@ import type {
   Interval,
   MarketUniverse,
   RuntimeDeployment,
+  RuntimeLineage,
   RuntimeStrategySelection,
   RuntimeStrategyControlState,
   StrategyConfig,
@@ -40,6 +41,14 @@ export type RuntimeEvidenceDeploymentSnapshot = {
   assetClasses?: AssetClass[];
   tickers?: string[];
   strategies: RuntimeEvidenceStrategySnapshot[];
+};
+
+type RuntimeEvidenceLineageScope = {
+  strategy: string;
+  symbol: string;
+  deploymentId?: string;
+  accountId?: string;
+  lineage?: RuntimeLineage;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -84,6 +93,39 @@ const isRuntimeStrategySelection = (
     Array.isArray(value.tickers) &&
     value.tickers.length > 0 &&
     value.tickers.every((ticker) => isNonEmptyString(ticker)));
+
+const samePackageVersions = (
+  left: Record<string, string> | undefined,
+  right: Record<string, string> | undefined,
+) => {
+  if (!left || !right) return false;
+  const leftEntries = Object.entries(left).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const rightEntries = Object.entries(right).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
+};
+
+const lineageMatchesStrategySnapshot = ({
+  lineage,
+  deployment,
+  strategy,
+}: {
+  lineage: RuntimeLineage | undefined;
+  deployment: RuntimeEvidenceDeploymentSnapshot;
+  strategy: RuntimeEvidenceStrategySnapshot;
+}) =>
+  lineage?.schemaVersion === 3 &&
+  lineage.strategyRevision === strategy.strategyRevision &&
+  lineage.deploymentCompositionId === deployment.deploymentCompositionId &&
+  lineage.strategyPackageVersion === strategy.strategyPackageVersion &&
+  lineage.runtimePackageVersion === strategy.runtimePackageVersion &&
+  samePackageVersions(
+    lineage.strategyDependencyVersions,
+    strategy.strategyDependencyVersions,
+  );
 
 export const parseRuntimeEvidenceDeploymentSnapshot = (
   value: unknown,
@@ -170,6 +212,70 @@ export const activeRuntimeEvidenceStrategies = (
   deployment.enabled
     ? deployment.strategies.filter((strategy) => strategy.enabled)
     : [];
+
+export const resolveRuntimeEvidenceTickerUniverse = ({
+  deployment,
+  lineageScopes,
+}: {
+  deployment: RuntimeEvidenceDeploymentSnapshot;
+  lineageScopes: RuntimeEvidenceLineageScope[];
+}): RuntimeEvidenceDeploymentSnapshot => {
+  const declaredTickers = deployment.tickers?.filter(isNonEmptyString) ?? [];
+  if (declaredTickers.length > 0) {
+    return {
+      ...deployment,
+      tickers: [
+        ...new Set(declaredTickers.map((ticker) => ticker.trim())),
+      ].sort(),
+    };
+  }
+
+  const activeStrategies = activeRuntimeEvidenceStrategies(deployment);
+  if (
+    activeStrategies.length > 0 &&
+    activeStrategies.every((strategy) => strategy.selection?.tickers?.length)
+  ) {
+    return {
+      ...deployment,
+      tickers: [
+        ...new Set(
+          activeStrategies.flatMap(
+            (strategy) => strategy.selection?.tickers ?? [],
+          ),
+        ),
+      ].sort(),
+    };
+  }
+
+  const strategiesByName = new Map(
+    activeStrategies.map((strategy) => [strategy.strategyName, strategy]),
+  );
+  const tickers = new Set<string>();
+  for (const scope of lineageScopes) {
+    const strategy = strategiesByName.get(scope.strategy);
+    if (
+      !strategy ||
+      scope.deploymentId !== deployment.id ||
+      scope.accountId !== deployment.accountId ||
+      !isNonEmptyString(scope.symbol) ||
+      !lineageMatchesStrategySnapshot({
+        lineage: scope.lineage,
+        deployment,
+        strategy,
+      })
+    ) {
+      continue;
+    }
+    tickers.add(scope.symbol.trim());
+  }
+  if (tickers.size === 0) {
+    throw new Error(
+      'Runtime evidence has no immutable ticker universe for the embedded deployment composition',
+    );
+  }
+
+  return { ...deployment, tickers: [...tickers].sort() };
+};
 
 export const runtimeDeploymentFromEvidence = (
   deployment: RuntimeEvidenceDeploymentSnapshot,

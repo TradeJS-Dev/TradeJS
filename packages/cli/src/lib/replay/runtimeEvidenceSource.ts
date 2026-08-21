@@ -11,6 +11,7 @@ import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import {
   activeRuntimeEvidenceStrategies,
   parseRuntimeEvidenceDeploymentSnapshot,
+  resolveRuntimeEvidenceTickerUniverse,
   type RuntimeEvidenceDeploymentSnapshot,
 } from '../runtimeEvidenceDeployment';
 
@@ -104,7 +105,13 @@ const readRuntimeEvidenceArtifact = async ({
     endTime:
       asFiniteNumber(rootWindow?.endTime) ??
       asFiniteNumber(runtimeWindow?.endTime),
-    deployment: parseRuntimeEvidenceDeploymentSnapshot(root.deployment),
+    deployment: resolveRuntimeEvidenceTickerUniverse({
+      deployment: parseRuntimeEvidenceDeploymentSnapshot(root.deployment),
+      lineageScopes: unwrapRows<RuntimeLineageScopeRecord>(
+        runtime.lineageScopes,
+        'lineageScope',
+      ),
+    }),
   };
 };
 

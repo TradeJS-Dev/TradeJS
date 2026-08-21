@@ -305,7 +305,9 @@ export const filterReplayComparisonByLineage = ({
       reason:
         comparableScopeKeys.size > 0
           ? null
-          : 'no_runtime_artifacts_with_matching_lineage',
+          : expectedByScope.size === 0
+            ? 'replay_produced_no_lineage_scopes'
+            : 'no_runtime_artifacts_with_matching_lineage',
       replay: [...expectedByScope.entries()]
         .map(([scope, lineage]) => {
           const [deploymentId, accountId, strategy, symbol] = scope.split('::');

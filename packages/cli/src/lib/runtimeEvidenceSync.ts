@@ -7,6 +7,10 @@ import {
   verifyRuntimeEvidenceBundle,
   type VerifiedRuntimeEvidenceBundle,
 } from './runtimeEvidenceArtifacts';
+import {
+  activeRuntimeEvidenceStrategies,
+  parseRuntimeEvidenceDeploymentSnapshot,
+} from './runtimeEvidenceDeployment';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,7 +57,40 @@ export const buildRuntimeEvidenceRsyncArgs = ({
 const receiptPath = (receiptsRoot: string, artifactId: string) =>
   path.join(receiptsRoot, `${safeSegment(artifactId, 'artifact')}.json`);
 
-export const listPendingRuntimeEvidenceBundles = async ({
+export type UnsupportedRuntimeEvidenceBundle = {
+  bundle: VerifiedRuntimeEvidenceBundle;
+  reason: string;
+};
+
+const compareBundles = (
+  left: VerifiedRuntimeEvidenceBundle,
+  right: VerifiedRuntimeEvidenceBundle,
+) =>
+  left.manifest.window.endTime - right.manifest.window.endTime ||
+  left.manifest.createdAt - right.manifest.createdAt;
+
+export const inspectRuntimeEvidenceBundleSupport = (
+  bundle: VerifiedRuntimeEvidenceBundle,
+): { supported: true } | { supported: false; reason: string } => {
+  try {
+    const deployment = parseRuntimeEvidenceDeploymentSnapshot(
+      bundle.artifact.deployment,
+    );
+    if (activeRuntimeEvidenceStrategies(deployment).length === 0) {
+      throw new Error(
+        'Runtime evidence deployment has no enabled active strategies',
+      );
+    }
+    return { supported: true };
+  } catch (error) {
+    return {
+      supported: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
+export const listRuntimeEvidenceBundleStatuses = async ({
   evidenceRoot,
   deploymentId,
 }: {
@@ -65,6 +102,7 @@ export const listPendingRuntimeEvidenceBundles = async ({
   const receiptsRoot = path.join(evidenceRoot, 'receipts', safeDeploymentId);
   const bundles = await discoverRuntimeEvidenceBundles(artifactsRoot);
   const pending: VerifiedRuntimeEvidenceBundle[] = [];
+  const unsupported: UnsupportedRuntimeEvidenceBundle[] = [];
 
   for (const bundleDir of bundles) {
     const verified = await verifyRuntimeEvidenceBundle(bundleDir);
@@ -72,17 +110,39 @@ export const listPendingRuntimeEvidenceBundles = async ({
 
     try {
       await fs.access(receiptPath(receiptsRoot, verified.manifest.artifactId));
+      continue;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+
+    const support = inspectRuntimeEvidenceBundleSupport(verified);
+    if (support.supported) {
       pending.push(verified);
+    } else {
+      unsupported.push({ bundle: verified, reason: support.reason });
     }
   }
 
-  return pending.sort(
-    (left, right) =>
-      left.manifest.window.startTime - right.manifest.window.startTime ||
-      left.manifest.createdAt - right.manifest.createdAt,
-  );
+  return {
+    pending: pending.sort(compareBundles),
+    unsupported: unsupported.sort((left, right) =>
+      compareBundles(left.bundle, right.bundle),
+    ),
+  };
+};
+
+export const listPendingRuntimeEvidenceBundles = async ({
+  evidenceRoot,
+  deploymentId,
+}: {
+  evidenceRoot: string;
+  deploymentId: string;
+}) => {
+  const { pending } = await listRuntimeEvidenceBundleStatuses({
+    evidenceRoot,
+    deploymentId,
+  });
+  return pending;
 };
 
 export const markRuntimeEvidenceBundleProcessed = async ({
@@ -189,14 +249,16 @@ export const syncRuntimeEvidenceBundles = async ({
     received.push(await verifyRuntimeEvidenceBundle(destinationDir));
   }
 
+  const statuses = await listRuntimeEvidenceBundleStatuses({
+    evidenceRoot,
+    deploymentId: safeDeploymentId,
+  });
+
   return {
     rsyncArgs,
     stdout: String(transfer.stdout ?? ''),
     stderr: String(transfer.stderr ?? ''),
     received,
-    pending: await listPendingRuntimeEvidenceBundles({
-      evidenceRoot,
-      deploymentId: safeDeploymentId,
-    }),
+    ...statuses,
   };
 };

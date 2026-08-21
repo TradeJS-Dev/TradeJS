@@ -1,6 +1,8 @@
+import type { RuntimeLineage } from '@tradejs/types';
 import {
   activeRuntimeEvidenceStrategies,
   parseRuntimeEvidenceDeploymentSnapshot,
+  resolveRuntimeEvidenceTickerUniverse,
   runtimeDeploymentFromEvidence,
 } from '../lib/runtimeEvidenceDeployment';
 
@@ -96,5 +98,64 @@ describe('runtime evidence deployment snapshot', () => {
         ],
       }),
     ).toThrow('Runtime evidence strategy config does not match its scope');
+  });
+
+  it('derives the immutable ticker universe only from the embedded composition lineage', () => {
+    const parsed = parseRuntimeEvidenceDeploymentSnapshot(snapshot);
+
+    expect(
+      resolveRuntimeEvidenceTickerUniverse({
+        deployment: parsed,
+        lineageScopes: [
+          {
+            strategy: 'DoubleTap',
+            symbol: 'OLDUSDT',
+            deploymentId: 'production',
+            accountId: 'bybit-default',
+            lineage: {
+              schemaVersion: 2,
+              version: 7,
+              strategyPackageVersion: '3.0.1',
+              runtimePackageVersion: '3.1.11',
+              maxLossValue: 1,
+            } as unknown as RuntimeLineage,
+          },
+          {
+            strategy: 'DoubleTap',
+            symbol: 'BTCUSDT',
+            deploymentId: 'production',
+            accountId: 'bybit-default',
+            lineage: {
+              schemaVersion: 3,
+              strategyRevision: 'sr1:5555555555555555',
+              deploymentCompositionId: 'dc1:1111111111111111',
+              strategyPackageVersion: '3.0.1',
+              strategyDependencyVersions: {
+                '@tradejs/strategy-kit': '3.0.1',
+              },
+              runtimePackageVersion: '3.2.0',
+              maxLossValue: 1,
+            },
+          },
+          {
+            strategy: 'DoubleTap',
+            symbol: 'ETHUSDT',
+            deploymentId: 'production',
+            accountId: 'bybit-default',
+            lineage: {
+              schemaVersion: 3,
+              strategyRevision: 'sr1:5555555555555555',
+              deploymentCompositionId: 'dc1:1111111111111111',
+              strategyPackageVersion: '3.0.1',
+              strategyDependencyVersions: {
+                '@tradejs/strategy-kit': '3.0.1',
+              },
+              runtimePackageVersion: '3.2.0',
+              maxLossValue: 1,
+            },
+          },
+        ],
+      }).tickers,
+    ).toEqual(['BTCUSDT', 'ETHUSDT']);
   });
 });

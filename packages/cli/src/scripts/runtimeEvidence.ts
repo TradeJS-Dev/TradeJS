@@ -11,6 +11,7 @@ import { runtimeLineageKey } from '../lib/runtimeLineage';
 import {
   activeRuntimeEvidenceStrategies,
   resolveRuntimeEvidenceDeploymentSnapshot,
+  resolveRuntimeEvidenceTickerUniverse,
 } from '../lib/runtimeEvidenceDeployment';
 
 args.option(['u', 'user'], 'Use user config', 'root');
@@ -111,20 +112,20 @@ const parseStrategyFilter = (value: unknown): string[] =>
 export const runtimeEvidence = async () => {
   const { startTime, endTime, source } = resolveWindow();
   const deploymentId = String(flags.deployment);
-  const deployment = await resolveRuntimeEvidenceDeploymentSnapshot({
+  const deploymentSnapshot = await resolveRuntimeEvidenceDeploymentSnapshot({
     userName: String(flags.user),
     projectRoot,
     deploymentId,
   });
-  const activeStrategies = activeRuntimeEvidenceStrategies(deployment).map(
-    ({ strategyName }) => strategyName,
-  );
+  const activeStrategies = activeRuntimeEvidenceStrategies(
+    deploymentSnapshot,
+  ).map(({ strategyName }) => strategyName);
   const requestedStrategies = parseStrategyFilter(flags.strategy);
   const strategies = requestedStrategies.length
     ? requestedStrategies
     : activeStrategies;
   const declaredStrategies = new Set(
-    deployment.strategies.map(({ strategyName }) => strategyName),
+    deploymentSnapshot.strategies.map(({ strategyName }) => strategyName),
   );
   const unknownStrategies = strategies.filter(
     (strategyName) => !declaredStrategies.has(strategyName),
@@ -150,6 +151,10 @@ export const runtimeEvidence = async () => {
     trades: evidence.trades,
     strategyConfigs: evidence.strategyConfigs,
     evaluationStatsBuckets: evidence.evaluationStatsBuckets,
+    lineageScopes: evidence.lineageScopes,
+  });
+  const deployment = resolveRuntimeEvidenceTickerUniverse({
+    deployment: deploymentSnapshot,
     lineageScopes: evidence.lineageScopes,
   });
   const artifact = {
