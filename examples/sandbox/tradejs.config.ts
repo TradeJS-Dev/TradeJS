@@ -24,7 +24,6 @@ export default defineConfig({
         tickers: [SANDBOX_E2E_TICKER],
         strategies: {
           [SANDBOX_E2E_STRATEGY]: {
-            version: 1,
             enabled: true,
             config: SANDBOX_E2E_STRATEGY_CONFIG,
           },
