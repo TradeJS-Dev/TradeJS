@@ -4,7 +4,7 @@ This guide records secret names and ownership only. Secret values must never be
 copied into Git, logs, issues, or research artifacts.
 
 The canonical cross-repository migration table lives in
-`TradeJS-Project/docs/github-environment-ownership.md`. This engine repository
+`TradeJS-Project/docs/github-secret-ownership.md`. This engine repository
 documents the subset relevant to package publication.
 
 ## Engine release model
@@ -37,10 +37,11 @@ Do not expose it to `TradeJS-Project`, `TradeJS-Deploy`,
 `TradeJS-Workflows`, the docs repository, or the site repository. npm trusted
 publishing may replace the token later without changing repository ownership.
 
-Create a protected `npm-production` environment in each npm-publishing
-repository. Stable promotion uses that environment; beta publication does not.
-The environment must permit the scheduled promotion to run unattended. Manual
-emergency promotion remains guarded by an explicit confirmation input.
+Store `NPM_TOKEN` as a repository secret, or as an organization secret limited
+to the publishing repositories listed above. Stable and beta publication use
+the same credential boundary. A GitHub Environment is not required: npm
+provenance is issued through the workflow's `id-token: write` permission.
+Manual emergency promotion remains guarded by an explicit confirmation input.
 
 The engine workflow needs only its scoped, ephemeral `GITHUB_TOKEN` for tagging
 the already verified source commit. Independently published Base, Kit, and
@@ -53,14 +54,13 @@ required.
 
 `TradeJS-Project` composes exact stable package versions and publishes the
 immutable application image. It does not publish npm packages and therefore
-must not have `NPM_TOKEN` or an `npm-production` environment.
+must not have `NPM_TOKEN`.
 
-Its only cross-repository credential is `DEPLOY_REPOSITORY_TOKEN`, stored in the
-protected `production` environment and restricted to dispatching
-`TradeJS-Deploy`.
+Its only cross-repository credential is the repository secret
+`DEPLOY_REPOSITORY_TOKEN`, restricted to dispatching `TradeJS-Deploy`.
 
-All server and research-agent credentials belong to the protected `production`
-environment in `TradeJS-Deploy`:
+All server and research-agent credentials belong to repository secrets in
+`TradeJS-Deploy` (or organization secrets restricted to that repository):
 
 - `SSH_HOST`, `SSH_USER`, `SSH_KEY`;
 - `GIT_SSH_PRIVATE_KEY`, `AGENT_GITHUB_TOKEN`;

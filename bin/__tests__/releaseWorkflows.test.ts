@@ -53,7 +53,7 @@ describe('npm release workflows', () => {
     expect(workflow).toContain("cron: '0 3 * * 1'");
     expect(workflow).toContain('confirm_promotion');
     expect(workflow).toContain('publish-images.yml/runs');
-    expect(workflow).toContain('environment: npm-production');
+    expect(workflow).not.toMatch(/^\s*environment:/m);
     expect(workflow).toContain('--tag stable-candidate');
     expect(workflow).toContain('Wait for complete stable registry consistency');
     expect(workflow).toContain('wait-for-npm-packages.mjs');
@@ -110,6 +110,6 @@ describe('npm release workflows', () => {
     expect(workflow).toContain('versions_csv');
     expect(workflow).toContain('confirm_unpublish');
     expect(workflow).toContain('npm-cleanup.mjs');
-    expect(workflow).toContain('environment: npm-production');
+    expect(workflow).not.toMatch(/^\s*environment:/m);
   });
 });
