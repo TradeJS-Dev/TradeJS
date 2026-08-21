@@ -123,7 +123,23 @@ process.argv = normalizeCliArgv(process.argv, {
   '-T': '--toleranceBars',
 });
 
-const flags = args.parse(process.argv);
+type RuntimeParityCliFlags = {
+  user: string;
+  connector: unknown;
+  days?: unknown;
+  startTime?: unknown;
+  endTime?: unknown;
+  strategy?: string;
+  tickers?: string;
+  cacheOnly?: boolean;
+  toleranceBars?: unknown;
+  fullUniverse?: boolean;
+  runtimeGates?: boolean;
+  notify?: boolean;
+  details?: boolean;
+};
+
+const flags = args.parse(process.argv) as RuntimeParityCliFlags;
 const interval = '15' as Interval;
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();

@@ -148,6 +148,13 @@ const buildAfterSignalsContext = ({
   ),
 });
 
+const getConnectorName = (connector: Connector) => {
+  const name = 'name' in connector ? connector.name : undefined;
+  return (
+    String(name || DEFAULT_CONNECTOR_NAME).trim() || DEFAULT_CONNECTOR_NAME
+  );
+};
+
 export const runHistoricalSignalsReplay = async ({
   preparedRun,
   interval,
@@ -164,10 +171,7 @@ export const runHistoricalSignalsReplay = async ({
   const replayConnector = createPortfolioReplayConnector(
     preparedRun.marketConnector,
   );
-  const connectorName =
-    String(
-      (preparedRun.marketConnector as any)?.name || DEFAULT_CONNECTOR_NAME,
-    ).trim() || DEFAULT_CONNECTOR_NAME;
+  const connectorName = getConnectorName(preparedRun.marketConnector);
   const binanceConnector =
     connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
       ? await loadReferenceConnector('Binance')
@@ -183,14 +187,14 @@ export const runHistoricalSignalsReplay = async ({
       start: preparedRun.preloadStart,
       end: preparedRun.window.end,
       cacheOnly: true,
-      interval: interval as any,
+      interval,
     }),
     coinbaseConnector.kline({
       symbol: 'BTCUSDT',
       start: preparedRun.preloadStart,
       end: preparedRun.window.end,
       cacheOnly: true,
-      interval: interval as any,
+      interval,
     }),
   ]);
   const btcMarketData = await preparedRun.marketConnector.kline({
@@ -198,14 +202,14 @@ export const runHistoricalSignalsReplay = async ({
     start: preparedRun.preloadStart,
     end: preparedRun.window.end,
     cacheOnly: true,
-    interval: interval as any,
+    interval,
   });
   const ethMarketData = await preparedRun.marketConnector.kline({
     symbol: 'ETHUSDT',
     start: preparedRun.preloadStart,
     end: preparedRun.window.end,
     cacheOnly: true,
-    interval: interval as any,
+    interval,
   });
 
   const prepareBar = new ProgressBar(

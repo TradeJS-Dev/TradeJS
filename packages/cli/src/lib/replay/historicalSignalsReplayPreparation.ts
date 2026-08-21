@@ -241,7 +241,7 @@ export const prepareHistoricalReplay = async (
       start: preparedRun.preloadStart,
       end: preparedRun.window.end,
       cacheOnly: true,
-      interval: interval as any,
+      interval,
     });
     const preparedData = buildPreparedData({
       data,
@@ -323,7 +323,7 @@ export const prepareHistoricalReplay = async (
               deploymentId: preparedRun.deploymentId,
               config: buildReplayStrategyConfig({
                 strategyConfig: strategy.strategyConfig,
-                interval: interval as any,
+                interval,
               }),
               symbol,
               data: preparedData.prevData,
