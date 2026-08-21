@@ -284,8 +284,9 @@ evidence while allowing a retained side to become the released composition.
 When one side is useful and the other supplies the dominant loss, the release
 workflow must run five frozen variants: current gate, failing-side block,
 retained-side pass-through plus block, causal repair of the failing side, and a
-direction-aware replacement. Recent-window and cost failures can still reject
-the one-side composition; they are not a reason to skip the experiment.
+direction-aware replacement. A selection-grade recent guardrail or cost failure
+can still reject the one-side composition; sparse recent rows are not a reason
+to skip the experiment.
 
 For a release lineage, `--sealTest` keeps the final timestamp-grouped tail out
 of discovery and current-gate economics while recording its immutable bounds.
@@ -297,21 +298,30 @@ but exposes the tail; it cannot later be relabelled an untouched release test.
 
 The repository-local `$strategy-release` skill turns verified core and gate
 evidence into one composition-level decision. It has `release` and
-`diagnose-live` modes. Release mode starts with a strategy-history audit: it
-maps behavior-changing Git commits and dirty patches to immutable research
-evidence, rejects refactor-only/duplicate/already-tested entries, and bridges
-every stronger prior result onto the current frozen window, universe, config,
-cost, and context contract. It then runs three sequential core-improvement
-rounds within the fixed budget: one anchor candidate for each of three causal
-families, then two evidence-driven child candidates per still-viable family in
-each of two refinement rounds. Untested historical mechanisms take priority
-over novel anchors.
+`diagnose-live` modes. Every release task starts a new immutable lineage unless
+the caller explicitly continues one. Release mode freezes a versioned research
+objective, audits strategy history, and revalidates every deduplicated prior
+core/gate/direction/rescue candidate before selecting new hypotheses. Compatible
+normalized trades are rescored; potentially competitive incompatible evidence
+gets an exact cache-only bridge rerun. Old verdicts and rounds remain evidence,
+but never satisfy the new task's improvement budget.
 
-A bridge rerun of a different core behavior/config is a real candidate and
-counts in the same family-aware trial ledger; rebuilding the unchanged control
-or normalizing its metadata does not. If the 18-candidate cap is exhausted
-while a stronger reconstructable historical result remains unbridged, the
-result is `INSUFFICIENT_EVIDENCE`, not a claim that the strategy has no edge.
+Metric-only rescoring and an exact bridge rerun of already-tested behavior do
+not consume the new lineage's 18 causal-candidate slots. Every distinct
+historical behavior still remains in the global cross-lineage multiple-testing
+ledger, and exposed tails stay exposed. A historical behavior that was never
+economically tested is a new trial and does consume the normal family/rescue
+budget.
+
+After revalidation, the skill runs three sequential core-improvement rounds:
+one anchor candidate for each of three causal families, then two evidence-driven
+children per still-viable family in each of two refinement rounds. The objective
+is hierarchical: causality and reconciliation first; positive aggregate
+out-of-sample expectancy per risk after costs next; then probabilistic/deflated
+Sharpe, drawdown/tail/recovery and cost robustness, walk-forward/regime
+stability, independent support, and executable cadence. Full-period PnL,
+Sharpe, win rate, loss streaks, losing-month streaks, and nested 3y/4y/max
+windows are diagnostics, not standalone optimization targets.
 
 After round 3, the skill must build a Pareto rescue board from all complete,
 reconciled, non-no-op candidates. It selects up to three diagnostic seeds with
@@ -364,11 +374,20 @@ The final response must expose the audit instead of hiding it in artifacts:
 or the hard reason an available slot could not be used.
 
 An audit, architecture fix, or data-quality discovery is not itself a strategy
-improvement attempt. The release skill writes a progress payload and runs
-`release-progress-checkpoint.mjs` after the baseline and every round. When the
-checkpoint says `RUN_CORE_ROUND_1`, `RUN_CADENCE_RESCUE_BOARD`, or
-`RUN_DIRECTION_POLICY_CHECKPOINT`, Codex must perform that bounded action before
-returning a final verdict.
+improvement attempt. The release skill writes a v2 progress payload and runs
+`release-progress-checkpoint.mjs` after the baseline and every round. The
+checkpoint verifies the objective, historical revalidation, trial ledger,
+completed research manifests/results/traces, causal handoffs, rescue evidence,
+selected composition, and chart by file hash; a caller-supplied round count or
+completion boolean is not authority. When it returns a research or rescue
+action, Codex must perform that bounded action before returning a final verdict.
+
+Continuous 365d/180d/90d/30d/7d rows remain mandatory, including zero rows,
+but their pass/fail authority depends on independent support. Fewer than 20
+independent events are underpowered, 20–49 are diagnostic, and only 50 or more
+are selection-grade. Sparse recent tails therefore guide cadence monitoring or
+one preregistered repair; they cannot erase a supported long-window edge or
+justify another threshold by themselves.
 
 The bounded loop still requires professional judgment. Before round 1, Codex
 writes the strategy's market thesis and an opportunity map across setup
@@ -418,8 +437,8 @@ yarn strategy:release verify \
 referenced evidence file itself. Draft `verified` and gate booleans are
 cross-checks, never authority: core readiness comes from a reconciled final
 core-research result and complete robustness matrix; gate value comes from the
-local-deterministic gate result and complete positive terminal windows; parity
-and execution safety come from their measured artifacts. It writes a
+local-deterministic gate result and support-conditioned terminal evidence;
+parity and execution safety come from their measured artifacts. It writes a
 release envelope plus compact G/L/E/D/R chart markers under the ignored
 `data/strategy-release` tree. The only release verdicts are
 `READY_FOR_RUNTIME`, `UNSUITABLE_FOR_CURRENT_MARKET`, and

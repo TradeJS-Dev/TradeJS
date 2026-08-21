@@ -23,8 +23,10 @@ inventory only.
 
 Retain:
 
-- every `tradejs-release-progress/v1` input/output pair, including evidence
-  ceiling and the next stage that prevented a premature final verdict;
+- every `tradejs-release-progress/v2` input/output pair, including objective,
+  historical-candidate revalidation, artifact-backed round/rescue evidence, and
+  selected-composition lineage, evidence ceiling, and the next stage that
+  prevented a premature final verdict;
 - the evidence-limitation classification (`hard invalidation`,
   `research-grade provenance`, or `operational`) and sensitivity results;
 - the trading thesis, opportunity map, hypothesis-role portfolio, and per-round

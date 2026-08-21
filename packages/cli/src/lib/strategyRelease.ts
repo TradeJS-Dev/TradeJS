@@ -32,7 +32,8 @@ const STRATEGY_REVISION_RE = /^sr1:[a-f0-9]{16}$/;
 const DEPLOYMENT_COMPOSITION_ID_RE = /^dc1:[a-f0-9]{16}$/;
 const REQUIRED_LONG_WINDOWS = [1095, 1460, 1825] as const;
 const REQUIRED_STABLE_TERMINAL_WINDOWS = [365, 180, 90] as const;
-const MIN_RECENT_DIRECTION_REPAIR_TRADES = 20;
+const MIN_RECENT_DIRECTION_REPAIR_EVENTS = 20;
+const MIN_SELECTION_GRADE_TERMINAL_EVENTS = 50;
 
 const safeSegment = safeStrategyEvidenceSegment;
 const compactTimestamp = compactStrategyEvidenceTimestamp;
@@ -75,6 +76,66 @@ const verifyFullPeriodChartArtifact = async (
   }
 };
 
+const readVerifiedJsonArtifact = async (
+  artifact: { path: string; sha256: string } | null,
+) => {
+  if (!artifact?.path || !SHA256_RE.test(artifact.sha256)) return null;
+  try {
+    const artifactPath = path.resolve(artifact.path);
+    if ((await strategyEvidenceFileSha256(artifactPath)) !== artifact.sha256) {
+      return null;
+    }
+    return JSON.parse(await fs.readFile(artifactPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+};
+
+const verifyResearchDecisionLineage = async (
+  input: StrategyReleaseResearchDecisionInput,
+) => {
+  const progress = await readVerifiedJsonArtifact(input.progressArtifact);
+  const selected = await readVerifiedJsonArtifact(
+    input.selectedCompositionArtifact,
+  );
+  if (!progress || !selected) return false;
+  const progressSelection = progress.selectedComposition as
+    | {
+        candidateId?: string;
+        compositionFingerprint?: string;
+        artifactSha256?: string;
+      }
+    | null
+    | undefined;
+  return Boolean(
+    progress.schema === 'tradejs-release-progress/v2' &&
+      progress.strategy === input.strategy &&
+      progress.status === 'complete' &&
+      progress.verdictAllowed === true &&
+      typeof progress.lineageId === 'string' &&
+      progress.lineageId.length > 0 &&
+      typeof progress.objectiveFingerprint === 'string' &&
+      SHA256_RE.test(progress.objectiveFingerprint) &&
+      typeof progressSelection?.candidateId === 'string' &&
+      progressSelection.candidateId.length > 0 &&
+      typeof progressSelection.compositionFingerprint === 'string' &&
+      SHA256_RE.test(progressSelection.compositionFingerprint) &&
+      progressSelection.artifactSha256 ===
+        input.selectedCompositionArtifact?.sha256 &&
+      selected.schema === 'tradejs-release-selected-composition/v2' &&
+      selected.strategy === input.strategy &&
+      selected.lineageId === progress.lineageId &&
+      selected.objectiveFingerprint === progress.objectiveFingerprint &&
+      selected.candidateId === progressSelection.candidateId &&
+      selected.compositionFingerprint ===
+        progressSelection.compositionFingerprint &&
+      selected.chartSha256 === input.chartArtifact?.sha256,
+  );
+};
+
 const hasExactRuntimeTarget = (
   target: StrategyReleaseResearchDecisionInput['forwardTest']['runtimeTarget'],
   strategyName: string,
@@ -92,6 +153,19 @@ export const deriveStrategyReleaseResearchDecision = async (
   input: StrategyReleaseResearchDecisionInput,
 ): Promise<StrategyReleaseResearchDecision> => {
   const blockers: StrategyReleaseResearchDecisionBlocker[] = [];
+  if (!(await verifyResearchDecisionLineage(input))) {
+    return {
+      strategy: input.strategy,
+      action: 'FORWARD_BLOCKED',
+      repairAllowed: false,
+      targetDirection: input.recentFailure?.direction ?? null,
+      maxLossValue: null,
+      requiresRuntimeBinding: false,
+      blockers: ['RESEARCH_LINEAGE_MISMATCH'],
+      summary:
+        'The progress decision, selected composition, objective, and chart do not resolve to one immutable research lineage.',
+    };
+  }
   const directionPolicy = input.directionPolicy ?? 'both';
   const activeDirections =
     directionPolicy === 'long_only'
@@ -107,12 +181,19 @@ export const deriveStrategyReleaseResearchDecision = async (
         : null;
   const hasHistoricalEdge = (
     entry: StrategyReleaseResearchDecisionInput['historicalWindows'][number],
+    supportConditioned = false,
   ) =>
-    entry.pnl > 0 &&
-    entry.profitFactor >= 1 &&
+    (supportConditioned
+      ? (entry.independentEvents ?? entry.trades ?? 0) <
+          MIN_SELECTION_GRADE_TERMINAL_EVENTS ||
+        (entry.pnl > 0 && entry.profitFactor >= 1)
+      : entry.pnl > 0 && entry.profitFactor >= 1) &&
     activeDirections.every(
       (direction) =>
-        entry[direction].pnl > 0 && entry[direction].profitFactor >= 1,
+        (supportConditioned &&
+          (entry[direction].independentEvents ?? entry[direction].trades ?? 0) <
+            MIN_SELECTION_GRADE_TERMINAL_EVENTS) ||
+        (entry[direction].pnl > 0 && entry[direction].profitFactor >= 1),
     ) &&
     (suppressedDirection == null ||
       (entry[suppressedDirection].trades === 0 &&
@@ -135,7 +216,21 @@ export const deriveStrategyReleaseResearchDecision = async (
   const stableTerminalWindows = REQUIRED_STABLE_TERMINAL_WINDOWS.map((days) =>
     byDays.get(days),
   ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  if (stableTerminalWindows.some((entry) => !hasHistoricalEdge(entry))) {
+  if (
+    stableTerminalWindows.some(
+      (entry) =>
+        !Number.isFinite(entry.independentEvents ?? entry.trades) ||
+        activeDirections.some(
+          (direction) =>
+            !Number.isFinite(
+              entry[direction].independentEvents ?? entry[direction].trades,
+            ),
+        ),
+    )
+  ) {
+    blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
+  }
+  if (stableTerminalWindows.some((entry) => !hasHistoricalEdge(entry, true))) {
     blockers.push('HISTORICAL_EDGE_FAILED');
   }
   if (blockers.length) {
@@ -147,13 +242,14 @@ export const deriveStrategyReleaseResearchDecision = async (
       maxLossValue: null,
       requiresRuntimeBinding: false,
       blockers,
-      summary: `The final ${directionPolicy} composition does not have complete positive evidence for ALL and every active direction on the frozen 3y/4y/max-window matrix.`,
+      summary: `The final ${directionPolicy} composition fails the frozen long-window edge or a selection-grade terminal guardrail. Underpowered and diagnostic terminal cohorts do not cause this stop.`,
     };
   }
 
   const repairAllowed = Boolean(
     input.recentFailure &&
-      input.recentFailure.closedTrades >= MIN_RECENT_DIRECTION_REPAIR_TRADES &&
+      input.recentFailure.independentEvents >=
+        MIN_RECENT_DIRECTION_REPAIR_EVENTS &&
       input.recentFailure.causalMechanismIdentified &&
       input.recentFailure.repairRoundsUsed === 0 &&
       !input.exposedEvaluation,
@@ -168,7 +264,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       requiresRuntimeBinding: false,
       blockers: [],
       summary:
-        'Spend the single terminal-direction repair round on the preregistered causal mechanism, then rebuild the full evidence matrix.',
+        'Spend the single terminal-direction repair round on the preregistered causal mechanism with diagnostic independent support, then rebuild the full evidence matrix.',
     };
   }
 

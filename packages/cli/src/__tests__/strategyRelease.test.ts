@@ -194,22 +194,157 @@ const buildRelease = () =>
     },
   });
 
+const writeDecisionChart = async (strategy: string) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'strategy-release-decision-'),
+  );
+  const chartPath = path.join(rootDir, 'chart.json');
+  await fs.writeFile(
+    chartPath,
+    JSON.stringify({
+      chart: { persisted: true, cardIds: [`${strategy}-q4`] },
+      errors: { failed: 0 },
+      run: {
+        strategy,
+        mode: 'local-deterministic',
+        recent: 0,
+        since: null,
+        until: null,
+        sourceRows: 541,
+      },
+    }),
+  );
+  return {
+    rootDir,
+    chartArtifact: {
+      path: chartPath,
+      sha256: createHash('sha256')
+        .update(await fs.readFile(chartPath))
+        .digest('hex'),
+    },
+  };
+};
+
+const writeDecisionLineage = async (
+  strategy: string,
+  rootDir: string,
+  chartSha256: string,
+) => {
+  const lineageId = `${strategy.toLowerCase()}-release-test`;
+  const candidateId = `${strategy}-candidate`;
+  const compositionFingerprint = SHA_C;
+  const selectedPath = path.join(rootDir, 'selected-composition.json');
+  await fs.writeFile(
+    selectedPath,
+    JSON.stringify({
+      schema: 'tradejs-release-selected-composition/v2',
+      strategy,
+      lineageId,
+      candidateId,
+      compositionFingerprint,
+      objectiveFingerprint: SHA_A,
+      chartSha256,
+    }),
+  );
+  const selectedCompositionArtifact = {
+    path: selectedPath,
+    sha256: createHash('sha256')
+      .update(await fs.readFile(selectedPath))
+      .digest('hex'),
+  };
+  const progressPath = path.join(rootDir, 'progress.json');
+  await fs.writeFile(
+    progressPath,
+    JSON.stringify({
+      schema: 'tradejs-release-progress/v2',
+      strategy,
+      lineageId,
+      objectiveFingerprint: SHA_A,
+      status: 'complete',
+      verdictAllowed: true,
+      selectedComposition: {
+        candidateId,
+        compositionFingerprint,
+        artifactSha256: selectedCompositionArtifact.sha256,
+      },
+    }),
+  );
+  return {
+    progressArtifact: {
+      path: progressPath,
+      sha256: createHash('sha256')
+        .update(await fs.readFile(progressPath))
+        .digest('hex'),
+    },
+    selectedCompositionArtifact,
+  };
+};
+
+const positiveHistoricalWindows = () => [
+  ...[1095, 1460, 1825].map((days) => ({
+    days,
+    pnl: 100,
+    profitFactor: 1.2,
+    long: { pnl: 60, profitFactor: 1.2 },
+    short: { pnl: 40, profitFactor: 1.1 },
+  })),
+  ...[365, 180, 90].map((days) => ({
+    days,
+    trades: 100,
+    independentEvents: 100,
+    pnl: 100,
+    profitFactor: 1.2,
+    long: {
+      trades: 60,
+      independentEvents: 60,
+      pnl: 60,
+      profitFactor: 1.2,
+    },
+    short: {
+      trades: 40,
+      independentEvents: 40,
+      pnl: 40,
+      profitFactor: 1.1,
+    },
+  })),
+];
+
 describe('strategy release evidence', () => {
   it('keeps a verified LONG-only composition eligible for forward evidence', async () => {
+    const { rootDir, chartArtifact } =
+      await writeDecisionChart('RelativeRotation');
+    const lineage = await writeDecisionLineage(
+      'RelativeRotation',
+      rootDir,
+      chartArtifact.sha256,
+    );
     expect(
       await deriveStrategyReleaseResearchDecision({
         strategy: 'RelativeRotation',
         directionPolicy: 'long_only',
         historicalWindows: [1095, 1460, 1825, 365, 180, 90].map((days) => ({
           days,
+          trades: 180,
+          independentEvents: 180,
           pnl: 120,
           profitFactor: 1.2,
-          long: { trades: 180, pnl: 120, profitFactor: 1.2 },
-          short: { trades: 0, pnl: 0, profitFactor: 0 },
+          long: {
+            trades: 180,
+            independentEvents: 180,
+            pnl: 120,
+            profitFactor: 1.2,
+          },
+          short: {
+            trades: 0,
+            independentEvents: 0,
+            pnl: 0,
+            profitFactor: 0,
+          },
         })),
         candidateImplemented: false,
         exposedEvaluation: true,
-        chartArtifact: null,
+        ...lineage,
+        chartArtifact,
         recentFailure: null,
         forwardTest: {
           authorized: false,
@@ -219,76 +354,30 @@ describe('strategy release evidence', () => {
       }),
     ).toMatchObject({
       action: 'FORWARD_BLOCKED',
-      blockers: ['CANDIDATE_NOT_IMPLEMENTED', 'FULL_PERIOD_CHART_MISSING'],
+      blockers: ['CANDIDATE_NOT_IMPLEMENTED'],
     });
   });
 
   it('starts an authorized micro-forward instead of tuning four exposed recent losses', async () => {
-    const chartPath = path.join(
-      await fs.mkdtemp(path.join(os.tmpdir(), 'strategy-release-chart-')),
-      'chart.json',
-    );
-    await fs.writeFile(
-      chartPath,
-      JSON.stringify({
-        chart: { persisted: true, cardIds: ['DoubleTap-q4'] },
-        errors: { failed: 0 },
-        run: {
-          strategy: 'DoubleTap',
-          mode: 'local-deterministic',
-          recent: 0,
-          since: null,
-          until: null,
-          sourceRows: 541,
-        },
-      }),
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
     );
     expect(
       await deriveStrategyReleaseResearchDecision({
         strategy: 'DoubleTap',
-        historicalWindows: [
-          {
-            days: 1095,
-            pnl: 1036,
-            profitFactor: 1.39,
-            long: { pnl: 608, profitFactor: 1.49 },
-            short: { pnl: 429, profitFactor: 1.37 },
-          },
-          {
-            days: 1460,
-            pnl: 1125,
-            profitFactor: 1.4,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 501, profitFactor: 1.33 },
-          },
-          {
-            days: 1825,
-            coveredDays: 1800,
-            pnl: 1084,
-            profitFactor: 1.39,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 460, profitFactor: 1.31 },
-          },
-          ...[365, 180, 90].map((days) => ({
-            days,
-            pnl: 100,
-            profitFactor: 1.2,
-            long: { pnl: 60, profitFactor: 1.2 },
-            short: { pnl: 40, profitFactor: 1.1 },
-          })),
-        ],
+        historicalWindows: positiveHistoricalWindows(),
         candidateImplemented: true,
         exposedEvaluation: true,
-        chartArtifact: {
-          path: chartPath,
-          sha256: createHash('sha256')
-            .update(await fs.readFile(chartPath))
-            .digest('hex'),
-        },
+        ...lineage,
+        chartArtifact,
         recentFailure: {
           days: 30,
           direction: 'SHORT',
           closedTrades: 4,
+          independentEvents: 4,
           causalMechanismIdentified: false,
           repairRoundsUsed: 0,
         },
@@ -314,47 +403,25 @@ describe('strategy release evidence', () => {
   });
 
   it('spends one bounded repair round on a supported causal side failure', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
     expect(
       await deriveStrategyReleaseResearchDecision({
         strategy: 'DoubleTap',
-        historicalWindows: [
-          {
-            days: 1095,
-            pnl: 1036,
-            profitFactor: 1.39,
-            long: { pnl: 608, profitFactor: 1.49 },
-            short: { pnl: 429, profitFactor: 1.37 },
-          },
-          {
-            days: 1460,
-            pnl: 1125,
-            profitFactor: 1.4,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 501, profitFactor: 1.33 },
-          },
-          {
-            days: 1825,
-            coveredDays: 1800,
-            pnl: 1084,
-            profitFactor: 1.39,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 460, profitFactor: 1.31 },
-          },
-          ...[365, 180, 90].map((days) => ({
-            days,
-            pnl: 100,
-            profitFactor: 1.2,
-            long: { pnl: 60, profitFactor: 1.2 },
-            short: { pnl: 40, profitFactor: 1.1 },
-          })),
-        ],
+        historicalWindows: positiveHistoricalWindows(),
         candidateImplemented: true,
         exposedEvaluation: false,
-        chartArtifact: null,
+        ...lineage,
+        chartArtifact,
         recentFailure: {
           days: 30,
           direction: 'SHORT',
           closedTrades: 24,
+          independentEvents: 24,
           causalMechanismIdentified: true,
           repairRoundsUsed: 0,
         },
@@ -372,62 +439,155 @@ describe('strategy release evidence', () => {
     });
   });
 
-  it('blocks forward execution until the mandatory full-period chart exists', async () => {
+  it('does not repair a clustered terminal cohort with too few independent events', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
+    await expect(
+      deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows: positiveHistoricalWindows(),
+        candidateImplemented: true,
+        exposedEvaluation: false,
+        ...lineage,
+        chartArtifact,
+        recentFailure: {
+          days: 30,
+          direction: 'SHORT',
+          closedTrades: 24,
+          independentEvents: 10,
+          causalMechanismIdentified: true,
+          repairRoundsUsed: 0,
+        },
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).resolves.toMatchObject({
+      action: 'MICRO_FORWARD_READY',
+      repairAllowed: false,
+      blockers: ['FORWARD_NOT_AUTHORIZED'],
+    });
+  });
+
+  it('does not let sparse negative terminal cohorts reject a long-window edge', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
     expect(
       await deriveStrategyReleaseResearchDecision({
         strategy: 'DoubleTap',
         historicalWindows: [
-          {
-            days: 1095,
-            pnl: 1036,
-            profitFactor: 1.39,
-            long: { pnl: 608, profitFactor: 1.49 },
-            short: { pnl: 429, profitFactor: 1.37 },
-          },
-          {
-            days: 1460,
-            pnl: 1125,
-            profitFactor: 1.4,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 501, profitFactor: 1.33 },
-          },
-          {
-            days: 1825,
-            coveredDays: 1800,
-            pnl: 1084,
-            profitFactor: 1.39,
-            long: { pnl: 624, profitFactor: 1.5 },
-            short: { pnl: 460, profitFactor: 1.31 },
-          },
+          ...positiveHistoricalWindows().filter(({ days }) => days >= 1095),
           ...[365, 180, 90].map((days) => ({
             days,
-            pnl: 100,
-            profitFactor: 1.2,
-            long: { pnl: 60, profitFactor: 1.2 },
-            short: { pnl: 40, profitFactor: 1.1 },
+            trades: 18,
+            independentEvents: 18,
+            pnl: -20,
+            profitFactor: 0.8,
+            long: {
+              trades: 9,
+              independentEvents: 9,
+              pnl: -10,
+              profitFactor: 0.8,
+            },
+            short: {
+              trades: 9,
+              independentEvents: 9,
+              pnl: -10,
+              profitFactor: 0.8,
+            },
           })),
         ],
         candidateImplemented: true,
         exposedEvaluation: true,
-        chartArtifact: null,
+        ...lineage,
+        chartArtifact,
         recentFailure: null,
         forwardTest: {
-          authorized: true,
-          runtimeTarget: {
-            userName: 'root',
-            deploymentId: 'forward-doubletap',
-            accountId: 'bybit-forward',
-            strategyName: 'DoubleTap',
-            strategyRevision: `sr1:${'a'.repeat(16)}`,
-            deploymentCompositionId: `dc1:${'b'.repeat(16)}`,
-          },
+          authorized: false,
+          runtimeTarget: null,
           maxLossValue: 1,
         },
       }),
     ).toMatchObject({
+      action: 'MICRO_FORWARD_READY',
+      blockers: ['FORWARD_NOT_AUTHORIZED'],
+    });
+  });
+
+  it('rejects a selection-grade negative terminal cohort', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
+    const historicalWindows = positiveHistoricalWindows();
+    const terminal90d = historicalWindows.find(({ days }) => days === 90)!;
+    Object.assign(terminal90d, {
+      trades: 100,
+      independentEvents: 100,
+      pnl: -20,
+      profitFactor: 0.8,
+    });
+
+    await expect(
+      deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows,
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        ...lineage,
+        chartArtifact,
+        recentFailure: null,
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).resolves.toMatchObject({
+      action: 'STOP_RESEARCH',
+      blockers: ['HISTORICAL_EDGE_FAILED'],
+    });
+  });
+
+  it('blocks a decision when progress and selected composition differ', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
+    await fs.appendFile(lineage.selectedCompositionArtifact.path, '\n');
+
+    await expect(
+      deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows: positiveHistoricalWindows(),
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        ...lineage,
+        chartArtifact,
+        recentFailure: null,
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).resolves.toMatchObject({
       action: 'FORWARD_BLOCKED',
-      blockers: ['FULL_PERIOD_CHART_MISSING'],
-      requiresRuntimeBinding: false,
+      blockers: ['RESEARCH_LINEAGE_MISMATCH'],
     });
   });
 

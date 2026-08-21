@@ -3,11 +3,12 @@
 ## Contents
 
 1. Write the trading thesis
-2. Build an opportunity map
-3. Construct a hypothesis portfolio
-4. Diagnose before adapting
-5. Think in compositions
-6. Make a professional decision
+2. Revalidate the candidate history
+3. Build an opportunity map
+4. Construct a hypothesis portfolio
+5. Diagnose before adapting
+6. Think in compositions
+7. Make a professional decision
 
 The workflow is a decision framework, not a compliance checklist. Behave like
 the owner of the strategy's future expectancy: understand how the edge is
@@ -31,7 +32,26 @@ List every semantic gap. A strategy with no defensible thesis is not rescued by
 threshold search; use one bounded falsification family to test whether any edge
 exists, then retire it if the mechanism remains unsupported.
 
-## 2. Build an opportunity map
+## 2. Revalidate the candidate history
+
+Freeze the versioned objective from [research-objective.md](research-objective.md),
+then re-score every reconstructable historical behavior candidate before
+inventing a new one. A new objective changes which candidate is preferred; it
+does not erase prior trials or make an exposed tail unexposed.
+
+Separate three activities:
+
+- metric-only re-scoring of compatible normalized trades;
+- exact bridge reruns when the current frozen window/universe/cost contract
+  differs;
+- genuinely new behavior, which belongs in the new causal-family budget.
+
+Persist the revalidation board and global trial ledger. Use the resulting
+Pareto frontier as evidence for the opportunity map, but still execute new
+causal improvement rounds in the new lineage. Neither a prior `STOP_RESEARCH`
+nor a newly rescored winner substitutes for the requested research attempt.
+
+## 3. Build an opportunity map
 
 Decompose the performance failure across these intervention points:
 
@@ -71,7 +91,7 @@ parameter speculatively.
 Persist and hash this map before round 1. Do not confuse a report containing
 many metrics with a diagnosis that ranks actionable causes.
 
-## 3. Construct a hypothesis portfolio
+## 4. Construct a hypothesis portfolio
 
 Choose three causally distinct families from the opportunity map, not from a
 generic parameter menu. The portfolio must include these roles when possible:
@@ -101,7 +121,7 @@ Bad variants include:
 - deleting a losing side from raw evidence;
 - reducing cadence until a few correlated winners remain.
 
-## 4. Diagnose before adapting
+## 5. Diagnose before adapting
 
 After each round, answer these questions before creating children:
 
@@ -138,7 +158,7 @@ Outcome-derived cohorts may diagnose where money was lost. Translate them into
 a signal-time observable hypothesis and validate it on a later partition; never
 turn the outcome cohort itself into a filter.
 
-## 5. Think in compositions
+## 6. Think in compositions
 
 The product is core plus deterministic gate, not a raw-core beauty contest.
 
@@ -152,10 +172,13 @@ The product is core plus deterministic gate, not a raw-core beauty contest.
 - A recent regime pocket may justify micro-forward monitoring, but never a
   silently fitted historical rule.
 
-Optimize expectancy, independent-event support, drawdown, and executable
-cadence together. Never maximize PnL alone or cadence alone.
+Optimize the hierarchy from [research-objective.md](research-objective.md):
+out-of-sample expectancy per risk after costs, selection-adjusted Sharpe,
+drawdown/tail robustness, temporal stability, independent support, and
+executable cadence. Never maximize PnL, Sharpe, win rate, a streak, a recent
+window, or cadence alone.
 
-## 6. Make a professional decision
+## 7. Make a professional decision
 
 At every checkpoint choose one concrete action:
 

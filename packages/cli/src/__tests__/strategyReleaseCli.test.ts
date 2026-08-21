@@ -31,6 +31,42 @@ describe('strategy-release command', () => {
         },
       }),
     );
+    const chartSha256 = createHash('sha256')
+      .update(await fs.readFile(chartPath))
+      .digest('hex');
+    const selectedPath = path.join(rootDir, 'selected-composition.json');
+    await fs.writeFile(
+      selectedPath,
+      JSON.stringify({
+        schema: 'tradejs-release-selected-composition/v2',
+        strategy: 'DoubleTap',
+        lineageId: 'doubletap-release-test',
+        objectiveFingerprint: SHA,
+        candidateId: 'DoubleTap-candidate',
+        compositionFingerprint: SHA,
+        chartSha256,
+      }),
+    );
+    const selectedSha256 = createHash('sha256')
+      .update(await fs.readFile(selectedPath))
+      .digest('hex');
+    const progressPath = path.join(rootDir, 'progress.json');
+    await fs.writeFile(
+      progressPath,
+      JSON.stringify({
+        schema: 'tradejs-release-progress/v2',
+        strategy: 'DoubleTap',
+        lineageId: 'doubletap-release-test',
+        objectiveFingerprint: SHA,
+        status: 'complete',
+        verdictAllowed: true,
+        selectedComposition: {
+          candidateId: 'DoubleTap-candidate',
+          compositionFingerprint: SHA,
+          artifactSha256: selectedSha256,
+        },
+      }),
+    );
     await fs.writeFile(
       inputPath,
       JSON.stringify({
@@ -38,23 +74,44 @@ describe('strategy-release command', () => {
         historicalWindows: [1095, 1460, 1825, 365, 180, 90].map((days) => ({
           days,
           coveredDays: days === 1825 ? 1800 : undefined,
+          trades: 100,
+          independentEvents: 100,
           pnl: 100,
           profitFactor: 1.1,
-          long: { pnl: 60, profitFactor: 1.1 },
-          short: { pnl: 40, profitFactor: 1.1 },
+          long: {
+            trades: 60,
+            independentEvents: 60,
+            pnl: 60,
+            profitFactor: 1.1,
+          },
+          short: {
+            trades: 40,
+            independentEvents: 40,
+            pnl: 40,
+            profitFactor: 1.1,
+          },
         })),
         candidateImplemented: true,
         exposedEvaluation: true,
+        progressArtifact: {
+          path: progressPath,
+          sha256: createHash('sha256')
+            .update(await fs.readFile(progressPath))
+            .digest('hex'),
+        },
+        selectedCompositionArtifact: {
+          path: selectedPath,
+          sha256: selectedSha256,
+        },
         chartArtifact: {
           path: chartPath,
-          sha256: createHash('sha256')
-            .update(await fs.readFile(chartPath))
-            .digest('hex'),
+          sha256: chartSha256,
         },
         recentFailure: {
           days: 30,
           direction: 'SHORT',
           closedTrades: 4,
+          independentEvents: 4,
           causalMechanismIdentified: false,
           repairRoundsUsed: 0,
         },

@@ -3,6 +3,10 @@
 Use this audit before inventing release-core hypotheses. Its purpose is to
 prevent a new Codex task from forgetting a stronger prior core result, rerunning
 an already rejected idea, or treating an unrelated refactor as research.
+When the objective fingerprint changed, follow this inventory with the complete
+candidate revalidation board from
+[research-objective.md](research-objective.md); do not revalidate only the
+previous winner.
 
 ## Contents
 
@@ -72,7 +76,8 @@ off/on ablation before claiming that the historical mechanism helped.
 ## 3. Bridge prior results to the current experiment
 
 Before freezing new families, create a bridge table containing every previously
-strong or shortlisted core result:
+tested or shortlisted core/gate/direction/rescue result, deduplicated by
+behavior/config fingerprint:
 
 ```text
 source lineage | behavior/config delta | window | universe | costs | ALL/LONG/SHORT |
@@ -87,11 +92,12 @@ Classify comparability as:
 - `diagnostic-only`: evidence cannot support a direct economic comparison.
 
 Do not compare raw PnL from 1500d/300 symbols with 1800d/507 symbols as if it
-were the same experiment. Equally, do not ignore the former. For every
-`bridge-required` result that dominates or materially challenges the current
-baseline, rerun its exact causal config on the new frozen window/universe/cost
-contract before testing novel ideas. Attribute the delta to source/config,
-membership, window, costs, or context with matched metrics where possible.
+were the same experiment. Equally, do not ignore the former. Re-score every
+compatible retained candidate under the frozen objective. For every
+`bridge-required` result that could reach the new Pareto frontier, rerun its
+exact causal config on the new frozen window/universe/cost contract before
+testing novel ideas. Attribute the delta to source/config, membership, window,
+costs, or context with matched metrics where possible.
 
 The current release control is not accepted merely because it is named `:ai`.
 If it is materially worse than a prior comparable result, explain and reproduce
@@ -110,13 +116,15 @@ ranked by:
 4. support and cadence potential;
 5. difference from hypotheses already tested in the ledger.
 
-Historical anchors consume the normal trial budget; they are not free extra
-looks. Remaining records stay in the immutable backlog. They may motivate the
-post-round-3 rescue board when they address a selected seed's measured failure.
-An exact bridge rerun of a different core config counts as a candidate in the
-same family-aware ledger; prefer it as an anchor or, if discovered later, spend
-a rescue slot. Rebuilding the unchanged control or normalizing metadata does
-not count as a candidate.
+An untested historical behavior consumes the normal trial budget; it is not a
+free extra look. Metric-only re-scoring and exact bridge reruns of previously
+tested behavior do not consume new causal slots, but remain in the global
+multiple-testing ledger. Remaining records stay in the immutable backlog. They
+may motivate the post-round-3 rescue board when they address a selected seed's
+measured failure. A changed threshold, feature, payoff, direction policy, or
+other decision behavior is a new candidate; prefer it as an anchor or, if
+discovered later, spend a rescue slot. Rebuilding the unchanged control or
+normalizing metadata does not count as a candidate.
 Do not return `STOP_RESEARCH` or claim the strategy is exhausted while a
 reconstructable untested historical hypothesis with stronger evidence than the
 tested set remains unbridged and fits an available anchor/rescue slot. If the

@@ -17,6 +17,7 @@ export type StrategyReleaseResearchDecisionAction =
   | 'STOP_RESEARCH';
 
 export type StrategyReleaseResearchDecisionBlocker =
+  | 'RESEARCH_LINEAGE_MISMATCH'
   | 'HISTORICAL_MATRIX_INCOMPLETE'
   | 'HISTORICAL_EDGE_FAILED'
   | 'CANDIDATE_NOT_IMPLEMENTED'
@@ -33,10 +34,22 @@ export type StrategyDirectionPolicy =
 export type StrategyReleaseHistoricalWindow = {
   days: number;
   coveredDays?: number;
+  trades?: number;
+  independentEvents?: number;
   pnl: number;
   profitFactor: number;
-  long: { trades?: number; pnl: number; profitFactor: number };
-  short: { trades?: number; pnl: number; profitFactor: number };
+  long: {
+    trades?: number;
+    independentEvents?: number;
+    pnl: number;
+    profitFactor: number;
+  };
+  short: {
+    trades?: number;
+    independentEvents?: number;
+    pnl: number;
+    profitFactor: number;
+  };
 };
 
 export type StrategyReleaseResearchDecisionInput = {
@@ -45,6 +58,14 @@ export type StrategyReleaseResearchDecisionInput = {
   historicalWindows: StrategyReleaseHistoricalWindow[];
   candidateImplemented: boolean;
   exposedEvaluation: boolean;
+  progressArtifact: {
+    path: string;
+    sha256: string;
+  } | null;
+  selectedCompositionArtifact: {
+    path: string;
+    sha256: string;
+  } | null;
   chartArtifact: {
     path: string;
     sha256: string;
@@ -53,6 +74,7 @@ export type StrategyReleaseResearchDecisionInput = {
     days: number;
     direction: 'LONG' | 'SHORT';
     closedTrades: number;
+    independentEvents: number;
     causalMechanismIdentified: boolean;
     repairRoundsUsed: number;
   } | null;

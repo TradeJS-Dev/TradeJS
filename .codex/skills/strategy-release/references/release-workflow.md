@@ -2,12 +2,15 @@
 
 ## Contents
 
-1. Environment boundary and frozen release question
-2. Historical audit, universe, and baseline
-3. Three causal core rounds and belief updates
-4. Cadence-diverse rescue and direction policy
-5. Isolated-long, gate research, and recent repair
-6. Full report, chart, release evidence, and prospective action
+1. Freeze the release question
+2. Revalidate historical candidates
+3. Freeze cached coverage
+4. Capture the control
+5. Run three causal core rounds and rescue
+6. Select the finalist or side-qualified handoff
+7. Tune the deterministic gate
+8. Confirm robustness and issue the verdict
+9. Persist the chart and choose an action
 
 Use this workflow to evaluate one frozen core plus deterministic AI-gate
 composition. Do not use it to promote the composition.
@@ -21,6 +24,8 @@ Then complete the thesis, opportunity map, hypothesis portfolio, and adaptive
 belief updates from
 [professional-research-loop.md](professional-research-loop.md). These artifacts
 make the three families strategy-specific rather than a generic sweep.
+Read and apply [research-objective.md](research-objective.md) before accepting a
+baseline, ranking a prior result, or freezing the new families.
 
 ## Environment boundary
 
@@ -49,9 +54,15 @@ back to the release risk unit; do not reset the composition's logic history.
 
 ## 1. Freeze the release question
 
-Create an immutable experiment id and preregister:
+Create a new immutable lineage id for every release task unless the user
+explicitly names one to continue. Prior work is input evidence; it never counts
+as a round, rescue child, or gate round in the new lineage. Preregister:
 
 - strategy and current control composition;
+- the `tradejs-release-objective/v2` artifact and its SHA-256 objective
+  fingerprint;
+- the global cross-lineage trial ledger and selection-adjusted Sharpe/PBO
+  method;
 - exact release acceptance rule and current-market terminal windows;
 - an evidence-limitation classification and claim ceiling from
   [evidence-limitations.md](evidence-limitations.md); never collapse
@@ -83,7 +94,27 @@ allocation is not a rolling invitation to add nearby thresholds after seeing
 results. Record every attempted, failed, rejected, and retained cell in the same
 trial ledger.
 
-## 2. Freeze cached historical coverage
+## 2. Revalidate historical candidates under the frozen objective
+
+Complete the candidate revalidation contract from
+[research-objective.md](research-objective.md) before freezing novel families.
+Inventory every deduplicated historical core/gate/direction/rescue candidate,
+including partial and untested behavior records.
+
+Recompute compatible retained normalized trades under the new objective. Exact
+reruns of already-tested behavior are required only when a candidate could
+reach the new frontier but its window, universe, costs, execution semantics,
+source behavior, or risk unit is not comparable. Metric-only re-scoring and
+exact bridge reruns do not consume the 18 new causal-candidate slots; every
+distinct behavior remains in the global multiple-testing count.
+
+Persist `tradejs-release-candidate-revalidation/v2`, hash it, and reference it
+from the opportunity map and every later spec/handoff. Do not continue to round
+1 while a reconstructable prior candidate lacks a disposition. Revalidation
+does not satisfy the request for a new research lineage: after it, run the new
+causal core portfolio.
+
+## 3. Freeze cached historical coverage
 
 Resolve the intersection of cached candle and required causal context coverage
 for the complete ordered ticker universe. Freeze the maximum common half-open
@@ -107,12 +138,11 @@ dominates or materially challenges the baseline. Do not proceed to novel
 hypotheses until the bridge explains why a prior positive strategy result became
 weaker, or reproduces it as a current candidate.
 
-A bridge rerun that tests a different core behavior/config consumes a candidate
-slot and belongs in the multiple-testing ledger. Prefer it as a round-1 anchor;
-when discovered later, it may occupy a rescue slot. Recomputing the exact frozen
-control or translating metadata without changing behavior does not consume a
-candidate slot. This keeps prior evidence mandatory without turning it into
-unaccounted extra search.
+An exact bridge rerun of already-tested behavior belongs in the global
+multiple-testing ledger but does not consume a new causal slot. A historical
+mechanism that was implemented but never economically tested is a new behavior
+trial: prefer it as a round-1 anchor or spend a rescue slot. Recomputing the
+exact frozen control or translating metadata does not count as a candidate.
 
 Every historical backtest command must include:
 
@@ -134,14 +164,22 @@ For the final composition, the full-statistics matrix is mandatory:
 - 365d, 180d, 90d, 30d, and 7d terminal slices.
 
 Each row contains ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD,
-and cadence. Use the permanent metrics tooling from
+cadence, independent events, payoff, probabilistic/deflated Sharpe,
+drawdown/tail/recovery, concentration, and terminal support class. Use the
+permanent metrics tooling from
 `$strategy-backtest-research`; do not reconstruct a favorable subset manually.
 When no composition qualifies, the same matrix remains mandatory for the
 authoritative control, best aggregate candidate, best LONG candidate, best
 SHORT candidate, and every rescue child. A failed verdict is not permission to
 replace the tables with a leaderboard or artifact link.
 
-## 3. Capture the control
+Classify every terminal cohort as `underpowered`, `diagnostic`, or
+`selection_grade` using [research-objective.md](research-objective.md). Keep all
+rows visible, but never reject or retune on an underpowered row. A diagnostic
+row may motivate the one supported causal repair; only a selection-grade row
+may enforce the current-market economic guardrail.
+
+## 4. Capture the control
 
 Run the frozen control as a complete, run-scoped experiment. Export only after
 the manifest finishes and keep chunks. Reconcile Redis N/W/L/PnL against
@@ -153,7 +191,7 @@ separate control statuses for ALL, LONG, and SHORT so the later deterministic
 AI gate can evaluate side cohorts explicitly. An explicit direction-policy
 candidate may later suppress that side while keeping this raw evidence visible.
 
-## 4. Run and analyze three causal core rounds
+## 5. Run and analyze three causal core rounds
 
 Audit and infrastructure repairs do not count as a core round. If a parity or
 package-boundary defect is discovered, fix and verify it, rebuild the frozen
@@ -190,9 +228,12 @@ After **each** round, complete this analysis before writing a child spec:
 
 1. Verify manifest/checkpoint completeness, run-scoped export hashes,
    reconciliation, duplicate/conflict counts, and trace coverage.
-2. Report fixed ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD, and
-   cadence for the round window, terminal development slices, folds, and
-   months; include payoff/tail, holding time, loss streak, and equity/DD curves.
+2. Report fixed ALL/LONG/SHORT N, PnL, PnL/trade, PF, WR, realized MaxDD,
+   independent events, cadence, payoff, non-IID-aware probabilistic/deflated
+   Sharpe, tail/CVaR, recovery/time-under-water, concentration, and support
+   class for the round window, terminal development slices, folds, and months;
+   include holding time, loss/month streaks, and equity/DD curves as risk
+   diagnostics rather than optimization targets.
 3. Match stable setup/trade identities and report matched, control-only,
    candidate-only, changed-outcome, and occupancy-spillover cohorts by side.
 4. Compare the compact trace funnel across signal emission or entry rejection,
@@ -285,8 +326,11 @@ Build this board even when no candidate passed the frozen economic rule. Use
 only complete, reconciled, non-no-op development evidence; keep the release tail
 sealed.
 
-1. Build the Pareto frontier across PnL/trade, PF, realized MaxDD, support,
-   terminal pass count, cost stress, Holm-adjusted evidence, and cadence.
+1. Build the Pareto frontier from the frozen objective across out-of-sample
+   expectancy/risk, PF/payoff, deflated Sharpe, realized MaxDD/tail/recovery,
+   walk-forward stability, support, cost stress, Holm-adjusted evidence,
+   concentration, and cadence. Do not rank on terminal pass count when a cohort
+   is underpowered or diagnostic.
 2. Select up to three diagnostic seeds while maximizing cadence separation.
    Prefer one seed from each observed cadence tercile; if a tercile is empty,
    fill the slot with the candidate farthest in cadence from already selected
@@ -353,7 +397,7 @@ triggered checkpoint is absent. A useful retained side that later fails
 terminal or cost rules is a legitimate rejection; skipping its policy test is
 not.
 
-## 5. Select one isolated-long finalist or side-qualified handoff
+## 6. Select one isolated-long finalist or side-qualified handoff
 
 After the rescue board and direction-policy checkpoint, select at most one raw
 core finalist across all families using the frozen rule. When none qualifies,
@@ -375,7 +419,7 @@ the side-qualified handoff. It may not generate a fourth core-improvement
 round. Any new hypothesis after the tail is opened starts a new release lineage
 with a future unexposed tail.
 
-## 6. Use one gate tuning round
+## 7. Use one gate tuning round
 
 Freeze the isolated finalist's raw-core export and the current deterministic
 gate as control. Use one time-grouped, time-ordered train/tuning/test design.
@@ -444,6 +488,11 @@ train and tuning only, then open the one chronological test tail once. Require:
 - explicit non-target identity or occupancy-spillover comparison;
 - full/180d/90d/30d/7d tables, retaining zero rows.
 
+Apply the terminal support classes independently to ALL/LONG/SHORT. A sparse
+negative or empty window is not a gate failure; compare its cadence with the
+frozen event-arrival distribution and retain it as `n/a` until it has
+selection-grade support.
+
 If the sealed test was opened during discovery, intentionally or by an older
 tool version, it is exposed forever for that lineage. Finish and record the
 fixed comparison as diagnostic evidence, but do not retune on it, relabel it as
@@ -452,10 +501,11 @@ new post-cutoff forward incubation lineage.
 
 ### One bounded recent-direction repair
 
-After the one gate round, a failing 30d/7d direction may receive exactly one
+After the one gate round, a failing terminal direction may receive exactly one
 repair round only when all are true:
 
-- the failed window has at least 20 independent target-side closed trades;
+- the failed window is at least `diagnostic` with 20 independent target-side
+  closed events;
 - a causal signal-time mechanism was preregistered from train/tuning and regime
   diagnostics, not inferred by filtering the displayed losers;
 - the evaluation tail was not exposed;
@@ -463,22 +513,23 @@ repair round only when all are true:
 
 Freeze five repair variants and preserve non-target/aggregate guardrails. When
 support is below 20, the tail is exposed, or the mechanism is unknown, do not
-fit another condition. A four-trade SHORT loss is a forward-monitoring question,
-not a new threshold. Preserve the profitable long-window side and proceed to
-the post-verdict action.
+fit another condition. A four-trade SHORT loss or a zero-trade 7d window is a
+forward-monitoring/cadence question, not a new threshold or a rejection.
+Preserve the profitable long-window side and proceed to the post-verdict action.
 
 Raw pass-through is a candidate, never an automatic promotion. If it wins the
-historical comparison but the exposed terminal tail fails, retain it only as an
-immutable forward candidate and return `INSUFFICIENT_EVIDENCE` or
-`UNSUITABLE_FOR_CURRENT_MARKET` according to the evidence contract. Never use a
-zero-approval side as a silent substitute for completing this checkpoint.
+historical comparison but the terminal tail was exposed, retain it only as an
+immutable forward candidate. Return `UNSUITABLE_FOR_CURRENT_MARKET` only for a
+selection-grade frozen guardrail failure; otherwise the exposed tail yields
+`INSUFFICIENT_EVIDENCE` for historical readiness. Never use a zero-approval
+side as a silent substitute for completing this checkpoint.
 
 If `llmComparison=ai-approved`, compare LLM output only on rows approved by the
 final deterministic gate. Record provider/model/prompt lineage and cost. Treat
 the comparison as advisory; never use it to tune, approve, reject, or promote
 the composition.
 
-## 7. Confirm robustness and issue the verdict
+## 8. Confirm robustness and issue the verdict
 
 Report the final composition on the frozen full window and required terminal
 windows, plus standalone cold-start/reset checks when the strategy is stateful.
@@ -511,9 +562,9 @@ Reference core, gate, runtime-parity, and execution-calibration artifacts in a
 release draft with their expected SHA-256 checksums. `strategy:release create`
 reads, hashes, validates, and derives release gate assertions from the files
 itself; draft `verified` and gate booleans are never trusted as authority.
-Reconciled final core evidence, complete robustness, positive deterministic-gate
-terminal evidence, exact parity, and measured execution residual are mandatory
-for `READY_FOR_RUNTIME`.
+Reconciled final core evidence, complete robustness, support-conditioned
+deterministic-gate terminal evidence, exact parity, and measured execution
+residual are mandatory for `READY_FOR_RUNTIME`.
 The core evidence reference must point to `result.json` inside its completed
 core-research bundle. Release verification rehashes every artifact named by the
 adjacent completed manifest; an isolated result JSON is not release evidence.
@@ -525,7 +576,15 @@ into another field merely because both describe the same conceptual strategy.
 Incomplete evidence must produce `INSUFFICIENT_EVIDENCE`, even when the partial
 economics look unsuitable.
 
-## 8. Persist the full-period chart and choose an action
+Before deciding, persist `tradejs-release-selected-composition/v2` with the
+strategy, lineage id, candidate id, composition fingerprint, objective
+fingerprint, historical-matrix hash, chart hash, and gate/core fingerprints.
+The final progress artifact, selected-composition artifact, chart, and
+`strategy-release decide` input must name the same candidate and composition.
+Any mismatch is incomplete evidence, never a reason to decide against a
+different control.
+
+## 9. Persist the full-period chart and choose an action
 
 The last research computation is mandatory and uses the exact final gate over
 the full frozen export. If no gate candidate qualifies, use the frozen current
@@ -552,11 +611,14 @@ yarn strategy:release decide --input <decision-input.json> \
   --out <decision.json>
 ```
 
-Reference the report as `chartArtifact: { path, sha256 }`. The command hashes
-and parses that exact file and requires a persisted chart, zero evaluation
-errors, the same strategy, `local-deterministic` mode, `recent=0`, no explicit
-date narrowing, and a non-empty full-export scan. Never copy a plausible hash
-into the input without the file. Likewise, `forwardTest.runtimeTarget` is
+Reference the progress decision as `progressArtifact`, the selected candidate
+as `selectedCompositionArtifact`, and the report as `chartArtifact`, each with
+`{ path, sha256 }`. The command hashes and parses those exact files, requires a
+v2 completed progress decision, verifies the same strategy/objective/candidate/
+composition/chart lineage, and requires a persisted chart, zero evaluation
+errors, `local-deterministic` mode, `recent=0`, no explicit date narrowing, and
+a non-empty full-export scan. Never copy a plausible hash into the input
+without the file. Likewise, `forwardTest.runtimeTarget` is
 either null or the exact `{ userName, deploymentId, accountId, strategyName,
 strategyRevision, deploymentCompositionId }`; do not substitute a
 self-declared “resolved” boolean.
@@ -567,9 +629,11 @@ revisions, deploy that image, then rerun `decide` against it.
 
 Case handling is deterministic:
 
-1. Complete positive ALL plus every active approved side on 3y/4y/max, with an
-   explicit zero row for any policy-suppressed side, sparse or exposed recent
-   loss, candidate implemented, chart present: micro-forward at risk 1.
+1. Complete positive aggregate out-of-sample expectancy plus every active
+   approved side under the frozen objective, long-window context present, with
+   an explicit zero row for any policy-suppressed side, candidate implemented,
+   chart present: micro-forward at risk 1. Underpowered/diagnostic recent rows
+   cannot turn this into `STOP_RESEARCH`.
 2. Supported causal recent direction failure with an untouched tail: one repair
    round, then rerun the full matrix and chart.
 3. Profitable raw side hidden by the current gate: complete the five side-rescue
@@ -578,8 +642,9 @@ Case handling is deterministic:
    variants. The losing raw side stays visible, while a tested `long_only` or
    `short_only` gate may become the composition policy if the retained side and
    aggregate approved stream pass every guardrail.
-5. Positive aggregate hiding a failed long-window side: do not hide the side;
-   repair within budget or stop.
+5. Positive aggregate hiding a selection-grade failed side: do not hide the
+   side; repair within budget or stop. Sparse side evidence remains `n/a` and
+   caps the claim rather than proving failure.
 6. Incomplete 3y/4y/max coverage, reconciliation, chart, or implementation:
    return the explicit blocker rather than “wait”. A server-owned target that
    is unavailable locally produces a ready handoff, not a blocker.

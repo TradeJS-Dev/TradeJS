@@ -43,7 +43,7 @@ Do not override a required checkpoint in prose.
 | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | One raw side has positive PnL and PF above 1 with adequate support, while the other side is the dominant aggregate loss | Run the five-variant direction-containment gate checkpoint. A no-gate-stop verdict is invalid.                                                             |
 | A useful raw side receives zero or negligible current-gate approvals                                                    | Run side pass-through and direction-aware rescue variants.                                                                                                 |
-| The retained side is profitable long-window but fails recent terminals or cost stress                                   | Still evaluate the frozen direction policy; classify it as diagnostic or prospective-only unless it passes the release rule. Do not call it runtime-ready. |
+| The retained side is profitable long-window but fails a selection-grade recent guardrail or cost stress                 | Still evaluate the frozen direction policy; classify it as diagnostic or prospective-only unless it passes the release rule. Do not call it runtime-ready. |
 | Both raw sides fail the preregistered side edge rule                                                                    | No direction salvage is required, but the full diagnostic report remains mandatory.                                                                        |
 | Side support is too sparse for release inference                                                                        | Keep the policy research-only or micro-forward eligible according to the verdict contract; do not manufacture historical support.                          |
 
@@ -86,9 +86,11 @@ omitting it. The raw side remains visible beside the approved side.
 ### Positive LONG, losing SHORT
 
 Raw LONG `PnL > 0`, `PF > 1`; raw SHORT supplies most aggregate loss. Test
-`long_only` and the remaining four variants. If LONG then fails 90d/30d/7d or
-cost stress, reject runtime readiness for those reasons. Do not claim that
-SHORT made testing impossible.
+`long_only` and the remaining four variants. If LONG then fails a
+selection-grade terminal cohort or cost stress, reject runtime readiness for
+those reasons. Keep underpowered/diagnostic 90d/30d/7d rows visible as `n/a` or
+diagnostic evidence; do not let them reject the policy. Do not claim that SHORT
+made testing impossible.
 
 ### Profitable SHORT hidden by the gate
 

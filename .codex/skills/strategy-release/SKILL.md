@@ -1,6 +1,6 @@
 ---
 name: strategy-release
-description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, audit prior Git hypotheses and results, perform three evidence-driven core rounds plus cadence-diverse rescue, test an explicit long-only or short-only direction policy when one side carries the edge, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, full-period and AI-gate reporting, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, chart handoff, and prospective testing.
+description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, revalidate historical candidates under a versioned professional objective, perform three new evidence-driven core rounds plus cadence-diverse rescue, test an explicit long-only or short-only direction policy when one side carries the edge, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, full-period and AI-gate reporting, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, chart handoff, and prospective testing.
 ---
 
 # Strategy Release
@@ -60,6 +60,9 @@ deterministic gate code, and keep generated evidence under `PROJECT_CWD`.
 
 Read [references/professional-research-loop.md](references/professional-research-loop.md)
 and [references/release-workflow.md](references/release-workflow.md) completely.
+Read [references/research-objective.md](references/research-objective.md)
+completely before freezing the release question or ranking any old or new
+candidate.
 Load the other references only at their decision seam:
 
 - read [references/historical-hypothesis-audit.md](references/historical-hypothesis-audit.md)
@@ -76,6 +79,13 @@ Load the other references only at their decision seam:
 
 Use the fixed research budget:
 
+- one new immutable lineage per release task unless the user explicitly names
+  an existing lineage to continue; prior rounds and verdicts never count as new
+  work;
+- one mandatory historical-candidate revalidation board under the current
+  objective fingerprint before novel hypotheses; metric-only rescoring and
+  exact reruns of already-tested behavior do not consume new causal slots but
+  remain in the global multiple-testing ledger;
 - three preregistered causal core families;
 - three sequential core-improvement rounds: one initial round plus two mandatory
   evidence-driven refinement rounds for every still-viable family;
@@ -123,7 +133,11 @@ node .codex/skills/strategy-release/scripts/release-progress-checkpoint.mjs \
 
 Run it after audit/baseline, after every round, and before the final response.
 Its required next action is binding. A final market verdict is forbidden while
-`verdictAllowed=false`.
+`verdictAllowed=false`. Use the v2 progress payload from
+[references/research-objective.md](references/research-objective.md); the
+checkpoint verifies objective/revalidation artifacts, completed core manifests,
+results, traces, causal handoffs, and rescue evidence from their file hashes.
+Never self-declare completion with booleans or `roundsCompleted` alone.
 
 Before freezing round-1 families, follow
 [references/professional-research-loop.md](references/professional-research-loop.md):
@@ -147,6 +161,11 @@ inside a diagnostic lineage.
 ## Shared metric and evidence rules
 
 - Use completed-trade economics and exact run-scoped exports.
+- Apply the hierarchical objective, terminal support bands, historical
+  candidate revalidation, and global trial ledger from
+  [references/research-objective.md](references/research-objective.md). Full
+  PnL, Sharpe, win rate, loss streak, losing-month streak, and any one terminal
+  window are never standalone optimization objectives.
 - Apply `evidence-first, novelty-second`. Before inventing hypotheses, audit the
   strategy's Git history, notes, core-research ledger/index, configs, and release
   artifacts. Persist a hash-linked hypothesis inventory. Reproduce any stronger
@@ -162,8 +181,10 @@ inside a diagnostic lineage.
 - Show `N`, net `PnL`, `PnL/trade`, `PF`, `WR`, realized MaxDD, and cadence/day
   for `ALL`, `LONG`, and `SHORT` in every reported window. Calculate aggregate
   `PnL/trade` as aggregate PnL divided by aggregate N, never as the mean of side
-  averages. Label LONG/SHORT drawdown side-only and ALL drawdown aggregate
-  portfolio.
+  averages. Also show independent events, payoff, probabilistic/deflated Sharpe,
+  adverse-cost expectancy, recovery/time-under-water, tail/CVaR, concentration,
+  and the terminal support class. Label LONG/SHORT drawdown side-only and ALL
+  drawdown aggregate portfolio.
 - Keep control and every candidate `configId` separate. Require complete
   manifests and exact N/W/L reconciliation; allow only documented per-symbol
   PnL rounding.
@@ -263,13 +284,13 @@ The release verdict and the next action are separate. Run
 `yarn strategy-release decide --input <decision-input.json>` after the final
 historical matrix and chart are frozen.
 
-The decision input must reference the structured chart report by both `path`
-and `sha256`; `decide` recomputes the file hash and verifies that it is a
-successful full-period local-deterministic chart run for the same strategy. A
-forward target is not a boolean. Local research normally leaves `runtimeTarget`
-null and returns `MICRO_FORWARD_READY`; bind the handoff to the exact Git-owned
-`deploymentId`, strategy declaration, and server account, then rerun `decide`
-against that Project image.
+The decision input must reference the v2 progress artifact, selected-composition
+artifact, and structured chart report by `path` and `sha256`; `decide`
+recomputes their hashes and rejects a strategy, candidate, objective, composition,
+or chart mismatch. A forward target is not a boolean. Local research normally
+leaves `runtimeTarget` null and returns `MICRO_FORWARD_READY`; bind the handoff
+to the exact Git-owned `deploymentId`, strategy declaration, and server account,
+then rerun `decide` against that Project image.
 
 - `REPAIR_RECENT_DIRECTION`: spend the single repair round, then rebuild all
   historical/chart evidence. Never tune on a handful of trades.
@@ -283,9 +304,9 @@ against that Project image.
   evidence blocker.
 - `FORWARD_BLOCKED`: resolve the named implementation/chart/runtime-target
   blocker; do not silently wait.
-- `STOP_RESEARCH`: preserve the evidence and explain which 3y/4y/max-window or
-  direction edge failed. This action is forbidden until the historical
-  hypothesis inventory is bridged, the three-round ledger is complete, and the
+- `STOP_RESEARCH`: preserve the evidence and explain which frozen objective or
+  selection-grade direction edge failed. This action is forbidden until the
+  historical hypothesis inventory is bridged, the three-round ledger is complete, and the
   cadence-diverse rescue board has been attempted or has fewer than three valid
   seeds for explicit recorded reasons. It is also forbidden while a required
   direction-policy checkpoint or full AI-gate report remains unfinished.
@@ -356,12 +377,12 @@ Follow the decision precedence and required supporting table in
 [references/verdict-contract.md](references/verdict-contract.md). Do not invent
 an intermediate production label.
 
-## Ready prompts
+## Short invocation prompts
 
 Release:
 
 ```text
-Use $strategy-release in release mode for <Strategy>. Evaluate config <Strategy>:ai as one core + deterministic AI-gate composition. First audit Git history and immutable evidence, bridge every stronger prior result to the current frozen experiment, and prioritize causally distinct untested commits before novel hypotheses. Use only --cacheOnly history and keep a chronological core release tail sealed while running three causal improvement rounds: one anchor per family, full metric/match/trace analysis, then two evidence-driven child variants per surviving family in each of two refinement rounds. After round 3 select up to three complete, reconciled, non-no-op diagnostic seeds with different cadence even when they failed the release rule and run one evidence-driven core rescue child for each. If one raw side remains useful while the other side or current gate destroys the composition, run the mandatory five-variant direction-policy checkpoint instead of stopping before gate research. Never exceed 18 core candidates. Report full AI-gate statistics plus 3y, 4y, 5y-or-maximum-available and terminal ALL/LONG/SHORT statistics even when no finalist is found. Keep both directions visible in raw evidence; any one-side composition must be an explicit tested gate policy. Use one gate round and at most one supported recent-direction repair. Set llmComparison=off. Finish with full-period `ai-train --localOnly --chart -n 0`, immutable evidence, one release verdict, and `strategy-release decide`. If the user asks to start forward tests, complete the exact strategy/package/Project commits and pushes, commit the full risk-1 config in `tradejs.config.ts`, run strict Project composition validation, explicitly dispatch the immutable image publication, verify the computed `strategyRevision` and `deploymentCompositionId` with `runtime-control inspect`, and start only the authorized forward deployment after `START_MICRO_FORWARD`; production Redis may hold only an optional manual pause override, never strategy config or version pointers.
+Use $strategy-release in release mode for <Strategy>:<config>.
 ```
 
 Diagnose live:
