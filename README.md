@@ -13,6 +13,102 @@ It supports two first-class authoring paths:
 
 [![TradeJS runtime dashboard with strategy performance, drawdown, orders, and win rate](.github/assets/runtime-performance.webp)](https://tradejs.dev)
 
+## Quick Start For Users
+
+Requirements: Node.js 20.19 or newer, npm 10+, Docker, and the Docker Compose
+plugin.
+
+```bash
+npx create-tradejs
+```
+
+The command creates `tradejs-project`, installs compatible public packages,
+starts local Redis and Timescale, and opens the Web UI. On first launch, create
+the local `root` password, then use **Create backtest** to validate a strategy
+before connecting it to a runtime deployment.
+
+See the [installation guide](https://docs.tradejs.dev/getting-started/installation)
+and [first backtest walkthrough](https://docs.tradejs.dev/getting-started/first-backtest)
+for the complete local setup.
+
+## Configure And Run Strategies
+
+`basePreset` makes the built-in strategy catalog available; it does not start
+any strategy. Runtime execution is selected separately in the generated
+project's `tradejs.config.ts`. A named deployment binds a connector, a stored
+account, a symbol selection, and one or more strategy configurations:
+
+```ts
+import { basePreset } from '@tradejs/base';
+import { defineConfig } from '@tradejs/core/config';
+
+export default defineConfig(basePreset, {
+  runtime: {
+    deployments: {
+      production: {
+        label: 'Production',
+        connectorName: 'bybit',
+        accountId: 'bybit-main',
+        enabled: true,
+        tickers: ['BTCUSDT'],
+        strategies: {
+          DoubleTap: {
+            enabled: true,
+            config: {
+              INTERVAL: '15',
+              UNIVERSE: 'crypto',
+              MAX_LOSS_VALUE: 1,
+            },
+          },
+        },
+      },
+    },
+  },
+});
+```
+
+Create `bybit-main` in the `root` user's **Trading accounts** settings. The
+`accountId` must match exactly; credentials stay in server-side storage and
+must never be committed to `tradejs.config.ts`. The compact strategy config
+above relies on package defaults and only demonstrates the declaration shape.
+For a real rollout, pin the strategy package and lockfile and declare the full
+configuration that was actually reviewed. `MAX_LOSS_VALUE: 1` is an example,
+not a risk recommendation.
+
+Run the rollout checks from the released project environment, using its exact
+Git-owned config and verified `runtime-package-manifest.json`:
+
+```bash
+# Verify the package, config, account, and deployment binding.
+npx @tradejs/cli runtime-control verify \
+  --user root --deployment production
+
+# Replay the same deployment, then evaluate it once without orders.
+npx @tradejs/cli replay \
+  --user root --deployment production --days 7 --cacheOnly
+npx @tradejs/cli signals \
+  --user root --deployment production
+
+# Keep evaluating closed candles without placing orders.
+npx @tradejs/cli signals-daemon \
+  --user root --deployment production
+
+# Only after explicit risk and account review: allow order placement.
+npx @tradejs/cli signals-daemon \
+  --user root --deployment production --makeOrders
+```
+
+Without `--makeOrders`, `signals` and `signals-daemon` calculate and record
+decisions but do not place orders. Run only one daemon for a deployment. The
+`create-tradejs` scaffold is intended for local onboarding and does not include
+production image publication or server rollout automation; use an immutable
+release with a process supervisor for live operation.
+
+The complete procedure is in
+[Run a Strategy in Production](https://docs.tradejs.dev/getting-started/run-strategy-in-production),
+with runtime details in
+[How Live Signals Work](https://docs.tradejs.dev/runtime/execution/signals).
+
 ## Public Resources
 
 ### Web
@@ -620,61 +716,38 @@ instead of assuming this checkout's local Redis is live.
 For environment setup, runtime evidence commands, and operational details, see
 [QUICKSTART.md](QUICKSTART.md).
 
-## Quick Start
+## Framework Repository Development
 
-### 1. Prerequisites
+This monorepo owns the framework, CLI, application package, and shared runtime.
+User projects, `tradejs.config.ts`, local infrastructure, backtests, and live
+operations belong in a separate TradeJS Project checkout.
+
+### Prerequisites
 
 - Node.js `24.17.0` (see `.nvmrc`)
 - Yarn `4.x`
-- Docker + Docker Compose
 
-### 2. Install
+### Install And Verify
 
 ```bash
 corepack enable
 nvm use
 yarn
-```
-
-### 3. Start Infra
-
-```bash
-yarn infra-up
-yarn doctor
-```
-
-### 4. Run App
-
-```bash
-yarn dev
-```
-
-Open `http://localhost:3000`.
-
-Useful routes:
-
-- `http://localhost:3000/routes/backtest` — saved backtest runs and detail pages
-- `http://localhost:3000/routes/dashboard` — chart view for signals and market inspection
-
-## Common Commands
-
-```bash
 yarn checks
-yarn build:ci
-yarn backtest
-yarn research:core
-yarn research:core:test
-yarn research:core:coverage
-yarn strategy:release
-yarn results
-yarn signals -- --deployment <deployment-id>
-yarn signals:daemon -- --deployment <deployment-id> --notify --makeOrders
-yarn runtime:evidence
-yarn runtime:evidence:sync
-yarn runtime:scorecard
-yarn signals:summary -- --printOnly
-yarn bot
 ```
+
+For deterministic package-level integration testing:
+
+```bash
+yarn sandbox:install
+yarn sandbox:infra-up
+yarn sandbox:e2e
+yarn sandbox:infra-down
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and
+[QUICKSTART.md](QUICKSTART.md) for the workspace development and operational
+routing guide.
 
 ## Automated npm Releases
 
@@ -745,7 +818,7 @@ yarn continuity --user root --timeframe 15 --provider bybit
 4. `-n 0` evaluates all rows from the merged dataset instead of only the latest sample from the end.
 5. `ai-train` treats a trade as AI-approved when returned `direction` matches the original signal direction and `quality >= minQuality`.
 
-## Plugin Configuration
+## Plugin Registration
 
 Create `tradejs.config.ts` at repository root:
 
@@ -759,6 +832,11 @@ export default defineConfig(basePreset, {
   connectors: ['@scope/my-connector-plugin'],
 });
 ```
+
+The top-level `strategies`, `indicators`, and `connectors` arrays register
+plugins; they do not activate runtime execution. Select registered strategies
+under `runtime.deployments` as shown in
+[Configure And Run Strategies](#configure-and-run-strategies).
 
 Import policy for plugin code:
 
