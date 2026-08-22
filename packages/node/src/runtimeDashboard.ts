@@ -91,37 +91,70 @@ const loadRuntimeTrades = async (
     (typeof trade.exitTimestamp === 'number' &&
       trade.exitTimestamp >= startTime);
   const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
-  const bucketTrades = (
-    await Promise.all(
+  const [bucketTradeGroups, legacyKeys] = await Promise.all([
+    Promise.all(
       dayKeys.map((dayKey) =>
         getHashJsonValues<RuntimeTradeRecord>(
           redisKeys.runtimeTradeBucket(userName, dayKey),
         ),
       ),
-    )
-  ).flat();
-  const dedupedBucketTrades = new Map<string, RuntimeTradeRecord>();
+    ),
+    getKeys(redisKeys.runtimeTrades(userName)),
+  ]);
+  const legacyTradeKeys = legacyKeys.filter(
+    (key) => !key.startsWith(redisKeys.runtimeTradeBuckets(userName)),
+  );
+  const legacyTrades = await Promise.all(
+    legacyTradeKeys.map((key) => getData(key, null)),
+  );
+  const dedupedTrades = new Map<string, RuntimeTradeRecord>();
 
-  for (const trade of bucketTrades) {
+  for (const trade of [...legacyTrades, ...bucketTradeGroups.flat()]) {
     if (!isRuntimeTradeRecord(trade)) {
       continue;
     }
-    dedupedBucketTrades.set(trade.orderId, trade);
+    const existing = dedupedTrades.get(trade.orderId);
+    if (
+      !existing ||
+      (trade.lastSyncedAt ?? Number.NEGATIVE_INFINITY) >=
+        (existing.lastSyncedAt ?? Number.NEGATIVE_INFINITY)
+    ) {
+      dedupedTrades.set(trade.orderId, trade);
+    }
   }
 
-  if (dedupedBucketTrades.size > 0 || dayKeys.length === 0) {
-    return [...dedupedBucketTrades.values()]
-      .filter(filterByWindow)
-      .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
-  }
-
-  const keys = await getKeys(redisKeys.runtimeTrades(userName));
-  const trades = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return trades
-    .filter(isRuntimeTradeRecord)
+  return [...dedupedTrades.values()]
     .filter(filterByWindow)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+};
+
+const getTradeStrategyRevision = (trade: RuntimeTradeRecord) =>
+  trade.strategyRevision ??
+  (trade.runtimeLineage?.schemaVersion === 3
+    ? trade.runtimeLineage.strategyRevision
+    : undefined);
+
+const buildStrategyRevisionChanges = (trades: RuntimeTradeRecord[]) => {
+  const changes: Array<{ timestamp: number; strategyRevision: string }> = [];
+  let previousRevision: string | undefined;
+
+  for (const trade of [...trades].sort(
+    (left, right) =>
+      left.entryTimestamp - right.entryTimestamp ||
+      left.orderId.localeCompare(right.orderId),
+  )) {
+    const strategyRevision = getTradeStrategyRevision(trade);
+    if (!strategyRevision) continue;
+    if (previousRevision && strategyRevision !== previousRevision) {
+      changes.push({
+        timestamp: trade.entryTimestamp,
+        strategyRevision,
+      });
+    }
+    previousRevision = strategyRevision;
+  }
+
+  return changes;
 };
 
 const buildExchangeTimeRanges = (startTime: number, endTime: number) => {
@@ -425,15 +458,6 @@ export const loadRuntimeDashboard = async ({
       ),
     ),
   );
-  const runtimeIdentityKey = (trade: RuntimeTradeRecord) =>
-    buildRuntimeStrategyIdentityKey({
-      strategyName: trade.strategy,
-      configId: trade.strategyRevision,
-      universe: trade.universe,
-      accountId: trade.accountId,
-      deploymentId: trade.deploymentId,
-      policyProfileId: trade.policyProfileId,
-    });
   const identityByKey = new Map<
     string,
     {
@@ -492,30 +516,15 @@ export const loadRuntimeDashboard = async ({
       });
     }
   }
-  const accountScopedTrades = allTrades;
-  for (const trade of accountScopedTrades) {
-    const key = runtimeIdentityKey(trade);
-    const configuredIdentity = identityByKey.get(key);
-    if (!configuredIdentity) continue;
-    const strategyRevision =
-      trade.strategyRevision ??
-      (trade.runtimeLineage?.schemaVersion === 3
-        ? trade.runtimeLineage.strategyRevision
-        : undefined);
-    if (strategyRevision !== configuredIdentity.strategyRevision) continue;
-    identityByKey.set(key, {
-      ...configuredIdentity,
-      interval: String(
-        trade.interval ?? configuredIdentity.interval,
-      ) as Interval,
-    });
-  }
-
   const strategies = await Promise.all(
     [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
       const { strategyName } = identity;
-      const strategyTrades = accountScopedTrades
-        .filter((trade) => runtimeIdentityKey(trade) === runtimeKey)
+      const strategyTrades = allTrades
+        .filter(
+          (trade) =>
+            trade.strategy === strategyName &&
+            String(trade.interval) === String(identity.interval),
+        )
         .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
       const orders = strategyTrades
         .sort((left, right) => {
@@ -552,6 +561,7 @@ export const loadRuntimeDashboard = async ({
         stat: analytics.stat,
         summary: analytics.summary,
         orderLog: analytics.orderLog,
+        revisionChanges: buildStrategyRevisionChanges(strategyTrades),
         recentTrades: strategyTrades
           .slice(0, 8)
           .map((trade) => toRuntimeTradeView(trade, endTime)),

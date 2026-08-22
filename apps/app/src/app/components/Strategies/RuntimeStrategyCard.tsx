@@ -241,6 +241,7 @@ export const RuntimeStrategyCard = ({
 
       <RuntimeStrategyChart
         orderLog={strategy.orderLog}
+        revisionChanges={strategy.revisionChanges}
         stat={strategy.stat}
         startTimestamp={startTimestamp}
         endTimestamp={endTimestamp}

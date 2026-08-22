@@ -13,7 +13,11 @@ import {
   YAxis,
 } from 'recharts';
 import { getFormatted } from '@tradejs/core/backtest';
-import type { SimpleOrderLogData, TestStat } from '@tradejs/types';
+import type {
+  RuntimeStrategyRevisionChange,
+  SimpleOrderLogData,
+  TestStat,
+} from '@tradejs/types';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 import {
@@ -23,6 +27,7 @@ import {
 
 interface RuntimeStrategyChartProps {
   orderLog: SimpleOrderLogData;
+  revisionChanges?: RuntimeStrategyRevisionChange[];
   stat: TestStat;
   startTimestamp: number;
   endTimestamp: number;
@@ -31,6 +36,7 @@ interface RuntimeStrategyChartProps {
 
 export const RuntimeStrategyChart = ({
   orderLog,
+  revisionChanges = [],
   stat,
   startTimestamp,
   endTimestamp,
@@ -97,6 +103,22 @@ export const RuntimeStrategyChart = ({
                     position: 'bottom',
                   }}
                 />
+                {revisionChanges.map((change) => (
+                  <ReferenceLine
+                    key={`${change.timestamp}:${change.strategyRevision}`}
+                    x={change.timestamp}
+                    stroke={chart.color('orange.400')}
+                    strokeDasharray="4 4"
+                    label={{
+                      value: `Revision ${change.strategyRevision
+                        .replace(/^sr1:/, '')
+                        .slice(0, 8)}`,
+                      offset: 8,
+                      fill: chart.color('orange.300'),
+                      position: 'insideTopRight',
+                    }}
+                  />
+                ))}
                 <TimeSeriesXAxis
                   startTimestamp={startTimestamp}
                   endTimestamp={endTimestamp}

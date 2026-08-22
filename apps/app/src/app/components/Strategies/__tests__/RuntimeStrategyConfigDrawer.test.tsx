@@ -107,7 +107,8 @@ describe('RuntimeStrategyConfigDrawer', () => {
     );
 
     expect(screen.getByText('sr1:5555555555555555')).toBeTruthy();
-    expect(screen.getByText('DoubleTap:production')).toBeTruthy();
+    expect(screen.queryByText('Config ID')).toBeNull();
+    expect(screen.queryByText('DoubleTap:production')).toBeNull();
     expect(
       screen.getByText('production:DoubleTap:sr1:5555555555555555'),
     ).toBeTruthy();
