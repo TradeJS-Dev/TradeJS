@@ -356,22 +356,18 @@ describe('cli telegram notifications', () => {
     expect(progressTick).toHaveBeenCalledTimes(1);
   });
 
-  it('requests LLM only for deliverable gate-mode signals before TG send', async () => {
+  it('uses Git-owned gate options, including MIN_AI_QUALITY=0, before TG send', async () => {
     const logger = {
       info: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
     };
-    const getData = jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'users:root:strategies:TrendShift:config') {
-        return { AI_MODE: 'gate', MIN_AI_QUALITY: 5 };
-      }
-      return null;
-    });
+    const getData = jest.fn(async () => null);
+    const setData = jest.fn(async () => undefined);
     const askAI = jest.fn(async () => ({
-      direction: 'SHORT',
-      quality: 2,
-      comment: 'llm rejected',
+      direction: 'LONG',
+      quality: 0,
+      comment: 'llm approved at the configured zero threshold',
     }));
     const sendSignal = jest.fn(async () => undefined);
     const sendSignalAnalysis = jest.fn(async () => undefined);
@@ -401,6 +397,7 @@ describe('cli telegram notifications', () => {
       delKeyWithOptions: jest.fn(),
       getData,
       getKeys: jest.fn(async () => []),
+      setData,
       redisKeys: {
         analysis: (symbol: string, signalId: string) =>
           `analysis:${symbol}:${signalId}`,
@@ -438,23 +435,29 @@ describe('cli telegram notifications', () => {
           indicators: {},
           aiAnalysis: {
             direction: 'LONG',
-            quality: 5,
+            quality: 0,
             comment: 'gate approved',
           },
         },
       ] as any,
       '15',
       'root',
+      new Map([['TrendShift', { enabled: true, mode: 'gate', minQuality: 0 }]]),
     );
 
+    expect(getData).not.toHaveBeenCalledWith(
+      'users:root:strategies:TrendShift:config',
+      null,
+    );
     expect(askAI).toHaveBeenCalledTimes(1);
     expect(sendSignal).toHaveBeenCalledTimes(1);
     const analysis = (sendSignal.mock.calls[0] as unknown[] | undefined)?.[2];
     expect(analysis).toMatchObject({
       gateDecision: 'approved',
-      llmDecision: 'rejected',
-      gateContradictsLlm: true,
+      llmDecision: 'approved',
+      gateContradictsLlm: false,
     });
+    expect(setData).toHaveBeenCalledWith('analysis:BTCUSDT:sig-1', analysis);
     expect(sendSignalAnalysis).toHaveBeenCalledTimes(1);
   });
 
@@ -464,12 +467,7 @@ describe('cli telegram notifications', () => {
       error: jest.fn(),
       warn: jest.fn(),
     };
-    const getData = jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'users:root:strategies:TrendShift:config') {
-        return { AI_MODE: 'gate', MIN_AI_QUALITY: 4 };
-      }
-      return null;
-    });
+    const getData = jest.fn(async () => null);
     const askAI = jest.fn(async () => {
       throw new Error('AI provider returned an empty chat completion');
     });
@@ -546,6 +544,7 @@ describe('cli telegram notifications', () => {
       ] as any,
       '15',
       'root',
+      new Map([['TrendShift', { enabled: true, mode: 'gate', minQuality: 4 }]]),
     );
 
     expect(sendSignal).toHaveBeenCalledWith(
@@ -576,12 +575,8 @@ describe('cli telegram notifications', () => {
       error: jest.fn(),
       warn: jest.fn(),
     };
-    const getData = jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'users:root:strategies:TrendShift:config') {
-        return { AI_MODE: 'gate', MIN_AI_QUALITY: 5 };
-      }
-      return null;
-    });
+    const getData = jest.fn(async () => null);
+    const setData = jest.fn(async () => undefined);
     const askAI = jest.fn(async () => ({
       direction: 'LONG',
       quality: 5,
@@ -616,6 +611,7 @@ describe('cli telegram notifications', () => {
       delKeyWithOptions: jest.fn(),
       getData,
       getKeys: jest.fn(async () => []),
+      setData,
       redisKeys: {
         analysis: (symbol: string, signalId: string) =>
           `analysis:${symbol}:${signalId}`,
@@ -661,6 +657,7 @@ describe('cli telegram notifications', () => {
       ] as any,
       '15',
       'root',
+      new Map([['TrendShift', { enabled: true, mode: 'gate', minQuality: 5 }]]),
     );
 
     const analysis = (sendSignal.mock.calls[0] as unknown[] | undefined)?.[2];
@@ -677,12 +674,7 @@ describe('cli telegram notifications', () => {
       error: jest.fn(),
       warn: jest.fn(),
     };
-    const getData = jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'users:root:strategies:TrendShift:config') {
-        return { AI_MODE: 'llm', MIN_AI_QUALITY: 5 };
-      }
-      return null;
-    });
+    const getData = jest.fn(async () => null);
     const askAI = jest.fn(async () => ({
       direction: 'LONG',
       quality: 5,
@@ -760,6 +752,7 @@ describe('cli telegram notifications', () => {
       ] as any,
       '15',
       'root',
+      new Map([['TrendShift', { enabled: true, mode: 'llm', minQuality: 5 }]]),
     );
 
     expect(askAI).not.toHaveBeenCalled();
@@ -772,12 +765,7 @@ describe('cli telegram notifications', () => {
       error: jest.fn(),
       warn: jest.fn(),
     };
-    const getData = jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'users:root:strategies:TrendShift:config') {
-        return { AI_MODE: 'gate', MIN_AI_QUALITY: 5 };
-      }
-      return null;
-    });
+    const getData = jest.fn(async () => null);
     const askAI = jest.fn(async () => ({
       direction: 'LONG',
       quality: 5,
@@ -850,6 +838,7 @@ describe('cli telegram notifications', () => {
       ] as any,
       '15',
       'root',
+      new Map([['TrendShift', { enabled: true, mode: 'gate', minQuality: 5 }]]),
     );
 
     expect(askAI).not.toHaveBeenCalled();

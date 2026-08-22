@@ -15,7 +15,10 @@ import {
   sendToTG,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
-import { releaseStrategyReplayCache } from '@tradejs/core/strategies';
+import {
+  mapAiRuntimeFromConfig,
+  releaseStrategyReplayCache,
+} from '@tradejs/core/strategies';
 import type {
   TradejsConfigAfterSignalsHookContext,
   TradejsConfigHooks,
@@ -663,7 +666,21 @@ export const createSignalsRunner = (
           await makeScreenshots(telegramSignals, interval, config.userName);
         }
 
-        await sendToTG(telegramSignals, interval, config.userName);
+        await sendToTG(
+          telegramSignals,
+          interval,
+          config.userName,
+          new Map(
+            runtimeStrategies.map(({ strategyName, strategyConfig }) => [
+              strategyName,
+              mapAiRuntimeFromConfig({
+                AI_ENABLED: strategyConfig.AI_ENABLED,
+                AI_MODE: strategyConfig.AI_MODE,
+                MIN_AI_QUALITY: strategyConfig.MIN_AI_QUALITY,
+              }),
+            ]),
+          ),
+        );
         await sendRuntimeCloseNotificationsToTG(
           runtimeCloseNotifications,
           config.userName,

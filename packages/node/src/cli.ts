@@ -20,6 +20,7 @@ import {
   getKeys,
   getData,
   redisKeys,
+  setData,
 } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { getDataEdgesForSymbols } from '@tradejs/infra/timescale/candles';
@@ -40,6 +41,7 @@ import {
   TestThresholdsKey,
   Signal,
   RuntimeStrategyCloseNotification,
+  StrategyRuntimeAiOptions,
 } from '@tradejs/types';
 import { getTradejsProjectCwd } from './tradejsConfig';
 export { loadTradejsConfig } from './tradejsConfig';
@@ -475,24 +477,23 @@ export const sendRuntimeCloseNotificationsToTG = async (
   logger.info('');
 };
 
+export type SignalNotificationAiOptions = Pick<
+  StrategyRuntimeAiOptions,
+  'enabled' | 'mode' | 'minQuality'
+>;
+
+export type SignalNotificationAiOptionsByStrategy = ReadonlyMap<
+  string,
+  SignalNotificationAiOptions
+>;
+
 export const sendToTG = async (
   signals: Signal[],
   imgInterval: Interval,
   userName = 'root',
+  aiOptionsByStrategy: SignalNotificationAiOptionsByStrategy = new Map(),
 ) => {
   await ensureStrategyPluginsLoaded();
-  const strategyConfigCache = new Map<string, any>();
-  const resolveStrategyConfig = async (strategyName: string) => {
-    if (strategyConfigCache.has(strategyName)) {
-      return strategyConfigCache.get(strategyName);
-    }
-    const config = await getData(
-      `users:${userName}:strategies:${strategyName}:config`,
-      null,
-    );
-    strategyConfigCache.set(strategyName, config);
-    return config;
-  };
   const resolveDecision = (
     analysis: Record<string, any> | null,
     direction: Signal['direction'],
@@ -543,11 +544,16 @@ export const sendToTG = async (
         analysis &&
         typeof analysis === 'object' &&
         Object.keys(analysis).length > 0;
-      const strategyConfig = await resolveStrategyConfig(signal.strategy);
-      const aiMode = strategyConfig?.AI_MODE;
+      const aiOptions = aiOptionsByStrategy.get(signal.strategy);
       const gateAnalysis = signal.aiAnalysis;
-      if (aiMode === 'gate' && gateAnalysis) {
-        const minQuality = Number(strategyConfig?.MIN_AI_QUALITY) || 4;
+      if (
+        aiOptions?.enabled !== false &&
+        aiOptions?.mode === 'gate' &&
+        gateAnalysis
+      ) {
+        const minQuality = Number.isFinite(aiOptions.minQuality)
+          ? Number(aiOptions.minQuality)
+          : 4;
         const gateDecision = resolveDecision(
           gateAnalysis as Record<string, any>,
           signal.direction,
@@ -568,6 +574,18 @@ export const sendToTG = async (
             llmDecision,
             gateContradictsLlm: gateDecision !== llmDecision,
           };
+          try {
+            await setData(
+              redisKeys.analysis(signal.symbol, signal.signalId),
+              analysis,
+            );
+          } catch (error) {
+            logger.error(
+              'LLM comparison persistence failed: %s (%s)',
+              signal.symbol,
+              (error as Error)?.message || String(error),
+            );
+          }
           shouldSendSignalAnalysis = true;
         } catch (error) {
           logger.error(

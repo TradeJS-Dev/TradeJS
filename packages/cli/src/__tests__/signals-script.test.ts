@@ -135,6 +135,11 @@ const loadScript = async (scenario: Scenario) => {
   );
   const incrHashFields = jest.fn(async () => null);
   const releaseStrategyReplayCache = jest.fn();
+  const mapAiRuntimeFromConfig = jest.fn((strategyConfig: any) => ({
+    enabled: Boolean(strategyConfig.AI_ENABLED ?? true),
+    mode: strategyConfig.AI_MODE ?? 'llm',
+    minQuality: Number(strategyConfig.MIN_AI_QUALITY ?? 4),
+  }));
   const logger = {
     info: jest.fn(),
     log: jest.fn(),
@@ -405,6 +410,7 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('@tradejs/core/strategies', () => ({
+    mapAiRuntimeFromConfig,
     releaseStrategyReplayCache,
   }));
 
@@ -538,6 +544,7 @@ const loadScript = async (scenario: Scenario) => {
       logger,
       listInstruments,
       makeScreenshots,
+      mapAiRuntimeFromConfig,
       progressTick,
       releaseStrategyReplayCache,
       redisKeys,
@@ -1552,6 +1559,11 @@ describe('signals script', () => {
       strategyConfigs: [
         {
           strategyName: 'AdaptiveMomentumRibbon',
+          config: {
+            AI_ENABLED: true,
+            AI_MODE: 'gate',
+            MIN_AI_QUALITY: 3,
+          },
           result: {
             signalId: 'amr-sig',
             strategy: 'AdaptiveMomentumRibbon',
@@ -1569,6 +1581,11 @@ describe('signals script', () => {
         },
         {
           strategyName: 'TrendLine',
+          config: {
+            AI_ENABLED: true,
+            AI_MODE: 'gate',
+            MIN_AI_QUALITY: 4,
+          },
           result: {
             signalId: 'trend-sig',
             strategy: 'TrendLine',
@@ -1618,6 +1635,18 @@ describe('signals script', () => {
       ],
       '15',
       'root',
+    );
+    const notificationAiOptions = (
+      mocks.sendToTG.mock.calls as unknown[][]
+    )[0]?.[3];
+    expect(notificationAiOptions).toEqual(
+      new Map([
+        [
+          'AdaptiveMomentumRibbon',
+          { enabled: true, mode: 'gate', minQuality: 3 },
+        ],
+        ['TrendLine', { enabled: true, mode: 'gate', minQuality: 4 }],
+      ]),
     );
     const storedTradeSignalCallIndex = (
       mocks.setData.mock.calls as unknown[][]
@@ -1671,6 +1700,7 @@ describe('signals script', () => {
       ],
       '15',
       'root',
+      expect.any(Map),
     );
   });
 
@@ -1720,7 +1750,12 @@ describe('signals script', () => {
         onRuntimeClose: expect.any(Function),
       }),
     );
-    expect(mocks.sendToTG).toHaveBeenCalledWith([], '15', 'root');
+    expect(mocks.sendToTG).toHaveBeenCalledWith(
+      [],
+      '15',
+      'root',
+      expect.any(Map),
+    );
     expect(mocks.sendRuntimeCloseNotificationsToTG).toHaveBeenCalledWith(
       [closeEvent],
       'root',
