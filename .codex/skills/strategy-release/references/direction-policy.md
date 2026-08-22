@@ -19,8 +19,9 @@ obscured by the opposite direction or by the current deterministic gate.
   must reproduce the corresponding gate-blocked entries and be separately
   authorized before runtime configuration changes.
 - Direction containment may produce a composition finalist even when the raw
-  ALL cohort failed. It does not waive terminal, cost, support, concentration,
-  drawdown, or holdout rules for the retained side.
+  ALL cohort failed. It does not waive maximum-covered economics, cost,
+  support, concentration, drawdown, or causality rules for the retained side.
+  Terminal calendar rows remain historical-readiness diagnostics.
 
 ## Required trigger table
 
@@ -88,9 +89,11 @@ omitting it. The raw side remains visible beside the approved side.
 Raw LONG `PnL > 0`, `PF > 1`; raw SHORT supplies most aggregate loss. Test
 `long_only` and the remaining four variants. If LONG then fails a
 selection-grade terminal cohort or cost stress, reject runtime readiness for
-those reasons. Keep underpowered/diagnostic 90d/30d/7d rows visible as `n/a` or
-diagnostic evidence; do not let them reject the policy. Do not claim that SHORT
-made testing impossible.
+those reasons. A terminal loss alone may still leave the immutable policy
+eligible for a risk-1 prospective test; a cost or portfolio-risk failure does
+not. Keep underpowered/diagnostic 90d/30d/7d rows visible as `n/a` or diagnostic
+evidence; do not let them reject the policy. Do not claim that SHORT made
+testing impossible.
 
 ### Profitable SHORT hidden by the gate
 

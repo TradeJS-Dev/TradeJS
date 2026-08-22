@@ -523,7 +523,7 @@ describe('strategy release evidence', () => {
     });
   });
 
-  it('rejects a selection-grade negative terminal cohort', async () => {
+  it('keeps a historically promising candidate forward-eligible despite a negative recent cohort', async () => {
     const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
     const lineage = await writeDecisionLineage(
       'DoubleTap',
@@ -537,6 +537,80 @@ describe('strategy release evidence', () => {
       independentEvents: 100,
       pnl: -20,
       profitFactor: 0.8,
+    });
+
+    await expect(
+      deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows,
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        ...lineage,
+        chartArtifact,
+        recentFailure: null,
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).resolves.toMatchObject({
+      action: 'MICRO_FORWARD_READY',
+      blockers: ['FORWARD_NOT_AUTHORIZED'],
+    });
+  });
+
+  it('treats nested long windows as context when the maximum-covered history is positive', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
+    const historicalWindows = positiveHistoricalWindows();
+    const nested1095d = historicalWindows.find(({ days }) => days === 1095)!;
+    Object.assign(nested1095d, {
+      pnl: -20,
+      profitFactor: 0.8,
+      long: { pnl: -10, profitFactor: 0.8 },
+      short: { pnl: -10, profitFactor: 0.8 },
+    });
+
+    await expect(
+      deriveStrategyReleaseResearchDecision({
+        strategy: 'DoubleTap',
+        historicalWindows,
+        candidateImplemented: true,
+        exposedEvaluation: true,
+        ...lineage,
+        chartArtifact,
+        recentFailure: null,
+        forwardTest: {
+          authorized: false,
+          runtimeTarget: null,
+          maxLossValue: 1,
+        },
+      }),
+    ).resolves.toMatchObject({
+      action: 'MICRO_FORWARD_READY',
+      blockers: ['FORWARD_NOT_AUTHORIZED'],
+    });
+  });
+
+  it('rejects a candidate without a positive maximum-covered historical edge', async () => {
+    const { rootDir, chartArtifact } = await writeDecisionChart('DoubleTap');
+    const lineage = await writeDecisionLineage(
+      'DoubleTap',
+      rootDir,
+      chartArtifact.sha256,
+    );
+    const historicalWindows = positiveHistoricalWindows();
+    const maximumCovered = historicalWindows.find(({ days }) => days === 1825)!;
+    Object.assign(maximumCovered, {
+      pnl: -20,
+      profitFactor: 0.8,
+      long: { pnl: -10, profitFactor: 0.8 },
+      short: { pnl: -10, profitFactor: 0.8 },
     });
 
     await expect(

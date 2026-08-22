@@ -297,14 +297,21 @@ but exposes the tail; it cannot later be relabelled an untouched release test.
 ### 4. Issue A Strategy Release Verdict
 
 The repository-local `$strategy-release` skill turns verified core and gate
-evidence into one composition-level decision. It has `release` and
-`diagnose-live` modes. Every release task starts a new immutable lineage unless
+evidence into one composition-level decision. It has `release`, `scale-risk`,
+and `diagnose-live` modes. Every release task starts a new immutable lineage unless
 the caller explicitly continues one. Release mode freezes a versioned research
 objective, audits strategy history, and revalidates every deduplicated prior
 core/gate/direction/rescue candidate before selecting new hypotheses. Compatible
 normalized trades are rescored; potentially competitive incompatible evidence
 gets an exact cache-only bridge rerun. Old verdicts and rounds remain evidence,
 but never satisfy the new task's improvement budget.
+
+The short `release` invocation authorizes the complete contour for the one
+selected candidate: research, source implementation, package/Project commits,
+stable publication, deployment, and a production micro-forward with
+`MAX_LOSS_VALUE=1`. Add `research-only` or `no runtime changes` to stop at a
+portable handoff. No second approval message or 7d/30d/180d waiting period is
+required.
 
 Metric-only rescoring and an exact bridge rerun of already-tested behavior do
 not consume the new lineage's 18 causal-candidate slots. Every distinct
@@ -385,9 +392,11 @@ action, Codex must perform that bounded action before returning a final verdict.
 Continuous 365d/180d/90d/30d/7d rows remain mandatory, including zero rows,
 but their pass/fail authority depends on independent support. Fewer than 20
 independent events are underpowered, 20–49 are diagnostic, and only 50 or more
-are selection-grade. Sparse recent tails therefore guide cadence monitoring or
-one preregistered repair; they cannot erase a supported long-window edge or
-justify another threshold by themselves.
+are selection-grade. These rows describe regime and cadence; they never require
+waiting before a risk-1 forward. Sparse recent tails guide monitoring or one
+preregistered repair, while a selection-grade tail can limit the historical
+readiness claim and candidate rank without vetoing an otherwise valid
+prospective test.
 
 The bounded loop still requires professional judgment. Before round 1, Codex
 writes the strategy's market thesis and an opportunity map across setup
@@ -442,8 +451,9 @@ parity and execution safety come from their measured artifacts. It writes a
 release envelope plus compact G/L/E/D/R chart markers under the ignored
 `data/strategy-release` tree. The only release verdicts are
 `READY_FOR_RUNTIME`, `UNSUITABLE_FOR_CURRENT_MARKET`, and
-`INSUFFICIENT_EVIDENCE`. No verdict changes runtime config, `MAX_LOSS_VALUE`,
-orders, daemons, or promotion state.
+`INSUFFICIENT_EVIDENCE`. A verdict remains an evidence classification rather
+than mutation authority; the `release`-mode invocation separately authorizes
+only the exact selected composition's risk-1 rollout.
 
 The frozen composition records separate identities for the canonical resolved
 core config (`coreConfigSha256`), the exact core JSONL export
@@ -508,11 +518,12 @@ revision but need not create a new research composition when trading logic is
 unchanged.
 
 `decide` returns a bounded repair, `START_MICRO_FORWARD`, an explicit blocker,
-or stop. When the user has authorized automatic forward testing and the exact
-runtime account/deployment target is resolved, an exposed holdout or sparse
-recent tail does not mean “wait”: the frozen candidate starts prospective
-testing with `MAX_LOSS_VALUE=1`. This does not promote the strategy, increase
-risk, or permit unrelated runtime changes.
+or stop. In normal `release` mode, `MICRO_FORWARD_READY` is an instruction to
+bind, publish, deploy, and rerun `decide`, not to ask for another message. An
+exposed holdout or sparse/negative recent calendar tail does not mean “wait”:
+the frozen historically promising candidate starts prospective testing with
+`MAX_LOSS_VALUE=1`. This does not increase risk or permit unrelated runtime
+changes.
 
 The profile generator scans the selected normalized JSONL variant once, then
 calculates daily-stepped equal-length drawdown windows with indexed timestamp
@@ -582,6 +593,14 @@ research inputs; production runtime config exists only in the committed
 `TradeJS-Project/tradejs.config.ts` declaration. The strategies screen at
 `http://localhost:3000/routes/strategies` renders it read-only and may only
 pause or resume new entries.
+
+Forward review is event-driven, not calendar-driven. Keep
+`MAX_LOSS_VALUE=1` until the frozen minimum independent-event count is reached
+or a parity/risk bound fires. A later explicit scale request may change only the
+risk value, normally by at most 2x per step, after runtime parity, execution,
+expectancy, drawdown, concentration, and regime coverage remain inside the
+frozen profile. Record an `L` marker and deploy the new Project revision; do not
+repeat historical strategy research when core and gate logic are unchanged.
 
 Use an explicit rollout ladder:
 
