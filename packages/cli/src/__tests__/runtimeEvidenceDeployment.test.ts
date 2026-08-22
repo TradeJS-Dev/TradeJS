@@ -103,6 +103,20 @@ describe('runtime evidence deployment snapshot', () => {
         runtime: {
           trades: [],
           signals: [],
+          evaluations: [],
+          evaluationStatsBuckets: [],
+          lineageScopes: [],
+        },
+      }),
+    ).toThrow('contains removed lineage-less evaluationStatsBuckets data');
+
+    expect(() =>
+      assertCurrentRuntimeEvidenceArtifact({
+        reportType: 'runtime-evidence',
+        deployment: snapshot,
+        runtime: {
+          trades: [],
+          signals: [],
           evaluations: [
             {
               strategy: 'DoubleTap',

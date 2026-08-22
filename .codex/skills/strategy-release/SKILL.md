@@ -159,7 +159,8 @@ losses are expected drawdown or a generalization failure. Do not tune thresholds
 inside a diagnostic lineage. Accept runtime evidence only when it carries the
 current deployment snapshot schema v2 and runtime lineage schema v3 for every
 row. Never reconstruct runtime composition from `strategyConfigs`, current
-Redis configuration, or research fingerprints.
+Redis configuration, research fingerprints, or lineage-less
+`evaluationStatsBuckets`; aggregate debug telemetry is not immutable evidence.
 
 ## Shared metric and evidence rules
 

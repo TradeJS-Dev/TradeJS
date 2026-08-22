@@ -245,6 +245,11 @@ export const assertCurrentRuntimeEvidenceArtifact = (artifact: unknown) => {
       'Runtime evidence payload contains removed strategyConfigs data',
     );
   }
+  if ('evaluationStatsBuckets' in runtime) {
+    throw new Error(
+      'Runtime evidence payload contains removed lineage-less evaluationStatsBuckets data',
+    );
+  }
   const rowFields = [
     'trades',
     'signals',

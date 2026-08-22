@@ -156,7 +156,7 @@ Runtime feedback artifacts:
 - each ready bundle contains `runtime-evidence.json`, `manifest.json`, and `.complete`; consumers verify the payload size and SHA-256 before processing
 - closed trades are indexed by their exit day, so a trade opened on an earlier day still appears in the artifact for the day it closes
 - the runtime payload has one current contract: deployment snapshot schema v2 and runtime lineage schema v3; every runtime row must match the embedded deployment, account, strategy revision, package boundary, and risk scale
-- `strategyConfigs` is not part of runtime evidence; publisher, sync, replay, and scorecard reject records outside the current contract instead of adapting them
+- `strategyConfigs` and lineage-less `evaluationStatsBuckets` are not part of immutable runtime evidence; publisher, sync, replay, and scorecard reject records outside the current contract instead of adapting or attributing aggregate debug telemetry
 
 ```bash
 RUNTIME_EVIDENCE_PUBLISH_DIR=/app/data/runtime-evidence \

@@ -553,7 +553,9 @@ Every runtime evaluation, signal, trade, and persisted scope in the scorecard
 must use runtime lineage schema v3 and match the embedded deployment snapshot
 schema v2: deployment/account, strategy revision, strategy package, dependency
 versions, runtime package, and risk scale. Publisher, sync, replay, and
-scorecard reject any row outside that single contract. Missing or conflicting
+scorecard reject any row outside that single contract, and immutable evidence
+rejects lineage-less `evaluationStatsBuckets` instead of attributing aggregate
+debug telemetry to the embedded composition. Missing or conflicting
 current lineage blocks attribution; missing risk scale leaves economic
 attribution insufficient.
 Research evidence remains a local/CI diagnostic input. Production does not

@@ -365,7 +365,6 @@ export const buildRuntimeEvidenceReportPayload = ({
   signals,
   evaluations,
   trades,
-  evaluationStatsBuckets,
   lineageScopes,
 }: {
   userName: string;
@@ -374,7 +373,6 @@ export const buildRuntimeEvidenceReportPayload = ({
   signals: Signal[];
   evaluations: RuntimeSignalEvaluationRecord[];
   trades: RuntimeTradeRecord[];
-  evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
   lineageScopes?: RuntimeLineageScopeRecord[];
 }) => ({
   reportType: 'runtime-daily-evidence' as const,
@@ -391,13 +389,11 @@ export const buildRuntimeEvidenceReportPayload = ({
     trades: trades.length,
     signals: signals.length,
     evaluations: evaluations.length,
-    evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
     lineageScopes: lineageScopes?.length ?? 0,
   },
   trades: trades.map((trade) => ({ trade })),
   signals: signals.map((signal) => ({ signal })),
   evaluations: evaluations.map((evaluation) => ({ evaluation })),
-  evaluationStatsBuckets: evaluationStatsBuckets ?? [],
   lineageScopes: lineageScopes ?? [],
 });
 

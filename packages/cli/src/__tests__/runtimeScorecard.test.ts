@@ -67,7 +67,6 @@ describe('runtime scorecard', () => {
       window: { startTime, endTime },
       deployment,
       runtime: {
-        evaluationStatsBuckets: [{ stats: { evaluated: 100, signals: 4 } }],
         evaluations: [
           {
             evaluation: bindRow(strategy, {
@@ -173,8 +172,8 @@ describe('runtime scorecard', () => {
       maxLossValue: 1,
     });
     expect(scorecard.funnel).toMatchObject({
-      evaluations: 100,
-      coreCandidates: 4,
+      evaluations: 2,
+      coreCandidates: 2,
       orderAttempts: 2,
       orderFailures: 1,
       fills: 1,

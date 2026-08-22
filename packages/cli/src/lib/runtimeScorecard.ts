@@ -72,9 +72,6 @@ const extractRuntimeRows = (artifact: unknown) => {
     signals: unwrapRows(runtime.signals, 'signal'),
     trades: unwrapRows(runtime.trades, 'trade'),
     lineageScopes: unwrapRows(runtime.lineageScopes, 'lineageScope'),
-    statsBuckets: asArray(runtime.evaluationStatsBuckets)
-      .map(asRecord)
-      .filter((item): item is JsonRecord => item != null),
   };
 };
 
@@ -320,9 +317,6 @@ const filterArtifactByStrategy = (
       lineageScopes: asArray(runtime.lineageScopes).filter((item) =>
         belongsToStrategy(asRecord(item) ?? {}, strategy),
       ),
-      evaluationStatsBuckets: asArray(runtime.evaluationStatsBuckets).filter(
-        (item) => belongsToStrategy(asRecord(item) ?? {}, strategy),
-      ),
     },
   };
 };
@@ -406,9 +400,6 @@ const buildDistributionDelta = (
 
 const sum = (values: Array<number | null>) =>
   round(values.reduce<number>((total, value) => total + (value ?? 0), 0));
-
-const statsCount = (buckets: JsonRecord[], field: string) =>
-  sum(buckets.map((bucket) => finiteNumber(asRecord(bucket.stats)?.[field])));
 
 const tradeTimestamp = (trade: JsonRecord) =>
   finiteNumber(trade.exitTimestamp) ??
@@ -565,8 +556,6 @@ export const buildRuntimeScorecard = ({
   const window = runtimeWindow(runtimeArtifact);
   const startTime = finiteNumber(window.startTime) ?? generatedAt - 86_400_000;
   const endTime = finiteNumber(window.endTime) ?? generatedAt;
-  const evaluationsFromStats = statsCount(rows.statsBuckets, 'evaluated');
-  const candidatesFromStats = statsCount(rows.statsBuckets, 'signals');
   const signalEvaluations = rows.evaluations.filter(
     (evaluation) => evaluation.status === 'signal',
   );
@@ -764,14 +753,8 @@ export const buildRuntimeScorecard = ({
     promotionStatus,
     thresholds,
     funnel: {
-      evaluations:
-        evaluationsFromStats > 0
-          ? evaluationsFromStats
-          : rows.evaluations.length,
-      coreCandidates:
-        candidatesFromStats > 0
-          ? candidatesFromStats
-          : signalEvaluations.length,
+      evaluations: rows.evaluations.length,
+      coreCandidates: signalEvaluations.length,
       gate: {
         available: gateDecisions.length > 0,
         approved: gateDecisions.filter(

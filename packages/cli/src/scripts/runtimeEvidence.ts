@@ -185,7 +185,6 @@ export const runtimeEvidence = async () => {
     signals: currentSignals,
     evaluations: currentEvaluations,
     trades: currentTrades,
-    evaluationStatsBuckets: evidence.evaluationStatsBuckets,
     lineageScopes: currentLineageScopes,
   });
   const deployment = resolveRuntimeEvidenceTickerUniverse({
