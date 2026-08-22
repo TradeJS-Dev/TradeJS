@@ -46,6 +46,11 @@ export interface RuntimeStrategyTradeView {
   lastSyncedAt: number | null;
 }
 
+export interface RuntimeStrategyRevisionChange {
+  timestamp: number;
+  strategyRevision: string;
+}
+
 export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
@@ -66,6 +71,7 @@ export interface RuntimeStrategyView {
   stat: TestStat;
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
+  revisionChanges: RuntimeStrategyRevisionChange[];
   recentTrades: RuntimeStrategyTradeView[];
   orders: RuntimeStrategyTradeView[];
 }

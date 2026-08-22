@@ -39,6 +39,8 @@ jest.mock('@tradejs/infra/redis', () => ({
   redisKeys: {
     runtimeTradeBucket: (userName: string, dayKey: string) =>
       `runtime-trades:${userName}:${dayKey}`,
+    runtimeTradeBuckets: (userName: string) =>
+      `runtime-trades:${userName}:days:`,
     runtimeTrades: (userName: string) => `runtime-trades:${userName}`,
     runtimeActiveTrades: (userName: string) =>
       `runtime-active-trades:${userName}`,
@@ -201,5 +203,180 @@ describe('runtime dashboard', () => {
         String(key).startsWith('runtime-lineage:'),
       ),
     ).toBe(false);
+  });
+
+  it('groups runtime trades only by strategy and interval across revisions', async () => {
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'old-revision',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:1111111111111111',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 120_000,
+        exitPrice: 101,
+        exitTimestamp: 1_700_000_000_000 - 90_000,
+        closedPnl: 1,
+        status: 'closed',
+      },
+      {
+        orderId: 'current-revision',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentId: 'another-deployment',
+        policyProfileId: 'another-policy',
+        universe: 'tradfi',
+        accountId: 'another-account',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 60_000,
+        exitPrice: 102,
+        exitTimestamp: 1_700_000_000_000 - 30_000,
+        closedPnl: 2,
+        status: 'closed',
+      },
+      {
+        orderId: 'other-timeframe',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'SOLUSDT',
+        interval: '5',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 45_000,
+        status: 'active',
+      },
+      {
+        orderId: 'other-strategy',
+        strategy: 'DoubleTap',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'XRPUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 30_000,
+        status: 'active',
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(response.strategies[0]).toMatchObject({
+      strategyName: 'TrendLine',
+      summary: { totalTrades: 2, closedTrades: 2 },
+      symbols: ['ETHUSDT', 'BTCUSDT'],
+      revisionChanges: [
+        {
+          timestamp: 1_700_000_000_000 - 60_000,
+          strategyRevision: 'sr1:2222222222222222',
+        },
+      ],
+    });
+  });
+
+  it('merges legacy runtime records with daily buckets', async () => {
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'bucket-other-timeframe',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'BTCUSDT',
+        interval: '5',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 60_000,
+        status: 'active',
+      },
+    ]);
+    mockGetKeys.mockResolvedValue(['runtime-trades:root:legacy']);
+    mockGetData.mockResolvedValue({
+      orderId: 'legacy-matching-timeframe',
+      strategy: 'TrendLine',
+      strategyRevision: 'sr1:1111111111111111',
+      symbol: 'ETHUSDT',
+      interval: '15',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000 - 30_000,
+      status: 'active',
+    });
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(response.strategies[0]?.summary.totalTrades).toBe(1);
+    expect(response.strategies[0]?.symbols).toEqual(['ETHUSDT']);
+  });
+
+  it('deduplicates legacy and bucket copies using the freshest trade record', async () => {
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'duplicated-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 60_000,
+        exitPrice: 103,
+        exitTimestamp: 1_700_000_000_000 - 15_000,
+        closedPnl: 3,
+        status: 'closed',
+        lastSyncedAt: 200,
+      },
+    ]);
+    mockGetKeys.mockResolvedValue(['runtime-trades:root:duplicated-order']);
+    mockGetData.mockResolvedValue({
+      orderId: 'duplicated-order',
+      strategy: 'TrendLine',
+      strategyRevision: 'sr1:2222222222222222',
+      symbol: 'BTCUSDT',
+      interval: '15',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000 - 60_000,
+      currentPnl: 1,
+      status: 'active',
+      lastSyncedAt: 100,
+    });
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(response.strategies[0]?.summary).toMatchObject({
+      totalTrades: 1,
+      activeTrades: 0,
+      closedTrades: 1,
+      closedPnl: 3,
+    });
   });
 });
