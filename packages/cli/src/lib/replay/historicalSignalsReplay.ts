@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import ProgressBar from 'progress';
-import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   releaseStrategyIndicatorsReplayCache,
   releaseStrategyReplayCache,
@@ -18,109 +17,33 @@ import {
   getStrategyCreator,
 } from '@tradejs/node/strategies';
 import { getRuntimeStrategyPackageMetadata } from '@tradejs/node/runtimeStrategies';
-import {
-  Connector,
-  ConnectorCreator,
-  Interval,
-  KlineChartData,
-  KlineChartItem,
-  OrderLogData,
-  PositionLogData,
-  RuntimeLineage,
-  RuntimeStrategySelection,
-  Signal,
-  StrategyConfig,
-  StrategyCreator,
-  TestStat,
-} from '@tradejs/types';
+import { Connector, ConnectorCreator, Interval } from '@tradejs/types';
 import {
   PreparedRunEnvironment,
   ReplayStrategyConfig,
 } from '../runEnvironment';
 import { replayProjectRoot, replayUserName } from './cliConfig';
-import { buildReplayStrategyConfig } from './support';
 import { createPortfolioReplayConnector } from './portfolioReplayConnector';
-import {
-  alignSymbolWithBtcReference,
-  splitCandlesForReplayWindow,
-} from '../marketData/windows';
 import {
   invokeAfterSignalsHooks,
   invokeBeforeSignalsHooks,
 } from '../signals/hooks';
 import { buildRuntimeLineage } from '../runtimeLineage';
+import {
+  prepareHistoricalReplay,
+  type ReplayRuntimeStrategy,
+} from './historicalSignalsReplayPreparation';
+import { executeHistoricalReplay } from './historicalSignalsReplayExecution';
+import {
+  collectHistoricalReplayResult,
+  type HistoricalSignalsReplayResult,
+} from './historicalSignalsReplayResults';
 
-type ReplayRuntimeStrategy = {
-  strategyName: string;
-  strategyRevision: string;
-  deploymentCompositionId: string;
-  strategyPackage: string;
-  strategyPackageVersion: string;
-  strategyDependencyVersions: Record<string, string>;
-  runtimePackageVersion: string;
-  strategyCreator: StrategyCreator;
-  strategyConfig: StrategyConfig;
-  selection?: RuntimeStrategySelection;
-  strategyResults: Record<
-    string,
-    { config?: Record<string, unknown> | null } | undefined
-  >;
-};
-
-export type ReplayRuntimeLineageRecord = {
-  strategy: string;
-  symbol: string;
-  deploymentId?: string;
-  accountId?: string;
-  lineage: RuntimeLineage;
-};
-
-type SymbolPreparedData = {
-  prevData: KlineChartData;
-  btcPrevData: KlineChartData;
-  ethPrevData: KlineChartData;
-  replayData: KlineChartData;
-  btcReplayData: KlineChartData;
-  ethReplayData: KlineChartData;
-  btcBinancePrevData: KlineChartData;
-  btcCoinbasePrevData: KlineChartData;
-};
-
-type SymbolReplayRuntime = {
-  symbol: string;
-  replayData: KlineChartData;
-  btcReplayData: KlineChartData;
-  ethReplayData: KlineChartData;
-  currentIndex: number;
-  strategies: Array<{
-    strategyName: string;
-    strategyConfig: StrategyConfig;
-    runtimeLineage: RuntimeLineage;
-    run: (
-      candle: KlineChartItem,
-      btcCandle: KlineChartItem,
-      ethCandle?: KlineChartItem,
-    ) => Promise<Signal | string | undefined>;
-  }>;
-};
-
-export type ReplayStrategyRunArtifacts = {
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  orderLog: OrderLogData;
-  positionLog: PositionLogData;
-  stat: TestStat | null;
-};
-
-export type HistoricalSignalsReplayResult = {
-  strategies: ReplayStrategyRunArtifacts[];
-  signals: Signal[];
-  orderLog: OrderLogData;
-  positionLog: PositionLogData;
-  cycleCount: number;
-  abortedCycles: number;
-  runtimeLineages: ReplayRuntimeLineageRecord[];
-};
+export type { ReplayRuntimeLineageRecord } from './historicalSignalsReplayPreparation';
+export type {
+  HistoricalSignalsReplayResult,
+  ReplayStrategyRunArtifacts,
+} from './historicalSignalsReplayResults';
 
 const loadRuntimeStrategies = async (
   runtimeStrategies: ReplayStrategyConfig[],
@@ -199,71 +122,6 @@ const loadReferenceConnector = async (connectorName: string) => {
   });
 };
 
-const buildPreparedData = ({
-  data,
-  btcData,
-  ethData,
-  btcBinanceData,
-  btcCoinbaseData,
-  start,
-  preloadStart,
-}: {
-  data: KlineChartData;
-  btcData: KlineChartData;
-  ethData: KlineChartData;
-  btcBinanceData: KlineChartData;
-  btcCoinbaseData: KlineChartData;
-  start: number;
-  preloadStart: number;
-}): SymbolPreparedData => {
-  const { prevData: prevDataRaw, replayData: replayDataRaw } =
-    splitCandlesForReplayWindow(data, start, preloadStart);
-  const { prevData: btcPrevDataRaw, replayData: btcReplayDataRaw } =
-    splitCandlesForReplayWindow(btcData, start, preloadStart);
-  const { prevData: ethPrevDataRaw, replayData: ethReplayDataRaw } =
-    splitCandlesForReplayWindow(ethData, start, preloadStart);
-  const { prevData: btcBinancePrevDataRaw } = splitCandlesForReplayWindow(
-    btcBinanceData,
-    start,
-    preloadStart,
-  );
-  const { prevData: btcCoinbasePrevDataRaw } = splitCandlesForReplayWindow(
-    btcCoinbaseData,
-    start,
-    preloadStart,
-  );
-
-  const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =
-    alignSymbolWithBtcReference(prevDataRaw, btcPrevDataRaw);
-  const { alignedCoinCandles: replayData, alignedBtcCandles: btcReplayData } =
-    alignSymbolWithBtcReference(replayDataRaw, btcReplayDataRaw);
-  const { alignedBtcCandles: ethPrevData } = alignSymbolWithBtcReference(
-    prevData,
-    ethPrevDataRaw,
-  );
-  const { alignedBtcCandles: ethReplayData } = alignSymbolWithBtcReference(
-    replayData,
-    ethReplayDataRaw,
-  );
-  const { alignedBtcCandles: btcBinancePrevData } = alignSymbolWithBtcReference(
-    prevDataRaw,
-    btcBinancePrevDataRaw,
-  );
-  const { alignedBtcCandles: btcCoinbasePrevData } =
-    alignSymbolWithBtcReference(prevDataRaw, btcCoinbasePrevDataRaw);
-
-  return {
-    prevData,
-    btcPrevData,
-    ethPrevData,
-    replayData,
-    btcReplayData,
-    ethReplayData,
-    btcBinancePrevData,
-    btcCoinbasePrevData,
-  };
-};
-
 const buildAfterSignalsContext = ({
   connector,
   connectorName,
@@ -290,34 +148,12 @@ const buildAfterSignalsContext = ({
   ),
 });
 
-const strategyIncludesSymbol = (
-  strategy: Pick<ReplayRuntimeStrategy, 'selection'>,
-  symbol: string,
-) => {
-  const tickers = strategy.selection?.tickers;
-  if (!tickers) return true;
-  const normalizedSymbol = symbol.trim().toUpperCase();
-  return tickers.some(
-    (ticker) => ticker.trim().toUpperCase() === normalizedSymbol,
+const getConnectorName = (connector: Connector) => {
+  const name = 'name' in connector ? connector.name : undefined;
+  return (
+    String(name || DEFAULT_CONNECTOR_NAME).trim() || DEFAULT_CONNECTOR_NAME
   );
 };
-
-const buildSymbolSharedReplayKey = ({
-  connectorName,
-  interval,
-  symbol,
-  start,
-  end,
-}: {
-  connectorName: string;
-  interval: Interval;
-  symbol: string;
-  start: number;
-  end: number;
-}) =>
-  ['replay', replayUserName, connectorName, symbol, interval, start, end].join(
-    ':',
-  );
 
 export const runHistoricalSignalsReplay = async ({
   preparedRun,
@@ -329,18 +165,13 @@ export const runHistoricalSignalsReplay = async ({
   runtimeStrategies: ReplayStrategyConfig[];
 }): Promise<HistoricalSignalsReplayResult> => {
   const startedAt = Date.now();
-  const signals: Signal[] = [];
-  const runtimeLineages: ReplayRuntimeLineageRecord[] = [];
   const projectConfig = await loadTradejsConfig(replayProjectRoot);
   const projectHooks = projectConfig.hooks;
   const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
   const replayConnector = createPortfolioReplayConnector(
     preparedRun.marketConnector,
   );
-  const connectorName =
-    String(
-      (preparedRun.marketConnector as any)?.name || DEFAULT_CONNECTOR_NAME,
-    ).trim() || DEFAULT_CONNECTOR_NAME;
+  const connectorName = getConnectorName(preparedRun.marketConnector);
   const binanceConnector =
     connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
       ? await loadReferenceConnector('Binance')
@@ -356,14 +187,14 @@ export const runHistoricalSignalsReplay = async ({
       start: preparedRun.preloadStart,
       end: preparedRun.window.end,
       cacheOnly: true,
-      interval: interval as any,
+      interval,
     }),
     coinbaseConnector.kline({
       symbol: 'BTCUSDT',
       start: preparedRun.preloadStart,
       end: preparedRun.window.end,
       cacheOnly: true,
-      interval: interval as any,
+      interval,
     }),
   ]);
   const btcMarketData = await preparedRun.marketConnector.kline({
@@ -371,19 +202,16 @@ export const runHistoricalSignalsReplay = async ({
     start: preparedRun.preloadStart,
     end: preparedRun.window.end,
     cacheOnly: true,
-    interval: interval as any,
+    interval,
   });
   const ethMarketData = await preparedRun.marketConnector.kline({
     symbol: 'ETHUSDT',
     start: preparedRun.preloadStart,
     end: preparedRun.window.end,
     cacheOnly: true,
-    interval: interval as any,
+    interval,
   });
 
-  const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
-  const sharedReplayKeyPrefixes: string[] = [];
-  let skippedSymbols = 0;
   const prepareBar = new ProgressBar(
     'prepare :current/:total [:bar][:percent] skipped=:skipped :etas(s) :symbol',
     {
@@ -391,289 +219,84 @@ export const runHistoricalSignalsReplay = async ({
       width: 30,
     },
   );
-
-  for (const symbol of preparedRun.tickers) {
-    const data = await preparedRun.marketConnector.kline({
-      symbol,
-      start: preparedRun.preloadStart,
-      end: preparedRun.window.end,
-      cacheOnly: true,
-      interval: interval as any,
-    });
-
-    const preparedData = buildPreparedData({
-      data,
-      btcData: btcMarketData,
-      ethData: ethMarketData,
-      btcBinanceData,
-      btcCoinbaseData,
-      start: preparedRun.window.start,
-      preloadStart: preparedRun.preloadStart,
-    });
-
-    if (!preparedData.replayData.length || !preparedData.btcReplayData.length) {
-      skippedSymbols += 1;
-      prepareBar.tick(1, {
-        skipped: chalk.yellow(skippedSymbols),
-        symbol: chalk.gray(symbol),
-      });
-      continue;
-    }
-
-    const sharedIndicatorsReplayKey = buildSymbolSharedReplayKey({
-      connectorName,
+  const plan = await prepareHistoricalReplay(
+    {
+      userName: replayUserName,
+      projectRoot: replayProjectRoot,
+      preparedRun,
       interval,
-      symbol,
-      start: preparedRun.window.start,
-      end: preparedRun.window.end,
-    });
-    sharedReplayKeyPrefixes.push(sharedIndicatorsReplayKey);
-
-    const strategiesForSymbol = await Promise.all(
-      loadedStrategies
-        .filter((strategy) => strategyIncludesSymbol(strategy, symbol))
-        .map(
-          async ({
-            strategyName,
-            strategyRevision,
-            deploymentCompositionId,
-            strategyPackageVersion,
-            strategyDependencyVersions,
-            runtimePackageVersion,
-            strategyCreator,
-            strategyConfig,
-            strategyResults,
-          }) => {
-            const runtimeLineage = await buildRuntimeLineage({
-              strategyRevision,
-              deploymentCompositionId,
-              strategyPackageVersion,
-              strategyDependencyVersions,
-              runtimePackageVersion,
-              config: {
-                configId: strategyRevision,
-                strategyConfig,
-                symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-              },
-            });
-            runtimeLineages.push({
-              strategy: strategyName,
-              symbol,
-              ...(preparedRun.deploymentId
-                ? { deploymentId: preparedRun.deploymentId }
-                : {}),
-              ...(preparedRun.accountId
-                ? { accountId: preparedRun.accountId }
-                : {}),
-              lineage: runtimeLineage,
-            });
-            return {
-              strategyName,
-              strategyConfig,
-              runtimeLineage,
-              run: await strategyCreator({
-                userName: replayUserName,
-                connectorName,
-                runtimeConfigId: strategyRevision,
-                strategyRevision,
-                runtimeLineage,
-                universe: preparedRun.universe,
-                accountId: preparedRun.accountId,
-                deploymentId: preparedRun.deploymentId,
-                config: buildReplayStrategyConfig({
-                  strategyConfig,
-                  interval: interval as any,
-                }),
-                symbol,
-                data: preparedData.prevData,
-                btcData: preparedData.btcPrevData,
-                ethData: preparedData.ethPrevData,
-                btcBinanceData: preparedData.btcBinancePrevData,
-                btcCoinbaseData: preparedData.btcCoinbasePrevData,
-                connector: replayConnector,
-                sharedIndicatorsReplayKey,
-              }),
-            };
-          },
-        ),
-    );
-
-    const symbolRuntime: SymbolReplayRuntime = {
-      symbol,
-      replayData: preparedData.replayData,
-      btcReplayData: preparedData.btcReplayData,
-      ethReplayData: preparedData.ethReplayData,
-      currentIndex: 0,
-      strategies: strategiesForSymbol,
-    };
-    prepareBar.tick(1, {
-      skipped: chalk.yellow(skippedSymbols),
-      symbol: chalk.gray(symbol),
-    });
-
-    for (const candle of preparedData.replayData) {
-      const bucket = cycleSymbolsByTimestamp.get(candle.timestamp) ?? [];
-      bucket.push(symbolRuntime);
-      cycleSymbolsByTimestamp.set(candle.timestamp, bucket);
-    }
-  }
-
-  const orderedTimestamps = [...cycleSymbolsByTimestamp.keys()].sort(
-    (left, right) => left - right,
+      connectorName,
+      replayConnector,
+      strategies: loadedStrategies,
+      references: {
+        btcMarketData,
+        ethMarketData,
+        btcBinanceData,
+        btcCoinbaseData,
+      },
+    },
+    {
+      progress: {
+        tick: (tokens) => prepareBar.tick(1, tokens),
+      },
+      display: {
+        skipped: (value) => chalk.yellow(value),
+        symbol: (value) => chalk.gray(value),
+      },
+      buildLineage: buildRuntimeLineage,
+    },
   );
-  const afterSignalsContextBase = buildAfterSignalsContext({
+  const hookContext = buildAfterSignalsContext({
     connector: replayConnector,
     connectorName: preparedRun.connectorName,
     tickers: preparedRun.tickers,
     runtimeStrategies: loadedStrategies,
     interval,
   });
-
-  let abortedCycles = 0;
   const cycleBar = new ProgressBar(
     'cycles  :current/:total [:bar][:percent] sig=:signals abort=:aborted :etas(s) :ts',
     {
-      total: orderedTimestamps.length,
+      total: plan.orderedTimestamps.length,
       width: 30,
     },
   );
-
-  try {
-    for (const timestamp of orderedTimestamps) {
-      const cycleStartedAt = Date.now();
-      const cycleSymbols = cycleSymbolsByTimestamp.get(timestamp) ?? [];
-
-      for (const symbolRuntime of cycleSymbols) {
-        const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
-        if (!candle || candle.timestamp !== timestamp) {
-          continue;
-        }
-
-        await replayConnector.advanceMarket({
-          symbol: symbolRuntime.symbol,
-          candle,
-        });
-      }
-
-      const beforeSignalsResult = await invokeBeforeSignalsHooks(
-        projectHooks,
-        afterSignalsContextBase,
-      );
-      if (beforeSignalsResult?.abort === true) {
-        abortedCycles += 1;
-        await invokeAfterSignalsHooks(projectHooks, {
-          ...afterSignalsContextBase,
-          signals: [],
-          status: 'completed',
-          durationMs: Date.now() - cycleStartedAt,
-        });
-        for (const symbolRuntime of cycleSymbols) {
-          const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
-          if (candle?.timestamp === timestamp) {
-            symbolRuntime.currentIndex += 1;
-          }
-        }
-        cycleBar.tick(1, {
-          signals: chalk.cyan(signals.length),
-          aborted: chalk.yellow(abortedCycles),
-          ts: chalk.gray(formatUnix(timestamp)),
-        });
-        continue;
-      }
-
-      const cycleSignals: Signal[] = [];
-
-      for (const symbolRuntime of cycleSymbols) {
-        const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
-        const btcCandle =
-          symbolRuntime.btcReplayData[symbolRuntime.currentIndex];
-        const ethCandle =
-          symbolRuntime.ethReplayData[symbolRuntime.currentIndex];
-        if (
-          !candle ||
-          !btcCandle ||
-          candle.timestamp !== timestamp ||
-          btcCandle.timestamp !== timestamp
-        ) {
-          continue;
-        }
-
-        for (const strategyRuntime of symbolRuntime.strategies) {
-          const result = await strategyRuntime.run(
-            candle,
-            btcCandle,
-            ethCandle?.timestamp === timestamp ? ethCandle : undefined,
-          );
-          if (result && typeof result !== 'string') {
-            result.runtimeLineage = strategyRuntime.runtimeLineage;
-            await enrichSignalWithBinanceMarketContext({
-              signal: result,
-              env: 'PARITY',
-            });
-            cycleSignals.push(result);
-            signals.push(result);
-          }
-        }
-
-        symbolRuntime.currentIndex += 1;
-      }
-
-      await invokeAfterSignalsHooks(projectHooks, {
-        ...afterSignalsContextBase,
-        signals: cycleSignals,
-        status: 'completed',
-        durationMs: Date.now() - cycleStartedAt,
-      });
-      cycleBar.tick(1, {
-        signals: chalk.cyan(signals.length),
-        aborted: chalk.yellow(abortedCycles),
-        ts: chalk.gray(formatUnix(timestamp)),
-      });
-    }
-  } finally {
-    for (const keyPrefix of sharedReplayKeyPrefixes) {
-      releaseStrategyIndicatorsReplayCache(keyPrefix);
-      releaseStrategyReplayCache(keyPrefix);
-    }
-  }
-
-  const artifacts = replayConnector.getReplayArtifacts();
-  const strategies = loadedStrategies.map(
-    ({ strategyName, strategyConfig }) => {
-      const orderLog = artifacts.orderLogByStrategy.get(strategyName) ?? [];
-      const positionLog =
-        artifacts.positionLogByStrategy.get(strategyName) ?? [];
-      return {
-        strategyName,
-        strategyConfig,
-        orderLog,
-        positionLog,
-        stat: positionLog.length
-          ? (calculateStatsFull(positionLog) as TestStat | null)
-          : ({
-              orders: 0,
-              wins: 0,
-              losses: 0,
-              netProfit: 0,
-              amount: 0,
-            } as unknown as TestStat),
-      };
+  const execution = await executeHistoricalReplay(
+    {
+      plan,
+      connector: replayConnector,
+      hooks: projectHooks,
+      hookContext,
+    },
+    {
+      clock: { now: Date.now },
+      progress: {
+        tick: (tokens) => cycleBar.tick(1, tokens),
+      },
+      display: {
+        signals: (value) => chalk.cyan(value),
+        aborted: (value) => chalk.yellow(value),
+        timestamp: (value) => chalk.gray(formatUnix(value)),
+      },
+      invokeBeforeSignals: invokeBeforeSignalsHooks,
+      invokeAfterSignals: invokeAfterSignalsHooks,
+      enrichSignal: (signal) =>
+        enrichSignalWithBinanceMarketContext({ signal, env: 'PARITY' }),
+      releaseIndicatorsCache: releaseStrategyIndicatorsReplayCache,
+      releaseReplayCache: releaseStrategyReplayCache,
     },
   );
-
+  const artifacts = replayConnector.getReplayArtifacts();
   logger.info(
     chalk.gray(
-      `signals replay historical cycles: ${orderedTimestamps.length} (aborted=${abortedCycles}) done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+      `signals replay historical cycles: ${plan.orderedTimestamps.length} (aborted=${execution.abortedCycles}) done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
     ),
   );
-
-  return {
-    strategies,
-    signals,
-    orderLog: artifacts.orderLog,
-    positionLog: artifacts.positionLog,
-    cycleCount: orderedTimestamps.length,
-    abortedCycles,
-    runtimeLineages,
-  };
+  return collectHistoricalReplayResult({
+    strategies: loadedStrategies,
+    artifacts,
+    signals: execution.signals,
+    cycleCount: plan.orderedTimestamps.length,
+    abortedCycles: execution.abortedCycles,
+    runtimeLineages: plan.runtimeLineages,
+  });
 };

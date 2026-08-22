@@ -1,4 +1,4 @@
-export {};
+import type { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
 
 const setupRuntimeParityModule = async (
   flagOverrides: Record<string, unknown> = {},
@@ -19,10 +19,10 @@ const setupRuntimeParityModule = async (
     async (_key: string) => [],
   );
   const loadRuntimeSignals = jest.fn(
-    async (_userName: string): Promise<any[]> => [],
+    async (_userName: string): Promise<Signal[]> => [],
   );
   const loadRuntimeSignalEvaluations = jest.fn(
-    async (_userName: string): Promise<any[]> => [],
+    async (_userName: string): Promise<RuntimeSignalEvaluationRecord[]> => [],
   );
   const releaseTestingSymbolCache = jest.fn();
   const resetTestingKlineCache = jest.fn();

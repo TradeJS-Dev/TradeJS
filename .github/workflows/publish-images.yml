@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             npm_release:
@@ -93,7 +93,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             .yarn/cache
@@ -196,32 +196,30 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - if: needs.changes.outputs.agent_changed == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.agent
           push: true
           tags: |
             ghcr.io/tradejs-dev/tradejs-agent:${{ github.sha }}
-            ghcr.io/tradejs-dev/tradejs-agent:latest
           build-args: TRADEJS_GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent,ignore-error=true
       - if: needs.changes.outputs.ml_infer_changed == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.infer
           push: true
           tags: |
             ghcr.io/tradejs-dev/tradejs-ml-infer:${{ github.sha }}
-            ghcr.io/tradejs-dev/tradejs-ml-infer:latest
           cache-from: type=gha,scope=ml-infer
           cache-to: type=gha,mode=max,scope=ml-infer,ignore-error=true

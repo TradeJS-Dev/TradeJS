@@ -13,10 +13,6 @@ on:
         required: true
         default: 3.1.2,3.1.3,3.1.6,3.1.7
         type: string
-      confirm_unpublish:
-        description: Type UNPUBLISH_EXACT_VERSIONS
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -31,7 +27,6 @@ jobs:
     env:
       VERSIONS: ${{ inputs.versions_csv }}
       PROTECTED_VERSIONS: ${{ inputs.protected_versions_csv }}
-      CONFIRM_UNPUBLISH: ${{ inputs.confirm_unpublish }}
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
@@ -43,6 +38,4 @@ jobs:
       - name: Build and inspect exact cleanup plan
         run: node ./bin/npm-cleanup.mjs --versions "$VERSIONS" --protect "$PROTECTED_VERSIONS"
       - name: Unpublish exact versions
-        run: |
-          [ "$CONFIRM_UNPUBLISH" = UNPUBLISH_EXACT_VERSIONS ] || { echo 'Invalid confirm_unpublish' >&2; exit 1; }
-          node ./bin/npm-cleanup.mjs --versions "$VERSIONS" --protect "$PROTECTED_VERSIONS" --apply
+        run: node ./bin/npm-cleanup.mjs --versions "$VERSIONS" --protect "$PROTECTED_VERSIONS" --apply
