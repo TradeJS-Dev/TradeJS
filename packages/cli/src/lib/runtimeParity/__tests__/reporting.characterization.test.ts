@@ -1,4 +1,5 @@
 import type { RuntimeDuplicateGroup } from '../../runtimeParity';
+import { formatUnix } from '@tradejs/core/time';
 import type { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
 import type {
   BacktestOnlyClassification,
@@ -22,6 +23,9 @@ import {
 
 const START = 1_700_000_000_000;
 const END = 1_700_086_400_000;
+const START_FORMATTED = formatUnix(START);
+const END_FORMATTED = formatUnix(END);
+const START_PLUS_MINUTE_FORMATTED = formatUnix(START + 60_000);
 
 const classifiedRuntimeOnly: ClassifiedRuntimeOnlyEntry[] = [
   {
@@ -147,7 +151,7 @@ describe('runtime parity reporting characterization', () => {
 
     expect(buildRuntimeParityTerminalReport(context)).toEqual([
       'TradeJS runtime parity',
-      'Window: 15 Nov 2023 01:13:20 -> 16 Nov 2023 01:13:20 (explicit)',
+      `Window: ${START_FORMATTED} -> ${END_FORMATTED} (explicit)`,
       'Connector: bybit<prod>',
       'Replay env: PARITY (runtime AI/ML gates enabled)',
       'Tolerance: 1 bar(s) / 15m',
@@ -160,8 +164,8 @@ describe('runtime parity reporting characterization', () => {
       'Backtest only classifications: true_mismatch=1',
       '',
       'Signal mismatches',
-      '- runtimeOnly [not_evaluated] signalId=sig-rt orderId=ord-1 TrendLine BTCUSDT LONG 15 Nov 2023 01:13:20 reason=no replay evaluation',
-      '- backtestOnly [true_mismatch] signalId=bt-1 Grid ETHUSDT SHORT 15 Nov 2023 01:14:20 reason=no <runtime> entry',
+      `- runtimeOnly [not_evaluated] signalId=sig-rt orderId=ord-1 TrendLine BTCUSDT LONG ${START_FORMATTED} reason=no replay evaluation`,
+      `- backtestOnly [true_mismatch] signalId=bt-1 Grid ETHUSDT SHORT ${START_PLUS_MINUTE_FORMATTED} reason=no <runtime> entry`,
       '',
       'Strategy issues',
       '- Grid: backtestOnly=1, errors=1',
@@ -206,8 +210,8 @@ describe('runtime parity reporting characterization', () => {
         '• Backtest-only classes: <code>true_mismatch=1</code>',
         '',
         '🔎 <b>Mismatches</b>',
-        '• <code>runtimeOnly [not_evaluated] signalId=sig-rt orderId=ord-1 TrendLine BTCUSDT LONG 15 Nov 2023 01:13:20 reason=no replay evaluation</code>',
-        '• <code>backtestOnly [true_mismatch] signalId=bt-1 Grid ETHUSDT SHORT 15 Nov 2023 01:14:20 reason=no &lt;runtime&gt; entry</code>',
+        `• <code>runtimeOnly [not_evaluated] signalId=sig-rt orderId=ord-1 TrendLine BTCUSDT LONG ${START_FORMATTED} reason=no replay evaluation</code>`,
+        `• <code>backtestOnly [true_mismatch] signalId=bt-1 Grid ETHUSDT SHORT ${START_PLUS_MINUTE_FORMATTED} reason=no &lt;runtime&gt; entry</code>`,
         '',
         '📊 <b>Strategy issues</b>',
         '• Grid: backtestOnly=1, errors=1',
@@ -424,13 +428,13 @@ describe('runtime parity reporting characterization', () => {
     expect(log.mock.calls.map(([line = '']) => line)).toEqual([
       '',
       'Runtime duplicates',
-      '- TrendLine BTCUSDT LONG 15 Nov 2023 01:13:20 count=2, duplicateEntries=1, ids=ord-1,ord-2',
+      `- TrendLine BTCUSDT LONG ${START_FORMATTED} count=2, duplicateEntries=1, ids=ord-1,ord-2`,
       '',
       'Runtime only',
-      '- [not_evaluated] TrendLine BTCUSDT LONG 15 Nov 2023 01:13:20 price=100.000000 id=rt-1 reason=no replay evaluation',
+      `- [not_evaluated] TrendLine BTCUSDT LONG ${START_FORMATTED} price=100.000000 id=rt-1 reason=no replay evaluation`,
       '',
       'Backtest only',
-      '- [true_mismatch] Grid ETHUSDT SHORT 15 Nov 2023 01:14:20 price=n/a id=bt-1 reason=no <runtime> entry',
+      `- [true_mismatch] Grid ETHUSDT SHORT ${START_PLUS_MINUTE_FORMATTED} price=n/a id=bt-1 reason=no <runtime> entry`,
     ]);
   });
 
