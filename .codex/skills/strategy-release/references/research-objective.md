@@ -39,9 +39,10 @@ isolation. Use this hierarchy:
 1. **Integrity and causality.** Complete reconciled evidence, signal-time
    inputs, point-in-time execution semantics, and comparable risk/cost units
    are mandatory.
-2. **Economic edge.** Require positive aggregate out-of-sample expectancy per
-   unit risk after normal costs and PF above 1. Apply the same check to every
-   active approved side; an explicitly suppressed side remains a zero row.
+2. **Economic edge.** Require positive aggregate expectancy per unit risk after
+   normal costs and PF above 1 on the maximum-covered historical evaluation.
+   Apply the same check to every active approved side; an explicitly suppressed
+   side remains a zero row. Nested calendar slices do not repeat this gate.
 3. **Selection adjustment.** Report probabilistic and deflated Sharpe using
    non-IID-aware returns and the complete effective trial count. A raw
    per-trade annualized Sharpe is diagnostic, not selection authority.
@@ -49,8 +50,8 @@ isolation. Use this hierarchy:
    recovery, time-under-water, adverse-cost, concentration, and capacity
    guardrails.
 5. **Temporal robustness.** Prefer non-overlapping/event-grouped walk-forward
-   evidence and regime coverage. Nested 3y/4y/max windows are required context,
-   not independent confirmations.
+   evidence and regime coverage. Nested 3y/4y/max and recent calendar windows
+   are context, not independent confirmations or waiting periods.
 6. **Executable support.** Require independent events, viable cadence, and an
    event-arrival rate consistent with the strategy thesis.
 
@@ -68,23 +69,29 @@ with different cadence.
 ## 3. Condition terminal evidence on support
 
 Always report continuous-run 365d/180d/90d/30d/7d rows, including zero rows,
-but classify each ALL/LONG/SHORT cohort by independent event count:
+but use them to describe current regime and cadence rather than to decide when a
+prospective test may start. Classify each ALL/LONG/SHORT cohort by independent
+event count:
 
 - `underpowered`: fewer than 20 independent closed events;
 - `diagnostic`: 20 through 49 independent closed events;
 - `selection_grade`: at least 50 independent closed events.
 
 An `underpowered` terminal row is `n/a` for pass/fail. It cannot reject a
-candidate, prove current-market decay, or justify another threshold. A
-`diagnostic` row may motivate the one preregistered causal recent-direction
-repair, but cannot reject an otherwise eligible composition by itself. Only a
-`selection_grade` terminal row may enforce the frozen current-market economic
-guardrail.
+candidate, prove current-market decay, justify another threshold, or force a
+calendar wait. A `diagnostic` row may motivate the one preregistered causal
+recent-direction repair, but cannot reject an otherwise eligible composition by
+itself. A `selection_grade` row may cap a historical `READY_FOR_RUNTIME` claim
+or lower the candidate's Pareto rank, but it does not block an otherwise valid
+`MAX_LOSS_VALUE=1` prospective test. Hard causality, reconciliation, execution,
+maximum-covered economics, and frozen portfolio-risk failures still block it.
 
 For sparse strategies also report the last 20/50/100 independent events and
 compare observed calendar cadence with the preregistered historical
 event-arrival distribution. Zero trades are a cadence observation, not a loss;
-classify them as abnormal only when they breach that frozen distribution.
+classify them as abnormal only when they breach that frozen distribution. The
+next review is triggered by independent events or a risk/parity breach, never
+by waiting 7, 30, or 180 calendar days.
 
 ## 4. Revalidate historical candidates
 

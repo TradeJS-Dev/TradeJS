@@ -1,6 +1,6 @@
 ---
 name: strategy-release
-description: Evaluate and iteratively improve one TradeJS core-strategy plus deterministic AI-gate composition for runtime readiness, revalidate historical candidates under a versioned professional objective, perform three new evidence-driven core rounds plus cadence-diverse rescue, test an explicit long-only or short-only direction policy when one side carries the edge, improve a bounded recent direction failure, start an authorized MAX_LOSS_VALUE=1 micro-forward test, or diagnose why a released composition behaves differently live. Use for bounded strategy release research, full-period and AI-gate reporting, current-market suitability verdicts, runtime divergence versus expected drawdown or generalization failure, immutable release evidence, chart handoff, and prospective testing.
+description: Research and improve one TradeJS core plus deterministic-gate composition, revalidate prior candidates, deploy the best historically promising candidate as an exact MAX_LOSS_VALUE=1 production micro-forward, or diagnose the released composition live. Use for strategy research, prospective forward incubation, risk-scale review, and runtime divergence/generalization analysis.
 ---
 
 # Strategy Release
@@ -9,9 +9,13 @@ Evaluate exactly one composition:
 
 `frozen core config + frozen deterministic AI gate + frozen execution/context assumptions`
 
-Operate in one explicit mode: `release` or `diagnose-live`. A release run may
-end in an authorized micro-forward action, but only after the exact candidate,
-runtime target, risk scale, and immutable evidence are resolved.
+Operate in one explicit mode: `release`, `scale-risk`, or `diagnose-live`.
+`release` means the complete research-to-forward contour: improve and freeze one promising
+candidate, then commit, publish, configure, and deploy it as a production
+micro-forward with `MAX_LOSS_VALUE=1`. The short release invocation is explicit
+authorization for that exact risk-1 rollout unless the same request says
+`research-only`, `no runtime changes`, or equivalent. Never wait for 7, 30, or
+180 calendar days before starting the prospective test.
 
 ## Repository roots
 
@@ -34,11 +38,11 @@ deterministic gate code, and keep generated evidence under `PROJECT_CWD`.
 - Run every historical backtest with `--cacheOnly` over the maximum common
   cached window frozen for the experiment. Never refresh or silently shorten
   history to rescue a result.
-- Do not change runtime state without explicit user approval. When the user has
-  authorized automatic forward testing, the only permitted mutation is the
-  exact frozen candidate on the resolved forward deployment with
-  `MAX_LOSS_VALUE=1`; do not alter another strategy, account, deployment, or
-  risk limit. Never place, cancel, or close an order manually.
+- In `release` mode, mutate runtime only for the exact frozen candidate on the
+  resolved forward deployment with `MAX_LOSS_VALUE=1`. A request that forbids
+  runtime changes overrides this default and produces a portable handoff only.
+  Do not alter another strategy, account, deployment, or risk limit. Never
+  place, cancel, or close an order manually.
 - Keep unpromoted candidates in forward incubation or advisory/shadow mode
   only. Never make an advisory LLM comparison part of deterministic execution.
 - Stop selection on partial manifests, OOM, worker errors, missing exports,
@@ -162,14 +166,37 @@ row. Never reconstruct runtime composition from `strategyConfigs`, current
 Redis configuration, research fingerprints, or lineage-less
 `evaluationStatsBuckets`; aggregate debug telemetry is not immutable evidence.
 
+### Scale forward risk
+
+Use `scale-risk` only when the user explicitly invokes it for an already
+deployed forward composition. Read
+[references/diagnose-live.md](references/diagnose-live.md),
+[references/verdict-contract.md](references/verdict-contract.md), and
+[references/evidence-retention.md](references/evidence-retention.md) completely.
+Verify the exact deployed composition and runtime/replay/config parity first.
+Evaluate the frozen prospective minimum independent-event sample, expectancy,
+drawdown envelope, tail/concentration, regime coverage, and execution failures;
+elapsed calendar days are not a criterion.
+
+If all frozen bounds hold, the invocation authorizes one risk-only Project
+change, normally no more than 2x the current `MAX_LOSS_VALUE`. Commit, push,
+publish, deploy, verify the exact runtime revision, and append an immutable `L`
+marker. Do not change source, gate, other config, account, or deployment. If
+support is insufficient or a parity/risk bound fails, keep the current scale or
+recommend pausing; do not rerun historical candidate research.
+
 ## Shared metric and evidence rules
 
 - Use completed-trade economics and exact run-scoped exports.
-- Apply the hierarchical objective, terminal support bands, historical
-  candidate revalidation, and global trial ledger from
-  [references/research-objective.md](references/research-objective.md). Full
-  PnL, Sharpe, win rate, loss streak, losing-month streak, and any one terminal
-  window are never standalone optimization objectives.
+- Apply the hierarchical objective, historical candidate revalidation, and
+  global trial ledger from
+  [references/research-objective.md](references/research-objective.md). Require
+  positive maximum-covered expectancy after costs, then rank candidates by
+  deflated Sharpe, walk-forward stability, drawdown/tail/recovery, cost stress,
+  concentration, independent support, and cadence. Win rate and loss/month
+  streaks remain risk diagnostics. Report 365d/180d/90d/30d/7d, but no calendar
+  slice is a prerequisite for a risk-1 prospective test and no task waits for a
+  future slice to fill.
 - Apply `evidence-first, novelty-second`. Before inventing hypotheses, audit the
   strategy's Git history, notes, core-research ledger/index, configs, and release
   artifacts. Persist a hash-linked hypothesis inventory. Reproduce any stronger
@@ -258,7 +285,8 @@ Redis configuration, research fingerprints, or lineage-less
   from [references/direction-policy.md](references/direction-policy.md). Prefer
   an explicit deterministic-gate block so raw counterfactual telemetry remains
   available. This checkpoint may produce the single composition finalist; it
-  cannot waive retained-side terminals, cost stress, support, or holdout rules.
+  cannot waive maximum-covered economics, cost stress, risk robustness, or
+  independent-support rules. Recent calendar rows remain diagnostics.
 - Reserve the gate test tail with `ai-pocket-search --testSplit <ratio>
 --sealTest`. Discovery may see train and tuning economics plus only the sealed
   tail's timestamp/count bounds. It must not print, rank on, or otherwise expose
@@ -296,20 +324,25 @@ leaves `runtimeTarget` null and returns `MICRO_FORWARD_READY`; bind the handoff
 to the exact Git-owned `deploymentId`, strategy declaration, and server account,
 then rerun `decide` against that Project image.
 
+Set `forwardTest.authorized=true` for a normal `release` invocation and `false`
+only when the request explicitly says research-only/no-runtime. Keep
+`forwardTest.maxLossValue=1` in both cases.
+
 - `REPAIR_RECENT_DIRECTION`: spend the single repair round, then rebuild all
   historical/chart evidence. Never tune on a handful of trades.
 - `START_MICRO_FORWARD`: start the exact resolved forward deployment with
-  `MAX_LOSS_VALUE=1` when authorization and target are present. An exposed test
-  may still support this prospective action; it cannot support
-  `READY_FOR_RUNTIME`.
-- `MICRO_FORWARD_READY`: request missing mutation authorization, or when
-  `requiresRuntimeBinding=true`, bind and verify the portable handoff on the
-  runtime server. A missing server-owned binding in local Redis is not an
-  evidence blocker.
+  `MAX_LOSS_VALUE=1`. Exposed or sparse recent evidence may still support this
+  prospective action; it cannot support `READY_FOR_RUNTIME`.
+- `MICRO_FORWARD_READY`: in normal `release` mode, resolve the Git-owned target,
+  publish/deploy the portable handoff, and rerun `decide`; do not return and ask
+  for another message. In an explicitly research-only request, return the
+  portable handoff without mutation. A missing server-owned binding in local
+  Redis is not an evidence blocker.
 - `FORWARD_BLOCKED`: resolve the named implementation/chart/runtime-target
   blocker; do not silently wait.
 - `STOP_RESEARCH`: preserve the evidence and explain which frozen objective or
-  selection-grade direction edge failed. This action is forbidden until the
+  maximum-covered active-side/risk/cost guardrail failed. This action is
+  forbidden until the
   historical hypothesis inventory is bridged, the three-round ledger is complete, and the
   cadence-diverse rescue board has been attempted or has fewer than three valid
   seeds for explicit recorded reasons. It is also forbidden while a required
@@ -317,11 +350,10 @@ then rerun `decide` against that Project image.
 
 ### Forward-test rollout handshake
 
-When the user says to start forward tests after a release verdict, treat that
-as authorization for the complete rollout of that exact strategy candidate,
-including its Git-owned Project declaration and image deployment. Do not publish
-a production version immediately and do not wait for a second
-`готово`/`ready` message:
+In `release` mode, carry a historically promising frozen candidate through the
+complete rollout, including its Git-owned Project declaration and image
+deployment. Do not wait for a second `готово`/`ready` message or for a terminal
+calendar window to accumulate:
 
 - commit and push every strategy-owned source/gate change for the exact
   candidate; keep unrelated repo changes out of that commit and leave the
@@ -362,7 +394,26 @@ inputs and are not required by the production server or runtime UI. Report
 unavailable access, package incompatibility, account/position preflight
 failure, or an ambiguous target as the exact blocker.
 
-## Return one verdict
+### Forward incubation and risk scaling
+
+`MAX_LOSS_VALUE=1` is the evidence-collection scale, not a production-readiness
+claim. Review progress by independent closed events and exact runtime parity,
+not elapsed days. Use the frozen monitoring profile's minimum prospective
+sample, drawdown envelope, order-failure bound, regime coverage, and historical
+expectancy range.
+
+Never increase risk automatically. When the user separately asks to scale the
+same composition, first verify that runtime/replay/config parity holds and that
+live expectancy, drawdown, concentration, execution, and regime coverage remain
+inside the frozen bounds. Apply at most one step, normally no more than 2x the
+current value, by changing only `MAX_LOSS_VALUE` in the Git-owned Project
+config. Commit, publish, deploy, verify the exact runtime revision, and append
+an immutable `L` marker. Keep the composition lineage; do not rerun historical
+research solely because risk scale changed. If evidence is weak or a bound is
+breached, keep risk unchanged or recommend pausing instead of waiting a fixed
+number of days.
+
+## Return one result
 
 For `release`, return exactly one of:
 
@@ -377,6 +428,13 @@ For `diagnose-live`, return exactly one of:
 - `GENERALIZATION_FAILURE`
 - `INSUFFICIENT_EVIDENCE`
 
+For `scale-risk`, return exactly one action:
+
+- `SCALE_RISK`
+- `KEEP_RISK`
+- `PAUSE_FORWARD`
+- `FORWARD_BLOCKED`
+
 Follow the decision precedence and required supporting table in
 [references/verdict-contract.md](references/verdict-contract.md). Do not invent
 an intermediate production label.
@@ -387,6 +445,16 @@ Release:
 
 ```text
 Use $strategy-release in release mode for <Strategy>:<config>.
+```
+
+The prompt above authorizes the exact risk-1 micro-forward. Add `research-only`
+when a portable handoff without Git, publishing, Project, or runtime mutation is
+intended.
+
+Scale risk:
+
+```text
+Use $strategy-release in scale-risk mode for <Strategy>.
 ```
 
 Diagnose live:

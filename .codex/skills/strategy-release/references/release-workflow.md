@@ -13,7 +13,10 @@
 9. Persist the chart and choose an action
 
 Use this workflow to evaluate one frozen core plus deterministic AI-gate
-composition. Do not use it to promote the composition.
+composition and, in `release` mode, carry the selected historically promising
+composition into an exact production micro-forward at `MAX_LOSS_VALUE=1`.
+Historical release claims and prospective evidence collection are separate:
+the latter does not require `READY_FOR_RUNTIME`.
 
 Before this workflow, complete
 [historical-hypothesis-audit.md](historical-hypothesis-audit.md). Existing
@@ -63,7 +66,8 @@ as a round, rescue child, or gate round in the new lineage. Preregister:
   fingerprint;
 - the global cross-lineage trial ledger and selection-adjusted Sharpe/PBO
   method;
-- exact release acceptance rule and current-market terminal windows;
+- separate historical-readiness and prospective risk-1 acceptance rules, plus
+  the diagnostic current-market terminal windows;
 - an evidence-limitation classification and claim ceiling from
   [evidence-limitations.md](evidence-limitations.md); never collapse
   retrospective-universe provenance into causal leakage;
@@ -176,8 +180,9 @@ replace the tables with a leaderboard or artifact link.
 Classify every terminal cohort as `underpowered`, `diagnostic`, or
 `selection_grade` using [research-objective.md](research-objective.md). Keep all
 rows visible, but never reject or retune on an underpowered row. A diagnostic
-row may motivate the one supported causal repair; only a selection-grade row
-may enforce the current-market economic guardrail.
+row may motivate the one supported causal repair. A selection-grade row may
+limit a historical-readiness claim and candidate rank, but no terminal calendar
+row forces a wait or vetoes an otherwise valid risk-1 prospective test.
 
 ## 4. Capture the control
 
@@ -490,8 +495,8 @@ train and tuning only, then open the one chronological test tail once. Require:
 
 Apply the terminal support classes independently to ALL/LONG/SHORT. A sparse
 negative or empty window is not a gate failure; compare its cadence with the
-frozen event-arrival distribution and retain it as `n/a` until it has
-selection-grade support.
+frozen event-arrival distribution and retain it as `n/a`. Do not wait for it to
+reach selection-grade support before starting the risk-1 prospective test.
 
 If the sealed test was opened during discovery, intentionally or by an older
 tool version, it is exposed forever for that lineage. Finish and record the
@@ -518,11 +523,11 @@ forward-monitoring/cadence question, not a new threshold or a rejection.
 Preserve the profitable long-window side and proceed to the post-verdict action.
 
 Raw pass-through is a candidate, never an automatic promotion. If it wins the
-historical comparison but the terminal tail was exposed, retain it only as an
-immutable forward candidate. Return `UNSUITABLE_FOR_CURRENT_MARKET` only for a
-selection-grade frozen guardrail failure; otherwise the exposed tail yields
-`INSUFFICIENT_EVIDENCE` for historical readiness. Never use a zero-approval
-side as a silent substitute for completing this checkpoint.
+historical comparison but the terminal tail was exposed, retain it as one
+immutable forward candidate. A selection-grade frozen terminal failure may
+prevent `READY_FOR_RUNTIME` and lower the candidate rank, but does not by itself
+prevent the exact risk-1 forward handoff. Never use a zero-approval side as a
+silent substitute for completing this checkpoint.
 
 If `llmComparison=ai-approved`, compare LLM output only on rows approved by the
 final deterministic gate. Record provider/model/prompt lineage and cost. Treat
@@ -546,9 +551,10 @@ explicit `n/a` values for unavailable fields; do not omit the sections because
 the composition was rejected.
 
 Apply [verdict-contract.md](verdict-contract.md). Write the immutable evidence
-bundle before returning the verdict. `READY_FOR_RUNTIME` authorizes only a
-separate user review; it does not authorize config writes, risk changes,
-deployment, daemon changes, or orders.
+bundle before returning the verdict. The verdict classifies historical
+evidence. In `release` mode, the invocation separately authorizes the selected
+composition's exact `MAX_LOSS_VALUE=1` rollout unless the request explicitly
+forbids runtime changes.
 
 Before creating the release manifest, generate the finalist monitoring profile
 from its normalized `trades.jsonl`. Freeze daily-stepped equal-length historical
@@ -627,13 +633,18 @@ Null on the research machine yields `MICRO_FORWARD_READY` with
 handoff and deployment/account binding in Project, validate its computed
 revisions, deploy that image, then rerun `decide` against it.
 
+For a normal `release` invocation set `forwardTest.authorized=true` and
+`maxLossValue=1`; use `authorized=false` only for an explicitly research-only or
+no-runtime request.
+
 Case handling is deterministic:
 
-1. Complete positive aggregate out-of-sample expectancy plus every active
-   approved side under the frozen objective, long-window context present, with
-   an explicit zero row for any policy-suppressed side, candidate implemented,
-   chart present: micro-forward at risk 1. Underpowered/diagnostic recent rows
-   cannot turn this into `STOP_RESEARCH`.
+1. Positive maximum-covered aggregate expectancy plus every active approved
+   side under the frozen objective, robust walk-forward/risk/cost evidence,
+   long-window context present, an explicit zero row for any policy-suppressed
+   side, candidate implemented, chart present: micro-forward at risk 1.
+   Nested long windows and recent calendar rows remain diagnostics and cannot
+   turn this into `STOP_RESEARCH` by themselves.
 2. Supported causal recent direction failure with an untouched tail: one repair
    round, then rerun the full matrix and chart.
 3. Profitable raw side hidden by the current gate: complete the five side-rescue
@@ -642,16 +653,17 @@ Case handling is deterministic:
    variants. The losing raw side stays visible, while a tested `long_only` or
    `short_only` gate may become the composition policy if the retained side and
    aggregate approved stream pass every guardrail.
-5. Positive aggregate hiding a selection-grade failed side: do not hide the
-   side; repair within budget or stop. Sparse side evidence remains `n/a` and
-   caps the claim rather than proving failure.
+5. Positive aggregate hiding a failed active side: do not hide the side; repair
+   it or test an explicit direction policy. Recent side evidence affects the
+   historical claim and ranking according to support, not permission to collect
+   prospective evidence for the final active-side composition.
 6. Incomplete 3y/4y/max coverage, reconciliation, chart, or implementation:
    return the explicit blocker rather than “wait”. A server-owned target that
    is unavailable locally produces a ready handoff, not a blocker.
 7. Risk-only changes: keep the same logic lineage and add immutable loss-scale
    evidence; never discard earlier logic history.
 
-For an authorized local `MICRO_FORWARD_READY`, commit and push every
+For `MICRO_FORWARD_READY` in normal `release` mode, commit and push every
 strategy-owned source/gate change for the exact candidate, wait for its verified
 beta and protected stable promotion, then update the exact dependency and
 lockfile in TradeJS-Project. In that same Project commit, materialize the full
@@ -659,8 +671,13 @@ candidate config, remove mode/secret fields, retain `MAX_LOSS_VALUE=1`, and run
 strict Project checks to compute `strategyRevision` and
 `deploymentCompositionId`. Run `yarn runtime-control verify` and dry-run
 `signals`, then push the source commit. Explicitly dispatch the SHA-tagged image
-publication only when deployment is authorized. Keep unrelated changes out of
-both commits.
+publication as part of the authorized release-mode rollout. Keep unrelated
+changes out of both commits.
+
+Do not return at `MICRO_FORWARD_READY`, request another approval message, or
+wait for a 7d/30d/180d result. Bind the exact Git-owned runtime target, complete
+the rollout, and rerun `decide` for `START_MICRO_FORWARD`. Only an explicit
+research-only/no-runtime request changes this into a portable handoff.
 
 Production Redis is not a rollout phase and must never receive strategy config,
 deployment documents, or version pointers. For an existing strategy, an

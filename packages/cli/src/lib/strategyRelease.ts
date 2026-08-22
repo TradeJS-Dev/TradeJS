@@ -31,9 +31,8 @@ const LINEAGE_FINGERPRINT_RE = /^[a-f0-9]{16}$/;
 const STRATEGY_REVISION_RE = /^sr1:[a-f0-9]{16}$/;
 const DEPLOYMENT_COMPOSITION_ID_RE = /^dc1:[a-f0-9]{16}$/;
 const REQUIRED_LONG_WINDOWS = [1095, 1460, 1825] as const;
-const REQUIRED_STABLE_TERMINAL_WINDOWS = [365, 180, 90] as const;
+const REQUIRED_DIAGNOSTIC_TERMINAL_WINDOWS = [365, 180, 90] as const;
 const MIN_RECENT_DIRECTION_REPAIR_EVENTS = 20;
-const MIN_SELECTION_GRADE_TERMINAL_EVENTS = 50;
 
 const safeSegment = safeStrategyEvidenceSegment;
 const compactTimestamp = compactStrategyEvidenceTimestamp;
@@ -181,19 +180,12 @@ export const deriveStrategyReleaseResearchDecision = async (
         : null;
   const hasHistoricalEdge = (
     entry: StrategyReleaseResearchDecisionInput['historicalWindows'][number],
-    supportConditioned = false,
   ) =>
-    (supportConditioned
-      ? (entry.independentEvents ?? entry.trades ?? 0) <
-          MIN_SELECTION_GRADE_TERMINAL_EVENTS ||
-        (entry.pnl > 0 && entry.profitFactor >= 1)
-      : entry.pnl > 0 && entry.profitFactor >= 1) &&
+    entry.pnl > 0 &&
+    entry.profitFactor > 1 &&
     activeDirections.every(
       (direction) =>
-        (supportConditioned &&
-          (entry[direction].independentEvents ?? entry[direction].trades ?? 0) <
-            MIN_SELECTION_GRADE_TERMINAL_EVENTS) ||
-        (entry[direction].pnl > 0 && entry[direction].profitFactor >= 1),
+        entry[direction].pnl > 0 && entry[direction].profitFactor > 1,
     ) &&
     (suppressedDirection == null ||
       (entry[suppressedDirection].trades === 0 &&
@@ -204,20 +196,28 @@ export const deriveStrategyReleaseResearchDecision = async (
   if (REQUIRED_LONG_WINDOWS.some((days) => !byDays.has(days))) {
     blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
   }
-  if (REQUIRED_STABLE_TERMINAL_WINDOWS.some((days) => !byDays.has(days))) {
+  if (REQUIRED_DIAGNOSTIC_TERMINAL_WINDOWS.some((days) => !byDays.has(days))) {
     blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
   }
   const longWindows = REQUIRED_LONG_WINDOWS.map((days) =>
     byDays.get(days),
   ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  if (longWindows.some((entry) => !hasHistoricalEdge(entry))) {
+  const maximumCoveredWindow = longWindows.reduce<
+    StrategyReleaseResearchDecisionInput['historicalWindows'][number] | null
+  >((best, entry) => {
+    if (!best) return entry;
+    return (entry.coveredDays ?? entry.days) > (best.coveredDays ?? best.days)
+      ? entry
+      : best;
+  }, null);
+  if (maximumCoveredWindow && !hasHistoricalEdge(maximumCoveredWindow)) {
     blockers.push('HISTORICAL_EDGE_FAILED');
   }
-  const stableTerminalWindows = REQUIRED_STABLE_TERMINAL_WINDOWS.map((days) =>
-    byDays.get(days),
+  const diagnosticTerminalWindows = REQUIRED_DIAGNOSTIC_TERMINAL_WINDOWS.map(
+    (days) => byDays.get(days),
   ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   if (
-    stableTerminalWindows.some(
+    diagnosticTerminalWindows.some(
       (entry) =>
         !Number.isFinite(entry.independentEvents ?? entry.trades) ||
         activeDirections.some(
@@ -230,9 +230,6 @@ export const deriveStrategyReleaseResearchDecision = async (
   ) {
     blockers.push('HISTORICAL_MATRIX_INCOMPLETE');
   }
-  if (stableTerminalWindows.some((entry) => !hasHistoricalEdge(entry, true))) {
-    blockers.push('HISTORICAL_EDGE_FAILED');
-  }
   if (blockers.length) {
     return {
       strategy: input.strategy,
@@ -242,7 +239,7 @@ export const deriveStrategyReleaseResearchDecision = async (
       maxLossValue: null,
       requiresRuntimeBinding: false,
       blockers,
-      summary: `The final ${directionPolicy} composition fails the frozen long-window edge or a selection-grade terminal guardrail. Underpowered and diagnostic terminal cohorts do not cause this stop.`,
+      summary: `The final ${directionPolicy} composition lacks a positive maximum-covered historical edge or has an incomplete diagnostic matrix. Recent calendar windows are reported but do not gate a risk-1 prospective test.`,
     };
   }
 
