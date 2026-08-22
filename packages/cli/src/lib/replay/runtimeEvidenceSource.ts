@@ -10,6 +10,7 @@ import { runtimeLineageKey } from '../runtimeLineage';
 import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import {
   activeRuntimeEvidenceStrategies,
+  assertCurrentRuntimeEvidenceArtifact,
   parseRuntimeEvidenceDeploymentSnapshot,
   resolveRuntimeEvidenceTickerUniverse,
   type RuntimeEvidenceDeploymentSnapshot,
@@ -92,6 +93,7 @@ const readRuntimeEvidenceArtifact = async ({
   if (!root || !runtime) {
     throw new Error(`Invalid runtime evidence JSON: ${resolvedPath}`);
   }
+  assertCurrentRuntimeEvidenceArtifact(root);
   const rootWindow = asRecord(root.window);
   const runtimeWindow = asRecord(runtime.window);
   return {

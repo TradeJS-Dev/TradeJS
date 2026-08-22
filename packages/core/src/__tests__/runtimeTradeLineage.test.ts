@@ -1,66 +1,27 @@
-import type { RuntimeTradeRecord } from '@tradejs/types';
 import {
-  assignLegacyRuntimeTradeAccountScopes,
-  buildRuntimeStrategyAiGateChanges,
   buildRuntimeStrategyIdentityKey,
   buildRuntimeStrategyMaxLossValueTimeline,
   getRuntimeStrategyAiGateObservedFrom,
 } from '../runtimeTrades';
 
 describe('runtime trade lineage', () => {
-  const trade = {
-    orderId: 'legacy',
-    strategy: 'TrendLine',
-    symbol: 'BTCUSDT',
-    direction: 'LONG',
-    qty: 1,
-    entryPrice: 100,
-    entryTimestamp: 1,
-    status: 'closed',
-    universe: 'crypto',
-  } satisfies RuntimeTradeRecord;
-
-  it('builds a stable identity and assigns only unambiguous legacy accounts', () => {
+  it('builds a stable deployment identity', () => {
     expect(
       buildRuntimeStrategyIdentityKey({
         strategyName: 'TrendLine',
         accountId: 'main',
       }),
     ).toBe('TrendLine:config:crypto:main:default:default');
-    expect(
-      assignLegacyRuntimeTradeAccountScopes(
-        [trade],
-        [
-          {
-            strategyName: 'TrendLine',
-            configId: 'config',
-            universe: 'crypto',
-            accountId: 'main',
-          },
-        ],
-      ),
-    ).toEqual([{ ...trade, accountId: 'main' }]);
-    expect(
-      assignLegacyRuntimeTradeAccountScopes(
-        [trade],
-        ['main', 'alt'].map((accountId) => ({
-          strategyName: 'TrendLine',
-          configId: 'config',
-          universe: 'crypto' as const,
-          accountId,
-        })),
-      ),
-    ).toEqual([trade]);
   });
 
-  it('deduplicates gate and risk changes across symbols', () => {
-    const lineage = (gateFingerprint: string, maxLossValue: number) => ({
-      schemaVersion: 1 as const,
-      gitSha: 'sha',
-      gitDirty: false,
-      gateFingerprint,
-      configFingerprint: 'config',
-      contextFingerprint: 'context',
+  it('deduplicates risk changes across symbols', () => {
+    const lineage = (revision: string, maxLossValue: number) => ({
+      schemaVersion: 3 as const,
+      strategyRevision: `sr1:${revision.repeat(16)}`,
+      deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+      strategyPackageVersion: '3.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+      runtimePackageVersion: '3.2.0',
       maxLossValue,
     });
     const scopes = [
@@ -77,16 +38,6 @@ describe('runtime trade lineage', () => {
       lastTimestamp: Number(timestamp) + 10,
     }));
 
-    expect(
-      buildRuntimeStrategyAiGateChanges({
-        scopes,
-        strategyName: 'TrendLine',
-        startTime: 100,
-        endTime: 500,
-      }),
-    ).toEqual([
-      { timestamp: 200, previousFingerprint: 'old', fingerprint: 'new' },
-    ]);
     expect(
       buildRuntimeStrategyMaxLossValueTimeline({
         scopes,

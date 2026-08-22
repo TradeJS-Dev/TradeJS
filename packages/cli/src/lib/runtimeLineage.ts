@@ -1,59 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import {
-  HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
-  type ResearchRuntimeLineage,
-  type RuntimeLineage,
-  type RevisionRuntimeLineage,
-} from '@tradejs/types';
-import {
-  getHyperliquidPerpUniverseSnapshot,
-  getHyperliquidWhaleRegistrySnapshot,
-} from '@tradejs/node/strategies';
-import { strategyLogicConfigFingerprint } from '@tradejs/infra/strategyReleaseEvidence';
-import { resolveStrategyGateFingerprint } from './strategyGateFingerprint';
-
-const RUNTIME_CONTEXT_ENV_KEYS = [
-  'AI_MODE',
-  'MIN_AI_QUALITY',
-  'INTERVAL',
-  'DERIVATIVES_CONTEXT_ENABLED',
-  'DERIVATIVES_CONTEXT_TARGET_ENABLED',
-  'DERIVATIVES_CONTEXT_LOOKBACK_HOURS',
-  'DERIVATIVES_CONTEXT_EXTRA_REFERENCE_SYMBOLS',
-  'DERIVATIVES_CONTEXT_EXCHANGE_PRIORITY',
-  'COINMARKETCAP_CONTEXT_ENABLED',
-  'COINMARKETCAP_CONTEXT_MAX_AGE_MS',
-  'COINMARKETCAP_CONTEXT_EXCHANGE_LIQUIDITY_ENABLED',
-  'COINMARKETCAP_CONTEXT_EXCHANGE_SLUGS',
-  'COINMARKETCAP_CONTEXT_FEAR_GREED_ENABLED',
-  'COINMARKETCAP_CONTEXT_HISTORICAL_ACCESS_MONTHS',
-  'COINMARKETCAP_CONTEXT_BACKFILL_ENABLED',
-  'COINMARKETCAP_CONTEXT_BACKFILL_MAX_DAYS',
-  'COINMARKETCAP_CONTEXT_BACKFILL_WARMUP_DAYS',
-  'HYPERLIQUID_WHALE_CONTEXT_ENABLED',
-  'HYPERLIQUID_WHALE_BACKFILL_ENABLED',
-  'HYPERLIQUID_WHALE_MIN_COVERAGE_PCT',
-  'HYPERLIQUID_WHALE_CONCURRENCY',
-  'HYPERLIQUID_WHALE_RATE_LIMIT_WEIGHT',
-] as const;
-
-const RUNTIME_CONTEXT_DATA_MODEL = {
-  derivativesSourceIntervals: '15m',
-  derivativesDerivedIntervals: '1h',
-  derivativesHourlyFallback: 'stored-1h',
-  derivativesDataModelVersion: 2,
-  coinMarketCapAvailabilityModel: 'closed-interval-all-daily',
-  coinMarketCapDataModelVersion: 3,
-  binanceBreadthUniverseModel: 'fixed-versioned-top5-top10-top30-top50-top100',
-  binanceBreadthDataModelVersion: 2,
-  hyperliquidWhaleCanonicalInterval: '1m',
-  hyperliquidWhaleGateMinNotionalUsd: 50_000,
-  hyperliquidWhaleMinCoveragePct: 0.8,
-  hyperliquidWhaleDataModelVersion: HYPERLIQUID_WHALE_DATA_MODEL_VERSION,
-} as const;
+import type { RuntimeLineage } from '@tradejs/types';
 
 const normalizeForStableJson = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -73,7 +19,6 @@ const resolveRuntimeMaxLossValue = (config: unknown) => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return null;
   }
-
   const strategyConfig = (config as Record<string, unknown>).strategyConfig;
   if (
     !strategyConfig ||
@@ -82,7 +27,6 @@ const resolveRuntimeMaxLossValue = (config: unknown) => {
   ) {
     return null;
   }
-
   const maxLossValue = Number(
     (strategyConfig as Record<string, unknown>).MAX_LOSS_VALUE,
   );
@@ -95,301 +39,65 @@ export const fingerprintRuntimeValue = (value: unknown) =>
     .digest('hex')
     .slice(0, 16);
 
-const gitLineageCache = new Map<
-  string,
-  Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>
->();
-const gateFingerprintCache = new Map<
-  string,
-  Awaited<ReturnType<typeof resolveStrategyGateFingerprint>>
->();
-const binanceBreadthFingerprintCache = new Map<string, string | null>();
-const snapshotFingerprintCache = new Map<string, string | null>();
-
-const resolveGitLineage = (
-  projectRoot: string,
-): Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'> => {
-  const cached = gitLineageCache.get(projectRoot);
-  if (cached) {
-    return cached;
-  }
-
-  const envSha = String(process.env.TRADEJS_GIT_SHA ?? '').trim();
-  if (envSha && envSha !== 'unknown') {
-    const result = {
-      gitSha: envSha,
-      gitDirty: false,
-    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
-    gitLineageCache.set(projectRoot, result);
-    return result;
-  }
-
-  try {
-    const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    const status = execFileSync(
-      'git',
-      ['status', '--porcelain', '--untracked-files=normal'],
-      {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      },
-    ).trim();
-    const result = {
-      gitSha: gitSha || null,
-      gitDirty: status.length > 0,
-    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
-    gitLineageCache.set(projectRoot, result);
-    return result;
-  } catch {
-    const result = {
-      gitSha: null,
-      gitDirty: null,
-    } satisfies Pick<ResearchRuntimeLineage, 'gitSha' | 'gitDirty'>;
-    gitLineageCache.set(projectRoot, result);
-    return result;
-  }
-};
-
-const readOptionalFile = async (filePath: string) => {
-  try {
-    return await fs.readFile(filePath);
-  } catch {
-    return null;
-  }
-};
-
-const resolveBinanceBreadthFingerprint = async (projectRoot: string) => {
-  if (binanceBreadthFingerprintCache.has(projectRoot)) {
-    return binanceBreadthFingerprintCache.get(projectRoot) ?? null;
-  }
-  const content = await readOptionalFile(
-    path.join(
-      projectRoot,
-      'packages/node/src/config/binanceBreadthUniverses.json',
-    ),
-  );
-  let result: string | null = null;
-  if (content) {
-    try {
-      const parsed = JSON.parse(content.toString('utf8')) as {
-        fingerprint?: unknown;
-      };
-      result =
-        typeof parsed.fingerprint === 'string' && parsed.fingerprint.trim()
-          ? parsed.fingerprint.trim()
-          : null;
-    } catch {
-      result = null;
-    }
-  }
-  binanceBreadthFingerprintCache.set(projectRoot, result);
-  return result;
-};
-
-const resolveSnapshotFingerprint = async (
-  projectRoot: string,
-  relativePath: string,
-) => {
-  const cacheKey = `${projectRoot}:${relativePath}`;
-  if (snapshotFingerprintCache.has(cacheKey)) {
-    return snapshotFingerprintCache.get(cacheKey) ?? null;
-  }
-  const content = await readOptionalFile(path.join(projectRoot, relativePath));
-  let result: string | null = null;
-  if (content) {
-    try {
-      const parsed = JSON.parse(content.toString('utf8')) as {
-        fingerprint?: unknown;
-      };
-      result =
-        typeof parsed.fingerprint === 'string' && parsed.fingerprint.trim()
-          ? parsed.fingerprint.trim()
-          : null;
-    } catch {
-      result = null;
-    }
-  }
-  snapshotFingerprintCache.set(cacheKey, result);
-  return result;
-};
-
-const resolveRuntimeGateFingerprint = async ({
-  projectRoot,
-  strategyName,
-  gitSha,
-}: Parameters<typeof resolveStrategyGateFingerprint>[0]) => {
-  const cacheKey = `${projectRoot}:${strategyName}:${gitSha ?? 'unknown'}`;
-  const cached = gateFingerprintCache.get(cacheKey);
-  if (cached) return cached;
-  const result = await resolveStrategyGateFingerprint({
-    projectRoot,
-    strategyName,
-    gitSha,
-  });
-  gateFingerprintCache.set(cacheKey, result);
-  return result;
-};
-
 type BuildRuntimeLineageParams = {
-  projectRoot: string;
-  strategyName: string;
-  compositionId?: string | null;
-  strategyRevision?: string;
-  deploymentCompositionId?: string;
-  strategyPackageVersion?: string | null;
-  strategyDependencyVersions?: Record<string, string>;
-  runtimePackageVersion?: string | null;
+  strategyRevision: string;
+  deploymentCompositionId: string;
+  strategyPackageVersion: string;
+  strategyDependencyVersions: Record<string, string>;
+  runtimePackageVersion: string;
   config: unknown;
-  runContext?: Record<string, string | number | boolean | null>;
-  env?: NodeJS.ProcessEnv;
 };
 
-export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & {
-    strategyRevision: string;
-    deploymentCompositionId: string;
-    strategyPackageVersion: string;
-    strategyDependencyVersions: Record<string, string>;
-    runtimePackageVersion: string;
-  },
-): Promise<RevisionRuntimeLineage>;
-export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams & { strategyRevision?: undefined },
-): Promise<ResearchRuntimeLineage>;
-export function buildRuntimeLineage(
-  params: BuildRuntimeLineageParams,
-): Promise<RuntimeLineage>;
-export async function buildRuntimeLineage({
-  projectRoot,
-  strategyName,
-  compositionId,
+export const buildRuntimeLineage = async ({
   strategyRevision,
   deploymentCompositionId,
   strategyPackageVersion,
   strategyDependencyVersions,
   runtimePackageVersion,
   config,
-  runContext,
-  env = process.env,
-}: BuildRuntimeLineageParams): Promise<RuntimeLineage> {
-  if (strategyRevision != null) {
-    if (!/^sr1:[a-f0-9]{16}$/.test(strategyRevision)) {
-      throw new Error(`Invalid strategy revision: ${strategyRevision}`);
-    }
-    if (
-      typeof deploymentCompositionId !== 'string' ||
-      !/^dc1:[a-f0-9]{16}$/.test(deploymentCompositionId)
-    ) {
-      throw new Error(
-        `Invalid deployment composition id: ${String(deploymentCompositionId)}`,
-      );
-    }
-    if (
-      typeof strategyPackageVersion !== 'string' ||
-      !strategyPackageVersion.trim() ||
-      typeof runtimePackageVersion !== 'string' ||
-      !runtimePackageVersion.trim()
-    ) {
-      throw new Error('Invalid revision package versions');
-    }
-    if (
-      !strategyDependencyVersions ||
-      Object.keys(strategyDependencyVersions).length === 0 ||
-      Object.entries(strategyDependencyVersions).some(
-        ([name, version]) =>
-          !name.startsWith('@tradejs/') ||
-          typeof version !== 'string' ||
-          !version.trim(),
-      )
-    ) {
-      throw new Error('Invalid strategy dependency versions');
-    }
-    return {
-      schemaVersion: 3,
-      strategyRevision,
-      deploymentCompositionId,
-      strategyPackageVersion,
-      strategyDependencyVersions,
-      runtimePackageVersion,
-      maxLossValue: resolveRuntimeMaxLossValue(config),
-    };
+}: BuildRuntimeLineageParams): Promise<RuntimeLineage> => {
+  if (!/^sr1:[a-f0-9]{16}$/.test(strategyRevision)) {
+    throw new Error(`Invalid strategy revision: ${strategyRevision}`);
   }
-  const git = resolveGitLineage(projectRoot);
-  const hyperliquidPerpUniverseFingerprint =
-    typeof getHyperliquidPerpUniverseSnapshot === 'function'
-      ? getHyperliquidPerpUniverseSnapshot().fingerprint
-      : await resolveSnapshotFingerprint(
-          projectRoot,
-          'packages/node/src/config/hyperliquidPerpUniverse.json',
-        );
-  const hyperliquidWhaleRegistryFingerprint =
-    typeof getHyperliquidWhaleRegistrySnapshot === 'function'
-      ? getHyperliquidWhaleRegistrySnapshot().fingerprint
-      : await resolveSnapshotFingerprint(
-          projectRoot,
-          'packages/node/src/config/hyperliquidWhales.json',
-        );
-  const context = {
-    ...Object.fromEntries(
-      RUNTIME_CONTEXT_ENV_KEYS.map((key) => [key, env[key] ?? null]),
-    ),
-    ...RUNTIME_CONTEXT_DATA_MODEL,
-    binanceBreadthUniverseFingerprint:
-      await resolveBinanceBreadthFingerprint(projectRoot),
-    hyperliquidPerpUniverseFingerprint,
-    hyperliquidWhaleRegistryFingerprint,
-    ...runContext,
-  };
-
+  if (!/^dc1:[a-f0-9]{16}$/.test(deploymentCompositionId)) {
+    throw new Error(
+      `Invalid deployment composition id: ${deploymentCompositionId}`,
+    );
+  }
+  if (!strategyPackageVersion.trim() || !runtimePackageVersion.trim()) {
+    throw new Error('Invalid revision package versions');
+  }
+  if (
+    Object.keys(strategyDependencyVersions).length === 0 ||
+    Object.entries(strategyDependencyVersions).some(
+      ([name, version]) =>
+        !name.startsWith('@tradejs/') ||
+        typeof version !== 'string' ||
+        !version.trim(),
+    )
+  ) {
+    throw new Error('Invalid strategy dependency versions');
+  }
   return {
-    schemaVersion: 1,
-    compositionId: compositionId?.trim() || null,
-    ...git,
-    gateFingerprint: (
-      await resolveRuntimeGateFingerprint({
-        projectRoot,
-        strategyName,
-        gitSha: git.gitSha,
-      })
-    ).gateFingerprint,
-    // Position risk is tracked separately so changing trade size does not
-    // masquerade as a change to the core + gate decision logic.
-    configFingerprint: strategyLogicConfigFingerprint(config),
-    contextFingerprint: fingerprintRuntimeValue(context),
+    schemaVersion: 3,
+    strategyRevision,
+    deploymentCompositionId,
+    strategyPackageVersion,
+    strategyDependencyVersions,
+    runtimePackageVersion,
     maxLossValue: resolveRuntimeMaxLossValue(config),
   };
-}
+};
 
 export const runtimeLineageKey = (lineage: RuntimeLineage) =>
-  lineage.schemaVersion === 3
-    ? [
-        'v3',
-        lineage.deploymentCompositionId,
-        lineage.strategyRevision,
-        lineage.strategyPackageVersion,
-        `deps:${fingerprintRuntimeValue(
-          lineage.strategyDependencyVersions,
-        ).slice(0, 16)}`,
-        lineage.runtimePackageVersion,
-      ].join(':')
-    : [
-        lineage.schemaVersion,
-        lineage.compositionId ?? 'unbound-composition',
-        lineage.gitSha ?? 'unknown',
-        lineage.gitDirty == null
-          ? 'unknown'
-          : lineage.gitDirty
-            ? 'dirty'
-            : 'clean',
-        lineage.gateFingerprint,
-        lineage.configFingerprint,
-        lineage.contextFingerprint,
-      ].join(':');
+  [
+    'v3',
+    lineage.deploymentCompositionId,
+    lineage.strategyRevision,
+    lineage.strategyPackageVersion,
+    `deps:${fingerprintRuntimeValue(lineage.strategyDependencyVersions).slice(0, 16)}`,
+    lineage.runtimePackageVersion,
+  ].join(':');
 
 export const runtimeLineagesMatch = (
   left: RuntimeLineage | null | undefined,
@@ -409,10 +117,3 @@ export const runtimeLineagesComparable = (
   typeof right?.maxLossValue === 'number' &&
   Number.isFinite(right.maxLossValue) &&
   left.maxLossValue === right.maxLossValue;
-
-export const resetRuntimeLineageCachesForTests = () => {
-  gitLineageCache.clear();
-  gateFingerprintCache.clear();
-  binanceBreadthFingerprintCache.clear();
-  snapshotFingerprintCache.clear();
-};

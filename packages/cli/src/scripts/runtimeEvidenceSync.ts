@@ -39,7 +39,7 @@ export const runtimeEvidenceSync = async () => {
 
   console.log(
     chalk.green(
-      `Runtime evidence sync completed: received=${result.received.length} pending=${result.pending.length} unsupported=${result.unsupported.length}`,
+      `Runtime evidence sync completed: received=${result.received.length} pending=${result.pending.length}`,
     ),
   );
   console.log(
@@ -56,13 +56,6 @@ export const runtimeEvidenceSync = async () => {
           bundleDir: bundle.bundleDir,
           payloadPath: bundle.payloadPath,
           window: bundle.manifest.window,
-        })),
-        unsupported: result.unsupported.map(({ bundle, reason }) => ({
-          artifactId: bundle.manifest.artifactId,
-          bundleDir: bundle.bundleDir,
-          payloadPath: bundle.payloadPath,
-          window: bundle.manifest.window,
-          reason,
         })),
       },
       null,

@@ -28,17 +28,16 @@ const FP_D = '4'.repeat(16);
 const matchingRuntimeLineage = {
   complete: true,
   conflicts: false,
-  compositionId: 'set-from-manifest',
-  gitSha: 'deadbeef',
-  gitDirty: false,
-  gateFingerprint: FP_B,
-  configFingerprint: FP_C,
-  contextFingerprint: FP_D,
+  schemaVersion: 3,
+  strategyRevision: 'sr1:1111111111111111',
+  deploymentCompositionId: 'dc1:2222222222222222',
+  strategyPackageVersion: '3.0.0',
+  strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+  runtimePackageVersion: '3.2.0',
   maxLossValue: 10,
 };
-const runtimeLineageFor = (manifest: ReturnType<typeof buildRelease>) => ({
+const runtimeLineageFor = (_manifest: ReturnType<typeof buildRelease>) => ({
   ...matchingRuntimeLineage,
-  compositionId: manifest.composition.compositionId,
 });
 
 const buildRelease = () =>
@@ -1106,7 +1105,7 @@ describe('strategy live diagnosis', () => {
         parity: { ratio: 1, lineageReason: null },
         lineage: {
           ...runtimeLineageFor(manifest),
-          contextFingerprint: FP_A,
+          strategyPackageVersion: null,
         },
         funnel: { orderAttempts: 30, orderFailures: 0 },
         rolling: [
@@ -1129,7 +1128,7 @@ describe('strategy live diagnosis', () => {
         parity: { ratio: 1, lineageReason: null },
         lineage: {
           ...runtimeLineageFor(manifest),
-          compositionId: 'another-composition',
+          deploymentCompositionId: null,
         },
         funnel: { orderAttempts: 30, orderFailures: 0 },
         rolling: [

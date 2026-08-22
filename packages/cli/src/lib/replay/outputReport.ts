@@ -343,46 +343,34 @@ const renderLineageRows = (
     {
       strategy: string;
       scopes: number;
-      gitShas: Set<string>;
-      dirty: Set<string>;
-      gates: Set<string>;
-      configs: Set<string>;
-      contexts: Set<string>;
+      deploymentCompositions: Set<string>;
+      strategyRevisions: Set<string>;
+      strategyPackages: Set<string>;
+      dependencySets: Set<string>;
+      runtimePackages: Set<string>;
     }
   >();
   for (const record of runtimeComparison?.lineage.replay ?? []) {
     const existing = grouped.get(record.strategy) ?? {
       strategy: record.strategy,
       scopes: 0,
-      gitShas: new Set<string>(),
-      dirty: new Set<string>(),
-      gates: new Set<string>(),
-      configs: new Set<string>(),
-      contexts: new Set<string>(),
+      deploymentCompositions: new Set<string>(),
+      strategyRevisions: new Set<string>(),
+      strategyPackages: new Set<string>(),
+      dependencySets: new Set<string>(),
+      runtimePackages: new Set<string>(),
     };
     existing.scopes += 1;
-    if (record.lineage.schemaVersion === 3) {
-      existing.gitShas.add(record.lineage.deploymentCompositionId);
-      existing.dirty.add('n/a');
-      existing.gates.add('package-owned');
-      existing.configs.add(record.lineage.strategyRevision);
-      existing.contexts.add(
-        [
-          record.lineage.strategyPackageVersion,
-          record.lineage.runtimePackageVersion,
-        ].join('/'),
-      );
-    } else {
-      existing.gitShas.add(record.lineage.gitSha ?? 'unknown');
-      existing.dirty.add(
-        record.lineage.gitDirty == null
-          ? 'unknown'
-          : String(record.lineage.gitDirty),
-      );
-      existing.gates.add(record.lineage.gateFingerprint);
-      existing.configs.add(record.lineage.configFingerprint);
-      existing.contexts.add(record.lineage.contextFingerprint);
-    }
+    existing.deploymentCompositions.add(record.lineage.deploymentCompositionId);
+    existing.strategyRevisions.add(record.lineage.strategyRevision);
+    existing.strategyPackages.add(record.lineage.strategyPackageVersion);
+    existing.dependencySets.add(
+      Object.entries(record.lineage.strategyDependencyVersions)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, version]) => `${name}@${version}`)
+        .join(', '),
+    );
+    existing.runtimePackages.add(record.lineage.runtimePackageVersion);
     grouped.set(record.strategy, existing);
   }
   const formatSet = (values: Set<string>) => {
@@ -397,11 +385,11 @@ const renderLineageRows = (
         [
           'Strategy',
           'Scopes',
-          'Git SHA',
-          'Dirty',
-          'Gate',
-          'Config variants',
-          'Context',
+          'Deployment composition',
+          'Strategy revision',
+          'Strategy package',
+          'Dependencies',
+          'Runtime package',
         ],
         [...grouped.values()]
           .sort((left, right) => left.strategy.localeCompare(right.strategy))
@@ -409,19 +397,19 @@ const renderLineageRows = (
             ({
               strategy,
               scopes,
-              gitShas,
-              dirty,
-              gates,
-              configs,
-              contexts,
+              deploymentCompositions,
+              strategyRevisions,
+              strategyPackages,
+              dependencySets,
+              runtimePackages,
             }) => [
               strategy,
               scopes,
-              formatSet(gitShas),
-              formatSet(dirty),
-              formatSet(gates),
-              `${configs.size}: ${formatSet(configs)}`,
-              formatSet(contexts),
+              formatSet(deploymentCompositions),
+              formatSet(strategyRevisions),
+              formatSet(strategyPackages),
+              formatSet(dependencySets),
+              formatSet(runtimePackages),
             ],
           ),
       )

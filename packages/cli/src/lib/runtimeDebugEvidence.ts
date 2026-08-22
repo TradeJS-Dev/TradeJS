@@ -3,13 +3,8 @@ import type {
   RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
   Signal,
-  StrategyConfig,
 } from '@tradejs/types';
-import {
-  loadRuntimeClosedTrades,
-  loadRuntimeStrategyConfigs,
-  loadRuntimeTrades,
-} from './runtimeRedis';
+import { loadRuntimeClosedTrades, loadRuntimeTrades } from './runtimeRedis';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
   loadRuntimeSignalEvaluations,
@@ -26,12 +21,6 @@ import {
 export const RUNTIME_DEBUG_TIMEZONE = 'Europe/Moscow';
 export const RUNTIME_DEBUG_TIMEZONE_LABEL = 'MSK';
 
-export type RuntimeDebugStrategyConfig = {
-  key: string;
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-};
-
 export type RuntimeDebugEvidence = {
   dayKeys: string[];
   trades: RuntimeTradeRecord[];
@@ -39,7 +28,6 @@ export type RuntimeDebugEvidence = {
   evaluations: RuntimeSignalEvaluationRecord[];
   evaluationStatsBuckets: RuntimeSignalStatsBucketEntry[];
   lineageScopes: RuntimeLineageScopeRecord[];
-  strategyConfigs: RuntimeDebugStrategyConfig[];
 };
 
 export type RuntimeDebugReportAttachment = {
@@ -126,7 +114,6 @@ export const collectRuntimeDebugEvidence = async ({
     evaluations,
     evaluationStatsBuckets,
     lineageScopes,
-    configs,
   ] = await Promise.all([
     loadRuntimeTrades(userName, { startTime, endTime }),
     loadRuntimeClosedTrades(userName, { startTime, endTime }),
@@ -134,7 +121,6 @@ export const collectRuntimeDebugEvidence = async ({
     loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
     loadRuntimeSignalEvaluationStatsBuckets(userName),
     loadRuntimeLineageScopes(userName, { startTime, endTime }),
-    loadRuntimeStrategyConfigs(userName),
   ]);
   const tradesByOrderId = new Map(
     entryTrades.map((trade) => [trade.orderId, trade]),
@@ -167,12 +153,6 @@ export const collectRuntimeDebugEvidence = async ({
       .filter(
         (scope) => !strategies?.length || strategies.includes(scope.strategy),
       ),
-    strategyConfigs: deploymentId
-      ? []
-      : configs.filter(
-          (config) =>
-            !strategies?.length || strategies.includes(config.strategyName),
-        ),
   };
 };
 
@@ -183,7 +163,6 @@ export const buildRuntimeDebugReportPayload = async ({
   signals,
   evaluations,
   trades,
-  strategyConfigs,
   evaluationStatsBuckets,
   lineageScopes,
 }: {
@@ -193,7 +172,6 @@ export const buildRuntimeDebugReportPayload = async ({
   signals: Signal[];
   evaluations: RuntimeSignalEvaluationRecord[];
   trades: RuntimeTradeRecord[];
-  strategyConfigs?: RuntimeDebugStrategyConfig[];
   evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
   lineageScopes?: RuntimeLineageScopeRecord[];
 }) => {
@@ -354,7 +332,6 @@ export const buildRuntimeDebugReportPayload = async ({
       evaluations: reportEvaluations.length,
       evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
       lineageScopes: lineageScopes?.length ?? 0,
-      strategyConfigs: strategyConfigs?.length ?? 0,
     },
     trades: debugTrades,
     signals: signals.map((signal) => ({
@@ -378,7 +355,6 @@ export const buildRuntimeDebugReportPayload = async ({
     })),
     evaluationStatsBuckets: evaluationStatsBuckets ?? [],
     lineageScopes: lineageScopes ?? [],
-    strategyConfigs: strategyConfigs ?? [],
   };
 };
 
@@ -389,7 +365,6 @@ export const buildRuntimeEvidenceReportPayload = ({
   signals,
   evaluations,
   trades,
-  strategyConfigs,
   evaluationStatsBuckets,
   lineageScopes,
 }: {
@@ -399,7 +374,6 @@ export const buildRuntimeEvidenceReportPayload = ({
   signals: Signal[];
   evaluations: RuntimeSignalEvaluationRecord[];
   trades: RuntimeTradeRecord[];
-  strategyConfigs?: RuntimeDebugStrategyConfig[];
   evaluationStatsBuckets?: RuntimeSignalStatsBucketEntry[];
   lineageScopes?: RuntimeLineageScopeRecord[];
 }) => ({
@@ -419,14 +393,12 @@ export const buildRuntimeEvidenceReportPayload = ({
     evaluations: evaluations.length,
     evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
     lineageScopes: lineageScopes?.length ?? 0,
-    strategyConfigs: strategyConfigs?.length ?? 0,
   },
   trades: trades.map((trade) => ({ trade })),
   signals: signals.map((signal) => ({ signal })),
   evaluations: evaluations.map((evaluation) => ({ evaluation })),
   evaluationStatsBuckets: evaluationStatsBuckets ?? [],
   lineageScopes: lineageScopes ?? [],
-  strategyConfigs: strategyConfigs ?? [],
 });
 
 export const buildRuntimeDebugReportAttachment = async (

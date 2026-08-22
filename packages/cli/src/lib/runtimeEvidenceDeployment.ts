@@ -108,7 +108,7 @@ const samePackageVersions = (
   return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
 };
 
-const lineageMatchesStrategySnapshot = ({
+export const runtimeLineageMatchesStrategySnapshot = ({
   lineage,
   deployment,
   strategy,
@@ -213,6 +213,103 @@ export const activeRuntimeEvidenceStrategies = (
     ? deployment.strategies.filter((strategy) => strategy.enabled)
     : [];
 
+const unwrapRuntimeEvidenceRows = (
+  value: unknown,
+  field: string,
+): Record<string, unknown>[] =>
+  (Array.isArray(value) ? value : [])
+    .map((candidate) => {
+      const record = isRecord(candidate) ? candidate : null;
+      const nested = record && isRecord(record[field]) ? record[field] : null;
+      return nested ?? record;
+    })
+    .filter((record): record is Record<string, unknown> => record != null);
+
+export const assertCurrentRuntimeEvidenceArtifact = (artifact: unknown) => {
+  if (!isRecord(artifact) || artifact.reportType !== 'runtime-evidence') {
+    throw new Error('Invalid runtime evidence artifact');
+  }
+  const deployment = parseRuntimeEvidenceDeploymentSnapshot(
+    artifact.deployment,
+  );
+  const activeStrategies = activeRuntimeEvidenceStrategies(deployment);
+  if (activeStrategies.length === 0) {
+    throw new Error('Runtime evidence deployment has no enabled strategies');
+  }
+  const runtime = isRecord(artifact.runtime) ? artifact.runtime : null;
+  if (!runtime) {
+    throw new Error('Runtime evidence payload is missing');
+  }
+  if ('strategyConfigs' in runtime) {
+    throw new Error(
+      'Runtime evidence payload contains removed strategyConfigs data',
+    );
+  }
+  const rowFields = [
+    'trades',
+    'signals',
+    'evaluations',
+    'lineageScopes',
+  ] as const;
+  for (const field of rowFields) {
+    if (!Array.isArray(runtime[field])) {
+      throw new Error(`Runtime evidence payload ${field} must be an array`);
+    }
+  }
+
+  const snapshots = new Map(
+    activeStrategies.map((strategy) => [strategy.strategyName, strategy]),
+  );
+  const assertRows = (
+    label: string,
+    rows: Record<string, unknown>[],
+    lineageField: 'runtimeLineage' | 'lineage',
+  ) => {
+    for (const row of rows) {
+      const strategyName = String(row.strategy ?? '').trim();
+      const strategy = snapshots.get(strategyName);
+      if (
+        !strategy ||
+        row.deploymentId !== deployment.id ||
+        row.accountId !== deployment.accountId ||
+        !runtimeLineageMatchesStrategySnapshot({
+          lineage: isRecord(row[lineageField])
+            ? (row[lineageField] as unknown as RuntimeLineage)
+            : undefined,
+          deployment,
+          strategy,
+        })
+      ) {
+        throw new Error(
+          `Runtime evidence ${label} row is outside the current embedded deployment lineage`,
+        );
+      }
+    }
+  };
+
+  assertRows(
+    'trade',
+    unwrapRuntimeEvidenceRows(runtime.trades, 'trade'),
+    'runtimeLineage',
+  );
+  assertRows(
+    'signal',
+    unwrapRuntimeEvidenceRows(runtime.signals, 'signal'),
+    'runtimeLineage',
+  );
+  assertRows(
+    'evaluation',
+    unwrapRuntimeEvidenceRows(runtime.evaluations, 'evaluation'),
+    'runtimeLineage',
+  );
+  assertRows(
+    'lineage scope',
+    unwrapRuntimeEvidenceRows(runtime.lineageScopes, 'lineageScope'),
+    'lineage',
+  );
+  return deployment;
+};
+
 export const resolveRuntimeEvidenceTickerUniverse = ({
   deployment,
   lineageScopes,
@@ -258,7 +355,7 @@ export const resolveRuntimeEvidenceTickerUniverse = ({
       scope.deploymentId !== deployment.id ||
       scope.accountId !== deployment.accountId ||
       !isNonEmptyString(scope.symbol) ||
-      !lineageMatchesStrategySnapshot({
+      !runtimeLineageMatchesStrategySnapshot({
         lineage: scope.lineage,
         deployment,
         strategy,

@@ -1,7 +1,6 @@
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import type {
   RuntimeLineage,
-  ResearchRuntimeLineage,
   RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
   Signal,
@@ -18,15 +17,13 @@ jest.mock('../lib/replay/cliConfig', () => ({
   replayUserName: 'root',
 }));
 
-const lineage = (
-  overrides: Partial<ResearchRuntimeLineage> = {},
-): ResearchRuntimeLineage => ({
-  schemaVersion: 1,
-  gitSha: 'abc123',
-  gitDirty: false,
-  gateFingerprint: 'gate',
-  configFingerprint: 'config',
-  contextFingerprint: 'context',
+const lineage = (overrides: Partial<RuntimeLineage> = {}): RuntimeLineage => ({
+  schemaVersion: 3,
+  strategyRevision: 'sr1:1111111111111111',
+  deploymentCompositionId: 'dc1:2222222222222222',
+  strategyPackageVersion: '3.0.0',
+  strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+  runtimePackageVersion: '3.2.0',
   maxLossValue: 1,
   ...overrides,
 });
@@ -61,7 +58,7 @@ const evaluation = (
 describe('replay runtime lineage filtering', () => {
   it('compares only artifacts inside a matching deployment lineage window', () => {
     const expected = lineage();
-    const mismatched = lineage({ gitSha: 'old-sha' });
+    const mismatched = lineage({ strategyPackageVersion: '2.9.0' });
     const matchingSignal = signal(200, expected);
     const runtimeTrades = [
       {

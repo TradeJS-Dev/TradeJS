@@ -85,9 +85,7 @@ export const loadRuntimeTrades = async (
       .filter(filterByWindow)
       .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 
-    if (windowedTrades.length > 0 || dayKeys.length === 0) {
-      return windowedTrades;
-    }
+    return windowedTrades;
   }
 
   const tradePrefix = redisKeys.runtimeTrades(userName);

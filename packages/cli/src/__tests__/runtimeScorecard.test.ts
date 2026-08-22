@@ -3,126 +3,152 @@ import {
   formatRuntimeScorecardMarkdown,
 } from '../lib/runtimeScorecard';
 
-const runtimeLineage = {
-  schemaVersion: 1,
-  compositionId: 'release-composition-trendline-v1',
-  gitSha: 'deadbeef',
-  gitDirty: false,
-  gateFingerprint: 'a'.repeat(64),
-  configFingerprint: 'b'.repeat(64),
-  contextFingerprint: 'c'.repeat(64),
-  maxLossValue: 10,
-};
+const createStrategy = (strategyName: string, seed: string) => ({
+  strategyName,
+  strategyRevision: `sr1:${seed.repeat(16)}`,
+  enabled: true,
+  controlState: 'active',
+  interval: '15',
+  universe: 'crypto',
+  strategyPackage: `@tradejs/strategy-${strategyName.toLowerCase()}`,
+  strategyPackageVersion: '3.0.0',
+  strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+  runtimePackageVersion: '3.2.0',
+  strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto', MAX_LOSS_VALUE: 1 },
+});
+
+const createDeployment = (...strategies: ReturnType<typeof createStrategy>[]) =>
+  ({
+    schemaVersion: 2,
+    id: 'production',
+    deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+    label: 'Production',
+    connectorName: 'bybit',
+    provider: 'bybit',
+    accountId: 'bybit-main',
+    enabled: true,
+    tickers: ['BTCUSDT'],
+    strategies,
+  }) as const;
+
+const createLineage = (
+  strategy: ReturnType<typeof createStrategy>,
+  maxLossValue = 1,
+) =>
+  ({
+    schemaVersion: 3,
+    strategyRevision: strategy.strategyRevision,
+    deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+    strategyPackageVersion: strategy.strategyPackageVersion,
+    strategyDependencyVersions: strategy.strategyDependencyVersions,
+    runtimePackageVersion: strategy.runtimePackageVersion,
+    maxLossValue,
+  }) as const;
+
+const bindRow = <T extends Record<string, unknown>>(
+  strategy: ReturnType<typeof createStrategy>,
+  row: T,
+) => ({
+  strategy: strategy.strategyName,
+  deploymentId: 'production',
+  accountId: 'bybit-main',
+  runtimeLineage: createLineage(strategy),
+  ...row,
+});
 
 describe('runtime scorecard', () => {
-  it('builds the causal funnel, parity, execution drift, and rolling outcomes', () => {
+  it('builds the current-lineage funnel, parity, execution drift, and outcomes', () => {
+    const strategy = createStrategy('TrendLine', '1');
+    const deployment = createDeployment(strategy);
     const endTime = Date.UTC(2026, 7, 7, 18);
-    const startTime = endTime - 24 * 60 * 60 * 1000;
+    const startTime = endTime - 86_400_000;
     const runtimeArtifact = {
       reportType: 'runtime-evidence',
       window: { startTime, endTime },
+      deployment,
       runtime: {
         evaluationStatsBuckets: [{ stats: { evaluated: 100, signals: 4 } }],
         evaluations: [
           {
-            evaluation: {
-              strategy: 'TrendLine',
-              runtimeLineage,
+            evaluation: bindRow(strategy, {
               status: 'signal',
               aiAnalysis: {
                 quality: 4,
                 gateDecision: 'approved',
                 llmDecision: 'rejected',
-                gateContradictsLlm: true,
               },
-            },
+            }),
           },
           {
-            evaluation: {
-              strategy: 'TrendLine',
-              runtimeLineage,
+            evaluation: bindRow(strategy, {
               status: 'signal',
               aiAnalysis: { quality: 2, gateDecision: 'rejected' },
-            },
+            }),
           },
         ],
         signals: [
+          { signal: bindRow(strategy, { orderStatus: 'completed' }) },
           {
-            signal: {
-              orderStatus: 'completed',
-              strategy: 'TrendLine',
-              runtimeLineage,
-            },
-          },
-          {
-            signal: {
+            signal: bindRow(strategy, {
               orderStatus: 'failed',
               orderFailureReason: 'INSUFFICIENT_MARGIN',
-              strategy: 'TrendLine',
-              runtimeLineage,
-            },
+            }),
           },
         ],
         trades: [
           {
-            trade: {
+            trade: bindRow(strategy, {
               orderId: 'order-1',
               status: 'closed',
               entryTimestamp: startTime,
               exitTimestamp: endTime - 1_000,
-              strategy: 'TrendLine',
-              runtimeLineage,
               closedPnl: 12,
               totalFee: 1,
               fundingFee: 0.2,
-            },
+            }),
           },
         ],
-      },
-    };
-    const replayEvidenceArtifact = {
-      replay: {
-        runtimeComparison: {
-          lineage: { reason: null },
-          counts: { matched: 18, backtestOnly: 1, runtimeOnly: 1 },
-        },
-      },
-    };
-    const calibrationArtifact = {
-      summary: {
-        all: {
-          signalToFillAdverseBps: { avg: 5 },
-          residualVsCurrentModelBps: { avg: 4 },
-        },
+        lineageScopes: [],
       },
     };
     const previousRuntimeArtifact = {
       reportType: 'runtime-evidence',
-      window: {
-        startTime: startTime - 24 * 60 * 60 * 1000,
-        endTime: startTime,
-      },
+      window: { startTime: startTime - 86_400_000, endTime: startTime },
+      deployment,
       runtime: {
         evaluations: [
           {
-            evaluation: {
-              strategy: 'TrendLine',
+            evaluation: bindRow(strategy, {
               status: 'signal',
               aiAnalysis: { quality: 4, gateDecision: 'approved' },
-            },
+            }),
           },
         ],
-        signals: [
-          { signal: { orderStatus: 'completed', strategy: 'TrendLine' } },
-        ],
+        signals: [{ signal: bindRow(strategy, { orderStatus: 'completed' }) }],
         trades: [],
+        lineageScopes: [],
       },
     };
-
     const scorecard = buildRuntimeScorecard({
       runtimeArtifact,
-      replayEvidenceArtifact,
-      calibrationArtifact,
+      replayEvidenceArtifact: {
+        replay: {
+          runtimeComparison: {
+            lineage: { reason: null },
+            counts: { matched: 18, backtestOnly: 1, runtimeOnly: 1 },
+          },
+        },
+      },
+      calibrationArtifact: {
+        samples: [
+          {
+            strategy: strategy.strategyName,
+            runtimeLineage: createLineage(strategy),
+            signalToFillAdverseBps: 5,
+            residualVsCurrentModelBps: 4,
+          },
+        ],
+      },
       prospectiveEvidenceArtifact: {
         reportType: 'strategy-prospective-evidence',
         rawCoreExpectancy: 0.2,
@@ -139,119 +165,84 @@ describe('runtime scorecard', () => {
       },
     });
 
+    expect(scorecard.lineage).toMatchObject({
+      complete: true,
+      schemaVersion: 3,
+      strategyRevision: strategy.strategyRevision,
+      deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+      maxLossValue: 1,
+    });
     expect(scorecard.funnel).toMatchObject({
       evaluations: 100,
       coreCandidates: 4,
       orderAttempts: 2,
       orderFailures: 1,
-      balanceRejects: 1,
       fills: 1,
-      closedTrades: 1,
-    });
-    expect(scorecard.lineage).toMatchObject({
-      complete: true,
-      conflicts: false,
-      compositionId: 'release-composition-trendline-v1',
-      gitSha: 'deadbeef',
-      maxLossValue: 10,
-    });
-    expect(scorecard.funnel.gate).toMatchObject({
-      available: true,
-      approved: 1,
-      rejected: 1,
-    });
-    expect(scorecard.gateComparison).toEqual({
-      policy: 'ai_approved_only',
-      eligible: 1,
-      compared: 1,
-      coverage: 1,
-      agreements: 0,
-      disagreements: 1,
-      gateApprovedLlmRejected: 1,
-      gateRejectedLlmApproved: 0,
+      comparableClosedTrades: 1,
     });
     expect(scorecard.parity.ratio).toBe(0.9);
     expect(scorecard.execution.residualVsCurrentModelBps).toBe(4);
-    expect(scorecard.prospective).toEqual({
-      rawCoreExpectancy: 0.2,
-      aiGateExpectancy: 0.5,
-      regimeCoverage: 0.8,
-    });
-    expect(scorecard.distributionChanges).toMatchObject({
-      available: true,
-      metrics: {
-        aiQuality: {
-          '2': { shareDelta: 0.5 },
-          '4': { shareDelta: -0.5 },
-        },
-      },
-    });
     expect(scorecard.rolling[0]).toMatchObject({
       closedTrades: 1,
       realizedPnl: 12,
       expectancy: 12,
     });
     expect(scorecard.promotionStatus).toBe('PROMOTION_BLOCKED');
-    expect(scorecard.reactions.map((reaction) => reaction.code)).toEqual([
+    expect(scorecard.reactions.map(({ code }) => code)).toEqual([
       'PARITY_REGRESSION',
       'SLIPPAGE_DRIFT',
     ]);
-    expect(formatRuntimeScorecardMarkdown(scorecard)).toContain(
-      'PROMOTION_BLOCKED',
-    );
-    expect(formatRuntimeScorecardMarkdown(scorecard)).toContain(
-      'aiQuality.2: +50 pp',
-    );
     expect(formatRuntimeScorecardMarkdown(scorecard)).toContain(
       'AI / LLM disagreement: 1/1',
     );
   });
 
-  it('isolates every scorecard cohort to the requested strategy', () => {
+  it('isolates current deployment rows to the requested strategy', () => {
+    const doubleTap = createStrategy('DoubleTap', '2');
+    const trendLine = createStrategy('TrendLine', '3');
     const endTime = 1_000_000;
     const runtimeArtifact = {
+      reportType: 'runtime-evidence',
       window: { startTime: 0, endTime },
+      deployment: createDeployment(doubleTap, trendLine),
       runtime: {
         evaluations: [
-          { strategy: 'DoubleTap', status: 'signal' },
-          { strategy: 'TrendLine', status: 'signal' },
+          bindRow(doubleTap, { status: 'signal' }),
+          bindRow(trendLine, { status: 'signal' }),
         ],
         signals: [
-          { strategy: 'DoubleTap', orderStatus: 'completed' },
-          { strategy: 'TrendLine', orderStatus: 'failed' },
+          bindRow(doubleTap, { orderStatus: 'completed' }),
+          bindRow(trendLine, { orderStatus: 'failed' }),
         ],
         trades: [
-          {
-            strategy: 'DoubleTap',
+          bindRow(doubleTap, {
             orderId: 'dt',
             status: 'closed',
             exitTimestamp: endTime - 1,
             closedPnl: 5,
-          },
-          {
-            strategy: 'TrendLine',
+          }),
+          bindRow(trendLine, {
             orderId: 'tl',
             status: 'closed',
             exitTimestamp: endTime - 1,
             closedPnl: -100,
-          },
+          }),
         ],
+        lineageScopes: [],
       },
     };
-    const replayEvidenceArtifact = {
-      replay: {
-        runtimeComparison: {
-          byStrategy: {
-            DoubleTap: { matched: 9, backtestOnly: 1, runtimeOnly: 0 },
-            TrendLine: { matched: 0, backtestOnly: 10, runtimeOnly: 10 },
+    const scorecard = buildRuntimeScorecard({
+      runtimeArtifact,
+      replayEvidenceArtifact: {
+        replay: {
+          runtimeComparison: {
+            byStrategy: {
+              DoubleTap: { matched: 9, backtestOnly: 1, runtimeOnly: 0 },
+              TrendLine: { matched: 0, backtestOnly: 10, runtimeOnly: 10 },
+            },
           },
         },
       },
-    };
-
-    const scorecard = buildRuntimeScorecard({
-      runtimeArtifact,
-      replayEvidenceArtifact,
       strategy: 'DoubleTap',
       generatedAt: endTime,
     });
@@ -263,268 +254,35 @@ describe('runtime scorecard', () => {
       orderAttempts: 1,
       orderFailures: 0,
       closedTrades: 1,
+      comparableClosedTrades: 1,
+      nonComparableClosedTrades: 0,
     });
-    expect(scorecard.funnel).toMatchObject({
-      comparableClosedTrades: 0,
-      nonComparableClosedTrades: 1,
-    });
-    expect(scorecard.realized.pnl).toBe(0);
+    expect(scorecard.realized.pnl).toBe(5);
     expect(scorecard.parity.ratio).toBe(0.9);
   });
 
-  it('uses complete revision identity while excluding unlineaged and cross-deployment trades', () => {
-    const endTime = Date.UTC(2026, 7, 19, 18);
-    const revisionLineage = {
-      schemaVersion: 3,
-      strategyRevision: 'sr1:5555555555555555',
-      deploymentCompositionId: 'dc1:1111111111111111',
-      strategyPackageVersion: '3.0.1',
-      strategyDependencyVersions: {
-        '@tradejs/indicators': '3.2.0',
-        '@tradejs/strategy-kit': '3.0.2',
-      },
-      runtimePackageVersion: '3.2.0',
-      maxLossValue: 1,
-    } as const;
-    const runtimeArtifact = {
-      window: { startTime: endTime - 86_400_000, endTime },
-      deployment: { id: 'production', accountId: 'bybit-main' },
-      runtime: {
-        evaluations: [
-          {
-            strategy: 'DoubleTap',
-            status: 'signal',
-            runtimeLineage: revisionLineage,
+  it('rejects any bundle row outside the current lineage schema', () => {
+    const strategy = createStrategy('DoubleTap', '4');
+    expect(() =>
+      buildRuntimeScorecard({
+        runtimeArtifact: {
+          reportType: 'runtime-evidence',
+          deployment: createDeployment(strategy),
+          runtime: {
+            evaluations: [
+              {
+                ...bindRow(strategy, { status: 'signal' }),
+                runtimeLineage: { schemaVersion: 2 },
+              },
+            ],
+            signals: [],
+            trades: [],
+            lineageScopes: [],
           },
-        ],
-        signals: [],
-        trades: [
-          {
-            strategy: 'DoubleTap',
-            orderId: 'current',
-            status: 'closed',
-            exitTimestamp: endTime - 1,
-            closedPnl: 2,
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-            runtimeLineage: revisionLineage,
-          },
-          {
-            strategy: 'DoubleTap',
-            orderId: 'current-legacy',
-            status: 'closed',
-            exitTimestamp: endTime - 2,
-            closedPnl: -25,
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-          },
-        ],
-      },
-    };
-    const historyRuntimeArtifact = {
-      window: {
-        startTime: endTime - 2 * 86_400_000,
-        endTime: endTime - 86_400_000,
-      },
-      runtime: {
-        trades: [
-          {
-            strategy: 'DoubleTap',
-            orderId: 'legacy',
-            status: 'closed',
-            exitTimestamp: endTime - 86_400_001,
-            closedPnl: -100,
-          },
-          {
-            strategy: 'DoubleTap',
-            orderId: 'matching',
-            status: 'closed',
-            exitTimestamp: endTime - 86_400_002,
-            closedPnl: 3,
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-            runtimeLineage: revisionLineage,
-          },
-          {
-            strategy: 'DoubleTap',
-            orderId: 'other-deployment',
-            status: 'closed',
-            exitTimestamp: endTime - 86_400_003,
-            closedPnl: -50,
-            deploymentId: 'staging',
-            accountId: 'bybit-main',
-            runtimeLineage: revisionLineage,
-          },
-        ],
-      },
-    };
-
-    const scorecard = buildRuntimeScorecard({
-      runtimeArtifact,
-      historyRuntimeArtifacts: [historyRuntimeArtifact],
-      strategy: 'DoubleTap',
-      generatedAt: endTime,
-    });
-
-    expect(scorecard.lineage).toMatchObject({
-      complete: false,
-      identityComplete: true,
-      coverageComplete: false,
-      schemaVersion: 3,
-      strategyRevision: 'sr1:5555555555555555',
-      deploymentCompositionId: 'dc1:1111111111111111',
-      strategyPackageVersion: '3.0.1',
-      strategyDependencyVersions: {
-        '@tradejs/indicators': '3.2.0',
-        '@tradejs/strategy-kit': '3.0.2',
-      },
-      runtimePackageVersion: '3.2.0',
-      maxLossValue: 1,
-    });
-    expect(scorecard.funnel).toMatchObject({
-      closedTrades: 2,
-      comparableClosedTrades: 1,
-      nonComparableClosedTrades: 1,
-    });
-    expect(scorecard.rolling[0]).toMatchObject({
-      closedTrades: 2,
-      realizedPnl: 5,
-      expectancy: 2.5,
-    });
-    expect(scorecard.realized.pnl).toBe(2);
-    expect(scorecard.reactions.map(({ code }) => code)).toContain(
-      'RUNTIME_LINEAGE_INCOMPLETE',
-    );
-  });
-
-  it('uses the embedded deployment lineage while keeping cutover rows non-comparable', () => {
-    const endTime = Date.UTC(2026, 7, 21, 18);
-    const currentLineage = {
-      schemaVersion: 3,
-      strategyRevision: 'sr1:5555555555555555',
-      deploymentCompositionId: 'dc1:1111111111111111',
-      strategyPackageVersion: '3.0.2',
-      strategyDependencyVersions: {
-        '@tradejs/strategy-kit': '3.0.3',
-      },
-      runtimePackageVersion: '3.2.0',
-      maxLossValue: 1,
-    } as const;
-    const runtimeArtifact = {
-      window: { startTime: endTime - 86_400_000, endTime },
-      deployment: {
-        schemaVersion: 2,
-        id: 'production',
-        deploymentCompositionId: 'dc1:1111111111111111',
-        accountId: 'bybit-main',
-        strategies: [
-          {
-            strategyName: 'DoubleTap',
-            strategyRevision: 'sr1:5555555555555555',
-            enabled: true,
-            strategyPackageVersion: '3.0.2',
-            strategyDependencyVersions: {
-              '@tradejs/strategy-kit': '3.0.3',
-            },
-            runtimePackageVersion: '3.2.0',
-          },
-        ],
-      },
-      runtime: {
-        lineageScopes: [
-          {
-            strategy: 'DoubleTap',
-            symbol: 'BTCUSDT',
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-            lineage: currentLineage,
-          },
-          {
-            strategy: 'DoubleTap',
-            symbol: 'OLDUSDT',
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-            lineage: {
-              schemaVersion: 2,
-              version: 7,
-              strategyPackageVersion: '3.0.1',
-              runtimePackageVersion: '3.1.14',
-              maxLossValue: 1,
-            },
-          },
-        ],
-        trades: [
-          {
-            strategy: 'DoubleTap',
-            orderId: 'current',
-            status: 'closed',
-            exitTimestamp: endTime - 1,
-            closedPnl: 2,
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-            runtimeLineage: currentLineage,
-          },
-          {
-            strategy: 'DoubleTap',
-            orderId: 'legacy',
-            status: 'closed',
-            exitTimestamp: endTime - 2,
-            closedPnl: -10,
-            deploymentId: 'production',
-            accountId: 'bybit-main',
-          },
-        ],
-        signals: [],
-        evaluations: [],
-      },
-    };
-    const calibrationArtifact = {
-      samples: [
-        {
-          strategy: 'DoubleTap',
-          runtimeLineage: currentLineage,
-          signalToFillAdverseBps: 2,
-          residualVsCurrentModelBps: -8,
         },
-        {
-          strategy: 'DoubleTap',
-          runtimeLineage: null,
-          signalToFillAdverseBps: 99,
-          residualVsCurrentModelBps: 89,
-        },
-      ],
-    };
-
-    const scorecard = buildRuntimeScorecard({
-      runtimeArtifact,
-      calibrationArtifact,
-      strategy: 'DoubleTap',
-      generatedAt: endTime,
-    });
-
-    expect(scorecard.lineage).toMatchObject({
-      complete: true,
-      coverageComplete: true,
-      strategyRevision: 'sr1:5555555555555555',
-      maxLossValue: 1,
-    });
-    expect(scorecard.funnel).toMatchObject({
-      fills: 1,
-      nonComparableFills: 1,
-      comparableClosedTrades: 1,
-      nonComparableClosedTrades: 1,
-    });
-    expect(scorecard.execution).toEqual({
-      available: true,
-      actualSignalToFillSlippageBps: 2,
-      residualVsCurrentModelBps: -8,
-    });
-    expect(scorecard.rolling[0]).toMatchObject({
-      closedTrades: 1,
-      realizedPnl: 2,
-    });
-    expect(scorecard.reactions.map(({ code }) => code)).not.toContain(
-      'RUNTIME_LINEAGE_INCOMPLETE',
+      }),
+    ).toThrow(
+      'Runtime evidence evaluation row is outside the current embedded deployment lineage',
     );
   });
 });

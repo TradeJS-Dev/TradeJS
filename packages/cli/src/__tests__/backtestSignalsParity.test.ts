@@ -203,7 +203,6 @@ const normalizeSignalEvaluationRows = (
         symbol: evaluation.symbol,
         interval: evaluation.interval,
         direction: evaluation.direction,
-        signalId: evaluation.signalId,
         signalTimestamp: evaluation.timestamp,
         status: evaluation.status,
       })),
@@ -570,6 +569,11 @@ const runSignalsPath = async () => {
     loadResolvedRuntimeStrategies: jest.fn(async () => [
       {
         strategyName: 'ParityStrategy',
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentCompositionId: 'dc1:1111111111111111',
+        strategyPackageVersion: '1.0.0',
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+        runtimePackageVersion: '3.2.0',
         configId: 'config',
         controlState: 'active',
         interval: '15',
@@ -892,13 +896,13 @@ describe('backtest/signals runtime parity', () => {
           timestamp: CLOSED_2_TS,
           evaluatedAt: expect.any(Number),
           status: 'signal',
-          signalId: `parity-signal-${CLOSED_2_TS}`,
+          signalId: `parity-signal-${CLOSED_2_TS}:sr1:1111111111111111`,
         }),
       ]),
     );
     expect(signalsRun.storedSignals.map(toSignalSnapshot)).toEqual([
       {
-        signalId: `parity-signal-${CLOSED_2_TS}`,
+        signalId: `parity-signal-${CLOSED_2_TS}:sr1:1111111111111111`,
         strategy: 'ParityStrategy',
         symbol: 'ETHUSDT',
         interval: '15',

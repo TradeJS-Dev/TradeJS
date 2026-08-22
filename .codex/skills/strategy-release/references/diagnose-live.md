@@ -14,13 +14,19 @@ Load the immutable release record and verify:
 - fees, slippage, entry delay, risk settings, and context-provider settings;
 - release acceptance bounds, terminal windows, and forward-incubation cutoff.
 
-Require every scoped runtime evaluation, signal, and trade to carry one clean
-logic lineage. Git SHA, core-config fingerprint, gate fingerprint, and context
-fingerprint must equal the release manifest. Track `MAX_LOSS_VALUE` separately:
-different values are allowed, produce immutable `L` evidence, and require all
-monetary observations to be normalized by `runtime / release` risk scale.
-Missing/invalid risk scale yields `INSUFFICIENT_EVIDENCE`; missing, dirty,
-conflicting, or different logic lineage is `RUNTIME_DIVERGENCE`.
+Require the runtime artifact to embed deployment snapshot schema v2. Every
+scoped evaluation, signal, trade, and persisted scope must carry runtime lineage
+schema v3 matching the embedded deployment/account, strategy revision,
+strategy package version, complete dependency versions, and runtime package
+version. Track `MAX_LOSS_VALUE` separately: different values are allowed,
+produce immutable `L` evidence, and require all monetary observations to be
+normalized by `runtime / release` risk scale. Missing/invalid risk scale yields
+`INSUFFICIENT_EVIDENCE`; missing, conflicting, or different current lineage is
+`RUNTIME_DIVERGENCE`.
+
+Do not accept or translate another runtime evidence schema. Do not reconstruct
+composition from `strategyConfigs`, mutable Redis state, research fingerprints,
+or current source checkout metadata.
 
 Do not infer live execution from the current local Redis config. Production
 signals may run on another server. Request or inspect remote runtime artifacts

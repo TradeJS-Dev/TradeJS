@@ -155,6 +155,8 @@ Runtime feedback artifacts:
 - the runtime server publishes the latest complete `21:00 MSK -> 21:00 MSK` window into an immutable bundle under `incoming/` and atomically moves it to `ready/`
 - each ready bundle contains `runtime-evidence.json`, `manifest.json`, and `.complete`; consumers verify the payload size and SHA-256 before processing
 - closed trades are indexed by their exit day, so a trade opened on an earlier day still appears in the artifact for the day it closes
+- the runtime payload has one current contract: deployment snapshot schema v2 and runtime lineage schema v3; every runtime row must match the embedded deployment, account, strategy revision, package boundary, and risk scale
+- `strategyConfigs` is not part of runtime evidence; publisher, sync, replay, and scorecard reject records outside the current contract instead of adapting them
 
 ```bash
 RUNTIME_EVIDENCE_PUBLISH_DIR=/app/data/runtime-evidence \
@@ -174,8 +176,9 @@ yarn runtime:evidence:sync
 The sync command never deletes remote artifacts. It downloads into
 `data/runtime-evidence/inbox`, verifies completed bundles, moves them to
 `data/runtime-evidence/artifacts`, and reports every artifact without a local
-processing receipt. After replay and calibration, build the daily scorecard and
-write the receipt only on successful completion:
+processing receipt. A bundle is admitted only after its current deployment and
+lineage contract is validated. After replay and calibration, build the daily
+scorecard and write the receipt only on successful completion:
 
 ```bash
 yarn replay -- \

@@ -60,12 +60,10 @@ export const createSignalsTickerEvaluator =
   ({
     userName,
     makeOrders,
-    projectRoot,
     context,
   }: {
     userName: string;
     makeOrders: boolean;
-    projectRoot: string;
     context: SignalsCycleContext;
   }) =>
   async (
@@ -155,19 +153,12 @@ export const createSignalsTickerEvaluator =
         makeOrders,
       });
       const runtimeLineage = await buildRuntimeLineage({
-        projectRoot,
-        strategyName,
         strategyRevision,
         deploymentCompositionId,
         strategyPackageVersion,
         strategyDependencyVersions,
         runtimePackageVersion,
         config: { strategyConfig },
-        runContext: {
-          connectorName: connectorName.toLowerCase(),
-          interval: String(interval),
-          universe,
-        },
       });
       const lifecycleKey = buildSignalsStrategyLifecycleKey({
         connectorName,

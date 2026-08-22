@@ -110,7 +110,7 @@ describe('runtimeRedis', () => {
     expect(getKeys).not.toHaveBeenCalled();
   });
 
-  it('filters legacy runtime trade fallback by the requested time window', async () => {
+  it('does not fall back to unbucketed trade history for a bounded window', async () => {
     const getKeys = jest.fn(async (prefix: string) => {
       if (prefix === 'users:root:runtime:trade-records:') {
         return [
@@ -173,12 +173,8 @@ describe('runtimeRedis', () => {
       endTime: Date.parse('2026-05-03T00:00:00.000Z'),
     });
 
-    expect(trades).toEqual([
-      expect.objectContaining({
-        orderId: 'ord-legacy',
-      }),
-    ]);
-    expect(getKeys).toHaveBeenCalledWith('users:root:runtime:trade-records:');
+    expect(trades).toEqual([]);
+    expect(getKeys).not.toHaveBeenCalled();
   });
 
   it('loads trades closed in the requested window independently of entry day', async () => {

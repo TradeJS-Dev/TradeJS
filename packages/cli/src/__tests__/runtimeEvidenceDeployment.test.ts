@@ -1,6 +1,6 @@
-import type { RuntimeLineage } from '@tradejs/types';
 import {
   activeRuntimeEvidenceStrategies,
+  assertCurrentRuntimeEvidenceArtifact,
   parseRuntimeEvidenceDeploymentSnapshot,
   resolveRuntimeEvidenceTickerUniverse,
   runtimeDeploymentFromEvidence,
@@ -46,6 +46,94 @@ const snapshot = {
 };
 
 describe('runtime evidence deployment snapshot', () => {
+  it('accepts only rows bound to the current embedded lineage', () => {
+    const currentLineage = {
+      schemaVersion: 3,
+      strategyRevision: 'sr1:5555555555555555',
+      deploymentCompositionId: 'dc1:1111111111111111',
+      strategyPackageVersion: '3.0.1',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+      runtimePackageVersion: '3.2.0',
+      maxLossValue: 1,
+    };
+    expect(
+      assertCurrentRuntimeEvidenceArtifact({
+        reportType: 'runtime-evidence',
+        deployment: snapshot,
+        runtime: {
+          trades: [],
+          signals: [
+            {
+              signal: {
+                strategy: 'DoubleTap',
+                deploymentId: 'production',
+                accountId: 'bybit-default',
+                runtimeLineage: currentLineage,
+              },
+            },
+          ],
+          evaluations: [],
+          lineageScopes: [
+            {
+              strategy: 'DoubleTap',
+              symbol: 'BTCUSDT',
+              deploymentId: 'production',
+              accountId: 'bybit-default',
+              lineage: currentLineage,
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ id: 'production', schemaVersion: 2 });
+  });
+
+  it('rejects removed strategy config payloads and non-current rows', () => {
+    expect(() =>
+      assertCurrentRuntimeEvidenceArtifact({
+        reportType: 'runtime-evidence',
+        deployment: snapshot,
+        runtime: { strategyConfigs: [] },
+      }),
+    ).toThrow('contains removed strategyConfigs data');
+
+    expect(() =>
+      assertCurrentRuntimeEvidenceArtifact({
+        reportType: 'runtime-evidence',
+        deployment: snapshot,
+        runtime: {
+          trades: [],
+          signals: [],
+          evaluations: [
+            {
+              strategy: 'DoubleTap',
+              deploymentId: 'production',
+              accountId: 'bybit-default',
+              runtimeLineage: { schemaVersion: 2 },
+            },
+          ],
+          lineageScopes: [],
+        },
+      }),
+    ).toThrow(
+      'Runtime evidence evaluation row is outside the current embedded deployment lineage',
+    );
+  });
+
+  it('rejects malformed or incomplete runtime row collections', () => {
+    expect(() =>
+      assertCurrentRuntimeEvidenceArtifact({
+        reportType: 'runtime-evidence',
+        deployment: snapshot,
+        runtime: {
+          trades: {},
+          signals: [],
+          evaluations: [],
+          lineageScopes: [],
+        },
+      }),
+    ).toThrow('Runtime evidence payload trades must be an array');
+  });
+
   it('is the exact source of replay strategy selection', () => {
     const parsed = parseRuntimeEvidenceDeploymentSnapshot(snapshot);
 
@@ -107,19 +195,6 @@ describe('runtime evidence deployment snapshot', () => {
       resolveRuntimeEvidenceTickerUniverse({
         deployment: parsed,
         lineageScopes: [
-          {
-            strategy: 'DoubleTap',
-            symbol: 'OLDUSDT',
-            deploymentId: 'production',
-            accountId: 'bybit-default',
-            lineage: {
-              schemaVersion: 2,
-              version: 7,
-              strategyPackageVersion: '3.0.1',
-              runtimePackageVersion: '3.1.11',
-              maxLossValue: 1,
-            } as unknown as RuntimeLineage,
-          },
           {
             strategy: 'DoubleTap',
             symbol: 'BTCUSDT',

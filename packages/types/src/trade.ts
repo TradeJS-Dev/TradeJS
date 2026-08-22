@@ -907,18 +907,7 @@ export interface RuntimeAiAnalysisSnapshot {
 
 export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
 
-export interface ResearchRuntimeLineage {
-  schemaVersion: 1;
-  compositionId?: string | null;
-  gitSha: string | null;
-  gitDirty: boolean | null;
-  gateFingerprint: string;
-  configFingerprint: string;
-  contextFingerprint: string;
-  maxLossValue?: number | null;
-}
-
-export interface RevisionRuntimeLineage {
+export interface RuntimeLineage {
   schemaVersion: 3;
   strategyRevision: string;
   deploymentCompositionId: string;
@@ -927,8 +916,6 @@ export interface RevisionRuntimeLineage {
   runtimePackageVersion: string;
   maxLossValue?: number | null;
 }
-
-export type RuntimeLineage = ResearchRuntimeLineage | RevisionRuntimeLineage;
 
 export type RuntimeTradeStatus = 'active' | 'closed';
 export type RuntimeTradeExitType = 'exit' | 'tp' | 'sl' | 'unknown';

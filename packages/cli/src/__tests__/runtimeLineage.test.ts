@@ -1,189 +1,53 @@
 import {
   buildRuntimeLineage,
-  resetRuntimeLineageCachesForTests,
   runtimeLineageKey,
+  runtimeLineagesComparable,
   runtimeLineagesMatch,
 } from '../lib/runtimeLineage';
-import { buildAiTrainLineage } from '../lib/aiTrainResearch';
+
+const buildLineage = (maxLossValue: number | null = 1) =>
+  buildRuntimeLineage({
+    strategyRevision: 'sr1:5555555555555555',
+    deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+    strategyPackageVersion: '3.0.1',
+    strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+    runtimePackageVersion: '3.2.0',
+    config: {
+      strategyConfig:
+        maxLossValue == null ? {} : { MAX_LOSS_VALUE: maxLossValue },
+    },
+  });
 
 describe('runtime lineage', () => {
-  afterEach(() => {
-    resetRuntimeLineageCachesForTests();
-  });
+  it('binds lineage to the exact deployment revision and packages', async () => {
+    const lineage = await buildLineage();
 
-  it('stores the configured MAX_LOSS_VALUE for runtime history', async () => {
-    const lineage = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'LiquidityTails',
-      compositionId: 'LiquidityTails_release_1',
-      config: {
-        strategyConfig: {
-          MAX_LOSS_VALUE: '12.5',
-        },
-      },
-    });
-
-    expect(lineage.maxLossValue).toBe(12.5);
-    expect(lineage.compositionId).toBe('LiquidityTails_release_1');
-  });
-
-  it('keeps logic lineage stable when only MAX_LOSS_VALUE changes', async () => {
-    const smallRisk = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        strategyConfig: {
-          MAX_LOSS_VALUE: 1,
-          DOUBLE_TAP_WINDOW: 40,
-        },
-      },
-    });
-    const largeRisk = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        strategyConfig: {
-          MAX_LOSS_VALUE: 10,
-          DOUBLE_TAP_WINDOW: 40,
-        },
-      },
-    });
-
-    expect(smallRisk.maxLossValue).toBe(1);
-    expect(largeRisk.maxLossValue).toBe(10);
-    expect(smallRisk.configFingerprint).toBe(largeRisk.configFingerprint);
-    expect(runtimeLineageKey(smallRisk)).toBe(runtimeLineageKey(largeRisk));
-    expect(runtimeLineagesMatch(smallRisk, largeRisk)).toBe(true);
-  });
-
-  it('keeps portable logic lineage stable across local and runtime bindings', async () => {
-    const local = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        configId: 'DoubleTap:ai',
-        strategyConfig: {
-          ENABLE: true,
-          ACCOUNT_ID: 'local-research-account',
-          DEPLOYMENT_ID: 'local-research-deployment',
-          API_KEY: 'local-key-must-not-affect-evidence',
-          API_SECRET: 'local-secret-must-not-affect-evidence',
-          BYBIT_API_KEY: 'local-bybit-key-must-not-affect-evidence',
-          BYBIT_API_SECRET: 'local-bybit-secret-must-not-affect-evidence',
-          MAX_LOSS_VALUE: 10,
-          AI_ENABLED: true,
-          AI_MODE: 'gate',
-          DOUBLE_TAP_WINDOW: 40,
-        },
-      },
-    });
-    const runtime = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        configId: 'users:root:strategies:DoubleTap:config',
-        strategyConfig: {
-          ENABLE: true,
-          ACCOUNT_ID: 'bybit-production',
-          DEPLOYMENT_ID: 'doubletap-production',
-          API_KEY: 'runtime-key-must-not-affect-evidence',
-          API_SECRET: 'runtime-secret-must-not-affect-evidence',
-          BYBIT_API_KEY: 'runtime-bybit-key-must-not-affect-evidence',
-          BYBIT_API_SECRET: 'runtime-bybit-secret-must-not-affect-evidence',
-          MAX_LOSS_VALUE: 1,
-          AI_ENABLED: true,
-          AI_MODE: 'gate',
-          DOUBLE_TAP_WINDOW: 40,
-        },
-      },
-    });
-
-    expect(local.configFingerprint).toBe(runtime.configFingerprint);
-    expect(runtimeLineagesMatch(local, runtime)).toBe(true);
-    expect(local.maxLossValue).toBe(10);
-    expect(runtime.maxLossValue).toBe(1);
-  });
-
-  it('changes portable logic lineage when gate semantics change', async () => {
-    const gate = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        strategyConfig: { AI_ENABLED: true, AI_MODE: 'gate' },
-      },
-    });
-    const llm = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: {
-        strategyConfig: { AI_ENABLED: true, AI_MODE: 'llm' },
-      },
-    });
-
-    expect(gate.configFingerprint).not.toBe(llm.configFingerprint);
-    expect(runtimeLineagesMatch(gate, llm)).toBe(false);
-  });
-
-  it('changes portable lineage when strategy activation changes', async () => {
-    const enabled = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: { strategyConfig: { ENABLE: true, AI_MODE: 'gate' } },
-    });
-    const disabled = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      compositionId: 'DoubleTap_release_1',
-      config: { strategyConfig: { ENABLE: false, AI_MODE: 'gate' } },
-    });
-
-    expect(runtimeLineagesMatch(enabled, disabled)).toBe(false);
-  });
-
-  it('treats two release compositions as different runtime lineages', async () => {
-    const first = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'LiquidityTails',
-      compositionId: 'release-a',
-      config: { strategyConfig: { MAX_LOSS_VALUE: 10 } },
-    });
-    const second = { ...first, compositionId: 'release-b' };
-
-    expect(runtimeLineageKey(first)).not.toBe(runtimeLineageKey(second));
-  });
-
-  it('stores null when MAX_LOSS_VALUE is unavailable', async () => {
-    const lineage = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'LiquidityTails',
-      config: { strategyConfig: {} },
-    });
-
-    expect(lineage.maxLossValue).toBeNull();
-  });
-
-  it('binds revision lineage to exact deployment and packages', async () => {
-    const lineage = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
+    expect(lineage).toEqual({
+      schemaVersion: 3,
       strategyRevision: 'sr1:5555555555555555',
       deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
       strategyPackageVersion: '3.0.1',
       strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
       runtimePackageVersion: '3.2.0',
-      config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
+      maxLossValue: 1,
     });
-
     expect(runtimeLineageKey(lineage)).toMatch(
       /^v3:dc1:aaaaaaaaaaaaaaaa:sr1:5555555555555555:3\.0\.1:deps:[a-f0-9]{16}:3\.2\.0$/,
     );
+  });
+
+  it('separates identity matching from risk-scale comparability', async () => {
+    const smallRisk = await buildLineage(1);
+    const largeRisk = await buildLineage(10);
+
+    expect(runtimeLineagesMatch(smallRisk, largeRisk)).toBe(true);
+    expect(runtimeLineagesComparable(smallRisk, largeRisk)).toBe(false);
+    expect(runtimeLineagesComparable(smallRisk, { ...smallRisk })).toBe(true);
+  });
+
+  it('changes identity when any package boundary changes', async () => {
+    const lineage = await buildLineage();
+
     expect(
       runtimeLineagesMatch(lineage, {
         ...lineage,
@@ -193,58 +57,40 @@ describe('runtime lineage', () => {
     expect(
       runtimeLineagesMatch(lineage, {
         ...lineage,
-        strategyDependencyVersions: {
-          '@tradejs/strategy-kit': '3.0.2',
-        },
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.2' },
       }),
     ).toBe(false);
     expect(
       runtimeLineagesMatch(lineage, {
         ...lineage,
-        maxLossValue: 10,
+        runtimePackageVersion: '3.2.1',
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it.each([{ strategyPackageVersion: null }, { runtimePackageVersion: null }])(
-    'rejects incomplete revision package lineage: %j',
-    async (missing) => {
-      await expect(
-        buildRuntimeLineage({
-          projectRoot: process.cwd(),
-          strategyName: 'DoubleTap',
-          strategyRevision: 'sr1:5555555555555555',
-          deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
-          strategyPackageVersion: '3.0.1',
-          strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
-          runtimePackageVersion: '3.2.0',
-          config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
-          ...missing,
-        }),
-      ).rejects.toThrow('Invalid revision package versions');
-    },
-  );
-
-  it('uses the same deterministic gate fingerprint as AI research', async () => {
-    const runtime = await buildRuntimeLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      config: { strategyConfig: { MAX_LOSS_VALUE: 10 } },
+  it('stores null when MAX_LOSS_VALUE is unavailable', async () => {
+    await expect(buildLineage(null)).resolves.toMatchObject({
+      maxLossValue: null,
     });
-    const research = await buildAiTrainLineage({
-      projectRoot: process.cwd(),
-      strategyName: 'DoubleTap',
-      configIds: ['fixture'],
-      runContext: { mode: 'local-deterministic' },
-    });
+  });
 
-    expect(runtime.gateFingerprint).toBe(research.gateFingerprint);
-    expect(research.gateFingerprintFiles).toEqual(
-      expect.arrayContaining([
-        '@tradejs/strategy-double-tap',
-        '@tradejs/strategy-kit/ai-gate',
-        '@tradejs/core/strategies',
-      ]),
-    );
+  it.each([
+    { strategyRevision: 'invalid' },
+    { deploymentCompositionId: 'invalid' },
+    { strategyPackageVersion: '' },
+    { runtimePackageVersion: '' },
+    { strategyDependencyVersions: {} },
+  ])('rejects incomplete current lineage: %j', async (override) => {
+    await expect(
+      buildRuntimeLineage({
+        strategyRevision: 'sr1:5555555555555555',
+        deploymentCompositionId: 'dc1:aaaaaaaaaaaaaaaa',
+        strategyPackageVersion: '3.0.1',
+        strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+        runtimePackageVersion: '3.2.0',
+        config: { strategyConfig: { MAX_LOSS_VALUE: 1 } },
+        ...override,
+      }),
+    ).rejects.toThrow();
   });
 });

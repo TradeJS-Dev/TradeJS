@@ -12,6 +12,7 @@ import {
   activeRuntimeEvidenceStrategies,
   resolveRuntimeEvidenceDeploymentSnapshot,
   resolveRuntimeEvidenceTickerUniverse,
+  runtimeLineageMatchesStrategySnapshot,
 } from '../lib/runtimeEvidenceDeployment';
 
 args.option(['u', 'user'], 'Use user config', 'root');
@@ -142,20 +143,54 @@ export const runtimeEvidence = async () => {
     strategies,
     deploymentId,
   });
+  const activeSnapshots = new Map(
+    activeRuntimeEvidenceStrategies(deploymentSnapshot).map((strategy) => [
+      strategy.strategyName,
+      strategy,
+    ]),
+  );
+  const belongsToCurrentDeployment = (row: {
+    strategy: string;
+    deploymentId?: string;
+    accountId?: string;
+    runtimeLineage?: import('@tradejs/types').RuntimeLineage;
+  }) => {
+    const snapshot = activeSnapshots.get(row.strategy);
+    return Boolean(
+      snapshot &&
+        row.deploymentId === deploymentSnapshot.id &&
+        row.accountId === deploymentSnapshot.accountId &&
+        runtimeLineageMatchesStrategySnapshot({
+          lineage: row.runtimeLineage,
+          deployment: deploymentSnapshot,
+          strategy: snapshot,
+        }),
+    );
+  };
+  const currentSignals = evidence.signals.filter(belongsToCurrentDeployment);
+  const currentEvaluations = evidence.evaluations.filter(
+    belongsToCurrentDeployment,
+  );
+  const currentTrades = evidence.trades.filter(belongsToCurrentDeployment);
+  const currentLineageScopes = evidence.lineageScopes.filter((scope) =>
+    belongsToCurrentDeployment({
+      ...scope,
+      runtimeLineage: scope.lineage,
+    }),
+  );
   const runtime = buildRuntimeEvidenceReportPayload({
     userName: flags.user,
     startTime,
     endTime,
-    signals: evidence.signals,
-    evaluations: evidence.evaluations,
-    trades: evidence.trades,
-    strategyConfigs: evidence.strategyConfigs,
+    signals: currentSignals,
+    evaluations: currentEvaluations,
+    trades: currentTrades,
     evaluationStatsBuckets: evidence.evaluationStatsBuckets,
-    lineageScopes: evidence.lineageScopes,
+    lineageScopes: currentLineageScopes,
   });
   const deployment = resolveRuntimeEvidenceTickerUniverse({
     deployment: deploymentSnapshot,
-    lineageScopes: evidence.lineageScopes,
+    lineageScopes: currentLineageScopes,
   });
   const artifact = {
     reportType: 'runtime-evidence',
@@ -188,12 +223,10 @@ export const runtimeEvidence = async () => {
         artifact,
         counts: artifact.runtime.counts,
         lineageKeys: [
-          ...evidence.signals.map((signal) => signal.runtimeLineage),
-          ...evidence.evaluations.map(
-            (evaluation) => evaluation.runtimeLineage,
-          ),
-          ...evidence.trades.map((trade) => trade.runtimeLineage),
-          ...evidence.lineageScopes.map((scope) => scope.lineage),
+          ...currentSignals.map((signal) => signal.runtimeLineage),
+          ...currentEvaluations.map((evaluation) => evaluation.runtimeLineage),
+          ...currentTrades.map((trade) => trade.runtimeLineage),
+          ...currentLineageScopes.map((scope) => scope.lineage),
         ]
           .filter((lineage) => lineage != null)
           .map(runtimeLineageKey)

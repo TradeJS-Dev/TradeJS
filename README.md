@@ -549,10 +549,13 @@ and AI-versus-LLM disagreements. With a release manifest it emits one advisory
 diagnosis: `RUNTIME_DIVERGENCE`, `EXPECTED_DRAWDOWN`,
 `GENERALIZATION_FAILURE`, or `INSUFFICIENT_EVIDENCE`. Runtime divergence has
 priority over economics; a non-parity period cannot prove generalization.
-Every runtime evaluation, signal, and trade in the scorecard must resolve to one
-clean git/config/gate/context logic lineage equal to the release manifest, plus
-a valid risk scale. Missing, dirty, conflicting, or different logic lineage is
-runtime divergence; missing risk scale leaves economic attribution insufficient.
+Every runtime evaluation, signal, trade, and persisted scope in the scorecard
+must use runtime lineage schema v3 and match the embedded deployment snapshot
+schema v2: deployment/account, strategy revision, strategy package, dependency
+versions, runtime package, and risk scale. Publisher, sync, replay, and
+scorecard reject any row outside that single contract. Missing or conflicting
+current lineage blocks attribution; missing risk scale leaves economic
+attribution insufficient.
 Research evidence remains a local/CI diagnostic input. Production does not
 load research release artifacts or use research composition ids, git SHAs, or
 fingerprints to select config. It does use the computed runtime

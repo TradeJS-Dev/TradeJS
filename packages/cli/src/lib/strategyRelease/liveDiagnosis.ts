@@ -166,12 +166,12 @@ export const buildStrategyLiveDiagnosisFromScorecard = ({
     lineage?: {
       complete: boolean;
       conflicts: boolean;
-      compositionId: string | null;
-      gitSha: string | null;
-      gitDirty: boolean | null;
-      gateFingerprint: string | null;
-      configFingerprint: string | null;
-      contextFingerprint: string | null;
+      schemaVersion: number;
+      strategyRevision: string | null;
+      deploymentCompositionId: string | null;
+      strategyPackageVersion: string | null;
+      strategyDependencyVersions: Record<string, string> | null;
+      runtimePackageVersion: string | null;
       maxLossValue: number | null;
     };
     funnel: { orderAttempts: number; orderFailures: number };
@@ -201,14 +201,12 @@ export const buildStrategyLiveDiagnosisFromScorecard = ({
     scorecard.parity.lineageReason == null &&
     lineage?.complete === true &&
     lineage.conflicts === false &&
-    lineage.compositionId === manifest.composition.compositionId &&
-    lineage.gitDirty === false &&
-    lineage.gitSha === manifest.composition.gitSha &&
-    lineage.configFingerprint ===
-      manifest.composition.runtimeConfigFingerprint &&
-    lineage.gateFingerprint === manifest.composition.gateFingerprint &&
-    lineage.contextFingerprint ===
-      manifest.composition.runtimeContextFingerprint;
+    lineage.schemaVersion === 3 &&
+    lineage.strategyRevision != null &&
+    lineage.deploymentCompositionId != null &&
+    lineage.strategyPackageVersion != null &&
+    lineage.strategyDependencyVersions != null &&
+    lineage.runtimePackageVersion != null;
   const releaseMaxLossValue = manifest.composition.maxLossValue;
   const runtimeMaxLossValue = lineage?.maxLossValue ?? null;
   const riskScaleComparable =

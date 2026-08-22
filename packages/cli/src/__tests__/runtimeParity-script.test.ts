@@ -15,7 +15,9 @@ const setupRuntimeParityModule = async (
   const update = jest.fn(async () => null);
   const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);
-  const getHashJsonValues = jest.fn(async () => []);
+  const getHashJsonValues: jest.Mock<Promise<any[]>, [string]> = jest.fn(
+    async (_key: string) => [],
+  );
   const loadRuntimeSignals = jest.fn(
     async (_userName: string): Promise<any[]> => [],
   );
@@ -125,6 +127,7 @@ const setupRuntimeParityModule = async (
     getTickers,
     getKeys,
     getData,
+    getHashJsonValues,
     loadRuntimeSignalEvaluations,
     loadRuntimeSignals,
     getConnectorCreatorByName,
@@ -418,6 +421,7 @@ describe('runtime parity script', () => {
       sendTextToTG,
       getKeys,
       getData,
+      getHashJsonValues,
       testing,
       resetTestingKlineCache,
     } = await setupRuntimeParityModule({
@@ -459,6 +463,19 @@ describe('runtime parity script', () => {
       }
       return fallback;
     });
+    getHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'ord-1',
+        signalId: 'sig-1',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: startTime + 900_000,
+        status: 'closed',
+      },
+    ]);
     testing.mockResolvedValue({
       inlineOrderLog: [],
       inlineReplaySignalEvaluations: [
@@ -678,13 +695,20 @@ describe('runtime parity script', () => {
       .mockImplementation(() => undefined);
     const startTime = 1_700_000_000_000;
     const endTime = startTime + 86_400_000;
-    const { mod, getTickers, getKeys, getData, loadRuntimeSignals, testing } =
-      await setupRuntimeParityModule({
-        startTime,
-        endTime,
-        runtimeGates: true,
-        cacheOnly: true,
-      });
+    const {
+      mod,
+      getTickers,
+      getKeys,
+      getData,
+      getHashJsonValues,
+      loadRuntimeSignals,
+      testing,
+    } = await setupRuntimeParityModule({
+      startTime,
+      endTime,
+      runtimeGates: true,
+      cacheOnly: true,
+    });
 
     getTickers.mockImplementation(async () => ['BTCUSDT', 'ETHUSDT']);
     getKeys.mockImplementation(async (prefix: string) => {
@@ -732,6 +756,19 @@ describe('runtime parity script', () => {
       }
       return fallback;
     });
+    getHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'ord-1',
+        signalId: 'sig-1',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: startTime + 900_000,
+        status: 'closed',
+      },
+    ]);
     testing.mockResolvedValue({
       inlineOrderLog: [],
       inlineReplaySignalEvaluations: [],

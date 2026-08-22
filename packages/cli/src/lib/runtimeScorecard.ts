@@ -1,5 +1,6 @@
 import type { RuntimeLineage } from '@tradejs/types';
 import { runtimeLineageKey } from './runtimeLineage';
+import { assertCurrentRuntimeEvidenceArtifact } from './runtimeEvidenceDeployment';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -74,107 +75,6 @@ const extractRuntimeRows = (artifact: unknown) => {
     statsBuckets: asArray(runtime.evaluationStatsBuckets)
       .map(asRecord)
       .filter((item): item is JsonRecord => item != null),
-  };
-};
-
-const buildRuntimeLineageSummary = (rows: {
-  evaluations: JsonRecord[];
-  signals: JsonRecord[];
-  trades: JsonRecord[];
-  lineageScopes: JsonRecord[];
-}) => {
-  const lineageRows = [
-    ...rows.evaluations,
-    ...rows.signals,
-    ...rows.trades,
-    ...rows.lineageScopes.map((scope) => ({
-      runtimeLineage: scope.lineage,
-    })),
-  ];
-  const lineages = lineageRows
-    .map((row) => asRecord(row.runtimeLineage))
-    .filter((lineage): lineage is JsonRecord => lineage != null);
-  const identities = new Map<string, JsonRecord>();
-  for (const lineage of lineages) {
-    const identity =
-      lineage.schemaVersion === 3
-        ? {
-            schemaVersion: 3,
-            strategyRevision: finiteString(lineage.strategyRevision),
-            deploymentCompositionId: finiteString(
-              lineage.deploymentCompositionId,
-            ),
-            strategyPackageVersion: finiteString(
-              lineage.strategyPackageVersion,
-            ),
-            strategyDependencyVersions: packageVersionMap(
-              lineage.strategyDependencyVersions,
-            ),
-            runtimePackageVersion: finiteString(lineage.runtimePackageVersion),
-            maxLossValue: finiteNumber(lineage.maxLossValue),
-          }
-        : {
-            schemaVersion: 1,
-            compositionId: finiteString(lineage.compositionId),
-            gitSha: finiteString(lineage.gitSha),
-            gitDirty:
-              typeof lineage.gitDirty === 'boolean' ? lineage.gitDirty : null,
-            gateFingerprint: finiteString(lineage.gateFingerprint),
-            configFingerprint: finiteString(lineage.configFingerprint),
-            contextFingerprint: finiteString(lineage.contextFingerprint),
-            maxLossValue: finiteNumber(lineage.maxLossValue),
-          };
-    identities.set(JSON.stringify(identity), identity);
-  }
-  const identity = identities.size === 1 ? [...identities.values()][0] : null;
-  const schemaVersion = finiteNumber(identity?.schemaVersion);
-  const identityComplete =
-    lineages.length > 0 &&
-    identity != null &&
-    ((schemaVersion === 3 &&
-      finiteString(identity.strategyRevision) != null &&
-      finiteString(identity.deploymentCompositionId) != null &&
-      finiteString(identity.strategyPackageVersion) != null &&
-      packageVersionMap(identity.strategyDependencyVersions) != null &&
-      finiteString(identity.runtimePackageVersion) != null) ||
-      (schemaVersion === 1 &&
-        identity.compositionId != null &&
-        identity.gitSha != null &&
-        identity.gitDirty === false &&
-        identity.gateFingerprint != null &&
-        identity.configFingerprint != null &&
-        identity.contextFingerprint != null)) &&
-    identity.maxLossValue != null;
-  const coverageComplete =
-    lineageRows.length > 0 && lineages.length === lineageRows.length;
-  const complete = identityComplete && coverageComplete;
-  const lineageKey = identityComplete
-    ? runtimeLineageKey(identity as unknown as RuntimeLineage)
-    : null;
-  return {
-    complete,
-    identityComplete,
-    coverageComplete,
-    conflicts: identities.size > 1,
-    rows: lineageRows.length,
-    rowsWithLineage: lineages.length,
-    schemaVersion,
-    lineageKey,
-    strategyRevision: finiteString(identity?.strategyRevision),
-    deploymentCompositionId: finiteString(identity?.deploymentCompositionId),
-    strategyPackageVersion: finiteString(identity?.strategyPackageVersion),
-    strategyDependencyVersions: packageVersionMap(
-      identity?.strategyDependencyVersions,
-    ),
-    runtimePackageVersion: finiteString(identity?.runtimePackageVersion),
-    compositionId: finiteString(identity?.compositionId),
-    gitSha: finiteString(identity?.gitSha),
-    gitDirty:
-      typeof identity?.gitDirty === 'boolean' ? identity.gitDirty : null,
-    gateFingerprint: finiteString(identity?.gateFingerprint),
-    configFingerprint: finiteString(identity?.configFingerprint),
-    contextFingerprint: finiteString(identity?.contextFingerprint),
-    maxLossValue: finiteNumber(identity?.maxLossValue),
   };
 };
 
@@ -351,12 +251,6 @@ const buildEmbeddedLineageScope = ({
       strategyDependencyVersions:
         singleTarget?.strategyDependencyVersions ?? null,
       runtimePackageVersion: singleTarget?.runtimePackageVersion ?? null,
-      compositionId: null,
-      gitSha: null,
-      gitDirty: null,
-      gateFingerprint: null,
-      configFingerprint: null,
-      contextFingerprint: null,
       maxLossValue:
         commonRiskValues.size === 1 ? [...commonRiskValues][0] : null,
       strategyScopes: Object.fromEntries(
@@ -372,20 +266,6 @@ const buildEmbeddedLineageScope = ({
       ),
     },
   };
-};
-
-const belongsToRuntimeLineage = (
-  row: JsonRecord,
-  summary: ReturnType<typeof buildRuntimeLineageSummary>,
-) => {
-  if (!summary.identityComplete || !summary.lineageKey) return false;
-  const lineage = asRecord(row.runtimeLineage);
-  if (!lineage) return false;
-  return (
-    runtimeLineageKey(lineage as unknown as RuntimeLineage) ===
-      summary.lineageKey &&
-    finiteNumber(lineage.maxLossValue) === summary.maxLossValue
-  );
 };
 
 const runtimeDeploymentBinding = (artifact: unknown) => {
@@ -622,11 +502,6 @@ const replayCountsForStrategy = (
   };
 };
 
-const getCalibrationSummary = (artifact: unknown) => {
-  const root = asRecord(artifact) ?? {};
-  return asRecord(asRecord(root.summary)?.all) ?? null;
-};
-
 const getProspectiveSummary = (artifact: unknown) => {
   const root = asRecord(artifact);
   if (!root || root.reportType !== 'strategy-prospective-evidence') return null;
@@ -663,6 +538,10 @@ export const buildRuntimeScorecard = ({
   strategy?: string | null;
   llmComparatorPolicy?: 'ai_approved_only' | 'all_core_candidates' | 'disabled';
 }) => {
+  assertCurrentRuntimeEvidenceArtifact(runtimeArtifact);
+  for (const artifact of historyRuntimeArtifacts) {
+    assertCurrentRuntimeEvidenceArtifact(artifact);
+  }
   const scopedRuntimeArtifact = filterArtifactByStrategy(
     runtimeArtifact,
     strategy,
@@ -677,8 +556,12 @@ export const buildRuntimeScorecard = ({
     rows,
     strategy,
   });
-  const runtimeLineage =
-    embeddedLineageScope?.summary ?? buildRuntimeLineageSummary(rows);
+  if (!embeddedLineageScope) {
+    throw new Error(
+      'Runtime scorecard requires the current embedded deployment lineage',
+    );
+  }
+  const runtimeLineage = embeddedLineageScope.summary;
   const window = runtimeWindow(runtimeArtifact);
   const startTime = finiteNumber(window.startTime) ?? generatedAt - 86_400_000;
   const endTime = finiteNumber(window.endTime) ?? generatedAt;
@@ -750,31 +633,19 @@ export const buildRuntimeScorecard = ({
   const lineage = asRecord(replayComparison?.lineage);
   const lineageReason = finiteString(lineage?.reason);
   const calibrationRoot = asRecord(calibrationArtifact) ?? {};
-  const calibrationSummary = asRecord(calibrationRoot.summary);
   const calibrationSamples = asArray(calibrationRoot.samples)
     .map(asRecord)
     .filter((item): item is JsonRecord => item != null)
     .filter((item) => !strategy || finiteString(item.strategy) === strategy)
-    .filter(
-      (item) => !embeddedLineageScope || embeddedLineageScope.belongs(item),
-    );
+    .filter((item) => embeddedLineageScope.belongs(item));
   const averageSampleMetric = (field: string) => {
     const values = calibrationSamples
       .map((sample) => finiteNumber(sample[field]))
       .filter((value): value is number => value != null);
     return values.length ? round(sum(values) / values.length) : null;
   };
-  const fallbackCalibration = strategy
-    ? asRecord(asRecord(calibrationSummary?.byStrategy)?.[strategy])
-    : getCalibrationSummary(calibrationArtifact);
-  const actualSlippageBps = embeddedLineageScope
-    ? averageSampleMetric('signalToFillAdverseBps')
-    : finiteNumber(asRecord(fallbackCalibration?.signalToFillAdverseBps)?.avg);
-  const residualVsModelBps = embeddedLineageScope
-    ? averageSampleMetric('residualVsCurrentModelBps')
-    : finiteNumber(
-        asRecord(fallbackCalibration?.residualVsCurrentModelBps)?.avg,
-      );
+  const actualSlippageBps = averageSampleMetric('signalToFillAdverseBps');
+  const residualVsModelBps = averageSampleMetric('residualVsCurrentModelBps');
   const prospective = getProspectiveSummary(prospectiveEvidenceArtifact);
   const historyTrades = dedupeTrades([
     ...scopedHistoryArtifacts,
@@ -783,23 +654,17 @@ export const buildRuntimeScorecard = ({
   const comparableHistoryTrades = historyTrades.filter(
     (trade) =>
       belongsToRuntimeDeployment(trade, deploymentBinding) &&
-      (embeddedLineageScope
-        ? embeddedLineageScope.belongs(trade)
-        : belongsToRuntimeLineage(trade, runtimeLineage)),
+      embeddedLineageScope.belongs(trade),
   );
   const comparableCurrentClosedTrades = currentClosedTrades.filter(
     (trade) =>
       belongsToRuntimeDeployment(trade, deploymentBinding) &&
-      (embeddedLineageScope
-        ? embeddedLineageScope.belongs(trade)
-        : belongsToRuntimeLineage(trade, runtimeLineage)),
+      embeddedLineageScope.belongs(trade),
   );
   const comparableFills = rows.trades.filter(
     (trade) =>
       belongsToRuntimeDeployment(trade, deploymentBinding) &&
-      (embeddedLineageScope
-        ? embeddedLineageScope.belongs(trade)
-        : belongsToRuntimeLineage(trade, runtimeLineage)),
+      embeddedLineageScope.belongs(trade),
   );
   const currentDistributions = buildDistributions(rows);
   const previousArtifact = scopedHistoryArtifacts

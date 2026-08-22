@@ -8,23 +8,26 @@ import {
 } from '../lib/runtimeEvidenceArtifacts';
 import {
   listPendingRuntimeEvidenceBundles,
-  listRuntimeEvidenceBundleStatuses,
   markRuntimeEvidenceBundleProcessed,
   syncRuntimeEvidenceBundles,
 } from '../lib/runtimeEvidenceSync';
 
-const createArtifact = (startTime: number, endTime: number) => ({
+const createBareArtifact = (startTime: number, endTime: number) => ({
   reportType: 'runtime-evidence',
   generatedAt: endTime,
   userName: 'root',
   window: { startTime, endTime },
   runtime: {
     counts: { trades: 1, signals: 1, evaluations: 1 },
+    trades: [],
+    signals: [],
+    evaluations: [],
+    lineageScopes: [],
   },
 });
 
 const createReplayableArtifact = (startTime: number, endTime: number) => ({
-  ...createArtifact(startTime, endTime),
+  ...createBareArtifact(startTime, endTime),
   deployment: {
     schemaVersion: 2,
     id: 'production',
@@ -96,9 +99,9 @@ describe('runtime evidence artifacts', () => {
   it('deduplicates repeated publication of the same completed window', async () => {
     const startTime = Date.UTC(2026, 7, 6, 18);
     const endTime = Date.UTC(2026, 7, 7, 18);
-    const firstArtifact = createArtifact(startTime, endTime);
+    const firstArtifact = createReplayableArtifact(startTime, endTime);
     const secondArtifact = {
-      ...createArtifact(startTime, endTime),
+      ...createReplayableArtifact(startTime, endTime),
       generatedAt: endTime + 1_000,
     };
 
@@ -161,7 +164,6 @@ describe('runtime evidence artifacts', () => {
 
     expect(result.received).toHaveLength(1);
     expect(result.pending).toHaveLength(1);
-    expect(result.unsupported).toHaveLength(0);
     await markRuntimeEvidenceBundleProcessed({
       evidenceRoot,
       deploymentId: 'production',
@@ -176,80 +178,22 @@ describe('runtime evidence artifacts', () => {
     ).resolves.toHaveLength(0);
   });
 
-  it('separates verified legacy bundles from replayable pending work', async () => {
-    const publishRoot = path.join(rootDir, 'server');
-    const evidenceRoot = path.join(rootDir, 'local');
+  it('rejects publication without the current deployment snapshot', async () => {
     const firstStart = Date.UTC(2026, 7, 6, 18);
     const firstEnd = Date.UTC(2026, 7, 7, 18);
-    const secondEnd = Date.UTC(2026, 7, 8, 18);
-    const legacy = await publishRuntimeEvidenceBundle({
-      publishRoot,
-      deploymentId: 'production',
-      userName: 'root',
-      startTime: firstStart,
-      endTime: firstEnd,
-      artifact: createArtifact(firstStart, firstEnd),
-      counts: { trades: 1 },
-      lineageKeys: [],
-    });
-    const current = await publishRuntimeEvidenceBundle({
-      publishRoot,
-      deploymentId: 'production',
-      userName: 'root',
-      startTime: firstEnd,
-      endTime: secondEnd,
-      artifact: createReplayableArtifact(firstEnd, secondEnd),
-      counts: { trades: 1 },
-      lineageKeys: [],
-    });
-
-    const result = await syncRuntimeEvidenceBundles({
-      source: path.join(publishRoot, 'ready', 'production'),
-      evidenceRoot,
-      deploymentId: 'production',
-      runRsync: async (rsyncArgs) => {
-        const destination = rsyncArgs.at(-1)!.replace(/\/$/, '');
-        await fs.cp(
-          path.dirname(path.dirname(path.dirname(legacy.bundleDir))),
-          destination,
-          {
-            recursive: true,
-          },
-        );
-        return {};
-      },
-    });
-
-    expect(result.pending.map((bundle) => bundle.manifest.artifactId)).toEqual([
-      current.manifest.artifactId,
-    ]);
-    expect(
-      result.unsupported.map(({ bundle, reason }) => ({
-        artifactId: bundle.manifest.artifactId,
-        reason,
-      })),
-    ).toEqual([
-      {
-        artifactId: legacy.manifest.artifactId,
-        reason: 'Runtime evidence deployment snapshot is missing or invalid',
-      },
-    ]);
     await expect(
-      listRuntimeEvidenceBundleStatuses({
-        evidenceRoot,
+      publishRuntimeEvidenceBundle({
+        publishRoot: rootDir,
         deploymentId: 'production',
+        userName: 'root',
+        startTime: firstStart,
+        endTime: firstEnd,
+        artifact: createBareArtifact(firstStart, firstEnd),
+        counts: { trades: 1 },
+        lineageKeys: [],
       }),
-    ).resolves.toMatchObject({
-      pending: [
-        { bundleDir: expect.stringContaining(current.manifest.artifactId) },
-      ],
-      unsupported: [
-        {
-          bundle: {
-            bundleDir: expect.stringContaining(legacy.manifest.artifactId),
-          },
-        },
-      ],
-    });
+    ).rejects.toThrow(
+      'Runtime evidence deployment snapshot is missing or invalid',
+    );
   });
 });

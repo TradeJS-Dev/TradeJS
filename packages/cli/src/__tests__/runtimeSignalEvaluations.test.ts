@@ -60,12 +60,12 @@ describe('runtime signal evaluation buffering', () => {
       '../lib/signals/evaluations'
     );
     const runtimeLineage = {
-      schemaVersion: 1 as const,
-      gitSha: 'abc123',
-      gitDirty: false,
-      gateFingerprint: 'gate',
-      configFingerprint: 'config',
-      contextFingerprint: 'context',
+      schemaVersion: 3 as const,
+      strategyRevision: 'sr1:1111111111111111',
+      deploymentCompositionId: 'dc1:2222222222222222',
+      strategyPackageVersion: '3.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+      runtimePackageVersion: '3.2.0',
     };
     const firstTimestamp = Date.UTC(2026, 6, 24, 10, 0);
     const secondTimestamp = Date.UTC(2026, 6, 24, 10, 15);

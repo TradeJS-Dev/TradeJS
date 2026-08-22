@@ -827,13 +827,12 @@ describe('strategyRuntime', () => {
 
   it('attaches runtime lineage before executing an entry order', async () => {
     const runtimeLineage = {
-      schemaVersion: 1,
-      compositionId: 'TrendLine_test',
-      gitSha: 'abc123',
-      gitDirty: false,
-      gateFingerprint: 'gate',
-      configFingerprint: 'config',
-      contextFingerprint: 'context',
+      schemaVersion: 3,
+      strategyRevision: 'sr1:1111111111111111',
+      deploymentCompositionId: 'dc1:2222222222222222',
+      strategyPackageVersion: '3.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.0' },
+      runtimePackageVersion: '3.2.0',
       maxLossValue: 1,
     } satisfies RuntimeLineage;
     const { strategy } = await makeRuntime(

@@ -156,7 +156,10 @@ Read [references/diagnose-live.md](references/diagnose-live.md),
 Diagnose the exact released composition before proposing changes. Establish
 runtime/replay/config/context parity first; only then decide whether observed
 losses are expected drawdown or a generalization failure. Do not tune thresholds
-inside a diagnostic lineage.
+inside a diagnostic lineage. Accept runtime evidence only when it carries the
+current deployment snapshot schema v2 and runtime lineage schema v3 for every
+row. Never reconstruct runtime composition from `strategyConfigs`, current
+Redis configuration, or research fingerprints.
 
 ## Shared metric and evidence rules
 

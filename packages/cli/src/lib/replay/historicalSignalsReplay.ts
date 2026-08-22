@@ -445,8 +445,6 @@ export const runHistoricalSignalsReplay = async ({
             strategyResults,
           }) => {
             const runtimeLineage = await buildRuntimeLineage({
-              projectRoot: replayProjectRoot,
-              strategyName,
               strategyRevision,
               deploymentCompositionId,
               strategyPackageVersion,
@@ -456,11 +454,6 @@ export const runHistoricalSignalsReplay = async ({
                 configId: strategyRevision,
                 strategyConfig,
                 symbolResultConfig: strategyResults?.[symbol]?.config ?? null,
-              },
-              runContext: {
-                connectorName: connectorName.toLowerCase(),
-                interval: String(interval),
-                universe: preparedRun.universe ?? null,
               },
             });
             runtimeLineages.push({

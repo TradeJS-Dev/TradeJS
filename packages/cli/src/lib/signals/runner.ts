@@ -613,7 +613,6 @@ export const createSignalsRunner = (
       const evaluateTicker = createSignalsTickerEvaluator({
         userName: config.userName,
         makeOrders: config.makeOrders,
-        projectRoot,
         context: {
           connectorName,
           connector: marketConnector,

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { assertCurrentRuntimeEvidenceArtifact } from './runtimeEvidenceDeployment';
 
 export const RUNTIME_EVIDENCE_MANIFEST_FILE = 'manifest.json';
 export const RUNTIME_EVIDENCE_PAYLOAD_FILE = 'runtime-evidence.json';
@@ -158,6 +159,7 @@ export const publishRuntimeEvidenceBundle = async ({
   counts: Record<string, number>;
   lineageKeys: string[];
 }) => {
+  assertCurrentRuntimeEvidenceArtifact(artifact);
   const payload = `${JSON.stringify(artifact, null, 2)}\n`;
   const payloadSha256 = sha256(payload);
   const identitySha256 = runtimeEvidenceIdentitySha256(artifact);
@@ -264,6 +266,10 @@ export const verifyRuntimeEvidenceBundle = async (
     artifactWindow.endTime !== manifest.window.endTime
   ) {
     throw new Error(`Runtime evidence payload mismatch in ${bundleDir}`);
+  }
+  const deployment = assertCurrentRuntimeEvidenceArtifact(artifact);
+  if (deployment.id !== manifest.deploymentId) {
+    throw new Error(`Runtime evidence deployment mismatch in ${bundleDir}`);
   }
 
   return {

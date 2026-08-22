@@ -357,7 +357,6 @@ const loadRuntimePayload = async ({
       signals: runtimeEvidence.signals,
       evaluations: runtimeEvidence.evaluations,
       trades: runtimeEvidence.trades,
-      strategyConfigs: runtimeEvidence.strategyConfigs,
       evaluationStatsBuckets: runtimeEvidence.evaluationStatsBuckets,
       lineageScopes: runtimeEvidence.lineageScopes,
     }),

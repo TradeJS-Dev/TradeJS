@@ -13,12 +13,15 @@ import {
 } from '../lib/replay/runtimeEvidenceSource';
 
 const lineage: RuntimeLineage = {
-  schemaVersion: 1,
-  gitSha: 'abc123',
-  gitDirty: false,
-  gateFingerprint: 'gate',
-  configFingerprint: 'config',
-  contextFingerprint: 'context',
+  schemaVersion: 3,
+  strategyRevision: 'sr1:1111111111111111',
+  deploymentCompositionId: 'dc1:1111111111111111',
+  strategyPackageVersion: '3.0.0',
+  strategyDependencyVersions: {
+    '@tradejs/indicators': '3.2.0',
+    '@tradejs/strategy-kit': '3.0.2',
+  },
+  runtimePackageVersion: '3.2.0',
 };
 
 const signal = (timestamp: number): Signal =>
@@ -98,6 +101,7 @@ describe('runtime evidence replay source', () => {
       status: 'active',
       deploymentId: 'production',
       accountId: 'bybit-default',
+      runtimeLineage: lineage,
     } as RuntimeTradeRecord;
 
     await fs.writeFile(
@@ -111,6 +115,7 @@ describe('runtime evidence replay source', () => {
           trades: [{ trade }],
           signals: [{ signal: signal(100) }],
           evaluations: [{ evaluation: evaluation(300) }],
+          lineageScopes: [],
         },
       }),
     );
@@ -145,10 +150,16 @@ describe('runtime evidence replay source', () => {
     await fs.writeFile(
       filePath,
       JSON.stringify({
+        reportType: 'runtime-evidence',
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
         deployment,
-        runtime: { trades: [], signals: [], evaluations: [] },
+        runtime: {
+          trades: [],
+          signals: [],
+          evaluations: [],
+          lineageScopes: [],
+        },
       }),
     );
 
@@ -172,10 +183,16 @@ describe('runtime evidence replay source', () => {
     await fs.writeFile(
       filePath,
       JSON.stringify({
+        reportType: 'runtime-evidence',
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
         deployment,
-        runtime: { trades: [], signals: [], evaluations: [] },
+        runtime: {
+          trades: [],
+          signals: [],
+          evaluations: [],
+          lineageScopes: [],
+        },
       }),
     );
 
@@ -219,6 +236,7 @@ describe('runtime evidence replay source', () => {
     await fs.writeFile(
       filePath,
       JSON.stringify({
+        reportType: 'runtime-evidence',
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
         deployment: { ...deployment, tickers: undefined },
@@ -247,7 +265,10 @@ describe('runtime evidence replay source', () => {
 
 describe('runtime evidence lineage scopes', () => {
   it('keeps different lineages in separate deployment windows', () => {
-    const changedLineage = { ...lineage, gitSha: 'def456' };
+    const changedLineage = {
+      ...lineage,
+      strategyPackageVersion: '3.0.1',
+    };
     const changedSignal = {
       ...signal(500),
       runtimeLineage: changedLineage,
