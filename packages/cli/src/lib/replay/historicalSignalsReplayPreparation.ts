@@ -276,6 +276,10 @@ export const prepareHistoricalReplay = async (
       strategies
         .filter((strategy) => strategyIncludesSymbol(strategy, symbol))
         .map(async (strategy) => {
+          const replayStrategyConfig = buildReplayStrategyConfig({
+            strategyConfig: strategy.strategyConfig,
+            interval,
+          });
           const runtimeLineage = await adapters.buildLineage({
             projectRoot,
             strategyName: strategy.strategyName,
@@ -321,10 +325,10 @@ export const prepareHistoricalReplay = async (
               universe: preparedRun.universe,
               accountId: preparedRun.accountId,
               deploymentId: preparedRun.deploymentId,
-              config: buildReplayStrategyConfig({
-                strategyConfig: strategy.strategyConfig,
-                interval,
-              }),
+              runtimeConfigSnapshot: {
+                userConfig: replayStrategyConfig,
+              },
+              config: replayStrategyConfig,
               symbol,
               data: preparedData.prevData,
               btcData: preparedData.btcPrevData,
