@@ -1,11 +1,24 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
 const DEFAULT_PROJECT_NAME = 'tradejs-project';
 const DEFAULT_PORT = 3000;
+const SKILL_TEMPLATES_ROOT = path.resolve(
+  __dirname,
+  '..',
+  'templates',
+  '.codex',
+  'skills',
+);
 
 export interface CreateTradejsOptions {
   targetDir: string;
@@ -128,6 +141,32 @@ const packageNameFromDir = (targetDir: string) => {
 
 const createAuthSecret = () => randomBytes(32).toString('hex');
 
+const readSkillTemplates = (
+  directory = SKILL_TEMPLATES_ROOT,
+  relativeDirectory = '',
+): Record<string, string> => {
+  const files: Record<string, string> = {};
+
+  for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
+    (left, right) => left.name.localeCompare(right.name),
+  )) {
+    const absolutePath = path.join(directory, entry.name);
+    const relativePath = path.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      Object.assign(files, readSkillTemplates(absolutePath, relativePath));
+      continue;
+    }
+    if (entry.isFile()) {
+      files[path.join('.codex', 'skills', relativePath)] = readFileSync(
+        absolutePath,
+        'utf8',
+      );
+    }
+  }
+
+  return files;
+};
+
 export const buildProjectFiles = (
   targetDir: string,
   port: number,
@@ -204,7 +243,20 @@ npm run dev
 
 Open [http://localhost:${port}/routes/dashboard](http://localhost:${port}/routes/dashboard).
 On the first launch, TradeJS asks you to create the local root password.
+
+## Codex strategy workflow
+
+The project includes focused TradeJS skills under \`.codex/skills\`. Invoke a
+skill with a strategy name, for example:
+
+\`$strategy-candidate-report MarketFlushReversal\`
+
+Use \`$strategy-forward-start <Strategy>\` only when you want Codex to publish
+and launch the selected candidate as a bounded forward test. It installs the
+exact candidate configuration with \`MAX_LOSS_VALUE=1\` and requires an exact
+deployment/account binding.
 `,
+    ...readSkillTemplates(),
   };
 };
 
@@ -221,7 +273,9 @@ export const scaffoldProject = (
   mkdirSync(absoluteTarget, { recursive: true });
   const files = buildProjectFiles(absoluteTarget, port, infrastructurePorts);
   for (const [relativePath, contents] of Object.entries(files)) {
-    writeFileSync(path.join(absoluteTarget, relativePath), contents, 'utf8');
+    const destination = path.join(absoluteTarget, relativePath);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    writeFileSync(destination, contents, 'utf8');
   }
   return absoluteTarget;
 };

@@ -18,6 +18,31 @@ npx create-tradejs my-trading-project
 
 Docker with the Compose plugin and Node.js 20.19 or newer are required.
 
+## Codex strategy skills
+
+Every generated project includes focused workflow skills in `.codex/skills`:
+
+- `$strategy-candidate-report` — show the latest selected candidate;
+- `$strategy-candidate-compare` — compare it with production;
+- `$strategy-improvement-plan` — produce a causal improvement plan;
+- `$strategy-improvement-research` — run a new bounded research lineage;
+- `$strategy-period-revalidate` — recheck frozen candidates on new data;
+- `$strategy-forward-start` — publish and start the best candidate at
+  `MAX_LOSS_VALUE=1`, adding the strategy or replacing its old composition;
+- `$strategy-forward-status` — inspect prospective live evidence;
+- `$strategy-risk-scale` — change only `MAX_LOSS_VALUE` after an explicit
+  scaling request.
+
+Invoke one skill with one strategy name, for example:
+
+```text
+$strategy-forward-start MarketFlushReversal
+```
+
+Forward start is an explicit live rollout request. It still requires an exact
+deployment/account binding and a configured package publication and deployment
+workflow; the scaffolder does not invent production credentials or hosting.
+
 ## License
 
 The `create-tradejs` scaffolder remains MIT-licensed. Generated projects

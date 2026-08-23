@@ -1,4 +1,4 @@
 interface:
-  display_name: 'Strategy Release'
-  short_description: 'Improve and validate one strategy composition'
-  default_prompt: 'Use $strategy-release as a professional algo researcher: build a causal market thesis and opportunity map, actively improve one core plus deterministic gate through evidence-driven rounds, and finish with complete evidence and a concrete action.'
+  display_name: 'Strategy Release (Deprecated)'
+  short_description: 'Route to one focused strategy workflow'
+  default_prompt: 'Route this request to the single focused TradeJS strategy skill that matches the requested action.'

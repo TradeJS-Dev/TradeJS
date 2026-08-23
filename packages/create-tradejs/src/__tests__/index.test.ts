@@ -79,6 +79,33 @@ describe('create-tradejs', () => {
       expect(readFileSync(path.join(target, 'README.md'), 'utf8')).toContain(
         'create the local root password',
       );
+      const installedSkills = [
+        'strategy-candidate-report',
+        'strategy-candidate-compare',
+        'strategy-improvement-plan',
+        'strategy-improvement-research',
+        'strategy-period-revalidate',
+        'strategy-forward-start',
+        'strategy-forward-status',
+        'strategy-risk-scale',
+      ];
+      for (const skill of installedSkills) {
+        expect(
+          existsSync(path.join(target, '.codex', 'skills', skill, 'SKILL.md')),
+        ).toBe(true);
+      }
+      expect(
+        readFileSync(
+          path.join(
+            target,
+            '.codex',
+            'skills',
+            'strategy-forward-start',
+            'SKILL.md',
+          ),
+          'utf8',
+        ),
+      ).toContain('MAX_LOSS_VALUE=1');
       expect(existsSync(path.join(target, '.tradejs', 'credentials.txt'))).toBe(
         false,
       );
