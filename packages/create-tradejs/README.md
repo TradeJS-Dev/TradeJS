@@ -27,8 +27,9 @@ Every generated project includes focused workflow skills in `.codex/skills`:
 - `$strategy-improvement-plan` — produce a causal improvement plan;
 - `$strategy-improvement-research` — run a new bounded research lineage;
 - `$strategy-period-revalidate` — recheck frozen candidates on new data;
-- `$strategy-forward-start` — publish and start the best candidate at
-  `MAX_LOSS_VALUE=1`, adding the strategy or replacing its old composition;
+- `$strategy-forward-start` — publish and start the latest eligible candidate
+  at `MAX_LOSS_VALUE=1`, or an explicitly named reproducible historical
+  candidate under a prospective-only operator authorization;
 - `$strategy-forward-status` — inspect prospective live evidence;
 - `$strategy-risk-scale` — change only `MAX_LOSS_VALUE` after an explicit
   scaling request.
@@ -42,6 +43,9 @@ $strategy-forward-start MarketFlushReversal
 Forward start is an explicit live rollout request. It still requires an exact
 deployment/account binding and a configured package publication and deployment
 workflow; the scaffolder does not invent production credentials or hosting.
+Operator-directed mode does not rewrite an old research verdict: it preserves
+the original selection and contrary evidence and requires positive full-period
+PnL, profit factor above 1, and checksum-verifiable configuration and charts.
 
 ## License
 

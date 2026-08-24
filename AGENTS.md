@@ -527,12 +527,18 @@ Keep them aligned with:
   active days. Treat CSCV/PBO as unavailable when candidate fold vectors are
   identical and no selection ranking exists.
 
-### Strategy release and prospective diagnosis
+### Strategy improvement, forward tests, and prospective diagnosis
 
-- Use `.codex/skills/strategy-release/SKILL.md` to evaluate one frozen core plus
-  deterministic AI-gate composition or diagnose that exact composition live.
-  This contour is strategy-local; portfolio allocation and daily-loss policy are
-  out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- Use `.codex/skills/strategy-improvement-research/SKILL.md` for a new bounded
+  core plus deterministic-gate research lineage,
+  `.codex/skills/strategy-forward-start/SKILL.md` only for an explicitly
+  authorized risk-1 rollout, and
+  `.codex/skills/strategy-forward-status/SKILL.md` for read-only prospective
+  inspection. Candidate reporting, comparison, period revalidation, planning,
+  and risk scaling have their own focused skills. The deprecated
+  `.codex/skills/strategy-release/SKILL.md` is only a compatibility router.
+  These contours are strategy-local; portfolio allocation and daily-loss policy
+  are out of scope. `MAX_LOSS_VALUE` remains user-selected.
 - Treat release work as causal trading research, not an audit checklist. Before
   round 1 write the market thesis, build an opportunity map across formation,
   timing, risk geometry, lifecycle, side/regime, concentration, and execution,

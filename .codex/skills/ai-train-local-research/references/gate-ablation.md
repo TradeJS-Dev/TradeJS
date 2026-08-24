@@ -7,13 +7,15 @@ trade outcome fields as inputs.
 
 ## Prerequisite
 
-Build the runtime packages after adapter or gate changes:
+After adapter or gate changes, build the owning standalone strategy from
+`TRADEJS_SOURCE_REPOSITORY_ROOT`:
 
 ```bash
-yarn workspace @tradejs/strategies build
-yarn workspace @tradejs/node build
-yarn workspace @tradejs/cli build
+yarn build
 ```
+
+Build `@tradejs/node` or `@tradejs/cli` from the framework workspace only when
+the corresponding framework package changed.
 
 `yarn ai-train --localOnly --json -n 0` remains the baseline authority. Before
 interpreting a candidate, compare the tool's baseline qN+ support, PnL, PF,

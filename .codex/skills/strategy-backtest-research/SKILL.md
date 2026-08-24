@@ -94,7 +94,7 @@ and PnL reconcile within the documented per-symbol rounding tolerance, use the
 row-level export as the authoritative trade-economic total instead of swapping
 in the cent-rounded Redis aggregate.
 
-For a `$strategy-release` final composition, extend the same permanent report
+For a `$strategy-improvement-research` final composition, extend the same permanent report
 to `1095d/1460d/1825d-or-exact-maximum/365d/180d/90d/30d/7d`. When cached
 coverage is shorter than 1825 days, report the exact covered duration (for
 example 1800d) and do not label it a complete five-year window. Reuse this
@@ -255,7 +255,7 @@ contour in `CORE_RESEARCH.md`:
    embedding the complete resolved config and structured metrics required by
    the note schema.
 
-When `$strategy-release` invokes this contour, screen research is a three-round
+When `$strategy-improvement-research` invokes this contour, screen research is a three-round
 parented DAG rather than one flat sweep. Use one anchor candidate per family in
 round 1, then two evidence-derived child candidates in round 2 and two in round
 3 for each still-viable family. Keep at most five candidates per family across

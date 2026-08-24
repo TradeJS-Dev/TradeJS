@@ -30,9 +30,12 @@ before connecting it to a runtime deployment.
 It also installs focused Codex workflows under `.codex/skills`. A short request
 such as `$strategy-improvement-research MarketFlushReversal` starts a new
 research lineage, while `$strategy-forward-start MarketFlushReversal` publishes
-and launches the exact selected candidate at `MAX_LOSS_VALUE=1`. Reporting,
-comparison, revalidation, forward status, and risk scaling are separate skills,
-so a read-only request cannot silently turn into a deployment.
+and launches the latest eligible candidate at `MAX_LOSS_VALUE=1`. The same
+forward skill can launch a different checksum-reproducible historical candidate
+only when the operator names it explicitly and preserves the contrary evidence
+in a new prospective-only authorization artifact. Reporting, comparison,
+revalidation, forward status, and risk scaling are separate skills, so a
+read-only request cannot silently turn into a deployment.
 
 See the [installation guide](https://docs.tradejs.dev/getting-started/installation)
 and [first backtest walkthrough](https://docs.tradejs.dev/getting-started/first-backtest)
