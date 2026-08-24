@@ -41,7 +41,7 @@
     "@tradejs/indicators": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/node": "workspace:^",
-    "@tradejs/strategy-kit": "3.0.3",
+    "@tradejs/strategy-kit": "3.0.4",
     "@tradejs/types": "workspace:^",
     "args": "^5.0.3",
     "bcryptjs": "^2.4.3",

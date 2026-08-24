@@ -23,7 +23,7 @@
   "dependencies": {
     "@tradejs/cli": "3.1.11",
     "@tradejs/core": "3.1.11",
-    "@tradejs/strategy-kit": "3.0.3",
+    "@tradejs/strategy-kit": "3.0.4",
     "@tradejs/types": "3.1.11",
     "ioredis": "5.11.1"
   },

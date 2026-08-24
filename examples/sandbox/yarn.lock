@@ -434,7 +434,7 @@ __metadata:
   dependencies:
     "@tradejs/cli": "npm:3.1.11"
     "@tradejs/core": "npm:3.1.11"
-    "@tradejs/strategy-kit": "npm:3.0.2"
+    "@tradejs/strategy-kit": "npm:3.0.4"
     "@tradejs/types": "npm:3.1.11"
     "@types/node": "npm:^24"
     "@typescript-eslint/eslint-plugin": "npm:^8.65.0"
@@ -496,13 +496,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/strategy-kit@npm:3.0.2":
-  version: 3.0.2
-  resolution: "@tradejs/strategy-kit@npm:3.0.2"
+"@tradejs/strategy-kit@npm:3.0.4":
+  version: 3.0.4
+  resolution: "@tradejs/strategy-kit@npm:3.0.4"
   peerDependencies:
     "@tradejs/core": ^3.0.1
     "@tradejs/types": ^3.0.1
-  checksum: 10c0/f7309b8f82e3f7d681e3107d9f938035a283903ad22d7224e8ecb8b940391dd2222541539ab047f67e36f6d566768e57917840c803c42ba2a32116dded63f596
+  checksum: 10c0/24b30134883213f3d551b8868bf1905acf39fcad579be323f494e2351b1c4c821da2efa29a06aec6eeb7f9fa1c5201159d3b919b76f1536f125af5af55cdee39
   languageName: node
   linkType: hard
 

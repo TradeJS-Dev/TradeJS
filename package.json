@@ -186,7 +186,7 @@
     "@tradejs/strategy-grid-classic": "3.0.2",
     "@tradejs/strategy-head-and-shoulders": "3.0.2",
     "@tradejs/strategy-hyperliquid-consensus": "3.0.2",
-    "@tradejs/strategy-kit": "3.0.3",
+    "@tradejs/strategy-kit": "3.0.4",
     "@tradejs/strategy-liquidity-tails": "3.0.2",
     "@tradejs/strategy-liquidity-zones": "3.0.2",
     "@tradejs/strategy-ma-strategy": "3.0.2",
