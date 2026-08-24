@@ -28,7 +28,7 @@ export const mean = (xs: number[]) => (xs.length ? sum(xs) / xs.length : 0);
  * r_i^abs = close.amount - open.amount
  */
 export const absReturns = (data: PositionLogData) =>
-  data.map((p) => p.close.amount - p.open.amount);
+  data.map((p) => p.netProfit ?? p.close.amount - p.open.amount);
 
 /**
  * Относительные ретёрны на сделку (доли).
@@ -36,7 +36,9 @@ export const absReturns = (data: PositionLogData) =>
  * Пример: +0.02 = +2%
  */
 export const relReturns = (data: PositionLogData) =>
-  data.map((p) => (p.close.amount - p.open.amount) / p.open.amount);
+  data.map(
+    (p) => (p.netProfit ?? p.close.amount - p.open.amount) / p.open.amount,
+  );
 
 /**
  * Уплощённая временная линия equity: берём точки (open, close) каждой позиции

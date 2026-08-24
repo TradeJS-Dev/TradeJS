@@ -50,6 +50,20 @@ describe('stat utils', () => {
     expect(stat.maxDrawdown).toBeGreaterThan(0);
   });
 
+  it('uses canonical position-cycle PnL for outcome classification', () => {
+    const stat = calculateStatsFull([
+      {
+        direction: 'LONG',
+        open: { amount: 100, timestamp: 1_000 },
+        close: { amount: 100.01, timestamp: 2_000 },
+        netProfit: 0,
+      },
+    ])!;
+
+    expect(stat.wins).toBe(0);
+    expect(stat.losses).toBe(1);
+  });
+
   it('classifyMetric works for both higher and lower directions', () => {
     expect(classifyMetric('winRate', 65)).toBe('success');
     expect(classifyMetric('maxDrawdown', 10)).toBe('success');

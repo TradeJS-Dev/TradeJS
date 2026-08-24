@@ -314,6 +314,8 @@ export interface PositionLog {
   direction: Direction;
   open: { amount: number; timestamp: number };
   close: { amount: number; timestamp: number };
+  /** Canonical rounded realized PnL for this completed position cycle. */
+  netProfit?: number;
 }
 
 export type PositionLogData = PositionLog[];
