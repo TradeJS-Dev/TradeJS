@@ -129,6 +129,12 @@ If a feature is not publish-ready for external users, document that limitation e
 - Run personal backtest, replay, AI, and research commands from
   `TradeJS-Project`; use this repository as the source root when exercising
   unreleased framework changes.
+- When a TradeJS strategy research workflow applies alternative strategy
+  source candidates, create one dedicated worktree from the frozen baseline SHA
+  per immutable lineage. Keep `TradeJS-Project` canonical and point
+  `TRADEJS_SOURCE_REPOSITORY_ROOT` at that exact worktree. Preserve rejected
+  diffs and evidence before restoring or removing the disposable worktree;
+  commit only the selected candidate.
 
 ## Architecture Rules
 

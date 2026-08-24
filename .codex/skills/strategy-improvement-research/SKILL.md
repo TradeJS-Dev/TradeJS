@@ -6,8 +6,33 @@ description: Conduct a new bounded professional research lineage to improve one 
 # Strategy Improvement Research
 
 Require one exact strategy name. Run operational commands from the TradeJS
-project and source edits/checks from the exact strategy repository. Set
-`PROJECT_CWD` and `TRADEJS_SOURCE_REPOSITORY_ROOT` when the repositories differ.
+project. Before applying candidate source edits, create one dedicated strategy
+worktree per immutable research lineage from the exact frozen production or
+control SHA. Keep the canonical strategy checkout clean, run source edits and
+checks in the worktree, and set `PROJECT_CWD` to the canonical Project and
+`TRADEJS_SOURCE_REPOSITORY_ROOT` to the exact worktree. If the task is already
+scoped to a dedicated worktree, validate and reuse it instead of nesting
+another one. A lineage that only re-scores existing artifacts and makes no
+source edits does not need a worktree.
+
+## Source isolation
+
+- Inspect the owning repository's worktree list and verify the frozen baseline
+  SHA before creating or reusing the lineage worktree. Do not use an unrelated
+  old worktree, scratch directory, generated artifact, or clone as the source
+  root.
+- Evaluate candidates sequentially in the same lineage worktree. Before
+  replacing a rejected candidate, freeze its exact source diff, build hash,
+  resolved config, run lineage, and outcome in Project-owned immutable
+  evidence, then restore only that disposable worktree to the frozen baseline.
+- Keep any temporary Project package overlay explicit and restore it to the
+  verified stable package after each candidate or before handoff. A source
+  worktree does not isolate `TradeJS-Project/node_modules`.
+- If no new candidate is selected, verify the canonical checkout was never
+  changed and remove the disposable worktree only after all evidence is
+  frozen. If a candidate is selected, commit only that candidate and its tests
+  on the worktree branch and hand off the exact commit SHA; do not retain
+  rejected behavior as source commits.
 
 ## Authority boundary
 
@@ -38,9 +63,9 @@ forward test, or change live risk. Those belong to `$strategy-forward-start`.
 6. Keep one chronological tail sealed during discovery when coverage permits.
    Open it once for the final selected behavior. Track all exposed tests for
    multiple-testing/deflated-Sharpe interpretation.
-7. Run package formatting, typecheck, tests, and build. Commit only the selected
-   candidate and its tests in the strategy source repository; preserve rejected
-   experiments as immutable evidence, not source clutter.
+7. Run package formatting, typecheck, tests, and build in the lineage worktree.
+   Commit only the selected candidate and its tests on that worktree branch;
+   preserve rejected experiments as immutable evidence, not source clutter.
 
 ## Selection objective
 

@@ -10,6 +10,18 @@ as the artifact/config root and `TRADEJS_SOURCE_REPOSITORY_ROOT` as the Git and
 build lineage root. Store `data/` and ignored `notes/` only under the project
 root.
 
+When research will apply and compare alternative strategy source edits, create
+one dedicated worktree from the frozen baseline SHA for that immutable lineage.
+Keep the canonical strategy checkout clean, point
+`TRADEJS_SOURCE_REPOSITORY_ROOT` at the worktree, and run source checks there.
+Pure config, artifact, reporting, or read-only backtest work does not require a
+worktree. Before replacing a rejected source candidate, preserve its exact diff,
+build hash, resolved config, and run outcome in Project-owned evidence; restore
+only the disposable worktree. Commit only a selected candidate, and remove a
+no-winner worktree only after evidence is frozen. A worktree does not isolate a
+temporary package overlay in `TradeJS-Project/node_modules`, which must be
+restored separately to the verified stable package.
+
 Use this skill when working on strategy implementation, figures, or backtest configuration in `packages/strategies/src/<StrategyName>`.
 
 Do not use this skill for general `ai-train --localOnly` gate research. Use `ai-train-local-research` for local deterministic AI gate investigations across strategies.
