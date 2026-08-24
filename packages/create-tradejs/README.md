@@ -18,9 +18,20 @@ npx create-tradejs my-trading-project
 
 Docker with the Compose plugin and Node.js 20.19 or newer are required.
 
-## Codex strategy skills
+## Codex TradeJS skills
 
-Every generated project includes focused workflow skills in `.codex/skills`:
+Every generated project includes the complete checksum-managed TradeJS skill
+set in `.codex/skills`. The supporting skills execute one bounded operation:
+
+- `$strategy-backtest-research` — implement or execute one preregistered core
+  backtest experiment;
+- `$ai-train-local-research` — analyze a frozen core/export's deterministic
+  gate;
+- `$backtest-config-redis` and `$save-strategy-config-from-backtest` — read a
+  research grid or explicitly promote it into the Git-owned Project;
+- `$runtime-parity-mismatch-analysis` — diagnose an existing parity artifact.
+
+The focused lifecycle skills own user-level decisions:
 
 - `$strategy-candidate-report` — show the latest selected candidate;
 - `$strategy-candidate-compare` — compare it with production;
@@ -33,6 +44,9 @@ Every generated project includes focused workflow skills in `.codex/skills`:
 - `$strategy-forward-status` — inspect prospective live evidence;
 - `$strategy-risk-scale` — change only `MAX_LOSS_VALUE` after an explicit
   scaling request.
+
+`$strategy-release` remains only as a deprecated compatibility router to one
+focused lifecycle skill. It is not another research/deployment workflow.
 
 Invoke one skill with one strategy name, for example:
 
@@ -57,7 +71,9 @@ npx create-tradejs@<approved-version> --update-skills .
 ```
 
 The updater preserves unrelated custom skills and refuses to overwrite a
-managed file that no longer matches its installed checksum.
+modified managed file. When a new release first brings an existing official
+TradeJS skill under bundle management, the explicit update adopts that
+same-named official snapshot from the canonical bundle.
 
 ## License
 

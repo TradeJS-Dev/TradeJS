@@ -7,15 +7,30 @@ trade outcome fields as inputs.
 
 ## Prerequisite
 
-After adapter or gate changes, build the owning standalone strategy from
-`TRADEJS_SOURCE_REPOSITORY_ROOT`:
+Keep three roots explicit:
+
+- `PROJECT_CWD` owns datasets and reports.
+- `TRADEJS_SOURCE_REPOSITORY_ROOT` is the exact Git checkout that owns the
+  researched lineage: either the TradeJS framework or one standalone strategy.
+- `TRADEJS_FRAMEWORK_REPOSITORY_ROOT` supplies the built `@tradejs/node` and
+  `@tradejs/cli` research runtime. It is optional only when the source root is
+  itself the framework checkout.
+
+After adapter or gate changes, build the owning standalone strategy in its
+source checkout. Build framework packages only in the framework checkout when
+their sources changed:
 
 ```bash
-yarn build
+cd "$TRADEJS_SOURCE_REPOSITORY_ROOT" && yarn build
+cd "$TRADEJS_FRAMEWORK_REPOSITORY_ROOT" && \
+  yarn workspace @tradejs/node build && \
+  yarn workspace @tradejs/cli build
 ```
 
-Build `@tradejs/node` or `@tradejs/cli` from the framework workspace only when
-the corresponding framework package changed.
+The ablation tool imports `strategyEntries` from the standalone strategy build
+when the source root is a strategy. It never substitutes the Project's
+published strategy package for that source lineage. `--list` is inventory-only
+and does not require either source root.
 
 `yarn ai-train --localOnly --json -n 0` remains the baseline authority. Before
 interpreting a candidate, compare the tool's baseline qN+ support, PnL, PF,

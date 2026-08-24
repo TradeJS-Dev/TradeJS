@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,7 +19,10 @@ import {
   evaluateRule,
   evaluateCrossPocket,
   ensureRuntimeBuild,
+  findFrameworkRepositoryRoot,
   findSourceRepositoryRoot,
+  getSourceRepositoryKind,
+  loadStandaloneStrategyEntries,
   filterSharedCrossStrategyFeatures,
   formatCrossStrategyMarkdown,
   formatMarkdownReport,
@@ -35,34 +39,109 @@ import {
   summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
 
-test('requires an explicit TradeJS engine source repository', async (t) => {
+const createGitCheckout = async (t, prefix) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  return fsp.realpath(root);
+};
+
+const preserveResearchRoots = (t) => {
   const previousSourceRoot = process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
-  delete process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
+  const previousFrameworkRoot = process.env.TRADEJS_FRAMEWORK_REPOSITORY_ROOT;
   t.after(() => {
-    if (previousSourceRoot == null) {
-      delete process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
-    } else {
-      process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = previousSourceRoot;
+    for (const [name, value] of [
+      ['TRADEJS_SOURCE_REPOSITORY_ROOT', previousSourceRoot],
+      ['TRADEJS_FRAMEWORK_REPOSITORY_ROOT', previousFrameworkRoot],
+    ]) {
+      if (value == null) delete process.env[name];
+      else process.env[name] = value;
     }
   });
+};
+
+test('requires an explicit TradeJS source repository', (t) => {
+  preserveResearchRoots(t);
+  delete process.env.TRADEJS_SOURCE_REPOSITORY_ROOT;
 
   assert.throws(
     () => findSourceRepositoryRoot(),
     /TRADEJS_SOURCE_REPOSITORY_ROOT is required/,
   );
+});
 
-  const sourceRoot = await fsp.mkdtemp(
-    path.join(os.tmpdir(), 'tradejs-source-root-'),
-  );
-  t.after(() => fsp.rm(sourceRoot, { recursive: true, force: true }));
+test('separates a real standalone strategy checkout from the framework runtime checkout', async (t) => {
+  preserveResearchRoots(t);
+  const strategyRoot = await createGitCheckout(t, 'tradejs-strategy-source-');
+  const frameworkRoot = await createGitCheckout(t, 'tradejs-framework-source-');
+
   await Promise.all([
-    fsp.writeFile(path.join(sourceRoot, 'package.json'), '{}\n'),
-    fsp.mkdir(path.join(sourceRoot, 'packages/node'), { recursive: true }),
-    fsp.mkdir(path.join(sourceRoot, 'packages/cli'), { recursive: true }),
+    fsp.mkdir(path.join(strategyRoot, 'src'), { recursive: true }),
+    fsp.mkdir(path.join(strategyRoot, 'dist'), { recursive: true }),
+    fsp.mkdir(path.join(frameworkRoot, 'packages/node'), { recursive: true }),
+    fsp.mkdir(path.join(frameworkRoot, 'packages/cli'), { recursive: true }),
   ]);
-  process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = sourceRoot;
+  await Promise.all([
+    fsp.writeFile(
+      path.join(strategyRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: '@tradejs/strategy-fixture',
+          type: 'module',
+          exports: { '.': { import: './dist/index.js' } },
+        },
+        null,
+        2,
+      )}\n`,
+    ),
+    fsp.writeFile(
+      path.join(strategyRoot, 'src/index.ts'),
+      'export const strategyEntries = [];\n',
+    ),
+    fsp.writeFile(
+      path.join(frameworkRoot, 'package.json'),
+      '{"name":"tradejs-framework-fixture","private":true}\n',
+    ),
+  ]);
+  await fsp.writeFile(
+    path.join(strategyRoot, 'dist/index.js'),
+    "export const strategyEntries = [{ manifest: { name: 'FixtureStrategy' } }];\n",
+  );
 
-  assert.equal(findSourceRepositoryRoot(), sourceRoot);
+  process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = strategyRoot;
+  delete process.env.TRADEJS_FRAMEWORK_REPOSITORY_ROOT;
+
+  assert.equal(findSourceRepositoryRoot(), strategyRoot);
+  assert.equal(getSourceRepositoryKind(strategyRoot), 'strategy');
+  assert.throws(
+    () => findFrameworkRepositoryRoot(strategyRoot),
+    /TRADEJS_FRAMEWORK_REPOSITORY_ROOT is required/,
+  );
+
+  process.env.TRADEJS_FRAMEWORK_REPOSITORY_ROOT = frameworkRoot;
+  assert.equal(findFrameworkRepositoryRoot(strategyRoot), frameworkRoot);
+  const loaded = await loadStandaloneStrategyEntries(strategyRoot);
+  assert.equal(loaded.packageName, '@tradejs/strategy-fixture');
+  assert.equal(loaded.strategyEntries[0].manifest.name, 'FixtureStrategy');
+});
+
+test('uses a framework source checkout as its own runtime root', async (t) => {
+  preserveResearchRoots(t);
+  const frameworkRoot = await createGitCheckout(t, 'tradejs-framework-source-');
+  await Promise.all([
+    fsp.writeFile(
+      path.join(frameworkRoot, 'package.json'),
+      '{"name":"tradejs-framework-fixture","private":true}\n',
+    ),
+    fsp.mkdir(path.join(frameworkRoot, 'packages/node'), { recursive: true }),
+    fsp.mkdir(path.join(frameworkRoot, 'packages/cli'), { recursive: true }),
+  ]);
+  process.env.TRADEJS_SOURCE_REPOSITORY_ROOT = frameworkRoot;
+  delete process.env.TRADEJS_FRAMEWORK_REPOSITORY_ROOT;
+
+  assert.equal(findSourceRepositoryRoot(), frameworkRoot);
+  assert.equal(getSourceRepositoryKind(frameworkRoot), 'framework');
+  assert.equal(findFrameworkRepositoryRoot(frameworkRoot), frameworkRoot);
 });
 
 test('requires the public registry runtime module for plugin loading', async () => {
@@ -691,6 +770,12 @@ test('builds a profiled cross-strategy report from tiny sharded exports', async 
   const report = await buildCrossStrategyReport({
     projectRoot: process.cwd(),
     sourceRepositoryRoot: process.cwd(),
+    frameworkRepositoryRoot: process.cwd(),
+    searchAiPockets: () => ({
+      positivePockets: [],
+      negativePockets: [],
+      stats: {},
+    }),
     groups,
     validationSplit: 0.2,
     testSplit: 0.2,

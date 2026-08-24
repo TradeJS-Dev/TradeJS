@@ -41,6 +41,18 @@ core/gate/tests, and commit the selected source candidate locally. Do not push,
 publish packages, edit the Project’s production composition, deploy, start a
 forward test, or change live risk. Those belong to `$strategy-forward-start`.
 
+## Orchestration boundary
+
+This skill owns the complete improvement lineage: prior-candidate inventory,
+hypothesis-family choice, trial budget, parent/child decisions, candidate
+selection, and final handoff. Delegate each preregistered core implementation
+and backtest to `$strategy-backtest-research`; that skill returns reconciled
+experiment evidence and does not choose the next candidate. After freezing the
+core finalist/export, delegate deterministic-gate analysis to
+`$ai-train-local-research`; it must not reopen core selection. Read those
+specialist skills when their stage begins instead of duplicating their command,
+metric, or reporting contracts here.
+
 ## Required contour
 
 1. Start a new immutable research lineage. Freeze data bounds, point-in-time
@@ -56,6 +68,8 @@ forward test, or change live risk. Those belong to `$strategy-forward-start`.
    with evidence-driven children and use remaining slots for direction-policy
    or Pareto rescue. The default cap is 12 genuinely new behaviors. An audit,
    parser fix, no-op, or rescoring of an old behavior does not consume a slot.
+   Execute each frozen experiment through `$strategy-backtest-research` and
+   consume its verified result as evidence for the next orchestration decision.
 5. Do not stop at the audit, baseline, first failed round, or a sparse recent
    tail. Stop only when a reproducible best candidate is frozen, the fresh
    budget is exhausted, or every remaining family has a recorded hard causal
@@ -63,7 +77,10 @@ forward test, or change live risk. Those belong to `$strategy-forward-start`.
 6. Keep one chronological tail sealed during discovery when coverage permits.
    Open it once for the final selected behavior. Track all exposed tests for
    multiple-testing/deflated-Sharpe interpretation.
-7. Run package formatting, typecheck, tests, and build in the lineage worktree.
+7. Freeze the selected core/export before opening deterministic-gate research.
+   Run the gate stage through `$ai-train-local-research`; do not retune or
+   relabel the raw-core result inside gate tooling.
+8. Run package formatting, typecheck, tests, and build in the lineage worktree.
    Commit only the selected candidate and its tests on that worktree branch;
    preserve rejected experiments as immutable evidence, not source clutter.
 

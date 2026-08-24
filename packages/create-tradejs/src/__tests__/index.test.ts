@@ -110,6 +110,11 @@ describe('create-tradejs', () => {
         'create the local root password',
       );
       const installedSkills = [
+        'ai-train-local-research',
+        'backtest-config-redis',
+        'runtime-parity-mismatch-analysis',
+        'save-strategy-config-from-backtest',
+        'strategy-backtest-research',
         'strategy-candidate-report',
         'strategy-candidate-compare',
         'strategy-improvement-plan',
@@ -118,6 +123,7 @@ describe('create-tradejs', () => {
         'strategy-forward-start',
         'strategy-forward-status',
         'strategy-risk-scale',
+        'strategy-release',
       ];
       for (const skill of installedSkills) {
         expect(
@@ -189,6 +195,32 @@ describe('create-tradejs', () => {
           ),
         ),
       ).toBe(true);
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  it('adopts an existing official skill when it first becomes bundle-managed', () => {
+    const target = mkdtempSync(path.join(tmpdir(), 'tradejs-skills-'));
+    const officialSkill = path.join(
+      target,
+      '.codex',
+      'skills',
+      'ai-train-local-research',
+      'SKILL.md',
+    );
+    mkdirSync(path.dirname(officialSkill), { recursive: true });
+    writeFileSync(officialSkill, '# Legacy project snapshot\n', 'utf8');
+
+    try {
+      const manifest = updateProjectSkills(target);
+      expect(manifest.skills).toContain('ai-train-local-research');
+      expect(readFileSync(officialSkill, 'utf8')).toContain(
+        'name: ai-train-local-research',
+      );
+      expect(readFileSync(officialSkill, 'utf8')).not.toContain(
+        'Legacy project snapshot',
+      );
     } finally {
       rmSync(target, { recursive: true, force: true });
     }

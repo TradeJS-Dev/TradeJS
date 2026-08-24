@@ -123,6 +123,10 @@ If a feature is not publish-ready for external users, document that limitation e
   `tradejs.config.ts`, `data/`, `notes/`, and research output relative to it.
 - `TRADEJS_SOURCE_REPOSITORY_ROOT` is the source repository whose Git SHA,
   remote, dirty diff, code, and build artifacts provide experiment lineage.
+- `TRADEJS_FRAMEWORK_REPOSITORY_ROOT` is the exact framework checkout whose
+  built Node/CLI modules execute source-aware research. It is required by
+  AI-gate ablation when the source root is a standalone strategy; when the
+  framework itself is under study, both roots may be the same checkout.
 - Source-aware research requires `TRADEJS_SOURCE_REPOSITORY_ROOT` explicitly.
   The two roots may be the same for a standalone developer checkout, but
   research tooling must never infer one from the other.
@@ -535,11 +539,16 @@ Keep them aligned with:
 
 ### Strategy improvement, forward tests, and prospective diagnosis
 
-- The focused Project skills have one editable source under
+- All Project-installed TradeJS skills have one editable source under
   `.codex/skills`. `create-tradejs` stages a checksum-bound package bundle from
   that source during build; do not maintain parallel committed copies under
   `packages/create-tradejs/templates`. Existing Projects receive an explicit
   `create-tradejs --update-skills` snapshot and must verify its bundle manifest.
+- `strategy-improvement-research` owns end-to-end improvement orchestration.
+  It delegates preregistered core experiment execution to
+  `strategy-backtest-research` and frozen deterministic-gate analysis to
+  `ai-train-local-research`; specialist skills must not recreate the complete
+  multi-round lineage.
 - Use `.codex/skills/strategy-improvement-research/SKILL.md` for a new bounded
   core plus deterministic-gate research lineage,
   `.codex/skills/strategy-forward-start/SKILL.md` only for an explicitly
