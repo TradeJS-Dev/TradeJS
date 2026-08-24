@@ -84,6 +84,8 @@
     "signals": "yarn run run:dist signals",
     "results": "yarn run run:dist results",
     "replay-runtime-evidence": "yarn run run:dist replay-runtime-evidence",
+    "runtime-feedback-replay": "yarn run run:dist runtime-feedback-replay",
+    "runtime-feedback-sync": "yarn run run:dist runtime-feedback-sync",
     "runtime-evidence": "yarn run run:dist runtime-evidence",
     "runtime-evidence-sync": "yarn run run:dist runtime-evidence-sync",
     "runtime-scorecard": "yarn run run:dist runtime-scorecard",

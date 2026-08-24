@@ -33,7 +33,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ./scripts/stage-skill-bundle.mjs",
+    "prepack": "yarn build",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
   },
   "devDependencies": {

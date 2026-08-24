@@ -274,14 +274,16 @@ export const buildReplayStrategyConfig = ({
 }: {
   strategyConfig: StrategyConfig;
   interval: Interval;
-}): StrategyConfig =>
-  buildRuntimeModeStrategyConfig({
+}): StrategyConfig => ({
+  ...buildRuntimeModeStrategyConfig({
     strategyConfig,
     env: 'PARITY',
     interval,
-    makeOrders: true,
+    makeOrders: false,
     recordRuntimeTrades: false,
-  });
+  }),
+  SIMULATE_ORDERS: true,
+});
 
 const toRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)

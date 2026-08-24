@@ -122,5 +122,5 @@ config and maximum common cached window only.
 ## Diagnostic ready prompt
 
 ```text
-Use $strategy-release in diagnose-live mode for <Strategy>. Bind release record <path-or-id> to runtime evidence <path-or-id>, freeze incident window <start>..<end>, and check closed-candle/config/state/context/gate/execution parity before performance. Use only --cacheOnly historical comparisons over the maximum common cached window. Set llmComparison=<off|ai-approved>. Return exactly one diagnose verdict and make no runtime or trading changes.
+Use $strategy-forward-status for <Strategy>. Bind release record <path-or-id> to runtime evidence <path-or-id>, freeze incident window <start>..<end>, and check closed-candle/config/state/context/gate/execution parity before performance. Use only --cacheOnly historical comparisons over the maximum common cached window. Set llmComparison=<off|ai-approved>. Return exactly one evidence-status verdict and make no runtime or trading changes.
 ```

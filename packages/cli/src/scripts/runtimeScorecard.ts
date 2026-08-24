@@ -7,6 +7,7 @@ import {
   discoverRuntimeEvidenceBundles,
   verifyRuntimeEvidenceBundle,
 } from '../lib/runtimeEvidenceArtifacts';
+import { verifyRuntimeFeedbackReplaySource } from '../lib/runtimeFeedbackArtifacts';
 import { markRuntimeEvidenceBundleProcessed } from '../lib/runtimeEvidenceSync';
 import {
   buildRuntimeScorecard,
@@ -241,11 +242,35 @@ export const runtimeScorecard = async () => {
 
   let receiptPath: string | null = null;
   if (flags.markProcessed) {
+    const runtimeEvidenceBundle = await verifyRuntimeEvidenceBundle(
+      path.dirname(runtimeEvidencePath),
+    );
+    const feedbackSource = replayEvidencePath
+      ? await verifyRuntimeFeedbackReplaySource({
+          bundleDir: path.dirname(replayEvidencePath),
+          runtimeEvidenceBundleDir: path.dirname(runtimeEvidencePath),
+        }).catch((error) => {
+          if (runtimeEvidenceBundle.artifact.producer) throw error;
+          return null;
+        })
+      : null;
+    if (runtimeEvidenceBundle.artifact.producer && !feedbackSource) {
+      throw new Error(
+        'Image-bound runtime evidence requires a verified production replay bundle before it can be marked processed',
+      );
+    }
     receiptPath = await markRuntimeEvidenceBundleProcessed({
       evidenceRoot: path.resolve(projectRoot, String(flags.evidenceDir)),
       deploymentId: String(flags.deployment),
       bundleDir: path.dirname(runtimeEvidencePath),
       scorecardPath: outPath,
+      runtimeFeedback: feedbackSource
+        ? {
+            artifactId: feedbackSource.feedback.manifest.artifactId,
+            replayEvidenceSha256:
+              feedbackSource.feedback.manifest.payloads.replayEvidence.sha256,
+          }
+        : null,
     });
   }
 

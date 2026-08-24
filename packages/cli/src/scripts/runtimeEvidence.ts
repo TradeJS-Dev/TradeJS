@@ -8,6 +8,7 @@ import {
 } from '../lib/runtimeDebugEvidence';
 import { publishRuntimeEvidenceBundle } from '../lib/runtimeEvidenceArtifacts';
 import { runtimeLineageKey } from '../lib/runtimeLineage';
+import { resolveRuntimeEvidenceProducer } from '../lib/runtimeEvidenceProducer';
 import {
   activeRuntimeEvidenceStrategies,
   resolveRuntimeEvidenceDeploymentSnapshot,
@@ -113,6 +114,11 @@ const parseStrategyFilter = (value: unknown): string[] =>
 export const runtimeEvidence = async () => {
   const { startTime, endTime, source } = resolveWindow();
   const deploymentId = String(flags.deployment);
+  const publishDir = String(flags.publishDir ?? '').trim();
+  const producer = await resolveRuntimeEvidenceProducer({
+    projectRoot,
+    required: Boolean(publishDir),
+  });
   const deploymentSnapshot = await resolveRuntimeEvidenceDeploymentSnapshot({
     userName: String(flags.user),
     projectRoot,
@@ -194,6 +200,7 @@ export const runtimeEvidence = async () => {
   const artifact = {
     reportType: 'runtime-evidence',
     generatedAt: Date.now(),
+    ...(producer ? { producer } : {}),
     userName: flags.user,
     window: {
       startTime,
@@ -211,7 +218,6 @@ export const runtimeEvidence = async () => {
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
 
-  const publishDir = String(flags.publishDir ?? '').trim();
   const published = publishDir
     ? await publishRuntimeEvidenceBundle({
         publishRoot: path.resolve(projectRoot, publishDir),

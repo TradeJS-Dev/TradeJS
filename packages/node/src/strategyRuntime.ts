@@ -64,8 +64,8 @@ import {
   buildHookCtx,
   canUseSharedReplayState,
   isConfigHookStage,
+  isRuntimeOrderExecutionEnabled,
   isStrategyDecision,
-  isTestConnector,
   normalizeConfigHookList,
   shouldRecordRuntimeJournal,
 } from './strategy/runtimeHooks';
@@ -935,11 +935,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return decision.code;
       }
 
-      const rawMakeOrdersEnabled =
-        typeof config.MAKE_ORDERS === 'boolean' ? config.MAKE_ORDERS : true;
-      const makeOrdersEnabled =
-        rawMakeOrdersEnabled &&
-        (env !== 'PARITY' || isTestConnector(connector));
+      const makeOrdersEnabled = isRuntimeOrderExecutionEnabled({
+        config,
+        env,
+        connector,
+      });
 
       if (decision.kind === 'exit') {
         if (!makeOrdersEnabled) {

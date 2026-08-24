@@ -954,7 +954,8 @@ describe('backtest/signals runtime parity', () => {
       MIN_AI_QUALITY: 4,
       ENV: 'PARITY',
       INTERVAL: '15',
-      MAKE_ORDERS: true,
+      MAKE_ORDERS: false,
+      SIMULATE_ORDERS: true,
       RECORD_RUNTIME_TRADES: false,
     });
     expect(replayRun.transcript.connectorFlags).toEqual({

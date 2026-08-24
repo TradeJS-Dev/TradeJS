@@ -129,6 +129,12 @@ If a feature is not publish-ready for external users, document that limitation e
 - Run personal backtest, replay, AI, and research commands from
   `TradeJS-Project`; use this repository as the source root when exercising
   unreleased framework changes.
+- When a TradeJS strategy research workflow applies alternative strategy
+  source candidates, create one dedicated worktree from the frozen baseline SHA
+  per immutable lineage. Keep `TradeJS-Project` canonical and point
+  `TRADEJS_SOURCE_REPOSITORY_ROOT` at that exact worktree. Preserve rejected
+  diffs and evidence before restoring or removing the disposable worktree;
+  commit only the selected candidate.
 
 ## Architecture Rules
 
@@ -527,12 +533,23 @@ Keep them aligned with:
   active days. Treat CSCV/PBO as unavailable when candidate fold vectors are
   identical and no selection ranking exists.
 
-### Strategy release and prospective diagnosis
+### Strategy improvement, forward tests, and prospective diagnosis
 
-- Use `.codex/skills/strategy-release/SKILL.md` to evaluate one frozen core plus
-  deterministic AI-gate composition or diagnose that exact composition live.
-  This contour is strategy-local; portfolio allocation and daily-loss policy are
-  out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- The focused Project skills have one editable source under
+  `.codex/skills`. `create-tradejs` stages a checksum-bound package bundle from
+  that source during build; do not maintain parallel committed copies under
+  `packages/create-tradejs/templates`. Existing Projects receive an explicit
+  `create-tradejs --update-skills` snapshot and must verify its bundle manifest.
+- Use `.codex/skills/strategy-improvement-research/SKILL.md` for a new bounded
+  core plus deterministic-gate research lineage,
+  `.codex/skills/strategy-forward-start/SKILL.md` only for an explicitly
+  authorized risk-1 rollout, and
+  `.codex/skills/strategy-forward-status/SKILL.md` for read-only prospective
+  inspection. Candidate reporting, comparison, period revalidation, planning,
+  and risk scaling have their own focused skills. The deprecated
+  `.codex/skills/strategy-release/SKILL.md` is only a compatibility router.
+  These contours are strategy-local; portfolio allocation and daily-loss policy
+  are out of scope. `MAX_LOSS_VALUE` remains user-selected.
 - Treat release work as causal trading research, not an audit checklist. Before
   round 1 write the market thesis, build an opportunity map across formation,
   timing, risk geometry, lifecycle, side/regime, concentration, and execution,

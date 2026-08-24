@@ -10,6 +10,18 @@ as the artifact/config root and `TRADEJS_SOURCE_REPOSITORY_ROOT` as the Git and
 build lineage root. Store `data/` and ignored `notes/` only under the project
 root.
 
+When research will apply and compare alternative strategy source edits, create
+one dedicated worktree from the frozen baseline SHA for that immutable lineage.
+Keep the canonical strategy checkout clean, point
+`TRADEJS_SOURCE_REPOSITORY_ROOT` at the worktree, and run source checks there.
+Pure config, artifact, reporting, or read-only backtest work does not require a
+worktree. Before replacing a rejected source candidate, preserve its exact diff,
+build hash, resolved config, and run outcome in Project-owned evidence; restore
+only the disposable worktree. Commit only a selected candidate, and remove a
+no-winner worktree only after evidence is frozen. A worktree does not isolate a
+temporary package overlay in `TradeJS-Project/node_modules`, which must be
+restored separately to the verified stable package.
+
 Use this skill when working on strategy implementation, figures, or backtest configuration in `packages/strategies/src/<StrategyName>`.
 
 Do not use this skill for general `ai-train --localOnly` gate research. Use `ai-train-local-research` for local deterministic AI gate investigations across strategies.
@@ -94,7 +106,7 @@ and PnL reconcile within the documented per-symbol rounding tolerance, use the
 row-level export as the authoritative trade-economic total instead of swapping
 in the cent-rounded Redis aggregate.
 
-For a `$strategy-release` final composition, extend the same permanent report
+For a `$strategy-improvement-research` final composition, extend the same permanent report
 to `1095d/1460d/1825d-or-exact-maximum/365d/180d/90d/30d/7d`. When cached
 coverage is shorter than 1825 days, report the exact covered duration (for
 example 1800d) and do not label it a complete five-year window. Reuse this
@@ -255,7 +267,7 @@ contour in `CORE_RESEARCH.md`:
    embedding the complete resolved config and structured metrics required by
    the note schema.
 
-When `$strategy-release` invokes this contour, screen research is a three-round
+When `$strategy-improvement-research` invokes this contour, screen research is a three-round
 parented DAG rather than one flat sweep. Use one anchor candidate per family in
 round 1, then two evidence-derived child candidates in round 2 and two in round
 3 for each still-viable family. Keep at most five candidates per family across

@@ -234,8 +234,13 @@ Mandatory validation sections for gate work:
   rounded thresholds rather than raw optimizer cutoffs.
 - **Passive rollout**: add new or changed gate logic in observation mode first.
   Log old decision, new decision, reason deltas, and per-timestamp fan-out. Do
-  not enforce a candidate that fails independent-event support or capacity
-  gates.
+  not present or enforce a candidate that fails independent-event support or
+  capacity gates as historically production-ready. The sole exception is an
+  operator-directed prospective test explicitly authorized through
+  `$strategy-forward-start` for one checksum-reproducible candidate at
+  `MAX_LOSS_VALUE=1`; keep its classification `research-only`, retain contrary
+  evidence, and let that skill enforce the immutable target, package, runtime,
+  and rollback boundaries.
 - **Old-gate cleanup**: when an old pocket is replaced or disabled, remove dead
   constants/prompt fields/tests, update notes, and explain the migration path.
 

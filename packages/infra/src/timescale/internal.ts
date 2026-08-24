@@ -41,7 +41,8 @@ export type TimescaleMarketContextSource =
   | 'derivatives'
   | 'hyperliquidWhales';
 
-let marketContextSchemaMode: 'ensure' | 'verify' = 'ensure';
+let marketContextSchemaMode: 'ensure' | 'verify' =
+  process.env.TRADEJS_TIMESCALE_READ_ONLY === 'true' ? 'verify' : 'ensure';
 const verifiedMarketContextSchemas = new Set<TimescaleMarketContextSource>();
 
 export const configureTimescaleMarketContextSchemaMode = (
@@ -133,6 +134,6 @@ export const ensureMarketContextSchemas = async (
   sources: Iterable<TimescaleMarketContextSource>,
 ) => {
   for (const source of new Set(sources)) {
-    await ensureMarketContextSchema(source);
+    await prepareMarketContextSchemaForRead(source);
   }
 };

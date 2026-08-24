@@ -12,7 +12,7 @@ Redis/export reconciliation, setup-identity fallback rate, and evidence matrix
 in the immutable note. Record the explicit spec stage (`screen`,
 `isolated_long`, or `confirmation`); never infer it from elapsed days or file
 names. For later stages include parent research IDs and the family stage-index
-lineage. Iterative `$strategy-release` child screens also include their direct
+lineage. Iterative `$strategy-improvement-research` child screens also include their direct
 parent research IDs, round number, hashed causal-handoff payload, eligible
 carried control, parent result hashes, mechanism verdict, predicted-versus-
 observed trace/metric effect, remaining failure mode, and preregistered child

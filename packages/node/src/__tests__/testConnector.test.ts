@@ -1366,6 +1366,54 @@ describe('testConnector', () => {
     expect(await connector.drainMlResultsBatch()).toEqual([]);
   });
 
+  it('keeps fast summary outcomes aligned with rounded AI trade results', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      aiEnabled: true,
+      fastMode: true,
+      executionCostModel: {
+        fees: { makerRate: 0, takerRate: 0, source: 'config' },
+        funding: { enabled: false, source: 'disabled', points: 0 },
+        slippage: {
+          baseBps: 0,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+    });
+
+    for (const [index, signalId] of ['micro-1', 'micro-2'].entries()) {
+      await connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        isLimit: false,
+        timestamp: index * 2 + 1,
+        direction: 'LONG',
+        signal: { signalId } as any,
+      });
+      await connector.closePosition({
+        symbol: 'ETHUSDT',
+        price: 100.004,
+        isLimit: false,
+        timestamp: index * 2 + 2,
+        direction: 'LONG',
+      });
+    }
+
+    const exported = await connector.drainMlResultsBatch();
+    expect(exported.map(({ tradeResult }) => tradeResult?.netProfit)).toEqual([
+      0, 0,
+    ]);
+    expect((await connector.getResult()).stat).toEqual(
+      expect.objectContaining({ orders: 2, wins: 0, losses: 2 }),
+    );
+  });
+
   it('applies historical funding to long positions', async () => {
     const connector = createTestConnector(baseConnector as any, {
       aiEnabled: true,

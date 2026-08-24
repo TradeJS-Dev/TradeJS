@@ -475,15 +475,16 @@ export const createTestConnector: TestConnectorCreator = (
       return;
     }
 
+    let finalizedCycleResults: TestTradeResult[] = [];
     if (context?.mlEnabled || context?.aiEnabled) {
-      const attributedResults = currentEntryLegResults
+      finalizedCycleResults = currentEntryLegResults
         .filter(({ signalId }) => signalId)
         .map((tradeResult) => finalizeTradeResult(tradeResult, timestamp))
         .filter((tradeResult): tradeResult is TestTradeResult =>
           Boolean(tradeResult),
         );
-      if (attributedResults.length) {
-        for (const tradeResult of attributedResults) {
+      if (finalizedCycleResults.length) {
+        for (const tradeResult of finalizedCycleResults) {
           closedSignalResults.push({
             signalId: tradeResult.signalId,
             profit: round(tradeResult.netProfit),
@@ -494,6 +495,7 @@ export const createTestConnector: TestConnectorCreator = (
         const tradeResult = currentTradeResult
           ? finalizeTradeResult(currentTradeResult, timestamp)
           : undefined;
+        if (tradeResult) finalizedCycleResults = [tradeResult];
         closedSignalResults.push({
           signalId: currentSignalId,
           profit: round(currentPositionProfit),
@@ -512,6 +514,14 @@ export const createTestConnector: TestConnectorCreator = (
         timestamp,
         amount: round(amount),
       },
+      netProfit: finalizedCycleResults.length
+        ? round(
+            finalizedCycleResults.reduce(
+              (total, tradeResult) => total + tradeResult.netProfit,
+              0,
+            ),
+          )
+        : round(currentPositionProfit),
     });
 
     currentPosition = null;

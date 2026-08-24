@@ -53,5 +53,6 @@ must never receive strategy config, deployment documents, or version pointers.
   candidate.
 - A UI pause is an optional Redis override; desired activation remains the
   committed `enabled` value.
-- Commit and push only when the user requested the rollout or the active
-  `$strategy-release` workflow authorizes its complete forward-test handshake.
+- Commit and push only when the user requested the rollout through the active
+  `$strategy-forward-start` workflow, which owns the complete forward-test
+  handshake.

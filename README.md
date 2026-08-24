@@ -27,6 +27,16 @@ starts local Redis and Timescale, and opens the Web UI. On first launch, create
 the local `root` password, then use **Create backtest** to validate a strategy
 before connecting it to a runtime deployment.
 
+It also installs focused Codex workflows under `.codex/skills`. A short request
+such as `$strategy-improvement-research MarketFlushReversal` starts a new
+research lineage, while `$strategy-forward-start MarketFlushReversal` publishes
+and launches the latest eligible candidate at `MAX_LOSS_VALUE=1`. The same
+forward skill can launch a different checksum-reproducible historical candidate
+only when the operator names it explicitly and preserves the contrary evidence
+in a new prospective-only authorization artifact. Reporting, comparison,
+revalidation, forward status, and risk scaling are separate skills, so a
+read-only request cannot silently turn into a deployment.
+
 See the [installation guide](https://docs.tradejs.dev/getting-started/installation)
 and [first backtest walkthrough](https://docs.tradejs.dev/getting-started/first-backtest)
 for the complete local setup.
@@ -390,24 +400,20 @@ Freeze the five gate variants, then open that tail exactly once with the shared
 gate-ablation tool. Plain `--testSplit` produces useful historical diagnostics
 but exposes the tail; it cannot later be relabelled an untouched release test.
 
-### 4. Issue A Strategy Release Verdict
+### 4. Legacy Strategy-Release Evidence Tooling
 
-The repository-local `$strategy-release` skill turns verified core and gate
-evidence into one composition-level decision. It has `release`, `scale-risk`,
-and `diagnose-live` modes. Every release task starts a new immutable lineage unless
-the caller explicitly continues one. Release mode freezes a versioned research
-objective, audits strategy history, and revalidates every deduplicated prior
-core/gate/direction/rescue candidate before selecting new hypotheses. Compatible
-normalized trades are rescored; potentially competitive incompatible evidence
-gets an exact cache-only bridge rerun. Old verdicts and rounds remain evidence,
-but never satisfy the new task's improvement budget.
+The former all-in-one `$strategy-release` skill is deprecated. Public projects
+use `$strategy-candidate-report`, `$strategy-candidate-compare`,
+`$strategy-improvement-plan`, `$strategy-improvement-research`,
+`$strategy-period-revalidate`, `$strategy-forward-start`,
+`$strategy-forward-status`, and `$strategy-risk-scale`. The deterministic CLI,
+schemas, manifests, and evidence commands below remain the low-level
+implementation contract shared by those focused workflows.
 
-The short `release` invocation authorizes the complete contour for the one
-selected candidate: research, source implementation, package/Project commits,
-stable publication, deployment, and a production micro-forward with
-`MAX_LOSS_VALUE=1`. Add `research-only` or `no runtime changes` to stop at a
-portable handoff. No second approval message or 7d/30d/180d waiting period is
-required.
+Only `$strategy-forward-start <Strategy>` authorizes package publication,
+Project config replacement, deployment, and the risk-1 forward test. Research
+freezes a portable candidate handoff and never changes production. Scaling is
+separate again and may change only `MAX_LOSS_VALUE` for the same composition.
 
 Metric-only rescoring and an exact bridge rerun of already-tested behavior do
 not consume the new lineage's 18 causal-candidate slots. Every distinct

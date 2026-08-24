@@ -36,7 +36,8 @@ screen→isolated-long→confirmation history, including rejected branches.
 Preparation also requires the later-stage candidate to retain the canonical
 config SHA of a candidate that passed its direct parent stage.
 
-`$strategy-release` may also chain several immutable `stage=screen` specs in
+`$strategy-improvement-research` may also chain several immutable
+`stage=screen` specs in
 one hypothesis family. Such a child screen names direct `parentResearchIds` in
 the spec and lineage; the stage index validates that the parent exists and stays
 inside the family. Before the child is frozen, its parent analysis must be

@@ -122,6 +122,8 @@
     "signals:daemon": "yarn cli:node8g signals-daemon",
     "replay": "yarn cli:replay replay",
     "replay:evidence": "yarn cli:node8g replay-runtime-evidence",
+    "runtime:feedback:replay": "yarn cli:node8g runtime-feedback-replay",
+    "runtime:feedback:sync": "yarn cli:node8g runtime-feedback-sync",
     "runtime:evidence": "yarn cli:node8g runtime-evidence",
     "runtime:evidence:publish": "yarn runtime:evidence --daily --publishDir \"${RUNTIME_EVIDENCE_PUBLISH_DIR:-output/runtime-evidence}\" --deployment \"${RUNTIME_EVIDENCE_DEPLOYMENT_ID:-production}\"",
     "runtime:evidence:sync": "yarn cli:node8g runtime-evidence-sync",
