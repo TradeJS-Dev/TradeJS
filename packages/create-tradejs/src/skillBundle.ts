@@ -13,6 +13,11 @@ import path from 'node:path';
 export const PROJECT_SKILL_BUNDLE_MANIFEST = '.codex/tradejs-skill-bundle.json';
 
 export const PROJECT_SKILL_NAMES = [
+  'ai-train-local-research',
+  'backtest-config-redis',
+  'runtime-parity-mismatch-analysis',
+  'save-strategy-config-from-backtest',
+  'strategy-backtest-research',
   'strategy-candidate-report',
   'strategy-candidate-compare',
   'strategy-improvement-plan',
@@ -21,6 +26,7 @@ export const PROJECT_SKILL_NAMES = [
   'strategy-forward-start',
   'strategy-forward-status',
   'strategy-risk-scale',
+  'strategy-release',
 ] as const;
 
 export interface TradejsSkillBundleManifest {
@@ -69,6 +75,24 @@ const calculateBundleSha256 = (fileHashes: Record<string, string>) =>
 
 export const createProjectSkillBundle = (canonicalSkillsRoot: string) => {
   const files: Record<string, string> = {};
+  const canonicalSkillNames = readdirSync(canonicalSkillsRoot, {
+    withFileTypes: true,
+  })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        existsSync(path.join(canonicalSkillsRoot, entry.name, 'SKILL.md')),
+    )
+    .map((entry) => entry.name)
+    .sort();
+  const managedSkillNames = [...PROJECT_SKILL_NAMES].sort();
+  if (
+    JSON.stringify(canonicalSkillNames) !== JSON.stringify(managedSkillNames)
+  ) {
+    throw new Error(
+      'PROJECT_SKILL_NAMES must include every canonical TradeJS skill exactly once',
+    );
+  }
 
   for (const skillName of PROJECT_SKILL_NAMES) {
     const skillRoot = path.join(canonicalSkillsRoot, skillName);
@@ -192,6 +216,11 @@ export const syncProjectSkillBundle = (
     bundleFiles[PROJECT_SKILL_BUNDLE_MANIFEST],
   ) as TradejsSkillBundleManifest;
   const installedManifest = readInstalledManifest(projectRoot);
+  const newlyManagedSkills = new Set(
+    newManifest.skills.filter(
+      (skillName) => !installedManifest?.skills.includes(skillName),
+    ),
+  );
 
   for (const [relativePath, contents] of Object.entries(bundleFiles)) {
     if (!isManagedSkillPath(relativePath)) {
@@ -212,7 +241,13 @@ export const syncProjectSkillBundle = (
       const isKnownInstalledFile =
         installedSha256 !== undefined &&
         sha256(currentContents) === installedSha256;
-      if (!isKnownInstalledFile && currentContents !== contents) {
+      const skillName = relativePath.split('/')[2];
+      const isNewlyManagedOfficialSkill = newlyManagedSkills.has(skillName);
+      if (
+        !isKnownInstalledFile &&
+        !isNewlyManagedOfficialSkill &&
+        currentContents !== contents
+      ) {
         throw new Error(
           `Refusing to overwrite a modified skill: ${relativePath}`,
         );

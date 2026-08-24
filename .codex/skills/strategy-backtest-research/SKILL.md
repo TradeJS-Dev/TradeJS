@@ -1,6 +1,6 @@
 ---
 name: strategy-backtest-research
-description: Build, tune, and backtest TradeJS strategies, including StrategyAPI implementation checks, strategy figures, Redis backtest configs, cache-only sweeps, and year-scale AI export preparation.
+description: Execute a scoped TradeJS strategy implementation or preregistered core-backtest experiment, including StrategyAPI checks, figures, Redis configs, cache-only runs, metric reconciliation, and AI export preparation. Use strategy-improvement-research instead to choose hypothesis families or orchestrate a multi-round candidate lineage.
 ---
 
 # Strategy Backtest Research
@@ -22,9 +22,16 @@ no-winner worktree only after evidence is frozen. A worktree does not isolate a
 temporary package overlay in `TradeJS-Project/node_modules`, which must be
 restored separately to the verified stable package.
 
-Use this skill when working on strategy implementation, figures, or backtest configuration in `packages/strategies/src/<StrategyName>`.
+Use this skill when working on strategy implementation, figures, backtest
+configuration, or one already-preregistered core experiment in the owning
+standalone strategy repository.
 
-Do not use this skill for general `ai-train --localOnly` gate research. Use `ai-train-local-research` for local deterministic AI gate investigations across strategies.
+This is an execution skill, not the end-to-end improvement orchestrator. It
+does not invent a multi-round research budget, choose competing hypothesis
+families, rank the global candidate ledger, or freeze the final composition.
+Use `$strategy-improvement-research` for those decisions. Do not use this skill
+for general `ai-train --localOnly` gate research; use
+`$ai-train-local-research` for a frozen core/export.
 
 ## Strategy Shape
 
@@ -244,9 +251,7 @@ used to construct derivatives/CMC inputs. A year-scale export without a fresh
 terminal tail is suitable for historical research but not for a current live
 cadence claim.
 
-## Research notes
-
-## Professional research contour
+## Core experiment execution
 
 For every new core control-versus-candidate experiment, use the versioned
 contour in `CORE_RESEARCH.md`:
@@ -267,17 +272,10 @@ contour in `CORE_RESEARCH.md`:
    embedding the complete resolved config and structured metrics required by
    the note schema.
 
-When `$strategy-improvement-research` invokes this contour, screen research is a three-round
-parented DAG rather than one flat sweep. Use one anchor candidate per family in
-round 1, then two evidence-derived child candidates in round 2 and two in round
-3 for each still-viable family. Keep at most five candidates per family across
-the ledger. Before preparing a child screen, complete the parent's metric,
-setup-matching, occupancy, signal-time regime, cost/statistical, and compact
-trace analysis; record `supported|falsified|inconclusive`, exact config delta,
-and predicted trace/metric effect. Put direct `parentResearchIds` in both the
-child spec and lineage, and regenerate the stage index before and after its run.
-Do not use a failed candidate as the carried control or derive adjacent
-threshold nudges from a PnL leaderboard.
+When `$strategy-improvement-research` invokes this skill, execute only the
+preregistered experiment and return its reconciled evidence. The orchestrator
+owns parent/child selection, research-budget accounting, belief updates, and
+the decision to run another candidate.
 
 After changing the contour itself, use its public test seam:
 

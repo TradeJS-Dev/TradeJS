@@ -15,7 +15,8 @@ repository-level `../../AGENTS.md`.
 - Keep templates secret-free and portable across supported Node/package-manager
   environments.
 - Treat repository-root `.codex/skills` as the single editable source for the
-  focused Project skill bundle. Do not restore committed copies under
+  complete Project TradeJS skill bundle. Every canonical skill directory with
+  a `SKILL.md` must be included exactly once. Do not restore committed copies under
   `templates/.codex/skills`; the package build stages them into `dist` with a
   checksum manifest.
 - Existing projects update the managed bundle only through

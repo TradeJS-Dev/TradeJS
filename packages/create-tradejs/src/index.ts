@@ -248,10 +248,13 @@ npm run dev
 Open [http://localhost:${port}/routes/dashboard](http://localhost:${port}/routes/dashboard).
 On the first launch, TradeJS asks you to create the local root password.
 
-## Codex strategy workflow
+## Codex TradeJS workflows
 
-The project includes focused TradeJS skills under \`.codex/skills\`. Invoke a
-skill with a strategy name, for example:
+The project includes the complete checksum-managed TradeJS skill set under
+\`.codex/skills\`. Use \`$strategy-improvement-research\` to orchestrate a full
+bounded lineage, \`$strategy-backtest-research\` for one preregistered core
+experiment, and \`$ai-train-local-research\` for the frozen gate stage. For
+example:
 
 \`$strategy-candidate-report MarketFlushReversal\`
 
@@ -259,6 +262,10 @@ Use \`$strategy-forward-start <Strategy>\` only when you want Codex to publish
 and launch the selected candidate as a bounded forward test. It installs the
 exact candidate configuration with \`MAX_LOSS_VALUE=1\` and requires an exact
 deployment/account binding.
+
+Update the complete official skill snapshot only through:
+
+\`npx create-tradejs@<approved-version> --update-skills .\`
 `,
     ...readProjectSkillBundle().files,
   };

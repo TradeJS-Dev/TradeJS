@@ -1,4 +1,4 @@
 interface:
-  display_name: 'Strategy Release (Deprecated)'
-  short_description: 'Route to one focused strategy workflow'
-  default_prompt: 'Route this request to the single focused TradeJS strategy skill that matches the requested action.'
+  display_name: "Strategy Release (Deprecated)"
+  short_description: "Deprecated compatibility router"
+  default_prompt: "Use $strategy-release only as a compatibility router to the single focused TradeJS strategy skill that matches the requested action."

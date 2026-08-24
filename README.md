@@ -278,6 +278,28 @@ TRADEJS_SOURCE_REPOSITORY_ROOT=~/dev/tradejs/investing \
 yarn research:core --help
 ```
 
+The reusable AI-gate ablation tool separates strategy lineage from framework
+runtime code. When the source root is a standalone strategy checkout, set
+`TRADEJS_FRAMEWORK_REPOSITORY_ROOT` to the exact TradeJS framework checkout
+whose built `@tradejs/node` and `@tradejs/cli` modules execute the analysis:
+
+```bash
+cd ~/dev/tradejs/tradejs-project
+PROJECT_CWD="$PWD" \
+TRADEJS_SOURCE_REPOSITORY_ROOT=~/dev/tradejs/tradejs-strategy-trend-line \
+TRADEJS_FRAMEWORK_REPOSITORY_ROOT=~/dev/tradejs/investing \
+node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
+  --strategy TrendLine
+```
+
+`strategy-improvement-research` owns end-to-end hypothesis selection and the
+bounded candidate lineage. It delegates each frozen core experiment to
+`strategy-backtest-research` and the final deterministic-gate stage to
+`ai-train-local-research`; those specialist skills do not independently reopen
+the full improvement workflow. All canonical TradeJS skills under
+`.codex/skills` ship as one checksum-managed `create-tradejs` bundle. Existing
+Projects update that snapshot only with `create-tradejs --update-skills`.
+
 ### 1. Implement A Replay-Safe Strategy
 
 Built-in strategies live under `src/<StrategyName>` in their owning

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
@@ -219,20 +220,57 @@ export const parseCliArgs = (argv) => {
   return options;
 };
 
-const findProjectRootFrom = (startPath) => {
-  let current = path.resolve(startPath);
-  while (true) {
-    if (
-      fs.existsSync(path.join(current, 'package.json')) &&
-      fs.existsSync(path.join(current, 'packages', 'node')) &&
-      fs.existsSync(path.join(current, 'packages', 'cli'))
-    ) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
+const resolveExactGitCheckout = (input, environmentName) => {
+  const requestedRoot = path.resolve(input);
+  let exactRoot;
+  let gitRoot;
+  try {
+    exactRoot = fs.realpathSync(requestedRoot);
+    gitRoot = fs.realpathSync(
+      execFileSync('git', ['-C', exactRoot, 'rev-parse', '--show-toplevel'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim(),
+    );
+  } catch {
+    throw new Error(
+      `${environmentName} must identify an existing Git checkout: ${requestedRoot}`,
+    );
   }
+  if (gitRoot !== exactRoot) {
+    throw new Error(
+      `${environmentName} must point to the exact Git repository root, not a subdirectory: ${requestedRoot}`,
+    );
+  }
+  return exactRoot;
+};
+
+const readRepositoryPackage = (root) => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+};
+
+const isFrameworkRepositoryRoot = (root) =>
+  readRepositoryPackage(root) != null &&
+  fs.existsSync(path.join(root, 'packages', 'node')) &&
+  fs.existsSync(path.join(root, 'packages', 'cli'));
+
+const isStandaloneStrategyRepositoryRoot = (root) => {
+  const packageJson = readRepositoryPackage(root);
+  return (
+    /^@tradejs\/strategy-[a-z0-9-]+$/.test(String(packageJson?.name ?? '')) &&
+    packageJson.name !== '@tradejs/strategy-kit' &&
+    fs.existsSync(path.join(root, 'src'))
+  );
+};
+
+export const getSourceRepositoryKind = (root) => {
+  if (isFrameworkRepositoryRoot(root)) return 'framework';
+  if (isStandaloneStrategyRepositoryRoot(root)) return 'strategy';
+  return null;
 };
 
 export const findSourceRepositoryRoot = () => {
@@ -244,10 +282,37 @@ export const findSourceRepositoryRoot = () => {
       'TRADEJS_SOURCE_REPOSITORY_ROOT is required for AI-gate research.',
     );
   }
-  const root = findProjectRootFrom(explicitSourceRoot);
-  if (!root) {
+  const root = resolveExactGitCheckout(
+    explicitSourceRoot,
+    'TRADEJS_SOURCE_REPOSITORY_ROOT',
+  );
+  if (!getSourceRepositoryKind(root)) {
     throw new Error(
-      `TRADEJS_SOURCE_REPOSITORY_ROOT does not identify a TradeJS engine source repository: ${explicitSourceRoot}`,
+      `TRADEJS_SOURCE_REPOSITORY_ROOT must identify a TradeJS framework or standalone strategy repository: ${explicitSourceRoot}`,
+    );
+  }
+  return root;
+};
+
+export const findFrameworkRepositoryRoot = (sourceRepositoryRoot) => {
+  const explicitFrameworkRoot = String(
+    process.env.TRADEJS_FRAMEWORK_REPOSITORY_ROOT || '',
+  ).trim();
+  if (!explicitFrameworkRoot) {
+    if (getSourceRepositoryKind(sourceRepositoryRoot) === 'framework') {
+      return sourceRepositoryRoot;
+    }
+    throw new Error(
+      'TRADEJS_FRAMEWORK_REPOSITORY_ROOT is required when TRADEJS_SOURCE_REPOSITORY_ROOT is a standalone strategy checkout.',
+    );
+  }
+  const root = resolveExactGitCheckout(
+    explicitFrameworkRoot,
+    'TRADEJS_FRAMEWORK_REPOSITORY_ROOT',
+  );
+  if (!isFrameworkRepositoryRoot(root)) {
+    throw new Error(
+      `TRADEJS_FRAMEWORK_REPOSITORY_ROOT must identify a TradeJS framework repository with packages/node and packages/cli: ${explicitFrameworkRoot}`,
     );
   }
   return root;
@@ -1099,17 +1164,80 @@ const newestSourceMtime = async (sourcePath) => {
   return Math.max(0, ...mtimes);
 };
 
-export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
-  const aiModulePath = path.join(
+const resolveStandaloneStrategyEntrypoint = (sourceRepositoryRoot) => {
+  const packageJson = readRepositoryPackage(sourceRepositoryRoot);
+  const rootExport = packageJson?.exports?.['.'];
+  const relativeEntrypoint =
+    (typeof rootExport === 'string'
+      ? rootExport
+      : rootExport?.import ?? rootExport?.default) ??
+    packageJson?.module ??
+    packageJson?.main;
+  if (!relativeEntrypoint) {
+    throw new Error(
+      `Standalone strategy ${packageJson?.name ?? sourceRepositoryRoot} has no importable package entrypoint. Run yarn build first.`,
+    );
+  }
+  const entrypoint = path.resolve(sourceRepositoryRoot, relativeEntrypoint);
+  if (!entrypoint.startsWith(`${sourceRepositoryRoot}${path.sep}`)) {
+    throw new Error(
+      `Standalone strategy entrypoint escapes its repository: ${relativeEntrypoint}`,
+    );
+  }
+  return { entrypoint, packageJson };
+};
+
+export const loadStandaloneStrategyEntries = async (sourceRepositoryRoot) => {
+  if (getSourceRepositoryKind(sourceRepositoryRoot) !== 'strategy') {
+    throw new Error(
+      `Expected a standalone TradeJS strategy repository: ${sourceRepositoryRoot}`,
+    );
+  }
+  const { entrypoint, packageJson } = resolveStandaloneStrategyEntrypoint(
     sourceRepositoryRoot,
+  );
+  let outputStat;
+  try {
+    outputStat = await fsp.stat(entrypoint);
+  } catch {
+    throw new Error(
+      `Missing ${path.relative(sourceRepositoryRoot, entrypoint)} for ${packageJson.name}. Run yarn build in TRADEJS_SOURCE_REPOSITORY_ROOT first.`,
+    );
+  }
+  const sourceMtime = await newestSourceMtime(
+    path.join(sourceRepositoryRoot, 'src'),
+  );
+  if (sourceMtime > outputStat.mtimeMs) {
+    throw new Error(
+      `Stale ${path.relative(sourceRepositoryRoot, entrypoint)} for ${packageJson.name}. Run yarn build in TRADEJS_SOURCE_REPOSITORY_ROOT first.`,
+    );
+  }
+  const pluginModule = await import(pathToFileURL(entrypoint).href);
+  const strategyEntries =
+    pluginModule.strategyEntries ?? pluginModule.default?.strategyEntries;
+  if (!Array.isArray(strategyEntries) || strategyEntries.length === 0) {
+    throw new Error(
+      `${packageJson.name} must export a non-empty strategyEntries array from ${path.relative(sourceRepositoryRoot, entrypoint)}.`,
+    );
+  }
+  return {
+    entrypoint,
+    packageName: packageJson.name,
+    strategyEntries,
+  };
+};
+
+export const ensureRuntimeBuild = async (frameworkRepositoryRoot) => {
+  const aiModulePath = path.join(
+    frameworkRepositoryRoot,
     'packages/node/dist/ai.mjs',
   );
   const registryModulePath = path.join(
-    sourceRepositoryRoot,
+    frameworkRepositoryRoot,
     'packages/node/dist/registry.mjs',
   );
   const pocketModulePath = path.join(
-    sourceRepositoryRoot,
+    frameworkRepositoryRoot,
     'packages/cli/dist/lib/aiPocketSearch.js',
   );
   const required = [aiModulePath, registryModulePath, pocketModulePath];
@@ -1118,7 +1246,7 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
       await fsp.access(filePath);
     } catch {
       throw new Error(
-        `Missing ${path.relative(sourceRepositoryRoot, filePath)}. Run yarn build first.`,
+        `Missing ${path.relative(frameworkRepositoryRoot, filePath)}. Build the framework runtime in TRADEJS_FRAMEWORK_REPOSITORY_ROOT first.`,
       );
     }
   }
@@ -1127,17 +1255,17 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
     {
       output: aiModulePath,
       sources: [
-        path.join(sourceRepositoryRoot, 'packages/node/src/ai.ts'),
-        path.join(sourceRepositoryRoot, 'packages/node/src/aiMarketContext.ts'),
-        path.join(sourceRepositoryRoot, 'packages/node/src/aiShared.ts'),
-        path.join(sourceRepositoryRoot, 'packages/node/src/strategyAdapters'),
+        path.join(frameworkRepositoryRoot, 'packages/node/src/ai.ts'),
+        path.join(frameworkRepositoryRoot, 'packages/node/src/aiMarketContext.ts'),
+        path.join(frameworkRepositoryRoot, 'packages/node/src/aiShared.ts'),
+        path.join(frameworkRepositoryRoot, 'packages/node/src/strategyAdapters'),
       ],
       command: 'yarn workspace @tradejs/node build',
     },
     {
       output: registryModulePath,
       sources: [
-        path.join(sourceRepositoryRoot, 'packages/node/src/strategy'),
+        path.join(frameworkRepositoryRoot, 'packages/node/src/strategy'),
       ],
       command: 'yarn workspace @tradejs/node build',
     },
@@ -1145,7 +1273,7 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
       output: pocketModulePath,
       sources: [
         path.join(
-          sourceRepositoryRoot,
+          frameworkRepositoryRoot,
           'packages/cli/src/lib/aiPocketSearch.ts',
         ),
       ],
@@ -1159,7 +1287,7 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
     ]);
     if (Math.max(0, ...sourceMtimes) > outputStat.mtimeMs) {
       throw new Error(
-        `Stale ${path.relative(sourceRepositoryRoot, check.output)} for current sources. Run ${check.command}.`,
+        `Stale ${path.relative(frameworkRepositoryRoot, check.output)} for current sources. Run ${check.command} in TRADEJS_FRAMEWORK_REPOSITORY_ROOT.`,
       );
     }
   }
@@ -1169,6 +1297,7 @@ export const ensureRuntimeBuild = async (sourceRepositoryRoot) => {
 const loadResearchRows = async ({
   projectRoot,
   sourceRepositoryRoot,
+  frameworkRepositoryRoot,
   filePaths,
   variants,
   minQuality,
@@ -1176,12 +1305,20 @@ const loadResearchRows = async ({
   featurePattern,
 }) => {
   const { aiModulePath, registryModulePath, pocketModulePath } =
-    await ensureRuntimeBuild(sourceRepositoryRoot);
+    await ensureRuntimeBuild(frameworkRepositoryRoot);
   const aiModule = await import(pathToFileURL(aiModulePath).href);
   const registryModule = await import(pathToFileURL(registryModulePath).href);
   const require = createRequire(import.meta.url);
   const { collectAiPocketFeatures } = require(pocketModulePath);
-  await registryModule.ensureStrategyPluginsLoaded();
+  if (getSourceRepositoryKind(sourceRepositoryRoot) === 'strategy') {
+    const { strategyEntries } = await loadStandaloneStrategyEntries(
+      sourceRepositoryRoot,
+    );
+    registryModule.resetStrategyRegistryCache(projectRoot);
+    registryModule.registerStrategyEntries(strategyEntries, projectRoot);
+  } else {
+    await registryModule.ensureStrategyPluginsLoaded(projectRoot);
+  }
 
   const rows = [];
   const featureInventory = new Map();
@@ -3197,6 +3334,8 @@ const hasValidationSign = (pocket, expectedSign, minValidationSupport) => {
 export const buildCrossStrategyReport = async ({
   projectRoot,
   sourceRepositoryRoot,
+  frameworkRepositoryRoot,
+  searchAiPockets: searchAiPocketsOverride,
   groups,
   validationSplit,
   testSplit,
@@ -3221,13 +3360,16 @@ export const buildCrossStrategyReport = async ({
       '--crossStrategy requires positive --validationSplit and --testSplit',
     );
   }
-  const require = createRequire(import.meta.url);
-  const pocketModulePath = path.join(
-    sourceRepositoryRoot,
-    'packages/cli/dist/lib/aiPocketSearch.js',
-  );
-  await fsp.access(pocketModulePath);
-  const { searchAiPockets } = require(pocketModulePath);
+  let searchAiPockets = searchAiPocketsOverride;
+  if (!searchAiPockets) {
+    const require = createRequire(import.meta.url);
+    const pocketModulePath = path.join(
+      frameworkRepositoryRoot,
+      'packages/cli/dist/lib/aiPocketSearch.js',
+    );
+    await fsp.access(pocketModulePath);
+    ({ searchAiPockets } = require(pocketModulePath));
+  }
   const ranges = await getCrossDatasetRanges(groups);
   const minTimestamp = Math.max(...ranges.map((entry) => entry.minTimestamp));
   const maxTimestamp = Math.min(...ranges.map((entry) => entry.maxTimestamp));
@@ -3563,6 +3705,8 @@ export const buildCrossStrategyReport = async ({
     generatedAt: new Date().toISOString(),
     run: {
       mode: 'profiled cross-strategy saved-snapshot feasibility',
+      sourceRepositoryRoot,
+      frameworkRepositoryRoot,
       evidenceStatus:
         'retrospective research-only; this report exposes the historical test tail',
       strategies: groups.length,
@@ -3637,6 +3781,9 @@ export const buildAblationReport = ({
   capacities = DEFAULT_CAPACITIES,
   maxLossValue = null,
   filePaths,
+  sourceRepositoryRoot = null,
+  frameworkRepositoryRoot = null,
+  sourceRepositoryKind = null,
   failed = 0,
   featureInventory = [],
 }) => {
@@ -3762,6 +3909,9 @@ export const buildAblationReport = ({
     generatedAt: new Date().toISOString(),
     run: {
       filePaths,
+      sourceRepositoryRoot,
+      frameworkRepositoryRoot,
+      sourceRepositoryKind,
       rows: rows.length,
       failed,
       minQuality,
@@ -3959,6 +4109,9 @@ export const formatMarkdownReport = (report) => {
       [
         ['rows', report.run.rows],
         ['failed', report.run.failed],
+        ['source_root', report.run.sourceRepositoryRoot ?? 'n/a'],
+        ['source_kind', report.run.sourceRepositoryKind ?? 'n/a'],
+        ['framework_root', report.run.frameworkRepositoryRoot ?? 'n/a'],
         ['range', `${report.run.minTimestamp} .. ${report.run.maxTimestamp}`],
         ['span_days', formatNumber(report.run.spanDays)],
         ['min_quality', report.run.minQuality],
@@ -4760,7 +4913,6 @@ export const main = async () => {
     console.log(usage);
     return;
   }
-  const sourceRepositoryRoot = findSourceRepositoryRoot();
   const projectRoot = resolveArtifactProjectRoot();
   const outDir = path.resolve(projectRoot, options.outDir);
   if (options.list) {
@@ -4777,6 +4929,11 @@ export const main = async () => {
     );
     return;
   }
+  const sourceRepositoryRoot = findSourceRepositoryRoot();
+  const sourceRepositoryKind = getSourceRepositoryKind(sourceRepositoryRoot);
+  const frameworkRepositoryRoot = findFrameworkRepositoryRoot(
+    sourceRepositoryRoot,
+  );
   if (options.crossStrategy) {
     const groups = latestDatasetGroupsByStrategy(
       await listDatasetGroups(outDir),
@@ -4784,6 +4941,7 @@ export const main = async () => {
     const report = await buildCrossStrategyReport({
       projectRoot,
       sourceRepositoryRoot,
+      frameworkRepositoryRoot,
       groups,
       validationSplit: options.validationSplit,
       testSplit: options.testSplit,
@@ -4849,6 +5007,7 @@ export const main = async () => {
   const loaded = await loadResearchRows({
     projectRoot,
     sourceRepositoryRoot,
+    frameworkRepositoryRoot,
     filePaths,
     variants: options.movingAverageStudy ? [] : variants,
     minQuality: options.minQuality,
@@ -4880,6 +5039,9 @@ export const main = async () => {
     testSplit: options.testSplit,
     capacities: options.capacities,
     maxLossValue: options.maxLossValue,
+    sourceRepositoryRoot,
+    frameworkRepositoryRoot,
+    sourceRepositoryKind,
     filePaths: filePaths.map((filePath) =>
       path.relative(projectRoot, filePath),
     ),
