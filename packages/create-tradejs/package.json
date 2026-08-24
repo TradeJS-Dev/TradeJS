@@ -24,7 +24,6 @@
   "bin": "dist/index.js",
   "files": [
     "dist",
-    "templates",
     "README.md"
   ],
   "engines": {
@@ -34,7 +33,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ./scripts/stage-skill-bundle.mjs",
+    "prepack": "yarn build",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
   },
   "devDependencies": {

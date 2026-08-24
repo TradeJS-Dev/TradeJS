@@ -529,6 +529,11 @@ Keep them aligned with:
 
 ### Strategy improvement, forward tests, and prospective diagnosis
 
+- The focused Project skills have one editable source under
+  `.codex/skills`. `create-tradejs` stages a checksum-bound package bundle from
+  that source during build; do not maintain parallel committed copies under
+  `packages/create-tradejs/templates`. Existing Projects receive an explicit
+  `create-tradejs --update-skills` snapshot and must verify its bundle manifest.
 - Use `.codex/skills/strategy-improvement-research/SKILL.md` for a new bounded
   core plus deterministic-gate research lineage,
   `.codex/skills/strategy-forward-start/SKILL.md` only for an explicitly

@@ -1,21 +1,23 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import {
+  createProjectSkillBundle,
+  readPackagedSkillBundle,
+  syncProjectSkillBundle,
+  writeProjectSkillBundle,
+} from './skillBundle';
 
 const DEFAULT_PROJECT_NAME = 'tradejs-project';
 const DEFAULT_PORT = 3000;
-const SKILL_TEMPLATES_ROOT = path.resolve(
+const PACKAGED_SKILL_BUNDLE_ROOT = path.resolve(__dirname, 'skill-bundle');
+const CANONICAL_SKILLS_ROOT = path.resolve(
   __dirname,
   '..',
-  'templates',
+  '..',
+  '..',
   '.codex',
   'skills',
 );
@@ -27,6 +29,7 @@ export interface CreateTradejsOptions {
   start: boolean;
   open: boolean;
   port: number;
+  updateSkills: boolean;
 }
 
 export interface InfrastructurePorts {
@@ -53,6 +56,7 @@ Options:
   --no-infra       Skip Docker infrastructure and onboarding seed
   --no-start       Do not start the Web UI
   --no-open        Do not open a browser
+  --update-skills  Update only the managed TradeJS skill bundle in an existing project
   -h, --help       Show this help`);
 };
 
@@ -71,6 +75,7 @@ export const parseArgs = (argv: string[]): CreateTradejsOptions | null => {
   let start = true;
   let open = true;
   let port = DEFAULT_PORT;
+  let updateSkills = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -93,6 +98,10 @@ export const parseArgs = (argv: string[]): CreateTradejsOptions | null => {
     }
     if (arg === '--no-open') {
       open = false;
+      continue;
+    }
+    if (arg === '--update-skills') {
+      updateSkills = true;
       continue;
     }
     if (arg === '--port') {
@@ -119,14 +128,21 @@ export const parseArgs = (argv: string[]): CreateTradejsOptions | null => {
   if (!install && (infra || start)) {
     throw new Error('--no-install cannot start infrastructure or the Web UI');
   }
+  if (updateSkills) {
+    install = false;
+    infra = false;
+    start = false;
+    open = false;
+  }
 
   return {
-    targetDir: targetDir || DEFAULT_PROJECT_NAME,
+    targetDir: targetDir || (updateSkills ? '.' : DEFAULT_PROJECT_NAME),
     install,
     infra,
     start,
     open,
     port,
+    updateSkills,
   };
 };
 
@@ -141,31 +157,19 @@ const packageNameFromDir = (targetDir: string) => {
 
 const createAuthSecret = () => randomBytes(32).toString('hex');
 
-const readSkillTemplates = (
-  directory = SKILL_TEMPLATES_ROOT,
-  relativeDirectory = '',
-): Record<string, string> => {
-  const files: Record<string, string> = {};
+const readProjectSkillBundle = () =>
+  existsSync(
+    path.join(
+      PACKAGED_SKILL_BUNDLE_ROOT,
+      '.codex',
+      'tradejs-skill-bundle.json',
+    ),
+  )
+    ? readPackagedSkillBundle(PACKAGED_SKILL_BUNDLE_ROOT)
+    : createProjectSkillBundle(CANONICAL_SKILLS_ROOT);
 
-  for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
-    (left, right) => left.name.localeCompare(right.name),
-  )) {
-    const absolutePath = path.join(directory, entry.name);
-    const relativePath = path.join(relativeDirectory, entry.name);
-    if (entry.isDirectory()) {
-      Object.assign(files, readSkillTemplates(absolutePath, relativePath));
-      continue;
-    }
-    if (entry.isFile()) {
-      files[path.join('.codex', 'skills', relativePath)] = readFileSync(
-        absolutePath,
-        'utf8',
-      );
-    }
-  }
-
-  return files;
-};
+export const stageCanonicalSkillBundle = () =>
+  writeProjectSkillBundle(CANONICAL_SKILLS_ROOT, PACKAGED_SKILL_BUNDLE_ROOT);
 
 export const buildProjectFiles = (
   targetDir: string,
@@ -256,7 +260,7 @@ and launch the selected candidate as a bounded forward test. It installs the
 exact candidate configuration with \`MAX_LOSS_VALUE=1\` and requires an exact
 deployment/account binding.
 `,
-    ...readSkillTemplates(),
+    ...readProjectSkillBundle().files,
   };
 };
 
@@ -278,6 +282,11 @@ export const scaffoldProject = (
     writeFileSync(destination, contents, 'utf8');
   }
   return absoluteTarget;
+};
+
+export const updateProjectSkills = (targetDir: string) => {
+  const absoluteTarget = path.resolve(targetDir);
+  return syncProjectSkillBundle(absoluteTarget, readProjectSkillBundle().files);
 };
 
 const run = (command: string, args: string[], cwd: string) => {
@@ -427,6 +436,14 @@ export const main = async () => {
   const options = parseArgs(process.argv.slice(2));
   if (!options) {
     printUsage();
+    return;
+  }
+
+  if (options.updateSkills) {
+    const manifest = updateProjectSkills(options.targetDir);
+    console.log(
+      `Updated TradeJS skill bundle ${manifest.bundleSha256} in ${path.resolve(options.targetDir)}`,
+    );
     return;
   }
 

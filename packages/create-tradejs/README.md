@@ -47,6 +47,18 @@ Operator-directed mode does not rewrite an old research verdict: it preserves
 the original selection and contrary evidence and requires positive full-period
 PnL, profit factor above 1, and checksum-verifiable configuration and charts.
 
+The generated files include `.codex/tradejs-skill-bundle.json`, which binds the
+installed skills to the canonical TradeJS bundle by SHA-256. To update only
+that managed bundle in an existing project, use an explicitly selected
+`create-tradejs` version:
+
+```bash
+npx create-tradejs@<approved-version> --update-skills .
+```
+
+The updater preserves unrelated custom skills and refuses to overwrite a
+managed file that no longer matches its installed checksum.
+
 ## License
 
 The `create-tradejs` scaffolder remains MIT-licensed. Generated projects
