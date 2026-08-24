@@ -6,6 +6,7 @@ describe('timescale candle helpers', () => {
     delete process.env.PG_POOL_MAX;
     delete process.env.PG_CONNECTION_TIMEOUT_MS;
     delete process.env.MARKET_CONTEXT_SQL_TIMEOUT_MS;
+    delete process.env.TRADEJS_TIMESCALE_READ_ONLY;
     delete (global as typeof globalThis & { __pgPool__?: unknown }).__pgPool__;
   });
 
@@ -78,6 +79,33 @@ describe('timescale candle helpers', () => {
 
     expect(() => toRows('  ', 'BTCUSDT', 15, [])).toThrow(
       'Candle provider is required',
+    );
+  });
+
+  it('verifies candles without schema DDL in read-only replay mode', async () => {
+    process.env.TRADEJS_TIMESCALE_READ_ONLY = 'true';
+    const query = jest.fn((sql: string) => {
+      if (sql.includes('to_regclass')) {
+        return Promise.resolve({ rows: [{ tableName: 'candles' }] });
+      }
+      if (sql.includes('FROM candles')) {
+        return Promise.resolve({ rows: [] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({ query })),
+    }));
+
+    const { getCandlesRange } = await import(
+      '@tradejs/infra/timescale/candles'
+    );
+    await expect(
+      getCandlesRange('bybit', 'BTCUSDT', 15, 1_000, 2_000),
+    ).resolves.toEqual([]);
+    expect(query).not.toHaveBeenCalledWith(
+      expect.stringMatching(/CREATE|ALTER/i),
+      expect.anything(),
     );
   });
 
@@ -1255,6 +1283,32 @@ describe('timescale candle helpers', () => {
       expect.stringContaining('CREATE TABLE'),
       expect.anything(),
     );
+  });
+
+  it('defaults market-context schema checks to verify in read-only replay mode', async () => {
+    process.env.TRADEJS_TIMESCALE_READ_ONLY = 'true';
+    const poolQuery = jest.fn();
+    const clientQuery = jest.fn().mockResolvedValue({ rows: [] });
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn().mockResolvedValue({
+          query: clientQuery,
+          release: jest.fn(),
+        }),
+        query: poolQuery,
+      })),
+    }));
+
+    const { ensureMarketContextSchemas } = await import(
+      '@tradejs/infra/timescale/marketContext'
+    );
+    await ensureMarketContextSchemas(['binance']);
+
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('unnest($1::text[])'),
+      expect.anything(),
+    );
+    expect(poolQuery).not.toHaveBeenCalled();
   });
 
   it('upserts idempotent Hyperliquid whale events with snapshot identities', async () => {

@@ -97,11 +97,16 @@ export const markRuntimeEvidenceBundleProcessed = async ({
   deploymentId,
   bundleDir,
   scorecardPath,
+  runtimeFeedback,
 }: {
   evidenceRoot: string;
   deploymentId: string;
   bundleDir: string;
   scorecardPath?: string | null;
+  runtimeFeedback?: {
+    artifactId: string;
+    replayEvidenceSha256: string;
+  } | null;
 }) => {
   const safeDeploymentId = safeSegment(deploymentId, 'production');
   const verified = await verifyRuntimeEvidenceBundle(bundleDir);
@@ -114,11 +119,17 @@ export const markRuntimeEvidenceBundleProcessed = async ({
   const finalPath = receiptPath(receiptsRoot, verified.manifest.artifactId);
   const temporaryPath = `${finalPath}.tmp-${process.pid}`;
   const receipt = {
-    schemaVersion: 1,
+    schemaVersion: runtimeFeedback ? 2 : 1,
     artifactId: verified.manifest.artifactId,
     payloadSha256: verified.manifest.payload.sha256,
     processedAt: Date.now(),
     scorecardPath: scorecardPath ?? null,
+    ...(runtimeFeedback
+      ? {
+          runtimeFeedbackArtifactId: runtimeFeedback.artifactId,
+          replayEvidenceSha256: runtimeFeedback.replayEvidenceSha256,
+        }
+      : {}),
   };
 
   await fs.mkdir(receiptsRoot, { recursive: true });

@@ -410,6 +410,10 @@ export const replayRuntimeEvidence = async () => {
       availableKeys: replay.availableKeys,
       startedAt: replayValue.startedAt ?? null,
       finishedAt: replayValue.finishedAt ?? null,
+      durationSeconds: replayValue.durationSeconds ?? null,
+      cycleCount: replayValue.cycleCount ?? null,
+      abortedCycles: replayValue.abortedCycles ?? null,
+      signalsCount: replayValue.signalsCount ?? null,
       resultsByStrategies: asArray(replayValue.resultsByStrategies).filter(
         (row) =>
           !strategies.length ||

@@ -21,6 +21,18 @@ export const ensureCandlesSchema = async () => {
     CANDLES_SCHEMA_LOCK_KEY,
     async () => {
       const pool = getPool();
+      if (process.env.TRADEJS_TIMESCALE_READ_ONLY === 'true') {
+        const result = await pool.query<{ tableName: string | null }>(
+          `SELECT to_regclass('public.candles') AS "tableName"`,
+        );
+        if (!result.rows[0]?.tableName) {
+          throw new Error(
+            'Timescale candles schema is not prepared for read-only replay',
+          );
+        }
+        candlesSchemaReady = true;
+        return;
+      }
       await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS candles (

@@ -101,7 +101,8 @@ describe('historical replay preparation', () => {
       ...strategyConfig,
       ENV: 'PARITY',
       INTERVAL: '15',
-      MAKE_ORDERS: true,
+      MAKE_ORDERS: false,
+      SIMULATE_ORDERS: true,
       RECORD_RUNTIME_TRADES: false,
     };
     expect(strategyCreator).toHaveBeenCalledWith(

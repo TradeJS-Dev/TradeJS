@@ -112,6 +112,28 @@ export const isTestConnector = (connector: Connector) =>
       .__tradejsTestConnector,
   );
 
+export const isRuntimeOrderExecutionEnabled = ({
+  config,
+  env,
+  connector,
+  externalOrderPlacement = process.env.TRADEJS_EXTERNAL_ORDER_PLACEMENT,
+}: {
+  config: StrategyConfig;
+  env: string;
+  connector: Connector;
+  externalOrderPlacement?: string;
+}) => {
+  const testConnector = isTestConnector(connector);
+  const simulationEnabled =
+    env === 'PARITY' && config.SIMULATE_ORDERS === true && testConnector;
+  const makeOrdersRequested =
+    typeof config.MAKE_ORDERS === 'boolean' ? config.MAKE_ORDERS : true;
+
+  if (!testConnector && externalOrderPlacement === 'false') return false;
+  if (env === 'PARITY' && !testConnector) return false;
+  return makeOrdersRequested || simulationEnabled;
+};
+
 export const canUseSharedReplayState = ({
   env,
   sharedReplayKey,
