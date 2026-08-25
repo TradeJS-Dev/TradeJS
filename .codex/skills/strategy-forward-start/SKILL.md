@@ -51,10 +51,16 @@ Do not infer production from Redis.
 Stop before mutation if the target binding is ambiguous, credentials/registry
 authorization is missing, the candidate is not reproducible or implementable,
 the maximum-covered historical edge is non-positive, required evidence/chart
-hashes are missing, required checks fail, another rollout is active, or safe
-atomic deployment is unavailable. These are operational or falsifiability
-boundaries and operator-directed mode does not waive them. Give the exact
-command or UI boundary the user must complete; never start an interactive
+hashes are missing, required checks fail, another rollout for the same strategy
+is active, a deployment or rollout cutover on the target is still in flight, or
+safe atomic deployment is unavailable. An active risk-1 forward test for a
+different strategy on the same deployment or account is not a blocker: preserve
+its declaration and evidence, and do not confuse the presence of its active
+rollout ledger with an in-flight cutover. Multiple strategies may intentionally
+run concurrent forward tests, including when the operator uses
+`MAX_LOSS_VALUE=1` as the forward-test marker. These operational and
+falsifiability boundaries are not waived by operator-directed mode. Give the
+exact command or UI boundary the user must complete; never start an interactive
 authentication flow.
 
 ## Release and configure
