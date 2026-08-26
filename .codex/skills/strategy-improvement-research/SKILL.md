@@ -48,10 +48,16 @@ hypothesis-family choice, trial budget, parent/child decisions, candidate
 selection, and final handoff. Delegate each preregistered core implementation
 and backtest to `$strategy-backtest-research`; that skill returns reconciled
 experiment evidence and does not choose the next candidate. After freezing the
-core finalist/export, delegate deterministic-gate analysis to
-`$ai-train-local-research`; it must not reopen core selection. Read those
+complete core board, delegate one independent deterministic-gate board for the
+baseline and for every complete, reconciled, behavior-changing core candidate
+to `$ai-train-local-research`; it must not reopen core selection. Read those
 specialist skills when their stage begins instead of duplicating their command,
 metric, or reporting contracts here.
+
+Before preregistration, read
+[`references/final-composition-board.md`](references/final-composition-board.md).
+It defines candidate-specific gate isolation, common partitions, the final
+composition ledger, and the mandatory visual artifacts.
 
 ## Required contour
 
@@ -74,15 +80,36 @@ metric, or reporting contracts here.
    tail. Stop only when a reproducible best candidate is frozen, the fresh
    budget is exhausted, or every remaining family has a recorded hard causal
    blocker.
-6. Keep one chronological tail sealed during discovery when coverage permits.
-   Open it once for the final selected behavior. Track all exposed tests for
-   multiple-testing/deflated-Sharpe interpretation.
-7. Freeze the selected core/export before opening deterministic-gate research.
-   Run the gate stage through `$ai-train-local-research`; do not retune or
-   relabel the raw-core result inside gate tooling.
-8. Run package formatting, typecheck, tests, and build in the lineage worktree.
-   Commit only the selected candidate and its tests on that worktree branch;
-   preserve rejected experiments as immutable evidence, not source clutter.
+6. Keep one common chronological core tail sealed during core discovery when
+   coverage permits. Freeze the complete raw-core board before any gate result
+   may influence core-family selection. Track all exposed core and gate tests
+   for multiple-testing/deflated-Sharpe interpretation.
+7. Freeze an acceptance-grade export for the baseline and every complete,
+   reconciled, behavior-changing core candidate. Give each export its own gate
+   discovery and exactly one selected deterministic gate; never reuse another
+   core's gate metrics or compare a gated candidate with an ungated baseline.
+   On the production core export, also replay the exact current production
+   AI-gate and bind it to its checksum-verified gate-authority report. This
+   `production core + current AI-gate` composition is the mandatory baseline;
+   the production core with its newly rebuilt gate is a separate research
+   candidate and must not replace the current-gate baseline.
+   Use common calendar train/tuning/test boundaries and open every sealed gate
+   tail together only after all per-core gate variants are frozen. Run every
+   gate board through `$ai-train-local-research`; do not retune or relabel the
+   raw-core result inside gate tooling.
+8. Build the final leaderboard from the mandatory `production core + current
+AI-gate` baseline and `core + own deterministic gate` research candidates,
+   including `production core + rebuilt gate` as its own candidate. Preserve
+   raw-core metrics in a separate diagnostic table. Apply the final selection
+   rules and multiple-testing denominator to the complete core-by-gate trial
+   ledger, not only to the winning core or gate.
+9. Generate and checksum the mandatory final-composition dashboard and
+   cumulative-equity chart with the permanent script from the referenced
+   contract. A metrics-only handoff or a chart mixing raw and gated candidates
+   is incomplete.
+10. Run package formatting, typecheck, tests, and build in the lineage worktree.
+    Commit only the selected candidate and its tests on that worktree branch;
+    preserve rejected experiments as immutable evidence, not source clutter.
 
 ## Selection objective
 
@@ -102,3 +129,12 @@ source/package SHA, full resolved core config, deterministic gate/context,
 direction policy, evidence hashes, trial count, metric matrix, chart, freshness,
 limitations, and forward-test eligibility. End with the selected candidate,
 why it beat production and prior candidates, and exactly one next skill.
+
+The handoff must link both visual artifacts for the final compositions:
+
+- `final-composition-dashboard.{svg,png}` with KPI deltas against the exact
+  production-core + current-AI-gate baseline, terminal
+  `365d/180d/90d/30d/7d` PnL, and the all-candidate PnL-versus-MaxDD plane;
+- `final-composition-equity.{svg,png}` with cumulative PnL for the gated
+  production baseline, the rebuilt production-core gate, and every final
+  `core + own gate` composition over the common comparison window.

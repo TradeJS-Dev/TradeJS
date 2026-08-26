@@ -11,6 +11,7 @@ import {
   balanceCrossStrategyRows,
   buildAblationReport,
   buildCrossStrategyReport,
+  buildEquitySeries,
   buildMovingAverageVariants,
   calculateMovingAverageGrid,
   buildShiftedProfitLookups,
@@ -35,6 +36,7 @@ import {
   partitionCrossStrategyFeatures,
   resolveArtifactProjectRoot,
   splitRowsByTimestamp,
+  splitRowsByTimestampBounds,
   summarizeRows,
   summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
@@ -195,6 +197,8 @@ test('parses repeated variants and research windows', () => {
     '--qualityThresholds',
     '4,5',
     '--testSplit=0.2',
+    '--tuningSince=2025-01-01T00:00:00.000Z',
+    '--testSince=2025-07-01T00:00:00.000Z',
     '--capacities=1,3,5',
     '--maxLossValue=0.2',
   ]);
@@ -207,6 +211,8 @@ test('parses repeated variants and research windows', () => {
   assert.deepEqual(options.terminalWindows, [180, 90, 30, 7]);
   assert.deepEqual(options.qualityThresholds, [4, 5]);
   assert.equal(options.testSplit, 0.2);
+  assert.equal(options.tuningSince, Date.UTC(2025, 0, 1));
+  assert.equal(options.testSince, Date.UTC(2025, 6, 1));
   assert.deepEqual(options.capacities, [1, 3, 5]);
   assert.equal(options.maxLossValue, 0.2);
 });
@@ -1045,6 +1051,46 @@ test('groups split and fan-out metrics by decision timestamp', () => {
   assert.deepEqual(
     [...new Set(split.test.map((row) => row.timestamp))],
     [third],
+  );
+});
+
+test('uses exact calendar boundaries without splitting timestamp events', () => {
+  const train = Date.UTC(2025, 0, 1);
+  const tuning = Date.UTC(2025, 3, 1);
+  const testStart = Date.UTC(2025, 6, 1);
+  const rows = [
+    { timestamp: train, id: 'train' },
+    { timestamp: tuning, id: 'tuning-a' },
+    { timestamp: tuning, id: 'tuning-b' },
+    { timestamp: testStart, id: 'test' },
+  ];
+
+  const split = splitRowsByTimestampBounds(rows, tuning, testStart);
+
+  assert.deepEqual(split.train.map((row) => row.id), ['train']);
+  assert.deepEqual(split.tuning.map((row) => row.id), [
+    'tuning-a',
+    'tuning-b',
+  ]);
+  assert.deepEqual(split.test.map((row) => row.id), ['test']);
+});
+
+test('builds timestamp-grouped cumulative equity with common endpoints', () => {
+  const start = Date.UTC(2025, 0, 1);
+  const end = Date.UTC(2025, 0, 3);
+  const rows = [
+    { timestamp: start, profit: 2, keep: true },
+    { timestamp: start, profit: -1, keep: true },
+    { timestamp: Date.UTC(2025, 0, 2), profit: 10, keep: false },
+    { timestamp: end, profit: 3, keep: true },
+  ];
+
+  assert.deepEqual(
+    buildEquitySeries(rows, (row) => row.keep, start, end),
+    [
+      [start, 1],
+      [end, 4],
+    ],
   );
 });
 

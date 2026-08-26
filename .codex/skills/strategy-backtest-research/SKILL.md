@@ -113,14 +113,15 @@ and PnL reconcile within the documented per-symbol rounding tolerance, use the
 row-level export as the authoritative trade-economic total instead of swapping
 in the cent-rounded Redis aggregate.
 
-For a `$strategy-improvement-research` final composition, extend the same permanent report
+For every `$strategy-improvement-research` final composition, extend the same permanent report
 to `1095d/1460d/1825d-or-exact-maximum/365d/180d/90d/30d/7d`. When cached
 coverage is shorter than 1825 days, report the exact covered duration (for
 example 1800d) and do not label it a complete five-year window. Reuse this
 tool's full ALL/LONG/SHORT statistics; do not replace them with a compact custom
-parser. The release workflow must then run `ai-train --localOnly --chart -n 0`
-on the exact full export so the UI chart and structured gate statistics share
-the finalist lineage.
+parser. The improvement workflow then builds one independently verified
+deterministic gate on each exact core export, including the baseline export, and
+compares only the resulting `core + own gate` compositions. Raw-core metrics
+remain diagnostic and must never be mixed into the final-composition chart.
 
 ## Required Core Metric Cohorts
 

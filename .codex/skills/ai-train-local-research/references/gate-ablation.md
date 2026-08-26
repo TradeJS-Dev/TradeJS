@@ -116,6 +116,10 @@ set, pass `--spec path/to/variants.json`:
 }
 ```
 
+JSON reports include timestamp-grouped cumulative `equity` arrays for the
+current-gate baseline and every variant. Use these checksum-bound arrays for
+final-composition charts instead of reconstructing curves by hand.
+
 ## Expression Grammar
 
 Expressions support parentheses, `&&`, `||`, and comparisons:
@@ -150,6 +154,11 @@ preceding train and validation rows and reports only the sealed test bounds.
 Plain `--testSplit` exposes test metrics and cannot be called untouched after
 the report is read. Open the sealed tail once with the frozen fixed-rule
 ablation.
+
+When several core candidates must be compared, pass the same exact UTC
+`--tuningSince` and `--testSince` boundaries to every candidate ablation.
+Exact boundaries take precedence over ratio splits and keep sparse candidates
+on one calendar partition contract.
 
 ## Cross-Strategy Feasibility
 

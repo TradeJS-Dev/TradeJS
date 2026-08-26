@@ -34,6 +34,8 @@ Options:
   --terminalWindows <list>     Terminal windows in days (default: 180,90,30,7)
   --validationSplit <ratio>    Trailing timestamp-grouped tuning share (default: 0.25)
   --testSplit <ratio>          Later timestamp-grouped test share (default: 0)
+  --tuningSince <timestamp>    Exact UTC boundary where tuning starts
+  --testSince <timestamp>      Exact UTC boundary where test starts
   --capacities <list>          Capacity stress limits (default: 1,3,5)
   --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
@@ -89,6 +91,8 @@ export const parseCliArgs = (argv) => {
     terminalWindows: DEFAULT_WINDOWS,
     validationSplit: 0.25,
     testSplit: 0,
+    tuningSince: null,
+    testSince: null,
     capacities: DEFAULT_CAPACITIES,
     maxLossValue: null,
     variants: [],
@@ -161,6 +165,13 @@ export const parseCliArgs = (argv) => {
       options.testSplit = Number.isFinite(parsed)
         ? Math.max(0, Math.min(0.9, parsed))
         : 0;
+    } else if (name === 'tuningSince' || name === 'testSince') {
+      const numeric = Number(value);
+      const parsed = Number.isFinite(numeric) ? numeric : Date.parse(value);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid timestamp for --${name}: ${value}`);
+      }
+      options[name] = parsed;
     } else if (name === 'capacities') {
       options.capacities = parseNumberList(value, DEFAULT_CAPACITIES);
     } else if (name === 'maxLossValue') {
@@ -1016,6 +1027,28 @@ export const splitRowsByTimestamp = (rows, validationSplit, testSplit = 0) => {
   };
 };
 
+export const splitRowsByTimestampBounds = (
+  rows,
+  tuningSince,
+  testSince,
+) => {
+  if (!Number.isFinite(tuningSince) || !Number.isFinite(testSince)) {
+    throw new Error(
+      'Exact calendar partitions require both tuningSince and testSince',
+    );
+  }
+  if (tuningSince >= testSince) {
+    throw new Error('tuningSince must be earlier than testSince');
+  }
+  return {
+    train: rows.filter((row) => row.timestamp < tuningSince),
+    tuning: rows.filter(
+      (row) => row.timestamp >= tuningSince && row.timestamp < testSince,
+    ),
+    test: rows.filter((row) => row.timestamp >= testSince),
+  };
+};
+
 const summarizeSplit = (rows, selector, summaryOptions) =>
   summarizeRows(selectRows(rows, selector), getPeriodDays(rows), {
     ...summaryOptions,
@@ -1033,6 +1066,34 @@ const summarizeDirections = (rows, selector, summaryOptions) =>
       ),
     ]),
   );
+
+export const buildEquitySeries = (
+  rows,
+  selector,
+  minTimestamp = rows[0]?.timestamp ?? null,
+  maxTimestamp = rows.at(-1)?.timestamp ?? null,
+) => {
+  if (!Number.isFinite(minTimestamp) || !Number.isFinite(maxTimestamp)) {
+    return [];
+  }
+  const byTimestamp = new Map();
+  for (const row of rows) {
+    if (!selector(row)) continue;
+    byTimestamp.set(
+      row.timestamp,
+      (byTimestamp.get(row.timestamp) ?? 0) + row.profit,
+    );
+  }
+  let cumulative = 0;
+  const result = [[minTimestamp, 0]];
+  for (const [timestamp, profit] of byTimestamp) {
+    cumulative += profit;
+    if (timestamp === minTimestamp) result[0] = [timestamp, cumulative];
+    else result.push([timestamp, cumulative]);
+  }
+  if (result.at(-1)[0] !== maxTimestamp) result.push([maxTimestamp, cumulative]);
+  return result;
+};
 
 const buildPeriodDirectionSummaries = ({
   rows,
@@ -3778,6 +3839,8 @@ export const buildAblationReport = ({
   terminalWindows,
   validationSplit,
   testSplit = 0,
+  tuningSince = null,
+  testSince = null,
   capacities = DEFAULT_CAPACITIES,
   maxLossValue = null,
   filePaths,
@@ -3790,7 +3853,15 @@ export const buildAblationReport = ({
   if (!rows.length) throw new Error('No rows were evaluated');
   const minTimestamp = rows[0].timestamp;
   const maxTimestamp = rows.at(-1).timestamp;
-  const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  if ((tuningSince == null) !== (testSince == null)) {
+    throw new Error(
+      'Exact calendar partitions require both tuningSince and testSince',
+    );
+  }
+  const exactCalendarPartitions = tuningSince != null;
+  const split = exactCalendarPartitions
+    ? splitRowsByTimestampBounds(rows, tuningSince, testSince)
+    : splitRowsByTimestamp(rows, validationSplit, testSplit);
   const partitionEvidence = (partitionRows) => ({
     rows: partitionRows.length,
     events: new Set(partitionRows.map((row) => row.timestamp)).size,
@@ -3804,6 +3875,12 @@ export const buildAblationReport = ({
   const summaryOptions = { capacities, maxLossValue };
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
   const baseline = {
+    equity: buildEquitySeries(
+      rows,
+      baselineSelector,
+      minTimestamp,
+      maxTimestamp,
+    ),
     periods: buildPeriodSummaries({
       rows,
       selector: baselineSelector,
@@ -3849,6 +3926,12 @@ export const buildAblationReport = ({
       quality: variant.quality,
       direction: variant.direction,
       expression: variant.expression,
+      equity: buildEquitySeries(
+        rows,
+        candidateSelector,
+        minTimestamp,
+        maxTimestamp,
+      ),
       periods: buildPeriodSummaries({
         rows,
         selector: candidateSelector,
@@ -3919,6 +4002,13 @@ export const buildAblationReport = ({
       terminalWindows,
       validationSplit,
       testSplit,
+      partitionMode: exactCalendarPartitions ? 'exact-calendar' : 'ratio',
+      tuningSince: exactCalendarPartitions
+        ? new Date(tuningSince).toISOString()
+        : null,
+      testSince: exactCalendarPartitions
+        ? new Date(testSince).toISOString()
+        : null,
       capacities,
       maxLossValue,
       trainRows: split.train.length,
@@ -4935,6 +5025,11 @@ export const main = async () => {
     sourceRepositoryRoot,
   );
   if (options.crossStrategy) {
+    if (options.tuningSince != null || options.testSince != null) {
+      throw new Error(
+        '--tuningSince/--testSince are supported by candidate ablation only',
+      );
+    }
     const groups = latestDatasetGroupsByStrategy(
       await listDatasetGroups(outDir),
     );
@@ -5037,6 +5132,8 @@ export const main = async () => {
     terminalWindows: options.terminalWindows,
     validationSplit: options.validationSplit,
     testSplit: options.testSplit,
+    tuningSince: options.tuningSince,
+    testSince: options.testSince,
     capacities: options.capacities,
     maxLossValue: options.maxLossValue,
     sourceRepositoryRoot,

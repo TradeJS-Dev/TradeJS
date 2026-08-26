@@ -582,8 +582,10 @@ Keep them aligned with:
   refinement rounds. Use causally distinct untested historical changes before
   novel anchors. Keep at most five candidates per family in these rounds, then
   run one mandatory cadence-diverse rescue child for each of up to three best
-  valid diagnostic seeds, for 18 core candidates total at most. Keep one
-  isolated-long finalist and one deterministic gate tuning round. Freeze a
+  valid diagnostic seeds, for 18 core candidates total at most. Freeze the
+  complete reconciled core board, then run one independently checksum-bound
+  deterministic gate board for the baseline and every behavior-changing core
+  candidate; each board has at most five causal gate variants. Freeze a
   chronological core release tail before round 1; improvement and rescue rounds
   may not inspect it, while the post-rescue finalist opens it once on the
   maximum common cached half-open window. Every historical command uses
@@ -625,9 +627,16 @@ Keep them aligned with:
   PnL/trade, PF, WR, realized MaxDD, and cadence. When no composition qualifies,
   the matrix is still mandatory for the authoritative control, best aggregate,
   best LONG, best SHORT, rescue children, and direction-policy attempts.
-- Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT.
+- Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT
+  for the baseline and every complete core candidate. Core family decisions use
+  only the frozen raw-core board; gate evidence cannot reopen core selection.
+  Freeze common calendar train/tuning/test boundaries across candidate exports,
+  open all sealed gate tails together only after every per-core gate spec is
+  immutable, and rank only final `core + own gate` compositions against the
+  rebuilt gated baseline. Never compare a gated candidate with a raw baseline
+  or reuse another core candidate's gate metrics.
   If the current gate approves zero or negligible support from a profitable raw
-  side, the single gate round must test exactly five preregistered
+  side, that core candidate's gate board must test exactly five preregistered
   direction-aware repair variants (control, side pass-through, causal side
   pocket, protected side pocket, direction-aware replacement). Do not reject a
   strategy merely because its current gate discarded an existing side edge.
@@ -650,14 +659,15 @@ Keep them aligned with:
   mechanism, an untouched evaluation tail, and no prior repair. Do not fit a
   condition to a sparse/exposed 30d or 7d loser set; retain the long-window edge
   and move it to prospective micro-forward evidence instead.
-- End every completed release research run with the complete
-  `$ai-train-local-research` report and full-export
-  `yarn ai-train --localOnly --chart -n 0`. This remains mandatory for a
+- End every completed release research run with one complete
+  `$ai-train-local-research` report and full-export gate replay for every final
+  composition. Generate the checksum-bound final-composition dashboard and
+  cumulative-equity comparison from those reports. This remains mandatory for a
   negative verdict: use the frozen current gate/control or side-qualified
   handoff and label it diagnostic-only when no candidate qualifies. Persist and
-  hash the structured output plus chart lineage. A missing or
-  different-lineage report/chart blocks a complete market-unsuitable verdict
-  and any forward action. From TradeJS-Project, run
+  hash every structured output plus the chart lineage. A missing per-core gate,
+  raw/gated mixed chart, or different-lineage report/chart blocks a complete
+  market-unsuitable verdict and any forward action. From TradeJS-Project, run
   `yarn strategy-release decide`; never leave
   the next action as an unbounded “wait”.
 - The `strategy-release decide` input must point to the structured chart report
