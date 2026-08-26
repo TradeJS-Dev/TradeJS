@@ -53,11 +53,17 @@ describe('npm release workflows', () => {
     expect(versionedPackagePhase).not.toContain('yarn unit');
   });
 
-  it('promotes the current verified beta on a weekly schedule', () => {
+  it('promotes only an exact beta already soaked in production', () => {
     const workflow = readWorkflow('promote-release.yml');
 
-    expect(workflow).toContain('schedule:');
-    expect(workflow).toContain("cron: '0 3 * * 1'");
+    expect(workflow).not.toContain('schedule:');
+    expect(workflow).toContain('beta_version:');
+    expect(workflow).toContain('project_sha:');
+    expect(workflow).toMatch(/beta_version:[\s\S]*required: true/);
+    expect(workflow).toMatch(/project_sha:[\s\S]*required: true/);
+    expect(workflow).toContain('TradeJS-Project/contents/package.json');
+    expect(workflow).toContain('TradeJS-Deploy/actions/workflows/deploy.yml/runs');
+    expect(workflow).toContain('Production beta must soak for at least 24 hours');
     expect(workflow).not.toMatch(/confirm[_-]promotion/);
     expect(workflow).toContain('publish-images.yml/runs');
     expect(workflow).not.toMatch(/^\s*environment:/m);

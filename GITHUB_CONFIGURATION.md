@@ -52,9 +52,10 @@ required.
 
 ## Project and deployment credentials
 
-`TradeJS-Project` composes exact stable package versions and publishes the
-immutable application image. It does not publish npm packages and therefore
-must not have `NPM_TOKEN`.
+`TradeJS-Project` composes an exact verified framework beta cohort plus exact
+stable Base, Kit, and strategy packages, then publishes the immutable
+application image. It does not publish npm packages and therefore must not have
+`NPM_TOKEN`.
 
 Its only cross-repository credential is the repository secret
 `DEPLOY_REPOSITORY_TOKEN`, restricted to dispatching `TradeJS-Deploy`.

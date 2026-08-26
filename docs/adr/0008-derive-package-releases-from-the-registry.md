@@ -15,9 +15,16 @@ to one exact release version only in their ephemeral checkout.
 
 For a relevant source push, the beta workflow reads `@tradejs/types@latest`,
 derives the next patch plus its unique workflow run suffix, verifies every
-package and production-like consumer, and moves `beta` only after success. The
-stable workflow proves the beta's npm `gitHead` and successful CI run, derives
-the stable version from that beta, repeats all stable checks, and tags the
+package and production-like consumer, and moves `beta` only after success.
+TradeJS-Project polls that verified channel but commits the resolved exact beta
+cohort, builds one immutable image, and deploys that exact Project SHA.
+
+Stable promotion is an explicit weekly operation rather than an independent
+GitHub cron. It requires the exact beta and current Project SHA, proves that the
+Project pins the complete beta cohort, requires the latest successful Deploy
+run to identify that Project SHA, and enforces at least 24 hours of production
+soak. It then proves the beta's npm `gitHead` and successful CI run, derives the
+stable version from that beta, repeats the stable package checks, and tags the
 verified `stable` source commit before moving every package's `latest` tag.
 
 This ordering makes the release idempotent without a protected-branch write. An
@@ -29,5 +36,5 @@ architecture.
 
 Runtime consumers remain stricter than the source workspace: TradeJS-Project
 pins exact published versions in `package.json`, `yarn.lock`, and its runtime
-package manifest. This ADR changes package-release bookkeeping only; it does not
-weaken runtime composition identity or trigger a server deployment.
+package manifest. A mutable npm tag is discovery input only and never a runtime
+identity. Moving `latest` does not trigger a second production deployment.

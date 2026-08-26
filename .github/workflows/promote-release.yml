@@ -1,14 +1,16 @@
-name: Promote verified beta weekly
-run-name: Weekly stable promotion ${{ inputs.beta_version || 'current beta' }}
+name: Promote deployed beta to stable
+run-name: Promote deployed beta ${{ inputs.beta_version }}
 
 on:
-  schedule:
-    - cron: '0 3 * * 1'
   workflow_dispatch:
     inputs:
       beta_version:
-        description: Exact beta version; empty selects the current beta tag
-        required: false
+        description: Exact beta version observed in healthy production
+        required: true
+        type: string
+      project_sha:
+        description: Exact currently deployed TradeJS-Project SHA
+        required: true
         type: string
 
 permissions:
@@ -28,6 +30,7 @@ jobs:
     env:
       PROMOTE: 'true'
       INPUT_BETA_VERSION: ${{ inputs.beta_version }}
+      INPUT_PROJECT_SHA: ${{ inputs.project_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -39,13 +42,66 @@ jobs:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
+      - name: Validate current production deployment evidence
+        run: |
+          [[ "$INPUT_BETA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*$ ]] || {
+            echo 'beta_version must be an exact canonical beta' >&2
+            exit 1
+          }
+          [[ "$INPUT_PROJECT_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'project_sha must be a full lowercase Git SHA' >&2
+            exit 1
+          }
+          project_package_json="$(gh api --method GET \
+            'repos/TradeJS-Dev/TradeJS-Project/contents/package.json' \
+            -f ref="$INPUT_PROJECT_SHA" --jq .content | base64 --decode)"
+          PROJECT_PACKAGE_JSON="$project_package_json" node <<'NODE'
+          const packageJson = JSON.parse(process.env.PROJECT_PACKAGE_JSON);
+          const betaVersion = process.env.INPUT_BETA_VERSION;
+          const isFramework = (name) =>
+            name.startsWith('@tradejs/') &&
+            name !== '@tradejs/base' &&
+            name !== '@tradejs/strategy-kit' &&
+            !name.startsWith('@tradejs/strategy-');
+          const frameworkPackages = Object.entries(packageJson.dependencies ?? {})
+            .filter(([name]) => isFramework(name));
+          if (!frameworkPackages.length) {
+            throw new Error('Project has no framework package cohort');
+          }
+          const mismatches = frameworkPackages
+            .filter(([, version]) => version !== betaVersion)
+            .map(([name, version]) => `${name}@${version}`);
+          if (mismatches.length) {
+            throw new Error(
+              `Project does not pin ${betaVersion}: ${mismatches.join(', ')}`,
+            );
+          }
+          NODE
+          deployment="$(gh api --method GET \
+            'repos/TradeJS-Dev/TradeJS-Deploy/actions/workflows/deploy.yml/runs' \
+            -f status=success -f per_page=100 \
+            --jq '.workflow_runs | map(select(.conclusion == "success")) | first | [.display_title, .created_at, .html_url] | @tsv')"
+          IFS=$'\t' read -r deployment_title deployed_at deployment_url <<< "$deployment"
+          [ "$deployment_title" = "Deploy Project $INPUT_PROJECT_SHA" ] || {
+            echo "Latest successful production deployment is ${deployment_title:-missing}" >&2
+            exit 1
+          }
+          DEPLOYED_AT="$deployed_at" node <<'NODE'
+          const deployedAt = Date.parse(process.env.DEPLOYED_AT);
+          const minimumSoakMs = 24 * 60 * 60 * 1000;
+          if (!Number.isFinite(deployedAt)) throw new Error('Invalid deployment timestamp');
+          if (Date.now() - deployedAt < minimumSoakMs) {
+            throw new Error('Production beta must soak for at least 24 hours');
+          }
+          NODE
+          {
+            printf 'Production Project: `%s`\n' "$INPUT_PROJECT_SHA"
+            printf 'Production deployment: %s\n' "$deployment_url"
+            printf 'Production beta: `%s`\n' "$INPUT_BETA_VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Resolve beta and validate its complete CI evidence
         run: |
-          beta_version="${INPUT_BETA_VERSION:-$(npm view '@tradejs/types@beta' version 2>/dev/null || true)}"
-          if [ -z "$beta_version" ]; then
-            echo 'PROMOTE=false' >> "$GITHUB_ENV"
-            exit 0
-          fi
+          beta_version="$INPUT_BETA_VERSION"
           stable_target="${beta_version%%-beta.*}"
           latest_version="$(npm view '@tradejs/types@latest' version)"
           if [ "$latest_version" = "$stable_target" ]; then

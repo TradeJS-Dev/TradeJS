@@ -809,21 +809,23 @@ tests, dry-runs and publishes that exact prerelease under `beta-candidate`, then
 runs quickstart, sandbox, and a production-like `TradeJS-Project` Docker smoke
 against registry-installed packages. Only a fully successful run moves the npm
 `beta` tag, so a failed candidate cannot replace the last verified beta. Pushes
-never update `latest`, commit package versions, create stable Git tags, or deploy
-the beta image to production.
+never update `latest`, commit package versions, or create stable Git tags.
+`TradeJS-Project` polls the verified `beta` tag, pins the complete exact beta
+cohort, and deploys one immutable Project image; production never installs from
+a mutable dist-tag.
 
-`.github/workflows/promote-release.yml` runs Mondays at `03:00 UTC`. It resolves
-the current `beta` tag, proves that the matching source SHA completed the full
-beta workflow, promotes it to one stable patch, reruns stable checks, tags the
-verified source as `v<version>`, and only then moves `latest`. Published versions
-are derived from npm `latest`; source manifests deliberately use the common
-`3.1.0+development` compatibility version and are rewritten only in the
-ephemeral release workspace. The workflow never writes a release commit to the
-protected `stable` branch and needs no deploy key. A protected manual dispatch
-is the emergency path. `TradeJS-Project` then batches all newly promoted stable
-framework, base, kit, and strategy packages at `06:00 UTC` into one exact
-composition, one image, and one production rollout. Production never consumes
-an npm prerelease.
+`.github/workflows/promote-release.yml` has no independent cron. A weekly Codex
+automation supplies the exact beta and currently deployed Project SHA after
+checking production health. The workflow proves that Project pins that beta,
+that the latest successful Deploy run installed the same Project SHA for at
+least 24 hours, and that the matching source SHA completed the full beta
+workflow. It then promotes the beta to one stable patch, reruns stable checks,
+tags the verified source as `v<version>`, and only then moves `latest`. Moving
+`latest` does not redeploy production. Published versions are derived from npm
+`latest`; source manifests deliberately use the common `3.1.0+development`
+compatibility version and are rewritten only in the ephemeral release
+workspace. The workflow never writes a release commit to the protected
+`stable` branch and needs no deploy key.
 
 The selected-repository organization secret `NPM_TOKEN` must contain an npm
 automation-capable token with publish access to the `@tradejs` organization.
