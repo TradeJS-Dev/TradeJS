@@ -14,6 +14,7 @@ import type {
   Connector,
   RuntimeTradeRecord,
   Interval,
+  RuntimeDeployment,
   RuntimeStrategiesResponse,
   StrategyConfig,
   RuntimeStrategyControlState,
@@ -75,6 +76,58 @@ const resolveConnectorAccountId = async ({
       universe: 'crypto',
     })
   )?.id;
+
+const loadRuntimeConnectorScopes = async ({
+  userName,
+  provider,
+  connectorCreator,
+  runtimeDeployments,
+}: {
+  userName: string;
+  provider: string;
+  connectorCreator: NonNullable<
+    Awaited<ReturnType<typeof resolveConnectorCreatorByProvider>>
+  >;
+  runtimeDeployments: RuntimeDeployment[];
+}) => {
+  const providerDeployments = runtimeDeployments.filter(
+    (deployment) => deployment.provider === provider,
+  );
+
+  if (!providerDeployments.length) {
+    const accountId = await resolveConnectorAccountId({ userName, provider });
+    return [
+      {
+        connector: await connectorCreator({
+          userName,
+          accountId,
+          universe: 'crypto',
+        }),
+        strategyNames: [
+          ...new Set(
+            runtimeDeployments.flatMap((deployment) =>
+              deployment.strategies.map(({ strategyName }) => strategyName),
+            ),
+          ),
+        ],
+      },
+    ];
+  }
+
+  return Promise.all(
+    providerDeployments.map(async (deployment) => ({
+      connector: await connectorCreator({
+        userName,
+        accountId: deployment.accountId,
+        deploymentId: deployment.id,
+        universe: 'crypto',
+      }),
+      strategyNames: deployment.strategies.map(
+        ({ strategyName }) => strategyName,
+      ),
+    })),
+  );
+};
 
 const loadRuntimeTrades = async (
   userName: string,
@@ -364,79 +417,101 @@ export const loadRuntimeDashboard = async ({
     throw new Error(`No connector available for provider "${provider}"`);
   }
 
-  const connectorAccountId = await resolveConnectorAccountId({
+  const [runtimeTrades, activeOrderIds, runtimeDeployments, tradingAccounts] =
+    await Promise.all([
+      loadRuntimeTrades(userName, { startTime, endTime }),
+      loadActiveRuntimeOrderIds(userName),
+      listRuntimeDeployments({ userName, projectRoot }),
+      listTradingAccounts(userName),
+    ]);
+  const connectorScopes = await loadRuntimeConnectorScopes({
     userName,
     provider,
-  });
-  const connector = await connectorCreator({
-    userName,
-    accountId: connectorAccountId,
-    universe: 'crypto',
-  });
-
-  const [
-    runtimeTrades,
-    activeOrderIds,
-    closedPnlRows,
-    entryRows,
-    openPositionsSnapshot,
+    connectorCreator,
     runtimeDeployments,
-    tradingAccounts,
-  ] = await Promise.all([
-    loadRuntimeTrades(userName, { startTime, endTime }),
-    loadActiveRuntimeOrderIds(userName),
-    loadClosedPnlRows({
-      connector,
-      startTime,
-      endTime,
-      errors: exchangeErrors,
+  });
+  const exchangeScopes = await Promise.all(
+    connectorScopes.map(async ({ connector, strategyNames }) => {
+      const [closedPnlRows, entryRows, openPositionsSnapshot] =
+        await Promise.all([
+          loadClosedPnlRows({
+            connector,
+            startTime,
+            endTime,
+            errors: exchangeErrors,
+          }),
+          loadExchangeEntryRows({
+            connector,
+            startTime,
+            endTime,
+            errors: exchangeErrors,
+          }),
+          loadOpenPositions(connector, exchangeErrors),
+        ]);
+
+      return {
+        connector,
+        strategyNames,
+        closedPnlRows,
+        entryRows,
+        openPositionsSnapshot,
+      };
     }),
-    loadExchangeEntryRows({
-      connector,
-      startTime,
-      endTime,
-      errors: exchangeErrors,
-    }),
-    loadOpenPositions(connector, exchangeErrors),
-    listRuntimeDeployments({ userName, projectRoot }),
-    listTradingAccounts(userName),
-  ]);
+  );
   const relevantTrades = selectTradesForWindow(
     runtimeTrades,
     startTime,
     activeOrderIds,
   );
-  const syncableTrades = relevantTrades.filter((trade) =>
-    isRuntimeTradeInConnectorScope(trade, connector),
-  );
-  const unsyncedTrades = relevantTrades.filter(
-    (trade) => !isRuntimeTradeInConnectorScope(trade, connector),
-  );
-  const syncedConnectorTrades = await syncRuntimeTrades({
-    userName,
+  const claimedOrderIds = new Set<string>();
+  const syncedConnectorTrades: RuntimeTradeRecord[] = [];
+
+  for (const {
     connector,
-    trades: syncableTrades,
-    endTime,
-    openPositions: openPositionsSnapshot.positions,
-    openPositionsReliable: openPositionsSnapshot.reliable,
     closedPnlRows,
-  });
+    openPositionsSnapshot,
+  } of exchangeScopes) {
+    const scopeTrades = relevantTrades.filter(
+      (trade) =>
+        !claimedOrderIds.has(trade.orderId) &&
+        isRuntimeTradeInConnectorScope(trade, connector),
+    );
+    scopeTrades.forEach((trade) => claimedOrderIds.add(trade.orderId));
+    syncedConnectorTrades.push(
+      ...(await syncRuntimeTrades({
+        userName,
+        connector,
+        trades: scopeTrades,
+        endTime,
+        openPositions: openPositionsSnapshot.positions,
+        openPositionsReliable: openPositionsSnapshot.reliable,
+        closedPnlRows,
+      })),
+    );
+  }
+  const unsyncedTrades = relevantTrades.filter(
+    (trade) => !claimedOrderIds.has(trade.orderId),
+  );
   const syncedTrades = [...unsyncedTrades, ...syncedConnectorTrades];
-  const fallbackStrategyNames = [
-    ...new Set(
-      runtimeDeployments.flatMap((deployment) =>
-        deployment.strategies.map(({ strategyName }) => strategyName),
-      ),
-    ),
-  ];
-  const fallbackTrades = buildExchangeFallbackRuntimeTrades({
+  const fallbackTrades: RuntimeTradeRecord[] = [];
+
+  for (const {
+    strategyNames,
     entryRows,
     closedPnlRows,
-    openPositions: openPositionsSnapshot.positions,
-    strategyNames: fallbackStrategyNames,
-    existingTrades: syncedTrades,
-    endTime,
-  });
+    openPositionsSnapshot,
+  } of exchangeScopes) {
+    fallbackTrades.push(
+      ...buildExchangeFallbackRuntimeTrades({
+        entryRows,
+        closedPnlRows,
+        openPositions: openPositionsSnapshot.positions,
+        strategyNames,
+        existingTrades: [...syncedTrades, ...fallbackTrades],
+        endTime,
+      }),
+    );
+  }
   const allTrades = [...syncedTrades, ...fallbackTrades].filter(
     isRuntimeTradeRecord,
   );

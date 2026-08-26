@@ -50,7 +50,7 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 
 jest.mock('../runtimeTradeSync', () => ({
-  isRuntimeTradeInConnectorScope: jest.fn(() => true),
+  ...jest.requireActual('../runtimeTradeSync'),
   syncRuntimeTrades: (...args: unknown[]) => mockSyncRuntimeTrades(...args),
 }));
 
@@ -110,9 +110,10 @@ describe('runtime dashboard', () => {
     mockGetKeys.mockResolvedValue([]);
     mockSyncRuntimeTrades.mockImplementation(async ({ trades }) => trades);
     mockGetConnectorCreatorByProvider.mockResolvedValue(
-      jest.fn(async () => ({
+      jest.fn(async ({ accountId, deploymentId }) => ({
         universe: 'crypto',
-        accountId: 'crypto-main',
+        accountId,
+        deploymentId,
       })),
     );
   });
@@ -160,6 +161,44 @@ describe('runtime dashboard', () => {
         },
       ],
     });
+  });
+
+  it('binds the connector before reconciling deployment-scoped trades', async () => {
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'production-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentId: 'trendline-forward',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 60_000,
+        status: 'active',
+      },
+    ]);
+
+    await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(mockSyncRuntimeTrades).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connector: expect.objectContaining({
+          accountId: 'crypto-main',
+          deploymentId: 'trendline-forward',
+        }),
+        trades: [expect.objectContaining({ orderId: 'production-order' })],
+      }),
+    );
   });
 
   it('surfaces an invalid Git-owned runtime declaration', async () => {
