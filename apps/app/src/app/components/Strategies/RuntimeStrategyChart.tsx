@@ -109,14 +109,6 @@ export const RuntimeStrategyChart = ({
                     x={change.timestamp}
                     stroke={chart.color('orange.400')}
                     strokeDasharray="4 4"
-                    label={{
-                      value: `Revision ${change.strategyRevision
-                        .replace(/^sr1:/, '')
-                        .slice(0, 8)}`,
-                      offset: 8,
-                      fill: chart.color('orange.300'),
-                      position: 'insideTopRight',
-                    }}
                   />
                 ))}
                 <TimeSeriesXAxis

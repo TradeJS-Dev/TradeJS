@@ -43,7 +43,11 @@ jest.mock('recharts', () => {
       label?: { value?: string };
     }) =>
       x == null ? null : (
-        <div data-testid="revision-line" data-timestamp={x}>
+        <div
+          data-testid="revision-line"
+          data-timestamp={x}
+          data-label={label?.value}
+        >
           {label?.value}
         </div>
       ),
@@ -85,7 +89,7 @@ describe('RuntimeStrategyChart', () => {
     expect(screen.queryByText(/Evidence/)).toBeNull();
   });
 
-  it('renders strategy revision changes as vertical reference lines', () => {
+  it('renders unlabeled vertical lines for strategy revision changes', () => {
     render(
       <RuntimeStrategyChart
         orderLog={[
@@ -109,7 +113,8 @@ describe('RuntimeStrategyChart', () => {
     );
 
     expect(screen.getAllByTestId('revision-line')).toHaveLength(2);
-    expect(screen.getByText('Revision 11111111')).toBeTruthy();
-    expect(screen.getByText('Revision 22222222')).toBeTruthy();
+    for (const line of screen.getAllByTestId('revision-line')) {
+      expect(line.getAttribute('data-label')).toBeNull();
+    }
   });
 });

@@ -20,6 +20,7 @@ import {
 } from '#components/Shared/OrdersDrawer';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
 import { RuntimeStrategyConfigDrawer } from './RuntimeStrategyConfigDrawer';
+import { RuntimeStrategyRevisionsDrawer } from './RuntimeStrategyRevisionsDrawer';
 import { RuntimeStrategyStatsDrawer } from './RuntimeStrategyStatsDrawer';
 import {
   buildRuntimeStrategyCardViewModel,
@@ -65,6 +66,7 @@ export const RuntimeStrategyCard = ({
   const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [controlSaving, setControlSaving] = useState(false);
   const viewModel = useMemo(
     () => buildRuntimeStrategyCardViewModel(strategy),
@@ -209,6 +211,12 @@ export const RuntimeStrategyCard = ({
                   <Menu.Item value="stat" onClick={() => setStatsOpen(true)}>
                     Stat
                   </Menu.Item>
+                  <Menu.Item
+                    value="revisions"
+                    onClick={() => setRevisionsOpen(true)}
+                  >
+                    Revisions
+                  </Menu.Item>
                 </Menu.Content>
               </Menu.Positioner>
             </Portal>
@@ -237,6 +245,12 @@ export const RuntimeStrategyCard = ({
         open={statsOpen}
         onOpenChange={setStatsOpen}
         viewModel={viewModel}
+      />
+
+      <RuntimeStrategyRevisionsDrawer
+        open={revisionsOpen}
+        strategy={strategy}
+        onOpenChange={setRevisionsOpen}
       />
 
       <RuntimeStrategyChart
