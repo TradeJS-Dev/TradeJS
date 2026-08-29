@@ -619,18 +619,32 @@ const equitySvg = (board) => {
     const position = y(value);
     return `<line x1="${left}" x2="${width - right}" y1="${position}" y2="${position}" class="grid"/><text x="${left - 18}" y="${position + 5}" text-anchor="end" class="axis">${escapeXml(formatCompact(value))}</text>`;
   }).join('');
-  const years = [];
-  const startYear = new Date(minTime).getUTCFullYear();
-  const endYear = new Date(maxTime).getUTCFullYear();
-  for (let year = startYear; year <= endYear; year += 1) {
-    const timestamp = Date.UTC(year, 0, 1);
-    if (timestamp >= minTime && timestamp <= maxTime)
-      years.push({ year, timestamp });
-  }
-  const xGrid = years
-    .map(({ year, timestamp }) => {
+  const spanDays = (maxTime - minTime) / 86_400_000;
+  const xTicks = Array.from({ length: 6 }, (_, index) => {
+    const timestamp = Math.round(
+      minTime + ((maxTime - minTime) * index) / 5,
+    );
+    const date = new Date(timestamp);
+    const label =
+      spanDays >= 730
+        ? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+        : spanDays >= 90
+          ? date.toLocaleDateString('en-CA', {
+              timeZone: 'UTC',
+              year: 'numeric',
+              month: 'short',
+            })
+          : date.toLocaleDateString('en-CA', {
+              timeZone: 'UTC',
+              month: 'short',
+              day: '2-digit',
+            });
+    return { label, timestamp };
+  });
+  const xGrid = xTicks
+    .map(({ label, timestamp }) => {
       const position = x(timestamp);
-      return `<line x1="${position}" x2="${position}" y1="${top}" y2="${height - bottom}" class="grid faint"/><text x="${position}" y="${height - bottom + 34}" text-anchor="middle" class="axis">${year}</text>`;
+      return `<line x1="${position}" x2="${position}" y1="${top}" y2="${height - bottom}" class="grid faint"/><text x="${position}" y="${height - bottom + 34}" text-anchor="middle" class="axis">${escapeXml(label)}</text>`;
     })
     .join('');
   const curves = board.candidates
@@ -652,12 +666,12 @@ const equitySvg = (board) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
       const lx = left + column * legendWidth;
-      const ly = height - bottom + 85 + row * 58;
+      const ly = height - bottom + 110 + row * 58;
       return `<g transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
     })
     .join('');
   const selected = board.candidates.find(({ id }) => id === board.selectedId);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition equity"><style>.bg{fill:#fff}.title{font:700 36px Arial,sans-serif;fill:#172033}.subtitle{font:18px Arial,sans-serif;fill:#687184}.axis{font:15px Arial,sans-serif;fill:#687184}.grid{stroke:#e2e6eb;stroke-width:1.5}.faint{opacity:.55}.legendLabel{font:600 17px Arial,sans-serif;fill:#263044}.legendMetric{font:15px Arial,sans-serif;fill:#687184}.axisTitle{font:17px Arial,sans-serif;fill:#394459}</style><rect width="100%" height="100%" class="bg"/><text x="${left}" y="58" class="title">${escapeXml(board.title)}</text><text x="${left}" y="92" class="subtitle">Baseline = production core + current AI-gate · candidates = core + own deterministic gate</text><text x="${left}" y="120" class="subtitle">Selected: ${escapeXml(selected.label)} · ${escapeXml(board.subtitle)}</text>${yGrid}${xGrid}<line x1="${left}" x2="${width - right}" y1="${y(0)}" y2="${y(0)}" stroke="#aab2bd" stroke-width="1.5"/>${curves}<line x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><line x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><text x="30" y="${top + plotHeight / 2}" transform="rotate(-90 30 ${top + plotHeight / 2})" text-anchor="middle" class="axisTitle">Cumulative PnL (${escapeXml(board.normalization.pnlUnit)})</text>${legend}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition equity"><style>.bg{fill:#fff}.title{font:700 36px Arial,sans-serif;fill:#172033}.subtitle{font:18px Arial,sans-serif;fill:#687184}.axis{font:15px Arial,sans-serif;fill:#687184}.grid{stroke:#e2e6eb;stroke-width:1.5}.faint{opacity:.55}.legendLabel{font:600 17px Arial,sans-serif;fill:#263044}.legendMetric{font:15px Arial,sans-serif;fill:#687184}.axisTitle{font:17px Arial,sans-serif;fill:#394459}</style><rect width="100%" height="100%" class="bg"/><text x="${left}" y="58" class="title">${escapeXml(board.title)}</text><text x="${left}" y="92" class="subtitle">Baseline = production core + current AI-gate · candidates = core + own deterministic gate</text><text x="${left}" y="120" class="subtitle">Selected: ${escapeXml(selected.label)} · ${escapeXml(board.subtitle)}</text>${yGrid}${xGrid}<line x1="${left}" x2="${width - right}" y1="${y(0)}" y2="${y(0)}" stroke="#aab2bd" stroke-width="1.5"/>${curves}<line x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><line x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><text x="${left + plotWidth / 2}" y="${height - bottom + 67}" text-anchor="middle" class="axisTitle">Exit date (UTC)</text><text x="30" y="${top + plotHeight / 2}" transform="rotate(-90 30 ${top + plotHeight / 2})" text-anchor="middle" class="axisTitle">Cumulative PnL (${escapeXml(board.normalization.pnlUnit)})</text>${legend}</svg>`;
 };
 
 const verifyCandidateArtifacts = async (board, artifactRoot) => {

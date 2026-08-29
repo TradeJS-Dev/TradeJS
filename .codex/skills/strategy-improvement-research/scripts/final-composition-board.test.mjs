@@ -176,6 +176,9 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
   assert.match(dashboard, /Final compositions: PnL ↔ drawdown/u);
   assert.match(equity, /production core \+ current AI-gate/u);
   assert.match(equity, /candidate \+ own gate/u);
+  assert.match(equity, /Exit date \(UTC\)/u);
+  assert.match(equity, /Nov 2023/u);
+  assert.match(equity, /Mar 2024/u);
 });
 
 test('renders an additional terminal comparison without changing selectedId', async () => {
