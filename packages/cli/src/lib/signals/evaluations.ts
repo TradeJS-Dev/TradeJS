@@ -8,6 +8,7 @@ import {
 } from '@tradejs/infra/redis';
 import {
   buildRuntimeSignalStatsIncrements,
+  appendRuntimeSignalEvaluationRun,
   getRuntimeSignalRetentionTtlSeconds,
   getRuntimeStorageDayKey,
   RuntimeLineageScopeRecord,
@@ -150,6 +151,10 @@ export const flushRuntimeSignalEvaluations = async (
         lastTimestamp: Math.max(
           existing?.lastTimestamp ?? evaluation.timestamp,
           evaluation.timestamp,
+        ),
+        evaluationRuns: appendRuntimeSignalEvaluationRun(
+          existing?.evaluationRuns,
+          evaluation,
         ),
       };
       runtimeLineageScopeCache.set(cacheKey, scope);

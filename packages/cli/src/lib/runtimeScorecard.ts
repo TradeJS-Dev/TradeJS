@@ -7,6 +7,7 @@ type JsonRecord = Record<string, unknown>;
 export type RuntimeScorecardThresholds = {
   minimumParityRatio: number;
   maximumSlippageResidualBps: number;
+  maximumSignalCloseToSubmitMs?: number;
   minimumClosedTrades: number;
   minimumExpectancy: number;
 };
@@ -336,6 +337,23 @@ const countBy = (
   );
 };
 
+const resolveGateDecision = (evaluation: JsonRecord) => {
+  const analysis = asRecord(evaluation.aiAnalysis);
+  const explicit = finiteString(analysis?.gateDecision);
+  if (explicit === 'approved' || explicit === 'rejected') {
+    return { decision: explicit, source: 'gate_decision' as const };
+  }
+  if (typeof analysis?.approved === 'boolean') {
+    return {
+      decision: analysis.approved
+        ? ('approved' as const)
+        : ('rejected' as const),
+      source: 'legacy_approved_fallback' as const,
+    };
+  }
+  return null;
+};
+
 const buildDistributions = ({
   evaluations,
   signals,
@@ -560,12 +578,9 @@ export const buildRuntimeScorecard = ({
     (evaluation) => evaluation.status === 'signal',
   );
   const gateDecisions = signalEvaluations
-    .map((evaluation) => ({
-      evaluation,
-      decision: finiteString(asRecord(evaluation.aiAnalysis)?.gateDecision),
-    }))
-    .filter(
-      ({ decision }) => decision === 'approved' || decision === 'rejected',
+    .map(resolveGateDecision)
+    .filter((decision): decision is NonNullable<typeof decision> =>
+      Boolean(decision),
     );
   const llmEligibleEvaluations =
     llmComparatorPolicy === 'disabled'
@@ -573,14 +588,13 @@ export const buildRuntimeScorecard = ({
       : llmComparatorPolicy === 'ai_approved_only'
         ? signalEvaluations.filter(
             (evaluation) =>
-              finiteString(asRecord(evaluation.aiAnalysis)?.gateDecision) ===
-              'approved',
+              resolveGateDecision(evaluation)?.decision === 'approved',
           )
         : signalEvaluations;
   const gateComparisons = llmEligibleEvaluations
     .map((evaluation) => {
       const analysis = asRecord(evaluation.aiAnalysis);
-      const gateDecision = finiteString(analysis?.gateDecision);
+      const gateDecision = resolveGateDecision(evaluation)?.decision ?? null;
       const llmDecision = finiteString(analysis?.llmDecision);
       if (
         (gateDecision !== 'approved' && gateDecision !== 'rejected') ||
@@ -635,6 +649,30 @@ export const buildRuntimeScorecard = ({
   };
   const actualSlippageBps = averageSampleMetric('signalToFillAdverseBps');
   const residualVsModelBps = averageSampleMetric('residualVsCurrentModelBps');
+  const signalToArrivalAdverseBps = averageSampleMetric(
+    'signalToArrivalAdverseBps',
+  );
+  const arrivalToFillAdverseBps = averageSampleMetric(
+    'arrivalToFillAdverseBps',
+  );
+  const averageSignalCloseToSubmitMs = averageSampleMetric(
+    'signalCloseToSubmitMs',
+  );
+  const averageSubmitToFillMs = averageSampleMetric('submitToFillMs');
+  const fullTelemetryTrades = calibrationSamples.filter(
+    (sample) => finiteString(sample.telemetryQuality) === 'full',
+  ).length;
+  const arrivalQuoteTrades = calibrationSamples.filter(
+    (sample) => finiteNumber(sample.arrivalMid) != null,
+  ).length;
+  const arrivalQuoteCoverage = calibrationSamples.length
+    ? round(arrivalQuoteTrades / calibrationSamples.length)
+    : null;
+  const hasTelemetryQuality = calibrationSamples.some(
+    (sample) => finiteString(sample.telemetryQuality) != null,
+  );
+  const maximumSignalCloseToSubmitMs =
+    thresholds.maximumSignalCloseToSubmitMs ?? 30_000;
   const prospective = getProspectiveSummary(prospectiveEvidenceArtifact);
   const historyTrades = dedupeTrades([
     ...scopedHistoryArtifacts,
@@ -712,7 +750,36 @@ export const buildRuntimeScorecard = ({
     reactions.push({
       code: 'SLIPPAGE_DRIFT',
       severity: 'warning',
-      message: `Execution residual ${round(residualVsModelBps, 2)} bps exceeds ${thresholds.maximumSlippageResidualBps} bps.`,
+      message: `Signal-close-to-fill residual ${round(residualVsModelBps, 2)} bps exceeds ${thresholds.maximumSlippageResidualBps} bps.`,
+    });
+  }
+  if (
+    averageSignalCloseToSubmitMs != null &&
+    averageSignalCloseToSubmitMs > maximumSignalCloseToSubmitMs
+  ) {
+    reactions.push({
+      code: 'PRE_SUBMIT_LATENCY',
+      severity: 'warning',
+      message: `Average signal-close-to-submit latency ${round(averageSignalCloseToSubmitMs, 3)} ms exceeds ${maximumSignalCloseToSubmitMs} ms.`,
+    });
+  }
+  if (
+    hasTelemetryQuality &&
+    calibrationSamples.length > 0 &&
+    fullTelemetryTrades < calibrationSamples.length
+  ) {
+    reactions.push({
+      code: 'EXECUTION_TELEMETRY_INCOMPLETE',
+      severity: 'info',
+      message: `Full arrival and fill telemetry is available for ${fullTelemetryTrades}/${calibrationSamples.length} trades.`,
+    });
+  }
+  if (riskDecisions.some((decision) => decision.status === 'rejected')) {
+    reactions.push({
+      code: 'RISK_PLAN_EXCEEDS_DECLARED_LIMIT',
+      severity: 'warning',
+      message:
+        'At least one observed order plan exceeds its declared MAX_LOSS_VALUE; telemetry is not yet enforced.',
     });
   }
   if (
@@ -751,7 +818,10 @@ export const buildRuntimeScorecard = ({
     deployment: deploymentBinding,
     lineage: runtimeLineage,
     promotionStatus,
-    thresholds,
+    thresholds: {
+      ...thresholds,
+      maximumSignalCloseToSubmitMs,
+    },
     funnel: {
       evaluations: rows.evaluations.length,
       coreCandidates: signalEvaluations.length,
@@ -766,24 +836,37 @@ export const buildRuntimeScorecard = ({
         coverage: signalEvaluations.length
           ? round(gateDecisions.length / signalEvaluations.length)
           : null,
+        legacyApprovedFallback: gateDecisions.filter(
+          ({ source }) => source === 'legacy_approved_fallback',
+        ).length,
       },
       allocator: {
         available: allocatorDecisions.length > 0,
         approved: allocatorDecisions.filter(
-          (decision) => decision.decision === 'approved',
+          (decision) => decision.status === 'approved',
         ).length,
         rejected: allocatorDecisions.filter(
-          (decision) => decision.decision === 'rejected',
+          (decision) => decision.status === 'rejected',
+        ).length,
+        notApplicable: allocatorDecisions.filter(
+          (decision) => decision.status === 'not_applicable',
+        ).length,
+        unavailable: allocatorDecisions.filter(
+          (decision) => decision.status === 'unavailable',
         ).length,
       },
       risk: {
         available: riskDecisions.length > 0,
         approved: riskDecisions.filter(
-          (decision) => decision.decision === 'approved',
+          (decision) => decision.status === 'approved',
         ).length,
         rejected: riskDecisions.filter(
-          (decision) => decision.decision === 'rejected',
+          (decision) => decision.status === 'rejected',
         ).length,
+        unavailable: riskDecisions.filter(
+          (decision) => decision.status === 'unavailable',
+        ).length,
+        enforced: riskDecisions.some((decision) => decision.enforced === true),
       },
       orderAttempts: orderAttempts.length,
       orderFailures: orderAttempts.filter(
@@ -852,8 +935,19 @@ export const buildRuntimeScorecard = ({
     },
     execution: {
       available: actualSlippageBps != null || residualVsModelBps != null,
+      metricScope:
+        arrivalToFillAdverseBps == null
+          ? ('signal_close_to_fill' as const)
+          : ('signal_and_exchange_components' as const),
+      samples: calibrationSamples.length,
+      fullTelemetryTrades,
+      arrivalQuoteCoverage,
       actualSignalToFillSlippageBps: actualSlippageBps,
       residualVsCurrentModelBps: residualVsModelBps,
+      signalToArrivalAdverseBps,
+      arrivalToFillAdverseBps,
+      averageSignalCloseToSubmitMs,
+      averageSubmitToFillMs,
     },
     prospective,
     rolling,
@@ -919,5 +1013,5 @@ export const formatRuntimeScorecardMarkdown = (scorecard: RuntimeScorecard) => {
     )
     .join('\n');
 
-  return `# Runtime scorecard\n\nStatus: **${scorecard.promotionStatus}**\n\nWindow: ${new Date(scorecard.window.startTime).toISOString()} — ${new Date(scorecard.window.endTime).toISOString()}\n\n## Funnel\n\n- Evaluations: ${scorecard.funnel.evaluations}\n- Core candidates: ${scorecard.funnel.coreCandidates}\n- Gate approvals/rejects: ${scorecard.funnel.gate.approved}/${scorecard.funnel.gate.rejected}\n- AI / LLM disagreement: ${scorecard.gateComparison.disagreements}/${scorecard.gateComparison.compared}\n- Allocator approvals/rejects: ${scorecard.funnel.allocator.available ? `${scorecard.funnel.allocator.approved}/${scorecard.funnel.allocator.rejected}` : 'unavailable'}\n- Risk approvals/rejects: ${scorecard.funnel.risk.available ? `${scorecard.funnel.risk.approved}/${scorecard.funnel.risk.rejected}` : 'unavailable'}\n- Order attempts/failures: ${scorecard.funnel.orderAttempts}/${scorecard.funnel.orderFailures}\n- Fills: ${scorecard.funnel.fills}\n- Closed trades: ${scorecard.funnel.closedTrades}\n\n## Replay and execution\n\n- Parity: ${scorecard.parity.ratio == null ? 'n/a' : `${round(scorecard.parity.ratio * 100, 2)}%`}\n- Runtime/replay mismatches: ${scorecard.parity.backtestOnly + scorecard.parity.runtimeOnly}\n- Actual signal-to-fill slippage: ${scorecard.execution.actualSignalToFillSlippageBps ?? 'n/a'} bps\n- Residual vs current model: ${scorecard.execution.residualVsCurrentModelBps ?? 'n/a'} bps\n\n## Rolling performance\n\n| Window | Closed | Realized PnL | Expectancy | Max drawdown |\n| --- | ---: | ---: | ---: | ---: |\n${rollingRows}\n\n## Distribution changes\n\n${scorecard.distributionChanges.available ? distributionChanges || '- No distribution changes.' : '- Previous comparable artifact is unavailable.'}\n\n## Reactions\n\n${reactions}\n`;
+  return `# Runtime scorecard\n\nStatus: **${scorecard.promotionStatus}**\n\nWindow: ${new Date(scorecard.window.startTime).toISOString()} — ${new Date(scorecard.window.endTime).toISOString()}\n\n## Funnel\n\n- Evaluations: ${scorecard.funnel.evaluations}\n- Core candidates: ${scorecard.funnel.coreCandidates}\n- Gate approvals/rejects: ${scorecard.funnel.gate.approved}/${scorecard.funnel.gate.rejected} (legacy fallback: ${scorecard.funnel.gate.legacyApprovedFallback})\n- AI / LLM disagreement: ${scorecard.gateComparison.disagreements}/${scorecard.gateComparison.compared}\n- Runtime admission approved/rejected/not-applicable: ${scorecard.funnel.allocator.available ? `${scorecard.funnel.allocator.approved}/${scorecard.funnel.allocator.rejected}/${scorecard.funnel.allocator.notApplicable}` : 'unavailable'}\n- Risk assessment within/exceeds/unavailable: ${scorecard.funnel.risk.available ? `${scorecard.funnel.risk.approved}/${scorecard.funnel.risk.rejected}/${scorecard.funnel.risk.unavailable}` : 'unavailable'} (enforced: ${scorecard.funnel.risk.enforced})\n- Order attempts/failures: ${scorecard.funnel.orderAttempts}/${scorecard.funnel.orderFailures}\n- Fills: ${scorecard.funnel.fills}\n- Closed trades: ${scorecard.funnel.closedTrades}\n\n## Replay and execution\n\n- Parity: ${scorecard.parity.ratio == null ? 'n/a' : `${round(scorecard.parity.ratio * 100, 2)}%`}\n- Runtime/replay mismatches: ${scorecard.parity.backtestOnly + scorecard.parity.runtimeOnly}\n- Execution metric scope: ${scorecard.execution.metricScope}\n- Telemetry samples/full/arrival coverage: ${scorecard.execution.samples}/${scorecard.execution.fullTelemetryTrades}/${scorecard.execution.arrivalQuoteCoverage == null ? 'n/a' : `${round(scorecard.execution.arrivalQuoteCoverage * 100, 2)}%`}\n- Signal-close-to-fill adverse move: ${scorecard.execution.actualSignalToFillSlippageBps ?? 'n/a'} bps\n- Signal-to-arrival adverse move: ${scorecard.execution.signalToArrivalAdverseBps ?? 'n/a'} bps\n- Arrival-to-fill exchange slippage: ${scorecard.execution.arrivalToFillAdverseBps ?? 'n/a'} bps\n- Residual vs current model: ${scorecard.execution.residualVsCurrentModelBps ?? 'n/a'} bps\n- Average signal-close-to-submit: ${scorecard.execution.averageSignalCloseToSubmitMs ?? 'n/a'} ms\n- Average submit-to-fill: ${scorecard.execution.averageSubmitToFillMs ?? 'n/a'} ms\n\n## Rolling performance\n\n| Window | Closed | Realized PnL | Expectancy | Max drawdown |\n| --- | ---: | ---: | ---: | ---: |\n${rollingRows}\n\n## Distribution changes\n\n${scorecard.distributionChanges.available ? distributionChanges || '- No distribution changes.' : '- Previous comparable artifact is unavailable.'}\n\n## Reactions\n\n${reactions}\n`;
 };

@@ -1249,6 +1249,120 @@ describe('backtest script helpers', () => {
     );
   });
 
+  it('uses compact runtime skip outcomes for backtest-only diagnostics', () => {
+    const timestamp = Date.UTC(2026, 7, 30, 3, 0);
+    const runtimeLineage = {
+      schemaVersion: 3 as const,
+      strategyRevision: 'sr1:e965efafb7a363b0',
+      deploymentCompositionId: 'dc1:8cc160ddf60728d3',
+      strategyPackageVersion: '3.0.4',
+      strategyDependencyVersions: {},
+      runtimePackageVersion: '3.1.26-beta.244',
+    };
+    const backtestEntry = {
+      id: 'bt-tac',
+      source: 'backtest',
+      strategy: 'StructureZones',
+      symbol: 'TACUSDT',
+      direction: 'SHORT',
+      timestamp,
+      signalTimestamp: timestamp,
+      price: 0.002301696,
+    } as any;
+
+    const details = buildReplayRuntimeComparisonDetails({
+      matched: [],
+      runtimeOnly: [],
+      backtestOnly: [backtestEntry],
+      runtimeEntries: [],
+      backtestEntries: [backtestEntry],
+      toleranceMs: 15 * 60_000,
+      runtimeLineageScopes: [
+        {
+          strategy: 'StructureZones',
+          symbol: 'TACUSDT',
+          deploymentId: 'production',
+          accountId: 'bybit-default',
+          runtimeConfigId: 'sr1:e965efafb7a363b0',
+          strategyRevision: 'sr1:e965efafb7a363b0',
+          lineage: runtimeLineage,
+          firstTimestamp: timestamp - 9 * 60 * 60_000,
+          lastTimestamp: timestamp + 14 * 60 * 60_000,
+          evaluationRuns: [
+            {
+              status: 'skip',
+              reason: 'NO_SIGNAL',
+              firstTimestamp: timestamp - 15 * 60_000,
+              lastTimestamp: timestamp + 15 * 60_000,
+              stepMs: 15 * 60_000,
+            },
+          ],
+        },
+      ],
+      limit: 10,
+    });
+
+    expect(details.mismatchDrilldown?.backtestOnly[0]).toMatchObject({
+      classification: 'core_skipped',
+      reason: 'NO_SIGNAL',
+      runtimeEvaluationOutcome: {
+        status: 'skip',
+        reason: 'NO_SIGNAL',
+        timestamp,
+        timestampDiffMs: 0,
+        source: 'lineage_scope_compact',
+      },
+    });
+    expect(details.mismatchDrilldown?.summary.backtestOnly).toEqual({
+      core_skipped: 1,
+    });
+  });
+
+  it('reports unavailable runtime evaluation detail inside legacy lineage coverage', () => {
+    const timestamp = Date.UTC(2026, 7, 30, 3, 0);
+    const backtestEntry = {
+      id: 'bt-tac',
+      source: 'backtest',
+      strategy: 'StructureZones',
+      symbol: 'TACUSDT',
+      direction: 'SHORT',
+      timestamp,
+      signalTimestamp: timestamp,
+      price: 0.002301696,
+    } as any;
+
+    const details = buildReplayRuntimeComparisonDetails({
+      matched: [],
+      runtimeOnly: [],
+      backtestOnly: [backtestEntry],
+      runtimeEntries: [],
+      backtestEntries: [backtestEntry],
+      toleranceMs: 15 * 60_000,
+      runtimeLineageScopes: [
+        {
+          strategy: 'StructureZones',
+          symbol: 'TACUSDT',
+          lineage: {
+            schemaVersion: 3,
+            strategyRevision: 'sr1:e965efafb7a363b0',
+            deploymentCompositionId: 'dc1:8cc160ddf60728d3',
+            strategyPackageVersion: '3.0.4',
+            strategyDependencyVersions: {},
+            runtimePackageVersion: '3.1.26-beta.244',
+          },
+          firstTimestamp: timestamp - 9 * 60 * 60_000,
+          lastTimestamp: timestamp + 14 * 60 * 60_000,
+        },
+      ],
+      limit: 10,
+    });
+
+    expect(details.mismatchDrilldown?.backtestOnly[0]).toMatchObject({
+      classification: 'runtime_evaluation_detail_unavailable',
+      reason: 'runtime_scope_covers_timestamp_but_skip_detail_was_not_stored',
+    });
+  });
+
   it('keeps mismatch diagnostics when full replay artifacts are disabled', () => {
     const originalLimit = process.env.REPLAY_PARITY_ARTIFACT_LIMIT;
     process.env.REPLAY_PARITY_ARTIFACT_LIMIT = '0';

@@ -824,6 +824,8 @@ export interface Signal {
   orderValue?: number;
   isConfigFromBacktest?: boolean;
   aiAnalysis?: Partial<SignalAnalysis>;
+  allocatorDecision?: RuntimeAllocatorDecision;
+  riskDecision?: RuntimeRiskDecision;
   ml?: {
     probability: number;
     threshold: number;
@@ -872,7 +874,25 @@ export interface RuntimeSignalEvaluationRecord {
   orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
   aiAnalysis?: Partial<SignalAnalysis> | null;
+  allocatorDecision?: RuntimeAllocatorDecision;
+  riskDecision?: RuntimeRiskDecision;
   ml?: Signal['ml'];
+}
+
+export interface RuntimeAllocatorDecision {
+  stage: 'runtime_admission';
+  status: 'approved' | 'rejected' | 'not_applicable' | 'unavailable';
+  reason: string;
+}
+
+export interface RuntimeRiskDecision {
+  stage: 'order_plan';
+  status: 'approved' | 'rejected' | 'unavailable';
+  reason: string;
+  plannedLossValue: number | null;
+  maxLossValue: number | null;
+  limitUtilization: number | null;
+  enforced: false;
 }
 
 export interface SignalAnalysis {

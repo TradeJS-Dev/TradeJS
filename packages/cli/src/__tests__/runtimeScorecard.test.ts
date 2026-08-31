@@ -76,12 +76,38 @@ describe('runtime scorecard', () => {
                 gateDecision: 'approved',
                 llmDecision: 'rejected',
               },
+              allocatorDecision: {
+                stage: 'runtime_admission',
+                status: 'approved',
+                reason: 'ENTRY_ADMITTED',
+              },
+              riskDecision: {
+                stage: 'order_plan',
+                status: 'approved',
+                reason: 'PLANNED_LOSS_WITHIN_MAX_LOSS_VALUE',
+                enforced: false,
+              },
             }),
           },
           {
             evaluation: bindRow(strategy, {
               status: 'signal',
-              aiAnalysis: { quality: 2, gateDecision: 'rejected' },
+              aiAnalysis: {
+                quality: 2,
+                approved: true,
+                llmDecision: 'approved',
+              },
+              allocatorDecision: {
+                stage: 'runtime_admission',
+                status: 'not_applicable',
+                reason: 'ENTRY_POLICY_REJECTED',
+              },
+              riskDecision: {
+                stage: 'order_plan',
+                status: 'approved',
+                reason: 'PLANNED_LOSS_WITHIN_MAX_LOSS_VALUE',
+                enforced: false,
+              },
             }),
           },
         ],
@@ -145,6 +171,10 @@ describe('runtime scorecard', () => {
             runtimeLineage: createLineage(strategy),
             signalToFillAdverseBps: 5,
             residualVsCurrentModelBps: 4,
+            signalCloseToSubmitMs: 100_000,
+            submitToFillMs: 2_000,
+            telemetryQuality: 'partial',
+            arrivalSource: 'unavailable',
           },
         ],
       },
@@ -159,6 +189,7 @@ describe('runtime scorecard', () => {
       thresholds: {
         minimumParityRatio: 0.95,
         maximumSlippageResidualBps: 3,
+        maximumSignalCloseToSubmitMs: 30_000,
         minimumClosedTrades: 1,
         minimumExpectancy: 0,
       },
@@ -174,13 +205,43 @@ describe('runtime scorecard', () => {
     expect(scorecard.funnel).toMatchObject({
       evaluations: 2,
       coreCandidates: 2,
+      gate: {
+        approved: 2,
+        rejected: 0,
+        coverage: 1,
+        legacyApprovedFallback: 1,
+      },
+      allocator: {
+        available: true,
+        approved: 1,
+        rejected: 0,
+        notApplicable: 1,
+        unavailable: 0,
+      },
+      risk: {
+        available: true,
+        approved: 2,
+        rejected: 0,
+        unavailable: 0,
+        enforced: false,
+      },
       orderAttempts: 2,
       orderFailures: 1,
       fills: 1,
       comparableClosedTrades: 1,
     });
     expect(scorecard.parity.ratio).toBe(0.9);
-    expect(scorecard.execution.residualVsCurrentModelBps).toBe(4);
+    expect(scorecard.execution).toMatchObject({
+      residualVsCurrentModelBps: 4,
+      metricScope: 'signal_close_to_fill',
+      samples: 1,
+      fullTelemetryTrades: 0,
+      arrivalQuoteCoverage: 0,
+      averageSignalCloseToSubmitMs: 100_000,
+      averageSubmitToFillMs: 2_000,
+      signalToArrivalAdverseBps: null,
+      arrivalToFillAdverseBps: null,
+    });
     expect(scorecard.rolling[0]).toMatchObject({
       closedTrades: 1,
       realizedPnl: 12,
@@ -190,10 +251,14 @@ describe('runtime scorecard', () => {
     expect(scorecard.reactions.map(({ code }) => code)).toEqual([
       'PARITY_REGRESSION',
       'SLIPPAGE_DRIFT',
+      'PRE_SUBMIT_LATENCY',
+      'EXECUTION_TELEMETRY_INCOMPLETE',
     ]);
-    expect(formatRuntimeScorecardMarkdown(scorecard)).toContain(
-      'AI / LLM disagreement: 1/1',
-    );
+    const markdown = formatRuntimeScorecardMarkdown(scorecard);
+    expect(markdown).toContain('AI / LLM disagreement: 1/2');
+    expect(markdown).toContain('Signal-close-to-fill adverse move: 5 bps');
+    expect(markdown).toContain('Arrival-to-fill exchange slippage: n/a bps');
+    expect(markdown).toContain('Average signal-close-to-submit: 100000 ms');
   });
 
   it('isolates current deployment rows to the requested strategy', () => {

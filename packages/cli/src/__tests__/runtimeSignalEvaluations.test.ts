@@ -108,6 +108,15 @@ describe('runtime signal evaluation buffering', () => {
       lineage: runtimeLineage,
       firstTimestamp,
       lastTimestamp: secondTimestamp,
+      evaluationRuns: [
+        {
+          status: 'skip',
+          reason: 'NO_SIGNAL',
+          firstTimestamp,
+          lastTimestamp: secondTimestamp,
+          stepMs: 15 * 60_000,
+        },
+      ],
     });
     expect(incrHashFields).toHaveBeenCalledWith(
       expect.stringContaining('stats:root:'),

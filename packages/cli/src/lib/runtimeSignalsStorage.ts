@@ -1,4 +1,5 @@
 import { TTL_1M, TTL_3D } from '@tradejs/core/constants';
+import { intervalToMs } from '@tradejs/core/data';
 import {
   RuntimeLineage,
   RuntimeSignalEvaluationRecord,
@@ -51,6 +52,63 @@ export type RuntimeLineageScopeRecord = {
   lineage: RuntimeLineage;
   firstTimestamp: number;
   lastTimestamp: number;
+  evaluationRuns?: RuntimeSignalEvaluationRun[];
+};
+
+export type RuntimeSignalEvaluationRun = {
+  status: 'skip';
+  reason: string;
+  firstTimestamp: number;
+  lastTimestamp: number;
+  stepMs: number;
+};
+
+export const appendRuntimeSignalEvaluationRun = (
+  runs: readonly RuntimeSignalEvaluationRun[] = [],
+  evaluation: RuntimeSignalEvaluationRecord,
+): RuntimeSignalEvaluationRun[] => {
+  if (evaluation.status !== 'skip') {
+    return [...runs];
+  }
+
+  const stepMs = intervalToMs(evaluation.interval);
+  const reason = evaluation.reason?.trim() || 'NO_SIGNAL';
+  const existing = runs.find(
+    (run) =>
+      run.status === 'skip' &&
+      run.reason === reason &&
+      run.stepMs === stepMs &&
+      evaluation.timestamp >= run.firstTimestamp &&
+      evaluation.timestamp <= run.lastTimestamp &&
+      (evaluation.timestamp - run.firstTimestamp) % stepMs === 0,
+  );
+  if (existing) {
+    return [...runs];
+  }
+
+  const last = runs.at(-1);
+  if (
+    last?.status === 'skip' &&
+    last.reason === reason &&
+    last.stepMs === stepMs &&
+    evaluation.timestamp === last.lastTimestamp + stepMs
+  ) {
+    return [
+      ...runs.slice(0, -1),
+      { ...last, lastTimestamp: evaluation.timestamp },
+    ];
+  }
+
+  return [
+    ...runs,
+    {
+      status: 'skip',
+      reason,
+      firstTimestamp: evaluation.timestamp,
+      lastTimestamp: evaluation.timestamp,
+      stepMs,
+    },
+  ];
 };
 
 const SECONDS_PER_DAY = 86_400;

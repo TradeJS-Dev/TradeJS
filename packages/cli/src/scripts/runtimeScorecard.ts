@@ -57,6 +57,11 @@ args.option(
   3,
 );
 args.option(
+  ['L', 'maximumSignalCloseToSubmitMs'],
+  'Maximum acceptable average signal-close-to-submit latency in milliseconds',
+  30_000,
+);
+args.option(
   ['T', 'minimumClosedTrades'],
   'Minimum 7d closed trades for expectancy reactions',
   20,
@@ -179,6 +184,7 @@ export const runtimeScorecard = async () => {
     thresholds: {
       minimumParityRatio: Number(flags.minimumParityRatio),
       maximumSlippageResidualBps: Number(flags.maximumSlippageResidualBps),
+      maximumSignalCloseToSubmitMs: Number(flags.maximumSignalCloseToSubmitMs),
       minimumClosedTrades: Number(flags.minimumClosedTrades),
       minimumExpectancy: Number(flags.minimumExpectancy),
     },

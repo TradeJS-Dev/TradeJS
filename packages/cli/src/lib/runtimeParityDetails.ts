@@ -20,6 +20,7 @@ import type {
   ReplayParityNearestCandidate,
   ReplayRuntimeComparisonDetails,
 } from './replay/support';
+import type { RuntimeLineageScopeRecord } from './runtimeSignalsStorage';
 
 export type ExchangeMatchedBacktestEntry = {
   exchange: ExchangeEntryRecord;
@@ -285,6 +286,81 @@ const findNearestEvaluation = ({
         timestampDiffMs: bestDiff,
       }
     : null;
+};
+
+const findNearestRuntimeEvaluationOutcome = ({
+  entry,
+  lineageScopes,
+  toleranceMs,
+}: {
+  entry: ReplayParityEntryDetail;
+  lineageScopes: RuntimeLineageScopeRecord[];
+  toleranceMs: number;
+}) => {
+  const strategy = getEntryStrategy(entry);
+  const timestamp = entry.signalTimestamp ?? entry.timestamp;
+  if (!strategy) return null;
+
+  let nearest: {
+    status: 'skip';
+    reason: string;
+    timestamp: number;
+    timestampDiffMs: number;
+    source: 'lineage_scope_compact';
+  } | null = null;
+
+  for (const scope of lineageScopes) {
+    if (scope.strategy !== strategy || scope.symbol !== entry.symbol) {
+      continue;
+    }
+    for (const run of scope.evaluationRuns ?? []) {
+      if (
+        run.stepMs <= 0 ||
+        timestamp < run.firstTimestamp - toleranceMs ||
+        timestamp > run.lastTimestamp + toleranceMs
+      ) {
+        continue;
+      }
+      const step = Math.round((timestamp - run.firstTimestamp) / run.stepMs);
+      const candidateTimestamp = run.firstTimestamp + step * run.stepMs;
+      const timestampDiffMs = Math.abs(candidateTimestamp - timestamp);
+      if (
+        candidateTimestamp < run.firstTimestamp ||
+        candidateTimestamp > run.lastTimestamp ||
+        timestampDiffMs > toleranceMs ||
+        (nearest && timestampDiffMs >= nearest.timestampDiffMs)
+      ) {
+        continue;
+      }
+      nearest = {
+        status: run.status,
+        reason: run.reason,
+        timestamp: candidateTimestamp,
+        timestampDiffMs,
+        source: 'lineage_scope_compact',
+      };
+    }
+  }
+
+  return nearest;
+};
+
+const hasRuntimeLineageCoverage = ({
+  entry,
+  lineageScopes,
+}: {
+  entry: ReplayParityEntryDetail;
+  lineageScopes: RuntimeLineageScopeRecord[];
+}) => {
+  const strategy = getEntryStrategy(entry);
+  const timestamp = entry.signalTimestamp ?? entry.timestamp;
+  return lineageScopes.some(
+    (scope) =>
+      scope.strategy === strategy &&
+      scope.symbol === entry.symbol &&
+      timestamp >= scope.firstTimestamp &&
+      timestamp <= scope.lastTimestamp,
+  );
 };
 
 const classifySignalDiagnostic = (
@@ -660,6 +736,7 @@ export const buildReplayMismatchDrilldown = ({
   runtimeSignalEvaluations = [],
   replaySignals = [],
   replaySignalEvaluations = [],
+  runtimeLineageScopes = [],
   toleranceMs,
   backtestTimestampOffsetMs,
   limit,
@@ -671,6 +748,7 @@ export const buildReplayMismatchDrilldown = ({
   runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replaySignals?: Signal[];
   replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  runtimeLineageScopes?: RuntimeLineageScopeRecord[];
   toleranceMs: number;
   backtestTimestampOffsetMs: number;
   limit: number;
@@ -757,20 +835,42 @@ export const buildReplayMismatchDrilldown = ({
       toleranceMs,
       timestampOffsetMs: 0,
     });
+    const nearestRuntimeEvaluationOutcome = findNearestRuntimeEvaluationOutcome(
+      {
+        entry,
+        lineageScopes: runtimeLineageScopes,
+        toleranceMs,
+      },
+    );
+    const runtimeLineageCoversEntry = hasRuntimeLineageCoverage({
+      entry,
+      lineageScopes: runtimeLineageScopes,
+    });
 
     const classification = nearestRuntimeSignal
       ? classifySignalDiagnostic(nearestRuntimeSignal.signal)
       : nearestRuntimeEvaluation
         ? classifyEvaluationDiagnostic(nearestRuntimeEvaluation.evaluation)
-        : nearestCandidate?.nearest
+        : nearestRuntimeEvaluationOutcome
           ? {
-              classification: 'timing_or_price_drift',
-              reason: nearestCandidate.reason,
+              classification: 'core_skipped',
+              reason: nearestRuntimeEvaluationOutcome.reason,
             }
-          : {
-              classification: 'no_runtime_evaluation',
-              reason: 'no_runtime_signal_or_evaluation',
-            };
+          : nearestCandidate?.nearest
+            ? {
+                classification: 'timing_or_price_drift',
+                reason: nearestCandidate.reason,
+              }
+            : runtimeLineageCoversEntry
+              ? {
+                  classification: 'runtime_evaluation_detail_unavailable',
+                  reason:
+                    'runtime_scope_covers_timestamp_but_skip_detail_was_not_stored',
+                }
+              : {
+                  classification: 'no_runtime_evaluation',
+                  reason: 'no_runtime_signal_or_evaluation',
+                };
 
     return {
       entry,
@@ -800,6 +900,9 @@ export const buildReplayMismatchDrilldown = ({
                 }
               : {}),
           }
+        : {}),
+      ...(nearestRuntimeEvaluationOutcome
+        ? { runtimeEvaluationOutcome: nearestRuntimeEvaluationOutcome }
         : {}),
     };
   });
@@ -857,6 +960,7 @@ export const buildReplayRuntimeComparisonDetails = ({
   runtimeSignalEvaluations,
   replaySignals,
   replaySignalEvaluations,
+  runtimeLineageScopes,
 }: {
   matched: Array<{
     runtime: TradeParityEntry;
@@ -875,6 +979,7 @@ export const buildReplayRuntimeComparisonDetails = ({
   runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replaySignals?: Signal[];
   replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  runtimeLineageScopes?: RuntimeLineageScopeRecord[];
 }): ReplayRuntimeComparisonDetails => {
   const runtimeDetails = runtimeEntries.map(toRuntimeParityDetail);
   const backtestDetails = backtestEntries.map((entry) =>
@@ -939,6 +1044,7 @@ export const buildReplayRuntimeComparisonDetails = ({
       runtimeSignalEvaluations,
       replaySignals,
       replaySignalEvaluations,
+      runtimeLineageScopes,
       toleranceMs,
       backtestTimestampOffsetMs,
       limit,
@@ -961,6 +1067,7 @@ export const buildReplayExchangeComparisonDetails = ({
   runtimeSignalEvaluations,
   replaySignals,
   replaySignalEvaluations,
+  runtimeLineageScopes,
 }: {
   matched: ExchangeMatchedBacktestEntry[];
   orderFailed?: ExchangeOrderFailedBacktestEntry[];
@@ -976,6 +1083,7 @@ export const buildReplayExchangeComparisonDetails = ({
   runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replaySignals?: Signal[];
   replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  runtimeLineageScopes?: RuntimeLineageScopeRecord[];
 }): ReplayRuntimeComparisonDetails => {
   const toExchangeDetail = (entry: ExchangeEntryRecord) =>
     toExchangeParityDetail({
@@ -1070,6 +1178,7 @@ export const buildReplayExchangeComparisonDetails = ({
       runtimeSignalEvaluations,
       replaySignals,
       replaySignalEvaluations,
+      runtimeLineageScopes,
       toleranceMs,
       backtestTimestampOffsetMs,
       limit,

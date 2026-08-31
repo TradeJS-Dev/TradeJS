@@ -181,6 +181,13 @@ export type ReplayMismatchDiagnostic = {
   runtimeSignalArtifact?: Signal;
   runtimeEvaluation?: ReplayMismatchEvaluationDiagnostic;
   runtimeEvaluationArtifact?: RuntimeSignalEvaluationRecord;
+  runtimeEvaluationOutcome?: {
+    status: 'skip';
+    reason: string;
+    timestamp: number;
+    timestampDiffMs: number;
+    source: 'lineage_scope_compact';
+  };
   replaySignal?: ReplayMismatchSignalDiagnostic;
   replaySignalArtifact?: Signal;
   replayEvaluation?: ReplayMismatchEvaluationDiagnostic;

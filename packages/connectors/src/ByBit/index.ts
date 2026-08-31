@@ -1518,6 +1518,49 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       };
     },
 
+    getTopOfBookTicker: async (symbol) => {
+      const client = await getPublicClient();
+      const normalizedSymbol = String(symbol ?? '')
+        .trim()
+        .toUpperCase();
+      if (!client || !normalizedSymbol) return null;
+
+      const response = await client.getTickers({
+        category: BYBIT_CATEGORY,
+        symbol: normalizedSymbol,
+      });
+      if (response.retCode !== 0) return null;
+
+      const row = response.result?.list?.find(
+        (item) => String(item.symbol ?? '').toUpperCase() === normalizedSymbol,
+      );
+      const bidPrice = toFiniteNumberOrNull(row?.bid1Price);
+      const bidQty = toFiniteNumberOrNull(row?.bid1Size);
+      const askPrice = toFiniteNumberOrNull(row?.ask1Price);
+      const askQty = toFiniteNumberOrNull(row?.ask1Size);
+      if (
+        bidPrice == null ||
+        bidPrice <= 0 ||
+        bidQty == null ||
+        bidQty < 0 ||
+        askPrice == null ||
+        askPrice <= 0 ||
+        askQty == null ||
+        askQty < 0
+      ) {
+        return null;
+      }
+
+      return {
+        symbol: normalizedSymbol,
+        bidPrice,
+        bidQty,
+        askPrice,
+        askQty,
+        timestamp: toFiniteNumberOrNull(response.time) ?? Date.now(),
+      };
+    },
+
     getTickers: async (query = {}) => {
       const client = await getPublicClient();
 

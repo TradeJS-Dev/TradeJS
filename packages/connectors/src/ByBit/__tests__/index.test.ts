@@ -121,6 +121,46 @@ describe('ByBitConnectorCreator', () => {
     expect(await connector.getPosition('BTCUSDT')).toBeNull();
   });
 
+  it('loads a normalized public top-of-book ticker for runtime arrival telemetry', async () => {
+    const client = {
+      getTickers: jest.fn().mockResolvedValue({
+        retCode: 0,
+        time: 1_788_058_800_123,
+        result: {
+          list: [
+            {
+              symbol: 'TACUSDT',
+              bid1Price: '0.002300',
+              bid1Size: '3654.1',
+              ask1Price: '0.002304',
+              ask1Size: '4200.5',
+            },
+          ],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    await expect(connector.getTopOfBookTicker?.(' tacusdt ')).resolves.toEqual({
+      symbol: 'TACUSDT',
+      bidPrice: 0.0023,
+      bidQty: 3654.1,
+      askPrice: 0.002304,
+      askQty: 4200.5,
+      timestamp: 1_788_058_800_123,
+    });
+    expect(client.getTickers).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'TACUSDT',
+    });
+    expect(mockedGetClient).toHaveBeenCalledWith(
+      { userName: 'alice' },
+      'public',
+      runtime,
+    );
+  });
+
   it('maps first active position from exchange response', async () => {
     const client = {
       getPositionInfo: jest.fn().mockResolvedValue({

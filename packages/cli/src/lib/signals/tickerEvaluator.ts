@@ -341,6 +341,10 @@ export const createSignalsTickerEvaluator =
         orderStatus: signal.orderStatus,
         orderSkipReason: signal.orderSkipReason,
         ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+        ...(signal.allocatorDecision
+          ? { allocatorDecision: signal.allocatorDecision }
+          : {}),
+        ...(signal.riskDecision ? { riskDecision: signal.riskDecision } : {}),
         ...(signal.ml ? { ml: signal.ml } : {}),
       });
       logger.info('Signal found %s by strategy %s', symbol, strategyName);

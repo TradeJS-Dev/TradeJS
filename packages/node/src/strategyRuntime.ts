@@ -61,6 +61,10 @@ import {
   shouldExecuteEntryDecision,
 } from './strategy/runtimeEntryPolicy';
 import {
+  assessRuntimeEntryRisk,
+  buildRuntimeAdmissionDecision,
+} from './strategy/runtimeDecisionTelemetry';
+import {
   buildHookCtx,
   canUseSharedReplayState,
   isConfigHookStage,
@@ -1037,6 +1041,14 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (decisionHookCtx.policyProfileId) {
           signal.policyProfileId = decisionHookCtx.policyProfileId;
         }
+        signal.riskDecision = assessRuntimeEntryRisk({
+          qty: decision.orderPlan.qty,
+          entryPrice: decision.entryContext.prices.currentPrice,
+          stopLossPrice: decision.orderPlan.stopLossPrice,
+          maxLossValue:
+            runtimeLineage?.maxLossValue ??
+            (config as Record<string, unknown>).MAX_LOSS_VALUE,
+        });
       }
       const entry = buildHookEntry({
         decision,
@@ -1152,20 +1164,29 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           signal.orderStatus = 'skipped';
           signal.orderSkipReason = skipReason;
           signal.strategyRevision = strategyRevision;
+          signal.allocatorDecision = buildRuntimeAdmissionDecision({
+            status: 'rejected',
+            reason: skipReason,
+          });
         }
         return signal ?? skipReason;
       }
 
       if (!shouldMakeOrder) {
         if (signal) {
-          signal.orderStatus = 'skipped';
-          signal.orderSkipReason = getEntrySkipReason({
+          const skipReason = getEntrySkipReason({
             makeOrdersEnabled,
             env,
             ml,
             aiEnabled,
             quality,
             minAiQuality,
+          });
+          signal.orderStatus = 'skipped';
+          signal.orderSkipReason = skipReason;
+          signal.allocatorDecision = buildRuntimeAdmissionDecision({
+            status: 'not_applicable',
+            reason: `ENTRY_POLICY_REJECTED:${skipReason}`,
           });
         }
         return signal ?? decision.code;
@@ -1192,11 +1213,21 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (signal) {
           signal.orderStatus = 'skipped';
           signal.orderSkipReason = skipReason;
+          signal.allocatorDecision = buildRuntimeAdmissionDecision({
+            status: 'rejected',
+            reason: skipReason,
+          });
         }
         return signal ?? skipReason;
       }
 
       if (backtestEntryDelayBars > 0) {
+        if (signal) {
+          signal.allocatorDecision = buildRuntimeAdmissionDecision({
+            status: 'approved',
+            reason: 'ENTRY_ADMITTED',
+          });
+        }
         pendingBacktestEntry = {
           delayBars: backtestEntryDelayBars,
           delayBarsRemaining: backtestEntryDelayBars,
@@ -1209,6 +1240,13 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           ai,
         };
         return `BACKTEST_ENTRY_DELAY_QUEUED:${backtestEntryDelayBars}`;
+      }
+
+      if (signal) {
+        signal.allocatorDecision = buildRuntimeAdmissionDecision({
+          status: 'approved',
+          reason: 'ENTRY_ADMITTED',
+        });
       }
 
       return executeEntryDecision({

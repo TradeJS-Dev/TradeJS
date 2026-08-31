@@ -43,6 +43,7 @@ export type ComparableLineageArtifacts = {
   runtimeTrades: RuntimeTradeRecord[];
   runtimeSignals: Signal[];
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  runtimeLineageScopes: RuntimeLineageScopeRecord[];
   backtestEntries: TradeParityEntry[];
   lineage: ReplayRuntimeComparisonSummary['lineage'];
 };
@@ -217,6 +218,7 @@ export const filterReplayComparisonByLineage = ({
     runtimeTrades: comparableRuntimeTrades,
     runtimeSignals: comparableRuntimeSignals,
     runtimeSignalEvaluations: comparableRuntimeEvaluations,
+    runtimeLineageScopes: comparableRuntimeLineageScopes,
     backtestEntries: comparableBacktestEntries,
     lineage: {
       enforced: true,
