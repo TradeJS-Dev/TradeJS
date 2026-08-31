@@ -29,6 +29,7 @@ README, and agent instructions.
 | `TradeJS-Strategy-Breakout`                      | `@tradejs/strategy-breakout`                        | Breakout                       |
 | `TradeJS-Strategy-CupAndHandle`                  | `@tradejs/strategy-cup-and-handle`                  | CupAndHandle                   |
 | `TradeJS-Strategy-DoubleTap`                     | `@tradejs/strategy-double-tap`                      | DoubleTap                      |
+| `TradeJS-Strategy-Dragon`                        | `@tradejs/strategy-dragon`                          | Dragon                         |
 | `TradeJS-Strategy-Grid`                          | `@tradejs/strategy-grid`                            | Grid                           |
 | `TradeJS-Strategy-GridClassic`                   | `@tradejs/strategy-grid-classic`                    | GridClassic                    |
 | `TradeJS-Strategy-HeadAndShoulders`              | `@tradejs/strategy-head-and-shoulders`              | HeadAndShoulders               |
