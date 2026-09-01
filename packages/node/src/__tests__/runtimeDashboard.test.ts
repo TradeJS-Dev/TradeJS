@@ -327,6 +327,75 @@ describe('runtime dashboard', () => {
     });
   });
 
+  it('keeps active orders in the card header and orders list but excludes them from the chart and footer stats', async () => {
+    const now = 1_700_000_000_000;
+    const startTime = now - 6 * 60 * 60 * 1000;
+    const exitTimestamp = now - 90_000;
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'closed-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: now - 120_000,
+        exitPrice: 112,
+        exitTimestamp,
+        closedPnl: 12,
+        status: 'closed',
+      },
+      {
+        orderId: 'active-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'SHORT',
+        qty: 1,
+        entryPrice: 200,
+        entryTimestamp: now - 60_000,
+        currentPnl: -3,
+        status: 'active',
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now,
+      projectRoot: '/project',
+    });
+
+    const strategy = response.strategies[0];
+    expect(strategy).toMatchObject({
+      summary: {
+        totalTrades: 2,
+        activeTrades: 1,
+        closedTrades: 1,
+      },
+      stat: {
+        orders: 1,
+        netProfit: 12,
+        amount: 112,
+      },
+      orderLog: [
+        [startTime, 100],
+        [exitTimestamp, 112],
+        [now, 112],
+      ],
+    });
+    expect(strategy?.orders).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ orderId: 'closed-order', status: 'closed' }),
+        expect.objectContaining({ orderId: 'active-order', status: 'active' }),
+      ]),
+    );
+  });
+
   it('merges legacy runtime records with daily buckets', async () => {
     mockGetHashJsonValues.mockResolvedValue([
       {

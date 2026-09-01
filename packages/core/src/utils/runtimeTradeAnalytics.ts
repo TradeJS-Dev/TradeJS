@@ -284,7 +284,9 @@ export const buildRuntimeStrategyAnalytics = ({
   startTime: number;
   endTime: number;
 }) => {
-  const resolvedTrades = resolveTradesWithKnownPnl(trades, endTime);
+  const activeTrades = trades.filter(({ status }) => status === 'active');
+  const closedTrades = trades.filter(({ status }) => status === 'closed');
+  const resolvedTrades = resolveTradesWithKnownPnl(closedTrades, endTime);
   const orderLog: SimpleOrderLogData = [[startTime, INITIAL_BACKTEST_AMOUNT]];
   let runningAmount = INITIAL_BACKTEST_AMOUNT;
   for (const trade of resolvedTrades) {
@@ -328,17 +330,17 @@ export const buildRuntimeStrategyAnalytics = ({
   const maxDrawdown = calculateMaxDrawdown(amounts);
   const streaks = calculateStreaks(pnls);
 
-  const stat: TestStat = trades.length
+  const stat: TestStat = closedTrades.length
     ? {
         periodDays: roundValue(periodDays),
         periodMonths: roundValue(periodMonths),
-        orders: trades.length,
+        orders: closedTrades.length,
         wins,
         losses,
         ordersPerMonth: periodMonths
-          ? roundValue(trades.length / periodMonths)
+          ? roundValue(closedTrades.length / periodMonths)
           : 0,
-        exposure: calculateExposurePercent(trades, startTime, endTime),
+        exposure: calculateExposurePercent(closedTrades, startTime, endTime),
         amount: roundValue(amount),
         maxAmount: roundValue(Math.max(...amounts)),
         minAmount: roundValue(Math.min(...amounts)),
@@ -347,7 +349,7 @@ export const buildRuntimeStrategyAnalytics = ({
         cagr: roundValue(cagr),
         maxDrawdown,
         calmar: maxDrawdown > 0 ? roundValue(cagr / maxDrawdown) : null,
-        winRate: roundValue((wins / trades.length) * 100),
+        winRate: roundValue((wins / closedTrades.length) * 100),
         riskRewardRatio:
           averageLoss > 0 ? roundValue(averageWin / averageLoss) : null,
         expectancy: returnSeries.length
@@ -363,8 +365,6 @@ export const buildRuntimeStrategyAnalytics = ({
       }
     : createEmptyStat(startTime, endTime);
 
-  const activeTrades = trades.filter(({ status }) => status === 'active');
-  const closedTrades = trades.filter(({ status }) => status === 'closed');
   const sumPnl = (
     rows: RuntimeTradeRecord[],
     primary: 'currentPnl' | 'closedPnl',

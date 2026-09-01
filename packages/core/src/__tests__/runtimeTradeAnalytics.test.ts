@@ -38,7 +38,7 @@ describe('runtime trade analytics', () => {
     },
   ] satisfies RuntimeTradeRecord[];
 
-  it('builds an equity curve and concentration summary', () => {
+  it('builds card analytics from closed trades and keeps active trades in the summary', () => {
     const result = buildRuntimeStrategyAnalytics({
       trades,
       startTime: 0,
@@ -48,14 +48,70 @@ describe('runtime trade analytics', () => {
     expect(result.orderLog).toEqual([
       [0, 100],
       [200, 112],
-      [400, 109],
+      [400, 112],
     ]);
-    expect(result.stat).toMatchObject({ orders: 2, netProfit: 9, amount: 109 });
+    expect(result.stat).toMatchObject({
+      orders: 1,
+      wins: 1,
+      losses: 0,
+      netProfit: 12,
+      amount: 112,
+      winRate: 100,
+    });
     expect(result.summary).toMatchObject({
+      totalTrades: 2,
+      activeTrades: 1,
+      closedTrades: 1,
+      wins: 1,
+      losses: 0,
       activePnl: -3,
       closedPnl: 12,
       totalPnl: 9,
-      symbolConcentrationTop1: 80,
+      symbolConcentrationTop1: 100,
+    });
+  });
+
+  it('calculates loss metrics only from closed trades', () => {
+    const result = buildRuntimeStrategyAnalytics({
+      trades: [
+        ...trades,
+        {
+          ...trades[0],
+          orderId: 'closed-loss',
+          symbol: 'SOLUSDT',
+          entryTimestamp: 250,
+          exitTimestamp: 350,
+          closedPnl: -4,
+          exitType: 'sl',
+        },
+      ],
+      startTime: 0,
+      endTime: 400,
+    });
+
+    expect(result.orderLog).toEqual([
+      [0, 100],
+      [200, 112],
+      [350, 108],
+      [400, 108],
+    ]);
+    expect(result.stat).toMatchObject({
+      orders: 2,
+      wins: 1,
+      losses: 1,
+      netProfit: 8,
+      amount: 108,
+      winRate: 50,
+      riskRewardRatio: 3,
+      maxConsecutiveLosses: 1,
+    });
+    expect(result.summary).toMatchObject({
+      totalTrades: 3,
+      activeTrades: 1,
+      closedTrades: 2,
+      activePnl: -3,
+      closedPnl: 8,
+      totalPnl: 5,
     });
   });
 
