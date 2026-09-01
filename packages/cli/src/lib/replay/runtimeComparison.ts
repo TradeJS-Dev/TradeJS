@@ -42,6 +42,7 @@ import {
   type ReplayStrategySummary,
 } from './support';
 import type { ReplayRuntimeLineageRecord } from './historicalSignalsReplay';
+import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import {
   buildExchangeComparisonRows,
   buildRuntimeComparisonRows,
@@ -349,6 +350,7 @@ const saveAndPrintReplayExchangeComparison = async ({
   backtestEntries,
   replaySignals,
   replaySignalEvaluations,
+  replayLineageScopes,
   runtimeSignals,
   runtimeSignalEvaluations,
   runtimeLineageScopes,
@@ -358,6 +360,7 @@ const saveAndPrintReplayExchangeComparison = async ({
   backtestEntries: TradeParityEntry[];
   replaySignals: Signal[];
   replaySignalEvaluations: RuntimeSignalEvaluationRecord[];
+  replayLineageScopes: RuntimeLineageScopeRecord[];
   runtimeSignals: Signal[];
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
   runtimeLineageScopes: import('../runtimeSignalsStorage').RuntimeLineageScopeRecord[];
@@ -418,6 +421,7 @@ const saveAndPrintReplayExchangeComparison = async ({
       replaySignals,
       replaySignalEvaluations,
       runtimeLineageScopes,
+      replayLineageScopes,
     });
     const emptyRowsByStrategy = new Map(
       buildExchangeComparisonRows({
@@ -478,6 +482,7 @@ const saveAndPrintReplayExchangeComparison = async ({
     replaySignals,
     replaySignalEvaluations,
     runtimeLineageScopes,
+    replayLineageScopes,
   });
 
   const rows = buildExchangeComparisonRows({
@@ -519,12 +524,14 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   backtestEntries,
   replaySignals,
   replayLineages,
+  replayLineageScopes,
   runtimeEvidencePath,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
   replaySignals: Signal[];
   replayLineages: ReplayRuntimeLineageRecord[];
+  replayLineageScopes: RuntimeLineageScopeRecord[];
   runtimeEvidencePath?: string | null;
 }): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
@@ -647,6 +654,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       backtestEntries: comparableBacktestEntries,
       replaySignals,
       replaySignalEvaluations,
+      replayLineageScopes,
       runtimeSignals: comparable.runtimeSignals,
       runtimeSignalEvaluations: comparable.runtimeSignalEvaluations,
       runtimeLineageScopes: comparable.runtimeLineageScopes,
@@ -677,6 +685,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     replaySignals,
     replaySignalEvaluations,
     runtimeLineageScopes: comparable.runtimeLineageScopes,
+    replayLineageScopes,
   });
   const parityRows = summarizeTradeParityByStrategy({
     runtimeEntries: runtimeDedupe.entries,

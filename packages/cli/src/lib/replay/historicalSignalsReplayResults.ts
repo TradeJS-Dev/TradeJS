@@ -7,6 +7,7 @@ import type {
   TestStat,
 } from '@tradejs/types';
 import type { PortfolioReplayConnector } from './portfolioReplayConnector';
+import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import type {
   ReplayRuntimeLineageRecord,
   ReplayRuntimeStrategy,
@@ -28,6 +29,7 @@ export type HistoricalSignalsReplayResult = {
   cycleCount: number;
   abortedCycles: number;
   runtimeLineages: ReplayRuntimeLineageRecord[];
+  replayLineageScopes: RuntimeLineageScopeRecord[];
 };
 
 export type HistoricalReplayResultContext = {
@@ -37,6 +39,7 @@ export type HistoricalReplayResultContext = {
   cycleCount: number;
   abortedCycles: number;
   runtimeLineages: ReplayRuntimeLineageRecord[];
+  replayLineageScopes: RuntimeLineageScopeRecord[];
 };
 
 const emptyStat = (): TestStat =>
@@ -72,4 +75,5 @@ export const collectHistoricalReplayResult = (
   cycleCount: context.cycleCount,
   abortedCycles: context.abortedCycles,
   runtimeLineages: context.runtimeLineages,
+  replayLineageScopes: context.replayLineageScopes,
 });

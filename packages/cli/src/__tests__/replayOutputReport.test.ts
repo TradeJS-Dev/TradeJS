@@ -90,6 +90,7 @@ describe('writeReplayOutputReport', () => {
           positionLog: [],
           cycleCount: 96,
           abortedCycles: 0,
+          replayLineageScopes: [],
           runtimeLineages: [
             {
               strategy: 'TestStrategy',

@@ -3,8 +3,10 @@ import type {
   TradejsConfigSignalsHookContext,
 } from '@tradejs/core/config';
 import type { Signal } from '@tradejs/types';
+import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import type { PortfolioReplayConnector } from './portfolioReplayConnector';
 import type { HistoricalReplayPlan } from './historicalSignalsReplayPreparation';
+import { createHistoricalReplaySkipEvidence } from './historicalSignalsReplaySkipEvidence';
 
 export type HistoricalReplayExecutionContext = {
   plan: HistoricalReplayPlan;
@@ -45,6 +47,7 @@ export type HistoricalReplayExecutionAdapters = {
 export type HistoricalReplayExecutionResult = {
   signals: Signal[];
   abortedCycles: number;
+  replayLineageScopes: RuntimeLineageScopeRecord[];
 };
 
 const advanceCycleMarket = async (
@@ -85,6 +88,9 @@ export const executeHistoricalReplay = async (
 ): Promise<HistoricalReplayExecutionResult> => {
   const signals: Signal[] = [];
   let abortedCycles = 0;
+  const skipEvidence = createHistoricalReplaySkipEvidence(
+    context.plan.runtimeLineages,
+  );
 
   try {
     for (const timestamp of context.plan.orderedTimestamps) {
@@ -138,6 +144,14 @@ export const executeHistoricalReplay = async (
             btcCandle,
             ethCandle?.timestamp === timestamp ? ethCandle : undefined,
           );
+          skipEvidence.record({
+            strategyName: strategyRuntime.strategyName,
+            symbol: symbolRuntime.symbol,
+            strategyConfig: strategyRuntime.strategyConfig,
+            runtimeLineage: strategyRuntime.runtimeLineage,
+            timestamp,
+            result,
+          });
           if (result && typeof result !== 'string') {
             result.runtimeLineage = strategyRuntime.runtimeLineage;
             await adapters.enrichSignal(result);
@@ -168,5 +182,9 @@ export const executeHistoricalReplay = async (
     }
   }
 
-  return { signals, abortedCycles };
+  return {
+    signals,
+    abortedCycles,
+    replayLineageScopes: skipEvidence.values(),
+  };
 };

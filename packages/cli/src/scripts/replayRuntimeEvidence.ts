@@ -188,11 +188,26 @@ export const summarizeReplayComparison = (
     (entry) =>
       !useFilter || strategySet.has(String(asRecord(entry).strategy ?? '')),
   );
+  const hasExcludedBacktestEntryDetails = Array.isArray(
+    comparisonLineage.excludedBacktestEntryDetails,
+  );
+  const excludedBacktestEntryDetails = asArray(
+    comparisonLineage.excludedBacktestEntryDetails,
+  ).filter(
+    (entry) =>
+      !useFilter || strategySet.has(String(asRecord(entry).strategy ?? '')),
+  );
 
   return {
     mode: comparison.mode ?? null,
     lineage: comparisonLineage
-      ? { ...comparisonLineage, replay: replayLineage }
+      ? {
+          ...comparisonLineage,
+          replay: replayLineage,
+          ...(hasExcludedBacktestEntryDetails
+            ? { excludedBacktestEntryDetails }
+            : {}),
+        }
       : null,
     rows: asArray(comparison.rows).filter(
       (row) => !useFilter || strategySet.has(String(row.strategyName ?? '')),

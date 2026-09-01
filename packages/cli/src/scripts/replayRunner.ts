@@ -94,6 +94,7 @@ const finishReplay = async ({
     backtestEntries: replayStrategySnapshot.backtestEntries,
     replaySignals: replayResult.signals,
     replayLineages: replayResult.runtimeLineages,
+    replayLineageScopes: replayResult.replayLineageScopes,
     runtimeEvidencePath: replayRuntimeEvidencePath,
   });
 

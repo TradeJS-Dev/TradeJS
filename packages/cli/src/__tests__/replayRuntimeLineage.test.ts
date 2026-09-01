@@ -150,6 +150,21 @@ describe('replay runtime lineage filtering', () => {
       excludedRuntimeEvaluations: 1,
       excludedRuntimeLineageScopes: 1,
       excludedBacktestEntries: 1,
+      excludedBacktestEntryDetails: [
+        {
+          strategy: 'TrendShift',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          timestamp: 50,
+          signalTimestamp: 50,
+          price: 100,
+          reason: 'before_runtime_window',
+          runtimeWindow: {
+            firstTimestamp: 100,
+            lastTimestamp: 250,
+          },
+        },
+      ],
       reason: null,
     });
   });

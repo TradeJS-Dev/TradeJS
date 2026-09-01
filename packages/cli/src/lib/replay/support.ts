@@ -192,6 +192,13 @@ export type ReplayMismatchDiagnostic = {
   replaySignalArtifact?: Signal;
   replayEvaluation?: ReplayMismatchEvaluationDiagnostic;
   replayEvaluationArtifact?: RuntimeSignalEvaluationRecord;
+  replayEvaluationOutcome?: {
+    status: 'skip';
+    reason: string;
+    timestamp: number;
+    timestampDiffMs: number;
+    source: 'replay_scope_compact';
+  };
 };
 
 export type ReplayMismatchDrilldown = {
@@ -247,6 +254,28 @@ export type ReplayLineageComparisonSummary = {
   excludedRuntimeLineageScopes: number;
   excludedExchangeEntries: number;
   excludedBacktestEntries: number;
+  excludedBacktestEntryDetails?: Array<{
+    id: string;
+    strategy: string;
+    symbol: string;
+    direction: string;
+    qty?: number | null;
+    timestamp: number;
+    signalTimestamp?: number | null;
+    price: number | null;
+    orderId?: string;
+    signalId?: string;
+    expectedPnl?: number | null;
+    reason:
+      | 'replay_scope_missing'
+      | 'runtime_scope_missing'
+      | 'before_runtime_window'
+      | 'after_runtime_window';
+    runtimeWindow: {
+      firstTimestamp: number;
+      lastTimestamp: number;
+    } | null;
+  }>;
   reason: string | null;
   replay: Array<{
     strategy: string;

@@ -200,18 +200,50 @@ export const filterReplayComparisonByLineage = ({
       lineageScopeKey(record),
     ]),
   );
-  const comparableBacktestEntries = backtestEntries.filter((entry) => {
+  const comparableBacktestEntries: TradeParityEntry[] = [];
+  const excludedBacktestEntryDetails: NonNullable<
+    ReplayRuntimeComparisonSummary['lineage']['excludedBacktestEntryDetails']
+  > = [];
+  for (const entry of backtestEntries) {
     const replayScope = replayScopeByStrategySymbol.get(
       `${entry.strategy}::${entry.symbol}`,
     );
     const window = replayScope ? deploymentWindows.get(replayScope) : null;
     const signalTimestamp = entry.signalTimestamp ?? entry.timestamp;
-    return (
+    if (
       window != null &&
       signalTimestamp >= window.firstTimestamp &&
       signalTimestamp <= window.lastTimestamp
-    );
-  });
+    ) {
+      comparableBacktestEntries.push(entry);
+      continue;
+    }
+
+    const reason = !replayScope
+      ? 'replay_scope_missing'
+      : !window
+        ? 'runtime_scope_missing'
+        : signalTimestamp < window.firstTimestamp
+          ? 'before_runtime_window'
+          : 'after_runtime_window';
+    excludedBacktestEntryDetails.push({
+      id: entry.id,
+      strategy: entry.strategy,
+      symbol: entry.symbol,
+      direction: entry.direction,
+      ...(entry.qty != null ? { qty: entry.qty } : {}),
+      timestamp: entry.timestamp,
+      ...(entry.signalTimestamp != null
+        ? { signalTimestamp: entry.signalTimestamp }
+        : {}),
+      price: entry.price,
+      ...(entry.orderId ? { orderId: entry.orderId } : {}),
+      ...(entry.signalId ? { signalId: entry.signalId } : {}),
+      ...(entry.expectedPnl != null ? { expectedPnl: entry.expectedPnl } : {}),
+      reason,
+      runtimeWindow: window ?? null,
+    });
+  }
   const comparableScopeKeys = new Set(deploymentWindows.keys());
 
   return {
@@ -235,6 +267,7 @@ export const filterReplayComparisonByLineage = ({
       excludedExchangeEntries: 0,
       excludedBacktestEntries:
         backtestEntries.length - comparableBacktestEntries.length,
+      excludedBacktestEntryDetails,
       reason:
         comparableScopeKeys.size > 0
           ? null

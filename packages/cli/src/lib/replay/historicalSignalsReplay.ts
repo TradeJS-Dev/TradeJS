@@ -298,5 +298,6 @@ export const runHistoricalSignalsReplay = async ({
     cycleCount: plan.orderedTimestamps.length,
     abortedCycles: execution.abortedCycles,
     runtimeLineages: plan.runtimeLineages,
+    replayLineageScopes: execution.replayLineageScopes,
   });
 };

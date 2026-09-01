@@ -19,6 +19,10 @@ describe('replay runtime evidence strategy scoping', () => {
             { strategy: 'DoubleTap', lineage: lineage('1') },
             { strategy: 'TrendLine', lineage: lineage('2') },
           ],
+          excludedBacktestEntryDetails: [
+            { strategy: 'DoubleTap', symbol: 'BTCUSDT', timestamp: 100 },
+            { strategy: 'TrendLine', symbol: 'ETHUSDT', timestamp: 200 },
+          ],
         },
         rows: [
           { strategyName: 'DoubleTap', matched: 1 },
@@ -38,6 +42,9 @@ describe('replay runtime evidence strategy scoping', () => {
 
     expect(summary.lineage).toEqual({
       replay: [{ strategy: 'DoubleTap', lineage: lineage('1') }],
+      excludedBacktestEntryDetails: [
+        { strategy: 'DoubleTap', symbol: 'BTCUSDT', timestamp: 100 },
+      ],
     });
     expect(summary.rows).toEqual([{ strategyName: 'DoubleTap', matched: 1 }]);
     expect(summary.counts).toEqual({
