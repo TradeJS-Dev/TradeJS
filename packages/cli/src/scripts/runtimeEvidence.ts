@@ -7,13 +7,16 @@ import {
   collectRuntimeDebugEvidence,
 } from '../lib/runtimeDebugEvidence';
 import { publishRuntimeEvidenceBundle } from '../lib/runtimeEvidenceArtifacts';
+import {
+  loadRuntimeEvidenceCompositionSnapshots,
+  splitRuntimeEvidenceByComposition,
+} from '../lib/runtimeEvidenceCompositions';
 import { runtimeLineageKey } from '../lib/runtimeLineage';
 import { resolveRuntimeEvidenceProducer } from '../lib/runtimeEvidenceProducer';
 import {
   activeRuntimeEvidenceStrategies,
   resolveRuntimeEvidenceDeploymentSnapshot,
   resolveRuntimeEvidenceTickerUniverse,
-  runtimeLineageMatchesStrategySnapshot,
 } from '../lib/runtimeEvidenceDeployment';
 
 args.option(['u', 'user'], 'Use user config', 'root');
@@ -124,17 +127,33 @@ export const runtimeEvidence = async () => {
     projectRoot,
     deploymentId,
   });
-  const activeStrategies = activeRuntimeEvidenceStrategies(
-    deploymentSnapshot,
-  ).map(({ strategyName }) => strategyName);
   const requestedStrategies = parseStrategyFilter(flags.strategy);
-  const strategies = requestedStrategies.length
-    ? requestedStrategies
-    : activeStrategies;
+  const evidence = await collectRuntimeDebugEvidence({
+    userName: flags.user,
+    startTime,
+    endTime,
+    strategies: requestedStrategies.length ? requestedStrategies : undefined,
+    deploymentId,
+  });
+  const snapshots =
+    publishDir && producer
+      ? await loadRuntimeEvidenceCompositionSnapshots({
+          publishRoot: path.resolve(projectRoot, publishDir),
+          currentDeployment: deploymentSnapshot,
+          currentProducer: producer,
+        })
+      : new Map([
+          [
+            deploymentSnapshot.deploymentCompositionId,
+            { deployment: deploymentSnapshot, producer },
+          ],
+        ]);
   const declaredStrategies = new Set(
-    deploymentSnapshot.strategies.map(({ strategyName }) => strategyName),
+    [...snapshots.values()].flatMap(({ deployment }) =>
+      deployment.strategies.map(({ strategyName }) => strategyName),
+    ),
   );
-  const unknownStrategies = strategies.filter(
+  const unknownStrategies = requestedStrategies.filter(
     (strategyName) => !declaredStrategies.has(strategyName),
   );
   if (unknownStrategies.length) {
@@ -142,112 +161,114 @@ export const runtimeEvidence = async () => {
       `Strategies are not declared in ${deploymentId}: ${unknownStrategies.join(', ')}`,
     );
   }
-  const evidence = await collectRuntimeDebugEvidence({
-    userName: flags.user,
-    startTime,
-    endTime,
-    strategies,
-    deploymentId,
+  const compositionRows = splitRuntimeEvidenceByComposition({
+    evidence,
+    snapshots,
+    includeEmptyCompositionIds: publishDir
+      ? []
+      : [deploymentSnapshot.deploymentCompositionId],
+    ignoreUnknownCompositions: !publishDir,
   });
-  const activeSnapshots = new Map(
-    activeRuntimeEvidenceStrategies(deploymentSnapshot).map((strategy) => [
-      strategy.strategyName,
-      strategy,
-    ]),
-  );
-  const belongsToCurrentDeployment = (row: {
-    strategy: string;
-    deploymentId?: string;
-    accountId?: string;
-    runtimeLineage?: import('@tradejs/types').RuntimeLineage;
-  }) => {
-    const snapshot = activeSnapshots.get(row.strategy);
-    return Boolean(
-      snapshot &&
-        row.deploymentId === deploymentSnapshot.id &&
-        row.accountId === deploymentSnapshot.accountId &&
-        runtimeLineageMatchesStrategySnapshot({
-          lineage: row.runtimeLineage,
-          deployment: deploymentSnapshot,
-          strategy: snapshot,
-        }),
-    );
-  };
-  const currentSignals = evidence.signals.filter(belongsToCurrentDeployment);
-  const currentEvaluations = evidence.evaluations.filter(
-    belongsToCurrentDeployment,
-  );
-  const currentTrades = evidence.trades.filter(belongsToCurrentDeployment);
-  const currentLineageScopes = evidence.lineageScopes.filter((scope) =>
-    belongsToCurrentDeployment({
-      ...scope,
-      runtimeLineage: scope.lineage,
-    }),
-  );
-  const runtime = buildRuntimeEvidenceReportPayload({
-    userName: flags.user,
-    startTime,
-    endTime,
-    signals: currentSignals,
-    evaluations: currentEvaluations,
-    trades: currentTrades,
-    lineageScopes: currentLineageScopes,
-  });
-  const deployment = resolveRuntimeEvidenceTickerUniverse({
-    deployment: deploymentSnapshot,
-    lineageScopes: currentLineageScopes,
-  });
-  const artifact = {
-    reportType: 'runtime-evidence',
-    generatedAt: Date.now(),
-    ...(producer ? { producer } : {}),
-    userName: flags.user,
-    window: {
+  const artifacts = compositionRows.map((composition) => {
+    const strategies = activeRuntimeEvidenceStrategies(composition.deployment)
+      .map(({ strategyName }) => strategyName)
+      .filter(
+        (strategyName) =>
+          !requestedStrategies.length ||
+          requestedStrategies.includes(strategyName),
+      );
+    const runtime = buildRuntimeEvidenceReportPayload({
+      userName: flags.user,
       startTime,
       endTime,
-      startIso: new Date(startTime).toISOString(),
-      endIso: new Date(endTime).toISOString(),
-      source,
-    },
-    strategies,
-    deployment,
-    runtime,
-  };
+      signals: composition.signals,
+      evaluations: composition.evaluations,
+      trades: composition.trades,
+      lineageScopes: composition.lineageScopes,
+    });
+    const deployment = resolveRuntimeEvidenceTickerUniverse({
+      deployment: composition.deployment,
+      lineageScopes: composition.lineageScopes,
+    });
+    return {
+      artifact: {
+        reportType: 'runtime-evidence',
+        generatedAt: Date.now(),
+        ...(composition.producer ? { producer: composition.producer } : {}),
+        ...(producer &&
+        composition.producer &&
+        composition.producer !== producer
+          ? { collector: producer }
+          : {}),
+        userName: flags.user,
+        window: {
+          startTime,
+          endTime,
+          startIso: new Date(startTime).toISOString(),
+          endIso: new Date(endTime).toISOString(),
+          source,
+        },
+        strategies,
+        deployment,
+        runtime,
+      },
+      composition,
+    };
+  });
+  const current =
+    artifacts.find(
+      ({ artifact }) =>
+        artifact.deployment.deploymentCompositionId ===
+        deploymentSnapshot.deploymentCompositionId,
+    ) ?? artifacts.at(-1);
+  if (!current) {
+    throw new Error('Runtime evidence window has no versioned runtime rows');
+  }
+  const artifact = current.artifact;
   const outPath = path.resolve(projectRoot, String(flags.out));
 
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
 
   const published = publishDir
-    ? await publishRuntimeEvidenceBundle({
-        publishRoot: path.resolve(projectRoot, publishDir),
-        deploymentId,
-        userName: String(flags.user),
-        startTime,
-        endTime,
-        artifact,
-        counts: artifact.runtime.counts,
-        lineageKeys: [
-          ...currentSignals.map((signal) => signal.runtimeLineage),
-          ...currentEvaluations.map((evaluation) => evaluation.runtimeLineage),
-          ...currentTrades.map((trade) => trade.runtimeLineage),
-          ...currentLineageScopes.map((scope) => scope.lineage),
-        ]
-          .filter((lineage) => lineage != null)
-          .map(runtimeLineageKey)
-          .filter((key, index, values) => values.indexOf(key) === index),
-      })
-    : null;
+    ? await Promise.all(
+        artifacts.map(({ artifact, composition }) =>
+          publishRuntimeEvidenceBundle({
+            publishRoot: path.resolve(projectRoot, publishDir),
+            deploymentId,
+            userName: String(flags.user),
+            startTime,
+            endTime,
+            artifact,
+            counts: artifact.runtime.counts,
+            lineageKeys: [
+              ...composition.signals.map((signal) => signal.runtimeLineage),
+              ...composition.evaluations.map(
+                (evaluation) => evaluation.runtimeLineage,
+              ),
+              ...composition.trades.map((trade) => trade.runtimeLineage),
+              ...composition.lineageScopes.map((scope) => scope.lineage),
+            ]
+              .filter((lineage) => lineage != null)
+              .map(runtimeLineageKey)
+              .filter((key, index, values) => values.indexOf(key) === index),
+          }),
+        ),
+      )
+    : [];
 
   console.log(chalk.green(`Wrote ${outPath}`));
-  if (published) {
-    console.log(chalk.green(`Published ${published.bundleDir}`));
+  for (const bundle of published) {
+    console.log(chalk.green(`Published ${bundle.bundleDir}`));
   }
   console.log(
     JSON.stringify(
       {
-        strategies: artifact.strategies,
-        runtimeCounts: artifact.runtime.counts,
+        compositions: artifacts.map(({ artifact }) => ({
+          deploymentCompositionId: artifact.deployment.deploymentCompositionId,
+          strategies: artifact.strategies,
+          runtimeCounts: artifact.runtime.counts,
+        })),
       },
       null,
       2,
