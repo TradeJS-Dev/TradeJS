@@ -67,6 +67,10 @@ import {
   getConfiguredScopeActiveSymbols,
   type ConfiguredSignalsScope,
 } from './configuredScopes';
+import {
+  captureRuntimeEvidenceCompositionSnapshot,
+  createRuntimeEvidenceCompositionSnapshotRecorder,
+} from '../runtimeEvidenceCompositionSnapshots';
 
 const SLOW_SIGNALS_WARNING_MS = 10 * 60_000;
 
@@ -155,6 +159,26 @@ export const createSignalsRunner = (
     config.projectRoot?.trim() ||
     String(process.env.PROJECT_CWD || process.cwd()).trim() ||
     process.cwd();
+  const compositionSnapshotRecorder =
+    process.env.TRADEJS_PROJECT_SHA &&
+    process.env.TRADEJS_PROJECT_IMAGE_DIGEST &&
+    config.deploymentId
+      ? createRuntimeEvidenceCompositionSnapshotRecorder({
+          persist: (compositionId) =>
+            captureRuntimeEvidenceCompositionSnapshot({
+              projectRoot,
+              userName: config.userName,
+              deploymentId: config.deploymentId!,
+              expectedCompositionId: compositionId,
+            }),
+          onError: (compositionId, error) =>
+            logger.warn(
+              'runtime evidence snapshot unavailable; trading continues and the next cycle will retry (composition=%s): %s',
+              compositionId,
+              error instanceof Error ? error.message : String(error),
+            ),
+        })
+      : null;
 
   const resolveSignalsDaemonMaxLiveBars = (runtimeInterval = interval) => {
     const intervalMinutes = Number(runtimeInterval);
@@ -870,6 +894,9 @@ export const createSignalsRunner = (
           if (!currentDeployment) {
             throw new Error(`Runtime deployment not found: ${deploymentId}`);
           }
+          compositionSnapshotRecorder?.observe(
+            currentDeployment.deploymentCompositionId,
+          );
           const scopes = await loadConfiguredSignalsScopes(currentDeployment);
 
           for (const [key, staleSession] of sessions) {

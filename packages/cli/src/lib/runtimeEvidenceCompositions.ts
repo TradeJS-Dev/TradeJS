@@ -3,6 +3,7 @@ import {
   discoverRuntimeEvidenceBundles,
   verifyRuntimeEvidenceBundle,
 } from './runtimeEvidenceArtifacts';
+import { discoverRuntimeEvidenceCompositionSnapshots } from './runtimeEvidenceCompositionSnapshots';
 import {
   activeRuntimeEvidenceStrategies,
   parseRuntimeEvidenceDeploymentSnapshot,
@@ -53,6 +54,16 @@ export const loadRuntimeEvidenceCompositionSnapshots = async ({
     }
     snapshots.set(compositionId, snapshot);
   };
+
+  const compositionSnapshots =
+    await discoverRuntimeEvidenceCompositionSnapshots(publishRoot);
+  for (const snapshot of compositionSnapshots) {
+    if (snapshot.deployment.id !== currentDeployment.id) continue;
+    register({
+      deployment: { ...snapshot.deployment, tickers: undefined },
+      producer: snapshot.producer,
+    });
+  }
 
   const bundleDirs = await discoverRuntimeEvidenceBundles(publishRoot);
   for (const bundleDir of bundleDirs) {
