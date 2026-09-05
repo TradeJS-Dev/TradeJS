@@ -51,8 +51,16 @@ export const makeSpec = (
       connector: 'Test',
       interval: '15',
       maxLossValue: 10,
-      feeRate: 0.001,
-      slippageBps: 10,
+      costs: {
+        fees: { makerRate: 0.001, takerRate: 0.001 },
+        slippage: {
+          baseBps: 10,
+          spreadMultiplier: 1,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+        },
+        funding: { enabled: false },
+      },
       entryDelayBars: 1,
     },
     variants: [

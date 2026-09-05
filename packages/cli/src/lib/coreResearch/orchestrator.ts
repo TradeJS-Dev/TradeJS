@@ -521,8 +521,16 @@ export const createCoreResearchSpecTemplate = (params: {
       connector: 'ByBit',
       interval: '15',
       maxLossValue: 10,
-      feeRate: 0.001,
-      slippageBps: 10,
+      costs: {
+        fees: { makerRate: 0.001, takerRate: 0.001 },
+        slippage: {
+          baseBps: 10,
+          spreadMultiplier: 1,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+        },
+        funding: { enabled: false },
+      },
       entryDelayBars: 1,
     },
     variants: [
@@ -657,6 +665,8 @@ export const validateCoreResearchRunCommand = (params: {
   const { spec, variant } = params;
   const command = variant.command ?? [];
   const failures: string[] = [];
+  if (commandHas(command, ['--executionCosts']))
+    failures.push('executionCosts is owned by the research spec');
   if (!commandHas(command, ['--ai', '-A'])) failures.push('--ai');
   if (!commandHas(command, ['--fast'])) failures.push('--fast');
   if (!commandHas(command, ['--cacheOnly', '-C'])) failures.push('--cacheOnly');
@@ -716,7 +726,11 @@ export const runCoreResearch = async (params: {
     );
     try {
       await runCommand({
-        command: variant.command,
+        command: [
+          ...variant.command,
+          '--executionCosts',
+          JSON.stringify(spec.execution.costs),
+        ],
         cwd,
         logPath: backtestLogPath,
         env: {

@@ -63,6 +63,7 @@ import {
 import {
   BacktestCheckpointResult,
   BacktestRunManifest,
+  assertFrozenBacktestExecutionCosts,
   createBacktestRunManifest,
   filterCompletedBacktestResultsForSuite,
   filterRemainingBacktestTests,
@@ -114,6 +115,8 @@ type PersistedBacktestResultEntry = Pick<
     | 'symbol'
     | 'strategyName'
     | 'strategyConfig'
+    | 'executionCosts'
+    | 'executionCostsCacheOnly'
     | 'connectorName'
     | 'universe'
     | 'assetClass'
@@ -142,6 +145,8 @@ export const toPersistedBacktestResultEntry = (
     symbol: result.test.symbol,
     strategyName: result.test.strategyName,
     strategyConfig: result.test.strategyConfig,
+    executionCosts: result.test.executionCosts,
+    executionCostsCacheOnly: result.test.executionCostsCacheOnly,
     connectorName: result.test.connectorName,
     universe: result.test.universe,
     assetClass: result.test.assetClass,
@@ -528,6 +533,11 @@ const loadBacktestRunForContinue = async (): Promise<{
   if (!flags.continue) {
     return null;
   }
+  if (flags.executionCosts != null) {
+    throw new Error(
+      'A continued run uses its frozen executionCosts; start a new run to change costs',
+    );
+  }
 
   const runId = await resolveBacktestRunIdForContinue({
     config: flags.config,
@@ -544,6 +554,7 @@ const loadBacktestRunForContinue = async (): Promise<{
   if (!manifest) {
     throw new Error(`Backtest run "${runId}" was not found`);
   }
+  assertFrozenBacktestExecutionCosts(manifest.testSuite);
   if (manifest.userName !== userName) {
     throw new Error(
       `Backtest run "${runId}" belongs to user "${manifest.userName}", not "${userName}"`,

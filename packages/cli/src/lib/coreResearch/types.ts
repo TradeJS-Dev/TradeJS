@@ -66,8 +66,7 @@ export type CoreResearchSpec = {
     connector: string;
     interval: string;
     maxLossValue: number;
-    feeRate?: number;
-    slippageBps?: number;
+    costs: import('@tradejs/types').BacktestExecutionCosts;
     entryDelayBars?: number;
   };
   variants: CoreResearchVariant[];

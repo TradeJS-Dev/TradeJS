@@ -1,5 +1,6 @@
 import {
   buildCompletedBacktestDatasetAttemptKeys,
+  assertFrozenBacktestExecutionCosts,
   buildBacktestTestKey,
   filterCompletedBacktestResultsForSuite,
   filterRemainingBacktestTests,
@@ -31,6 +32,56 @@ const makeTest = (overrides: Record<string, unknown> = {}) =>
   }) as any;
 
 describe('backtest checkpoint helpers', () => {
+  const executionCosts = {
+    fees: { makerRate: 0, takerRate: 0.001 },
+    slippage: {
+      baseBps: 10,
+      spreadMultiplier: 1,
+      marketImpactBps: 0,
+      delayRiskMultiplier: 0,
+    },
+    funding: { enabled: false },
+  };
+
+  it('keys every economic assumption separately from strategy decisions', () => {
+    const baseline = makeTest({
+      executionCosts,
+      executionCostsCacheOnly: true,
+    });
+    for (const changed of [
+      {
+        ...executionCosts,
+        fees: { ...executionCosts.fees, makerRate: -0.0001 },
+      },
+      {
+        ...executionCosts,
+        slippage: { ...executionCosts.slippage, baseBps: 20 },
+      },
+      { ...executionCosts, funding: { enabled: true } },
+    ]) {
+      expect(
+        buildBacktestTestKey(
+          makeTest({ executionCosts: changed, executionCostsCacheOnly: true }),
+        ),
+      ).not.toBe(buildBacktestTestKey(baseline));
+    }
+    expect(
+      buildBacktestTestKey({ ...baseline, executionCostsCacheOnly: false }),
+    ).not.toBe(buildBacktestTestKey(baseline));
+  });
+
+  it('refuses continuation with unresolved or malformed economic assumptions', () => {
+    expect(() => assertFrozenBacktestExecutionCosts([makeTest()])).toThrow(
+      'without frozen executionCosts',
+    );
+    expect(() =>
+      assertFrozenBacktestExecutionCosts([makeTest({ executionCosts: {} })]),
+    ).toThrow();
+    expect(() =>
+      assertFrozenBacktestExecutionCosts([makeTest({ executionCosts })]),
+    ).not.toThrow();
+  });
+
   it('builds stable test keys without depending on random test ids', () => {
     const left = makeTest({
       name: 'BTCUSDT_random_a',

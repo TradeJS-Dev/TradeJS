@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import { parseTestName } from '@tradejs/core/backtest';
+import {
+  parseTestName,
+  parseBacktestExecutionCosts,
+  assertStrategyExecutionIsolation,
+} from '@tradejs/core/backtest';
 import { BACKTEST_PRELOAD_DAYS, TTL_1M } from '@tradejs/core/constants';
 import { formatUnix } from '@tradejs/core/time';
 import {
@@ -412,6 +416,12 @@ export const buildPreparedTestSuite = async ({
   isReplay: boolean;
 }): Promise<TestSuite | null> => {
   const mlEnabled = Boolean(flags.ml);
+  const executionCosts =
+    flags.executionCosts == null
+      ? undefined
+      : parseBacktestExecutionCosts(JSON.parse(String(flags.executionCosts)));
+  for (const test of testSuite)
+    assertStrategyExecutionIsolation(test.strategyConfig);
   const aiEnabled = Boolean(flags.ai);
   const requestedTestsLimit = resolveRequestedTestsLimit({
     isLiveMode: isReplay,
@@ -422,6 +432,8 @@ export const buildPreparedTestSuite = async ({
     .map((test) => ({
       ...test,
       interval,
+      executionCosts: executionCosts ?? test.executionCosts,
+      executionCostsCacheOnly: Boolean(flags.cacheOnly),
       strategyConfig: {
         ...test.strategyConfig,
         ENV: 'BACKTEST',
@@ -430,7 +442,6 @@ export const buildPreparedTestSuite = async ({
         CLOSE_OPPOSITE_POSITIONS: false,
         BACKTEST_PRICE_MODE: backtestPriceMode,
         BACKTEST_ENTRY_DELAY_BARS: backtestEntryDelayBars,
-        ...(flags.cacheOnly ? { EXECUTION_COSTS_CACHE_ONLY: true } : {}),
       },
       options: {
         start: window.start,

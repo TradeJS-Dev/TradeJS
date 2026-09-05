@@ -38,6 +38,7 @@ jest.mock('@tradejs/node/cli', () => ({
 }));
 
 jest.mock('@tradejs/core/backtest', () => ({
+  ...jest.requireActual('@tradejs/core/backtest'),
   calculateStatsFull: jest.fn(),
   parseTestName: jest.fn((value: string) => ({
     symbol: value.split('__')[0],
@@ -81,6 +82,7 @@ jest.mock('@tradejs/core/time', () => ({
 }));
 
 import args from 'args';
+import { flags } from '../lib/backtest/cliConfig';
 import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -480,6 +482,17 @@ describe('backtest script helpers', () => {
   });
 
   it('injects CLI runtime fields into prepared worker tests', async () => {
+    const costs = {
+      fees: { makerRate: 0, takerRate: 0.001 },
+      slippage: {
+        baseBps: 10,
+        spreadMultiplier: 1,
+        marketImpactBps: 0,
+        delayRiskMultiplier: 0,
+      },
+      funding: { enabled: false },
+    };
+    flags.executionCosts = JSON.stringify(costs);
     const preparedSuite = await buildPreparedTestSuite({
       testSuite: [
         {
@@ -509,6 +522,7 @@ describe('backtest script helpers', () => {
     expect(preparedSuite).toEqual([
       expect.objectContaining({
         interval: '15',
+        executionCosts: costs,
         options: { start: 100, end: 200 },
         timeoutMs: 600_000,
         strategyConfig: {
@@ -522,6 +536,7 @@ describe('backtest script helpers', () => {
         },
       }),
     ]);
+    delete flags.executionCosts;
   });
 
   it('rejects an empty test selection instead of completing successfully', async () => {

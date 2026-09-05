@@ -77,6 +77,10 @@ args.example(
 );
 
 args.option(['t', 'tickers'], 'Selected tickers');
+args.option(
+  ['J', 'executionCosts'],
+  'Explicit execution costs JSON: fees, slippage and funding',
+);
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);

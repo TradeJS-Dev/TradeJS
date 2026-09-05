@@ -22,9 +22,6 @@ describe('resolveExecutionCosts', () => {
       endTime: 200,
       config: {
         LEVERAGE: 20,
-        SLIPPAGE_BASE_BPS: 2,
-        SLIPPAGE_SPREAD_MULTIPLIER: 1,
-        SLIPPAGE_MARKET_IMPACT_BPS: 0,
       },
       instrument: {
         provider: 'bybit',
@@ -68,15 +65,17 @@ describe('resolveExecutionCosts', () => {
       symbol: 'AAPLUSDT',
       startTime: 1,
       endTime: 200,
-      config: {
-        EXECUTION_COSTS_CACHE_ONLY: true,
-        MAKER_FEE_RATE: 0.001,
-        TAKER_FEE_RATE: 0.002,
-        SLIPPAGE_BASE_BPS: 3,
-        SLIPPAGE_SPREAD_MULTIPLIER: 2,
-        SLIPPAGE_MARKET_IMPACT_BPS: 1,
-        SLIPPAGE_DELAY_RISK_MULTIPLIER: 0.5,
-        LEVERAGE: 4,
+      config: { LEVERAGE: 4 },
+      cacheOnly: true,
+      executionCosts: {
+        fees: { makerRate: 0.001, takerRate: 0.002 },
+        slippage: {
+          baseBps: 3,
+          spreadMultiplier: 2,
+          marketImpactBps: 1,
+          delayRiskMultiplier: 0.5,
+        },
+        funding: { enabled: false },
       },
     });
 
@@ -92,7 +91,7 @@ describe('resolveExecutionCosts', () => {
         },
         funding: expect.objectContaining({
           enabled: false,
-          source: 'fallback',
+          source: 'disabled',
           points: 0,
         }),
         slippage: {
@@ -155,11 +154,7 @@ describe('resolveExecutionCosts', () => {
       symbol: 'BTCUSDT',
       startTime: 1,
       endTime: 200,
-      config: {
-        SLIPPAGE_BASE_BPS: 1,
-        SLIPPAGE_SPREAD_MULTIPLIER: 1,
-        SLIPPAGE_MARKET_IMPACT_BPS: 0,
-      },
+      config: {},
     };
 
     await resolveExecutionCosts(params);
@@ -179,7 +174,17 @@ describe('resolveExecutionCosts', () => {
       symbol: 'BTCUSDT',
       startTime: 1,
       endTime: 200,
-      config: { FUNDING_ENABLED: false },
+      config: {},
+      executionCosts: {
+        fees: { makerRate: 0.001, takerRate: 0.001 },
+        slippage: {
+          baseBps: 10,
+          spreadMultiplier: 1,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+        },
+        funding: { enabled: false },
+      },
     });
 
     expect(connector.getFundingRateHistory).not.toHaveBeenCalled();

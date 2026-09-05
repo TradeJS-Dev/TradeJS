@@ -68,6 +68,59 @@ Backtest commands must include exact start/end, frozen ticker CSV, one isolated
 config, `--ai --fast --cacheOnly`, and host-safe parallelism. Add
 `--researchTrace` only when setup/entry/skip attribution is required.
 
+### Execution costs and strategy estimates
+
+Every new spec must contain the full `execution.costs` object:
+
+```json
+{
+  "fees": { "makerRate": 0.001, "takerRate": 0.001 },
+  "slippage": {
+    "baseBps": 10,
+    "spreadMultiplier": 1,
+    "marketImpactBps": 0,
+    "delayRiskMultiplier": 0
+  },
+  "funding": { "enabled": false }
+}
+```
+
+These numbers are example assumptions, not verified exchange tariffs. Fees are
+decimal one-way rates: `0.001` means 0.1%. Slippage is adverse on each fill, and
+fees use the resulting fill notional. Slippage is not deducted a second time
+from PnL. Explicit zero fees and maker rebates are supported. Funding disabled
+means excluded, not estimated as zero. Explicit funding enabled requires usable
+historical funding data; it fails if unavailable, including cache-only runs
+without a funding-history source.
+
+The orchestrator supplies `--executionCosts` from the spec and checks every
+completed result against it, including fee/slippage provenance. Do not put this
+flag in variant commands. For ordinary backtests pass the same full object as
+JSON through `--executionCosts`. Costs belong to the test, never to
+`strategyConfig`. Checkpoint keys include them. Continuing a run without frozen
+costs is rejected; restart it with explicit costs.
+
+Strategy admission and quantity use separate `RISK_FEE_RATE`,
+`RISK_SLIPPAGE_BPS`, and `RISK_MARKET_IMPACT_BPS` estimates. Their defaults retain
+the previous intended strategy assumptions, including zero estimated slippage.
+A simulation stress must not change these estimates automatically. Changing
+them is a strategy change and requires a separate comparison. Existing gross
+versus net reward/risk admission policies are preserved.
+
+Flat simulator fields such as `SLIPPAGE_BASE_BPS`, `MAKER_FEE_RATE`, and
+`TAKER_FEE_RATE` are rejected in strategy configs. `FEE_PERCENT` in migrated
+strategies becomes `RISK_FEE_RATE`. Migrate each old value by its intended role,
+not by blindly copying it into both objects. Legacy specs with only
+`execution.feeRate` or `execution.slippageBps` are insufficient. Preserve old
+bundles and their pinned source; create new specs and run IDs for corrected
+tests. Do not rewrite historical evidence.
+
+The migrated strategy sources require Kit's
+`createCostIsolatedStrategyConfigParser` export. Build/check them against the
+fixed Kit package, then release Kit before its consumers. An older installed
+Kit deliberately fails at this boundary. Feature-branch pushes alone do not
+update installed Project packages or production.
+
 ## Artifact contract
 
 The research directory contains canonical `spec.json`, hashed `manifest.json`,

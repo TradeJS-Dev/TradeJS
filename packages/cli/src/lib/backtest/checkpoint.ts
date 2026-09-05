@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { TTL_1M } from '@tradejs/core/constants';
+import { parseBacktestExecutionCosts } from '@tradejs/core/backtest';
 import {
   getData,
   getHashJsonValues,
@@ -11,6 +12,17 @@ import type { Test, TestSuite, TestWorkerResult } from '@tradejs/types';
 import { createTimestamp } from '../runFormatting';
 
 export type BacktestRunStatus = 'running' | 'completed' | 'interrupted';
+
+export const assertFrozenBacktestExecutionCosts = (testSuite: TestSuite) => {
+  for (const test of testSuite) {
+    if (test.executionCosts == null) {
+      throw new Error(
+        'Cannot continue a run without frozen executionCosts; start a new run with --executionCosts',
+      );
+    }
+    parseBacktestExecutionCosts(test.executionCosts);
+  }
+};
 
 export type BacktestRunManifest = {
   runId: string;
@@ -77,6 +89,8 @@ export const buildBacktestTestKey = (test: Test) =>
     researchTrace: Boolean(test.researchTrace),
     options: test.options,
     strategyConfig: test.strategyConfig,
+    executionCosts: test.executionCosts,
+    executionCostsCacheOnly: Boolean(test.executionCostsCacheOnly),
     strategyName: test.strategyName,
     symbol: test.symbol,
     userName: test.userName,

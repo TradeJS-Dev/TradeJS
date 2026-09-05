@@ -170,6 +170,8 @@ export const createBacktestSession = async ({
       connector,
       symbol: test.symbol,
       config: test.strategyConfig,
+      executionCosts: test.executionCosts,
+      cacheOnly: test.executionCostsCacheOnly,
       startTime: start,
       endTime: test.options.end,
       instrument,

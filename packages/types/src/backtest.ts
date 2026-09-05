@@ -33,6 +33,18 @@ export type ExecutionCostSource =
 
 export type ExecutionCostQuality = 'full' | 'partial' | 'fallback';
 
+/** Simulation assumptions. Never merge these into a strategy configuration. */
+export interface BacktestExecutionCosts {
+  fees: { makerRate: number; takerRate: number };
+  slippage: {
+    baseBps: number;
+    spreadMultiplier: number;
+    marketImpactBps: number;
+    delayRiskMultiplier: number;
+  };
+  funding: { enabled: boolean };
+}
+
 export interface ExecutionCostModel {
   fees: {
     makerRate: number;
@@ -97,15 +109,13 @@ export interface StrategyConfig {
   BACKTEST_EXECUTION_DELAY_MS?: number;
   ML_ENABLED?: boolean;
   POLICY_PROFILE_ID?: string;
-  MAKER_FEE_RATE?: number;
-  TAKER_FEE_RATE?: number;
-  FUNDING_ENABLED?: boolean;
   LEVERAGE?: number;
-  SLIPPAGE_BASE_BPS?: number;
-  SLIPPAGE_SPREAD_MULTIPLIER?: number;
-  SLIPPAGE_MARKET_IMPACT_BPS?: number;
-  SLIPPAGE_DELAY_RISK_MULTIPLIER?: number;
-  EXECUTION_COSTS_CACHE_ONLY?: boolean;
+  /** Decimal one-way fee estimate used by strategy admission/sizing. */
+  RISK_FEE_RATE?: number;
+  /** One-way adverse slippage estimate used by strategy admission/sizing. */
+  RISK_SLIPPAGE_BPS?: number;
+  /** Additional one-way impact estimate used by strategy admission/sizing. */
+  RISK_MARKET_IMPACT_BPS?: number;
   [key: string]: any;
 }
 export type StrategyResultConfig = StrategyConfig;
@@ -164,6 +174,8 @@ export interface BacktestRunConfig {
 }
 
 export interface Test extends BacktestRunConfig {
+  executionCosts?: BacktestExecutionCosts;
+  executionCostsCacheOnly?: boolean;
   userName: string;
   name: string;
   testId: string;

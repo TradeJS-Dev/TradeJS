@@ -24,6 +24,67 @@ const baseConnector = {
 };
 
 describe('testConnector', () => {
+  it.each([false, true])(
+    'charges each fill once, including scaled entries and limit exit=%s',
+    async (isLimit) => {
+      const connector = createTestConnector(baseConnector as any, {
+        aiEnabled: true,
+        executionCostModel: {
+          fees: { makerRate: -0.0001, takerRate: 0.001, source: 'config' },
+          funding: { enabled: false, source: 'disabled', points: 0 },
+          slippage: {
+            baseBps: 10,
+            spreadMultiplier: 0,
+            marketImpactBps: 0,
+            delayRiskMultiplier: 0,
+            source: 'config',
+          },
+          leverage: { requested: 1, effective: 1, maxAllowed: null },
+          quality: 'full',
+          capturedAt: 1,
+        },
+      });
+      for (const [index, limitEntry] of [false, true].entries()) {
+        await connector.placeOrder({
+          symbol: 'ETHUSDT',
+          qty: 1000,
+          price: 100,
+          isLimit: limitEntry,
+          positionIntent: index ? 'increase' : undefined,
+          timestamp: index + 1,
+          direction: 'LONG',
+          signal: { signalId: `leg-${index}`, strategyName: 'Grid' } as any,
+        });
+      }
+      await connector.closePosition({
+        symbol: 'ETHUSDT',
+        price: 110,
+        isLimit,
+        timestamp: 3,
+        direction: 'LONG',
+      });
+      const result = await connector.getResult();
+      const orders = result.inlineOrderLog ?? [];
+      const exitRate = isLimit ? -0.0001 : 0.001;
+      const expectedEntryFees = 100.1 * 1000 * (0.001 - 0.0001);
+      const expectedExitFee = 109.89 * 2000 * exitRate;
+      expect(orders.at(-1)?.fee).toBeCloseTo(expectedExitFee, 8);
+      const rows = await connector.drainMlResultsBatch();
+      expect(rows).toHaveLength(2);
+      const trades = rows.map((row) => row.tradeResult!);
+      // Final trade exports round each leg to cents; the fill ledger above is exact.
+      expect(
+        trades.reduce((sum, trade) => sum + trade.totalFee, 0),
+      ).toBeCloseTo(expectedEntryFees + expectedExitFee, 2);
+      expect(
+        trades.reduce((sum, trade) => sum + trade.netProfit, 0),
+      ).toBeCloseTo(
+        (109.89 - 100.1) * 2000 - expectedEntryFees - expectedExitFee,
+        2,
+      );
+    },
+  );
+
   const backtestSlippageRate =
     calculateEffectiveSlippageBps({
       baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,

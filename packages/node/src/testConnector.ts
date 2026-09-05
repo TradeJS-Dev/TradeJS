@@ -450,7 +450,7 @@ export const createTestConnector: TestConnectorCreator = (
         currentPosition.direction === 'LONG'
           ? (executionPrice - legResult.entryPrice) * legExitQty
           : (legResult.entryPrice - executionPrice) * legExitQty;
-      const legFee = executionPrice * legExitQty * takerFeeRate;
+      const legFee = fee * (legExitQty / qty);
       currentEntryLegResults[leg.index] = appendExitToTradeResult({
         tradeResult: legResult,
         direction: currentPosition.direction,
@@ -1310,6 +1310,7 @@ export const createTestConnector: TestConnectorCreator = (
         grossProfit,
         price: executionPrice,
         qty: currentPosition.qty,
+        feeRate: order.isLimit ? makerFeeRate : takerFeeRate,
       });
       recordExitResult({
         timestamp: order.timestamp,

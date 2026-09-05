@@ -6,12 +6,17 @@ import {
   FEE_PERCENT,
 } from '@tradejs/core/constants';
 import type {
+  BacktestExecutionCosts,
   Connector,
   ExecutionCostModel,
   FundingRatePoint,
   InstrumentDescriptor,
   StrategyConfig,
 } from '@tradejs/types';
+import {
+  assertStrategyExecutionIsolation,
+  parseBacktestExecutionCosts,
+} from '@tradejs/core/backtest';
 
 const finiteOr = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -68,6 +73,8 @@ export const resolveExecutionCosts = async (params: {
   connector: Connector;
   symbol: string;
   config: StrategyConfig;
+  executionCosts?: BacktestExecutionCosts;
+  cacheOnly?: boolean;
   startTime: number;
   endTime: number;
   instrument?: InstrumentDescriptor;
@@ -76,22 +83,25 @@ export const resolveExecutionCosts = async (params: {
   fundingRates: FundingRatePoint[];
 }> => {
   const { connector, symbol, config, startTime, endTime, instrument } = params;
-  const cacheOnly = config.EXECUTION_COSTS_CACHE_ONLY === true;
-  const hasConfiguredFees =
-    Number.isFinite(Number(config.MAKER_FEE_RATE)) &&
-    Number.isFinite(Number(config.TAKER_FEE_RATE));
+  assertStrategyExecutionIsolation(config);
+  const costs =
+    params.executionCosts == null
+      ? undefined
+      : parseBacktestExecutionCosts(params.executionCosts);
+  const cacheOnly = params.cacheOnly === true;
+  const hasConfiguredFees = costs != null;
   const exchangeFees =
     !cacheOnly && !hasConfiguredFees && connector.getTradingFeeRate
       ? await loadTradingFee(connector, symbol).catch(() => null)
       : null;
   const makerRate = hasConfiguredFees
-    ? Number(config.MAKER_FEE_RATE)
+    ? costs.fees.makerRate
     : exchangeFees?.makerRate ?? FEE_PERCENT;
   const takerRate = hasConfiguredFees
-    ? Number(config.TAKER_FEE_RATE)
+    ? costs.fees.takerRate
     : exchangeFees?.takerRate ?? FEE_PERCENT;
   const fundingEnabled =
-    config.FUNDING_ENABLED !== false &&
+    costs?.funding.enabled !== false &&
     !cacheOnly &&
     typeof connector.getFundingRateHistory === 'function';
   const fundingRates = fundingEnabled
@@ -110,18 +120,26 @@ export const resolveExecutionCosts = async (params: {
     ? 'config'
     : exchangeFees?.source ?? 'fallback';
   const fundingSource = !fundingEnabled
-    ? cacheOnly
-      ? 'fallback'
-      : 'disabled'
+    ? costs?.funding.enabled === false
+      ? 'disabled'
+      : cacheOnly
+        ? 'fallback'
+        : 'disabled'
     : fundingRates.length
       ? 'historical'
       : 'unavailable';
   const usesFallback =
     feeSource === 'fallback' ||
     (fundingEnabled && fundingSource === 'unavailable') ||
-    (config.SLIPPAGE_BASE_BPS == null &&
-      config.SLIPPAGE_SPREAD_MULTIPLIER == null &&
-      config.SLIPPAGE_MARKET_IMPACT_BPS == null);
+    !costs;
+  if (
+    costs?.funding.enabled &&
+    (!fundingEnabled || fundingSource !== 'historical')
+  ) {
+    throw new Error(
+      'Requested funding history is unavailable; explicitly disable funding or provide historical data',
+    );
+  }
 
   return {
     model: {
@@ -134,25 +152,20 @@ export const resolveExecutionCosts = async (params: {
         toTimestamp: fundingRates.at(-1)?.timestamp ?? null,
       },
       slippage: {
-        baseBps: finiteOr(config.SLIPPAGE_BASE_BPS, BACKTEST_BASE_SLIPPAGE_BPS),
+        baseBps: costs?.slippage.baseBps ?? BACKTEST_BASE_SLIPPAGE_BPS,
         spreadMultiplier: finiteOr(
-          config.SLIPPAGE_SPREAD_MULTIPLIER,
+          costs?.slippage.spreadMultiplier,
           BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER,
         ),
         marketImpactBps: finiteOr(
-          config.SLIPPAGE_MARKET_IMPACT_BPS,
+          costs?.slippage.marketImpactBps,
           BACKTEST_MARKET_IMPACT_BPS,
         ),
         delayRiskMultiplier: finiteOr(
-          config.SLIPPAGE_DELAY_RISK_MULTIPLIER,
+          costs?.slippage.delayRiskMultiplier,
           BACKTEST_DELAY_RISK_MULTIPLIER,
         ),
-        source:
-          config.SLIPPAGE_BASE_BPS != null ||
-          config.SLIPPAGE_SPREAD_MULTIPLIER != null ||
-          config.SLIPPAGE_MARKET_IMPACT_BPS != null
-            ? 'config'
-            : 'fallback',
+        source: costs != null ? 'config' : 'fallback',
       },
       leverage: {
         requested: requestedLeverage,

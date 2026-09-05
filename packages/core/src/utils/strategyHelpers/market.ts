@@ -130,12 +130,16 @@ export const getDirectionalTpSlPrices = ({
     stopLossPrice,
   });
 
-  const slPercent = unit === 'percent' ? stopLossDelta : stopLossDelta * 100;
+  const lossPerUnit =
+    Math.abs(price - stopLossPrice) +
+    (Math.abs(price) + Math.abs(stopLossPrice)) * Math.max(0, feePercent);
   const qty =
     typeof maxLossValue === 'number' &&
     Number.isFinite(maxLossValue) &&
     maxLossValue > 0
-      ? maxLossValue / ((price * (slPercent + feePercent)) / 100)
+      ? lossPerUnit > 0
+        ? maxLossValue / lossPerUnit
+        : 0
       : undefined;
 
   return {

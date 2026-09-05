@@ -28,6 +28,14 @@ const checkpoint = (params: {
     testKey: params.symbol,
     updatedAt: '2026-01-01T00:00:00.000Z',
     result: {
+      executionCostModel: {
+        fees: { ...makeSpec().execution.costs.fees, source: 'config' },
+        slippage: { ...makeSpec().execution.costs.slippage, source: 'config' },
+        funding: { enabled: false, source: 'disabled' },
+        leverage: { requested: 10, effective: 10, maxAllowed: null },
+        quality: 'partial',
+        capturedAt: 1,
+      },
       test: {
         symbol: params.symbol,
         strategyName: 'FixtureStrategy',
@@ -143,6 +151,26 @@ describe('core research run reconciliation', () => {
     });
     expect(result.delta?.pnl).toBeCloseTo(0.005);
     expect(result.reasons).toEqual([]);
+
+    const wrongCosts = {
+      ...spec,
+      execution: {
+        ...spec.execution,
+        costs: {
+          ...spec.execution.costs,
+          fees: { makerRate: 0, takerRate: 0.003 },
+        },
+      },
+    };
+    const mismatch = await reconcileCoreResearchVariant({
+      variant,
+      spec: wrongCosts,
+      exportMetrics,
+    });
+    expect(mismatch.status).toBe('mismatch');
+    expect(mismatch.reasons).toContain(
+      'executed costs do not match the preregistered execution costs',
+    );
   });
 
   it('collects all causal lineage and economic mismatch reasons in one audit', async () => {

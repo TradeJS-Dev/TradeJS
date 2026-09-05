@@ -21,6 +21,7 @@ import {
   loadBacktestRunManifest,
 } from '../../backtest/checkpoint';
 import type { CoreResearchSpec } from '../types';
+import { makeSpec } from '../__fixtures__/fixtures';
 
 jest.mock('../../backtest/checkpoint', () => ({
   loadBacktestCheckpointResults: jest.fn(),
@@ -304,6 +305,7 @@ describe('core research orchestrator', () => {
         connector: 'Test',
         interval: '15m',
         maxLossValue: 10,
+        costs: makeSpec().execution.costs,
       },
       variants: [
         {
@@ -538,6 +540,7 @@ describe('core research orchestrator', () => {
         connector: 'Test',
         interval: '15',
         maxLossValue: 10,
+        costs: makeSpec().execution.costs,
       },
       variants: [
         {
@@ -617,6 +620,11 @@ describe('core research orchestrator', () => {
         testKey: 'aaa',
         updatedAt: spec.createdAt,
         result: {
+          executionCostModel: {
+            fees: { ...spec.execution.costs.fees, source: 'config' },
+            slippage: { ...spec.execution.costs.slippage, source: 'config' },
+            funding: { enabled: false, source: 'disabled' },
+          },
           test: {
             symbol: 'AAAUSDT',
             strategyName: 'FixtureStrategy',
@@ -664,7 +672,12 @@ describe('core research orchestrator', () => {
       },
       universe: { symbols, sha256: sha256Json(symbols) },
       window: { start: START, end: END, terminalDays: [5], folds: 2 },
-      execution: { connector: 'Test', interval: '15', maxLossValue: 10 },
+      execution: {
+        connector: 'Test',
+        interval: '15',
+        maxLossValue: 10,
+        costs: makeSpec().execution.costs,
+      },
       selection: {
         minimumTrades: 1,
         minimumCadencePerDay: 0,

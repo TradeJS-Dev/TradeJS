@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
+import {
+  assertStrategyExecutionIsolation,
+  parseBacktestExecutionCosts,
+} from '@tradejs/core/backtest';
 import path from 'node:path';
 import {
   CORE_RESEARCH_LEDGER_SCHEMA,
@@ -156,6 +160,8 @@ export const validateCoreResearchSpec = (value: unknown): CoreResearchSpec => {
     'variant ids must be unique',
   );
   for (const variant of spec.variants) {
+    if (variant.resolvedConfig)
+      assertStrategyExecutionIsolation(variant.resolvedConfig);
     assert(
       RESEARCH_ID_RE.test(variant.id),
       `variant id ${variant.id} is invalid`,
@@ -239,6 +245,7 @@ export const validateCoreResearchSpec = (value: unknown): CoreResearchSpec => {
       }
     }
   }
+  parseBacktestExecutionCosts(spec.execution?.costs);
   assertFinite(
     spec.execution?.maxLossValue,
     'execution.maxLossValue must be finite',

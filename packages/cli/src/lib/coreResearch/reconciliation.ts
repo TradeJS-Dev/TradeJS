@@ -9,6 +9,7 @@ import type {
   CoreResearchVariant,
 } from './types';
 import { sha256Json } from './io';
+import { executionCostsFromModel } from '@tradejs/core/backtest';
 
 const finite = (value: unknown) => {
   const numeric = Number(value);
@@ -84,6 +85,32 @@ export const reconcileCoreResearchVariant = async (params: {
   };
   const pnlTolerance = completed.length * 0.005 + 1e-9;
   const reasons: string[] = [];
+  for (const envelope of completed) {
+    const model = envelope.result.executionCostModel;
+    try {
+      if (!model) throw new Error('missing');
+      if (
+        sha256Json(executionCostsFromModel(model)) !==
+        sha256Json(params.spec.execution.costs)
+      ) {
+        reasons.push(
+          'executed costs do not match the preregistered execution costs',
+        );
+        break;
+      }
+      if (
+        model.fees.source !== 'config' ||
+        model.slippage.source !== 'config' ||
+        (model.funding.enabled && model.funding.source !== 'historical')
+      ) {
+        reasons.push('execution cost provenance is not explicit or historical');
+        break;
+      }
+    } catch {
+      reasons.push('executed execution cost model is missing or invalid');
+      break;
+    }
+  }
   if (manifest.status !== 'completed') {
     reasons.push(`manifest status is ${manifest.status}`);
   }
