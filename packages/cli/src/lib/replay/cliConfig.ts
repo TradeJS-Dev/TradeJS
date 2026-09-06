@@ -67,6 +67,29 @@ args.option(
   'Save compact replay chart data for the strategies UI',
   false,
 );
+args.option(
+  'allData',
+  'Use the complete cached candle range for the selected provider, interval, and symbols',
+  false,
+);
+args.option(
+  'maxLossValue',
+  'Override MAX_LOSS_VALUE for every selected runtime strategy without changing its declaration',
+);
+args.option(
+  'portfolioReport',
+  'Write aggregate portfolio metrics and SVG charts; skip runtime/exchange comparison',
+  false,
+);
+args.option(
+  ['B', 'portfolioBatchSize'],
+  'Maximum number of symbols held in memory by one portfolio replay batch',
+  4,
+);
+args.option(
+  ['X', 'portfolioOutputSuffix'],
+  'Optional safe suffix for parallel portfolio report shards',
+);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user config', 'root');
 args.option(

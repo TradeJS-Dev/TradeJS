@@ -342,8 +342,16 @@ describe('portfolio replay connector', () => {
     expect(await connector.getPosition('BTCUSDT')).toBeNull();
 
     const artifacts = connector.getReplayArtifacts();
+    const expectedTpProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 110,
+      direction: 'LONG',
+    });
     expect(artifacts.orderLog).toHaveLength(2);
     expect(artifacts.positionLog).toHaveLength(1);
+    expect(artifacts.positionLog[0].netProfit).toBe(
+      round(openProfit(100, 'LONG') + expectedTpProfit),
+    );
     expect(artifacts.orderLogByStrategy.get('TrendLine')).toHaveLength(2);
     expect(artifacts.positionLogByStrategy.get('TrendLine')).toHaveLength(1);
     expect(artifacts.orderLog[0]).toEqual(
@@ -354,11 +362,6 @@ describe('portfolio replay connector', () => {
         profit: round(openProfit(100, 'LONG')),
       }),
     );
-    const expectedTpProfit = exitProfit({
-      entryPrice: 100,
-      exitPrice: 110,
-      direction: 'LONG',
-    });
     expect(artifacts.orderLog[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_LONG',

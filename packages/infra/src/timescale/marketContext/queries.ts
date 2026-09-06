@@ -144,6 +144,48 @@ export async function getLatestMarketTradeFlow(params: {
   };
 }
 
+export async function getMarketTradeFlowRows(params: {
+  symbols: string[];
+  interval: MarketFeatureInterval;
+  fromMs: number;
+  toMs: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<MarketTradeFlowRow[]> {
+  const symbols = [
+    ...new Set(params.symbols.map((symbol) => symbol.trim().toUpperCase())),
+  ].filter(Boolean);
+  if (!symbols.length || params.toMs < params.fromMs) return [];
+
+  await prepareMarketContextSchemaForRead('binance');
+  const res = await queryMarketContext(
+    `
+      SELECT
+        symbol,
+        interval,
+        ts,
+        trades::int AS trades,
+        buy_base_volume AS "buyBaseVolume",
+        sell_base_volume AS "sellBaseVolume",
+        buy_quote_volume AS "buyQuoteVolume",
+        sell_quote_volume AS "sellQuoteVolume",
+        net_base_delta AS "netBaseDelta",
+        net_quote_delta AS "netQuoteDelta",
+        buy_pressure_pct AS "buyPressurePct",
+        source
+      FROM market_trade_flow
+      WHERE symbol = ANY($1)
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+      ORDER BY symbol, ts
+    `,
+    [symbols, params.interval, params.fromMs, params.toMs],
+    params,
+  );
+  return res.rows as MarketTradeFlowRow[];
+}
+
 export async function getLatestMarketBreadth(params: {
   universe: string;
   interval: MarketFeatureInterval;
@@ -204,6 +246,65 @@ export async function getLatestMarketBreadth(params: {
     stale:
       ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
   };
+}
+
+export async function getMarketBreadthRows(params: {
+  universes: string[];
+  interval: MarketFeatureInterval;
+  fromMs: number;
+  toMs: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<MarketBreadthRow[]> {
+  const universes = [
+    ...new Set(params.universes.map((universe) => universe.trim())),
+  ].filter(Boolean);
+  if (!universes.length || params.toMs < params.fromMs) return [];
+
+  await prepareMarketContextSchemaForRead('binance');
+  const res = await queryMarketContext(
+    `
+      SELECT
+        universe,
+        interval,
+        ts,
+        symbols_count::int AS "symbolsCount",
+        advancers::int AS advancers,
+        decliners::int AS decliners,
+        unchanged::int AS unchanged,
+        advance_decline_ratio AS "advanceDeclineRatio",
+        pct_above_ma20 AS "pctAboveMa20",
+        pct_above_ma50 AS "pctAboveMa50",
+        equal_weighted_return AS "equalWeightedReturn",
+        volume_weighted_return AS "volumeWeightedReturn",
+        dispersion,
+        btc_return_1h AS "btcReturn1h",
+        btc_return_4h AS "btcReturn4h",
+        btc_return_24h AS "btcReturn24h",
+        alt_basket_return_1h AS "altBasketReturn1h",
+        alt_basket_return_4h AS "altBasketReturn4h",
+        alt_basket_return_24h AS "altBasketReturn24h",
+        btc_vs_alt_return_1h AS "btcVsAltReturn1h",
+        btc_vs_alt_return_4h AS "btcVsAltReturn4h",
+        btc_vs_alt_return_24h AS "btcVsAltReturn24h",
+        btc_turnover_share_1h AS "btcTurnoverShare1h",
+        btc_turnover_share_24h AS "btcTurnoverShare24h",
+        btc_turnover_share_change_24h AS "btcTurnoverShareChange24h",
+        alt_vol_to_btc_vol_24h AS "altVolToBtcVol24h",
+        alt_dispersion_24h AS "altDispersion24h",
+        btc_alt_regime AS "btcAltRegime",
+        source
+      FROM market_breadth
+      WHERE universe = ANY($1)
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+      ORDER BY universe, ts
+    `,
+    [universes, params.interval, params.fromMs, params.toMs],
+    params,
+  );
+  return res.rows as MarketBreadthRow[];
 }
 
 export async function getLatestMarketGlobalContext(params: {

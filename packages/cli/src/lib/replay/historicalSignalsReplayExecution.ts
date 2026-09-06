@@ -11,6 +11,8 @@ import { createHistoricalReplaySkipEvidence } from './historicalSignalsReplaySki
 export type HistoricalReplayExecutionContext = {
   plan: HistoricalReplayPlan;
   connector: PortfolioReplayConnector;
+  collectSkipEvidence?: boolean;
+  collectSignals?: boolean;
   hooks?: TradejsConfigHooks;
   hookContext: TradejsConfigSignalsHookContext;
 };
@@ -20,6 +22,7 @@ export type HistoricalReplayExecutionAdapters = {
     now(): number;
   };
   progress: {
+    enabled?: boolean;
     tick(tokens: { signals: string; aborted: string; ts: string }): void;
   };
   display: {
@@ -55,7 +58,11 @@ const advanceCycleMarket = async (
   connector: PortfolioReplayConnector,
   timestamp: number,
 ) => {
-  const cycleSymbols = plan.cycleSymbolsByTimestamp.get(timestamp) ?? [];
+  const cycleSymbols = plan.symbolRuntimes.filter(
+    (symbolRuntime) =>
+      symbolRuntime.replayData[symbolRuntime.currentIndex]?.timestamp ===
+      timestamp,
+  );
   for (const symbolRuntime of cycleSymbols) {
     const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
     if (candle?.timestamp === timestamp) {
@@ -69,9 +76,7 @@ const advanceCycleMarket = async (
 };
 
 const advanceAbortedCycle = (
-  cycleSymbols: ReturnType<
-    HistoricalReplayPlan['cycleSymbolsByTimestamp']['get']
-  >,
+  cycleSymbols: HistoricalReplayPlan['symbolRuntimes'],
   timestamp: number,
 ) => {
   for (const symbolRuntime of cycleSymbols ?? []) {
@@ -90,7 +95,16 @@ export const executeHistoricalReplay = async (
   let abortedCycles = 0;
   const skipEvidence = createHistoricalReplaySkipEvidence(
     context.plan.runtimeLineages,
+    context.collectSkipEvidence,
   );
+  const reportProgress = (timestamp: number) => {
+    if (adapters.progress.enabled === false) return;
+    adapters.progress.tick({
+      signals: adapters.display.signals(signals.length),
+      aborted: adapters.display.aborted(abortedCycles),
+      ts: adapters.display.timestamp(timestamp),
+    });
+  };
 
   try {
     for (const timestamp of context.plan.orderedTimestamps) {
@@ -114,11 +128,7 @@ export const executeHistoricalReplay = async (
           durationMs: adapters.clock.now() - cycleStartedAt,
         });
         advanceAbortedCycle(cycleSymbols, timestamp);
-        adapters.progress.tick({
-          signals: adapters.display.signals(signals.length),
-          aborted: adapters.display.aborted(abortedCycles),
-          ts: adapters.display.timestamp(timestamp),
-        });
+        reportProgress(timestamp);
         continue;
       }
 
@@ -156,7 +166,7 @@ export const executeHistoricalReplay = async (
             result.runtimeLineage = strategyRuntime.runtimeLineage;
             await adapters.enrichSignal(result);
             cycleSignals.push(result);
-            signals.push(result);
+            if (context.collectSignals !== false) signals.push(result);
           }
         }
 
@@ -169,11 +179,7 @@ export const executeHistoricalReplay = async (
         status: 'completed',
         durationMs: adapters.clock.now() - cycleStartedAt,
       });
-      adapters.progress.tick({
-        signals: adapters.display.signals(signals.length),
-        aborted: adapters.display.aborted(abortedCycles),
-        ts: adapters.display.timestamp(timestamp),
-      });
+      reportProgress(timestamp);
     }
   } finally {
     for (const keyPrefix of context.plan.sharedReplayKeyPrefixes) {

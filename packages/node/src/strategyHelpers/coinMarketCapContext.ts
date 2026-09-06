@@ -17,6 +17,7 @@ const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
 const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
 const SOURCE_INDEX = 'coinmarketcap_index' as const;
 const DAY_MS = 86_400_000;
+const MAX_TIMESTAMP_CACHE_ENTRIES = 512;
 
 let coinMarketCapContextUnavailable = false;
 const globalContextCache = new Map<
@@ -39,6 +40,22 @@ const indexContextCache = new Map<
   string,
   ReturnType<typeof getLatestMarketCmcIndexContexts>
 >();
+
+const setBoundedCache = <T>(cache: Map<string, T>, key: string, value: T) => {
+  if (cache.size >= MAX_TIMESTAMP_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey != null) cache.delete(oldestKey);
+  }
+  cache.set(key, value);
+};
+
+export const getCoinMarketCapContextRuntimeStats = () => ({
+  global: globalContextCache.size,
+  reference: referenceContextCache.size,
+  exchangeLiquidity: exchangeLiquidityContextCache.size,
+  fearGreed: fearGreedContextCache.size,
+  indexes: indexContextCache.size,
+});
 
 const parseEnabledFlag = (value: unknown, env: string) => {
   const normalized = String(value ?? '')
@@ -222,7 +239,7 @@ const getCachedGlobalContext = ({
     maxAgeMs,
     ...(abortSignal ? { signal: abortSignal } : {}),
   });
-  globalContextCache.set(key, promise);
+  setBoundedCache(globalContextCache, key, promise);
   void promise.catch(() => globalContextCache.delete(key));
   return promise;
 };
@@ -248,7 +265,7 @@ const getCachedReferenceContexts = ({
     maxAgeMs,
     ...(abortSignal ? { signal: abortSignal } : {}),
   });
-  referenceContextCache.set(key, promise);
+  setBoundedCache(referenceContextCache, key, promise);
   void promise.catch(() => referenceContextCache.delete(key));
   return promise;
 };
@@ -273,7 +290,7 @@ const getCachedExchangeLiquidityContext = ({
     maxAgeMs,
     ...(abortSignal ? { signal: abortSignal } : {}),
   });
-  exchangeLiquidityContextCache.set(key, promise);
+  setBoundedCache(exchangeLiquidityContextCache, key, promise);
   void promise.catch(() => exchangeLiquidityContextCache.delete(key));
   return promise;
 };
@@ -298,7 +315,7 @@ const getCachedFearGreedContext = ({
     maxAgeMs,
     ...(abortSignal ? { signal: abortSignal } : {}),
   });
-  fearGreedContextCache.set(key, promise);
+  setBoundedCache(fearGreedContextCache, key, promise);
   void promise.catch(() => fearGreedContextCache.delete(key));
   return promise;
 };
@@ -324,7 +341,7 @@ const getCachedIndexContexts = ({
     maxAgeMs,
     ...(abortSignal ? { signal: abortSignal } : {}),
   });
-  indexContextCache.set(key, promise);
+  setBoundedCache(indexContextCache, key, promise);
   void promise.catch(() => indexContextCache.delete(key));
   return promise;
 };

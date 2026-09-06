@@ -20,22 +20,40 @@ const PSYCHOLOGICAL_LEVEL_WINDOWS = {
   h1: 60 * 60_000,
   h4: 4 * 60 * 60_000,
 } as const;
+const PSYCHOLOGICAL_LEVEL_WINDOW_ENTRIES = Object.entries(
+  PSYCHOLOGICAL_LEVEL_WINDOWS,
+) as Array<
+  [
+    keyof typeof PSYCHOLOGICAL_LEVEL_WINDOWS,
+    (typeof PSYCHOLOGICAL_LEVEL_WINDOWS)[keyof typeof PSYCHOLOGICAL_LEVEL_WINDOWS],
+  ]
+>;
 
 export const buildSessionContext = (timestamp: number) => {
   const date = new Date(timestamp);
   const minuteUtc = date.getUTCHours() * 60 + date.getUTCMinutes();
   const dayOfWeekUtc = (date.getUTCDay() || 7) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
-  const activeSessions = SESSION_WINDOWS.filter(
-    ({ startMinuteUtc, endMinuteUtc }) =>
+  let activeSessionCount = 0;
+  let asiaActive = false;
+  let europeActive = false;
+  let usActive = false;
+  for (const { name, startMinuteUtc, endMinuteUtc } of SESSION_WINDOWS) {
+    const active =
       startMinuteUtc <= endMinuteUtc
         ? minuteUtc >= startMinuteUtc && minuteUtc < endMinuteUtc
-        : minuteUtc >= startMinuteUtc || minuteUtc < endMinuteUtc,
-  ).map(({ name }) => name);
-  const sessionPhase = activeSessions.includes('us')
+        : minuteUtc >= startMinuteUtc || minuteUtc < endMinuteUtc;
+    if (!active) continue;
+
+    activeSessionCount += 1;
+    if (name === 'asia') asiaActive = true;
+    if (name === 'europe') europeActive = true;
+    if (name === 'us') usActive = true;
+  }
+  const sessionPhase = usActive
     ? 'us'
-    : activeSessions.includes('europe')
+    : europeActive
       ? 'europe'
-      : activeSessions.includes('asia')
+      : asiaActive
         ? 'asia'
         : 'off_hours';
   const primaryWindow = SESSION_WINDOWS.find(
@@ -63,7 +81,7 @@ export const buildSessionContext = (timestamp: number) => {
   return {
     sessionPhase,
     sessionWindowPhase,
-    isOverlap: activeSessions.length > 1,
+    isOverlap: activeSessionCount > 1,
     minutesFromSessionOpen,
     minutesToSessionClose,
     minutesToFundingWindow,
@@ -157,26 +175,36 @@ export const buildPsychologicalLevelAssetContext = (
 ): PsychologicalLevelAssetContext | null => {
   const endCandle = candles[candles.length - 1];
   if (!endCandle) return null;
-  const candlesByTimestamp = new Map(
-    candles.map((item) => [item.timestamp, item] as const),
-  );
-  const windows = Object.fromEntries(
-    Object.entries(PSYCHOLOGICAL_LEVEL_WINDOWS).map(([window, durationMs]) => {
-      const startCandle = candlesByTimestamp.get(
-        endCandle.timestamp - durationMs,
-      );
-      return [
-        window,
-        startCandle
-          ? buildPsychologicalLevelWindow(
-              startCandle.close,
-              endCandle.close,
-              stepUsd,
-            )
-          : unavailablePsychologicalLevelWindow(),
-      ];
-    }),
-  ) as PsychologicalLevelAssetContext['windows'];
+  const windows = {} as PsychologicalLevelAssetContext['windows'];
+
+  for (const [window, durationMs] of PSYCHOLOGICAL_LEVEL_WINDOW_ENTRIES) {
+    const targetTimestamp = endCandle.timestamp - durationMs;
+    let low = 0;
+    let high = candles.length - 1;
+    let startCandle: Candle | undefined;
+
+    while (low <= high) {
+      const middle = (low + high) >>> 1;
+      const candidate = candles[middle];
+      if (candidate.timestamp <= targetTimestamp) {
+        if (candidate.timestamp === targetTimestamp) {
+          startCandle = candidate;
+        }
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+
+    windows[window] = startCandle
+      ? buildPsychologicalLevelWindow(
+          startCandle.close,
+          endCandle.close,
+          stepUsd,
+        )
+      : unavailablePsychologicalLevelWindow();
+  }
+
   return { source: 'aligned_15m_ohlcv', stepUsd, windows };
 };
 

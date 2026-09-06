@@ -9,6 +9,7 @@ import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
 import { cloneArrayValues } from './array';
 import { calculateCoinBtcCorrelation } from './correlation';
 import {
+  BASE_CONTEXT_CANDLE_WINDOW,
   BASE_CONTEXT_MA_LAYER_PERIODS,
   buildBaseContextSnapshot,
   type BaseContextAdaptiveChannelInput,
@@ -114,6 +115,8 @@ const BASE_CONTEXT_PSAR_ADX_MIN = 15;
 const BASE_CONTEXT_PSAR_COOLDOWN_BARS = 1;
 
 const baseContextEmaKey = (period: number) => String(period);
+const sliceCapturedBaseContextTail = <T>(values: T[], length: number) =>
+  values.slice(Math.max(0, length - BASE_CONTEXT_CANDLE_WINDOW), length);
 
 type IndicatorNextProfileKey =
   | 'pushMs'
@@ -1680,8 +1683,6 @@ export const createIndicators = (
       candlesHistory.slice(0, capturedCoinLength);
     const getCapturedBtcCandles = () =>
       btcCandlesHistory.slice(0, capturedBtcLength);
-    const getCapturedEthCandles = () =>
-      ethCandlesHistory.slice(0, capturedEthLength);
     const getCapturedCoinResampled = () => ({
       h1: coin1hCache.snapshot(capturedCoin1hLength),
       h4: coin4hCache.snapshot(capturedCoin4hLength),
@@ -1794,12 +1795,30 @@ export const createIndicators = (
             candle: latestCandle,
             prevCandle: latestPrevCandle,
             baseResult,
-            candlesHistory: getCapturedCoinCandles(),
-            btcCandlesHistory: getCapturedBtcCandles(),
-            ethCandlesHistory: getCapturedEthCandles(),
-            closeSeries: closes.slice(0, capturedCoinLength),
-            volumeSeries: volumes.slice(0, capturedCoinLength),
-            btcCloseSeries: btcCloses.slice(0, capturedBtcLength),
+            candlesHistory: sliceCapturedBaseContextTail(
+              candlesHistory,
+              capturedCoinLength,
+            ),
+            btcCandlesHistory: sliceCapturedBaseContextTail(
+              btcCandlesHistory,
+              capturedBtcLength,
+            ),
+            ethCandlesHistory: sliceCapturedBaseContextTail(
+              ethCandlesHistory,
+              capturedEthLength,
+            ),
+            closeSeries: sliceCapturedBaseContextTail(
+              closes,
+              capturedCoinLength,
+            ),
+            volumeSeries: sliceCapturedBaseContextTail(
+              volumes,
+              capturedCoinLength,
+            ),
+            btcCloseSeries: sliceCapturedBaseContextTail(
+              btcCloses,
+              capturedBtcLength,
+            ),
             coinResampledCandles: getCapturedCoinResampled(),
             btcResampledCandles: getCapturedBtcResampled(),
             ethResampledCandles: getCapturedEthResampled(),

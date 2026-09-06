@@ -71,7 +71,7 @@ export type SymbolReplayRuntime = {
 };
 
 export type HistoricalReplayPlan = {
-  cycleSymbolsByTimestamp: Map<number, SymbolReplayRuntime[]>;
+  symbolRuntimes: SymbolReplayRuntime[];
   orderedTimestamps: number[];
   sharedReplayKeyPrefixes: string[];
   runtimeLineages: ReplayRuntimeLineageRecord[];
@@ -230,7 +230,8 @@ export const prepareHistoricalReplay = async (
     strategies,
     references,
   } = context;
-  const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
+  const symbolRuntimes: SymbolReplayRuntime[] = [];
+  const orderedTimestamps = new Set<number>();
   const sharedReplayKeyPrefixes: string[] = [];
   const runtimeLineages: ReplayRuntimeLineageRecord[] = [];
   let skippedSymbols = 0;
@@ -350,21 +351,20 @@ export const prepareHistoricalReplay = async (
       currentIndex: 0,
       strategies: strategiesForSymbol,
     };
+    symbolRuntimes.push(symbolRuntime);
     adapters.progress.tick({
       skipped: adapters.display.skipped(skippedSymbols),
       symbol: adapters.display.symbol(symbol),
     });
 
     for (const candle of preparedData.replayData) {
-      const bucket = cycleSymbolsByTimestamp.get(candle.timestamp) ?? [];
-      bucket.push(symbolRuntime);
-      cycleSymbolsByTimestamp.set(candle.timestamp, bucket);
+      orderedTimestamps.add(candle.timestamp);
     }
   }
 
   return {
-    cycleSymbolsByTimestamp,
-    orderedTimestamps: [...cycleSymbolsByTimestamp.keys()].sort(
+    symbolRuntimes,
+    orderedTimestamps: [...orderedTimestamps].sort(
       (left, right) => left - right,
     ),
     sharedReplayKeyPrefixes,

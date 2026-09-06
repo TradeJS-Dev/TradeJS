@@ -22,11 +22,18 @@ export const saveAndPrintReplayResultsByStrategy = async ({
     ({ orderLog }) => extractBacktestEntryParityEntries(orderLog),
   );
   const summaries = replayResult.strategies
-    .map(({ strategyName, strategyConfig, stat }) => {
-      const orders = stat?.orders ?? 0;
-      const wins = stat?.wins ?? 0;
-      const losses = stat?.losses ?? 0;
-      const netProfit = Number((stat?.netProfit ?? 0).toFixed(2));
+    .map(({ strategyName, strategyConfig, positionLog }) => {
+      const realizedPnl = positionLog.map((position) =>
+        Number.isFinite(position.netProfit)
+          ? Number(position.netProfit)
+          : position.close.amount - position.open.amount,
+      );
+      const orders = realizedPnl.length;
+      const wins = realizedPnl.filter((pnl) => pnl > 0).length;
+      const losses = realizedPnl.filter((pnl) => pnl <= 0).length;
+      const netProfit = Number(
+        realizedPnl.reduce((sum, pnl) => sum + pnl, 0).toFixed(2),
+      );
       const winRate =
         orders > 0 ? Number(((wins / orders) * 100).toFixed(2)) : 0;
       const avgTradeProfit =

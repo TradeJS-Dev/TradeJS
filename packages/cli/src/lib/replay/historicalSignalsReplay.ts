@@ -1,5 +1,7 @@
 import chalk from 'chalk';
 import ProgressBar from 'progress';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 import {
   releaseStrategyIndicatorsReplayCache,
   releaseStrategyReplayCache,
@@ -39,11 +41,53 @@ import {
   type HistoricalSignalsReplayResult,
 } from './historicalSignalsReplayResults';
 
+type ReplayCacheReleasers = {
+  releaseStrategyIndicatorsReplayCache?: (keyPrefix: string) => void;
+  releaseStrategyReplayCache?: (keyPrefix: string) => void;
+};
+
+let projectReplayCacheReleasers: ReplayCacheReleasers | null | undefined;
+
+const getProjectReplayCacheReleasers = (): ReplayCacheReleasers | null => {
+  if (projectReplayCacheReleasers !== undefined) {
+    return projectReplayCacheReleasers;
+  }
+  try {
+    const requireFromProject = createRequire(
+      path.join(replayProjectRoot, 'package.json'),
+    );
+    projectReplayCacheReleasers = requireFromProject(
+      '@tradejs/core/strategies',
+    ) as ReplayCacheReleasers;
+  } catch {
+    projectReplayCacheReleasers = null;
+  }
+  return projectReplayCacheReleasers;
+};
+
+const releaseReplayCacheCopies = (
+  keyPrefix: string,
+  localRelease: (keyPrefix: string) => void,
+  projectRelease: ((keyPrefix: string) => void) | undefined,
+) => {
+  localRelease(keyPrefix);
+  if (projectRelease && projectRelease !== localRelease) {
+    projectRelease(keyPrefix);
+  }
+};
+
 export type { ReplayRuntimeLineageRecord } from './historicalSignalsReplayPreparation';
 export type {
   HistoricalSignalsReplayResult,
   ReplayStrategyRunArtifacts,
 } from './historicalSignalsReplayResults';
+
+export type HistoricalReplayReferenceData = {
+  btcMarketData: Awaited<ReturnType<Connector['kline']>>;
+  ethMarketData: Awaited<ReturnType<Connector['kline']>>;
+  btcBinanceData: Awaited<ReturnType<Connector['kline']>>;
+  btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>;
+};
 
 const loadRuntimeStrategies = async (
   runtimeStrategies: ReplayStrategyConfig[],
@@ -155,22 +199,13 @@ const getConnectorName = (connector: Connector) => {
   );
 };
 
-export const runHistoricalSignalsReplay = async ({
+export const loadHistoricalReplayReferences = async ({
   preparedRun,
   interval,
-  runtimeStrategies,
 }: {
   preparedRun: PreparedRunEnvironment;
   interval: Interval;
-  runtimeStrategies: ReplayStrategyConfig[];
-}): Promise<HistoricalSignalsReplayResult> => {
-  const startedAt = Date.now();
-  const projectConfig = await loadTradejsConfig(replayProjectRoot);
-  const projectHooks = projectConfig.hooks;
-  const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
-  const replayConnector = createPortfolioReplayConnector(
-    preparedRun.marketConnector,
-  );
+}): Promise<HistoricalReplayReferenceData> => {
   const connectorName = getConnectorName(preparedRun.marketConnector);
   const binanceConnector =
     connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
@@ -180,37 +215,56 @@ export const runHistoricalSignalsReplay = async ({
     connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
       ? await loadReferenceConnector('Coinbase')
       : preparedRun.marketConnector;
-
-  const [btcBinanceData, btcCoinbaseData] = await Promise.all([
-    binanceConnector.kline({
-      symbol: 'BTCUSDT',
-      start: preparedRun.preloadStart,
-      end: preparedRun.window.end,
-      cacheOnly: true,
-      interval,
-    }),
-    coinbaseConnector.kline({
-      symbol: 'BTCUSDT',
-      start: preparedRun.preloadStart,
-      end: preparedRun.window.end,
-      cacheOnly: true,
-      interval,
-    }),
-  ]);
-  const btcMarketData = await preparedRun.marketConnector.kline({
+  const request = {
     symbol: 'BTCUSDT',
     start: preparedRun.preloadStart,
     end: preparedRun.window.end,
     cacheOnly: true,
     interval,
-  });
-  const ethMarketData = await preparedRun.marketConnector.kline({
-    symbol: 'ETHUSDT',
-    start: preparedRun.preloadStart,
-    end: preparedRun.window.end,
-    cacheOnly: true,
-    interval,
-  });
+  } as const;
+  const [btcBinanceData, btcCoinbaseData, btcMarketData, ethMarketData] =
+    await Promise.all([
+      binanceConnector.kline(request),
+      coinbaseConnector.kline(request),
+      preparedRun.marketConnector.kline(request),
+      preparedRun.marketConnector.kline({ ...request, symbol: 'ETHUSDT' }),
+    ]);
+  return {
+    btcMarketData,
+    ethMarketData,
+    btcBinanceData,
+    btcCoinbaseData,
+  };
+};
+
+export const runHistoricalSignalsReplay = async ({
+  preparedRun,
+  interval,
+  runtimeStrategies,
+  references,
+  showProgress = true,
+  collectSkipEvidence = true,
+  collectSignals = true,
+}: {
+  preparedRun: PreparedRunEnvironment;
+  interval: Interval;
+  runtimeStrategies: ReplayStrategyConfig[];
+  references?: HistoricalReplayReferenceData;
+  showProgress?: boolean;
+  collectSkipEvidence?: boolean;
+  collectSignals?: boolean;
+}): Promise<HistoricalSignalsReplayResult> => {
+  const startedAt = Date.now();
+  const projectConfig = await loadTradejsConfig(replayProjectRoot);
+  const projectHooks = projectConfig.hooks;
+  const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
+  const replayConnector = createPortfolioReplayConnector(
+    preparedRun.marketConnector,
+  );
+  const connectorName = getConnectorName(preparedRun.marketConnector);
+  const referenceData =
+    references ??
+    (await loadHistoricalReplayReferences({ preparedRun, interval }));
 
   const prepareBar = new ProgressBar(
     'prepare :current/:total [:bar][:percent] skipped=:skipped :etas(s) :symbol',
@@ -229,10 +283,10 @@ export const runHistoricalSignalsReplay = async ({
       replayConnector,
       strategies: loadedStrategies,
       references: {
-        btcMarketData,
-        ethMarketData,
-        btcBinanceData,
-        btcCoinbaseData,
+        btcMarketData: referenceData.btcMarketData,
+        ethMarketData: referenceData.ethMarketData,
+        btcBinanceData: referenceData.btcBinanceData,
+        btcCoinbaseData: referenceData.btcCoinbaseData,
       },
     },
     {
@@ -264,12 +318,15 @@ export const runHistoricalSignalsReplay = async ({
     {
       plan,
       connector: replayConnector,
+      collectSkipEvidence,
+      collectSignals,
       hooks: projectHooks,
       hookContext,
     },
     {
       clock: { now: Date.now },
       progress: {
+        enabled: showProgress,
         tick: (tokens) => cycleBar.tick(1, tokens),
       },
       display: {
@@ -281,8 +338,19 @@ export const runHistoricalSignalsReplay = async ({
       invokeAfterSignals: invokeAfterSignalsHooks,
       enrichSignal: (signal) =>
         enrichSignalWithBinanceMarketContext({ signal, env: 'PARITY' }),
-      releaseIndicatorsCache: releaseStrategyIndicatorsReplayCache,
-      releaseReplayCache: releaseStrategyReplayCache,
+      releaseIndicatorsCache: (keyPrefix) =>
+        releaseReplayCacheCopies(
+          keyPrefix,
+          releaseStrategyIndicatorsReplayCache,
+          getProjectReplayCacheReleasers()
+            ?.releaseStrategyIndicatorsReplayCache,
+        ),
+      releaseReplayCache: (keyPrefix) =>
+        releaseReplayCacheCopies(
+          keyPrefix,
+          releaseStrategyReplayCache,
+          getProjectReplayCacheReleasers()?.releaseStrategyReplayCache,
+        ),
     },
   );
   const artifacts = replayConnector.getReplayArtifacts();

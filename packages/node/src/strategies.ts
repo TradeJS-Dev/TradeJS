@@ -25,7 +25,10 @@ export {
   getOrderArrivalSnapshot,
   validateEntryProtectionAtArrival,
 } from './strategyHelpers/runtime';
-export { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
+export {
+  enrichSignalWithBinanceMarketContext,
+  preloadBinanceMarketContextForWindow,
+} from './strategyHelpers/binanceMarketContext';
 export {
   BINANCE_BREADTH_UNIVERSE_KEYS,
   buildBinanceBreadthUniverseSnapshot,

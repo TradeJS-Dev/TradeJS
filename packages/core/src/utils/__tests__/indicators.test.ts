@@ -226,6 +226,23 @@ describe('buildPsychologicalLevelAssetContext', () => {
     });
   });
 
+  it('uses the last candle when an exact causal timestamp is duplicated', () => {
+    const candles = [
+      makeCandle(0, 3_900),
+      makeCandle(0, 4_050),
+      makeCandle(INTERVAL_15M_MS, 4_125),
+    ];
+
+    expect(
+      buildPsychologicalLevelAssetContext(candles, 100)?.windows.m15,
+    ).toMatchObject({
+      crossed: true,
+      direction: 'up',
+      level: 4_100,
+      levelsCrossed: 1,
+    });
+  });
+
   it('preserves BTC and ETH windows after compact checkpoint restore', () => {
     const periods = {
       maFast: 3,

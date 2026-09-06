@@ -26,6 +26,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 import {
   enrichSignalWithCoinMarketCapContext,
+  getCoinMarketCapContextRuntimeStats,
   isCoinMarketCapContextEnabled,
   resetCoinMarketCapContextRuntimeState,
 } from '../strategyHelpers/coinMarketCapContext';
@@ -344,5 +345,28 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       ).toBe(true);
     }
     expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it('bounds timestamp caches during long historical runs', async () => {
+    mockGetLatestMarketReferenceAssetContexts
+      .mockReset()
+      .mockResolvedValue(makeReferenceMap(timestamp));
+
+    for (let index = 0; index < 520; index += 1) {
+      const signal = makeSignal();
+      signal.timestamp = timestamp + index * 15 * 60_000;
+      await enrichSignalWithCoinMarketCapContext({
+        signal,
+        env: 'BACKTEST',
+      });
+    }
+
+    expect(getCoinMarketCapContextRuntimeStats()).toEqual({
+      global: 512,
+      reference: 512,
+      exchangeLiquidity: 512,
+      fearGreed: 512,
+      indexes: 512,
+    });
   });
 });

@@ -1,5 +1,7 @@
 const mockGetLatestMarketTradeFlow = jest.fn();
 const mockGetLatestMarketBreadth = jest.fn();
+const mockGetMarketTradeFlowRows = jest.fn();
+const mockGetMarketBreadthRows = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale/marketContext', () => ({
@@ -7,6 +9,10 @@ jest.mock('@tradejs/infra/timescale/marketContext', () => ({
     mockGetLatestMarketTradeFlow(...args),
   getLatestMarketBreadth: (...args: unknown[]) =>
     mockGetLatestMarketBreadth(...args),
+  getMarketTradeFlowRows: (...args: unknown[]) =>
+    mockGetMarketTradeFlowRows(...args),
+  getMarketBreadthRows: (...args: unknown[]) =>
+    mockGetMarketBreadthRows(...args),
 }));
 
 jest.mock('@tradejs/infra/logger', () => ({
@@ -17,7 +23,9 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 import {
   enrichSignalWithBinanceMarketContext,
+  getBinanceMarketContextRuntimeStats,
   isBinanceMarketContextEnabled,
+  preloadBinanceMarketContextForWindow,
   resetBinanceMarketContextRuntimeState,
 } from '../strategyHelpers/binanceMarketContext';
 
@@ -66,6 +74,8 @@ describe('strategyHelpers/binanceMarketContext', () => {
     jest.clearAllMocks();
     delete process.env.BINANCE_MARKET_CONTEXT_ENABLED;
     resetBinanceMarketContextRuntimeState();
+    mockGetMarketTradeFlowRows.mockResolvedValue([]);
+    mockGetMarketBreadthRows.mockResolvedValue([]);
     mockGetLatestMarketTradeFlow.mockResolvedValue({
       symbol: 'BTCUSDT',
       interval: '15m',
@@ -289,5 +299,180 @@ describe('strategyHelpers/binanceMarketContext', () => {
     expect(
       signal.additionalIndicators.baseContext.participation.tradeFlow,
     ).toBe(undefined);
+  });
+
+  it('preloads a causal window and resolves the latest row in memory', async () => {
+    mockGetMarketTradeFlowRows.mockResolvedValue([
+      {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        ts: new Date(timestamp - 15 * 60_000),
+        trades: 8,
+        buyPressurePct: 0.75,
+      },
+      {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        ts: new Date(timestamp + 15 * 60_000),
+        trades: 99,
+        buyPressurePct: 0.99,
+      },
+      {
+        symbol: 'ETHUSDT',
+        interval: '15m',
+        ts: new Date(timestamp - 15 * 60_000),
+        trades: 4,
+        buyPressurePct: 0.5,
+      },
+    ]);
+    const universe = 'binance_top30_usdt_test';
+    mockGetMarketBreadthRows.mockResolvedValue([
+      {
+        universe,
+        interval: '15m',
+        ts: new Date(timestamp - 15 * 60_000),
+        symbolsCount: 30,
+        advancers: 18,
+        decliners: 10,
+        unchanged: 2,
+        equalWeightedReturn: 0.01,
+      },
+      {
+        universe,
+        interval: '15m',
+        ts: new Date(timestamp + 15 * 60_000),
+        symbolsCount: 30,
+        advancers: 29,
+        decliners: 1,
+        unchanged: 0,
+        equalWeightedReturn: 0.2,
+      },
+    ]);
+
+    await expect(
+      preloadBinanceMarketContextForWindow({
+        startMs: timestamp,
+        endMs: timestamp + 60 * 60_000,
+        interval: '15m',
+      }),
+    ).resolves.toEqual({ tradeFlowRows: 3, breadthRows: 2 });
+
+    const signal = makeSignal();
+    await expect(
+      enrichSignalWithBinanceMarketContext({
+        signal,
+        env: 'BACKTEST',
+        breadthUniverse: universe,
+      }),
+    ).resolves.toBe(true);
+
+    expect(mockGetMarketTradeFlowRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbols: ['BTCUSDT', 'ETHUSDT'],
+        interval: '15m',
+        fromMs: timestamp - 30 * 60_000,
+      }),
+    );
+    expect(mockGetLatestMarketTradeFlow).not.toHaveBeenCalled();
+    expect(mockGetLatestMarketBreadth).not.toHaveBeenCalled();
+    expect(getBinanceMarketContextRuntimeStats()).toMatchObject({
+      referenceCacheEntries: 0,
+      breadthCacheEntries: 0,
+      preloadedTradeFlowRows: 3,
+      preloadedBreadthRows: 2,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.participation.tradeFlow,
+    ).toMatchObject({
+      asOfTs: timestamp - 15 * 60_000,
+      ageMs: 15 * 60_000,
+      stale: false,
+      trades: 8,
+      buyPressurePct: 0.75,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.relative.marketBreadth,
+    ).toMatchObject({
+      asOfTs: timestamp - 15 * 60_000,
+      equalWeightedReturn: 0.01,
+    });
+  });
+
+  it('keeps as-of lookups causal across preload chunk boundaries', async () => {
+    const tradeFlowRows = [
+      {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        ts: new Date(timestamp - 15 * 60_000),
+        trades: 8,
+        buyPressurePct: 0.75,
+      },
+      {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        ts: new Date(timestamp + 15 * 60_000),
+        trades: 99,
+        buyPressurePct: 0.99,
+      },
+    ];
+    const universe = 'binance_top30_usdt_test';
+    const breadthRows = [
+      {
+        universe,
+        interval: '15m',
+        ts: new Date(timestamp - 15 * 60_000),
+        symbolsCount: 30,
+        advancers: 18,
+        decliners: 10,
+        unchanged: 2,
+      },
+      {
+        universe,
+        interval: '15m',
+        ts: new Date(timestamp + 15 * 60_000),
+        symbolsCount: 30,
+        advancers: 29,
+        decliners: 1,
+        unchanged: 0,
+      },
+    ];
+    const inWindow =
+      <T extends { ts: Date }>(rows: T[]) =>
+      ({ fromMs, toMs }: { fromMs: number; toMs: number }) =>
+        Promise.resolve(
+          rows.filter(
+            (row) => row.ts.getTime() >= fromMs && row.ts.getTime() <= toMs,
+          ),
+        );
+    mockGetMarketTradeFlowRows.mockImplementation(inWindow(tradeFlowRows));
+    mockGetMarketBreadthRows.mockImplementation(inWindow(breadthRows));
+
+    await preloadBinanceMarketContextForWindow({
+      startMs: timestamp,
+      endMs: timestamp + 60 * 60_000,
+      interval: '15m',
+      chunkMs: 30 * 60_000,
+    });
+    const signal = makeSignal();
+    await enrichSignalWithBinanceMarketContext({
+      signal,
+      env: 'BACKTEST',
+      breadthUniverse: universe,
+    });
+
+    expect(mockGetMarketTradeFlowRows).toHaveBeenCalledTimes(4);
+    expect(
+      signal.additionalIndicators.baseContext.participation.tradeFlow,
+    ).toMatchObject({
+      asOfTs: timestamp - 15 * 60_000,
+      trades: 8,
+      buyPressurePct: 0.75,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.relative.marketBreadth,
+    ).toMatchObject({
+      asOfTs: timestamp - 15 * 60_000,
+      advancers: 18,
+    });
   });
 });

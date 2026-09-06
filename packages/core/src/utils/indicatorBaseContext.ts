@@ -82,7 +82,7 @@ import {
 } from './indicatorBaseContextParticipation';
 
 const STRUCTURE_LOOKBACK = 80;
-const BASE_CONTEXT_CANDLE_WINDOW = 256;
+export const BASE_CONTEXT_CANDLE_WINDOW = 256;
 
 export const buildBaseContextMtfSnapshot = ({
   candlesHistory,

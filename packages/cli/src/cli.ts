@@ -16,6 +16,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ai-pocket-search': () => import('./scripts/aiPocketSearch'),
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
+  'portfolio-backtest': () => import('./scripts/replay'),
   'binance:breadth-universes:update': () =>
     import('./scripts/binanceBreadthUniversesUpdate'),
   'binance:market-ingest': () => import('./scripts/binanceMarketIngest'),
@@ -97,6 +98,17 @@ const main = async () => {
   const nextArgs = [...args];
   if (command === 'spread:ingest') {
     nextArgs.push('--provider', 'binance_coinbase_spread');
+  }
+  if (command === 'portfolio-backtest') {
+    nextArgs.unshift(
+      '--deployment',
+      'production',
+      '--cacheOnly',
+      '--allData',
+      '--maxLossValue',
+      '10',
+      '--portfolioReport',
+    );
   }
 
   process.argv = [process.argv[0], scriptPath, ...nextArgs];

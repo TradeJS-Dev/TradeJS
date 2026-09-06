@@ -65,10 +65,13 @@ export const isWrongData = (
 
 export const cloneArrayValues = <T>(
   record: Record<string, T>,
-): Record<string, T> =>
-  Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [
-      key,
-      Array.isArray(value) ? value.slice() : value,
-    ]),
-  ) as Record<string, T>;
+): Record<string, T> => {
+  const clone: Record<string, T> = {};
+
+  for (const key of Object.keys(record)) {
+    const value = record[key];
+    clone[key] = (Array.isArray(value) ? value.slice() : value) as T;
+  }
+
+  return clone;
+};

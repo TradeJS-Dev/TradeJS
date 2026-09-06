@@ -1,4 +1,6 @@
 import {
+  getMarketBreadthRows,
+  getMarketTradeFlowRows,
   getLatestMarketBreadth,
   getLatestMarketTradeFlow,
 } from '@tradejs/infra/timescale/marketContext';
@@ -7,6 +9,7 @@ import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import type {
   BaseMarketBreadthContext,
   BaseStrategyContextSnapshot,
+  MarketBreadthRow,
   MarketFeatureInterval,
   MarketTradeFlowRow,
   Signal,
@@ -23,6 +26,7 @@ const DEFAULT_MAX_AGE_BY_INTERVAL: Record<MarketFeatureInterval, number> = {
   '15m': 30 * 60_000,
   '1h': 2 * 60 * 60_000,
 };
+const MARKET_CONTEXT_PRELOAD_CHUNK_MS = 7 * 24 * 60 * 60_000;
 
 let binanceMarketContextUnavailable = false;
 
@@ -41,6 +45,97 @@ const breadthCache = new Map<
   string,
   ReturnType<typeof getLatestMarketBreadth>
 >();
+const TRADE_FLOW_NUMERIC_FIELDS = [
+  'trades',
+  'buyBaseVolume',
+  'sellBaseVolume',
+  'buyQuoteVolume',
+  'sellQuoteVolume',
+  'netBaseDelta',
+  'netQuoteDelta',
+  'buyPressurePct',
+] as const;
+const BREADTH_COMMON_NUMERIC_FIELDS = [
+  'symbolsCount',
+  'advancers',
+  'decliners',
+  'unchanged',
+  'advanceDeclineRatio',
+  'pctAboveMa20',
+  'pctAboveMa50',
+  'equalWeightedReturn',
+  'volumeWeightedReturn',
+  'dispersion',
+] as const;
+const BREADTH_REGIME_NUMERIC_FIELDS = [
+  'btcReturn1h',
+  'btcReturn4h',
+  'btcReturn24h',
+  'altBasketReturn1h',
+  'altBasketReturn4h',
+  'altBasketReturn24h',
+  'btcVsAltReturn1h',
+  'btcVsAltReturn4h',
+  'btcVsAltReturn24h',
+  'btcTurnoverShare1h',
+  'btcTurnoverShare24h',
+  'btcTurnoverShareChange24h',
+  'altVolToBtcVol24h',
+  'altDispersion24h',
+] as const;
+
+type TradeFlowNumericField = (typeof TRADE_FLOW_NUMERIC_FIELDS)[number];
+type BreadthCommonNumericField = (typeof BREADTH_COMMON_NUMERIC_FIELDS)[number];
+type BreadthRegimeNumericField = (typeof BREADTH_REGIME_NUMERIC_FIELDS)[number];
+type PackedNumericRows<Field extends string> = {
+  timestamps: Float64Array;
+  columns: Record<Field, Float64Array>;
+};
+type PackedTradeFlowRows = PackedNumericRows<TradeFlowNumericField> & {
+  symbol: string;
+  interval: MarketFeatureInterval;
+};
+type PackedBreadthRows = {
+  universe: string;
+  interval: MarketFeatureInterval;
+  timestamps: Float64Array;
+  commonColumns: Record<BreadthCommonNumericField, Float64Array>;
+  regimeColumns?: Record<BreadthRegimeNumericField, Float64Array>;
+  regimes?: Array<MarketBreadthRow['btcAltRegime']>;
+};
+
+let preloadedTradeFlowBySymbol: Map<string, PackedTradeFlowRows[]> | null =
+  null;
+let preloadedBreadthByUniverse: Map<string, PackedBreadthRows[]> | null = null;
+
+export const getBinanceMarketContextRuntimeStats = () => ({
+  referenceCacheEntries: referenceRowsCache.size,
+  breadthCacheEntries: breadthCache.size,
+  preloadedTradeFlowRows:
+    preloadedTradeFlowBySymbol == null
+      ? 0
+      : [...preloadedTradeFlowBySymbol.values()].reduce(
+          (sum, chunks) =>
+            sum +
+            chunks.reduce(
+              (chunkSum, rows) => chunkSum + rows.timestamps.length,
+              0,
+            ),
+          0,
+        ),
+  preloadedBreadthRows:
+    preloadedBreadthByUniverse == null
+      ? 0
+      : [...preloadedBreadthByUniverse.values()].reduce(
+          (sum, chunks) =>
+            sum +
+            chunks.reduce(
+              (chunkSum, rows) => chunkSum + rows.timestamps.length,
+              0,
+            ),
+          0,
+        ),
+});
 
 const parseEnabledFlag = (value: unknown, env: string) => {
   const normalized = String(value ?? '')
@@ -111,6 +206,290 @@ export const resetBinanceMarketContextRuntimeState = () => {
   binanceMarketContextUnavailable = false;
   referenceRowsCache.clear();
   breadthCache.clear();
+  preloadedTradeFlowBySymbol = null;
+  preloadedBreadthByUniverse = null;
+};
+
+const latestIndexAtOrBefore = (
+  timestamps: Float64Array | undefined,
+  timestamp: number,
+): number => {
+  if (!timestamps?.length) return -1;
+  let low = 0;
+  let high = timestamps.length - 1;
+  let match = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const rowTimestamp = timestamps[middle];
+    if (rowTimestamp == null) break;
+    if (rowTimestamp <= timestamp) {
+      match = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match;
+};
+
+const latestChunkAtOrBefore = <Rows extends { timestamps: Float64Array }>(
+  chunks: Rows[] | undefined,
+  timestamp: number,
+): Rows | null => {
+  if (!chunks?.length) return null;
+  let low = 0;
+  let high = chunks.length - 1;
+  let match: Rows | null = null;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const chunk = chunks[middle];
+    const firstTimestamp = chunk?.timestamps[0];
+    if (!chunk || firstTimestamp == null) break;
+    if (firstTimestamp <= timestamp) {
+      match = chunk;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match;
+};
+
+const createNumericColumns = <Field extends string>(
+  fields: readonly Field[],
+  length: number,
+) =>
+  Object.fromEntries(
+    fields.map((field) => [field, new Float64Array(length)]),
+  ) as Record<Field, Float64Array>;
+
+const packedNumber = (value: unknown) => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : Number.NaN;
+};
+
+const unpackedNumber = (value: number | undefined) =>
+  value == null || Number.isNaN(value) ? null : value;
+
+const packTradeFlowRows = (rows: MarketTradeFlowRow[]) => {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.symbol, (counts.get(row.symbol) ?? 0) + 1);
+  }
+  const packed = new Map<string, PackedTradeFlowRows>();
+  for (const [symbol, length] of counts) {
+    packed.set(symbol, {
+      symbol,
+      interval: rows.find((row) => row.symbol === symbol)?.interval ?? '15m',
+      timestamps: new Float64Array(length),
+      columns: createNumericColumns(TRADE_FLOW_NUMERIC_FIELDS, length),
+    });
+  }
+  const offsets = new Map<string, number>();
+  for (const row of rows) {
+    const target = packed.get(row.symbol);
+    if (!target) continue;
+    const index = offsets.get(row.symbol) ?? 0;
+    target.timestamps[index] = row.ts.getTime();
+    for (const field of TRADE_FLOW_NUMERIC_FIELDS) {
+      target.columns[field][index] = packedNumber(row[field]);
+    }
+    offsets.set(row.symbol, index + 1);
+  }
+  return packed;
+};
+
+const packBreadthRows = (rows: MarketBreadthRow[], primaryUniverse: string) => {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.universe, (counts.get(row.universe) ?? 0) + 1);
+  }
+  const packed = new Map<string, PackedBreadthRows>();
+  for (const [universe, length] of counts) {
+    packed.set(universe, {
+      universe,
+      interval:
+        rows.find((row) => row.universe === universe)?.interval ?? '15m',
+      timestamps: new Float64Array(length),
+      commonColumns: createNumericColumns(
+        BREADTH_COMMON_NUMERIC_FIELDS,
+        length,
+      ),
+      ...(universe === primaryUniverse
+        ? {
+            regimeColumns: createNumericColumns(
+              BREADTH_REGIME_NUMERIC_FIELDS,
+              length,
+            ),
+            regimes: new Array<MarketBreadthRow['btcAltRegime']>(length),
+          }
+        : {}),
+    });
+  }
+  const offsets = new Map<string, number>();
+  for (const row of rows) {
+    const target = packed.get(row.universe);
+    if (!target) continue;
+    const index = offsets.get(row.universe) ?? 0;
+    target.timestamps[index] = row.ts.getTime();
+    for (const field of BREADTH_COMMON_NUMERIC_FIELDS) {
+      target.commonColumns[field][index] = packedNumber(row[field]);
+    }
+    if (target.regimeColumns) {
+      for (const field of BREADTH_REGIME_NUMERIC_FIELDS) {
+        target.regimeColumns[field][index] = packedNumber(row[field]);
+      }
+    }
+    if (target.regimes) target.regimes[index] = row.btcAltRegime;
+    offsets.set(row.universe, index + 1);
+  }
+  return packed;
+};
+
+const appendPackedChunks = <Rows>(
+  target: Map<string, Rows[]>,
+  source: Map<string, Rows>,
+) => {
+  for (const [key, rows] of source) {
+    const chunks = target.get(key) ?? [];
+    chunks.push(rows);
+    target.set(key, chunks);
+  }
+};
+
+const unpackTradeFlowRow = (
+  chunks: PackedTradeFlowRows[] | undefined,
+  timestamp: number,
+): MarketTradeFlowRow | null => {
+  const rows = latestChunkAtOrBefore(chunks, timestamp);
+  const index = latestIndexAtOrBefore(rows?.timestamps, timestamp);
+  if (!rows || index < 0) return null;
+  return {
+    symbol: rows.symbol,
+    interval: rows.interval,
+    ts: new Date(rows.timestamps[index]!),
+    trades: unpackedNumber(rows.columns.trades[index]) ?? 0,
+    buyBaseVolume: unpackedNumber(rows.columns.buyBaseVolume[index]),
+    sellBaseVolume: unpackedNumber(rows.columns.sellBaseVolume[index]),
+    buyQuoteVolume: unpackedNumber(rows.columns.buyQuoteVolume[index]),
+    sellQuoteVolume: unpackedNumber(rows.columns.sellQuoteVolume[index]),
+    netBaseDelta: unpackedNumber(rows.columns.netBaseDelta[index]),
+    netQuoteDelta: unpackedNumber(rows.columns.netQuoteDelta[index]),
+    buyPressurePct: unpackedNumber(rows.columns.buyPressurePct[index]),
+  };
+};
+
+const unpackBreadthRow = (
+  chunks: PackedBreadthRows[] | undefined,
+  timestamp: number,
+): MarketBreadthRow | null => {
+  const rows = latestChunkAtOrBefore(chunks, timestamp);
+  const index = latestIndexAtOrBefore(rows?.timestamps, timestamp);
+  if (!rows || index < 0) return null;
+  const commonNumeric = Object.fromEntries(
+    BREADTH_COMMON_NUMERIC_FIELDS.map((field) => [
+      field,
+      unpackedNumber(rows.commonColumns[field][index]),
+    ]),
+  ) as Record<BreadthCommonNumericField, number | null>;
+  const regimeNumeric = Object.fromEntries(
+    BREADTH_REGIME_NUMERIC_FIELDS.map((field) => [
+      field,
+      unpackedNumber(rows.regimeColumns?.[field][index]),
+    ]),
+  ) as Record<BreadthRegimeNumericField, number | null>;
+  return {
+    universe: rows.universe,
+    interval: rows.interval,
+    ts: new Date(rows.timestamps[index]!),
+    ...commonNumeric,
+    ...regimeNumeric,
+    symbolsCount: commonNumeric.symbolsCount ?? 0,
+    advancers: commonNumeric.advancers ?? 0,
+    decliners: commonNumeric.decliners ?? 0,
+    unchanged: commonNumeric.unchanged ?? 0,
+    btcAltRegime: rows.regimes?.[index] ?? null,
+  };
+};
+
+const toAsOfRow = <T extends { ts: Date }>(
+  row: T | null,
+  timestamp: number,
+  maxAgeMs: number,
+): MarketFeatureAsOfRow<T> | null => {
+  if (!row) return null;
+  const ageMs = timestamp - row.ts.getTime();
+  return {
+    ...row,
+    ageMs: Number.isFinite(ageMs) ? ageMs : null,
+    stale: !Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs,
+  };
+};
+
+export const preloadBinanceMarketContextForWindow = async (params: {
+  startMs: number;
+  endMs: number;
+  interval: MarketFeatureInterval;
+  maxAgeMs?: number;
+  timeoutMs?: number;
+  chunkMs?: number;
+  abortSignal?: AbortSignal;
+}) => {
+  const maxAgeMs =
+    params.maxAgeMs ?? DEFAULT_MAX_AGE_BY_INTERVAL[params.interval];
+  const referenceSymbols = getReferenceSymbols();
+  const breadthDefinitions = getBinanceBreadthUniverses();
+  const breadthUniverses = breadthDefinitions.map(({ universe }) => universe);
+  const primaryBreadthUniverse = breadthDefinitions.find(
+    ({ key }) => key === 'top30',
+  )!.universe;
+  const timeoutMs = params.timeoutMs ?? 5 * 60_000;
+  const chunkMs = params.chunkMs ?? MARKET_CONTEXT_PRELOAD_CHUNK_MS;
+  if (!Number.isSafeInteger(chunkMs) || chunkMs <= 0) {
+    throw new Error(`Invalid market context preload chunk: ${chunkMs}`);
+  }
+  const packedTradeFlow = new Map<string, PackedTradeFlowRows[]>();
+  const packedBreadth = new Map<string, PackedBreadthRows[]>();
+  let tradeFlowRowsCount = 0;
+  let breadthRowsCount = 0;
+  let fromMs = params.startMs - maxAgeMs;
+  while (fromMs <= params.endMs) {
+    const toMs = Math.min(params.endMs, fromMs + chunkMs - 1);
+    const [tradeFlowRows, breadthRows] = await Promise.all([
+      getMarketTradeFlowRows({
+        symbols: referenceSymbols,
+        interval: params.interval,
+        fromMs,
+        toMs,
+        timeoutMs,
+        ...(params.abortSignal ? { signal: params.abortSignal } : {}),
+      }),
+      getMarketBreadthRows({
+        universes: breadthUniverses,
+        interval: params.interval,
+        fromMs,
+        toMs,
+        timeoutMs,
+        ...(params.abortSignal ? { signal: params.abortSignal } : {}),
+      }),
+    ]);
+    tradeFlowRowsCount += tradeFlowRows.length;
+    breadthRowsCount += breadthRows.length;
+    appendPackedChunks(packedTradeFlow, packTradeFlowRows(tradeFlowRows));
+    appendPackedChunks(
+      packedBreadth,
+      packBreadthRows(breadthRows, primaryBreadthUniverse),
+    );
+    fromMs = toMs + 1;
+  }
+  preloadedTradeFlowBySymbol = packedTradeFlow;
+  preloadedBreadthByUniverse = packedBreadth;
+  referenceRowsCache.clear();
+  breadthCache.clear();
+  return {
+    tradeFlowRows: tradeFlowRowsCount,
+    breadthRows: breadthRowsCount,
+  };
 };
 
 const toTradeFlowContext = (
@@ -148,6 +527,24 @@ const getCachedReferenceRows = ({
   maxAgeMs: number;
   abortSignal?: AbortSignal;
 }) => {
+  if (preloadedTradeFlowBySymbol) {
+    return Promise.resolve(
+      referenceSymbols.map((symbol) => ({
+        symbol,
+        tradeFlow: toTradeFlowContext(
+          toAsOfRow(
+            unpackTradeFlowRow(
+              preloadedTradeFlowBySymbol?.get(symbol),
+              timestamp,
+            ),
+            timestamp,
+            maxAgeMs,
+          ),
+          interval,
+        ),
+      })),
+    );
+  }
   const key = `${referenceSymbols.join(',')}:${interval}:${timestamp}:${maxAgeMs}`;
   const cached = referenceRowsCache.get(key);
   if (cached) return cached;
@@ -185,6 +582,18 @@ const getCachedBreadth = ({
   maxAgeMs: number;
   abortSignal?: AbortSignal;
 }) => {
+  if (preloadedBreadthByUniverse) {
+    return Promise.resolve(
+      toAsOfRow(
+        unpackBreadthRow(
+          preloadedBreadthByUniverse.get(breadthUniverse),
+          timestamp,
+        ),
+        timestamp,
+        maxAgeMs,
+      ),
+    );
+  }
   const key = `${breadthUniverse}:${interval}:${timestamp}:${maxAgeMs}`;
   const cached = breadthCache.get(key);
   if (cached) return cached;

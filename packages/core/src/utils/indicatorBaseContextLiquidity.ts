@@ -110,9 +110,12 @@ export const buildLiquidityZonesContext = (
 
   const lastIndex = candles.length - 1;
   const current = candles[lastIndex];
-  const activeZones = zones.filter((zone) => {
+  let activeCount = 0;
+  let nearestSupport: LiquidityZoneSnapshot | null = null;
+  let nearestResistance: LiquidityZoneSnapshot | null = null;
+  for (const zone of zones) {
     if (lastIndex - zone.startIndex > LIQUIDITY_ZONE_MAX_AGE) {
-      return false;
+      continue;
     }
 
     const crossed =
@@ -121,32 +124,25 @@ export const buildLiquidityZonesContext = (
         ? current.close > zone.top
         : current.close < zone.bottom);
     zone.crossed = crossed;
-    return !crossed;
-  });
-  const supports = activeZones.filter(
-    (zone) => zone.kind === 'swing_low_liquidity',
-  );
-  const resistances = activeZones.filter(
-    (zone) => zone.kind === 'swing_high_liquidity',
-  );
-  const nearestSupport =
-    supports.reduce<LiquidityZoneSnapshot | null>(
-      (nearest, zone) =>
-        nearest == null ||
-        Math.abs(price - zone.level) < Math.abs(price - nearest.level)
-          ? zone
-          : nearest,
-      null,
-    ) ?? null;
-  const nearestResistance =
-    resistances.reduce<LiquidityZoneSnapshot | null>(
-      (nearest, zone) =>
-        nearest == null ||
-        Math.abs(zone.level - price) < Math.abs(nearest.level - price)
-          ? zone
-          : nearest,
-      null,
-    ) ?? null;
+    if (crossed) {
+      continue;
+    }
+
+    activeCount += 1;
+    if (zone.kind === 'swing_low_liquidity') {
+      if (
+        nearestSupport == null ||
+        Math.abs(price - zone.level) < Math.abs(price - nearestSupport.level)
+      ) {
+        nearestSupport = zone;
+      }
+    } else if (
+      nearestResistance == null ||
+      Math.abs(zone.level - price) < Math.abs(nearestResistance.level - price)
+    ) {
+      nearestResistance = zone;
+    }
+  }
   const supportRetest =
     nearestSupport != null && current.low <= nearestSupport.top;
   const resistanceRetest =
@@ -166,7 +162,7 @@ export const buildLiquidityZonesContext = (
     retestZone == null ? null : Math.max(retestZone.top - retestZone.bottom, 0);
 
   return {
-    activeCount: activeZones.length,
+    activeCount,
     nearestSupport: {
       top: nearestSupport?.top ?? null,
       bottom: nearestSupport?.bottom ?? null,
@@ -321,30 +317,29 @@ export const buildLiquidityTailsContext = (
 
   const lastIndex = candles.length - 1;
   const current = candles[lastIndex];
-  const activeZones = zones.filter(
-    (zone) =>
-      !zone.spent && lastIndex - zone.startIndex <= LIQUIDITY_TAIL_MAX_AGE,
-  );
-  const buyZones = activeZones.filter((zone) => zone.kind === 'buy_pressure');
-  const sellZones = activeZones.filter((zone) => zone.kind === 'sell_pressure');
-  const nearestBuy =
-    buyZones.reduce<LiquidityTailZoneSnapshot | null>(
-      (nearest, zone) =>
-        nearest == null ||
-        Math.abs(price - zone.mid) < Math.abs(price - nearest.mid)
-          ? zone
-          : nearest,
-      null,
-    ) ?? null;
-  const nearestSell =
-    sellZones.reduce<LiquidityTailZoneSnapshot | null>(
-      (nearest, zone) =>
-        nearest == null ||
-        Math.abs(zone.mid - price) < Math.abs(nearest.mid - price)
-          ? zone
-          : nearest,
-      null,
-    ) ?? null;
+  let activeCount = 0;
+  let nearestBuy: LiquidityTailZoneSnapshot | null = null;
+  let nearestSell: LiquidityTailZoneSnapshot | null = null;
+  for (const zone of zones) {
+    if (zone.spent || lastIndex - zone.startIndex > LIQUIDITY_TAIL_MAX_AGE) {
+      continue;
+    }
+
+    activeCount += 1;
+    if (zone.kind === 'buy_pressure') {
+      if (
+        nearestBuy == null ||
+        Math.abs(price - zone.mid) < Math.abs(price - nearestBuy.mid)
+      ) {
+        nearestBuy = zone;
+      }
+    } else if (
+      nearestSell == null ||
+      Math.abs(zone.mid - price) < Math.abs(nearestSell.mid - price)
+    ) {
+      nearestSell = zone;
+    }
+  }
   const topShadow = current.high - Math.max(current.open, current.close);
   const bottomShadow = Math.min(current.open, current.close) - current.low;
   const body = Math.max(Math.abs(current.close - current.open), 1e-9);
@@ -359,7 +354,7 @@ export const buildLiquidityTailsContext = (
   const oppositeWick = dominantUpper ? bottomShadow : topShadow;
 
   return {
-    activeCount: activeZones.length,
+    activeCount,
     nearestBuyPressure: {
       top: nearestBuy?.top ?? null,
       bottom: nearestBuy?.bottom ?? null,

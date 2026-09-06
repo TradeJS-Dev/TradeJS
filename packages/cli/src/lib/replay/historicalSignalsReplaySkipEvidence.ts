@@ -49,7 +49,14 @@ const appendReplaySignalEvaluationRun = ({
 
 export const createHistoricalReplaySkipEvidence = (
   runtimeLineages: ReplayRuntimeLineageRecord[],
+  enabled = true,
 ) => {
+  if (!enabled) {
+    return {
+      record: () => undefined,
+      values: (): RuntimeLineageScopeRecord[] => [],
+    };
+  }
   const lineageByStrategySymbol = new Map(
     runtimeLineages.map((record) => [
       replayScopeKey(record.strategy, record.symbol),

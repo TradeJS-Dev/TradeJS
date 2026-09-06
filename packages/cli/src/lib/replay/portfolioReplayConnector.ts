@@ -149,6 +149,7 @@ export const createPortfolioReplayConnector = (
         timestamp,
         amount: round(amount),
       },
+      netProfit: round(positionState.currentProfit),
     } satisfies PositionLog;
 
     positionLog.push(nextPositionLog);

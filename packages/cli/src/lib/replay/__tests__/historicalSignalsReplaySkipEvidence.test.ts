@@ -30,28 +30,23 @@ describe('historical signals replay skip evidence', () => {
     const execution = await executeHistoricalReplay(
       {
         plan: {
-          cycleSymbolsByTimestamp: new Map([
-            [
-              timestamp,
-              [
+          symbolRuntimes: [
+            {
+              symbol: 'HNTUSDT',
+              replayData: [candle],
+              btcReplayData: [candle],
+              ethReplayData: [],
+              currentIndex: 0,
+              strategies: [
                 {
-                  symbol: 'HNTUSDT',
-                  replayData: [candle],
-                  btcReplayData: [candle],
-                  ethReplayData: [],
-                  currentIndex: 0,
-                  strategies: [
-                    {
-                      strategyName: 'RelativeRotation',
-                      strategyConfig: { INTERVAL: '15' },
-                      runtimeLineage,
-                      run: jest.fn().mockResolvedValue('POSITION_EXISTS'),
-                    },
-                  ],
+                  strategyName: 'RelativeRotation',
+                  strategyConfig: { INTERVAL: '15' },
+                  runtimeLineage,
+                  run: jest.fn().mockResolvedValue('POSITION_EXISTS'),
                 },
               ],
-            ],
-          ]),
+            },
+          ],
           orderedTimestamps: [timestamp],
           sharedReplayKeyPrefixes: [],
           runtimeLineages: [
@@ -186,5 +181,83 @@ describe('historical signals replay skip evidence', () => {
         ],
       }),
     ]);
+  });
+
+  it('does not retain per-candle skip evidence when collection is disabled', () => {
+    const timestamp = Date.UTC(2026, 7, 31, 14, 15);
+    const skipEvidence = createHistoricalReplaySkipEvidence(
+      [
+        {
+          strategy: 'RelativeRotation',
+          symbol: 'HNTUSDT',
+          lineage: runtimeLineage,
+        },
+      ],
+      false,
+    );
+
+    skipEvidence.record({
+      strategyName: 'RelativeRotation',
+      symbol: 'HNTUSDT',
+      strategyConfig: { INTERVAL: '15' },
+      runtimeLineage,
+      timestamp,
+      result: 'NO_RELATIVE_ROTATION',
+    });
+
+    expect(skipEvidence.values()).toEqual([]);
+  });
+
+  it('processes a signal without retaining it when signal collection is disabled', async () => {
+    const timestamp = Date.UTC(2026, 7, 31, 14, 15);
+    const candle = { timestamp } as KlineChartItem;
+    const signal = { timestamp } as Signal;
+    const enrichSignal = jest.fn();
+    const execution = await executeHistoricalReplay(
+      {
+        plan: {
+          symbolRuntimes: [
+            {
+              symbol: 'BTCUSDT',
+              replayData: [candle],
+              btcReplayData: [candle],
+              ethReplayData: [],
+              currentIndex: 0,
+              strategies: [
+                {
+                  strategyName: 'RelativeRotation',
+                  strategyConfig: { INTERVAL: '15' },
+                  runtimeLineage,
+                  run: jest.fn().mockResolvedValue(signal),
+                },
+              ],
+            },
+          ],
+          orderedTimestamps: [timestamp],
+          sharedReplayKeyPrefixes: [],
+          runtimeLineages: [],
+        },
+        connector: { advanceMarket: jest.fn() } as any,
+        hookContext: {} as any,
+        collectSignals: false,
+      },
+      {
+        clock: { now: () => timestamp },
+        progress: { tick: jest.fn() },
+        display: {
+          signals: String,
+          aborted: String,
+          timestamp: String,
+        },
+        invokeBeforeSignals: jest.fn(),
+        invokeAfterSignals: jest.fn(),
+        enrichSignal,
+        releaseIndicatorsCache: jest.fn(),
+        releaseReplayCache: jest.fn(),
+      },
+    );
+
+    expect(enrichSignal).toHaveBeenCalledWith(signal);
+    expect(execution.signals).toEqual([]);
   });
 });

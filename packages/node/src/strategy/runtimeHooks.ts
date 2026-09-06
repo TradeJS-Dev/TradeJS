@@ -80,20 +80,25 @@ export const buildHookCtx = ({
   strategyConfig: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
-}): StrategyHookCtx => ({
-  connector,
-  strategyName,
-  userName,
-  symbol,
-  ...(universe ? { universe } : {}),
-  ...(assetClass ? { assetClass } : {}),
-  ...(accountId ? { accountId } : {}),
-  ...(deploymentId ? { deploymentId } : {}),
-  ...(policyProfileId ? { policyProfileId } : {}),
-  strategyConfig,
-  env,
-  isConfigFromBacktest,
-});
+}): StrategyHookCtx => {
+  const context: StrategyHookCtx = {
+    connector,
+    strategyName,
+    userName,
+    symbol,
+  } as StrategyHookCtx;
+
+  if (universe) context.universe = universe;
+  if (assetClass) context.assetClass = assetClass;
+  if (accountId) context.accountId = accountId;
+  if (deploymentId) context.deploymentId = deploymentId;
+  if (policyProfileId) context.policyProfileId = policyProfileId;
+  context.strategyConfig = strategyConfig;
+  context.env = env;
+  context.isConfigFromBacktest = isConfigFromBacktest;
+
+  return context;
+};
 
 export const shouldRecordRuntimeJournal = ({
   env,
