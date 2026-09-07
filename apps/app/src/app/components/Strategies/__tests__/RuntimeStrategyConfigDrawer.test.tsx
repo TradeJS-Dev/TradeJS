@@ -71,6 +71,9 @@ jest.mock('@chakra-ui/react', () => {
 const strategy = {
   runtimeKey: 'production:DoubleTap:sr1:5555555555555555',
   strategyName: 'DoubleTap',
+  strategyModule: '@tradejs/strategy-double-tap-scaled',
+  strategyPackage: '@tradejs/strategy-double-tap-scaled',
+  strategyPackageVersion: '3.2.0',
   configId: 'DoubleTap:production',
   strategyRevision: 'sr1:5555555555555555',
   controlState: 'active',
@@ -79,6 +82,8 @@ const strategy = {
   accountId: 'bybit-main',
   accountLabel: 'Bybit main',
   deploymentId: 'production',
+  deploymentLabel: 'Scaled',
+  generation: 'proven',
   policyProfileId: 'crypto',
   connected: true,
   enabled: true,
@@ -107,6 +112,12 @@ describe('RuntimeStrategyConfigDrawer', () => {
     );
 
     expect(screen.getByText('sr1:5555555555555555')).toBeTruthy();
+    expect(
+      screen.getAllByText('@tradejs/strategy-double-tap-scaled'),
+    ).toHaveLength(2);
+    expect(screen.getByText('3.2.0')).toBeTruthy();
+    expect(screen.getByText('proven')).toBeTruthy();
+    expect(screen.getByText('Scaled')).toBeTruthy();
     expect(screen.queryByText('Config ID')).toBeNull();
     expect(screen.queryByText('DoubleTap:production')).toBeNull();
     expect(

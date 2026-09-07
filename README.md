@@ -85,6 +85,66 @@ For a real rollout, pin the strategy package and lockfile and declare the full
 configuration that was actually reviewed. `MAX_LOSS_VALUE: 1` is an example,
 not a risk recommendation.
 
+You can run two versions of one strategy in separate deployments. Give each
+version its own package alias in `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@tradejs/strategy-trend-follow-forward": "npm:@tradejs/strategy-trend-follow@3.0.4",
+    "@tradejs/strategy-trend-follow-scaled": "npm:@tradejs/strategy-trend-follow@3.0.3"
+  }
+}
+```
+
+Set `module` to the matching alias in each strategy declaration. The strategy
+name stays `TrendFollow`, while the deployment, account, package version, and
+config can differ:
+
+```ts
+runtime: {
+  deployments: {
+    forward: {
+      label: 'Forward',
+      connectorName: 'bybit',
+      accountId: 'bybit-forward',
+      strategies: {
+        TrendFollow: {
+          module: '@tradejs/strategy-trend-follow-forward',
+          generation: 'candidate',
+          enabled: true,
+          config: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            MAX_LOSS_VALUE: 1,
+          },
+        },
+      },
+    },
+    scaled: {
+      label: 'Scaled',
+      connectorName: 'bybit',
+      accountId: 'bybit-scaled',
+      strategies: {
+        TrendFollow: {
+          module: '@tradejs/strategy-trend-follow-scaled',
+          generation: 'proven',
+          enabled: true,
+          config: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            MAX_LOSS_VALUE: 10,
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+The runtime verifies the alias target and its exact stable version. The weekly
+package update keeps aliased strategy versions unchanged.
+
 Run the rollout checks from the released project environment, using its exact
 Git-owned config and verified `runtime-package-manifest.json`:
 

@@ -44,12 +44,20 @@ describe('runtime exchange trade reconstruction', () => {
       strategyNames: ['TrendShift'],
       existingTrades: [],
       endTime: 3_000,
+      scope: {
+        deploymentId: 'trend-shift-forward',
+        accountId: 'crypto-forward',
+        universe: 'crypto',
+      },
     });
 
     expect(trades).toEqual([
       expect.objectContaining({
         orderId: orderLinkId,
         strategy: 'TrendShift',
+        deploymentId: 'trend-shift-forward',
+        accountId: 'crypto-forward',
+        universe: 'crypto',
         qty: 5,
         entryPrice: 106,
         status: 'closed',

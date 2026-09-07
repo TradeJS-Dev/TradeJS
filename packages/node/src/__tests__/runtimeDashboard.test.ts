@@ -86,8 +86,12 @@ describe('runtime dashboard', () => {
     mockLoadResolvedRuntimeStrategies.mockResolvedValue([
       {
         strategyName: 'TrendLine',
+        strategyModule: '@tradejs/strategy-trend-line-forward',
+        strategyPackage: '@tradejs/strategy-trend-line-forward',
+        strategyPackageVersion: '3.0.4',
         strategyRevision: 'sr1:2222222222222222',
         deploymentCompositionId: 'dc1:2222222222222222',
+        generation: 'forward',
         enabled: true,
         controlState: 'active',
         interval: '15',
@@ -143,12 +147,17 @@ describe('runtime dashboard', () => {
       strategies: [
         {
           strategyName: 'TrendLine',
+          strategyModule: '@tradejs/strategy-trend-line-forward',
+          strategyPackage: '@tradejs/strategy-trend-line-forward',
+          strategyPackageVersion: '3.0.4',
           configId: 'sr1:2222222222222222',
           strategyRevision: 'sr1:2222222222222222',
+          generation: 'forward',
           interval: '15',
           universe: 'crypto',
           accountId: 'crypto-main',
           accountLabel: 'Crypto main',
+          deploymentLabel: 'TrendLine forward',
           connected: true,
           enabled: true,
           config: {
@@ -244,12 +253,15 @@ describe('runtime dashboard', () => {
     ).toBe(false);
   });
 
-  it('groups runtime trades only by strategy and interval across revisions', async () => {
+  it('groups revisions only within the deployment and account scope', async () => {
     mockGetHashJsonValues.mockResolvedValue([
       {
         orderId: 'old-revision',
         strategy: 'TrendLine',
         strategyRevision: 'sr1:1111111111111111',
+        deploymentId: 'trendline-forward',
+        accountId: 'crypto-main',
+        universe: 'crypto',
         symbol: 'BTCUSDT',
         interval: '15',
         direction: 'LONG',
@@ -316,14 +328,147 @@ describe('runtime dashboard', () => {
 
     expect(response.strategies[0]).toMatchObject({
       strategyName: 'TrendLine',
-      summary: { totalTrades: 2, closedTrades: 2 },
-      symbols: ['ETHUSDT', 'BTCUSDT'],
-      revisionChanges: [
+      summary: { totalTrades: 1, closedTrades: 1 },
+      symbols: ['BTCUSDT'],
+      revisionChanges: [],
+    });
+  });
+
+  it('keeps duplicate strategy names isolated across deployments', async () => {
+    mockListRuntimeDeployments.mockResolvedValue([
+      {
+        id: 'trendline-forward',
+        deploymentCompositionId: 'dc1:1111111111111111',
+        label: 'Forward',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-forward',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            strategyRevision: 'sr1:1111111111111111',
+            enabled: true,
+            controlState: 'active',
+          },
+        ],
+      },
+      {
+        id: 'trendline-scaled',
+        deploymentCompositionId: 'dc1:2222222222222222',
+        label: 'Scaled',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-scaled',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            strategyRevision: 'sr1:2222222222222222',
+            enabled: true,
+            controlState: 'active',
+          },
+        ],
+      },
+    ]);
+    mockListTradingAccounts.mockResolvedValue([
+      { id: 'crypto-forward', label: 'Forward account' },
+      { id: 'crypto-scaled', label: 'Scaled account' },
+    ]);
+    mockLoadResolvedRuntimeStrategies.mockImplementation(
+      async ({ deploymentId }: { deploymentId: string }) => [
         {
-          timestamp: 1_700_000_000_000 - 60_000,
-          strategyRevision: 'sr1:2222222222222222',
+          strategyName: 'TrendLine',
+          strategyModule: `@tradejs/strategy-trend-line-${deploymentId}`,
+          strategyPackage: `@tradejs/strategy-trend-line-${deploymentId}`,
+          strategyPackageVersion:
+            deploymentId === 'trendline-forward' ? '3.1.0' : '3.0.4',
+          strategyRevision:
+            deploymentId === 'trendline-forward'
+              ? 'sr1:1111111111111111'
+              : 'sr1:2222222222222222',
+          generation:
+            deploymentId === 'trendline-forward' ? 'candidate' : 'proven',
+          enabled: true,
+          controlState: 'active',
+          interval: '15',
+          universe: 'crypto',
+          accountId:
+            deploymentId === 'trendline-forward'
+              ? 'crypto-forward'
+              : 'crypto-scaled',
+          strategyConfig: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            MAX_LOSS_VALUE: deploymentId === 'trendline-forward' ? 1 : 10,
+          },
         },
       ],
+    );
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'forward-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentId: 'trendline-forward',
+        accountId: 'crypto-forward',
+        universe: 'crypto',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000 - 120_000,
+        status: 'active',
+      },
+      {
+        orderId: 'scaled-order',
+        strategy: 'TrendLine',
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentId: 'trendline-scaled',
+        accountId: 'crypto-scaled',
+        universe: 'crypto',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'SHORT',
+        qty: 1,
+        entryPrice: 200,
+        entryTimestamp: 1_700_000_000_000 - 60_000,
+        status: 'active',
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now: 1_700_000_000_000,
+      projectRoot: '/project',
+    });
+
+    expect(
+      response.strategies.find(
+        ({ deploymentId }) => deploymentId === 'trendline-forward',
+      ),
+    ).toMatchObject({
+      deploymentLabel: 'Forward',
+      accountLabel: 'Forward account',
+      strategyPackageVersion: '3.1.0',
+      generation: 'candidate',
+      symbols: ['BTCUSDT'],
+      summary: { totalTrades: 1 },
+    });
+    expect(
+      response.strategies.find(
+        ({ deploymentId }) => deploymentId === 'trendline-scaled',
+      ),
+    ).toMatchObject({
+      deploymentLabel: 'Scaled',
+      accountLabel: 'Scaled account',
+      strategyPackageVersion: '3.0.4',
+      generation: 'proven',
+      symbols: ['ETHUSDT'],
+      summary: { totalTrades: 1 },
     });
   });
 

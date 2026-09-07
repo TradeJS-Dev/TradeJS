@@ -154,6 +154,113 @@ describe('Git-owned runtime strategy resolver', () => {
     expect(resolved).not.toHaveProperty('releaseVersion');
   });
 
+  it('loads a strategy from an exact package alias', async () => {
+    const moduleName = '@tradejs/strategy-double-tap-forward';
+    mockLoadTradejsConfig.mockResolvedValueOnce({
+      runtime: {
+        deployments: {
+          forward: {
+            ...runtimeConfig.deployments.production,
+            label: 'Forward',
+            strategies: {
+              DoubleTap: {
+                ...runtimeConfig.deployments.production.strategies.DoubleTap,
+                module: moduleName,
+                generation: 'candidate',
+              },
+            },
+          },
+        },
+      },
+    });
+    jest.doMock('node:fs/promises', () => ({
+      readFile: jest.fn(async (filePath: string) => {
+        if (filePath.endsWith('runtime-package-manifest.json')) {
+          return JSON.stringify({
+            schema: 'tradejs-runtime-package-manifest/v1',
+            projectSha: 'a'.repeat(40),
+            packages: {
+              [moduleName]: '3.2.1',
+              '@tradejs/node': '3.2.0',
+            },
+          });
+        }
+        if (
+          filePath.endsWith(
+            'node_modules/@tradejs/strategy-double-tap-forward/package.json',
+          )
+        ) {
+          return JSON.stringify({
+            name: '@tradejs/strategy-double-tap',
+            version: '3.2.1',
+          });
+        }
+        if (filePath === '/project/package.json') {
+          return JSON.stringify({
+            dependencies: {
+              [moduleName]: 'npm:@tradejs/strategy-double-tap@3.2.1',
+            },
+          });
+        }
+        if (filePath.endsWith('node_modules/@tradejs/node/package.json')) {
+          return JSON.stringify({ name: '@tradejs/node', version: '3.2.0' });
+        }
+        throw new Error('not found');
+      }),
+    }));
+    const getStrategyEntry = jest.fn(async () => ({
+      parseConfig: (config: Record<string, unknown>) => config,
+    }));
+    const getStrategyCreator = jest.fn(async () => jest.fn());
+    const getStrategyPluginSource = jest.fn(async () => moduleName);
+    jest.doMock('../strategy', () => ({
+      getStrategyEntry,
+      getStrategyCreator,
+      getStrategyPluginSource,
+    }));
+    const { getRuntimeStrategyPackageMetadata, loadResolvedRuntimeStrategies } =
+      await import('../runtimeStrategies');
+
+    const [resolved] = await loadResolvedRuntimeStrategies({
+      userName: 'root',
+      projectRoot: '/project',
+      deploymentId: 'forward',
+    });
+
+    expect(resolved).toMatchObject({
+      strategyName: 'DoubleTap',
+      strategyModule: moduleName,
+      strategyPackage: moduleName,
+      strategyPackageVersion: '3.2.1',
+      generation: 'candidate',
+    });
+    expect(getStrategyEntry).toHaveBeenCalledWith(
+      'DoubleTap',
+      '/project',
+      moduleName,
+    );
+    expect(getStrategyCreator).toHaveBeenCalledWith(
+      'DoubleTap',
+      '/project',
+      moduleName,
+    );
+    expect(getStrategyPluginSource).toHaveBeenCalledWith(
+      'DoubleTap',
+      '/project',
+      moduleName,
+    );
+    await expect(
+      getRuntimeStrategyPackageMetadata({
+        strategyName: 'DoubleTap',
+        projectRoot: '/project',
+        strategyModule: moduleName,
+      }),
+    ).resolves.toMatchObject({
+      strategyPackage: moduleName,
+      strategyPackageVersion: '3.2.1',
+    });
+  });
+
   it('treats Git disabled as entries paused even without a controls key', async () => {
     mockLoadTradejsConfig.mockResolvedValueOnce({
       runtime: {
@@ -216,6 +323,32 @@ describe('Git-owned runtime strategy resolver', () => {
       listRuntimeDeployments({ userName: 'root', projectRoot: '/project' }),
     ).rejects.toThrow('Invalid runtime strategy declaration');
   });
+
+  it.each(['', ' ', 42])(
+    'rejects an invalid strategy module: %p',
+    async (moduleName) => {
+      mockLoadTradejsConfig.mockResolvedValueOnce({
+        runtime: {
+          deployments: {
+            production: {
+              ...runtimeConfig.deployments.production,
+              strategies: {
+                DoubleTap: {
+                  ...runtimeConfig.deployments.production.strategies.DoubleTap,
+                  module: moduleName,
+                },
+              },
+            },
+          },
+        },
+      });
+      const { listRuntimeDeployments } = await import('../runtimeStrategies');
+
+      await expect(
+        listRuntimeDeployments({ userName: 'root', projectRoot: '/project' }),
+      ).rejects.toThrow('Invalid runtime strategy declaration');
+    },
+  );
 
   it('rejects an invalid strategy-owned config before resolving runtime', async () => {
     jest.doMock('../strategy', () => ({

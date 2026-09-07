@@ -30,7 +30,15 @@ export const RuntimeStrategyConfigDrawer = ({
   const serviceInfo = [
     { label: 'Strategy revision', value: strategy.strategyRevision },
     { label: 'Runtime key', value: strategy.runtimeKey },
-    { label: 'Deployment', value: strategy.deploymentId },
+    { label: 'Strategy module', value: strategy.strategyModule },
+    { label: 'Strategy package', value: strategy.strategyPackage },
+    {
+      label: 'Package version',
+      value: strategy.strategyPackageVersion,
+    },
+    { label: 'Generation', value: strategy.generation ?? 'Not set' },
+    { label: 'Deployment label', value: strategy.deploymentLabel },
+    { label: 'Deployment ID', value: strategy.deploymentId },
     {
       label: 'Configured tickers',
       value: strategy.selection?.tickers?.length ?? 'All available',
@@ -70,7 +78,10 @@ export const RuntimeStrategyConfigDrawer = ({
         <Drawer.Positioner>
           <Drawer.Content bg="gray.950">
             <Drawer.Header>
-              <Drawer.Title>{strategy.strategyName} configuration</Drawer.Title>
+              <Drawer.Title>
+                {strategy.strategyName}, {strategy.deploymentLabel}{' '}
+                configuration
+              </Drawer.Title>
               <Drawer.CloseTrigger asChild>
                 <CloseButton size="sm" />
               </Drawer.CloseTrigger>

@@ -33,6 +33,7 @@ export interface RuntimePackageManifest {
 
 export interface ResolvedRuntimeStrategy {
   strategyName: string;
+  strategyModule: string;
   strategyRevision: string;
   deploymentCompositionId: string;
   generation?: string;
@@ -53,6 +54,7 @@ export interface ResolvedRuntimeStrategy {
 
 interface ResolvedStrategyComposition {
   strategyName: string;
+  strategyModule: string;
   strategyRevision: string;
   generation?: string;
   enabled: boolean;
@@ -105,7 +107,13 @@ const DEPLOYMENT_KEYS = new Set([
   'assetClasses',
   'tickers',
 ]);
-const STRATEGY_KEYS = new Set(['generation', 'enabled', 'selection', 'config']);
+const STRATEGY_KEYS = new Set([
+  'module',
+  'generation',
+  'enabled',
+  'selection',
+  'config',
+]);
 const SELECTION_KEYS = new Set(['tickers']);
 const FORBIDDEN_CONFIG_KEYS = new Set([
   'ACCOUNT_ID',
@@ -238,6 +246,50 @@ interface InstalledPackageMetadata {
   runtimeDependencies: string[];
 }
 
+const parseNpmAliasReference = (value: unknown) => {
+  if (typeof value !== 'string' || !value.startsWith('npm:')) return null;
+  const target = value.slice('npm:'.length);
+  const versionSeparator = target.lastIndexOf('@');
+  if (versionSeparator <= 0 || versionSeparator === target.length - 1) {
+    return null;
+  }
+  return {
+    packageName: target.slice(0, versionSeparator),
+    version: target.slice(versionSeparator + 1),
+  };
+};
+
+const verifyInstalledPackageName = async ({
+  projectRoot,
+  packageName,
+  installedName,
+  installedVersion,
+  projectPackage,
+}: {
+  projectRoot: string;
+  packageName: string;
+  installedName: unknown;
+  installedVersion: string;
+  projectPackage: boolean;
+}) => {
+  if (installedName === undefined || installedName === packageName) return;
+  if (projectPackage || typeof installedName !== 'string') {
+    throw new Error('name is invalid');
+  }
+  const projectManifest = JSON.parse(
+    await readFile(path.join(projectRoot, 'package.json'), 'utf8'),
+  ) as { dependencies?: Record<string, unknown> };
+  const alias = parseNpmAliasReference(
+    projectManifest.dependencies?.[packageName],
+  );
+  if (
+    alias?.packageName !== installedName ||
+    alias.version !== installedVersion
+  ) {
+    throw new Error('name or alias target is invalid');
+  }
+};
+
 const readInstalledPackageMetadata = async ({
   projectRoot,
   packageName,
@@ -263,12 +315,18 @@ const readInstalledPackageMetadata = async ({
       peerDependencies?: unknown;
     };
     if (
-      (packageJson.name !== undefined && packageJson.name !== packageName) ||
       typeof packageJson.version !== 'string' ||
       !packageJson.version.trim()
     ) {
-      throw new Error('name or version is invalid');
+      throw new Error('version is invalid');
     }
+    await verifyInstalledPackageName({
+      projectRoot,
+      packageName,
+      installedName: packageJson.name,
+      installedVersion: packageJson.version,
+      projectPackage,
+    });
     const dependencyNames = [
       ...(isRecord(packageJson.dependencies)
         ? Object.keys(packageJson.dependencies)
@@ -437,6 +495,9 @@ const verifyDeploymentDeclaration = (
       (strategyValue.generation !== undefined &&
         (typeof strategyValue.generation !== 'string' ||
           !strategyValue.generation.trim())) ||
+      (strategyValue.module !== undefined &&
+        (typeof strategyValue.module !== 'string' ||
+          !strategyValue.module.trim())) ||
       typeof strategyValue.enabled !== 'boolean' ||
       !verifyStrategySelection(strategyValue.selection) ||
       !isRecord(strategyValue.config) ||
@@ -494,9 +555,9 @@ const resolveStrategyComposition = async ({
   packageManifest: RuntimePackageManifest;
 }): Promise<ResolvedStrategyComposition> => {
   const [strategyEntry, strategyCreator, pluginSource] = await Promise.all([
-    getStrategyEntry(strategyName, projectRoot),
-    getStrategyCreator(strategyName, projectRoot),
-    getStrategyPluginSource(strategyName, projectRoot),
+    getStrategyEntry(strategyName, projectRoot, declaration.module),
+    getStrategyCreator(strategyName, projectRoot, declaration.module),
+    getStrategyPluginSource(strategyName, projectRoot, declaration.module),
   ]);
   if (!strategyEntry || !strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
@@ -546,6 +607,7 @@ const resolveStrategyComposition = async ({
   });
   return {
     strategyName,
+    strategyModule: pluginSource ?? strategyPackage.name,
     strategyRevision: computeStrategyRevision({
       strategyName,
       strategyPackage: strategyPackage.name,
@@ -788,13 +850,15 @@ export const loadResolvedRuntimeStrategies = async ({
 export const getRuntimeStrategyPackageMetadata = async ({
   strategyName,
   projectRoot,
+  strategyModule,
 }: {
   strategyName: string;
   projectRoot: string;
+  strategyModule?: string;
 }) => {
   const [packageManifest, pluginSource] = await Promise.all([
     readRuntimePackageManifest(projectRoot),
-    getStrategyPluginSource(strategyName, projectRoot),
+    getStrategyPluginSource(strategyName, projectRoot, strategyModule),
   ]);
   const strategyPackage = await resolveStrategyPackage({
     pluginSource: pluginSource ?? null,

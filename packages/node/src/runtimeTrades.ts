@@ -159,6 +159,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
   strategyNames,
   existingTrades,
   endTime,
+  scope,
 }: {
   entryRows: ExchangeEntryRecord[];
   closedPnlRows: ClosedPnlRecordWithOrderLinkId[];
@@ -166,6 +167,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
   strategyNames: string[];
   existingTrades: RuntimeTradeRecord[];
   endTime: number;
+  scope?: Pick<RuntimeTradeRecord, 'accountId' | 'deploymentId' | 'universe'>;
 }) => {
   if (!entryRows.length && !closedPnlRows.length) return [];
   const strategyNameByOrderId = new Map(
@@ -241,6 +243,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
             : null;
       if (entryPrice == null) return null;
       return {
+        ...scope,
         orderId: runtimeOrderId,
         strategy,
         symbol: entry.symbol,
@@ -296,6 +299,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
         return null;
       }
       return {
+        ...scope,
         orderId: runtimeOrderId,
         strategy,
         symbol: row.symbol,

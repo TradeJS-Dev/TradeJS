@@ -91,13 +91,20 @@ jest.mock('#ui', () => ({
 
 const strategy = {
   strategyName: 'DoubleTap',
+  strategyModule: '@tradejs/strategy-double-tap-forward',
+  strategyPackage: '@tradejs/strategy-double-tap-forward',
+  strategyPackageVersion: '3.2.1',
   strategyRevision: 'sr1:3333333333333333',
+  generation: 'candidate',
   deploymentId: 'production',
+  deploymentLabel: 'Forward',
+  accountLabel: 'Bybit forward',
   controlState: 'active',
   enabled: true,
   connected: true,
   universe: 'crypto',
   interval: 15,
+  config: { MAX_LOSS_VALUE: 1 },
   summary: { totalTrades: 5, activeTrades: 2 },
   stat: {},
   orderLog: [],
@@ -105,6 +112,24 @@ const strategy = {
 } as unknown as RuntimeStrategyView;
 
 describe('RuntimeStrategyCard', () => {
+  it('shows the deployment, account, version, generation, and risk identity', () => {
+    render(
+      <RuntimeStrategyCard
+        strategy={strategy}
+        provider="bybit"
+        startTimestamp={100}
+        endTimestamp={200}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Forward')).toBeTruthy();
+    expect(screen.getByText('account: Bybit forward')).toBeTruthy();
+    expect(screen.getByText('version: 3.2.1')).toBeTruthy();
+    expect(screen.getByText('generation: candidate')).toBeTruthy();
+    expect(screen.getByText('max loss: 1')).toBeTruthy();
+  });
+
   it('keeps Revisions last in Actions and opens its drawer', () => {
     render(
       <RuntimeStrategyCard

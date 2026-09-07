@@ -130,6 +130,77 @@ describe('strategy manifests registry', () => {
     });
   });
 
+  it('resolves two package aliases that export the same strategy name', async () => {
+    const firstCreator = jest.fn(async () => ({ version: '3.0.4' }) as any);
+    const secondCreator = jest.fn(async () => ({ version: '3.1.0' }) as any);
+    jest.doMock(
+      'strategy-version-one',
+      () => ({
+        strategyEntries: [
+          {
+            manifest: { name: 'PinnedStrategy' } as any,
+            defaults: { VERSION: '3.0.4' },
+            parseConfig: (config: any) => config,
+            createCore: firstCreator,
+          },
+        ],
+      }),
+      { virtual: true },
+    );
+    jest.doMock(
+      'strategy-version-two',
+      () => ({
+        strategyEntries: [
+          {
+            manifest: { name: 'PinnedStrategy' } as any,
+            defaults: { VERSION: '3.1.0' },
+            parseConfig: (config: any) => config,
+            createCore: secondCreator,
+          },
+        ],
+      }),
+      { virtual: true },
+    );
+    const manifests = await loadModule();
+
+    await expect(
+      manifests.getStrategyEntry(
+        'PinnedStrategy',
+        '/tmp/test-project',
+        'strategy-version-one',
+      ),
+    ).resolves.toMatchObject({ defaults: { VERSION: '3.0.4' } });
+    await expect(
+      manifests.getStrategyEntry(
+        'PinnedStrategy',
+        '/tmp/test-project',
+        'strategy-version-two',
+      ),
+    ).resolves.toMatchObject({ defaults: { VERSION: '3.1.0' } });
+    await expect(
+      manifests.getStrategyCreator(
+        'PinnedStrategy',
+        '/tmp/test-project',
+        'strategy-version-one',
+      ),
+    ).resolves.toBe(firstCreator);
+    await expect(
+      manifests.getStrategyCreator(
+        'PinnedStrategy',
+        '/tmp/test-project',
+        'strategy-version-two',
+      ),
+    ).resolves.toBe(secondCreator);
+    await expect(
+      manifests.getStrategyPluginSource(
+        'PinnedStrategy',
+        '/tmp/test-project',
+        'strategy-version-one',
+      ),
+    ).resolves.toBe('strategy-version-one');
+    await expect(manifests.getAvailableStrategyNames()).resolves.toEqual([]);
+  });
+
   it.each([null, [], 'invalid'])(
     'rejects non-object strategy defaults: %p',
     async (defaults) => {

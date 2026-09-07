@@ -54,14 +54,19 @@ export interface RuntimeStrategyRevisionChange {
 export interface RuntimeStrategyView {
   runtimeKey: string;
   strategyName: string;
+  strategyModule: string;
+  strategyPackage: string;
+  strategyPackageVersion: string;
   configId: string;
   strategyRevision: string;
+  generation?: string;
   controlState: RuntimeStrategyControlState;
   interval: Interval;
   universe: MarketUniverse;
   accountId?: string;
   accountLabel?: string;
   deploymentId: string;
+  deploymentLabel: string;
   selection?: RuntimeStrategySelection;
   policyProfileId?: string;
   connected: boolean;

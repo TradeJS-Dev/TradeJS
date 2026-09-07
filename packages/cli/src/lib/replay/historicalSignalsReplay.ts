@@ -105,9 +105,13 @@ const loadRuntimeStrategies = async (
         strategyConfig,
         selection,
       } = runtimeStrategy;
+      const strategyModule = strategyPackage.startsWith('@tradejs/strategy-')
+        ? strategyPackage
+        : undefined;
       const strategyCreator = await getStrategyCreator(
         strategyName,
         replayProjectRoot,
+        strategyModule,
       );
       if (!strategyCreator) {
         throw new Error(`Unknown strategy: ${strategyName}`);
@@ -115,6 +119,7 @@ const loadRuntimeStrategies = async (
       const installed = await getRuntimeStrategyPackageMetadata({
         strategyName,
         projectRoot: replayProjectRoot,
+        strategyModule,
       });
       if (
         installed.strategyPackage !== strategyPackage ||

@@ -85,7 +85,9 @@ export const RuntimeStrategyRevisionsDrawer = ({
         <Drawer.Positioner>
           <Drawer.Content bg="gray.950">
             <Drawer.Header>
-              <Drawer.Title>{strategy.strategyName} revisions</Drawer.Title>
+              <Drawer.Title>
+                {strategy.strategyName}, {strategy.deploymentLabel} revisions
+              </Drawer.Title>
               <Drawer.CloseTrigger asChild>
                 <CloseButton size="sm" />
               </Drawer.CloseTrigger>

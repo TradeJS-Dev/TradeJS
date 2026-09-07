@@ -45,6 +45,61 @@ const MAX_HOURS = 24 * 90;
 const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
 const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
 
+interface RuntimeDashboardStrategyIdentity {
+  strategyName: string;
+  strategyModule: string;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+  configId: string;
+  interval: Interval;
+  universe: 'crypto' | 'tradfi';
+  accountId?: string;
+  accountLabel?: string;
+  deploymentId: string;
+  deploymentLabel: string;
+  generation?: string;
+  policyProfileId?: string;
+  strategyRevision: string;
+  controlState: RuntimeStrategyControlState;
+  enabled: boolean;
+  config: StrategyConfig;
+  connected: boolean;
+  selection?: RuntimeStrategySelection;
+}
+
+const groupRuntimeTradesByIdentity = (
+  trades: RuntimeTradeRecord[],
+  identities: Map<string, RuntimeDashboardStrategyIdentity>,
+) => {
+  const grouped = new Map<string, RuntimeTradeRecord[]>();
+  for (const trade of trades) {
+    const matches = [...identities.entries()].filter(([, identity]) => {
+      if (
+        trade.strategy !== identity.strategyName ||
+        String(trade.interval) !== String(identity.interval)
+      ) {
+        return false;
+      }
+      if (trade.deploymentId && trade.deploymentId !== identity.deploymentId) {
+        return false;
+      }
+      if (trade.accountId && trade.accountId !== identity.accountId) {
+        return false;
+      }
+      if (trade.universe && trade.universe !== identity.universe) {
+        return false;
+      }
+      return true;
+    });
+    if (matches.length !== 1) continue;
+    const [runtimeKey] = matches[0];
+    const bucket = grouped.get(runtimeKey) ?? [];
+    bucket.push(trade);
+    grouped.set(runtimeKey, bucket);
+  }
+  return grouped;
+};
+
 const coerceHours = (value: string | number | null | undefined) => {
   const parsed = Number(value ?? Number.NaN);
   if (!Number.isFinite(parsed)) {
@@ -496,6 +551,7 @@ export const loadRuntimeDashboard = async ({
   const fallbackTrades: RuntimeTradeRecord[] = [];
 
   for (const {
+    connector,
     strategyNames,
     entryRows,
     closedPnlRows,
@@ -509,6 +565,11 @@ export const loadRuntimeDashboard = async ({
         strategyNames,
         existingTrades: [...syncedTrades, ...fallbackTrades],
         endTime,
+        scope: {
+          accountId: connector.accountId,
+          deploymentId: connector.deploymentId,
+          universe: connector.universe,
+        },
       }),
     );
   }
@@ -533,25 +594,7 @@ export const loadRuntimeDashboard = async ({
       ),
     ),
   );
-  const identityByKey = new Map<
-    string,
-    {
-      strategyName: string;
-      configId: string;
-      interval: Interval;
-      universe: 'crypto' | 'tradfi';
-      accountId?: string;
-      accountLabel?: string;
-      deploymentId: string;
-      policyProfileId?: string;
-      strategyRevision: string;
-      controlState: RuntimeStrategyControlState;
-      enabled: boolean;
-      config: StrategyConfig;
-      connected: boolean;
-      selection?: RuntimeStrategySelection;
-    }
-  >();
+  const identityByKey = new Map<string, RuntimeDashboardStrategyIdentity>();
   for (const deployment of runtimeDeployments) {
     for (const resolvedStrategy of resolvedStrategiesByDeployment.get(
       deployment.id,
@@ -573,6 +616,9 @@ export const loadRuntimeDashboard = async ({
       });
       identityByKey.set(runtimeKey, {
         strategyName: resolvedStrategy.strategyName,
+        strategyModule: resolvedStrategy.strategyModule,
+        strategyPackage: resolvedStrategy.strategyPackage,
+        strategyPackageVersion: resolvedStrategy.strategyPackageVersion,
         configId: strategyConfigId,
         strategyRevision: resolvedStrategy.strategyRevision,
         controlState: resolvedStrategy.controlState,
@@ -581,6 +627,10 @@ export const loadRuntimeDashboard = async ({
         accountId: deployment.accountId,
         accountLabel: accountsById.get(deployment.accountId)?.label,
         deploymentId: deployment.id,
+        deploymentLabel: deployment.label,
+        ...(resolvedStrategy.generation
+          ? { generation: resolvedStrategy.generation }
+          : {}),
         policyProfileId: strategyPolicyProfileId,
         enabled: resolvedStrategy.controlState !== 'entries_paused',
         config: resolvedStrategy.strategyConfig,
@@ -591,16 +641,16 @@ export const loadRuntimeDashboard = async ({
       });
     }
   }
+  const tradesByRuntimeKey = groupRuntimeTradesByIdentity(
+    allTrades,
+    identityByKey,
+  );
   const strategies = await Promise.all(
     [...identityByKey.entries()].map(async ([runtimeKey, identity]) => {
       const { strategyName } = identity;
-      const strategyTrades = allTrades
-        .filter(
-          (trade) =>
-            trade.strategy === strategyName &&
-            String(trade.interval) === String(identity.interval),
-        )
-        .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
+      const strategyTrades = (tradesByRuntimeKey.get(runtimeKey) ?? []).sort(
+        (left, right) => right.entryTimestamp - left.entryTimestamp,
+      );
       const orders = strategyTrades
         .sort((left, right) => {
           const leftDate = left.exitTimestamp ?? left.entryTimestamp;
@@ -619,14 +669,19 @@ export const loadRuntimeDashboard = async ({
       return {
         runtimeKey,
         strategyName,
+        strategyModule: identity.strategyModule,
+        strategyPackage: identity.strategyPackage,
+        strategyPackageVersion: identity.strategyPackageVersion,
         configId: identity.configId,
         strategyRevision: identity.strategyRevision,
+        ...(identity.generation ? { generation: identity.generation } : {}),
         controlState: identity.controlState,
         interval: identity.interval,
         universe: identity.universe,
         accountId: identity.accountId,
         accountLabel: identity.accountLabel,
         deploymentId: identity.deploymentId,
+        deploymentLabel: identity.deploymentLabel,
         ...(identity.selection ? { selection: identity.selection } : {}),
         policyProfileId: identity.policyProfileId,
         connected: identity.connected,

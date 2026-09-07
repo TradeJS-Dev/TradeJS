@@ -7,6 +7,8 @@ export interface RuntimeStrategySelection {
 
 /** One immutable strategy package + effective project config revision. */
 export interface RuntimeStrategyDeclaration {
+  /** Exact plugin module specifier. Use a package alias to pin one implementation. */
+  module?: string;
   /** Optional operator-facing label. It is never part of runtime identity. */
   generation?: string;
   enabled: boolean;

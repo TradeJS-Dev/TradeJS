@@ -46,6 +46,7 @@ jest.mock('@chakra-ui/react', () => {
 
 const strategy = {
   strategyName: 'DoubleTap',
+  deploymentLabel: 'Scaled',
   strategyRevision: 'sr1:3333333333333333',
   revisionChanges: [
     { timestamp: 100, strategyRevision: 'sr1:1111111111111111' },
@@ -64,7 +65,7 @@ describe('RuntimeStrategyRevisionsDrawer', () => {
       />,
     );
 
-    expect(screen.getByText('DoubleTap revisions')).toBeTruthy();
+    expect(screen.getByText('DoubleTap, Scaled revisions')).toBeTruthy();
     expect(screen.getByText('Current')).toBeTruthy();
     expect(screen.getByText('sr1:3333333333333333')).toBeTruthy();
     expect(screen.getByText('sr1:2222222222222222')).toBeTruthy();

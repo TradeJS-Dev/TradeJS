@@ -4,9 +4,12 @@ Status: accepted. Supersedes the identity and rollout-version parts of ADR
 0006; the ownership boundary established there remains in force.
 
 `TradeJS-Project/tradejs.config.ts` is the only production runtime declaration.
-A strategy binding is `{ generation?, enabled, selection?, config }`.
-`generation` is an optional operator-facing label and never participates in
-technical identity. There is no manually incremented runtime version.
+A strategy binding is `{ module?, generation?, enabled, selection?, config }`.
+`module` selects the exact plugin package for that binding. It can name a Yarn
+package alias, so separate deployments can use different versions of one
+strategy. `generation` is an optional label for the operator and never
+participates in technical identity. There is no manually incremented runtime
+version.
 
 Every strategy package owns a mandatory `StrategyRegistryEntry.parseConfig`.
 The parser accepts the untrusted Project config, rejects unknown fields and
@@ -14,6 +17,12 @@ invalid value shapes, and returns the complete effective config materialized
 from package defaults. Runtime composition resolution fails if a configured
 plugin cannot be imported, does not export entries, omits its parser, or
 declares duplicate strategies.
+
+The global plugin catalog still rejects duplicate strategy names. An explicit
+`module` resolves one strategy entry outside that global name map, so two
+package aliases may export the same strategy name. The runtime package manifest
+records the alias as the package boundary and verifies its installed package
+name against the exact `npm:@tradejs/strategy-*` target in `package.json`.
 
 The runtime computes two canonical SHA-256-derived identifiers:
 

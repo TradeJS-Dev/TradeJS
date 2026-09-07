@@ -206,7 +206,9 @@ export const RuntimeStrategyStatsDrawer = ({
             bg="gray.950"
           >
             <Drawer.Header>
-              <Drawer.Title>{strategy.strategyName}</Drawer.Title>
+              <Drawer.Title>
+                {strategy.strategyName}, {strategy.deploymentLabel}
+              </Drawer.Title>
               <Drawer.CloseTrigger asChild>
                 <CloseButton size="sm" />
               </Drawer.CloseTrigger>

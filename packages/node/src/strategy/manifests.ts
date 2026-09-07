@@ -22,8 +22,15 @@ type StrategyRegistryState = {
   strategyManifestsMap: Map<string, StrategyManifest>;
   strategyEntriesMap: Map<string, StrategyRegistryEntry>;
   strategySourcesMap: Map<string, string>;
+  strategyModuleResolutions: Map<string, Promise<ResolvedStrategyModuleEntry>>;
   pluginsLoadPromise: Promise<void> | null;
 };
+
+interface ResolvedStrategyModuleEntry {
+  entry: StrategyRegistryEntry;
+  creator: StrategyCreator;
+  source: string;
+}
 
 type StrategyRuntimeFactory = (params: {
   strategyName: string;
@@ -58,6 +65,10 @@ const createStrategyRegistryState = (): StrategyRegistryState => ({
   strategyManifestsMap: new Map<string, StrategyManifest>(),
   strategyEntriesMap: new Map<string, StrategyRegistryEntry>(),
   strategySourcesMap: new Map<string, string>(),
+  strategyModuleResolutions: new Map<
+    string,
+    Promise<ResolvedStrategyModuleEntry>
+  >(),
   pluginsLoadPromise: null,
 });
 
@@ -146,7 +157,7 @@ const extractIndicatorPluginDefinition = (
 const validateStrategyEntries = (
   moduleName: string,
   entries: readonly StrategyRegistryEntry[],
-  state: StrategyRegistryState,
+  state?: StrategyRegistryState,
 ) => {
   const issues: string[] = [];
   const names = new Set<string>();
@@ -157,7 +168,7 @@ const validateStrategyEntries = (
       issues.push(`${entryPath}: manifest.name is required`);
     } else if (
       names.has(strategyName) ||
-      state.strategyEntriesMap.has(strategyName)
+      state?.strategyEntriesMap.has(strategyName)
     ) {
       issues.push(`${entryPath}: duplicate strategy ${strategyName}`);
     } else {
@@ -241,6 +252,79 @@ const importStrategyPluginModule = async (
     return tradejsConfig.importTradejsModule(moduleName, cwd);
   }
   return import(/* webpackIgnore: true */ moduleName);
+};
+
+const resolveStrategyModuleEntry = async ({
+  strategyName,
+  moduleName,
+  cwd,
+}: {
+  strategyName: string;
+  moduleName: string;
+  cwd: string;
+}): Promise<ResolvedStrategyModuleEntry> => {
+  const { projectRoot, state } = getStrategyRegistryState(cwd);
+  const source = moduleName.trim();
+  const resolvedModuleName = resolvePluginModuleSpecifier(source, projectRoot);
+  const cacheKey = `${resolvedModuleName}\u0000${strategyName}`;
+  const cached = state.strategyModuleResolutions.get(cacheKey);
+  if (cached) return cached;
+
+  const resolution = (async () => {
+    const moduleExport = await importStrategyPluginModule(
+      resolvedModuleName,
+      projectRoot,
+    );
+    const pluginDefinition = extractStrategyPluginDefinition(moduleExport);
+    if (!pluginDefinition) {
+      throw new Error(`${source}: export { strategyEntries } is missing`);
+    }
+    const issues = validateStrategyEntries(
+      source,
+      pluginDefinition.strategyEntries,
+    );
+    if (issues.length > 0) {
+      throw new Error(
+        ['Invalid TradeJS strategy module:', ...issues].join('\n'),
+      );
+    }
+    const entry = pluginDefinition.strategyEntries.find(
+      (candidate) => candidate.manifest.name === strategyName,
+    );
+    if (!entry) {
+      throw new Error(`${source}: strategy ${strategyName} is missing`);
+    }
+    const factory = sharedStrategyRegistry.strategyRuntimeFactory;
+    if (!factory) {
+      throw new Error('Strategy runtime factory is not configured');
+    }
+    const manifestsByName = new Map(
+      pluginDefinition.strategyEntries.map(
+        (candidate) => [candidate.manifest.name, candidate.manifest] as const,
+      ),
+    );
+    return {
+      entry,
+      creator: factory({
+        strategyName,
+        defaults: entry.defaults,
+        createCore: entry.createCore,
+        manifest: entry.manifest,
+        detectorKey: entry.detectorKey,
+        detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
+        resolveRegisteredManifest: (name) =>
+          manifestsByName.get(name) ?? state.strategyManifestsMap.get(name),
+      }),
+      source,
+    };
+  })();
+  state.strategyModuleResolutions.set(cacheKey, resolution);
+  try {
+    return await resolution;
+  } catch (error) {
+    state.strategyModuleResolutions.delete(cacheKey);
+    throw error;
+  }
 };
 
 export const ensureStrategyPluginsLoaded = async (
@@ -340,7 +424,14 @@ export const ensureIndicatorPluginsLoaded = async (
 export const getStrategyCreator = async (
   name: string,
   cwd = getTradejsProjectCwd(),
+  moduleName?: string,
 ): Promise<StrategyCreator | undefined> => {
+  if (moduleName?.trim()) {
+    await ensureStrategyPluginsLoaded(cwd);
+    return (
+      await resolveStrategyModuleEntry({ strategyName: name, moduleName, cwd })
+    ).creator;
+  }
   await ensureStrategyPluginsLoaded(cwd);
   const { state } = getStrategyRegistryState(cwd);
   return state.strategyCreators.get(name);
@@ -358,7 +449,14 @@ export const getStrategyDefaults = async (
 export const getStrategyEntry = async (
   name: string,
   cwd = getTradejsProjectCwd(),
+  moduleName?: string,
 ): Promise<StrategyRegistryEntry | undefined> => {
+  if (moduleName?.trim()) {
+    await ensureStrategyPluginsLoaded(cwd);
+    return (
+      await resolveStrategyModuleEntry({ strategyName: name, moduleName, cwd })
+    ).entry;
+  }
   await ensureStrategyPluginsLoaded(cwd);
   const { state } = getStrategyRegistryState(cwd);
   return state.strategyEntriesMap.get(name);
@@ -367,7 +465,14 @@ export const getStrategyEntry = async (
 export const getStrategyPluginSource = async (
   name: string,
   cwd = getTradejsProjectCwd(),
+  moduleName?: string,
 ): Promise<string | undefined> => {
+  if (moduleName?.trim()) {
+    await ensureStrategyPluginsLoaded(cwd);
+    return (
+      await resolveStrategyModuleEntry({ strategyName: name, moduleName, cwd })
+    ).source;
+  }
   await ensureStrategyPluginsLoaded(cwd);
   const { state } = getStrategyRegistryState(cwd);
   return state.strategySourcesMap.get(name);

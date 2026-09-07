@@ -29,6 +29,21 @@ import {
 } from './RuntimeStrategyCard.presenter';
 import { toaster } from '#ui';
 
+const DEPLOYMENT_PRESENTATIONS = [
+  { accent: 'blue.400', colorPalette: 'blue' },
+  { accent: 'purple.400', colorPalette: 'purple' },
+  { accent: 'pink.400', colorPalette: 'pink' },
+  { accent: 'cyan.400', colorPalette: 'cyan' },
+] as const;
+
+const getDeploymentPresentation = (deploymentId: string) => {
+  const hash = [...deploymentId].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    0,
+  );
+  return DEPLOYMENT_PRESENTATIONS[hash % DEPLOYMENT_PRESENTATIONS.length];
+};
+
 const StatItem = ({
   stat,
   id,
@@ -73,6 +88,11 @@ export const RuntimeStrategyCard = ({
     [strategy],
   );
   const { lastTrade, runtimeOrders } = viewModel;
+  const deploymentPresentation = getDeploymentPresentation(
+    strategy.deploymentId,
+  );
+  const strategyInstanceLabel = `${strategy.strategyName}, ${strategy.deploymentLabel}`;
+  const maxLossValue = strategy.config.MAX_LOSS_VALUE;
   const setControlState = async (controlState: 'active' | 'entries_paused') => {
     setControlSaving(true);
     try {
@@ -112,12 +132,43 @@ export const RuntimeStrategyCard = ({
       shadow="sm"
       borderWidth="1px"
       borderColor={strategy.connected ? 'gray.800' : 'orange.900'}
+      borderLeftWidth="4px"
+      borderLeftColor={deploymentPresentation.accent}
       overflowX="auto"
     >
       <Flex gap="4" p={4} mb={3} alignItems="center" wrap="wrap">
-        <Text fontSize="lg" fontWeight="bold" color="gray.200">
-          {strategy.strategyName}
-        </Text>
+        <Flex direction="column" gap={1} minW="280px">
+          <Flex gap={2} alignItems="center" wrap="wrap">
+            <Text fontSize="lg" fontWeight="bold" color="gray.200">
+              {strategy.strategyName}
+            </Text>
+            <Badge
+              colorPalette={deploymentPresentation.colorPalette}
+              variant="subtle"
+            >
+              {strategy.deploymentLabel}
+            </Badge>
+          </Flex>
+          <Flex gap={3} alignItems="center" wrap="wrap">
+            <Text fontSize="xs" color="gray.400">
+              account: {strategy.accountLabel ?? strategy.accountId ?? 'none'}
+            </Text>
+            <Text fontSize="xs" color="gray.400">
+              version: {strategy.strategyPackageVersion}
+            </Text>
+            {strategy.generation ? (
+              <Text fontSize="xs" color="gray.400">
+                generation: {strategy.generation}
+              </Text>
+            ) : null}
+            {typeof maxLossValue === 'number' &&
+            Number.isFinite(maxLossValue) ? (
+              <Text fontSize="xs" color="gray.400">
+                max loss: {maxLossValue}
+              </Text>
+            ) : null}
+          </Flex>
+        </Flex>
         <Badge
           colorPalette={strategy.enabled ? 'teal' : 'gray'}
           variant="subtle"
@@ -225,7 +276,7 @@ export const RuntimeStrategyCard = ({
       </Flex>
 
       <OrdersDrawerPanel
-        title={`${strategy.strategyName} orders`}
+        title={`${strategyInstanceLabel} orders`}
         open={ordersOpen}
         orders={runtimeOrders}
         rowHeight={RUNTIME_ORDER_ROW_HEIGHT}
