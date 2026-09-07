@@ -480,7 +480,7 @@ const dashboardSvg = (board) => {
   const terminalLegend = terminalSeries
     .map((candidate, index) => {
       const x = bar.x + index * terminalLegendWidth;
-      return `<g data-terminal-legend="${escapeXml(candidate.id)}"><rect x="${x}" y="402" width="16" height="16" rx="3" fill="${candidate.color}"/><text x="${x + 24}" y="416" class="axis">${escapeXml(truncate(candidate.label, 40))}</text></g>`;
+      return `<g data-terminal-legend="${escapeXml(candidate.id)}"><rect x="${x}" y="402" width="16" height="16" rx="3" fill="${candidate.color}"/><text x="${x + 24}" y="416" class="axis">${escapeXml(truncate(candidate.label, Math.floor((terminalLegendWidth - 35) / 9)))}</text></g>`;
     })
     .join('');
   const pnlValues = terminalSeries.flatMap(({ terminal }) =>
@@ -556,18 +556,18 @@ const dashboardSvg = (board) => {
       const x = sx(candidate.metrics.maxDrawdown);
       const y = sy(candidate.metrics.pnl);
       const selectedPoint = candidate.id === selected.id;
-      const labelY = y + ((index % 3) - 1) * 24;
+      const labelY = y + 5;
       const labelOnLeft = x > scatter.x + scatter.width * 0.66;
       const labelX = x + (labelOnLeft ? -14 : 14);
       const anchor = labelOnLeft ? 'end' : 'start';
-      return `${selectedPoint ? `<circle cx="${x}" cy="${y}" r="24" fill="${candidate.color}" opacity="0.18"/>` : ''}<circle cx="${x}" cy="${y}" r="${selectedPoint ? 12 : 9}" fill="${candidate.color}" stroke="${selectedPoint ? '#7a321b' : '#ffffff'}" stroke-width="${selectedPoint ? 3 : 2}"/><text x="${labelX}" y="${labelY}" text-anchor="${anchor}" class="pointLabel" fill="${selectedPoint ? candidate.color : '#24302a'}">${escapeXml(truncate(candidate.label, 25))}</text>`;
+      return `${selectedPoint ? `<circle cx="${x}" cy="${y}" r="24" fill="${candidate.color}" opacity="0.18"/>` : ''}<circle cx="${x}" cy="${y}" r="${selectedPoint ? 12 : 9}" fill="${candidate.color}" stroke="${selectedPoint ? '#7a321b' : '#ffffff'}" stroke-width="${selectedPoint ? 3 : 2}"/><text x="${labelX}" y="${labelY}" text-anchor="${anchor}" class="pointLabel" fill="${selectedPoint ? candidate.color : '#24302a'}">${index === 0 ? '0' : String.fromCharCode(64 + index)}</text>`;
     })
     .join('');
 
   const limitations = board.limitations.length
     ? `Limitations: ${board.limitations.join(' · ')}`
     : 'Limitations: none recorded';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition dashboard"><style>.bg{fill:#f5f4ef}.panel{fill:#fff;stroke:#ddd9d0;stroke-width:2}.title{font:500 42px Arial,sans-serif;fill:#17211d}.subtitle{font:22px Arial,sans-serif;fill:#38433e}.cardLabel{font:21px Arial,sans-serif;fill:#303a35}.cardValue{font:500 44px Arial,sans-serif}.cardDetail{font:18px Arial,sans-serif;fill:#303a35}.section{font:500 27px Arial,sans-serif;fill:#17211d}.muted{font:18px Arial,sans-serif;fill:#45514a}.axis{font:15px Arial,sans-serif;fill:#58645e}.grid{stroke:#d9ddd9;stroke-width:1.5}.faint{opacity:.5}.barValue{font:16px Arial,sans-serif;fill:#24302a}.windowLabel{font:20px Arial,sans-serif;fill:#24302a}.windowCount{font:15px Arial,sans-serif;fill:#45514a}.pointLabel{font:16px Arial,sans-serif}.footer{font:18px Arial,sans-serif;fill:#6b4b1f}</style><rect width="100%" height="100%" class="bg"/><text x="72" y="70" class="title">${escapeXml(board.strategy)} · ${escapeXml(selected.label)}</text><text x="72" y="108" class="subtitle">${escapeXml(board.subtitle)}</text>${cardsMarkup}<rect x="72" y="330" width="1040" height="650" rx="20" class="panel"/><text x="100" y="380" class="section">PnL in terminal windows</text>${terminalLegend}<rect x="1145" y="330" width="585" height="650" rx="20" class="panel"/><text x="1180" y="380" class="section">Final compositions: PnL ↔ drawdown</text><text x="1180" y="412" class="muted">Higher and farther left is preferable</text><g>${barGrid}<line x1="${bar.x}" x2="${bar.x + bar.width}" y1="${zeroY}" y2="${zeroY}" stroke="#8f9994" stroke-width="1.5"/>${bars}</g><g>${scatterGrid}${points}<text x="${scatter.x + scatter.width / 2}" y="${scatter.y + scatter.height + 65}" text-anchor="middle" class="muted">Realized MaxDD</text></g><g><rect x="72" y="1020" width="1658" height="112" rx="16" fill="#fff5dd" stroke="#efd79c" stroke-width="2"/>${svgTextLines({ lines: [truncate(limitations, 155), `Risk normalization: MAX_LOSS_VALUE=${board.normalization.maxLossValue} · ${board.normalization.pnlUnit} · ${board.researchId}`], x: 98, y: 1062, lineHeight: 30, className: 'footer' })}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition dashboard"><style>.bg{fill:#f5f4ef}.panel{fill:#fff;stroke:#ddd9d0;stroke-width:2}.title{font:500 42px Arial,sans-serif;fill:#17211d}.subtitle{font:22px Arial,sans-serif;fill:#38433e}.cardLabel{font:21px Arial,sans-serif;fill:#303a35}.cardValue{font:500 44px Arial,sans-serif}.cardDetail{font:18px Arial,sans-serif;fill:#303a35}.section{font:500 27px Arial,sans-serif;fill:#17211d}.muted{font:18px Arial,sans-serif;fill:#45514a}.axis{font:15px Arial,sans-serif;fill:#58645e}.grid{stroke:#d9ddd9;stroke-width:1.5}.faint{opacity:.5}.barValue{font:16px Arial,sans-serif;fill:#24302a}.windowLabel{font:20px Arial,sans-serif;fill:#24302a}.windowCount{font:15px Arial,sans-serif;fill:#45514a}.pointLabel{font:16px Arial,sans-serif}.footer{font:18px Arial,sans-serif;fill:#6b4b1f}</style><rect width="100%" height="100%" class="bg"/><text x="72" y="70" class="title">${escapeXml(board.strategy)} · ${escapeXml(selected.label)}</text><text x="72" y="108" class="subtitle">${escapeXml(board.subtitle)}</text>${cardsMarkup}<rect x="72" y="330" width="1040" height="650" rx="20" class="panel"/><text x="100" y="380" class="section">PnL in terminal windows</text>${terminalLegend}<rect x="1145" y="330" width="585" height="650" rx="20" class="panel"/><text x="1180" y="380" class="section">Final compositions: PnL ↔ drawdown</text><text x="1180" y="412" class="muted">Higher and farther left is preferable</text><g>${barGrid}<line x1="${bar.x}" x2="${bar.x + bar.width}" y1="${zeroY}" y2="${zeroY}" stroke="#8f9994" stroke-width="1.5"/>${bars}</g><g>${scatterGrid}${points}<text x="${scatter.x + scatter.width / 2}" y="${scatter.y + scatter.height + 65}" text-anchor="middle" class="muted">MaxDD (trade stream)</text></g><g><rect x="72" y="1020" width="1658" height="112" rx="16" fill="#fff5dd" stroke="#efd79c" stroke-width="2"/>${svgTextLines({ lines: [truncate(limitations, 155), `Risk normalization: MAX_LOSS_VALUE=${board.normalization.maxLossValue} · ${board.normalization.pnlUnit} · ${board.researchId}`], x: 98, y: 1062, lineHeight: 30, className: 'footer' })}</g></svg>`;
 };
 
 const downsample = (points, maxPoints = 1200) => {
@@ -621,9 +621,7 @@ const equitySvg = (board) => {
   }).join('');
   const spanDays = (maxTime - minTime) / 86_400_000;
   const xTicks = Array.from({ length: 6 }, (_, index) => {
-    const timestamp = Math.round(
-      minTime + ((maxTime - minTime) * index) / 5,
-    );
+    const timestamp = Math.round(minTime + ((maxTime - minTime) * index) / 5);
     const date = new Date(timestamp);
     const label =
       spanDays >= 730
@@ -650,6 +648,9 @@ const equitySvg = (board) => {
   const curves = board.candidates
     .map((candidate) => {
       const points = downsample(candidate.equity)
+        .flatMap((point, index, series) =>
+          index === 0 ? [point] : [[point[0], series[index - 1][1]], point],
+        )
         .map(
           ([timestamp, pnl]) =>
             `${x(timestamp).toFixed(1)},${y(pnl).toFixed(1)}`,
@@ -667,11 +668,11 @@ const equitySvg = (board) => {
       const row = Math.floor(index / columns);
       const lx = left + column * legendWidth;
       const ly = height - bottom + 110 + row * 58;
-      return `<g transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
+      return `<g transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${index === 0 ? '0' : String.fromCharCode(64 + index)} · ${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
     })
     .join('');
   const selected = board.candidates.find(({ id }) => id === board.selectedId);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition equity"><style>.bg{fill:#fff}.title{font:700 36px Arial,sans-serif;fill:#172033}.subtitle{font:18px Arial,sans-serif;fill:#687184}.axis{font:15px Arial,sans-serif;fill:#687184}.grid{stroke:#e2e6eb;stroke-width:1.5}.faint{opacity:.55}.legendLabel{font:600 17px Arial,sans-serif;fill:#263044}.legendMetric{font:15px Arial,sans-serif;fill:#687184}.axisTitle{font:17px Arial,sans-serif;fill:#394459}</style><rect width="100%" height="100%" class="bg"/><text x="${left}" y="58" class="title">${escapeXml(board.title)}</text><text x="${left}" y="92" class="subtitle">Baseline = production core + current AI-gate · candidates = core + own deterministic gate</text><text x="${left}" y="120" class="subtitle">Selected: ${escapeXml(selected.label)} · ${escapeXml(board.subtitle)}</text>${yGrid}${xGrid}<line x1="${left}" x2="${width - right}" y1="${y(0)}" y2="${y(0)}" stroke="#aab2bd" stroke-width="1.5"/>${curves}<line x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><line x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><text x="${left + plotWidth / 2}" y="${height - bottom + 67}" text-anchor="middle" class="axisTitle">Exit date (UTC)</text><text x="30" y="${top + plotHeight / 2}" transform="rotate(-90 30 ${top + plotHeight / 2})" text-anchor="middle" class="axisTitle">Cumulative PnL (${escapeXml(board.normalization.pnlUnit)})</text>${legend}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition equity"><style>.bg{fill:#fff}.title{font:700 36px Arial,sans-serif;fill:#172033}.subtitle{font:18px Arial,sans-serif;fill:#687184}.axis{font:15px Arial,sans-serif;fill:#687184}.grid{stroke:#e2e6eb;stroke-width:1.5}.faint{opacity:.55}.legendLabel{font:600 17px Arial,sans-serif;fill:#263044}.legendMetric{font:15px Arial,sans-serif;fill:#687184}.axisTitle{font:17px Arial,sans-serif;fill:#394459}</style><rect width="100%" height="100%" class="bg"/><text x="${left}" y="58" class="title">${escapeXml(board.title)}</text><text x="${left}" y="92" class="subtitle">Baseline = current gate behavior; candidates = core + own deterministic gate</text><text x="${left}" y="120" class="subtitle">Selected: ${escapeXml(selected.label)} · ${escapeXml(board.subtitle)}</text>${yGrid}${xGrid}<line x1="${left}" x2="${width - right}" y1="${y(0)}" y2="${y(0)}" stroke="#aab2bd" stroke-width="1.5"/>${curves}<line x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><line x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><text x="${left + plotWidth / 2}" y="${height - bottom + 67}" text-anchor="middle" class="axisTitle">Date (UTC)</text><text x="30" y="${top + plotHeight / 2}" transform="rotate(-90 30 ${top + plotHeight / 2})" text-anchor="middle" class="axisTitle">Cumulative PnL (${escapeXml(board.normalization.pnlUnit)})</text>${legend}</svg>`;
 };
 
 const verifyCandidateArtifacts = async (board, artifactRoot) => {

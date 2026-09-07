@@ -120,6 +120,55 @@ JSON reports include timestamp-grouped cumulative `equity` arrays for the
 current-gate baseline and every variant. Use these checksum-bound arrays for
 final-composition charts instead of reconstructing curves by hand.
 
+For a deterministic timestamp-local portfolio limit, a JSON spec variant may
+also define `selection`. The tool first evaluates the gate, then keeps the
+highest-ranked rows independently inside each decision timestamp. Missing rank
+values sort last; symbol and source sequence are stable tie-breakers.
+
+```json
+{
+  "name": "capacity-five",
+  "mode": "replace",
+  "quality": 4,
+  "expression": "derived.direction == SHORT && feature.margin >= 0",
+  "selection": {
+    "capacity": 5,
+    "rankBy": [
+      { "path": "feature.margin", "order": "desc" },
+      {
+        "path": "additionalIndicators.volumeDivergenceSetup.reclaimPct",
+        "order": "desc"
+      }
+    ]
+  }
+}
+```
+
+Treat every rank path like an approval feature: it must be causal, available at
+decision time, stationary enough for the intended use, and documented with its
+scope and environment dependencies. Capacity ranking is not permission to use
+outcome, current-gate output, or data-availability fields.
+
+A JSON spec can also define an event-count-preserving timestamp-rotation
+placebo. Its own expression defines eligible rows. Inside each train, tuning,
+and test partition, the referenced variant's approved event timestamps are
+shifted through the eligible timestamp sequence. Trade outcomes are never read
+while constructing the shift.
+
+```json
+{
+  "name": "rotated-placebo",
+  "mode": "replace",
+  "quality": 4,
+  "expression": "derived.direction == SHORT",
+  "placebo": {
+    "type": "timestamp-rotation",
+    "referenceVariant": "frozen-gate",
+    "offsetEvents": 37
+  }
+}
+```
+
 ## Expression Grammar
 
 Expressions support parentheses, `&&`, `||`, and comparisons:
@@ -159,6 +208,12 @@ When several core candidates must be compared, pass the same exact UTC
 `--tuningSince` and `--testSince` boundaries to every candidate ablation.
 Exact boundaries take precedence over ratio splits and keep sparse candidates
 on one calendar partition contract.
+
+Use `--windowStart <UTC> --windowEnd <UTC>` to compare candidates over the same
+calendar window. The start is inclusive, and the end is exclusive. Full-period
+cadence and terminal windows use these bounds instead of each export's first
+and last trade. The report includes zero-trade terminal windows. Without these
+options, the existing export-based window remains unchanged.
 
 ## Cross-Strategy Feasibility
 

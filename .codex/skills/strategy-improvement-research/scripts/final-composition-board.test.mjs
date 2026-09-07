@@ -174,9 +174,23 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
   );
   assert.match(dashboard, /PnL in terminal windows/u);
   assert.match(dashboard, /Final compositions: PnL ↔ drawdown/u);
-  assert.match(equity, /production core \+ current AI-gate/u);
+  assert.match(equity, /Baseline = current gate behavior/u);
   assert.match(equity, /candidate \+ own gate/u);
-  assert.match(equity, /Exit date \(UTC\)/u);
+  assert.match(equity, /Date \(UTC\)/u);
+  for (const [, coordinates] of equity.matchAll(
+    /<polyline points="([^"]+)"/gu,
+  )) {
+    const points = coordinates
+      .split(' ')
+      .map((point) => point.split(',').map(Number));
+    for (let index = 1; index < points.length; index += 1) {
+      assert.ok(
+        points[index][0] === points[index - 1][0] ||
+          points[index][1] === points[index - 1][1],
+        'Cumulative PnL must not interpolate gains between trade events',
+      );
+    }
+  }
   assert.match(equity, /Nov 2023/u);
   assert.match(equity, /Mar 2024/u);
 });
