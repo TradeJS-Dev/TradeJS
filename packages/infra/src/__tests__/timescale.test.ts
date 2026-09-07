@@ -1,3 +1,7 @@
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: { warn: jest.fn() },
+}));
+
 describe('timescale candle helpers', () => {
   afterEach(() => {
     jest.resetModules();
@@ -171,6 +175,251 @@ describe('timescale candle helpers', () => {
       ],
     );
     expect(client.query).toHaveBeenNthCalledWith(3, 'COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks candle rows in canonical conflict-key order', async () => {
+    const client = {
+      query: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn(),
+    };
+    const connect = jest.fn().mockResolvedValue(client);
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect,
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
+
+    await upsertCandles([
+      {
+        provider: 'ByBit',
+        symbol: 'ethusdt',
+        interval: 15,
+        ts: new Date(2_000),
+        open: 2,
+        high: 3,
+        low: 1,
+        close: 2.5,
+      },
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        ts: new Date(1_000),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+      },
+    ]);
+
+    const params = client.query.mock.calls[1]?.[1] as unknown[];
+    expect(params.slice(0, 4)).toEqual([
+      'bybit',
+      'BTCUSDT',
+      15,
+      new Date(1_000),
+    ]);
+    expect(params.slice(14, 18)).toEqual([
+      'bybit',
+      'ETHUSDT',
+      15,
+      new Date(2_000),
+    ]);
+  });
+
+  it('retries the complete candle transaction after PostgreSQL 40P01', async () => {
+    const deadlock = Object.assign(new Error('deadlock detected'), {
+      code: '40P01',
+    });
+    const firstClient = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(deadlock)
+        .mockResolvedValueOnce(undefined),
+      release: jest.fn(),
+    };
+    const secondClient = {
+      query: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn(),
+    };
+    const connect = jest
+      .fn()
+      .mockResolvedValueOnce(firstClient)
+      .mockResolvedValueOnce(secondClient);
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect,
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
+
+    await upsertCandles([
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        ts: new Date(1_000),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+      },
+    ]);
+
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(firstClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(firstClient.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
+    expect(firstClient.release).toHaveBeenCalledTimes(1);
+    expect(secondClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(secondClient.query).toHaveBeenNthCalledWith(3, 'COMMIT');
+    expect(secondClient.query.mock.calls[1]).toEqual(
+      firstClient.query.mock.calls[1],
+    );
+    expect(secondClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry candle transactions for other PostgreSQL errors', async () => {
+    const failure = Object.assign(new Error('connection failure'), {
+      code: '08006',
+    });
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValueOnce(undefined),
+      release: jest.fn(),
+    };
+    const connect = jest.fn().mockResolvedValue(client);
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect,
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
+
+    await expect(
+      upsertCandles([
+        {
+          provider: 'bybit',
+          symbol: 'BTCUSDT',
+          interval: 15,
+          ts: new Date(1_000),
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+        },
+      ]),
+    ).rejects.toBe(failure);
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying 40P01 after three complete transactions', async () => {
+    const deadlock = Object.assign(new Error('deadlock detected'), {
+      code: '40P01',
+    });
+    const clients = Array.from({ length: 3 }, () => ({
+      query: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(deadlock)
+        .mockResolvedValueOnce(undefined),
+      release: jest.fn(),
+    }));
+    const connect = jest
+      .fn()
+      .mockResolvedValueOnce(clients[0])
+      .mockResolvedValueOnce(clients[1])
+      .mockResolvedValueOnce(clients[2]);
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect,
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
+
+    await expect(
+      upsertCandles([
+        {
+          provider: 'bybit',
+          symbol: 'BTCUSDT',
+          interval: 15,
+          ts: new Date(1_000),
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+        },
+      ]),
+    ).rejects.toBe(deadlock);
+
+    expect(connect).toHaveBeenCalledTimes(3);
+    for (const client of clients) {
+      expect(client.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
+      expect(client.release).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('preserves the write error when rollback also fails', async () => {
+    const writeFailure = Object.assign(new Error('write failed'), {
+      code: '08006',
+    });
+    const rollbackFailure = new Error('rollback failed');
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(writeFailure)
+        .mockRejectedValueOnce(rollbackFailure),
+      release: jest.fn(),
+    };
+    const connect = jest.fn().mockResolvedValue(client);
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect,
+        query: jest.fn().mockResolvedValue({ rows: [] }),
+      })),
+    }));
+
+    const { upsertCandles } = await import('@tradejs/infra/timescale/candles');
+
+    await expect(
+      upsertCandles([
+        {
+          provider: 'bybit',
+          symbol: 'BTCUSDT',
+          interval: 15,
+          ts: new Date(1_000),
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+        },
+      ]),
+    ).rejects.toBe(writeFailure);
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 

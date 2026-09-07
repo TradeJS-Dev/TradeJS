@@ -24,6 +24,45 @@ interface ConfiguredSignalsScopeEntry {
 const sorted = (values: readonly string[] | undefined) =>
   values ? [...values].sort() : [];
 
+const normalizeSymbol = (value: string) => value.trim().toUpperCase();
+
+const isActiveTradeInScope = ({
+  trade,
+  deploymentId,
+  universe,
+  accountId,
+  interval,
+}: {
+  trade: RuntimeTradeRecord;
+  deploymentId: string;
+  universe: MarketUniverse;
+  accountId?: string;
+  interval: Interval;
+}) =>
+  trade.status === 'active' &&
+  trade.deploymentId === deploymentId &&
+  (trade.universe ?? 'crypto') === universe &&
+  (!trade.accountId || trade.accountId === accountId) &&
+  (!trade.interval || String(trade.interval) === String(interval));
+
+const mergeConfiguredStrategySelections = (
+  strategies: Array<Pick<ResolvedRuntimeStrategy, 'selection'>>,
+): RuntimeStrategySelection | undefined => {
+  if (strategies.some(({ selection }) => !selection)) {
+    return undefined;
+  }
+
+  return {
+    tickers: [
+      ...new Set(
+        strategies.flatMap(({ selection }) =>
+          (selection?.tickers ?? []).map(normalizeSymbol),
+        ),
+      ),
+    ].sort(),
+  };
+};
+
 export const formatConfiguredStrategyIdentity = (
   strategy: Pick<
     ResolvedRuntimeStrategy,
@@ -54,16 +93,66 @@ export const getConfiguredScopeActiveSymbols = ({
       trades
         .filter(
           (trade) =>
-            trade.status === 'active' &&
-            trade.deploymentId === deploymentId &&
+            isActiveTradeInScope({
+              trade,
+              deploymentId,
+              universe,
+              accountId,
+              interval,
+            }) &&
             strategyNameSet.has(trade.strategy) &&
-            (trade.universe ?? 'crypto') === universe &&
-            (!trade.accountId || trade.accountId === accountId) &&
-            (!trade.interval || String(trade.interval) === String(interval)),
+            Boolean(trade.symbol),
         )
-        .map(({ symbol }) => symbol),
+        .map(({ symbol }) => normalizeSymbol(symbol)),
     ),
   ].sort();
+};
+
+export const createConfiguredStrategySymbolMatcher = ({
+  trades,
+  deploymentId,
+  universe,
+  accountId,
+  interval,
+}: {
+  trades: RuntimeTradeRecord[];
+  deploymentId: string;
+  universe: MarketUniverse;
+  accountId?: string;
+  interval: Interval;
+}) => {
+  const activeStrategySymbols = new Set(
+    trades
+      .filter((trade) =>
+        isActiveTradeInScope({
+          trade,
+          deploymentId,
+          universe,
+          accountId,
+          interval,
+        }),
+      )
+      .map(
+        ({ strategy, symbol }) => `${strategy}\u0000${normalizeSymbol(symbol)}`,
+      ),
+  );
+
+  return (
+    strategy: Pick<ResolvedRuntimeStrategy, 'strategyName' | 'selection'>,
+    symbol: string,
+  ) => {
+    if (!strategy.selection) return true;
+
+    const normalizedSymbol = normalizeSymbol(symbol);
+    return (
+      strategy.selection.tickers.some(
+        (ticker) => normalizeSymbol(ticker) === normalizedSymbol,
+      ) ||
+      activeStrategySymbols.has(
+        `${strategy.strategyName}\u0000${normalizedSymbol}`,
+      )
+    );
+  };
 };
 
 export const buildConfiguredSignalsScopes = ({
@@ -90,19 +179,16 @@ export const buildConfiguredSignalsScopes = ({
     {
       scope: ConfiguredSignalsScope;
       strategyIdentities: string[];
+      strategies: ResolvedRuntimeStrategy[];
     }
   >();
 
   for (const strategy of strategies) {
-    const selectionIdentity = JSON.stringify({
-      tickers: sorted(strategy.selection?.tickers),
-    });
     const baseKey = [
       connectorName,
       strategy.universe,
       strategy.accountId ?? 'default',
       strategy.interval,
-      selectionIdentity,
     ].join(':');
     const group = groups.get(baseKey) ?? {
       scope: {
@@ -111,26 +197,29 @@ export const buildConfiguredSignalsScopes = ({
         accountId: strategy.accountId,
         interval: strategy.interval,
         strategyNames: [],
-        ...(strategy.selection
-          ? {
-              selection: { tickers: [...strategy.selection.tickers] },
-            }
-          : {}),
       },
       strategyIdentities: [],
+      strategies: [],
     };
     group.scope.strategyNames.push(strategy.strategyName);
     group.strategyIdentities.push(formatConfiguredStrategyIdentity(strategy));
+    group.strategies.push(strategy);
     groups.set(baseKey, group);
   }
 
-  return [...groups.entries()].map(([baseKey, group]) => ({
-    key: [baseKey, deploymentIdentity, ...group.strategyIdentities.sort()].join(
-      ':',
-    ),
-    scope: {
-      ...group.scope,
-      strategyNames: [...group.scope.strategyNames].sort(),
-    },
-  }));
+  return [...groups.entries()].map(([baseKey, group]) => {
+    const selection = mergeConfiguredStrategySelections(group.strategies);
+    return {
+      key: [
+        baseKey,
+        deploymentIdentity,
+        ...group.strategyIdentities.sort(),
+      ].join(':'),
+      scope: {
+        ...group.scope,
+        strategyNames: [...group.scope.strategyNames].sort(),
+        ...(selection ? { selection } : {}),
+      },
+    };
+  });
 };

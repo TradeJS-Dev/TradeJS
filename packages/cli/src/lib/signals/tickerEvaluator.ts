@@ -36,6 +36,10 @@ export type SignalsCycleContext = {
   primaryEthClosedData: CandleData;
   primaryEthByTimestamp: ReadonlyMap<number, CandleData[number]>;
   runtimeStrategies: StrategyRuntimeConfig[];
+  matchesStrategySymbol?: (
+    strategy: StrategyRuntimeConfig,
+    symbol: string,
+  ) => boolean;
   strategyStats: StrategySkipStatsMap;
   runtimeCloseNotifications: RuntimeStrategyCloseNotification[];
   lifecycle: SignalsStrategyLifecycle;
@@ -79,6 +83,7 @@ export const createSignalsTickerEvaluator =
       primaryEthClosedData,
       primaryEthByTimestamp,
       runtimeStrategies,
+      matchesStrategySymbol,
       strategyStats,
       runtimeCloseNotifications,
       lifecycle,
@@ -133,6 +138,12 @@ export const createSignalsTickerEvaluator =
     const strategySignals: Signal[] = [];
 
     for (const runtimeStrategy of runtimeStrategies) {
+      if (
+        matchesStrategySymbol &&
+        !matchesStrategySymbol(runtimeStrategy, symbol)
+      ) {
+        continue;
+      }
       const {
         strategyName,
         strategyRevision,

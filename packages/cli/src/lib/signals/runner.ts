@@ -63,6 +63,7 @@ import { createSignalsKlineFeed, type SignalsKlineFeed } from './klineFeed';
 import { createSignalsTickerEvaluator } from './tickerEvaluator';
 import {
   buildConfiguredSignalsScopes,
+  createConfiguredStrategySymbolMatcher,
   formatConfiguredStrategyIdentity,
   getConfiguredScopeActiveSymbols,
   type ConfiguredSignalsScope,
@@ -354,12 +355,21 @@ export const createSignalsRunner = (
       const universe =
         sessionUniverse ?? marketConnector.universe ?? ('crypto' as const);
 
+      const activeScopeStrategyNames = strategyNames?.length
+        ? strategyNames
+        : deployment?.strategies
+            .filter(({ enabled }) => enabled)
+            .map(({ strategyName }) => strategyName) ?? [];
+      const runtimeActiveTrades =
+        deployment?.id && activeScopeStrategyNames.length
+          ? await loadRuntimeActiveTrades(config.userName)
+          : [];
       const selectedActiveSymbols =
-        !config.tickers && selection?.tickers?.length && strategyNames?.length
+        !config.tickers && activeScopeStrategyNames.length
           ? getConfiguredScopeActiveSymbols({
-              trades: await loadRuntimeActiveTrades(config.userName),
+              trades: runtimeActiveTrades,
               deploymentId: deployment?.id ?? '',
-              strategyNames,
+              strategyNames: activeScopeStrategyNames,
               universe,
               accountId,
               interval,
@@ -371,11 +381,11 @@ export const createSignalsRunner = (
       if (selectedActiveSymbols.length) {
         logger.info(
           chalk.gray(
-            `strategy selection retained active symbols: ${selectedActiveSymbols.join(', ')}`,
+            `runtime scope retained active symbols: ${selectedActiveSymbols.join(', ')}`,
           ),
         );
       }
-      const tickers = await timeOperation('tickers load', () => {
+      const loadedTickers = await timeOperation('tickers load', () => {
         const baseArgs = [
           marketConnector,
           config.tickers ||
@@ -392,6 +402,9 @@ export const createSignalsRunner = (
             })
           : getTickers(...baseArgs);
       });
+      const tickers = config.tickers
+        ? loadedTickers
+        : [...new Set([...loadedTickers, ...selectedActiveSymbols])];
       if (
         universe === 'tradfi' &&
         typeof marketConnector.listInstruments !== 'function'
@@ -572,21 +585,32 @@ export const createSignalsRunner = (
         );
         return;
       }
+      const matchesStrategySymbol = createConfiguredStrategySymbolMatcher({
+        trades: runtimeActiveTrades,
+        deploymentId: deployment?.id ?? '',
+        universe,
+        accountId,
+        interval,
+      });
       lifecycle.retain(
         new Set(
           tickers.flatMap((symbol) =>
-            runtimeStrategies.map(({ strategyName, strategyRevision }) =>
-              buildSignalsStrategyLifecycleKey({
-                connectorName,
-                universe: sessionUniverse,
-                accountId,
-                deploymentId: deployment?.id,
-                symbol,
-                interval,
-                strategyName,
-                configId: strategyRevision,
-              }),
-            ),
+            runtimeStrategies
+              .filter((runtimeStrategy) =>
+                matchesStrategySymbol(runtimeStrategy, symbol),
+              )
+              .map(({ strategyName, strategyRevision }) =>
+                buildSignalsStrategyLifecycleKey({
+                  connectorName,
+                  universe: sessionUniverse,
+                  accountId,
+                  deploymentId: deployment?.id,
+                  symbol,
+                  interval,
+                  strategyName,
+                  configId: strategyRevision,
+                }),
+              ),
           ),
         ),
       );
@@ -646,6 +670,7 @@ export const createSignalsRunner = (
           primaryEthClosedData,
           primaryEthByTimestamp,
           runtimeStrategies,
+          matchesStrategySymbol,
           strategyStats,
           runtimeCloseNotifications,
           lifecycle,

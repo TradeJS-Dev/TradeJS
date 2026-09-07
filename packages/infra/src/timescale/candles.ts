@@ -1,4 +1,5 @@
 import type { KlineChartData } from '@tradejs/types';
+import { logger } from '../logger';
 import {
   getPool,
   normalizeCandleProvider,
@@ -22,6 +23,33 @@ export type CandleRow = {
   takerSellBaseVolume?: number | null;
   takerSellQuoteVolume?: number | null;
 };
+
+const CANDLE_UPSERT_MAX_ATTEMPTS = 3;
+const CANDLE_DEADLOCK_RETRY_DELAY_MS = 25;
+
+const isPostgresDeadlock = (error: unknown) =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  error.code === '40P01';
+
+const wait = (delayMs: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+const normalizeAndSortCandleRows = (rows: CandleRow[]): CandleRow[] =>
+  rows
+    .map((row) => ({
+      ...row,
+      provider: normalizeCandleProvider(row.provider),
+      symbol: normalizeCandleSymbol(row.symbol),
+    }))
+    .sort(
+      (left, right) =>
+        left.provider.localeCompare(right.provider) ||
+        left.symbol.localeCompare(right.symbol) ||
+        left.interval - right.interval ||
+        left.ts.getTime() - right.ts.getTime(),
+    );
 
 export const toRows = (
   provider: string,
@@ -57,6 +85,7 @@ export async function upsertCandles(rows: CandleRow[]) {
   if (!rows.length) return;
   await ensureCandlesSchema();
   const pool = getPool();
+  const normalizedRows = normalizeAndSortCandleRows(rows);
 
   const cols = [
     'provider',
@@ -75,38 +104,31 @@ export async function upsertCandles(rows: CandleRow[]) {
     'taker_sell_quote_volume',
   ] as const;
   const maxRows = Math.floor(65_535 / cols.length);
-  if (rows.length > maxRows) {
-    for (let i = 0; i < rows.length; i += maxRows) {
-      await upsertCandles(rows.slice(i, i + maxRows));
-    }
-    return;
-  }
-
-  const valuesSql = rows
-    .map(
-      (_, i) =>
-        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
-    )
-    .join(',');
-
-  const flat = rows.flatMap((r) => [
-    normalizeCandleProvider(r.provider),
-    normalizeCandleSymbol(r.symbol),
-    r.interval,
-    r.ts,
-    r.open,
-    r.high,
-    r.low,
-    r.close,
-    r.volume ?? null,
-    r.turnover ?? null,
-    r.takerBuyBaseVolume ?? null,
-    r.takerBuyQuoteVolume ?? null,
-    r.takerSellBaseVolume ?? null,
-    r.takerSellQuoteVolume ?? null,
-  ]);
-
-  const sql = `
+  for (let offset = 0; offset < normalizedRows.length; offset += maxRows) {
+    const chunk = normalizedRows.slice(offset, offset + maxRows);
+    const valuesSql = chunk
+      .map(
+        (_, i) =>
+          `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+      )
+      .join(',');
+    const flat = chunk.flatMap((r) => [
+      r.provider,
+      r.symbol,
+      r.interval,
+      r.ts,
+      r.open,
+      r.high,
+      r.low,
+      r.close,
+      r.volume ?? null,
+      r.turnover ?? null,
+      r.takerBuyBaseVolume ?? null,
+      r.takerBuyQuoteVolume ?? null,
+      r.takerSellBaseVolume ?? null,
+      r.takerSellQuoteVolume ?? null,
+    ]);
+    const sql = `
     INSERT INTO candles (${cols.join(',')})
     VALUES ${valuesSql}
     ON CONFLICT (provider, symbol, interval, ts) DO UPDATE SET
@@ -122,16 +144,33 @@ export async function upsertCandles(rows: CandleRow[]) {
       taker_sell_quote_volume = COALESCE(EXCLUDED.taker_sell_quote_volume, candles.taker_sell_quote_volume)
   `;
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(sql, flat);
-    await client.query('COMMIT');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
+    for (let attempt = 1; attempt <= CANDLE_UPSERT_MAX_ATTEMPTS; attempt += 1) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(sql, flat);
+        await client.query('COMMIT');
+        break;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        if (
+          !isPostgresDeadlock(error) ||
+          attempt === CANDLE_UPSERT_MAX_ATTEMPTS
+        ) {
+          throw error;
+        }
+        logger.warn(
+          'candle upsert deadlock (40P01); retrying transaction (attempt=%s/%s rows=%s)',
+          attempt + 1,
+          CANDLE_UPSERT_MAX_ATTEMPTS,
+          chunk.length,
+        );
+      } finally {
+        client.release();
+      }
+
+      await wait(CANDLE_DEADLOCK_RETRY_DELAY_MS * 2 ** (attempt - 1));
+    }
   }
 }
 

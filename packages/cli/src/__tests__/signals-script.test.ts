@@ -45,6 +45,7 @@ type Scenario = {
     config?: Record<string, unknown>;
     result?: unknown;
     runtimeCloseEvents?: unknown[];
+    selection?: { tickers: string[] };
   }>;
 };
 
@@ -80,6 +81,10 @@ const makeRedisKeys = () => ({
     `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
   runtimeLineageScopeBucket: (userName: string, dayKey: string) =>
     `users:${userName}:runtime:lineage-scopes:days:${dayKey}`,
+  runtimeActiveTrades: (userName: string) =>
+    `users:${userName}:runtime:active-trades:`,
+  runtimeTrade: (userName: string, orderId: string) =>
+    `users:${userName}:runtime:trade-records:${orderId}`,
 });
 
 const makeCandle = (timestamp: number, close: number) => ({
@@ -431,7 +436,7 @@ const loadScript = async (scenario: Scenario) => {
         projectRoot: string;
       }) => {
         const resolved = await Promise.all(
-          strategyEntries.map(async ({ strategyName }) => {
+          strategyEntries.map(async ({ strategyName, selection }) => {
             const strategyConfig = await getData(
               `users:root:strategies:${strategyName}:releases:1`,
               { INTERVAL: '15' },
@@ -458,6 +463,7 @@ const loadScript = async (scenario: Scenario) => {
               ),
               sourceStrategyConfig: strategyConfig,
               strategyConfig,
+              ...(selection ? { selection } : {}),
             };
           }),
         );
@@ -1223,6 +1229,76 @@ describe('signals script', () => {
         config: expect.objectContaining({ INTERVAL: '60' }),
       }),
     );
+  });
+
+  it('shares one ticker session and applies each strategy selection internally', async () => {
+    const runtimeDeployment: RuntimeDeployment = {
+      id: 'shared-production',
+      deploymentCompositionId: 'dc1:2222222222222222',
+      label: 'Shared production',
+      connectorName: 'bybit',
+      provider: 'bybit',
+      accountId: 'crypto-main',
+      enabled: true,
+      strategies: [
+        {
+          strategyName: 'TrendLine',
+          strategyRevision: 'sr1:1111111111111111',
+          enabled: true,
+          controlState: 'active',
+          selection: { tickers: ['BTCUSDT'] },
+        },
+        {
+          strategyName: 'TrendShift',
+          strategyRevision: 'sr1:1111111111111111',
+          enabled: true,
+          controlState: 'active',
+          selection: { tickers: ['ETHUSDT'] },
+        },
+      ],
+    };
+    const { signalsConfiguredScopesOnce, mocks } = await loadScript({
+      tickers: ['BTCUSDT', 'ETHUSDT'],
+      strategyConfigs: [
+        {
+          strategyName: 'TrendLine',
+          selection: { tickers: ['BTCUSDT'] },
+        },
+        {
+          strategyName: 'TrendShift',
+          selection: { tickers: ['ETHUSDT'] },
+        },
+      ],
+      deployment: runtimeDeployment,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+        deployment: runtimeDeployment.id,
+      },
+    });
+
+    await signalsConfiguredScopesOnce();
+
+    expect(mocks.connectorCreator).toHaveBeenCalledTimes(3);
+    expect(mocks.getTickers).toHaveBeenCalledTimes(1);
+    expect(mocks.getTickers).toHaveBeenCalledWith(
+      expect.any(Object),
+      'BTCUSDT,ETHUSDT',
+      undefined,
+      undefined,
+      undefined,
+      { universe: 'crypto', assetClasses: undefined },
+    );
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyFnMap.get('TrendShift')).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a missing deployment before connector creation', async () => {
