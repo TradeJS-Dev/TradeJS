@@ -121,6 +121,58 @@ describe('ByBitConnectorCreator', () => {
     expect(await connector.getPosition('BTCUSDT')).toBeNull();
   });
 
+  it('reloads the private client after trading account credentials change', async () => {
+    const expiredClient = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 33004,
+        retMsg: 'Your api key has expired.',
+      }),
+    };
+    const rotatedClient = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [] },
+      }),
+    };
+    let account = {
+      id: 'bybit-default',
+      label: 'Bybit',
+      provider: 'bybit',
+      enabled: true,
+      universes: ['crypto' as const],
+      apiKey: 'expired-key',
+      apiSecret: 'expired-secret',
+      environment: 'mainnet' as const,
+    };
+    const rotatingRuntime: ConnectorRuntime = {
+      ...runtime,
+      resolveTradingAccount: jest.fn(async () => account),
+    };
+    mockedGetClient.mockImplementation(async () =>
+      account.apiKey === 'expired-key'
+        ? (expiredClient as any)
+        : (rotatedClient as any),
+    );
+
+    const connector = await createByBitConnector(
+      { userName: 'alice', accountId: 'bybit-default' },
+      rotatingRuntime,
+    );
+
+    await connector.getPositions();
+    account = {
+      ...account,
+      apiKey: 'rotated-key',
+      apiSecret: 'rotated-secret',
+    };
+    await connector.getPositions();
+    await connector.getPositions();
+
+    expect(mockedGetClient).toHaveBeenCalledTimes(2);
+    expect(expiredClient.getPositionInfo).toHaveBeenCalledTimes(1);
+    expect(rotatedClient.getPositionInfo).toHaveBeenCalledTimes(2);
+  });
+
   it('loads a normalized public top-of-book ticker for runtime arrival telemetry', async () => {
     const client = {
       getTickers: jest.fn().mockResolvedValue({

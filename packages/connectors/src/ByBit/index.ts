@@ -7,7 +7,11 @@ import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { getClient } from './client';
-import { decorateConnectorKline, getConnectorLogger } from '../shared/runtime';
+import {
+  decorateConnectorKline,
+  getConnectorAccountResolver,
+  getConnectorLogger,
+} from '../shared/runtime';
 import {
   mapKlineToChartData,
   normalizePrice,
@@ -314,6 +318,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
   runtime,
 ) => {
   const logger = getConnectorLogger(runtime);
+  const resolveTradingAccount = getConnectorAccountResolver(runtime);
   let state: Record<string, unknown> = {};
   const universe = resolveConnectorUniverse(
     BYBIT_CAPABILITIES,
@@ -325,6 +330,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
   let privateClientPromise: Promise<
     Awaited<ReturnType<typeof getClient>>
   > | null = null;
+  let privateClientInitialized = false;
+  let privateClientAccountSnapshot: {
+    id: string;
+    apiKey?: string;
+    apiSecret?: string;
+    environment: 'mainnet' | 'testnet';
+  } | null = null;
   const positionSnapshotCache = new Map<
     string,
     { expiresAt: number; value: Position | null }
@@ -337,8 +349,49 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
   };
 
   const getPrivateClient = async () => {
-    privateClientPromise ??= getClient(config, 'private', runtime);
-    return privateClientPromise;
+    const account = await resolveTradingAccount({
+      userName: config.userName,
+      accountId: config.accountId,
+      provider: 'bybit',
+      universe: config.universe,
+    });
+    const nextSnapshot = account
+      ? {
+          id: account.id,
+          apiKey: account.apiKey,
+          apiSecret: account.apiSecret,
+          environment: account.environment,
+        }
+      : null;
+    const credentialsChanged =
+      privateClientInitialized &&
+      (privateClientAccountSnapshot?.id !== nextSnapshot?.id ||
+        privateClientAccountSnapshot?.apiKey !== nextSnapshot?.apiKey ||
+        privateClientAccountSnapshot?.apiSecret !== nextSnapshot?.apiSecret ||
+        privateClientAccountSnapshot?.environment !==
+          nextSnapshot?.environment);
+
+    if (!privateClientInitialized || credentialsChanged) {
+      if (
+        privateClientInitialized &&
+        privateClientAccountSnapshot?.environment !== nextSnapshot?.environment
+      ) {
+        publicClientPromise = null;
+      }
+      privateClientPromise = getClient(config, 'private', runtime);
+      privateClientAccountSnapshot = nextSnapshot;
+      privateClientInitialized = true;
+      positionSnapshotCache.clear();
+      inflightPositionSnapshots.clear();
+    }
+
+    try {
+      return await privateClientPromise;
+    } catch (error) {
+      privateClientPromise = null;
+      privateClientInitialized = false;
+      throw error;
+    }
   };
 
   const instrumentCache = new Map<
