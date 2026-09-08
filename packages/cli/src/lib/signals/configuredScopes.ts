@@ -145,9 +145,14 @@ export const createConfiguredStrategySymbolMatcher = ({
 
     const normalizedSymbol = normalizeSymbol(symbol);
     return (
-      strategy.selection.tickers.some(
-        (ticker) => normalizeSymbol(ticker) === normalizedSymbol,
-      ) ||
+      strategy.selection.tickers.some((ticker) => {
+        const normalizedTicker = normalizeSymbol(ticker);
+        return (
+          normalizedTicker === normalizedSymbol ||
+          (universe === 'crypto' &&
+            `${normalizedTicker}USDT` === normalizedSymbol)
+        );
+      }) ||
       activeStrategySymbols.has(
         `${strategy.strategyName}\u0000${normalizedSymbol}`,
       )

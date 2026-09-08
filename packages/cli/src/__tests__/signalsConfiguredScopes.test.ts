@@ -258,6 +258,9 @@ describe('configured signals scopes', () => {
     expect(matches(selectedStrategy, 'SOLUSDT')).toBe(true);
     expect(matches(selectedStrategy, 'XRPUSDT')).toBe(false);
     expect(matches(strategy, 'XRPUSDT')).toBe(true);
+    expect(
+      matches({ ...strategy, selection: { tickers: ['btc'] } }, 'BTCUSDT'),
+    ).toBe(true);
   });
 
   it('retains an active symbol only for its exact strategy and runtime scope', () => {
