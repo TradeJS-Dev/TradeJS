@@ -99,8 +99,8 @@ export const RuntimeStrategyRevisionsDrawer = ({
               overflowY="auto"
             >
               <Text color="gray.400">
-                Current revision and all revision changes recorded in the
-                selected runtime window.
+                Current revision and all revision activations observed by the
+                runtime in the selected window.
               </Text>
 
               {revisions.map((revision) => (
@@ -137,8 +137,8 @@ export const RuntimeStrategyRevisionsDrawer = ({
                   </Text>
                   <Text mt={2} fontSize="xs" color="gray.500">
                     {revision.changedAt == null
-                      ? 'No revision change recorded in this window'
-                      : `Changed at ${formatDateTime(revision.changedAt)}`}
+                      ? 'No revision activation observed in this window'
+                      : `Activated at ${formatDateTime(revision.changedAt)}`}
                   </Text>
                 </Box>
               ))}

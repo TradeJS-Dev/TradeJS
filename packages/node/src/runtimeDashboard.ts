@@ -1,5 +1,6 @@
 import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { loadRuntimeDeploymentCompositionEvents } from '@tradejs/infra/runtimeDeploymentEvents';
 import {
   listTradingAccounts,
   resolveTradingAccount,
@@ -15,6 +16,7 @@ import type {
   RuntimeTradeRecord,
   Interval,
   RuntimeDeployment,
+  RuntimeDeploymentCompositionEvent,
   RuntimeStrategiesResponse,
   StrategyConfig,
   RuntimeStrategyControlState,
@@ -236,30 +238,46 @@ const loadRuntimeTrades = async (
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
-const getTradeStrategyRevision = (trade: RuntimeTradeRecord) =>
-  trade.strategyRevision ??
-  (trade.runtimeLineage?.schemaVersion === 3
-    ? trade.runtimeLineage.strategyRevision
-    : undefined);
-
-const buildStrategyRevisionChanges = (trades: RuntimeTradeRecord[]) => {
+const buildStrategyRevisionChanges = ({
+  events,
+  strategyName,
+  startTime,
+  endTime,
+}: {
+  events: RuntimeDeploymentCompositionEvent[];
+  strategyName: string;
+  startTime: number;
+  endTime: number;
+}) => {
   const changes: Array<{ timestamp: number; strategyRevision: string }> = [];
   let previousRevision: string | undefined;
+  let wasPresent = false;
 
-  for (const trade of [...trades].sort(
+  for (const event of [...events].sort(
     (left, right) =>
-      left.entryTimestamp - right.entryTimestamp ||
-      left.orderId.localeCompare(right.orderId),
+      left.observedAt - right.observedAt ||
+      left.eventId.localeCompare(right.eventId),
   )) {
-    const strategyRevision = getTradeStrategyRevision(trade);
-    if (!strategyRevision) continue;
-    if (previousRevision && strategyRevision !== previousRevision) {
+    const strategy = event.strategies.find(
+      (item) => item.strategyName === strategyName,
+    );
+    if (!strategy) {
+      previousRevision = undefined;
+      wasPresent = false;
+      continue;
+    }
+    if (
+      (!wasPresent || strategy.strategyRevision !== previousRevision) &&
+      event.observedAt >= startTime &&
+      event.observedAt <= endTime
+    ) {
       changes.push({
-        timestamp: trade.entryTimestamp,
-        strategyRevision,
+        timestamp: event.observedAt,
+        strategyRevision: strategy.strategyRevision,
       });
     }
-    previousRevision = strategyRevision;
+    previousRevision = strategy.strategyRevision;
+    wasPresent = true;
   }
 
   return changes;
@@ -579,8 +597,8 @@ export const loadRuntimeDashboard = async ({
   const accountsById = new Map(
     tradingAccounts.map((account) => [account.id, account]),
   );
-  const resolvedStrategiesByDeployment = new Map(
-    await Promise.all(
+  const [resolvedStrategyEntries, deploymentEventEntries] = await Promise.all([
+    Promise.all(
       runtimeDeployments.map(
         async (deployment) =>
           [
@@ -593,7 +611,21 @@ export const loadRuntimeDashboard = async ({
           ] as const,
       ),
     ),
-  );
+    Promise.all(
+      runtimeDeployments.map(
+        async (deployment) =>
+          [
+            deployment.id,
+            await loadRuntimeDeploymentCompositionEvents(
+              userName,
+              deployment.id,
+            ),
+          ] as const,
+      ),
+    ),
+  ]);
+  const resolvedStrategiesByDeployment = new Map(resolvedStrategyEntries);
+  const deploymentEventsById = new Map(deploymentEventEntries);
   const identityByKey = new Map<string, RuntimeDashboardStrategyIdentity>();
   for (const deployment of runtimeDeployments) {
     for (const resolvedStrategy of resolvedStrategiesByDeployment.get(
@@ -691,7 +723,12 @@ export const loadRuntimeDashboard = async ({
         stat: analytics.stat,
         summary: analytics.summary,
         orderLog: analytics.orderLog,
-        revisionChanges: buildStrategyRevisionChanges(strategyTrades),
+        revisionChanges: buildStrategyRevisionChanges({
+          events: deploymentEventsById.get(identity.deploymentId) ?? [],
+          strategyName,
+          startTime,
+          endTime,
+        }),
         recentTrades: strategyTrades
           .slice(0, 8)
           .map((trade) => toRuntimeTradeView(trade, endTime)),

@@ -10,6 +10,7 @@ export default defineConfig({
     'src/ml.ts',
     'src/redis.ts',
     'src/runtimeControls.ts',
+    'src/runtimeDeploymentEvents.ts',
     'src/runtimeHeartbeats.ts',
     'src/runtimeStrategyConfigs.ts',
     'src/strategyReleaseEvidence.ts',

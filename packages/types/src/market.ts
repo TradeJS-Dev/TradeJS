@@ -94,6 +94,20 @@ export interface RuntimeDeployment {
   tickers?: string[];
 }
 
+export const RUNTIME_DEPLOYMENT_COMPOSITION_EVENT_SCHEMA =
+  'tradejs-runtime-deployment-composition-event/v1' as const;
+
+export interface RuntimeDeploymentCompositionEvent {
+  schema: typeof RUNTIME_DEPLOYMENT_COMPOSITION_EVENT_SCHEMA;
+  eventId: string;
+  deploymentId: string;
+  deploymentCompositionId: string;
+  observedAt: number;
+  strategies: Array<
+    Pick<RuntimeDeploymentStrategy, 'strategyName' | 'strategyRevision'>
+  >;
+}
+
 export interface RuntimeDeploymentHeartbeat {
   deploymentId: string;
   status: 'running' | 'stopped' | 'error';

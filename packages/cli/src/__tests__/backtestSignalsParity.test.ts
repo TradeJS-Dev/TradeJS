@@ -661,6 +661,9 @@ const runSignalsPath = async () => {
   jest.doMock('@tradejs/infra/runtimeHeartbeats', () => ({
     saveRuntimeDeploymentHeartbeat: jest.fn(),
   }));
+  jest.doMock('@tradejs/infra/runtimeDeploymentEvents', () => ({
+    observeRuntimeDeploymentComposition: jest.fn(),
+  }));
   jest.doMock('../lib/derivativesContextBackfill', () => ({
     backfillDerivativesContextForSignals: jest.fn(),
     shouldBackfillDerivativesContextForSignals: jest.fn(() => false),

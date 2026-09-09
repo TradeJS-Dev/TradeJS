@@ -200,6 +200,7 @@ const loadScript = async (scenario: Scenario) => {
   }));
   const getRuntimeDeployment = jest.fn(async () => scenario.deployment ?? null);
   const saveRuntimeDeploymentHeartbeat = jest.fn(async () => undefined);
+  const observeRuntimeDeploymentComposition = jest.fn(async () => null);
   const strategyCreatorMap = new Map<string, jest.Mock>();
   const strategyFnMap = new Map<string, jest.Mock>();
   const strategyHistoryLengths = new Map<
@@ -391,6 +392,9 @@ const loadScript = async (scenario: Scenario) => {
   }));
   jest.doMock('@tradejs/infra/runtimeHeartbeats', () => ({
     saveRuntimeDeploymentHeartbeat,
+  }));
+  jest.doMock('@tradejs/infra/runtimeDeploymentEvents', () => ({
+    observeRuntimeDeploymentComposition,
   }));
 
   jest.doMock('@tradejs/connectors', () => ({

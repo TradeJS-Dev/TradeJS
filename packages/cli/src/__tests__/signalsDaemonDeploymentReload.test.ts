@@ -3,6 +3,9 @@ import type { RuntimeDeployment } from '@tradejs/types';
 jest.mock('@tradejs/infra/runtimeHeartbeats', () => ({
   saveRuntimeDeploymentHeartbeat: jest.fn(),
 }));
+jest.mock('@tradejs/infra/runtimeDeploymentEvents', () => ({
+  observeRuntimeDeploymentComposition: jest.fn(),
+}));
 jest.mock('@tradejs/node/runtimeStrategies', () => ({
   getRuntimeDeployment: jest.fn(),
 }));
@@ -34,6 +37,7 @@ jest.mock('../lib/signals/daemon', () => ({
 }));
 
 import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
+import { observeRuntimeDeploymentComposition } from '@tradejs/infra/runtimeDeploymentEvents';
 import { captureRuntimeEvidenceCompositionSnapshot } from '../lib/runtimeEvidenceCompositionSnapshots';
 import { createSignalsRunner } from '../lib/signals/runner';
 import { loadRuntimeStrategies } from '../lib/signals/runtimeStrategies';
@@ -62,6 +66,7 @@ describe('signals daemon deployment reload', () => {
     jest
       .mocked(captureRuntimeEvidenceCompositionSnapshot)
       .mockResolvedValue(undefined);
+    jest.mocked(observeRuntimeDeploymentComposition).mockResolvedValue(null);
   });
 
   it('loads the current deployment again for every cycle', async () => {
@@ -95,6 +100,41 @@ describe('signals daemon deployment reload', () => {
     expect(
       jest.mocked(loadRuntimeStrategies).mock.calls[1]?.[0].deploymentId,
     ).toBe(second.id);
+    expect(observeRuntimeDeploymentComposition).toHaveBeenNthCalledWith(1, {
+      userName: 'root',
+      deployment: first,
+    });
+    expect(observeRuntimeDeploymentComposition).toHaveBeenNthCalledWith(2, {
+      userName: 'root',
+      deployment: second,
+    });
+  });
+
+  it('keeps running and retries when a deployment event cannot be saved', async () => {
+    const current = deployment(5);
+    jest.mocked(getRuntimeDeployment).mockResolvedValue(current);
+    jest
+      .mocked(observeRuntimeDeploymentComposition)
+      .mockRejectedValueOnce(new Error('deployment event storage unavailable'))
+      .mockResolvedValueOnce(null);
+
+    await createSignalsRunner({
+      userName: 'root',
+      projectRoot: '/project',
+      interval: '15',
+      connectorName: 'bybit',
+      deploymentId: 'doubletap-forward',
+      makeOrders: false,
+      notify: false,
+      skipScreenshots: true,
+      updateOnly: false,
+      cacheOnly: true,
+      showTickersList: false,
+      showSkipStats: false,
+    }).runDaemon();
+
+    expect(observeRuntimeDeploymentComposition).toHaveBeenCalledTimes(2);
+    expect(loadRuntimeStrategies).toHaveBeenCalledTimes(2);
   });
 
   it('keeps running and retries when a composition snapshot cannot be saved', async () => {

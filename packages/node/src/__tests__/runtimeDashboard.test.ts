@@ -8,6 +8,7 @@ const mockGetData = jest.fn();
 const mockGetHashJsonValues = jest.fn();
 const mockGetKeys = jest.fn();
 const mockSyncRuntimeTrades = jest.fn();
+const mockLoadRuntimeDeploymentCompositionEvents = jest.fn();
 
 jest.mock('../runtimeStrategies', () => ({
   listRuntimeDeployments: (...args: unknown[]) =>
@@ -20,6 +21,11 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
   listTradingAccounts: (...args: unknown[]) => mockListTradingAccounts(...args),
   resolveTradingAccount: (...args: unknown[]) =>
     mockResolveTradingAccount(...args),
+}));
+
+jest.mock('@tradejs/infra/runtimeDeploymentEvents', () => ({
+  loadRuntimeDeploymentCompositionEvents: (...args: unknown[]) =>
+    mockLoadRuntimeDeploymentCompositionEvents(...args),
 }));
 
 jest.mock('../strategies', () => ({
@@ -112,6 +118,7 @@ describe('runtime dashboard', () => {
     mockGetData.mockResolvedValue(null);
     mockGetHashJsonValues.mockResolvedValue([]);
     mockGetKeys.mockResolvedValue([]);
+    mockLoadRuntimeDeploymentCompositionEvents.mockResolvedValue([]);
     mockSyncRuntimeTrades.mockImplementation(async ({ trades }) => trades);
     mockGetConnectorCreatorByProvider.mockResolvedValue(
       jest.fn(async ({ accountId, deploymentId }) => ({
@@ -332,6 +339,229 @@ describe('runtime dashboard', () => {
       symbols: ['BTCUSDT'],
       revisionChanges: [],
     });
+  });
+
+  it('aligns strategy revision markers to observed deployment events', async () => {
+    const now = 1_700_000_000_000;
+    const initialObservedAt = now - 240_000;
+    const changedObservedAt = now - 180_000;
+    mockListRuntimeDeployments.mockResolvedValue([
+      {
+        id: 'production',
+        deploymentCompositionId: 'dc1:2222222222222222',
+        label: 'Production',
+        connectorName: 'bybit',
+        provider: 'bybit',
+        accountId: 'crypto-main',
+        enabled: true,
+        strategies: [
+          {
+            strategyName: 'Alpha',
+            strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+            enabled: true,
+            controlState: 'active',
+          },
+          {
+            strategyName: 'Beta',
+            strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+            enabled: true,
+            controlState: 'active',
+          },
+        ],
+      },
+    ]);
+    mockLoadResolvedRuntimeStrategies.mockResolvedValue([
+      {
+        strategyName: 'Alpha',
+        strategyModule: '@tradejs/strategy-alpha',
+        strategyPackage: '@tradejs/strategy-alpha',
+        strategyPackageVersion: '3.0.0',
+        strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+        enabled: true,
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        accountId: 'crypto-main',
+        strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
+      },
+      {
+        strategyName: 'Beta',
+        strategyModule: '@tradejs/strategy-beta',
+        strategyPackage: '@tradejs/strategy-beta',
+        strategyPackageVersion: '3.0.0',
+        strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+        enabled: true,
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        accountId: 'crypto-main',
+        strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
+      },
+    ]);
+    mockLoadRuntimeDeploymentCompositionEvents.mockResolvedValue([
+      {
+        schema: 'tradejs-runtime-deployment-composition-event/v1',
+        eventId: 'initial',
+        deploymentId: 'production',
+        deploymentCompositionId: 'dc1:1111111111111111',
+        observedAt: initialObservedAt,
+        strategies: [
+          { strategyName: 'Alpha', strategyRevision: 'sr1:1111111111111111' },
+          { strategyName: 'Beta', strategyRevision: 'sr1:2222222222222222' },
+        ],
+      },
+      {
+        schema: 'tradejs-runtime-deployment-composition-event/v1',
+        eventId: 'changed',
+        deploymentId: 'production',
+        deploymentCompositionId: 'dc1:2222222222222222',
+        observedAt: changedObservedAt,
+        strategies: [
+          { strategyName: 'Alpha', strategyRevision: 'sr1:aaaaaaaaaaaaaaaa' },
+          { strategyName: 'Beta', strategyRevision: 'sr1:bbbbbbbbbbbbbbbb' },
+        ],
+      },
+    ]);
+    mockGetHashJsonValues.mockResolvedValue([
+      {
+        orderId: 'alpha-old',
+        strategy: 'Alpha',
+        strategyRevision: 'sr1:1111111111111111',
+        deploymentId: 'production',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: now - 300_000,
+        status: 'active',
+      },
+      {
+        orderId: 'alpha-new',
+        strategy: 'Alpha',
+        strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+        deploymentId: 'production',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: now - 120_000,
+        status: 'active',
+      },
+      {
+        orderId: 'beta-old',
+        strategy: 'Beta',
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentId: 'production',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        symbol: 'SOLUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: now - 270_000,
+        status: 'active',
+      },
+      {
+        orderId: 'beta-new',
+        strategy: 'Beta',
+        strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+        deploymentId: 'production',
+        accountId: 'crypto-main',
+        universe: 'crypto',
+        symbol: 'XRPUSDT',
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: now - 60_000,
+        status: 'active',
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now,
+      projectRoot: '/project',
+    });
+
+    expect(
+      Object.fromEntries(
+        response.strategies.map((strategy) => [
+          strategy.strategyName,
+          strategy.revisionChanges,
+        ]),
+      ),
+    ).toEqual({
+      Alpha: [
+        {
+          timestamp: initialObservedAt,
+          strategyRevision: 'sr1:1111111111111111',
+        },
+        {
+          timestamp: changedObservedAt,
+          strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+        },
+      ],
+      Beta: [
+        {
+          timestamp: initialObservedAt,
+          strategyRevision: 'sr1:2222222222222222',
+        },
+        {
+          timestamp: changedObservedAt,
+          strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+        },
+      ],
+    });
+  });
+
+  it('returns a revision marker when the strategy has no trades', async () => {
+    const now = 1_700_000_000_000;
+    const observedAt = now - 60_000;
+    mockLoadRuntimeDeploymentCompositionEvents.mockResolvedValue([
+      {
+        schema: 'tradejs-runtime-deployment-composition-event/v1',
+        eventId: 'initial',
+        deploymentId: 'trendline-forward',
+        deploymentCompositionId: 'dc1:2222222222222222',
+        observedAt,
+        strategies: [
+          {
+            strategyName: 'TrendLine',
+            strategyRevision: 'sr1:2222222222222222',
+          },
+        ],
+      },
+    ]);
+
+    const response = await loadRuntimeDashboard({
+      userName: 'root',
+      provider: 'bybit',
+      hours: 6,
+      now,
+      projectRoot: '/project',
+    });
+
+    expect(response.strategies[0]).toMatchObject({
+      strategyName: 'TrendLine',
+      summary: { totalTrades: 0 },
+      revisionChanges: [
+        {
+          timestamp: observedAt,
+          strategyRevision: 'sr1:2222222222222222',
+        },
+      ],
+    });
+    expect(response.strategies[0].orderLog).toHaveLength(2);
   });
 
   it('keeps duplicate strategy names isolated across deployments', async () => {

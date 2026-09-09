@@ -81,6 +81,11 @@
       "import": "./dist/runtimeControls.mjs",
       "require": "./dist/runtimeControls.js"
     },
+    "./runtimeDeploymentEvents": {
+      "types": "./dist/runtimeDeploymentEvents.d.ts",
+      "import": "./dist/runtimeDeploymentEvents.mjs",
+      "require": "./dist/runtimeDeploymentEvents.js"
+    },
     "./strategyReleaseEvidence": {
       "types": "./dist/strategyReleaseEvidence.d.ts",
       "import": "./dist/strategyReleaseEvidence.mjs",

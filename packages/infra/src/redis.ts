@@ -770,6 +770,19 @@ export const redisKeys = {
     `users:${userName}:trading-accounts:${accountId}`,
   runtimeDeploymentHeartbeat: (userName: string, deploymentId: string) =>
     `users:${userName}:runtime:deployments:${deploymentId}:heartbeat`,
+  runtimeDeploymentCompositionState: (userName: string, deploymentId: string) =>
+    `users:${userName}:runtime:deployments:${deploymentId}:composition-state`,
+  runtimeDeploymentCompositionEvents: (
+    userName: string,
+    deploymentId: string,
+  ) =>
+    `users:${userName}:runtime:deployments:${deploymentId}:composition-events:`,
+  runtimeDeploymentCompositionEvent: (
+    userName: string,
+    deploymentId: string,
+    eventId: string,
+  ) =>
+    `users:${userName}:runtime:deployments:${deploymentId}:composition-events:${eventId}`,
   runtimeControls: (userName: string) => `users:${userName}:runtime:controls`,
   bots: (userName: string) => `users:${userName}:bots`,
   botsPrefix: () => 'users:',

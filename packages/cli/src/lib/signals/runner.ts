@@ -26,6 +26,7 @@ import type {
 import { SIGNALS_CLI_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { observeRuntimeDeploymentComposition } from '@tradejs/infra/runtimeDeploymentEvents';
 import { saveRuntimeDeploymentHeartbeat } from '@tradejs/infra/runtimeHeartbeats';
 import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import {
@@ -918,6 +919,18 @@ export const createSignalsRunner = (
           });
           if (!currentDeployment) {
             throw new Error(`Runtime deployment not found: ${deploymentId}`);
+          }
+          try {
+            await observeRuntimeDeploymentComposition({
+              userName: config.userName,
+              deployment: currentDeployment,
+            });
+          } catch (error) {
+            logger.warn(
+              'runtime deployment composition event unavailable; trading continues and the next cycle will retry (composition=%s): %s',
+              currentDeployment.deploymentCompositionId,
+              error instanceof Error ? error.message : String(error),
+            );
           }
           compositionSnapshotRecorder?.observe(
             currentDeployment.deploymentCompositionId,
