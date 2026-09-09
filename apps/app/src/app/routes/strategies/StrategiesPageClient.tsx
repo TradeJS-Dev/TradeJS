@@ -239,6 +239,7 @@ const RuntimeStrategiesContent = () => {
       })
       .sort(
         (left, right) =>
+          right.stat.netProfit - left.stat.netProfit ||
           left.strategyName.localeCompare(right.strategyName) ||
           left.deploymentLabel.localeCompare(right.deploymentLabel),
       );

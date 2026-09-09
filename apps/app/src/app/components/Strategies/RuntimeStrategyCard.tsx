@@ -30,10 +30,10 @@ import {
 import { toaster } from '#ui';
 
 const DEPLOYMENT_PRESENTATIONS = [
-  { accent: 'blue.400', colorPalette: 'blue' },
-  { accent: 'purple.400', colorPalette: 'purple' },
-  { accent: 'pink.400', colorPalette: 'pink' },
-  { accent: 'cyan.400', colorPalette: 'cyan' },
+  { colorPalette: 'blue' },
+  { colorPalette: 'purple' },
+  { colorPalette: 'pink' },
+  { colorPalette: 'cyan' },
 ] as const;
 
 const getDeploymentPresentation = (deploymentId: string) => {
@@ -92,7 +92,6 @@ export const RuntimeStrategyCard = ({
     strategy.deploymentId,
   );
   const strategyInstanceLabel = `${strategy.strategyName}, ${strategy.deploymentLabel}`;
-  const maxLossValue = strategy.config.MAX_LOSS_VALUE;
   const setControlState = async (controlState: 'active' | 'entries_paused') => {
     setControlSaving(true);
     try {
@@ -132,42 +131,19 @@ export const RuntimeStrategyCard = ({
       shadow="sm"
       borderWidth="1px"
       borderColor={strategy.connected ? 'gray.800' : 'orange.900'}
-      borderLeftWidth="4px"
-      borderLeftColor={deploymentPresentation.accent}
       overflowX="auto"
     >
-      <Flex gap="4" p={4} mb={3} alignItems="center" wrap="wrap">
-        <Flex direction="column" gap={1} minW="280px">
-          <Flex gap={2} alignItems="center" wrap="wrap">
-            <Text fontSize="lg" fontWeight="bold" color="gray.200">
-              {strategy.strategyName}
-            </Text>
-            <Badge
-              colorPalette={deploymentPresentation.colorPalette}
-              variant="subtle"
-            >
-              {strategy.deploymentLabel}
-            </Badge>
-          </Flex>
-          <Flex gap={3} alignItems="center" wrap="wrap">
-            <Text fontSize="xs" color="gray.400">
-              account: {strategy.accountLabel ?? strategy.accountId ?? 'none'}
-            </Text>
-            <Text fontSize="xs" color="gray.400">
-              version: {strategy.strategyPackageVersion}
-            </Text>
-            {strategy.generation ? (
-              <Text fontSize="xs" color="gray.400">
-                generation: {strategy.generation}
-              </Text>
-            ) : null}
-            {typeof maxLossValue === 'number' &&
-            Number.isFinite(maxLossValue) ? (
-              <Text fontSize="xs" color="gray.400">
-                max loss: {maxLossValue}
-              </Text>
-            ) : null}
-          </Flex>
+      <Flex gap={2} p={4} mb={3} alignItems="baseline" whiteSpace="nowrap">
+        <Flex gap={2} alignItems="baseline" flexShrink={0}>
+          <Text fontSize="lg" fontWeight="bold" color="gray.200">
+            {strategy.strategyName}
+          </Text>
+          <Badge
+            colorPalette={deploymentPresentation.colorPalette}
+            variant="subtle"
+          >
+            {strategy.deploymentLabel}
+          </Badge>
         </Flex>
         <Badge
           colorPalette={strategy.enabled ? 'teal' : 'gray'}
@@ -187,8 +163,8 @@ export const RuntimeStrategyCard = ({
         <Badge colorPalette="cyan" variant="outline">
           TF: {strategy.interval}m
         </Badge>
-        <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+        <Flex gap="1" alignItems="baseline" flexShrink={0}>
+          <Text fontSize="sm" fontWeight="bold" color="gray.400">
             connector:
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
@@ -196,8 +172,8 @@ export const RuntimeStrategyCard = ({
           </Text>
         </Flex>
 
-        <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+        <Flex gap="1" alignItems="baseline" flexShrink={0}>
+          <Text fontSize="sm" fontWeight="bold" color="gray.400">
             trades:
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
@@ -205,8 +181,8 @@ export const RuntimeStrategyCard = ({
           </Text>
         </Flex>
 
-        <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+        <Flex gap="1" alignItems="baseline" flexShrink={0}>
+          <Text fontSize="sm" fontWeight="bold" color="gray.400">
             active:
           </Text>
           <Text
@@ -220,8 +196,15 @@ export const RuntimeStrategyCard = ({
           </Text>
         </Flex>
 
-        <Flex ml="auto" gap={3} alignItems="center">
-          <Text fontSize="sm" color="gray.500">
+        <Flex
+          ml="auto"
+          gap={3}
+          alignItems="baseline"
+          justifyContent="flex-end"
+          minW={0}
+          flex={1}
+        >
+          <Text fontSize="sm" color="gray.500" truncate>
             {lastTrade
               ? `last trade: ${lastTrade.symbol} ${formatDateTime(lastTrade.entryTimestamp)}`
               : strategy.connected
@@ -231,7 +214,7 @@ export const RuntimeStrategyCard = ({
 
           <Menu.Root positioning={{ placement: 'bottom-end' }}>
             <Menu.Trigger asChild>
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" flexShrink={0}>
                 Actions
               </Button>
             </Menu.Trigger>

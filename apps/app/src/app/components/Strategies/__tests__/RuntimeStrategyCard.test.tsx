@@ -112,7 +112,7 @@ const strategy = {
 } as unknown as RuntimeStrategyView;
 
 describe('RuntimeStrategyCard', () => {
-  it('shows the deployment, account, version, generation, and risk identity', () => {
+  it('keeps the header compact with deployment identity and no config details', () => {
     render(
       <RuntimeStrategyCard
         strategy={strategy}
@@ -124,10 +124,10 @@ describe('RuntimeStrategyCard', () => {
     );
 
     expect(screen.getByText('Forward')).toBeTruthy();
-    expect(screen.getByText('account: Bybit forward')).toBeTruthy();
-    expect(screen.getByText('version: 3.2.1')).toBeTruthy();
-    expect(screen.getByText('generation: candidate')).toBeTruthy();
-    expect(screen.getByText('max loss: 1')).toBeTruthy();
+    expect(screen.queryByText('account: Bybit forward')).toBeNull();
+    expect(screen.queryByText('version: 3.2.1')).toBeNull();
+    expect(screen.queryByText('generation: candidate')).toBeNull();
+    expect(screen.queryByText('max loss: 1')).toBeNull();
   });
 
   it('keeps Revisions last in Actions and opens its drawer', () => {
