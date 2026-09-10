@@ -834,13 +834,16 @@ export const createSignalsRunner = (
     const connectorName = await resolveSignalsConnectorName(
       deployment.connectorName,
     );
-    return new Map<string, ConfiguredSignalsScope>(
-      buildConfiguredSignalsScopes({
-        connectorName,
-        deployment,
-        strategies: configuredStrategies,
-      }).map(({ key, scope }) => [key, scope]),
-    );
+    return {
+      strategies: configuredStrategies,
+      scopes: new Map<string, ConfiguredSignalsScope>(
+        buildConfiguredSignalsScopes({
+          connectorName,
+          deployment,
+          strategies: configuredStrategies,
+        }).map(({ key, scope }) => [key, scope]),
+      ),
+    };
   };
 
   const signalsConfiguredScopesOnce = async () => {
@@ -858,7 +861,7 @@ export const createSignalsRunner = (
     if (!configuredDeployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
     }
-    const scopes = await loadConfiguredSignalsScopes(configuredDeployment);
+    const { scopes } = await loadConfiguredSignalsScopes(configuredDeployment);
     if (!scopes.size) return signals();
     for (const scope of scopes.values()) {
       const session = await createSignalsSession(
@@ -920,10 +923,16 @@ export const createSignalsRunner = (
           if (!currentDeployment) {
             throw new Error(`Runtime deployment not found: ${deploymentId}`);
           }
+          compositionSnapshotRecorder?.observe(
+            currentDeployment.deploymentCompositionId,
+          );
+          const { scopes, strategies } =
+            await loadConfiguredSignalsScopes(currentDeployment);
           try {
             await observeRuntimeDeploymentComposition({
               userName: config.userName,
               deployment: currentDeployment,
+              strategies,
             });
           } catch (error) {
             logger.warn(
@@ -932,10 +941,6 @@ export const createSignalsRunner = (
               error instanceof Error ? error.message : String(error),
             );
           }
-          compositionSnapshotRecorder?.observe(
-            currentDeployment.deploymentCompositionId,
-          );
-          const scopes = await loadConfiguredSignalsScopes(currentDeployment);
 
           for (const [key, staleSession] of sessions) {
             if (scopes.has(key)) continue;

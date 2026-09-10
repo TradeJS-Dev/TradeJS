@@ -3,6 +3,7 @@ import {
   RUNTIME_DEPLOYMENT_COMPOSITION_EVENT_SCHEMA,
   type RuntimeDeployment,
   type RuntimeDeploymentCompositionEvent,
+  type RuntimeDeploymentCompositionEventStrategy,
 } from '@tradejs/types';
 import { getData, getKeys, redisKeys, setDataStrict } from './redis';
 
@@ -54,13 +55,27 @@ export const isRuntimeDeploymentCompositionEvent = (
     if (
       !isRecord(strategy) ||
       Object.keys(strategy).some(
-        (key) => !['strategyName', 'strategyRevision'].includes(key),
+        (key) =>
+          ![
+            'strategyName',
+            'strategyRevision',
+            'strategyPackage',
+            'strategyPackageVersion',
+          ].includes(key),
       ) ||
       typeof strategy.strategyName !== 'string' ||
       !strategy.strategyName.trim() ||
       strategyNames.has(strategy.strategyName) ||
       typeof strategy.strategyRevision !== 'string' ||
-      !/^sr1:[a-f0-9]{16}$/.test(strategy.strategyRevision)
+      !/^sr1:[a-f0-9]{16}$/.test(strategy.strategyRevision) ||
+      (strategy.strategyPackage !== undefined &&
+        (typeof strategy.strategyPackage !== 'string' ||
+          !strategy.strategyPackage.trim())) ||
+      (strategy.strategyPackageVersion !== undefined &&
+        (typeof strategy.strategyPackageVersion !== 'string' ||
+          !strategy.strategyPackageVersion.trim())) ||
+      (strategy.strategyPackage === undefined) !==
+        (strategy.strategyPackageVersion === undefined)
     ) {
       return false;
     }
@@ -73,10 +88,12 @@ export const isRuntimeDeploymentCompositionEvent = (
 export const observeRuntimeDeploymentComposition = async ({
   userName,
   deployment,
+  strategies,
   observedAt = Date.now(),
 }: {
   userName: string;
   deployment: RuntimeDeployment;
+  strategies: Array<Required<RuntimeDeploymentCompositionEventStrategy>>;
   observedAt?: number;
 }): Promise<RuntimeDeploymentCompositionEvent | null> => {
   if (!Number.isFinite(observedAt) || observedAt < 0) {
@@ -91,7 +108,12 @@ export const observeRuntimeDeploymentComposition = async ({
   if (
     isRuntimeDeploymentCompositionEvent(current) &&
     current.deploymentId === deploymentId &&
-    current.deploymentCompositionId === deployment.deploymentCompositionId
+    current.deploymentCompositionId === deployment.deploymentCompositionId &&
+    current.strategies.every(
+      (strategy) =>
+        strategy.strategyPackage !== undefined &&
+        strategy.strategyPackageVersion !== undefined,
+    )
   ) {
     return null;
   }
@@ -102,11 +124,20 @@ export const observeRuntimeDeploymentComposition = async ({
     deploymentId,
     deploymentCompositionId: deployment.deploymentCompositionId,
     observedAt,
-    strategies: deployment.strategies
-      .map(({ strategyName, strategyRevision }) => ({
-        strategyName,
-        strategyRevision,
-      }))
+    strategies: strategies
+      .map(
+        ({
+          strategyName,
+          strategyRevision,
+          strategyPackage,
+          strategyPackageVersion,
+        }) => ({
+          strategyName,
+          strategyRevision,
+          strategyPackage,
+          strategyPackageVersion,
+        }),
+      )
       .sort((left, right) =>
         left.strategyName.localeCompare(right.strategyName),
       ),

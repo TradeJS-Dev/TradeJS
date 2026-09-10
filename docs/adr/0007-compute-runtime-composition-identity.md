@@ -56,7 +56,10 @@ The signals daemon also records an immutable composition event when it first
 observes a deployment or a changed `deploymentCompositionId`. Dashboard
 revision markers use the observation time from this shared deployment ledger,
 never the first trade carrying a revision. Therefore all affected strategies
-show the same activation time, including strategies that made no trades.
+show the same activation time, including strategies that made no trades. Each
+event also records the resolved strategy package name and version. A marker is
+red when that package identity changed from the preceding observation; changes
+caused by configuration, the runtime, or another dependency remain orange.
 
 This is a coordinated breaking release. All official strategy packages,
 Strategy Template, and Project validation move to the contract together.

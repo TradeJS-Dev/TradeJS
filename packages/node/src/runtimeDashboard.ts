@@ -18,6 +18,7 @@ import type {
   RuntimeDeployment,
   RuntimeDeploymentCompositionEvent,
   RuntimeStrategiesResponse,
+  RuntimeStrategyRevisionChange,
   StrategyConfig,
   RuntimeStrategyControlState,
   RuntimeStrategySelection,
@@ -249,8 +250,10 @@ const buildStrategyRevisionChanges = ({
   startTime: number;
   endTime: number;
 }) => {
-  const changes: Array<{ timestamp: number; strategyRevision: string }> = [];
-  let previousRevision: string | undefined;
+  const changes: RuntimeStrategyRevisionChange[] = [];
+  let previousStrategy:
+    | RuntimeDeploymentCompositionEvent['strategies'][number]
+    | undefined;
   let wasPresent = false;
 
   for (const event of [...events].sort(
@@ -262,21 +265,31 @@ const buildStrategyRevisionChanges = ({
       (item) => item.strategyName === strategyName,
     );
     if (!strategy) {
-      previousRevision = undefined;
       wasPresent = false;
       continue;
     }
     if (
-      (!wasPresent || strategy.strategyRevision !== previousRevision) &&
+      (!wasPresent ||
+        strategy.strategyRevision !== previousStrategy?.strategyRevision) &&
       event.observedAt >= startTime &&
       event.observedAt <= endTime
     ) {
+      const strategyPackageChanged = Boolean(
+        previousStrategy?.strategyPackage &&
+          previousStrategy.strategyPackageVersion &&
+          strategy.strategyPackage &&
+          strategy.strategyPackageVersion &&
+          (strategy.strategyPackage !== previousStrategy.strategyPackage ||
+            strategy.strategyPackageVersion !==
+              previousStrategy.strategyPackageVersion),
+      );
       changes.push({
         timestamp: event.observedAt,
         strategyRevision: strategy.strategyRevision,
+        kind: strategyPackageChanged ? 'strategy_package' : 'other',
       });
     }
-    previousRevision = strategy.strategyRevision;
+    previousStrategy = strategy;
     wasPresent = true;
   }
 

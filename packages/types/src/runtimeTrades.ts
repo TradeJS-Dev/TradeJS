@@ -49,6 +49,7 @@ export interface RuntimeStrategyTradeView {
 export interface RuntimeStrategyRevisionChange {
   timestamp: number;
   strategyRevision: string;
+  kind: 'strategy_package' | 'other';
 }
 
 export interface RuntimeStrategyView {

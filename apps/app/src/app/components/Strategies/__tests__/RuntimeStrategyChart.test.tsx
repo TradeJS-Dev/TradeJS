@@ -38,15 +38,18 @@ jest.mock('recharts', () => {
     ReferenceLine: ({
       x,
       label,
+      stroke,
     }: {
       x?: number;
       label?: { value?: string };
+      stroke?: string;
     }) =>
       x == null ? null : (
         <div
           data-testid="revision-line"
           data-timestamp={x}
           data-label={label?.value}
+          data-stroke={stroke}
         >
           {label?.value}
         </div>
@@ -100,10 +103,12 @@ describe('RuntimeStrategyChart', () => {
           {
             timestamp: 150,
             strategyRevision: 'sr1:1111111111111111',
+            kind: 'strategy_package',
           },
           {
             timestamp: 175,
             strategyRevision: 'sr1:2222222222222222',
+            kind: 'other',
           },
         ]}
         stat={stat}
@@ -116,5 +121,10 @@ describe('RuntimeStrategyChart', () => {
     for (const line of screen.getAllByTestId('revision-line')) {
       expect(line.getAttribute('data-label')).toBeNull();
     }
+    expect(
+      screen
+        .getAllByTestId('revision-line')
+        .map((line) => line.getAttribute('data-stroke')),
+    ).toEqual(['red.400', 'orange.400']);
   });
 });

@@ -49,9 +49,21 @@ const strategy = {
   deploymentLabel: 'Scaled',
   strategyRevision: 'sr1:3333333333333333',
   revisionChanges: [
-    { timestamp: 100, strategyRevision: 'sr1:1111111111111111' },
-    { timestamp: 200, strategyRevision: 'sr1:2222222222222222' },
-    { timestamp: 300, strategyRevision: 'sr1:3333333333333333' },
+    {
+      timestamp: 100,
+      strategyRevision: 'sr1:1111111111111111',
+      kind: 'other',
+    },
+    {
+      timestamp: 200,
+      strategyRevision: 'sr1:2222222222222222',
+      kind: 'strategy_package',
+    },
+    {
+      timestamp: 300,
+      strategyRevision: 'sr1:3333333333333333',
+      kind: 'other',
+    },
   ],
 } as RuntimeStrategyView;
 
@@ -77,10 +89,26 @@ describe('RuntimeStrategyRevisionsDrawer', () => {
       buildRuntimeStrategyRevisionItems({
         strategyRevision: 'sr1:2222222222222222',
         revisionChanges: [
-          { timestamp: 100, strategyRevision: 'sr1:1111111111111111' },
-          { timestamp: 200, strategyRevision: 'sr1:2222222222222222' },
-          { timestamp: 300, strategyRevision: 'sr1:1111111111111111' },
-          { timestamp: 400, strategyRevision: 'sr1:2222222222222222' },
+          {
+            timestamp: 100,
+            strategyRevision: 'sr1:1111111111111111',
+            kind: 'other',
+          },
+          {
+            timestamp: 200,
+            strategyRevision: 'sr1:2222222222222222',
+            kind: 'other',
+          },
+          {
+            timestamp: 300,
+            strategyRevision: 'sr1:1111111111111111',
+            kind: 'other',
+          },
+          {
+            timestamp: 400,
+            strategyRevision: 'sr1:2222222222222222',
+            kind: 'other',
+          },
         ],
       }),
     ).toEqual([

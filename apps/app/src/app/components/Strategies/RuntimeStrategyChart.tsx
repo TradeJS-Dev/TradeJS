@@ -107,7 +107,11 @@ export const RuntimeStrategyChart = ({
                   <ReferenceLine
                     key={`${change.timestamp}:${change.strategyRevision}`}
                     x={change.timestamp}
-                    stroke={chart.color('orange.400')}
+                    stroke={chart.color(
+                      change.kind === 'strategy_package'
+                        ? 'red.400'
+                        : 'orange.400',
+                    )}
                     strokeDasharray="4 4"
                   />
                 ))}

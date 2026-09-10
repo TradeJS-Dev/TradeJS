@@ -49,6 +49,21 @@ const deployment = (
   })),
 });
 
+const observedStrategies = (
+  strategies: Array<[string, number, string]>,
+): Array<{
+  strategyName: string;
+  strategyRevision: string;
+  strategyPackage: string;
+  strategyPackageVersion: string;
+}> =>
+  strategies.map(([strategyName, revisionDigit, strategyPackageVersion]) => ({
+    strategyName,
+    strategyRevision: `sr1:${String(revisionDigit).repeat(16)}`,
+    strategyPackage: `@tradejs/strategy-${strategyName.toLowerCase()}`,
+    strategyPackageVersion,
+  }));
+
 describe('runtime deployment composition events', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -78,25 +93,37 @@ describe('runtime deployment composition events', () => {
       ['Alpha', 3],
       ['Beta', 4],
     ]);
+    const firstStrategies = observedStrategies([
+      ['Beta', 2, '1.0.0'],
+      ['Alpha', 1, '1.0.0'],
+    ]);
+    const secondStrategies = observedStrategies([
+      ['Alpha', 3, '2.0.0'],
+      ['Beta', 4, '1.0.0'],
+    ]);
 
     const initial = await observeRuntimeDeploymentComposition({
       userName: 'root',
       deployment: first,
+      strategies: firstStrategies,
       observedAt: 100,
     });
     const duplicate = await observeRuntimeDeploymentComposition({
       userName: 'root',
       deployment: first,
+      strategies: firstStrategies,
       observedAt: 200,
     });
     const changed = await observeRuntimeDeploymentComposition({
       userName: 'root',
       deployment: second,
+      strategies: secondStrategies,
       observedAt: 300,
     });
     const rollback = await observeRuntimeDeploymentComposition({
       userName: 'root',
       deployment: first,
+      strategies: firstStrategies,
       observedAt: 400,
     });
 
@@ -132,5 +159,39 @@ describe('runtime deployment composition events', () => {
         strategies: [],
       }),
     ).toBe(false);
+  });
+
+  it('enriches an existing event that predates package metadata', async () => {
+    const current = deployment(1, [['Alpha', 1]]);
+    mockGetData.mockResolvedValue({
+      schema: 'tradejs-runtime-deployment-composition-event/v1',
+      eventId: 'legacy',
+      deploymentId: 'production-main',
+      deploymentCompositionId: 'dc1:1111111111111111',
+      observedAt: 100,
+      strategies: [
+        {
+          strategyName: 'Alpha',
+          strategyRevision: 'sr1:1111111111111111',
+        },
+      ],
+    });
+
+    const enriched = await observeRuntimeDeploymentComposition({
+      userName: 'root',
+      deployment: current,
+      strategies: observedStrategies([['Alpha', 1, '1.0.0']]),
+      observedAt: 200,
+    });
+
+    expect(enriched?.strategies).toEqual([
+      {
+        strategyName: 'Alpha',
+        strategyRevision: 'sr1:1111111111111111',
+        strategyPackage: '@tradejs/strategy-alpha',
+        strategyPackageVersion: '1.0.0',
+      },
+    ]);
+    expect(mockSetDataStrict).toHaveBeenCalledTimes(2);
   });
 });

@@ -406,8 +406,18 @@ describe('runtime dashboard', () => {
         deploymentCompositionId: 'dc1:1111111111111111',
         observedAt: initialObservedAt,
         strategies: [
-          { strategyName: 'Alpha', strategyRevision: 'sr1:1111111111111111' },
-          { strategyName: 'Beta', strategyRevision: 'sr1:2222222222222222' },
+          {
+            strategyName: 'Alpha',
+            strategyRevision: 'sr1:1111111111111111',
+            strategyPackage: '@tradejs/strategy-alpha',
+            strategyPackageVersion: '2.9.0',
+          },
+          {
+            strategyName: 'Beta',
+            strategyRevision: 'sr1:2222222222222222',
+            strategyPackage: '@tradejs/strategy-beta',
+            strategyPackageVersion: '3.0.0',
+          },
         ],
       },
       {
@@ -417,8 +427,18 @@ describe('runtime dashboard', () => {
         deploymentCompositionId: 'dc1:2222222222222222',
         observedAt: changedObservedAt,
         strategies: [
-          { strategyName: 'Alpha', strategyRevision: 'sr1:aaaaaaaaaaaaaaaa' },
-          { strategyName: 'Beta', strategyRevision: 'sr1:bbbbbbbbbbbbbbbb' },
+          {
+            strategyName: 'Alpha',
+            strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+            strategyPackage: '@tradejs/strategy-alpha',
+            strategyPackageVersion: '3.0.0',
+          },
+          {
+            strategyName: 'Beta',
+            strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+            strategyPackage: '@tradejs/strategy-beta',
+            strategyPackageVersion: '3.0.0',
+          },
         ],
       },
     ]);
@@ -505,20 +525,24 @@ describe('runtime dashboard', () => {
         {
           timestamp: initialObservedAt,
           strategyRevision: 'sr1:1111111111111111',
+          kind: 'other',
         },
         {
           timestamp: changedObservedAt,
           strategyRevision: 'sr1:aaaaaaaaaaaaaaaa',
+          kind: 'strategy_package',
         },
       ],
       Beta: [
         {
           timestamp: initialObservedAt,
           strategyRevision: 'sr1:2222222222222222',
+          kind: 'other',
         },
         {
           timestamp: changedObservedAt,
           strategyRevision: 'sr1:bbbbbbbbbbbbbbbb',
+          kind: 'other',
         },
       ],
     });
@@ -538,6 +562,8 @@ describe('runtime dashboard', () => {
           {
             strategyName: 'TrendLine',
             strategyRevision: 'sr1:2222222222222222',
+            strategyPackage: '@tradejs/strategy-trend-line-forward',
+            strategyPackageVersion: '3.0.4',
           },
         ],
       },
@@ -558,6 +584,7 @@ describe('runtime dashboard', () => {
         {
           timestamp: observedAt,
           strategyRevision: 'sr1:2222222222222222',
+          kind: 'other',
         },
       ],
     });

@@ -103,10 +103,12 @@ describe('signals daemon deployment reload', () => {
     expect(observeRuntimeDeploymentComposition).toHaveBeenNthCalledWith(1, {
       userName: 'root',
       deployment: first,
+      strategies: [],
     });
     expect(observeRuntimeDeploymentComposition).toHaveBeenNthCalledWith(2, {
       userName: 'root',
       deployment: second,
+      strategies: [],
     });
   });
 
