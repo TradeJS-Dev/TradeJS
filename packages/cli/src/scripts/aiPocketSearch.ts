@@ -169,6 +169,11 @@ args.option(
   'causal-stationary',
 );
 args.option(
+  ['x', 'excludeFeaturePattern'],
+  'Case-sensitive regular expression excluding feature paths before predicate ranking',
+  '',
+);
+args.option(
   ['Q', 'coverageMode'],
   'Coverage-aware search mode: auto or full',
   'auto',

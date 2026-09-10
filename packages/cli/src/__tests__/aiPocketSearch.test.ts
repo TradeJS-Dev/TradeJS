@@ -19,6 +19,144 @@ import { resolveAiPocketSearchCommandOptions } from '../lib/aiPocketSearch/comma
 import { runAiPocketSearchResearch } from '../lib/aiPocketSearch/research';
 
 describe('aiPocketSearch', () => {
+  it('validates the exclusion expression before dataset preparation', () => {
+    const resolve = (excludeFeaturePattern?: string) =>
+      resolveAiPocketSearchCommandOptions({
+        argv: [],
+        flags: { excludeFeaturePattern },
+      });
+    expect(resolve().excludeFeaturePattern).toBeUndefined();
+    expect(resolve('').excludeFeaturePattern).toBeUndefined();
+    expect(resolve('marketBreadths').excludeFeaturePattern?.source).toBe(
+      'marketBreadths',
+    );
+    expect(() => resolve('[')).toThrow('--excludeFeaturePattern');
+  });
+
+  it('excludes provenance paths before ranking and preserves allowed target setup features', () => {
+    const target = 'additionalIndicators.targetContext.volumeRel20';
+    const forbidden =
+      'additionalIndicators.baseContext.relative.marketBreadths.top100.unchanged';
+    const excluded: string[] = [];
+    const options = resolveAiPocketSearchCommandOptions({
+      argv: [],
+      flags: {
+        excludeFeaturePattern: 'marketBreadths|^derived\\.stopDistanceBps$',
+      },
+    });
+    const rows: AiPocketSearchRow[] = Array.from({ length: 8 }, (_, index) => {
+      const profitable = index < 4;
+      const payload = {
+        signal: {
+          direction: 'LONG',
+          prices: { currentPrice: 100, stopLossPrice: 98 },
+        },
+        additionalIndicators: {
+          targetContext: { volumeRel20: profitable ? 2 : 0.5 },
+          baseContext: {
+            relative: {
+              marketBreadths: { top100: { unchanged: profitable ? 20 : 1 } },
+            },
+          },
+          profit: 123,
+          tradeResult: { netProfit: 123 },
+        },
+      } as unknown as AiPayload;
+      const defaults = {
+        payload,
+        featureProfile: 'all' as const,
+        featurePolicy: 'causal-stationary' as const,
+      };
+      const baseline = collectAiPocketFeatureSnapshot(defaults);
+      expect(
+        collectAiPocketFeatureSnapshot({
+          ...defaults,
+          excludeFeaturePattern: undefined,
+        }),
+      ).toEqual(baseline);
+      expect(baseline.features[forbidden]).toBeDefined();
+      const snapshot = collectAiPocketFeatureSnapshot({
+        ...defaults,
+        excludeFeaturePattern: options.excludeFeaturePattern,
+        onFeatureExcluded: ({ path, classification }) => {
+          if (classification === 'operator-excluded') excluded.push(path);
+        },
+      });
+      expect(snapshot.features[target]).toBe(profitable ? 2 : 0.5);
+      expect(snapshot.features[forbidden]).toBeUndefined();
+      expect(snapshot.features['derived.stopDistanceBps']).toBeUndefined();
+      expect(
+        Object.keys(snapshot.features).some((key) =>
+          /profit|tradeResult/i.test(key),
+        ),
+      ).toBe(false);
+      return {
+        profit: profitable ? 4 : -2,
+        profitableTrade: profitable,
+        aiApproved: false,
+        quality: 2,
+        timestamp: index,
+        features: snapshot.features,
+      };
+    });
+    const result = searchAiPockets(rows, {
+      minSupport: 2,
+      maxDepth: 1,
+      maxAtomicPredicates: 1,
+      maxCombinations: 20,
+    });
+    expect(result.predicates.length).toBeGreaterThan(0);
+    expect(
+      result.predicates.every((predicate) => predicate.featureKey === target),
+    ).toBe(true);
+    expect(result.stats.atomicPredicatesUsed).toBe(1);
+    expect(excluded).toContain(
+      'additionalIndicators.baseContext.relative.marketBreadths',
+    );
+  });
+
+  it('applies exclusion to derived paths without weakening outcome filtering in all mode', () => {
+    const payload = {
+      signal: {
+        direction: 'LONG',
+        prices: { currentPrice: 100, stopLossPrice: 98 },
+      },
+      additionalIndicators: {
+        targetContext: { volumeRel20: 2 },
+        outcome: { volumeRel20: 3 },
+        profit: 4,
+      },
+    } as unknown as AiPayload;
+    const events: string[] = [];
+    const expression = /^derived\./g;
+    const snapshot = collectAiPocketFeatureSnapshot({
+      payload,
+      featurePolicy: 'all',
+      excludeFeaturePattern: expression,
+      onFeatureExcluded: ({ path, classification }) => {
+        if (classification === 'operator-excluded') events.push(path);
+      },
+    });
+    expect(
+      snapshot.features['additionalIndicators.targetContext.volumeRel20'],
+    ).toBe(2);
+    expect(
+      Object.keys(snapshot.features).some((key) =>
+        /^(derived\.)|outcome|profit/i.test(key),
+      ),
+    ).toBe(false);
+    expect(events).toContain('derived.directIndicatorSupportCount');
+    expect(events).toContain('derived.stopDistanceBps');
+    expect(
+      collectAiPocketFeatureSnapshot({
+        payload,
+        featurePolicy: 'all',
+        excludeFeaturePattern: expression,
+      }),
+    ).toEqual(snapshot);
+    expect(expression.lastIndex).toBe(0);
+  });
+
   it('normalizes command options without leaking argv parsing into the workflow', () => {
     const argv = [
       'node',

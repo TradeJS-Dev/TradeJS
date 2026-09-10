@@ -338,6 +338,7 @@ export const evaluateAiPocketSearchDataset = async ({
           includeGateContext: options.includeGateContext,
           featureProfile: options.featureProfile,
           featurePolicy: options.featurePolicy,
+          excludeFeaturePattern: options.excludeFeaturePattern,
           onFeatureExcluded: ({ path: featurePath, classification }) => {
             const paths = excludedFeaturePaths.get(classification) ?? new Set();
             paths.add(featurePath);

@@ -255,12 +255,6 @@ export const createTestConnector: TestConnectorCreator = (
       entryPrice: roundPrice(tradeResult.entryPrice),
       requestedExitPrice: roundNullablePrice(tradeResult.requestedExitPrice),
       exitPrice: roundNullablePrice(tradeResult.exitPrice),
-      grossProfit: round(tradeResult.grossProfit),
-      netProfit: round(tradeResult.netProfit),
-      openFee: round(tradeResult.openFee),
-      closeFee: round(tradeResult.closeFee),
-      fundingFee: roundNullable(tradeResult.fundingFee),
-      totalFee: round(tradeResult.totalFee),
       entrySlippagePrice: round(tradeResult.entrySlippagePrice),
       entrySlippageBps: round(tradeResult.entrySlippageBps),
       entryBaseSlippageBps: round(tradeResult.entryBaseSlippageBps),
@@ -268,7 +262,6 @@ export const createTestConnector: TestConnectorCreator = (
       entrySpreadSlippageBps: round(tradeResult.entrySpreadSlippageBps),
       entryMarketImpactBps: round(tradeResult.entryMarketImpactBps),
       entryDelayRiskBps: roundNullable(tradeResult.entryDelayRiskBps),
-      entrySlippageCost: round(tradeResult.entrySlippageCost),
       exitSlippagePrice: roundNullable(tradeResult.exitSlippagePrice),
       exitSlippageBps: roundNullable(tradeResult.exitSlippageBps),
       exitBaseSlippageBps: roundNullable(tradeResult.exitBaseSlippageBps),
@@ -276,10 +269,6 @@ export const createTestConnector: TestConnectorCreator = (
       exitSpreadSlippageBps: roundNullable(tradeResult.exitSpreadSlippageBps),
       exitMarketImpactBps: roundNullable(tradeResult.exitMarketImpactBps),
       exitDelayRiskBps: roundNullable(tradeResult.exitDelayRiskBps),
-      exitSlippageCost: round(tradeResult.exitSlippageCost),
-      totalSlippageCost: round(tradeResult.totalSlippageCost),
-      qty: round(tradeResult.qty),
-      closedQty: round(tradeResult.closedQty),
     };
   };
 
@@ -487,7 +476,7 @@ export const createTestConnector: TestConnectorCreator = (
         for (const tradeResult of finalizedCycleResults) {
           closedSignalResults.push({
             signalId: tradeResult.signalId,
-            profit: round(tradeResult.netProfit),
+            profit: tradeResult.netProfit,
             tradeResult,
           });
         }
@@ -498,7 +487,7 @@ export const createTestConnector: TestConnectorCreator = (
         if (tradeResult) finalizedCycleResults = [tradeResult];
         closedSignalResults.push({
           signalId: currentSignalId,
-          profit: round(currentPositionProfit),
+          profit: tradeResult?.netProfit ?? currentPositionProfit,
           ...(tradeResult ? { tradeResult } : {}),
         });
       }
@@ -515,13 +504,11 @@ export const createTestConnector: TestConnectorCreator = (
         amount: round(amount),
       },
       netProfit: finalizedCycleResults.length
-        ? round(
-            finalizedCycleResults.reduce(
-              (total, tradeResult) => total + tradeResult.netProfit,
-              0,
-            ),
+        ? finalizedCycleResults.reduce(
+            (total, tradeResult) => total + tradeResult.netProfit,
+            0,
           )
-        : round(currentPositionProfit),
+        : currentPositionProfit,
     });
 
     currentPosition = null;

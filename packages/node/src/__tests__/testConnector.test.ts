@@ -72,10 +72,10 @@ describe('testConnector', () => {
       const rows = await connector.drainMlResultsBatch();
       expect(rows).toHaveLength(2);
       const trades = rows.map((row) => row.tradeResult!);
-      // Final trade exports round each leg to cents; the fill ledger above is exact.
+      // Exported legs retain the same monetary precision as the fill ledger.
       expect(
         trades.reduce((sum, trade) => sum + trade.totalFee, 0),
-      ).toBeCloseTo(expectedEntryFees + expectedExitFee, 2);
+      ).toBeCloseTo(expectedEntryFees + expectedExitFee, 8);
       expect(
         trades.reduce((sum, trade) => sum + trade.netProfit, 0),
       ).toBeCloseTo(
@@ -1043,7 +1043,7 @@ describe('testConnector', () => {
     expect(await connector.drainMlResultsBatch()).toEqual([
       {
         signalId: 'sig-stop',
-        profit: round(expectedNetProfit),
+        profit: expect.closeTo(expectedNetProfit, 12),
         tradeResult: expect.objectContaining({
           signalId: 'sig-stop',
           direction: 'LONG',
@@ -1052,15 +1052,16 @@ describe('testConnector', () => {
           entryPrice: expectedEntryPrice,
           requestedExitPrice: 95,
           exitPrice: expectedExitPrice,
-          grossProfit: round(expectedGrossProfit),
-          netProfit: round(expectedNetProfit),
-          openFee: round(expectedOpenFee),
-          closeFee: round(expectedCloseFee),
-          totalFee: round(expectedOpenFee + expectedCloseFee),
-          entrySlippageCost: round(expectedEntryPrice - 100),
-          exitSlippageCost: round(95 - expectedExitPrice),
-          totalSlippageCost: round(
+          grossProfit: expect.closeTo(expectedGrossProfit, 12),
+          netProfit: expect.closeTo(expectedNetProfit, 12),
+          openFee: expect.closeTo(expectedOpenFee, 12),
+          closeFee: expect.closeTo(expectedCloseFee, 12),
+          totalFee: expect.closeTo(expectedOpenFee + expectedCloseFee, 12),
+          entrySlippageCost: expect.closeTo(expectedEntryPrice - 100, 12),
+          exitSlippageCost: expect.closeTo(95 - expectedExitPrice, 12),
+          totalSlippageCost: expect.closeTo(
             expectedEntryPrice - 100 + (95 - expectedExitPrice),
+            12,
           ),
         }),
       },
@@ -1412,14 +1413,21 @@ describe('testConnector', () => {
     expect(await connector.drainMlResultsBatch()).toEqual([
       {
         signalId: 'sig-fast-ai',
-        profit: round(expectedOpenProfit + expectedCloseProfit),
+        profit: expect.closeTo(expectedOpenProfit + expectedCloseProfit, 12),
         tradeResult: expect.objectContaining({
           signalId: 'sig-fast-ai',
           exitReason: 'exit',
-          netProfit: round(expectedOpenProfit + expectedCloseProfit),
-          totalFee: round(fee(expectedEntryPrice) + fee(expectedExitPrice)),
-          totalSlippageCost: round(
+          netProfit: expect.closeTo(
+            expectedOpenProfit + expectedCloseProfit,
+            12,
+          ),
+          totalFee: expect.closeTo(
+            fee(expectedEntryPrice) + fee(expectedExitPrice),
+            12,
+          ),
+          totalSlippageCost: expect.closeTo(
             expectedEntryPrice - 100 + (105 - expectedExitPrice),
+            12,
           ),
         }),
       },
@@ -1427,7 +1435,145 @@ describe('testConnector', () => {
     expect(await connector.drainMlResultsBatch()).toEqual([]);
   });
 
-  it('keeps fast summary outcomes aligned with rounded AI trade results', async () => {
+  it('preserves fractional quantities, fill fees and monetary slippage in capture', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      aiEnabled: true,
+      executionCostModel: {
+        fees: { makerRate: 0.0002, takerRate: 0.0002, source: 'config' },
+        funding: { enabled: true, source: 'historical', points: 1 },
+        slippage: {
+          baseBps: 0.01,
+          spreadMultiplier: 0,
+          marketImpactBps: 0,
+          delayRiskMultiplier: 0,
+          source: 'config',
+        },
+        leverage: { requested: 1, effective: 1, maxAllowed: null },
+        quality: 'full',
+        capturedAt: 1,
+      },
+      fundingRates: [{ symbol: 'ETHUSDT', timestamp: 2, rate: 0.000001 }],
+    });
+    const qty = 0.123456;
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: { signalId: 'fractional-capture' } as any,
+    });
+    await connector.checkExits({
+      timestamp: 2,
+      open: 100,
+      high: 100,
+      low: 100,
+      close: 100,
+      volume: 1,
+      turnover: 100,
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 100.1,
+      isLimit: false,
+      timestamp: 3,
+      direction: 'LONG',
+    });
+    const result = await connector.getResult();
+    const [entry, exit] = result.inlineOrderLog!;
+    const [row] = await connector.drainMlResultsBatch();
+    const trade = row.tradeResult!;
+    const gross = (exit.price - entry.price) * qty;
+    const entrySlippage = (entry.price - 100) * qty;
+    const exitSlippage = (100.1 - exit.price) * qty;
+    expect(trade.qty).toBe(qty);
+    expect(trade.closedQty).toBe(qty);
+    expect(trade.openFee).toBe(entry.fee);
+    expect(trade.closeFee).toBe(exit.fee);
+    const fundingCost = 100 * qty * 0.000001;
+    expect(trade.fundingFee).toBe(fundingCost);
+    expect(trade.totalFee).toBe(entry.fee! + exit.fee! + fundingCost);
+    expect(trade.grossProfit).toBe(gross);
+    expect(trade.netProfit).toBe(-entry.fee! - fundingCost + gross - exit.fee!);
+    expect(trade.entrySlippageCost).toBe(entrySlippage);
+    expect(trade.exitSlippageCost).toBe(exitSlippage);
+    expect(trade.totalSlippageCost).toBe(entrySlippage + exitSlippage);
+    expect(row.profit).toBe(trade.netProfit);
+    expect(result.inlinePositionLog?.[0].netProfit).toBe(trade.netProfit);
+  });
+
+  it.each([false, true])(
+    'preserves subcent capture economics and outcomes with fastMode=%s',
+    async (fastMode) => {
+      const connector = createTestConnector(baseConnector as any, {
+        aiEnabled: true,
+        fastMode,
+        executionCostModel: {
+          fees: { makerRate: 0, takerRate: 0, source: 'config' },
+          funding: { enabled: false, source: 'disabled', points: 0 },
+          slippage: {
+            baseBps: 0,
+            spreadMultiplier: 0,
+            marketImpactBps: 0,
+            delayRiskMultiplier: 0,
+            source: 'config',
+          },
+          leverage: { requested: 1, effective: 1, maxAllowed: null },
+          quality: 'full',
+          capturedAt: 1,
+        },
+      });
+      const exitPrices = [
+        ...Array<number>(10).fill(100.004),
+        ...Array<number>(10).fill(99.997),
+      ];
+      for (const [index, price] of exitPrices.entries()) {
+        await connector.placeOrder({
+          symbol: 'ETHUSDT',
+          qty: 1,
+          price: 100,
+          isLimit: false,
+          timestamp: index * 2 + 1,
+          direction: 'LONG',
+          signal: { signalId: `precision-${index}` } as any,
+        });
+        await connector.closePosition({
+          symbol: 'ETHUSDT',
+          price,
+          isLimit: false,
+          timestamp: index * 2 + 2,
+          direction: 'LONG',
+        });
+      }
+      const rows = await connector.drainMlResultsBatch();
+      const expected = exitPrices.map((price) => price - 100);
+      expect(rows.map((row) => row.tradeResult?.netProfit)).toEqual(expected);
+      expect(rows.map((row) => row.profit)).toEqual(expected);
+      for (const row of rows)
+        expect(row.profit).toBe(row.tradeResult?.netProfit);
+      const sum = rows.reduce((total, row) => total + row.profit, 0);
+      expect(sum).toBe(expected.reduce((total, pnl) => total + pnl, 0));
+      const result = await connector.getResult();
+      expect(result.stat.profit).toBe(round(sum));
+      if (fastMode) {
+        expect(result.stat).toEqual(
+          expect.objectContaining({
+            orders: 20,
+            wins: 10,
+            losses: 10,
+            netProfit: round(sum),
+          }),
+        );
+      } else {
+        expect(
+          result.inlinePositionLog?.map((position) => position.netProfit),
+        ).toEqual(expected);
+      }
+    },
+  );
+
+  it('keeps fast summary outcomes aligned with precise AI trade results', async () => {
     const connector = createTestConnector(baseConnector as any, {
       aiEnabled: true,
       fastMode: true,
@@ -1468,10 +1614,11 @@ describe('testConnector', () => {
 
     const exported = await connector.drainMlResultsBatch();
     expect(exported.map(({ tradeResult }) => tradeResult?.netProfit)).toEqual([
-      0, 0,
+      100.004 - 100,
+      100.004 - 100,
     ]);
     expect((await connector.getResult()).stat).toEqual(
-      expect.objectContaining({ orders: 2, wins: 0, losses: 2 }),
+      expect.objectContaining({ orders: 2, wins: 2, losses: 0 }),
     );
   });
 

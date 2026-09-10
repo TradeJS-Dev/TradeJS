@@ -120,6 +120,16 @@ JSON reports include timestamp-grouped cumulative `equity` arrays for the
 current-gate baseline and every variant. Use these checksum-bound arrays for
 final-composition charts instead of reconstructing curves by hand.
 
+JSON reports also include `approvedSignals` for the baseline and every variant
+at `run.minQuality`. Each entry records the source row `sequence`, `signalId`,
+timestamp, symbol, direction, and profit. The trace uses the same selector as
+the metrics, after the common half-open window, direction rule, placebo, and
+optional capacity limit. Use these identities to join approval decisions to
+the frozen export for loss localization and overlapping-position analysis.
+Do not reconstruct a second gate or infer individual approvals from equity
+points. The trace describes historical gate decisions, not submitted or filled
+runtime orders.
+
 For a deterministic timestamp-local portfolio limit, a JSON spec variant may
 also define `selection`. The tool first evaluates the gate, then keeps the
 highest-ranked rows independently inside each decision timestamp. Missing rank

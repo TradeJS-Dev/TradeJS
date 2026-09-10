@@ -22,6 +22,7 @@ type FeatureCollectionOptions = {
   includeGateContext?: boolean;
   featureProfile?: 'compact' | 'all';
   featurePolicy?: AiPocketFeaturePolicy;
+  excludeFeaturePattern?: RegExp;
   onFeatureExcluded?: (event: {
     path: string;
     classification: AiPocketExcludedFeatureClassification;
@@ -841,6 +842,7 @@ export const collectAiPocketFeatureSnapshot = ({
   includeGateContext = false,
   featureProfile = 'all',
   featurePolicy = 'all',
+  excludeFeaturePattern,
   onFeatureExcluded,
 }: {
   payload: AiPayload;
@@ -851,6 +853,20 @@ export const collectAiPocketFeatureSnapshot = ({
 } => {
   const features: AiPocketFeatureMap = {};
   const featureCoverage = resolveAiPocketFeatureCoverage(payload);
+  // Clone stateful expressions so repeated paths/rows cannot change matching.
+  const exclusion = excludeFeaturePattern
+    ? new RegExp(
+        excludeFeaturePattern.source,
+        excludeFeaturePattern.flags.replace(/[gy]/g, ''),
+      )
+    : undefined;
+  const isOperatorExcluded = (path: string) => {
+    if (!exclusion?.test(path)) {
+      return false;
+    }
+    onFeatureExcluded?.({ path, classification: 'operator-excluded' });
+    return true;
+  };
   const signal = payload.signal ?? {};
   const source = {
     signal: {
@@ -870,6 +886,9 @@ export const collectAiPocketFeatureSnapshot = ({
     segments: [],
     maxDepth: 8,
     shouldSkipPath: (segments) => {
+      if (isOperatorExcluded(segments.join('.'))) {
+        return true;
+      }
       const coverageFamily = classifyAiPocketCoverageFeaturePath(segments);
       if (
         featurePolicy === 'causal-stationary' &&
@@ -920,6 +939,11 @@ export const collectAiPocketFeatureSnapshot = ({
   }
   addSignalRiskDistanceFeatures({ features, signal });
   addDirectionalDerivedFeatures(features);
+  for (const key of Object.keys(features)) {
+    if (isOperatorExcluded(key)) {
+      delete features[key];
+    }
+  }
 
   return { features, featureCoverage };
 };

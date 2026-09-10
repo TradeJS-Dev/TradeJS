@@ -232,6 +232,9 @@ export const buildAiPocketMarkdownReport = ({
         ['include_gate_context', run.includeGateContext ? 'on' : 'off'],
         ['feature_profile', run.featureProfile ?? 'all'],
         ['feature_policy', run.featurePolicy ?? 'all'],
+        ...(run.excludeFeaturePattern
+          ? [['exclude_feature_pattern', run.excludeFeaturePattern]]
+          : []),
         ['coverage_mode', run.coverageMode ?? 'full'],
         ['cadence_mode', run.cadenceMode ?? 'fixed'],
         ['low_cadence', pocketSearch.stats.cadence.lowCadence ? 'yes' : 'no'],

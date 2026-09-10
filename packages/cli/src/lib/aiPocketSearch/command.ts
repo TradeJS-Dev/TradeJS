@@ -52,6 +52,7 @@ export const runAiPocketSearchCommand = async ({
     includeGateContext,
     featureProfile,
     featurePolicy,
+    excludeFeaturePattern,
     coverageMode,
     cadenceMode,
     jsonOutput,
@@ -135,6 +136,9 @@ export const runAiPocketSearchCommand = async ({
       includeGateContext,
       featureProfile,
       featurePolicy,
+      ...(excludeFeaturePattern
+        ? { excludeFeaturePattern: excludeFeaturePattern.source }
+        : {}),
       coverageMode,
       cadenceMode,
       coverageSearches: coverageSearches.map(

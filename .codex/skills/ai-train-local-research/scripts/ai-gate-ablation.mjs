@@ -4089,7 +4089,17 @@ export const buildAblationReport = ({
       : {}),
   };
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
+  const approvedSignalTrace = (selector) =>
+    selectRows(rows, selector).map((row) => ({
+      sequence: row.sequence ?? null,
+      signalId: row.signalId ?? null,
+      timestamp: row.timestamp,
+      symbol: row.symbol,
+      direction: row.direction,
+      profit: row.profit,
+    }));
   const baseline = {
+    approvedSignals: approvedSignalTrace(baselineSelector),
     equity: buildEquitySeries(
       rows,
       baselineSelector,
@@ -4152,6 +4162,7 @@ export const buildAblationReport = ({
       expression: variant.expression,
       selection: variant.selection ?? null,
       placebo: variant.placebo ?? null,
+      approvedSignals: approvedSignalTrace(candidateSelector),
       equity: buildEquitySeries(
         rows,
         candidateSelector,

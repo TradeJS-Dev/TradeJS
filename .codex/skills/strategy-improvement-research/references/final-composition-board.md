@@ -115,6 +115,16 @@ of the same SVG. Link or display both charts in the final answer and immutable
 research note. Store the complete board spec and summary in Project-owned
 evidence; paths alone do not replace the note's machine-readable metrics.
 
+For these research comparison charts, use continuous straight segments between
+the recorded equity samples by default, not staircase corners. This matches the
+preferred presentation without averaging returns or rounding away drawdowns.
+Keep the observed endpoints and extrema; do not use moving averages or splines
+that invent peaks or troughs. The connecting line is a visual interpolation,
+not a claim about account value between events or an intratrade mark-to-market
+path. Record `rendering.equityInterpolation = linear` in the chart summary.
+For presentation-only updates, render to a new output directory and retain the
+frozen reports, equity arrays, metrics, selections, and original chart files.
+
 ## Spec shape
 
 ```json

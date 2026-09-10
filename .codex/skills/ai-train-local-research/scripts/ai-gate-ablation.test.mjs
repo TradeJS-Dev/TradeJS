@@ -1016,6 +1016,60 @@ test('applies variant capacity before every report slice', () => {
   assert.equal(report.variants[0].periods.full.totalProfit, 5);
   assert.equal(report.variants[0].train.trades, 2);
   assert.deepEqual(report.variants[0].selection, variant.selection);
+  assert.deepEqual(
+    report.variants[0].approvedSignals.map((row) => row.sequence),
+    [1, 2],
+  );
+});
+
+test('traces the exact approved signals without replaying the gate', () => {
+  const start = Date.UTC(2026, 0, 1);
+  const rows = [4, 3, 5, 4].map((quality, sequence) => ({
+    timestamp: start + sequence * 900000,
+    signalId: `signal-${sequence}`,
+    sequence,
+    symbol: 'A',
+    direction: 'LONG',
+    directionMatches: sequence !== 2,
+    quality,
+    profit: sequence - 1,
+    variantMatches: [sequence === 1],
+  }));
+  const report = buildAblationReport({
+    rows,
+    variants: [parseVariant('replacement::replace@4::true')],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [7],
+    validationSplit: 0,
+    filePaths: ['fixture.jsonl'],
+    windowStart: start,
+    windowEnd: start + 3 * 900000,
+  });
+  assert.deepEqual(report.baseline.approvedSignals, [
+    {
+      sequence: 0,
+      signalId: 'signal-0',
+      timestamp: start,
+      symbol: 'A',
+      direction: 'LONG',
+      profit: -1,
+    },
+  ]);
+  assert.deepEqual(
+    report.variants[0].approvedSignals.map((row) => row.signalId),
+    ['signal-1'],
+  );
+  for (const composition of [report.baseline, ...report.variants]) {
+    assert.equal(
+      composition.approvedSignals.length,
+      composition.periods.full.trades,
+    );
+    assert.equal(
+      composition.approvedSignals.reduce((sum, row) => sum + row.profit, 0),
+      composition.periods.full.totalProfit,
+    );
+  }
 });
 
 test('uses common half-open comparison bounds for sparse gate exports', () => {
@@ -1068,6 +1122,8 @@ test('uses common half-open comparison bounds for sparse gate exports', () => {
   });
   assert.equal(empty.variants[0].periods.full.trades, 0);
   assert.equal(empty.variants[0].periods.full.totalProfit, 0);
+  assert.deepEqual(empty.baseline.approvedSignals, []);
+  assert.deepEqual(empty.variants[0].approvedSignals, []);
   const parsed = parseCliArgs([
     '--windowStart',
     String(start),

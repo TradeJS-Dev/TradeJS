@@ -551,23 +551,40 @@ const dashboardSvg = (board) => {
     const x = sx(dd);
     return `<line x1="${scatter.x}" x2="${scatter.x + scatter.width}" y1="${y}" y2="${y}" class="grid"/><text x="${scatter.x - 12}" y="${y + 5}" text-anchor="end" class="axis">${escapeXml(formatCompact(pnl))}</text><line x1="${x}" x2="${x}" y1="${scatter.y}" y2="${scatter.y + scatter.height}" class="grid faint"/><text x="${x}" y="${scatter.y + scatter.height + 28}" text-anchor="middle" class="axis">${escapeXml(formatCompact(dd))}</text>`;
   }).join('');
+  const pointGroups = new Map();
   const points = board.candidates
     .map((candidate, index) => {
       const x = sx(candidate.metrics.maxDrawdown);
       const y = sy(candidate.metrics.pnl);
       const selectedPoint = candidate.id === selected.id;
-      const labelY = y + 5;
+      const key = stableStringify([
+        candidate.metrics.maxDrawdown,
+        candidate.metrics.pnl,
+      ]);
+      const group = pointGroups.get(key) ?? [];
+      group.push({ candidate, index, x, y });
+      pointGroups.set(key, group);
+      return `${selectedPoint ? `<circle cx="${x}" cy="${y}" r="24" fill="${candidate.color}" opacity="0.18"/>` : ''}<circle data-scatter-point="${escapeXml(candidate.id)}" cx="${x}" cy="${y}" r="${selectedPoint ? 12 : 9}" fill="${candidate.color}" stroke="${selectedPoint ? '#7a321b' : '#ffffff'}" stroke-width="${selectedPoint ? 3 : 2}"/>`;
+    })
+    .join('');
+  const pointLabels = [...pointGroups.values()]
+    .map((group) => {
+      const { candidate, x, y } =
+        group.find((point) => point.candidate.id === selected.id) ?? group[0];
       const labelOnLeft = x > scatter.x + scatter.width * 0.66;
-      const labelX = x + (labelOnLeft ? -14 : 14);
-      const anchor = labelOnLeft ? 'end' : 'start';
-      return `${selectedPoint ? `<circle cx="${x}" cy="${y}" r="24" fill="${candidate.color}" opacity="0.18"/>` : ''}<circle cx="${x}" cy="${y}" r="${selectedPoint ? 12 : 9}" fill="${candidate.color}" stroke="${selectedPoint ? '#7a321b' : '#ffffff'}" stroke-width="${selectedPoint ? 3 : 2}"/><text x="${labelX}" y="${labelY}" text-anchor="${anchor}" class="pointLabel" fill="${selectedPoint ? candidate.color : '#24302a'}">${index === 0 ? '0' : String.fromCharCode(64 + index)}</text>`;
+      const label = group
+        .map(({ index }) =>
+          index === 0 ? '0' : String.fromCharCode(64 + index),
+        )
+        .join(' / ');
+      return `<text data-point-label-ids="${escapeXml(group.map(({ candidate }) => candidate.id).join(','))}" x="${x + (labelOnLeft ? -14 : 14)}" y="${y + 5}" text-anchor="${labelOnLeft ? 'end' : 'start'}" class="pointLabel" fill="${candidate.id === selected.id ? candidate.color : '#24302a'}">${label}</text>`;
     })
     .join('');
 
   const limitations = board.limitations.length
     ? `Limitations: ${board.limitations.join(' · ')}`
     : 'Limitations: none recorded';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition dashboard"><style>.bg{fill:#f5f4ef}.panel{fill:#fff;stroke:#ddd9d0;stroke-width:2}.title{font:500 42px Arial,sans-serif;fill:#17211d}.subtitle{font:22px Arial,sans-serif;fill:#38433e}.cardLabel{font:21px Arial,sans-serif;fill:#303a35}.cardValue{font:500 44px Arial,sans-serif}.cardDetail{font:18px Arial,sans-serif;fill:#303a35}.section{font:500 27px Arial,sans-serif;fill:#17211d}.muted{font:18px Arial,sans-serif;fill:#45514a}.axis{font:15px Arial,sans-serif;fill:#58645e}.grid{stroke:#d9ddd9;stroke-width:1.5}.faint{opacity:.5}.barValue{font:16px Arial,sans-serif;fill:#24302a}.windowLabel{font:20px Arial,sans-serif;fill:#24302a}.windowCount{font:15px Arial,sans-serif;fill:#45514a}.pointLabel{font:16px Arial,sans-serif}.footer{font:18px Arial,sans-serif;fill:#6b4b1f}</style><rect width="100%" height="100%" class="bg"/><text x="72" y="70" class="title">${escapeXml(board.strategy)} · ${escapeXml(selected.label)}</text><text x="72" y="108" class="subtitle">${escapeXml(board.subtitle)}</text>${cardsMarkup}<rect x="72" y="330" width="1040" height="650" rx="20" class="panel"/><text x="100" y="380" class="section">PnL in terminal windows</text>${terminalLegend}<rect x="1145" y="330" width="585" height="650" rx="20" class="panel"/><text x="1180" y="380" class="section">Final compositions: PnL ↔ drawdown</text><text x="1180" y="412" class="muted">Higher and farther left is preferable</text><g>${barGrid}<line x1="${bar.x}" x2="${bar.x + bar.width}" y1="${zeroY}" y2="${zeroY}" stroke="#8f9994" stroke-width="1.5"/>${bars}</g><g>${scatterGrid}${points}<text x="${scatter.x + scatter.width / 2}" y="${scatter.y + scatter.height + 65}" text-anchor="middle" class="muted">MaxDD (trade stream)</text></g><g><rect x="72" y="1020" width="1658" height="112" rx="16" fill="#fff5dd" stroke="#efd79c" stroke-width="2"/>${svgTextLines({ lines: [truncate(limitations, 155), `Risk normalization: MAX_LOSS_VALUE=${board.normalization.maxLossValue} · ${board.normalization.pnlUnit} · ${board.researchId}`], x: 98, y: 1062, lineHeight: 30, className: 'footer' })}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition dashboard"><style>.bg{fill:#f5f4ef}.panel{fill:#fff;stroke:#ddd9d0;stroke-width:2}.title{font:500 42px Arial,sans-serif;fill:#17211d}.subtitle{font:22px Arial,sans-serif;fill:#38433e}.cardLabel{font:21px Arial,sans-serif;fill:#303a35}.cardValue{font:500 44px Arial,sans-serif}.cardDetail{font:18px Arial,sans-serif;fill:#303a35}.section{font:500 27px Arial,sans-serif;fill:#17211d}.muted{font:18px Arial,sans-serif;fill:#45514a}.axis{font:15px Arial,sans-serif;fill:#58645e}.grid{stroke:#d9ddd9;stroke-width:1.5}.faint{opacity:.5}.barValue{font:16px Arial,sans-serif;fill:#24302a}.windowLabel{font:20px Arial,sans-serif;fill:#24302a}.windowCount{font:15px Arial,sans-serif;fill:#45514a}.pointLabel{font:16px Arial,sans-serif}.footer{font:18px Arial,sans-serif;fill:#6b4b1f}</style><rect width="100%" height="100%" class="bg"/><text x="72" y="70" class="title">${escapeXml(board.strategy)} · ${escapeXml(selected.label)}</text><text x="72" y="108" class="subtitle">${escapeXml(board.subtitle)}</text>${cardsMarkup}<rect x="72" y="330" width="1040" height="650" rx="20" class="panel"/><text x="100" y="380" class="section">PnL in terminal windows</text>${terminalLegend}<rect x="1145" y="330" width="585" height="650" rx="20" class="panel"/><text x="1180" y="380" class="section">Final compositions: PnL ↔ drawdown</text><text x="1180" y="412" class="muted">Higher and farther left is preferable</text><g>${barGrid}<line x1="${bar.x}" x2="${bar.x + bar.width}" y1="${zeroY}" y2="${zeroY}" stroke="#8f9994" stroke-width="1.5"/>${bars}</g><g>${scatterGrid}${points}${pointLabels}<text x="${scatter.x + scatter.width / 2}" y="${scatter.y + scatter.height + 65}" text-anchor="middle" class="muted">MaxDD (trade stream)</text></g><g><rect x="72" y="1020" width="1658" height="112" rx="16" fill="#fff5dd" stroke="#efd79c" stroke-width="2"/>${svgTextLines({ lines: [truncate(limitations, 155), `Risk normalization: MAX_LOSS_VALUE=${board.normalization.maxLossValue} · ${board.normalization.pnlUnit} · ${board.researchId}`], x: 98, y: 1062, lineHeight: 30, className: 'footer' })}</g></svg>`;
 };
 
 const downsample = (points, maxPoints = 1200) => {
@@ -598,13 +615,17 @@ const downsample = (points, maxPoints = 1200) => {
 
 const equitySvg = (board) => {
   const width = 1800;
-  const height = 1200;
   const left = 110;
   const right = 70;
   const top = 150;
-  const bottom = 300;
+  const columns = 3;
+  const legendRows = Math.ceil(board.candidates.length / columns);
+  const legendTop = 110;
+  const legendRowHeight = 58;
+  const bottom = Math.max(300, legendTop + legendRows * legendRowHeight + 32);
+  const plotHeight = 750;
+  const height = top + plotHeight + bottom;
   const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
   const minTime = board.comparisonWindow.start;
   const maxTime = board.comparisonWindow.end - 1;
   const values = board.candidates.flatMap(({ equity }) =>
@@ -648,9 +669,6 @@ const equitySvg = (board) => {
   const curves = board.candidates
     .map((candidate) => {
       const points = downsample(candidate.equity)
-        .flatMap((point, index, series) =>
-          index === 0 ? [point] : [[point[0], series[index - 1][1]], point],
-        )
         .map(
           ([timestamp, pnl]) =>
             `${x(timestamp).toFixed(1)},${y(pnl).toFixed(1)}`,
@@ -660,15 +678,14 @@ const equitySvg = (board) => {
       return `<polyline points="${points}" fill="none" stroke="${candidate.color}" stroke-width="${selected ? 4.5 : 3}" opacity="${selected ? 1 : 0.82}" stroke-linejoin="round" stroke-linecap="round"/>`;
     })
     .join('');
-  const columns = 3;
   const legendWidth = (width - left - right) / columns;
   const legend = board.candidates
     .map((candidate, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
       const lx = left + column * legendWidth;
-      const ly = height - bottom + 110 + row * 58;
-      return `<g transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${index === 0 ? '0' : String.fromCharCode(64 + index)} · ${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
+      const ly = height - bottom + legendTop + row * legendRowHeight;
+      return `<g data-equity-legend="${escapeXml(candidate.id)}" transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${index === 0 ? '0' : String.fromCharCode(64 + index)} · ${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
     })
     .join('');
   const selected = board.candidates.find(({ id }) => id === board.selectedId);
@@ -768,6 +785,12 @@ export const generateFinalCompositionBoard = async ({
     terminalComparisonIds: board.terminalComparisonIds,
     comparisonWindow: board.comparisonWindow,
     normalization: board.normalization,
+    rendering: {
+      equityInterpolation: 'linear',
+      meaning:
+        'Lines connect event samples; not an intratrade or mark-to-market path.',
+      metricInputsChanged: false,
+    },
     limitations: board.limitations,
     candidates: board.candidates.map((candidate) => ({
       id: candidate.id,

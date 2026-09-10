@@ -47,10 +47,9 @@ export type AiPocketFeaturePathClassification =
   | 'derived-policy'
   | 'raw-nonstationary';
 
-export type AiPocketExcludedFeatureClassification = Exclude<
-  AiPocketFeaturePathClassification,
-  'eligible'
->;
+export type AiPocketExcludedFeatureClassification =
+  | Exclude<AiPocketFeaturePathClassification, 'eligible'>
+  | 'operator-excluded';
 
 export type AiPocketSearchRow = AiTrainEvaluation & {
   signalId?: string;
@@ -252,6 +251,7 @@ export type AiPocketSearchRunReport = {
   includeGateContext: boolean;
   featureProfile?: 'compact' | 'all';
   featurePolicy?: AiPocketFeaturePolicy;
+  excludeFeaturePattern?: string;
   coverageMode?: 'auto' | 'full';
   cadenceMode?: AiPocketCadenceMode;
   coverageSearches?: Array<{

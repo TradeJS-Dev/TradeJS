@@ -634,6 +634,14 @@ export const presentAiPocketSearchResult = ({
         ],
         ['feature_profile', chalk.magenta(featureProfile)],
         ['feature_policy', chalk.magenta(featurePolicy)],
+        ...(run.excludeFeaturePattern
+          ? [
+              [
+                'exclude_feature_pattern',
+                chalk.magenta(run.excludeFeaturePattern),
+              ],
+            ]
+          : []),
         ['coverage_mode', chalk.magenta(coverageMode)],
         [
           'allow_risk_regression',

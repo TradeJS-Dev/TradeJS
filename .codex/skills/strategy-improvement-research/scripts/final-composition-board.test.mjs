@@ -183,16 +183,81 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
     const points = coordinates
       .split(' ')
       .map((point) => point.split(',').map(Number));
-    for (let index = 1; index < points.length; index += 1) {
-      assert.ok(
-        points[index][0] === points[index - 1][0] ||
-          points[index][1] === points[index - 1][1],
-        'Cumulative PnL must not interpolate gains between trade events',
-      );
-    }
+    assert.equal(points.length, 2, 'Do not insert synthetic step corners');
+    assert.ok(points[1][0] > points[0][0]);
+    assert.ok(points[1][1] < points[0][1], 'Join event samples directly');
   }
+  assert.equal(summary.rendering.equityInterpolation, 'linear');
+  assert.equal(summary.rendering.metricInputsChanged, false);
   assert.match(equity, /Nov 2023/u);
   assert.match(equity, /Mar 2024/u);
+});
+
+test('linear presentation preserves flat samples, peaks, troughs and frozen metrics', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-final-board-'));
+  const contents = 'immutable-evidence\n';
+  const spec = makeSpec(hash(contents));
+  spec.candidates[0].equity = [
+    [1_700_000_000_000, 0],
+    [1_701_000_000_000, 0],
+    [1_703_000_000_000, 180],
+    [1_706_000_000_000, -20],
+    [1_710_000_000_000, 100],
+  ];
+  spec.candidates[0].metrics.maxDrawdown = 200;
+  const frozenSpec = structuredClone(spec);
+  for (const candidate of spec.candidates) {
+    for (const key of [
+      'coreResult',
+      'coreExport',
+      'gateReport',
+      'gateAuthority',
+    ]) {
+      const reference = candidate.composition[key];
+      if (reference) await writeFile(path.join(root, reference.path), contents);
+    }
+  }
+  const { summary } = await generateFinalCompositionBoard({
+    spec,
+    artifactRoot: root,
+    outDir: path.join(root, 'charts'),
+    png: false,
+  });
+  const svg = await readFile(
+    path.join(root, 'charts', 'final-composition-equity.svg'),
+    'utf8',
+  );
+  const points = /<polyline points="([^"]+)"/u
+    .exec(svg)[1]
+    .split(' ')
+    .map((point) => point.split(',').map(Number));
+  assert.equal(points.length, frozenSpec.candidates[0].equity.length);
+  assert.equal(
+    points[0][1],
+    points[1][1],
+    'A flat observed interval stays flat',
+  );
+  assert.equal(
+    Math.min(...points.map((p) => p[1])),
+    points[2][1],
+    'Keep the observed peak',
+  );
+  assert.equal(
+    Math.max(...points.map((p) => p[1])),
+    points[3][1],
+    'Keep the observed trough',
+  );
+  for (let i = 1; i < points.length; i++)
+    assert.ok(points[i][0] > points[i - 1][0]);
+  assert.deepEqual(spec, frozenSpec, 'Rendering must not mutate evidence');
+  assert.deepEqual(
+    summary.candidates.map((c) => c.metrics),
+    spec.candidates.map((c) => c.metrics),
+  );
+  assert.deepEqual(
+    summary.candidates.map((c) => c.terminal),
+    spec.candidates.map((c) => c.terminal),
+  );
 });
 
 test('renders an additional terminal comparison without changing selectedId', async () => {
@@ -238,3 +303,103 @@ test('renders an additional terminal comparison without changing selectedId', as
   assert.match(dashboard, /data-terminal-series="transition"/u);
   assert.match(dashboard, /Transition breakout \+ own gate/u);
 });
+
+for (const candidateCount of [14, 20]) {
+  test(`keeps every legend row visible for ${candidateCount} compositions and groups coincident point labels`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-final-board-'));
+    const contents = 'immutable-evidence\n';
+    const artifactSha = hash(contents);
+    const spec = makeSpec(artifactSha);
+    for (let index = 2; index < candidateCount; index += 1) {
+      spec.candidates.push(
+        makeCandidate({
+          id: `candidate-${index}`,
+          role: 'candidate',
+          label: `Composition ${index}`,
+          color: '#315f7d',
+          pnl: index < 4 ? 160 : index * 30,
+          trades: 28,
+          drawdown: index < 4 ? 26 : index * 7,
+          artifactSha,
+        }),
+      );
+    }
+    for (const candidate of spec.candidates) {
+      for (const artifact of [
+        'coreResult',
+        'coreExport',
+        'gateReport',
+        'gateAuthority',
+      ]) {
+        const reference = candidate.composition[artifact];
+        if (reference)
+          await writeFile(path.join(root, reference.path), contents);
+      }
+    }
+    const { summary } = await generateFinalCompositionBoard({
+      spec,
+      artifactRoot: root,
+      outDir: path.join(root, 'charts'),
+    });
+    assert.deepEqual(
+      summary.candidates.map(({ metrics }) => metrics),
+      spec.candidates.map(({ metrics }) => metrics),
+    );
+    const equity = await readFile(
+      path.join(root, 'charts', 'final-composition-equity.svg'),
+      'utf8',
+    );
+    const height = Number(/<svg[^>]* height="(\d+)"/u.exec(equity)[1]);
+    const legends = [
+      ...equity.matchAll(
+        /data-equity-legend="([^"]+)" transform="translate\([^,]+,([\d.]+)\)"/gu,
+      ),
+    ];
+    assert.equal(legends.length, candidateCount);
+    for (const [, id, top] of legends) {
+      assert.ok(
+        Number(top) + 42 < height - 24,
+        `${id}: legend label and metrics must fit with bottom margin`,
+      );
+    }
+    const { default: sharp } = await import('sharp');
+    const image = sharp(
+      await readFile(path.join(root, 'charts', 'final-composition-equity.png')),
+    );
+    assert.equal((await image.metadata()).height, height);
+    const lastRowTop = Number(legends.at(-1)[2]);
+    const pixels = await image
+      .extract({ left: 110, top: lastRowTop, width: 500, height: 42 })
+      .stats();
+    assert.ok(
+      pixels.channels.some(({ min }) => min < 200),
+      'Last legend row must be painted inside the PNG',
+    );
+    const dashboard = await readFile(
+      path.join(root, 'charts', 'final-composition-dashboard.svg'),
+      'utf8',
+    );
+    const points = [
+      ...dashboard.matchAll(
+        /data-scatter-point="([^"]+)" cx="([^"]+)" cy="([^"]+)"/gu,
+      ),
+    ];
+    assert.equal(points.length, candidateCount);
+    const coincident = points.filter(([, id]) =>
+      ['candidate', 'candidate-2', 'candidate-3'].includes(id),
+    );
+    assert.equal(
+      new Set(coincident.map(([, , x, y]) => `${x},${y}`)).size,
+      1,
+      'Coincident data points must not be jittered',
+    );
+    assert.match(
+      dashboard,
+      /data-point-label-ids="candidate,candidate-2,candidate-3"[^>]*>A \/ B \/ C<\/text>/u,
+    );
+    assert.equal(
+      [...dashboard.matchAll(/data-point-label-ids=/gu)].length,
+      candidateCount - 2,
+    );
+  });
+}

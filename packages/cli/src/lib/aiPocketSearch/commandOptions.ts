@@ -51,6 +51,7 @@ export type AiPocketSearchCommandOptions = {
   includeGateContext: boolean;
   featureProfile: 'compact' | 'all';
   featurePolicy: AiPocketFeaturePolicy;
+  excludeFeaturePattern?: RegExp;
   coverageMode: 'auto' | 'full';
   cadenceMode: AiPocketCadenceMode;
   jsonOutput: boolean;
@@ -107,6 +108,18 @@ const normalizeFeaturePolicy = (value: unknown): AiPocketFeaturePolicy => {
     );
   }
   return normalized as AiPocketFeaturePolicy;
+};
+
+const normalizeExcludeFeaturePattern = (value: unknown): RegExp | undefined => {
+  const pattern = String(value ?? '');
+  if (!pattern) {
+    return undefined;
+  }
+  try {
+    return new RegExp(pattern);
+  } catch {
+    throw new Error('Invalid --excludeFeaturePattern regular expression.');
+  }
 };
 
 const normalizeCoverageMode = (value: unknown): 'auto' | 'full' => {
@@ -323,6 +336,9 @@ export const resolveAiPocketSearchCommandOptions = ({
     includeGateContext: Boolean(flags.includeGateContext),
     featureProfile: normalizeFeatureProfile(flags.featureProfile),
     featurePolicy: normalizeFeaturePolicy(flags.featurePolicy),
+    excludeFeaturePattern: normalizeExcludeFeaturePattern(
+      flags.excludeFeaturePattern,
+    ),
     coverageMode: normalizeCoverageMode(flags.coverageMode),
     cadenceMode: normalizeCadenceMode(flags.cadenceMode),
     jsonOutput: Boolean(flags.json),
