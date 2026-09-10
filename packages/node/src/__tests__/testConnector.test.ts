@@ -1399,6 +1399,11 @@ describe('testConnector', () => {
       isLimit: false,
       timestamp: 2,
       direction: 'LONG',
+      signal: {
+        additionalIndicators: {
+          exit: { code: 'TEST_CHANNEL_BREAK_EXIT' },
+        },
+      } as any,
     });
 
     const expectedOpenProfit = openProfit(100, 'LONG');
@@ -1417,6 +1422,7 @@ describe('testConnector', () => {
         tradeResult: expect.objectContaining({
           signalId: 'sig-fast-ai',
           exitReason: 'exit',
+          exitCode: 'TEST_CHANNEL_BREAK_EXIT',
           netProfit: expect.closeTo(
             expectedOpenProfit + expectedCloseProfit,
             12,

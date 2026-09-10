@@ -818,6 +818,7 @@ describe('testing backtest flow', () => {
           exitTimestamp: 1_000_200,
           netProfit: 4,
           exitReason: 'take_profit',
+          exitCode: 'TEST_CONFIRMED_EXIT',
         },
       },
     ]);
@@ -849,6 +850,17 @@ describe('testing backtest flow', () => {
       },
       skipCounts: { NO_PATTERN: 1 },
     });
+    expect(
+      mockAppendCoreResearchTraceEvent.mock.calls.find(
+        ([call]) => (call as any).event.event === 'position_exited',
+      )?.[0],
+    ).toEqual(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          exitCode: 'TEST_CONFIRMED_EXIT',
+        }),
+      }),
+    );
   });
 
   it('snapshots AI payload source before later strategy mutations', async () => {

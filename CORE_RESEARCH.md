@@ -175,9 +175,12 @@ variant fields; missing stages remain `missing` in the evidence matrix.
 
 `yarn backtest ... --researchTrace` writes compact `signal_emitted` or
 `entry_rejected`, `entry_executed`, `position_exited`, and one per-test
-`skip_summary`. It does not log every candle. Completed AI rows also carry a
-deterministic setup identity. Trace summaries remain in Redis checkpoint rows
-even when trace JSONL is later removed.
+`skip_summary`. Explicit strategy exits preserve their decision code on both
+the completed trade and its `position_exited` event, while simulator take-profit
+and stop-loss exits leave that optional field absent. It does not log every
+candle. Completed AI rows also carry a deterministic setup identity. Trace
+summaries remain in Redis checkpoint rows even when trace JSONL is later
+removed.
 
 For release iterations, trace capture is mandatory: the next variants must cite
 the observed signal/rejection/execution/exit or skip-summary transition they

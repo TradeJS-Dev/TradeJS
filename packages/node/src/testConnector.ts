@@ -277,6 +277,7 @@ export const createTestConnector: TestConnectorCreator = (
     direction,
     timestamp,
     reason,
+    exitCode,
     requestedPrice,
     executionPrice,
     qty,
@@ -288,6 +289,7 @@ export const createTestConnector: TestConnectorCreator = (
     direction: 'LONG' | 'SHORT';
     timestamp: number;
     reason: TestTradeExitReason;
+    exitCode?: string;
     requestedPrice: number;
     executionPrice: number;
     qty: number;
@@ -348,6 +350,7 @@ export const createTestConnector: TestConnectorCreator = (
       closedQty: previousClosedQty + qty,
       exitTimestamp: timestamp,
       exitReason: reason,
+      ...(exitCode ? { exitCode } : {}),
       requestedExitPrice,
       exitPrice,
       grossProfit: tradeResult.grossProfit + grossProfit,
@@ -373,6 +376,7 @@ export const createTestConnector: TestConnectorCreator = (
   const recordExitResult = ({
     timestamp,
     reason,
+    exitCode,
     requestedPrice,
     executionPrice,
     qty,
@@ -382,6 +386,7 @@ export const createTestConnector: TestConnectorCreator = (
   }: {
     timestamp: number;
     reason: TestTradeExitReason;
+    exitCode?: string;
     requestedPrice: number;
     executionPrice: number;
     qty: number;
@@ -399,6 +404,7 @@ export const createTestConnector: TestConnectorCreator = (
         direction: currentPosition.direction,
         timestamp,
         reason,
+        exitCode,
         requestedPrice,
         executionPrice,
         qty,
@@ -445,6 +451,7 @@ export const createTestConnector: TestConnectorCreator = (
         direction: currentPosition.direction,
         timestamp,
         reason,
+        exitCode,
         requestedPrice,
         executionPrice,
         qty: legExitQty,
@@ -1302,6 +1309,10 @@ export const createTestConnector: TestConnectorCreator = (
       recordExitResult({
         timestamp: order.timestamp,
         reason: 'exit',
+        exitCode:
+          typeof order.signal?.additionalIndicators?.exit?.code === 'string'
+            ? order.signal.additionalIndicators.exit.code
+            : undefined,
         requestedPrice: order.price,
         executionPrice,
         qty: currentPosition.qty,

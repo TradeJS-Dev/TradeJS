@@ -262,6 +262,7 @@ export type CoreResearchTraceEvent =
       backtestTestKey?: string;
       netProfit: number;
       exitReason: TestTradeExitReason;
+      exitCode?: string;
     }
   | {
       schema: 'tradejs-core-research-trace/v1';
@@ -356,6 +357,8 @@ export interface TestTradeResult {
   entryTimestamp: number;
   exitTimestamp: number;
   exitReason: TestTradeExitReason;
+  /** Strategy decision code for explicit exits; absent for simulator TP/SL exits. */
+  exitCode?: string;
   requestedEntryPrice: number;
   entryPrice: number;
   requestedExitPrice: number | null;
