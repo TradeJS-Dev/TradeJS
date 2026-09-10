@@ -819,7 +819,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
         tpSize: isFullMode ? undefined : tpSizeStr,
         tpslMode: isFullMode ? 'Full' : 'Partial',
         takeProfit: tpPriceNorm.priceStr,
-        tpTriggerBy: 'MarkPrice',
+        tpTriggerBy: 'LastPrice',
         tpOrderType: 'Market',
         positionIdx: 0,
       });
@@ -927,6 +927,103 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
     }
 
     return isTradingStopAccepted(slRes);
+  };
+
+  const setPositionProtection = async ({
+    symbol,
+    direction,
+    qty,
+    takeProfits,
+    stopLossPrice,
+  }: {
+    symbol: string;
+    direction: Direction;
+    qty?: number;
+    takeProfits: Tp[];
+    stopLossPrice: number | null;
+  }) => {
+    const hasFullTakeProfit =
+      takeProfits.length === 1 && takeProfits[0]?.rate === 1;
+    const hasStopLoss =
+      typeof stopLossPrice === 'number' && Number.isFinite(stopLossPrice);
+
+    if (hasFullTakeProfit && hasStopLoss) {
+      const client = await getPrivateClient();
+      const marketDataClient = await getPublicClient();
+
+      if (!client || !marketDataClient) {
+        return false;
+      }
+
+      const meta = await getSymbolMeta(marketDataClient, symbol);
+      const isLong = direction === 'LONG';
+      const takeProfit = normalizePrice(
+        takeProfits[0].price,
+        isLong ? 'TP_LONG' : 'TP_SHORT',
+        meta,
+      );
+      const stopLoss = normalizePrice(
+        stopLossPrice,
+        isLong ? 'SL_LONG' : 'SL_SHORT',
+        meta,
+      );
+      const protectionRes = await client.setTradingStop({
+        category: BYBIT_CATEGORY,
+        symbol,
+        tpslMode: 'Full',
+        takeProfit: takeProfit.priceStr,
+        stopLoss: stopLoss.priceStr,
+        tpTriggerBy: 'LastPrice',
+        slTriggerBy: 'LastPrice',
+        tpOrderType: 'Market',
+        slOrderType: 'Market',
+        positionIdx: 0,
+      });
+
+      if (isTradingStopNotModified(protectionRes)) {
+        logger.log(
+          'debug',
+          'position protection unchanged: %s %s takeProfit=%s stopLoss=%s',
+          symbol,
+          direction,
+          takeProfit.priceStr,
+          stopLoss.priceStr,
+        );
+      } else if (protectionRes.retCode === 0) {
+        logger.log(
+          'info',
+          'position protection updated: %s %s takeProfit=%s stopLoss=%s',
+          symbol,
+          direction,
+          takeProfit.priceStr,
+          stopLoss.priceStr,
+        );
+      } else {
+        logger.log(
+          'error',
+          'position protection failed: %s %s takeProfit=%s stopLoss=%s %s',
+          symbol,
+          direction,
+          takeProfit.priceStr,
+          stopLoss.priceStr,
+          toJson(protectionRes, true),
+        );
+      }
+
+      return isTradingStopAccepted(protectionRes);
+    }
+
+    const takeProfitsOk = await setTakeProfits({
+      symbol,
+      direction,
+      qty,
+      takeProfits,
+    });
+    if (!takeProfitsOk) {
+      return false;
+    }
+
+    return setStopLoss({ symbol, direction, stopLossPrice });
   };
 
   /** -------------------- public API -------------------- */
@@ -1438,6 +1535,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       invalidatePositionSnapshot(symbol);
       return true;
     },
+
+    setPositionProtection,
 
     setTakeProfits,
 

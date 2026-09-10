@@ -404,6 +404,22 @@ const applyProtectiveOrders = async ({
   takeProfits: Tp[];
   stopLossPrice: number | null;
 }) => {
+  if (connector.setPositionProtection) {
+    const protectionOk = await connector.setPositionProtection({
+      symbol,
+      direction,
+      qty,
+      takeProfits,
+      stopLossPrice,
+    });
+
+    if (!protectionOk) {
+      throw new Error('SET_POSITION_PROTECTION_FAILED');
+    }
+
+    return;
+  }
+
   if (Array.isArray(takeProfits) && takeProfits.length > 0) {
     const tpOk = await connector.setTakeProfits({
       symbol,

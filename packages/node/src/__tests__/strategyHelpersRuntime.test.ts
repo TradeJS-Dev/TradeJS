@@ -78,6 +78,7 @@ import {
   enrichSignalWithMl,
   enrichSignalWithMlAi,
   executeEntryOrder,
+  updatePositionProtection,
 } from '../strategyHelpers/runtime';
 
 describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
@@ -784,5 +785,34 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     });
 
     expect(mockRecordRuntimeTradeOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe('strategyHelpers/runtime position protection', () => {
+  it('uses the connector atomic protection interface when available', async () => {
+    const connector = {
+      setPositionProtection: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+    } as any;
+
+    await updatePositionProtection({
+      connector,
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 2,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+    });
+
+    expect(connector.setPositionProtection).toHaveBeenCalledWith({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 2,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+    });
+    expect(connector.setTakeProfits).not.toHaveBeenCalled();
+    expect(connector.setStopLoss).not.toHaveBeenCalled();
   });
 });

@@ -1365,6 +1365,113 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('sets full-position TP and SL atomically using last price triggers', async () => {
+    const client = {
+      setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.setPositionProtection?.({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      takeProfits: [{ price: 120, rate: 1 }],
+      stopLossPrice: 95,
+    });
+
+    expect(ok).toBe(true);
+    expect(client.setTradingStop).toHaveBeenCalledTimes(1);
+    expect(client.setTradingStop).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      tpslMode: 'Full',
+      takeProfit: '120.0',
+      stopLoss: '95.0',
+      tpTriggerBy: 'LastPrice',
+      slTriggerBy: 'LastPrice',
+      tpOrderType: 'Market',
+      slOrderType: 'Market',
+      positionIdx: 0,
+    });
+  });
+
+  it('preserves stepped partial take profits and uses last price triggers', async () => {
+    const client = {
+      setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.setPositionProtection?.({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 2,
+      takeProfits: [
+        { price: 110, rate: 0.25 },
+        { price: 120, rate: 0.75 },
+      ],
+      stopLossPrice: 95,
+    });
+
+    expect(ok).toBe(true);
+    expect(client.setTradingStop).toHaveBeenCalledTimes(3);
+    expect(client.setTradingStop).toHaveBeenNthCalledWith(1, {
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      tpSize: '0.500',
+      tpslMode: 'Partial',
+      takeProfit: '110.0',
+      tpTriggerBy: 'LastPrice',
+      tpOrderType: 'Market',
+      positionIdx: 0,
+    });
+    expect(client.setTradingStop).toHaveBeenNthCalledWith(2, {
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      tpSize: '1.500',
+      tpslMode: 'Partial',
+      takeProfit: '120.0',
+      tpTriggerBy: 'LastPrice',
+      tpOrderType: 'Market',
+      positionIdx: 0,
+    });
+    expect(client.setTradingStop).toHaveBeenNthCalledWith(3, {
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      tpslMode: 'Full',
+      stopLoss: '95.0',
+      slTriggerBy: 'LastPrice',
+      positionIdx: 0,
+    });
+  });
+
   it('skips TP when computed TP size is below min order qty', async () => {
     const client = {
       setTradingStop: jest.fn(),

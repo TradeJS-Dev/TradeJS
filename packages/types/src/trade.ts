@@ -585,6 +585,13 @@ type SetStopLoss = (params: {
   direction: Direction;
   stopLossPrice: Sl;
 }) => Promise<boolean>;
+type SetPositionProtection = (params: {
+  symbol: string;
+  direction: Direction;
+  qty?: number;
+  takeProfits: Tp[];
+  stopLossPrice: Sl;
+}) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = (query?: TickerQuery) => Promise<Ticker[]>;
 export type ListInstruments = (
@@ -619,6 +626,7 @@ export interface Connector {
   getClosedPnl?: GetClosedPnl;
   getEntryExecutions?: GetEntryExecutions;
   placeOrder: PlaceOrder;
+  setPositionProtection?: SetPositionProtection;
   setTakeProfits: SetTakeProfits;
   setStopLoss: SetStopLoss;
   closePosition: ClosePosition;
