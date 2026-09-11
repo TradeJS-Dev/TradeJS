@@ -14,6 +14,8 @@ import {
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
 import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
+import { createStrategyAPI } from '@tradejs/core/strategies';
+import { handleExitDecision } from '../strategy/runtimeExecution';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -1040,32 +1042,32 @@ describe('testConnector', () => {
     const expectedCloseFee = fee(expectedExitPrice);
     const expectedNetProfit = expectedOpenProfit + expectedExitProfit;
 
-    expect(await connector.drainMlResultsBatch()).toEqual([
-      {
+    const [closedSignal] = await connector.drainMlResultsBatch();
+    expect(closedSignal).toEqual({
+      signalId: 'sig-stop',
+      profit: expect.closeTo(expectedNetProfit, 12),
+      tradeResult: expect.objectContaining({
         signalId: 'sig-stop',
-        profit: expect.closeTo(expectedNetProfit, 12),
-        tradeResult: expect.objectContaining({
-          signalId: 'sig-stop',
-          direction: 'LONG',
-          exitReason: 'stop_loss',
-          requestedEntryPrice: 100,
-          entryPrice: expectedEntryPrice,
-          requestedExitPrice: 95,
-          exitPrice: expectedExitPrice,
-          grossProfit: expect.closeTo(expectedGrossProfit, 12),
-          netProfit: expect.closeTo(expectedNetProfit, 12),
-          openFee: expect.closeTo(expectedOpenFee, 12),
-          closeFee: expect.closeTo(expectedCloseFee, 12),
-          totalFee: expect.closeTo(expectedOpenFee + expectedCloseFee, 12),
-          entrySlippageCost: expect.closeTo(expectedEntryPrice - 100, 12),
-          exitSlippageCost: expect.closeTo(95 - expectedExitPrice, 12),
-          totalSlippageCost: expect.closeTo(
-            expectedEntryPrice - 100 + (95 - expectedExitPrice),
-            12,
-          ),
-        }),
-      },
-    ]);
+        direction: 'LONG',
+        exitReason: 'stop_loss',
+        requestedEntryPrice: 100,
+        entryPrice: expectedEntryPrice,
+        requestedExitPrice: 95,
+        exitPrice: expectedExitPrice,
+        grossProfit: expect.closeTo(expectedGrossProfit, 12),
+        netProfit: expect.closeTo(expectedNetProfit, 12),
+        openFee: expect.closeTo(expectedOpenFee, 12),
+        closeFee: expect.closeTo(expectedCloseFee, 12),
+        totalFee: expect.closeTo(expectedOpenFee + expectedCloseFee, 12),
+        entrySlippageCost: expect.closeTo(expectedEntryPrice - 100, 12),
+        exitSlippageCost: expect.closeTo(95 - expectedExitPrice, 12),
+        totalSlippageCost: expect.closeTo(
+          expectedEntryPrice - 100 + (95 - expectedExitPrice),
+          12,
+        ),
+      }),
+    });
+    expect(closedSignal.tradeResult).not.toHaveProperty('exitCode');
     expect(await connector.drainMlResultsBatch()).toEqual([]);
 
     const result = await connector.getResult();
@@ -1119,6 +1121,7 @@ describe('testConnector', () => {
   it('computes short take profit with exit fee', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',
+      mlEnabled: true,
     });
 
     await connector.placeOrder({
@@ -1128,6 +1131,7 @@ describe('testConnector', () => {
       isLimit: false,
       timestamp: 1,
       direction: 'SHORT',
+      signal: { signalId: 'sig-take-profit' } as any,
     });
     await connector.setTakeProfits({
       symbol: 'ETHUSDT',
@@ -1169,6 +1173,11 @@ describe('testConnector', () => {
         profit: round(expectedTpProfit),
       }),
     );
+    const [closedSignal] = await connector.drainMlResultsBatch();
+    expect(closedSignal.tradeResult).toEqual(
+      expect.objectContaining({ exitReason: 'take_profit' }),
+    );
+    expect(closedSignal.tradeResult).not.toHaveProperty('exitCode');
   });
 
   it('respects stop loss priority over take profit on the same candle', async () => {
@@ -1439,6 +1448,66 @@ describe('testConnector', () => {
       },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
+  });
+
+  it('propagates a strategyApi exit code through runtime execution into the completed trade', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      aiEnabled: true,
+      fastMode: true,
+    });
+    const candle = {
+      dt: new Date(2).toISOString(),
+      timestamp: 2,
+      open: 105,
+      high: 106,
+      low: 104,
+      close: 105,
+      volume: 1,
+      turnover: 105,
+    };
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: { signalId: 'sig-explicit-exit' } as any,
+    });
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      interval: '15',
+      env: 'BACKTEST',
+      connector,
+      cachedData: [candle],
+      isConfigFromBacktest: false,
+    });
+    const decision = await strategyApi.exit({
+      code: 'CHANNEL_BREAK_EXIT',
+      direction: 'LONG',
+    });
+
+    await expect(
+      handleExitDecision({
+        connector,
+        strategyName: 'TrendLine',
+        symbol: 'ETHUSDT',
+        decision,
+        market: { candle, btcCandle: candle },
+      }),
+    ).resolves.toBe('CHANNEL_BREAK_EXIT');
+
+    const [closedSignal] = await connector.drainMlResultsBatch();
+    expect(closedSignal).toEqual(
+      expect.objectContaining({
+        signalId: 'sig-explicit-exit',
+        tradeResult: expect.objectContaining({
+          exitReason: 'exit',
+          exitCode: 'CHANNEL_BREAK_EXIT',
+        }),
+      }),
+    );
   });
 
   it('preserves fractional quantities, fill fees and monetary slippage in capture', async () => {

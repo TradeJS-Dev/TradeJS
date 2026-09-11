@@ -199,6 +199,7 @@ const normalizeCompletedTrade = (params: {
       'totalSlippageCost',
     ),
     exitReason: result.exitReason,
+    ...(result.exitCode ? { exitCode: result.exitCode } : {}),
     regime: resolveCoreResearchRegime(row),
   };
 };
@@ -261,7 +262,8 @@ const aggregatePositionCycles = (trades: CoreResearchTrade[]) => {
       cycle.some(
         (trade) =>
           trade.exitTimestamp !== primary.exitTimestamp ||
-          trade.exitReason !== primary.exitReason,
+          trade.exitReason !== primary.exitReason ||
+          trade.exitCode !== primary.exitCode,
       )
     ) {
       throw new Error(

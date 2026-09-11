@@ -47,6 +47,7 @@ describe('core research dataset reader', () => {
         signalId: 'earlier',
         setupIdentity: 'setup-earlier',
         timestamp: START,
+        exitCode: 'CHANNEL_BREAK_EXIT',
       }),
     ]);
 
@@ -76,6 +77,8 @@ describe('core research dataset reader', () => {
     expect(new Set(loaded.trades.map((trade) => trade.sourceSha256))).toEqual(
       new Set([await sha256File(filePath)]),
     );
+    expect(loaded.trades[0].exitCode).toBe('CHANNEL_BREAK_EXIT');
+    expect(loaded.trades[1]).not.toHaveProperty('exitCode');
   });
 
   it('uses explicit, strategy-context, and causal fallback setup identities in that order', async () => {

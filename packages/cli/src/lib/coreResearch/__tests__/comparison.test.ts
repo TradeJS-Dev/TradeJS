@@ -44,6 +44,7 @@ describe('core research control/candidate comparison', () => {
             setupIdentity: 'repeat',
             signalTimestamp: START + 1,
             netProfit: 2,
+            exitCode: 'CONTROL_EXIT',
           }),
           makeTrade({
             signalId: 'removed',
@@ -61,6 +62,7 @@ describe('core research control/candidate comparison', () => {
             setupIdentity: 'repeat',
             signalTimestamp: START + 1,
             netProfit: 5,
+            exitCode: 'CANDIDATE_EXIT',
           }),
           makeTrade({
             signalId: 'candidate-2',
@@ -79,10 +81,14 @@ describe('core research control/candidate comparison', () => {
     });
 
     expect(
-      result.matchedPairs.map((pair) => [pair.identity, pair.pnlDelta]),
+      result.matchedPairs.map((pair) => [
+        pair.identity,
+        pair.pnlDelta,
+        pair.exitCodeChanged,
+      ]),
     ).toEqual([
-      ['repeat#1', 3],
-      ['repeat#2', 5],
+      ['repeat#1', 3, true],
+      ['repeat#2', 5, false],
     ]);
     expect(result).toMatchObject({
       matched: 2,

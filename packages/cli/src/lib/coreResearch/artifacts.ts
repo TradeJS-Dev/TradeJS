@@ -41,7 +41,12 @@ export const writeCoreResearchMatches = async (params: {
       'controlPnl',
       'candidatePnl',
       'pnlDelta',
+      'controlExitReason',
+      'candidateExitReason',
       'exitReasonChanged',
+      'controlExitCode',
+      'candidateExitCode',
+      'exitCodeChanged',
     ]
       .map(csv)
       .join(',') + '\n',
@@ -61,7 +66,12 @@ export const writeCoreResearchMatches = async (params: {
           pair.control.netProfit,
           pair.candidate.netProfit,
           pair.pnlDelta,
+          pair.control.exitReason,
+          pair.candidate.exitReason,
           pair.exitReasonChanged,
+          pair.control.exitCode,
+          pair.candidate.exitCode,
+          pair.exitCodeChanged,
         ]
           .map(csv)
           .join(',') + '\n',

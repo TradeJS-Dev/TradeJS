@@ -128,6 +128,7 @@ export type CoreResearchTrade = {
   totalFee: number;
   totalSlippageCost: number;
   exitReason: TestTradeExitReason;
+  exitCode?: string;
   regime: CoreResearchRegime;
 };
 
@@ -204,6 +205,7 @@ export type CoreResearchVariantAnalysis = {
   traceFunnel: {
     events: Record<string, number>;
     skipCounts: Record<string, number>;
+    exitCodes: Record<string, number>;
   };
   latestSignalTimeRegime:
     | (CoreResearchRegime & {
@@ -252,6 +254,7 @@ export type CoreResearchMatchedPair = {
   candidate: CoreResearchTrade;
   pnlDelta: number;
   exitReasonChanged: boolean;
+  exitCodeChanged: boolean;
   entryTimestampDeltaMs: number;
   exitTimestampDeltaMs: number;
 };

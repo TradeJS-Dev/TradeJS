@@ -140,6 +140,7 @@ export const makeDatasetRow = (
     qty?: number;
     entryPrice?: number;
     exitTimestamp?: number;
+    exitCode?: string;
   } = {},
 ): AiDatasetRow => {
   const direction = params.direction ?? 'LONG';
@@ -205,6 +206,7 @@ export const makeDatasetRow = (
             entryTimestamp: timestamp + 1_000,
             exitTimestamp: params.exitTimestamp ?? timestamp + DAY_MS / 2,
             exitReason: netProfit > 0 ? 'take_profit' : 'stop_loss',
+            ...(params.exitCode ? { exitCode: params.exitCode } : {}),
             requestedEntryPrice: 100,
             entryPrice: params.entryPrice ?? 100,
             requestedExitPrice: netProfit > 0 ? 110 : 90,
