@@ -208,6 +208,7 @@ describe('runtime evidence deployment snapshot', () => {
     expect(
       resolveRuntimeEvidenceTickerUniverse({
         deployment: parsed,
+        fallbackTickers: ['SOLUSDT'],
         lineageScopes: [
           {
             strategy: 'DoubleTap',

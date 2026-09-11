@@ -61,7 +61,7 @@ const deployment = ({
 });
 
 describe('runtime evidence with production composition changes', () => {
-  it('publishes one exact-lineage artifact for every observed composition', async () => {
+  it('reuses a sealed ticker universe when an old composition only closes a trade', async () => {
     jest.resetModules();
     const projectRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), 'runtime-evidence-multi-composition-'),
@@ -74,12 +74,15 @@ describe('runtime evidence with production composition changes', () => {
       strategyVersion: currentLineage.strategyPackageVersion,
       runtimeVersion: currentLineage.runtimePackageVersion,
     });
-    const previousDeployment = deployment({
-      composition: previousLineage.deploymentCompositionId,
-      revision: previousLineage.strategyRevision,
-      strategyVersion: previousLineage.strategyPackageVersion,
-      runtimeVersion: previousLineage.runtimePackageVersion,
-    });
+    const previousDeployment = {
+      ...deployment({
+        composition: previousLineage.deploymentCompositionId,
+        revision: previousLineage.strategyRevision,
+        strategyVersion: previousLineage.strategyPackageVersion,
+        runtimeVersion: previousLineage.runtimePackageVersion,
+      }),
+      tickers: ['BTCUSDT'],
+    };
     const currentProducer = {
       schemaVersion: 1,
       projectSha: '2'.repeat(40),
@@ -172,17 +175,6 @@ describe('runtime evidence with production composition changes', () => {
           lineageScopes: [
             {
               strategy: 'DoubleTap',
-              symbol: 'BTCUSDT',
-              deploymentId: 'production',
-              accountId: 'bybit-default',
-              runtimeConfigId: previousLineage.strategyRevision,
-              strategyRevision: previousLineage.strategyRevision,
-              lineage: previousLineage,
-              firstTimestamp: 100,
-              lastTimestamp: 200,
-            },
-            {
-              strategy: 'DoubleTap',
               symbol: 'ETHUSDT',
               deploymentId: 'production',
               accountId: 'bybit-default',
@@ -237,9 +229,14 @@ describe('runtime evidence with production composition changes', () => {
           ([call]) => call.artifact.runtime.counts,
         ),
       ).toEqual([
-        { trades: 1, signals: 0, evaluations: 0, lineageScopes: 1 },
+        { trades: 1, signals: 0, evaluations: 0, lineageScopes: 0 },
         { trades: 0, signals: 0, evaluations: 1, lineageScopes: 1 },
       ]);
+      expect(
+        publishRuntimeEvidenceBundle.mock.calls.map(
+          ([call]) => call.artifact.deployment.tickers,
+        ),
+      ).toEqual([['BTCUSDT'], ['ETHUSDT']]);
     } finally {
       await fs.rm(projectRoot, { recursive: true, force: true });
     }

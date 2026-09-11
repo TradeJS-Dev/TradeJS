@@ -19,6 +19,7 @@ import type { RuntimeDebugEvidence } from './runtimeDebugEvidence';
 export type RuntimeEvidenceCompositionSnapshot = {
   deployment: RuntimeEvidenceDeploymentSnapshot;
   producer: RuntimeEvidenceProducer | null;
+  fallbackTickers?: string[];
 };
 
 const stableSnapshotIdentity = (
@@ -60,7 +61,7 @@ export const loadRuntimeEvidenceCompositionSnapshots = async ({
   for (const snapshot of compositionSnapshots) {
     if (snapshot.deployment.id !== currentDeployment.id) continue;
     register({
-      deployment: { ...snapshot.deployment, tickers: undefined },
+      deployment: snapshot.deployment,
       producer: snapshot.producer,
     });
   }
@@ -79,6 +80,12 @@ export const loadRuntimeEvidenceCompositionSnapshots = async ({
     register({
       deployment: { ...deployment, tickers: undefined },
       producer: parseRuntimeEvidenceProducer(bundle.artifact.producer),
+      // A historical composition may reappear through a position that closes
+      // in this window even without current-window lineage scopes. Its latest
+      // checksum-verified universe is only a fallback; fresh scopes win.
+      ...(deployment.tickers?.length
+        ? { fallbackTickers: [...deployment.tickers] }
+        : {}),
     });
   }
 
@@ -185,7 +192,7 @@ export const splitRuntimeEvidenceByComposition = ({
   return [...observed]
     .filter((compositionId) => snapshots.has(compositionId))
     .map((compositionId) => snapshots.get(compositionId)!)
-    .map(({ deployment, producer }) => {
+    .map(({ deployment, producer, fallbackTickers }) => {
       const trades = evidence.trades.filter((row) =>
         belongsToSnapshot(row, deployment),
       );
@@ -208,6 +215,7 @@ export const splitRuntimeEvidenceByComposition = ({
       return {
         deployment,
         producer,
+        ...(fallbackTickers ? { fallbackTickers } : {}),
         trades,
         signals,
         evaluations,

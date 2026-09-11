@@ -318,9 +318,11 @@ export const assertCurrentRuntimeEvidenceArtifact = (artifact: unknown) => {
 export const resolveRuntimeEvidenceTickerUniverse = ({
   deployment,
   lineageScopes,
+  fallbackTickers,
 }: {
   deployment: RuntimeEvidenceDeploymentSnapshot;
   lineageScopes: RuntimeEvidenceLineageScope[];
+  fallbackTickers?: string[];
 }): RuntimeEvidenceDeploymentSnapshot => {
   const declaredTickers = deployment.tickers?.filter(isNonEmptyString) ?? [];
   if (declaredTickers.length > 0) {
@@ -371,6 +373,16 @@ export const resolveRuntimeEvidenceTickerUniverse = ({
     tickers.add(scope.symbol.trim());
   }
   if (tickers.size === 0) {
+    const verifiedFallbackTickers =
+      fallbackTickers?.filter(isNonEmptyString) ?? [];
+    if (verifiedFallbackTickers.length > 0) {
+      return {
+        ...deployment,
+        tickers: [
+          ...new Set(verifiedFallbackTickers.map((ticker) => ticker.trim())),
+        ].sort(),
+      };
+    }
     throw new Error(
       'Runtime evidence has no immutable ticker universe for the embedded deployment composition',
     );

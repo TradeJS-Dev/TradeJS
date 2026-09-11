@@ -189,6 +189,7 @@ export const runtimeEvidence = async () => {
     const deployment = resolveRuntimeEvidenceTickerUniverse({
       deployment: composition.deployment,
       lineageScopes: composition.lineageScopes,
+      fallbackTickers: composition.fallbackTickers,
     });
     return {
       artifact: {
