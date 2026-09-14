@@ -51,6 +51,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   results: () => import('./scripts/results'),
   'replay-runtime-evidence': () => import('./scripts/replayRuntimeEvidence'),
   'runtime-feedback-replay': () => import('./scripts/runtimeFeedbackReplay'),
+  'runtime-feedback-notify': () => import('./scripts/runtimeFeedbackNotify'),
   'runtime-feedback-sync': () => import('./scripts/runtimeFeedbackSync'),
   'runtime-evidence': () => import('./scripts/runtimeEvidence'),
   'runtime-evidence-sync': () => import('./scripts/runtimeEvidenceSync'),

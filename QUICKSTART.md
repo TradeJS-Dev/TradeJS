@@ -116,7 +116,7 @@ Summary reports:
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours
 - production cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone
 - production cron publishes immutable runtime evidence every day at `21:05` in `Europe/Moscow` timezone
-- production cron runs runtime parity every day at `21:10` in `Europe/Moscow` timezone
+- production host cron replays immutable runtime evidence every day at `21:20` in `Europe/Moscow` timezone and sends the verified runtime parity summary from the sealed replay bundle; `runtime-parity` remains a manual diagnostic command
 - production cron sends the weekly report on Sundays at `22:10` in `Europe/Moscow` timezone using `--hours 168`
 - production cron runs nightly research every day at `00:00` in `Europe/Moscow` timezone:
 

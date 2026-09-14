@@ -14,6 +14,10 @@ import {
   assertRuntimeFeedbackReplaySafety,
   buildRuntimeFeedbackReplayCommands,
 } from '../lib/runtimeFeedbackReplay';
+import {
+  buildRuntimeFeedbackTelegramMessage,
+  notifyRuntimeFeedbackBundle,
+} from '../lib/runtimeFeedbackNotification';
 import { syncRuntimeFeedbackReplayBundles } from '../lib/runtimeFeedbackSync';
 import { resolveRuntimeEvidenceProducer } from '../lib/runtimeEvidenceProducer';
 
@@ -114,7 +118,32 @@ describe('production runtime feedback replay', () => {
             userName: 'root',
             window: evidence.manifest.window,
             deployment,
-            replay: { cycleCount: 96, signalsCount: 3 },
+            replay: {
+              cycleCount: 96,
+              signalsCount: 3,
+              runtimeComparison: {
+                counts: { matched: 2, runtimeOnly: 0, backtestOnly: 0 },
+                rows: [
+                  {
+                    strategyName: 'DoubleTap',
+                    runtimeTrades: 2,
+                    backtestEntries: 2,
+                    matched: 2,
+                    orderFailed: 0,
+                    runtimeOnly: 0,
+                    backtestOnly: 0,
+                  },
+                ],
+                lineage: {
+                  replayScopes: 100,
+                  comparableScopes: 100,
+                  excludedRuntimeTrades: 1,
+                },
+              },
+            },
+            runtime: {
+              counts: { trades: 3, signals: 5, evaluations: 5 },
+            },
           },
           null,
           2,
@@ -208,6 +237,88 @@ describe('production runtime feedback replay', () => {
     await expect(
       verifyRuntimeFeedbackReplayBundle(feedback.bundleDir),
     ).rejects.toThrow(/size mismatch|checksum mismatch/);
+  });
+
+  it('builds and sends parity from the verified runtime feedback bundle', async () => {
+    const { feedback } = await createFeedback();
+    const messages: string[] = [];
+
+    await expect(
+      notifyRuntimeFeedbackBundle({
+        bundleDir: feedback.bundleDir,
+        send: async (message) => {
+          messages.push(message);
+          return 1;
+        },
+      }),
+    ).resolves.toMatchObject({
+      artifactId: feedback.manifest.artifactId,
+      userName: 'root',
+    });
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('Source: <b>verified runtime feedback</b>');
+    expect(messages[0]).toContain('Runtime evidence: trades=<b>3</b>');
+    expect(messages[0]).toContain(
+      'Comparable entries: runtime=<b>2</b> / backtest=<b>2</b>',
+    );
+    expect(messages[0]).toContain('Matched: <b>2</b>');
+    expect(messages[0]).toContain('Lineage scopes: <b>100 / 100</b>');
+    expect(messages[0]).not.toContain('Targets:');
+    expect(messages[0]).not.toContain('Replay errors');
+  });
+
+  it('rejects an unsealed replay payload before notification', async () => {
+    const { feedback } = await createFeedback();
+    await fs.appendFile(feedback.replayEvidencePath, 'tampered');
+
+    await expect(
+      notifyRuntimeFeedbackBundle({
+        bundleDir: feedback.bundleDir,
+        send: async () => 1,
+      }),
+    ).rejects.toThrow(/size mismatch|checksum mismatch/);
+  });
+
+  it('reports strategy mismatches from the canonical comparison rows', () => {
+    const message = buildRuntimeFeedbackTelegramMessage({
+      reportType: 'replay-runtime-evidence',
+      window: { startTime: 1_000, endTime: 2_000 },
+      deployment: { connectorName: 'bybit', id: 'production' },
+      replay: {
+        runtimeComparison: {
+          counts: { matched: 0, runtimeOnly: 1, backtestOnly: 0 },
+          rows: [
+            {
+              strategyName: 'Flag<script>',
+              runtimeTrades: 1,
+              backtestEntries: 0,
+              matched: 0,
+              orderFailed: 0,
+              runtimeOnly: 1,
+              backtestOnly: 0,
+            },
+          ],
+          lineage: { replayScopes: 1, comparableScopes: 1 },
+        },
+      },
+      runtime: { counts: { trades: 1, signals: 1, evaluations: 1 } },
+    });
+
+    expect(message).toContain('Flag&lt;script&gt;: runtimeOnly=1');
+    expect(message).not.toContain('Flag<script>');
+  });
+
+  it('does not report a clean result when comparison data is missing', () => {
+    expect(() =>
+      buildRuntimeFeedbackTelegramMessage({
+        reportType: 'replay-runtime-evidence',
+        window: { startTime: 1_000, endTime: 2_000 },
+        deployment: { connectorName: 'bybit', id: 'production' },
+        replay: {},
+        runtime: { counts: { trades: 1, signals: 1, evaluations: 1 } },
+      }),
+    ).toThrow(/comparison is missing/);
   });
 
   it('requires the isolated no-credentials environment', () => {
