@@ -26,10 +26,14 @@ README, and agent instructions.
 | ------------------------------------------------ | --------------------------------------------------- | ------------------------------ |
 | `TradeJS-Strategy-AdaptiveMomentumRibbon`        | `@tradejs/strategy-adaptive-momentum-ribbon`        | AdaptiveMomentumRibbon         |
 | `TradeJS-Strategy-AdaptiveTrendChannel`          | `@tradejs/strategy-adaptive-trend-channel`          | AdaptiveTrendChannel           |
+| `TradeJS-Strategy-Bat`                           | `@tradejs/strategy-bat`                             | Bat                            |
 | `TradeJS-Strategy-Breakout`                      | `@tradejs/strategy-breakout`                        | Breakout                       |
+| `TradeJS-Strategy-Crab`                          | `@tradejs/strategy-crab`                            | Crab                           |
 | `TradeJS-Strategy-CupAndHandle`                  | `@tradejs/strategy-cup-and-handle`                  | CupAndHandle                   |
+| `TradeJS-Strategy-Diamond`                       | `@tradejs/strategy-diamond`                         | Diamond                        |
 | `TradeJS-Strategy-DoubleTap`                     | `@tradejs/strategy-double-tap`                      | DoubleTap                      |
 | `TradeJS-Strategy-Dragon`                        | `@tradejs/strategy-dragon`                          | Dragon                         |
+| `TradeJS-Strategy-Five-Zero`                     | `@tradejs/strategy-five-zero`                       | FiveZero                       |
 | `TradeJS-Strategy-Flag`                          | `@tradejs/strategy-flag`                            | Flag                           |
 | `TradeJS-Strategy-Gartley`                       | `@tradejs/strategy-gartley`                         | Gartley                        |
 | `TradeJS-Strategy-Grid`                          | `@tradejs/strategy-grid`                            | Grid                           |
@@ -41,10 +45,12 @@ README, and agent instructions.
 | `TradeJS-Strategy-MaStrategy`                    | `@tradejs/strategy-ma-strategy`                     | MaStrategy                     |
 | `TradeJS-Strategy-MarketFlushReversal`           | `@tradejs/strategy-market-flush-reversal`           | MarketFlushReversal            |
 | `TradeJS-Strategy-RelativeRotation`              | `@tradejs/strategy-relative-rotation`               | RelativeRotation               |
+| `TradeJS-Strategy-Shark`                         | `@tradejs/strategy-shark`                           | Shark                          |
 | `TradeJS-Strategy-StructureZones`                | `@tradejs/strategy-structure-zones`                 | StructureZones                 |
 | `TradeJS-Strategy-TrendFollow`                   | `@tradejs/strategy-trend-follow`                    | TrendFollow                    |
 | `TradeJS-Strategy-TrendLine`                     | `@tradejs/strategy-trend-line`                      | TrendLine and ReverseTrendLine |
 | `TradeJS-Strategy-TrendShift`                    | `@tradejs/strategy-trend-shift`                     | TrendShift                     |
+| `TradeJS-Strategy-Triangle`                      | `@tradejs/strategy-triangle`                        | Triangle                       |
 | `TradeJS-Strategy-VolatilityCompressionBreakout` | `@tradejs/strategy-volatility-compression-breakout` | VolatilityCompressionBreakout  |
 | `TradeJS-Strategy-VolumeDivergence`              | `@tradejs/strategy-volume-divergence`               | VolumeDivergence               |
 
