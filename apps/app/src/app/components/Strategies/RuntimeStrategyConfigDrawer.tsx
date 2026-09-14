@@ -58,6 +58,14 @@ export const RuntimeStrategyConfigDrawer = ({
     },
     { label: 'Control state', value: strategy.controlState },
     {
+      label: 'Runtime mode',
+      value: strategy.runtimeMode ?? 'Not running',
+    },
+    {
+      label: 'Order placement',
+      value: strategy.makeOrders ? 'Enabled' : 'Disabled',
+    },
+    {
       label: 'Runtime connection',
       value: strategy.connected ? 'Connected' : 'Disconnected',
     },

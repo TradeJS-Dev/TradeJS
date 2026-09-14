@@ -103,6 +103,11 @@ describe('runtime dashboard', () => {
         interval: '15',
         universe: 'crypto',
         accountId: 'crypto-main',
+        sourceStrategyConfig: {
+          INTERVAL: '15',
+          UNIVERSE: 'crypto',
+          POLICY_PROFILE_ID: 'crypto',
+        },
         strategyConfig: {
           INTERVAL: '15',
           UNIVERSE: 'crypto',
@@ -177,6 +182,72 @@ describe('runtime dashboard', () => {
         },
       ],
     });
+  });
+
+  it('keeps runtime-mode parser defaults out of the committed strategy config view', async () => {
+    const previousDeploymentIds = process.env.SIGNALS_DAEMON_DEPLOYMENT_ID;
+    const previousMakeOrders = process.env.SIGNALS_DAEMON_MAKE_ORDERS;
+    process.env.SIGNALS_DAEMON_DEPLOYMENT_ID = 'trendline-forward';
+    delete process.env.SIGNALS_DAEMON_MAKE_ORDERS;
+    mockLoadResolvedRuntimeStrategies.mockResolvedValueOnce([
+      {
+        strategyName: 'TrendLine',
+        strategyModule: '@tradejs/strategy-trend-line-forward',
+        strategyPackage: '@tradejs/strategy-trend-line-forward',
+        strategyPackageVersion: '3.0.4',
+        strategyRevision: 'sr1:2222222222222222',
+        deploymentCompositionId: 'dc1:2222222222222222',
+        generation: 'forward',
+        enabled: true,
+        controlState: 'active',
+        interval: '15',
+        universe: 'crypto',
+        accountId: 'crypto-main',
+        sourceStrategyConfig: {
+          INTERVAL: '15',
+          UNIVERSE: 'crypto',
+          POLICY_PROFILE_ID: 'crypto',
+        },
+        strategyConfig: {
+          ENV: 'BACKTEST',
+          MAKE_ORDERS: true,
+          INTERVAL: '15',
+          UNIVERSE: 'crypto',
+          POLICY_PROFILE_ID: 'crypto',
+        },
+      },
+    ]);
+
+    try {
+      const response = await loadRuntimeDashboard({
+        userName: 'root',
+        provider: 'bybit',
+        hours: 6,
+        now: 1_700_000_000_000,
+        projectRoot: '/project',
+      });
+
+      expect(response.strategies[0]?.config).toEqual({
+        INTERVAL: '15',
+        UNIVERSE: 'crypto',
+        POLICY_PROFILE_ID: 'crypto',
+      });
+      expect(response.strategies[0]).toMatchObject({
+        runtimeMode: 'CRON',
+        makeOrders: true,
+      });
+    } finally {
+      if (previousDeploymentIds === undefined) {
+        delete process.env.SIGNALS_DAEMON_DEPLOYMENT_ID;
+      } else {
+        process.env.SIGNALS_DAEMON_DEPLOYMENT_ID = previousDeploymentIds;
+      }
+      if (previousMakeOrders === undefined) {
+        delete process.env.SIGNALS_DAEMON_MAKE_ORDERS;
+      } else {
+        process.env.SIGNALS_DAEMON_MAKE_ORDERS = previousMakeOrders;
+      }
+    }
   });
 
   it('binds the connector before reconciling deployment-scoped trades', async () => {
@@ -382,6 +453,7 @@ describe('runtime dashboard', () => {
         interval: '15',
         universe: 'crypto',
         accountId: 'crypto-main',
+        sourceStrategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
         strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
       },
       {
@@ -395,6 +467,7 @@ describe('runtime dashboard', () => {
         interval: '15',
         universe: 'crypto',
         accountId: 'crypto-main',
+        sourceStrategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
         strategyConfig: { INTERVAL: '15', UNIVERSE: 'crypto' },
       },
     ]);
@@ -654,6 +727,11 @@ describe('runtime dashboard', () => {
             deploymentId === 'trendline-forward'
               ? 'crypto-forward'
               : 'crypto-scaled',
+          sourceStrategyConfig: {
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            MAX_LOSS_VALUE: deploymentId === 'trendline-forward' ? 1 : 10,
+          },
           strategyConfig: {
             INTERVAL: '15',
             UNIVERSE: 'crypto',

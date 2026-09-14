@@ -47,6 +47,23 @@ const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 90;
 const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
 const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
+const ENABLED_BOOLEAN_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+const getSignalsDaemonExecution = (deploymentId: string) => {
+  const deploymentIds = String(process.env.SIGNALS_DAEMON_DEPLOYMENT_ID ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const managedByDaemon = deploymentIds.includes(deploymentId);
+  const configuredMakeOrders = process.env.SIGNALS_DAEMON_MAKE_ORDERS ?? 'true';
+
+  return {
+    runtimeMode: managedByDaemon ? ('CRON' as const) : null,
+    makeOrders:
+      managedByDaemon &&
+      ENABLED_BOOLEAN_ENV_VALUES.has(configuredMakeOrders.toLowerCase()),
+  };
+};
 
 interface RuntimeDashboardStrategyIdentity {
   strategyName: string;
@@ -678,7 +695,7 @@ export const loadRuntimeDashboard = async ({
           : {}),
         policyProfileId: strategyPolicyProfileId,
         enabled: resolvedStrategy.controlState !== 'entries_paused',
-        config: resolvedStrategy.strategyConfig,
+        config: resolvedStrategy.sourceStrategyConfig,
         connected: deployment.enabled,
         ...(resolvedStrategy.selection
           ? { selection: resolvedStrategy.selection }
@@ -709,7 +726,8 @@ export const loadRuntimeDashboard = async ({
         startTime,
         endTime,
       });
-      const effectiveStrategyConfig = identity.config;
+      const committedStrategyConfig = identity.config;
+      const daemonExecution = getSignalsDaemonExecution(identity.deploymentId);
 
       return {
         runtimeKey,
@@ -729,9 +747,10 @@ export const loadRuntimeDashboard = async ({
         deploymentLabel: identity.deploymentLabel,
         ...(identity.selection ? { selection: identity.selection } : {}),
         policyProfileId: identity.policyProfileId,
+        ...daemonExecution,
         connected: identity.connected,
         enabled: identity.enabled,
-        config: effectiveStrategyConfig,
+        config: committedStrategyConfig,
         symbols: [...new Set(strategyTrades.map((trade) => trade.symbol))],
         stat: analytics.stat,
         summary: analytics.summary,

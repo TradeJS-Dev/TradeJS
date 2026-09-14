@@ -70,6 +70,8 @@ export interface RuntimeStrategyView {
   deploymentLabel: string;
   selection?: RuntimeStrategySelection;
   policyProfileId?: string;
+  runtimeMode: 'CRON' | null;
+  makeOrders: boolean;
   connected: boolean;
   enabled: boolean;
   config: StrategyConfig;

@@ -85,6 +85,8 @@ const strategy = {
   deploymentLabel: 'Scaled',
   generation: 'proven',
   policyProfileId: 'crypto',
+  runtimeMode: 'CRON',
+  makeOrders: true,
   connected: true,
   enabled: true,
   config: { takeProfit: 3, stopLoss: 1 },
@@ -126,6 +128,8 @@ describe('RuntimeStrategyConfigDrawer', () => {
     expect(screen.getByText('Bybit main')).toBeTruthy();
     expect(screen.getByText('bybit-main')).toBeTruthy();
     expect(screen.getByText('Connected')).toBeTruthy();
+    expect(screen.getByText('CRON')).toBeTruthy();
+    expect(screen.getAllByText('Enabled')).toHaveLength(2);
     expect(screen.getByText('BTCUSDT, ETHUSDT')).toBeTruthy();
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getAllByText('2')).toHaveLength(2);
