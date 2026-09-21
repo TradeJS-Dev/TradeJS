@@ -47,6 +47,7 @@ README, and agent instructions.
 | `TradeJS-Strategy-RelativeRotation`              | `@tradejs/strategy-relative-rotation`               | RelativeRotation               |
 | `TradeJS-Strategy-Shark`                         | `@tradejs/strategy-shark`                           | Shark                          |
 | `TradeJS-Strategy-StructureZones`                | `@tradejs/strategy-structure-zones`                 | StructureZones                 |
+| `TradeJS-Strategy-TradingPatterns`               | `@tradejs/strategy-trading-patterns`                | TradingPatterns                |
 | `TradeJS-Strategy-TrendFollow`                   | `@tradejs/strategy-trend-follow`                    | TrendFollow                    |
 | `TradeJS-Strategy-TrendLine`                     | `@tradejs/strategy-trend-line`                      | TrendLine and ReverseTrendLine |
 | `TradeJS-Strategy-TrendShift`                    | `@tradejs/strategy-trend-shift`                     | TrendShift                     |
