@@ -723,6 +723,76 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it.each(['BACKTEST', 'LIVE'])(
+    'applies the actual local Jev evaluator before entry execution in %s',
+    async (env) => {
+      const fs = await import('node:fs/promises');
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const { jevHash, jevFileHash } = await import('@tradejs/infra/jev');
+      const { JEV_QUESTIONS } = await import('../jevInput');
+      const dir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'tradejs-jev-runtime-'),
+      );
+      try {
+        for (const score of [0, 1]) {
+          mockExecuteEntryOrder.mockClear();
+          mockEnrichSignalWithAi.mockClear();
+          const contents = JSON.stringify({
+            schema: 'tradejs-jev-gate/v1',
+            inputSchema: 'tradejs-jev-input/v1',
+            strategy: 'TrendLine',
+            teacherModel: 'jev-1.13.0',
+            questionsHash: jevHash(JEV_QUESTIONS),
+            trees: Object.fromEntries(
+              ['structure', 'participation', 'timing', 'geometry'].map(
+                (dimension) => [dimension, { value: score, samples: 50 }],
+              ),
+            ),
+            training: {
+              datasetHash: 'a'.repeat(64),
+              trainEnd: 1,
+              validationEnd: 2,
+              testEnd: 3,
+              maxDepth: 1,
+              minLeaf: 10,
+            },
+          });
+          const modelFile = path.join(dir, `gate-${score}.json`);
+          await fs.writeFile(modelFile, contents);
+          const signal = makeSignal();
+          signal.additionalIndicators.baseContext = {
+            raw: { volatility: { atr: 2 } },
+            structure: { confirmed: true },
+          };
+          const { strategy } = await makeRuntime(
+            () => makeDecisionEntry({ signal }),
+            {
+              ENV: env,
+              BACKTEST_ENTRY_DELAY_BARS: 0,
+              JEV: {
+                source: 'local',
+                mode: 'gate',
+                modelFile,
+                modelSha256: jevFileHash(contents),
+                recordsDir: dir,
+              },
+            },
+          );
+          const result = await strategy(
+            { timestamp: 1 } as any,
+            { timestamp: 1 } as any,
+          );
+          expect((result as any).assessment.allowed).toBe(score === 1);
+          expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(score);
+          expect(mockEnrichSignalWithAi).not.toHaveBeenCalled();
+        }
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('gates entry by ML threshold when runtime ML result does not pass', async () => {
     mockEnrichSignalWithMl.mockImplementation(async ({ signal }: any) => {
       signal.ml = {

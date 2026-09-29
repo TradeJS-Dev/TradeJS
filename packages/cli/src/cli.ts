@@ -15,6 +15,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ai-export': () => import('./scripts/aiExport'),
   'ai-pocket-search': () => import('./scripts/aiPocketSearch'),
   'ai-train': () => import('./scripts/aiTrain'),
+  jev: () => import('./scripts/jev'),
   backtest: () => import('./scripts/backtest'),
   'portfolio-backtest': () => import('./scripts/replay'),
   'binance:breadth-universes:update': () =>

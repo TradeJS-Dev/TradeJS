@@ -129,6 +129,11 @@
       "types": "./dist/time.d.ts",
       "import": "./dist/time.mjs",
       "require": "./dist/time.js"
+    },
+    "./jev": {
+      "types": "./dist/jev.d.ts",
+      "import": "./dist/jev.mjs",
+      "require": "./dist/jev.js"
     }
   },
   "dependencies": {

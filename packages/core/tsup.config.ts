@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/jev.ts',
     'src/aiEndpoints.ts',
     'src/aiLanguages.ts',
     'src/aiModels.ts',

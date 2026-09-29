@@ -1,3 +1,4 @@
+import type { SignalAssessment } from './jev';
 import type {
   ConnectorCapabilities,
   FundingRateHistoryRequest,
@@ -810,6 +811,7 @@ export interface TrendLineOptions {
 }
 
 export interface Signal {
+  assessment?: SignalAssessment;
   signalId: string;
   orderId?: string;
   symbol: string;
@@ -860,6 +862,7 @@ export interface Signal {
 export type RuntimeSignalEvaluationStatus = 'signal' | 'skip' | 'error';
 
 export interface RuntimeSignalEvaluationRecord {
+  assessment?: SignalAssessment;
   evaluationId: string;
   userName: string;
   strategy: string;
@@ -958,6 +961,7 @@ export type RuntimeTradeTelemetryQuality =
   | 'none';
 
 export interface RuntimeTradeRecord {
+  assessment?: SignalAssessment;
   orderId: string;
   signalId?: string;
   runtimeLineage?: RuntimeLineage;

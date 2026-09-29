@@ -645,6 +645,7 @@ export const executeEntryOrder = async ({
       strategyRevision: signal.strategyRevision,
       runtimeLineage: signal.runtimeLineage,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+      ...(signal.assessment ? { assessment: signal.assessment } : {}),
     });
   }
 

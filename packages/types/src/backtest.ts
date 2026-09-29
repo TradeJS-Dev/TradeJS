@@ -1,3 +1,4 @@
+import type { JevConfig } from './jev';
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
@@ -99,6 +100,7 @@ export type BacktestDetectorOptimizedStrategy = Strategy & {
 export type BacktestPriceMode = 'mid' | 'close' | 'open';
 
 export interface StrategyConfig {
+  JEV?: JevConfig;
   ENABLE?: boolean;
   INTERVAL?: Interval | string;
   UNIVERSE?: MarketUniverse;

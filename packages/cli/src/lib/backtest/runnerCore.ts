@@ -1,3 +1,4 @@
+import { resolveBacktestJev } from './jevOptions';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -422,7 +423,8 @@ export const buildPreparedTestSuite = async ({
       : parseBacktestExecutionCosts(JSON.parse(String(flags.executionCosts)));
   for (const test of testSuite)
     assertStrategyExecutionIsolation(test.strategyConfig);
-  const aiEnabled = Boolean(flags.ai);
+  const jev = await resolveBacktestJev(flags, userName, projectRoot);
+  const aiEnabled = Boolean(flags.ai || jev);
   const requestedTestsLimit = resolveRequestedTestsLimit({
     isLiveMode: isReplay,
     requestedLimit: testsLimit,
@@ -436,6 +438,13 @@ export const buildPreparedTestSuite = async ({
       executionCostsCacheOnly: Boolean(flags.cacheOnly),
       strategyConfig: {
         ...test.strategyConfig,
+        JEV: jev
+          ? {
+              minScores: test.strategyConfig.JEV?.minScores,
+              requireGeometry: test.strategyConfig.JEV?.requireGeometry,
+              ...jev,
+            }
+          : undefined,
         ENV: 'BACKTEST',
         INTERVAL: interval,
         MAKE_ORDERS: true,

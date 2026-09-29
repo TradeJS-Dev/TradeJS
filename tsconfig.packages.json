@@ -3,6 +3,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@tradejs/core/jev": ["./packages/core/src/jev"],
+      "@tradejs/node/jev": ["./packages/node/src/jev"],
       "@tradejs/connectors": ["./packages/connectors/src/index"],
       "@tradejs/core/api": ["./packages/core/src/api"],
       "@tradejs/core/async": ["./packages/core/src/async"],

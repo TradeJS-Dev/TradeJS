@@ -129,6 +129,7 @@ const buildReplayEvaluation = ({
     orderStatus: signal.orderStatus,
     orderSkipReason: signal.orderSkipReason,
     aiAnalysis: signal.aiAnalysis ?? null,
+    assessment: signal.assessment,
     ml: signal.ml,
   };
 };
@@ -320,7 +321,13 @@ export const createBacktestSession = async ({
         }),
       );
     }
-    if (test.ai && signal && typeof signal !== 'string' && signal.signalId) {
+    if (
+      test.ai &&
+      signal &&
+      typeof signal !== 'string' &&
+      signal.signalId &&
+      !(signal.assessment && signal.orderStatus === 'skipped')
+    ) {
       pendingAiRowBySignalId.set(signal.signalId, {
         signalId: signal.signalId,
         strategyName: signal.strategy || test.strategyName,
@@ -328,6 +335,7 @@ export const createBacktestSession = async ({
         direction: signal.direction,
         timestamp: signal.timestamp,
         signal: cloneSignal(signal),
+        assessment: signal.assessment,
         testId: test.testId,
         testSuiteId: test.testSuiteId,
         testName: test.name,

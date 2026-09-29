@@ -1,3 +1,4 @@
+import { JEV_PROVIDERS, normalizeJevEndpoint } from '@tradejs/core/jev';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import {
@@ -18,6 +19,10 @@ import { getCurrentUserName } from '#app/lib/currentUser';
 export const dynamic = 'force-dynamic';
 
 type UpdateBody =
+  | {
+      section: 'jev';
+      data?: { apiKey?: string; apiEndpoint?: string; model?: string };
+    }
   | {
       section: 'coinalyze';
       data?: {
@@ -58,6 +63,7 @@ const UPDATE_SECTIONS = new Set([
   'coinalyze',
   'coinmarketcap',
   'ai',
+  'jev',
   'telegram',
   'password',
 ]);
@@ -105,6 +111,11 @@ const toResponse = (rawSettings: UserSettings) => {
       },
       coinmarketcap: {
         apiKey: maskSecret(settings.COINMARKETCAP_API_KEY),
+      },
+      jev: {
+        apiKey: maskSecret(settings.JEV_API_KEY || ''),
+        apiEndpoint: settings.JEV_API_ENDPOINT || JEV_PROVIDERS[0].endpoint,
+        model: settings.JEV_MODEL || JEV_PROVIDERS[0].model,
       },
       ai: {
         apiKey: maskSecret(settings.AI_API_KEY),
@@ -197,6 +208,31 @@ export const PATCH = async (request: Request) => {
     if (apiKey) {
       await updateUserRecord(userName, { COINMARKETCAP_API_KEY: apiKey });
     }
+  }
+
+  if (body.section === 'jev') {
+    const patch: Partial<UserRecord> = {};
+    if (body.data && 'apiEndpoint' in body.data) {
+      const endpoint = normalizeJevEndpoint(body.data.apiEndpoint);
+      if (!endpoint)
+        return NextResponse.json(
+          { error: 'Invalid Jev decision endpoint URL' },
+          { status: 400 },
+        );
+      patch.JEV_API_ENDPOINT = endpoint;
+    }
+    if (body.data && 'model' in body.data) {
+      const model = cleanText(body.data.model);
+      if (!model || model.length > 200)
+        return NextResponse.json(
+          { error: 'Jev model is required' },
+          { status: 400 },
+        );
+      patch.JEV_MODEL = model;
+    }
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+    if (apiKey && !apiKey.startsWith('********')) patch.JEV_API_KEY = apiKey;
+    if (hasKeys(patch)) await updateUserRecord(userName, patch);
   }
 
   if (body.section === 'ai') {

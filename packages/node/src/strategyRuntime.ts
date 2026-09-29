@@ -1,3 +1,5 @@
+import { parseJevConfig } from '@tradejs/core/jev';
+import { assessSignalWithJev } from './jev';
 import type {
   TradejsConfigAfterBarDecisionHook,
   TradejsConfigAfterCoreDecisionHook,
@@ -176,6 +178,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    const jev = parseJevConfig(config.JEV);
+    if (jev && env !== 'BACKTEST' && jev.source === 'provider' && !jev.provider)
+      throw new Error(
+        'Runtime JEV requires a frozen provider endpoint and model',
+      );
     const backtestPriceMode = config.BACKTEST_PRICE_MODE ?? 'open';
     const backtestEntryDelayBars =
       env === 'BACKTEST'
@@ -1023,6 +1030,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         policyProfile: getPolicyProfile(decisionStrategyName),
       });
       const signal = decision.signal;
+      if (jev?.mode === 'gate' && !signal) return 'JEV_SIGNAL_UNAVAILABLE';
       if (signal) {
         if (runtimeLineage) signal.runtimeLineage = runtimeLineage;
         if (universe) signal.universe = universe;
@@ -1102,14 +1110,29 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             env,
             includeHyperliquidWhales: false,
           });
-          quality = await enrichSignalWithAi({
-            signal,
-            userName,
-            symbol,
-            direction: signal.direction,
-            env,
-            ai: runtime.ai,
-          });
+          if (jev) {
+            await assessSignalWithJev({
+              signal,
+              config: jev,
+              userName,
+              projectRoot,
+              strict: env === 'BACKTEST',
+              scope:
+                runtimeLineage?.deploymentCompositionId ??
+                (env === 'BACKTEST' ? 'backtest' : 'runtime'),
+            });
+          }
+          quality =
+            jev?.mode === 'gate'
+              ? undefined
+              : await enrichSignalWithAi({
+                  signal,
+                  userName,
+                  symbol,
+                  direction: signal.direction,
+                  env,
+                  ai: runtime.ai,
+                });
         } catch (error) {
           await notifyRuntimeError({
             stage: 'enrichSignalWithAi',
@@ -1175,6 +1198,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       if (!shouldMakeOrder) {
         if (signal) {
           const skipReason = getEntrySkipReason({
+            signal,
             makeOrdersEnabled,
             env,
             ml,

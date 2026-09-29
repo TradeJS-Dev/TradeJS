@@ -706,7 +706,8 @@ export const backtest = async () => {
     window: preparedRun.window,
     preloadStart: preparedRun.preloadStart,
     flags: {
-      ai: Boolean(flags.ai),
+      ai: Boolean(flags.ai || flags.jev),
+      jev: Boolean(flags.jev),
       backtestEntryDelayBars,
       backtestPriceMode,
       cacheOnly: Boolean(flags.cacheOnly),

@@ -5,6 +5,9 @@ export interface UserRecord extends Record<string, unknown> {
   passwordHash?: string;
   COINALYZE_API_KEY?: string;
   COINMARKETCAP_API_KEY?: string;
+  JEV_API_KEY?: string;
+  JEV_API_ENDPOINT?: string;
+  JEV_MODEL?: string;
   AI_API_KEY?: string;
   AI_API_ENDPOINT?: string;
   AI_MODEL?: string;
@@ -18,6 +21,9 @@ export interface UserSettings {
   userName: string;
   COINALYZE_API_KEY: string;
   COINMARKETCAP_API_KEY: string;
+  JEV_API_KEY?: string;
+  JEV_API_ENDPOINT?: string;
+  JEV_MODEL?: string;
   AI_API_KEY: string;
   AI_API_ENDPOINT: string;
   AI_MODEL: string;
@@ -51,6 +57,9 @@ export const getUserSettings = async (
     userName,
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
     COINMARKETCAP_API_KEY: readUserString(record, 'COINMARKETCAP_API_KEY'),
+    JEV_API_KEY: readUserString(record, 'JEV_API_KEY'),
+    JEV_API_ENDPOINT: readUserString(record, 'JEV_API_ENDPOINT'),
+    JEV_MODEL: readUserString(record, 'JEV_MODEL'),
     AI_API_KEY: readUserString(record, 'AI_API_KEY'),
     AI_API_ENDPOINT: readUserString(record, 'AI_API_ENDPOINT'),
     AI_MODEL: readUserString(record, 'AI_MODEL'),

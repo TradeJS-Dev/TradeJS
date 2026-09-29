@@ -30,6 +30,37 @@ jest.mock('#app/lib/currentUser', () => ({
 import { GET, PATCH } from '../route';
 
 describe('user settings route', () => {
+  it('stores Jev separately from AI and preserves a masked key', async () => {
+    await PATCH({
+      json: async () => ({
+        section: 'jev',
+        data: {
+          apiKey: '********1234',
+          apiEndpoint: 'https://api.typesafe.ai/v1/systemone',
+          model: 'jev-1.13.0',
+        },
+      }),
+    } as Request);
+    expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
+      JEV_API_ENDPOINT: 'https://api.typesafe.ai/v1/systemone',
+      JEV_MODEL: 'jev-1.13.0',
+    });
+  });
+
+  it('rejects Jev URLs with embedded credentials without persisting them', async () => {
+    const response = await PATCH({
+      json: async () => ({
+        section: 'jev',
+        data: {
+          apiKey: 'new-secret',
+          apiEndpoint: 'https://user:secret@example.com/decisions',
+        },
+      }),
+    } as Request);
+    expect(response.status).toBe(400);
+    expect(mockUpdateUserRecord).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCurrentUserName.mockResolvedValue('alice');
@@ -66,6 +97,11 @@ describe('user settings route', () => {
         },
         coinmarketcap: {
           apiKey: '',
+        },
+        jev: {
+          apiKey: '',
+          apiEndpoint: 'https://openrouter.ai/api/alpha/decisions',
+          model: 'typesafe/jev-1.13',
         },
         ai: {
           apiKey: '************9876',

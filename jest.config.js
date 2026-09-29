@@ -153,6 +153,8 @@ const customJestConfig = {
     },
   },
   moduleNameMapper: {
+    '^@tradejs/core/jev$': '<rootDir>/packages/core/src/jev',
+    '^@tradejs/node/jev$': '<rootDir>/packages/node/src/jev',
     '^@tradejs/connectors$': '<rootDir>/packages/connectors/src/index',
     '^@tradejs/core/api$': '<rootDir>/packages/core/src/api',
     '^@tradejs/core/async$': '<rootDir>/packages/core/src/async',

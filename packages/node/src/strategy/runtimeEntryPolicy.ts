@@ -116,6 +116,12 @@ export const shouldExecuteEntryDecision = ({
     return false;
   }
 
+  if (
+    signal?.assessment?.mode === 'gate' &&
+    (signal.assessment.status !== 'available' || !signal.assessment.allowed)
+  )
+    return false;
+
   if (!signal || env === 'BACKTEST') {
     return true;
   }
@@ -128,6 +134,8 @@ export const shouldExecuteEntryDecision = ({
     return false;
   }
 
+  if (signal?.assessment?.mode === 'gate') return true;
+
   if (!aiEnabled) {
     return true;
   }
@@ -136,6 +144,7 @@ export const shouldExecuteEntryDecision = ({
 };
 
 export const getEntrySkipReason = ({
+  signal,
   makeOrdersEnabled,
   env,
   ml,
@@ -143,6 +152,7 @@ export const getEntrySkipReason = ({
   quality,
   minAiQuality,
 }: {
+  signal?: EntryDecision['signal'];
   makeOrdersEnabled: boolean;
   env: string;
   ml?: StrategyHookMlContext;
@@ -150,6 +160,8 @@ export const getEntrySkipReason = ({
   quality?: number;
   minAiQuality: number;
 }): string => {
+  if (signal?.assessment?.mode === 'gate' && !signal.assessment.allowed)
+    return `JEV_REJECTED:${signal.assessment.reasons.join(',')}`;
   if (!makeOrdersEnabled) {
     return 'MAKE_ORDERS_DISABLED';
   }

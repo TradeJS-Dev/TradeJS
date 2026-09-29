@@ -84,6 +84,11 @@
       "types": "./dist/strategies.d.ts",
       "import": "./dist/strategies.mjs",
       "require": "./dist/strategies.js"
+    },
+    "./jev": {
+      "types": "./dist/jev.d.ts",
+      "import": "./dist/jev.mjs",
+      "require": "./dist/jev.js"
     }
   },
   "dependencies": {

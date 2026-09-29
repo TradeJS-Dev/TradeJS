@@ -39,6 +39,7 @@ export type BacktestRunManifest = {
   preloadStart: number;
   flags: {
     ai: boolean;
+    jev?: boolean;
     backtestEntryDelayBars: number;
     backtestPriceMode: string;
     cacheOnly: boolean;

@@ -130,6 +130,11 @@
       "types": "./dist/tradingAccounts.d.ts",
       "import": "./dist/tradingAccounts.mjs",
       "require": "./dist/tradingAccounts.js"
+    },
+    "./jev": {
+      "types": "./dist/jev.d.ts",
+      "import": "./dist/jev.mjs",
+      "require": "./dist/jev.js"
     }
   },
   "dependencies": {

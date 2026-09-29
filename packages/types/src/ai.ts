@@ -1,3 +1,4 @@
+import type { SignalAssessment } from './jev';
 import type { Direction } from './trade';
 import type { AiPayload } from './strategyAdapters';
 import type { TestTradeResult } from './backtest';
@@ -16,6 +17,7 @@ export interface AiPromptPair {
 }
 
 export interface AiDatasetRow {
+  assessment?: SignalAssessment;
   signalId: string;
   strategyName: string;
   symbol: string;

@@ -1,3 +1,4 @@
+import { parseJevConfig } from '@tradejs/core/jev';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -600,7 +601,15 @@ const resolveStrategyComposition = async ({
       `Strategy config parser returned a non-object: ${strategyName}`,
     );
   }
-  const strategyConfig = parsedConfig as StrategyConfig;
+  const jev = parseJevConfig(declaration.config.JEV);
+  if (jev && jev.source === 'provider' && !jev.provider)
+    throw new Error(
+      'Runtime JEV requires a frozen provider endpoint and model',
+    );
+  const strategyConfig = {
+    ...parsedConfig,
+    ...(jev ? { JEV: jev } : {}),
+  } as StrategyConfig;
   const selection = resolveStrategySelection({
     deployment,
     strategy: declaration,

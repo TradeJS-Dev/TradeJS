@@ -352,6 +352,7 @@ export const createSignalsTickerEvaluator =
         orderStatus: signal.orderStatus,
         orderSkipReason: signal.orderSkipReason,
         ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+        ...(signal.assessment ? { assessment: signal.assessment } : {}),
         ...(signal.allocatorDecision
           ? { allocatorDecision: signal.allocatorDecision }
           : {}),

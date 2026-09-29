@@ -1,5 +1,6 @@
 'use client';
 
+import { JEV_PROVIDERS } from '@tradejs/core/jev';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -44,6 +45,7 @@ type SettingsResponse = {
     coinmarketcap: {
       apiKey: string;
     };
+    jev?: { apiKey: string; apiEndpoint: string; model: string };
     ai: {
       apiKey: string;
       apiEndpoint: string;
@@ -65,6 +67,9 @@ type SettingsViewState = {
   userName: string;
   coinalyzeApiKey: string;
   coinmarketcapApiKey: string;
+  jevApiKey: string;
+  jevApiEndpoint: string;
+  jevModel: string;
   aiApiKey: string;
   aiApiEndpoint: string;
   aiModel: string;
@@ -84,11 +89,15 @@ type SectionName =
   | 'password'
   | 'coinalyze'
   | 'coinmarketcap'
+  | 'jev'
   | 'ai'
   | 'telegram';
 type EditableField =
   | 'coinalyzeApiKey'
   | 'coinmarketcapApiKey'
+  | 'jevApiKey'
+  | 'jevApiEndpoint'
+  | 'jevModel'
   | 'aiApiKey'
   | 'aiApiEndpoint'
   | 'aiModel'
@@ -100,6 +109,9 @@ const EMPTY_SETTINGS: SettingsViewState = {
   userName: '',
   coinalyzeApiKey: '',
   coinmarketcapApiKey: '',
+  jevApiKey: '',
+  jevApiEndpoint: JEV_PROVIDERS[0].endpoint,
+  jevModel: JEV_PROVIDERS[0].model,
   aiApiKey: '',
   aiApiEndpoint: '',
   aiModel: '',
@@ -111,6 +123,9 @@ const EMPTY_SETTINGS: SettingsViewState = {
 const EMPTY_DRAFTS: SettingsDraftState = {
   coinalyzeApiKey: '',
   coinmarketcapApiKey: '',
+  jevApiKey: '',
+  jevApiEndpoint: JEV_PROVIDERS[0].endpoint,
+  jevModel: JEV_PROVIDERS[0].model,
   aiApiKey: '',
   aiApiEndpoint: '',
   aiModel: '',
@@ -127,6 +142,9 @@ const EMPTY_PASSWORDS: PasswordState = {
 const EMPTY_EDITING: Record<EditableField, boolean> = {
   coinalyzeApiKey: false,
   coinmarketcapApiKey: false,
+  jevApiKey: false,
+  jevApiEndpoint: false,
+  jevModel: false,
   aiApiKey: false,
   aiApiEndpoint: false,
   aiModel: false,
@@ -139,6 +157,7 @@ const MASKED_FIELDS = new Set<EditableField>([
   'coinalyzeApiKey',
   'coinmarketcapApiKey',
   'aiApiKey',
+  'jevApiKey',
   'tgBotToken',
 ]);
 
@@ -146,6 +165,10 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   userName: payload.userName,
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
   coinmarketcapApiKey: payload.settings.coinmarketcap.apiKey || '',
+  jevApiKey: payload.settings.jev?.apiKey || '',
+  jevApiEndpoint:
+    payload.settings.jev?.apiEndpoint || JEV_PROVIDERS[0].endpoint,
+  jevModel: payload.settings.jev?.model || JEV_PROVIDERS[0].model,
   aiApiKey: payload.settings.ai.apiKey || '',
   aiApiEndpoint:
     normalizeAiEndpoint(payload.settings.ai.apiEndpoint) ||
@@ -167,6 +190,8 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
 
 const toDraftState = (view: SettingsViewState): SettingsDraftState => ({
   ...EMPTY_DRAFTS,
+  jevApiEndpoint: view.jevApiEndpoint,
+  jevModel: view.jevModel,
   aiApiEndpoint: view.aiApiEndpoint,
   aiModel: view.aiModel,
   aiResponseLanguage: view.aiResponseLanguage,
@@ -304,6 +329,13 @@ export const AccountSettingsDrawer = () => {
         );
       }
 
+      if (section === 'jev')
+        return (
+          Boolean(drafts.jevApiKey.trim()) ||
+          drafts.jevApiEndpoint !== settings.jevApiEndpoint ||
+          drafts.jevModel !== settings.jevModel
+        );
+
       if (section === 'coinalyze') {
         return Boolean(drafts.coinalyzeApiKey.trim());
       }
@@ -405,48 +437,57 @@ export const AccountSettingsDrawer = () => {
 
     try {
       const body =
-        section === 'coinalyze'
+        section === 'jev'
           ? {
               section,
               data: {
-                apiKey: getSecretUpdateValue('coinalyzeApiKey'),
+                apiKey: getSecretUpdateValue('jevApiKey'),
+                apiEndpoint: drafts.jevApiEndpoint,
+                model: drafts.jevModel.trim(),
               },
             }
-          : section === 'ai'
+          : section === 'coinalyze'
             ? {
                 section,
                 data: {
-                  apiKey: getSecretUpdateValue('aiApiKey'),
-                  apiEndpoint: drafts.aiApiEndpoint,
-                  model: drafts.aiModel.trim(),
-                  responseLanguage: drafts.aiResponseLanguage,
+                  apiKey: getSecretUpdateValue('coinalyzeApiKey'),
                 },
               }
-            : section === 'coinmarketcap'
+            : section === 'ai'
               ? {
                   section,
                   data: {
-                    apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
+                    apiKey: getSecretUpdateValue('aiApiKey'),
+                    apiEndpoint: drafts.aiApiEndpoint,
+                    model: drafts.aiModel.trim(),
+                    responseLanguage: drafts.aiResponseLanguage,
                   },
                 }
-              : section === 'telegram'
+              : section === 'coinmarketcap'
                 ? {
                     section,
                     data: {
-                      botToken: getSecretUpdateValue('tgBotToken'),
-                      chatId:
-                        drafts.tgChatId !== settings.tgChatId
-                          ? drafts.tgChatId.trim()
-                          : undefined,
+                      apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
                     },
                   }
-                : {
-                    section,
-                    data: {
-                      password: passwords.password,
-                      confirmPassword: passwords.confirmPassword,
-                    },
-                  };
+                : section === 'telegram'
+                  ? {
+                      section,
+                      data: {
+                        botToken: getSecretUpdateValue('tgBotToken'),
+                        chatId:
+                          drafts.tgChatId !== settings.tgChatId
+                            ? drafts.tgChatId.trim()
+                            : undefined,
+                      },
+                    }
+                  : {
+                      section,
+                      data: {
+                        password: passwords.password,
+                        confirmPassword: passwords.confirmPassword,
+                      },
+                    };
 
       const response = await fetch('/api/user/settings', {
         method: 'PATCH',
@@ -653,6 +694,96 @@ export const AccountSettingsDrawer = () => {
                           loading={savingSection === 'coinmarketcap'}
                           disabled={!isSectionDirty('coinmarketcap')}
                           onClick={() => saveSection('coinmarketcap')}
+                        >
+                          Save
+                        </Button>
+                      </Flex>
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    borderWidth="1px"
+                    borderColor="gray.700"
+                    borderRadius="lg"
+                    p={4}
+                    bg="gray.900"
+                  >
+                    <Stack gap={4}>
+                      <Box>
+                        <Text fontWeight="600">Jev</Text>
+                        <Text fontSize="sm" color="gray.400">
+                          Evaluate signal context and geometry in backtests and
+                          runtime.
+                        </Text>
+                      </Box>
+                      <Field.Root>
+                        <Field.Label>Jev provider</Field.Label>
+                        <select
+                          aria-label="Jev provider"
+                          style={DRAWER_SELECT_STYLE}
+                          value={
+                            JEV_PROVIDERS.find(
+                              (item) => item.endpoint === drafts.jevApiEndpoint,
+                            )?.endpoint ?? 'custom'
+                          }
+                          onChange={(event) => {
+                            const provider = JEV_PROVIDERS.find(
+                              (item) => item.endpoint === event.target.value,
+                            );
+                            setDrafts((current) => ({
+                              ...current,
+                              jevApiEndpoint: provider?.endpoint ?? '',
+                              jevModel: provider?.model ?? '',
+                            }));
+                          }}
+                        >
+                          {JEV_PROVIDERS.map((provider) => (
+                            <option
+                              key={provider.endpoint}
+                              value={provider.endpoint}
+                            >
+                              {provider.label}
+                            </option>
+                          ))}
+                          <option value="custom">Custom Decisions API</option>
+                        </select>
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>JEV_API_ENDPOINT</Field.Label>
+                        <Input
+                          aria-label="JEV_API_ENDPOINT"
+                          value={drafts.jevApiEndpoint}
+                          onChange={(event) =>
+                            updateDraft('jevApiEndpoint', event.target.value)
+                          }
+                          placeholder="Full URL of the decision endpoint"
+                        />
+                        <Text fontSize="sm" color="gray.400">
+                          Use a TypeSafe-compatible decision endpoint accepting
+                          state and questions.
+                        </Text>
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>JEV_MODEL</Field.Label>
+                        <Input
+                          aria-label="JEV_MODEL"
+                          value={drafts.jevModel}
+                          onChange={(event) =>
+                            updateDraft('jevModel', event.target.value)
+                          }
+                        />
+                      </Field.Root>
+                      {renderEditableField({
+                        label: 'JEV_API_KEY',
+                        field: 'jevApiKey',
+                        placeholder: 'Enter a new Jev provider API key',
+                      })}
+                      <Flex justify="flex-end">
+                        <Button
+                          colorPalette="teal"
+                          loading={savingSection === 'jev'}
+                          disabled={!isSectionDirty('jev')}
+                          onClick={() => saveSection('jev')}
                         >
                           Save
                         </Button>
