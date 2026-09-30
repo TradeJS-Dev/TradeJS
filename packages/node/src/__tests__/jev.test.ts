@@ -2,12 +2,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {
-  buildJevInput,
-  evaluateJevInput,
-  JEV_QUESTIONS,
-  assessSignalWithJev,
-} from '../jev';
+import { buildJevInput, evaluateJevInput, assessSignalWithJev } from '../jev';
 import { questionsForJevInput } from '../jevInput';
 import { buildAiPayloadByStrategy } from '../strategyAdapters/ai';
 import { trainJevGate, compareJevGate } from '../jevTraining';
@@ -98,7 +93,7 @@ const makeRows = () =>
     const inputHash = jevHash(input),
       questionsHash = jevHash(questionsForJevInput(input));
     const record: JevRecord = {
-      schema: 'tradejs-jev-record/v2',
+      schema: 'tradejs-jev-record/v3',
       id: jevHash({ inputHash, questionsHash, provider }),
       inputHash,
       questionsHash,
@@ -115,7 +110,7 @@ const makeRows = () =>
       elapsedMs: 1,
     };
     return {
-      schema: 'tradejs-jev-study/v2',
+      schema: 'tradejs-jev-study/v3',
       signalId: `s${index}`,
       record,
       profit: score ? 1 : -1,
@@ -234,9 +229,10 @@ describe('Jev shared assessment and local training', () => {
     const assessment = await assessSignalWithJev({ ...args, strict: false });
     expect(assessment.status).toBe('unavailable');
     expect(signal.additionalIndicators?.jev).toEqual({
-      schema: 'tradejs-jev-features/v1',
+      schema: 'tradejs-jev-features/v2',
       status: 'unavailable',
       scores: assessment.scores,
+      confidence: assessment.confidence,
     });
     expect(
       (buildAiPayloadByStrategy(signal).additionalIndicators as any).jev,
@@ -251,13 +247,17 @@ describe('Jev shared assessment and local training', () => {
     (env) => {
       const signal = makeSignal();
       signal.assessment = {
-        schema: 'tradejs-signal-assessment/v3',
+        schema: 'tradejs-signal-assessment/v4',
         source: 'recorded',
         mode: 'observe',
         status: 'available',
         inputHash: 'h',
+        questionsHash: 'q',
         model: 'm',
         scores: { structure: 0, participation: 1, timing: 1, geometry: 1 },
+        confidence: { structure: 1, participation: 1, timing: 1, geometry: 1 },
+        geometryStatus: 'available',
+        levelsValid: true,
       };
       const args = {
         signal,
@@ -270,7 +270,7 @@ describe('Jev shared assessment and local training', () => {
       expect(getEntrySkipReason(args)).not.toContain('JEV_REJECTED');
       expect(
         shouldExecuteEntryDecision({ ...args, aiEnabled: true, quality: 3 }),
-      ).toBe(false);
+      ).toBe(env === 'BACKTEST');
       expect(
         shouldExecuteEntryDecision({ ...args, aiEnabled: true, quality: 4 }),
       ).toBe(true);

@@ -264,6 +264,23 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     expect(mockSetData).not.toHaveBeenCalled();
   });
 
+  it('does not run the AI gate during backtest even when Jev enriched the signal', async () => {
+    const enrichedSignal = {
+      ...signal,
+      assessment: { status: 'available' },
+    } as any;
+    const quality = await enrichSignalWithAi({
+      signal: enrichedSignal,
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      env: 'BACKTEST',
+      ai: { enabled: true, mode: 'gate', minQuality: 4 },
+    });
+    expect(quality).toBeUndefined();
+    expect(mockRunAiPromptLocal).not.toHaveBeenCalled();
+    expect(mockAskAI).not.toHaveBeenCalled();
+  });
+
   it('uses replay AI snapshot in PARITY env without calling provider', async () => {
     const enrichedSignal = { ...signal };
 

@@ -1161,10 +1161,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       }
 
       const minAiQuality = runtime.ai?.minQuality ?? 4;
-      const aiEnabled =
-        runtime.ai?.enabled !== false &&
-        runtime.ai != null &&
-        (env !== 'BACKTEST' || !jev || runtime.ai.mode === 'gate');
+      const aiEnabled = runtime.ai?.enabled !== false && runtime.ai != null;
       const policy = buildHookPolicy({
         quality,
         makeOrdersEnabled,

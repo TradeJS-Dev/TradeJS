@@ -76,10 +76,18 @@ export const evaluateJevInput = async ({
   const questions = questionsForJevInput(input);
   const questionsHash = jevHash(questions);
   const base = {
-    schema: 'tradejs-signal-assessment/v3' as const,
+    schema: 'tradejs-signal-assessment/v4' as const,
     source: config.source,
     mode: config.mode,
     inputHash,
+    questionsHash,
+    geometryStatus: input.geometryStatus,
+    levelsValid:
+      input.features['signal.validLevels'] === 1
+        ? true
+        : input.features['signal.validLevels'] === 0
+          ? false
+          : null,
   };
   if (!input.questions.length)
     return {
@@ -88,6 +96,7 @@ export const evaluateJevInput = async ({
         status: 'unavailable',
         model: '',
         scores: emptyScores(),
+        confidence: emptyScores(),
       },
     };
   if (config.source === 'local') {
@@ -118,6 +127,7 @@ export const evaluateJevInput = async ({
         status: 'available',
         model: config.modelSha256!,
         scores,
+        confidence: emptyScores(),
       },
     };
   }
@@ -129,7 +139,7 @@ export const evaluateJevInput = async ({
     const existing = await readJevArtifact<JevRecord>(file);
     if (existing) {
       if (
-        existing.schema !== 'tradejs-jev-record/v2' ||
+        existing.schema !== 'tradejs-jev-record/v3' ||
         existing.id !== id ||
         existing.inputHash !== inputHash ||
         existing.questionsHash !== questionsHash ||
@@ -191,7 +201,7 @@ export const evaluateJevInput = async ({
       ]),
     ) as JevScores;
     const value: JevRecord = {
-      schema: 'tradejs-jev-record/v2',
+      schema: 'tradejs-jev-record/v3',
       id,
       inputHash,
       questionsHash,
@@ -225,6 +235,12 @@ export const evaluateJevInput = async ({
       recordId: id,
       model: record.response.model,
       scores: record.scores,
+      confidence: Object.fromEntries(
+        JEV_DIMENSIONS.map((key) => [
+          key,
+          record.response.answers[key]?.confidence ?? null,
+        ]),
+      ) as JevScores,
     },
   };
 };
@@ -256,22 +272,27 @@ export const assessSignalWithJev = async ({
   } catch (error) {
     if (strict) throw error;
     assessment = {
-      schema: 'tradejs-signal-assessment/v3',
+      schema: 'tradejs-signal-assessment/v4',
       source: config.source,
       mode: config.mode,
       status: 'unavailable',
       inputHash: '',
+      questionsHash: '',
+      geometryStatus: 'absent',
+      levelsValid: null,
       model: config.provider?.model ?? config.modelSha256 ?? '',
       scores: emptyScores(),
+      confidence: emptyScores(),
     };
   }
   signal.assessment = assessment;
   signal.additionalIndicators = {
     ...signal.additionalIndicators,
     jev: {
-      schema: 'tradejs-jev-features/v1',
+      schema: 'tradejs-jev-features/v2',
       status: assessment.status,
       scores: assessment.scores,
+      confidence: assessment.confidence,
     },
   };
   const identity = {

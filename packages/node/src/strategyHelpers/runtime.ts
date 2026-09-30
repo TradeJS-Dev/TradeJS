@@ -184,7 +184,7 @@ export const enrichSignalWithAi = async ({
     }
   }
 
-  if (env === 'BACKTEST' && !(signal.assessment && ai?.mode === 'gate')) {
+  if (env === 'BACKTEST') {
     return undefined;
   }
 

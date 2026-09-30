@@ -5,6 +5,11 @@ export type JevDimension =
   | 'geometry';
 export type JevScores = Record<JevDimension, number | null>;
 export type JevFeature = number | string | boolean | null;
+export interface JevFactProvenance {
+  knownAt: number;
+  scope: 'target' | 'strategy';
+  unit?: string;
+}
 
 /** Optional, signal-time facts supplied by any strategy package. */
 export interface JevEvidence {
@@ -12,6 +17,8 @@ export interface JevEvidence {
   knownAt: number;
   facts: Record<string, JevFeature>;
   geometry?: Record<string, JevFeature>;
+  /** Optional per-fact provenance; omitted facts use the evidence-level knownAt. */
+  factDetails?: Record<string, JevFactProvenance>;
 }
 
 export interface JevProviderConfig {
@@ -32,13 +39,14 @@ export interface JevConfig {
 }
 
 export interface JevInput {
-  schema: 'tradejs-jev-input/v2';
+  schema: 'tradejs-jev-input/v3';
   strategy: string;
   symbol: string;
   interval: string;
   timestamp: number;
   direction: 'LONG' | 'SHORT';
   features: Record<string, JevFeature>;
+  provenance: Record<string, JevFactProvenance>;
   questions: JevDimension[];
   geometryStatus: 'available' | 'absent' | 'invalid';
 }
@@ -57,7 +65,7 @@ export interface JevResponse {
 }
 
 export interface JevRecord {
-  schema: 'tradejs-jev-record/v2';
+  schema: 'tradejs-jev-record/v3';
   id: string;
   inputHash: string;
   questionsHash: string;
@@ -70,14 +78,18 @@ export interface JevRecord {
 }
 
 export interface SignalAssessment {
-  schema: 'tradejs-signal-assessment/v3';
+  schema: 'tradejs-signal-assessment/v4';
   source: JevConfig['source'];
   mode: JevConfig['mode'];
   status: 'available' | 'unavailable';
   recordId?: string;
   inputHash: string;
+  questionsHash: string;
   model: string;
   scores: JevScores;
+  confidence: JevScores;
+  geometryStatus: JevInput['geometryStatus'];
+  levelsValid: boolean | null;
 }
 
 export type JevTree =
@@ -109,7 +121,7 @@ export interface JevGateModel {
 }
 
 export interface JevStudyRow {
-  schema: 'tradejs-jev-study/v2';
+  schema: 'tradejs-jev-study/v3';
   signalId: string;
   record: JevRecord;
   /** Outcome is analysis-only and is never included in JevInput. */

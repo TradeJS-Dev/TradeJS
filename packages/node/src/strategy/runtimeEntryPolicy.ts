@@ -116,7 +116,7 @@ export const shouldExecuteEntryDecision = ({
     return false;
   }
 
-  if (!signal || (env === 'BACKTEST' && !signal.assessment)) {
+  if (!signal || env === 'BACKTEST') {
     return true;
   }
 
@@ -136,7 +136,6 @@ export const shouldExecuteEntryDecision = ({
 };
 
 export const getEntrySkipReason = ({
-  signal,
   makeOrdersEnabled,
   env,
   ml,
@@ -166,16 +165,12 @@ export const getEntrySkipReason = ({
     return `ML_THRESHOLD_NOT_MET (${probability} < ${threshold})`;
   }
 
-  if (
-    (env !== 'BACKTEST' || signal?.assessment) &&
-    aiEnabled &&
-    quality == null
-  ) {
+  if (env !== 'BACKTEST' && aiEnabled && quality == null) {
     return 'AI_QUALITY_UNAVAILABLE';
   }
 
   if (
-    (env !== 'BACKTEST' || signal?.assessment) &&
+    env !== 'BACKTEST' &&
     aiEnabled &&
     quality != null &&
     Number.isFinite(quality) &&

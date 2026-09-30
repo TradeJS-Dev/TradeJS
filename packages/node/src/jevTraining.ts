@@ -26,10 +26,10 @@ export const validateJevStudy = (rows: JevStudyRow[]) => {
   for (const row of rows) {
     const record = row?.record;
     if (
-      row?.schema !== 'tradejs-jev-study/v2' ||
+      row?.schema !== 'tradejs-jev-study/v3' ||
       !row.signalId ||
-      record?.schema !== 'tradejs-jev-record/v2' ||
-      record.input?.schema !== 'tradejs-jev-input/v2' ||
+      record?.schema !== 'tradejs-jev-record/v3' ||
+      record.input?.schema !== 'tradejs-jev-input/v3' ||
       !Number.isFinite(record.input.timestamp) ||
       record.inputHash !== jevHash(record.input) ||
       record.questionsHash !== jevHash(questionsForJevInput(record.input)) ||
@@ -176,7 +176,7 @@ export const validateJevGateModel = (value: unknown): JevGateModel => {
   const model = value as JevGateModel;
   if (
     model?.schema !== 'tradejs-jev-gate/v2' ||
-    model.inputSchema !== 'tradejs-jev-input/v2' ||
+    model.inputSchema !== 'tradejs-jev-input/v3' ||
     typeof model.strategy !== 'string' ||
     !model.strategy ||
     !model.teacherModel ||
@@ -410,7 +410,7 @@ export const trainJevGate = (
   const first = rows[0].record;
   const model: JevGateModel = {
     schema: 'tradejs-jev-gate/v2',
-    inputSchema: 'tradejs-jev-input/v2',
+    inputSchema: 'tradejs-jev-input/v3',
     strategy: first.input.strategy,
     questionsHash: jevHash(JEV_QUESTIONS),
     teacherModel: first.response.model,

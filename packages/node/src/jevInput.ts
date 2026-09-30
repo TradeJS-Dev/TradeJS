@@ -1,9 +1,11 @@
 import type {
   JevDimension,
   JevFeature,
+  JevFactProvenance,
   JevInput,
   Signal,
 } from '@tradejs/types';
+import { intervalToMs } from '@tradejs/core/data';
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -28,22 +30,46 @@ export const buildJevInput = (signal: Signal): JevInput => {
   )
     throw new Error('Jev requires a dated directional signal');
   const base = object(signal.additionalIndicators?.baseContext);
+  const baseTimestamp = at(base, 'candle', 'timestamp');
+  const baseKnownAt =
+    typeof baseTimestamp === 'number' && Number.isFinite(baseTimestamp)
+      ? baseTimestamp
+      : signal.timestamp;
+  if (
+    baseKnownAt > signal.timestamp ||
+    signal.timestamp - baseKnownAt > intervalToMs(signal.interval)
+  )
+    throw new Error('Jev baseContext is not available at signal time');
   // StrategyAPI carries optional strategy facts through additionalIndicators.
   const evidence =
     signal.jevEvidence ?? signal.additionalIndicators?.jevEvidence;
   const features: Record<string, JevFeature> = {};
-  const put = (key: string, value: unknown) => {
+  const provenance: Record<string, JevFactProvenance> = {};
+  const put = (key: string, value: unknown, details: JevFactProvenance) => {
     const normalized = fact(value);
-    if (normalized != null) features[key] = normalized;
+    if (normalized != null) {
+      features[key] = normalized;
+      provenance[key] = details;
+    }
   };
-  put('signal.direction', signal.direction);
-  put('market.trendBias', at(base, 'regime', 'trend', 'bias'));
-  put('market.swingBias', at(base, 'structure', 'swing', 'bias'));
-  put('market.volumeRel20', at(base, 'participation', 'volume', 'volumeRel20'));
-  put('market.deltaPct', at(base, 'participation', 'delta', 'deltaPct'));
+  const signalFact = { knownAt: signal.timestamp, scope: 'target' as const };
+  const marketFact = { knownAt: baseKnownAt, scope: 'target' as const };
+  put('signal.direction', signal.direction, signalFact);
+  put('market.trendBias', at(base, 'regime', 'trend', 'bias'), marketFact);
+  put('market.swingBias', at(base, 'structure', 'swing', 'bias'), marketFact);
+  put(
+    'market.volumeRel20',
+    at(base, 'participation', 'volume', 'volumeRel20'),
+    { ...marketFact, unit: 'ratio' },
+  );
+  put('market.deltaPct', at(base, 'participation', 'delta', 'deltaPct'), {
+    ...marketFact,
+    unit: 'percent',
+  });
   put(
     'market.fastMaDistanceAtr',
     at(base, 'regime', 'trend', 'priceDistanceToMaFastAtr'),
+    { ...marketFact, unit: 'ATR' },
   );
   const price = finite(signal.prices.currentPrice);
   const stop = finite(signal.prices.stopLossPrice);
@@ -51,13 +77,22 @@ export const buildJevInput = (signal: Signal): JevInput => {
   const atr = finite(at(base, 'raw', 'volatility', 'atr'));
   if (price == null || stop == null || target == null)
     throw new Error('Invalid Jev signal prices');
-  features['signal.validLevels'] =
+  put(
+    'signal.validLevels',
     signal.direction === 'LONG'
       ? stop < price && price < target
-      : target < price && price < stop;
+      : target < price && price < stop,
+    signalFact,
+  );
   if (atr != null && atr > 0) {
-    features['signal.stopDistanceAtr'] = Math.abs(price - stop) / atr;
-    features['signal.targetDistanceAtr'] = Math.abs(price - target) / atr;
+    put('signal.stopDistanceAtr', Math.abs(price - stop) / atr, {
+      ...signalFact,
+      unit: 'ATR',
+    });
+    put('signal.targetDistanceAtr', Math.abs(price - target) / atr, {
+      ...signalFact,
+      unit: 'ATR',
+    });
   }
   let geometryStatus: JevInput['geometryStatus'] = 'absent';
   const figures = signal.figures;
@@ -114,7 +149,22 @@ export const buildJevInput = (signal: Signal): JevInput => {
       Object.keys(evidence.geometry ?? {}).length > 16
     )
       throw new Error('Invalid or oversized Jev evidence');
-    put('setup.version', evidence.version);
+    const strategyFact = {
+      knownAt: evidence.knownAt,
+      scope: 'strategy' as const,
+    };
+    const detailFor = (key: string): JevFactProvenance => {
+      const detail = evidence.factDetails?.[key] ?? strategyFact;
+      if (
+        !Number.isFinite(detail.knownAt) ||
+        detail.knownAt > signal.timestamp ||
+        !['target', 'strategy'].includes(detail.scope) ||
+        (detail.unit != null && !/^[a-zA-Z0-9%._/-]{1,20}$/.test(detail.unit))
+      )
+        throw new Error('Invalid Jev fact provenance');
+      return detail;
+    };
+    put('setup.version', evidence.version, strategyFact);
     for (const [key, value] of Object.entries(evidence.facts)) {
       if (
         !/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) ||
@@ -123,13 +173,19 @@ export const buildJevInput = (signal: Signal): JevInput => {
         )
       )
         throw new Error('Invalid Jev evidence key');
-      put(`setup.${key}`, value);
+      put(`setup.${key}`, value, detailFor(`setup.${key}`));
     }
     for (const [key, value] of Object.entries(evidence.geometry ?? {})) {
       if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key))
         throw new Error('Invalid Jev geometry key');
-      put(`geometry.${key}`, value);
+      put(`geometry.${key}`, value, detailFor(`geometry.${key}`));
     }
+    if (
+      Object.keys(evidence.factDetails ?? {}).some(
+        (key) => !(key in provenance),
+      )
+    )
+      throw new Error('Jev provenance references an unavailable fact');
   }
   const questions: JevDimension[] = [];
   if (
@@ -166,13 +222,14 @@ export const buildJevInput = (signal: Signal): JevInput => {
   )
     throw new Error('Jev input exceeds the microdecision budget');
   return {
-    schema: 'tradejs-jev-input/v2',
+    schema: 'tradejs-jev-input/v3',
     strategy: signal.strategy,
     symbol: signal.symbol,
     interval: String(signal.interval),
     timestamp: signal.timestamp,
     direction: signal.direction as 'LONG' | 'SHORT',
     features,
+    provenance,
     questions,
     geometryStatus,
   };
@@ -222,4 +279,9 @@ export const stateForJevInput = (input: JevInput) => ({
   strategy: input.strategy,
   direction: input.direction,
   facts: input.features,
+  units: Object.fromEntries(
+    Object.entries(input.provenance)
+      .filter(([, detail]) => detail.unit != null)
+      .map(([key, detail]) => [key, detail.unit]),
+  ),
 });

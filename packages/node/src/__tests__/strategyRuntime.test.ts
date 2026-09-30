@@ -740,7 +740,7 @@ describe('strategyRuntime', () => {
           mockEnrichSignalWithAi.mockClear();
           const contents = JSON.stringify({
             schema: 'tradejs-jev-gate/v2',
-            inputSchema: 'tradejs-jev-input/v2',
+            inputSchema: 'tradejs-jev-input/v3',
             strategy: 'TrendLine',
             teacherModel: 'jev-1.13.0',
             questionsHash: jevHash(JEV_QUESTIONS),

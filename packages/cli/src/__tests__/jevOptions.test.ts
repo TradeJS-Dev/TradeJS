@@ -3,7 +3,10 @@ const mockSettings = jest.fn();
 jest.mock('@tradejs/infra/userSettings', () => ({
   getUserSettings: (...args: unknown[]) => mockSettings(...args),
 }));
-import { resolveBacktestJev } from '../lib/backtest/jevOptions';
+import {
+  resolveBacktestJev,
+  resolveBacktestAiExportEnabled,
+} from '../lib/backtest/jevOptions';
 
 describe('backtest Jev opt-in', () => {
   beforeEach(() => {
@@ -20,6 +23,11 @@ describe('backtest Jev opt-in', () => {
     await expect(
       resolveBacktestJev({ jevRecorded: true }, 'root', '/tmp'),
     ).rejects.toThrow('require --jev');
+  });
+  it('keeps AI export independent of Jev', () => {
+    expect(resolveBacktestAiExportEnabled({ jev: true })).toBe(false);
+    expect(resolveBacktestAiExportEnabled({ ai: true })).toBe(true);
+    expect(resolveBacktestAiExportEnabled({ ai: true, jev: true })).toBe(true);
   });
   it('freezes the provider and defaults to enrichment', async () => {
     expect(await resolveBacktestJev({ jev: true }, 'root', '/tmp')).toEqual({

@@ -100,17 +100,16 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevReco
 ```
 
 Without `--jev`, ordinary backtests do not evaluate Jev, even if a configuration
-contains `JEV`. `--jev` also enables the completed-trade AI export and records
-all evaluated candidates, including candidates rejected by later policy.
+contains `JEV`. Use `--ai --jev` to save completed trades with Jev features for
+AI training. `--jev` alone records Jev assessments without enabling AI export.
 Jev asks only the questions supported by available facts. The shared projection
 selects a few signal-time trend, swing, volume, delta, entry-distance and
 extension facts. It does not send the whole `baseContext`, raw figure points,
 calculated gate scores, or outcome fields. The normalized answers are stored in
 `signal.assessment` and the compact `additionalIndicators.jev` feature group,
 which is available to the strategy's AI gate and AI export. Jev scores do not
-approve or reject entries. With `AI_MODE=gate` and `AI_ENABLED=true`, a Jev
-backtest applies the strategy's AI gate to entries; ordinary backtests keep
-their existing entry behavior.
+approve or reject entries. Backtests do not apply the AI gate; `ai-train`
+evaluates it on exported outcomes, while runtime follows `AI_MODE`.
 
 Any strategy can optionally attach `jevEvidence` through its `StrategyAPI.entry`
 `additionalIndicators` with a version, `knownAt` timestamp, up to 16 scalar

@@ -6,6 +6,11 @@ import { getUserSettings } from '@tradejs/infra/userSettings';
 import { resolveJevProvider, validateJevGateModel } from '@tradejs/node/jev';
 import type { JevConfig } from '@tradejs/types';
 
+/** Jev evaluation and AI dataset export are separate backtest opt-ins. */
+export const resolveBacktestAiExportEnabled = (
+  flags: Record<string, unknown>,
+) => Boolean(flags.ai);
+
 export const resolveBacktestJev = async (
   flags: Record<string, unknown>,
   userName: string,

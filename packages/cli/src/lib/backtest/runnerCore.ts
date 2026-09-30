@@ -1,4 +1,7 @@
-import { resolveBacktestJev } from './jevOptions';
+import {
+  resolveBacktestAiExportEnabled,
+  resolveBacktestJev,
+} from './jevOptions';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -424,7 +427,7 @@ export const buildPreparedTestSuite = async ({
   for (const test of testSuite)
     assertStrategyExecutionIsolation(test.strategyConfig);
   const jev = await resolveBacktestJev(flags, userName, projectRoot);
-  const aiEnabled = Boolean(flags.ai || jev);
+  const aiEnabled = resolveBacktestAiExportEnabled(flags);
   const requestedTestsLimit = resolveRequestedTestsLimit({
     isLiveMode: isReplay,
     requestedLimit: testsLimit,
