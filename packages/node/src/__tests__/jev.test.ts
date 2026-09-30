@@ -148,7 +148,7 @@ describe('Jev shared assessment and local training', () => {
     expect(input.features['signal.stopDistanceAtr']).toBe(1);
     expect(input.questions).toEqual(['structure', 'participation', 'timing']);
     expect(Object.keys(input.features).length).toBeLessThan(20);
-    signal.jevEvidence = {
+    signal.additionalIndicators!.jevEvidence = {
       version: 'setup-v1',
       knownAt: signal.timestamp,
       facts: { confirmationCount: 2 },

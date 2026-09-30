@@ -28,7 +28,9 @@ export const buildJevInput = (signal: Signal): JevInput => {
   )
     throw new Error('Jev requires a dated directional signal');
   const base = object(signal.additionalIndicators?.baseContext);
-  const evidence = signal.jevEvidence;
+  // StrategyAPI carries optional strategy facts through additionalIndicators.
+  const evidence =
+    signal.jevEvidence ?? signal.additionalIndicators?.jevEvidence;
   const features: Record<string, JevFeature> = {};
   const put = (key: string, value: unknown) => {
     const normalized = fact(value);
@@ -93,6 +95,17 @@ export const buildJevInput = (signal: Signal): JevInput => {
     geometryStatus = 'invalid';
   else if (points.length) geometryStatus = 'available';
   if (evidence) {
+    if (
+      typeof evidence !== 'object' ||
+      Array.isArray(evidence) ||
+      !evidence.facts ||
+      typeof evidence.facts !== 'object' ||
+      Array.isArray(evidence.facts) ||
+      (evidence.geometry != null &&
+        (typeof evidence.geometry !== 'object' ||
+          Array.isArray(evidence.geometry)))
+    )
+      throw new Error('Invalid Jev evidence');
     if (
       !/^[a-zA-Z0-9._-]{1,40}$/.test(evidence.version) ||
       !Number.isFinite(evidence.knownAt) ||

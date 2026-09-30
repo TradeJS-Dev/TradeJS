@@ -111,16 +111,19 @@ extension facts. It does not send the whole `baseContext`, raw figure points,
 calculated gate scores, or outcome fields. The normalized answers are stored in
 `signal.assessment`; deterministic calculations retain their meaning.
 
-Any strategy can optionally attach `signal.jevEvidence` with a version,
-`knownAt` timestamp, up to 16 scalar setup facts and 16 scalar geometry facts:
+Any strategy can optionally attach `jevEvidence` through its `StrategyAPI.entry`
+`additionalIndicators` with a version, `knownAt` timestamp, up to 16 scalar
+setup facts and 16 scalar geometry facts:
 
 ```ts
-signal.jevEvidence = {
-  version: 'setup-v1',
-  knownAt: signal.timestamp,
-  facts: { confirmationCount: 2, entryExtensionAtr: 0.4 },
-  geometry: { normalizedWidthAtr: 1.5 },
-};
+additionalIndicators: {
+  jevEvidence: {
+    version: 'setup-v1',
+    knownAt: timestamp,
+    facts: { confirmationCount: 2, entryExtensionAtr: 0.4 },
+    geometry: { normalizedWidthAtr: 1.5 },
+  },
+},
 ```
 
 This is a strategy-neutral contract. Geometry is asked only when the strategy
