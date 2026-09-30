@@ -83,11 +83,9 @@ export const evaluateJevInput = async ({
     questionsHash,
     geometryStatus: input.geometryStatus,
     levelsValid:
-      input.features['signal.validLevels'] === 1
-        ? true
-        : input.features['signal.validLevels'] === 0
-          ? false
-          : null,
+      typeof input.features['signal.validLevels'] === 'boolean'
+        ? input.features['signal.validLevels']
+        : null,
   };
   if (!input.questions.length)
     return {

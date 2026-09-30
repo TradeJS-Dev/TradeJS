@@ -203,6 +203,8 @@ describe('Jev shared assessment and local training', () => {
     });
     expect(replay.record).toEqual(first.record);
     expect(replay.assessment.scores.structure).toBe(0.75);
+    expect(replay.assessment.levelsValid).toBe(true);
+    expect(replay.assessment.confidence.structure).toBe(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(
       evaluateJevInput({
