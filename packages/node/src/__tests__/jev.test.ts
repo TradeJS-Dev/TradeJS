@@ -8,6 +8,7 @@ import {
   JEV_QUESTIONS,
   assessSignalWithJev,
 } from '../jev';
+import { questionsForJevInput } from '../jevInput';
 import { trainJevGate, compareJevGate } from '../jevTraining';
 import { jevHash, jevFileHash } from '@tradejs/infra/jev';
 import { decideJev, parseJevConfig } from '@tradejs/core/jev';
@@ -64,8 +65,9 @@ const makeSignal = (timestamp = 1000): Signal =>
     additionalIndicators: {
       baseContext: {
         raw: { volatility: { atr: 2 } },
-        structure: { breakout: true },
-        participation: { volumeRel: 2 },
+        regime: { trend: { bias: 'bull', priceDistanceToMaFastAtr: 0.5 } },
+        structure: { swing: { bias: 'bull' } },
+        participation: { volume: { volumeRel20: 2 } },
         gateFeatures: { scores: { totalContext: 90 } },
       },
     },
@@ -73,7 +75,7 @@ const makeSignal = (timestamp = 1000): Signal =>
 const makeResponse = (score = 3): JevResponse => ({
   model: 'jev-1.13.0',
   answers: Object.fromEntries(
-    ['structure', 'participation', 'timing', 'geometry'].map((key) => [
+    ['structure', 'participation', 'timing'].map((key) => [
       key,
       {
         type: 'score',
@@ -93,9 +95,9 @@ const makeRows = () =>
     input.features = { momentum: index % 2, missing: index % 3 ? null : 2 };
     const score = index % 2 ? 4 : 0;
     const inputHash = jevHash(input),
-      questionsHash = jevHash(JEV_QUESTIONS);
+      questionsHash = jevHash(questionsForJevInput(input));
     const record: JevRecord = {
-      schema: 'tradejs-jev-record/v1',
+      schema: 'tradejs-jev-record/v2',
       id: jevHash({ inputHash, questionsHash, provider }),
       inputHash,
       questionsHash,
@@ -106,13 +108,13 @@ const makeRows = () =>
         structure: score / 4,
         participation: score / 4,
         timing: score / 4,
-        geometry: score / 4,
+        geometry: null,
       },
       createdAt: '2026-09-29',
       elapsedMs: 1,
     };
     return {
-      schema: 'tradejs-jev-study/v1',
+      schema: 'tradejs-jev-study/v2',
       signalId: `s${index}`,
       record,
       profit: score ? 1 : -1,
@@ -130,7 +132,7 @@ describe('Jev shared assessment and local training', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('uses signal-time context, excludes old verdicts and keeps all geometry points', () => {
+  it('sends only selected facts and accepts bounded strategy evidence', () => {
     const signal = makeSignal();
     signal.additionalIndicators!.profit = 999;
     signal.additionalIndicators!.baseContext.structure.outcome = 999;
@@ -142,10 +144,50 @@ describe('Jev shared assessment and local training', () => {
     expect(JSON.stringify(input)).not.toMatch(
       /999|totalContext|gateFeatures|outcome/,
     );
-    expect(input.features['geometry.pointCount']).toBe(8);
+    expect(input.features['geometry.pointCount']).toBeUndefined();
     expect(input.features['signal.stopDistanceAtr']).toBe(1);
+    expect(input.questions).toEqual(['structure', 'participation', 'timing']);
+    expect(Object.keys(input.features).length).toBeLessThan(20);
+    signal.jevEvidence = {
+      version: 'setup-v1',
+      knownAt: signal.timestamp,
+      facts: { confirmationCount: 2 },
+      geometry: { normalizedWidthAtr: 1.5 },
+    };
+    const extended = buildJevInput(signal);
+    expect(extended.features['setup.confirmationCount']).toBe(2);
+    expect(extended.questions).toContain('geometry');
     signal.figures.lines![0].points[0].timestamp = 1001;
     expect(buildJevInput(signal).geometryStatus).toBe('invalid');
+  });
+
+  it('reuses one paid answer for equivalent states at different signal times', async () => {
+    const fetcher = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => makeResponse(),
+    } as Response);
+    const config = {
+      source: 'provider' as const,
+      mode: 'gate' as const,
+      provider,
+    };
+    const first = await evaluateJevInput({
+      input: buildJevInput(makeSignal(1000)),
+      config,
+      userName: 'root',
+      projectRoot: dir,
+    });
+    const second = await evaluateJevInput({
+      input: buildJevInput(makeSignal(2000)),
+      config,
+      userName: 'root',
+      projectRoot: dir,
+    });
+    expect(first.record?.id).not.toBe(second.record?.id);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    expect(body.state).not.toHaveProperty('timestamp');
+    expect(body.state).not.toHaveProperty('symbol');
   });
 
   it('records once, replays without a network call and invalidates changed inputs', async () => {
@@ -205,7 +247,7 @@ describe('Jev shared assessment and local training', () => {
       };
       expect(shouldExecuteEntryDecision(args)).toBe(true);
       signal.assessment = {
-        schema: 'tradejs-signal-assessment/v1',
+        schema: 'tradejs-signal-assessment/v2',
         source: 'recorded',
         mode: 'gate',
         status: 'available',
@@ -230,11 +272,22 @@ describe('Jev shared assessment and local training', () => {
       geometry: null,
     };
     const config = { source: 'provider' as const, mode: 'gate' as const };
-    expect(decideJev(scores, config, 'absent').allowed).toBe(true);
+    const questions = ['structure', 'participation', 'timing'] as const;
     expect(
-      decideJev(scores, { ...config, requireGeometry: true }, 'absent').allowed,
+      decideJev(scores, config, 'absent', undefined, [...questions]).allowed,
+    ).toBe(true);
+    expect(
+      decideJev(
+        scores,
+        { ...config, requireGeometry: true },
+        'absent',
+        undefined,
+        [...questions],
+      ).allowed,
     ).toBe(false);
-    expect(decideJev(scores, config, 'invalid').allowed).toBe(false);
+    expect(
+      decideJev(scores, config, 'invalid', undefined, [...questions]).allowed,
+    ).toBe(false);
     expect(() =>
       parseJevConfig({ ...config, minScores: { timing: 2 } }),
     ).toThrow('thresholds');

@@ -21,11 +21,17 @@ import type {
   JevGateModel,
   JevInput,
   JevRecord,
+  JevResponse,
   JevScores,
   Signal,
   SignalAssessment,
 } from '@tradejs/types';
-import { buildJevInput, JEV_QUESTIONS } from './jevInput';
+import {
+  buildJevInput,
+  JEV_QUESTIONS,
+  questionsForJevInput,
+  stateForJevInput,
+} from './jevInput';
 
 export { buildJevInput, JEV_QUESTIONS } from './jevInput';
 export {
@@ -53,6 +59,7 @@ const emptyScores = (): JevScores => ({
   geometry: null,
 });
 const pending = new Map<string, Promise<JevRecord>>();
+const pendingResponses = new Map<string, Promise<JevResponse>>();
 
 export const evaluateJevInput = async ({
   input,
@@ -67,13 +74,25 @@ export const evaluateJevInput = async ({
 }): Promise<{ assessment: SignalAssessment; record?: JevRecord }> => {
   config = parseJevConfig(config)!;
   const inputHash = jevHash(input);
-  const questionsHash = jevHash(JEV_QUESTIONS);
+  const questions = questionsForJevInput(input);
+  const questionsHash = jevHash(questions);
   const base = {
-    schema: 'tradejs-signal-assessment/v1' as const,
+    schema: 'tradejs-signal-assessment/v2' as const,
     source: config.source,
     mode: config.mode,
     inputHash,
   };
+  if (!input.questions.length)
+    return {
+      assessment: {
+        ...base,
+        status: 'unavailable',
+        model: '',
+        scores: emptyScores(),
+        allowed: false,
+        reasons: ['NO_ELIGIBLE_QUESTIONS'],
+      },
+    };
   if (config.source === 'local') {
     const contents = await fs.readFile(
       path.resolve(projectRoot, config.modelFile!),
@@ -85,25 +104,30 @@ export const evaluateJevInput = async ({
     const model: JevGateModel = validateJevGateModel(JSON.parse(contents));
     if (
       model.strategy !== input.strategy ||
-      model.questionsHash !== questionsHash
+      model.questionsHash !== jevHash(JEV_QUESTIONS)
     )
       throw new Error('Local Jev gate strategy or question version mismatch');
     const scores = Object.fromEntries(
       JEV_DIMENSIONS.map((key) => [
         key,
-        model.trees[key]
+        input.questions.includes(key) && model.trees[key]
           ? predictJevTree(model.trees[key]!, input.features)
           : null,
       ]),
     ) as JevScores;
-    if (input.geometryStatus !== 'available') scores.geometry = null;
     return {
       assessment: {
         ...base,
         status: 'available',
         model: config.modelSha256!,
         scores,
-        ...decideJev(scores, config, input.geometryStatus, input.features),
+        ...decideJev(
+          scores,
+          config,
+          input.geometryStatus,
+          input.features,
+          input.questions,
+        ),
       },
     };
   }
@@ -115,7 +139,7 @@ export const evaluateJevInput = async ({
     const existing = await readJevArtifact<JevRecord>(file);
     if (existing) {
       if (
-        existing.schema !== 'tradejs-jev-record/v1' ||
+        existing.schema !== 'tradejs-jev-record/v2' ||
         existing.id !== id ||
         existing.inputHash !== inputHash ||
         existing.questionsHash !== questionsHash ||
@@ -123,12 +147,11 @@ export const evaluateJevInput = async ({
         jevHash(existing.provider) !== jevHash(provider)
       )
         throw new Error('Jev recording identity mismatch');
-      validateJevResponse(existing.response);
+      validateJevResponse(existing.response, input.questions);
       for (const key of JEV_DIMENSIONS) {
-        const expected =
-          key === 'geometry' && input.geometryStatus !== 'available'
-            ? null
-            : existing.response.answers[key].score / 4;
+        const expected = input.questions.includes(key)
+          ? existing.response.answers[key]!.score / 4
+          : null;
         if (existing.scores[key] !== expected)
           throw new Error('Jev recording scores do not match the response');
       }
@@ -139,28 +162,46 @@ export const evaluateJevInput = async ({
     const settings = await getUserSettings(userName);
     if (!settings.JEV_API_KEY)
       throw new Error('Configure the Jev API key in Account settings');
+    const apiKey = settings.JEV_API_KEY;
     const configuredProvider = await resolveJevProvider(userName);
     if (configuredProvider.endpoint !== provider.endpoint)
       throw new Error(
         'Jev account endpoint changed; update the frozen provider configuration',
       );
     const started = Date.now();
-    const response = await requestJev(
+    const state = stateForJevInput(input);
+    const responseId = jevHash({
+      state,
+      questionsHash,
       provider,
-      settings.JEV_API_KEY,
-      input,
-      JEV_QUESTIONS,
-    );
+      user: jevHash(userName),
+    });
+    const responseFile = path.join(dir, 'responses', `${responseId}.json`);
+    let responsePromise = pendingResponses.get(responseFile);
+    if (!responsePromise) {
+      responsePromise = (async () => {
+        const saved = await readJevArtifact<JevResponse>(responseFile);
+        if (saved) return validateJevResponse(saved, input.questions);
+        const fresh = await requestJev(provider, apiKey, state, questions);
+        await writeJevArtifact(responseFile, fresh);
+        return fresh;
+      })();
+      pendingResponses.set(responseFile, responsePromise);
+    }
+    let response: JevResponse;
+    try {
+      response = await responsePromise;
+    } finally {
+      pendingResponses.delete(responseFile);
+    }
     const scores = Object.fromEntries(
       JEV_DIMENSIONS.map((key) => [
         key,
-        key === 'geometry' && input.geometryStatus !== 'available'
-          ? null
-          : response.answers[key].score / 4,
+        input.questions.includes(key) ? response.answers[key]!.score / 4 : null,
       ]),
     ) as JevScores;
     const value: JevRecord = {
-      schema: 'tradejs-jev-record/v1',
+      schema: 'tradejs-jev-record/v2',
       id,
       inputHash,
       questionsHash,
@@ -194,7 +235,13 @@ export const evaluateJevInput = async ({
       recordId: id,
       model: record.response.model,
       scores: record.scores,
-      ...decideJev(record.scores, config, input.geometryStatus, input.features),
+      ...decideJev(
+        record.scores,
+        config,
+        input.geometryStatus,
+        input.features,
+        input.questions,
+      ),
     },
   };
 };
@@ -226,7 +273,7 @@ export const assessSignalWithJev = async ({
   } catch (error) {
     if (strict) throw error;
     assessment = {
-      schema: 'tradejs-signal-assessment/v1',
+      schema: 'tradejs-signal-assessment/v2',
       source: config.source,
       mode: config.mode,
       status: 'unavailable',

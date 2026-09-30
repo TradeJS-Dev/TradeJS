@@ -812,6 +812,7 @@ export interface TrendLineOptions {
 
 export interface Signal {
   assessment?: SignalAssessment;
+  jevEvidence?: import('./jev').JevEvidence;
   signalId: string;
   orderId?: string;
   symbol: string;

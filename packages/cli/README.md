@@ -105,20 +105,40 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevReco
 Without `--jev`, ordinary backtests do not evaluate Jev, even if a configuration
 contains `JEV`. `--jev` also enables the completed-trade AI export. `--jevObserve`
 records all evaluated candidates, including candidates rejected by later policy.
-Jev evaluates structure, participation, entry timing and available geometry in
-one request. Its normalized scores are stored in `signal.assessment`; existing
-`baseContext` facts and calculated scores retain their meaning. Outcome fields
-and old gate verdicts are excluded from the teacher input.
+Jev asks only the questions supported by available facts. The shared projection
+selects a few signal-time trend, swing, volume, delta, entry-distance and
+extension facts. It does not send the whole `baseContext`, raw figure points,
+calculated gate scores, or outcome fields. The normalized answers are stored in
+`signal.assessment`; deterministic calculations retain their meaning.
+
+Any strategy can optionally attach `signal.jevEvidence` with a version,
+`knownAt` timestamp, up to 16 scalar setup facts and 16 scalar geometry facts:
+
+```ts
+signal.jevEvidence = {
+  version: 'setup-v1',
+  knownAt: signal.timestamp,
+  facts: { confirmationCount: 2, entryExtensionAtr: 0.4 },
+  geometry: { normalizedWidthAtr: 1.5 },
+};
+```
+
+This is a strategy-neutral contract. Geometry is asked only when the strategy
+supplies geometry facts; no strategy name is hard-coded in Jev. Invalid or
+future-dated evidence fails validation.
 
 The default minimum score is `0.5` per dimension. A strategy configuration may
 set `JEV.minScores` and `JEV.requireGeometry`; backtests preserve those policy
 fields when `--jev` selects the evaluator. Absent optional geometry is skipped;
-invalid geometry, invalid trade levels and missing context cannot be approved.
+invalid geometry and invalid trade levels cannot be approved. If no question has
+enough facts, the assessment is unavailable and gate mode rejects the entry.
 These are assessment scores, not calibrated probabilities of profitable trades.
 
 Provider responses and decisions are saved under `data/ai/jev`, or the directory
-selected with `--jevRecordsDir`. Input, question version and provider identity
-determine each record's checksum. A changed input requires a different record.
+selected with `--jevRecordsDir`. Input, selected question version and provider
+identity determine each signal record. Equivalent facts reuse one provider
+response even when signal timestamps or symbols differ. Existing v1 records and
+local models are incompatible with the v2 contract.
 Using identical date bounds is essential for reproducible comparisons. Filtering
 entries may change subsequent strategy state, so an observe run does not
 necessarily contain every candidate required by a gated run.

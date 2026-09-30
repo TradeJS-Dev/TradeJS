@@ -6,6 +6,14 @@ export type JevDimension =
 export type JevScores = Record<JevDimension, number | null>;
 export type JevFeature = number | string | boolean | null;
 
+/** Optional, signal-time facts supplied by any strategy package. */
+export interface JevEvidence {
+  version: string;
+  knownAt: number;
+  facts: Record<string, JevFeature>;
+  geometry?: Record<string, JevFeature>;
+}
+
 export interface JevProviderConfig {
   endpoint: string;
   model: string;
@@ -24,14 +32,14 @@ export interface JevConfig {
 }
 
 export interface JevInput {
-  schema: 'tradejs-jev-input/v1';
+  schema: 'tradejs-jev-input/v2';
   strategy: string;
   symbol: string;
   interval: string;
   timestamp: number;
   direction: 'LONG' | 'SHORT';
   features: Record<string, JevFeature>;
-  geometry: Record<string, unknown>;
+  questions: JevDimension[];
   geometryStatus: 'available' | 'absent' | 'invalid';
 }
 
@@ -44,12 +52,12 @@ export interface JevScoreAnswer {
 
 export interface JevResponse {
   model: string;
-  answers: Record<JevDimension, JevScoreAnswer>;
+  answers: Partial<Record<JevDimension, JevScoreAnswer>>;
   usage?: Record<string, unknown>;
 }
 
 export interface JevRecord {
-  schema: 'tradejs-jev-record/v1';
+  schema: 'tradejs-jev-record/v2';
   id: string;
   inputHash: string;
   questionsHash: string;
@@ -62,7 +70,7 @@ export interface JevRecord {
 }
 
 export interface SignalAssessment {
-  schema: 'tradejs-signal-assessment/v1';
+  schema: 'tradejs-signal-assessment/v2';
   source: JevConfig['source'];
   mode: JevConfig['mode'];
   status: 'available' | 'unavailable';
@@ -86,7 +94,7 @@ export type JevTree =
     };
 
 export interface JevGateModel {
-  schema: 'tradejs-jev-gate/v1';
+  schema: 'tradejs-jev-gate/v2';
   inputSchema: JevInput['schema'];
   strategy: string;
   questionsHash: string;
@@ -103,7 +111,7 @@ export interface JevGateModel {
 }
 
 export interface JevStudyRow {
-  schema: 'tradejs-jev-study/v1';
+  schema: 'tradejs-jev-study/v2';
   signalId: string;
   record: JevRecord;
   /** Outcome is analysis-only and is never included in JevInput. */

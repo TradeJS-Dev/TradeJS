@@ -116,10 +116,14 @@ export const runJevResearch = async (options: {
             userName: options.userName,
             projectRoot: options.projectRoot,
           });
+          if (!record)
+            throw new Error(
+              `No eligible Jev questions for signal ${row.signalId}`,
+            );
           const study: JevStudyRow = {
-            schema: 'tradejs-jev-study/v1',
+            schema: 'tradejs-jev-study/v2',
             signalId: row.signalId,
-            record: record!,
+            record,
             ...(Number.isFinite(row.profit) ? { profit: row.profit } : {}),
             baselineAllowed: saved
               ? undefined
@@ -172,7 +176,7 @@ export const runJevResearch = async (options: {
         );
       const outcome = byRecord.get(record.id);
       rows.push({
-        schema: 'tradejs-jev-study/v1',
+        schema: 'tradejs-jev-study/v2',
         signalId: outcome?.signalId ?? record.id,
         record,
         ...(outcome && Number.isFinite(outcome.profit)

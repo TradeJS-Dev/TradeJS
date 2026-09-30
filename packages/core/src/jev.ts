@@ -126,21 +126,17 @@ export const decideJev = (
   scores: JevScores,
   config: JevConfig,
   geometryStatus: 'available' | 'absent' | 'invalid',
-  features?: Record<string, JevFeature>,
+  features: Record<string, JevFeature> | undefined,
+  questions: JevDimension[],
 ) => {
   const reasons: string[] = [];
   if (features?.['signal.validLevels'] === false)
     reasons.push('INVALID_SIGNAL_LEVELS');
-  if (features?.['context.available'] === false)
-    reasons.push('CONTEXT_UNAVAILABLE');
   if (geometryStatus === 'invalid') reasons.push('INVALID_GEOMETRY');
-  for (const dimension of JEV_DIMENSIONS) {
-    if (
-      dimension === 'geometry' &&
-      geometryStatus === 'absent' &&
-      !config.requireGeometry
-    )
-      continue;
+  if (!questions.length) reasons.push('NO_ELIGIBLE_QUESTIONS');
+  if (config.requireGeometry && !questions.includes('geometry'))
+    reasons.push('GEOMETRY_UNAVAILABLE');
+  for (const dimension of questions) {
     const score = scores[dimension];
     if (score == null || !Number.isFinite(score))
       reasons.push(`${dimension.toUpperCase()}_UNAVAILABLE`);

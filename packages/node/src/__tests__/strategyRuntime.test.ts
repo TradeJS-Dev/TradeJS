@@ -739,8 +739,8 @@ describe('strategyRuntime', () => {
           mockExecuteEntryOrder.mockClear();
           mockEnrichSignalWithAi.mockClear();
           const contents = JSON.stringify({
-            schema: 'tradejs-jev-gate/v1',
-            inputSchema: 'tradejs-jev-input/v1',
+            schema: 'tradejs-jev-gate/v2',
+            inputSchema: 'tradejs-jev-input/v2',
             strategy: 'TrendLine',
             teacherModel: 'jev-1.13.0',
             questionsHash: jevHash(JEV_QUESTIONS),
@@ -763,7 +763,7 @@ describe('strategyRuntime', () => {
           const signal = makeSignal();
           signal.additionalIndicators.baseContext = {
             raw: { volatility: { atr: 2 } },
-            structure: { confirmed: true },
+            regime: { trend: { bias: 'bull' } },
           };
           const { strategy } = await makeRuntime(
             () => makeDecisionEntry({ signal }),

@@ -125,14 +125,17 @@ export const requestJev = async (
       } catch {
         throw new Error('Jev provider returned invalid JSON');
       }
-      return validateJevResponse(body);
+      return validateJevResponse(body, Object.keys(questions as object));
     }
   } finally {
     clearTimeout(timer);
   }
 };
 
-export const validateJevResponse = (body: unknown): JevResponse => {
+export const validateJevResponse = (
+  body: unknown,
+  expected: string[],
+): JevResponse => {
   const result = body as JevResponse;
   if (
     !result ||
@@ -141,13 +144,15 @@ export const validateJevResponse = (body: unknown): JevResponse => {
     !result.answers
   )
     throw new Error('Invalid Jev response');
-  for (const key of [
-    'structure',
-    'participation',
-    'timing',
-    'geometry',
-  ] as const) {
-    const answer = result.answers[key];
+  if (
+    !expected.length ||
+    expected.length > 4 ||
+    Object.keys(result.answers).sort().join(',') !==
+      [...expected].sort().join(',')
+  )
+    throw new Error('Invalid Jev answer set');
+  for (const key of expected) {
+    const answer = result.answers[key as keyof JevResponse['answers']];
     if (
       !answer ||
       answer.type !== 'score' ||
@@ -171,16 +176,23 @@ export const validateJevResponse = (body: unknown): JevResponse => {
       )
     )
       throw new Error(`Invalid Jev ${key} probabilities`);
+    // The Decisions API rounds each probability and the score to two decimals.
+    // Account for independent rounding, while retaining the original response.
+    const roundingHalfUnit = 0.005;
+    const epsilon = 1e-9;
     if (
       Math.abs(Object.values(probabilities).reduce((a, b) => a + b, 0) - 1) >
-      0.01
+      5 * roundingHalfUnit + epsilon
     )
       throw new Error('Jev probabilities must sum to one');
     const mean = [0, 1, 2, 3, 4].reduce(
       (sum, level) => sum + level * probabilities[level],
       0,
     );
-    if (Math.abs(mean - answer.score) > 0.05)
+    if (
+      Math.abs(mean - answer.score) >
+      (0 + 1 + 2 + 3 + 4 + 1) * roundingHalfUnit + epsilon
+    )
       throw new Error('Jev score disagrees with probabilities');
   }
   return result;

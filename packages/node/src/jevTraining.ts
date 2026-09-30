@@ -8,7 +8,7 @@ import type {
 } from '@tradejs/types';
 import { JEV_DIMENSIONS, decideJev, predictJevTree } from '@tradejs/core/jev';
 import { jevHash, validateJevResponse } from '@tradejs/infra/jev';
-import { JEV_QUESTIONS } from './jevInput';
+import { JEV_QUESTIONS, questionsForJevInput } from './jevInput';
 
 const mean = (values: number[]) =>
   values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -26,13 +26,13 @@ export const validateJevStudy = (rows: JevStudyRow[]) => {
   for (const row of rows) {
     const record = row?.record;
     if (
-      row?.schema !== 'tradejs-jev-study/v1' ||
+      row?.schema !== 'tradejs-jev-study/v2' ||
       !row.signalId ||
-      record?.schema !== 'tradejs-jev-record/v1' ||
-      record.input?.schema !== 'tradejs-jev-input/v1' ||
+      record?.schema !== 'tradejs-jev-record/v2' ||
+      record.input?.schema !== 'tradejs-jev-input/v2' ||
       !Number.isFinite(record.input.timestamp) ||
       record.inputHash !== jevHash(record.input) ||
-      record.questionsHash !== jevHash(JEV_QUESTIONS) ||
+      record.questionsHash !== jevHash(questionsForJevInput(record.input)) ||
       record.id !==
         jevHash({
           inputHash: record.inputHash,
@@ -41,12 +41,11 @@ export const validateJevStudy = (rows: JevStudyRow[]) => {
         })
     )
       throw new Error('Invalid Jev study provenance');
-    validateJevResponse(record.response);
+    validateJevResponse(record.response, record.input.questions);
     for (const dimension of JEV_DIMENSIONS) {
-      const expected =
-        dimension === 'geometry' && record.input.geometryStatus !== 'available'
-          ? null
-          : record.response.answers[dimension].score / 4;
+      const expected = record.input.questions.includes(dimension)
+        ? record.response.answers[dimension]!.score / 4
+        : null;
       if (record.scores[dimension] !== expected)
         throw new Error('Jev study scores do not match the teacher response');
     }
@@ -176,8 +175,8 @@ const trainTree = (
 export const validateJevGateModel = (value: unknown): JevGateModel => {
   const model = value as JevGateModel;
   if (
-    model?.schema !== 'tradejs-jev-gate/v1' ||
-    model.inputSchema !== 'tradejs-jev-input/v1' ||
+    model?.schema !== 'tradejs-jev-gate/v2' ||
+    model.inputSchema !== 'tradejs-jev-input/v2' ||
     typeof model.strategy !== 'string' ||
     !model.strategy ||
     !model.teacherModel ||
@@ -219,8 +218,6 @@ export const validateJevGateModel = (value: unknown): JevGateModel => {
   };
   for (const dimension of JEV_DIMENSIONS) {
     if (model.trees[dimension] != null) check(model.trees[dimension]!, 0);
-    else if (dimension !== 'geometry')
-      throw new Error('Missing local Jev tree');
   }
   return model;
 };
@@ -229,8 +226,7 @@ const predict = (model: JevGateModel, row: JevStudyRow): JevScores =>
   Object.fromEntries(
     JEV_DIMENSIONS.map((key) => [
       key,
-      model.trees[key] &&
-      (key !== 'geometry' || row.record.input.geometryStatus === 'available')
+      model.trees[key] && row.record.input.questions.includes(key)
         ? predictJevTree(model.trees[key]!, row.record.input.features)
         : null,
     ]),
@@ -284,12 +280,14 @@ export const compareJevGate = (
       policy,
       row.record.input.geometryStatus,
       row.record.input.features,
+      row.record.input.questions,
     ).allowed;
     const teacher = decideJev(
       row.record.scores,
       policy,
       row.record.input.geometryStatus,
       row.record.input.features,
+      row.record.input.questions,
     ).allowed;
     return { row, scores, student, teacher };
   });
@@ -411,10 +409,10 @@ export const trainJevGate = (
     ) as JevGateModel['trees'];
   const first = rows[0].record;
   const model: JevGateModel = {
-    schema: 'tradejs-jev-gate/v1',
-    inputSchema: 'tradejs-jev-input/v1',
+    schema: 'tradejs-jev-gate/v2',
+    inputSchema: 'tradejs-jev-input/v2',
     strategy: first.input.strategy,
-    questionsHash: first.questionsHash,
+    questionsHash: jevHash(JEV_QUESTIONS),
     teacherModel: first.response.model,
     trees: fit(train),
     training: {

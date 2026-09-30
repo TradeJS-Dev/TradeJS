@@ -22,6 +22,7 @@ const response = () => ({
     ]),
   ),
 });
+const questions = ['structure', 'participation', 'timing', 'geometry'];
 
 describe('Jev transport and artifacts', () => {
   it.each([
@@ -37,7 +38,12 @@ describe('Jev transport and artifacts', () => {
         { endpoint, model: 'pinned' },
         'secret',
         { a: 1 },
-        { a: { type: 'score' } },
+        Object.fromEntries(
+          ['structure', 'participation', 'timing', 'geometry'].map((key) => [
+            key,
+            { type: 'score' },
+          ]),
+        ),
         { fetch: fetcher },
       ),
     ).resolves.toEqual(response());
@@ -46,7 +52,12 @@ describe('Jev transport and artifacts', () => {
     expect(JSON.parse(options.body)).toEqual({
       model: 'pinned',
       state: { a: 1 },
-      questions: { a: { type: 'score' } },
+      questions: Object.fromEntries(
+        ['structure', 'participation', 'timing', 'geometry'].map((key) => [
+          key,
+          { type: 'score' },
+        ]),
+      ),
     });
     expect(options.redirect).toBe('error');
   });
@@ -82,7 +93,7 @@ describe('Jev transport and artifacts', () => {
       { endpoint: 'https://example.com', model: 'pinned' },
       'key',
       {},
-      {},
+      { structure: {}, participation: {}, timing: {}, geometry: {} },
       { fetch: fetcher },
     );
     expect(fetcher).toHaveBeenCalledTimes(2);
@@ -111,11 +122,36 @@ describe('Jev transport and artifacts', () => {
   it('rejects missing and inconsistent probability distributions', () => {
     const value = response();
     value.answers.structure.score = 1;
-    expect(() => validateJevResponse(value)).toThrow('disagrees');
+    expect(() => validateJevResponse(value, questions)).toThrow('disagrees');
     delete (value.answers as Record<string, unknown>).timing;
-    expect(() => validateJevResponse({ ...value, answers: {} })).toThrow(
-      'answer',
-    );
+    expect(() =>
+      validateJevResponse({ ...value, answers: {} }, questions),
+    ).toThrow('answer');
+  });
+
+  it('accepts rounded OpenRouter probabilities without changing teacher scores', () => {
+    const value = response();
+    // Captured from OpenRouter during the Flag 180-day integration run.
+    value.answers.participation = {
+      type: 'score',
+      score: 2.86,
+      confidence: 0.51,
+      probabilities: { 0: 0.02, 1: 0.05, 2: 0.17, 3: 0.55, 4: 0.2 },
+    };
+    expect(() => validateJevResponse(value, questions)).not.toThrow();
+    expect(validateJevResponse(value, questions)).toBe(value);
+    // Five values rounded to two decimals can accumulate more than 0.01 error.
+    value.answers.participation.probabilities = {
+      0: 0.2,
+      1: 0.2,
+      2: 0.2,
+      3: 0.19,
+      4: 0.19,
+    };
+    value.answers.participation.score = 1.97;
+    expect(() => validateJevResponse(value, questions)).not.toThrow();
+    value.answers.participation.probabilities[0] = 0.16;
+    expect(() => validateJevResponse(value, questions)).toThrow('sum to one');
   });
 
   it('keeps the first immutable complete artifact and detects corruption', async () => {
