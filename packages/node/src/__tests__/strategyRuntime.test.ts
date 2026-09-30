@@ -772,7 +772,7 @@ describe('strategyRuntime', () => {
               BACKTEST_ENTRY_DELAY_BARS: 0,
               JEV: {
                 source: 'local',
-                mode: 'gate',
+                mode: 'observe',
                 modelFile,
                 modelSha256: jevFileHash(contents),
                 recordsDir: dir,
@@ -783,9 +783,12 @@ describe('strategyRuntime', () => {
             { timestamp: 1 } as any,
             { timestamp: 1 } as any,
           );
-          expect((result as any).assessment.allowed).toBe(score === 1);
-          expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(score);
-          expect(mockEnrichSignalWithAi).not.toHaveBeenCalled();
+          expect((result as any).assessment.scores.structure).toBe(score);
+          expect(
+            (result as any).additionalIndicators.jev.scores.structure,
+          ).toBe(score);
+          expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+          expect(mockEnrichSignalWithAi).toHaveBeenCalledTimes(1);
         }
       } finally {
         await fs.rm(dir, { recursive: true, force: true });

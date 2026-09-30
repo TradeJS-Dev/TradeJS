@@ -1030,7 +1030,6 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         policyProfile: getPolicyProfile(decisionStrategyName),
       });
       const signal = decision.signal;
-      if (jev?.mode === 'gate' && !signal) return 'JEV_SIGNAL_UNAVAILABLE';
       if (signal) {
         if (runtimeLineage) signal.runtimeLineage = runtimeLineage;
         if (universe) signal.universe = universe;
@@ -1122,17 +1121,14 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
                 (env === 'BACKTEST' ? 'backtest' : 'runtime'),
             });
           }
-          quality =
-            jev?.mode === 'gate'
-              ? undefined
-              : await enrichSignalWithAi({
-                  signal,
-                  userName,
-                  symbol,
-                  direction: signal.direction,
-                  env,
-                  ai: runtime.ai,
-                });
+          quality = await enrichSignalWithAi({
+            signal,
+            userName,
+            symbol,
+            direction: signal.direction,
+            env,
+            ai: runtime.ai,
+          });
         } catch (error) {
           await notifyRuntimeError({
             stage: 'enrichSignalWithAi',
@@ -1165,7 +1161,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       }
 
       const minAiQuality = runtime.ai?.minQuality ?? 4;
-      const aiEnabled = runtime.ai?.enabled !== false && runtime.ai != null;
+      const aiEnabled =
+        runtime.ai?.enabled !== false &&
+        runtime.ai != null &&
+        (env !== 'BACKTEST' || !jev || runtime.ai.mode === 'gate');
       const policy = buildHookPolicy({
         quality,
         makeOrdersEnabled,

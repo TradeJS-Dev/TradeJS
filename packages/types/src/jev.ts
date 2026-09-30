@@ -70,7 +70,7 @@ export interface JevRecord {
 }
 
 export interface SignalAssessment {
-  schema: 'tradejs-signal-assessment/v2';
+  schema: 'tradejs-signal-assessment/v3';
   source: JevConfig['source'];
   mode: JevConfig['mode'];
   status: 'available' | 'unavailable';
@@ -78,8 +78,6 @@ export interface SignalAssessment {
   inputHash: string;
   model: string;
   scores: JevScores;
-  allowed: boolean;
-  reasons: string[];
 }
 
 export type JevTree =

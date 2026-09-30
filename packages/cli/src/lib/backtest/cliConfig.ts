@@ -129,12 +129,7 @@ args.option(
   'Write AI prompt rows to per-worker JSONL chunks',
   false,
 );
-args.option('jev', 'Apply Jev signal assessment before backtest entry', false);
-args.option(
-  ['O', 'jevObserve'],
-  'Record Jev assessments without filtering entries',
-  false,
-);
+args.option('jev', 'Enrich backtest signals with Jev assessments', false);
 args.option(
   ['Q', 'jevRecorded'],
   'Use recorded Jev answers only; fail on a missing answer',

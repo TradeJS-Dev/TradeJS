@@ -116,13 +116,7 @@ export const shouldExecuteEntryDecision = ({
     return false;
   }
 
-  if (
-    signal?.assessment?.mode === 'gate' &&
-    (signal.assessment.status !== 'available' || !signal.assessment.allowed)
-  )
-    return false;
-
-  if (!signal || env === 'BACKTEST') {
+  if (!signal || (env === 'BACKTEST' && !signal.assessment)) {
     return true;
   }
 
@@ -133,8 +127,6 @@ export const shouldExecuteEntryDecision = ({
   if (isMlRuntimeGateEnabled({ env, ml }) && ml?.result?.passed === false) {
     return false;
   }
-
-  if (signal?.assessment?.mode === 'gate') return true;
 
   if (!aiEnabled) {
     return true;
@@ -160,8 +152,6 @@ export const getEntrySkipReason = ({
   quality?: number;
   minAiQuality: number;
 }): string => {
-  if (signal?.assessment?.mode === 'gate' && !signal.assessment.allowed)
-    return `JEV_REJECTED:${signal.assessment.reasons.join(',')}`;
   if (!makeOrdersEnabled) {
     return 'MAKE_ORDERS_DISABLED';
   }
@@ -176,12 +166,16 @@ export const getEntrySkipReason = ({
     return `ML_THRESHOLD_NOT_MET (${probability} < ${threshold})`;
   }
 
-  if (env !== 'BACKTEST' && aiEnabled && quality == null) {
+  if (
+    (env !== 'BACKTEST' || signal?.assessment) &&
+    aiEnabled &&
+    quality == null
+  ) {
     return 'AI_QUALITY_UNAVAILABLE';
   }
 
   if (
-    env !== 'BACKTEST' &&
+    (env !== 'BACKTEST' || signal?.assessment) &&
     aiEnabled &&
     quality != null &&
     Number.isFinite(quality) &&

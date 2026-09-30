@@ -48,11 +48,6 @@ export const parseJevConfig = (value: unknown): JevConfig | undefined => {
   if (typeof value !== 'object' || Array.isArray(value))
     throw new Error('JEV must be a configuration object');
   const config = value as JevConfig;
-  if (
-    config.minScores != null &&
-    (typeof config.minScores !== 'object' || Array.isArray(config.minScores))
-  )
-    throw new Error('Invalid Jev thresholds');
   const keys = new Set([
     'source',
     'mode',
@@ -60,16 +55,14 @@ export const parseJevConfig = (value: unknown): JevConfig | undefined => {
     'recordsDir',
     'modelFile',
     'modelSha256',
-    'minScores',
-    'requireGeometry',
   ]);
   if (Object.keys(config).some((key) => !keys.has(key)))
     throw new Error('Unknown JEV configuration field');
   if (
     !['provider', 'recorded', 'local'].includes(config.source) ||
-    !['observe', 'gate'].includes(config.mode)
+    config.mode !== 'observe'
   )
-    throw new Error('Invalid JEV source or mode');
+    throw new Error('JEV supports enrichment only (mode: observe)');
   if (
     config.provider &&
     (!normalizeJevEndpoint(config.provider.endpoint) ||
@@ -88,27 +81,12 @@ export const parseJevConfig = (value: unknown): JevConfig | undefined => {
     (!config.modelFile || !/^[a-f0-9]{64}$/.test(config.modelSha256 ?? ''))
   )
     throw new Error('Local Jev gate requires modelFile and modelSha256');
-  if (
-    config.requireGeometry != null &&
-    typeof config.requireGeometry !== 'boolean'
-  )
-    throw new Error('Invalid requireGeometry');
   for (const key of ['recordsDir', 'modelFile'] as const)
     if (
       config[key] != null &&
       (typeof config[key] !== 'string' || !config[key]?.trim())
     )
       throw new Error(`Invalid JEV ${key}`);
-  for (const [key, threshold] of Object.entries(config.minScores ?? {})) {
-    if (
-      !JEV_DIMENSIONS.includes(key as JevDimension) ||
-      typeof threshold !== 'number' ||
-      !Number.isFinite(threshold) ||
-      threshold < 0 ||
-      threshold > 1
-    )
-      throw new Error('Jev thresholds must be between 0 and 1');
-  }
   return {
     ...config,
     ...(config.provider

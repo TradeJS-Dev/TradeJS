@@ -101,7 +101,7 @@ export const runJevResearch = async (options: {
             : null;
           if (!saved && signal.additionalIndicators?.backtestExecution)
             throw new Error(
-              'Delayed execution row has no Jev signal-time recording; rerun the backtest with --jev --jevObserve',
+              'Delayed execution row has no Jev signal-time recording; rerun the backtest with --jev',
             );
           const baseline = await runAiPromptLocal(signal);
           const input = saved?.input ?? buildJevInput(signal);

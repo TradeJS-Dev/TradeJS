@@ -438,13 +438,7 @@ export const buildPreparedTestSuite = async ({
       executionCostsCacheOnly: Boolean(flags.cacheOnly),
       strategyConfig: {
         ...test.strategyConfig,
-        JEV: jev
-          ? {
-              minScores: test.strategyConfig.JEV?.minScores,
-              requireGeometry: test.strategyConfig.JEV?.requireGeometry,
-              ...jev,
-            }
-          : undefined,
+        JEV: jev,
         ENV: 'BACKTEST',
         INTERVAL: interval,
         MAKE_ORDERS: true,

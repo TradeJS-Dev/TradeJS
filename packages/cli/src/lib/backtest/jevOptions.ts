@@ -12,14 +12,14 @@ export const resolveBacktestJev = async (
   projectRoot: string,
 ): Promise<JevConfig | undefined> => {
   if (!flags.jev) {
-    if (flags.jevObserve || flags.jevRecorded || flags.jevModelFile)
+    if (flags.jevRecorded || flags.jevModelFile)
       throw new Error('Jev options require --jev');
     return undefined;
   }
   if (flags.jevRecorded && flags.jevModelFile)
     throw new Error('Choose --jevRecorded or --jevModelFile');
   const common = {
-    mode: flags.jevObserve ? ('observe' as const) : ('gate' as const),
+    mode: 'observe' as const,
     recordsDir: String(flags.jevRecordsDir || 'data/ai/jev'),
   };
   if (flags.jevModelFile) {

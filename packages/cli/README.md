@@ -92,10 +92,7 @@ Run commands from your generated project's root. Start with a bounded historical
 window and one strategy configuration:
 
 ```bash
-# Record assessments; preserve ordinary backtest entries.
-yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevObserve
-
-# Apply Jev as an entry filter. Calls the provider for missing recordings.
+# Enrich signals with Jev. Calls the provider for missing recordings.
 yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev
 
 # Repeat with recorded answers only. Missing answers fail the run.
@@ -103,13 +100,17 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevReco
 ```
 
 Without `--jev`, ordinary backtests do not evaluate Jev, even if a configuration
-contains `JEV`. `--jev` also enables the completed-trade AI export. `--jevObserve`
-records all evaluated candidates, including candidates rejected by later policy.
+contains `JEV`. `--jev` also enables the completed-trade AI export and records
+all evaluated candidates, including candidates rejected by later policy.
 Jev asks only the questions supported by available facts. The shared projection
 selects a few signal-time trend, swing, volume, delta, entry-distance and
 extension facts. It does not send the whole `baseContext`, raw figure points,
 calculated gate scores, or outcome fields. The normalized answers are stored in
-`signal.assessment`; deterministic calculations retain their meaning.
+`signal.assessment` and the compact `additionalIndicators.jev` feature group,
+which is available to the strategy's AI gate and AI export. Jev scores do not
+approve or reject entries. With `AI_MODE=gate` and `AI_ENABLED=true`, a Jev
+backtest applies the strategy's AI gate to entries; ordinary backtests keep
+their existing entry behavior.
 
 Any strategy can optionally attach `jevEvidence` through its `StrategyAPI.entry`
 `additionalIndicators` with a version, `knownAt` timestamp, up to 16 scalar
@@ -177,23 +178,19 @@ For runtime, put `JEV` inside the strategy's Git-owned `config` declaration:
 ```ts
 JEV: {
   source: 'local',
-  mode: 'gate',
+  mode: 'observe',
   modelFile: 'data/ai/jev/gate.json',
   modelSha256: '<SHA-256 printed by jev --action train>',
-  minScores: { structure: 0.5, participation: 0.5, timing: 0.5, geometry: 0.5 },
-  requireGeometry: false,
 }
 ```
 
 Distribute the exact model file with the deployment. Provider runtime uses
 `source: 'provider'`, a pinned `provider: { endpoint, model }`, and the account's
-Jev key instead of the two model-file fields. `mode: 'observe'` records the
-assessment while preserving existing AI policy; it still waits for evaluation.
-`mode: 'gate'` replaces the existing AI quality gate while keeping ML and other
-entry checks. A provider failure rejects runtime entry; in a backtest it fails
-the run. Model-file checksum or strategy mismatches also fail closed. Recorded
-mode never calls the provider. No mode enables order placement or changes a
-deployment automatically.
+Jev key instead of the two model-file fields. Only `mode: 'observe'` is
+supported: Jev enriches the signal and the configured AI gate decides entry.
+A provider failure marks Jev unavailable in runtime; an incomplete backtest
+fails so its research sample stays complete. Recorded mode never calls the
+provider. Enabling Jev does not enable order placement.
 
 - `@tradejs/cli` expects project wiring from `tradejs.config.ts` via `@tradejs/core/config`.
 - Local infrastructure is created through `infra-init` and started through `infra-up`.

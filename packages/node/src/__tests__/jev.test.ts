@@ -9,6 +9,7 @@ import {
   assessSignalWithJev,
 } from '../jev';
 import { questionsForJevInput } from '../jevInput';
+import { buildAiPayloadByStrategy } from '../strategyAdapters/ai';
 import { trainJevGate, compareJevGate } from '../jevTraining';
 import { jevHash, jevFileHash } from '@tradejs/infra/jev';
 import { decideJev, parseJevConfig } from '@tradejs/core/jev';
@@ -168,7 +169,7 @@ describe('Jev shared assessment and local training', () => {
     } as Response);
     const config = {
       source: 'provider' as const,
-      mode: 'gate' as const,
+      mode: 'observe' as const,
       provider,
     };
     const first = await evaluateJevInput({
@@ -199,20 +200,20 @@ describe('Jev shared assessment and local training', () => {
     const common = { input, userName: 'root', projectRoot: dir };
     const first = await evaluateJevInput({
       ...common,
-      config: { source: 'provider', mode: 'gate', provider },
+      config: { source: 'provider', mode: 'observe', provider },
     });
     const replay = await evaluateJevInput({
       ...common,
-      config: { source: 'recorded', mode: 'gate', provider },
+      config: { source: 'recorded', mode: 'observe', provider },
     });
     expect(replay.record).toEqual(first.record);
-    expect(replay.assessment.allowed).toBe(true);
+    expect(replay.assessment.scores.structure).toBe(0.75);
     expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(
       evaluateJevInput({
         ...common,
         input: { ...input, timestamp: 2000 },
-        config: { source: 'recorded', mode: 'gate', provider },
+        config: { source: 'recorded', mode: 'observe', provider },
       }),
     ).rejects.toThrow('Missing Jev recording');
   });
@@ -222,22 +223,42 @@ describe('Jev shared assessment and local training', () => {
     const signal = makeSignal();
     const args = {
       signal,
-      config: { source: 'provider' as const, mode: 'gate' as const, provider },
+      config: {
+        source: 'provider' as const,
+        mode: 'observe' as const,
+        provider,
+      },
       userName: 'root',
       projectRoot: dir,
     };
     const assessment = await assessSignalWithJev({ ...args, strict: false });
     expect(assessment.status).toBe('unavailable');
-    expect(assessment.allowed).toBe(false);
+    expect(signal.additionalIndicators?.jev).toEqual({
+      schema: 'tradejs-jev-features/v1',
+      status: 'unavailable',
+      scores: assessment.scores,
+    });
+    expect(
+      (buildAiPayloadByStrategy(signal).additionalIndicators as any).jev,
+    ).toEqual(signal.additionalIndicators?.jev);
     await expect(
       assessSignalWithJev({ ...args, strict: true }),
     ).rejects.toThrow('connection failed');
   });
 
   it.each(['BACKTEST', 'PRODUCTION'])(
-    'applies a rejecting assessment in %s, while observe preserves policy',
+    'keeps Jev assessments out of entry decisions in %s',
     (env) => {
       const signal = makeSignal();
+      signal.assessment = {
+        schema: 'tradejs-signal-assessment/v3',
+        source: 'recorded',
+        mode: 'observe',
+        status: 'available',
+        inputHash: 'h',
+        model: 'm',
+        scores: { structure: 0, participation: 1, timing: 1, geometry: 1 },
+      };
       const args = {
         signal,
         env,
@@ -246,21 +267,13 @@ describe('Jev shared assessment and local training', () => {
         minAiQuality: 4,
       };
       expect(shouldExecuteEntryDecision(args)).toBe(true);
-      signal.assessment = {
-        schema: 'tradejs-signal-assessment/v2',
-        source: 'recorded',
-        mode: 'gate',
-        status: 'available',
-        inputHash: 'h',
-        model: 'm',
-        scores: { structure: 0, participation: 1, timing: 1, geometry: 1 },
-        allowed: false,
-        reasons: ['STRUCTURE_BELOW_MIN'],
-      };
-      expect(shouldExecuteEntryDecision(args)).toBe(false);
-      expect(getEntrySkipReason(args)).toContain('JEV_REJECTED');
-      signal.assessment.mode = 'observe';
-      expect(shouldExecuteEntryDecision(args)).toBe(true);
+      expect(getEntrySkipReason(args)).not.toContain('JEV_REJECTED');
+      expect(
+        shouldExecuteEntryDecision({ ...args, aiEnabled: true, quality: 3 }),
+      ).toBe(false);
+      expect(
+        shouldExecuteEntryDecision({ ...args, aiEnabled: true, quality: 4 }),
+      ).toBe(true);
     },
   );
 
@@ -271,7 +284,7 @@ describe('Jev shared assessment and local training', () => {
       timing: 0.8,
       geometry: null,
     };
-    const config = { source: 'provider' as const, mode: 'gate' as const };
+    const config = { source: 'provider' as const, mode: 'observe' as const };
     const questions = ['structure', 'participation', 'timing'] as const;
     expect(
       decideJev(scores, config, 'absent', undefined, [...questions]).allowed,
@@ -290,7 +303,7 @@ describe('Jev shared assessment and local training', () => {
     ).toBe(false);
     expect(() =>
       parseJevConfig({ ...config, minScores: { timing: 2 } }),
-    ).toThrow('thresholds');
+    ).toThrow('Unknown JEV configuration field');
     expect(() =>
       parseJevConfig({
         ...config,
@@ -322,20 +335,20 @@ describe('Jev shared assessment and local training', () => {
       input: rows[99].record.input,
       config: {
         source: 'local',
-        mode: 'gate',
+        mode: 'observe',
         modelFile,
         modelSha256: jevFileHash(contents),
       },
       userName: 'root',
       projectRoot: dir,
     });
-    expect(result.assessment.allowed).toBe(true);
+    expect(result.assessment.scores.structure).toBe(1);
     await expect(
       evaluateJevInput({
         input: rows[99].record.input,
         config: {
           source: 'local',
-          mode: 'gate',
+          mode: 'observe',
           modelFile,
           modelSha256: '0'.repeat(64),
         },

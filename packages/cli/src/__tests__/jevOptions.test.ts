@@ -18,13 +18,13 @@ describe('backtest Jev opt-in', () => {
     expect(await resolveBacktestJev({}, 'root', '/tmp')).toBeUndefined();
     expect(mockSettings).not.toHaveBeenCalled();
     await expect(
-      resolveBacktestJev({ jevObserve: true }, 'root', '/tmp'),
+      resolveBacktestJev({ jevRecorded: true }, 'root', '/tmp'),
     ).rejects.toThrow('require --jev');
   });
-  it('freezes the provider and defaults to actual entry filtering', async () => {
+  it('freezes the provider and defaults to enrichment', async () => {
     expect(await resolveBacktestJev({ jev: true }, 'root', '/tmp')).toEqual({
       source: 'provider',
-      mode: 'gate',
+      mode: 'observe',
       recordsDir: 'data/ai/jev',
       provider: {
         endpoint: 'https://openrouter.ai/api/alpha/decisions',
@@ -36,7 +36,7 @@ describe('backtest Jev opt-in', () => {
     mockSettings.mockResolvedValue({ JEV_API_KEY: '' });
     expect(
       await resolveBacktestJev(
-        { jev: true, jevRecorded: true, jevObserve: true },
+        { jev: true, jevRecorded: true },
         'root',
         '/tmp',
       ),

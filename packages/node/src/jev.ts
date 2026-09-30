@@ -3,7 +3,6 @@ import path from 'node:path';
 import {
   JEV_DIMENSIONS,
   JEV_PROVIDERS,
-  decideJev,
   parseJevConfig,
   predictJevTree,
 } from '@tradejs/core/jev';
@@ -46,7 +45,7 @@ export const resolveJevProvider = async (userName: string) => {
     endpoint: settings.JEV_API_ENDPOINT || JEV_PROVIDERS[0].endpoint,
     model: settings.JEV_MODEL || JEV_PROVIDERS[0].model,
   };
-  parseJevConfig({ source: 'provider', mode: 'gate', provider });
+  parseJevConfig({ source: 'provider', mode: 'observe', provider });
   if (!settings.JEV_API_KEY)
     throw new Error('Configure the Jev API key in Account settings');
   return provider;
@@ -77,7 +76,7 @@ export const evaluateJevInput = async ({
   const questions = questionsForJevInput(input);
   const questionsHash = jevHash(questions);
   const base = {
-    schema: 'tradejs-signal-assessment/v2' as const,
+    schema: 'tradejs-signal-assessment/v3' as const,
     source: config.source,
     mode: config.mode,
     inputHash,
@@ -89,8 +88,6 @@ export const evaluateJevInput = async ({
         status: 'unavailable',
         model: '',
         scores: emptyScores(),
-        allowed: false,
-        reasons: ['NO_ELIGIBLE_QUESTIONS'],
       },
     };
   if (config.source === 'local') {
@@ -121,13 +118,6 @@ export const evaluateJevInput = async ({
         status: 'available',
         model: config.modelSha256!,
         scores,
-        ...decideJev(
-          scores,
-          config,
-          input.geometryStatus,
-          input.features,
-          input.questions,
-        ),
       },
     };
   }
@@ -235,13 +225,6 @@ export const evaluateJevInput = async ({
       recordId: id,
       model: record.response.model,
       scores: record.scores,
-      ...decideJev(
-        record.scores,
-        config,
-        input.geometryStatus,
-        input.features,
-        input.questions,
-      ),
     },
   };
 };
@@ -273,18 +256,24 @@ export const assessSignalWithJev = async ({
   } catch (error) {
     if (strict) throw error;
     assessment = {
-      schema: 'tradejs-signal-assessment/v2',
+      schema: 'tradejs-signal-assessment/v3',
       source: config.source,
       mode: config.mode,
       status: 'unavailable',
       inputHash: '',
       model: config.provider?.model ?? config.modelSha256 ?? '',
       scores: emptyScores(),
-      allowed: false,
-      reasons: ['JEV_UNAVAILABLE'],
     };
   }
   signal.assessment = assessment;
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    jev: {
+      schema: 'tradejs-jev-features/v1',
+      status: assessment.status,
+      scores: assessment.scores,
+    },
+  };
   const identity = {
     signalId: signal.signalId,
     strategy: signal.strategy,
