@@ -1,11 +1,11 @@
 import type {
-  JevDimension,
   JevFeature,
   JevFactProvenance,
   JevInput,
   Signal,
 } from '@tradejs/types';
 import { intervalToMs } from '@tradejs/core/data';
+import { JEV_DIMENSIONS } from '@tradejs/core/jev';
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -31,50 +31,88 @@ export const buildJevInput = (signal: Signal): JevInput => {
     throw new Error('Jev requires a dated directional signal');
   const base = object(signal.additionalIndicators?.baseContext);
   const baseTimestamp = at(base, 'candle', 'timestamp');
-  const baseKnownAt =
-    typeof baseTimestamp === 'number' && Number.isFinite(baseTimestamp)
-      ? baseTimestamp
-      : signal.timestamp;
-  if (
-    baseKnownAt > signal.timestamp ||
-    signal.timestamp - baseKnownAt > intervalToMs(signal.interval)
-  )
-    throw new Error('Jev baseContext is not available at signal time');
-  // StrategyAPI carries optional strategy facts through additionalIndicators.
-  const evidence =
-    signal.jevEvidence ?? signal.additionalIndicators?.jevEvidence;
+  const baseKnownAt = finite(baseTimestamp);
+  const baseProblem = !Object.keys(base).length
+    ? 'no_base_context'
+    : baseKnownAt == null
+      ? 'missing_timestamp'
+      : baseKnownAt > signal.timestamp
+        ? 'future'
+        : signal.timestamp - baseKnownAt > intervalToMs(signal.interval)
+          ? 'stale'
+          : null;
+  const evidence = signal.jevEvidence;
   const features: Record<string, JevFeature> = {};
   const provenance: Record<string, JevFactProvenance> = {};
-  const put = (key: string, value: unknown, details: JevFactProvenance) => {
+  const missing: Record<string, string> = {};
+  const put = (
+    key: string,
+    value: unknown,
+    details: JevFactProvenance,
+    missingReason = 'missing_value',
+  ) => {
     const normalized = fact(value);
     if (normalized != null) {
       features[key] = normalized;
       provenance[key] = details;
+    } else {
+      missing[key] = missingReason;
     }
   };
-  const signalFact = { knownAt: signal.timestamp, scope: 'target' as const };
-  const marketFact = { knownAt: baseKnownAt, scope: 'target' as const };
+  const signalFact = {
+    knownAt: signal.timestamp,
+    scope: 'target' as const,
+    source: 'signal',
+  };
   put('signal.direction', signal.direction, signalFact);
-  put('market.trendBias', at(base, 'regime', 'trend', 'bias'), marketFact);
-  put('market.swingBias', at(base, 'structure', 'swing', 'bias'), marketFact);
-  put(
+  const marketKeys = [
+    'market.trendBias',
+    'market.swingBias',
     'market.volumeRel20',
-    at(base, 'participation', 'volume', 'volumeRel20'),
-    { ...marketFact, unit: 'ratio' },
-  );
-  put('market.deltaPct', at(base, 'participation', 'delta', 'deltaPct'), {
-    ...marketFact,
-    unit: 'percent',
-  });
-  put(
+    'market.deltaPct',
     'market.fastMaDistanceAtr',
-    at(base, 'regime', 'trend', 'priceDistanceToMaFastAtr'),
-    { ...marketFact, unit: 'ATR' },
-  );
+  ];
+  if (baseProblem) {
+    for (const key of marketKeys) missing[key] = baseProblem;
+  } else {
+    const marketFact = {
+      knownAt: baseKnownAt!,
+      scope: 'target' as const,
+      source: 'baseContext',
+    };
+    put('market.trendBias', at(base, 'regime', 'trend', 'bias'), marketFact);
+    put('market.swingBias', at(base, 'structure', 'swing', 'bias'), marketFact);
+    put(
+      'market.volumeRel20',
+      at(base, 'participation', 'volume', 'volumeRel20'),
+      { ...marketFact, unit: 'ratio' },
+    );
+    const deltaSource = at(base, 'participation', 'delta', 'source');
+    put(
+      'market.deltaPct',
+      at(base, 'participation', 'delta', 'deltaPct'),
+      {
+        ...marketFact,
+        source:
+          typeof deltaSource === 'string'
+            ? `baseContext.participation.delta.${deltaSource}`
+            : 'baseContext.participation.delta',
+        unit: 'ratio',
+      },
+      deltaSource === 'ohlcv_proxy'
+        ? 'ohlcv_proxy_no_taker_volume'
+        : 'missing_value',
+    );
+    put(
+      'market.fastMaDistanceAtr',
+      at(base, 'regime', 'trend', 'priceDistanceToMaFastAtr'),
+      { ...marketFact, unit: 'ATR' },
+    );
+  }
   const price = finite(signal.prices.currentPrice);
   const stop = finite(signal.prices.stopLossPrice);
   const target = finite(signal.prices.takeProfitPrice);
-  const atr = finite(at(base, 'raw', 'volatility', 'atr'));
+  const atr = baseProblem ? null : finite(at(base, 'raw', 'volatility', 'atr'));
   if (price == null || stop == null || target == null)
     throw new Error('Invalid Jev signal prices');
   put(
@@ -93,6 +131,9 @@ export const buildJevInput = (signal: Signal): JevInput => {
       ...signalFact,
       unit: 'ATR',
     });
+  } else {
+    missing['signal.stopDistanceAtr'] = baseProblem ?? 'missing_atr';
+    missing['signal.targetDistanceAtr'] = baseProblem ?? 'missing_atr';
   }
   let geometryStatus: JevInput['geometryStatus'] = 'absent';
   const figures = signal.figures;
@@ -149,20 +190,25 @@ export const buildJevInput = (signal: Signal): JevInput => {
       Object.keys(evidence.geometry ?? {}).length > 16
     )
       throw new Error('Invalid or oversized Jev evidence');
-    const strategyFact = {
+    const strategyFact: JevFactProvenance = {
       knownAt: evidence.knownAt,
       scope: 'strategy' as const,
+      source: 'strategy.jevEvidence',
     };
     const detailFor = (key: string): JevFactProvenance => {
-      const detail = evidence.factDetails?.[key] ?? strategyFact;
+      const detail: JevFactProvenance =
+        evidence.factDetails?.[key] ?? strategyFact;
       if (
         !Number.isFinite(detail.knownAt) ||
         detail.knownAt > signal.timestamp ||
         !['target', 'strategy'].includes(detail.scope) ||
-        (detail.unit != null && !/^[a-zA-Z0-9%._/-]{1,20}$/.test(detail.unit))
+        (detail.unit != null &&
+          !/^[a-zA-Z0-9%._/-]{1,20}$/.test(detail.unit)) ||
+        (detail.source != null &&
+          !/^[a-zA-Z0-9._/-]{1,60}$/.test(detail.source))
       )
         throw new Error('Invalid Jev fact provenance');
-      return detail;
+      return { ...strategyFact, ...detail };
     };
     put('setup.version', evidence.version, strategyFact);
     for (const [key, value] of Object.entries(evidence.facts)) {
@@ -187,42 +233,22 @@ export const buildJevInput = (signal: Signal): JevInput => {
     )
       throw new Error('Jev provenance references an unavailable fact');
   }
-  const questions: JevDimension[] = [];
-  if (
-    features['market.trendBias'] != null ||
-    features['market.swingBias'] != null ||
-    (evidence?.facts && Object.keys(evidence.facts).length)
-  )
-    questions.push('structure');
-  if (
-    features['market.volumeRel20'] != null ||
-    features['market.deltaPct'] != null
-  )
-    questions.push('participation');
-  if (
-    features['market.fastMaDistanceAtr'] != null ||
-    evidence?.facts?.entryExtensionAtr != null
-  )
-    questions.push('timing');
   if (
     evidence?.geometry &&
     Object.keys(evidence.geometry).length &&
     geometryStatus === 'absent'
   )
-    geometryStatus = 'available';
-  if (
-    geometryStatus === 'available' &&
-    evidence?.geometry &&
-    Object.keys(evidence.geometry).length
-  )
-    questions.push('geometry');
+    geometryStatus = 'facts_only';
+  if (geometryStatus === 'absent') missing['geometry.figures'] = 'no_geometry';
+  if (geometryStatus === 'invalid')
+    missing['geometry.figures'] = 'invalid_geometry';
   if (
     Object.keys(features).length > 40 ||
     JSON.stringify(features).length > 4000
   )
     throw new Error('Jev input exceeds the microdecision budget');
   return {
-    schema: 'tradejs-jev-input/v3',
+    schema: 'tradejs-jev-input/v4',
     strategy: signal.strategy,
     symbol: signal.symbol,
     interval: String(signal.interval),
@@ -230,7 +256,8 @@ export const buildJevInput = (signal: Signal): JevInput => {
     direction: signal.direction as 'LONG' | 'SHORT',
     features,
     provenance,
-    questions,
+    missing,
+    questions: [...JEV_DIMENSIONS],
     geometryStatus,
   };
 };
@@ -279,9 +306,16 @@ export const stateForJevInput = (input: JevInput) => ({
   strategy: input.strategy,
   direction: input.direction,
   facts: input.features,
+  missing: input.missing,
+  geometryStatus: input.geometryStatus,
   units: Object.fromEntries(
     Object.entries(input.provenance)
       .filter(([, detail]) => detail.unit != null)
       .map(([key, detail]) => [key, detail.unit]),
+  ),
+  sources: Object.fromEntries(
+    Object.entries(input.provenance)
+      .filter(([, detail]) => detail.source != null)
+      .map(([key, detail]) => [key, detail.source]),
   ),
 });

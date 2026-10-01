@@ -1048,6 +1048,14 @@ export const buildStrategySignal = ({
   additionalIndicators,
   isConfigFromBacktest,
 }: BuildStrategySignalParams): Signal => {
+  const jevEvidence = additionalIndicators?.jevEvidence;
+  const strategyAdditionalIndicators =
+    jevEvidence != null && additionalIndicators
+      ? copyEnumerableDataPropertiesExcept(
+          additionalIndicators,
+          new Set(['jevEvidence']),
+        )
+      : additionalIndicators;
   const indicatorsRecord =
     indicators && typeof indicators === 'object' ? indicators : {};
   const baseContext = (
@@ -1062,12 +1070,12 @@ export const buildStrategySignal = ({
         );
   const mergedAdditionalIndicators =
     baseContext == null
-      ? additionalIndicators
+      ? strategyAdditionalIndicators
       : {
-          ...(additionalIndicators ?? {}),
+          ...strategyAdditionalIndicators,
           baseContext:
             (
-              additionalIndicators as {
+              strategyAdditionalIndicators as {
                 baseContext?: BaseStrategyContextSnapshot;
               }
             )?.baseContext ?? baseContext,
@@ -1090,6 +1098,9 @@ export const buildStrategySignal = ({
     prices,
     indicators: normalizedIndicators,
     additionalIndicators: normalizedAdditionalIndicators,
+    ...(jevEvidence != null
+      ? { jevEvidence: jevEvidence as Signal['jevEvidence'] }
+      : {}),
     isConfigFromBacktest,
   };
 };

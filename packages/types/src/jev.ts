@@ -9,6 +9,7 @@ export interface JevFactProvenance {
   knownAt: number;
   scope: 'target' | 'strategy';
   unit?: string;
+  source?: string;
 }
 
 /** Optional, signal-time facts supplied by any strategy package. */
@@ -39,7 +40,7 @@ export interface JevConfig {
 }
 
 export interface JevInput {
-  schema: 'tradejs-jev-input/v3';
+  schema: 'tradejs-jev-input/v4';
   strategy: string;
   symbol: string;
   interval: string;
@@ -47,8 +48,9 @@ export interface JevInput {
   direction: 'LONG' | 'SHORT';
   features: Record<string, JevFeature>;
   provenance: Record<string, JevFactProvenance>;
+  missing: Record<string, string>;
   questions: JevDimension[];
-  geometryStatus: 'available' | 'absent' | 'invalid';
+  geometryStatus: 'available' | 'facts_only' | 'absent' | 'invalid';
 }
 
 export interface JevScoreAnswer {
@@ -65,7 +67,7 @@ export interface JevResponse {
 }
 
 export interface JevRecord {
-  schema: 'tradejs-jev-record/v3';
+  schema: 'tradejs-jev-record/v4';
   id: string;
   inputHash: string;
   questionsHash: string;
@@ -78,7 +80,7 @@ export interface JevRecord {
 }
 
 export interface SignalAssessment {
-  schema: 'tradejs-signal-assessment/v4';
+  schema: 'tradejs-signal-assessment/v5';
   source: JevConfig['source'];
   mode: JevConfig['mode'];
   status: 'available' | 'unavailable';
@@ -121,7 +123,7 @@ export interface JevGateModel {
 }
 
 export interface JevStudyRow {
-  schema: 'tradejs-jev-study/v3';
+  schema: 'tradejs-jev-study/v4';
   signalId: string;
   record: JevRecord;
   /** Outcome is analysis-only and is never included in JevInput. */

@@ -121,7 +121,7 @@ export const runJevResearch = async (options: {
               `No eligible Jev questions for signal ${row.signalId}`,
             );
           const study: JevStudyRow = {
-            schema: 'tradejs-jev-study/v3',
+            schema: 'tradejs-jev-study/v4',
             signalId: row.signalId,
             record,
             ...(Number.isFinite(row.profit) ? { profit: row.profit } : {}),
@@ -176,7 +176,7 @@ export const runJevResearch = async (options: {
         );
       const outcome = byRecord.get(record.id);
       rows.push({
-        schema: 'tradejs-jev-study/v3',
+        schema: 'tradejs-jev-study/v4',
         signalId: outcome?.signalId ?? record.id,
         record,
         ...(outcome && Number.isFinite(outcome.profit)

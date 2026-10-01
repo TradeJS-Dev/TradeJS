@@ -18,8 +18,11 @@ const toRecord = (value: unknown): Record<string, unknown> => {
 };
 
 const buildBaseAiPayload = (signal: Signal): AiPayload => {
+  const { jevEvidence: _jevEvidence, ...signalAdditionalIndicators } = toRecord(
+    signal.additionalIndicators,
+  );
   const additionalIndicators = {
-    ...toRecord(signal.additionalIndicators),
+    ...signalAdditionalIndicators,
     marketContext: buildAiMarketContext(signal),
   };
 

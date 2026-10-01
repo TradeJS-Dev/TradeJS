@@ -60,6 +60,7 @@ const makeSignal = (timestamp = 1000): Signal =>
     indicators: {},
     additionalIndicators: {
       baseContext: {
+        candle: { timestamp },
         raw: { volatility: { atr: 2 } },
         regime: { trend: { bias: 'bull', priceDistanceToMaFastAtr: 0.5 } },
         structure: { swing: { bias: 'bull' } },
@@ -71,7 +72,7 @@ const makeSignal = (timestamp = 1000): Signal =>
 const makeResponse = (score = 3): JevResponse => ({
   model: 'jev-1.13.0',
   answers: Object.fromEntries(
-    ['structure', 'participation', 'timing'].map((key) => [
+    ['structure', 'participation', 'timing', 'geometry'].map((key) => [
       key,
       {
         type: 'score',
@@ -93,7 +94,7 @@ const makeRows = () =>
     const inputHash = jevHash(input),
       questionsHash = jevHash(questionsForJevInput(input));
     const record: JevRecord = {
-      schema: 'tradejs-jev-record/v3',
+      schema: 'tradejs-jev-record/v4',
       id: jevHash({ inputHash, questionsHash, provider }),
       inputHash,
       questionsHash,
@@ -104,13 +105,13 @@ const makeRows = () =>
         structure: score / 4,
         participation: score / 4,
         timing: score / 4,
-        geometry: null,
+        geometry: score / 4,
       },
       createdAt: '2026-09-29',
       elapsedMs: 1,
     };
     return {
-      schema: 'tradejs-jev-study/v3',
+      schema: 'tradejs-jev-study/v4',
       signalId: `s${index}`,
       record,
       profit: score ? 1 : -1,
@@ -142,9 +143,15 @@ describe('Jev shared assessment and local training', () => {
     );
     expect(input.features['geometry.pointCount']).toBeUndefined();
     expect(input.features['signal.stopDistanceAtr']).toBe(1);
-    expect(input.questions).toEqual(['structure', 'participation', 'timing']);
+    expect(input.questions).toEqual([
+      'structure',
+      'participation',
+      'timing',
+      'geometry',
+    ]);
     expect(Object.keys(input.features).length).toBeLessThan(20);
-    signal.additionalIndicators!.jevEvidence = {
+    const baselinePayload = buildAiPayloadByStrategy(signal);
+    signal.jevEvidence = {
       version: 'setup-v1',
       knownAt: signal.timestamp,
       facts: { confirmationCount: 2 },
@@ -153,8 +160,32 @@ describe('Jev shared assessment and local training', () => {
     const extended = buildJevInput(signal);
     expect(extended.features['setup.confirmationCount']).toBe(2);
     expect(extended.questions).toContain('geometry');
+    const regularPayload = buildAiPayloadByStrategy(signal);
+    expect(regularPayload).toEqual(baselinePayload);
+    expect(JSON.stringify(regularPayload)).not.toContain('jevEvidence');
+    expect(JSON.stringify(regularPayload)).not.toContain('confirmationCount');
+    signal.additionalIndicators!.jevEvidence = signal.jevEvidence;
+    expect(JSON.stringify(buildAiPayloadByStrategy(signal))).not.toContain(
+      'confirmationCount',
+    );
+    delete signal.additionalIndicators!.jevEvidence;
     signal.figures.lines![0].points[0].timestamp = 1001;
     expect(buildJevInput(signal).geometryStatus).toBe('invalid');
+  });
+
+  it('marks unavailable market facts explicitly and still asks every question', () => {
+    const signal = makeSignal();
+    delete signal.additionalIndicators!.baseContext.candle;
+    const input = buildJevInput(signal);
+    expect(input.questions).toEqual([
+      'structure',
+      'participation',
+      'timing',
+      'geometry',
+    ]);
+    expect(input.missing['market.trendBias']).toBe('missing_timestamp');
+    expect(input.features['market.trendBias']).toBeUndefined();
+    expect(input.missing['signal.stopDistanceAtr']).toBe('missing_timestamp');
   });
 
   it('reuses one paid answer for equivalent states at different signal times', async () => {
@@ -249,7 +280,7 @@ describe('Jev shared assessment and local training', () => {
     (env) => {
       const signal = makeSignal();
       signal.assessment = {
-        schema: 'tradejs-signal-assessment/v4',
+        schema: 'tradejs-signal-assessment/v5',
         source: 'recorded',
         mode: 'observe',
         status: 'available',

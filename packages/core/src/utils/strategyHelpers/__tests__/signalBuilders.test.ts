@@ -139,6 +139,46 @@ const baseContext: BaseStrategyContextSnapshot = {
 };
 
 describe('buildStrategySignal', () => {
+  it('keeps Jev evidence separate from ordinary additional indicators', () => {
+    const params = {
+      signalId: 's-jev',
+      strategy: 'TestPattern',
+      symbol: 'BTCUSDT',
+      interval: '15' as const,
+      direction: 'LONG' as const,
+      timestamp: 1,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      additionalIndicators: { touches: 3 },
+    };
+    const baseline = buildStrategySignal(params);
+    const evidence = {
+      version: 'setup-v1',
+      knownAt: 1,
+      facts: { confirmationCount: 2 },
+    };
+    const withEvidence = buildStrategySignal({
+      ...params,
+      additionalIndicators: {
+        ...params.additionalIndicators,
+        jevEvidence: evidence,
+      },
+    });
+
+    expect(withEvidence.additionalIndicators).toEqual(
+      baseline.additionalIndicators,
+    );
+    expect(withEvidence.jevEvidence).toEqual(evidence);
+    expect(
+      buildStrategySignal({ ...params, additionalIndicators: undefined })
+        .additionalIndicators,
+    ).toBeUndefined();
+  });
+
   it('derives gate features from Binance market context fields', () => {
     const signal = buildStrategySignal({
       signalId: 's-market',

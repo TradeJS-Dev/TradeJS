@@ -76,7 +76,7 @@ export const evaluateJevInput = async ({
   const questions = questionsForJevInput(input);
   const questionsHash = jevHash(questions);
   const base = {
-    schema: 'tradejs-signal-assessment/v4' as const,
+    schema: 'tradejs-signal-assessment/v5' as const,
     source: config.source,
     mode: config.mode,
     inputHash,
@@ -137,7 +137,7 @@ export const evaluateJevInput = async ({
     const existing = await readJevArtifact<JevRecord>(file);
     if (existing) {
       if (
-        existing.schema !== 'tradejs-jev-record/v3' ||
+        existing.schema !== 'tradejs-jev-record/v4' ||
         existing.id !== id ||
         existing.inputHash !== inputHash ||
         existing.questionsHash !== questionsHash ||
@@ -156,7 +156,9 @@ export const evaluateJevInput = async ({
       return existing;
     }
     if (config.source === 'recorded')
-      throw new Error(`Missing Jev recording ${id}`);
+      throw new Error(
+        `Missing Jev recording ${id} for ${input.strategy} ${input.symbol} at ${new Date(input.timestamp).toISOString()}. Recorded mode requires the same signal-time facts and provider; a shorter backtest can change warm-up indicators or prior trade state.`,
+      );
     const settings = await getUserSettings(userName);
     if (!settings.JEV_API_KEY)
       throw new Error('Configure the Jev API key in Account settings');
@@ -199,7 +201,7 @@ export const evaluateJevInput = async ({
       ]),
     ) as JevScores;
     const value: JevRecord = {
-      schema: 'tradejs-jev-record/v3',
+      schema: 'tradejs-jev-record/v4',
       id,
       inputHash,
       questionsHash,
@@ -270,7 +272,7 @@ export const assessSignalWithJev = async ({
   } catch (error) {
     if (strict) throw error;
     assessment = {
-      schema: 'tradejs-signal-assessment/v4',
+      schema: 'tradejs-signal-assessment/v5',
       source: config.source,
       mode: config.mode,
       status: 'unavailable',
