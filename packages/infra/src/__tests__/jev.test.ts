@@ -25,6 +25,25 @@ const response = () => ({
 const questions = ['structure', 'participation', 'timing', 'geometry'];
 
 describe('Jev transport and artifacts', () => {
+  it('accepts eight independent answers and rejects an oversized set', () => {
+    const keys = Array.from({ length: 8 }, (_, index) => `question_${index}`);
+    const answer = response().answers.structure;
+    const eight = {
+      model: 'jev-1.13.0',
+      answers: Object.fromEntries(keys.map((key) => [key, answer])),
+    };
+    expect(validateJevResponse(eight, keys)).toBe(eight);
+    expect(() =>
+      validateJevResponse(
+        {
+          ...eight,
+          answers: { ...eight.answers, question_8: answer },
+        },
+        [...keys, 'question_8'],
+      ),
+    ).toThrow('Invalid Jev answer set');
+  });
+
   it.each([
     'https://openrouter.ai/api/alpha/decisions',
     'https://api.typesafe.ai/v1/systemone',

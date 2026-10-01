@@ -146,7 +146,7 @@ export const validateJevResponse = (
     throw new Error('Invalid Jev response');
   if (
     !expected.length ||
-    expected.length > 4 ||
+    expected.length > 8 ||
     Object.keys(result.answers).sort().join(',') !==
       [...expected].sort().join(',')
   )
