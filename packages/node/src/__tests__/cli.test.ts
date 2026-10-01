@@ -325,6 +325,7 @@ describe('cli telegram notifications', () => {
     const event = {
       userName: 'root',
       strategy: 'TrendLine',
+      deploymentId: 'CopyTrading',
       openedByStrategy: 'TrendLine',
       symbol: 'ETHUSDT',
       direction: 'LONG',
@@ -342,7 +343,9 @@ describe('cli telegram notifications', () => {
 
     const message = formatRuntimeCloseNotification(event, 'root');
     expect(message).toContain('Symbol: <b>ETHUSDT</b>');
-    expect(message).toContain('Strategy: <b>TrendLine</b>');
+    expect(message).toContain(
+      'Strategy: <b>TrendLine</b>\nDeployment: <b>CopyTrading</b>',
+    );
     expect(message).toContain('Opened by journal: <b>TrendLine</b>');
     expect(message).toContain('Ownership: <b>matched</b>');
     expect(message).not.toContain('<b>Runtime journal</b>');

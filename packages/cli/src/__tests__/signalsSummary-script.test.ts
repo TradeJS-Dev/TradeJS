@@ -14,6 +14,148 @@ describe('signals summary script', () => {
     exitSpy.mockRestore();
   });
 
+  it('sends an isolated summary for each enabled deployment', async () => {
+    jest.resetModules();
+    const now = 1_700_086_400_000;
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const sendTelegramReport = jest.fn(
+      async (
+        _message: string,
+        _options: { attachments: Array<{ filename: string; content: string }> },
+      ) => undefined,
+    );
+    const makeTrade = (
+      deploymentId: string,
+      strategy: string,
+      pnl: number,
+    ) => ({
+      orderId: `${deploymentId}-order`,
+      strategy,
+      symbol: `${deploymentId}USDT`,
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: now - 120_000,
+      exitTimestamp: now - 60_000,
+      status: 'closed',
+      closedPnl: pnl,
+      deploymentId,
+    });
+    const trades = [
+      makeTrade('production', 'HeadAndShoulders', 3),
+      makeTrade('CopyTrading', 'LiquidityTails', -2),
+    ];
+
+    jest.doMock('args', () => ({
+      __esModule: true,
+      default: {
+        option: jest.fn(),
+        parse: jest.fn(() => ({ user: 'root', connector: 'bybit', hours: 24 })),
+      },
+    }));
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+    }));
+    jest.doMock('@tradejs/node/connectors', () => ({
+      DEFAULT_CONNECTOR_NAME: 'bybit',
+      resolveConnectorName: jest.fn(async () => 'bybit'),
+      getConnectorCreatorByName: jest.fn(async () => async () => ({})),
+    }));
+    jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+      listRuntimeDeployments: jest.fn(async () => [
+        {
+          id: 'production',
+          enabled: true,
+          strategies: [{ strategyName: 'HeadAndShoulders' }],
+        },
+        {
+          id: 'CopyTrading',
+          enabled: true,
+          strategies: [{ strategyName: 'LiquidityTails' }],
+        },
+      ]),
+    }));
+    jest.doMock('../lib/runtimeRedis', () => ({
+      loadRuntimeStrategyNames: jest.fn(async () => []),
+      loadRuntimeTrades: jest.fn(async () => trades),
+      loadRuntimeActiveTradeOrderIds: jest.fn(async () => new Set()),
+    }));
+    jest.doMock('../lib/runtimeTradeSync', () => ({
+      syncRuntimeTrades: jest.fn(
+        async ({ trades: scopedTrades }) => scopedTrades,
+      ),
+      isRuntimeTradeSyncFallbackClose: jest.fn(() => false),
+      formatRuntimeTradeSyncError: jest.fn(String),
+    }));
+    jest.doMock('../lib/runtimeSignalsLoader', () => ({
+      loadRuntimeSignals: jest.fn(async () => [
+        {
+          signalId: 'prod-signal',
+          strategy: 'HeadAndShoulders',
+          deploymentId: 'production',
+          timestamp: now - 60_000,
+        },
+        {
+          signalId: 'copy-signal',
+          strategy: 'LiquidityTails',
+          deploymentId: 'CopyTrading',
+          timestamp: now - 60_000,
+        },
+      ]),
+      loadRuntimeSignalEvaluationStatsBuckets: jest.fn(async () => [
+        {
+          dayKey: '2023-11-16',
+          deploymentId: 'production',
+          strategy: 'HeadAndShoulders',
+          stats: { evaluated: 1, signals: 1, reasonGroups: new Map() },
+        },
+        {
+          dayKey: '2023-11-16',
+          deploymentId: 'CopyTrading',
+          strategy: 'LiquidityTails',
+          stats: { evaluated: 2, signals: 0, reasonGroups: new Map() },
+        },
+      ]),
+    }));
+    jest.doMock('../lib/runtimeSignalsStorage', () => ({
+      getRuntimeStorageDayKeys: jest.fn(() => ['2023-11-16']),
+    }));
+    jest.doMock('../lib/runtimeDebugEvidence', () => ({
+      buildRuntimeDebugReportAttachment: jest.fn(async () => null),
+    }));
+    jest.doMock('../lib/telegramReports', () => ({ sendTelegramReport }));
+
+    const { signalsSummary } = await import('../scripts/signalsSummary');
+    await signalsSummary();
+
+    expect(sendTelegramReport).toHaveBeenCalledTimes(2);
+    const [productionMessage, productionOptions] =
+      sendTelegramReport.mock.calls[0];
+    const [copyMessage, copyOptions] = sendTelegramReport.mock.calls[1];
+    expect(productionMessage).toContain('Deployment: <b>production</b>');
+    expect(productionMessage).toContain('24h Realized PnL:</b> <b>+3.00');
+    expect(productionMessage).not.toContain('LiquidityTails');
+    expect(copyMessage).toContain('Deployment: <b>CopyTrading</b>');
+    expect(copyMessage).toContain('24h Realized PnL:</b> <b>-2.00');
+    expect(copyMessage).not.toContain('HeadAndShoulders');
+    expect(productionOptions.attachments[0].filename).toContain('-production-');
+    expect(copyOptions.attachments[0].filename).toContain('-CopyTrading-');
+    expect(productionOptions.attachments[0].content).toContain(
+      'evaluated=1, signals=1',
+    );
+    expect(productionOptions.attachments[0].content).not.toContain(
+      'evaluated=2, signals=0',
+    );
+    expect(copyOptions.attachments[0].content).toContain(
+      'evaluated=2, signals=0',
+    );
+    jest.dontMock('../lib/runtimeRedis');
+    jest.dontMock('../lib/runtimeTradeSync');
+    jest.dontMock('../lib/runtimeSignalsStorage');
+    jest.dontMock('../lib/runtimeDebugEvidence');
+    jest.dontMock('../lib/telegramReports');
+  });
+
   it('aggregates signal statuses and trade pnl by strategy', async () => {
     jest.resetModules();
 

@@ -152,6 +152,7 @@ export const handleExitDecision = async ({
         onRuntimeClose?.({
           userName,
           strategy: strategyName,
+          deploymentId: connector.deploymentId,
           openedByStrategy: trade.strategy,
           symbol,
           direction: trade.direction,

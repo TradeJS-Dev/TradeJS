@@ -419,6 +419,7 @@ export const formatMessage = (
     symbol,
     direction,
     strategy,
+    deploymentId,
     orderStatus,
     orderSkipReason,
     orderFailureReason,
@@ -473,6 +474,9 @@ export const formatMessage = (
 
       lines.push(`<b>${emojiDir} ${symbol}</b>`);
       lines.push(`Strategy: ${strategy}`);
+      if (deploymentId) {
+        lines.push(`Deployment: ${escapeHtml(deploymentId)}`);
+      }
 
       lines.push('');
 

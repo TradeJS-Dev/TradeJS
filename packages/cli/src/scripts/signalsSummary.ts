@@ -146,15 +146,18 @@ const buildSignalsSummaryAttachment = ({
   userName,
   endTime,
   content,
+  deploymentId,
 }: {
   userName: string;
   endTime: number;
   content: string;
+  deploymentId?: string;
 }): TelegramReportAttachment => {
   const dayKey = formatSummaryIsoDayKey(endTime);
+  const scope = deploymentId ? `-${deploymentId}` : '';
 
   return {
-    filename: `tradejs-signals-summary-${userName}-${dayKey}.txt`,
+    filename: `tradejs-signals-summary-${userName}${scope}-${dayKey}.txt`,
     content: stripTelegramHtml(content),
     caption: `Signals summary ${dayKey} ${SUMMARY_TIMEZONE_LABEL}`,
   };
@@ -366,6 +369,7 @@ const mergeRuntimeSignalStats = (
 };
 
 const buildSummaryPrelude = ({
+  deploymentId,
   hours,
   startTime,
   endTime,
@@ -376,6 +380,7 @@ const buildSummaryPrelude = ({
   openCount,
   openPnlText,
 }: {
+  deploymentId?: string;
   hours: number;
   startTime: number;
   endTime: number;
@@ -391,6 +396,7 @@ const buildSummaryPrelude = ({
 
   return [
     `📋 <b>${escapeHtml(resolveSummaryTitle(hours))}</b>`,
+    ...(deploymentId ? [`Deployment: <b>${escapeHtml(deploymentId)}</b>`] : []),
     '',
     '🕒 <b>Window</b>',
     `<b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
@@ -448,6 +454,7 @@ const isRuntimeTradeClosedInWindow = (
 };
 
 const buildSummaryMessages = ({
+  deploymentId,
   hours,
   startTime,
   endTime,
@@ -456,6 +463,7 @@ const buildSummaryMessages = ({
   evaluationStatsByStrategy,
   trades,
 }: {
+  deploymentId?: string;
   hours: number;
   startTime: number;
   endTime: number;
@@ -612,6 +620,7 @@ const buildSummaryMessages = ({
   );
   const winRateText = formatWinRateText(closedWins, closedKnown);
   const prelude = buildSummaryPrelude({
+    deploymentId,
     hours,
     startTime,
     endTime,
@@ -820,17 +829,6 @@ export const signalsSummary = async () => {
     (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,
   );
   const windowDayKeys = new Set(getRuntimeStorageDayKeys(startTime, endTime));
-  const windowEvaluationStats = new Map<string, RuntimeSignalStatsBucket>();
-  for (const entry of evaluationStatsBuckets) {
-    if (!windowDayKeys.has(entry.dayKey)) {
-      continue;
-    }
-
-    const stats =
-      windowEvaluationStats.get(entry.strategy) ?? createRuntimeSignalStats();
-    mergeRuntimeSignalStats(stats, entry.stats);
-    windowEvaluationStats.set(entry.strategy, stats);
-  }
   const windowClosedTrades = syncedTrades.filter((trade) =>
     isRuntimeTradeClosedInWindow(trade, startTime, endTime),
   );
@@ -843,86 +841,125 @@ export const signalsSummary = async () => {
       trade.entryTimestamp < endTime,
   );
   const windowTrades = [...windowClosedTrades, ...openSnapshotTrades];
-  const windowTradeSignalIds = new Set(
-    windowTrades
-      .map((trade) => trade.signalId)
-      .filter((signalId): signalId is string => typeof signalId === 'string'),
-  );
-  const debugSignals = windowSignals.filter((signal) =>
-    windowTradeSignalIds.has(signal.signalId),
-  );
-  const { signalsMessage, tradesMessage } = buildSummaryMessages({
-    hours,
-    startTime,
-    endTime,
-    configuredStrategyNames,
-    signals: windowSignals,
-    evaluationStatsByStrategy: windowEvaluationStats,
-    trades: windowTrades,
-  });
-  const windowEvaluationsCount = [...windowEvaluationStats.values()].reduce(
-    (sum, stats) => sum + stats.evaluated,
-    0,
-  );
+  const deploymentScopes = runtimeDeployments.filter((item) => item.enabled);
+  const scopes = deploymentScopes.length
+    ? deploymentScopes.map((deployment) => ({
+        deploymentId: deployment.id,
+        configuredStrategyNames: deployment.strategies.map(
+          (strategy) => strategy.strategyName,
+        ),
+      }))
+    : [{ deploymentId: undefined, configuredStrategyNames }];
 
-  logger.info(
-    'signals summary window=%sh signals=%s evaluations=%s trades=%s connectors=%s scopes=%s user=%s',
-    hours,
-    windowSignals.length,
-    windowEvaluationsCount,
-    windowClosedTrades.length,
-    connectorNames.join(',') || fallbackConnectorName,
-    scopesCount,
-    flags.user,
-  );
-  const debugAttachment = shouldAttachDebugReport(flags.debugAttachment)
-    ? await buildRuntimeDebugReportAttachment({
-        userName: flags.user,
-        startTime,
-        endTime,
-        signals: debugSignals,
-        evaluations: [],
-        trades: windowTrades,
-      })
-    : null;
-  const signalsAttachment = buildSignalsSummaryAttachment({
-    userName: flags.user,
-    endTime,
-    content: signalsMessage,
-  });
-  const tradesMessageWithAttachmentSummary = appendReportAttachmentSummary({
-    message: tradesMessage,
-    signalsFilename: signalsAttachment.filename,
-    filename: debugAttachment?.filename,
-    tradesCount: debugAttachment ? windowTrades.length : undefined,
-    signalsCount: debugAttachment
-      ? debugAttachment.summary?.signals ?? debugSignals.length
-      : undefined,
-    evaluationsCount: debugAttachment
-      ? debugAttachment.summary?.evaluations ?? 0
-      : undefined,
-  });
-  const attachments: TelegramReportAttachment[] = [
-    signalsAttachment,
-    ...(debugAttachment ? [debugAttachment] : []),
-  ];
-
-  if (flags.printOnly) {
-    console.log(tradesMessageWithAttachmentSummary);
-    console.log('');
-    console.log(`Signals attachment: ${signalsAttachment.filename}`);
-    console.log(signalsAttachment.content);
-    if (debugAttachment) {
-      console.log('');
-      console.log(`Debug attachment: ${debugAttachment.filename}`);
-      console.log(debugAttachment.content);
+  for (const scope of scopes) {
+    const scopeSignals = windowSignals.filter(
+      (signal) => signal.deploymentId === scope.deploymentId,
+    );
+    const scopeTrades = windowTrades.filter(
+      (trade) => trade.deploymentId === scope.deploymentId,
+    );
+    const scopeEvaluationStats = new Map<string, RuntimeSignalStatsBucket>();
+    for (const entry of evaluationStatsBuckets) {
+      if (
+        !windowDayKeys.has(entry.dayKey) ||
+        entry.deploymentId !== scope.deploymentId
+      ) {
+        continue;
+      }
+      const stats =
+        scopeEvaluationStats.get(entry.strategy) ?? createRuntimeSignalStats();
+      mergeRuntimeSignalStats(stats, entry.stats);
+      scopeEvaluationStats.set(entry.strategy, stats);
     }
-    return;
-  }
+    const windowTradeSignalIds = new Set(
+      scopeTrades
+        .map((trade) => trade.signalId)
+        .filter((signalId): signalId is string => typeof signalId === 'string'),
+    );
+    const debugSignals = scopeSignals.filter((signal) =>
+      windowTradeSignalIds.has(signal.signalId),
+    );
+    const { signalsMessage, tradesMessage } = buildSummaryMessages({
+      deploymentId: scope.deploymentId,
+      hours,
+      startTime,
+      endTime,
+      configuredStrategyNames: scope.configuredStrategyNames,
+      signals: scopeSignals,
+      evaluationStatsByStrategy: scopeEvaluationStats,
+      trades: scopeTrades,
+    });
+    const windowEvaluationsCount = [...scopeEvaluationStats.values()].reduce(
+      (sum, stats) => sum + stats.evaluated,
+      0,
+    );
+    logger.info(
+      'signals summary deployment=%s window=%sh signals=%s evaluations=%s trades=%s connectors=%s scopes=%s user=%s',
+      scope.deploymentId ?? 'legacy',
+      hours,
+      scopeSignals.length,
+      windowEvaluationsCount,
+      scopeTrades.filter((trade) => trade.status === 'closed').length,
+      connectorNames.join(',') || fallbackConnectorName,
+      scopesCount,
+      flags.user,
+    );
+    const debugAttachment = shouldAttachDebugReport(flags.debugAttachment)
+      ? await buildRuntimeDebugReportAttachment({
+          userName: flags.user,
+          startTime,
+          endTime,
+          signals: debugSignals,
+          evaluations: [],
+          trades: scopeTrades,
+        })
+      : null;
+    if (debugAttachment && scope.deploymentId) {
+      debugAttachment.filename = debugAttachment.filename.replace(
+        /\.(json|txt)$/,
+        `-${scope.deploymentId}.$1`,
+      );
+    }
+    const signalsAttachment = buildSignalsSummaryAttachment({
+      userName: flags.user,
+      endTime,
+      content: signalsMessage,
+      deploymentId: scope.deploymentId,
+    });
+    const tradesMessageWithAttachmentSummary = appendReportAttachmentSummary({
+      message: tradesMessage,
+      signalsFilename: signalsAttachment.filename,
+      filename: debugAttachment?.filename,
+      tradesCount: debugAttachment ? scopeTrades.length : undefined,
+      signalsCount: debugAttachment
+        ? debugAttachment.summary?.signals ?? debugSignals.length
+        : undefined,
+      evaluationsCount: debugAttachment
+        ? debugAttachment.summary?.evaluations ?? 0
+        : undefined,
+    });
+    const attachments: TelegramReportAttachment[] = [
+      signalsAttachment,
+      ...(debugAttachment ? [debugAttachment] : []),
+    ];
 
-  await sendTelegramReport(tradesMessageWithAttachmentSummary, {
-    userName: flags.user,
-    attachments,
-  });
+    if (flags.printOnly) {
+      console.log(tradesMessageWithAttachmentSummary);
+      console.log('');
+      console.log(`Signals attachment: ${signalsAttachment.filename}`);
+      console.log(signalsAttachment.content);
+      if (debugAttachment) {
+        console.log('');
+        console.log(`Debug attachment: ${debugAttachment.filename}`);
+        console.log(debugAttachment.content);
+      }
+      continue;
+    }
+
+    await sendTelegramReport(tradesMessageWithAttachmentSummary, {
+      userName: flags.user,
+      attachments,
+    });
+  }
 };
 export const main = signalsSummary;

@@ -1019,6 +1019,7 @@ export interface RuntimeTradeRecord {
 export interface RuntimeStrategyCloseNotification {
   userName?: string;
   strategy: string;
+  deploymentId?: string;
   openedByStrategy: string;
   symbol: string;
   direction: Direction;

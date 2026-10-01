@@ -426,6 +426,9 @@ export const formatRuntimeCloseNotification = (
     '<b>Strategy self-close</b>',
     `Symbol: <b>${escapeHtml(event.symbol)}</b>`,
     `Strategy: <b>${escapeHtml(event.strategy)}</b>`,
+    ...(event.deploymentId
+      ? [`Deployment: <b>${escapeHtml(event.deploymentId)}</b>`]
+      : []),
     `Direction: <b>${escapeHtml(event.direction)}</b>`,
     `Reason: <code>${escapeHtml(event.code)}</code>`,
     '',

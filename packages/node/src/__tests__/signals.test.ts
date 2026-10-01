@@ -601,6 +601,7 @@ describe('signals', () => {
         signalId: 'sig-1',
         symbol: 'TLMUSDT',
         strategy: 'AdaptiveMomentumRibbon',
+        deploymentId: 'CopyTrading',
         interval: '15',
         direction: 'LONG',
         orderStatus: 'completed',
@@ -629,6 +630,9 @@ describe('signals', () => {
       },
     );
 
+    expect(message).toContain(
+      'Strategy: AdaptiveMomentumRibbon\nDeployment: CopyTrading',
+    );
     expect(message).toContain('🟢 Gate Quality: 4/5');
     expect(message).toContain('🔴 LLM Quality: 3/5');
     expect(message).not.toContain('AI Quality: 3/5');
