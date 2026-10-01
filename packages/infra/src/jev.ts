@@ -78,6 +78,12 @@ export const requestJev = async (
           body: JSON.stringify({ model: provider.model, state, questions }),
         });
       } catch {
+        if (!controller.signal.aborted && attempt < (options.retries ?? 2)) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 250 * 2 ** attempt),
+          );
+          continue;
+        }
         throw new Error(
           controller.signal.aborted
             ? 'Jev request timed out'

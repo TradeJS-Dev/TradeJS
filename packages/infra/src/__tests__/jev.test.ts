@@ -118,6 +118,21 @@ describe('Jev transport and artifacts', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it('retries transient connection failures without exposing their details', async () => {
+    const fetcher = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('private connection detail'))
+      .mockResolvedValue({ ok: true, json: async () => response() });
+    await requestJev(
+      { endpoint: 'https://example.com', model: 'pinned' },
+      'key',
+      {},
+      { structure: {}, participation: {}, timing: {}, geometry: {} },
+      { fetch: fetcher },
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('aborts stalled requests', async () => {
     const fetcher = jest.fn(
       (_url, options) =>
