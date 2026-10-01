@@ -7,7 +7,7 @@ import { questionsForJevInput } from '../jevInput';
 import { buildAiPayloadByStrategy } from '../strategyAdapters/ai';
 import { trainJevGate, compareJevGate } from '../jevTraining';
 import { jevHash, jevFileHash } from '@tradejs/infra/jev';
-import { decideJev, parseJevConfig } from '@tradejs/core/jev';
+import { JEV_DIMENSIONS, decideJev, parseJevConfig } from '@tradejs/core/jev';
 import {
   shouldExecuteEntryDecision,
   getEntrySkipReason,
@@ -69,10 +69,13 @@ const makeSignal = (timestamp = 1000): Signal =>
       },
     },
   }) as unknown as Signal;
-const makeResponse = (score = 3): JevResponse => ({
+const makeResponse = (
+  score = 3,
+  questions = buildJevInput(makeSignal()).questions,
+): JevResponse => ({
   model: 'jev-1.13.0',
   answers: Object.fromEntries(
-    ['structure', 'participation', 'timing', 'geometry'].map((key) => [
+    questions.map((key) => [
       key,
       {
         type: 'score',
@@ -100,13 +103,13 @@ const makeRows = () =>
       questionsHash,
       provider,
       input,
-      response: makeResponse(score),
-      scores: {
-        structure: score / 4,
-        participation: score / 4,
-        timing: score / 4,
-        geometry: score / 4,
-      },
+      response: makeResponse(score, input.questions),
+      scores: Object.fromEntries(
+        JEV_DIMENSIONS.map((key) => [
+          key,
+          input.questions.includes(key) ? score / 4 : null,
+        ]),
+      ) as JevScores,
       createdAt: '2026-09-29',
       elapsedMs: 1,
     };
@@ -144,10 +147,10 @@ describe('Jev shared assessment and local training', () => {
     expect(input.features['geometry.pointCount']).toBeUndefined();
     expect(input.features['signal.stopDistanceAtr']).toBe(1);
     expect(input.questions).toEqual([
-      'structure',
+      'trend',
+      'swing',
       'participation',
-      'timing',
-      'geometry',
+      'extension',
     ]);
     expect(Object.keys(input.features).length).toBeLessThan(20);
     const baselinePayload = buildAiPayloadByStrategy(signal);
@@ -160,6 +163,7 @@ describe('Jev shared assessment and local training', () => {
     const extended = buildJevInput(signal);
     expect(extended.features['setup.confirmationCount']).toBe(2);
     expect(extended.questions).toContain('geometry');
+    expect(extended.questions).toContain('confirmation');
     const regularPayload = buildAiPayloadByStrategy(signal);
     expect(regularPayload).toEqual(baselinePayload);
     expect(JSON.stringify(regularPayload)).not.toContain('jevEvidence');
@@ -173,19 +177,34 @@ describe('Jev shared assessment and local training', () => {
     expect(buildJevInput(signal).geometryStatus).toBe('invalid');
   });
 
-  it('marks unavailable market facts explicitly and still asks every question', () => {
+  it('marks unavailable market facts and does not request unsupported judgments', () => {
     const signal = makeSignal();
     delete signal.additionalIndicators!.baseContext.candle;
     const input = buildJevInput(signal);
-    expect(input.questions).toEqual([
-      'structure',
-      'participation',
-      'timing',
-      'geometry',
-    ]);
+    expect(input.questions).toEqual([]);
     expect(input.missing['market.trendBias']).toBe('missing_timestamp');
     expect(input.features['market.trendBias']).toBeUndefined();
     expect(input.missing['signal.stopDistanceAtr']).toBe('missing_timestamp');
+  });
+
+  it('asks eight distinct questions when all strategy-neutral evidence groups exist', () => {
+    const signal = makeSignal();
+    signal.jevEvidence = {
+      version: 'setup-v1',
+      knownAt: signal.timestamp,
+      facts: {
+        setupVolumeRatio: 0.6,
+        entryStage: 'confirmed',
+        breakoutDistanceAtr: 0.2,
+        impulseStrengthAtr: 3.4,
+      },
+      geometry: { channelWidthAtr: 1.2 },
+    };
+    const input = buildJevInput(signal);
+    expect(input.questions).toEqual(JEV_DIMENSIONS);
+    expect(Object.keys(questionsForJevInput(input))).toHaveLength(8);
+    expect(input.features['setup.setupVolumeRatio']).toBe(0.6);
+    expect(input.features['geometry.channelWidthAtr']).toBe(1.2);
   });
 
   it('reuses one paid answer for equivalent states at different signal times', async () => {
@@ -233,9 +252,9 @@ describe('Jev shared assessment and local training', () => {
       config: { source: 'recorded', mode: 'observe', provider },
     });
     expect(replay.record).toEqual(first.record);
-    expect(replay.assessment.scores.structure).toBe(0.75);
+    expect(replay.assessment.scores.trend).toBe(0.75);
     expect(replay.assessment.levelsValid).toBe(true);
-    expect(replay.assessment.confidence.structure).toBe(1);
+    expect(replay.assessment.confidence.trend).toBe(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(
       evaluateJevInput({
@@ -287,8 +306,12 @@ describe('Jev shared assessment and local training', () => {
         inputHash: 'h',
         questionsHash: 'q',
         model: 'm',
-        scores: { structure: 0, participation: 1, timing: 1, geometry: 1 },
-        confidence: { structure: 1, participation: 1, timing: 1, geometry: 1 },
+        scores: Object.fromEntries(
+          JEV_DIMENSIONS.map((key) => [key, key === 'trend' ? 0 : 1]),
+        ) as JevScores,
+        confidence: Object.fromEntries(
+          JEV_DIMENSIONS.map((key) => [key, 1]),
+        ) as JevScores,
         geometryStatus: 'available',
         levelsValid: true,
       };
@@ -311,14 +334,11 @@ describe('Jev shared assessment and local training', () => {
   );
 
   it('requires geometry only when requested, and rejects invalid geometry', () => {
-    const scores: JevScores = {
-      structure: 0.8,
-      participation: 0.8,
-      timing: 0.8,
-      geometry: null,
-    };
+    const scores = Object.fromEntries(
+      JEV_DIMENSIONS.map((key) => [key, key === 'geometry' ? null : 0.8]),
+    ) as JevScores;
     const config = { source: 'provider' as const, mode: 'observe' as const };
-    const questions = ['structure', 'participation', 'timing'] as const;
+    const questions = ['trend', 'participation', 'extension'] as const;
     expect(
       decideJev(scores, config, 'absent', undefined, [...questions]).allowed,
     ).toBe(true);
@@ -335,7 +355,7 @@ describe('Jev shared assessment and local training', () => {
       decideJev(scores, config, 'invalid', undefined, [...questions]).allowed,
     ).toBe(false);
     expect(() =>
-      parseJevConfig({ ...config, minScores: { timing: 2 } }),
+      parseJevConfig({ ...config, minScores: { extension: 2 } }),
     ).toThrow('Unknown JEV configuration field');
     expect(() =>
       parseJevConfig({
@@ -375,7 +395,7 @@ describe('Jev shared assessment and local training', () => {
       userName: 'root',
       projectRoot: dir,
     });
-    expect(result.assessment.scores.structure).toBe(1);
+    expect(result.assessment.scores.trend).toBe(1);
     await expect(
       evaluateJevInput({
         input: rows[99].record.input,
@@ -393,7 +413,7 @@ describe('Jev shared assessment and local training', () => {
 
   it('rejects mixed lineages and tampered teacher records', () => {
     const rows = makeRows();
-    rows[0].record.scores.structure = 1;
+    rows[0].record.scores.trend = 1;
     expect(() => trainJevGate(rows)).toThrow('teacher response');
     expect(() => trainJevGate([])).toThrow('Empty');
   });

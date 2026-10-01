@@ -247,6 +247,47 @@ export const buildJevInput = (signal: Signal): JevInput => {
     JSON.stringify(features).length > 4000
   )
     throw new Error('Jev input exceeds the microdecision budget');
+  const has = (key: string) => key in features;
+  const setupKeys = Object.keys(features).filter((key) =>
+    key.startsWith('setup.'),
+  );
+  const questions = JEV_DIMENSIONS.filter((dimension) => {
+    switch (dimension) {
+      case 'trend':
+        return has('market.trendBias');
+      case 'swing':
+        return has('market.swingBias');
+      case 'participation':
+        return has('market.volumeRel20') || has('market.deltaPct');
+      case 'setupParticipation':
+        return setupKeys.some((key) =>
+          /volume|delta|flow|liquidity|turnover/i.test(key),
+        );
+      case 'extension':
+        return (
+          has('market.fastMaDistanceAtr') ||
+          has('setup.breakoutDistanceAtr') ||
+          has('signal.stopDistanceAtr')
+        );
+      case 'confirmation':
+        return setupKeys.some((key) =>
+          /stage|confirm|retest|accept/i.test(key),
+        );
+      case 'setupStrength':
+        return setupKeys.some(
+          (key) =>
+            key !== 'setup.version' &&
+            !/volume|delta|flow|liquidity|turnover|stage|confirm|retest|accept|breakoutDistance/i.test(
+              key,
+            ),
+        );
+      case 'geometry':
+        return (
+          geometryStatus !== 'invalid' &&
+          Object.keys(features).some((key) => key.startsWith('geometry.'))
+        );
+    }
+  });
   return {
     schema: 'tradejs-jev-input/v4',
     strategy: signal.strategy,
@@ -257,7 +298,7 @@ export const buildJevInput = (signal: Signal): JevInput => {
     features,
     provenance,
     missing,
-    questions: [...JEV_DIMENSIONS],
+    questions,
     geometryStatus,
   };
 };
@@ -271,28 +312,52 @@ const criteria = (subject: string) => [
 ];
 
 export const JEV_QUESTIONS = {
-  structure: {
+  trend: {
     type: 'score',
     instructions:
-      'Do the supplied trend, swing and setup facts support this signal direction? Use only these facts; do not predict returns or assume missing evidence.',
-    criteria: criteria('Directional structure'),
+      'Does market.trendBias support signal.direction? Judge only the target-asset trend, not swings or setup quality.',
+    criteria: criteria('Target-asset trend alignment'),
+  },
+  swing: {
+    type: 'score',
+    instructions:
+      'Does market.swingBias support signal.direction? Judge only the target-asset swing structure, not the broader trend.',
+    criteria: criteria('Target-asset swing alignment'),
   },
   participation: {
     type: 'score',
     instructions:
-      'Does the supplied target-asset volume or delta support this signal direction? Do not infer missing flow.',
-    criteria: criteria('Target-asset participation'),
+      'Does the supplied market.volumeRel20 or market.deltaPct show target-asset participation supportive of this direction? Ignore strategy setup volume and do not infer missing flow.',
+    criteria: criteria('Current target-asset participation'),
   },
-  timing: {
+  setupParticipation: {
     type: 'score',
     instructions:
-      'Do the supplied entry-extension facts indicate a timely entry rather than excessive extension? Do not do arithmetic or infer missing facts.',
-    criteria: criteria('Entry timing'),
+      'Do the strategy-defined setup volume, flow or liquidity facts support the named setup? Use only relevant setup.* facts, not market.volumeRel20; do not infer missing data.',
+    criteria: criteria('Participation within the setup'),
+  },
+  extension: {
+    type: 'score',
+    instructions:
+      'Do the supplied ATR-normalized entry-distance facts suggest the entry is not excessively extended? Use only distance facts; do not calculate new ratios or judge confirmation.',
+    criteria: criteria('Entry location without excessive extension'),
+  },
+  confirmation: {
+    type: 'score',
+    instructions:
+      'Do the supplied setup stage and confirmation facts indicate a confirmed rather than premature entry? Do not judge distance or predict the outcome.',
+    criteria: criteria('Setup confirmation at entry'),
+  },
+  setupStrength: {
+    type: 'score',
+    instructions:
+      'Do the strategy-defined setup strength and quality facts support this candidate? Exclude volume, confirmation, entry distance and geometry; do not assume missing facts.',
+    criteria: criteria('Non-geometric setup strength'),
   },
   geometry: {
     type: 'score',
     instructions:
-      'Do the supplied strategy-defined geometry facts support this signal? Do not infer unseen points or certify mathematical validity.',
+      'Do the supplied geometry.* facts support the named setup? Do not infer unseen figure points or certify mathematical validity.',
     criteria: criteria('Setup geometry'),
   },
 } as const;

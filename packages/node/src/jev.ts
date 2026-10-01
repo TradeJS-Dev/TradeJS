@@ -51,12 +51,8 @@ export const resolveJevProvider = async (userName: string) => {
   return provider;
 };
 
-const emptyScores = (): JevScores => ({
-  structure: null,
-  participation: null,
-  timing: null,
-  geometry: null,
-});
+const emptyScores = (): JevScores =>
+  Object.fromEntries(JEV_DIMENSIONS.map((key) => [key, null])) as JevScores;
 const pending = new Map<string, Promise<JevRecord>>();
 const pendingResponses = new Map<string, Promise<JevResponse>>();
 

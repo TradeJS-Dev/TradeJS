@@ -731,6 +731,7 @@ describe('strategyRuntime', () => {
       const path = await import('node:path');
       const { jevHash, jevFileHash } = await import('@tradejs/infra/jev');
       const { JEV_QUESTIONS } = await import('../jevInput');
+      const { JEV_DIMENSIONS } = await import('@tradejs/core/jev');
       const dir = await fs.mkdtemp(
         path.join(os.tmpdir(), 'tradejs-jev-runtime-'),
       );
@@ -745,9 +746,10 @@ describe('strategyRuntime', () => {
             teacherModel: 'jev-1.13.0',
             questionsHash: jevHash(JEV_QUESTIONS),
             trees: Object.fromEntries(
-              ['structure', 'participation', 'timing', 'geometry'].map(
-                (dimension) => [dimension, { value: score, samples: 50 }],
-              ),
+              JEV_DIMENSIONS.map((dimension) => [
+                dimension,
+                { value: score, samples: 50 },
+              ]),
             ),
             training: {
               datasetHash: 'a'.repeat(64),
@@ -762,6 +764,7 @@ describe('strategyRuntime', () => {
           await fs.writeFile(modelFile, contents);
           const signal = makeSignal();
           signal.additionalIndicators.baseContext = {
+            candle: { timestamp: signal.timestamp },
             raw: { volatility: { atr: 2 } },
             regime: { trend: { bias: 'bull' } },
           };
@@ -783,10 +786,10 @@ describe('strategyRuntime', () => {
             { timestamp: 1 } as any,
             { timestamp: 1 } as any,
           );
-          expect((result as any).assessment.scores.structure).toBe(score);
-          expect(
-            (result as any).additionalIndicators.jev.scores.structure,
-          ).toBe(score);
+          expect((result as any).assessment.scores.trend).toBe(score);
+          expect((result as any).additionalIndicators.jev.scores.trend).toBe(
+            score,
+          );
           expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
           expect(mockEnrichSignalWithAi).toHaveBeenCalledTimes(1);
         }

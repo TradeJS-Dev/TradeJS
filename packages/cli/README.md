@@ -102,7 +102,10 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevReco
 Without `--jev`, ordinary backtests do not evaluate Jev, even if a configuration
 contains `JEV`. Use `--ai --jev` to save completed trades with Jev features for
 AI training. `--jev` alone records Jev assessments without enabling AI export.
-Jev asks all four questions and marks missing facts explicitly. The shared projection
+Jev can ask eight independent questions: trend, swing, current participation,
+setup participation, entry extension, confirmation, setup strength, and geometry.
+It asks each question only when the corresponding signal-time facts exist and
+marks missing facts explicitly. The shared projection
 selects a few signal-time trend, swing, volume, delta, entry-distance and
 extension facts. It does not send the whole `baseContext`, raw figure points,
 calculated gate scores, or outcome fields. The normalized answers are stored in
@@ -126,10 +129,9 @@ additionalIndicators: {
 },
 ```
 
-This is a strategy-neutral contract. Geometry is asked even when the strategy
-has no geometry facts, so missing evidence remains visible; no strategy name is
-hard-coded in Jev. Invalid or
-future-dated evidence fails validation.
+This is a strategy-neutral contract. Questions without supporting facts are
+omitted and their scores remain null; no strategy name is hard-coded in Jev.
+Invalid or future-dated evidence fails validation.
 The signal builder moves `jevEvidence` out of ordinary `additionalIndicators`,
 so AI payloads and prompts do not receive these repeated facts unless Jev
 produces its compact scores.
@@ -145,8 +147,9 @@ Provider responses and decisions are saved under `data/ai/jev`, or the directory
 selected with `--jevRecordsDir`. Input, selected question version and provider
 identity determine each signal record. Equivalent facts reuse one provider
 response even when signal timestamps or symbols differ. Input v4 records
-explicitly store missing facts and their sources; earlier recordings and local
-models cannot be replayed under this schema.
+explicitly store missing facts and their sources. The changed question hash
+prevents older four-question recordings and local models from being replayed as
+answers to the new questions.
 `--jevRecorded` requires the same signal-time input facts, question set and
 provider as the recording run. A shorter backtest may warm up indicators from
 a different history or reach the same date with a different trade state, so its

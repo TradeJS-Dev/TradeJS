@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { jevHash, writeJevArtifact } from '@tradejs/infra/jev';
+import { JEV_DIMENSIONS } from '@tradejs/core/jev';
 import { JEV_QUESTIONS } from '@tradejs/node/jev';
 import type {
   AiDatasetRow,
@@ -23,10 +24,14 @@ const input: JevInput = {
   interval: '15',
   timestamp: 1000,
   direction: 'LONG',
-  features: { 'signal.direction': 'LONG', 'signal.validLevels': true },
+  features: {
+    'signal.direction': 'LONG',
+    'signal.validLevels': true,
+    'market.trendBias': 'bull',
+  },
   provenance: {},
   missing: { 'geometry.figures': 'no_geometry' },
-  questions: ['structure', 'participation', 'timing', 'geometry'],
+  questions: ['trend'],
   geometryStatus: 'absent',
 };
 const response: JevResponse = {
@@ -44,7 +49,7 @@ const response: JevResponse = {
   ) as JevResponse['answers'],
 };
 const inputHash = jevHash(input);
-const questionsHash = jevHash(JEV_QUESTIONS);
+const questionsHash = jevHash({ trend: JEV_QUESTIONS.trend });
 const id = jevHash({ inputHash, questionsHash, provider });
 const record: JevRecord = {
   schema: 'tradejs-jev-record/v4',
@@ -54,12 +59,9 @@ const record: JevRecord = {
   provider,
   input,
   response,
-  scores: {
-    structure: 0.75,
-    participation: 0.75,
-    timing: 0.75,
-    geometry: 0.75,
-  },
+  scores: Object.fromEntries(
+    JEV_DIMENSIONS.map((key) => [key, key === 'trend' ? 0.75 : null]),
+  ) as JevRecord['scores'],
   createdAt: '2026-10-01T00:00:00.000Z',
   elapsedMs: 1,
 };

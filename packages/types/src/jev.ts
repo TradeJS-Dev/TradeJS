@@ -1,7 +1,11 @@
 export type JevDimension =
-  | 'structure'
+  | 'trend'
+  | 'swing'
   | 'participation'
-  | 'timing'
+  | 'setupParticipation'
+  | 'extension'
+  | 'confirmation'
+  | 'setupStrength'
   | 'geometry';
 export type JevScores = Record<JevDimension, number | null>;
 export type JevFeature = number | string | boolean | null;

@@ -7,9 +7,13 @@ import type {
 } from '@tradejs/types';
 
 export const JEV_DIMENSIONS: JevDimension[] = [
-  'structure',
+  'trend',
+  'swing',
   'participation',
-  'timing',
+  'setupParticipation',
+  'extension',
+  'confirmation',
+  'setupStrength',
   'geometry',
 ];
 export const JEV_PROVIDERS = [
