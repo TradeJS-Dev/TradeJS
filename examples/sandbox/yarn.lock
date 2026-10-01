@@ -434,7 +434,7 @@ __metadata:
   dependencies:
     "@tradejs/cli": "npm:3.1.11"
     "@tradejs/core": "npm:3.1.11"
-    "@tradejs/strategy-kit": "npm:3.0.5"
+    "@tradejs/strategy-kit": "npm:3.0.6"
     "@tradejs/types": "npm:3.1.11"
     "@types/node": "npm:^24"
     "@typescript-eslint/eslint-plugin": "npm:^8.65.0"
@@ -496,13 +496,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/strategy-kit@npm:3.0.5":
-  version: 3.0.5
-  resolution: "@tradejs/strategy-kit@npm:3.0.5"
+"@tradejs/strategy-kit@npm:3.0.6":
+  version: 3.0.6
+  resolution: "@tradejs/strategy-kit@npm:3.0.6"
   peerDependencies:
     "@tradejs/core": ^3.0.1
     "@tradejs/types": ^3.0.1
-  checksum: 10c0/9ddef5586ab48515419e7e8563802156fa98597e8809d760ae78f064637013d5c23a4edd8bfa949225aab503f21e03236cde816d23a5ba75d3b7765c8f6bad75
+  checksum: 10c0/8103071826157d0ce6f4ddd0738a19eeec6b0390163c7dfbcc8074be670241452410ee0c42e3a1bc9af23bd5b5dc0d0831ba96c01aafec5ddce49e499babfd47
   languageName: node
   linkType: hard
 
@@ -2076,9 +2076,9 @@ __metadata:
   linkType: hard
 
 "ip-address@npm:^10.0.1":
-  version: 10.2.0
-  resolution: "ip-address@npm:10.2.0"
-  checksum: 10c0/5a00aada6e922c9c69dfc800ed5d0fa3348675ebdeed0e1575f503f27ca385b5f534363c9af7ad1daf64c1f1409388cdd3cc2e9b9b0fe1c924a431378d55075a
+  version: 10.7.2
+  resolution: "ip-address@npm:10.7.2"
+  checksum: 10c0/290b9c63289b2a89a442dac19eff88d919e65cd41d1a720fa963be736e126f3b0cf4f88f6056b06abbf4a95300dc9ce5362a773e012ef30e0400074d175b9d31
   languageName: node
   linkType: hard
 
