@@ -24,7 +24,15 @@ export type RuntimeEvidenceCompositionSnapshot = {
 
 const stableSnapshotIdentity = (
   deployment: RuntimeEvidenceDeploymentSnapshot,
-) => JSON.stringify({ ...deployment, tickers: undefined });
+) =>
+  JSON.stringify({
+    ...deployment,
+    tickers: undefined,
+    strategies: deployment.strategies.map((strategy) => ({
+      ...strategy,
+      controlState: undefined,
+    })),
+  });
 
 const producerIdentity = (producer: RuntimeEvidenceProducer | null) =>
   JSON.stringify(producer);

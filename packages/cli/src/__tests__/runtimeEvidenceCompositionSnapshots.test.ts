@@ -137,4 +137,55 @@ describe('runtime evidence composition snapshots', () => {
       await fs.rm(rootDir, { recursive: true, force: true });
     }
   });
+
+  it('accepts a changed entry pause for the same composition but rejects changed config', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'runtime-evidence-composition-pause-'),
+    );
+
+    try {
+      await publishRuntimeEvidenceCompositionSnapshot({
+        evidenceRoot: rootDir,
+        userName: 'root',
+        deployment,
+        producer,
+      });
+
+      const pausedDeployment = {
+        ...deployment,
+        strategies: [
+          {
+            ...deployment.strategies[0]!,
+            controlState: 'entries_paused' as const,
+          },
+        ],
+      };
+      const snapshots = await loadRuntimeEvidenceCompositionSnapshots({
+        publishRoot: rootDir,
+        currentDeployment: pausedDeployment,
+        currentProducer: producer,
+      });
+      expect(
+        snapshots.get(deployment.deploymentCompositionId)?.deployment,
+      ).toEqual(pausedDeployment);
+
+      await expect(
+        loadRuntimeEvidenceCompositionSnapshots({
+          publishRoot: rootDir,
+          currentDeployment: {
+            ...pausedDeployment,
+            strategies: [
+              {
+                ...pausedDeployment.strategies[0]!,
+                strategyConfig: { INTERVAL: '60', UNIVERSE: 'crypto' },
+              },
+            ],
+          },
+          currentProducer: producer,
+        }),
+      ).rejects.toThrow('Current runtime deployment conflicts');
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
 });
