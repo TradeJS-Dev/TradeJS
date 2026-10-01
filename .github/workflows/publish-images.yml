@@ -131,7 +131,7 @@ jobs:
           node ./bin/wait-for-npm-packages.mjs \
             --version "$BETA_VERSION" \
             --git-head "$GITHUB_SHA" \
-            --timeout-seconds 600 \
+            --timeout-seconds 1200 \
             --stable-observations 2
       - run: yarn playwright install --with-deps chromium
       - name: Quickstart beta browser e2e
