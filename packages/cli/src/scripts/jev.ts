@@ -1,7 +1,10 @@
 import args from 'args';
 import { runJevResearch } from '../lib/jevResearch';
 
-args.option('action', 'Jev workflow: evaluate, export, train, compare');
+args.option(
+  'action',
+  'Jev workflow: evaluate recorded rows, export, train, compare',
+);
 args.option(
   'input',
   'Input JSONL; export optionally joins outcomes by exact assessment record',

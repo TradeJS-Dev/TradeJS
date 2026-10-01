@@ -167,9 +167,12 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevMode
 `export --input <completed-ai-export.jsonl>` optionally joins completed outcomes
 by their exact assessment record id. Rejected candidates still provide teacher
 labels, but have no observed trade outcome. Do not treat missing outcomes as
-losses. `evaluate --input <ai-export.jsonl>` evaluates existing signal snapshots;
-delayed-execution exports require the original Jev recording because their
-prices have already changed after admission. Use a new output path for each run.
+losses. `evaluate --input <ai-export.jsonl>` reads the exact Jev recordings
+linked to completed `--ai --jev` rows. An `--ai`-only export cannot reconstruct
+the original signal-time Jev facts, so `evaluate` fails with a clear message
+instead of making an incomplete provider request. Pass the original
+`--recordsDir` if the backtest used a custom `--jevRecordsDir`. Use a new output
+path for each run.
 
 Training fits shallow trees to Jev scores, without trade outcomes as features or
 labels. It requires at least 30 samples across 10 distinct signal times, selects

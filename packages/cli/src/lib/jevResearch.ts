@@ -6,16 +6,11 @@ import { randomUUID } from 'node:crypto';
 import type { AiDatasetRow, JevRecord, JevStudyRow } from '@tradejs/types';
 import { readJevArtifact, jevFileHash } from '@tradejs/infra/jev';
 import {
-  buildJevInput,
   evaluateJevInput,
-  resolveJevProvider,
   trainJevGate,
   compareJevGate,
   validateJevGateModel,
 } from '@tradejs/node/jev';
-import { runAiPromptLocal } from '@tradejs/node/ai';
-import { ensureStrategyPluginsLoaded } from '@tradejs/node/registry';
-import { extractSignalFromAiDatasetRow } from './aiTrainDataset';
 
 export const readJevJsonl = async <T>(file: string): Promise<T[]> => {
   const rows: T[] = [];
@@ -67,50 +62,53 @@ export const runJevResearch = async (options: {
   if (options.action === 'evaluate') {
     if (!options.input)
       throw new Error('Provide an AI dataset JSONL with --input');
-    await ensureStrategyPluginsLoaded();
-    const provider = await resolveJevProvider(options.userName);
     const rows = await readJevJsonl<AiDatasetRow>(resolve(options.input));
     const selected = rows.filter(
       (row) => !options.strategy || row.strategyName === options.strategy,
     );
     if (!selected.length) throw new Error('No matching Jev input rows');
+    for (const row of selected) {
+      if (!row.assessment?.recordId)
+        throw new Error(
+          `Signal ${row.signalId} has no Jev recording. Run the backtest with --ai --jev and use its --jevRecordsDir; an --ai-only export cannot restore the signal-time Jev facts.`,
+        );
+      if (!/^[a-f0-9]{64}$/.test(row.assessment.recordId))
+        throw new Error(`Invalid Jev recording id for signal ${row.signalId}`);
+    }
     await fs.mkdir(path.dirname(out), { recursive: true });
     const temp = `${out}.${randomUUID()}.tmp`;
     try {
       const handle = await fs.open(temp, 'wx', 0o600);
       try {
         for (const row of selected) {
-          if (
-            row.assessment?.recordId &&
-            !/^[a-f0-9]{64}$/.test(row.assessment.recordId)
-          )
-            throw new Error('Invalid Jev recording id');
-          const signal = extractSignalFromAiDatasetRow(row);
-          // Execution-delay exports contain fill-time prices, not the original candidate.
-          // Never label those as signal-time features. New exports carry a recording id.
-          const saved = row.assessment?.recordId
-            ? await readJevArtifact<JevRecord>(
-                resolve(
-                  path.join(
-                    options.recordsDir,
-                    'records',
-                    `${row.assessment.recordId}.json`,
-                  ),
-                ),
-              )
-            : null;
-          if (!saved && signal.additionalIndicators?.backtestExecution)
+          const recordId = row.assessment!.recordId!;
+          const saved = await readJevArtifact<JevRecord>(
+            resolve(
+              path.join(options.recordsDir, 'records', `${recordId}.json`),
+            ),
+          );
+          if (!saved)
             throw new Error(
-              'Delayed execution row has no Jev signal-time recording; rerun the backtest with --jev',
+              `Jev recording ${recordId} for signal ${row.signalId} is missing from --jevRecordsDir. Use the recordings from the original --ai --jev backtest.`,
             );
-          const baseline = await runAiPromptLocal(signal);
-          const input = saved?.input ?? buildJevInput(signal);
+          if (saved.schema !== 'tradejs-jev-record/v4')
+            throw new Error(
+              `Jev recording ${recordId} uses an older schema; rerun the backtest with the current --jev integration.`,
+            );
+          if (
+            saved.id !== recordId ||
+            saved.inputHash !== row.assessment?.inputHash ||
+            saved.questionsHash !== row.assessment?.questionsHash
+          )
+            throw new Error(
+              `Jev recording ${recordId} does not match signal ${row.signalId}`,
+            );
           const { record } = await evaluateJevInput({
-            input,
+            input: saved.input,
             config: {
-              source: 'provider',
+              source: 'recorded',
               mode: 'observe',
-              provider,
+              provider: saved.provider,
               recordsDir: options.recordsDir,
             },
             userName: options.userName,
@@ -125,10 +123,6 @@ export const runJevResearch = async (options: {
             signalId: row.signalId,
             record,
             ...(Number.isFinite(row.profit) ? { profit: row.profit } : {}),
-            baselineAllowed: saved
-              ? undefined
-              : baseline.direction === signal.direction &&
-                Number(baseline.quality) >= 4,
           };
           await handle.write(`${JSON.stringify(study)}\n`);
         }
