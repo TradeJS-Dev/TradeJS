@@ -245,3 +245,9 @@ After creating or editing notes, run:
 ```bash
 node .codex/skills/strategy-backtest-research/scripts/research-notes-check.mjs
 ```
+
+For AI-gate studies record the standard outer 60/40 timestamp-group split,
+three temporal stability blocks inside the full first 60%, and the frozen
+outer test boundary. The internal blocks are development diagnostics, not
+independent validation. Note every previous exposure of the outer history;
+changing the split cannot make previously inspected data untouched again.

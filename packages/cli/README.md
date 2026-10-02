@@ -102,8 +102,10 @@ yarn exec tradejs backtest -c TrendFollow:base -d 30 --cacheOnly --jev --jevReco
 Without `--jev`, ordinary backtests do not evaluate Jev, even if a configuration
 contains `JEV`. Use `--ai --jev` to save completed trades with Jev features for
 AI training. `--jev` alone records Jev assessments without enabling AI export.
-Jev can ask eight independent questions: trend, swing, current participation,
-setup participation, entry extension, confirmation, setup strength, and geometry.
+Jev uses one current set of nine questions: directional agreement, correction
+containment, current volume expansion, setup volume contraction, entry proximity,
+entry candle conviction, impulse persistence, boundary regularity, and overall
+signal strength.
 It asks each question only when the corresponding signal-time facts exist and
 marks missing facts explicitly. The shared projection
 selects a few signal-time trend, swing, volume, delta, entry-distance and
@@ -113,6 +115,38 @@ calculated gate scores, or outcome fields. The normalized answers are stored in
 which is available to the strategy's AI gate and AI export. Jev scores do not
 approve or reject entries. Backtests do not apply the AI gate; `ai-train`
 evaluates it on exported outcomes, while runtime follows `AI_MODE`.
+
+`--jev` and runtime `JEV` always use the current compact nine-question set.
+There is no question-set selector or fallback to older rubrics. The recorded
+`micro-v3` marker and question hash identify the current meanings; old or
+unversioned recordings and local models are rejected. Use a new recording
+directory for the new backtest and retrain local models from current answers.
+
+The first eight questions describe separate signal-time facts. The ninth asks
+how strong and actionable the signal is: do the available facts support opening
+a trade now? It weighs direction, setup, confirmation, placement and the
+stop/target plan together. Essential missing facts and unresolved conflicts
+reduce support. All eligible questions share the same compact state in one
+request; outcomes and other Jev answers are excluded.
+
+Its ten rubric levels appear as
+`additionalIndicators.jev.scores.signalStrength`, from **1 to 10** (decimal
+expected scores are retained). Confidence remains 0–1. The API returns a
+zero-based 0–9 score; recordings and local teacher models normalize it to 0–1,
+and AI features convert it to 1–10. This is an entry assessment, not a calibrated
+probability of profit, and never automatically approves or blocks a trade.
+
+```bash
+yarn exec tradejs backtest -c <Strategy>:<config> -d 365 --cacheOnly --ai --jev \
+  --jevRecordsDir data/ai/jev/<new-study>
+```
+
+Use `--ai` to retain completed outcomes for comparing the score with realized
+PnL. Freeze score thresholds on the first 60% with three internal stability
+blocks before checking the last 40%. Compare with the current gate and ordinary
+features on the same rows, include independent event support and costs, and do
+not choose thresholds on the outer test. A fresh run does not make previously
+inspected historical outcomes untouched.
 
 Any strategy can optionally attach `jevEvidence` through its `StrategyAPI.entry`
 `additionalIndicators` with a version, `knownAt` timestamp, up to 16 scalar
@@ -147,9 +181,12 @@ Provider responses and decisions are saved under `data/ai/jev`, or the directory
 selected with `--jevRecordsDir`. Input, selected question version and provider
 identity determine each signal record. Equivalent facts reuse one provider
 response even when signal timestamps or symbols differ. Input v4 records
-explicitly store missing facts and their sources. The changed question hash
-prevents older four-question recordings and local models from being replayed as
-answers to the new questions.
+explicitly store missing facts and their sources. Paid state groups fact paths
+by namespace and retains exact values, units and missing reasons; signal identity,
+internal versions and source metadata remain local. The current questions use
+short rubrics with explicit thresholds and unknown-data rules. Recordings and
+local models must match the current question marker and hash. Older versions
+are not migrated or used as substitutes for missing current answers.
 `--jevRecorded` requires the same signal-time input facts, question set and
 provider as the recording run. A shorter backtest may warm up indicators from
 a different history or reach the same date with a different trade state, so its
@@ -179,9 +216,11 @@ path for each run.
 
 Training fits shallow trees to Jev scores, without trade outcomes as features or
 labels. It requires at least 30 samples across 10 distinct signal times, selects
-one strategy and one teacher/provider lineage, and separates train/validation/test
-chronologically as 60/20/20. Three additional expanding-window folds check later
-periods with independently fitted trees. The report measures teacher agreement, score error
+one strategy and one teacher/provider lineage, and splits timestamp groups
+chronologically into 60% development and 40% test. Three expanding-window folds
+fit earlier development data and check later development data, entirely inside
+the first 60%. The final teacher model uses the full development partition.
+The outer test never fits or selects the model. The report measures teacher agreement, score error
 and matched-outcome economics. These summaries are not sequential portfolio
 backtests and do not establish profitability. Validate a frozen gate on a later
 period with `--jevModelFile` before runtime use. Studies are bounded to 20,000

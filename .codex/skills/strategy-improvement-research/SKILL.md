@@ -93,7 +93,7 @@ composition ledger, and the mandatory visual artifacts.
    `production core + current AI-gate` composition is the mandatory baseline;
    the production core with its newly rebuilt gate is a separate research
    candidate and must not replace the current-gate baseline.
-   Use common calendar train/tuning/test boundaries and open every sealed gate
+   Use common calendar development/test boundaries (outer 60/40; three stability blocks inside development) and open every sealed gate
    tail together only after all per-core gate variants are frozen. Run every
    gate board through `$ai-train-local-research`; do not retune or relabel the
    raw-core result inside gate tooling.

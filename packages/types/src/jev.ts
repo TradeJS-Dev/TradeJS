@@ -6,8 +6,16 @@ export type JevDimension =
   | 'extension'
   | 'confirmation'
   | 'setupStrength'
-  | 'geometry';
+  | 'geometry'
+  | 'signalStrength';
+/** Internal scores stay normalized; signalStrength is exported on a 1–10 scale. */
 export type JevScores = Record<JevDimension, number | null>;
+export type JevQuestionSet = 'micro-v3';
+export interface JevScoreQuestion {
+  type: 'score';
+  instructions: string;
+  criteria: readonly string[];
+}
 export type JevFeature = number | string | boolean | null;
 export interface JevFactProvenance {
   knownAt: number;
@@ -44,6 +52,7 @@ export interface JevConfig {
 }
 
 export interface JevInput {
+  questionSet: JevQuestionSet;
   schema: 'tradejs-jev-input/v4';
   strategy: string;
   symbol: string;
@@ -84,6 +93,7 @@ export interface JevRecord {
 }
 
 export interface SignalAssessment {
+  questionSet: JevQuestionSet;
   schema: 'tradejs-signal-assessment/v5';
   source: JevConfig['source'];
   mode: JevConfig['mode'];
@@ -110,6 +120,7 @@ export type JevTree =
     };
 
 export interface JevGateModel {
+  questionSet: JevQuestionSet;
   schema: 'tradejs-jev-gate/v2';
   inputSchema: JevInput['schema'];
   strategy: string;
@@ -117,6 +128,7 @@ export interface JevGateModel {
   teacherModel: string;
   trees: Record<JevDimension, JevTree | null>;
   training: {
+    split: 'outer-60-40';
     datasetHash: string;
     trainEnd: number;
     validationEnd: number;

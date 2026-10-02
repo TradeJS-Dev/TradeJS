@@ -101,16 +101,22 @@ of implying that every approval filled.
 
 ### 7. Validation
 
-Do not rename row-based candidate-selection output to an untouched test.
+Default: outer 60/40 by whole timestamp groups. Search uses the entire first
+60%; report three stability blocks within it. Internal blocks overlap
+development and are not independent validation. Label outer test as historical
+when it has already been inspected. Legacy explicit partitions must name their
+actual boundaries. Do not rename candidate-selection output to an untouched test.
 
 ```md
 ### Validation
 
 | Partition      | Rows | Events | Approved N |  WR |  PF | PnL | MaxDD | Max batch |
 | -------------- | ---: | -----: | ---------: | --: | --: | --: | ----: | --------: |
-| train          |      |        |            |     |     |     |       |           |
-| tuning         |      |        |            |     |     |     |       |           |
-| untouched test |      |        |            |     |     |     |       |           |
+| development 60% |      |        |            |     |     |     |       |           |
+| development block 1 | | | | | | | | |
+| development block 2 | | | | | | | | |
+| development block 3 | | | | | | | | |
+| outer test 40% |      |        |            |     |     |     |       |           |
 ```
 
 ### 8. Acceptance checks

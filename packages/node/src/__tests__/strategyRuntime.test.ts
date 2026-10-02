@@ -740,6 +740,7 @@ describe('strategyRuntime', () => {
           mockExecuteEntryOrder.mockClear();
           mockEnrichSignalWithAi.mockClear();
           const contents = JSON.stringify({
+            questionSet: 'micro-v3',
             schema: 'tradejs-jev-gate/v2',
             inputSchema: 'tradejs-jev-input/v4',
             strategy: 'TrendLine',
@@ -753,8 +754,9 @@ describe('strategyRuntime', () => {
             ),
             training: {
               datasetHash: 'a'.repeat(64),
+              split: 'outer-60-40',
               trainEnd: 1,
-              validationEnd: 2,
+              validationEnd: 1,
               testEnd: 3,
               maxDepth: 1,
               minLeaf: 10,
@@ -787,9 +789,10 @@ describe('strategyRuntime', () => {
             { timestamp: 1 } as any,
           );
           expect((result as any).assessment.scores.trend).toBe(score);
-          expect((result as any).additionalIndicators.jev.scores.trend).toBe(
-            score,
-          );
+          expect(
+            (result as any).additionalIndicators.jev.scores
+              .directionalAgreement,
+          ).toBe(score);
           expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
           expect(mockEnrichSignalWithAi).toHaveBeenCalledTimes(1);
         }

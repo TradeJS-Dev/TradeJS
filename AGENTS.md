@@ -256,6 +256,11 @@ Strategy authoring best practices:
 
 Runtime AI config conventions:
 
+- Jev uses one current nine-question set in backtests and runtime. `--jev`
+  enables enrichment; there is no question-set selector or old-version fallback.
+  Reject obsolete recordings/models and collect current answers instead.
+  Jev supplies AI-gate features and never owns entry approval.
+
 - `AI_ENABLED` remains the primary runtime AI on/off switch, matching the existing `ML_ENABLED` convention.
 - `AI_MODE` selects the AI decision source when `AI_ENABLED=true`.
 - Supported `AI_MODE` values are:
@@ -633,7 +638,7 @@ Keep them aligned with:
 - Before a release verdict, compare raw-core and gate-approved ALL/LONG/SHORT
   for the baseline and every complete core candidate. Core family decisions use
   only the frozen raw-core board; gate evidence cannot reopen core selection.
-  Freeze common calendar train/tuning/test boundaries across candidate exports,
+  Freeze common calendar development/test boundaries (outer 60/40; three stability blocks inside development) across candidate exports,
   open all sealed gate tails together only after every per-core gate spec is
   immutable, and rank only final `core + own gate` compositions against the
   rebuilt gated baseline. Never compare a gated candidate with a raw baseline
@@ -652,7 +657,7 @@ Keep them aligned with:
   replacement. A tested `long_only` or `short_only` gate may become composition
   policy; silently disabling the core side or skipping gate research may not.
 - In release gate discovery, reserve the chronological test tail with
-  `ai-pocket-search --testSplit <ratio> --sealTest`. Discovery may retain only
+  `ai-pocket-search --validationSplit 0 --testSplit 0.4 --sealTest`. Discovery may retain only
   the sealed tail's bounds/counts; open its economics exactly once after the
   five gate variants are frozen in the permanent ablation spec. An already
   exposed test is permanently historical evidence and cannot support
@@ -890,7 +895,7 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
 - `yarn ai-pocket-search` is the preferred deterministic AI export pocket discovery tool before writing or tuning new AI-gate rules. It reconstructs current strategy AI payloads, groups sharded merged exports, shows progress bars, and writes Markdown reports to `data/ai/output` by default.
 - `ai-pocket-search` excludes outcome fields and current deterministic gate output fields from candidate features by default; use `--includeGateContext` only when explicitly auditing existing gate decisions, not when discovering future approval rules.
-- `ai-pocket-search` uses time-ordered holdout validation by default (`--validationSplit 0.25`) and deduplicates equivalent row-selection pockets. Prefer pockets that survive validation, not only high train PnL; use `--validationSplit 0` only for legacy full-sample exploration.
+- `ai-pocket-search` defaults to outer 60/40 (`--validationSplit 0 --testSplit 0.4 --sealTest`). Search uses the whole first 60%; three timestamp-grouped blocks inside it diagnose stability. The last 40% never ranks or refines rules. Freeze candidates before opening it once with native ablation. Internal blocks are development diagnostics, not independent validation. Sparse support stays research-only; historical opened tails never become untouched again. This policy applies equally with and without Jev.
 - Treat `AI_MODE=gate` metrics as directly comparable to `ai-train --localOnly`, because both use the local deterministic strategy AI gate with the same `MIN_AI_QUALITY` threshold.
 - Do not present `ai-train --localOnly` results as `AI_MODE=llm` expectations; `AI_MODE=llm` depends on external model decisions and must be validated from normal `ai-train`, live runtime records, or another replay that actually includes provider output.
 - When reporting approved quality metrics, use `qN+` to mean the effective `MIN_AI_QUALITY=N` live stream, which includes every approval with quality `>= N`.

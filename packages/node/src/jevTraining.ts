@@ -6,8 +6,17 @@ import type {
   JevStudyRow,
   JevTree,
 } from '@tradejs/types';
-import { JEV_DIMENSIONS, decideJev, predictJevTree } from '@tradejs/core/jev';
-import { jevHash, validateJevResponse } from '@tradejs/infra/jev';
+import {
+  JEV_DIMENSIONS,
+  JEV_QUESTION_SET,
+  decideJev,
+  predictJevTree,
+} from '@tradejs/core/jev';
+import {
+  jevScoreMaximum,
+  jevHash,
+  validateJevResponse,
+} from '@tradejs/infra/jev';
 import { JEV_QUESTIONS, questionsForJevInput } from './jevInput';
 
 const mean = (values: number[]) =>
@@ -30,6 +39,7 @@ export const validateJevStudy = (rows: JevStudyRow[]) => {
       !row.signalId ||
       record?.schema !== 'tradejs-jev-record/v4' ||
       record.input?.schema !== 'tradejs-jev-input/v4' ||
+      record.input.questionSet !== JEV_QUESTION_SET ||
       !Number.isFinite(record.input.timestamp) ||
       record.inputHash !== jevHash(record.input) ||
       record.questionsHash !== jevHash(questionsForJevInput(record.input)) ||
@@ -44,7 +54,7 @@ export const validateJevStudy = (rows: JevStudyRow[]) => {
     validateJevResponse(record.response, record.input.questions);
     for (const dimension of JEV_DIMENSIONS) {
       const expected = record.input.questions.includes(dimension)
-        ? record.response.answers[dimension]!.score / 4
+        ? record.response.answers[dimension]!.score / jevScoreMaximum(dimension)
         : null;
       if (record.scores[dimension] !== expected)
         throw new Error('Jev study scores do not match the teacher response');
@@ -181,6 +191,11 @@ export const validateJevGateModel = (value: unknown): JevGateModel => {
     !model.strategy ||
     !model.teacherModel ||
     !model.trees ||
+    model.questionSet !== JEV_QUESTION_SET ||
+    JEV_DIMENSIONS.some((dimension) => !(dimension in model.trees)) ||
+    Object.keys(model.trees).some(
+      (dimension) => !JEV_DIMENSIONS.includes(dimension as JevDimension),
+    ) ||
     model.questionsHash !== jevHash(JEV_QUESTIONS) ||
     !model.training ||
     !/^[a-f0-9]{64}$/.test(model.training.datasetHash)
@@ -189,7 +204,8 @@ export const validateJevGateModel = (value: unknown): JevGateModel => {
   const { trainEnd, validationEnd, testEnd } = model.training;
   if (
     ![trainEnd, validationEnd, testEnd].every(Number.isFinite) ||
-    !(trainEnd < validationEnd && validationEnd < testEnd)
+    model.training.split !== 'outer-60-40' ||
+    !(trainEnd === validationEnd && trainEnd < testEnd)
   )
     throw new Error('Invalid local Jev gate partitions');
   const check = (tree: JevTree, depth: number) => {
@@ -386,15 +402,14 @@ export const trainJevGate = (
   ];
   if (rows.length < 30 || timestamps.length < 10)
     throw new Error('Need at least 30 distinct samples across 10 signal times');
-  const trainEnd = timestamps[Math.floor(timestamps.length * 0.6) - 1];
-  const validationEnd = timestamps[Math.floor(timestamps.length * 0.8) - 1];
+  const trainEnd =
+    timestamps[
+      timestamps.length - Math.max(1, Math.floor(timestamps.length * 0.4)) - 1
+    ];
+  // Retain the legacy metadata key, but no separate tuning/test boundary.
+  const validationEnd = trainEnd;
   const train = rows.filter((row) => row.record.input.timestamp <= trainEnd);
-  const validation = rows.filter(
-    (row) =>
-      row.record.input.timestamp > trainEnd &&
-      row.record.input.timestamp <= validationEnd,
-  );
-  const test = rows.filter((row) => row.record.input.timestamp > validationEnd);
+  const test = rows.filter((row) => row.record.input.timestamp > trainEnd);
   const fit = (samples: JevStudyRow[]) =>
     Object.fromEntries(
       JEV_DIMENSIONS.map((key) => {
@@ -412,10 +427,12 @@ export const trainJevGate = (
     schema: 'tradejs-jev-gate/v2',
     inputSchema: 'tradejs-jev-input/v4',
     strategy: first.input.strategy,
+    questionSet: JEV_QUESTION_SET,
     questionsHash: jevHash(JEV_QUESTIONS),
     teacherModel: first.response.model,
     trees: fit(train),
     training: {
+      split: 'outer-60-40',
       datasetHash: jevHash(
         rows.map((row) => ({
           id: row.record.id,
@@ -430,28 +447,28 @@ export const trainJevGate = (
     },
   };
   validateJevGateModel(model);
-  // Fixed expanding windows; no thresholds or hyperparameters are selected from
-  // these later outcomes. Each fold has a separate untouched evaluation period.
-  const walkForward = [0.4, 0.6, 0.8].map((fraction) => {
+  // Independently fitted expanding windows wholly inside the first 60%.
+  const developmentTimes = timestamps.filter(
+    (timestamp) => timestamp <= trainEnd,
+  );
+  const walkForward = [0.25, 0.5, 0.75].map((fraction) => {
     const trainThrough =
-      timestamps[
-        Math.max(0, Math.floor(timestamps.length * (fraction - 0.1)) - 1)
+      developmentTimes[
+        Math.max(0, Math.floor(developmentTimes.length * fraction) - 1)
       ];
-    const validationThrough =
-      timestamps[Math.floor(timestamps.length * fraction) - 1];
     const testThrough =
-      timestamps[
+      developmentTimes[
         Math.min(
-          timestamps.length - 1,
-          Math.round(timestamps.length * (fraction + 0.2)) - 1,
+          developmentTimes.length - 1,
+          Math.floor(developmentTimes.length * (fraction + 0.25)) - 1,
         )
       ];
-    const fitting = rows.filter(
+    const fitting = train.filter(
       (row) => row.record.input.timestamp <= trainThrough,
     );
-    const evaluation = rows.filter(
+    const evaluation = train.filter(
       (row) =>
-        row.record.input.timestamp > validationThrough &&
+        row.record.input.timestamp > trainThrough &&
         row.record.input.timestamp <= testThrough,
     );
     const fold: JevGateModel = {
@@ -460,13 +477,13 @@ export const trainJevGate = (
       training: {
         ...model.training,
         trainEnd: trainThrough,
-        validationEnd: validationThrough,
+        validationEnd: trainThrough,
         testEnd: testThrough,
       },
     };
     return {
       trainThrough,
-      validationThrough,
+      validationThrough: trainThrough,
       testThrough,
       trainRows: fitting.length,
       test: compareJevGate(fold, evaluation),
@@ -476,7 +493,8 @@ export const trainJevGate = (
     model,
     report: {
       train: compareJevGate(model, train),
-      validation: compareJevGate(model, validation),
+      partitionScheme: 'outer-60-40',
+      stabilityRole: 'independently fitted folds inside development only',
       test: compareJevGate(model, test),
       walkForward,
       promotion:

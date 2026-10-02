@@ -11,6 +11,7 @@ import {
   applyBenchmarkEventSnapshots,
   balanceCrossStrategyRows,
   buildAblationReport,
+  developmentBlocks,
   buildCrossStrategyReport,
   buildEquitySeries,
   buildMovingAverageVariants,
@@ -1452,4 +1453,35 @@ test('uses inclusive UTC calendar days for terminal active-day ratio', () => {
 
   assert.equal(report.baseline.periods['7d'].activeDays, 2);
   assert.equal(report.baseline.periods['7d'].activeDayRatio, 0.25);
+});
+
+test('outer 60/40 is the CLI default and stability blocks preserve whole events', () => {
+  const options = parseCliArgs([]);
+  assert.equal(options.validationSplit, 0);
+  assert.equal(options.testSplit, 0.4);
+  const rows = Array.from({ length: 30 }, (_, i) => ({
+    timestamp: Math.floor(i / 2),
+  }));
+  const blocks = developmentBlocks(rows);
+  assert.deepEqual(
+    blocks.map((block) => block.length),
+    [10, 10, 10],
+  );
+  assert.equal(new Set(blocks.flat().map((row) => row.timestamp)).size, 15);
+  for (let i = 0; i < 2; i++)
+    assert.ok(blocks[i].at(-1).timestamp < blocks[i + 1][0].timestamp);
+});
+
+test('shared outer boundary permits development/test without separate tuning', () => {
+  const rows = [1, 2, 2, 3, 4].map((timestamp) => ({ timestamp }));
+  const split = splitRowsByTimestampBounds(rows, null, 3);
+  assert.deepEqual(
+    split.train.map((row) => row.timestamp),
+    [1, 2, 2],
+  );
+  assert.deepEqual(split.tuning, []);
+  assert.deepEqual(
+    split.test.map((row) => row.timestamp),
+    [3, 4],
+  );
 });

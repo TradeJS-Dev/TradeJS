@@ -16,7 +16,8 @@
     "coinbase",
     "ai",
     "claude",
-    "codex"
+    "codex",
+    "jev"
   ],
   "homepage": "https://tradejs.dev",
   "repository": {

@@ -2,11 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   JEV_DIMENSIONS,
+  JEV_QUESTION_SET,
   JEV_PROVIDERS,
   parseJevConfig,
   predictJevTree,
+  jevAssessmentFeatures,
 } from '@tradejs/core/jev';
 import {
+  jevScoreMaximum,
   jevHash,
   jevFileHash,
   readJevArtifact,
@@ -27,12 +30,17 @@ import type {
 } from '@tradejs/types';
 import {
   buildJevInput,
+  questionsForJevInput,
+  stateForJevInput,
+  JEV_QUESTIONS,
+} from './jevInput';
+
+export {
+  buildJevInput,
   JEV_QUESTIONS,
   questionsForJevInput,
   stateForJevInput,
 } from './jevInput';
-
-export { buildJevInput, JEV_QUESTIONS } from './jevInput';
 export {
   trainJevGate,
   compareJevGate,
@@ -72,6 +80,7 @@ export const evaluateJevInput = async ({
   const questions = questionsForJevInput(input);
   const questionsHash = jevHash(questions);
   const base = {
+    questionSet: JEV_QUESTION_SET,
     schema: 'tradejs-signal-assessment/v5' as const,
     source: config.source,
     mode: config.mode,
@@ -144,7 +153,7 @@ export const evaluateJevInput = async ({
       validateJevResponse(existing.response, input.questions);
       for (const key of JEV_DIMENSIONS) {
         const expected = input.questions.includes(key)
-          ? existing.response.answers[key]!.score / 4
+          ? existing.response.answers[key]!.score / jevScoreMaximum(key)
           : null;
         if (existing.scores[key] !== expected)
           throw new Error('Jev recording scores do not match the response');
@@ -193,7 +202,9 @@ export const evaluateJevInput = async ({
     const scores = Object.fromEntries(
       JEV_DIMENSIONS.map((key) => [
         key,
-        input.questions.includes(key) ? response.answers[key]!.score / 4 : null,
+        input.questions.includes(key)
+          ? response.answers[key]!.score / jevScoreMaximum(key)
+          : null,
       ]),
     ) as JevScores;
     const value: JevRecord = {
@@ -268,6 +279,7 @@ export const assessSignalWithJev = async ({
   } catch (error) {
     if (strict) throw error;
     assessment = {
+      questionSet: JEV_QUESTION_SET,
       schema: 'tradejs-signal-assessment/v5',
       source: config.source,
       mode: config.mode,
@@ -284,12 +296,7 @@ export const assessSignalWithJev = async ({
   signal.assessment = assessment;
   signal.additionalIndicators = {
     ...signal.additionalIndicators,
-    jev: {
-      schema: 'tradejs-jev-features/v2',
-      status: assessment.status,
-      scores: assessment.scores,
-      confidence: assessment.confidence,
-    },
+    jev: jevAssessmentFeatures(assessment),
   };
   const identity = {
     signalId: signal.signalId,

@@ -14,10 +14,10 @@ import {
 import {
   resolveAiPocketCadenceProfile,
   sealAiPocketTestPartition,
-  splitAiPocketCoverageRowsByTimestamp,
   splitAiPocketResearchRowsByTimestamp,
 } from '../aiPocketSearchCli';
 import type { AiPocketSearchCommandOptions } from './commandOptions';
+import { assessDevelopmentStability } from './stability';
 
 export type AiPocketSearchResearchProgress = {
   label: string;
@@ -164,7 +164,7 @@ export const runAiPocketSearchResearch = ({
       maxEventCountShare,
       explicitMaxEventCountShare,
     });
-    return searchAiPockets(train, {
+    const result = searchAiPockets(train, {
       minSupport: cadenceProfile.minSupport,
       minProfitFactor,
       minTotalProfit,
@@ -194,6 +194,19 @@ export const runAiPocketSearchResearch = ({
       progressInterval: 250,
       onProgress: (progress) => onProgress?.({ label, progress }),
     });
+    assessDevelopmentStability(result, {
+      developmentRows: [...train, ...validation],
+      baselineRows: [...trainBaseline, ...validationBaseline],
+      // Every provider/scope uses the same outer development timestamps.
+      timestamps: [
+        ...new Set(
+          fullSplit.trainRows
+            .concat(fullSplit.validationRows)
+            .map((row) => row.timestamp!),
+        ),
+      ].sort((a, b) => a - b),
+    });
+    return result;
   };
 
   const search = runSearch({
@@ -217,12 +230,14 @@ export const runAiPocketSearchResearch = ({
   const coverageSearches: AiPocketCoverageSearchResult[] = [];
   if (coverageMode === 'auto') {
     for (const family of ['cmc', 'coinalyze'] as const) {
-      const cohortSplit = splitAiPocketCoverageRowsByTimestamp(
-        directionRows,
-        family,
-        validationSplit,
-        testSplit,
-      );
+      const covered = (row: AiPocketSearchRow) =>
+        row.featureCoverage?.[family] === true;
+      // Provider coverage never extends discovery into the global sealed tail.
+      const cohortSplit = {
+        trainRows: fullSplit.trainRows.filter(covered),
+        validationRows: fullSplit.validationRows.filter(covered),
+        testRows: fullSplit.testRows.filter(covered),
+      };
       const sealedCohortSplit = sealAiPocketTestPartition(
         cohortSplit,
         sealTest,

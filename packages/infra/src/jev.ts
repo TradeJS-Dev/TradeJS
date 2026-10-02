@@ -3,6 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { JevProviderConfig, JevResponse } from '@tradejs/types';
 
+/** Provider criteria are zero-based: ten strength levels use raw scores 0–9. */
+export const jevScoreMaximum = (dimension: string) =>
+  dimension === 'signalStrength' ? 9 : 4;
+
 export const jevStableJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(jevStableJson).join(',')}]`;
   if (value && typeof value === 'object')
@@ -152,19 +156,21 @@ export const validateJevResponse = (
     throw new Error('Invalid Jev response');
   if (
     !expected.length ||
-    expected.length > 8 ||
+    expected.length > 9 ||
     Object.keys(result.answers).sort().join(',') !==
       [...expected].sort().join(',')
   )
     throw new Error('Invalid Jev answer set');
   for (const key of expected) {
     const answer = result.answers[key as keyof JevResponse['answers']];
+    const maximum = jevScoreMaximum(key);
+    const levels = Array.from({ length: maximum + 1 }, (_, index) => index);
     if (
       !answer ||
       answer.type !== 'score' ||
       !Number.isFinite(answer.score) ||
       answer.score < 0 ||
-      answer.score > 4 ||
+      answer.score > maximum ||
       !Number.isFinite(answer.confidence) ||
       answer.confidence < 0 ||
       answer.confidence > 1
@@ -173,8 +179,8 @@ export const validateJevResponse = (
     const probabilities = answer.probabilities;
     if (
       !probabilities ||
-      Object.keys(probabilities).length !== 5 ||
-      [0, 1, 2, 3, 4].some(
+      Object.keys(probabilities).length !== levels.length ||
+      levels.some(
         (level) =>
           !Number.isFinite(probabilities[level]) ||
           probabilities[level] < 0 ||
@@ -188,16 +194,16 @@ export const validateJevResponse = (
     const epsilon = 1e-9;
     if (
       Math.abs(Object.values(probabilities).reduce((a, b) => a + b, 0) - 1) >
-      5 * roundingHalfUnit + epsilon
+      levels.length * roundingHalfUnit + epsilon
     )
       throw new Error('Jev probabilities must sum to one');
-    const mean = [0, 1, 2, 3, 4].reduce(
+    const mean = levels.reduce(
       (sum, level) => sum + level * probabilities[level],
       0,
     );
     if (
       Math.abs(mean - answer.score) >
-      (0 + 1 + 2 + 3 + 4 + 1) * roundingHalfUnit + epsilon
+      levels.reduce((sum, level) => sum + level, 1) * roundingHalfUnit + epsilon
     )
       throw new Error('Jev score disagrees with probabilities');
   }

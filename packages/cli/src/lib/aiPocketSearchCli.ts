@@ -50,7 +50,7 @@ export const resolveAiPocketCadenceProfile = ({
   validationRows = [],
   testRows = [],
   mode = 'auto',
-  validationSplit = 0.25,
+  validationSplit = 0,
   minSupport,
   minEvents,
   minValidationSupport,
@@ -140,8 +140,8 @@ export const AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS = {
   minProfitFactor: '1.2',
   minWinRate: '0',
   minTotalProfit: '0',
-  validationSplit: '0.25',
-  testSplit: '0',
+  validationSplit: '0',
+  testSplit: '0.4',
 } as const;
 
 export const splitAiPocketResearchRowsByTimestamp = <

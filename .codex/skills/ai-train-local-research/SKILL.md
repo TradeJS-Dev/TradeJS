@@ -385,23 +385,21 @@ Interpretation:
   windows. Use `both` (default) or `direction_aware` for policies that retain
   both approved sides.
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
-- `ai-pocket-search` uses a time-ordered row holdout by default
-  (`--validationSplit 0.25`) and ranks candidates on that holdout. Treat it as
-  tuning evidence, not an untouched test. For direction-specific discovery use
-  `--direction LONG` or `--direction SHORT`. For release research, reserve a
-  timestamp-grouped tail with `--testSplit ... --sealTest`; the report retains
-  only its timestamp/count bounds and excludes its rows from current-gate and
-  pocket economics. Open it once later with a frozen `ai-gate-ablation.mjs`
-  spec. Plain `--testSplit` still prints test metrics and is therefore an opened
-  historical test, not sealed release evidence. Use `--validationSplit 0` only
-  for legacy full-sample exploration.
-- `ai-pocket-search` uses `--coverageMode auto` by default. It keeps the
-  full-history search for non-provider features and runs separate CMC and
-  Coinalyze cohorts over rows where that context is usable. Each cohort gets
-  its own timestamp-grouped train/tuning/test split, and every reported cohort
-  pocket must contain a predicate from that provider family. Use
-  `--coverageMode full` only when intentionally reproducing the legacy single
-  full-period search.
+- `ai-pocket-search` defaults to outer 60/40 (`--validationSplit 0
+  --testSplit 0.4 --sealTest`). Search and ranking use the whole first 60%.
+  Three consecutive timestamp-grouped blocks inside that development partition
+  diagnose temporal stability; they are not independent holdouts and do not
+  refit pocket discovery. Stable candidates rank before sparse and unstable
+  ones within the bounded shortlist. Sparse support remains research-only.
+  Freeze expressions before opening the last 40% once with native ablation.
+  Never refine thresholds on that tail; previously inspected history remains
+  retrospective evidence. Explicit nonzero validationSplit is a legacy option,
+  not the standard. For direction-specific discovery use LONG or SHORT.
+- Provider coverage cohorts inherit the global development/test boundaries.
+  Filter CMC/Coinalyze coverage within each partition; never resplit a later
+  provider window so that global test rows enter discovery. Every cohort pocket
+  must include a predicate from that provider family. `--coverageMode full`
+  reproduces a single full-history search.
 - `ai-pocket-search` uses `--cadenceMode auto` by default. For a sparse train
   partition it scales discovery-only `minSupport` / `minEvents` down from the
   legacy 20 / 10 defaults using the number of independent timestamp events.

@@ -18,6 +18,7 @@ const provider = {
   model: 'jev-1.13.0',
 };
 const input: JevInput = {
+  questionSet: 'micro-v3',
   schema: 'tradejs-jev-input/v4',
   strategy: 'TestPattern',
   symbol: 'TESTUSDT',
@@ -123,6 +124,52 @@ describe('Jev research evaluate', () => {
       fs.access(path.join(projectRoot, 'study.jsonl')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.each(['evaluate', 'export'])(
+    'rejects obsolete recordings in %s without a provider or output',
+    async (action) => {
+      const oldRecord = structuredClone(record);
+      (oldRecord.input as unknown as { questionSet: string }).questionSet =
+        'micro-v2';
+      oldRecord.inputHash = jevHash(oldRecord.input);
+      oldRecord.id = jevHash({
+        inputHash: oldRecord.inputHash,
+        questionsHash: oldRecord.questionsHash,
+        provider,
+      });
+      await writeJevArtifact(
+        path.join(projectRoot, 'jev', 'records', `${oldRecord.id}.json`),
+        oldRecord,
+      );
+      const oldRow = row(oldRecord.id);
+      oldRow.assessment!.inputHash = oldRecord.inputHash;
+      await fs.writeFile(
+        path.join(projectRoot, 'input.jsonl'),
+        `${JSON.stringify(oldRow)}\n`,
+      );
+      const fetcher = jest
+        .spyOn(global, 'fetch')
+        .mockRejectedValue(new Error('provider must not run'));
+      try {
+        await expect(
+          runJevResearch({
+            action,
+            projectRoot,
+            userName: 'root',
+            input: 'input.jsonl',
+            out: 'study.jsonl',
+            recordsDir: 'jev',
+          }),
+        ).rejects.toThrow('Unsupported Jev recording question set');
+        await expect(
+          fs.access(path.join(projectRoot, 'study.jsonl')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(fetcher).not.toHaveBeenCalled();
+      } finally {
+        fetcher.mockRestore();
+      }
+    },
+  );
 
   it('replays a matching record without asking the provider', async () => {
     await writeJevArtifact(

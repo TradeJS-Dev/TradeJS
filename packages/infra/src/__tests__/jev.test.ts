@@ -25,21 +25,21 @@ const response = () => ({
 const questions = ['structure', 'participation', 'timing', 'geometry'];
 
 describe('Jev transport and artifacts', () => {
-  it('accepts eight independent answers and rejects an oversized set', () => {
-    const keys = Array.from({ length: 8 }, (_, index) => `question_${index}`);
+  it('accepts nine independent answers and rejects an oversized set', () => {
+    const keys = Array.from({ length: 9 }, (_, index) => `question_${index}`);
     const answer = response().answers.structure;
-    const eight = {
+    const nine = {
       model: 'jev-1.13.0',
       answers: Object.fromEntries(keys.map((key) => [key, answer])),
     };
-    expect(validateJevResponse(eight, keys)).toBe(eight);
+    expect(validateJevResponse(nine, keys)).toBe(nine);
     expect(() =>
       validateJevResponse(
         {
-          ...eight,
-          answers: { ...eight.answers, question_8: answer },
+          ...nine,
+          answers: { ...nine.answers, question_9: answer },
         },
-        [...keys, 'question_8'],
+        [...keys, 'question_9'],
       ),
     ).toThrow('Invalid Jev answer set');
   });
@@ -186,6 +186,51 @@ describe('Jev transport and artifacts', () => {
     expect(() => validateJevResponse(value, questions)).not.toThrow();
     value.answers.participation.probabilities[0] = 0.16;
     expect(() => validateJevResponse(value, questions)).toThrow('sum to one');
+  });
+
+  it('validates the ten-level strength rubric independently of the five-level rubrics', () => {
+    const value = {
+      model: 'jev-1.13.0',
+      answers: {
+        signalStrength: {
+          type: 'score',
+          score: 9,
+          confidence: 1,
+          probabilities: Object.fromEntries(
+            Array.from({ length: 10 }, (_, level) => [
+              level,
+              level === 9 ? 1 : 0,
+            ]),
+          ),
+        },
+      },
+    };
+    expect(validateJevResponse(value, ['signalStrength'])).toBe(value);
+    value.answers.signalStrength.score = 10;
+    expect(() => validateJevResponse(value, ['signalStrength'])).toThrow(
+      'answer',
+    );
+    value.answers.signalStrength.score = 9;
+    delete value.answers.signalStrength.probabilities['0'];
+    expect(() => validateJevResponse(value, ['signalStrength'])).toThrow(
+      'probabilities',
+    );
+    expect(() =>
+      validateJevResponse(
+        {
+          ...value,
+          answers: {
+            trend: {
+              type: 'score',
+              score: 9,
+              confidence: 1,
+              probabilities: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 1 },
+            },
+          },
+        },
+        ['trend'],
+      ),
+    ).toThrow('answer');
   });
 
   it('keeps the first immutable complete artifact and detects corruption', async () => {

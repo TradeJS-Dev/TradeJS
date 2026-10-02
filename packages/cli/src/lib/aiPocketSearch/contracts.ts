@@ -144,6 +144,19 @@ export type AiPocketSummary = {
   topSymbols: Array<{ symbol: string; count: number; totalProfit: number }>;
 };
 
+export type AiPocketStability = {
+  status: 'stable' | 'unstable' | 'insufficient-support';
+  role: 'development-only diagnostic';
+  minEventsPerFold: number;
+  folds: Array<{
+    startTimestamp: number | null;
+    endTimestamp: number | null;
+    summary: AiPocketSummary;
+    objectiveSummary: AiPocketSummary;
+    baseline: AiPocketSummary;
+  }>;
+};
+
 export type AiPocketResult = {
   id: string;
   depth: number;
@@ -160,6 +173,7 @@ export type AiPocketResult = {
   score: number;
   readiness: 'production-candidate' | 'research-only';
   readinessReasons: string[];
+  stability?: AiPocketStability;
 };
 
 export type AiPocketSearchResult = {

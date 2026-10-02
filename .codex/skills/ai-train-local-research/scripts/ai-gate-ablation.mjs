@@ -32,8 +32,8 @@ Options:
   --minQuality <n>             Main baseline threshold (default: 4)
   --qualityThresholds <list>   qN+ summaries (default: 3,4,5)
   --terminalWindows <list>     Terminal windows in days (default: 180,90,30,7)
-  --validationSplit <ratio>    Trailing timestamp-grouped tuning share (default: 0.25)
-  --testSplit <ratio>          Later timestamp-grouped test share (default: 0)
+  --validationSplit <ratio>    Optional legacy tuning share (default: 0; stability stays in development)
+  --testSplit <ratio>          Outer timestamp-grouped test share (default: 0.4)
   --tuningSince <timestamp>    Exact UTC boundary where tuning starts
   --testSince <timestamp>      Exact UTC boundary where test starts
   --windowStart <timestamp>    Common comparison start, inclusive
@@ -91,8 +91,8 @@ export const parseCliArgs = (argv) => {
     minQuality: 4,
     qualityThresholds: DEFAULT_QUALITY_THRESHOLDS,
     terminalWindows: DEFAULT_WINDOWS,
-    validationSplit: 0.25,
-    testSplit: 0,
+    validationSplit: 0,
+    testSplit: 0.4,
     tuningSince: null,
     testSince: null,
     capacities: DEFAULT_CAPACITIES,
@@ -1193,6 +1193,13 @@ export const splitRowsByTimestamp = (rows, validationSplit, testSplit = 0) => {
 };
 
 export const splitRowsByTimestampBounds = (rows, tuningSince, testSince) => {
+  if (tuningSince == null && Number.isFinite(testSince)) {
+    return {
+      train: rows.filter((row) => row.timestamp < testSince),
+      tuning: [],
+      test: rows.filter((row) => row.timestamp >= testSince),
+    };
+  }
   if (!Number.isFinite(tuningSince) || !Number.isFinite(testSince)) {
     throw new Error(
       'Exact calendar partitions require both tuningSince and testSince',
@@ -1208,6 +1215,21 @@ export const splitRowsByTimestampBounds = (rows, tuningSince, testSince) => {
     ),
     test: rows.filter((row) => row.timestamp >= testSince),
   };
+};
+
+// Three diagnostics wholly inside the development partition, never test selection.
+export const developmentBlocks = (rows) => {
+  const timestamps = [...new Set(rows.map((row) => row.timestamp))].sort(
+    (a, b) => a - b,
+  );
+  return [0, 1, 2].map((index) => {
+    const from = timestamps[Math.floor((timestamps.length * index) / 3)];
+    const until =
+      index === 2
+        ? Infinity
+        : timestamps[Math.floor((timestamps.length * (index + 1)) / 3)];
+    return rows.filter((row) => row.timestamp >= from && row.timestamp < until);
+  });
 };
 
 const summarizeSplit = (rows, selector, summaryOptions) =>
@@ -3034,6 +3056,9 @@ export const evaluateCrossPocket = ({
     expectedSign,
   );
   const test = summarizeCrossSlice(split.test, pocket.predicates, expectedSign);
+  const developmentStability = developmentBlocks(split.train).map((block) =>
+    summarizeCrossSlice(block, pocket.predicates, expectedSign),
+  );
   const negativeControl = evaluateNegativeControl(
     split.test,
     pocket.predicates,
@@ -3109,6 +3134,7 @@ export const evaluateCrossPocket = ({
   return {
     condition: pocket.condition,
     predicates: pocket.predicates,
+    developmentStability,
     train,
     tuning,
     test,
@@ -3594,9 +3620,9 @@ export const buildCrossStrategyReport = async ({
   if (groups.length < 2) {
     throw new Error('Cross-strategy research requires at least two exports');
   }
-  if (testSplit <= 0 || validationSplit <= 0) {
+  if (testSplit <= 0 || validationSplit < 0) {
     throw new Error(
-      '--crossStrategy requires positive --validationSplit and --testSplit',
+      '--crossStrategy requires positive --testSplit and non-negative --validationSplit',
     );
   }
   let searchAiPockets = searchAiPocketsOverride;
@@ -3731,6 +3757,10 @@ export const buildCrossStrategyReport = async ({
       left.timestamp - right.timestamp || left.sequence - right.sequence,
   );
   const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  if (validationSplit === 0) {
+    // This overlaps development deliberately: diagnostic stability, not holdout tuning.
+    split.tuning = developmentBlocks(split.train).at(-1);
+  }
   const minSharedStrategies = Math.min(
     groups.length,
     Math.max(5, Math.ceil(minFeatureStrategies * 0.6)),
@@ -3968,6 +3998,10 @@ export const buildCrossStrategyReport = async ({
       },
       validationSplit,
       testSplit,
+      tuningRole:
+        validationSplit === 0
+          ? 'last development block, overlapping diagnostic; not independent holdout'
+          : 'legacy separate tuning',
       minFeatureStrategies,
       acceptance: {
         minSharedStrategies,
@@ -4015,8 +4049,8 @@ export const buildAblationReport = ({
   minQuality,
   qualityThresholds,
   terminalWindows,
-  validationSplit,
-  testSplit = 0,
+  validationSplit = 0,
+  testSplit = 0.4,
   tuningSince = null,
   testSince = null,
   windowStart = null,
@@ -4054,12 +4088,12 @@ export const buildAblationReport = ({
   }
   const minTimestamp = windowStart ?? rows[0].timestamp;
   const maxTimestamp = windowEnd ?? rows.at(-1).timestamp;
-  if ((tuningSince == null) !== (testSince == null)) {
+  if (tuningSince != null && testSince == null) {
     throw new Error(
       'Exact calendar partitions require both tuningSince and testSince',
     );
   }
-  const exactCalendarPartitions = tuningSince != null;
+  const exactCalendarPartitions = testSince != null;
   const split = exactCalendarPartitions
     ? splitRowsByTimestampBounds(rows, tuningSince, testSince)
     : splitRowsByTimestamp(rows, validationSplit, testSplit);
@@ -4088,6 +4122,12 @@ export const buildAblationReport = ({
         }
       : {}),
   };
+  const stabilityBlocks = developmentBlocks([...split.train, ...split.tuning]);
+  const stabilitySummary = (selector) =>
+    stabilityBlocks.map((block) => ({
+      ...partitionEvidence(block),
+      metrics: summarizeSplit(block, selector, summaryOptions),
+    }));
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
   const approvedSignalTrace = (selector) =>
     selectRows(rows, selector).map((row) => ({
@@ -4121,6 +4161,7 @@ export const buildAblationReport = ({
       maxTimestamp,
       summaryOptions,
     }),
+    developmentStability: stabilitySummary(baselineSelector),
     train: summarizeSplit(split.train, baselineSelector, summaryOptions),
     tuning: summarizeSplit(split.tuning, baselineSelector, summaryOptions),
     test: summarizeSplit(split.test, baselineSelector, summaryOptions),
@@ -4184,6 +4225,7 @@ export const buildAblationReport = ({
         maxTimestamp,
         summaryOptions,
       }),
+      developmentStability: stabilitySummary(candidateSelector),
       train: summarizeSplit(split.train, candidateSelector, summaryOptions),
       tuning: summarizeSplit(split.tuning, candidateSelector, summaryOptions),
       test: summarizeSplit(split.test, candidateSelector, summaryOptions),
@@ -4235,12 +4277,14 @@ export const buildAblationReport = ({
       validationSplit,
       testSplit,
       partitionMode: exactCalendarPartitions ? 'exact-calendar' : 'ratio',
+      developmentStabilityRole:
+        'diagnostic inside development; never outer test selection',
+      developmentStabilityFolds: 3,
       comparisonWindow: explicitWindow
         ? { start: windowStart, end: windowEnd, interval: '[start, end)' }
         : null,
-      tuningSince: exactCalendarPartitions
-        ? new Date(tuningSince).toISOString()
-        : null,
+      tuningSince:
+        tuningSince != null ? new Date(tuningSince).toISOString() : null,
       testSince: exactCalendarPartitions
         ? new Date(testSince).toISOString()
         : null,
@@ -4566,6 +4610,14 @@ export const formatMarkdownReport = (report) => {
           report.run.trainEvents,
           report.baseline.train,
         ),
+        ...(report.baseline.developmentStability ?? []).map((block, index) =>
+          validationSummaryRow(
+            `development block ${index + 1} (diagnostic)`,
+            block.rows,
+            block.events,
+            block.metrics,
+          ),
+        ),
         validationSummaryRow(
           'tuning',
           report.run.tuningRows,
@@ -4573,7 +4625,7 @@ export const formatMarkdownReport = (report) => {
           report.baseline.tuning,
         ),
         validationSummaryRow(
-          'untouched test',
+          'outer test (opened)',
           report.run.testRows,
           report.run.testEvents,
           report.baseline.test,
@@ -4685,13 +4737,20 @@ export const formatMarkdownReport = (report) => {
             report.baseline.train,
             variant.train,
           ),
+          ...(variant.developmentStability ?? []).map((block, index) =>
+            validationComparisonRow(
+              `development block ${index + 1} (diagnostic)`,
+              report.baseline.developmentStability[index].metrics,
+              block.metrics,
+            ),
+          ),
           validationComparisonRow(
             'tuning',
             report.baseline.tuning,
             variant.tuning,
           ),
           validationComparisonRow(
-            'untouched test',
+            'outer test (opened)',
             report.baseline.test,
             variant.test,
           ),

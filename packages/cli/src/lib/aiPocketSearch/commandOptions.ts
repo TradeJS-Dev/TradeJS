@@ -260,9 +260,9 @@ export const resolveAiPocketSearchCommandOptions = ({
           longName: 'validationSplit',
           shortName: 'V',
         }) ?? flags.validationSplit,
-        0.25,
+        0,
       )
-    : 0.25;
+    : 0;
   const testSplit = hasCliOption(argv, 'testSplit', 'T')
     ? normalizeRatio(
         readAiPocketSearchCliOption({
@@ -270,10 +270,10 @@ export const resolveAiPocketSearchCommandOptions = ({
           longName: 'testSplit',
           shortName: 'T',
         }) ?? flags.testSplit,
-        0,
+        0.4,
       )
-    : 0;
-  const sealTest = Boolean(flags.sealTest);
+    : 0.4;
+  const sealTest = flags.sealTest == null ? true : Boolean(flags.sealTest);
   if (sealTest && testSplit <= 0) {
     throw new Error('--sealTest requires a positive --testSplit');
   }

@@ -16,7 +16,8 @@
     "coinbase",
     "ai",
     "claude",
-    "codex"
+    "codex",
+    "jev"
   ],
   "repository": {
     "type": "git",

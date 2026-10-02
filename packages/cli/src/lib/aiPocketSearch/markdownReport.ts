@@ -384,6 +384,22 @@ export const buildAiPocketMarkdownReport = ({
     '',
     markdownTable(pocketTableHeaders, pocketRows(pocketSearch.positivePockets)),
     '',
+    '## Development Stability (inside discovery, not independent validation)',
+    '',
+    markdownTable(
+      ['Condition', 'Status', 'Block', 'Events', 'PnL', 'PF'],
+      pocketSearch.positivePockets.flatMap((pocket) =>
+        (pocket.stability?.folds ?? []).map((fold, index) => [
+          pocket.condition,
+          pocket.stability?.status,
+          index + 1,
+          fold.summary.events,
+          formatMdNumber(fold.summary.totalProfit),
+          formatMdNumber(fold.summary.profitFactor),
+        ]),
+      ),
+    ),
+    '',
     '## Top Loss Pockets',
     '',
     markdownTable(pocketTableHeaders, pocketRows(pocketSearch.negativePockets)),

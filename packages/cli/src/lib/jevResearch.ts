@@ -168,6 +168,18 @@ export const runJevResearch = async (options: {
         throw new Error(
           'Export exceeds 20000 samples; select a bounded recording directory',
         );
+      // Export only recordings accepted by the current evaluator, never old rubrics.
+      await evaluateJevInput({
+        input: record.input,
+        config: {
+          source: 'recorded',
+          mode: 'observe',
+          provider: record.provider,
+          recordsDir: options.recordsDir,
+        },
+        userName: options.userName,
+        projectRoot: options.projectRoot,
+      });
       const outcome = byRecord.get(record.id);
       rows.push({
         schema: 'tradejs-jev-study/v4',

@@ -448,12 +448,12 @@ export be used for gate research. A side-qualified handoff is also valid input
 when one raw direction has a frozen useful edge and the opposite direction is
 the dominant aggregate loss; it remains labelled as a failed raw aggregate
 until an explicit direction policy is tested. Discover causal pockets with a
-time-ordered holdout, then replay the deterministic local gate over all
+sealed outer 60/40 split and three stability blocks inside the first 60%, then replay the deterministic local gate over all
 selected rows:
 
 ```bash
 yarn ai-pocket-search --strategy MyStrategy -n 0 \
-  --validationSplit 0.2 --testSplit 0.2 --sealTest \
+  --validationSplit 0 --testSplit 0.4 --sealTest \
   --maxDepth 2 --minSupport 25
 yarn ai-train --strategy MyStrategy --localOnly -n 0 --minQuality 4 --json
 ```
@@ -476,11 +476,11 @@ direction-aware replacement. A selection-grade recent guardrail or cost failure
 can still reject the one-side composition; sparse recent rows are not a reason
 to skip the experiment.
 
-For a release lineage, `--sealTest` keeps the final timestamp-grouped tail out
-of discovery and current-gate economics while recording its immutable bounds.
-Freeze the five gate variants, then open that tail exactly once with the shared
-gate-ablation tool. Plain `--testSplit` produces useful historical diagnostics
-but exposes the tail; it cannot later be relabelled an untouched release test.
+The default reserves the final 40% of timestamp groups and seals their
+metrics. Search uses all first 60%; three temporal blocks inside it diagnose
+stability. Freeze gate variants, then open the tail once with native ablation.
+Do not select or refine rules on the outer test. Already opened historical
+tails remain retrospective evidence. Explicit legacy partitions are supported.
 
 ### 4. Legacy Strategy-Release Evidence Tooling
 

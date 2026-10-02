@@ -88,18 +88,18 @@ args.option(
 );
 args.option(
   ['V', 'validationSplit'],
-  'Trailing time-ordered scope share reserved for validation (0 disables)',
+  'Optional legacy tuning share; default 0, stability is checked inside development',
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.validationSplit,
 );
 args.option(
   ['T', 'testSplit'],
-  'Trailing timestamp-grouped scope share withheld as untouched test',
+  'Trailing timestamp-grouped test share; default 0.4 (outer 60/40)',
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.testSplit,
 );
 args.option(
   ['w', 'sealTest'],
   'Reserve test bounds without exposing its rows or economics to discovery',
-  false,
+  true,
 );
 args.option(
   ['N', 'minValidationSupport'],

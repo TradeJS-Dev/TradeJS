@@ -82,8 +82,8 @@ node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
   --file data/ai/export/ai-dataset-liquiditytails-merged-1784296244106-part1.jsonl \
   --variant 'near-ma-and-zone::filter::additionalIndicators.baseContext.regime.trend.priceDistanceToMaSlowAtr <= 1.2 && additionalIndicators.baseContext.structure.liquidityZones.activeCount >= 1' \
   --featurePattern 'priceDistanceToMaSlowAtr|liquidityZones.activeCount' \
-  --validationSplit 0.2 \
-  --testSplit 0.2 \
+  --validationSplit 0 \
+  --testSplit 0.4 \
   --output data/ai/output/liquiditytails-near-ma-and-zone.md
 ```
 
@@ -206,18 +206,19 @@ Use `--featurePattern '<regex>'` to print matching causal paths, availability,
 ranges, and categories. Do not use `--includeGateContext` for discovery; it is
 only for auditing current gate output fields.
 
-For direction-specific discovery, use `yarn ai-pocket-search --direction LONG`
-or `--direction SHORT`. For release evidence reserve an untouched chronological
-tail with `--testSplit ... --sealTest`; the search ranks pockets using only the
-preceding train and validation rows and reports only the sealed test bounds.
-Plain `--testSplit` exposes test metrics and cannot be called untouched after
-the report is read. Open the sealed tail once with the frozen fixed-rule
-ablation.
+The default is timestamp-grouped outer 60/40: `--validationSplit 0
+--testSplit 0.4`. Discovery seals the last 40% by default. Search uses the whole
+first 60%; three consecutive development blocks diagnose stability. Fixed-rule
+ablation reports the same three blocks and opens the outer test only after the
+candidate expressions are frozen. These internal blocks overlap development;
+they are not independent holdouts. Do not adjust rules on the outer test.
+Explicit nonzero validationSplit remains a labelled legacy option.
 
-When several core candidates must be compared, pass the same exact UTC
-`--tuningSince` and `--testSince` boundaries to every candidate ablation.
-Exact boundaries take precedence over ratio splits and keep sparse candidates
-on one calendar partition contract.
+For direction-specific discovery use LONG or SHORT. For multiple core exports,
+freeze one UTC `--testSince` boundary once and pass it to every ablation.
+With no tuningSince, all earlier rows form development and tuning is empty.
+Exact boundaries override ratios; use the parent development timestamp groups
+to choose the shared 60/40 calendar boundary, rather than moving it per candidate.
 
 Use `--windowStart <UTC> --windowEnd <UTC>` to compare candidates over the same
 calendar window. The start is inclusive, and the end is exclusive. Full-period
@@ -233,8 +234,8 @@ available strategy contains shared LONG or SHORT approval/block pockets:
 ```bash
 node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
   --crossStrategy \
-  --validationSplit 0.2 \
-  --testSplit 0.2 \
+  --validationSplit 0 \
+  --testSplit 0.4 \
   --portfolioCapacity 5 \
   --output data/ai/output/cross-strategy-shared-pockets.md
 ```
@@ -323,8 +324,8 @@ node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs \
   --strategy LiquidityTails \
   --movingAverageStudy \
   --maPeriods 5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100 \
-  --validationSplit 0.2 \
-  --testSplit 0.2 \
+  --validationSplit 0 \
+  --testSplit 0.4 \
   --json \
   --output data/ai/output/liquiditytails-ma-grid.json
 ```
@@ -346,7 +347,7 @@ or parity is incomplete. Candidate ranking uses train and tuning only; the
 timestamp-grouped test tail is reported after selection and remains exposed
 historical evidence after the first run.
 
-`--crossStrategy` requires positive `--validationSplit` and `--testSplit`.
+`--crossStrategy` requires positive `--testSplit` and non-negative `--validationSplit` (standard: 0 and 0.4).
 Opening the historical test tail makes it exposed evidence. Re-running the tool
 on the same cutoff does not make it untouched again. Every candidate remains
 research-only until the exact frozen rule survives timestamps strictly after
@@ -360,7 +361,7 @@ Every report contains:
 
 - baseline and candidate tables for full history, `180d`, `90d`, `30d`, `7d`;
 - q3+/q4+/q5+ summaries, configurable with `--qualityThresholds`;
-- timestamp-grouped, time-ordered train/tuning/untouched-test splits;
+- timestamp-grouped outer development/test split (60/40 by default), with three temporal stability blocks inside development;
 - direction and monthly stability;
 - matched, removed, and added slices;
 - PnL, winrate, PF, Sharpe, Sortino, Calmar, max drawdown, DD ratios, strict
@@ -396,3 +397,8 @@ Run the tool tests after every change:
 ```bash
 node --test .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.test.mjs
 ```
+
+With the standard 60/40 cross-strategy split, the field `tuning` is the last
+third of development, overlapping the discovery partition. It is a diagnostic
+stability block, not an independent validation set. All three development
+blocks are reported separately; the outer test remains distinct.

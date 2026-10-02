@@ -3,9 +3,10 @@ import type {
   JevFactProvenance,
   JevInput,
   Signal,
+  JevScoreQuestion,
 } from '@tradejs/types';
 import { intervalToMs } from '@tradejs/core/data';
-import { JEV_DIMENSIONS } from '@tradejs/core/jev';
+import { JEV_DIMENSIONS, JEV_QUESTION_SET } from '@tradejs/core/jev';
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -113,6 +114,44 @@ export const buildJevInput = (signal: Signal): JevInput => {
   const stop = finite(signal.prices.stopLossPrice);
   const target = finite(signal.prices.takeProfitPrice);
   const atr = baseProblem ? null : finite(at(base, 'raw', 'volatility', 'atr'));
+  if (!baseProblem) {
+    const open = finite(at(base, 'candle', 'open'));
+    const close = finite(at(base, 'candle', 'close'));
+    const high = finite(at(base, 'candle', 'high'));
+    const low = finite(at(base, 'candle', 'low'));
+    const sign = signal.direction === 'LONG' ? 1 : -1;
+    const candleFact = {
+      knownAt: baseKnownAt!,
+      scope: 'target' as const,
+      source: 'baseContext.candle',
+    };
+    if (open != null && close != null && atr != null && atr > 0)
+      put('entry.directionalBodyAtr', (sign * (close - open)) / atr, {
+        ...candleFact,
+        unit: 'ATR',
+      });
+    if (
+      high != null &&
+      low != null &&
+      close != null &&
+      high > low &&
+      close >= low &&
+      close <= high
+    ) {
+      put(
+        'entry.directionalCloseLocation',
+        signal.direction === 'LONG'
+          ? (close - low) / (high - low)
+          : (high - close) / (high - low),
+        { ...candleFact, unit: 'ratio' },
+      );
+      if (atr != null && atr > 0)
+        put('entry.rangeAtr', (high - low) / atr, {
+          ...candleFact,
+          unit: 'ATR',
+        });
+    }
+  }
   if (price == null || stop == null || target == null)
     throw new Error('Invalid Jev signal prices');
   put(
@@ -253,34 +292,27 @@ export const buildJevInput = (signal: Signal): JevInput => {
   );
   const questions = JEV_DIMENSIONS.filter((dimension) => {
     switch (dimension) {
+      case 'signalStrength':
+        return has('signal.validLevels');
       case 'trend':
         return has('market.trendBias');
       case 'swing':
-        return has('market.swingBias');
+        return has('setup.retracementRatio');
       case 'participation':
-        return has('market.volumeRel20') || has('market.deltaPct');
+        return has('market.volumeRel20');
       case 'setupParticipation':
         return setupKeys.some((key) =>
           /volume|delta|flow|liquidity|turnover/i.test(key),
         );
       case 'extension':
-        return (
-          has('market.fastMaDistanceAtr') ||
-          has('setup.breakoutDistanceAtr') ||
-          has('signal.stopDistanceAtr')
-        );
+        return has('setup.breakoutDistanceAtr');
       case 'confirmation':
-        return setupKeys.some((key) =>
-          /stage|confirm|retest|accept/i.test(key),
+        return (
+          has('entry.directionalBodyAtr') &&
+          has('entry.directionalCloseLocation')
         );
       case 'setupStrength':
-        return setupKeys.some(
-          (key) =>
-            key !== 'setup.version' &&
-            !/volume|delta|flow|liquidity|turnover|stage|confirm|retest|accept|breakoutDistance/i.test(
-              key,
-            ),
-        );
+        return setupKeys.some((key) => /efficiencyRatio$/i.test(key));
       case 'geometry':
         return (
           geometryStatus !== 'invalid' &&
@@ -289,6 +321,7 @@ export const buildJevInput = (signal: Signal): JevInput => {
     }
   });
   return {
+    questionSet: JEV_QUESTION_SET,
     schema: 'tradejs-jev-input/v4',
     strategy: signal.strategy,
     symbol: signal.symbol,
@@ -303,84 +336,172 @@ export const buildJevInput = (signal: Signal): JevInput => {
   };
 };
 
-const criteria = (subject: string) => [
-  `${subject} is clearly contradicted by the supplied facts.`,
-  `${subject} has a material conflict.`,
-  `${subject} is uncertain from the supplied facts.`,
-  `${subject} has adequate support.`,
-  `${subject} has strong support without a material conflict.`,
-];
-
-export const JEV_QUESTIONS = {
+const JEV_COMPONENT_QUESTIONS = {
   trend: {
     type: 'score',
     instructions:
-      'Does market.trendBias support signal.direction? Judge only the target-asset trend, not swings or setup quality.',
-    criteria: criteria('Target-asset trend alignment'),
+      'Rate agreement of market.trendBias and market.swingBias with signal.direction: bull supports LONG, bear supports SHORT; neutral/unknown is inconclusive. No profit prediction.',
+    criteria: [
+      'Both oppose.',
+      'One opposes; other inconclusive.',
+      'Biases conflict, or both inconclusive.',
+      'One supports; other inconclusive.',
+      'Both support.',
+    ],
   },
   swing: {
     type: 'score',
     instructions:
-      'Does market.swingBias support signal.direction? Judge only the target-asset swing structure, not the broader trend.',
-    criteria: criteria('Target-asset swing alignment'),
+      'Rate shallow correction using only setup.retracementRatio (correction / preceding impulse). Missing is inconclusive, not favorable.',
+    criteria: [
+      'Exceeds impulse (>1).',
+      'Deep (>0.65 to 1).',
+      'Moderate (>0.4 to 0.65), or missing.',
+      'Contained (>0.2 to 0.4).',
+      'Shallow (0 to 0.2).',
+    ],
   },
   participation: {
     type: 'score',
     instructions:
-      'Does the supplied market.volumeRel20 or market.deltaPct show target-asset participation supportive of this direction? Ignore strategy setup volume and do not infer missing flow.',
-    criteria: criteria('Current target-asset participation'),
+      'Rate activity using only market.volumeRel20 (candle volume / trailing 20-candle mean). Not directional flow; ignore setup volume.',
+    criteria: [
+      'Very low (<0.5).',
+      'Below ordinary (0.5 to <0.8).',
+      'Ordinary (0.8 to <1.2), or missing.',
+      'Elevated (1.2 to <2).',
+      'Strong expansion (>=2).',
+    ],
   },
   setupParticipation: {
     type: 'score',
     instructions:
-      'Do the strategy-defined setup volume, flow or liquidity facts support the named setup? Use only relevant setup.* facts, not market.volumeRel20; do not infer missing data.',
-    criteria: criteria('Participation within the setup'),
+      'Rate consolidation volume contraction using a supplied setup consolidation / preceding impulse volume ratio, e.g. setup.flagToPoleVolumeRatio. Smaller means stronger contraction. Ignore current volume and directional flow; unrelated setup semantics are inconclusive.',
+    criteria: [
+      'Exceeds impulse (>1.2).',
+      'No contraction (>0.9 to 1.2).',
+      'Mild (>0.7 to 0.9), or inconclusive.',
+      'Clear (>0.4 to 0.7).',
+      'Strong (0 to 0.4).',
+    ],
   },
   extension: {
     type: 'score',
     instructions:
-      'Do the supplied ATR-normalized entry-distance facts suggest the entry is not excessively extended? Use only distance facts; do not calculate new ratios or judge confirmation.',
-    criteria: criteria('Entry location without excessive extension'),
+      'Rate absence of entry extension using only setup.breakoutDistanceAtr (distance past setup boundary in ATR). Stop/target distances are not extension.',
+    criteria: [
+      'Extreme (>2 ATR).',
+      'Large (>1 to 2 ATR).',
+      'Moderate (>0.5 to 1 ATR), or missing.',
+      'Small (>0.2 to 0.5 ATR).',
+      'Near boundary (0 to 0.2 ATR).',
+    ],
   },
   confirmation: {
     type: 'score',
     instructions:
-      'Do the supplied setup stage and confirmation facts indicate a confirmed rather than premature entry? Do not judge distance or predict the outcome.',
-    criteria: criteria('Setup confirmation at entry'),
+      'Rate closed entry candle conviction using entry.directionalBodyAtr (signed toward signal.direction) and entry.directionalCloseLocation (1=favorable extreme). Stage names alone prove neither conviction nor breakout retention.',
+    criteria: [
+      'Opposing body AND unfavorable-quarter close.',
+      'Opposing body OR unfavorable-half close.',
+      'Small body (<0.2 ATR), mixed or missing evidence.',
+      'Supporting body (>=0.2 ATR) AND favorable-half close.',
+      'Strong supporting body (>=0.5 ATR) AND favorable-quarter close.',
+    ],
   },
   setupStrength: {
     type: 'score',
     instructions:
-      'Do the strategy-defined setup strength and quality facts support this candidate? Exclude volume, confirmation, entry distance and geometry; do not assume missing facts.',
-    criteria: criteria('Non-geometric setup strength'),
+      'Rate impulse persistence using only supplied setup efficiency (absolute net move / sum of absolute bar moves), e.g. setup.poleEfficiencyRatio. Exclude size, volume, correction and geometry.',
+    criteria: [
+      'Highly choppy (<0.2).',
+      'Weak (0.2 to <0.4).',
+      'Mixed (0.4 to <0.6), or missing.',
+      'Clear (0.6 to <0.8).',
+      'Highly persistent (0.8 to 1).',
+    ],
   },
   geometry: {
     type: 'score',
     instructions:
-      'Do the supplied geometry.* facts support the named setup? Do not infer unseen figure points or certify mathematical validity.',
-    criteria: criteria('Setup geometry'),
+      'Rate fitted consolidation boundaries jointly: geometry.upperR2 and lowerR2 (1=best fit), slopeDivergenceRatio (0=parallel). Use the weaker fit; exclude depth, width, volume and profit. Missing equivalent geometry is inconclusive.',
+    criteria: [
+      'Fit <0.5 OR divergence >0.5.',
+      'Fit <0.7 OR divergence >0.3.',
+      'Fit <0.85 OR divergence >0.15, or missing.',
+      'Both fits >=0.85 AND divergence <=0.15.',
+      'Both fits >=0.95 AND divergence <=0.05.',
+    ],
   },
 } as const;
 
-export const questionsForJevInput = (input: JevInput) =>
-  Object.fromEntries(input.questions.map((key) => [key, JEV_QUESTIONS[key]]));
+export const JEV_SIGNAL_STRENGTH_QUESTION: JevScoreQuestion = {
+  type: 'score',
+  instructions:
+    'Rate overall support for entry now from signal-time facts: direction, market, setup, candle, placement, relevant geometry and stop/target plan. No other Jev answers, future prices or outcomes. Essential missing facts and conflicts weaken support; optional missing geometry alone does not disqualify. Invalid signal.validLevels cannot rate strong. Not win probability or execution permission. Criteria 1–10 map to API indices 0–9.',
+  criteria: [
+    '1: Invalid levels or decisive contrary evidence.',
+    '2: Severe directional/setup conflicts; poor support.',
+    '3: Substantial weaknesses outweigh support.',
+    '4: Some support; material weakness makes entry unattractive.',
+    '5: Balanced conflicts or essential evidence missing.',
+    '6: Modest coherent support; reasonable but limited evidence.',
+    '7: Convincing support from several facts; remaining weakness.',
+    '8: Strong coherent support, suitable placement/plan; no material conflict.',
+    '9: Very strong independent support; well-defined entry/stop/target plan.',
+    '10: Exceptional coherent support and plan; no visible material weakness, profit uncertain.',
+  ],
+};
 
-/** Signal identity stays in the recording, never in the paid decision state. */
+export const JEV_QUESTIONS = {
+  ...JEV_COMPONENT_QUESTIONS,
+  signalStrength: JEV_SIGNAL_STRENGTH_QUESTION,
+} as const;
+
+export const questionsForJevInput = (input: JevInput) => {
+  if (input.questionSet !== JEV_QUESTION_SET)
+    throw new Error(
+      'Unsupported Jev recording question set; rerun the backtest with --jev',
+    );
+  return Object.fromEntries(
+    input.questions.map((key) => {
+      const question = JEV_QUESTIONS[key];
+      if (!question) throw new Error('Unknown Jev question');
+      return [key, question];
+    }),
+  );
+};
+
+/** Dotted fact paths remain readable without repeating their namespace per key. */
+const groupJevFields = <T>(entries: [string, T][]) => {
+  const groups = new Map<string, [string, T][]>();
+  const flat: [string, T | Record<string, T>][] = [];
+  for (const [key, value] of entries) {
+    const separator = key.indexOf('.');
+    if (separator < 0) {
+      flat.push([key, value]);
+      continue;
+    }
+    const namespace = key.slice(0, separator);
+    const group = groups.get(namespace) ?? [];
+    group.push([key.slice(separator + 1), value]);
+    groups.set(namespace, group);
+  }
+  return Object.fromEntries([
+    ...flat,
+    ...Array.from(groups, ([key, fields]) => [key, Object.fromEntries(fields)]),
+  ]);
+};
+
+/** Identity and full provenance stay in the recording, never in paid state. */
 export const stateForJevInput = (input: JevInput) => ({
-  schema: input.schema,
   strategy: input.strategy,
-  direction: input.direction,
-  facts: input.features,
-  missing: input.missing,
+  facts: groupJevFields(Object.entries(input.features)),
+  missing: groupJevFields(Object.entries(input.missing)),
   geometryStatus: input.geometryStatus,
-  units: Object.fromEntries(
+  units: groupJevFields(
     Object.entries(input.provenance)
       .filter(([, detail]) => detail.unit != null)
-      .map(([key, detail]) => [key, detail.unit]),
-  ),
-  sources: Object.fromEntries(
-    Object.entries(input.provenance)
-      .filter(([, detail]) => detail.source != null)
-      .map(([key, detail]) => [key, detail.source]),
+      .map(([key, detail]) => [key, detail.unit!]),
   ),
 });

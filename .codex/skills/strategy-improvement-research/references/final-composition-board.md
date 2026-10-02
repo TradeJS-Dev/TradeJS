@@ -23,15 +23,14 @@ or a gate tuned on another core's signal population.
    is the baseline; the rebuilt gate is a research candidate. A no-op,
    zero-approval, or rejected gate still receives a checksum-bound report and
    explicit disposition; it is not silently omitted.
-4. Freeze common calendar train, tuning, and test boundaries once in the parent
-   lineage. Keep all rows sharing a timestamp in one partition. Candidate
-   exports may have different row counts, but final comparison windows and test
-   timestamps must not move to make one candidate look better. Discovery may
-   inspect only train and tuning. Open all candidate test tails together after
-   every gate spec is immutable.
-   Use `ai-gate-ablation.mjs --tuningSince <UTC> --testSince <UTC>` with the
-   same values for every candidate; ratio-only splits are not comparable when
-   core event cadence differs.
+4. Freeze common calendar development/test boundaries once in the parent
+   lineage: outer 60/40, preserving whole timestamp groups. Search the whole
+   development partition and diagnose three consecutive blocks inside it.
+   These blocks overlap development, not independent validation. Candidate
+   exports may have different cadence, but the outer boundary must not move.
+   Freeze every gate spec before opening all outer test tails together.
+   Use `ai-gate-ablation.mjs --testSince <UTC>` with the same boundary for every
+   candidate; ratio-only splits are not comparable across different cadence.
 5. Count every inspected core and gate behavior in the final trial ledger. The
    selected strategy is `core identity + candidate-specific gate identity +
 context identity + direction policy + quality threshold`. Reusing economics

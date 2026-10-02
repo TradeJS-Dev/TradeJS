@@ -4,6 +4,7 @@ import type {
   JevFeature,
   JevScores,
   JevTree,
+  SignalAssessment,
 } from '@tradejs/types';
 
 export const JEV_DIMENSIONS: JevDimension[] = [
@@ -15,7 +16,45 @@ export const JEV_DIMENSIONS: JevDimension[] = [
   'confirmation',
   'setupStrength',
   'geometry',
+  'signalStrength',
 ];
+
+export const JEV_QUESTION_SET = 'micro-v3' as const;
+export const JEV_FEATURE_NAMES = {
+  trend: 'directionalAgreement',
+  swing: 'correctionContainment',
+  participation: 'volumeExpansion',
+  setupParticipation: 'volumeContraction',
+  extension: 'entryProximity',
+  confirmation: 'entryConviction',
+  setupStrength: 'impulsePersistence',
+  geometry: 'boundaryRegularity',
+  signalStrength: 'signalStrength',
+} as const;
+
+/** Jev supplies features; the configured AI gate remains the entry decision. */
+export const jevAssessmentFeatures = (assessment: SignalAssessment) => {
+  if (assessment.questionSet !== JEV_QUESTION_SET)
+    throw new Error(
+      'Unsupported Jev assessment question set; rerun with the current Jev integration',
+    );
+  const project = (scores: JevScores, displayScore = false) =>
+    Object.fromEntries(
+      JEV_DIMENSIONS.map((key) => [
+        JEV_FEATURE_NAMES[key],
+        displayScore && key === 'signalStrength' && scores[key] != null
+          ? Number((1 + scores[key]! * 9).toFixed(2))
+          : scores[key] ?? null,
+      ]),
+    );
+  return {
+    schema: 'tradejs-jev-features/v2',
+    questionSet: JEV_QUESTION_SET,
+    status: assessment.status,
+    scores: project(assessment.scores, true),
+    confidence: project(assessment.confidence),
+  };
+};
 export const JEV_PROVIDERS = [
   {
     label: 'OpenRouter',

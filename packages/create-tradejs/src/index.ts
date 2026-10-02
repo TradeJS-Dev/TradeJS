@@ -253,8 +253,12 @@ On the first launch, TradeJS asks you to create the local root password.
 The project includes the complete checksum-managed TradeJS skill set under
 \`.codex/skills\`. Use \`$strategy-improvement-research\` to orchestrate a full
 bounded lineage, \`$strategy-backtest-research\` for one preregistered core
-experiment, and \`$ai-train-local-research\` for the frozen gate stage. For
-example:
+experiment, and \`$ai-train-local-research\` for the frozen gate stage.
+AI-gate research uses outer 60/40 by timestamp groups: discover on all first
+60%, diagnose three temporal stability blocks inside development, and keep the
+last 40% sealed until candidate rules are frozen. Internal blocks are not
+independent validation. Already opened history remains retrospective evidence.
+For example:
 
 \`$strategy-candidate-report MarketFlushReversal\`
 

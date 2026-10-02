@@ -16,6 +16,10 @@ export const resolveBacktestJev = async (
   userName: string,
   projectRoot: string,
 ): Promise<JevConfig | undefined> => {
+  if (flags.jevQuestionSet != null)
+    throw new Error(
+      '--jevQuestionSet was removed; --jev always uses the current nine-question set',
+    );
   if (!flags.jev) {
     if (flags.jevRecorded || flags.jevModelFile)
       throw new Error('Jev options require --jev');
@@ -36,6 +40,7 @@ export const resolveBacktestJev = async (
     validateJevGateModel(JSON.parse(contents));
     return parseJevConfig({
       ...common,
+
       source: 'local',
       modelFile,
       modelSha256: jevFileHash(contents),

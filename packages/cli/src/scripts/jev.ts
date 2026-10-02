@@ -16,7 +16,6 @@ args.option('recordsDir', 'Jev recordings directory', 'data/ai/jev');
 args.option('model', 'Local Jev gate JSON for comparison');
 args.option('maxDepth', 'Maximum local rule tree depth', 3);
 args.option(['l', 'minLeaf'], 'Minimum training samples per leaf', 10);
-
 export const main = async () => {
   const flags = args.parse(process.argv);
   if (!flags.out) throw new Error('Provide --out for the immutable Jev result');

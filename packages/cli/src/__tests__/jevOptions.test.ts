@@ -24,6 +24,16 @@ describe('backtest Jev opt-in', () => {
       resolveBacktestJev({ jevRecorded: true }, 'root', '/tmp'),
     ).rejects.toThrow('require --jev');
   });
+  it('rejects the removed question-set selector before reading settings', async () => {
+    await expect(
+      resolveBacktestJev(
+        { jev: true, jevQuestionSet: 'micro-v2' },
+        'root',
+        '/tmp',
+      ),
+    ).rejects.toThrow('--jevQuestionSet was removed');
+    expect(mockSettings).not.toHaveBeenCalled();
+  });
   it('keeps AI export independent of Jev', () => {
     expect(resolveBacktestAiExportEnabled({ jev: true })).toBe(false);
     expect(resolveBacktestAiExportEnabled({ ai: true })).toBe(true);

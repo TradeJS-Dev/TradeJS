@@ -79,7 +79,7 @@ Retain:
   attempt over full/3y/4y/max-covered/365d/180d/90d/30d/7d windows;
 - control/candidate matched, removed, added, changed-outcome, occupancy, regime,
   month, symbol, event, concentration, and capacity evidence;
-- gate train/tuning/test boundaries, feature provenance, threshold rounding,
+- gate development/test boundaries (outer 60/40), three internal stability blocks, feature provenance, threshold rounding,
   sealed-test flag/open timestamp, ablation, support, and one-round selection
   decision; record any accidental early test exposure permanently;
 - the complete `$ai-train-local-research` report sections and structured

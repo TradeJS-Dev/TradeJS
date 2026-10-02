@@ -427,7 +427,7 @@ with a future unexposed tail.
 ## 7. Use one gate tuning round
 
 Freeze the isolated finalist's raw-core export and the current deterministic
-gate as control. Use one time-grouped, time-ordered train/tuning/test design.
+gate as control. Use one timestamp-grouped outer 60/40 design, with three temporal stability blocks inside the first 60%.
 Audit existing gate rules, run pocket discovery/ablation without outcome or
 execution leakage, and preregister rounded thresholds before opening the test.
 `ai-pocket-search` must reserve the test with `--sealTest`; its discovery report
@@ -710,8 +710,8 @@ yarn ai-train --strategy <Strategy> --file <merged-export-part1.jsonl> \
   --terminalWindows=1460,1095,365,180,90,30,7
 
 yarn ai-pocket-search --strategy <Strategy> \
-  --file <merged-export-part1.jsonl> -n 0 --validationSplit 0.2 \
-  --testSplit 0.2 --sealTest --maxDepth 2 --minSupport 25
+  --file <merged-export-part1.jsonl> -n 0 --validationSplit 0 \
+  --testSplit 0.4 --sealTest --maxDepth 2 --minSupport 25
 
 yarn strategy:release profile --input <trades.jsonl> --variant <finalist-id> \
   --startTime <start-ms> --endTime <end-ms> --days 7,30,90 \
