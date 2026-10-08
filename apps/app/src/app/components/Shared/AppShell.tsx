@@ -4,7 +4,11 @@ import { Box } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '#shared/Sidebar';
 
-const AUTH_ROUTES = ['/routes/signin', '/routes/install'];
+const AUTH_ROUTES = [
+  '/routes/signin',
+  '/routes/install',
+  '/routes/mcp/consent',
+];
 
 const isAuthRoute = (pathname: string) =>
   AUTH_ROUTES.some((route) => pathname.startsWith(route));

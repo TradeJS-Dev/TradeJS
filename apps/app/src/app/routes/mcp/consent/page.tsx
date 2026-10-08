@@ -51,10 +51,20 @@ export default async function ConsentPage({
             </label>
           ))}
         </fieldset>
-        <button name="decision" value="allow" type="submit">
+        <button
+          className={styles.allowButton}
+          name="decision"
+          value="allow"
+          type="submit"
+        >
           Allow access
         </button>{' '}
-        <button name="decision" value="deny" type="submit">
+        <button
+          className={styles.denyButton}
+          name="decision"
+          value="deny"
+          type="submit"
+        >
           Deny
         </button>
       </form>
