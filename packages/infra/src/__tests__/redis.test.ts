@@ -3,6 +3,9 @@ type MockRedisClient = {
   scan: jest.Mock;
   call: jest.Mock;
   get: jest.Mock;
+  getdel: jest.Mock;
+  eval: jest.Mock;
+  hscan: jest.Mock;
   del: jest.Mock;
   expire: jest.Mock;
   set: jest.Mock;
@@ -20,6 +23,9 @@ const createMockRedisClient = (): MockRedisClient => {
     scan: jest.fn(),
     call: jest.fn(),
     get: jest.fn(),
+    getdel: jest.fn(),
+    eval: jest.fn(),
+    hscan: jest.fn(),
     del: jest.fn(),
     expire: jest.fn(),
     set: jest.fn(),
@@ -235,6 +241,112 @@ describe('redis utils', () => {
     redisClient.emit('ready');
     redisClient.call.mockResolvedValueOnce('{"ok":2}');
     await expect(redisModule.getData('k3', null)).resolves.toEqual({ ok: 2 });
+  });
+
+  it('stores opaque MCP state with TTL, atomic consumption and compare-and-set', async () => {
+    const { redisModule, redisClient } = await setup();
+    const { mcpStorage } = redisModule;
+    redisClient.set.mockResolvedValue('OK');
+    expect(
+      await mcpStorage.put('grant:hash', { user: 'alice' }, 60, true),
+    ).toBe(true);
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'tradejs:mcp:v1:grant:hash',
+      '{"user":"alice"}',
+      'EX',
+      60,
+      'NX',
+    );
+    expect(await mcpStorage.put('grant:hash', { user: 'alice' }, 60)).toBe(
+      true,
+    );
+    redisClient.get
+      .mockResolvedValueOnce('{"user":"alice"}')
+      .mockResolvedValueOnce(null);
+    expect(await mcpStorage.get('grant:hash')).toEqual({ user: 'alice' });
+    expect(await mcpStorage.get('missing')).toBeNull();
+    redisClient.getdel
+      .mockResolvedValueOnce('{"oneUse":true}')
+      .mockResolvedValueOnce(null);
+    expect(await mcpStorage.take('code:hash')).toEqual({ oneUse: true });
+    expect(await mcpStorage.take('code:hash')).toBeNull();
+    expect(redisClient.getdel).toHaveBeenCalledWith('tradejs:mcp:v1:code:hash');
+    redisClient.eval
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+    expect(
+      await mcpStorage.compare(
+        'job:hash',
+        { status: 'queued' },
+        { status: 'running' },
+        60,
+      ),
+    ).toBe(true);
+    expect(
+      await mcpStorage.compare(
+        'job:hash',
+        { status: 'queued' },
+        { status: 'running' },
+        60,
+      ),
+    ).toBe(false);
+    expect(redisClient.eval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('GET',KEYS[1]) ~= ARGV[1]"),
+      1,
+      'tradejs:mcp:v1:job:hash',
+      '{"status":"queued"}',
+      '{"status":"running"}',
+      60,
+    );
+    expect(await mcpStorage.release('worker:lease', 'owner')).toBe(true);
+    expect(await mcpStorage.release('worker:lease', 'other')).toBe(false);
+    redisClient.del.mockResolvedValueOnce(1);
+    expect(await mcpStorage.remove('grant:hash')).toBe(true);
+  });
+
+  it('paginates MCP storage and runtime hashes and rejects invalid cursors', async () => {
+    const { redisModule, redisClient } = await setup();
+    redisClient.scan
+      .mockResolvedValueOnce(['23', ['tradejs:mcp:v1:jobs:one']])
+      .mockResolvedValueOnce(['0', ['users:alice:key']]);
+    expect(await redisModule.mcpStorage.scan('jobs:', '0')).toEqual({
+      cursor: '23',
+      ids: ['jobs:one'],
+    });
+    expect(await redisModule.scanDataKeys('users:alice:', '23')).toEqual({
+      cursor: '0',
+      keys: ['users:alice:key'],
+    });
+    redisClient.scan.mockResolvedValueOnce(['0', []]);
+    await redisModule.scanDataKeys('users:al*ce[x]:');
+    expect(redisClient.scan).toHaveBeenLastCalledWith(
+      '0',
+      'MATCH',
+      String.raw`users:al\*ce\[x\]:*`,
+      'COUNT',
+      100,
+    );
+    redisClient.hscan.mockResolvedValueOnce([
+      '12',
+      ['field', '{"signalId":"one"}'],
+    ]);
+    expect(await redisModule.scanHashJson('users:alice:bucket')).toEqual({
+      cursor: '12',
+      values: [{ signalId: 'one' }],
+    });
+    await expect(redisModule.scanDataKeys('prefix', 'invalid')).rejects.toThrow(
+      'Invalid storage cursor',
+    );
+    await expect(redisModule.scanHashJson('bucket', 'invalid')).rejects.toThrow(
+      'Invalid storage cursor',
+    );
+    redisClient.eval.mockResolvedValueOnce(1).mockResolvedValueOnce(11);
+    expect(await redisModule.mcpStorage.rateLimit('client', 10, 60)).toBe(true);
+    expect(await redisModule.mcpStorage.rateLimit('client', 10, 60)).toBe(
+      false,
+    );
   });
 
   it('reads and writes operational state strictly', async () => {
@@ -554,9 +666,6 @@ describe('redis utils', () => {
     );
     expect(redisKeys.runtimeActiveTrade('root', 'BTCUSDT')).toBe(
       'users:root:runtime:active-trades:BTCUSDT',
-    );
-    expect(redisKeys.aiChatHistory('root', 'BTCUSDT')).toBe(
-      'users:root:ai:chats:BTCUSDT',
     );
     expect(redisKeys.analysis('BTCUSDT', 's1')).toBe('analysis:BTCUSDT:s1');
     expect(redisKeys.screenshotSessionToken('token-1')).toBe(

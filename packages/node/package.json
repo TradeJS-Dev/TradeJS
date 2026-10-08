@@ -90,6 +90,16 @@
       "types": "./dist/jev.d.ts",
       "import": "./dist/jev.mjs",
       "require": "./dist/jev.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.mjs",
+      "require": "./dist/mcp.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "import": "./dist/diagnostics.mjs",
+      "require": "./dist/diagnostics.js"
     }
   },
   "dependencies": {

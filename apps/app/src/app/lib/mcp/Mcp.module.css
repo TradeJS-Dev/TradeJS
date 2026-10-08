@@ -1,0 +1,63 @@
+.main {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 24px;
+}
+.main h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.main h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+.main h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.main p {
+  line-height: 1.6;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.main pre {
+  padding: 16px;
+  border: 1px solid var(--chakra-colors-border, #444);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+.main button {
+  padding: 8px 16px;
+  border: 1px solid var(--chakra-colors-border, #555);
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 8px 8px 8px 0;
+}
+.main button:hover {
+  background: var(--chakra-colors-bg-muted, #333);
+}
+.main button:focus-visible,
+.main input:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+}
+.main fieldset {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--chakra-colors-border, #444);
+  border-radius: 8px;
+}
+.main a {
+  text-decoration: underline;
+}
+.connection {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--chakra-colors-border, #444);
+  border-radius: 8px;
+}

@@ -49,3 +49,12 @@ sparse 7d/30d row must remain visible, but it is not a standalone veto and does
 not imply that anyone must wait for a calendar deadline.
 
 Finish with one exact next skill: compare, plan, revalidate, or forward-start.
+
+## Remote data through MCP
+
+When a TradeJS MCP server is configured, follow `$tradejs-mcp` for remote reads.
+Check server/user/deployment identity before interpreting the result. Prefer
+verified diagnostic artifacts and validate their SHA-256 after download;
+keep existing local research evidence as the source for candidate selection.
+Use `backtest_list_configs` for remote named grids. Do not initiate OAuth,
+start a new job from this read-only workflow, or silently fall back to SSH.

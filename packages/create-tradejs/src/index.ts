@@ -203,6 +203,7 @@ export const buildProjectFiles = (
         scripts: {
           dev: 'tradejs-app dev',
           backtest: 'tradejs backtest',
+          'mcp:worker': 'tradejs mcp-worker',
           doctor: 'tradejs doctor --skip-ml',
           'infra-up': 'tradejs infra-up',
           'infra-down': 'tradejs infra-down',
@@ -228,6 +229,10 @@ PG_PORT=${infrastructurePorts.postgres}
 REDIS_PORT=${infrastructurePorts.redis}
 REDIS_INSIGHT_PORT=${infrastructurePorts.redisInsight}
 `,
+    'CLAUDE.md':
+      '@AGENTS.md\n\nRead the matching complete skill from .codex/skills before using a TradeJS workflow. OAuth login and consent are performed by the human user.\n',
+    'AGENTS.md':
+      '# TradeJS Project\n\nUse .codex/skills/tradejs-mcp/SKILL.md for remote MCP reads. Verify host, user, deployment/account, revisions, periods and artifact checksums. Missing local data never proves no production activity. Start or cancel jobs only on explicit user request. Never initiate OAuth, change live orders, deploy, send notifications or silently fall back to SSH. Read the complete matching skill under .codex/skills for strategy research; it does not grant production permissions.\n',
     '.gitignore': `node_modules
 .tradejs
 .next
@@ -247,6 +252,18 @@ npm run dev
 
 Open [http://localhost:${port}/routes/dashboard](http://localhost:${port}/routes/dashboard).
 On the first launch, TradeJS asks you to create the local root password.
+
+## MCP for Codex and Claude Code
+
+Connect your client to the app's \`/mcp\` endpoint using OAuth; the human
+performs login and consent. See https://docs.tradejs.dev/guides/mcp and the
+included \`$tradejs-mcp\` skill. Remote reads must verify the host, user,
+deployment/account and evidence checksums. Do not infer production state from
+local Redis. Start background jobs only on explicit request and never silently
+fall back to SSH. MCP has no live trading, deployment or notification tools.
+Run \`npm run mcp:worker\` separately for bounded cached jobs, after generating
+the exact runtime package manifest. Feedback replay also needs isolated Redis
+and read-only Timescale.
 
 ## Codex TradeJS workflows
 

@@ -3,6 +3,8 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: [
     'src/jev.ts',
+    'src/mcp.ts',
+    'src/diagnostics.ts',
     'src/ai.ts',
     'src/backtest.ts',
     'src/cli.ts',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Box, Button, Flex, ClientOnly } from '@chakra-ui/react';
@@ -16,6 +16,7 @@ import {
 
 const DashboardRoute = () => {
   const searchParams = useSearchParams();
+  const [contextCopied, setContextCopied] = useState(false);
   const { filters, setFilters } = useFilters();
   const { tickers, ensureLoaded: ensureTickersLoaded } = useTickers(
     filters.provider || 'bybit',
@@ -149,16 +150,45 @@ const DashboardRoute = () => {
                 </Flex>
               </Filters.Root>
             </Box>
-            <Button
-              asChild
-              bg="#20c5bd"
-              color="gray.950"
-              _hover={{ bg: '#42d8d0' }}
-              justifySelf={{ base: 'start', lg: 'end' }}
-              mb={4}
-            >
-              <Link href="/routes/backtest">Create backtest</Link>
-            </Button>
+            <Flex gap={2} flexWrap="wrap">
+              <Button
+                onClick={async () => {
+                  const context = {
+                    provider: filters.provider,
+                    universe: filters.universe ?? 'crypto',
+                    symbol: filters.symbol,
+                    interval: filters.interval,
+                    ...(filters.backtestId
+                      ? {
+                          backtestId: filters.backtestId,
+                          backtestStrategy: filters.backtestStrategy,
+                        }
+                      : {}),
+                  };
+                  try {
+                    await navigator.clipboard.writeText(
+                      `TradeJS chart context: ${JSON.stringify(context)}. Use chart_get_context for market candles; for a saved backtest, inspect its recorded results. URL: ${window.location.href}`,
+                    );
+                    setContextCopied(true);
+                  } catch {
+                    setContextCopied(false);
+                  }
+                }}
+                variant="outline"
+              >
+                {contextCopied ? 'Context copied' : 'Copy context for AI'}
+              </Button>
+              <Button
+                asChild
+                bg="#20c5bd"
+                color="gray.950"
+                _hover={{ bg: '#42d8d0' }}
+                justifySelf={{ base: 'start', lg: 'end' }}
+                mb={4}
+              >
+                <Link href="/routes/backtest">Create backtest</Link>
+              </Button>
+            </Flex>
           </Box>
         )}
         <Box position="relative" flex="1" w="full">

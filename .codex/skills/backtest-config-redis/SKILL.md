@@ -15,3 +15,12 @@ description: Fetch a TradeJS backtest or strategy configuration from the local R
 - If the container name differs from `inv-redis`, ask for the correct name.
 - For research lineage, embed the returned JSON and a canonical checksum in the
   note. The mutable Redis key alone is not reproduction evidence.
+
+## Remote data through MCP
+
+When a TradeJS MCP server is configured, follow `$tradejs-mcp` for remote reads.
+Check server/user/deployment identity before interpreting the result. Prefer
+verified diagnostic artifacts and validate their SHA-256 after download;
+keep existing local research evidence as the source for candidate selection.
+Use `backtest_list_configs` for remote named grids. Do not initiate OAuth,
+start a new job from this read-only workflow, or silently fall back to SSH.

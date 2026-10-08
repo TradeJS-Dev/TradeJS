@@ -1,0 +1,3 @@
+import { oauthMetadata, oauthResponse } from '#app/lib/mcp/oauth';
+export const dynamic = 'force-dynamic';
+export const GET = () => oauthResponse(oauthMetadata());

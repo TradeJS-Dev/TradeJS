@@ -147,6 +147,11 @@ args.option(
   false,
 );
 args.option(
+  ['Y', 'persistResults'],
+  'Persist lightweight result summaries even in fast mode',
+  false,
+);
+args.option(
   'researchTrace',
   'Write compact setup/entry/exit/skip research trace JSONL',
   false,

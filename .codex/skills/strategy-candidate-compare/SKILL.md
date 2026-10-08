@@ -52,3 +52,12 @@ Conclude with:
 - whether the candidate remains the selected best candidate under the frozen
   objective;
 - one exact next action. Do not launch it from this skill.
+
+## Remote data through MCP
+
+When a TradeJS MCP server is configured, follow `$tradejs-mcp` for remote reads.
+Check server/user/deployment identity before interpreting the result. Prefer
+verified diagnostic artifacts and validate their SHA-256 after download;
+keep existing local research evidence as the source for candidate selection.
+Use `backtest_list_configs` for remote named grids. Do not initiate OAuth,
+start a new job from this read-only workflow, or silently fall back to SSH.

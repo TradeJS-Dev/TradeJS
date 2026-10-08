@@ -3,14 +3,6 @@ import type { Direction } from './trade';
 import type { AiPayload } from './strategyAdapters';
 import type { TestTradeResult } from './backtest';
 
-export interface AIChatMessage {
-  from: 'user' | 'ai';
-  text: string;
-  command?: string;
-}
-
-export type AIChatHistory = AIChatMessage[];
-
 export interface AiPromptPair {
   systemPrompt: string;
   humanPrompt: string;

@@ -102,6 +102,117 @@ export const closeRedisConnection = async (): Promise<void> => {
   redis.disconnect();
 };
 
+/** Fail-closed storage for MCP credentials, grants, jobs and worker leases.
+ * Values use native Redis strings so consumption and compare-and-set are atomic.
+ * Never pass a caller-supplied Redis key to this adapter.
+ */
+export const mcpStorage = {
+  async get<T>(id: string): Promise<T | null> {
+    const value = await (await requireReadyRedis()).get(`tradejs:mcp:v1:${id}`);
+    return value === null ? null : (JSON.parse(value) as T);
+  },
+  async put(
+    id: string,
+    value: unknown,
+    ttlSeconds: number,
+    onlyAbsent = false,
+  ) {
+    const redis = await requireReadyRedis();
+    const key = `tradejs:mcp:v1:${id}`;
+    const result = onlyAbsent
+      ? await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds, 'NX')
+      : await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    return result === 'OK';
+  },
+  async take<T>(id: string): Promise<T | null> {
+    const value = await (
+      await requireReadyRedis()
+    ).getdel(`tradejs:mcp:v1:${id}`);
+    return value === null ? null : (JSON.parse(value) as T);
+  },
+  async remove(id: string) {
+    return (await (await requireReadyRedis()).del(`tradejs:mcp:v1:${id}`)) > 0;
+  },
+  async compare(
+    id: string,
+    previous: unknown,
+    next: unknown,
+    ttlSeconds: number,
+  ) {
+    const result = await (
+      await requireReadyRedis()
+    ).eval(
+      "if redis.call('GET',KEYS[1]) ~= ARGV[1] then return 0 end; redis.call('SET',KEYS[1],ARGV[2],'EX',ARGV[3]); return 1",
+      1,
+      `tradejs:mcp:v1:${id}`,
+      JSON.stringify(previous),
+      JSON.stringify(next),
+      ttlSeconds,
+    );
+    return result === 1;
+  },
+  async release(id: string, previous: unknown) {
+    return (
+      (await (
+        await requireReadyRedis()
+      ).eval(
+        "if redis.call('GET',KEYS[1]) ~= ARGV[1] then return 0 end; return redis.call('DEL',KEYS[1])",
+        1,
+        `tradejs:mcp:v1:${id}`,
+        JSON.stringify(previous),
+      )) === 1
+    );
+  },
+  async rateLimit(id: string, maximum: number, seconds: number) {
+    const count = await (
+      await requireReadyRedis()
+    ).eval(
+      "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n",
+      1,
+      `tradejs:mcp:v1:rate:${id}`,
+      seconds,
+    );
+    return Number(count) <= maximum;
+  },
+  async scan(prefix: string, cursor = '0', count = 100) {
+    const [nextCursor, keys] = await (
+      await requireReadyRedis()
+    ).scan(cursor, 'MATCH', `tradejs:mcp:v1:${prefix}*`, 'COUNT', count);
+    return {
+      cursor: nextCursor,
+      ids: keys.map((key) => key.slice('tradejs:mcp:v1:'.length)),
+    };
+  },
+};
+
+/** One bounded SCAN page. Cursor is opaque; an empty page is not end-of-data. */
+export const scanDataKeys = async (prefix: string, cursor = '0') => {
+  if (!/^\d+$/.test(cursor)) throw new Error('Invalid storage cursor');
+  const literalPrefix = [...prefix]
+    .map((character) =>
+      ['*', '?', '[', ']', '\\'].includes(character)
+        ? `\\${character}`
+        : character,
+    )
+    .join('');
+  const [nextCursor, keys] = await (
+    await requireReadyRedis()
+  ).scan(cursor, 'MATCH', `${literalPrefix}*`, 'COUNT', 100);
+  return { cursor: nextCursor, keys };
+};
+
+/** HSCAN preserves large runtime buckets without materializing the complete hash. */
+export const scanHashJson = async (key: string, cursor = '0') => {
+  if (!/^\d+$/.test(cursor)) throw new Error('Invalid storage cursor');
+  const [next, pairs] = await (
+    await requireReadyRedis()
+  ).hscan(key, cursor, 'COUNT', 50);
+  const values: unknown[] = [];
+  for (let index = 1; index < pairs.length; index += 2)
+    values.push(JSON.parse(pairs[index]));
+  return { cursor: next, values };
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getRedisStatus = (redis: Redis): string =>
@@ -890,8 +1001,6 @@ export const redisKeys = {
     scopeId
       ? `users:${userName}:runtime:active-trades:${scopeId}:${symbol}`
       : `users:${userName}:runtime:active-trades:${symbol}`,
-  aiChatHistory: (userName: string, symbolKey: string) =>
-    `users:${userName}:ai:chats:${symbolKey}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
   screenshotSessionToken: (token: string) => `auth:screenshot:${token}`,

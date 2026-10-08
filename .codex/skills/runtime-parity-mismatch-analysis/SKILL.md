@@ -144,3 +144,12 @@ For each case:
 4. Give the next 1-3 checks in the TradeJS codebase.
 If several cases share one cause, group them.
 ```
+
+## Remote data through MCP
+
+When a TradeJS MCP server is configured, follow `$tradejs-mcp` for remote reads.
+Check server/user/deployment identity before interpreting the result. Prefer
+verified diagnostic artifacts and validate their SHA-256 after download;
+keep existing local research evidence as the source for candidate selection.
+Use `backtest_list_configs` for remote named grids. Do not initiate OAuth,
+start a new job from this read-only workflow, or silently fall back to SSH.

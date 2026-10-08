@@ -25,6 +25,7 @@ export const PROJECT_SKILL_NAMES = [
   'strategy-period-revalidate',
   'strategy-forward-start',
   'strategy-forward-status',
+  'tradejs-mcp',
   'strategy-risk-scale',
   'strategy-release',
 ] as const;

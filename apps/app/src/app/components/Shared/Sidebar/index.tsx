@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import {
   FiActivity,
+  FiLink,
   FiBarChart2,
   FiLayers,
   FiLogOut,
@@ -17,6 +18,7 @@ export const Sidebar = () => {
   const pathname = usePathname();
 
   const navItems = [
+    { icon: FiLink, label: 'MCP connections', path: '/routes/mcp' },
     {
       icon: FiBarChart2,
       label: 'Dashboard',

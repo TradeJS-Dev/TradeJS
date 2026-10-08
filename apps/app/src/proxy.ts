@@ -52,6 +52,24 @@ const issueSession = async (
 export const proxy = async (req: NextRequest) => {
   const { pathname } = req.nextUrl;
 
+  // These endpoints implement Bearer OAuth themselves. Never redirect MCP or
+  // discovery/token requests to the browser session login.
+  if (
+    pathname === '/mcp' ||
+    pathname.startsWith('/mcp/') ||
+    [
+      '/oauth/authorize',
+      '/oauth/token',
+      '/oauth/register',
+      '/oauth/revoke',
+      '/.well-known/oauth-authorization-server',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+    ].includes(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
   if (
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico' ||

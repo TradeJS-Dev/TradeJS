@@ -485,7 +485,7 @@ const finishBacktest = async (
   console.log(chalk.gray(`full report: ${markdownReportPath}`));
   console.log('');
 
-  if (!isFastMode) {
+  if (!isFastMode || flags.persistResults) {
     await setData(
       redisKeys.backtestResults(userName, flags.config, timestamp),
       {

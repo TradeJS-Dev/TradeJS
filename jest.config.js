@@ -169,6 +169,8 @@ const customJestConfig = {
     '^@tradejs/core/tickers$': '<rootDir>/packages/core/src/tickers',
     '^@tradejs/core/trade$': '<rootDir>/packages/core/src/trade',
     '^@tradejs/core/time$': '<rootDir>/packages/core/src/time',
+    '^@tradejs/node/diagnostics$': '<rootDir>/packages/node/src/diagnostics.ts',
+    '^@tradejs/node/mcp$': '<rootDir>/packages/node/src/mcp',
     '^@tradejs/node/ai$': '<rootDir>/packages/node/src/ai',
     '^@tradejs/node/backtest$': '<rootDir>/packages/node/src/backtest',
     '^@tradejs/node/cli$': '<rootDir>/packages/node/src/cli',
