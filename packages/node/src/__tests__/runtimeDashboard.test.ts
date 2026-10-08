@@ -134,6 +134,85 @@ describe('runtime dashboard', () => {
     );
   });
 
+  it.each(['entry', 'closed-pnl'])(
+    'includes exchange-recovered losing trades without a recorded interval via %s',
+    async (source) => {
+      const now = Date.UTC(2026, 9, 8);
+      const entryTimestamp = 1788646500000;
+      const closedAt = 1788755665964;
+      const orderLinkId = 'tjs-dragon-1d4yv--5d49d61599f0';
+      const deployment = (await mockListRuntimeDeployments())[0];
+      mockListRuntimeDeployments.mockResolvedValue([
+        {
+          ...deployment,
+          strategies: [{ ...deployment.strategies[0], strategyName: 'Dragon' }],
+        },
+      ]);
+      const strategy = (await mockLoadResolvedRuntimeStrategies())[0];
+      mockLoadResolvedRuntimeStrategies.mockResolvedValue([
+        { ...strategy, strategyName: 'Dragon' },
+      ]);
+      mockGetConnectorCreatorByProvider.mockResolvedValue(
+        jest.fn(async ({ accountId, deploymentId }) => ({
+          universe: 'crypto',
+          accountId,
+          deploymentId,
+          getEntryExecutions: jest.fn(async ({ startTime, endTime }) =>
+            source === 'entry' &&
+            startTime <= entryTimestamp &&
+            entryTimestamp <= endTime
+              ? [
+                  {
+                    orderLinkId,
+                    orderId: 'exchange-entry-id',
+                    symbol: 'KAVAUSDT',
+                    direction: 'SHORT',
+                    qty: 368,
+                    entryPrice: 0.05119,
+                    entryTimestamp,
+                  },
+                ]
+              : [],
+          ),
+          getClosedPnl: jest.fn(async ({ startTime, endTime }) =>
+            startTime <= closedAt && closedAt <= endTime
+              ? [
+                  {
+                    orderLinkId,
+                    orderId: 'exchange-close-id',
+                    symbol: 'KAVAUSDT',
+                    direction: 'SHORT',
+                    qty: 368,
+                    entryPrice: 0.05119,
+                    exitPrice: 0.05381,
+                    entryTimestamp,
+                    closedAt,
+                    closedPnl: -1.05490699,
+                  },
+                ]
+              : [],
+          ),
+        })),
+      );
+      const response = await loadRuntimeDashboard({
+        userName: 'root',
+        provider: 'bybit',
+        hours: 24 * 60,
+        now,
+        projectRoot: '/project',
+      });
+      expect(response.dataSources?.exchangeFallbackTrades).toBe(1);
+      expect(response.strategies[0]).toMatchObject({
+        strategyName: 'Dragon',
+        summary: { totalTrades: 1, closedTrades: 1 },
+        stat: { orders: 1, netProfit: -1.05 },
+        orders: [
+          expect.objectContaining({ symbol: 'KAVAUSDT', pnl: -1.05490699 }),
+        ],
+      });
+    },
+  );
+
   it('builds the complete dashboard read model through one interface', async () => {
     const response = await loadRuntimeDashboard({
       userName: 'root',

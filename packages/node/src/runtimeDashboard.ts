@@ -93,10 +93,12 @@ const groupRuntimeTradesByIdentity = (
 ) => {
   const grouped = new Map<string, RuntimeTradeRecord[]>();
   for (const trade of trades) {
+    // Exchange-recovered trades have no interval; scope must still match uniquely.
     const matches = [...identities.entries()].filter(([, identity]) => {
       if (
         trade.strategy !== identity.strategyName ||
-        String(trade.interval) !== String(identity.interval)
+        (trade.interval != null &&
+          String(trade.interval) !== String(identity.interval))
       ) {
         return false;
       }
