@@ -42,6 +42,24 @@ causal board: current gate, explicit direction pass-through/block when the raw
 side evidence warrants it, one causal pocket, one protected pocket, and one
 direction-aware replacement. Do not fill slots with adjacent threshold nudges.
 
+For a candidate measured by an actual compiled adapter rather than an ablation
+expression, declare `gateSource: variant` and `compiledGateAuthority: <native
+ai-train report path>` instead of `variantName` in the selection. Its own
+ablation report's measured `baseline` supplies metrics and equity. The builder
+checksum-binds the native authority to the same core export and direction
+policy. Never relabel an expression variant as a compiled adapter or use the
+compiled candidate as the current-gate baseline.
+The generated composition stores the candidate's authority as
+`compiledGateAuthority`; the renderer verifies that checksum and includes it
+in the composition fingerprint. `gateAuthority` remains reserved for the
+current-gate baseline.
+
+Declare `metricBasis: completed-trade` in the selection to consume each gate
+report's explicit `realized.periods` and `realized.equity`, ordered and sliced
+by `tradeResult.exitTimestamp`. Missing realized evidence fails the builder;
+it never silently substitutes decision-time drawdown. The legacy default is
+`decision-time` and must be labelled as such in comparison limitations.
+
 Freeze independently discovered causal pockets into an auditable candidate
 spec before opening comparison evidence:
 

@@ -141,6 +141,54 @@ test('allows the current production baseline to remain selected', () => {
   assert.deepEqual(board.terminalComparisonIds, ['candidate']);
 });
 
+test('checksum verifies compiled candidate authority and binds it into the composition fingerprint', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-compiled-board-'));
+  const contents = 'compiled-evidence\n';
+  const artifactSha = hash(contents);
+  const spec = makeSpec(artifactSha);
+  spec.metricBasis = 'completed-trade';
+  const original = validateBoardSpec(spec).candidates[1].compositionFingerprint;
+  spec.candidates[1].composition.compiledGateAuthority = {
+    path: 'compiled-authority.json',
+    sha256: artifactSha,
+  };
+  const compiled = validateBoardSpec(spec);
+  assert.notEqual(compiled.candidates[1].compositionFingerprint, original);
+  for (const id of ['baseline', 'candidate']) {
+    for (const suffix of ['core.json', 'export.jsonl', 'gate.json']) {
+      await writeFile(path.join(root, `${id}-${suffix}`), contents, 'utf8');
+    }
+  }
+  await writeFile(path.join(root, 'baseline-authority.json'), contents, 'utf8');
+  await writeFile(
+    path.join(root, 'compiled-authority.json'),
+    'tampered\n',
+    'utf8',
+  );
+  await assert.rejects(
+    generateFinalCompositionBoard({
+      spec,
+      artifactRoot: root,
+      outDir: path.join(root, 'charts'),
+    }),
+    /checksum|SHA-256/iu,
+  );
+  await writeFile(path.join(root, 'compiled-authority.json'), contents, 'utf8');
+  const { summary } = await generateFinalCompositionBoard({
+    spec,
+    artifactRoot: root,
+    outDir: path.join(root, 'charts'),
+  });
+  assert.equal(
+    summary.candidates[1].composition.compiledGateAuthority.sha256,
+    artifactSha,
+  );
+  spec.candidates[0].composition.compiledGateAuthority =
+    spec.candidates[1].composition.compiledGateAuthority;
+  assert.equal(summary.metricBasis, 'completed-trade');
+  assert.throws(() => validateBoardSpec(spec), /reserved for candidate gates/u);
+});
+
 test('verifies candidate artifacts and renders the dashboard and equity board', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-final-board-'));
   const contents = 'immutable-evidence\n';

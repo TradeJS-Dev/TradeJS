@@ -173,6 +173,12 @@ const compositionFingerprint = (composition) =>
       coreExportSha256: composition.coreExport.sha256,
       gateReportSha256: composition.gateReport.sha256,
       gateAuthoritySha256: composition.gateAuthority?.sha256 ?? null,
+      ...(composition.compiledGateAuthority
+        ? {
+            compiledGateAuthoritySha256:
+              composition.compiledGateAuthority.sha256,
+          }
+        : {}),
       gateFingerprint: composition.gateFingerprint,
       configFingerprint: composition.configFingerprint,
       contextFingerprint: composition.contextFingerprint,
@@ -190,6 +196,12 @@ export const validateBoardSpec = (input) => {
   const subtitle = textValue(input.subtitle, 'subtitle');
   const baselineId = textValue(input.baselineId, 'baselineId');
   const selectedId = textValue(input.selectedId, 'selectedId');
+  if (
+    input.metricBasis !== undefined &&
+    !['decision-time', 'completed-trade'].includes(input.metricBasis)
+  ) {
+    fail('metricBasis must be decision-time or completed-trade');
+  }
   const comparisonWindow = {
     start: integer(input.comparisonWindow?.start, 'comparisonWindow.start'),
     end: integer(input.comparisonWindow?.end, 'comparisonWindow.end'),
@@ -251,6 +263,14 @@ export const validateBoardSpec = (input) => {
     if (gateSource === 'variant' && composition.gateAuthority !== undefined) {
       fail(`${name}.composition.gateAuthority is reserved for current gate`);
     }
+    if (
+      gateSource === 'current' &&
+      composition.compiledGateAuthority !== undefined
+    ) {
+      fail(
+        `${name}.composition.compiledGateAuthority is reserved for candidate gates`,
+      );
+    }
     const resolvedComposition = {
       kind: composition.kind,
       gateSource,
@@ -268,6 +288,9 @@ export const validateBoardSpec = (input) => {
       ...(gateSource === 'current'
         ? { gateAuthority: composition.gateAuthority }
         : {}),
+      ...(composition.compiledGateAuthority === undefined
+        ? {}
+        : { compiledGateAuthority: composition.compiledGateAuthority }),
       gateFingerprint: shaValue(
         composition.gateFingerprint,
         `${name}.composition.gateFingerprint`,
@@ -369,6 +392,9 @@ export const validateBoardSpec = (input) => {
     terminalComparisonIds,
     comparisonWindow,
     normalization,
+    ...(input.metricBasis === undefined
+      ? {}
+      : { metricBasis: input.metricBasis }),
     limitations,
     candidates,
   };
@@ -703,6 +729,9 @@ const verifyCandidateArtifacts = async (board, artifactRoot) => {
       ...(candidate.composition.gateSource === 'current'
         ? ['gateAuthority']
         : []),
+      ...(candidate.composition.compiledGateAuthority
+        ? ['compiledGateAuthority']
+        : []),
     ];
     for (const key of artifactKeys) {
       const resolved = resolveArtifact(
@@ -785,6 +814,9 @@ export const generateFinalCompositionBoard = async ({
     terminalComparisonIds: board.terminalComparisonIds,
     comparisonWindow: board.comparisonWindow,
     normalization: board.normalization,
+    ...(board.metricBasis === undefined
+      ? {}
+      : { metricBasis: board.metricBasis }),
     rendering: {
       equityInterpolation: 'linear',
       meaning:

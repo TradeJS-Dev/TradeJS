@@ -26,6 +26,10 @@ export const buildFinalCompositionSpec = async ({
   if (selection?.schema !== 'tradejs-final-composition-selection/v1') {
     throw new Error('Invalid final-composition selection schema');
   }
+  const metricBasis = selection.metricBasis ?? 'decision-time';
+  if (!['decision-time', 'completed-trade'].includes(metricBasis)) {
+    throw new Error('metricBasis must be decision-time or completed-trade');
+  }
   const baselineSelection = selection.candidates?.find(
     ({ id }) => id === selection.baselineId,
   );
@@ -73,10 +77,21 @@ export const buildFinalCompositionSpec = async ({
       let gateFingerprint;
       let minQuality;
       let variant;
-      if (gateSource === 'current') {
+      const compiledGate = candidate.compiledGateAuthority != null;
+      if (
+        compiledGate &&
+        (gateSource !== 'variant' || candidate.variantName != null)
+      ) {
+        throw new Error(
+          `${prefix}.compiledGateAuthority requires a variant without variantName`,
+        );
+      }
+      if (gateSource === 'current' || compiledGate) {
         const gateAuthorityPath = requiredText(
-          candidate.gateAuthority,
-          `${prefix}.gateAuthority`,
+          compiledGate
+            ? candidate.compiledGateAuthority
+            : candidate.gateAuthority,
+          `${prefix}.${compiledGate ? 'compiledGateAuthority' : 'gateAuthority'}`,
         );
         gateAuthority = await artifact(gateAuthorityPath);
         const authority = JSON.parse(
@@ -101,7 +116,9 @@ export const buildFinalCompositionSpec = async ({
         minQuality = authority.run?.minQuality ?? report.run?.minQuality ?? 4;
         gateFingerprint = sha256(
           stableStringify({
-            source: 'current-gate-authority',
+            source: compiledGate
+              ? 'compiled-gate-authority'
+              : 'current-gate-authority',
             authoritySha256: gateAuthority.sha256,
             runtimeGateFingerprint:
               authority.research?.lineage?.gateFingerprint ?? null,
@@ -128,7 +145,15 @@ export const buildFinalCompositionSpec = async ({
           }),
         );
       }
-      const full = variant.periods?.full;
+      const measured =
+        metricBasis === 'completed-trade' ? variant.realized : variant;
+      if (
+        metricBasis === 'completed-trade' &&
+        measured?.timestampField !== 'tradeResult.exitTimestamp'
+      ) {
+        throw new Error(`${prefix} requires completed-trade realized metrics`);
+      }
+      const full = measured?.periods?.full;
       if (!full) throw new Error(`${prefix} gate report has no full period`);
       return {
         id: requiredText(candidate.id, `${prefix}.id`),
@@ -145,7 +170,11 @@ export const buildFinalCompositionSpec = async ({
           coreResult,
           coreExport,
           gateReport,
-          ...(gateAuthority === undefined ? {} : { gateAuthority }),
+          ...(gateAuthority === undefined
+            ? {}
+            : compiledGate
+              ? { compiledGateAuthority: gateAuthority }
+              : { gateAuthority }),
           gateFingerprint,
           configFingerprint: candidate.coreConfigSha256,
           contextFingerprint: selection.contextFingerprint,
@@ -159,11 +188,11 @@ export const buildFinalCompositionSpec = async ({
           maxDrawdown: full.maxDrawdown,
         },
         terminal: REQUIRED_WINDOWS.map((days) => {
-          const period = variant.periods?.[`${days}d`];
+          const period = measured.periods?.[`${days}d`];
           if (!period) throw new Error(`${prefix} is missing ${days}d metrics`);
           return { days, trades: period.trades, pnl: period.totalProfit };
         }),
-        equity: variant.equity,
+        equity: measured.equity,
       };
     }),
   );
@@ -180,6 +209,7 @@ export const buildFinalCompositionSpec = async ({
       : { terminalComparisonIds: selection.terminalComparisonIds }),
     comparisonWindow: selection.comparisonWindow,
     normalization: selection.normalization,
+    metricBasis,
     limitations: selection.limitations,
     candidates,
   };
