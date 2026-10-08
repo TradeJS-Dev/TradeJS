@@ -52,6 +52,11 @@ exclusions, recovery additions, gate replacements, feature inventory, and
 baseline-vs-candidate tables. Read `references/gate-ablation.md` for its
 expression grammar and report contract.
 
+For calendar-duration stability diagnostics from frozen realized equity, use
+`scripts/equity-stability.mjs` as documented in the same reference. It reports
+time under water and recovery duration without rebuilding approvals. Keep
+full-history diagnostics separate from development-only candidate selection.
+
 Mandatory rule:
 
 - Do not create `/tmp` parsers, heredoc ESM replays, or strategy-specific

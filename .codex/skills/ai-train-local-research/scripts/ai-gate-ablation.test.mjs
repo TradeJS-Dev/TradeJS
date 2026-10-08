@@ -11,6 +11,9 @@ import {
   applyBenchmarkEventSnapshots,
   balanceCrossStrategyRows,
   buildAblationReport,
+  buildFeatureAvailabilityAudit,
+  collectDiagnosticFeatures,
+  getCostStressNotional,
   developmentBlocks,
   buildCrossStrategyReport,
   buildEquitySeries,
@@ -29,12 +32,14 @@ import {
   filterSharedCrossStrategyFeatures,
   formatCrossStrategyMarkdown,
   formatMarkdownReport,
+  formatGateComparisonContract,
   isVariantSelected,
   latestDatasetGroupsByStrategy,
   matchesPocket,
   parseCliArgs,
   parseRuleExpression,
   parseVariant,
+  readWindowedResearchSources,
   partitionCrossStrategyFeatures,
   resolveArtifactProjectRoot,
   selectRowsWithinCapacity,
@@ -43,6 +48,596 @@ import {
   summarizeRows,
   summarizeMovingAverageRedundancy,
 } from './ai-gate-ablation.mjs';
+
+test('source window excludes outside and invalid rows before any gate/feature/variant evaluator', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-window-'));
+  try {
+    const sources = [
+      99,
+      100,
+      199,
+      200,
+      null,
+      'invalid',
+      true,
+      '',
+      undefined,
+      '0',
+    ].map((timestamp, index) => ({ timestamp, signalId: String(index) }));
+    const files = [
+      path.join(dir, 'part1.jsonl'),
+      path.join(dir, 'part2.jsonl'),
+    ];
+    await fsp.writeFile(
+      files[0],
+      sources
+        .slice(0, 4)
+        .map((x) => JSON.stringify(x))
+        .join('\n') + '\n\n',
+    );
+    await fsp.writeFile(
+      files[1],
+      sources
+        .slice(4)
+        .map((x) => JSON.stringify(x))
+        .join('\n'),
+    );
+    const scan = {};
+    const calls = [];
+    const stages = [
+      'buildAiPayload',
+      'getDeterministicAiGateContext',
+      'runAiPromptLocal',
+      'collectAiPocketFeatures',
+      'evaluateRule',
+    ];
+    for await (const {
+      source,
+      sequence,
+      timestamp,
+    } of readWindowedResearchSources({
+      filePaths: files,
+      windowStart: 100,
+      windowEnd: 200,
+      scan,
+    })) {
+      for (const stage of stages)
+        calls.push({ stage, signalId: source.signalId, sequence, timestamp });
+    }
+    assert.deepEqual(
+      calls,
+      ['1', '2'].flatMap((signalId, index) =>
+        stages.map((stage) => ({
+          stage,
+          signalId,
+          sequence: index + 1,
+          timestamp: index === 0 ? 100 : 199,
+        })),
+      ),
+    );
+    assert.deepEqual(scan, {
+      rowsRead: 10,
+      beforeWindow: 2,
+      atOrAfterWindowEnd: 1,
+      invalidTimestamp: 5,
+      selectedRows: 2,
+    });
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('source window rejects invalid bounds before reading/evaluation and unbounded invalid timestamps fail', async () => {
+  for (const [windowStart, windowEnd] of [
+    [100, null],
+    [null, 200],
+    [200, 100],
+    [100, 100],
+    [NaN, 200],
+    [100, Infinity],
+    ['100', 200],
+  ]) {
+    await assert.rejects(async () => {
+      for await (const row of readWindowedResearchSources({
+        filePaths: ['/nonexistent-must-not-be-opened'],
+        windowStart,
+        windowEnd,
+      }))
+        assert.fail(`Unexpected evaluation ${row.sequence}`);
+    }, /Common comparison window/);
+  }
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-unbounded-'));
+  try {
+    const file = path.join(dir, 'rows.jsonl');
+    await fsp.writeFile(file, '{"timestamp":100}\n{"timestamp":null}\n');
+    const evaluated = [];
+    await assert.rejects(async () => {
+      for await (const row of readWindowedResearchSources({
+        filePaths: [file],
+      }))
+        evaluated.push(row.sequence);
+    }, /no finite timestamp/);
+    assert.deepEqual(evaluated, [0]);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('diagnostic CLI options remain opt-in and reject invalid stress inputs', () => {
+  assert.deepEqual(parseCliArgs([]).costStressBps, []);
+  assert.equal(parseCliArgs([]).cohortPath, null);
+  assert.deepEqual(
+    parseCliArgs(['--costStressBps', '2,5,10,5']).costStressBps,
+    [2, 5, 10],
+  );
+  assert.throws(
+    () => parseCliArgs(['--costStressBps', '2,-5']),
+    /positive basis points/,
+  );
+  assert.throws(
+    () => parseCliArgs(['--costStressBps', '2,NaN']),
+    /positive basis points/,
+  );
+});
+
+test('monthly funnel and pairwise slices are opt-in, calendar complete and use exact selected identities', () => {
+  assert.equal(parseCliArgs([]).monthlyCohorts, false);
+  assert.equal(parseCliArgs([]).compareTo, null);
+  assert.throws(() => parseCliArgs(['--monthlyCohorts']), /cohortPath/);
+  const start = Date.UTC(2024, 0, 15);
+  const end = Date.UTC(2024, 3, 1);
+  const rows = [
+    {
+      sequence: 0,
+      signalId: 'a',
+      timestamp: start,
+      symbol: 'A',
+      direction: 'SHORT',
+      auditCohort: 'pattern',
+      profit: 10,
+      quality: 3,
+      baselineApproved: false,
+      directionMatches: true,
+      variantMatches: [true, true],
+    },
+    {
+      sequence: 1,
+      signalId: 'b',
+      timestamp: Date.UTC(2024, 2, 1),
+      symbol: 'B',
+      direction: 'SHORT',
+      auditCohort: 'pattern',
+      profit: -2,
+      quality: 3,
+      baselineApproved: false,
+      directionMatches: true,
+      variantMatches: [false, true],
+    },
+    {
+      sequence: 2,
+      signalId: 'c',
+      timestamp: Date.UTC(2024, 2, 2),
+      symbol: 'C',
+      direction: 'LONG',
+      auditCohort: null,
+      profit: 3,
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      variantMatches: [false, false],
+    },
+    {
+      sequence: 3,
+      signalId: 'd',
+      timestamp: end,
+      symbol: 'D',
+      direction: 'SHORT',
+      auditCohort: 'pattern',
+      profit: 100,
+      quality: 3,
+      baselineApproved: false,
+      directionMatches: true,
+      variantMatches: [true, true],
+    },
+  ];
+  const input = {
+    rows,
+    variants: [
+      parseVariant('D::add@4[SHORT]::true'),
+      parseVariant('H::add@4[SHORT]::true'),
+    ],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [30, 7],
+    windowStart: start,
+    windowEnd: end,
+    testSince: Date.UTC(2024, 2, 1),
+  };
+  const original = buildAblationReport(input);
+  const diagnostic = buildAblationReport({
+    ...input,
+    cohortPath: 'pattern',
+    monthlyCohorts: true,
+    compareTo: 'D',
+  });
+  assert.equal(original.monthlyCohortFunnel, undefined);
+  assert.equal(original.comparisons, undefined);
+  assert.deepEqual(diagnostic.variants, original.variants);
+  assert.deepEqual(diagnostic.baseline, original.baseline);
+  const months = diagnostic.monthlyCohortFunnel.months;
+  assert.deepEqual(
+    months.map((month) => month.month),
+    ['2024-01', '2024-02', '2024-03'],
+  );
+  assert.equal(months[0].start, start);
+  assert.equal(months[1].source.trades, 0);
+  assert.equal(months[1].gates.H.trades, 0);
+  assert.equal(months[2].directions.SHORT.source.trades, 1);
+  assert.equal(months[2].directions.SHORT.gates.D.trades, 0);
+  assert.equal(months[2].directions.LONG.gates.D.trades, 1);
+  assert.equal(
+    months[2].directions.LONG.cohorts.find((cohort) => cohort.cohort === 'n/a')
+      .source.trades,
+    1,
+  );
+  const comparison = diagnostic.comparisons.find(
+    (item) => item.candidate === 'H',
+  );
+  assert.equal(comparison.added.periods.full.trades, 1);
+  assert.equal(comparison.added.test.trades, 1);
+  assert.equal(comparison.removed.periods.full.trades, 0);
+  assert.deepEqual(
+    comparison.added.approvedSignals.map((row) => row.signalId),
+    ['b'],
+  );
+  assert.throws(
+    () => buildAblationReport({ ...input, monthlyCohorts: true }),
+    /cohortPath/,
+  );
+  assert.throws(
+    () => buildAblationReport({ ...input, compareTo: 'absent' }),
+    /Unknown comparison/,
+  );
+});
+
+test('contract presentation supports cross-export policies but rejects mismatched frozen windows', () => {
+  const rows = [
+    {
+      timestamp: Date.UTC(2024, 0, 2),
+      direction: 'SHORT',
+      symbol: 'A',
+      profit: 10,
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      variantMatches: [true],
+    },
+  ];
+  const input = {
+    rows,
+    variants: [parseVariant('D::add@4[SHORT]::true')],
+    minQuality: 4,
+    qualityThresholds: [4, 5],
+    terminalWindows: [365, 180, 90, 30, 7],
+    windowStart: Date.UTC(2024, 0, 1),
+    windowEnd: Date.UTC(2024, 1, 1),
+    testSince: Date.UTC(2024, 0, 20),
+  };
+  const before = buildAblationReport(input);
+  const after = buildAblationReport({
+    ...input,
+    rows: [
+      ...rows,
+      { ...rows[0], symbol: 'B', timestamp: Date.UTC(2024, 0, 3), profit: -3 },
+    ],
+  });
+  const args = {
+    beforeReport: before,
+    beforeVariant: 'D',
+    afterReport: after,
+    afterVariant: 'D',
+    header: 'header',
+  };
+  const text = formatGateComparisonContract(args);
+  assert.match(text, /\| full \| before \| 1 \| 100.0%/);
+  assert.match(text, /\| full \| after \| 2 \| 50.0%/);
+  assert.match(text, /### Top reject reasons \(30d\)/);
+  assert.match(text, /\| 5 \| n\/a \| n\/a \| n\/a \|/);
+  assert.throws(
+    () => formatGateComparisonContract({ ...args, afterVariant: 'absent' }),
+    /Unknown report policy/,
+  );
+  assert.throws(
+    () =>
+      formatGateComparisonContract({
+        ...args,
+        afterReport: {
+          ...after,
+          run: { ...after.run, testSince: 'different' },
+        },
+      }),
+    /identical explicit calendar/,
+  );
+  assert.throws(
+    () =>
+      formatGateComparisonContract({
+        ...args,
+        acceptanceChecks: [['Freshness', 'maybe', 'n/a']],
+      }),
+    /Invalid acceptance status/,
+  );
+});
+
+test('availability audit separates null, missing, invalid and present rejects by UTC year/cohort', () => {
+  const pattern = /^additionalIndicators\.context\.(a|b)$/;
+  const make = (date, cohort, payload, approved) => ({
+    timestamp: Date.parse(date),
+    direction: 'SHORT',
+    auditCohort: cohort,
+    auditFeatures: collectDiagnosticFeatures(payload, pattern),
+    baselineApproved: approved,
+  });
+  const audit = buildFeatureAvailabilityAudit([
+    make(
+      '2022-12-31T23:00:00Z',
+      'A',
+      { additionalIndicators: { context: { a: null, b: 0 } } },
+      false,
+    ),
+    make(
+      '2022-12-31T23:30:00Z',
+      'A',
+      { additionalIndicators: { context: { b: Infinity } } },
+      false,
+    ),
+    make(
+      '2023-01-01T00:00:00Z',
+      'B',
+      { additionalIndicators: { context: { a: 1, b: false } } },
+      true,
+    ),
+  ]);
+  assert.equal(audit.cohorts.length, 2);
+  assert.deepEqual(audit.cohorts[0].features[0], {
+    feature: 'additionalIndicators.context.a',
+    available: 0,
+    null: 1,
+    missing: 1,
+    invalid: 0,
+    presentApproved: 0,
+    presentRejected: 0,
+  });
+  assert.equal(audit.cohorts[0].features[1].presentRejected, 1);
+  assert.equal(audit.cohorts[0].features[1].invalid, 1);
+  assert.equal(audit.cohorts[1].features[1].available, 1);
+});
+
+test('cost stress uses actual execution quantity and prices, never requested prices or guessed zero', () => {
+  assert.equal(
+    getCostStressNotional({
+      closedQty: 2,
+      qty: 3,
+      entryPrice: 100,
+      exitPrice: 110,
+    }),
+    420,
+  );
+  assert.equal(
+    getCostStressNotional({ qty: 2, entryPrice: 100, exitPrice: 110 }),
+    420,
+  );
+  for (const trade of [
+    undefined,
+    { qty: 2, requestedEntryPrice: 100, requestedExitPrice: 110 },
+    { qty: 2, entryPrice: 100, exitPrice: null },
+    { closedQty: 0, qty: 2, entryPrice: 100, exitPrice: 110 },
+    { qty: 2, closedQty: 3, entryPrice: 100, exitPrice: 110 },
+  ]) {
+    assert.equal(getCostStressNotional(trade), null);
+  }
+});
+
+test('cost diagnostics preserve approval identities and mark incomplete cohort economics unavailable', () => {
+  const rows = [
+    {
+      timestamp: Date.UTC(2022, 0, 1),
+      direction: 'SHORT',
+      symbol: 'A',
+      profit: 10,
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      costStressNotional: 1000,
+      variantMatches: [],
+    },
+    {
+      timestamp: Date.UTC(2022, 0, 2),
+      direction: 'LONG',
+      symbol: 'B',
+      profit: -2,
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      costStressNotional: null,
+      variantMatches: [],
+    },
+    {
+      timestamp: Date.UTC(2022, 0, 3),
+      direction: 'SHORT',
+      symbol: 'C',
+      profit: 20,
+      quality: 1,
+      baselineApproved: false,
+      directionMatches: false,
+      costStressNotional: 100000,
+      variantMatches: [],
+    },
+  ];
+  const input = {
+    rows,
+    variants: [],
+    minQuality: 4,
+    qualityThresholds: [4, 5],
+    terminalWindows: [7],
+    validationSplit: 0,
+    testSplit: 0.4,
+  };
+  const original = buildAblationReport(input);
+  const stressed = buildAblationReport({ ...input, costStressBps: [2, 5, 10] });
+  assert.deepEqual(
+    stressed.baseline.approvedSignals,
+    original.baseline.approvedSignals,
+  );
+  assert.deepEqual(stressed.baseline.periods, original.baseline.periods);
+  assert.equal(stressed.baseline.costStress[1].periods.full.ALL.metrics, null);
+  assert.equal(
+    stressed.baseline.costStress[1].periods.full.ALL.missingEconomicRows,
+    1,
+  );
+  assert.equal(
+    stressed.baseline.costStress[1].periods.full.SHORT.additionalCost,
+    0.5,
+  );
+  assert.equal(
+    stressed.baseline.costStress[1].periods.full.SHORT.metrics.totalProfit,
+    9.5,
+  );
+  assert.equal(original.baseline.costStress, undefined);
+});
+
+test('optional realized metrics preserve decisions, use exit order and retain decision-time partitions', () => {
+  const day = 86400000;
+  const start = Date.UTC(2022, 0, 1);
+  const rows = [10, 10, -15].map((profit, index) => ({
+    timestamp: start + index * day,
+    symbol: `S${index}`,
+    signalId: `s${index}`,
+    sequence: index,
+    direction: 'SHORT',
+    quality: 4,
+    baselineApproved: true,
+    directionMatches: true,
+    profit,
+    variantMatches: [],
+    auditCohort: 'Pattern',
+    completedTrade: {
+      exitTimestamp: start + [5, 3, 4][index] * day,
+      netProfit: profit,
+    },
+  }));
+  const input = {
+    rows,
+    variants: [],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [2, 7],
+    testSince: start + 2 * day,
+    windowStart: start,
+    windowEnd: start + 7 * day,
+  };
+  const original = buildAblationReport(input);
+  const report = buildAblationReport({ ...input, realizedMetrics: true });
+  assert.deepEqual(
+    report.baseline.approvedSignals,
+    original.baseline.approvedSignals,
+  );
+  assert.equal(report.baseline.realized.periods.full.maxDrawdown, 15);
+  assert.equal(report.baseline.realized.periods.full.totalProfit, 5);
+  assert.equal(report.baseline.realized.periods['2d'].trades, 1);
+  assert.equal(report.baseline.realized.periods['2d'].totalProfit, 10);
+  assert.equal(report.baseline.realized.train.trades, 2);
+  assert.equal(report.baseline.realized.test.trades, 1);
+  const gap = buildAblationReport({
+    ...input,
+    realizedMetrics: true,
+    testSince: start + 1.5 * day,
+  });
+  assert.equal(
+    gap.baseline.realized.partitionCalendarBounds.train.end,
+    start + 1.5 * day,
+  );
+  assert.equal(gap.baseline.realized.train.cadencePerDay, 2 / 1.5);
+  assert.equal(report.baseline.realized.train.cadencePerDay, 1);
+  assert.equal(
+    report.baseline.realized.partitionDirections.train.SHORT.cadencePerDay,
+    1,
+  );
+  assert.equal(
+    report.baseline.realized.partitionDirections.train.SHORT.totalProfit,
+    20,
+  );
+  assert.equal(
+    report.baseline.realized.timestampField,
+    'tradeResult.exitTimestamp',
+  );
+  rows[0].completedTrade = null;
+  const missing = buildAblationReport({ ...input, realizedMetrics: true });
+  assert.equal(missing.baseline.realized.missingEconomicRows, 1);
+  assert.equal(missing.baseline.realized.periods, null);
+});
+
+test('realized evidence rejects missing anchors, malformed identities, duplicates and impossible chronology', () => {
+  const start = Date.UTC(2022, 0, 1);
+  const row = {
+    timestamp: start,
+    signalId: 's',
+    symbol: 'A',
+    direction: 'SHORT',
+    profit: 0,
+    quality: 4,
+    baselineApproved: true,
+    directionMatches: true,
+    variantMatches: [],
+    completedTrade: { exitTimestamp: start + 1000, netProfit: 0 },
+  };
+  const input = {
+    rows: [row],
+    variants: [],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [7],
+    windowStart: start,
+    windowEnd: start + 86400000,
+    realizedMetrics: true,
+  };
+  assert.throws(
+    () => buildAblationReport({ ...input, windowStart: null, windowEnd: null }),
+    /requires explicit/,
+  );
+  assert.throws(
+    () => buildAblationReport({ ...input, rows: [{ ...row, signalId: '' }] }),
+    /stable signal identity/,
+  );
+  assert.throws(
+    () =>
+      buildAblationReport({
+        ...input,
+        rows: [{ ...row, direction: 'UNKNOWN' }],
+      }),
+    /LONG\/SHORT/,
+  );
+  assert.throws(
+    () => buildAblationReport({ ...input, rows: [row, { ...row }] }),
+    /Duplicate realized/,
+  );
+  assert.throws(
+    () =>
+      buildAblationReport({
+        ...input,
+        rows: [
+          {
+            ...row,
+            completedTrade: { exitTimestamp: start - 1, netProfit: 0 },
+          },
+        ],
+      }),
+    /precedes signal/,
+  );
+  const flat = buildAblationReport(input).baseline.realized.periods.full;
+  assert.equal(flat.trades, 1);
+  assert.equal(flat.wins, 0);
+  assert.equal(flat.losses, 0);
+});
 
 const createGitCheckout = async (t, prefix) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
