@@ -179,7 +179,7 @@
     "@tradejs/indicators": "workspace:^",
     "@tradejs/node": "workspace:^",
     "@tradejs/strategy-adaptive-momentum-ribbon": "3.0.5",
-    "@tradejs/strategy-adaptive-trend-channel": "3.0.5",
+    "@tradejs/strategy-adaptive-trend-channel": "3.0.6",
     "@tradejs/strategy-breakout": "3.0.4",
     "@tradejs/strategy-cup-and-handle": "3.0.6",
     "@tradejs/strategy-double-tap": "3.0.5",
