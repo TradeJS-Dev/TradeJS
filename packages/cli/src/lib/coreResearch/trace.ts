@@ -3,9 +3,9 @@ import path from 'node:path';
 import type { CoreResearchTraceEvent } from '@tradejs/types';
 
 export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
-  const events: Record<string, number> = {};
-  const skipCounts: Record<string, number> = {};
-  const exitCodes: Record<string, number> = {};
+  const events: Record<string, number> = Object.create(null);
+  const skipCounts: Record<string, number> = Object.create(null);
+  const exitCodes: Record<string, number> = Object.create(null);
   for (const inputPath of filePaths) {
     const filePath = path.resolve(inputPath);
     const text = await fs.readFile(filePath, 'utf8');

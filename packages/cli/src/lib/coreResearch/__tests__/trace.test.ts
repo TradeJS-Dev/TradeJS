@@ -80,6 +80,35 @@ describe('core research trace summary', () => {
     });
   });
 
+  it('counts exit codes that overlap Object prototype names', async () => {
+    const filePath = path.join(tempRoot, 'prototype-names.jsonl');
+    await fs.writeFile(
+      filePath,
+      ['__proto__', 'constructor', 'toString', '__proto__']
+        .map((exitCode) =>
+          JSON.stringify({
+            schema: 'tradejs-core-research-trace/v1',
+            event: 'position_exited',
+            exitReason: 'exit',
+            exitCode,
+          }),
+        )
+        .join('\n') + '\n',
+      'utf8',
+    );
+    const summary = await summarizeCoreResearchTrace([filePath]);
+    expect(summary.exitCodes).toEqual(
+      Object.fromEntries([
+        ['__proto__', 2],
+        ['constructor', 1],
+        ['toString', 1],
+      ]),
+    );
+    expect(JSON.parse(JSON.stringify(summary)).exitCodes).toEqual(
+      summary.exitCodes,
+    );
+  });
+
   it('attributes malformed trace JSON to the exact shard and line', async () => {
     const filePath = path.join(tempRoot, 'bad.jsonl');
     await fs.writeFile(filePath, '{}\n{bad}\n', 'utf8');
