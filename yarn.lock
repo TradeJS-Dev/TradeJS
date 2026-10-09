@@ -3062,14 +3062,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/strategy-adaptive-trend-channel@npm:3.0.5":
-  version: 3.0.5
-  resolution: "@tradejs/strategy-adaptive-trend-channel@npm:3.0.5"
+"@tradejs/strategy-adaptive-trend-channel@npm:3.0.6":
+  version: 3.0.6
+  resolution: "@tradejs/strategy-adaptive-trend-channel@npm:3.0.6"
   peerDependencies:
     "@tradejs/core": ^3.0.1
     "@tradejs/strategy-kit": ^3.0.5
     "@tradejs/types": ^3.0.1
-  checksum: 10c0/d3c7efe19a85e2ecf9427889ff3f2e5752c4d2542d45f35679ca403a5dd2f9866d5f59b6459140e24871506a7b4ec76138c61541c5665ea5572ee290a4d92148
+  checksum: 10c0/26a94bf2388648e8bdb1695a791124c2b5c691cc9c238dcbb7a1a60b45859a9b3d23a29c02b4783c2e2949ba4128f3aee467b1e7221959c4e86f3341b746e04c
   languageName: node
   linkType: hard
 
@@ -13479,7 +13479,7 @@ __metadata:
     "@tradejs/infra": "workspace:^"
     "@tradejs/node": "workspace:^"
     "@tradejs/strategy-adaptive-momentum-ribbon": "npm:3.0.5"
-    "@tradejs/strategy-adaptive-trend-channel": "npm:3.0.5"
+    "@tradejs/strategy-adaptive-trend-channel": "npm:3.0.6"
     "@tradejs/strategy-breakout": "npm:3.0.4"
     "@tradejs/strategy-cup-and-handle": "npm:3.0.6"
     "@tradejs/strategy-double-tap": "npm:3.0.5"
