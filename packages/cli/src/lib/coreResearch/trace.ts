@@ -5,6 +5,7 @@ import type { CoreResearchTraceEvent } from '@tradejs/types';
 export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
   const events: Record<string, number> = {};
   const skipCounts: Record<string, number> = {};
+  const exitCodes: Record<string, number> = {};
   for (const inputPath of filePaths) {
     const filePath = path.resolve(inputPath);
     const text = await fs.readFile(filePath, 'utf8');
@@ -24,12 +25,22 @@ export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
           skipCounts[reason] = (skipCounts[reason] ?? 0) + count;
         }
       }
+      if (event.event === 'position_exited' && event.exitCode) {
+        exitCodes[event.exitCode] = (exitCodes[event.exitCode] ?? 0) + 1;
+      }
     }
   }
   return {
     events: Object.fromEntries(Object.entries(events).sort()),
     skipCounts: Object.fromEntries(
       Object.entries(skipCounts).sort(
+        ([leftKey, leftValue], [rightKey, rightValue]) =>
+          rightValue - leftValue ||
+          (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0),
+      ),
+    ),
+    exitCodes: Object.fromEntries(
+      Object.entries(exitCodes).sort(
         ([leftKey, leftValue], [rightKey, rightValue]) =>
           rightValue - leftValue ||
           (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0),

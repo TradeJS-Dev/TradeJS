@@ -26,6 +26,11 @@ describe('core research trace summary', () => {
           event: 'skip_summary',
           skipCounts: { NO_PATTERN: 4, COOLDOWN: 2 },
         },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'CHANNEL_BREAK_EXIT',
+        },
       ]
         .map((event) => JSON.stringify(event))
         .join('\n') + '\n',
@@ -33,17 +38,37 @@ describe('core research trace summary', () => {
     );
     await fs.writeFile(
       second,
-      `${JSON.stringify({
-        schema: 'tradejs-core-research-trace/v1',
-        event: 'skip_summary',
-        skipCounts: { COOLDOWN: 3, BAD_RISK: 5 },
-      })}\n`,
+      [
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'skip_summary',
+          skipCounts: { COOLDOWN: 3, BAD_RISK: 5 },
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'CHANNEL_BREAK_EXIT',
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'MOMENTUM_FADE_EXIT',
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitReason: 'take_profit',
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join('\n') + '\n',
       'utf8',
     );
 
     expect(await summarizeCoreResearchTrace([first, second])).toEqual({
-      events: { setup_detected: 1, skip_summary: 2 },
+      events: { position_exited: 4, setup_detected: 1, skip_summary: 2 },
       skipCounts: { BAD_RISK: 5, COOLDOWN: 5, NO_PATTERN: 4 },
+      exitCodes: { CHANNEL_BREAK_EXIT: 2, MOMENTUM_FADE_EXIT: 1 },
     });
   });
 
@@ -51,6 +76,7 @@ describe('core research trace summary', () => {
     await expect(summarizeCoreResearchTrace()).resolves.toEqual({
       events: {},
       skipCounts: {},
+      exitCodes: {},
     });
   });
 

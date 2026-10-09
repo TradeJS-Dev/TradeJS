@@ -50,7 +50,11 @@ const makeAnalysis = (
     monthly: [],
     regimes: {},
     costStress: [],
-    traceFunnel: { events: {}, skipCounts: {} },
+    traceFunnel: {
+      events: { position_exited: trades.length },
+      skipCounts: {},
+      exitCodes: { CHANNEL_BREAK_EXIT: trades.length },
+    },
     latestSignalTimeRegime: null,
     supplemental: { coldStart: {}, stress: {}, confirmation: null },
   };
@@ -127,6 +131,8 @@ describe('core research HTML report', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('&lt;script&gt;control&lt;/script&gt;');
+    expect(html).toContain('Exit codes');
+    expect(html).toContain('CHANNEL_BREAK_EXIT');
     const pointLists = [
       ...html.matchAll(/<polyline[^>]+points="([^"]*)"/g),
     ].map((match) => match[1].trim().split(/\s+/));

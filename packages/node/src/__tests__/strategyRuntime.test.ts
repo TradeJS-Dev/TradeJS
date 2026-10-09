@@ -2475,6 +2475,15 @@ describe('strategyRuntime', () => {
     );
 
     expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signal: expect.objectContaining({
+          additionalIndicators: {
+            exit: { code: 'CLOSE_BY_SIGNAL' },
+          },
+        }),
+      }),
+    );
     expect(mockGetActiveRuntimeTrade).toHaveBeenCalledWith({
       userName: 'root',
       symbol: 'ETHUSDT',
