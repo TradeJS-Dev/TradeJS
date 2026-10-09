@@ -1,4 +1,5 @@
 import {
+  buildTradeParityTimestampOffset,
   compareTradeParityEntries,
   dedupeRuntimeParityEntries,
   extractBacktestEntryParityEntries,
@@ -455,6 +456,100 @@ describe('runtime parity helpers', () => {
 
     expect(comparison.matched).toHaveLength(1);
     expect(comparison.matched[0].timestampDiffMs).toBe(0);
+  });
+
+  it('uses each strategy interval in a mixed-interval replay', () => {
+    const offset = buildTradeParityTimestampOffset([
+      { strategyName: 'Flag', interval: '15' },
+      { strategyName: 'Dragon', interval: '60' },
+    ]);
+    const comparison = compareTradeParityEntries({
+      runtimeEntries: [
+        {
+          id: 'runtime-15',
+          source: 'runtime',
+          strategy: 'Flag',
+          symbol: 'AAAUSDT',
+          direction: 'LONG',
+          timestamp: 901_000,
+          price: 1,
+        },
+        {
+          id: 'runtime-60',
+          source: 'runtime',
+          strategy: 'Dragon',
+          symbol: 'BBBUSDT',
+          direction: 'SHORT',
+          timestamp: 3_601_000,
+          price: 2,
+        },
+      ],
+      backtestEntries: [
+        {
+          id: 'backtest-15',
+          source: 'backtest',
+          strategy: 'Flag',
+          symbol: 'AAAUSDT',
+          direction: 'LONG',
+          timestamp: 1_000,
+          signalTimestamp: 1_000,
+          price: 1,
+        },
+        {
+          id: 'backtest-60',
+          source: 'backtest',
+          strategy: 'Dragon',
+          symbol: 'BBBUSDT',
+          direction: 'SHORT',
+          timestamp: 1_000,
+          signalTimestamp: 1_000,
+          price: 2,
+        },
+      ],
+      toleranceMs: 0,
+      backtestTimestampOffsetMs: offset,
+    });
+
+    expect(comparison.matched).toHaveLength(2);
+    expect(comparison.matched.map((entry) => entry.timestampDiffMs)).toEqual([
+      0, 0,
+    ]);
+    expect(comparison.runtimeOnly).toHaveLength(0);
+    expect(comparison.backtestOnly).toHaveLength(0);
+    expect(() => offset('Unknown')).toThrow(/Missing embedded replay interval/);
+    expect(() =>
+      buildTradeParityTimestampOffset([
+        { strategyName: 'Broken', interval: '15,60' },
+      ]),
+    ).toThrow(/Invalid embedded replay interval/);
+    expect(() =>
+      compareTradeParityEntries({
+        runtimeEntries: [
+          {
+            id: 'runtime',
+            source: 'runtime',
+            strategy: 'Flag',
+            symbol: 'AAAUSDT',
+            direction: 'LONG',
+            timestamp: 1_000,
+            price: 1,
+          },
+        ],
+        backtestEntries: [
+          {
+            id: 'invalid',
+            source: 'backtest',
+            strategy: 'Flag',
+            symbol: 'AAAUSDT',
+            direction: 'LONG',
+            timestamp: 1_000,
+            price: 1,
+          },
+        ],
+        toleranceMs: 0,
+        backtestTimestampOffsetMs: () => Number.NaN,
+      }),
+    ).toThrow(/Invalid backtest timestamp offset/);
   });
 
   it('dedupes repeated runtime entries by strategy, symbol, direction, and timestamp', () => {

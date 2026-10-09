@@ -4,7 +4,10 @@ import type {
 } from '@tradejs/types';
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import type { TradeParityEntry } from '../lib/runtimeParity';
-import { buildStrategyNameByOrderLinkKey } from '../lib/runtimeParityDetails';
+import {
+  buildReplayRuntimeComparisonDetails,
+  buildStrategyNameByOrderLinkKey,
+} from '../lib/runtimeParityDetails';
 import {
   compareExchangeEntriesToBacktest,
   splitExchangeMatchesByRuntimeOrderStatus,
@@ -44,6 +47,38 @@ const backtestEntry = (
 });
 
 describe('runtime comparison characterization', () => {
+  it('records each strategy own comparison timestamp in mixed-interval details', () => {
+    const backtestEntries = [
+      backtestEntry('fifteen', 1_000, { strategy: 'Flag' }),
+      backtestEntry('sixty', 1_000, { strategy: 'Dragon' }),
+    ];
+    const runtimeEntries = backtestEntries.map((entry, index) => ({
+      ...entry,
+      id: `runtime-${index}`,
+      source: 'runtime' as const,
+      timestamp: index === 0 ? 901_000 : 3_601_000,
+    }));
+    const details = buildReplayRuntimeComparisonDetails({
+      matched: runtimeEntries.map((runtime, index) => ({
+        runtime,
+        backtest: backtestEntries[index],
+        timestampDiffMs: 0,
+        priceDeltaPct: 0,
+      })),
+      runtimeOnly: [],
+      backtestOnly: [],
+      runtimeEntries,
+      backtestEntries,
+      toleranceMs: 0,
+      backtestTimestampOffsetMs: (strategy) =>
+        strategy === 'Dragon' ? 3_600_000 : 900_000,
+    });
+
+    expect(
+      details.matched.map((item) => item.backtest.comparisonTimestamp),
+    ).toEqual([901_000, 3_601_000]);
+  });
+
   it('matches each exchange execution to the nearest available backtest entry', () => {
     const result = compareExchangeEntriesToBacktest({
       exchangeEntries: [exchangeEntry(1_090), exchangeEntry(2_110)],

@@ -114,8 +114,21 @@ export const buildRuntimeFeedbackReplayCommands = ({
   interval: string;
   startTime: number;
   endTime: number;
-}) =>
-  [
+}) => {
+  const intervals = interval.split(',').map((value) => value.trim());
+  if (
+    !intervals.length ||
+    intervals.some(
+      (value) =>
+        !value || !Number.isFinite(Number(value)) || Number(value) <= 0,
+    )
+  ) {
+    throw new Error(`Invalid runtime feedback replay intervals: ${interval}`);
+  }
+  const replayTimeframe = intervals.sort(
+    (left, right) => Number(left) - Number(right),
+  )[0];
+  return [
     [
       cliPath,
       'replay',
@@ -126,7 +139,7 @@ export const buildRuntimeFeedbackReplayCommands = ({
       '--deployment',
       deploymentId,
       '--timeframe',
-      interval,
+      replayTimeframe,
       '--startTime',
       String(startTime),
       '--endTime',
@@ -150,6 +163,7 @@ export const buildRuntimeFeedbackReplayCommands = ({
       replayEvidencePath,
     ],
   ] as const;
+};
 
 const runLoggedCommand = async ({
   executable,
@@ -258,10 +272,8 @@ export const runRuntimeFeedbackReplay = async ({
   const intervals = new Set(
     activeStrategies.map(({ interval }) => String(interval)),
   );
-  if (intervals.size !== 1) {
-    throw new Error(
-      `Runtime feedback replay requires one interval, received ${[...intervals].join(',')}`,
-    );
+  if (!intervals.size) {
+    throw new Error('Runtime feedback replay requires an active interval');
   }
 
   await fs.mkdir(outDir, { recursive: true });
@@ -284,7 +296,7 @@ export const runRuntimeFeedbackReplay = async ({
     userName: runtimeEvidenceBundle.manifest.userName,
     connectorName: deployment.connectorName,
     deploymentId: deployment.id,
-    interval: [...intervals][0],
+    interval: [...intervals].join(','),
     startTime: runtimeEvidenceBundle.manifest.window.startTime,
     endTime: runtimeEvidenceBundle.manifest.window.endTime,
   });
