@@ -102,7 +102,27 @@ const verifyEntry = async (
   throw new Error('Unsupported artifact');
 };
 
-export const listMcpArtifacts = async (userName: string) => {
+export interface McpArtifactListOptions {
+  deploymentId?: string;
+  kind?: CatalogEntry['kind'];
+  offset?: number;
+  limit?: number;
+}
+
+export const listMcpArtifacts = async (
+  userName: string,
+  options: McpArtifactListOptions = {},
+) => {
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 20;
+  if (
+    !Number.isInteger(offset) ||
+    offset < 0 ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 100
+  )
+    throw new Error('Invalid artifact list pagination');
   const { deployments } = await readMcpDeployments(userName);
   const allowed = new Set(deployments.map((row) => row.id));
   const pending = [
@@ -113,7 +133,7 @@ export const listMcpArtifacts = async (userName: string) => {
   const items = [];
   let visited = 0;
   let invalidBundles = 0;
-  while (pending.length && visited < 2000 && items.length < 100) {
+  while (pending.length && visited < 2000) {
     const current = pending.shift()!;
     visited++;
     let entries;
@@ -125,6 +145,12 @@ export const listMcpArtifacts = async (userName: string) => {
     if (entries.some((entry) => entry.name === '.complete' && entry.isFile())) {
       try {
         const artifact = await verifyEntry(current.dir, userName, allowed);
+        if (
+          options.deploymentId &&
+          artifact.deploymentId !== options.deploymentId
+        )
+          continue;
+        if (options.kind && artifact.kind !== options.kind) continue;
         await mcpStorage.put(storageKey(userName, artifact.id), artifact, 3600);
         items.push({
           id: artifact.id,
@@ -132,7 +158,7 @@ export const listMcpArtifacts = async (userName: string) => {
           deploymentId: artifact.deploymentId,
           sha256: artifact.sha256,
           bytes: artifact.bytes,
-          manifest: artifact.manifest,
+          window: artifact.manifest.window,
         });
       } catch {
         invalidBundles++;
@@ -147,11 +173,18 @@ export const listMcpArtifacts = async (userName: string) => {
           });
       }
   }
+  items.sort((left, right) => left.id.localeCompare(right.id));
+  const page = items.slice(offset, offset + limit);
+  const nextOffset =
+    offset + page.length < items.length ? offset + page.length : null;
   return {
-    items,
+    items: page,
+    offset,
+    nextOffset,
     observedAt: Date.now(),
     source: 'verified_local_bundles',
-    truncated: pending.length > 0,
+    truncated: pending.length > 0 || nextOffset != null,
+    scanTruncated: pending.length > 0,
     invalidOrInaccessibleBundles: invalidBundles,
     note: 'Only verified, user-owned bundles available on this host are included.',
   };

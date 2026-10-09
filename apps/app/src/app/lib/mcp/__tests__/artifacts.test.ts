@@ -79,16 +79,20 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(mockRoot, { recursive: true, force: true });
 });
-const publish = () =>
+const publish = (endTime = 2000, lineageKeys: string[] = []) =>
   publishRuntimeEvidenceBundle({
     publishRoot: path.join(mockRoot, 'data/runtime-evidence'),
     deploymentId: 'production',
     userName: 'alice',
     startTime: 1000,
-    endTime: 2000,
-    artifact,
+    endTime,
+    artifact: {
+      ...artifact,
+      generatedAt: endTime,
+      window: { startTime: 1000, endTime },
+    },
     counts: {},
-    lineageKeys: [],
+    lineageKeys,
   });
 test('catalog exposes only sealed owned evidence and chunks reproduce the advertised checksum', async () => {
   const bundle = await publish();
@@ -121,6 +125,47 @@ test('modified payloads are rejected again after listing', async () => {
     'size mismatch',
   );
   expect((await listMcpArtifacts('alice')).items).toHaveLength(0);
+});
+test('catalog does not embed unbounded manifests in list responses', async () => {
+  await publish(
+    2000,
+    Array.from({ length: 2200 }, (_, index) => `${index}:${'x'.repeat(64)}`),
+  );
+  const catalog = await listMcpArtifacts('alice');
+  expect(catalog.items).toHaveLength(1);
+  expect(catalog.items[0]).not.toHaveProperty('manifest');
+  expect(Buffer.byteLength(JSON.stringify(catalog))).toBeLessThan(128 * 1024);
+});
+test('catalog pages compact verified entries and applies filters before pagination', async () => {
+  await publish(2000);
+  await publish(3000);
+  const first = await listMcpArtifacts('alice', {
+    deploymentId: 'production',
+    limit: 1,
+  });
+  expect(first.items).toHaveLength(1);
+  expect(first.nextOffset).toBe(1);
+  expect(first.scanTruncated).toBe(false);
+  const second = await listMcpArtifacts('alice', {
+    offset: first.nextOffset!,
+    limit: 1,
+  });
+  expect(second.items).toHaveLength(1);
+  expect(second.items[0].id).not.toBe(first.items[0].id);
+  expect(second.nextOffset).toBeNull();
+  expect(
+    (await listMcpArtifacts('alice', { deploymentId: 'other' })).items,
+  ).toEqual([]);
+  expect(
+    (await listMcpArtifacts('alice', { kind: 'runtime-feedback-replay' }))
+      .items,
+  ).toEqual([]);
+  await expect(listMcpArtifacts('alice', { limit: 101 })).rejects.toThrow(
+    'pagination',
+  );
+  await expect(listMcpArtifacts('alice', { offset: -1 })).rejects.toThrow(
+    'pagination',
+  );
 });
 test('payload symlinks cannot escape the data root even with a valid hash', async () => {
   const bundle = await publish();
