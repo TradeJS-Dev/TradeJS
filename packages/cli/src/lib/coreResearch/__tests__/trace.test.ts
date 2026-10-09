@@ -26,6 +26,11 @@ describe('core research trace summary', () => {
           event: 'skip_summary',
           skipCounts: { NO_PATTERN: 4, COOLDOWN: 2 },
         },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'CHANNEL_BREAK_EXIT',
+        },
       ]
         .map((event) => JSON.stringify(event))
         .join('\n') + '\n',
@@ -33,17 +38,37 @@ describe('core research trace summary', () => {
     );
     await fs.writeFile(
       second,
-      `${JSON.stringify({
-        schema: 'tradejs-core-research-trace/v1',
-        event: 'skip_summary',
-        skipCounts: { COOLDOWN: 3, BAD_RISK: 5 },
-      })}\n`,
+      [
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'skip_summary',
+          skipCounts: { COOLDOWN: 3, BAD_RISK: 5 },
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'CHANNEL_BREAK_EXIT',
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitCode: 'MOMENTUM_FADE_EXIT',
+        },
+        {
+          schema: 'tradejs-core-research-trace/v1',
+          event: 'position_exited',
+          exitReason: 'take_profit',
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join('\n') + '\n',
       'utf8',
     );
 
     expect(await summarizeCoreResearchTrace([first, second])).toEqual({
-      events: { setup_detected: 1, skip_summary: 2 },
+      events: { position_exited: 4, setup_detected: 1, skip_summary: 2 },
       skipCounts: { BAD_RISK: 5, COOLDOWN: 5, NO_PATTERN: 4 },
+      exitCodes: { CHANNEL_BREAK_EXIT: 2, MOMENTUM_FADE_EXIT: 1 },
     });
   });
 
@@ -51,7 +76,37 @@ describe('core research trace summary', () => {
     await expect(summarizeCoreResearchTrace()).resolves.toEqual({
       events: {},
       skipCounts: {},
+      exitCodes: {},
     });
+  });
+
+  it('counts exit codes that overlap Object prototype names', async () => {
+    const filePath = path.join(tempRoot, 'prototype-names.jsonl');
+    await fs.writeFile(
+      filePath,
+      ['__proto__', 'constructor', 'toString', '__proto__']
+        .map((exitCode) =>
+          JSON.stringify({
+            schema: 'tradejs-core-research-trace/v1',
+            event: 'position_exited',
+            exitReason: 'exit',
+            exitCode,
+          }),
+        )
+        .join('\n') + '\n',
+      'utf8',
+    );
+    const summary = await summarizeCoreResearchTrace([filePath]);
+    expect(summary.exitCodes).toEqual(
+      Object.fromEntries([
+        ['__proto__', 2],
+        ['constructor', 1],
+        ['toString', 1],
+      ]),
+    );
+    expect(JSON.parse(JSON.stringify(summary)).exitCodes).toEqual(
+      summary.exitCodes,
+    );
   });
 
   it('attributes malformed trace JSON to the exact shard and line', async () => {

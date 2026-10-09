@@ -426,6 +426,7 @@ export const createBacktestSession = async ({
             backtestTestKey: test.backtestTestKey,
             netProfit: resultRecord.tradeResult.netProfit,
             exitReason: resultRecord.tradeResult.exitReason,
+            exitCode: resultRecord.tradeResult.exitCode,
             ...researchSetup,
           },
         });

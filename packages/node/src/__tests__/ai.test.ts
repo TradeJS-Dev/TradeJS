@@ -3885,7 +3885,12 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 4,
+          quality: 3,
+          approved: false,
+          gateDecision: 'rejected',
+          rejectReason: expect.stringContaining(
+            'volume_divergence_price_pivots_prior_own_short_2026_09_10',
+          ),
           needRetest: true,
           retestPrice: 100,
           takeProfitPrice: null,
@@ -4023,7 +4028,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('promotes the best VolumeDivergence long q3 setups into q4 during local replay', async () => {
+    it('retains the VolumeDivergence local gate rejection for high-quality long setups', async () => {
       const signal = makeVolumeDivergenceSignal({
         additionalIndicators: {
           volumeDivergenceSetup: {
@@ -4062,7 +4067,12 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 4,
+          quality: 3,
+          approved: false,
+          gateDecision: 'rejected',
+          rejectReason: expect.stringContaining(
+            'volume_divergence_price_pivots_prior_own_short_2026_09_10',
+          ),
           needRetest: true,
           retestPrice: 100,
           takeProfitPrice: null,
@@ -4073,7 +4083,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('promotes semi-aligned VolumeDivergence long q3 confirmations during local replay when reclaim and candle quality are strong', async () => {
+    it('retains the VolumeDivergence local gate rejection for semi-aligned long confirmations', async () => {
       const signal = makeVolumeDivergenceSignal({
         indicators: {
           maFast: [100, 101, 102],
@@ -4123,7 +4133,12 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 4,
+          quality: 3,
+          approved: false,
+          gateDecision: 'rejected',
+          rejectReason: expect.stringContaining(
+            'volume_divergence_price_pivots_prior_own_short_2026_09_10',
+          ),
           needRetest: true,
           retestPrice: 100,
           takeProfitPrice: null,
@@ -4410,7 +4425,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('still approves mature counter-trend VolumeDivergence long confirmations during local replay', async () => {
+    it('retains the VolumeDivergence local gate rejection for mature counter-trend long confirmations', async () => {
       const signal = makeVolumeDivergenceSignal({
         indicators: {
           maFast: [99, 99.2, 99.4],
@@ -4460,7 +4475,12 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 4,
+          quality: 3,
+          approved: false,
+          gateDecision: 'rejected',
+          rejectReason: expect.stringContaining(
+            'volume_divergence_price_pivots_prior_own_short_2026_09_10',
+          ),
           needRetest: true,
           retestPrice: 100,
           takeProfitPrice: null,

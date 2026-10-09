@@ -50,7 +50,7 @@ const analysis = (params: {
     monthly: [window],
     regimes: {},
     costStress: [{ extraRoundTripBps: 10, cohorts: window.cohorts }],
-    traceFunnel: { events: {}, skipCounts: {} },
+    traceFunnel: { events: {}, skipCounts: {}, exitCodes: {} },
     latestSignalTimeRegime: null,
     supplemental: { coldStart: {}, stress: {}, confirmation: null },
   };

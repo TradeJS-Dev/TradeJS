@@ -191,6 +191,7 @@ export const compareCoreResearchVariants = (params: {
         pnlDelta: candidateTrade.netProfit - controlTrade.netProfit,
         exitReasonChanged:
           candidateTrade.exitReason !== controlTrade.exitReason,
+        exitCodeChanged: candidateTrade.exitCode !== controlTrade.exitCode,
         entryTimestampDeltaMs:
           candidateTrade.entryTimestamp - controlTrade.entryTimestamp,
         exitTimestampDeltaMs:

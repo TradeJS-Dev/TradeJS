@@ -121,11 +121,11 @@
   },
   "devDependencies": {
     "@tradejs/indicators": "workspace:^",
-    "@tradejs/strategy-adaptive-momentum-ribbon": "3.0.2",
-    "@tradejs/strategy-hyperliquid-consensus": "3.0.2",
+    "@tradejs/strategy-adaptive-momentum-ribbon": "3.0.5",
+    "@tradejs/strategy-hyperliquid-consensus": "3.0.5",
     "@tradejs/strategy-kit": "3.0.6",
-    "@tradejs/strategy-trend-line": "3.0.2",
-    "@tradejs/strategy-volume-divergence": "3.0.2",
+    "@tradejs/strategy-trend-line": "3.0.5",
+    "@tradejs/strategy-volume-divergence": "3.0.6",
     "tsup": "^8.5.1"
   },
   "scripts": {
