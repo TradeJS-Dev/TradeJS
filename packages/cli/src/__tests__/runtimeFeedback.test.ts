@@ -13,6 +13,7 @@ import {
 import {
   assertRuntimeFeedbackReplaySafety,
   buildRuntimeFeedbackReplayCommands,
+  runRuntimeFeedbackReplay,
 } from '../lib/runtimeFeedbackReplay';
 import {
   buildRuntimeFeedbackTelegramMessage,
@@ -74,16 +75,19 @@ describe('production runtime feedback replay', () => {
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
-  const createRuntimeEvidence = async () => {
+  const createRuntimeEvidence = async (
+    embeddedDeployment = deployment,
+    embeddedProducer = producer,
+  ) => {
     const startTime = Date.UTC(2026, 7, 22, 18);
     const endTime = Date.UTC(2026, 7, 23, 18);
     const artifact = {
       reportType: 'runtime-evidence',
       generatedAt: endTime,
-      producer,
+      producer: embeddedProducer,
       userName: 'root',
       window: { startTime, endTime },
-      deployment,
+      deployment: embeddedDeployment,
       runtime: {
         counts: { trades: 1, signals: 1, evaluations: 1 },
         trades: [],
@@ -363,5 +367,94 @@ describe('production runtime feedback replay', () => {
     expect(commands[1]).toContain(
       '/runtime-feedback/replay-runtime-evidence.json',
     );
+  });
+
+  it('uses one valid replay timeframe for a mixed-interval snapshot', () => {
+    const commands = buildRuntimeFeedbackReplayCommands({
+      cliPath: '/app/node_modules/.bin/tradejs',
+      runtimeEvidencePath: '/runtime-evidence/runtime-evidence.json',
+      replayEvidencePath: '/runtime-feedback/replay-runtime-evidence.json',
+      userName: 'root',
+      connectorName: 'bybit',
+      deploymentId: 'production',
+      interval: '15,60',
+      startTime: 1_000,
+      endTime: 2_000,
+    });
+    expect(commands[0][commands[0].indexOf('--timeframe') + 1]).toBe('15');
+  });
+
+  it('runs and seals a replay from a mixed-interval embedded deployment', async () => {
+    const manifestText = '{"schema":"tradejs-runtime-package-manifest/v1"}\n';
+    await fs.writeFile(
+      path.join(rootDir, 'runtime-package-manifest.json'),
+      manifestText,
+    );
+    const mixedProducer = {
+      ...producer,
+      runtimePackageManifest: {
+        file: 'runtime-package-manifest.json' as const,
+        sha256: sha256(manifestText),
+      },
+    };
+    const mixedDeployment = {
+      ...deployment,
+      strategies: [
+        ...deployment.strategies,
+        {
+          ...deployment.strategies[0],
+          strategyName: 'TradingPatterns',
+          strategyRevision: 'sr1:6666666666666666',
+          interval: '60',
+          strategyConfig: { INTERVAL: '60', UNIVERSE: 'crypto' },
+        },
+      ],
+    };
+    const evidence = await createRuntimeEvidence(
+      mixedDeployment,
+      mixedProducer,
+    );
+    const cliPath = path.join(rootDir, 'fake-cli.mjs');
+    await fs.writeFile(
+      cliPath,
+      `import fs from 'node:fs';\n` +
+        `const args = process.argv.slice(2);\n` +
+        `if (args[0] === 'replay-runtime-evidence') {\n` +
+        `  const evidence = JSON.parse(fs.readFileSync(args[args.indexOf('--runtimeEvidence') + 1], 'utf8'));\n` +
+        `  fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ reportType: 'replay-runtime-evidence', userName: evidence.userName, window: evidence.window, deployment: evidence.deployment, strategies: evidence.deployment.strategies.map((strategy) => strategy.strategyName), replay: { cycleCount: 1 } }));\n` +
+        `}\n`,
+    );
+    const previousSha = process.env.TRADEJS_PROJECT_SHA;
+    const previousDigest = process.env.TRADEJS_PROJECT_IMAGE_DIGEST;
+    process.env.TRADEJS_PROJECT_SHA = producer.projectSha;
+    process.env.TRADEJS_PROJECT_IMAGE_DIGEST = producer.imageDigest;
+    try {
+      const result = await runRuntimeFeedbackReplay({
+        runtimeEvidencePath: evidence.payloadPath,
+        outDir: path.join(rootDir, 'feedback-output'),
+        runId: 'mixed-interval',
+        projectRoot: rootDir,
+        executable: process.execPath,
+        cliPath,
+        env: {
+          RUNTIME_FEEDBACK_ISOLATED_REDIS: 'true',
+          MAKE_ORDERS: 'false',
+          TRADEJS_EXTERNAL_ORDER_PLACEMENT: 'false',
+          TRADEJS_TIMESCALE_READ_ONLY: 'true',
+          REDIS_HOST: 'runtime-feedback-redis-test',
+          PGOPTIONS: '-c default_transaction_read_only=on',
+        },
+      });
+      expect(result.manifest.activeStrategies).toEqual([
+        'DoubleTap',
+        'TradingPatterns',
+      ]);
+    } finally {
+      if (previousSha == null) delete process.env.TRADEJS_PROJECT_SHA;
+      else process.env.TRADEJS_PROJECT_SHA = previousSha;
+      if (previousDigest == null)
+        delete process.env.TRADEJS_PROJECT_IMAGE_DIGEST;
+      else process.env.TRADEJS_PROJECT_IMAGE_DIGEST = previousDigest;
+    }
   });
 });

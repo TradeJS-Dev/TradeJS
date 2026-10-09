@@ -220,6 +220,18 @@ With no tuningSince, all earlier rows form development and tuning is empty.
 Exact boundaries override ratios; use the parent development timestamp groups
 to choose the shared 60/40 calendar boundary, rather than moving it per candidate.
 
+Explicit `--windowStart` / `--windowEnd` bounds also filter original source rows
+**before** payload reconstruction, deterministic gate evaluation, feature inventory
+and variant matching. The loader uses the source decision timestamp and half-open
+`[start, end)` membership, retaining the original cross-shard row sequence for
+approval-identity comparisons. With explicit bounds, missing/invalid timestamps
+are skipped before evaluation; without bounds they fail. Invalid, incomplete or
+nonascending bounds fail before reading rows. JSON `sourceSelection` records read,
+pre-window, at/after-end, invalid-timestamp and selected counts. A development-only
+window therefore cannot evaluate reserved-tail gates or expose their features,
+even though it streams the frozen full export. This does not maturity-seal labels:
+selected development decisions can still have completed outcomes after its end.
+
 Use `--windowStart <UTC> --windowEnd <UTC>` to compare candidates over the same
 calendar window. The start is inclusive, and the end is exclusive. Full-period
 cadence and terminal windows use these bounds instead of each export's first
@@ -386,6 +398,103 @@ known; otherwise keep the default `1,3,5` stress grid. Timestamp groups are
 never split between train/tuning/test.
 
 ## Maintenance Rule
+
+### Calendar equity stability diagnostics
+
+Use `scripts/equity-stability.mjs --input <ablation.json> --output <new.json>`
+for calendar-weighted diagnostics from checksum-bound `realized.equity`.
+It does not reconstruct approvals or recompute trade outcomes. It holds the
+recorded closed-trade equity constant between observations, including inactive
+time, and reports calendar ulcer index, underwater share, maximum continuous
+underwater duration and maximum peak-to-recovery duration. Unrecovered terminal
+episodes are included and explicitly right-censored. These are closed-trade
+diagnostics, not intratrade or capital-return measures. Full-period diagnostics
+must not be used to tune rules on a previously reserved historical tail.
+The existing `ulcerIndex` remains trade-observation weighted and unchanged.
+Run `node --test scripts/equity-stability.test.mjs` after changes.
+
+### Optional monthly funnel and named-policy comparison
+
+Use `--monthlyCohorts --cohortPath <payload.path>` with explicit comparison
+window bounds to retain a generic UTC calendar-month funnel. Each month has
+source-export and selected-gate summaries for ALL, LONG, SHORT and observed
+payload cohorts, including zero-row months. Month cadence uses its actual
+clipped calendar bounds. This diagnostic describes opportunities in the
+completed-trade export, not every detector setup, attempted order or runtime
+fill. Missing cache candles can suppress that source flow. Coverage remains a
+diagnostic and must never unlock approval.
+
+Use `--compareTo <variant-name>` (or `baseline` for the compiled gate) for exact
+approval-set differences against a named policy. `comparisons` contains added
+and removed identities and existing full/terminal, development/test, direction,
+cost-stress and optional completed-trade summaries. The existing variant
+`added`/`removed` fields still compare with the compiled baseline; do not rename
+them as differences against a custom control. These options add no policy,
+change no approvals and leave existing metrics unchanged.
+
+The exported `formatGateComparisonContract` presentation API renders the fixed
+AI reporting tables directly from two structured ablation reports and named
+policies. It supports a frozen old control versus the same gate on a new core
+export without recomputing metrics or silently using the new compiled baseline.
+It rejects mismatched explicit calendar windows, outer test boundaries or
+quality thresholds. Pass lineage/header, acceptance checks and conclusion
+explicitly; unknown execution and reject-reason evidence stays `n/a`.
+
+### Optional data-quality and adverse-cost diagnostics
+
+Use `--featurePattern '<regex>' --cohortPath '<payload.path>'` to add
+`featureAvailabilityAudit` to JSON reports. The cohort path is relative to the
+rebuilt payload; for example,
+`additionalIndicators.tradingPatternsContext.selectedPattern`. Audit groups
+use UTC calendar year, direction, and cohort. Each observed matching primitive
+path reports available, null, missing, invalid, present-approved, and
+present-rejected counts. False and zero are present values. Arrays are not
+expanded. Paths absent from every payload cannot be inferred from a regex and
+are not fabricated. These snapshots stay separate from approval features:
+presence and cohort membership never change a gate decision.
+
+Use `--costStressBps 2,5,10` to add per-gate `costStress` JSON diagnostics.
+Each number is additional adverse slippage in basis points on **each** entry
+and exit. The tool selects original approvals once, then subtracts
+`closedQty * (entryPrice + exitPrice) * bps / 10000` from their net PnL.
+It uses `qty` only when `closedQty` is absent, and accepts actual execution
+prices only from the original export's `tradeResult`; requested signal prices
+are not substitutes. Historical quantity, risk and approval identities remain
+unchanged. This is arithmetic cost stress, not a new execution simulation.
+
+Reports retain full/terminal, development/test, three development blocks and
+ALL/LONG/SHORT summaries through the existing metric functions. If any approved
+row in a cohort lacks valid economics, that cohort's `metrics` and
+`additionalCost` are null (render as `n/a`), with explicit complete/missing row
+counts. Complete directional cohorts remain measurable even when aggregate
+economics are unavailable. The summaries keep the existing decision-time metric
+ordering; they are not a substitute for exit-time realized portfolio drawdown
+or occupancy-sensitive backtests. Both diagnostic options are opt-in, leave
+original report fields unchanged, and do not create additional gate candidates.
+
+Use `--realizedMetrics` for additional `baseline.realized` and
+`variant.realized` JSON evidence. Original approvals and decision-time metrics
+stay unchanged. This option requires explicit `--windowStart` and `--windowEnd`;
+the last signal is not a valid completion-window anchor. The tool joins the selected rows to their own original
+`tradeResult.netProfit` and `tradeResult.exitTimestamp`, requires finite values
+and agreement with exported row profit, and reuses the existing metric and
+equity functions after sorting by actual completion time. Full and terminal
+windows are half-open, anchored to the common immutable window end; terminal
+membership uses exit timestamps. Train/test and three development cohorts are
+first assigned by original decision timestamps, then exit-ordered within each
+cohort. Development trades may finish after the decision partition boundary;
+these are retrospective completed-outcome cohorts, not maturity-sealed training
+labels. Cohort cadence uses the full original decision-calendar bounds, including
+inactive days, with the same denominator for ALL and each direction. Invalid
+signal identities, duplicate approvals and exits preceding signals fail loudly;
+out-of-window completed outcomes are counted explicitly. Zero-PnL outcomes are
+flat (neither wins nor losses), matching gate metrics, unlike the raw-core
+Redis-compatible zero-as-loss convention. The additional section also retains directions and year/direction/cohort
+outcomes, with year assigned by decision timestamp. Missing economics produce
+null periods/equity, never substitute signal time or guessed outcome. A selector
+using `metricBasis=completed-trade` must fail rather than consume incomplete
+realized evidence. Approval-event cadence and fan-out remain decision-time
+diagnostics; completed-trade cadence is a separate metric.
 
 Do not create another `/tmp` parser, heredoc ESM replay, or strategy-specific
 one-off script for capabilities that belong here. Extend this script and its

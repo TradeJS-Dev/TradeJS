@@ -41,6 +41,11 @@ Options:
   --capacities <list>          Capacity stress limits (default: 1,3,5)
   --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
+  --cohortPath <path>          Audit feature availability by UTC year/direction/payload cohort
+  --costStressBps <list>       Additional slippage per entry and exit, diagnostics only
+  --realizedMetrics           Additional completed-trade metrics ordered by actual exit time
+  --monthlyCohorts            Calendar monthly export/gate funnel by direction and payload cohort
+  --compareTo <variant>       Exact added/removed approval slices versus a named variant
   --includeGateContext         Include current gate output fields for audits only
   --movingAverageStudy        Causal SMA/EMA/WMA grid ablation from candle cache
   --maPeriods <list>           Moving-average periods (default: 5,10,...,100)
@@ -97,6 +102,11 @@ export const parseCliArgs = (argv) => {
     testSince: null,
     capacities: DEFAULT_CAPACITIES,
     maxLossValue: null,
+    cohortPath: null,
+    costStressBps: [],
+    realizedMetrics: false,
+    monthlyCohorts: false,
+    compareTo: null,
     variants: [],
     includeGateContext: false,
     movingAverageStudy: false,
@@ -128,6 +138,8 @@ export const parseCliArgs = (argv) => {
     'json',
     'list',
     'help',
+    'realizedMetrics',
+    'monthlyCohorts',
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -157,6 +169,17 @@ export const parseCliArgs = (argv) => {
       );
     } else if (name === 'terminalWindows') {
       options.terminalWindows = parseNumberList(value, DEFAULT_WINDOWS);
+    } else if (name === 'costStressBps') {
+      const values = String(value).split(',').map(Number);
+      if (
+        !values.length ||
+        values.some((bps) => !Number.isFinite(bps) || bps <= 0)
+      ) {
+        throw new Error(
+          `Invalid positive basis points for --${name}: ${value}`,
+        );
+      }
+      options.costStressBps = [...new Set(values)];
     } else if (name === 'validationSplit') {
       const parsed = Number(value);
       options.validationSplit = Number.isFinite(parsed)
@@ -223,6 +246,8 @@ export const parseCliArgs = (argv) => {
         'outDir',
         'spec',
         'featurePattern',
+        'cohortPath',
+        'compareTo',
         'output',
       ].includes(name)
     ) {
@@ -232,6 +257,14 @@ export const parseCliArgs = (argv) => {
     }
   }
 
+  if (options.cohortPath && !options.featurePattern) {
+    throw new Error(
+      '--cohortPath requires --featurePattern for the diagnostic inventory',
+    );
+  }
+  if (options.monthlyCohorts && !options.cohortPath) {
+    throw new Error('--monthlyCohorts requires --cohortPath');
+  }
   return options;
 };
 
@@ -1555,6 +1588,175 @@ export const ensureRuntimeBuild = async (frameworkRepositoryRoot) => {
   return { aiModulePath, registryModulePath, pocketModulePath };
 };
 
+const readDiagnosticPath = (value, featurePath) =>
+  featurePath.split('.').reduce((current, key) => current?.[key], value);
+
+// Diagnostic snapshots never enter the causal feature collector or gate expressions.
+export const collectDiagnosticFeatures = (payload, pattern) => {
+  const result = {};
+  if (!pattern) return result;
+  const visit = (value, prefix) => {
+    if (value != null && typeof value === 'object') {
+      if (Array.isArray(value)) return;
+      for (const [key, child] of Object.entries(value)) {
+        visit(child, prefix ? `${prefix}.${key}` : key);
+      }
+      return;
+    }
+    pattern.lastIndex = 0;
+    if (pattern.test(prefix)) result[prefix] = value;
+  };
+  visit(payload, '');
+  return result;
+};
+
+export const getCostStressNotional = (tradeResult) => {
+  if (!tradeResult || typeof tradeResult !== 'object') return null;
+  const { entryPrice, exitPrice } = tradeResult;
+  const quantity = tradeResult.closedQty ?? tradeResult.qty;
+  if (
+    ![entryPrice, exitPrice, quantity].every(
+      (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
+    ) ||
+    (tradeResult.qty != null &&
+      (!Number.isFinite(tradeResult.qty) || quantity > tradeResult.qty))
+  )
+    return null;
+  return quantity * (entryPrice + exitPrice);
+};
+
+export const buildFeatureAvailabilityAudit = (rows) => {
+  const paths = [
+    ...new Set(rows.flatMap((row) => Object.keys(row.auditFeatures ?? {}))),
+  ].sort();
+  const cohorts = new Map();
+  for (const row of rows) {
+    const year = new Date(row.timestamp).getUTCFullYear();
+    const cohort = row.auditCohort == null ? 'n/a' : String(row.auditCohort);
+    const key = JSON.stringify([year, row.direction, cohort]);
+    const group = cohorts.get(key) ?? {
+      year,
+      direction: row.direction,
+      cohort,
+      rows: [],
+    };
+    group.rows.push(row);
+    cohorts.set(key, group);
+  }
+  return {
+    role: 'data-quality diagnostic only; presence never approves a signal',
+    paths,
+    cohorts: [...cohorts.values()]
+      .sort(
+        (a, b) =>
+          a.year - b.year ||
+          String(a.direction).localeCompare(String(b.direction)) ||
+          a.cohort.localeCompare(b.cohort),
+      )
+      .map(({ rows: groupRows, ...cohort }) => ({
+        ...cohort,
+        rows: groupRows.length,
+        features: paths.map((feature) => {
+          const counts = {
+            feature,
+            available: 0,
+            null: 0,
+            missing: 0,
+            invalid: 0,
+            presentApproved: 0,
+            presentRejected: 0,
+          };
+          for (const row of groupRows) {
+            const value = row.auditFeatures?.[feature];
+            if (value === undefined) counts.missing += 1;
+            else if (value === null) counts.null += 1;
+            else if (typeof value === 'number' && !Number.isFinite(value))
+              counts.invalid += 1;
+            else {
+              counts.available += 1;
+              counts[
+                row.baselineApproved ? 'presentApproved' : 'presentRejected'
+              ] += 1;
+            }
+          }
+          return counts;
+        }),
+      })),
+  };
+};
+
+export const validateResearchWindow = (windowStart, windowEnd) => {
+  if ((windowStart == null) !== (windowEnd == null)) {
+    throw new Error(
+      'Common comparison window requires both windowStart and windowEnd',
+    );
+  }
+  if (windowStart == null) return null;
+  if (
+    !Number.isFinite(windowStart) ||
+    !Number.isFinite(windowEnd) ||
+    windowStart >= windowEnd
+  ) {
+    throw new Error(
+      'Common comparison window requires finite ascending bounds',
+    );
+  }
+  return { start: windowStart, end: windowEnd };
+};
+
+// Yield only selected sources: no payload, gate or feature work may precede this boundary.
+export async function* readWindowedResearchSources({
+  filePaths,
+  windowStart = null,
+  windowEnd = null,
+  scan = {},
+}) {
+  const window = validateResearchWindow(windowStart, windowEnd);
+  Object.assign(scan, {
+    rowsRead: 0,
+    beforeWindow: 0,
+    atOrAfterWindowEnd: 0,
+    invalidTimestamp: 0,
+    selectedRows: 0,
+  });
+  let sequence = 0;
+  for (const filePath of filePaths) {
+    const reader = readline.createInterface({
+      input: fs.createReadStream(filePath),
+      crlfDelay: Infinity,
+    });
+    for await (const line of reader) {
+      if (!line.trim()) continue;
+      const source = JSON.parse(line);
+      const sourceSequence = sequence++;
+      scan.rowsRead += 1;
+      const timestamp =
+        source.timestamp == null ||
+        typeof source.timestamp === 'boolean' ||
+        String(source.timestamp).trim() === ''
+          ? null
+          : Number(source.timestamp);
+      if (timestamp == null || !Number.isFinite(timestamp)) {
+        scan.invalidTimestamp += 1;
+        if (!window)
+          throw new Error('At least one source row has no finite timestamp');
+        continue;
+      }
+      if (window && timestamp < window.start) {
+        scan.beforeWindow += 1;
+        continue;
+      }
+      if (window && timestamp >= window.end) {
+        scan.atOrAfterWindowEnd += 1;
+        continue;
+      }
+      scan.selectedRows += 1;
+      yield { source, sequence: sourceSequence, timestamp };
+    }
+  }
+}
+
 const loadResearchRows = async ({
   projectRoot,
   sourceRepositoryRoot,
@@ -1564,7 +1766,11 @@ const loadResearchRows = async ({
   minQuality,
   includeGateContext,
   featurePattern,
+  cohortPath,
+  windowStart = null,
+  windowEnd = null,
 }) => {
+  validateResearchWindow(windowStart, windowEnd);
   const { aiModulePath, registryModulePath, pocketModulePath } =
     await ensureRuntimeBuild(frameworkRepositoryRoot);
   const aiModule = await import(pathToFileURL(aiModulePath).href);
@@ -1582,83 +1788,96 @@ const loadResearchRows = async ({
 
   const rows = [];
   const featureInventory = new Map();
-  let sequence = 0;
+  let evaluated = 0;
   let failed = 0;
-  for (const filePath of filePaths) {
-    const reader = readline.createInterface({
-      input: fs.createReadStream(filePath),
-      crlfDelay: Infinity,
-    });
-    for await (const line of reader) {
-      if (!line.trim()) continue;
-      const source = JSON.parse(line);
-      try {
-        const signal = signalFromRow(source);
-        const payload = aiModule.buildAiPayload(signal);
-        const gateContext = aiModule.getDeterministicAiGateContext(payload);
-        const analysis = await aiModule.runAiPromptLocal(signal, { payload });
-        const features = collectAiPocketFeatures({
-          payload,
-          gateContext,
-          includeGateContext,
-          featureProfile: 'all',
-        });
-        features['derived.direction'] = String(source.direction).toUpperCase();
-        updateFeatureInventory(featureInventory, features, featurePattern);
-        const timestamp = Number(source.timestamp);
-        const profit = Number(source.profit);
-        const qualityValue = Number(analysis.quality);
-        const quality = Number.isFinite(qualityValue)
-          ? Math.round(qualityValue)
-          : null;
-        const finiteOrNull = (value) => {
-          const parsed = Number(value);
-          return Number.isFinite(parsed) ? parsed : null;
-        };
-        const rawContext = payload.additionalIndicators?.baseContext?.raw ?? {};
-        rows.push({
-          sequence,
-          signalId: source.signalId,
-          timestamp: Number.isFinite(timestamp) ? timestamp : null,
-          symbol: source.symbol,
-          direction: source.direction,
-          profit: Number.isFinite(profit) ? profit : 0,
-          quality,
-          directionMatches: analysis.direction === source.direction,
-          baselineApproved:
-            analysis.direction === source.direction &&
-            quality != null &&
-            quality >= minQuality,
-          features,
-          movingAverageSource: {
-            provider: String(source.connectorName ?? '')
-              .trim()
-              .toLowerCase(),
-            interval: finiteOrNull(payload.signal?.interval),
-            currentPrice: finiteOrNull(payload.signal?.prices?.currentPrice),
-            atr: finiteOrNull(rawContext.volatility?.atr),
-            existingSma: {
-              14: finiteOrNull(rawContext.trend?.maFast),
-              49: finiteOrNull(rawContext.trend?.maMedium),
-              50: finiteOrNull(rawContext.trend?.maSlow),
-            },
+  const sourceSelection = {};
+  for await (const {
+    source,
+    sequence,
+    timestamp,
+  } of readWindowedResearchSources({
+    filePaths,
+    windowStart,
+    windowEnd,
+    scan: sourceSelection,
+  })) {
+    try {
+      const signal = signalFromRow(source);
+      const payload = aiModule.buildAiPayload(signal);
+      const gateContext = aiModule.getDeterministicAiGateContext(payload);
+      const analysis = await aiModule.runAiPromptLocal(signal, { payload });
+      const features = collectAiPocketFeatures({
+        payload,
+        gateContext,
+        includeGateContext,
+        featureProfile: 'all',
+      });
+      features['derived.direction'] = String(source.direction).toUpperCase();
+      updateFeatureInventory(featureInventory, features, featurePattern);
+      const profit = Number(source.profit);
+      const qualityValue = Number(analysis.quality);
+      const quality = Number.isFinite(qualityValue)
+        ? Math.round(qualityValue)
+        : null;
+      const finiteOrNull = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const rawContext = payload.additionalIndicators?.baseContext?.raw ?? {};
+      rows.push({
+        sequence,
+        signalId: source.signalId,
+        timestamp: Number.isFinite(timestamp) ? timestamp : null,
+        symbol: source.symbol,
+        direction: source.direction,
+        profit: Number.isFinite(profit) ? profit : 0,
+        quality,
+        directionMatches: analysis.direction === source.direction,
+        baselineApproved:
+          analysis.direction === source.direction &&
+          quality != null &&
+          quality >= minQuality,
+        features,
+        auditFeatures: collectDiagnosticFeatures(payload, featurePattern),
+        auditCohort: cohortPath
+          ? readDiagnosticPath(payload, cohortPath)
+          : null,
+        costStressNotional: getCostStressNotional(source.tradeResult),
+        completedTrade:
+          source.tradeResult == null
+            ? null
+            : {
+                exitTimestamp: source.tradeResult.exitTimestamp,
+                netProfit: source.tradeResult.netProfit,
+              },
+        movingAverageSource: {
+          provider: String(source.connectorName ?? '')
+            .trim()
+            .toLowerCase(),
+          interval: finiteOrNull(payload.signal?.interval),
+          currentPrice: finiteOrNull(payload.signal?.prices?.currentPrice),
+          atr: finiteOrNull(rawContext.volatility?.atr),
+          existingSma: {
+            14: finiteOrNull(rawContext.trend?.maFast),
+            49: finiteOrNull(rawContext.trend?.maMedium),
+            50: finiteOrNull(rawContext.trend?.maSlow),
           },
-          variantMatches: variants.map((variant) =>
-            evaluateRule(variant.rule, features),
-          ),
-        });
-      } catch (error) {
-        failed += 1;
-        if (failed <= 5) {
-          console.error(
-            `row error ${source.symbol}/${source.signalId}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+        },
+        variantMatches: variants.map((variant) =>
+          evaluateRule(variant.rule, features),
+        ),
+      });
+    } catch (error) {
+      failed += 1;
+      if (failed <= 5) {
+        console.error(
+          `row error ${source.symbol}/${source.signalId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
-      sequence += 1;
-      if (sequence % 2500 === 0) {
-        console.error(`evaluated ${sequence} rows`);
-      }
+    }
+    evaluated += 1;
+    if (evaluated % 2500 === 0) {
+      console.error(`evaluated ${evaluated} rows`);
     }
   }
   rows.sort(
@@ -1674,6 +1893,7 @@ const loadResearchRows = async ({
     rows,
     failed,
     featureInventory: finalizeFeatureInventory(featureInventory),
+    sourceSelection,
   };
 };
 
@@ -4043,6 +4263,372 @@ export const buildCrossStrategyReport = async ({
   };
 };
 
+export const buildRealizedReport = ({
+  rows,
+  selector,
+  minTimestamp,
+  maxTimestamp,
+  terminalWindows,
+  split,
+  stabilityBlocks,
+  summaryOptions,
+  testSince = null,
+  tuningSince = null,
+}) => {
+  const approved = selectRows(rows, selector);
+  const identities = new Set();
+  for (const row of approved) {
+    if (
+      !String(row.signalId ?? '').trim() ||
+      !String(row.symbol ?? '').trim() ||
+      !['LONG', 'SHORT'].includes(row.direction)
+    ) {
+      throw new Error(
+        'Realized metrics require a stable signal identity, symbol and LONG/SHORT direction',
+      );
+    }
+    const identity = JSON.stringify([row.signalId, row.symbol, row.direction]);
+    if (identities.has(identity))
+      throw new Error(`Duplicate realized approval identity: ${identity}`);
+    identities.add(identity);
+    if (
+      Number.isFinite(row.completedTrade?.exitTimestamp) &&
+      row.completedTrade.exitTimestamp < row.timestamp
+    ) {
+      throw new Error(`Realized trade exit precedes signal: ${identity}`);
+    }
+  }
+  const valid = (row) =>
+    typeof row.completedTrade?.exitTimestamp === 'number' &&
+    Number.isFinite(row.completedTrade.exitTimestamp) &&
+    typeof row.completedTrade?.netProfit === 'number' &&
+    Number.isFinite(row.completedTrade.netProfit) &&
+    Math.abs(row.completedTrade.netProfit - row.profit) < 1e-9;
+  const missing = approved.filter((row) => !valid(row)).length;
+  const provenance = {
+    timestampField: 'tradeResult.exitTimestamp',
+    profitField: 'tradeResult.netProfit',
+    approvedN: approved.length,
+    missingEconomicRows: missing,
+    partitionBasis:
+      'whole decision timestamp groups, then exit ordering within each partition',
+    terminalBasis:
+      'closed trades in [windowEnd-days, windowEnd), not signal time',
+    eventMetricsRole:
+      'exit-time economic groups only; not approval capacity or entry fan-out evidence',
+    zeroProfitConvention:
+      'flat outcome: counted in trades but neither wins nor losses, same as gate metrics',
+  };
+  if (missing) return { ...provenance, periods: null, equity: null };
+  const selected = new Set(approved);
+  const order = (cohort) =>
+    cohort
+      .filter((row) => selected.has(row))
+      .map((row) => ({
+        ...row,
+        decisionTimestamp: row.timestamp,
+        timestamp: row.completedTrade.exitTimestamp,
+        profit: row.completedTrade.netProfit,
+      }))
+      .filter(
+        (row) => row.timestamp >= minTimestamp && row.timestamp < maxTimestamp,
+      )
+      .sort(
+        (a, b) =>
+          a.timestamp - b.timestamp ||
+          (String(a.signalId) < String(b.signalId)
+            ? -1
+            : String(a.signalId) > String(b.signalId)
+              ? 1
+              : 0) ||
+          (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0) ||
+          (a.direction < b.direction
+            ? -1
+            : a.direction > b.direction
+              ? 1
+              : 0) ||
+          a.sequence - b.sequence,
+      );
+  const realizedRows = order(rows);
+  const testStart = testSince ?? split.test[0]?.timestamp ?? maxTimestamp;
+  const tuningStart = tuningSince ?? split.tuning[0]?.timestamp ?? testStart;
+  const partitionBounds = {
+    train: { start: minTimestamp, end: tuningStart },
+    tuning: { start: tuningStart, end: testStart },
+    test: { start: testStart, end: maxTimestamp },
+  };
+  const fullBounds = { start: minTimestamp, end: maxTimestamp };
+  const optionsFor = (bounds) => ({
+    ...summaryOptions,
+    denominatorDays: Math.max((bounds.end - bounds.start) / DAY_MS, 1),
+    calendarDays: getCalendarDays([
+      { timestamp: bounds.start },
+      { timestamp: Math.max(bounds.start, bounds.end - 1) },
+    ]),
+  });
+  const summarize = (cohort, bounds = fullBounds) =>
+    summarizeRows(
+      order(cohort),
+      optionsFor(bounds).denominatorDays,
+      optionsFor(bounds),
+    );
+  const directions = (cohort, bounds = fullBounds) =>
+    summarizeDirections(order(cohort), () => true, optionsFor(bounds));
+  const cohorts = new Map();
+  for (const row of rows) {
+    const year = new Date(row.timestamp).getUTCFullYear();
+    const cohort = row.auditCohort == null ? 'n/a' : String(row.auditCohort);
+    const key = JSON.stringify([year, row.direction, cohort]);
+    const group = cohorts.get(key) ?? {
+      year,
+      direction: row.direction,
+      cohort,
+      rows: [],
+    };
+    group.rows.push(row);
+    cohorts.set(key, group);
+  }
+  return {
+    ...provenance,
+    excludedOutsideWindow: approved.length - realizedRows.length,
+    partitionCalendarBounds: partitionBounds,
+    periods: buildPeriodSummaries({
+      rows: realizedRows,
+      selector: () => true,
+      windows: terminalWindows,
+      minTimestamp,
+      maxTimestamp,
+      summaryOptions,
+    }),
+    periodDirections: buildPeriodDirectionSummaries({
+      rows: realizedRows,
+      selector: () => true,
+      windows: terminalWindows,
+      maxTimestamp,
+      summaryOptions,
+    }),
+    equity: buildEquitySeries(
+      realizedRows,
+      () => true,
+      minTimestamp,
+      maxTimestamp - 1,
+    ),
+    directions: directions(rows),
+    train: summarize(split.train, partitionBounds.train),
+    tuning: summarize(split.tuning, partitionBounds.tuning),
+    test: summarize(split.test, partitionBounds.test),
+    partitionDirections: {
+      train: directions(split.train, partitionBounds.train),
+      tuning: directions(split.tuning, partitionBounds.tuning),
+      test: directions(split.test, partitionBounds.test),
+    },
+    developmentStability: stabilityBlocks.map((block, index) => {
+      const bounds = {
+        start: index === 0 ? minTimestamp : block[0]?.timestamp ?? tuningStart,
+        end: stabilityBlocks[index + 1]?.[0]?.timestamp ?? testStart,
+      };
+      bounds.end = Math.max(bounds.start, bounds.end);
+      return {
+        calendarBounds: bounds,
+        metrics: summarize(block, bounds),
+        directions: directions(block, bounds),
+      };
+    }),
+    cohorts: [...cohorts.values()].map(({ rows: cohortRows, ...cohort }) => ({
+      ...cohort,
+      sourceRows: cohortRows.length,
+      metrics: summarize(cohortRows, {
+        start: Math.max(minTimestamp, Date.UTC(cohort.year, 0, 1)),
+        end: Math.min(maxTimestamp, Date.UTC(cohort.year + 1, 0, 1)),
+      }),
+    })),
+  };
+};
+
+export const buildCostStressReport = ({
+  rows,
+  selector,
+  basisPoints,
+  terminalWindows,
+  minTimestamp,
+  maxTimestamp,
+  split,
+  stabilityBlocks,
+  summaryOptions = {},
+  explicitWindow = false,
+}) => {
+  // Select once using the original gate. Slippage cannot change approval identities.
+  const selected = new Set(selectRows(rows, selector));
+  return basisPoints.map((bps) => {
+    const summary = (cohort, options) => {
+      const approved = cohort.filter((row) => selected.has(row));
+      const missing = approved.filter(
+        (row) =>
+          !Number.isFinite(row.costStressNotional) ||
+          row.costStressNotional <= 0,
+      ).length;
+      const adjusted = approved.map((row) => ({
+        ...row,
+        profit: row.profit - (row.costStressNotional * bps) / 10_000,
+      }));
+      return {
+        approvedN: approved.length,
+        completeEconomicRows: approved.length - missing,
+        missingEconomicRows: missing,
+        additionalCost: missing
+          ? null
+          : approved.reduce(
+              (sum, row) => sum + (row.costStressNotional * bps) / 10_000,
+              0,
+            ),
+        metrics: missing
+          ? null
+          : summarizeRows(adjusted, options.denominatorDays, options),
+      };
+    };
+    const withDirections = (cohort, options = summaryOptions) => {
+      const metricOptions = {
+        ...options,
+        denominatorDays: options.denominatorDays ?? getPeriodDays(cohort),
+      };
+      return {
+        ALL: summary(cohort, metricOptions),
+        LONG: summary(
+          cohort.filter((row) => row.direction === 'LONG'),
+          metricOptions,
+        ),
+        SHORT: summary(
+          cohort.filter((row) => row.direction === 'SHORT'),
+          metricOptions,
+        ),
+      };
+    };
+    const periods = { full: withDirections(rows) };
+    for (const days of terminalWindows) {
+      const end = maxTimestamp + Number(!explicitWindow);
+      const start = Math.max(minTimestamp, end - days * DAY_MS);
+      const cohort = rows.filter(
+        (row) => row.timestamp >= start && row.timestamp < end,
+      );
+      const windowOptions = {
+        ...summaryOptions,
+        denominatorDays: Math.max((end - start) / DAY_MS, 1),
+      };
+      periods[`${days}d`] = withDirections(cohort, windowOptions);
+    }
+    return {
+      basisPointsEachLeg: bps,
+      formula:
+        'closedQty (or qty when absent) * (entryPrice + exitPrice) * bps / 10000',
+      role: 'fixed adverse-cost diagnostic; unchanged gate, historical quantity and risk',
+      periods,
+      train: withDirections(split.train),
+      tuning: withDirections(split.tuning),
+      test: withDirections(split.test),
+      developmentStability: stabilityBlocks.map((block) =>
+        withDirections(block),
+      ),
+    };
+  });
+};
+
+export const buildMonthlyCohortFunnel = ({
+  rows,
+  selectors,
+  windowStart,
+  windowEnd,
+  summaryOptions,
+}) => {
+  const observedCohorts = [
+    ...new Set(
+      rows.map((row) =>
+        row.auditCohort == null ? 'n/a' : String(row.auditCohort),
+      ),
+    ),
+  ].sort();
+  const compact = (selectedRows, options) => {
+    const metrics = summarizeRows(
+      selectedRows,
+      getPeriodDays(selectedRows),
+      options,
+    );
+    return Object.fromEntries(
+      [
+        'trades',
+        'events',
+        'totalProfit',
+        'averageTrade',
+        'winRate',
+        'profitFactor',
+        'maxDrawdown',
+        'maxLossStreak',
+        'cadencePerDay',
+      ].map((key) => [key, metrics[key]]),
+    );
+  };
+  const months = [];
+  const first = new Date(windowStart);
+  let cursor = Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1);
+  while (cursor < windowEnd) {
+    const date = new Date(cursor);
+    const next = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+    const start = Math.max(cursor, windowStart);
+    const end = Math.min(next, windowEnd);
+    const monthRows = rows.filter(
+      (row) => row.timestamp >= start && row.timestamp < end,
+    );
+    const options = {
+      ...summaryOptions,
+      comparisonWindow: { start, end },
+      denominatorDays: Math.max((end - start) / DAY_MS, 1),
+    };
+    const summarize = (cohortRows) => ({
+      source: compact(cohortRows, options),
+      gates: Object.fromEntries(
+        [...selectors].map(([name, selector]) => [
+          name,
+          compact(selectRows(cohortRows, selector), options),
+        ]),
+      ),
+    });
+    months.push({
+      month: date.toISOString().slice(0, 7),
+      start,
+      end,
+      ...summarize(monthRows),
+      directions: Object.fromEntries(
+        ['LONG', 'SHORT'].map((direction) => {
+          const sideRows = monthRows.filter(
+            (row) => row.direction === direction,
+          );
+          return [
+            direction,
+            {
+              ...summarize(sideRows),
+              cohorts: observedCohorts.map((cohort) => ({
+                cohort,
+                ...summarize(
+                  sideRows.filter(
+                    (row) =>
+                      (row.auditCohort == null
+                        ? 'n/a'
+                        : String(row.auditCohort)) === cohort,
+                  ),
+                ),
+              })),
+            },
+          ];
+        }),
+      ),
+    });
+    cursor = next;
+  }
+  return {
+    role: 'Exported completed-trade opportunities and historical gate approvals, NOT every detector setup or runtime fill; decision-time calendar membership; empty months explicit',
+    months,
+  };
+};
+
 export const buildAblationReport = ({
   rows,
   variants,
@@ -4063,6 +4649,11 @@ export const buildAblationReport = ({
   sourceRepositoryKind = null,
   failed = 0,
   featureInventory = [],
+  cohortPath = null,
+  costStressBps = [],
+  realizedMetrics = false,
+  monthlyCohorts = false,
+  compareTo = null,
 }) => {
   if (!rows.length) throw new Error('No rows were evaluated');
   if ((windowStart == null) !== (windowEnd == null)) {
@@ -4071,6 +4662,16 @@ export const buildAblationReport = ({
     );
   }
   const explicitWindow = windowStart != null;
+  if (monthlyCohorts && (!explicitWindow || !cohortPath)) {
+    throw new Error(
+      '--monthlyCohorts requires explicit window bounds and cohortPath',
+    );
+  }
+  if (realizedMetrics && !explicitWindow) {
+    throw new Error(
+      '--realizedMetrics requires explicit --windowStart and --windowEnd',
+    );
+  }
   if (
     explicitWindow &&
     (!Number.isFinite(windowStart) ||
@@ -4129,6 +4730,32 @@ export const buildAblationReport = ({
       metrics: summarizeSplit(block, selector, summaryOptions),
     }));
   const baselineSelector = (row) => baselineSelectedAt(row, minQuality);
+  const costStress = (selector) =>
+    buildCostStressReport({
+      rows,
+      selector,
+      basisPoints: costStressBps,
+      terminalWindows,
+      minTimestamp,
+      maxTimestamp,
+      split,
+      stabilityBlocks,
+      summaryOptions,
+      explicitWindow,
+    });
+  const realized = (selector) =>
+    buildRealizedReport({
+      rows,
+      selector,
+      minTimestamp,
+      maxTimestamp,
+      terminalWindows,
+      split,
+      stabilityBlocks,
+      summaryOptions,
+      testSince,
+      tuningSince,
+    });
   const approvedSignalTrace = (selector) =>
     selectRows(rows, selector).map((row) => ({
       sequence: row.sequence ?? null,
@@ -4139,6 +4766,10 @@ export const buildAblationReport = ({
       profit: row.profit,
     }));
   const baseline = {
+    ...(realizedMetrics ? { realized: realized(baselineSelector) } : {}),
+    ...(costStressBps.length
+      ? { costStress: costStress(baselineSelector) }
+      : {}),
     approvedSignals: approvedSignalTrace(baselineSelector),
     equity: buildEquitySeries(
       rows,
@@ -4178,6 +4809,7 @@ export const buildAblationReport = ({
     directions: summarizeDirections(rows, baselineSelector, summaryOptions),
     months: summarizeMonths(rows, baselineSelector, summaryOptions),
   };
+  const selectors = new Map([['baseline', baselineSelector]]);
   const variantReports = variants.map((variant, variantIndex) => {
     const candidateSelectorFor = (threshold) => {
       const baseSelector = (row) =>
@@ -4190,6 +4822,9 @@ export const buildAblationReport = ({
       return (row) => selectedRows.has(row);
     };
     const candidateSelector = candidateSelectorFor(minQuality);
+    if (selectors.has(variant.name))
+      throw new Error(`Duplicate or reserved variant name: ${variant.name}`);
+    selectors.set(variant.name, candidateSelector);
     const matchedSelector = (row) => row.variantMatches[variantIndex];
     const removedSelector = (row) =>
       baselineSelector(row) && !candidateSelector(row);
@@ -4197,6 +4832,10 @@ export const buildAblationReport = ({
       !baselineSelector(row) && candidateSelector(row);
     return {
       name: variant.name,
+      ...(realizedMetrics ? { realized: realized(candidateSelector) } : {}),
+      ...(costStressBps.length
+        ? { costStress: costStress(candidateSelector) }
+        : {}),
       mode: variant.mode,
       quality: variant.quality,
       direction: variant.direction,
@@ -4262,6 +4901,45 @@ export const buildAblationReport = ({
     };
   });
 
+  let comparisons;
+  if (compareTo != null) {
+    const reference = selectors.get(compareTo);
+    if (!reference)
+      throw new Error(`Unknown comparison reference variant: ${compareTo}`);
+    const summarizeSlice = (selector) => ({
+      approvedSignals: approvedSignalTrace(selector),
+      periods: buildPeriodSummaries({
+        rows,
+        selector,
+        windows: terminalWindows,
+        minTimestamp,
+        maxTimestamp,
+        summaryOptions,
+      }),
+      periodDirections: buildPeriodDirectionSummaries({
+        rows,
+        selector,
+        windows: terminalWindows,
+        maxTimestamp,
+        summaryOptions,
+      }),
+      train: summarizeSplit(split.train, selector, summaryOptions),
+      test: summarizeSplit(split.test, selector, summaryOptions),
+      developmentStability: stabilitySummary(selector),
+      ...(costStressBps.length ? { costStress: costStress(selector) } : {}),
+      ...(realizedMetrics ? { realized: realized(selector) } : {}),
+    });
+    comparisons = [...selectors]
+      .filter(([name]) => name !== compareTo)
+      .map(([name, selector]) => ({
+        reference: compareTo,
+        candidate: name,
+        role: 'Exact approval-set difference after direction, quality and capacity selectors; no reevaluation or new policy',
+        added: summarizeSlice((row) => selector(row) && !reference(row)),
+        removed: summarizeSlice((row) => reference(row) && !selector(row)),
+      }));
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     run: {
@@ -4290,6 +4968,11 @@ export const buildAblationReport = ({
         : null,
       capacities,
       maxLossValue,
+      ...(cohortPath ? { cohortPath } : {}),
+      ...(costStressBps.length ? { costStressBps } : {}),
+      ...(realizedMetrics ? { realizedMetrics: true } : {}),
+      ...(monthlyCohorts ? { monthlyCohorts: true } : {}),
+      ...(compareTo != null ? { compareTo } : {}),
       trainRows: split.train.length,
       tuningRows: split.tuning.length,
       testRows: split.test.length,
@@ -4308,6 +4991,21 @@ export const buildAblationReport = ({
     baseline,
     variants: variantReports,
     featureInventory,
+    ...(monthlyCohorts
+      ? {
+          monthlyCohortFunnel: buildMonthlyCohortFunnel({
+            rows,
+            selectors,
+            windowStart,
+            windowEnd,
+            summaryOptions,
+          }),
+        }
+      : {}),
+    ...(comparisons ? { comparisons } : {}),
+    ...(cohortPath
+      ? { featureAvailabilityAudit: buildFeatureAvailabilityAudit(rows) }
+      : {}),
   };
 };
 
@@ -4342,6 +5040,303 @@ const markdownTable = (headers, rows) =>
     `| ${headers.map(() => '---').join(' | ')} |`,
     ...rows.map((row) => `| ${row.map(escapeCell).join(' | ')} |`),
   ].join('\n');
+
+// Presentation only: consumes existing authoritative summaries, never rebuilds
+// approvals or economics. Cross-export comparisons require one frozen calendar.
+export const formatGateComparisonContract = ({
+  beforeReport,
+  beforeVariant,
+  afterReport,
+  afterVariant,
+  header,
+  acceptanceChecks = [],
+  rejectReasons = [],
+  conclusion,
+}) => {
+  const policies = [
+    [beforeReport, beforeVariant, 'before'],
+    [afterReport, afterVariant, 'after'],
+  ].map(([report, name, label]) => {
+    const policy =
+      name === 'baseline'
+        ? report.baseline
+        : report.variants.find((variant) => variant.name === name);
+    if (!policy) throw new Error(`Unknown report policy: ${name}`);
+    return { report, policy, label };
+  });
+  if (
+    !beforeReport.run.comparisonWindow ||
+    JSON.stringify(beforeReport.run.comparisonWindow) !==
+      JSON.stringify(afterReport.run.comparisonWindow) ||
+    beforeReport.run.testSince !== afterReport.run.testSince ||
+    beforeReport.run.minQuality !== afterReport.run.minQuality
+  ) {
+    throw new Error(
+      'Contract comparison requires identical explicit calendar window, test boundary and quality threshold',
+    );
+  }
+  const windows = [
+    'full',
+    ...[365, 180, 90, 30, 7]
+      .filter(
+        (days) =>
+          beforeReport.run.terminalWindows.includes(days) ||
+          afterReport.run.terminalWindows.includes(days),
+      )
+      .map((days) => `${days}d`),
+  ];
+  for (const { policy } of policies)
+    for (const window of windows)
+      if (!policy.periods[window])
+        throw new Error(`Missing contract window: ${window}`);
+  for (const required of ['180d', '90d', '30d', '7d'])
+    if (!windows.includes(required))
+      throw new Error(`Missing contract window: ${required}`);
+  const periodRows = (render) =>
+    windows.flatMap((window) =>
+      policies.map(({ policy, label }) => [
+        window,
+        label,
+        ...render(policy.periods[window]),
+      ]),
+    );
+  const outcome = (m) => [
+    m.trades,
+    formatPct(m.winRate),
+    formatNumber(m.profitFactor),
+    formatNumber(m.totalProfit),
+    formatNumber(m.averageTrade),
+    formatNumber(m.maxDrawdown),
+    m.maxLossStreak,
+    `${m.losingMonths}${m.losingMonthValues.length ? ` (${m.losingMonthValues.map((value) => `${value.month}: ${formatNumber(value.pnl)}`).join(', ')})` : ''}`,
+  ];
+  const slices = [
+    `q${beforeReport.run.minQuality}+ total`,
+    `q${beforeReport.run.minQuality + 1}+`,
+    'LONG',
+    'SHORT',
+  ];
+  const lines = [
+    header,
+    '',
+    '### Outcome and tail risk',
+    '',
+    markdownTable(
+      [
+        'Window',
+        'Gate',
+        'N',
+        'WR',
+        'PF',
+        'PnL',
+        'PnL/trade',
+        'MaxDD',
+        'Loss streak',
+        'Losing months',
+      ],
+      periodRows(outcome),
+    ),
+    '',
+    '### Cadence and fan-out',
+    '',
+    markdownTable(
+      [
+        'Window',
+        'Gate',
+        'Trades/day',
+        'Events/day',
+        'Active days',
+        'Events',
+        'Trades/event',
+        'p95 batch',
+        'Max batch',
+        'Top event count',
+        'Top event PnL',
+      ],
+      periodRows((m) => [
+        formatNumber(m.cadencePerDay, 3),
+        formatNumber(m.eventsPerDay, 3),
+        formatPct(m.activeDayRatio),
+        m.events,
+        formatNumber(m.tradesPerEvent),
+        formatNumber(m.p95Batch),
+        m.maxBatch,
+        formatPct(m.topEventCountShare),
+        formatPct(m.topEventPnlShare),
+      ]),
+    ),
+    '',
+    '### Risk-adjusted metrics',
+    '',
+    markdownTable(
+      [
+        'Window',
+        'Gate',
+        'Sharpe',
+        'Sortino',
+        'Calmar',
+        'DD/gross',
+        'DD/PnL',
+        'Profit/day',
+        'Profit/month',
+        'Trades/week',
+      ],
+      periodRows((m) => [
+        formatNumber(m.sharpeRatio),
+        formatNumber(m.sortinoRatio),
+        formatNumber(m.calmarRatio),
+        formatPct(m.maxDrawdownPctOfGrossProfit),
+        formatPct(m.maxDrawdownPctOfTotalProfit),
+        formatNumber(m.averageProfitPerDay),
+        formatNumber(m.averageProfitPerMonth),
+        formatNumber(m.cadencePerWeek, 3),
+      ]),
+    ),
+    '',
+    '### Quality and direction',
+    '',
+    markdownTable(
+      ['Slice', 'Gate', 'N', 'Events', 'WR', 'PF', 'PnL', 'MaxDD', 'Max batch'],
+      slices.flatMap((slice, index) =>
+        policies.map(({ policy, label }) => {
+          const m =
+            index === 0
+              ? policy.periods.full
+              : index === 1
+                ? policy.qualityThresholds[slice]
+                : policy.directions[slice];
+          return [
+            index > 1 ? `${slice} q${beforeReport.run.minQuality}+` : slice,
+            label,
+            ...(m
+              ? [
+                  m.trades,
+                  m.events,
+                  formatPct(m.winRate),
+                  formatNumber(m.profitFactor),
+                  formatNumber(m.totalProfit),
+                  formatNumber(m.maxDrawdown),
+                  m.maxBatch,
+                ]
+              : Array(7).fill('n/a')),
+          ];
+        }),
+      ),
+    ),
+    '',
+    '### Runtime execution bridge',
+    '',
+    markdownTable(
+      [
+        'Scope',
+        'Window',
+        'Approved',
+        'Attempts',
+        'Filled',
+        'Balance rejects',
+        'Other rejects',
+        'Requested notional',
+        'Max simultaneous stop-risk',
+      ],
+      [['runtime outside research', 'full', ...Array(7).fill('n/a')]],
+    ),
+    '',
+    '### Validation',
+    '',
+    'Outer test is historical when previously opened. Internal blocks overlap development and are not independent holdouts.',
+    '',
+  ];
+  for (const { report, policy, label } of policies)
+    lines.push(
+      label,
+      '',
+      markdownTable(
+        [
+          'Partition',
+          'Rows',
+          'Events',
+          'Approved N',
+          'WR',
+          'PF',
+          'PnL',
+          'MaxDD',
+          'Max batch',
+        ],
+        [
+          [
+            'development 60%',
+            report.run.trainRows,
+            report.run.trainEvents,
+            policy.train,
+          ],
+          ...policy.developmentStability.map((block, index) => [
+            `development block ${index + 1}`,
+            block.rows,
+            block.events,
+            block.metrics,
+          ]),
+          [
+            'outer test 40%, historical',
+            report.run.testRows,
+            report.run.testEvents,
+            policy.test,
+          ],
+        ].map(([partition, rows, events, m]) => [
+          partition,
+          rows,
+          events,
+          m.trades,
+          formatPct(m.winRate),
+          formatNumber(m.profitFactor),
+          formatNumber(m.totalProfit),
+          formatNumber(m.maxDrawdown),
+          m.maxBatch,
+        ]),
+      ),
+      '',
+    );
+  const requiredChecks = [
+    'Freshness',
+    'Runtime lineage parity',
+    'Independent-event support',
+    'Event concentration',
+    'Portfolio capacity',
+    'Symbol concentration',
+    'Temporal stability',
+    'Untouched test',
+  ];
+  const checks = requiredChecks.map((name) => {
+    const supplied = acceptanceChecks.find((row) => row[0] === name) ?? [
+      name,
+      'UNKNOWN',
+      'n/a',
+    ];
+    if (!['PASS', 'FAIL', 'UNKNOWN'].includes(supplied[1]))
+      throw new Error(`Invalid acceptance status: ${supplied[1]}`);
+    return supplied;
+  });
+  lines.push(
+    '### Acceptance checks',
+    '',
+    markdownTable(['Check', 'Status', 'Evidence'], checks),
+    '',
+    '### Top reject reasons (30d)',
+    '',
+    markdownTable(
+      ['Rank', 'Reason', 'N', 'Share'],
+      Array.from({ length: 5 }, (_, index) => [
+        index + 1,
+        ...(rejectReasons[index] ?? ['n/a', 'n/a', 'n/a']),
+      ]),
+    ),
+    '',
+    '### Conclusion',
+    '',
+    conclusion ?? 'n/a',
+    '',
+  );
+  return lines.join('\n');
+};
 
 const comparisonRow = (label, baseline, candidate) => {
   const left = formatMetric(baseline);
@@ -5401,6 +6396,9 @@ export const main = async () => {
     minQuality: options.minQuality,
     includeGateContext: options.includeGateContext,
     featurePattern,
+    cohortPath: options.cohortPath,
+    windowStart: options.windowStart,
+    windowEnd: options.windowEnd,
   });
   let movingAverageCoverage = null;
   if (options.movingAverageStudy) {
@@ -5431,6 +6429,11 @@ export const main = async () => {
     windowEnd: options.windowEnd,
     capacities: options.capacities,
     maxLossValue: options.maxLossValue,
+    cohortPath: options.cohortPath,
+    costStressBps: options.costStressBps,
+    realizedMetrics: options.realizedMetrics,
+    monthlyCohorts: options.monthlyCohorts,
+    compareTo: options.compareTo,
     sourceRepositoryRoot,
     frameworkRepositoryRoot,
     sourceRepositoryKind,
@@ -5438,6 +6441,13 @@ export const main = async () => {
       path.relative(projectRoot, filePath),
     ),
   });
+  report.sourceSelection = {
+    ...loaded.sourceSelection,
+    windowStart: options.windowStart,
+    windowEnd: options.windowEnd,
+    interval: '[start, end)',
+    filteredBeforeGateEvaluation: true,
+  };
   if (options.movingAverageStudy) {
     report.movingAverageStudy = summarizeMovingAverageStudy({
       rows: loaded.rows,

@@ -31,6 +31,35 @@ export interface TradeParityEntry {
   totalFee?: number | null;
 }
 
+export type TradeParityTimestampOffset =
+  | number
+  | ((strategy: string) => number);
+
+export const resolveTradeParityTimestampOffset = (
+  strategy: string,
+  offset: TradeParityTimestampOffset,
+) => (typeof offset === 'function' ? offset(strategy) : offset);
+
+export const buildTradeParityTimestampOffset = (
+  strategies: Array<{ strategyName: string; interval: string }>,
+) => {
+  const intervals = new Map<string, number>();
+  for (const { strategyName, interval } of strategies) {
+    const minutes = Number(interval);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      throw new Error(`Invalid embedded replay interval for ${strategyName}`);
+    }
+    intervals.set(strategyName, minutes * 60 * 1000);
+  }
+  return (strategy: string) => {
+    const offsetMs = intervals.get(strategy);
+    if (offsetMs == null) {
+      throw new Error(`Missing embedded replay interval for ${strategy}`);
+    }
+    return offsetMs;
+  };
+};
+
 export interface MatchedTradeParityEntry {
   runtime: TradeParityEntry;
   backtest: TradeParityEntry;
@@ -75,17 +104,24 @@ const toRuntimeDuplicateKey = (
 
 export const getBacktestParityComparisonTimestamp = (
   entry: TradeParityEntry,
-  timestampOffsetMs = 0,
+  timestampOffsetMs: TradeParityTimestampOffset = 0,
 ) => {
+  const offsetMs = resolveTradeParityTimestampOffset(
+    entry.strategy,
+    timestampOffsetMs,
+  );
+  if (!Number.isFinite(offsetMs) || offsetMs < 0) {
+    throw new Error(`Invalid backtest timestamp offset for ${entry.strategy}`);
+  }
   if (
-    timestampOffsetMs > 0 &&
+    offsetMs > 0 &&
     entry.signalTimestamp != null &&
-    entry.timestamp >= entry.signalTimestamp + timestampOffsetMs
+    entry.timestamp >= entry.signalTimestamp + offsetMs
   ) {
     return entry.timestamp;
   }
 
-  return (entry.signalTimestamp ?? entry.timestamp) + timestampOffsetMs;
+  return (entry.signalTimestamp ?? entry.timestamp) + offsetMs;
 };
 
 const sortTradeParityEntries = (
@@ -325,7 +361,7 @@ export const compareTradeParityEntries = ({
   runtimeEntries: TradeParityEntry[];
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
-  backtestTimestampOffsetMs?: number;
+  backtestTimestampOffsetMs?: TradeParityTimestampOffset;
 }): CompareTradeParityResult => {
   const matched: MatchedTradeParityEntry[] = [];
   const runtimeOnly: TradeParityEntry[] = [];

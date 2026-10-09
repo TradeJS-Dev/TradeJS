@@ -9,7 +9,9 @@ import type {
 } from '@tradejs/types';
 import {
   getBacktestParityComparisonTimestamp,
+  resolveTradeParityTimestampOffset,
   type TradeParityEntry,
+  type TradeParityTimestampOffset,
 } from './runtimeParity';
 import type {
   ReplayMismatchAiDiagnostic,
@@ -96,11 +98,15 @@ const buildCostDetail = (entry: {
 
 const toBacktestParityDetail = (
   entry: TradeParityEntry,
-  timestampOffsetMs = 0,
+  timestampOffsetMs: TradeParityTimestampOffset = 0,
 ): ReplayParityEntryDetail => {
+  const offsetMs = resolveTradeParityTimestampOffset(
+    entry.strategy,
+    timestampOffsetMs,
+  );
   const comparisonTimestamp = getBacktestParityComparisonTimestamp(
     entry,
-    timestampOffsetMs,
+    offsetMs,
   );
   return {
     source: 'backtest',
@@ -110,7 +116,7 @@ const toBacktestParityDetail = (
     qty: entry.qty ?? null,
     timestamp: entry.timestamp,
     signalTimestamp: entry.signalTimestamp ?? null,
-    comparisonTimestamp: timestampOffsetMs === 0 ? null : comparisonTimestamp,
+    comparisonTimestamp: offsetMs === 0 ? null : comparisonTimestamp,
     price: entry.price,
     exitType: entry.exitType ?? null,
     exitTimestamp: entry.exitTimestamp ?? null,
@@ -815,7 +821,7 @@ export const buildReplayMismatchDrilldown = ({
   replayLineageScopes?: RuntimeLineageScopeRecord[];
   runtimeLineageScopes?: RuntimeLineageScopeRecord[];
   toleranceMs: number;
-  backtestTimestampOffsetMs: number;
+  backtestTimestampOffsetMs: TradeParityTimestampOffset;
   limit: number;
 }): ReplayMismatchDrilldown => {
   const nearestByEntry = new Map(
@@ -827,25 +833,29 @@ export const buildReplayMismatchDrilldown = ({
   let backtestOnlyArtifactsIncluded = 0;
 
   const runtimeOnlyDiagnostics = runtimeOnly.map((entry, index) => {
+    const entryOffsetMs = resolveTradeParityTimestampOffset(
+      getEntryStrategy(entry) ?? '',
+      backtestTimestampOffsetMs,
+    );
     const includeArtifacts = index < artifactLimit;
     const nearestCandidate = nearestByEntry.get(entry);
     const nearestReplaySignal = findNearestSignal({
       entry,
       signals: replaySignals,
       toleranceMs,
-      timestampOffsetMs: backtestTimestampOffsetMs,
+      timestampOffsetMs: entryOffsetMs,
     });
     const nearestReplayEvaluation = findNearestEvaluation({
       entry,
       evaluations: replaySignalEvaluations,
       toleranceMs,
-      timestampOffsetMs: backtestTimestampOffsetMs,
+      timestampOffsetMs: entryOffsetMs,
     });
     const nearestReplayEvaluationOutcome = findNearestReplayEvaluationOutcome({
       entry,
       lineageScopes: replayLineageScopes,
       toleranceMs,
-      timestampOffsetMs: backtestTimestampOffsetMs,
+      timestampOffsetMs: entryOffsetMs,
     });
 
     const classification = nearestReplaySignal
@@ -1054,7 +1064,7 @@ export const buildReplayRuntimeComparisonDetails = ({
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
   limit?: number;
-  backtestTimestampOffsetMs?: number;
+  backtestTimestampOffsetMs?: TradeParityTimestampOffset;
   runtimeSignals?: Signal[];
   runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replaySignals?: Signal[];

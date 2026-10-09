@@ -6,6 +6,7 @@ import type {
   Signal,
 } from '@tradejs/types';
 import {
+  buildTradeParityTimestampOffset,
   compareTradeParityEntries,
   dedupeRuntimeParityEntries,
   extractRuntimeParityEntries,
@@ -43,6 +44,7 @@ import {
 } from './support';
 import type { ReplayRuntimeLineageRecord } from './historicalSignalsReplay';
 import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
+import { activeRuntimeEvidenceStrategies } from '../runtimeEvidenceDeployment';
 import {
   buildExchangeComparisonRows,
   buildRuntimeComparisonRows,
@@ -551,6 +553,11 @@ export const saveAndPrintReplayRuntimeComparison = async ({
         expectedWindow: window,
       })
     : null;
+  const replayTimestampOffset = runtimeEvidence
+    ? buildTradeParityTimestampOffset(
+        activeRuntimeEvidenceStrategies(runtimeEvidence.deployment),
+      )
+    : getReplayEntryTimestampCompareOffsetMs();
   const [
     rawRuntimeTrades,
     runtimeSignals,
@@ -670,7 +677,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     runtimeEntries: runtimeDedupe.entries,
     backtestEntries: comparableBacktestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    backtestTimestampOffsetMs: replayTimestampOffset,
   });
   const details = buildReplayRuntimeComparisonDetails({
     matched: comparison.matched,
@@ -679,7 +686,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     runtimeEntries: runtimeDedupe.entries,
     backtestEntries: comparableBacktestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    backtestTimestampOffsetMs: replayTimestampOffset,
     runtimeSignals: comparable.runtimeSignals,
     runtimeSignalEvaluations: comparable.runtimeSignalEvaluations,
     replaySignals,

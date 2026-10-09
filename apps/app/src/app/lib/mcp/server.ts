@@ -396,8 +396,13 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     'diagnostics_list_reports',
     'List checksum-verified runtime evidence and feedback/parity bundles present on this host and owned by this user. Inaccessible/unverified bundles are excluded.',
     ['diagnostics:read'],
-    {},
-    async () => listMcpArtifacts(principal.userName),
+    {
+      deploymentId: z.string().optional(),
+      kind: z.enum(['runtime-evidence', 'runtime-feedback-replay']).optional(),
+      offset: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(100).default(20),
+    },
+    async (args) => listMcpArtifacts(principal.userName, args),
   );
   tool(
     'diagnostics_get_report',
