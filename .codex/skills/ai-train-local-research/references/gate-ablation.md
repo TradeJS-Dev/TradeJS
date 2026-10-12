@@ -36,6 +36,68 @@ and does not require either source root.
 interpreting a candidate, compare the tool's baseline qN+ support, PnL, PF,
 max drawdown, strict loss, and loss streak with the matching `ai-train` run.
 
+### Explicit frozen runtime and strategy artifact
+
+Use `--runtimeCheckpoint <json>` only with an immutable Project runtime
+checkpoint. It verifies each declared installed package's name, version,
+package JSON SHA256 and complete dist SHA256, then imports Project AI,
+registry and pocket modules. Required framework packages share the declared
+generation. Source roots still name their exact Git checkouts; canonical dist
+freshness is not the authority in this explicit mode. Cross-strategy mode can
+use the same runtime resolver but cannot use a strategy artifact authority.
+When the checkpoint declares `projectTracked`, every checksum is mandatory:
+only `package.json`, `yarn.lock` and `tradejs.config.ts` are allowed. Paths must
+remain inside Project after realpath resolution. Verified hashes are included
+in `run.executionRuntime.projectTracked`; a changed declaration blocks execution
+before any export read. Generic fixture checkpoints may omit this optional map.
+
+A standalone source requires `--strategyArtifactAuthority <json>` as well:
+
+```json
+{
+  "schema": "tradejs-strategy-artifact-authority/v1",
+  "sourceRepositoryRoot": "/absolute/exact/strategy-worktree",
+  "sourceGitSha": "<40-character frozen baseline HEAD>",
+  "sourceDiff": { "path": "source.patch", "sha256": "<sha256>" },
+  "buildReceipt": {
+    "path": "source-dependency-overlay.json",
+    "sha256": "<sha256>"
+  },
+  "packageRoot": "compiled-package",
+  "packageJsonSha256": "<sha256>",
+  "distSha256": "<sha256>",
+  "runtimeCheckpoint": {
+    "path": "runtime-checkpoint.json",
+    "sha256": "<sha256>"
+  }
+}
+```
+
+Relative paths resolve from their authority/checkpoint JSON. Every evidence
+path and compiled package must remain inside Project after realpath resolution;
+the source checkout is separately verified as the exact Git root. Source HEAD
+must match the frozen baseline. The historical patch checksum is verified,
+but the current worktree dirty diff is deliberately not compared with that
+historical patch. The target package name must match the baseline source.
+
+The build receipt must use
+`tradejs-source-development-dependency-overlay/v1`, identify the exact source
+root, have `status=passed` and `restored=true`, and bind the same dist checksum.
+Its Core/Types/Kit dependency checks must match the execution checkpoint.
+Never fabricate this receipt for an installed baseline; build and freeze the
+exact baseline under the fixed dependencies first. Compiled artifacts cannot
+be the installed Project strategy package or use worktree/foreign dependencies.
+All compiled external imports must resolve to verified Project packages.
+
+Dist hashing uses binary lexical `.sort()` of complete file paths, then SHA256
+of concatenated `SHA256(file bytes) + " " + relative path + "\n"` lines.
+Symlinks inside dist are rejected. This is the runtime checkpoint's declared
+`SHA256 of sorted SHA256(relativefilebytes) space relativepath newline`
+algorithm. Runtime and strategy authorities are validated before reading any
+export. `run.executionRuntime` and `run.strategyArtifact` separately record
+execution packages and historical source/build/compiled identity. These are
+execution controls, not candidate rules or permission to open a sealed tail.
+
 ## Dataset Discovery
 
 List all merged groups or only one strategy:
@@ -472,6 +534,121 @@ ordering; they are not a substitute for exit-time realized portfolio drawdown
 or occupancy-sensitive backtests. Both diagnostic options are opt-in, leave
 original report fields unchanged, and do not create additional gate candidates.
 
+Use `--roundTripCostStressBps 20 --realizedMetrics` when the frozen acceptance
+contract specifies extra bps on the entire round trip using entry notional.
+This is distinct from `--costStressBps`, which applies the supplied bps to each
+entry and exit. The round-trip calculation subtracts
+`closedQty * actual entryPrice * roundTripBps / 10000`, using `qty` only when
+`closedQty` is absent. It never uses a requested signal price. Historical
+approvals, quantity and risk are frozen before the adjustment, including
+timestamp-local capacity selection.
+
+Each baseline, variant and named-policy comparison receives
+`roundTripCostStress[]`. An entry contains `basisPointsRoundTrip`, the exact
+formula, total extra cost, and `realized` with full/terminal, development/test,
+three development blocks, LONG/SHORT and exit-ordered equity. Its `byDirection`
+retains independently measurable LONG/SHORT reports when another direction has
+missing economics. Missing entry notional or inconsistent original completed
+PnL makes the affected realized evidence unavailable, not zero. The option
+requires `--realizedMetrics` and explicit common window bounds; use its
+`realized.test` for completed-trade acceptance criteria, not decision-order DD.
+This arithmetic stress does not simulate changed fills or approval decisions.
+
+The displayed execution-price calculation remains the default. Use the optional
+`--entryNotionalAuthority <json>` only when a frozen execution model preserves
+an unrounded `tradeResult.openFee` but rounds its displayed `entryPrice`. The
+option is supported only with single-core `--runtimeCheckpoint`, positive
+`--roundTripCostStressBps`, `--realizedMetrics`, and explicit common window
+bounds. Cross-strategy, moving-average, and raw-materialization modes reject it.
+
+The authority uses this closed contract:
+
+```json
+{
+  "schema": "tradejs-entry-notional-authority/v1",
+  "method": "fee-derived-full-closed",
+  "runtimeCheckpoint": {
+    "path": "runtime-checkpoint.json",
+    "sha256": "<sha256>"
+  },
+  "semanticsReceipt": {
+    "path": "entry-notional-semantics.json",
+    "sha256": "<reviewed-sha256>"
+  },
+  "executionModule": {
+    "packageName": "@tradejs/node",
+    "relativePath": "dist/backtest.mjs",
+    "sha256": "<reviewed-module-sha256>"
+  },
+  "resolvedExecutionConfig": {
+    "path": "resolved-execution.json",
+    "sha256": "<sha256>",
+    "executionCostsJsonPointer": "/execution/costs",
+    "executionCostsCanonicalSha256": "<sha256>",
+    "fees": { "makerRate": 0.001, "takerRate": 0.001 }
+  },
+  "sourceExports": [{ "path": "part1.jsonl", "sha256": "<sha256>" }],
+  "displayPriceDecimals": 8,
+  "roundingPolicy": {
+    "id": "decimal-half-unit-plus-binary64-interval-v1"
+  }
+}
+```
+
+Every path must remain inside Project after realpath resolution. The checkpoint
+must equal the already verified execution runtime. The module must live at the
+declared path inside that runtime's verified `@tradejs/node` package. Authority
+text cannot declare its own fee semantics: the permanent tool has an explicit
+allowlist of reviewed semantics-receipt bytes, semantics id, module path and
+module SHA256. The initial supported combination is receipt SHA256
+`2734c38558d7318106e8ed729c7b403468c9cf06e7b4ff011ddb6cd958ecb0c0`
+and module SHA256
+`2b6f586211b9057a73758909cc2816e0df90028f66f6b293362ba8661f24221f`.
+A different runtime module requires a new reviewed receipt and a tested tool
+change; it fails closed until then.
+
+The resolved config file, exact JSON pointer, and canonical execution-cost
+object must agree. Canonical JSON recursively sorts object keys, preserves
+array order, serializes with `JSON.stringify`, and hashes its UTF-8 bytes. Both
+maker and taker rates must be numeric, finite, positive, exactly equal, and
+equal to the declared rate. Ordered source paths and complete file SHA256 values
+must match before row evaluation. The same ordered path, byte-size, and SHA256
+list is verified again after evaluation; a changed input prevents a report.
+
+In this mode a row is complete only when `qty`, `closedQty`, `openFee`, and
+`entryPrice` are finite positive numbers and `closedQty === qty` exactly. Its
+entry notional is `openFee / entryFeeRate`. Missing `closedQty`, partial or
+over-closure, invalid/zero fee, invalid price, or a failed precision check makes
+the row unavailable. It never falls back to displayed/requested prices, `qty`
+substitution, another row, or zero.
+
+The displayed-price consistency allowance is analytical and fixed before data
+inspection. Let `ulp(x)` be the larger distance from positive finite `x` to its
+adjacent IEEE-754 binary64 values found with `nextDown` and `nextUp`. Then:
+
+```text
+feeNotional = openFee / entryFeeRate
+displayNotional = qty * entryPrice
+displayAllowance = qty * 0.5 * 10^-8
+binary64Allowance =
+  ulp(openFee) / entryFeeRate
+  + ulp(feeNotional)
+  + abs(entryPrice) * ulp(qty)
+  + abs(qty) * ulp(entryPrice)
+  + ulp(displayNotional)
+allowance = displayAllowance + binary64Allowance
+abs(feeNotional - displayNotional) <= allowance
+```
+
+There is no fitted epsilon. A larger scale-in accumulation discrepancy remains
+missing rather than widening the allowance. The explicit report records the
+authority and input before/after hashes, method, complete/missing counts and
+stable missing-reason counts. One missing selected row makes only its affected
+aggregate/direction/symbol realized stress cohorts unavailable; independently
+complete cohorts remain measurable. Without the option, existing formula,
+partial-close/quantity fallback behavior, report fields, and metrics are
+unchanged.
+
 Use `--realizedMetrics` for additional `baseline.realized` and
 `variant.realized` JSON evidence. Original approvals and decision-time metrics
 stay unchanged. This option requires explicit `--windowStart` and `--windowEnd`;
@@ -501,6 +678,19 @@ one-off script for capabilities that belong here. Extend this script and its
 `node:test` coverage, then update this reference and `SKILL.md` when the
 research contract changes.
 
+For development-only gate selection, set `--windowEnd`, `--testSince` and
+`--labelEndBefore` to the same frozen outer UTC boundary, with an explicit
+`--windowStart` and `--validationSplit 0`. The last option excludes development
+decisions whose completed exit is at or after the boundary, or whose exit is
+unknown, before payload construction, gate evaluation and feature inventory.
+It reports separate crossing/unknown counts in `sourceSelection.labelHorizon`
+and marks `run.discoveryOnly`. Exits preceding decisions and invalid numeric
+source timestamps fail closed. No test outcomes are evaluated by this mode.
+It does not shift the boundary to replace purged support. Omit this option for
+the final full-period evaluation only after every gate specification and
+development selection has been frozen. Discovery requires UTC ISO ending in
+`Z` or epoch milliseconds, and cannot use the cross-strategy contour.
+
 Run the tool tests after every change:
 
 ```bash
@@ -511,3 +701,116 @@ With the standard 60/40 cross-strategy split, the field `tuning` is the last
 third of development, overlapping the discovery partition. It is a diagnostic
 stability block, not an independent validation set. All three development
 blocks are reported separately; the outer test remains distinct.
+
+## Raw discovery export for native local training
+
+Before maturity purging, freeze one common calendar boundary from the parent
+export using the metadata-only mode:
+
+```bash
+node <checksum-bound-ai-gate-ablation.mjs> --file <parent-full-export.jsonl> \
+  --timestampPartitionMetadata <Project-path>/timestamp-partition.json \
+  --windowStart <start-ms> --windowEnd <end-ms> \
+  --validationSplit 0 --testSplit 0.4
+```
+
+This mode hashes ordered complete source files before and after reading, retains
+only timestamps, sorts whole timestamp groups, and uses the standard outer
+60/40 split. It requires two independent groups, rejects invalid timestamps,
+and writes a new exclusive checksum-bound metadata file. It never loads source,
+runtime, payload, gate or features, nor reads outcome/label fields. The metadata
+contains row/group counts and `testSince`/UTC boundary, not individual trades.
+Evaluation/runtime/variant, label-purge and exact-boundary options are forbidden.
+Use the same frozen `testSince` for every candidate, before any discovery.
+
+When the installed native pocket CLI lacks `--testSince`, first materialize
+each candidate's mature DEV view below using that common boundary, then search
+the view with `--validationSplit 0 --testSplit 0 --sealTest`, separately LONG and
+SHORT. This searches all of the already isolated outer DEV60% and retains its
+three diagnostic blocks; `.4` on this view would incorrectly split DEV again.
+Bind the parent partition metadata and view receipt in the report. Never run
+the older full-export native search just to find a cutoff: it can evaluate
+reserved-tail payloads before sealing the search result.
+
+`--materializeDiscoveryExport <jsonl>` is a raw-only mode, before source,
+runtime, plugin, payload and gate loading. It requires explicit `--windowStart`,
+`--windowEnd`, `--testSince`, `--labelEndBefore`, with the latter three equal and
+`--validationSplit 0`. Evaluation, runtime, artifact, variant and report options
+are rejected. Only mature source objects in the half-open window are written:
+decision timestamp is inside the window and finite numeric exit timestamp is
+at least the decision timestamp and strictly before the cutoff. Unknown or
+crossing label horizons are counted and purged before any feature work. A bad
+raw timestamp or inverted chronology fails closed.
+
+The output and `<jsonl>.receipt.json` must be new files inside Project and use
+exclusive creation. Full input files are hashed before and after streaming;
+the output is hashed while writing and again on readback. Zero eligible rows,
+changed input or malformed evidence fail without a success receipt; partial
+output is retained as failure evidence, never silently reused. The receipt
+contains all input/output hashes, byte sizes, exact bounds and scan/purge counts.
+Source objects are not evaluated or rewritten apart from JSON serialization.
+
+```bash
+node <checksum-bound-ai-gate-ablation.mjs> --strategy LiquidityZones \
+  --file <own-full-export.jsonl> --outDir <original-export-directory> \
+  --materializeDiscoveryExport <Project-path>/discovery-view.jsonl \
+  --windowStart <start-ms> --windowEnd <cutoff-ms> \
+  --testSince <cutoff-ms> --labelEndBefore <cutoff-ms> --validationSplit 0
+```
+
+Use a non-merged filename such as `discovery-view.jsonl` for native training.
+Native `ai-train` recognizes `ai-dataset-*-merged-*` names and may substitute
+the original shard group from `--outDir` when its merge ID is reused. Keep the
+view's explicit absolute `--file` and a valid original `--outDir`, then use
+`--since start-ms --until cutoff-ms-1` (native bounds are inclusive). Native
+`research.lineage.sourceSha256s` now identifies the view, not its parents:
+bind the materialization receipt and original source/core/config authority
+separately. Do not confuse this view with a new backtest export.
+
+Native local reports execute the Project-registered compiled strategy, not
+the checkout named by `TRADEJS_SOURCE_REPOSITORY_ROOT`. Freeze the complete
+Project package/checkpoint, compiled CJS/ESM artifact and source/build authority
+for each composition before running a fresh process. Native `gitSha` describes
+Project; `gateFingerprint` hashes selected resolved entry files, not full trees;
+`configIdsFingerprint` hashes IDs, not resolved config. None replaces the
+explicit source, package, full resolved config and execution checkpoint hashes.
+The native current-gate report and a compiled candidate-gate report must use
+their own candidate export and separate exact compositions. Run final full
+history only after rules are frozen; do not use final cohorts for selection.
+
+Use `--symbolCohorts <Project-owned.json> --realizedMetrics` to report frozen
+symbol groups. The input format is:
+
+```json
+{
+  "schema": "tradejs-symbol-cohorts/v1",
+  "groups": [
+    { "id": "full-history", "symbols": ["BTCUSDT"] },
+    { "id": "expanded", "symbols": ["NEWUSDT"] }
+  ]
+}
+```
+
+Group IDs and symbols must be nonempty and unique. Symbols must be disjoint
+across groups, and every evaluated source row must belong to one group. The
+input path must resolve inside the Project. Its bytes are checksum-bound in
+`run.symbolCohorts` and each realized report. Membership is diagnostic metadata
+and is never added to decision features or eligible gate predicates.
+
+`baseline.realized.symbolCohorts.groups[]` and the same section on each variant
+contain declared and observed symbol counts, source row counts, and a complete
+realized report. The report includes full and requested terminal windows,
+ALL/LONG/SHORT, common calendar train/test boundaries, the three development
+blocks, zero-activity windows, and equity. Approvals and capacity ranking are
+frozen globally before filtering a group. Filtering must not give an overflow
+symbol another chance at admission or move a partition boundary. Round-trip
+cost stress retains the same group sections and approval identities. Without
+the option, existing reports remain unchanged. The option is not supported in
+cross-strategy, moving-average, or raw-materialization mode.
+
+The required 120-symbol full-four-year cohort and expanded 456-symbol cohort
+are diagnostic reporting slices for both raw and final gated tables. They are
+not gate features or selection predicates. Existing monthly/cohort diagnostics
+may not supply PF/MaxDD for every common window; report that limitation and use
+a separately reviewed generic reporting extension if needed. Never derive a
+new rule from the final cohort tables.

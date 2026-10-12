@@ -4,6 +4,8 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 import {
   aggregateBenchmarkDiscoveryRows,
@@ -13,7 +15,11 @@ import {
   buildAblationReport,
   buildFeatureAvailabilityAudit,
   collectDiagnosticFeatures,
+  classifyDiscoveryLabelHorizon,
+  canonicalEntryNotionalJsonSha256,
+  deriveFeeEntryStressNotional,
   getCostStressNotional,
+  getEntryStressNotional,
   developmentBlocks,
   buildCrossStrategyReport,
   buildEquitySeries,
@@ -25,6 +31,13 @@ import {
   evaluateRule,
   evaluateCrossPocket,
   ensureRuntimeBuild,
+  hashArtifactDist,
+  verifyStrategyArtifactAuthority,
+  loadResearchRows,
+  materializeDiscoveryExport,
+  timestampPartitionMetadata,
+  normalizeSymbolCohorts,
+  loadSymbolCohorts,
   findFrameworkRepositoryRoot,
   findSourceRepositoryRoot,
   getSourceRepositoryKind,
@@ -47,7 +60,673 @@ import {
   splitRowsByTimestampBounds,
   summarizeRows,
   summarizeMovingAverageRedundancy,
+  verifyEntryNotionalAuthority,
+  verifyEntryNotionalInputStability,
 } from './ai-gate-ablation.mjs';
+
+test('timestamp metadata CLI rejects economic/runtime options and nonstandard splits', () => {
+  const args = [
+    '--timestampPartitionMetadata',
+    'partition.json',
+    '--windowStart',
+    '100',
+    '--windowEnd',
+    '200',
+    '--validationSplit',
+    '0',
+    '--testSplit',
+    '0.4',
+  ];
+  assert.equal(parseCliArgs(args).timestampPartitionMetadata, 'partition.json');
+  for (const extra of [
+    ['--variant', 'policy::replace::true'],
+    ['--runtimeCheckpoint', 'runtime.json'],
+    ['--strategyArtifactAuthority', 'source.json'],
+    ['--realizedMetrics'],
+    ['--roundTripCostStressBps', '20'],
+    ['--costStressBps', '10'],
+    ['--materializeDiscoveryExport', 'view.jsonl'],
+    ['--labelEndBefore', '200'],
+    ['--testSince', '160'],
+    ['--featurePattern', 'x'],
+  ])
+    assert.throws(() => parseCliArgs([...args, ...extra]));
+  assert.throws(() => parseCliArgs(args.slice(0, -2)), /metadata/);
+  assert.throws(() => parseCliArgs([...args, '--testSplit', '0']), /metadata/);
+});
+
+test('timestamp metadata sorts multishard fanout, excludes outside rows and stays immutable', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-timestamps-')),
+  );
+  try {
+    const inputs = [path.join(dir, 'one.jsonl'), path.join(dir, 'two.jsonl')];
+    const timestamps = [190, 90, 150, 120, 190, 200, 140, 110, 160];
+    for (let part = 0; part < inputs.length; part++) {
+      await fsp.writeFile(
+        inputs[part],
+        timestamps
+          .filter((_, index) => index % 2 === part)
+          .map((timestamp) =>
+            JSON.stringify({
+              timestamp,
+              profit: 'DO NOT READ',
+              tradeResult: 'NOT AN OUTCOME',
+              payload: 'NO GATE',
+            }),
+          )
+          .join('\n') + '\n',
+      );
+    }
+    const options = {
+      projectRoot: dir,
+      filePaths: inputs,
+      outputPath: 'partition.json',
+      windowStart: 100,
+      windowEnd: 200,
+    };
+    const result = await timestampPartitionMetadata(options);
+    assert.equal(result.testSince, 160);
+    assert.deepEqual(result.development, { rows: 4, events: 4 });
+    assert.deepEqual(result.test, { rows: 3, events: 2 });
+    assert.equal(result.sourceSelection.beforeWindow, 1);
+    assert.equal(result.sourceSelection.atOrAfterWindowEnd, 1);
+    assert.equal(result.sourceFiles.length, 2);
+    assert.equal(
+      result.artifact.sha256,
+      createHash('sha256')
+        .update(await fsp.readFile(path.join(dir, 'partition.json')))
+        .digest('hex'),
+    );
+    assert.doesNotMatch(
+      await fsp.readFile(path.join(dir, 'partition.json'), 'utf8'),
+      /DO NOT READ|NOT AN OUTCOME|NO GATE/,
+    );
+    await assert.rejects(timestampPartitionMetadata(options), /immutable/);
+    await assert.rejects(
+      timestampPartitionMetadata({ ...options, outputPath: '../outside.json' }),
+      /inside Project/,
+    );
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('timestamp metadata fails invalid timestamps and insufficient independent groups', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-timestamps-bad-')),
+  );
+  try {
+    const input = path.join(dir, 'source.jsonl');
+    const options = {
+      projectRoot: dir,
+      filePaths: [input],
+      outputPath: 'partition.json',
+      windowStart: 100,
+      windowEnd: 200,
+    };
+    for (const timestamp of [null, 'invalid', '110', true]) {
+      await fsp.writeFile(input, JSON.stringify({ timestamp }) + '\n');
+      await assert.rejects(
+        timestampPartitionMetadata(options),
+        /finite numeric/,
+      );
+    }
+    await fsp.writeFile(input, '{"timestamp":110}\n{"timestamp":110}\n');
+    await assert.rejects(
+      timestampPartitionMetadata(options),
+      /two independent/,
+    );
+    await assert.rejects(fsp.access(path.join(dir, 'partition.json')));
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('timestamp metadata CLI runs without source, runtime, features or gate loading', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-timestamps-cli-')),
+  );
+  try {
+    await fsp.mkdir(path.join(dir, 'data/ai/export'), { recursive: true });
+    const file = path.join(
+      dir,
+      'data/ai/export/ai-dataset-test-merged-1.jsonl',
+    );
+    await fsp.writeFile(file, '{"timestamp":110}\n{"timestamp":150}\n');
+    const output = execFileSync(
+      process.execPath,
+      [
+        path.join(import.meta.dirname, 'ai-gate-ablation.mjs'),
+        '--file',
+        file,
+        '--timestampPartitionMetadata',
+        'partition.json',
+        '--windowStart',
+        '100',
+        '--windowEnd',
+        '200',
+        '--validationSplit',
+        '0',
+        '--testSplit',
+        '0.4',
+      ],
+      {
+        cwd: dir,
+        env: {
+          ...process.env,
+          PROJECT_CWD: dir,
+          TRADEJS_SOURCE_REPOSITORY_ROOT: '/missing-source',
+          TRADEJS_FRAMEWORK_REPOSITORY_ROOT: '/missing-runtime',
+        },
+        encoding: 'utf8',
+      },
+    );
+    const result = JSON.parse(output);
+    assert.equal(result.runtimeLoaded, false);
+    assert.equal(result.gateEvaluationPerformed, false);
+    assert.equal(result.testSince, 150);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('raw materialization CLI requires exact bounds and rejects evaluation options', () => {
+  const args = [
+    '--materializeDiscoveryExport',
+    'discovery-view.jsonl',
+    '--windowStart',
+    '100',
+    '--windowEnd',
+    '200',
+    '--testSince',
+    '200',
+    '--labelEndBefore',
+    '200',
+    '--validationSplit',
+    '0',
+  ];
+  assert.equal(
+    parseCliArgs(args).materializeDiscoveryExport,
+    'discovery-view.jsonl',
+  );
+  assert.throws(
+    () => parseCliArgs(['--materializeDiscoveryExport', 'view.jsonl']),
+    /requires exact/,
+  );
+  for (const extra of [
+    ['--variant', 'current'],
+    ['--runtimeCheckpoint', 'checkpoint.json'],
+    ['--list'],
+    ['--output', 'report.json'],
+    ['--includeGateContext'],
+  ]) {
+    assert.throws(() => parseCliArgs([...args, ...extra]));
+  }
+});
+
+test('raw materialization preserves only mature source objects and hashes full inputs', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-materialize-')),
+  );
+  try {
+    const selected = [
+      {
+        timestamp: 110,
+        signalId: 'first',
+        untouched: { arbitrary: ['x', 3] },
+        tradeResult: { exitTimestamp: 190, profit: 7 },
+      },
+      {
+        timestamp: 150,
+        signalId: 'second',
+        tradeResult: { exitTimestamp: 199, profit: -2 },
+      },
+    ];
+    const rows = [
+      { timestamp: 90 },
+      selected[0],
+      {
+        timestamp: 120,
+        tradeResult: { exitTimestamp: 200, profit: 1e99 },
+        payload: 'not evaluated',
+      },
+      { timestamp: 130, profit: -1e99 },
+      selected[1],
+      { timestamp: 200, tradeResult: { profit: 1e99 }, payload: 'sealed' },
+    ];
+    const inputs = [path.join(dir, 'one.jsonl'), path.join(dir, 'two.jsonl')];
+    await fsp.writeFile(
+      inputs[0],
+      rows
+        .slice(0, 3)
+        .map((x) => JSON.stringify(x))
+        .join('\n') + '\n',
+    );
+    await fsp.writeFile(
+      inputs[1],
+      rows
+        .slice(3)
+        .map((x) => JSON.stringify(x))
+        .join('\n') + '\n',
+    );
+    const result = await materializeDiscoveryExport({
+      projectRoot: dir,
+      filePaths: inputs,
+      outputPath: 'discovery-view.jsonl',
+      windowStart: 100,
+      windowEnd: 200,
+      testSince: 200,
+      labelEndBefore: 200,
+    });
+    const bytes = await fsp.readFile(result.output.path);
+    assert.deepEqual(
+      bytes
+        .toString()
+        .trim()
+        .split('\n')
+        .map((x) => JSON.parse(x)),
+      selected,
+    );
+    assert.equal(result.output.rows, 2);
+    assert.equal(
+      result.output.sha256,
+      createHash('sha256').update(bytes).digest('hex'),
+    );
+    assert.equal(result.output.sizeBytes, bytes.length);
+    assert.deepEqual(result.sourceFiles, result.sourceFilesAfter);
+    for (const input of result.sourceFiles)
+      assert.equal(
+        input.sha256,
+        createHash('sha256')
+          .update(await fsp.readFile(input.path))
+          .digest('hex'),
+      );
+    assert.deepEqual(result.sourceSelection.labelHorizon, {
+      cutoff: 200,
+      crossing: 1,
+      unknown: 1,
+      eligible: 2,
+    });
+    assert.equal(result.sourceSelection.atOrAfterWindowEnd, 1);
+    assert.equal(result.featureEvaluationPerformed, false);
+    assert.equal(result.gateEvaluationPerformed, false);
+    assert.equal(result.nativeAiTrain.until, 199);
+    assert.deepEqual(
+      JSON.parse(await fsp.readFile(result.receiptPath, 'utf8')).output,
+      result.output,
+    );
+    await assert.rejects(
+      materializeDiscoveryExport({
+        projectRoot: dir,
+        filePaths: inputs,
+        outputPath: 'discovery-view.jsonl',
+        windowStart: 100,
+        windowEnd: 200,
+        testSince: 200,
+        labelEndBefore: 200,
+      }),
+      /immutable/,
+    );
+    assert.deepEqual(await fsp.readFile(result.output.path), bytes);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('raw materialization fails closed with partial evidence but no success receipt', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-materialize-fail-')),
+  );
+  try {
+    const input = path.join(dir, 'source.jsonl');
+    const base = {
+      projectRoot: dir,
+      filePaths: [input],
+      windowStart: 100,
+      windowEnd: 200,
+      testSince: 200,
+      labelEndBefore: 200,
+    };
+    for (const [name, rows, pattern] of [
+      [
+        'zero',
+        [{ timestamp: 110, tradeResult: { exitTimestamp: 200 } }],
+        /zero eligible/,
+      ],
+      [
+        'inversion',
+        [{ timestamp: 110, tradeResult: { exitTimestamp: 109 } }],
+        /before decision/,
+      ],
+      ['invalid', [{ timestamp: null }], /numeric source timestamp/],
+    ]) {
+      await fsp.writeFile(input, rows.map((x) => JSON.stringify(x)).join('\n'));
+      const outputPath = `${name}.jsonl`;
+      await assert.rejects(
+        materializeDiscoveryExport({ ...base, outputPath }),
+        pattern,
+      );
+      assert.equal((await fsp.stat(path.join(dir, outputPath))).isFile(), true);
+      await assert.rejects(
+        fsp.stat(path.join(dir, `${outputPath}.receipt.json`)),
+        /ENOENT/,
+      );
+    }
+    await assert.rejects(
+      materializeDiscoveryExport({ ...base, outputPath: '../escape.jsonl' }),
+      /inside Project/,
+    );
+    await assert.rejects(
+      materializeDiscoveryExport({
+        ...base,
+        outputPath: 'mismatch.jsonl',
+        testSince: 201,
+      }),
+      /exact discovery/,
+    );
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('raw materialization CLI runs without source, runtime, adapter or gate loading', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-materialize-cli-')),
+  );
+  try {
+    const input = path.join(dir, 'ai-dataset-LiquidityZones-merged-1.jsonl');
+    await fsp.writeFile(
+      input,
+      JSON.stringify({
+        timestamp: 110,
+        tradeResult: { exitTimestamp: 190 },
+        payload: null,
+      }) + '\n',
+    );
+    const script = path.resolve(
+      '.codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs',
+    );
+    const receipt = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          script,
+          '--materializeDiscoveryExport',
+          'discovery-view.jsonl',
+          '--file',
+          input,
+          '--outDir',
+          dir,
+          '--strategy',
+          'LiquidityZones',
+          '--windowStart',
+          '100',
+          '--windowEnd',
+          '200',
+          '--testSince',
+          '200',
+          '--labelEndBefore',
+          '200',
+          '--validationSplit',
+          '0',
+        ],
+        {
+          cwd: dir,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PROJECT_CWD: dir,
+            TRADEJS_SOURCE_REPOSITORY_ROOT: '/missing-source',
+            TRADEJS_FRAMEWORK_REPOSITORY_ROOT: '/missing-framework',
+          },
+        },
+      ),
+    );
+    assert.equal(receipt.output.rows, 1);
+    assert.equal(receipt.gateEvaluationPerformed, false);
+    assert.equal(receipt.featureEvaluationPerformed, false);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('raw materialization ignores crossing/unknown feature and profit contamination', async () => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(
+      path.join(os.tmpdir(), 'gate-materialize-contamination-'),
+    ),
+  );
+  try {
+    const input = path.join(dir, 'source.jsonl');
+    const eligible = {
+      timestamp: 110,
+      tradeResult: { exitTimestamp: 190, profit: 3 },
+      features: { stable: true },
+    };
+    const base = {
+      projectRoot: dir,
+      filePaths: [input],
+      windowStart: 100,
+      windowEnd: 200,
+      testSince: 200,
+      labelEndBefore: 200,
+    };
+    const results = [];
+    for (const poison of [-1e99, 1e99]) {
+      const rows = [
+        eligible,
+        {
+          timestamp: 120,
+          tradeResult: { exitTimestamp: 200, profit: poison },
+          features: { poison },
+        },
+        {
+          timestamp: 130,
+          tradeResult: { profit: poison },
+          features: { poison },
+        },
+        {
+          timestamp: 200,
+          tradeResult: { profit: poison },
+          features: { poison },
+        },
+      ];
+      await fsp.writeFile(input, rows.map((x) => JSON.stringify(x)).join('\n'));
+      results.push(
+        await materializeDiscoveryExport({
+          ...base,
+          outputPath: `view-${results.length}.jsonl`,
+        }),
+      );
+    }
+    assert.equal(results[0].output.sha256, results[1].output.sha256);
+    assert.deepEqual(results[0].sourceSelection, results[1].sourceSelection);
+    assert.notEqual(
+      results[0].sourceFiles[0].sha256,
+      results[1].sourceFiles[0].sha256,
+    );
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('raw materialization detects input mutation and rejects foreign symlink output', async (t) => {
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-materialize-mutation-')),
+  );
+  const foreign = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-materialize-foreign-')),
+  );
+  try {
+    const input = path.join(dir, 'source.jsonl');
+    const row =
+      JSON.stringify({ timestamp: 110, tradeResult: { exitTimestamp: 190 } }) +
+      '\n';
+    await fsp.writeFile(input, row.repeat(3000));
+    const base = {
+      projectRoot: dir,
+      filePaths: [input],
+      windowStart: 100,
+      windowEnd: 200,
+      testSince: 200,
+      labelEndBefore: 200,
+    };
+    await fsp.symlink(foreign, path.join(dir, 'foreign'));
+    await assert.rejects(
+      materializeDiscoveryExport({ ...base, outputPath: 'foreign/view.jsonl' }),
+      /escapes Project/,
+    );
+    const originalOpen = fsp.open;
+    let mutations = 0;
+    t.mock.method(fsp, 'open', async (...args) => {
+      const handle = await originalOpen(...args);
+      if (args[0] === path.join(dir, 'mutated-view.jsonl')) {
+        // Real filesystem mutation after the initial input fingerprint and
+        // before scanning; no filesystem-notification scheduling dependency.
+        await fsp.appendFile(input, row);
+        mutations++;
+      }
+      return handle;
+    });
+    await assert.rejects(
+      materializeDiscoveryExport({ ...base, outputPath: 'mutated-view.jsonl' }),
+      /inputs changed/,
+    );
+    assert.equal(mutations, 1);
+    await assert.rejects(
+      fsp.stat(path.join(dir, 'mutated-view.jsonl.receipt.json')),
+      /ENOENT/,
+    );
+  } finally {
+    t.mock.restoreAll();
+    await fsp.rm(dir, { recursive: true, force: true });
+    await fsp.rm(foreign, { recursive: true, force: true });
+  }
+});
+
+test('discovery label horizon is strict at cutoff and rejects time inversion', () => {
+  assert.equal(
+    classifyDiscoveryLabelHorizon(100, { exitTimestamp: 199 }, 200),
+    'eligible',
+  );
+  assert.equal(
+    classifyDiscoveryLabelHorizon(100, { exitTimestamp: 200 }, 200),
+    'crossing',
+  );
+  for (const exitTimestamp of [undefined, null, '150', NaN, Infinity]) {
+    assert.equal(
+      classifyDiscoveryLabelHorizon(100, { exitTimestamp }, 200),
+      'unknown',
+    );
+  }
+  assert.throws(
+    () => classifyDiscoveryLabelHorizon(100, { exitTimestamp: 99 }, 200),
+    /before decision/,
+  );
+});
+
+test('discovery purges crossing and unknown outcomes before any payload evaluator', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-label-horizon-'));
+  try {
+    const file = path.join(dir, 'sources.jsonl');
+    const sources = [
+      { timestamp: 90, tradeResult: { exitTimestamp: 95 } },
+      {
+        timestamp: 110,
+        signalId: 'eligible',
+        tradeResult: { exitTimestamp: 199 },
+      },
+      { timestamp: 150, tradeResult: { exitTimestamp: 200 }, profit: 1e99 },
+      { timestamp: 160, tradeResult: { exitTimestamp: 250 }, profit: -1e99 },
+      { timestamp: 170 },
+      { timestamp: 180, tradeResult: { exitTimestamp: null } },
+      { timestamp: 190, tradeResult: { exitTimestamp: '195' } },
+      { timestamp: 200, profit: 1e99 },
+    ];
+    await fsp.writeFile(file, sources.map((x) => JSON.stringify(x)).join('\n'));
+    const scan = {};
+    const evaluated = [];
+    for await (const row of readWindowedResearchSources({
+      filePaths: [file],
+      windowStart: 100,
+      windowEnd: 200,
+      labelEndBefore: 200,
+      scan,
+    }))
+      evaluated.push(row.source.signalId);
+    assert.deepEqual(evaluated, ['eligible']);
+    assert.deepEqual(scan.labelHorizon, {
+      cutoff: 200,
+      crossing: 2,
+      unknown: 3,
+      eligible: 1,
+    });
+    assert.equal(scan.selectedRows, 1);
+    assert.equal(scan.atOrAfterWindowEnd, 1);
+    assert.equal(scan.beforeWindow, 1);
+    await fsp.writeFile(file, JSON.stringify({ timestamp: null }));
+    await assert.rejects(async () => {
+      for await (const ignored of readWindowedResearchSources({
+        filePaths: [file],
+        windowStart: 100,
+        windowEnd: 200,
+        labelEndBefore: 200,
+      }))
+        void ignored;
+    }, /numeric source timestamp/);
+    await assert.rejects(async () => {
+      for await (const ignored of readWindowedResearchSources({
+        filePaths: [],
+        windowStart: 100,
+        windowEnd: 200,
+        labelEndBefore: 201,
+      }))
+        void ignored;
+    }, /same cutoff/);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('label-purged CLI requires exact calendar discovery and valid UTC dates', () => {
+  const base = [
+    '--windowStart',
+    '100',
+    '--windowEnd',
+    '200',
+    '--testSince',
+    '200',
+    '--labelEndBefore',
+    '200',
+  ];
+  assert.equal(parseCliArgs(base).labelEndBefore, 200);
+  assert.throws(
+    () => parseCliArgs(['--labelEndBefore', '200']),
+    /discovery window/,
+  );
+  assert.throws(
+    () => parseCliArgs([...base, '--crossStrategy']),
+    /single-core/,
+  );
+  assert.throws(
+    () => parseCliArgs([...base, '--validationSplit', '0.1']),
+    /validationSplit 0/,
+  );
+  assert.throws(
+    () => parseCliArgs([...base, '--testSince', '199']),
+    /same cutoff/,
+  );
+  for (const value of [
+    '2025-02-30T00:00:00Z',
+    '2025-03-03T00:00:00',
+    '200.5',
+    '-1',
+    'Infinity',
+  ]) {
+    assert.throws(() => parseCliArgs(['--labelEndBefore', value]), /valid UTC/);
+  }
+});
 
 test('source window excludes outside and invalid rows before any gate/feature/variant evaluator', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-window-'));
@@ -166,6 +845,7 @@ test('source window rejects invalid bounds before reading/evaluation and unbound
 test('diagnostic CLI options remain opt-in and reject invalid stress inputs', () => {
   assert.deepEqual(parseCliArgs([]).costStressBps, []);
   assert.equal(parseCliArgs([]).cohortPath, null);
+  assert.equal(parseCliArgs([]).entryNotionalAuthority, null);
   assert.deepEqual(
     parseCliArgs(['--costStressBps', '2,5,10,5']).costStressBps,
     [2, 5, 10],
@@ -178,6 +858,57 @@ test('diagnostic CLI options remain opt-in and reject invalid stress inputs', ()
     () => parseCliArgs(['--costStressBps', '2,NaN']),
     /positive basis points/,
   );
+});
+
+test('fee-derived entry-notional CLI is explicit and limited to realized single-core round-trip stress', () => {
+  const required = [
+    '--entryNotionalAuthority',
+    'entry-notional-authority.json',
+    '--runtimeCheckpoint',
+    'runtime-checkpoint.json',
+    '--roundTripCostStressBps',
+    '20',
+    '--realizedMetrics',
+    '--windowStart',
+    '100',
+    '--windowEnd',
+    '200',
+  ];
+  assert.equal(
+    parseCliArgs(required).entryNotionalAuthority,
+    'entry-notional-authority.json',
+  );
+  for (const remove of [
+    ['--runtimeCheckpoint', 'runtime-checkpoint.json'],
+    ['--roundTripCostStressBps', '20'],
+    ['--realizedMetrics'],
+    ['--windowStart', '100'],
+    ['--windowEnd', '200'],
+  ]) {
+    const reduced = [...required];
+    const start = reduced.indexOf(remove[0]);
+    reduced.splice(start, remove.length);
+    assert.throws(() => parseCliArgs(reduced), /entryNotionalAuthority/);
+  }
+  for (const incompatible of [
+    ['--crossStrategy'],
+    ['--movingAverageStudy'],
+    [
+      '--materializeDiscoveryExport',
+      'view.jsonl',
+      '--testSince',
+      '200',
+      '--labelEndBefore',
+      '200',
+      '--validationSplit',
+      '0',
+    ],
+  ]) {
+    assert.throws(
+      () => parseCliArgs([...required, ...incompatible]),
+      /entryNotionalAuthority|materializeDiscoveryExport/,
+    );
+  }
 });
 
 test('monthly funnel and pairwise slices are opt-in, calendar complete and use exact selected identities', () => {
@@ -505,6 +1236,349 @@ test('cost diagnostics preserve approval identities and mark incomplete cohort e
   assert.equal(original.baseline.costStress, undefined);
 });
 
+test('round-trip stress uses actual entry notional and exit ordering without changing approvals', () => {
+  assert.equal(
+    getEntryStressNotional({ qty: 4, closedQty: 2, entryPrice: 100 }),
+    200,
+  );
+  assert.equal(
+    getEntryStressNotional({ qty: 2, entryPrice: 100, exitPrice: 500 }),
+    200,
+  );
+  for (const trade of [
+    null,
+    { qty: 2 },
+    { qty: 2, closedQty: 3, entryPrice: 100 },
+    { qty: 0, entryPrice: 100 },
+    { qty: 2, entryPrice: '100' },
+  ]) {
+    assert.equal(getEntryStressNotional(trade), null);
+  }
+  const day = 86400000,
+    start = Date.UTC(2022, 0, 1);
+  const rows = [10, 10, -15].map((profit, index) => ({
+    timestamp: start + index * day,
+    symbol: `S${index}`,
+    signalId: `s${index}`,
+    sequence: index,
+    direction: index === 0 ? 'LONG' : 'SHORT',
+    quality: 4,
+    baselineApproved: true,
+    directionMatches: true,
+    profit,
+    variantMatches: [],
+    entryStressNotional: 1000,
+    completedTrade: {
+      exitTimestamp: start + [5, 3, 4][index] * day,
+      netProfit: profit,
+    },
+  }));
+  const input = {
+    rows,
+    variants: [],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [2, 7],
+    testSince: start + 2 * day,
+    windowStart: start,
+    windowEnd: start + 7 * day,
+    realizedMetrics: true,
+  };
+  const original = buildAblationReport(input);
+  const report = buildAblationReport({
+    ...input,
+    roundTripCostStressBps: [20],
+  });
+  const stress = report.baseline.roundTripCostStress[0];
+  assert.deepEqual(
+    report.baseline.approvedSignals,
+    original.baseline.approvedSignals,
+  );
+  assert.deepEqual(report.baseline.realized, original.baseline.realized);
+  assert.equal(stress.additionalCost, 6);
+  assert.equal(stress.basisPointsRoundTrip, 20);
+  assert.equal(stress.realized.periods.full.totalProfit, -1);
+  assert.equal(stress.realized.periods.full.maxDrawdown, 17);
+  assert.equal(stress.realized.periods['2d'].totalProfit, 8);
+  assert.equal(stress.realized.train.totalProfit, 16);
+  assert.equal(stress.realized.test.totalProfit, -17);
+  assert.equal(stress.realized.test.cadencePerDay, 1 / 5);
+  assert.equal(stress.byDirection.LONG.periods.full.totalProfit, 8);
+  assert.equal(stress.byDirection.SHORT.periods.full.totalProfit, -9);
+  assert.equal(rows[0].profit, 10);
+  assert.equal(rows[0].completedTrade.netProfit, 10);
+  rows[0].entryStressNotional = null;
+  const missing = buildAblationReport({
+    ...input,
+    roundTripCostStressBps: [20],
+  }).baseline.roundTripCostStress[0];
+  assert.equal(missing.additionalCost, null);
+  assert.equal(missing.realized.periods, null);
+  assert.equal(missing.byDirection.SHORT.periods.full.totalProfit, -9);
+  rows[0].entryStressNotional = 1000;
+  rows[0].completedTrade.netProfit = 11;
+  assert.equal(
+    buildAblationReport({ ...input, roundTripCostStressBps: [20] }).baseline
+      .roundTripCostStress[0].realized.periods,
+    null,
+  );
+  assert.throws(
+    () =>
+      buildAblationReport({
+        ...input,
+        realizedMetrics: false,
+        roundTripCostStressBps: [20],
+      }),
+    /requires --realizedMetrics/,
+  );
+  assert.throws(
+    () => buildAblationReport({ ...input, roundTripCostStressBps: [-1] }),
+    /positive finite/,
+  );
+  assert.deepEqual(
+    parseCliArgs(['--roundTripCostStressBps', '10,20,20'])
+      .roundTripCostStressBps,
+    [10, 20],
+  );
+  assert.throws(
+    () => parseCliArgs(['--roundTripCostStressBps', 'NaN']),
+    /Invalid positive/,
+  );
+});
+
+test('fee-derived entry notional requires full closure and uses only analytical decimal and binary64 allowance', () => {
+  const entryFeeRate = 0.001;
+  const authority = {
+    entryFeeRate,
+    displayPriceDecimals: 8,
+    roundingPolicy: {
+      id: 'decimal-half-unit-plus-binary64-interval-v1',
+    },
+  };
+  const qty = 100_000_000;
+  const unroundedEntryPrice = 1.0000000049;
+  const displayedEntryPrice = Number(unroundedEntryPrice.toFixed(8));
+  const valid = deriveFeeEntryStressNotional(
+    {
+      qty,
+      closedQty: qty,
+      openFee: unroundedEntryPrice * qty * entryFeeRate,
+      entryPrice: displayedEntryPrice,
+    },
+    authority,
+  );
+  assert.equal(valid.status, 'complete');
+  assert.ok(valid.notional > qty * displayedEntryPrice);
+  assert.ok(valid.audit.difference <= valid.audit.totalAllowance);
+
+  const atDecimalBoundary = deriveFeeEntryStressNotional(
+    {
+      qty: 1,
+      closedQty: 1,
+      openFee: (1 + 0.5e-8) * entryFeeRate,
+      entryPrice: 1,
+    },
+    authority,
+  );
+  const immediatelyOutsideDecimalBoundary = deriveFeeEntryStressNotional(
+    {
+      qty: 1,
+      closedQty: 1,
+      openFee: (1 + 0.5001e-8) * entryFeeRate,
+      entryPrice: 1,
+    },
+    authority,
+  );
+  assert.equal(atDecimalBoundary.status, 'complete');
+  assert.equal(
+    immediatelyOutsideDecimalBoundary.reason,
+    'display-reconciliation-outside-analytical-bound',
+  );
+
+  const scaleInQty = 10;
+  const scaleInOpenFee = (4 * 100.000000004 + 6 * 200.000000004) * entryFeeRate;
+  assert.equal(
+    deriveFeeEntryStressNotional(
+      {
+        qty: scaleInQty,
+        closedQty: scaleInQty,
+        openFee: scaleInOpenFee,
+        entryPrice: 160,
+      },
+      authority,
+    ).status,
+    'complete',
+  );
+
+  const invalid = [
+    [null, 'missing-trade-result'],
+    [{ qty: null, closedQty: 2, openFee: 0.2, entryPrice: 100 }, 'missing-qty'],
+    [{ qty: '2', closedQty: 2, openFee: 0.2, entryPrice: 100 }, 'invalid-qty'],
+    [{ qty: 2, openFee: 0.2, entryPrice: 100 }, 'missing-closed-qty'],
+    [
+      { qty: 2, closedQty: -2, openFee: 0.2, entryPrice: 100 },
+      'invalid-closed-qty',
+    ],
+    [
+      { qty: 2, closedQty: 1, openFee: 0.2, entryPrice: 100 },
+      'not-fully-closed',
+    ],
+    [
+      { qty: 2, closedQty: 3, openFee: 0.2, entryPrice: 100 },
+      'not-fully-closed',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: null, entryPrice: 100 },
+      'missing-open-fee',
+    ],
+    [{ qty: 2, closedQty: 2, openFee: 0, entryPrice: 100 }, 'invalid-open-fee'],
+    [
+      { qty: 2, closedQty: 2, openFee: -0.2, entryPrice: 100 },
+      'invalid-open-fee',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: '0.2', entryPrice: 100 },
+      'invalid-open-fee',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: Number.NaN, entryPrice: 100 },
+      'invalid-open-fee',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: Infinity, entryPrice: 100 },
+      'invalid-open-fee',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: 0.2, entryPrice: null },
+      'missing-entry-price',
+    ],
+    [
+      { qty: 2, closedQty: 2, openFee: 0.2, entryPrice: '100' },
+      'invalid-entry-price',
+    ],
+    [
+      {
+        qty,
+        closedQty: qty,
+        openFee: 1.000000006 * qty * entryFeeRate,
+        entryPrice: 1,
+      },
+      'display-reconciliation-outside-analytical-bound',
+    ],
+  ];
+  for (const [tradeResult, reason] of invalid) {
+    const result = deriveFeeEntryStressNotional(tradeResult, authority);
+    assert.equal(result.status, 'missing');
+    assert.equal(result.reason, reason);
+    assert.equal(result.notional, null);
+  }
+});
+
+test('fee-derived missing economics never fall back and only poison affected realized cohorts', () => {
+  const day = 86_400_000;
+  const start = Date.UTC(2022, 0, 1);
+  const rows = [
+    {
+      timestamp: start,
+      symbol: 'LONG-MISSING',
+      signalId: 'long-missing',
+      sequence: 0,
+      direction: 'LONG',
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      profit: 5,
+      variantMatches: [],
+      entryStressNotional: null,
+      entryStressNotionalEvidence: {
+        status: 'missing',
+        reason: 'missing-open-fee',
+      },
+      completedTrade: { exitTimestamp: start + day, netProfit: 5 },
+    },
+    {
+      timestamp: start + day,
+      symbol: 'SHORT-COMPLETE',
+      signalId: 'short-complete',
+      sequence: 1,
+      direction: 'SHORT',
+      quality: 4,
+      baselineApproved: true,
+      directionMatches: true,
+      profit: 5,
+      variantMatches: [],
+      entryStressNotional: 1000,
+      entryStressNotionalEvidence: { status: 'complete', reason: null },
+      completedTrade: { exitTimestamp: start + 2 * day, netProfit: 5 },
+    },
+  ];
+  const input = {
+    rows,
+    variants: [],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [7],
+    windowStart: start,
+    windowEnd: start + 7 * day,
+    realizedMetrics: true,
+    roundTripCostStressBps: [20],
+  };
+  const legacy = buildAblationReport(input);
+  assert.equal(legacy.run.entryNotionalAuthority, undefined);
+  assert.equal(
+    legacy.baseline.roundTripCostStress[0].entryNotionalMethod,
+    undefined,
+  );
+  const report = buildAblationReport({
+    ...input,
+    entryNotionalAuthority: {
+      method: 'fee-derived-full-closed',
+      authority: { path: '/fixture/authority.json', sha256: 'a'.repeat(64) },
+      entryFeeRate: 0.001,
+    },
+  });
+  const stress = report.baseline.roundTripCostStress[0];
+  assert.equal(
+    report.run.entryNotionalAuthority.method,
+    'fee-derived-full-closed',
+  );
+  assert.equal(stress.entryNotionalMethod, 'fee-derived-full-closed');
+  assert.equal(stress.completeNotionalRows, 1);
+  assert.equal(stress.missingNotionalRows, 1);
+  assert.deepEqual(stress.missingNotionalReasonCounts, {
+    'missing-open-fee': 1,
+  });
+  assert.equal(stress.additionalCost, null);
+  assert.equal(stress.realized.periods, null);
+  assert.equal(stress.byDirection.LONG.periods, null);
+  assert.equal(stress.byDirection.SHORT.periods.full.totalProfit, 3);
+  assert.deepEqual(
+    report.baseline.approvedSignals,
+    legacy.baseline.approvedSignals,
+  );
+  assert.deepEqual(report.baseline.realized, legacy.baseline.realized);
+
+  const zero = buildAblationReport({
+    ...input,
+    rows: rows.map((row) => ({
+      ...row,
+      quality: 1,
+      baselineApproved: false,
+    })),
+    entryNotionalAuthority: {
+      method: 'fee-derived-full-closed',
+      authority: { path: '/fixture/authority.json', sha256: 'a'.repeat(64) },
+      entryFeeRate: 0.001,
+    },
+  }).baseline.roundTripCostStress[0];
+  assert.equal(zero.approvedN, 0);
+  assert.equal(zero.completeNotionalRows, 0);
+  assert.equal(zero.missingNotionalRows, 0);
+  assert.deepEqual(zero.missingNotionalReasonCounts, {});
+  assert.equal(zero.additionalCost, 0);
+  assert.equal(zero.realized.periods.full.trades, 0);
+});
+
 test('optional realized metrics preserve decisions, use exit order and retain decision-time partitions', () => {
   const day = 86400000;
   const start = Date.UTC(2022, 0, 1);
@@ -574,6 +1648,186 @@ test('optional realized metrics preserve decisions, use exit order and retain de
   const missing = buildAblationReport({ ...input, realizedMetrics: true });
   assert.equal(missing.baseline.realized.missingEconomicRows, 1);
   assert.equal(missing.baseline.realized.periods, null);
+});
+
+test('symbol cohorts preserve global approvals, partitions, zero windows and cost stress', () => {
+  const day = 86400000,
+    start = Date.UTC(2022, 0, 1);
+  const variant = parseVariant('ranked::replace@4::true');
+  variant.selection = {
+    capacity: 1,
+    rankBy: [{ path: 'margin', order: 'desc' }],
+  };
+  const rows = [10, -5, 3].map((profit, sequence) => ({
+    timestamp: start + (sequence === 2 ? 4 : 0) * day,
+    profit,
+    sequence,
+    symbol: sequence === 1 ? 'B' : 'A',
+    signalId: `s${sequence}`,
+    direction: sequence === 1 ? 'SHORT' : 'LONG',
+    quality: 4,
+    baselineApproved: true,
+    directionMatches: true,
+    features: { margin: 3 - sequence },
+    variantMatches: [true],
+    entryStressNotional: 1000,
+    completedTrade: {
+      exitTimestamp: start + (sequence === 2 ? 5 : 1) * day,
+      netProfit: profit,
+    },
+  }));
+  const input = {
+    rows,
+    variants: [variant],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [1, 7],
+    windowStart: start,
+    windowEnd: start + 7 * day,
+    testSince: start + 3 * day,
+    realizedMetrics: true,
+    roundTripCostStressBps: [20],
+  };
+  const plain = buildAblationReport(input);
+  const symbolCohorts = {
+    schema: 'tradejs-symbol-cohorts/v1',
+    groups: [
+      { id: 'full-history', symbols: ['A'] },
+      { id: 'expanded', symbols: ['B'] },
+      { id: 'inactive', symbols: ['C'] },
+    ],
+    authority: { path: '/frozen/cohorts.json', sha256: 'a'.repeat(64) },
+  };
+  const report = buildAblationReport({ ...input, symbolCohorts });
+  assert.deepEqual(
+    report.baseline.approvedSignals,
+    plain.baseline.approvedSignals,
+  );
+  assert.deepEqual(
+    report.variants[0].approvedSignals,
+    plain.variants[0].approvedSignals,
+  );
+  assert.deepEqual(
+    report.variants[0].realized.periods,
+    plain.variants[0].realized.periods,
+  );
+  const groups = report.variants[0].realized.symbolCohorts.groups;
+  assert.equal(groups[0].realized.periods.full.trades, 2);
+  assert.equal(groups[1].realized.periods.full.trades, 0); // no reranking within B
+  assert.equal(groups[2].realized.periods.full.trades, 0);
+  assert.equal(groups[2].realized.periods['7d'].totalProfit, 0);
+  assert.equal(groups[0].realized.periods['1d'].trades, 0);
+  assert.equal(groups[0].realized.train.cadencePerDay, 1 / 3);
+  assert.equal(groups[0].realized.test.cadencePerDay, 1 / 4);
+  assert.equal(groups[0].realized.partitionDirections.test.LONG.trades, 1);
+  for (const group of groups) {
+    assert.deepEqual(
+      group.realized.partitionCalendarBounds,
+      report.variants[0].realized.partitionCalendarBounds,
+    );
+    assert.deepEqual(
+      group.realized.developmentStability.map((block) => block.calendarBounds),
+      report.variants[0].realized.developmentStability.map(
+        (block) => block.calendarBounds,
+      ),
+    );
+  }
+  const stressedGroups =
+    report.variants[0].roundTripCostStress[0].realized.symbolCohorts.groups;
+  assert.equal(stressedGroups[0].realized.periods.full.totalProfit, 9);
+  assert.equal(stressedGroups[1].realized.periods.full.trades, 0);
+  assert.equal(
+    report.baseline.realized.symbolCohorts.groups[1].realized.periods.full
+      .totalProfit,
+    -5,
+  );
+  assert.deepEqual(report.run.symbolCohorts.authority, symbolCohorts.authority);
+  assert.throws(
+    () =>
+      buildAblationReport({
+        ...input,
+        symbolCohorts: { ...symbolCohorts, groups: [symbolCohorts.groups[0]] },
+      }),
+    /Every source row/,
+  );
+});
+
+test('symbol cohort input is checksum-bound, disjoint and diagnostic-only', async () => {
+  const definition = {
+    schema: 'tradejs-symbol-cohorts/v1',
+    groups: [{ id: 'group', symbols: ['A'] }],
+  };
+  assert.deepEqual(normalizeSymbolCohorts(definition), definition);
+  for (const input of [
+    null,
+    { groups: [] },
+    { ...definition, groups: [] },
+    { ...definition, groups: [{ id: '', symbols: ['A'] }] },
+    { ...definition, groups: [{ id: 'group', symbols: [] }] },
+    { ...definition, groups: [{ id: 'group', symbols: ['A', 'A'] }] },
+    {
+      ...definition,
+      groups: [
+        { id: 'g1', symbols: ['A'] },
+        { id: 'g2', symbols: ['A'] },
+      ],
+    },
+    {
+      ...definition,
+      groups: [
+        { id: 'same', symbols: ['A'] },
+        { id: 'same', symbols: ['B'] },
+      ],
+    },
+  ])
+    assert.throws(() => normalizeSymbolCohorts(input), /Symbol cohort/);
+  assert.throws(
+    () => parseCliArgs(['--symbolCohorts', 'groups.json']),
+    /single-core/,
+  );
+  assert.throws(
+    () =>
+      parseCliArgs([
+        '--symbolCohorts',
+        'groups.json',
+        '--realizedMetrics',
+        '--crossStrategy',
+      ]),
+    /single-core/,
+  );
+  assert.equal(
+    parseCliArgs(['--symbolCohorts', 'groups.json', '--realizedMetrics'])
+      .symbolCohorts,
+    'groups.json',
+  );
+  const dir = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-symbol-cohorts-')),
+  );
+  const foreign = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'gate-cohorts-foreign-')),
+  );
+  try {
+    const bytes = JSON.stringify(definition);
+    await fsp.writeFile(path.join(dir, 'groups.json'), bytes);
+    const loaded = loadSymbolCohorts({ projectRoot: dir, file: 'groups.json' });
+    assert.equal(
+      loaded.authority.sha256,
+      createHash('sha256').update(bytes).digest('hex'),
+    );
+    assert.deepEqual(loaded.groups, definition.groups);
+    await fsp.writeFile(path.join(foreign, 'groups.json'), bytes);
+    await fsp.symlink(
+      path.join(foreign, 'groups.json'),
+      path.join(dir, 'foreign.json'),
+    );
+    assert.throws(
+      () => loadSymbolCohorts({ projectRoot: dir, file: 'foreign.json' }),
+      /inside Project/,
+    );
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+    await fsp.rm(foreign, { recursive: true, force: true });
+  }
 });
 
 test('realized evidence rejects missing anchors, malformed identities, duplicates and impossible chronology', () => {
@@ -771,6 +2025,830 @@ test('requires the public registry runtime module for plugin loading', async () 
   await fsp.writeFile(registryModulePath, '', 'utf8');
   const resolved = await ensureRuntimeBuild(projectRoot, null);
   assert.equal(resolved.registryModulePath, registryModulePath);
+});
+
+const makeArtifactRuntimeFixture = async (t) => {
+  const projectRoot = await createGitCheckout(t, 'gate-project-authority-');
+  const sourceRepositoryRoot = await createGitCheckout(
+    t,
+    'gate-source-authority-',
+  );
+  const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const write = async (file, bytes) => {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    await fsp.writeFile(file, bytes);
+  };
+  const packageName = '@tradejs/strategy-fixture';
+  const packageJson = {
+    name: packageName,
+    version: '1',
+    type: 'module',
+    exports: { '.': { import: './dist/index.js' } },
+  };
+  await write(
+    path.join(sourceRepositoryRoot, 'package.json'),
+    JSON.stringify(packageJson),
+  );
+  await write(
+    path.join(sourceRepositoryRoot, 'src/index.ts'),
+    'export const fixture = true;',
+  );
+  execFileSync('git', ['add', 'package.json', 'src/index.ts'], {
+    cwd: sourceRepositoryRoot,
+  });
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture baseline',
+    ],
+    { cwd: sourceRepositoryRoot },
+  );
+  const sourceGitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: sourceRepositoryRoot,
+    encoding: 'utf8',
+  }).trim();
+  const generation = '3.1.29-beta.268';
+  const packages = {};
+  for (const name of [
+    'cli',
+    'core',
+    'node',
+    'types',
+    'infra',
+    'indicators',
+    'connectors',
+    'strategy-kit',
+  ]) {
+    const root = path.join(projectRoot, 'node_modules/@tradejs', name);
+    const pkg = {
+      name: `@tradejs/${name}`,
+      version: name === 'strategy-kit' ? '3.0.6' : generation,
+      type: name === 'cli' ? 'commonjs' : 'module',
+      exports: { './strategies': './dist/strategies.mjs' },
+    };
+    await write(path.join(root, 'package.json'), JSON.stringify(pkg));
+    await write(
+      path.join(root, 'dist/strategies.mjs'),
+      'export const runtimeTag = "PROJECT268";',
+    );
+    if (name === 'node') {
+      await write(
+        path.join(root, 'dist/registry.mjs'),
+        'let entries=[]; export const resetStrategyRegistryCache=()=>{entries=[]}; export const registerStrategyEntries=(values)=>{entries=values}; export const getAdapter=()=>entries[0]?.adapter; export const ensureStrategyPluginsLoaded=async()=>{};',
+      );
+      await write(
+        path.join(root, 'dist/ai.mjs'),
+        'import {getAdapter} from "./registry.mjs"; export const buildAiPayload=(signal)=>({signal,additionalIndicators:{runtimeTag:getAdapter().runtimeTag},indicators:{}}); export const getDeterministicAiGateContext=(payload)=>({runtimeTag:payload.additionalIndicators.runtimeTag}); export const runAiPromptLocal=async(signal,{payload})=>({direction:signal.direction,quality:payload.additionalIndicators.runtimeTag==="PROJECT268"?4:1});',
+      );
+    }
+    if (name === 'cli')
+      await write(
+        path.join(root, 'dist/lib/aiPocketSearch.js'),
+        'exports.collectAiPocketFeatures=({payload})=>({"normalized.fixture":payload.additionalIndicators.runtimeTag}); exports.searchAiPockets=()=>{throw new Error("real search forbidden")};',
+      );
+    packages[`@tradejs/${name}`] = {
+      version: pkg.version,
+      packageSha256: sha(await fsp.readFile(path.join(root, 'package.json'))),
+      distSha256: hashArtifactDist(path.join(root, 'dist')),
+    };
+  }
+  const checkpointPath = path.join(projectRoot, 'data/runtime-checkpoint.json');
+  const checkpoint = {
+    generation,
+    treeHashAlgorithm:
+      'SHA256 of sorted SHA256(relativefilebytes) space relativepath newline',
+    packages,
+  };
+  await write(checkpointPath, JSON.stringify(checkpoint));
+  const evidence = path.join(projectRoot, 'data/candidate');
+  const packageRoot = path.join(evidence, 'compiled-package');
+  await write(
+    path.join(packageRoot, 'package.json'),
+    JSON.stringify(packageJson),
+  );
+  await write(
+    path.join(packageRoot, 'dist/index.js'),
+    'import {runtimeTag} from "@tradejs/core/strategies"; export const strategyEntries=[{manifest:{name:"FixtureStrategy"},adapter:{runtimeTag}}];',
+  );
+  // An obsolete worktree dependency would contaminate the result if imported.
+  await write(
+    path.join(sourceRepositoryRoot, 'node_modules/@tradejs/core/package.json'),
+    JSON.stringify({
+      name: '@tradejs/core',
+      type: 'module',
+      exports: { './strategies': './dist/strategies.mjs' },
+    }),
+  );
+  await write(
+    path.join(
+      sourceRepositoryRoot,
+      'node_modules/@tradejs/core/dist/strategies.mjs',
+    ),
+    'export const runtimeTag="FOREIGN_WORKTREE";',
+  );
+  const sourceDiffPath = path.join(evidence, 'source.patch');
+  await write(sourceDiffPath, 'Historical frozen source patch fixture\n');
+  const distSha256 = hashArtifactDist(path.join(packageRoot, 'dist'));
+  const buildReceiptPath = path.join(evidence, 'build.json');
+  const build = {
+    schema: 'tradejs-source-development-dependency-overlay/v1',
+    sourceRoot: sourceRepositoryRoot,
+    status: 'passed',
+    restored: true,
+    builtDistTreeSha256: distSha256,
+    packages: ['core', 'types', 'strategy-kit'].map((name) => ({
+      name,
+      executedVersion: packages[`@tradejs/${name}`].version,
+      executedTreeSha256: hashArtifactDist(
+        path.join(projectRoot, 'node_modules/@tradejs', name),
+      ),
+      restored: true,
+    })),
+  };
+  await write(buildReceiptPath, JSON.stringify(build));
+  const authorityPath = path.join(evidence, 'authority.json');
+  const authority = {
+    schema: 'tradejs-strategy-artifact-authority/v1',
+    sourceRepositoryRoot,
+    sourceGitSha,
+    sourceDiff: {
+      path: 'source.patch',
+      sha256: sha(await fsp.readFile(sourceDiffPath)),
+    },
+    buildReceipt: {
+      path: 'build.json',
+      sha256: sha(await fsp.readFile(buildReceiptPath)),
+    },
+    packageRoot: 'compiled-package',
+    packageJsonSha256: sha(
+      await fsp.readFile(path.join(packageRoot, 'package.json')),
+    ),
+    distSha256,
+    runtimeCheckpoint: {
+      path: '../runtime-checkpoint.json',
+      sha256: sha(await fsp.readFile(checkpointPath)),
+    },
+  };
+  await write(authorityPath, JSON.stringify(authority));
+  const runtime = await ensureRuntimeBuild('/canonical-framework-not-built', {
+    projectRoot,
+    runtimeCheckpoint: checkpointPath,
+  });
+  return {
+    projectRoot,
+    sourceRepositoryRoot,
+    checkpointPath,
+    checkpoint,
+    authorityPath,
+    authority,
+    build,
+    buildReceiptPath,
+    packageRoot,
+    sha,
+    write,
+    runtime,
+  };
+};
+
+const makeEntryNotionalAuthorityFixture = async (t) => {
+  const projectRoot = await fsp.realpath(
+    await fsp.mkdtemp(path.join(os.tmpdir(), 'entry-notional-authority-')),
+  );
+  t.after(() => fsp.rm(projectRoot, { recursive: true, force: true }));
+  const write = async (relativePath, value) => {
+    const filePath = path.join(projectRoot, relativePath);
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, value);
+    return filePath;
+  };
+  const sha = (value) => createHash('sha256').update(value).digest('hex');
+  const moduleBytes = Buffer.from('reviewed synthetic backtest module\n');
+  const moduleSha256 = sha(moduleBytes);
+  const packageRoot = path.join(projectRoot, 'node_modules/@tradejs/node');
+  const modulePath = await write(
+    'node_modules/@tradejs/node/dist/backtest.mjs',
+    moduleBytes,
+  );
+  const checkpointBytes = Buffer.from('{"fixture":"runtime"}\n');
+  const checkpointPath = await write(
+    'runtime-checkpoint.json',
+    checkpointBytes,
+  );
+  const checkpointSha256 = sha(checkpointBytes);
+  const semanticsId =
+    'tradejs-node-backtest-open-fee-unrounded-entry-price-8dp/test';
+  const receipt = {
+    schema: 'tradejs-entry-notional-semantics-receipt/v1',
+    reviewedModule: {
+      packageName: '@tradejs/node',
+      relativePath: 'dist/backtest.mjs',
+      sha256: moduleSha256,
+    },
+    semanticsId,
+    reviewedSemantics: { displayPriceDecimals: 8 },
+  };
+  const receiptBytes = Buffer.from(`${JSON.stringify(receipt)}\n`);
+  const receiptPath = await write('semantics-receipt.json', receiptBytes);
+  const receiptSha256 = sha(receiptBytes);
+  const executionCosts = {
+    fees: { makerRate: 0.001, takerRate: 0.001 },
+    funding: { enabled: false },
+  };
+  const config = { execution: { costs: executionCosts } };
+  const configBytes = Buffer.from(`${JSON.stringify(config)}\n`);
+  const configPath = await write('resolved-config.json', configBytes);
+  const configSha256 = sha(configBytes);
+  const sourceABytes = Buffer.from('{"fixture":"a"}\n');
+  const sourceBBytes = Buffer.from('{"fixture":"b"}\n');
+  const sourceA = await write('source-a.jsonl', sourceABytes);
+  const sourceB = await write('source-b.jsonl', sourceBBytes);
+  const authority = {
+    schema: 'tradejs-entry-notional-authority/v1',
+    method: 'fee-derived-full-closed',
+    runtimeCheckpoint: {
+      path: 'runtime-checkpoint.json',
+      sha256: checkpointSha256,
+    },
+    semanticsReceipt: {
+      path: 'semantics-receipt.json',
+      sha256: receiptSha256,
+    },
+    executionModule: {
+      packageName: '@tradejs/node',
+      relativePath: 'dist/backtest.mjs',
+      sha256: moduleSha256,
+    },
+    resolvedExecutionConfig: {
+      path: 'resolved-config.json',
+      sha256: configSha256,
+      executionCostsJsonPointer: '/execution/costs',
+      executionCostsCanonicalSha256:
+        canonicalEntryNotionalJsonSha256(executionCosts),
+      fees: { makerRate: 0.001, takerRate: 0.001 },
+    },
+    sourceExports: [
+      { path: 'source-a.jsonl', sha256: sha(sourceABytes) },
+      { path: 'source-b.jsonl', sha256: sha(sourceBBytes) },
+    ],
+    displayPriceDecimals: 8,
+    roundingPolicy: {
+      id: 'decimal-half-unit-plus-binary64-interval-v1',
+    },
+  };
+  const authorityPath = await write(
+    'entry-notional-authority.json',
+    `${JSON.stringify(authority)}\n`,
+  );
+  return {
+    projectRoot,
+    write,
+    sha,
+    modulePath,
+    packageRoot,
+    checkpointPath,
+    checkpointSha256,
+    receiptPath,
+    receiptSha256,
+    configPath,
+    sourceA,
+    sourceB,
+    authority,
+    authorityPath,
+    executionRuntime: {
+      checkpoint: { path: checkpointPath, sha256: checkpointSha256 },
+      packages: { '@tradejs/node': { packageRoot } },
+    },
+    semanticsPolicy: {
+      receiptSha256,
+      receiptSchema: receipt.schema,
+      semanticsId,
+      moduleSha256,
+      packageName: '@tradejs/node',
+      relativePath: 'dist/backtest.mjs',
+      displayPriceDecimals: 8,
+    },
+  };
+};
+
+test('entry-notional authority binds reviewed semantics, runtime, config and ordered stable inputs', async (t) => {
+  const f = await makeEntryNotionalAuthorityFixture(t);
+  const verified = await verifyEntryNotionalAuthority({
+    projectRoot: f.projectRoot,
+    entryNotionalAuthority: f.authorityPath,
+    executionRuntime: f.executionRuntime,
+    filePaths: [f.sourceA, f.sourceB],
+    reviewedSemanticsPolicy: f.semanticsPolicy,
+  });
+  assert.equal(verified.entryFeeRate, 0.001);
+  assert.equal(verified.mode, 'fee-derived-full-closed');
+  assert.equal(verified.method, 'fee-derived-full-closed');
+  assert.deepEqual(verified.sourceExports, verified.sourceFilesBefore);
+  assert.equal(verified.roundingPolicy.unitRoundoff, Number.EPSILON / 2);
+  assert.equal(verified.sourceFilesBefore.length, 2);
+  assert.equal(verified.inputStabilityVerified, false);
+  const stable = await verifyEntryNotionalInputStability(verified);
+  assert.equal(stable.inputStabilityVerified, true);
+  assert.deepEqual(stable.sourceFilesAfter, stable.sourceFilesBefore);
+
+  await fsp.appendFile(f.sourceB, '{"changed":true}\n');
+  await assert.rejects(
+    verifyEntryNotionalInputStability(verified),
+    /changed during evaluation/,
+  );
+});
+
+test('entry-notional authority cannot self-assert unreviewed semantics or alter fees and source order', async (t) => {
+  const f = await makeEntryNotionalAuthorityFixture(t);
+  const verify = (authority, options = {}) =>
+    f
+      .write('entry-notional-authority.json', `${JSON.stringify(authority)}\n`)
+      .then(() =>
+        verifyEntryNotionalAuthority({
+          projectRoot: f.projectRoot,
+          entryNotionalAuthority: f.authorityPath,
+          executionRuntime: f.executionRuntime,
+          filePaths: [f.sourceA, f.sourceB],
+          ...options,
+        }),
+      );
+  await assert.rejects(verify(f.authority), /Unsupported reviewed semantics/);
+  for (const fees of [
+    { makerRate: 0.001, takerRate: 0.002 },
+    { makerRate: 0, takerRate: 0 },
+    { makerRate: -0.001, takerRate: -0.001 },
+    { makerRate: null, takerRate: null },
+  ]) {
+    await assert.rejects(
+      verify(
+        {
+          ...f.authority,
+          resolvedExecutionConfig: {
+            ...f.authority.resolvedExecutionConfig,
+            fees,
+          },
+        },
+        { reviewedSemanticsPolicy: f.semanticsPolicy },
+      ),
+      /equal positive maker\/taker/,
+    );
+  }
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        sourceExports: [...f.authority.sourceExports].reverse(),
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /ordered source export mismatch/,
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        executionModule: {
+          ...f.authority.executionModule,
+          sha256: '0'.repeat(64),
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /module mismatch/,
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        semanticsReceipt: {
+          ...f.authority.semanticsReceipt,
+          sha256: '0'.repeat(64),
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /checksum mismatch/,
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        runtimeCheckpoint: {
+          ...f.authority.runtimeCheckpoint,
+          sha256: '0'.repeat(64),
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /checksum mismatch/,
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        resolvedExecutionConfig: {
+          ...f.authority.resolvedExecutionConfig,
+          executionCostsCanonicalSha256: '0'.repeat(64),
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /executionCosts checksum mismatch/,
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        sourceExports: f.authority.sourceExports.map((source, index) =>
+          index === 0 ? { ...source, sha256: '0'.repeat(64) } : source,
+        ),
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /source export checksum mismatch/,
+  );
+
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        executionModule: {
+          ...f.authority.executionModule,
+          relativePath: 'dist/not-the-reviewed-module.mjs',
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /module mismatch/,
+  );
+
+  const alternateCheckpointPath = await f.write(
+    'alternate-runtime-checkpoint.json',
+    await fsp.readFile(f.checkpointPath),
+  );
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        runtimeCheckpoint: {
+          path: path.basename(alternateCheckpointPath),
+          sha256: f.checkpointSha256,
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /runtime checkpoint mismatch/,
+  );
+
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        resolvedExecutionConfig: {
+          ...f.authority.resolvedExecutionConfig,
+          executionCostsJsonPointer: '/execution/notExecutionCosts',
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /resolved executionCosts are missing/,
+  );
+
+  const outsideRoot = await fsp.mkdtemp(
+    path.join(os.tmpdir(), 'entry-notional-foreign-'),
+  );
+  t.after(() => fsp.rm(outsideRoot, { recursive: true, force: true }));
+  const outsideReceipt = path.join(outsideRoot, 'semantics-receipt.json');
+  await fsp.copyFile(f.receiptPath, outsideReceipt);
+  const receiptSymlink = path.join(f.projectRoot, 'foreign-receipt.json');
+  await fsp.symlink(outsideReceipt, receiptSymlink);
+  await assert.rejects(
+    verify(
+      {
+        ...f.authority,
+        semanticsReceipt: {
+          path: path.basename(receiptSymlink),
+          sha256: f.receiptSha256,
+        },
+      },
+      { reviewedSemanticsPolicy: f.semanticsPolicy },
+    ),
+    /Authority path must remain inside Project/,
+  );
+});
+
+test('explicit checkpoint runtime and historical strategy artifact preserve feature/current-gate binding without worktree dependencies', async (t) => {
+  const f = await makeArtifactRuntimeFixture(t);
+  const options = {
+    projectRoot: f.projectRoot,
+    executionRuntime: f.runtime.executionRuntime,
+    strategyArtifactAuthority: f.authorityPath,
+  };
+  const strategy = await loadStandaloneStrategyEntries(
+    f.sourceRepositoryRoot,
+    options,
+  );
+  assert.equal(strategy.strategyEntries[0].adapter.runtimeTag, 'PROJECT268');
+  assert.equal(
+    strategy.strategyArtifact.sourceGitSha,
+    f.authority.sourceGitSha,
+  );
+  assert.equal(
+    strategy.strategyArtifact.liveDirtyDiffComparedToHistoricalPatch,
+    false,
+  );
+  const source = {
+    timestamp: 100,
+    signalId: 'fixture',
+    symbol: 'TEST',
+    direction: 'LONG',
+    profit: 1,
+    tradeResult: { exitTimestamp: 150 },
+    payload: {
+      signal: {
+        strategy: 'FixtureStrategy',
+        timestamp: 100,
+        signalId: 'fixture',
+        symbol: 'TEST',
+        direction: 'LONG',
+        prices: { currentPrice: 100, stopLossPrice: 90, takeProfitPrice: 120 },
+      },
+    },
+  };
+  const exportPath = path.join(f.projectRoot, 'data/synthetic.jsonl');
+  await f.write(exportPath, JSON.stringify(source));
+  const loaded = await loadResearchRows({
+    projectRoot: f.projectRoot,
+    sourceRepositoryRoot: f.sourceRepositoryRoot,
+    frameworkRepositoryRoot: '/canonical-framework-not-built',
+    runtimeCheckpoint: f.checkpointPath,
+    strategyArtifactAuthority: f.authorityPath,
+    filePaths: [exportPath],
+    variants: [],
+    minQuality: 4,
+    windowStart: 90,
+    windowEnd: 200,
+    labelEndBefore: 200,
+  });
+  const ai = await import(pathToFileURL(f.runtime.aiModulePath).href);
+  const payload = ai.buildAiPayload(source.payload.signal);
+  const analysis = await ai.runAiPromptLocal(source.payload.signal, {
+    payload,
+  });
+  assert.equal(loaded.failed, 0);
+  assert.equal(loaded.rows[0].quality, analysis.quality);
+  assert.equal(loaded.rows[0].baselineApproved, true);
+  assert.deepEqual(loaded.rows[0].features, {
+    'normalized.fixture': 'PROJECT268',
+    'derived.direction': 'LONG',
+  });
+  assert.equal(loaded.executionRuntime.generation, '3.1.29-beta.268');
+  assert.equal(loaded.strategyArtifact.packageRoot, f.packageRoot);
+  assert.ok(!JSON.stringify(loaded).includes('FOREIGN_WORKTREE'));
+});
+
+test('checkpoint and artifact authorities fail closed before any export read', async (t) => {
+  const f = await makeArtifactRuntimeFixture(t);
+  const verify = () =>
+    verifyStrategyArtifactAuthority({
+      sourceRepositoryRoot: f.sourceRepositoryRoot,
+      projectRoot: f.projectRoot,
+      strategyArtifactAuthority: f.authorityPath,
+      executionRuntime: f.runtime.executionRuntime,
+    });
+  for (const change of [
+    { sourceGitSha: '0'.repeat(40) },
+    { sourceDiff: { ...f.authority.sourceDiff, sha256: '0'.repeat(64) } },
+    { packageJsonSha256: '0'.repeat(64) },
+    { distSha256: '0'.repeat(64) },
+    { packageRoot: f.sourceRepositoryRoot },
+    {
+      runtimeCheckpoint: {
+        ...f.authority.runtimeCheckpoint,
+        sha256: '0'.repeat(64),
+      },
+    },
+  ]) {
+    await f.write(
+      f.authorityPath,
+      JSON.stringify({ ...f.authority, ...change }),
+    );
+    assert.throws(verify, /mismatch|inside Project/);
+  }
+  await f.write(f.authorityPath, JSON.stringify(f.authority));
+  const foreignSource = await createGitCheckout(t, 'gate-foreign-source-');
+  await f.write(
+    f.authorityPath,
+    JSON.stringify({ ...f.authority, sourceRepositoryRoot: foreignSource }),
+  );
+  assert.throws(verify, /source mismatch/);
+  await f.write(f.authorityPath, JSON.stringify(f.authority));
+  const changedBuild = { ...f.build, restored: false };
+  await f.write(f.buildReceiptPath, JSON.stringify(changedBuild));
+  await f.write(
+    f.authorityPath,
+    JSON.stringify({
+      ...f.authority,
+      buildReceipt: {
+        ...f.authority.buildReceipt,
+        sha256: f.sha(await fsp.readFile(f.buildReceiptPath)),
+      },
+    }),
+  );
+  assert.throws(verify, /build receipt mismatch/);
+  await assert.rejects(
+    loadResearchRows({
+      projectRoot: f.projectRoot,
+      sourceRepositoryRoot: f.sourceRepositoryRoot,
+      frameworkRepositoryRoot: '/no-framework-dist',
+      runtimeCheckpoint: f.checkpointPath,
+      strategyArtifactAuthority: f.authorityPath,
+      filePaths: ['/must-not-read-export'],
+      variants: [],
+      minQuality: 4,
+    }),
+    /build receipt mismatch/,
+  );
+  for (const field of ['version', 'packageSha256', 'distSha256']) {
+    const checkpoint = structuredClone(f.checkpoint);
+    checkpoint.packages['@tradejs/node'][field] =
+      field === 'version' ? 'wrong' : '0'.repeat(64);
+    await f.write(f.checkpointPath, JSON.stringify(checkpoint));
+    await assert.rejects(
+      ensureRuntimeBuild('/no-build', {
+        projectRoot: f.projectRoot,
+        runtimeCheckpoint: f.checkpointPath,
+      }),
+      /checkpoint mismatch/,
+    );
+  }
+  await assert.rejects(
+    ensureRuntimeBuild('/no-build', {
+      projectRoot: f.projectRoot,
+      runtimeCheckpoint: path.join(f.sourceRepositoryRoot, 'package.json'),
+    }),
+    /inside Project/,
+  );
+});
+
+test('artifact CLI requires an explicit runtime and rejects cross-strategy substitution', () => {
+  assert.equal(
+    parseCliArgs(['--runtimeCheckpoint', 'checkpoint.json']).runtimeCheckpoint,
+    'checkpoint.json',
+  );
+  assert.throws(
+    () => parseCliArgs(['--strategyArtifactAuthority', 'authority.json']),
+    /requires --runtimeCheckpoint/,
+  );
+  assert.throws(
+    () =>
+      parseCliArgs([
+        '--runtimeCheckpoint',
+        'c.json',
+        '--strategyArtifactAuthority',
+        'a.json',
+        '--crossStrategy',
+      ]),
+    /single-core/,
+  );
+});
+
+test('artifact authority rejects wrong target packages and shadowed foreign dependencies', async (t) => {
+  const f = await makeArtifactRuntimeFixture(t);
+  const verify = () =>
+    verifyStrategyArtifactAuthority({
+      sourceRepositoryRoot: f.sourceRepositoryRoot,
+      projectRoot: f.projectRoot,
+      strategyArtifactAuthority: f.authorityPath,
+      executionRuntime: f.runtime.executionRuntime,
+    });
+  const packageFile = path.join(f.packageRoot, 'package.json');
+  const originalPackage = await fsp.readFile(packageFile);
+  const wrongPackage = {
+    ...JSON.parse(originalPackage),
+    name: '@tradejs/strategy-other',
+  };
+  await f.write(packageFile, JSON.stringify(wrongPackage));
+  await f.write(
+    f.authorityPath,
+    JSON.stringify({
+      ...f.authority,
+      packageJsonSha256: f.sha(await fsp.readFile(packageFile)),
+    }),
+  );
+  assert.throws(verify, /target package name mismatch/);
+  await fsp.writeFile(packageFile, originalPackage);
+  await f.write(f.authorityPath, JSON.stringify(f.authority));
+  const shadow = path.join(f.packageRoot, 'node_modules/@tradejs');
+  await fsp.mkdir(shadow, { recursive: true });
+  await fsp.symlink(
+    path.join(f.sourceRepositoryRoot, 'node_modules/@tradejs/core'),
+    path.join(shadow, 'core'),
+    'dir',
+  );
+  assert.throws(verify, /Foreign strategy artifact dependency/);
+  await fsp.rm(path.join(shadow, 'core'));
+  await fsp.symlink(
+    path.join(
+      f.sourceRepositoryRoot,
+      'node_modules/@tradejs/core/dist/strategies.mjs',
+    ),
+    path.join(f.packageRoot, 'dist/foreign.mjs'),
+  );
+  assert.throws(verify, /cannot contain symlinks/);
+});
+
+test('cross-strategy checkpoint validation runs before export reads', async (t) => {
+  const f = await makeArtifactRuntimeFixture(t);
+  const bad = structuredClone(f.checkpoint);
+  bad.packages['@tradejs/cli'].distSha256 = '0'.repeat(64);
+  await f.write(f.checkpointPath, JSON.stringify(bad));
+  await assert.rejects(
+    buildCrossStrategyReport({
+      projectRoot: f.projectRoot,
+      frameworkRepositoryRoot: '/no-build',
+      runtimeCheckpoint: f.checkpointPath,
+      groups: [
+        { filePaths: ['/must-not-read-a'] },
+        { filePaths: ['/must-not-read-b'] },
+      ],
+      validationSplit: 0,
+      testSplit: 0.4,
+    }),
+    /checkpoint mismatch/,
+  );
+  await assert.rejects(
+    buildCrossStrategyReport({ strategyArtifactAuthority: f.authorityPath }),
+    /single-core/,
+  );
+});
+
+test('declared Project composition checksums are enforced before any export read', async (t) => {
+  const f = await makeArtifactRuntimeFixture(t);
+  const tracked = {};
+  for (const name of ['package.json', 'yarn.lock', 'tradejs.config.ts']) {
+    await f.write(path.join(f.projectRoot, name), `fixture ${name}`);
+    tracked[name] = f.sha(await fsp.readFile(path.join(f.projectRoot, name)));
+  }
+  const checkpoint = { ...f.checkpoint, projectTracked: tracked };
+  await f.write(f.checkpointPath, JSON.stringify(checkpoint));
+  const loaded = await ensureRuntimeBuild('/no-build', {
+    projectRoot: f.projectRoot,
+    runtimeCheckpoint: f.checkpointPath,
+  });
+  assert.equal(
+    loaded.executionRuntime.projectTracked['yarn.lock'].sha256,
+    tracked['yarn.lock'],
+  );
+  for (const name of Object.keys(tracked)) {
+    await f.write(
+      f.checkpointPath,
+      JSON.stringify({
+        ...checkpoint,
+        projectTracked: { ...tracked, [name]: '0'.repeat(64) },
+      }),
+    );
+    await assert.rejects(
+      loadResearchRows({
+        projectRoot: f.projectRoot,
+        sourceRepositoryRoot: f.sourceRepositoryRoot,
+        frameworkRepositoryRoot: '/no-build',
+        runtimeCheckpoint: f.checkpointPath,
+        strategyArtifactAuthority: f.authorityPath,
+        filePaths: ['/must-not-read-export'],
+        variants: [],
+        minQuality: 4,
+      }),
+      /Project checksum mismatch/,
+    );
+  }
+  for (const invalidPath of [
+    '../foreign',
+    '/absolute',
+    '.env',
+    'data/package.json',
+  ]) {
+    await f.write(
+      f.checkpointPath,
+      JSON.stringify({
+        ...checkpoint,
+        projectTracked: { [invalidPath]: '0'.repeat(64) },
+      }),
+    );
+    await assert.rejects(
+      ensureRuntimeBuild('/no-build', {
+        projectRoot: f.projectRoot,
+        runtimeCheckpoint: f.checkpointPath,
+      }),
+      /Invalid checkpoint Project path/,
+    );
+  }
 });
 
 test('resolves datasets and reports from PROJECT_CWD independently of source cwd', () => {
@@ -1616,6 +3694,39 @@ test('applies variant capacity before every report slice', () => {
     report.variants[0].approvedSignals.map((row) => row.sequence),
     [1, 2],
   );
+  const stressed = buildAblationReport({
+    rows: rows.map((row) => ({
+      ...row,
+      signalId: `s${row.sequence}`,
+      entryStressNotional: row.sequence === 0 ? null : 1000,
+      completedTrade: {
+        exitTimestamp: timestamp + 3600000,
+        netProfit: row.profit,
+      },
+    })),
+    variants: [variant],
+    minQuality: 4,
+    qualityThresholds: [4],
+    terminalWindows: [7],
+    windowStart: timestamp,
+    windowEnd: timestamp + 86400000,
+    realizedMetrics: true,
+    roundTripCostStressBps: [20],
+    compareTo: 'baseline',
+  });
+  assert.equal(stressed.baseline.roundTripCostStress[0].realized.periods, null);
+  assert.equal(stressed.variants[0].roundTripCostStress[0].approvedN, 2);
+  assert.equal(stressed.variants[0].roundTripCostStress[0].additionalCost, 4);
+  assert.equal(
+    stressed.variants[0].roundTripCostStress[0].realized.periods.full
+      .totalProfit,
+    1,
+  );
+  assert.deepEqual(
+    stressed.variants[0].approvedSignals.map((row) => row.sequence),
+    [1, 2],
+  );
+  assert.ok(stressed.comparisons[0].removed.roundTripCostStress);
 });
 
 test('traces the exact approved signals without replaying the gate', () => {

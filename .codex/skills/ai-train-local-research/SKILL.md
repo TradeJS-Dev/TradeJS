@@ -57,6 +57,43 @@ For calendar-duration stability diagnostics from frozen realized equity, use
 time under water and recovery duration without rebuilding approvals. Keep
 full-history diagnostics separate from development-only candidate selection.
 
+For frozen historical-coverage symbol groups, use `--symbolCohorts` with
+`--realizedMetrics`. It reports complete group economics without moving the
+common partitions, repeating capacity selection, or exposing membership as a
+gate feature. Read the input and report contract in the ablation reference.
+
+For a frozen extra round-trip stress criterion on actual entry notional, use
+`--roundTripCostStressBps 20 --realizedMetrics` with explicit common window
+bounds. This is different from per-leg `--costStressBps`. Read the reference
+for the exit-ordered acceptance evidence and missing-economics rules.
+Displayed execution price remains the default notional source. Fee-derived
+full-closure notional is allowed only through `--entryNotionalAuthority` with a
+verified runtime checkpoint, the permanent tool's exact reviewed
+semantics-receipt/module allowlist, equal positive frozen maker/taker rates,
+and ordered export hashes. Unsupported module semantics and incomplete rows
+fail closed without a displayed-price fallback; read the authority and
+analytical rounding contract in the reference before use.
+
+For development-only ablation, use `--labelEndBefore` equal to the frozen
+`--windowEnd` and `--testSince`, with `--validationSplit 0`. It purges unknown
+and crossing completed labels before gate/feature evaluation and reports their
+counts. Final full-period evaluation omits this discovery-only option after
+all gate rules and development selections are frozen. Calendar pocket search
+must likewise exclude development outcomes that mature beyond its boundary.
+
+Freeze the parent's outer 60/40 calendar boundary without gate or outcome
+evaluation using `--timestampPartitionMetadata <json>` with explicit common
+window bounds, `--validationSplit 0 --testSplit 0.4`. Read the reference for
+timestamp-only evidence and the mature-DEV native search path when an installed
+CLI has no exact calendar-boundary option; do not split the isolated DEV again.
+
+Before native development-only `ai-train`, prepare its raw source view with
+`--materializeDiscoveryExport <jsonl>` using the same exact discovery bounds
+and `--labelEndBefore`. Native `--until cutoff-1` alone does not purge crossing
+labels. This mode does not load a strategy/runtime or evaluate features/gates;
+its immutable receipt binds full parent input hashes, the output hash and purge
+counts. Read the reference for the safe native filename and source binding.
+
 Mandatory rule:
 
 - Do not create `/tmp` parsers, heredoc ESM replays, or strategy-specific
@@ -67,6 +104,12 @@ Mandatory rule:
   directory.
 - Build changed strategy/node/CLI packages before running the tool because it
   reconstructs current gate context from `dist`.
+  Alternatively, explicit `--runtimeCheckpoint` and
+  `--strategyArtifactAuthority` authorize a checksum-verified historical
+  standalone build with the frozen Project-installed runtime. This mode does
+  not rebuild packages or substitute the currently installed strategy. Read
+  the authority contract in the ablation reference first; source roots remain
+  exact Git checkouts, while execution artifacts are recorded separately.
 - Keep `yarn ai-train --localOnly --json -n 0` as the authoritative baseline;
   do not interpret variants until baseline qN+ support, PnL, PF, max drawdown,
   strict loss, and loss streak match.
@@ -391,7 +434,7 @@ Interpretation:
   both approved sides.
 - `yarn ai-pocket-search` is the default pocket discovery tool for future AI-gate rules. It reconstructs current strategy AI payloads, excludes outcome/current gate-output fields by default, shows progress bars, deduplicates equivalent row-selection pockets, and writes a Markdown report under `data/ai/output`.
 - `ai-pocket-search` defaults to outer 60/40 (`--validationSplit 0
-  --testSplit 0.4 --sealTest`). Search and ranking use the whole first 60%.
+--testSplit 0.4 --sealTest`). Search and ranking use the whole first 60%.
   Three consecutive timestamp-grouped blocks inside that development partition
   diagnose temporal stability; they are not independent holdouts and do not
   refit pocket discovery. Stable candidates rank before sparse and unstable

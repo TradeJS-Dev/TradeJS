@@ -7,6 +7,7 @@ import readline from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTH_DAYS = 30.4375;
@@ -19,6 +20,21 @@ const DEFAULT_MA_PERIODS = Array.from(
   (_, index) => (index + 1) * 5,
 );
 const VARIANT_MODES = new Set(['filter', 'exclude', 'add', 'replace']);
+const ENTRY_NOTIONAL_AUTHORITY_SCHEMA = 'tradejs-entry-notional-authority/v1';
+const ENTRY_NOTIONAL_METHOD = 'fee-derived-full-closed';
+const ENTRY_NOTIONAL_ROUNDING_POLICY =
+  'decimal-half-unit-plus-binary64-interval-v1';
+const REVIEWED_ENTRY_NOTIONAL_SEMANTICS = Object.freeze({
+  receiptSha256:
+    '2734c38558d7318106e8ed729c7b403468c9cf06e7b4ff011ddb6cd958ecb0c0',
+  receiptSchema: 'tradejs-entry-notional-semantics-receipt/v1',
+  semanticsId: 'tradejs-node-backtest-open-fee-unrounded-entry-price-8dp/v1',
+  moduleSha256:
+    '2b6f586211b9057a73758909cc2816e0df90028f66f6b293362ba8661f24221f',
+  packageName: '@tradejs/node',
+  relativePath: 'dist/backtest.mjs',
+  displayPriceDecimals: 8,
+});
 
 const usage = `Usage:
   node .codex/skills/ai-train-local-research/scripts/ai-gate-ablation.mjs [options]
@@ -38,12 +54,20 @@ Options:
   --testSince <timestamp>      Exact UTC boundary where test starts
   --windowStart <timestamp>    Common comparison start, inclusive
   --windowEnd <timestamp>      Common comparison end, exclusive
+  --labelEndBefore <timestamp> Discovery only: purge unknown/crossing exits before gate evaluation; must equal windowEnd
+  --runtimeCheckpoint <json> Verify and execute the frozen Project-installed framework runtime
+  --strategyArtifactAuthority <json> Explicit frozen standalone source/build/artifact authority; requires runtimeCheckpoint
+  --materializeDiscoveryExport <jsonl> Raw-only immutable maturity-purged discovery view; no gate or feature evaluation
+  --timestampPartitionMetadata <json> Immutable timestamp-only outer 60/40 boundary; no outcomes/runtime
   --capacities <list>          Capacity stress limits (default: 1,3,5)
   --maxLossValue <n>           Per-order loss budget for capacity stress
   --featurePattern <regex>     Inventory matching causal feature paths
   --cohortPath <path>          Audit feature availability by UTC year/direction/payload cohort
   --costStressBps <list>       Additional slippage per entry and exit, diagnostics only
+  --roundTripCostStressBps <list> Extra round-trip bps on actual entry notional; requires realizedMetrics
+  --entryNotionalAuthority <json> Opt-in checksum-bound fee-derived full-closure notional for round-trip stress
   --realizedMetrics           Additional completed-trade metrics ordered by actual exit time
+  --symbolCohorts <path>       Disjoint frozen symbol groups, diagnostic realized metrics only
   --monthlyCohorts            Calendar monthly export/gate funnel by direction and payload cohort
   --compareTo <variant>       Exact added/removed approval slices versus a named variant
   --includeGateContext         Include current gate output fields for audits only
@@ -100,11 +124,19 @@ export const parseCliArgs = (argv) => {
     testSplit: 0.4,
     tuningSince: null,
     testSince: null,
+    labelEndBefore: null,
+    runtimeCheckpoint: null,
+    strategyArtifactAuthority: null,
+    materializeDiscoveryExport: null,
+    timestampPartitionMetadata: null,
     capacities: DEFAULT_CAPACITIES,
     maxLossValue: null,
     cohortPath: null,
     costStressBps: [],
+    roundTripCostStressBps: [],
+    entryNotionalAuthority: null,
     realizedMetrics: false,
+    symbolCohorts: null,
     monthlyCohorts: false,
     compareTo: null,
     variants: [],
@@ -169,7 +201,7 @@ export const parseCliArgs = (argv) => {
       );
     } else if (name === 'terminalWindows') {
       options.terminalWindows = parseNumberList(value, DEFAULT_WINDOWS);
-    } else if (name === 'costStressBps') {
+    } else if (['costStressBps', 'roundTripCostStressBps'].includes(name)) {
       const values = String(value).split(',').map(Number);
       if (
         !values.length ||
@@ -179,7 +211,7 @@ export const parseCliArgs = (argv) => {
           `Invalid positive basis points for --${name}: ${value}`,
         );
       }
-      options.costStressBps = [...new Set(values)];
+      options[name] = [...new Set(values)];
     } else if (name === 'validationSplit') {
       const parsed = Number(value);
       options.validationSplit = Number.isFinite(parsed)
@@ -190,6 +222,23 @@ export const parseCliArgs = (argv) => {
       options.testSplit = Number.isFinite(parsed)
         ? Math.max(0, Math.min(0.9, parsed))
         : 0;
+    } else if (name === 'labelEndBefore') {
+      const parsed = /^\d+$/.test(value) ? Number(value) : Date.parse(value);
+      if (
+        !Number.isSafeInteger(parsed) ||
+        parsed < 0 ||
+        parsed > 8.64e15 ||
+        (!/^\d+$/.test(value) &&
+          (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(
+            value,
+          ) ||
+            new Date(parsed).toISOString().slice(0, 10) !== value.slice(0, 10)))
+      ) {
+        throw new Error(
+          'labelEndBefore requires valid UTC ISO ending in Z or epoch milliseconds',
+        );
+      }
+      options.labelEndBefore = parsed;
     } else if (
       ['tuningSince', 'testSince', 'windowStart', 'windowEnd'].includes(name)
     ) {
@@ -249,6 +298,12 @@ export const parseCliArgs = (argv) => {
         'cohortPath',
         'compareTo',
         'output',
+        'runtimeCheckpoint',
+        'strategyArtifactAuthority',
+        'entryNotionalAuthority',
+        'materializeDiscoveryExport',
+        'timestampPartitionMetadata',
+        'symbolCohorts',
       ].includes(name)
     ) {
       options[name] = value;
@@ -257,6 +312,36 @@ export const parseCliArgs = (argv) => {
     }
   }
 
+  if (options.timestampPartitionMetadata) {
+    const allowed = new Set([
+      'timestampPartitionMetadata',
+      'file',
+      'strategy',
+      'outDir',
+      'windowStart',
+      'windowEnd',
+      'validationSplit',
+      'testSplit',
+      'json',
+      'help',
+    ]);
+    const names = argv
+      .filter((value) => value.startsWith('--'))
+      .map((value) => value.slice(2).split('=')[0]);
+    if (
+      names.some((name) => !allowed.has(name)) ||
+      !names.includes('validationSplit') ||
+      !names.includes('testSplit') ||
+      options.validationSplit !== 0 ||
+      options.testSplit !== 0.4 ||
+      !Number.isSafeInteger(options.windowStart) ||
+      !Number.isSafeInteger(options.windowEnd)
+    )
+      throw new Error(
+        '--timestampPartitionMetadata requires explicit window, validationSplit 0 and testSplit 0.4; metadata options only',
+      );
+    validateResearchWindow(options.windowStart, options.windowEnd);
+  }
   if (options.cohortPath && !options.featurePattern) {
     throw new Error(
       '--cohortPath requires --featurePattern for the diagnostic inventory',
@@ -264,6 +349,74 @@ export const parseCliArgs = (argv) => {
   }
   if (options.monthlyCohorts && !options.cohortPath) {
     throw new Error('--monthlyCohorts requires --cohortPath');
+  }
+  if (
+    options.symbolCohorts &&
+    (!options.realizedMetrics ||
+      options.crossStrategy ||
+      options.movingAverageStudy)
+  ) {
+    throw new Error('--symbolCohorts requires single-core --realizedMetrics');
+  }
+  if (
+    options.labelEndBefore != null &&
+    (options.crossStrategy ||
+      options.windowStart == null ||
+      options.windowEnd !== options.labelEndBefore ||
+      options.testSince !== options.labelEndBefore ||
+      options.validationSplit !== 0 ||
+      options.tuningSince != null)
+  ) {
+    throw new Error(
+      '--labelEndBefore requires a single-core discovery window and testSince ending at the same cutoff, with validationSplit 0',
+    );
+  }
+  if (
+    options.strategyArtifactAuthority &&
+    (!options.runtimeCheckpoint || options.crossStrategy)
+  ) {
+    throw new Error(
+      '--strategyArtifactAuthority requires --runtimeCheckpoint and single-core mode',
+    );
+  }
+  if (
+    options.entryNotionalAuthority &&
+    (!options.runtimeCheckpoint ||
+      !options.roundTripCostStressBps.length ||
+      !options.realizedMetrics ||
+      options.windowStart == null ||
+      options.windowEnd == null ||
+      options.crossStrategy ||
+      options.movingAverageStudy ||
+      options.materializeDiscoveryExport)
+  ) {
+    throw new Error(
+      '--entryNotionalAuthority requires single-core --runtimeCheckpoint, --roundTripCostStressBps, --realizedMetrics and explicit window bounds',
+    );
+  }
+  if (options.materializeDiscoveryExport) {
+    const allowed = new Set([
+      'materializeDiscoveryExport',
+      'file',
+      'strategy',
+      'outDir',
+      'windowStart',
+      'windowEnd',
+      'testSince',
+      'labelEndBefore',
+      'validationSplit',
+      'testSplit',
+      'json',
+      'help',
+    ]);
+    const disallowed = argv
+      .filter((value) => value.startsWith('--'))
+      .map((value) => value.slice(2).split('=')[0])
+      .filter((name) => !allowed.has(name));
+    if (options.labelEndBefore == null || disallowed.length)
+      throw new Error(
+        '--materializeDiscoveryExport requires exact discovery label bounds and cannot accept evaluation/runtime options',
+      );
   }
   return options;
 };
@@ -1476,14 +1629,218 @@ const resolveStandaloneStrategyEntrypoint = (sourceRepositoryRoot) => {
   return { entrypoint, packageJson };
 };
 
-export const loadStandaloneStrategyEntries = async (sourceRepositoryRoot) => {
+export const verifyStrategyArtifactAuthority = ({
+  sourceRepositoryRoot,
+  projectRoot,
+  strategyArtifactAuthority,
+  executionRuntime,
+}) => {
+  if (!executionRuntime)
+    throw new Error(
+      'Strategy artifact authority requires verified runtime checkpoint',
+    );
+  const authorityPath = projectBoundPath(
+    strategyArtifactAuthority,
+    projectRoot,
+  );
+  const authorityBytes = fs.readFileSync(authorityPath);
+  const authority = JSON.parse(authorityBytes);
+  if (authority.schema !== 'tradejs-strategy-artifact-authority/v1')
+    throw new Error('Unsupported strategy artifact authority schema');
+  const base = path.dirname(authorityPath);
+  const exactSource = resolveExactGitCheckout(
+    sourceRepositoryRoot,
+    'strategy source',
+  );
+  const authorizedSource = resolveExactGitCheckout(
+    path.resolve(base, authority.sourceRepositoryRoot),
+    'authority source',
+  );
+  if (
+    authorizedSource !== exactSource ||
+    getSourceRepositoryKind(exactSource) !== 'strategy'
+  )
+    throw new Error('Strategy artifact source mismatch');
+  const head = execFileSync('git', ['-C', exactSource, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+  if (
+    !/^[a-f0-9]{40}$/.test(authority.sourceGitSha ?? '') ||
+    head !== authority.sourceGitSha
+  )
+    throw new Error('Strategy artifact source Git SHA mismatch');
+  const sourceDiff = checkedAuthorityFile(
+    authority.sourceDiff,
+    projectRoot,
+    base,
+  );
+  const buildReceipt = checkedAuthorityFile(
+    authority.buildReceipt,
+    projectRoot,
+    base,
+  );
+  const checkpoint = checkedAuthorityFile(
+    authority.runtimeCheckpoint,
+    projectRoot,
+    base,
+  );
+  if (
+    checkpoint.path !== executionRuntime.checkpoint.path ||
+    checkpoint.sha256 !== executionRuntime.checkpoint.sha256
+  )
+    throw new Error('Strategy artifact runtime checkpoint mismatch');
+  const packageRoot = projectBoundPath(
+    authority.packageRoot,
+    projectRoot,
+    base,
+  );
+  if (packageRoot.startsWith(`${fs.realpathSync(projectRoot)}/node_modules/`))
+    throw new Error(
+      'Strategy artifact must be an explicit compiled evidence package, not installed Project strategy',
+    );
+  const packageBytes = fs.readFileSync(
+    projectBoundPath(path.join(packageRoot, 'package.json'), projectRoot),
+  );
+  if (artifactSha256(packageBytes) !== authority.packageJsonSha256)
+    throw new Error('Strategy artifact package checksum mismatch');
+  const packageJson = JSON.parse(packageBytes);
+  const baselinePackage = JSON.parse(
+    execFileSync('git', ['-C', exactSource, 'show', `${head}:package.json`], {
+      encoding: 'utf8',
+    }),
+  );
+  if (
+    packageJson.name !== baselinePackage.name ||
+    packageJson.name !== readRepositoryPackage(exactSource)?.name
+  )
+    throw new Error('Strategy artifact target package name mismatch');
+  const distRoot = projectBoundPath(
+    path.join(packageRoot, 'dist'),
+    projectRoot,
+  );
+  if (
+    distRoot !== path.join(packageRoot, 'dist') ||
+    hashArtifactDist(distRoot) !== authority.distSha256
+  )
+    throw new Error('Strategy artifact dist checksum mismatch');
+  const build = JSON.parse(buildReceipt.bytes);
+  if (
+    build.schema !== 'tradejs-source-development-dependency-overlay/v1' ||
+    build.status !== 'passed' ||
+    build.restored !== true ||
+    fs.realpathSync(build.sourceRoot) !== exactSource ||
+    build.builtDistTreeSha256 !== authority.distSha256
+  )
+    throw new Error('Strategy artifact build receipt mismatch');
+  for (const name of ['core', 'types', 'strategy-kit']) {
+    const dependency = build.packages?.find((item) => item.name === name);
+    const expected = executionRuntime.packages[`@tradejs/${name}`];
+    if (
+      !dependency?.restored ||
+      dependency.executedVersion !== expected?.version ||
+      dependency.executedTreeSha256 !== hashArtifactDist(expected.packageRoot)
+    )
+      throw new Error(`Strategy artifact build dependency mismatch: ${name}`);
+  }
+  const { entrypoint } = resolveStandaloneStrategyEntrypoint(packageRoot);
+  if (
+    projectBoundPath(entrypoint, projectRoot) !== entrypoint ||
+    !entrypoint.startsWith(`${distRoot}${path.sep}`)
+  )
+    throw new Error(
+      'Strategy artifact entrypoint must remain in its frozen dist',
+    );
+  const externalImports = new Map();
+  const walk = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.[cm]?js$/.test(entry.name)) {
+        const require = createRequire(full);
+        const text = fs.readFileSync(full, 'utf8');
+        for (const match of text.matchAll(
+          /\b(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*)['"]([^'"]+)['"]/g,
+        )) {
+          const specifier = match[1];
+          if (specifier.startsWith('.')) {
+            const resolved = fs.realpathSync(
+              path.resolve(path.dirname(full), specifier),
+            );
+            if (!resolved.startsWith(`${distRoot}${path.sep}`))
+              throw new Error('Strategy artifact relative import escapes dist');
+            continue;
+          }
+          if (specifier.startsWith('node:')) continue;
+          const resolved = require.resolve(specifier);
+          if (!path.isAbsolute(resolved)) continue;
+          const real = fs.realpathSync(resolved);
+          const projectModules = `${fs.realpathSync(projectRoot)}/node_modules/`;
+          if (!real.startsWith(projectModules))
+            throw new Error(
+              `Foreign strategy artifact dependency: ${specifier}`,
+            );
+          if (specifier.startsWith('@tradejs/')) {
+            const name = specifier.split('/').slice(0, 2).join('/');
+            const expected = executionRuntime.packages[name];
+            if (!expected || !real.startsWith(`${expected.packageRoot}/dist/`))
+              throw new Error(
+                `Unbound strategy artifact dependency: ${specifier}`,
+              );
+          }
+          externalImports.set(`${full}:${specifier}`, {
+            importer: full,
+            specifier,
+            resolved: real,
+            sha256: artifactSha256(fs.readFileSync(real)),
+          });
+        }
+      }
+    }
+  };
+  walk(distRoot);
+  return {
+    entrypoint,
+    strategyArtifact: {
+      role: 'historical frozen core source identity; explicitly authorized compiled gate artifact imported under current checkpoint',
+      authority: {
+        path: authorityPath,
+        sha256: artifactSha256(authorityBytes),
+      },
+      sourceRepositoryRoot: exactSource,
+      sourceGitSha: head,
+      sourceDiff: { path: sourceDiff.path, sha256: sourceDiff.sha256 },
+      buildReceipt: { path: buildReceipt.path, sha256: buildReceipt.sha256 },
+      packageRoot,
+      packageName: packageJson.name,
+      packageJsonSha256: authority.packageJsonSha256,
+      distSha256: authority.distSha256,
+      entrypoint,
+      runtimeCheckpoint: { path: checkpoint.path, sha256: checkpoint.sha256 },
+      externalImports: [...externalImports.values()],
+      liveDirtyDiffComparedToHistoricalPatch: false,
+    },
+  };
+};
+
+export const loadStandaloneStrategyEntries = async (
+  sourceRepositoryRoot,
+  options = null,
+) => {
   if (getSourceRepositoryKind(sourceRepositoryRoot) !== 'strategy') {
     throw new Error(
       `Expected a standalone TradeJS strategy repository: ${sourceRepositoryRoot}`,
     );
   }
-  const { entrypoint, packageJson } =
+  if (options?.executionRuntime && !options.strategyArtifactAuthority)
+    throw new Error(
+      'Checkpoint execution requires explicit --strategyArtifactAuthority for standalone source',
+    );
+  const artifact = options?.strategyArtifactAuthority
+    ? verifyStrategyArtifactAuthority({ ...options, sourceRepositoryRoot })
+    : null;
+  const { entrypoint: sourceEntrypoint, packageJson } =
     resolveStandaloneStrategyEntrypoint(sourceRepositoryRoot);
+  const entrypoint = artifact?.entrypoint ?? sourceEntrypoint;
   let outputStat;
   try {
     outputStat = await fsp.stat(entrypoint);
@@ -1495,7 +1852,7 @@ export const loadStandaloneStrategyEntries = async (sourceRepositoryRoot) => {
   const sourceMtime = await newestSourceMtime(
     path.join(sourceRepositoryRoot, 'src'),
   );
-  if (sourceMtime > outputStat.mtimeMs) {
+  if (!artifact && sourceMtime > outputStat.mtimeMs) {
     throw new Error(
       `Stale ${path.relative(sourceRepositoryRoot, entrypoint)} for ${packageJson.name}. Run yarn build in TRADEJS_SOURCE_REPOSITORY_ROOT first.`,
     );
@@ -1512,10 +1869,498 @@ export const loadStandaloneStrategyEntries = async (sourceRepositoryRoot) => {
     entrypoint,
     packageName: packageJson.name,
     strategyEntries,
+    ...(artifact ? { strategyArtifact: artifact.strategyArtifact } : {}),
   };
 };
 
-export const ensureRuntimeBuild = async (frameworkRepositoryRoot) => {
+const artifactSha256 = (bytes) =>
+  createHash('sha256').update(bytes).digest('hex');
+const CHECKPOINT_TREE_ALGORITHM =
+  'SHA256 of sorted SHA256(relativefilebytes) space relativepath newline';
+
+export const hashArtifactDist = (directory) => {
+  const files = [];
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isSymbolicLink())
+        throw new Error(`Artifact dist cannot contain symlinks: ${full}`);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.push(full);
+      else throw new Error(`Unsupported artifact dist entry: ${full}`);
+    }
+  };
+  walk(directory);
+  return artifactSha256(
+    files
+      .sort()
+      .map(
+        (file) =>
+          `${artifactSha256(fs.readFileSync(file))} ${path.relative(directory, file)}\n`,
+      )
+      .join(''),
+  );
+};
+
+const projectBoundPath = (value, projectRoot, baseDirectory = projectRoot) => {
+  if (typeof value !== 'string' || !value.trim())
+    throw new Error('Authority requires an explicit path');
+  const actual = fs.realpathSync(path.resolve(baseDirectory, value));
+  const root = fs.realpathSync(projectRoot);
+  if (!actual.startsWith(`${root}${path.sep}`))
+    throw new Error(`Authority path must remain inside Project: ${actual}`);
+  return actual;
+};
+
+const checkedAuthorityFile = (reference, projectRoot, baseDirectory) => {
+  if (!/^[a-f0-9]{64}$/.test(reference?.sha256 ?? ''))
+    throw new Error('Authority requires a SHA256 checksum');
+  const filePath = projectBoundPath(reference.path, projectRoot, baseDirectory);
+  const bytes = fs.readFileSync(filePath);
+  if (artifactSha256(bytes) !== reference.sha256)
+    throw new Error(`Authority checksum mismatch: ${filePath}`);
+  return { path: filePath, sha256: reference.sha256, bytes };
+};
+
+const canonicalizeEntryNotionalJson = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalizeEntryNotionalJson);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalizeEntryNotionalJson(value[key])]),
+    );
+  }
+  return value;
+};
+
+export const canonicalEntryNotionalJsonSha256 = (value) =>
+  artifactSha256(
+    Buffer.from(JSON.stringify(canonicalizeEntryNotionalJson(value)), 'utf8'),
+  );
+
+const readJsonPointer = (value, pointer) => {
+  if (typeof pointer !== 'string' || !pointer.startsWith('/'))
+    throw new Error('Entry-notional config requires an absolute JSON pointer');
+  return pointer
+    .slice(1)
+    .split('/')
+    .map((token) => {
+      if (/~(?:[^01]|$)/.test(token))
+        throw new Error(
+          'Entry-notional config contains an invalid JSON pointer',
+        );
+      return token.replaceAll('~1', '/').replaceAll('~0', '~');
+    })
+    .reduce((current, key) => current?.[key], value);
+};
+
+const assertPositiveEqualEntryFees = (declared, resolved) => {
+  const declaredMaker = declared?.makerRate;
+  const declaredTaker = declared?.takerRate;
+  const resolvedMaker = resolved?.makerRate;
+  const resolvedTaker = resolved?.takerRate;
+  if (
+    ![declaredMaker, declaredTaker, resolvedMaker, resolvedTaker].every(
+      (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
+    ) ||
+    declaredMaker !== declaredTaker ||
+    resolvedMaker !== resolvedTaker ||
+    declaredMaker !== resolvedMaker
+  ) {
+    throw new Error(
+      'Entry-notional authority requires exactly equal positive maker/taker fees in authority and resolved config',
+    );
+  }
+  return declaredMaker;
+};
+
+export const verifyEntryNotionalAuthority = async ({
+  projectRoot,
+  entryNotionalAuthority,
+  executionRuntime,
+  filePaths,
+  reviewedSemanticsPolicy = REVIEWED_ENTRY_NOTIONAL_SEMANTICS,
+}) => {
+  if (
+    !executionRuntime?.checkpoint ||
+    !executionRuntime?.packages?.['@tradejs/node']
+  )
+    throw new Error(
+      'Entry-notional authority requires a verified runtime checkpoint',
+    );
+  const authorityPath = projectBoundPath(entryNotionalAuthority, projectRoot);
+  const authorityBytes = fs.readFileSync(authorityPath);
+  const authority = JSON.parse(authorityBytes);
+  if (
+    authority.schema !== ENTRY_NOTIONAL_AUTHORITY_SCHEMA ||
+    authority.method !== ENTRY_NOTIONAL_METHOD
+  )
+    throw new Error('Unsupported entry-notional authority contract');
+  if (
+    authority.displayPriceDecimals !==
+      reviewedSemanticsPolicy.displayPriceDecimals ||
+    authority.roundingPolicy?.id !== ENTRY_NOTIONAL_ROUNDING_POLICY
+  )
+    throw new Error('Unsupported entry-notional rounding contract');
+  const base = path.dirname(authorityPath);
+  const checkpoint = checkedAuthorityFile(
+    authority.runtimeCheckpoint,
+    projectRoot,
+    base,
+  );
+  if (
+    checkpoint.path !== executionRuntime.checkpoint.path ||
+    checkpoint.sha256 !== executionRuntime.checkpoint.sha256
+  )
+    throw new Error('Entry-notional runtime checkpoint mismatch');
+
+  const receipt = checkedAuthorityFile(
+    authority.semanticsReceipt,
+    projectRoot,
+    base,
+  );
+  const receiptValue = JSON.parse(receipt.bytes);
+  if (
+    receipt.sha256 !== reviewedSemanticsPolicy.receiptSha256 ||
+    receiptValue.schema !== reviewedSemanticsPolicy.receiptSchema ||
+    receiptValue.semanticsId !== reviewedSemanticsPolicy.semanticsId ||
+    receiptValue.reviewedModule?.packageName !==
+      reviewedSemanticsPolicy.packageName ||
+    receiptValue.reviewedModule?.relativePath !==
+      reviewedSemanticsPolicy.relativePath ||
+    receiptValue.reviewedModule?.sha256 !==
+      reviewedSemanticsPolicy.moduleSha256 ||
+    receiptValue.reviewedSemantics?.displayPriceDecimals !==
+      reviewedSemanticsPolicy.displayPriceDecimals
+  )
+    throw new Error('Unsupported reviewed semantics receipt');
+
+  const module = authority.executionModule;
+  if (
+    module?.packageName !== reviewedSemanticsPolicy.packageName ||
+    module?.relativePath !== reviewedSemanticsPolicy.relativePath ||
+    module?.sha256 !== reviewedSemanticsPolicy.moduleSha256
+  )
+    throw new Error('Entry-notional execution module mismatch');
+  const nodePackageRoot = projectBoundPath(
+    executionRuntime.packages['@tradejs/node'].packageRoot,
+    projectRoot,
+  );
+  const modulePath = projectBoundPath(
+    path.join(nodePackageRoot, module.relativePath),
+    projectRoot,
+  );
+  if (
+    modulePath !==
+      path.join(nodePackageRoot, reviewedSemanticsPolicy.relativePath) ||
+    artifactSha256(fs.readFileSync(modulePath)) !== module.sha256
+  )
+    throw new Error('Entry-notional execution module mismatch');
+
+  const config = checkedAuthorityFile(
+    authority.resolvedExecutionConfig,
+    projectRoot,
+    base,
+  );
+  const configValue = JSON.parse(config.bytes);
+  const costs = readJsonPointer(
+    configValue,
+    authority.resolvedExecutionConfig.executionCostsJsonPointer,
+  );
+  if (!costs || typeof costs !== 'object' || Array.isArray(costs))
+    throw new Error('Entry-notional resolved executionCosts are missing');
+  const costsSha256 = canonicalEntryNotionalJsonSha256(costs);
+  if (
+    !/^[a-f0-9]{64}$/.test(
+      authority.resolvedExecutionConfig.executionCostsCanonicalSha256 ?? '',
+    ) ||
+    costsSha256 !==
+      authority.resolvedExecutionConfig.executionCostsCanonicalSha256
+  )
+    throw new Error('Entry-notional resolved executionCosts checksum mismatch');
+  const entryFeeRate = assertPositiveEqualEntryFees(
+    authority.resolvedExecutionConfig.fees,
+    costs.fees,
+  );
+
+  if (
+    !Array.isArray(authority.sourceExports) ||
+    !authority.sourceExports.length ||
+    !Array.isArray(filePaths) ||
+    authority.sourceExports.length !== filePaths.length
+  )
+    throw new Error('Entry-notional ordered source export mismatch');
+  const actualPaths = filePaths.map((filePath) =>
+    projectBoundPath(filePath, projectRoot),
+  );
+  if (new Set(actualPaths).size !== actualPaths.length)
+    throw new Error('Entry-notional source exports must be unique');
+  const expectedPaths = authority.sourceExports.map((reference) => {
+    if (!/^[a-f0-9]{64}$/.test(reference?.sha256 ?? ''))
+      throw new Error('Entry-notional source export requires SHA256');
+    return projectBoundPath(reference.path, projectRoot, base);
+  });
+  if (expectedPaths.some((filePath, index) => filePath !== actualPaths[index]))
+    throw new Error('Entry-notional ordered source export mismatch');
+  const sourceFilesBefore = await Promise.all(
+    actualPaths.map(streamArtifactFileHash),
+  );
+  for (let index = 0; index < sourceFilesBefore.length; index += 1)
+    if (
+      sourceFilesBefore[index].sha256 !== authority.sourceExports[index].sha256
+    )
+      throw new Error(
+        `Entry-notional source export checksum mismatch: ${actualPaths[index]}`,
+      );
+
+  return {
+    mode: ENTRY_NOTIONAL_METHOD,
+    method: ENTRY_NOTIONAL_METHOD,
+    authority: {
+      path: authorityPath,
+      sha256: artifactSha256(authorityBytes),
+    },
+    runtimeCheckpoint: { path: checkpoint.path, sha256: checkpoint.sha256 },
+    semanticsReceipt: { path: receipt.path, sha256: receipt.sha256 },
+    semanticsId: reviewedSemanticsPolicy.semanticsId,
+    executionModule: {
+      packageName: module.packageName,
+      relativePath: module.relativePath,
+      path: modulePath,
+      sha256: module.sha256,
+    },
+    resolvedExecutionConfig: {
+      path: config.path,
+      sha256: config.sha256,
+      executionCostsJsonPointer:
+        authority.resolvedExecutionConfig.executionCostsJsonPointer,
+      executionCostsCanonicalSha256: costsSha256,
+    },
+    entryFeeRate,
+    displayPriceDecimals: authority.displayPriceDecimals,
+    roundingPolicy: {
+      id: ENTRY_NOTIONAL_ROUNDING_POLICY,
+      unitRoundoff: Number.EPSILON / 2,
+      nextRepresentable: 'DataView-based IEEE-754 binary64 nextUp/nextDown',
+      ulpDefinition:
+        'max(x - nextDown(x), nextUp(x) - x) for finite positive x',
+      displayAllowance: 'qty * 0.5 * 10 ** (-displayPriceDecimals)',
+      binary64Allowance:
+        'ulp(openFee) / entryFeeRate + ulp(openFee / entryFeeRate) + abs(entryPrice) * ulp(qty) + abs(qty) * ulp(entryPrice) + ulp(qty * entryPrice)',
+    },
+    sourceExports: sourceFilesBefore,
+    sourceFilesBefore,
+    sourceFilesAfter: null,
+    inputStabilityVerified: false,
+  };
+};
+
+export const verifyEntryNotionalInputStability = async (authority) => {
+  if (
+    authority?.method !== ENTRY_NOTIONAL_METHOD ||
+    !Array.isArray(authority.sourceFilesBefore) ||
+    !authority.sourceFilesBefore.length
+  )
+    throw new Error('Invalid verified entry-notional authority');
+  const sourceFilesAfter = await Promise.all(
+    authority.sourceFilesBefore.map(({ path: filePath }) =>
+      streamArtifactFileHash(filePath),
+    ),
+  );
+  if (
+    JSON.stringify(sourceFilesAfter) !==
+    JSON.stringify(authority.sourceFilesBefore)
+  )
+    throw new Error('Entry-notional source inputs changed during evaluation');
+  return {
+    ...authority,
+    sourceFilesAfter,
+    inputStabilityVerified: true,
+  };
+};
+
+export const normalizeSymbolCohorts = (input) => {
+  if (
+    input?.schema !== 'tradejs-symbol-cohorts/v1' ||
+    !Array.isArray(input.groups) ||
+    !input.groups.length
+  ) {
+    throw new Error(
+      'Symbol cohorts require tradejs-symbol-cohorts/v1 and nonempty groups',
+    );
+  }
+  const ids = new Set();
+  const symbols = new Set();
+  const groups = input.groups.map((group) => {
+    if (
+      typeof group.id !== 'string' ||
+      !group.id.trim() ||
+      ids.has(group.id) ||
+      !Array.isArray(group.symbols) ||
+      !group.symbols.length
+    ) {
+      throw new Error(
+        'Symbol cohort IDs and symbol lists must be nonempty and unique',
+      );
+    }
+    ids.add(group.id);
+    for (const symbol of group.symbols) {
+      if (
+        typeof symbol !== 'string' ||
+        !symbol.trim() ||
+        symbol !== symbol.trim() ||
+        symbols.has(symbol)
+      ) {
+        throw new Error(
+          'Symbol cohorts must contain valid disjoint unique symbols',
+        );
+      }
+      symbols.add(symbol);
+    }
+    return { id: group.id, symbols: [...group.symbols] };
+  });
+  return { schema: input.schema, groups };
+};
+
+export const loadSymbolCohorts = ({ projectRoot, file }) => {
+  const filePath = projectBoundPath(file, projectRoot);
+  const bytes = fs.readFileSync(filePath);
+  return {
+    ...normalizeSymbolCohorts(JSON.parse(bytes)),
+    authority: { path: filePath, sha256: artifactSha256(bytes) },
+  };
+};
+
+const resolveCheckpointRuntime = ({ projectRoot, runtimeCheckpoint }) => {
+  const checkpointPath = projectBoundPath(runtimeCheckpoint, projectRoot);
+  const bytes = fs.readFileSync(checkpointPath);
+  const checkpoint = JSON.parse(bytes);
+  if (
+    checkpoint.treeHashAlgorithm !== CHECKPOINT_TREE_ALGORITHM ||
+    typeof checkpoint.generation !== 'string' ||
+    !checkpoint.packages
+  )
+    throw new Error('Unsupported runtime checkpoint contract');
+  const requiredPackages = [
+    'cli',
+    'core',
+    'node',
+    'types',
+    'infra',
+    'indicators',
+    'connectors',
+    'strategy-kit',
+  ].map((name) => `@tradejs/${name}`);
+  for (const name of requiredPackages)
+    if (!checkpoint.packages[name])
+      throw new Error(`Missing runtime checkpoint package: ${name}`);
+  const packages = {};
+  for (const [name, expected] of Object.entries(checkpoint.packages)) {
+    if (!/^@tradejs\/[a-z0-9-]+$/.test(name))
+      throw new Error(`Invalid runtime checkpoint package: ${name}`);
+    const packageRoot = projectBoundPath(
+      path.join(projectRoot, 'node_modules', name),
+      projectRoot,
+    );
+    if (
+      !packageRoot.startsWith(`${fs.realpathSync(projectRoot)}/node_modules/`)
+    )
+      throw new Error(`Foreign runtime package: ${name}`);
+    const packageBytes = fs.readFileSync(
+      path.join(packageRoot, 'package.json'),
+    );
+    const packageJson = JSON.parse(packageBytes);
+    const distRoot = projectBoundPath(
+      path.join(packageRoot, 'dist'),
+      projectRoot,
+    );
+    if (distRoot !== path.join(packageRoot, 'dist'))
+      throw new Error(`Foreign runtime dist: ${name}`);
+    const actual = {
+      version: packageJson.version,
+      packageSha256: artifactSha256(packageBytes),
+      distSha256: hashArtifactDist(distRoot),
+    };
+    if (
+      packageJson.name !== name ||
+      actual.version !== expected.version ||
+      actual.packageSha256 !== expected.packageSha256 ||
+      actual.distSha256 !== expected.distSha256
+    )
+      throw new Error(`Runtime checkpoint mismatch: ${name}`);
+    if (
+      requiredPackages.includes(name) &&
+      name !== '@tradejs/strategy-kit' &&
+      actual.version !== checkpoint.generation
+    )
+      throw new Error(`Runtime generation mismatch: ${name}`);
+    packages[name] = { ...actual, packageRoot };
+  }
+  const nodeRoot = packages['@tradejs/node'].packageRoot;
+  const projectTracked = {};
+  if (checkpoint.projectTracked != null) {
+    if (
+      typeof checkpoint.projectTracked !== 'object' ||
+      Array.isArray(checkpoint.projectTracked)
+    )
+      throw new Error('Invalid runtime checkpoint projectTracked');
+    for (const [relativePath, expected] of Object.entries(
+      checkpoint.projectTracked,
+    )) {
+      if (
+        !['package.json', 'yarn.lock', 'tradejs.config.ts'].includes(
+          relativePath,
+        ) ||
+        !/^[a-f0-9]{64}$/.test(expected)
+      )
+        throw new Error(
+          `Invalid checkpoint Project path/checksum: ${relativePath}`,
+        );
+      const filePath = projectBoundPath(relativePath, projectRoot);
+      const actual = artifactSha256(fs.readFileSync(filePath));
+      if (actual !== expected)
+        throw new Error(
+          `Runtime checkpoint Project checksum mismatch: ${relativePath}`,
+        );
+      projectTracked[relativePath] = { path: filePath, sha256: actual };
+    }
+  }
+  const cliRoot = packages['@tradejs/cli'].packageRoot;
+  const modules = {
+    aiModulePath: path.join(nodeRoot, 'dist/ai.mjs'),
+    registryModulePath: path.join(nodeRoot, 'dist/registry.mjs'),
+    pocketModulePath: path.join(cliRoot, 'dist/lib/aiPocketSearch.js'),
+  };
+  for (const filePath of Object.values(modules))
+    if (projectBoundPath(filePath, projectRoot) !== filePath)
+      throw new Error(`Foreign runtime module: ${filePath}`);
+  return {
+    ...modules,
+    executionRuntime: {
+      mode: 'verified-project-runtime-checkpoint',
+      projectRoot: fs.realpathSync(projectRoot),
+      checkpoint: { path: checkpointPath, sha256: artifactSha256(bytes) },
+      generation: checkpoint.generation,
+      treeHashAlgorithm: checkpoint.treeHashAlgorithm,
+      packages,
+      projectTracked,
+      modules: Object.fromEntries(
+        Object.entries(modules).map(([key, filePath]) => [
+          key,
+          { path: filePath, sha256: artifactSha256(fs.readFileSync(filePath)) },
+        ]),
+      ),
+    },
+  };
+};
+
+export const ensureRuntimeBuild = async (
+  frameworkRepositoryRoot,
+  options = null,
+) => {
+  if (options?.runtimeCheckpoint) return resolveCheckpointRuntime(options);
   const aiModulePath = path.join(
     frameworkRepositoryRoot,
     'packages/node/dist/ai.mjs',
@@ -1626,6 +2471,123 @@ export const getCostStressNotional = (tradeResult) => {
   return quantity * (entryPrice + exitPrice);
 };
 
+export const getEntryStressNotional = (tradeResult) => {
+  if (!tradeResult || typeof tradeResult !== 'object') return null;
+  const quantity = tradeResult.closedQty ?? tradeResult.qty;
+  if (
+    ![tradeResult.entryPrice, quantity].every(
+      (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
+    ) ||
+    (tradeResult.qty != null &&
+      (!Number.isFinite(tradeResult.qty) || quantity > tradeResult.qty))
+  )
+    return null;
+  return quantity * tradeResult.entryPrice;
+};
+
+const adjacentBinary64 = (value, direction) => {
+  if (!Number.isFinite(value)) return value;
+  if (value === 0) return direction > 0 ? Number.MIN_VALUE : -Number.MIN_VALUE;
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setFloat64(0, value, false);
+  let bits = view.getBigUint64(0, false);
+  bits += value > 0 === direction > 0 ? 1n : -1n;
+  view.setBigUint64(0, bits, false);
+  return view.getFloat64(0, false);
+};
+
+const binary64Ulp = (value) =>
+  Math.max(
+    value - adjacentBinary64(value, -1),
+    adjacentBinary64(value, 1) - value,
+  );
+
+const missingEntryStressNotional = (reason, audit = null) => ({
+  status: 'missing',
+  reason,
+  notional: null,
+  audit,
+});
+
+export const deriveFeeEntryStressNotional = (tradeResult, authority) => {
+  if (
+    authority?.roundingPolicy?.id !== ENTRY_NOTIONAL_ROUNDING_POLICY ||
+    authority?.displayPriceDecimals !== 8 ||
+    typeof authority?.entryFeeRate !== 'number' ||
+    !Number.isFinite(authority.entryFeeRate) ||
+    authority.entryFeeRate <= 0
+  )
+    throw new Error('Invalid verified fee-derived entry-notional authority');
+  if (!tradeResult || typeof tradeResult !== 'object')
+    return missingEntryStressNotional('missing-trade-result');
+  const readPositive = (field) => {
+    const value = tradeResult[field];
+    if (value == null) return { reason: `missing-${field}` };
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+      return { reason: `invalid-${field}` };
+    return { value };
+  };
+  const fields = [
+    ['qty', 'qty'],
+    ['closedQty', 'closed-qty'],
+    ['openFee', 'open-fee'],
+    ['entryPrice', 'entry-price'],
+  ];
+  const values = {};
+  for (const [field, reasonField] of fields) {
+    const result = readPositive(field);
+    if (result.reason)
+      return missingEntryStressNotional(
+        result.reason.replace(field, reasonField),
+      );
+    values[field] = result.value;
+  }
+  if (values.closedQty !== values.qty)
+    return missingEntryStressNotional('not-fully-closed');
+  const feeDerivedNotional = values.openFee / authority.entryFeeRate;
+  if (!Number.isFinite(feeDerivedNotional) || feeDerivedNotional <= 0)
+    return missingEntryStressNotional('nonfinite-fee-derived-notional');
+  const displayedNotional = values.qty * values.entryPrice;
+  if (!Number.isFinite(displayedNotional) || displayedNotional <= 0)
+    return missingEntryStressNotional('invalid-displayed-notional');
+  const displayAllowance =
+    values.qty * 0.5 * 10 ** -authority.displayPriceDecimals;
+  const binary64Allowance =
+    binary64Ulp(values.openFee) / authority.entryFeeRate +
+    binary64Ulp(feeDerivedNotional) +
+    Math.abs(values.entryPrice) * binary64Ulp(values.qty) +
+    Math.abs(values.qty) * binary64Ulp(values.entryPrice) +
+    binary64Ulp(displayedNotional);
+  const totalAllowance = displayAllowance + binary64Allowance;
+  const difference = Math.abs(feeDerivedNotional - displayedNotional);
+  const audit = {
+    feeDerivedNotional,
+    displayedNotional,
+    difference,
+    displayAllowance,
+    binary64Allowance,
+    totalAllowance,
+  };
+  if (
+    ![displayAllowance, binary64Allowance, totalAllowance, difference].every(
+      Number.isFinite,
+    ) ||
+    difference > totalAllowance
+  )
+    return missingEntryStressNotional(
+      'display-reconciliation-outside-analytical-bound',
+      audit,
+    );
+  return {
+    status: 'complete',
+    reason: null,
+    notional: feeDerivedNotional,
+    audit,
+  };
+};
+
 export const buildFeatureAvailabilityAudit = (rows) => {
   const paths = [
     ...new Set(rows.flatMap((row) => Object.keys(row.auditFeatures ?? {}))),
@@ -1705,20 +2667,63 @@ export const validateResearchWindow = (windowStart, windowEnd) => {
   return { start: windowStart, end: windowEnd };
 };
 
+export const classifyDiscoveryLabelHorizon = (
+  timestamp,
+  tradeResult,
+  cutoff,
+) => {
+  if (
+    !Number.isFinite(timestamp) ||
+    !Number.isFinite(cutoff) ||
+    timestamp >= cutoff
+  ) {
+    throw new Error(
+      'Discovery decision must be finite and earlier than its label cutoff',
+    );
+  }
+  const exit = tradeResult?.exitTimestamp;
+  if (typeof exit !== 'number' || !Number.isFinite(exit)) return 'unknown';
+  if (exit < timestamp)
+    throw new Error('Completed label exits before decision timestamp');
+  return exit >= cutoff ? 'crossing' : 'eligible';
+};
+
 // Yield only selected sources: no payload, gate or feature work may precede this boundary.
 export async function* readWindowedResearchSources({
   filePaths,
   windowStart = null,
   windowEnd = null,
+  labelEndBefore = null,
+  strictTimestamp = false,
   scan = {},
 }) {
   const window = validateResearchWindow(windowStart, windowEnd);
+  if (
+    labelEndBefore != null &&
+    (!Number.isFinite(labelEndBefore) ||
+      !window ||
+      window.end !== labelEndBefore)
+  ) {
+    throw new Error(
+      '--labelEndBefore requires an explicit discovery window ending at the same cutoff',
+    );
+  }
   Object.assign(scan, {
     rowsRead: 0,
     beforeWindow: 0,
     atOrAfterWindowEnd: 0,
     invalidTimestamp: 0,
     selectedRows: 0,
+    ...(labelEndBefore != null
+      ? {
+          labelHorizon: {
+            cutoff: labelEndBefore,
+            crossing: 0,
+            unknown: 0,
+            eligible: 0,
+          },
+        }
+      : {}),
   });
   let sequence = 0;
   for (const filePath of filePaths) {
@@ -1731,6 +2736,13 @@ export async function* readWindowedResearchSources({
       const source = JSON.parse(line);
       const sourceSequence = sequence++;
       scan.rowsRead += 1;
+      if (
+        (labelEndBefore != null || strictTimestamp) &&
+        (typeof source.timestamp !== 'number' ||
+          !Number.isFinite(source.timestamp))
+      ) {
+        throw new Error('Discovery requires a finite numeric source timestamp');
+      }
       const timestamp =
         source.timestamp == null ||
         typeof source.timestamp === 'boolean' ||
@@ -1751,13 +2763,255 @@ export async function* readWindowedResearchSources({
         scan.atOrAfterWindowEnd += 1;
         continue;
       }
+      if (labelEndBefore != null) {
+        const labelStatus = classifyDiscoveryLabelHorizon(
+          timestamp,
+          source.tradeResult,
+          labelEndBefore,
+        );
+        scan.labelHorizon[labelStatus] += 1;
+        if (labelStatus !== 'eligible') continue;
+      }
       scan.selectedRows += 1;
       yield { source, sequence: sourceSequence, timestamp };
     }
   }
 }
 
-const loadResearchRows = async ({
+const streamArtifactFileHash = async (filePath) => {
+  const hash = createHash('sha256');
+  let sizeBytes = 0;
+  for await (const chunk of fs.createReadStream(filePath)) {
+    hash.update(chunk);
+    sizeBytes += chunk.length;
+  }
+  return { path: filePath, sha256: hash.digest('hex'), sizeBytes };
+};
+
+export const timestampPartitionMetadata = async ({
+  projectRoot,
+  filePaths,
+  outputPath,
+  windowStart,
+  windowEnd,
+  validationSplit = 0,
+  testSplit = 0.4,
+}) => {
+  validateResearchWindow(windowStart, windowEnd);
+  if (
+    !Number.isSafeInteger(windowStart) ||
+    !Number.isSafeInteger(windowEnd) ||
+    validationSplit !== 0 ||
+    testSplit !== 0.4
+  )
+    throw new Error(
+      'Timestamp metadata requires explicit window and outer 60/40',
+    );
+  const project = fs.realpathSync(projectRoot);
+  const output = path.resolve(project, outputPath);
+  if (!output.startsWith(`${project}${path.sep}`))
+    throw new Error('Timestamp metadata output must remain inside Project');
+  let ancestor = path.dirname(output);
+  while (!fs.existsSync(ancestor)) ancestor = path.dirname(ancestor);
+  const realAncestor = fs.realpathSync(ancestor);
+  if (
+    realAncestor !== project &&
+    !realAncestor.startsWith(`${project}${path.sep}`)
+  )
+    throw new Error('Timestamp metadata parent escapes Project');
+  await fsp.mkdir(path.dirname(output), { recursive: true });
+  if (fs.realpathSync(path.dirname(output)) !== path.dirname(output))
+    throw new Error('Timestamp metadata parent cannot traverse symlinks');
+  if (fs.existsSync(output))
+    throw new Error('Timestamp metadata must be a new immutable file');
+  const inputs = filePaths.map((file) => projectBoundPath(file, project));
+  if (
+    !inputs.length ||
+    new Set(inputs).size !== inputs.length ||
+    inputs.includes(output)
+  )
+    throw new Error('Timestamp metadata requires unique nonempty source files');
+  const sourceFiles = await Promise.all(inputs.map(streamArtifactFileHash));
+  const scan = {};
+  const rows = [];
+  for await (const { timestamp } of readWindowedResearchSources({
+    filePaths: inputs,
+    windowStart,
+    windowEnd,
+    strictTimestamp: true,
+    scan,
+  }))
+    rows.push({ timestamp });
+  rows.sort((a, b) => a.timestamp - b.timestamp);
+  if (new Set(rows.map((row) => row.timestamp)).size < 2)
+    throw new Error(
+      'Timestamp metadata requires at least two independent groups',
+    );
+  const split = splitRowsByTimestamp(rows, validationSplit, testSplit);
+  const testSince = split.test[0].timestamp;
+  const count = (partition) => ({
+    rows: partition.length,
+    events: new Set(partition.map((row) => row.timestamp)).size,
+  });
+  const after = await Promise.all(inputs.map(streamArtifactFileHash));
+  if (JSON.stringify(after) !== JSON.stringify(sourceFiles))
+    throw new Error('Timestamp metadata source inputs changed');
+  const metadata = {
+    schema: 'tradejs-timestamp-partition-metadata/v1',
+    sourceFiles,
+    inputStabilityVerified: true,
+    comparisonWindow: {
+      start: windowStart,
+      end: windowEnd,
+      interval: '[start, end)',
+    },
+    validationSplit,
+    testSplit,
+    testSince,
+    testSinceUtc: new Date(testSince).toISOString(),
+    sourceSelection: scan,
+    development: count(split.train),
+    test: count(split.test),
+    outcomeEvaluationPerformed: false,
+    gateEvaluationPerformed: false,
+    featureEvaluationPerformed: false,
+    runtimeLoaded: false,
+  };
+  const bytes = `${JSON.stringify(metadata, null, 2)}\n`;
+  await fsp.writeFile(output, bytes, { flag: 'wx' });
+  const artifact = await streamArtifactFileHash(output);
+  if (artifact.sha256 !== artifactSha256(bytes))
+    throw new Error('Timestamp metadata output checksum mismatch');
+  return { ...metadata, artifact };
+};
+
+export const materializeDiscoveryExport = async ({
+  projectRoot,
+  filePaths,
+  outputPath,
+  windowStart,
+  windowEnd,
+  testSince,
+  labelEndBefore,
+  validationSplit = 0,
+}) => {
+  validateResearchWindow(windowStart, windowEnd);
+  if (
+    !Number.isSafeInteger(windowStart) ||
+    !Number.isSafeInteger(windowEnd) ||
+    !Number.isSafeInteger(labelEndBefore) ||
+    labelEndBefore !== windowEnd ||
+    testSince !== windowEnd ||
+    validationSplit !== 0
+  )
+    throw new Error(
+      'Materialization requires exact discovery window/test/label cutoff and validationSplit 0',
+    );
+  const project = fs.realpathSync(projectRoot);
+  const output = path.resolve(project, outputPath);
+  if (!output.startsWith(`${project}${path.sep}`))
+    throw new Error('Discovery output must remain inside Project');
+  let ancestor = path.dirname(output);
+  while (!fs.existsSync(ancestor)) ancestor = path.dirname(ancestor);
+  const realAncestor = fs.realpathSync(ancestor);
+  if (
+    realAncestor !== project &&
+    !realAncestor.startsWith(`${project}${path.sep}`)
+  )
+    throw new Error('Discovery output parent escapes Project');
+  await fsp.mkdir(path.dirname(output), { recursive: true });
+  if (fs.realpathSync(path.dirname(output)) !== path.dirname(output))
+    throw new Error('Discovery output parent cannot traverse symlinks');
+  const receiptPath = `${output}.receipt.json`;
+  if (fs.existsSync(output) || fs.existsSync(receiptPath))
+    throw new Error('Discovery output and receipt must be new immutable files');
+  const inputs = filePaths.map((filePath) =>
+    projectBoundPath(filePath, project),
+  );
+  if (
+    !inputs.length ||
+    new Set(inputs).size !== inputs.length ||
+    inputs.includes(output)
+  )
+    throw new Error('Discovery inputs must be a non-empty unique source group');
+  const sourceFiles = await Promise.all(inputs.map(streamArtifactFileHash));
+  const scan = {};
+  const handle = await fsp.open(output, 'wx');
+  const outputHash = createHash('sha256');
+  let outputRows = 0;
+  let sizeBytes = 0;
+  try {
+    for await (const { source } of readWindowedResearchSources({
+      filePaths: inputs,
+      windowStart,
+      windowEnd,
+      labelEndBefore,
+      scan,
+    })) {
+      const line = `${JSON.stringify(source)}\n`;
+      await handle.writeFile(line);
+      outputHash.update(line);
+      sizeBytes += Buffer.byteLength(line);
+      outputRows += 1;
+    }
+    if (!outputRows) throw new Error('Discovery export has zero eligible rows');
+    const after = await Promise.all(inputs.map(streamArtifactFileHash));
+    if (JSON.stringify(after) !== JSON.stringify(sourceFiles))
+      throw new Error('Discovery source inputs changed during materialization');
+    await handle.sync();
+    const outputSha256 = outputHash.digest('hex');
+    const readback = await streamArtifactFileHash(output);
+    if (readback.sha256 !== outputSha256 || readback.sizeBytes !== sizeBytes)
+      throw new Error('Discovery output checksum mismatch');
+    const receipt = {
+      schema: 'tradejs-discovery-export-materialization/v1',
+      createdAt: new Date().toISOString(),
+      role: 'Raw maturity-purged development source view; not a gate replay or new core export',
+      sourceFiles,
+      sourceFilesAfter: after,
+      inputStabilityVerified: true,
+      output: {
+        path: output,
+        sha256: outputSha256,
+        sizeBytes,
+        rows: outputRows,
+      },
+      comparisonWindow: {
+        start: windowStart,
+        end: windowEnd,
+        interval: '[start, end)',
+      },
+      testSince,
+      labelEndBefore,
+      validationSplit,
+      sourceSelection: scan,
+      gateEvaluationPerformed: false,
+      featureEvaluationPerformed: false,
+      sourceObjectsModified: false,
+      nativeAiTrain: {
+        file: output,
+        since: windowStart,
+        until: windowEnd - 1,
+        sourceSha256s: [outputSha256],
+        warning:
+          'Native lineage hashes this view, not its parent full exports; bind this receipt and original core/config authority separately.',
+      },
+    };
+    await fsp.writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+      flag: 'wx',
+    });
+    return { ...receipt, receiptPath };
+  } catch (error) {
+    throw new Error(
+      `Discovery materialization failed; partial output retained without a success receipt at ${output}: ${error.message}`,
+      { cause: error },
+    );
+  } finally {
+    await handle.close();
+  }
+};
+
+export const loadResearchRows = async ({
   projectRoot,
   sourceRepositoryRoot,
   frameworkRepositoryRoot,
@@ -1769,17 +3023,45 @@ const loadResearchRows = async ({
   cohortPath,
   windowStart = null,
   windowEnd = null,
+  labelEndBefore = null,
+  runtimeCheckpoint = null,
+  strategyArtifactAuthority = null,
+  entryNotionalAuthority = null,
 }) => {
   validateResearchWindow(windowStart, windowEnd);
-  const { aiModulePath, registryModulePath, pocketModulePath } =
-    await ensureRuntimeBuild(frameworkRepositoryRoot);
+  const {
+    aiModulePath,
+    registryModulePath,
+    pocketModulePath,
+    executionRuntime,
+  } = await ensureRuntimeBuild(frameworkRepositoryRoot, {
+    projectRoot,
+    runtimeCheckpoint,
+  });
+  const verifiedEntryNotionalAuthority = entryNotionalAuthority
+    ? await verifyEntryNotionalAuthority({
+        projectRoot,
+        entryNotionalAuthority,
+        executionRuntime,
+        filePaths,
+      })
+    : null;
+  const loadedStrategy =
+    getSourceRepositoryKind(sourceRepositoryRoot) === 'strategy'
+      ? await loadStandaloneStrategyEntries(sourceRepositoryRoot, {
+          projectRoot,
+          executionRuntime,
+          strategyArtifactAuthority,
+        })
+      : null;
+  if (strategyArtifactAuthority && !loadedStrategy)
+    throw new Error('Strategy artifact authority requires standalone source');
   const aiModule = await import(pathToFileURL(aiModulePath).href);
   const registryModule = await import(pathToFileURL(registryModulePath).href);
   const require = createRequire(import.meta.url);
   const { collectAiPocketFeatures } = require(pocketModulePath);
-  if (getSourceRepositoryKind(sourceRepositoryRoot) === 'strategy') {
-    const { strategyEntries } =
-      await loadStandaloneStrategyEntries(sourceRepositoryRoot);
+  if (loadedStrategy) {
+    const { strategyEntries } = loadedStrategy;
     registryModule.resetStrategyRegistryCache(projectRoot);
     registryModule.registerStrategyEntries(strategyEntries, projectRoot);
   } else {
@@ -1799,6 +3081,7 @@ const loadResearchRows = async ({
     filePaths,
     windowStart,
     windowEnd,
+    labelEndBefore,
     scan: sourceSelection,
   })) {
     try {
@@ -1824,6 +3107,12 @@ const loadResearchRows = async ({
         return Number.isFinite(parsed) ? parsed : null;
       };
       const rawContext = payload.additionalIndicators?.baseContext?.raw ?? {};
+      const entryStressNotionalEvidence = verifiedEntryNotionalAuthority
+        ? deriveFeeEntryStressNotional(
+            source.tradeResult,
+            verifiedEntryNotionalAuthority,
+          )
+        : null;
       rows.push({
         sequence,
         signalId: source.signalId,
@@ -1843,6 +3132,10 @@ const loadResearchRows = async ({
           ? readDiagnosticPath(payload, cohortPath)
           : null,
         costStressNotional: getCostStressNotional(source.tradeResult),
+        entryStressNotional: verifiedEntryNotionalAuthority
+          ? entryStressNotionalEvidence.notional
+          : getEntryStressNotional(source.tradeResult),
+        ...(entryStressNotionalEvidence ? { entryStressNotionalEvidence } : {}),
         completedTrade:
           source.tradeResult == null
             ? null
@@ -1889,11 +3182,21 @@ const loadResearchRows = async ({
   if (rows.some((row) => row.timestamp == null)) {
     throw new Error('At least one evaluated row has no finite timestamp');
   }
+  const stableEntryNotionalAuthority = verifiedEntryNotionalAuthority
+    ? await verifyEntryNotionalInputStability(verifiedEntryNotionalAuthority)
+    : null;
   return {
     rows,
     failed,
     featureInventory: finalizeFeatureInventory(featureInventory),
     sourceSelection,
+    ...(executionRuntime ? { executionRuntime } : {}),
+    ...(stableEntryNotionalAuthority
+      ? { entryNotionalAuthority: stableEntryNotionalAuthority }
+      : {}),
+    ...(loadedStrategy?.strategyArtifact
+      ? { strategyArtifact: loadedStrategy.strategyArtifact }
+      : {}),
   };
 };
 
@@ -3836,7 +5139,17 @@ export const buildCrossStrategyReport = async ({
   minFeatureCoverage,
   minBenchmarkFeatureCoverage,
   portfolioCapacity = 5,
+  runtimeCheckpoint = null,
+  strategyArtifactAuthority = null,
 }) => {
+  if (strategyArtifactAuthority)
+    throw new Error('Strategy artifact authority requires single-core mode');
+  const checkpointRuntime = runtimeCheckpoint
+    ? await ensureRuntimeBuild(frameworkRepositoryRoot, {
+        projectRoot,
+        runtimeCheckpoint,
+      })
+    : null;
   if (groups.length < 2) {
     throw new Error('Cross-strategy research requires at least two exports');
   }
@@ -3848,10 +5161,12 @@ export const buildCrossStrategyReport = async ({
   let searchAiPockets = searchAiPocketsOverride;
   if (!searchAiPockets) {
     const require = createRequire(import.meta.url);
-    const pocketModulePath = path.join(
-      frameworkRepositoryRoot,
-      'packages/cli/dist/lib/aiPocketSearch.js',
-    );
+    const pocketModulePath =
+      checkpointRuntime?.pocketModulePath ??
+      path.join(
+        frameworkRepositoryRoot,
+        'packages/cli/dist/lib/aiPocketSearch.js',
+      );
     await fsp.access(pocketModulePath);
     ({ searchAiPockets } = require(pocketModulePath));
   }
@@ -4194,6 +5509,9 @@ export const buildCrossStrategyReport = async ({
     generatedAt: new Date().toISOString(),
     run: {
       mode: 'profiled cross-strategy saved-snapshot feasibility',
+      ...(checkpointRuntime
+        ? { executionRuntime: checkpointRuntime.executionRuntime }
+        : {}),
       sourceRepositoryRoot,
       frameworkRepositoryRoot,
       evidenceStatus:
@@ -4274,7 +5592,21 @@ export const buildRealizedReport = ({
   summaryOptions,
   testSince = null,
   tuningSince = null,
+  symbolCohorts = null,
 }) => {
+  const cohortDefinition = symbolCohorts
+    ? normalizeSymbolCohorts(symbolCohorts)
+    : null;
+  if (cohortDefinition) {
+    const declaredSymbols = new Set(
+      cohortDefinition.groups.flatMap((group) => group.symbols),
+    );
+    if (rows.some((row) => !declaredSymbols.has(row.symbol))) {
+      throw new Error(
+        'Every source row must belong to a declared symbol cohort',
+      );
+    }
+  }
   const approved = selectRows(rows, selector);
   const identities = new Set();
   for (const row of approved) {
@@ -4392,6 +5724,37 @@ export const buildRealizedReport = ({
     ...provenance,
     excludedOutsideWindow: approved.length - realizedRows.length,
     partitionCalendarBounds: partitionBounds,
+    ...(cohortDefinition
+      ? {
+          symbolCohorts: {
+            role: 'diagnostic only; globally frozen approvals, partitions and calendar denominators; no cohort-dependent gate or capacity reranking',
+            authority: symbolCohorts.authority ?? null,
+            groups: cohortDefinition.groups.map((group) => {
+              const symbols = new Set(group.symbols);
+              const cohortRows = rows.filter((row) => symbols.has(row.symbol));
+              return {
+                id: group.id,
+                declaredSymbols: group.symbols.length,
+                observedSymbols: new Set(cohortRows.map((row) => row.symbol))
+                  .size,
+                sourceRows: cohortRows.length,
+                realized: buildRealizedReport({
+                  rows: cohortRows,
+                  selector: (row) => selected.has(row),
+                  minTimestamp,
+                  maxTimestamp,
+                  terminalWindows,
+                  split,
+                  stabilityBlocks,
+                  summaryOptions,
+                  testSince,
+                  tuningSince,
+                }),
+              };
+            }),
+          },
+        }
+      : {}),
     periods: buildPeriodSummaries({
       rows: realizedRows,
       selector: () => true,
@@ -4443,6 +5806,129 @@ export const buildRealizedReport = ({
       }),
     })),
   };
+};
+
+export const buildRoundTripCostStressReport = ({
+  rows,
+  selector,
+  basisPoints,
+  split,
+  stabilityBlocks,
+  entryNotionalAuthority = null,
+  ...realizedOptions
+}) => {
+  // Freeze the approval set before any outcome adjustment, including capacity ranking.
+  const approved = new Set(selectRows(rows, selector));
+  return basisPoints.map((bps) => {
+    const copies = new Map(
+      rows.map((row) => {
+        const validNotional =
+          Number.isFinite(row.entryStressNotional) &&
+          row.entryStressNotional > 0;
+        const validProfit =
+          typeof row.completedTrade?.netProfit === 'number' &&
+          Number.isFinite(row.completedTrade.netProfit) &&
+          Math.abs(row.completedTrade.netProfit - row.profit) < 1e-9;
+        const additionalCost = validNotional
+          ? (row.entryStressNotional * bps) / 10000
+          : null;
+        return [
+          row,
+          {
+            ...row,
+            stressApproved: approved.has(row),
+            profit:
+              additionalCost == null ? row.profit : row.profit - additionalCost,
+            completedTrade:
+              validNotional && validProfit
+                ? {
+                    ...row.completedTrade,
+                    netProfit: row.completedTrade.netProfit - additionalCost,
+                  }
+                : null,
+          },
+        ];
+      }),
+    );
+    const adjustedRows = rows.map((row) => copies.get(row));
+    const options = {
+      ...realizedOptions,
+      rows: adjustedRows,
+      split: Object.fromEntries(
+        Object.entries(split).map(([name, cohort]) => [
+          name,
+          cohort.map((row) => copies.get(row)),
+        ]),
+      ),
+      stabilityBlocks: stabilityBlocks.map((cohort) =>
+        cohort.map((row) => copies.get(row)),
+      ),
+    };
+    const selectedRows = rows.filter((row) => approved.has(row));
+    const missingNotional = selectedRows.filter(
+      (row) =>
+        !(
+          Number.isFinite(row.entryStressNotional) &&
+          row.entryStressNotional > 0
+        ),
+    ).length;
+    const missingNotionalReasonCounts = Object.fromEntries(
+      [
+        ...selectedRows
+          .filter(
+            (row) =>
+              !(
+                Number.isFinite(row.entryStressNotional) &&
+                row.entryStressNotional > 0
+              ),
+          )
+          .reduce((counts, row) => {
+            const reason =
+              row.entryStressNotionalEvidence?.reason ??
+              'unknown-missing-notional';
+            counts.set(reason, (counts.get(reason) ?? 0) + 1);
+            return counts;
+          }, new Map()),
+      ].sort(([left], [right]) => left.localeCompare(right)),
+    );
+    return {
+      basisPointsRoundTrip: bps,
+      formula:
+        entryNotionalAuthority == null
+          ? 'closedQty (or qty when absent) * actual entryPrice * roundTripBps / 10000'
+          : 'tradeResult.openFee / frozen equal maker/taker entry fee rate * roundTripBps / 10000',
+      role: 'fixed arithmetic cost stress; original approval identities, historical quantity and risk unchanged; exit-time economics',
+      approvedN: selectedRows.length,
+      missingNotionalRows: missingNotional,
+      ...(entryNotionalAuthority
+        ? {
+            entryNotionalMethod: entryNotionalAuthority.method,
+            completeNotionalRows: selectedRows.length - missingNotional,
+            missingNotionalReasonCounts,
+          }
+        : {}),
+      additionalCost: missingNotional
+        ? null
+        : selectedRows.reduce(
+            (sum, row) => sum + (row.entryStressNotional * bps) / 10000,
+            0,
+          ),
+      realized: buildRealizedReport({
+        ...options,
+        selector: (row) => row.stressApproved,
+      }),
+      byDirection: Object.fromEntries(
+        ['LONG', 'SHORT'].map((direction) => [
+          direction,
+          buildRealizedReport({
+            ...options,
+            selector: (row) =>
+              row.stressApproved && row.direction === direction,
+          }),
+        ]),
+      ),
+    };
+  });
 };
 
 export const buildCostStressReport = ({
@@ -4651,9 +6137,14 @@ export const buildAblationReport = ({
   featureInventory = [],
   cohortPath = null,
   costStressBps = [],
+  roundTripCostStressBps = [],
   realizedMetrics = false,
+  symbolCohorts = null,
   monthlyCohorts = false,
   compareTo = null,
+  executionRuntime = null,
+  strategyArtifact = null,
+  entryNotionalAuthority = null,
 }) => {
   if (!rows.length) throw new Error('No rows were evaluated');
   if ((windowStart == null) !== (windowEnd == null)) {
@@ -4670,6 +6161,17 @@ export const buildAblationReport = ({
   if (realizedMetrics && !explicitWindow) {
     throw new Error(
       '--realizedMetrics requires explicit --windowStart and --windowEnd',
+    );
+  }
+  if (roundTripCostStressBps.length && !realizedMetrics) {
+    throw new Error('--roundTripCostStressBps requires --realizedMetrics');
+  }
+  if (symbolCohorts && !realizedMetrics) {
+    throw new Error('Symbol cohorts require realizedMetrics');
+  }
+  if (roundTripCostStressBps.some((bps) => !Number.isFinite(bps) || bps <= 0)) {
+    throw new Error(
+      'roundTripCostStressBps must contain positive finite values',
     );
   }
   if (
@@ -4755,6 +6257,7 @@ export const buildAblationReport = ({
       summaryOptions,
       testSince,
       tuningSince,
+      symbolCohorts,
     });
   const approvedSignalTrace = (selector) =>
     selectRows(rows, selector).map((row) => ({
@@ -4765,7 +6268,26 @@ export const buildAblationReport = ({
       direction: row.direction,
       profit: row.profit,
     }));
+  const roundTripCostStress = (selector) =>
+    buildRoundTripCostStressReport({
+      rows,
+      selector,
+      basisPoints: roundTripCostStressBps,
+      split,
+      stabilityBlocks,
+      minTimestamp,
+      maxTimestamp,
+      terminalWindows,
+      summaryOptions,
+      testSince,
+      tuningSince,
+      symbolCohorts,
+      entryNotionalAuthority,
+    });
   const baseline = {
+    ...(roundTripCostStressBps.length
+      ? { roundTripCostStress: roundTripCostStress(baselineSelector) }
+      : {}),
     ...(realizedMetrics ? { realized: realized(baselineSelector) } : {}),
     ...(costStressBps.length
       ? { costStress: costStress(baselineSelector) }
@@ -4832,6 +6354,9 @@ export const buildAblationReport = ({
       !baselineSelector(row) && candidateSelector(row);
     return {
       name: variant.name,
+      ...(roundTripCostStressBps.length
+        ? { roundTripCostStress: roundTripCostStress(candidateSelector) }
+        : {}),
       ...(realizedMetrics ? { realized: realized(candidateSelector) } : {}),
       ...(costStressBps.length
         ? { costStress: costStress(candidateSelector) }
@@ -4927,6 +6452,9 @@ export const buildAblationReport = ({
       test: summarizeSplit(split.test, selector, summaryOptions),
       developmentStability: stabilitySummary(selector),
       ...(costStressBps.length ? { costStress: costStress(selector) } : {}),
+      ...(roundTripCostStressBps.length
+        ? { roundTripCostStress: roundTripCostStress(selector) }
+        : {}),
       ...(realizedMetrics ? { realized: realized(selector) } : {}),
     });
     comparisons = [...selectors]
@@ -4947,6 +6475,9 @@ export const buildAblationReport = ({
       sourceRepositoryRoot,
       frameworkRepositoryRoot,
       sourceRepositoryKind,
+      ...(executionRuntime ? { executionRuntime } : {}),
+      ...(strategyArtifact ? { strategyArtifact } : {}),
+      ...(entryNotionalAuthority ? { entryNotionalAuthority } : {}),
       rows: rows.length,
       failed,
       minQuality,
@@ -4970,7 +6501,9 @@ export const buildAblationReport = ({
       maxLossValue,
       ...(cohortPath ? { cohortPath } : {}),
       ...(costStressBps.length ? { costStressBps } : {}),
+      ...(roundTripCostStressBps.length ? { roundTripCostStressBps } : {}),
       ...(realizedMetrics ? { realizedMetrics: true } : {}),
+      ...(symbolCohorts ? { symbolCohorts } : {}),
       ...(monthlyCohorts ? { monthlyCohorts: true } : {}),
       ...(compareTo != null ? { compareTo } : {}),
       trainRows: split.train.length,
@@ -5476,6 +7009,30 @@ export const formatMarkdownReport = (report) => {
         ['source_root', report.run.sourceRepositoryRoot ?? 'n/a'],
         ['source_kind', report.run.sourceRepositoryKind ?? 'n/a'],
         ['framework_root', report.run.frameworkRepositoryRoot ?? 'n/a'],
+        [
+          'execution_runtime',
+          report.run.executionRuntime?.mode ?? 'source-build',
+        ],
+        [
+          'runtime_checkpoint_sha256',
+          report.run.executionRuntime?.checkpoint?.sha256 ?? 'n/a',
+        ],
+        [
+          'historical_strategy_source_sha',
+          report.run.strategyArtifact?.sourceGitSha ?? 'n/a',
+        ],
+        [
+          'historical_strategy_diff_sha256',
+          report.run.strategyArtifact?.sourceDiff?.sha256 ?? 'n/a',
+        ],
+        [
+          'imported_strategy_dist_sha256',
+          report.run.strategyArtifact?.distSha256 ?? 'n/a',
+        ],
+        [
+          'strategy_artifact_authority_sha256',
+          report.run.strategyArtifact?.authority?.sha256 ?? 'n/a',
+        ],
         ['range', `${report.run.minTimestamp} .. ${report.run.maxTimestamp}`],
         ['span_days', formatNumber(report.run.spanDays)],
         ['min_quality', report.run.minQuality],
@@ -6294,6 +7851,45 @@ export const main = async () => {
   }
   const projectRoot = resolveArtifactProjectRoot();
   const outDir = path.resolve(projectRoot, options.outDir);
+  if (options.timestampPartitionMetadata) {
+    const filePaths = await resolveDatasetFiles({
+      projectRoot,
+      outDir: options.outDir,
+      file: options.file,
+      strategy: options.strategy,
+    });
+    const metadata = await timestampPartitionMetadata({
+      projectRoot,
+      filePaths,
+      outputPath: options.timestampPartitionMetadata,
+      windowStart: options.windowStart,
+      windowEnd: options.windowEnd,
+      validationSplit: options.validationSplit,
+      testSplit: options.testSplit,
+    });
+    process.stdout.write(`${JSON.stringify(metadata, null, 2)}\n`);
+    return;
+  }
+  if (options.materializeDiscoveryExport) {
+    const filePaths = await resolveDatasetFiles({
+      projectRoot,
+      outDir: options.outDir,
+      file: options.file,
+      strategy: options.strategy,
+    });
+    const receipt = await materializeDiscoveryExport({
+      projectRoot,
+      filePaths,
+      outputPath: options.materializeDiscoveryExport,
+      windowStart: options.windowStart,
+      windowEnd: options.windowEnd,
+      testSince: options.testSince,
+      labelEndBefore: options.labelEndBefore,
+      validationSplit: options.validationSplit,
+    });
+    process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+    return;
+  }
   if (options.list) {
     const groups = await listDatasetGroups(outDir);
     const strategyToken = normalizeStrategyToken(options.strategy);
@@ -6312,6 +7908,28 @@ export const main = async () => {
   const sourceRepositoryKind = getSourceRepositoryKind(sourceRepositoryRoot);
   const frameworkRepositoryRoot =
     findFrameworkRepositoryRoot(sourceRepositoryRoot);
+  // Resolve all executable authorities before resolving or reading any export.
+  if (options.runtimeCheckpoint) {
+    const runtime = await ensureRuntimeBuild(frameworkRepositoryRoot, {
+      projectRoot,
+      runtimeCheckpoint: options.runtimeCheckpoint,
+    });
+    if (!options.crossStrategy && sourceRepositoryKind === 'strategy') {
+      if (!options.strategyArtifactAuthority)
+        throw new Error(
+          'Checkpoint execution requires explicit --strategyArtifactAuthority for standalone source',
+        );
+      verifyStrategyArtifactAuthority({
+        projectRoot,
+        sourceRepositoryRoot,
+        strategyArtifactAuthority: options.strategyArtifactAuthority,
+        executionRuntime: runtime.executionRuntime,
+      });
+    } else if (options.strategyArtifactAuthority)
+      throw new Error(
+        'Strategy artifact authority requires standalone single-core source',
+      );
+  }
   if (options.crossStrategy) {
     if (options.tuningSince != null || options.testSince != null) {
       throw new Error(
@@ -6326,6 +7944,7 @@ export const main = async () => {
       sourceRepositoryRoot,
       frameworkRepositoryRoot,
       groups,
+      runtimeCheckpoint: options.runtimeCheckpoint,
       validationSplit: options.validationSplit,
       testSplit: options.testSplit,
       maxDepth: options.maxDepth,
@@ -6361,6 +7980,9 @@ export const main = async () => {
     return;
   }
   let variants = await loadVariants(options.variants, options.spec);
+  const symbolCohorts = options.symbolCohorts
+    ? loadSymbolCohorts({ projectRoot, file: options.symbolCohorts })
+    : null;
   if (options.movingAverageStudy && variants.length) {
     throw new Error(
       '--movingAverageStudy cannot be combined with --variant or --spec',
@@ -6399,6 +8021,10 @@ export const main = async () => {
     cohortPath: options.cohortPath,
     windowStart: options.windowStart,
     windowEnd: options.windowEnd,
+    labelEndBefore: options.labelEndBefore,
+    runtimeCheckpoint: options.runtimeCheckpoint,
+    strategyArtifactAuthority: options.strategyArtifactAuthority,
+    entryNotionalAuthority: options.entryNotionalAuthority,
   });
   let movingAverageCoverage = null;
   if (options.movingAverageStudy) {
@@ -6431,7 +8057,9 @@ export const main = async () => {
     maxLossValue: options.maxLossValue,
     cohortPath: options.cohortPath,
     costStressBps: options.costStressBps,
+    roundTripCostStressBps: options.roundTripCostStressBps,
     realizedMetrics: options.realizedMetrics,
+    symbolCohorts,
     monthlyCohorts: options.monthlyCohorts,
     compareTo: options.compareTo,
     sourceRepositoryRoot,
@@ -6448,6 +8076,12 @@ export const main = async () => {
     interval: '[start, end)',
     filteredBeforeGateEvaluation: true,
   };
+  if (options.labelEndBefore != null) {
+    report.run.discoveryOnly = true;
+    report.run.labelEndBefore = new Date(options.labelEndBefore).toISOString();
+    report.run.labelHorizonRole =
+      'Unknown or crossing completed labels excluded before payload, feature and gate evaluation. Outer test remains unopened.';
+  }
   if (options.movingAverageStudy) {
     report.movingAverageStudy = summarizeMovingAverageStudy({
       rows: loaded.rows,
