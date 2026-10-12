@@ -144,13 +144,105 @@ export const AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS = {
   testSplit: '0.4',
 } as const;
 
+export const parseAiPocketTestSince = (value: unknown): number => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  const numeric = typeof value === 'number' || /^\d+$/.test(text);
+  const iso = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/,
+  );
+  const validCalendar =
+    iso != null &&
+    Number(iso[2]) >= 1 &&
+    Number(iso[2]) <= 12 &&
+    Number(iso[3]) >= 1 &&
+    Number(iso[3]) <=
+      new Date(Date.UTC(Number(iso[1]), Number(iso[2]), 0)).getUTCDate() &&
+    Number(iso[4]) < 24 &&
+    Number(iso[5]) < 60 &&
+    Number(iso[6] ?? 0) < 60;
+  const timestamp = numeric
+    ? Number(value)
+    : validCalendar
+      ? Date.parse(text)
+      : NaN;
+  if (
+    !Number.isSafeInteger(timestamp) ||
+    timestamp <= 0 ||
+    timestamp > 8_640_000_000_000_000
+  ) {
+    throw new Error('--testSince requires a valid UTC timestamp or epoch ms');
+  }
+  return timestamp;
+};
+
+export type AiPocketLabelHorizonPurge = { crossing: number; unknown: number };
+
+export const classifyAiPocketLabelHorizon = (
+  decisionTimestamp: number,
+  exitTimestamp: unknown,
+  cutoff: number,
+): keyof AiPocketLabelHorizonPurge | null => {
+  if (decisionTimestamp >= cutoff) return null;
+  if (typeof exitTimestamp !== 'number' || !Number.isFinite(exitTimestamp)) {
+    return 'unknown';
+  }
+  if (exitTimestamp < decisionTimestamp) {
+    throw new Error(
+      '--testSince requires label exitTimestamp >= decision timestamp',
+    );
+  }
+  return exitTimestamp >= cutoff ? 'crossing' : null;
+};
+
 export const splitAiPocketResearchRowsByTimestamp = <
-  T extends { timestamp?: number | null },
+  T extends { timestamp?: number | null; exitTimestamp?: number | null },
 >(
   rows: T[],
   validationSplit: number,
   testSplit = 0,
+  testSince?: number | null,
 ) => {
+  if (testSince != null) {
+    const cutoff = parseAiPocketTestSince(testSince);
+    if (validationSplit !== 0) {
+      throw new Error('--testSince requires --validationSplit 0');
+    }
+    const trainRows: T[] = [];
+    const testRows: T[] = [];
+    const labelHorizonPurge: AiPocketLabelHorizonPurge = {
+      crossing: 0,
+      unknown: 0,
+    };
+    for (const row of rows) {
+      if (
+        typeof row.timestamp !== 'number' ||
+        !Number.isFinite(row.timestamp)
+      ) {
+        throw new Error('--testSince requires a finite timestamp on every row');
+      }
+      const purge = classifyAiPocketLabelHorizon(
+        row.timestamp,
+        row.exitTimestamp,
+        cutoff,
+      );
+      if (purge) {
+        labelHorizonPurge[purge] += 1;
+        continue;
+      }
+      (row.timestamp < cutoff ? trainRows : testRows).push(row);
+    }
+    if (!trainRows.length || !testRows.length) {
+      throw new Error(
+        '--testSince requires non-empty development and test partitions',
+      );
+    }
+    return {
+      trainRows,
+      validationRows: [] as T[],
+      testRows,
+      labelHorizonPurge,
+    };
+  }
   const timestamps = [
     ...new Set(
       rows

@@ -253,7 +253,7 @@ describe('aiPocketSearch', () => {
 
     expect(result).toEqual(
       expect.objectContaining({
-        scopeRows: rows,
+        scopeRows: rows.slice(0, 6),
         trainRows: rows.slice(0, 4),
         validationRows: rows.slice(4, 6),
         testRows: [],

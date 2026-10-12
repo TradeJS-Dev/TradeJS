@@ -3,7 +3,10 @@ import type {
   AiPocketFeaturePolicy,
   AiPocketSearchObjective,
 } from '../aiPocketSearch';
-import { readAiPocketSearchCliOption } from '../aiPocketSearchCli';
+import {
+  parseAiPocketTestSince,
+  readAiPocketSearchCliOption,
+} from '../aiPocketSearchCli';
 import {
   parseQualityThresholds,
   parseTimestampFilter,
@@ -34,6 +37,7 @@ export type AiPocketSearchCommandOptions = {
   maxCombinations: number;
   validationSplit: number;
   testSplit: number;
+  testSince: number | null;
   sealTest: boolean;
   explicitMinValidationSupport: number;
   explicitMinEvents: number;
@@ -277,6 +281,17 @@ export const resolveAiPocketSearchCommandOptions = ({
   if (sealTest && testSplit <= 0) {
     throw new Error('--sealTest requires a positive --testSplit');
   }
+  const explicitTestSince = hasCliOption(argv, 'testSince');
+  const testSinceInput = explicitTestSince
+    ? readAiPocketSearchCliOption({ argv, longName: 'testSince' })
+    : flags.testSince;
+  const testSince =
+    explicitTestSince || (testSinceInput != null && testSinceInput !== '')
+      ? parseAiPocketTestSince(testSinceInput)
+      : null;
+  if (testSince != null && validationSplit !== 0) {
+    throw new Error('--testSince requires --validationSplit 0');
+  }
 
   const maxEventCountShare = normalizeUnitRatio(
     readAiPocketSearchCliOption({
@@ -319,6 +334,7 @@ export const resolveAiPocketSearchCommandOptions = ({
     maxCombinations: normalizePositiveInt(flags.maxCombinations, 60_000),
     validationSplit,
     testSplit,
+    testSince,
     sealTest,
     explicitMinValidationSupport: normalizeInt(flags.minValidationSupport, 0),
     explicitMinEvents: normalizeInt(flags.minEvents, 0),

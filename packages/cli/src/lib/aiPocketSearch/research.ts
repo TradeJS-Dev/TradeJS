@@ -15,6 +15,7 @@ import {
   resolveAiPocketCadenceProfile,
   sealAiPocketTestPartition,
   splitAiPocketResearchRowsByTimestamp,
+  type AiPocketLabelHorizonPurge,
 } from '../aiPocketSearchCli';
 import type { AiPocketSearchCommandOptions } from './commandOptions';
 import { assessDevelopmentStability } from './stability';
@@ -25,6 +26,7 @@ export type AiPocketSearchResearchProgress = {
 };
 
 export type AiPocketSearchResearchResult = {
+  labelHorizonPurge?: AiPocketLabelHorizonPurge;
   scopeRows: AiPocketSearchRow[];
   trainRows: AiPocketSearchRow[];
   validationRows: AiPocketSearchRow[];
@@ -64,10 +66,12 @@ export const runAiPocketSearchResearch = ({
   rows,
   options,
   onProgress,
+  datasetLabelHorizonPurge,
 }: {
   rows: AiPocketSearchRow[];
   options: AiPocketSearchCommandOptions;
   onProgress?: (event: AiPocketSearchResearchProgress) => void;
+  datasetLabelHorizonPurge?: AiPocketLabelHorizonPurge;
 }): AiPocketSearchResearchResult => {
   const {
     direction,
@@ -75,6 +79,7 @@ export const runAiPocketSearchResearch = ({
     qualityThresholds,
     validationSplit,
     testSplit,
+    testSince,
     sealTest,
     cadenceMode,
     explicitMinSupport,
@@ -101,14 +106,39 @@ export const runAiPocketSearchResearch = ({
   const directionRows = direction
     ? rows.filter((row) => row.direction === direction)
     : rows;
-  const scopeRows = resolveScopeRows(directionRows, scope);
-  const fullSplit = splitAiPocketResearchRowsByTimestamp(
-    directionRows,
-    validationSplit,
-    testSplit,
-  );
+  const calendarSplit =
+    testSince != null
+      ? splitAiPocketResearchRowsByTimestamp(
+          rows,
+          validationSplit,
+          testSplit,
+          testSince,
+        )
+      : null;
+  const inDirection = (row: AiPocketSearchRow) =>
+    !direction || row.direction === direction;
+  const fullSplit = calendarSplit
+    ? {
+        trainRows: calendarSplit.trainRows.filter(inDirection),
+        validationRows: calendarSplit.validationRows.filter(inDirection),
+        testRows: calendarSplit.testRows.filter(inDirection),
+      }
+    : splitAiPocketResearchRowsByTimestamp(
+        directionRows,
+        validationSplit,
+        testSplit,
+      );
+  if (
+    testSince != null &&
+    (!fullSplit.trainRows.length || !fullSplit.testRows.length)
+  ) {
+    throw new Error(
+      '--testSince requires non-empty development and test partitions for the selected direction',
+    );
+  }
   const sealedFullSplit = sealAiPocketTestPartition(fullSplit, sealTest);
   const discoveryRows = sealedFullSplit.discoveryRows;
+  const scopeRows = resolveScopeRows(discoveryRows, scope);
   const trainRows = resolveScopeRows(fullSplit.trainRows, scope);
   const validationRows = resolveScopeRows(fullSplit.validationRows, scope);
   const testRows = resolveScopeRows(sealedFullSplit.searchTestRows, scope);
@@ -286,6 +316,18 @@ export const runAiPocketSearchResearch = ({
   }
 
   return {
+    ...(calendarSplit
+      ? {
+          labelHorizonPurge: {
+            crossing:
+              (calendarSplit.labelHorizonPurge?.crossing ?? 0) +
+              (datasetLabelHorizonPurge?.crossing ?? 0),
+            unknown:
+              (calendarSplit.labelHorizonPurge?.unknown ?? 0) +
+              (datasetLabelHorizonPurge?.unknown ?? 0),
+          },
+        }
+      : {}),
     scopeRows,
     trainRows,
     validationRows,

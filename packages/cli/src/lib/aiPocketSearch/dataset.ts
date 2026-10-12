@@ -18,6 +18,10 @@ import {
   type AiPocketSearchRow,
 } from '../aiPocketSearch';
 import { extractSignalFromAiDatasetRow } from '../aiTrainDataset';
+import {
+  classifyAiPocketLabelHorizon,
+  type AiPocketLabelHorizonPurge,
+} from '../aiPocketSearchCli';
 import type { AiPocketSearchCommandOptions } from './commandOptions';
 
 export type PreparedAiPocketSearchDataset = {
@@ -34,6 +38,7 @@ export type AiPocketSearchDatasetProgress = {
 };
 
 export type EvaluatedAiPocketSearchDataset = {
+  labelHorizonPurge: AiPocketLabelHorizonPurge;
   rows: AiPocketSearchRow[];
   resolvedStrategyName: string;
   scanned: number;
@@ -288,6 +293,10 @@ export const evaluateAiPocketSearchDataset = async ({
   let failed = 0;
   const errors: string[] = [];
   const rows: AiPocketSearchRow[] = [];
+  const labelHorizonPurge: AiPocketLabelHorizonPurge = {
+    crossing: 0,
+    unknown: 0,
+  };
   const excludedFeaturePaths = new Map<
     AiPocketExcludedFeatureClassification,
     Set<string>
@@ -307,6 +316,14 @@ export const evaluateAiPocketSearchDataset = async ({
         resolvedStrategyName = row.strategyName.trim();
       }
 
+      if (
+        options.testSince != null &&
+        (typeof row.timestamp !== 'number' || !Number.isFinite(row.timestamp))
+      ) {
+        throw new Error(
+          '--testSince requires a finite numeric timestamp on every export row',
+        );
+      }
       const timestamp = getDatasetRowTimestamp(row);
       if (
         (prepared.sinceTimestamp != null &&
@@ -317,6 +334,34 @@ export const evaluateAiPocketSearchDataset = async ({
         dateSkipped += 1;
         onProgress?.({ symbol: row.symbol, status: 'date-skip' });
         return;
+      }
+
+      if (options.testSince != null) {
+        const purge = classifyAiPocketLabelHorizon(
+          timestamp!,
+          row.tradeResult?.exitTimestamp,
+          options.testSince,
+        );
+        if (purge) {
+          labelHorizonPurge[purge] += 1;
+          return;
+        }
+        if (options.sealTest && timestamp! >= options.testSince) {
+          // Keep only support identities; never evaluate sealed outcomes or features.
+          rows.push({
+            signalId: row.signalId,
+            strategy: row.strategyName,
+            symbol: row.symbol,
+            direction: row.direction,
+            timestamp,
+            profit: 0,
+            profitableTrade: false,
+            aiApproved: false,
+            quality: null,
+            features: {},
+          });
+          return;
+        }
       }
 
       try {
@@ -351,6 +396,9 @@ export const evaluateAiPocketSearchDataset = async ({
           symbol: row.symbol,
           direction: row.direction,
           timestamp,
+          ...(options.testSince != null
+            ? { exitTimestamp: row.tradeResult?.exitTimestamp }
+            : {}),
           profit,
           profitableTrade: profit > 0,
           aiApproved: isAiApproval(row, analysis, options.minQuality),
@@ -376,6 +424,7 @@ export const evaluateAiPocketSearchDataset = async ({
   });
 
   return {
+    labelHorizonPurge,
     rows,
     resolvedStrategyName,
     scanned,

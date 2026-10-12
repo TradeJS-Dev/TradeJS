@@ -97,6 +97,11 @@ args.option(
   AI_POCKET_SEARCH_CLI_DECIMAL_DEFAULTS.testSplit,
 );
 args.option(
+  ['z', 'testSince'],
+  'Fixed calendar test boundary (UTC ISO or epoch ms); overrides the split ratio and requires validationSplit 0',
+  '',
+);
+args.option(
   ['w', 'sealTest'],
   'Reserve test bounds without exposing its rows or economics to discovery',
   true,

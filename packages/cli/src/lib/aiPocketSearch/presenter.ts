@@ -608,6 +608,11 @@ export const presentAiPocketSearchResult = ({
         ['max_combinations', chalk.magenta(String(maxCombinations))],
         ['validation_split', chalk.magenta(formatRatio(validationSplit))],
         ['test_split', chalk.magenta(formatRatio(testSplit))],
+        ['partition_mode', run.partitionMode ?? 'timestamp-ratio'],
+        [
+          'test_since',
+          run.testSince == null ? 'n/a' : new Date(run.testSince).toISOString(),
+        ],
         [
           'test_evidence',
           sealedTest.sealed

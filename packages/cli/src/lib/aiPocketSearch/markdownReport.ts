@@ -172,6 +172,19 @@ export const buildAiPocketMarkdownReport = ({
         ['test_rows', run.testRows],
         ['validation_split', formatMdPercent(run.validationSplit)],
         ['test_split', formatMdPercent(run.testSplit)],
+        ['partition_mode', run.partitionMode ?? 'timestamp-ratio'],
+        [
+          'purged_development_crossing_labels',
+          run.labelHorizonPurge?.crossing ?? 0,
+        ],
+        [
+          'purged_development_unknown_labels',
+          run.labelHorizonPurge?.unknown ?? 0,
+        ],
+        [
+          'test_since',
+          run.testSince == null ? 'n/a' : new Date(run.testSince).toISOString(),
+        ],
         ['test_sealed', run.sealedTest?.sealed ? 'yes' : 'no'],
         ['sealed_test_rows', run.sealedTest?.rows ?? run.testRows],
         ['sealed_test_events', run.sealedTest?.events ?? 'n/a'],

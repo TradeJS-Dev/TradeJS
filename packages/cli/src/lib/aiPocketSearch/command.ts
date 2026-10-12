@@ -41,6 +41,7 @@ export const runAiPocketSearchCommand = async ({
     maxCombinations,
     validationSplit,
     testSplit,
+    testSince,
     maxBatch,
     maxSymbolCountShare,
     objective,
@@ -94,6 +95,7 @@ export const runAiPocketSearchCommand = async ({
   const research = runAiPocketSearchResearch({
     rows,
     options,
+    datasetLabelHorizonPurge: evaluatedDataset.labelHorizonPurge,
     onProgress: createAiPocketSearchResearchProgressPresenter(),
   });
   const {
@@ -170,6 +172,11 @@ export const runAiPocketSearchCommand = async ({
       objective,
       validationSplit,
       testSplit,
+      testSince,
+      partitionMode: testSince == null ? 'timestamp-ratio' : 'calendar-cutoff',
+      ...(research.labelHorizonPurge
+        ? { labelHorizonPurge: research.labelHorizonPurge }
+        : {}),
       sealedTest,
       minValidationSupport: search.stats.cadence.minValidationSupport,
       reportPath,

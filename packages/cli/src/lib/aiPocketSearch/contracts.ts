@@ -52,6 +52,7 @@ export type AiPocketExcludedFeatureClassification =
   | 'operator-excluded';
 
 export type AiPocketSearchRow = AiTrainEvaluation & {
+  exitTimestamp?: number | null;
   signalId?: string;
   symbol?: string;
   strategy?: string;
@@ -285,6 +286,9 @@ export type AiPocketSearchRunReport = {
   objective?: AiPocketSearchObjective;
   validationSplit: number;
   testSplit: number;
+  testSince?: number | null;
+  partitionMode?: 'timestamp-ratio' | 'calendar-cutoff';
+  labelHorizonPurge?: { crossing: number; unknown: number };
   sealedTest?: {
     sealed: boolean;
     rows: number;
