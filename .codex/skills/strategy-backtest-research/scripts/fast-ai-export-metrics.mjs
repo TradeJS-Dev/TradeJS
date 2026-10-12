@@ -2,6 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,76 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_PERIODS = [1100, 365, 180, 90, 30];
 export const CORE_COHORT_ORDER = ['ALL', 'LONG', 'SHORT'];
 const PNL_EPSILON = 1e-9;
+
+export const normalizeSymbolCohorts = (input) => {
+  if (
+    input?.schema !== 'tradejs-symbol-cohorts/v1' ||
+    !Array.isArray(input.groups) ||
+    !input.groups.length
+  )
+    throw new Error(
+      'Symbol cohorts require tradejs-symbol-cohorts/v1 and nonempty groups',
+    );
+  const ids = new Set();
+  const symbols = new Set();
+  const groups = input.groups.map((group) => {
+    if (
+      typeof group?.id !== 'string' ||
+      !group.id.trim() ||
+      group.id !== group.id.trim() ||
+      ids.has(group.id) ||
+      !Array.isArray(group.symbols) ||
+      !group.symbols.length
+    )
+      throw new Error(
+        'Symbol cohort IDs and symbol lists must be nonempty and unique',
+      );
+    ids.add(group.id);
+    for (const symbol of group.symbols) {
+      if (
+        typeof symbol !== 'string' ||
+        !symbol.trim() ||
+        symbol !== symbol.trim() ||
+        symbols.has(symbol)
+      )
+        throw new Error(
+          'Symbol cohorts must contain valid disjoint unique symbols',
+        );
+      symbols.add(symbol);
+    }
+    return { id: group.id, symbols: [...group.symbols] };
+  });
+  return { schema: input.schema, groups };
+};
+
+export const loadSymbolCohorts = async ({ projectRoot, file }) => {
+  const root = path.resolve(projectRoot);
+  const lexicalPath = path.resolve(root, file);
+  const isWithin = (target, parent) => {
+    const relative = path.relative(parent, target);
+    return (
+      relative !== '' &&
+      relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    );
+  };
+  if (!isWithin(lexicalPath, root))
+    throw new Error('Symbol cohorts must be Project-owned');
+  const physicalRoot = await realpath(root);
+  const physicalPath = await realpath(lexicalPath);
+  if (!isWithin(physicalPath, physicalRoot))
+    throw new Error('Symbol cohorts symlink resolves outside Project');
+  const bytes = await readFile(physicalPath);
+  return {
+    ...normalizeSymbolCohorts(JSON.parse(bytes)),
+    authority: {
+      path: physicalPath,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      bytes: bytes.length,
+    },
+  };
+};
 
 const toFiniteNumber = (value) => {
   const numeric = Number(value);
@@ -379,6 +450,7 @@ export const buildConfigExportReports = ({
   redisAggregatesByConfig = {},
   fallbackRedisAggregate = null,
   runStartTimestamp = null,
+  symbolCohorts = null,
   trades,
 }) =>
   Object.fromEntries(
@@ -408,6 +480,13 @@ export const buildConfigExportReports = ({
       const redisAggregate =
         redisAggregatesByConfig[configId] ??
         (configIds.length === 1 ? fallbackRedisAggregate : null);
+      const fullRunReconciliationMetrics = summarizeSelectedTrades({
+        trades: configTrades,
+        periodDays:
+          runStartTimestamp == null
+            ? null
+            : (endTimestamp - runStartTimestamp) / DAY_MS,
+      });
 
       return [
         configId,
@@ -416,6 +495,52 @@ export const buildConfigExportReports = ({
           completedTradesInFiles: configTrades.length,
           windows,
           runWindowMetrics,
+          fullRunReconciliationMetrics,
+          ...(symbolCohorts
+            ? {
+                symbolCohorts: {
+                  role: 'diagnostic metadata only; no features, selection, changed bounds or group-level Redis reconciliation',
+                  authority: symbolCohorts.authority,
+                  groups: symbolCohorts.groups.map((group) => {
+                    const symbols = new Set(group.symbols);
+                    const groupTrades = configTrades.filter((trade) =>
+                      symbols.has(trade.symbol),
+                    );
+                    const full =
+                      runStartTimestamp == null
+                        ? null
+                        : summarizeTerminalWindow({
+                            trades: groupTrades,
+                            endTimestamp,
+                            periodDays:
+                              (endTimestamp - runStartTimestamp) / DAY_MS,
+                            coverageStartTimestamp,
+                          });
+                    if (full) full.label = 'full';
+                    return {
+                      id: group.id,
+                      declaredSymbols: group.symbols.length,
+                      observedSymbols: new Set(
+                        groupTrades.map((trade) => trade.symbol),
+                      ).size,
+                      sourceRows: groupTrades.length,
+                      periods: Object.fromEntries([
+                        ['full', full],
+                        ...periods.map((periodDays) => [
+                          `${periodDays}d`,
+                          summarizeTerminalWindow({
+                            trades: groupTrades,
+                            endTimestamp,
+                            periodDays,
+                            coverageStartTimestamp,
+                          }),
+                        ]),
+                      ]),
+                    };
+                  }),
+                },
+              }
+            : {}),
           reconciliation:
             runWindowMetrics == null
               ? {
@@ -426,7 +551,7 @@ export const buildConfigExportReports = ({
                 }
               : buildRedisReconciliation({
                   redisAggregate,
-                  exportMetrics: runWindowMetrics,
+                  exportMetrics: fullRunReconciliationMetrics,
                 }),
         },
       ];
@@ -513,6 +638,7 @@ export const parseArgs = (argv) => {
     json: false,
     periods: DEFAULT_PERIODS,
     runId: null,
+    symbolCohorts: null,
     userName: 'root',
   };
 
@@ -532,6 +658,10 @@ export const parseArgs = (argv) => {
       flags.periods = parsePeriods(argv[++index]);
     } else if (arg === '--json') {
       flags.json = true;
+    } else if (arg === '--symbolCohorts') {
+      flags.symbolCohorts = argv[++index];
+      if (!flags.symbolCohorts || flags.symbolCohorts.startsWith('--'))
+        throw new Error('--symbolCohorts requires a Project-owned JSON path');
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -539,7 +669,7 @@ export const parseArgs = (argv) => {
 
   if (!flags.filePaths.length || (!flags.runId && flags.endTimestamp == null)) {
     throw new Error(
-      'Usage: fast-ai-export-metrics.mjs --file <export.jsonl> [--file <part.jsonl>] (--end <epoch-ms|ISO> | --run <run-id>) [--user root] [--periods 1100,365,180,90,30] [--json]',
+      'Usage: fast-ai-export-metrics.mjs --file <export.jsonl> [--file <part.jsonl>] (--end <epoch-ms|ISO> | --run <run-id>) [--user root] [--periods 1100,365,180,90,30] [--symbolCohorts <Project-owned.json>] [--json]',
     );
   }
   return flags;
@@ -552,7 +682,12 @@ export const buildExportReport = async ({
   runId = null,
   userName = 'root',
   runContextLoader = loadRunContextFromRedis,
+  symbolCohorts: symbolCohortsFile = null,
+  projectRoot = process.env.PROJECT_CWD || process.cwd(),
 }) => {
+  const symbolCohorts = symbolCohortsFile
+    ? await loadSymbolCohorts({ projectRoot, file: symbolCohortsFile })
+    : null;
   const runContext = runId ? await runContextLoader({ runId, userName }) : null;
   const manifestEndTimestamp = runContext?.manifest.endTimestamp ?? null;
   if (
@@ -570,6 +705,17 @@ export const buildExportReport = async ({
   }
 
   const { trades, scan } = await readExportFiles({ filePaths, runId });
+  if (symbolCohorts) {
+    const declared = new Set(
+      symbolCohorts.groups.flatMap((group) => group.symbols),
+    );
+    for (const trade of trades) {
+      if (!declared.has(trade.symbol))
+        throw new Error(
+          `Run-filtered completed row has no symbol cohort: ${trade.symbol} (${trade.sourceFile}:${trade.sourceLine})`,
+        );
+    }
+  }
   const coverageStartTimestamp = runContext?.manifest.startTimestamp ?? null;
   const configIds = [
     ...new Set([
@@ -587,6 +733,7 @@ export const buildExportReport = async ({
     fallbackRedisAggregate: runContext?.redisAggregate ?? null,
     runStartTimestamp: runContext?.manifest.startTimestamp ?? null,
     trades,
+    symbolCohorts,
   });
   const singleConfigReport =
     configIds.length === 1 ? configReports[configIds[0]] : null;
@@ -612,6 +759,8 @@ export const buildExportReport = async ({
         'tradeResult.exitTimestamp, then signalId, symbol, direction, source file, source line',
       terminalWindow:
         '[manifestEnd - periodDays * 24h, manifestEnd), using UTC epoch milliseconds',
+      reconciliation:
+        'fullRunReconciliationMetrics uses every completed trade in the run-filtered export, including terminal exits at manifestEnd; Redis N/W/L/PnL is reconciled against this full-run cohort. runWindowMetrics and terminal windows remain half-open and exclude exits at manifestEnd.',
       cadence: 'completed trades / exact requested calendar days',
       deduplication:
         'exact duplicate run/config/signal/symbol identities are counted once; conflicting direction, exit timestamp, or outcome fails the report',
@@ -653,11 +802,22 @@ export const buildExportReport = async ({
     configReports,
     configAggregationWarning:
       configIds.length > 1
-        ? `Multiple configId buckets found (${configIds.join(', ')}); top-level windows, runWindowMetrics, and reconciliation are null. Use configReports.`
+        ? `Multiple configId buckets found (${configIds.join(', ')}); top-level windows, runWindowMetrics, fullRunReconciliationMetrics, and reconciliation are null. Use configReports.`
         : null,
     windows: singleConfigReport?.windows ?? [],
     runWindowMetrics: singleConfigReport?.runWindowMetrics ?? null,
+    fullRunReconciliationMetrics:
+      singleConfigReport?.fullRunReconciliationMetrics ?? null,
     reconciliation: singleConfigReport?.reconciliation ?? null,
+    ...(symbolCohorts
+      ? {
+          symbolCohorts: singleConfigReport?.symbolCohorts ?? {
+            authority: symbolCohorts.authority,
+            groups: null,
+            reason: 'Use separate configReports; never aggregate grid configs.',
+          },
+        }
+      : {}),
   };
 };
 
@@ -693,10 +853,24 @@ export const formatReport = (report) => {
     '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |',
   ];
   for (const configReport of Object.values(report.configReports)) {
-    for (const window of configReport.windows) {
+    const windows = [
+      ...configReport.windows.map((window) => ({
+        window,
+        label: configReport.configId,
+      })),
+      ...(configReport.symbolCohorts?.groups ?? []).flatMap((group) =>
+        Object.values(group.periods)
+          .filter(Boolean)
+          .map((window) => ({
+            window,
+            label: `${configReport.configId} / symbol-group:${group.id}`,
+          })),
+      ),
+    ];
+    for (const { window, label } of windows) {
       for (const [cohort, metrics, drawdownScope] of reportCohorts(window)) {
         rows.push(
-          `| ${configReport.configId} | ${window.label} | ${cohort} | ${metrics.completedTrades} | ${metrics.wins} | ${metrics.losses} | ${formatPercent(metrics.winRatePct)} | ${formatProfitFactor(metrics)} | ${formatNumber(metrics.pnl)} | ${formatNumber(metrics.pnlPerTrade, 4)} | ${formatNumber(metrics.portfolioMaxDrawdown)} | ${drawdownScope} | ${formatNumber(metrics.observedCadenceTradesPerDay, 4)} | ${window.coverage} |`,
+          `| ${label} | ${window.label} | ${cohort} | ${metrics.completedTrades} | ${metrics.wins} | ${metrics.losses} | ${formatPercent(metrics.winRatePct)} | ${formatProfitFactor(metrics)} | ${formatNumber(metrics.pnl)} | ${formatNumber(metrics.pnlPerTrade, 4)} | ${formatNumber(metrics.portfolioMaxDrawdown)} | ${drawdownScope} | ${formatNumber(metrics.observedCadenceTradesPerDay, 4)} | ${window.coverage} |`,
         );
       }
     }
@@ -704,7 +878,7 @@ export const formatReport = (report) => {
 
   const reconciliationLines = Object.values(report.configReports).map(
     ({ configId, reconciliation }) =>
-      `Redis reconciliation [${configId}]: ${reconciliation.status}${reconciliation.status === 'match' || reconciliation.status === 'mismatch' ? `; ΔN=${reconciliation.delta.completedTrades}, ΔW=${reconciliation.delta.wins}, ΔL=${reconciliation.delta.losses}, ΔPnL=${formatNumber(reconciliation.delta.pnl, 4)}` : `; ${reconciliation.reason}`}`,
+      `Redis reconciliation [${configId}] (full run export, not cropped terminal window): ${reconciliation.status}${reconciliation.status === 'match' || reconciliation.status === 'mismatch' ? `; ΔN=${reconciliation.delta.completedTrades}, ΔW=${reconciliation.delta.wins}, ΔL=${reconciliation.delta.losses}, ΔPnL=${formatNumber(reconciliation.delta.pnl, 4)}` : `; ${reconciliation.reason}`}`,
   );
   return [
     `source: ${report.source.kind} (${report.source.pnlField}, ${report.source.timestampField}; gate decisions used: no)`,
@@ -717,6 +891,11 @@ export const formatReport = (report) => {
       ? [report.configAggregationWarning]
       : []),
     ...reconciliationLines,
+    ...(report.symbolCohorts
+      ? [
+          `Symbol groups: diagnostic metadata only; no features, selection or moved boundaries. Full means the half-open manifest window (unavailable without --run); Redis reconciliation remains ALL full-run export. Definition SHA256=${report.symbolCohorts.authority.sha256}`,
+        ]
+      : []),
     '',
     rows.join('\n'),
     '',

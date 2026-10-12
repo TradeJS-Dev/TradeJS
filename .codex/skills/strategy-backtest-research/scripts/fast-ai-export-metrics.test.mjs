@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +13,8 @@ import {
   CORE_COHORT_ORDER,
   DEFAULT_PERIODS,
   formatReport,
+  loadSymbolCohorts,
+  normalizeSymbolCohorts,
   parseArgs,
   readExportFiles,
   summarizeTerminalWindow,
@@ -425,10 +428,10 @@ test('builds all default windows from the Redis manifest end, not export max', a
         },
         redisAggregate: {
           resultCount: 1,
-          completedTrades: 0,
-          wins: 0,
+          completedTrades: 1,
+          wins: 1,
           losses: 0,
-          pnl: 0,
+          pnl: 10,
         },
       }),
     });
@@ -439,9 +442,12 @@ test('builds all default windows from the Redis manifest end, not export max', a
     );
     assert.equal(report.anchor.endTimestamp, endTimestamp);
     assert.equal(report.scan.rowsAfterAnchor, 1);
+    assert.match(report.semantics.reconciliation, /every completed trade/);
+    assert.match(report.semantics.reconciliation, /remain half-open/);
     assert.equal(report.windows[0].metrics.completedTrades, 0);
     assert.equal(report.source.gateDecisionsUsed, false);
     assert.equal(report.reconciliation.status, 'match');
+    assert.equal(report.fullRunReconciliationMetrics.completedTrades, 1);
     assert.deepEqual(report.semantics.cohortOrder, CORE_COHORT_ORDER);
     assert.match(report.semantics.pnlPerTrade, /never an unweighted average/);
     assert.equal(
@@ -451,6 +457,68 @@ test('builds all default windows from the Redis manifest end, not export max', a
     assert.match(report.metricSchema.compatibility, /schemaVersion 1/);
   } finally {
     await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('reconciles a terminal exit at window.end without adding it to half-open metrics', async () => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-terminal-exit-'),
+  );
+  const filePath = path.join(directory, 'export.jsonl');
+  const end = 100 * DAY_MS;
+  try {
+    await fs.writeFile(
+      filePath,
+      [
+        {
+          backtestRunId: 'run-a',
+          configId: 'config-a',
+          direction: 'LONG',
+          signalId: 'inside',
+          symbol: 'BTCUSDT',
+          tradeResult: { exitTimestamp: end - 1, netProfit: 3 },
+        },
+        {
+          backtestRunId: 'run-a',
+          configId: 'config-a',
+          direction: 'SHORT',
+          signalId: 'terminal',
+          symbol: 'ETHUSDT',
+          tradeResult: { exitTimestamp: end, netProfit: -10 },
+        },
+      ]
+        .map(JSON.stringify)
+        .join('\n'),
+    );
+    const report = await buildExportReport({
+      filePaths: [filePath],
+      periods: [30],
+      runId: 'run-a',
+      runContextLoader: async () => ({
+        manifest: {
+          runId: 'run-a',
+          startTimestamp: end - 30 * DAY_MS,
+          endTimestamp: end,
+        },
+        redisAggregate: {
+          resultCount: 2,
+          completedTrades: 2,
+          wins: 1,
+          losses: 1,
+          pnl: -7,
+        },
+      }),
+    });
+    assert.equal(report.reconciliation.status, 'match');
+    assert.equal(report.fullRunReconciliationMetrics.completedTrades, 2);
+    assert.equal(report.fullRunReconciliationMetrics.pnl, -7);
+    assert.equal(report.runWindowMetrics.completedTrades, 1);
+    assert.equal(report.runWindowMetrics.pnl, 3);
+    assert.equal(report.windows[0].metrics.completedTrades, 1);
+    assert.equal(report.windows[0].directions.SHORT.completedTrades, 0);
+    assert.equal(report.scan.rowsAfterAnchor, 1);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
   }
 });
 
@@ -550,4 +618,247 @@ test('parses repeated files and the requested default metric periods', () => {
   assert.deepEqual(flags.filePaths, ['part1.jsonl', 'part2.jsonl']);
   assert.deepEqual(flags.periods, DEFAULT_PERIODS);
   assert.equal(flags.endTimestamp, Date.UTC(2026, 7, 12));
+});
+
+test('validates disjoint symbol cohorts without trimming or silently dropping entries', () => {
+  const definition = {
+    schema: 'tradejs-symbol-cohorts/v1',
+    groups: [
+      { id: 'full-four-year', symbols: ['BTCUSDT'] },
+      { id: 'expanded-history', symbols: ['ETHUSDT'] },
+    ],
+  };
+  assert.deepEqual(normalizeSymbolCohorts(definition), definition);
+  for (const groups of [
+    [],
+    [{ id: '', symbols: ['BTCUSDT'] }],
+    [{ id: ' full ', symbols: ['BTCUSDT'] }],
+    [{ id: 'a', symbols: [] }],
+    [{ id: 'a', symbols: [''] }],
+    [{ id: 'a', symbols: [' BTCUSDT'] }],
+    [{ id: 'a', symbols: ['BTCUSDT', 'BTCUSDT'] }],
+    [
+      { id: 'a', symbols: ['BTCUSDT'] },
+      { id: 'b', symbols: ['BTCUSDT'] },
+    ],
+    [
+      { id: 'a', symbols: ['BTCUSDT'] },
+      { id: 'a', symbols: ['ETHUSDT'] },
+    ],
+  ]) {
+    assert.throws(() =>
+      normalizeSymbolCohorts({ schema: definition.schema, groups }),
+    );
+  }
+  assert.throws(() =>
+    normalizeSymbolCohorts({ ...definition, schema: 'other' }),
+  );
+  assert.equal(
+    parseArgs([
+      '--file',
+      'a.jsonl',
+      '--end',
+      '100',
+      '--symbolCohorts',
+      'data/cohorts.json',
+    ]).symbolCohorts,
+    'data/cohorts.json',
+  );
+  assert.throws(
+    () =>
+      parseArgs([
+        '--file',
+        'a.jsonl',
+        '--end',
+        '100',
+        '--symbolCohorts',
+        '--json',
+      ]),
+    /requires/,
+  );
+});
+
+test('rejects foreign cohort paths and escaping symlinks, hashes exact Project-owned bytes', async () => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-cohort-authority-'),
+  );
+  const projectRoot = path.join(directory, 'project');
+  await fs.mkdir(projectRoot);
+  const bytes = `${JSON.stringify({ schema: 'tradejs-symbol-cohorts/v1', groups: [{ id: 'a', symbols: ['BTCUSDT'] }] }, null, 2)}\n`;
+  try {
+    await fs.writeFile(path.join(directory, 'foreign.json'), bytes);
+    await fs.writeFile(path.join(projectRoot, 'owned.json'), bytes);
+    await fs.symlink(
+      path.join(directory, 'foreign.json'),
+      path.join(projectRoot, 'escape.json'),
+    );
+    await assert.rejects(
+      loadSymbolCohorts({ projectRoot, file: '../foreign.json' }),
+      /Project-owned/,
+    );
+    await assert.rejects(
+      loadSymbolCohorts({ projectRoot, file: 'escape.json' }),
+      /outside Project/,
+    );
+    const definition = await loadSymbolCohorts({
+      projectRoot,
+      file: 'owned.json',
+    });
+    assert.equal(
+      definition.authority.sha256,
+      createHash('sha256').update(bytes).digest('hex'),
+    );
+    assert.equal(definition.authority.bytes, Buffer.byteLength(bytes));
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('reports all symbol groups, directions and periods while preserving full-run reconciliation and boundaries', async () => {
+  const projectRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-cohort-metrics-'),
+  );
+  const filePath = path.join(projectRoot, 'export.jsonl');
+  const end = 100 * DAY_MS;
+  const definition = {
+    schema: 'tradejs-symbol-cohorts/v1',
+    groups: [
+      { id: 'full-four-year', symbols: ['BTCUSDT'] },
+      { id: 'expanded-history', symbols: ['ETHUSDT', 'SOLUSDT'] },
+      { id: 'no-activity', symbols: ['XRPUSDT'] },
+    ],
+  };
+  const row = (
+    symbol,
+    direction,
+    exitTimestamp,
+    netProfit,
+    signalId,
+    backtestRunId = 'run-a',
+  ) => ({
+    symbol,
+    direction,
+    backtestRunId,
+    configId: 'config-a',
+    signalId,
+    tradeResult: { exitTimestamp, netProfit },
+  });
+  const scopedRows = [
+    row('BTCUSDT', 'LONG', end - 30 * DAY_MS, 5, 'start'),
+    row('BTCUSDT', 'SHORT', end - 2, -3, 'short'),
+    row('ETHUSDT', 'LONG', end - 1, 0, 'zero'),
+    row('ETHUSDT', 'SHORT', end, -10, 'terminal'),
+  ];
+  const runContextLoader = async () => ({
+    manifest: {
+      startTimestamp: end - 30 * DAY_MS,
+      endTimestamp: end,
+      configIds: ['config-a'],
+    },
+    redisAggregate: {
+      resultCount: 4,
+      completedTrades: 4,
+      wins: 1,
+      losses: 3,
+      pnl: -8,
+    },
+  });
+  try {
+    await fs.writeFile(
+      path.join(projectRoot, 'cohorts.json'),
+      JSON.stringify(definition),
+    );
+    await fs.writeFile(
+      filePath,
+      [...scopedRows, row('FOREIGN', 'LONG', end - 1, 999, 'other', 'run-b')]
+        .map(JSON.stringify)
+        .join('\n'),
+    );
+    const options = {
+      projectRoot,
+      symbolCohorts: 'cohorts.json',
+      filePaths: [filePath],
+      runId: 'run-a',
+      periods: [30, 1],
+      runContextLoader,
+    };
+    const report = await buildExportReport(options);
+    assert.equal(report.reconciliation.status, 'match');
+    assert.equal(report.fullRunReconciliationMetrics.completedTrades, 4);
+    assert.equal(report.runWindowMetrics.completedTrades, 3);
+    const [full, expanded, empty] = report.symbolCohorts.groups;
+    assert.deepEqual(Object.keys(full.periods), ['full', '30d', '1d']);
+    assert.equal(full.periods.full.metrics.pnl, 2);
+    assert.equal(full.periods.full.metrics.profitFactor, 5 / 3);
+    assert.equal(full.periods.full.metrics.portfolioMaxDrawdown, 3);
+    assert.equal(full.periods.full.metrics.observedCadenceTradesPerDay, 2 / 30);
+    assert.equal(full.periods.full.directions.LONG.pnl, 5);
+    assert.equal(full.periods.full.directions.SHORT.pnl, -3);
+    assert.equal(full.periods['1d'].metrics.pnl, -3);
+    assert.equal(expanded.sourceRows, 2);
+    assert.equal(expanded.declaredSymbols, 2);
+    assert.equal(expanded.observedSymbols, 1);
+    assert.equal(expanded.periods.full.metrics.losses, 1);
+    assert.equal(expanded.periods.full.metrics.breakeven, 1);
+    assert.equal(expanded.periods.full.directions.SHORT.completedTrades, 0);
+    for (const period of Object.values(empty.periods)) {
+      assert.equal(period.metrics.completedTrades, 0);
+      assert.equal(period.metrics.pnl, 0);
+      assert.equal(period.metrics.profitFactor, null);
+      assert.equal(period.metrics.pnlPerTrade, null);
+      assert.equal(period.metrics.observedCadenceTradesPerDay, 0);
+      assert.equal(period.directions.LONG.completedTrades, 0);
+      assert.equal(period.directions.SHORT.completedTrades, 0);
+    }
+    assert.match(
+      formatReport(report),
+      /symbol-group:expanded-history \| full \| SHORT/,
+    );
+    assert.equal(full.reconciliation, undefined);
+    await fs.writeFile(
+      filePath,
+      [...scopedRows, row('FOREIGN', 'LONG', end, 99, 'foreign')]
+        .map(JSON.stringify)
+        .join('\n'),
+    );
+    await assert.rejects(
+      buildExportReport(options),
+      /no symbol cohort: FOREIGN/,
+    );
+    await fs.writeFile(filePath, '');
+    const noRows = await buildExportReport({
+      ...options,
+      runContextLoader: async () => ({
+        manifest: {
+          startTimestamp: end - 30 * DAY_MS,
+          endTimestamp: end,
+          configIds: ['config-a'],
+        },
+        redisAggregate: {
+          resultCount: 1,
+          completedTrades: 0,
+          wins: 0,
+          losses: 0,
+          pnl: 0,
+        },
+      }),
+    });
+    assert.equal(noRows.reconciliation.status, 'match');
+    assert.equal(noRows.symbolCohorts.groups.length, 3);
+    assert.ok(
+      noRows.symbolCohorts.groups.every(
+        (group) => group.periods.full.metrics.completedTrades === 0,
+      ),
+    );
+    const explicit = await buildExportReport({
+      projectRoot,
+      symbolCohorts: 'cohorts.json',
+      filePaths: [filePath],
+      endTimestamp: end,
+      periods: [1],
+    });
+    assert.equal(explicit.symbolCohorts.groups, null); // No manifest/config: no invented full bounds.
+  } finally {
+    await fs.rm(projectRoot, { recursive: true, force: true });
+  }
 });

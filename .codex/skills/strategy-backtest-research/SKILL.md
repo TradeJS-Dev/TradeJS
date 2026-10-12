@@ -108,10 +108,42 @@ signal identity; it never consumes AI/LLM/gate decisions. It reports N/W/L,
 WR, PF, PnL, PnL/trade, deterministic portfolio MaxDD, exact calendar-day
 observed cadence, and LONG/SHORT breakdowns. With `--run`, it filters rows to
 that run and separately reconciles export N/W/L/PnL against Redis
-`result.stat`; Redis cannot supply export PF or portfolio MaxDD. Once N/W/L
+`result.stat` using every completed fill in the run-filtered export, including
+terminal exits exactly at the manifest end. The additive
+`fullRunReconciliationMetrics` field describes this full-run cohort;
+`runWindowMetrics` and all terminal windows remain half-open and exclude those
+end-boundary exits. Reconciliation never expands a frozen research window.
+Redis cannot supply export PF or portfolio MaxDD. Once N/W/L
 and PnL reconcile within the documented per-symbol rounding tolerance, use the
 row-level export as the authoritative trade-economic total instead of swapping
 in the cent-rounded Redis aggregate.
+
+Optional frozen symbol-history diagnostics use `--symbolCohorts <path>`:
+
+```bash
+yarn node -r dotenv/config .codex/skills/strategy-backtest-research/scripts/fast-ai-export-metrics.mjs \
+  --file <merged-export.jsonl> --run <run-id> \
+  --periods 1461,1095,365,180,90,30,7 \
+  --symbolCohorts data/<lineage>/symbol-cohorts.json --json
+```
+
+The Project-owned JSON has schema `tradejs-symbol-cohorts/v1` and
+`groups: [{"id":"full-four-year","symbols":["BTCUSDT"]},
+{"id":"expanded-history","symbols":["ETHUSDT"]}]`. These names are examples;
+use the frozen complete membership list, not inferred trade activity. Group IDs
+and symbols must be nonempty, unique and disjoint. Foreign paths and symlinks
+escaping Project fail. Every run-filtered completed export row, including
+end-boundary fills, must belong to exactly one group. The report binds the exact
+definition bytes with SHA256 and returns `symbolCohorts.groups[].periods.full`
+and all requested terminal periods, each with ALL metrics and LONG/SHORT
+directions. Groups without activity remain present with zero counts and null
+undefined ratios. `full` uses the unchanged half-open manifest window and is
+null without `--run`; no full-period start is inferred from trades. Grid configs
+remain separate under `configReports`, never pooled. Group metadata is not a
+feature or selection rule, does not change windows or calendar cadence
+denominators, and never replaces ALL full-run Redis reconciliation. Use this
+same recipe for the frozen 120 full-history / 456 expanded-history cohorts;
+do not add a custom economic parser or inspect a sealed tail during discovery.
 
 For every `$strategy-improvement-research` final composition, extend the same permanent report
 to `1095d/1460d/1825d-or-exact-maximum/365d/180d/90d/30d/7d`. When cached
