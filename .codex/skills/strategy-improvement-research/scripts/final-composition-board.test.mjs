@@ -1,16 +1,309 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
   generateFinalCompositionBoard,
   validateBoardSpec,
+  renderExecutedPresentation,
 } from './final-composition-board.mjs';
+import { executedFixture } from './executed-composition-report.test.mjs';
+import {
+  deriveExecutedCompositionReport,
+  FROZEN_COMPOSITION_CRITERIA,
+} from './executed-composition-report.mjs';
+import { buildFinalCompositionSpec } from './build-final-composition-spec.mjs';
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const sha = (character) => character.repeat(64);
+
+const assertLabelLayout = (canvas) => {
+  assert.ok(canvas.width * canvas.height <= 200_000_000);
+  for (const [i, a] of canvas.boxes.entries()) {
+    assert.ok(
+      a.x >= 0 &&
+        a.y >= 0 &&
+        a.x + a.width <= canvas.width &&
+        a.y + a.height <= canvas.height,
+      JSON.stringify(a),
+    );
+    for (const b of canvas.boxes.slice(i + 1).filter((b) => b.lane === a.lane))
+      assert.ok(
+        a.x + a.width <= b.x ||
+          b.x + b.width <= a.x ||
+          a.y + a.height <= b.y ||
+          b.y + b.height <= a.y,
+        `Overlapping ${a.lane}: ${JSON.stringify([a, b])}`,
+      );
+  }
+};
+
+test('twenty real synthetic closed-loop reports paginate all 3960 cells, full fields, axes, PNGs and unchanged authority', async (t) => {
+  const root =
+    process.env.TRADEJS_GRAPHICS_FIXTURE_ROOT ||
+    (await mkdtemp(path.join(os.tmpdir(), 'executed-pages-')));
+  await mkdir(root, { recursive: true });
+  const ids = Array.from({ length: 20 }, (_, i) =>
+    i === 0 ? 'baseline' : `candidate-${i}`,
+  );
+  const selectionValue = {
+    criteria: FROZEN_COMPOSITION_CRITERIA,
+    candidateIds: ids,
+    baselineSelectionEligible: false,
+    tieBreaker: { orderedTrainCandidateIds: ids.slice().reverse() },
+  };
+  const bytes = JSON.stringify(selectionValue) + '\n';
+  await writeFile(path.join(root, 'selection.json'), bytes, { flag: 'wx' });
+  const selectionAuthority = { path: 'selection.json', sha256: hash(bytes) },
+    candidates = [];
+  for (const [i, id] of ids.entries()) {
+    const fixture = executedFixture(t, {
+      id,
+      sharedRoot: root,
+      selectionAuthority,
+      zero: i === 0,
+      accepted: i !== 19,
+      trades: i === 0 ? [] : [{ pnl: i % 2 ? -2 : 2 }],
+    });
+    const result = await deriveExecutedCompositionReport({
+      projectRoot: root,
+      descriptor: fixture.descriptor,
+      validators: fixture.validators,
+      outputPrefix: `${id}-report`,
+    });
+    candidates.push({
+      id,
+      label: `Long candidate label ${'abcdefgh '.repeat(30)} ${i}`,
+      role: i === 0 ? 'baseline' : 'candidate',
+      gateSource: i === 0 ? 'current' : 'variant',
+      color: i % 2 ? '#d36b2c' : '#315f7d',
+      executedCompositionAuthority: fixture.descriptor,
+      executedCompositionReport: result.reportDescriptor,
+      executedCompositionReceipt: result.receiptDescriptor,
+    });
+  }
+  const spec = await buildFinalCompositionSpec({
+    selection: {
+      schema: 'tradejs-final-composition-selection/v1',
+      executionBasis: 'closed-loop-execution',
+      metricBasis: 'completed-trade',
+      strategy: 'Example',
+      researchId: 'synthetic',
+      title: 'Synthetic pagination',
+      subtitle: 'Not research outcomes',
+      baselineId: 'baseline',
+      comparisonWindow: { start: 1665273600000, end: 1791504000000 },
+      normalization: { maxLossValue: 10, pnlUnit: 'research PnL' },
+      selectionAuthority,
+      limitations: ['Synthetic only'],
+      candidates,
+    },
+    artifactRoot: root,
+  });
+  const frozen = JSON.stringify(spec),
+    curves = spec.candidates.map((c, i) => ({
+      points:
+        i === 0 ? [] : [[spec.comparisonWindow.start + 10000, c.metrics.pnl]],
+      fullResolutionRows: i === 0 ? 0 : 1,
+    }));
+  const rendered = renderExecutedPresentation({
+    board: spec,
+    curves,
+    criteria: selectionValue.criteria,
+  });
+  for (const canvas of [rendered.dashboard, rendered.equity, ...rendered.pages])
+    assertLabelLayout(canvas);
+  assert.equal(rendered.pages.length, 20);
+  assert.equal(rendered.appendix.length, 3960);
+  assert.equal(
+    [...rendered.dashboard.svg.matchAll(/data-kpi-row=/g)].length,
+    20,
+  );
+  assert.equal(
+    [...rendered.dashboard.svg.matchAll(/data-terminal-candidate=/g)].length,
+    100,
+  );
+  assert.equal(
+    [...rendered.dashboard.svg.matchAll(/data-scatter-label=/g)].length,
+    20,
+  );
+  assert.equal(
+    [...rendered.dashboard.svg.matchAll(/data-criteria-candidate=/g)].length,
+    20,
+  );
+  assert.match(rendered.dashboard.svg, /test-profit-factor/);
+  assert.match(rendered.dashboard.svg, /stress-profit-factor/);
+  const scatterPoints = [
+    ...rendered.dashboard.svg.matchAll(
+      /data-scatter-point="([^"]+)" cx="([^"]+)" cy="([^"]+)"/g,
+    ),
+  ];
+  assert.deepEqual(
+    scatterPoints.find((p) => p[1] === 'candidate-1').slice(2),
+    scatterPoints.find((p) => p[1] === 'candidate-3').slice(2),
+    'Coincident economic points are never jittered',
+  );
+  for (const sign of [-1, 1]) {
+    const signed = structuredClone(spec);
+    signed.candidates.forEach((c, i) => {
+      c.metrics.pnl = sign * (i + 1);
+    });
+    const view = renderExecutedPresentation({
+      board: signed,
+      curves,
+      criteria: selectionValue.criteria,
+    });
+    assertLabelLayout(view.dashboard);
+    assert.match(view.dashboard.svg, /data-pnl-tick="0"/);
+  }
+  const unavailable = structuredClone(spec);
+  unavailable.candidates[19].equity.status = 'unavailable';
+  const unavailableView = renderExecutedPresentation({
+    board: unavailable,
+    curves: curves.map(() => ({ points: [], fullResolutionRows: 0 })),
+    criteria: selectionValue.criteria,
+  });
+  assert.ok(
+    !unavailableView.equity.svg.includes('data-zero-guide="candidate-19"'),
+  );
+  assert.match(
+    unavailableView.equity.svg.replace(/<[^>]*>/g, ''),
+    /equity unavailable \(UNKNOWN\)/,
+  );
+  for (const [i, page] of rendered.pages.entries()) {
+    const expected = ['observed', 'stress20bps'].flatMap((basis) =>
+      ['exitWindow', 'decisionPartition'].flatMap((axis) =>
+        spec.candidates[i].matrices[basis][axis].map(
+          (cell) =>
+            `${ids[i]}/${basis}/${axis}/${cell.id}/${cell.symbolGroupId}/${cell.direction}`,
+        ),
+      ),
+    );
+    assert.deepEqual(page.cellIdentities, expected);
+    assert.equal(new Set(expected).size, 198);
+    assert.equal([...page.svg.matchAll(/data-matrix-cell=/g)].length, 198);
+  }
+  for (const points of [
+    [
+      [spec.comparisonWindow.start + 1, 10],
+      [spec.comparisonWindow.end - 1, 20],
+    ],
+    [
+      [spec.comparisonWindow.start + 1, -20],
+      [spec.comparisonWindow.end - 1, -10],
+    ],
+    [],
+  ]) {
+    const r = renderExecutedPresentation({
+      board: spec,
+      curves: curves.map((c) => ({ ...c, points })),
+      criteria: selectionValue.criteria,
+    });
+    assertLabelLayout(r.equity);
+    assert.match(r.equity.svg, /data-pnl-tick="0"/);
+    assert.match(
+      r.equity.svg,
+      new RegExp(`data-utc-tick="${spec.comparisonWindow.start}"`),
+    );
+    assert.match(
+      r.equity.svg,
+      new RegExp(`data-utc-tick="${spec.comparisonWindow.end}"`),
+    );
+    assert.ok([...r.equity.svg.matchAll(/data-utc-tick=/g)].length <= 7);
+  }
+  assert.throws(
+    () => renderExecutedPresentation({ board: spec, curves, pixelLimit: 100 }),
+    /pixel budget/,
+  );
+  const oversized = structuredClone(spec);
+  oversized.candidates[19].label = 'x'.repeat(1_200_000);
+  await assert.rejects(
+    generateFinalCompositionBoard({
+      spec: oversized,
+      artifactRoot: root,
+      outDir: 'oversized',
+      png: true,
+    }),
+    /pixel budget/,
+  );
+  await assert.rejects(access(path.join(root, 'oversized')), /ENOENT/);
+  const output = await generateFinalCompositionBoard({
+    spec,
+    artifactRoot: root,
+    outDir: 'charts',
+    png: true,
+  });
+  assert.equal(JSON.stringify(spec), frozen);
+  assert.equal(output.summary.selectedId, spec.selectedId);
+  assert.equal(output.summary.selectionDisposition, spec.selectionDisposition);
+  assert.deepEqual(
+    output.summary.candidates.map((c) => c.matrices),
+    spec.candidates.map((c) => c.matrices),
+  );
+  assert.equal(output.summary.rendering.matrixPages.length, 20);
+  for (const page of output.summary.rendering.matrixPages) {
+    assert.equal(page.svg.sha256, output.summary.artifacts[page.svg.path]);
+    assert.equal(page.png.sha256, output.summary.artifacts[page.png.path]);
+  }
+  assert.equal(Object.keys(output.summary.artifacts).length, 46);
+  for (const [name, checksum] of Object.entries(output.summary.artifacts))
+    assert.equal(
+      hash(await readFile(path.join(root, 'charts', name))),
+      checksum,
+    );
+  const appendix = JSON.parse(
+    await readFile(
+      path.join(root, 'charts/final-composition-metrics.json'),
+      'utf8',
+    ),
+  );
+  assert.deepEqual(appendix.cells, rendered.appendix);
+  const readable = await readFile(
+    path.join(root, 'charts/final-composition-metrics.md'),
+    'utf8',
+  );
+  for (const key of Object.keys(appendix.cells[0].cell))
+    assert.ok(readable.includes(`| ${key} |`));
+  const repeat = await generateFinalCompositionBoard({
+    spec,
+    artifactRoot: root,
+    outDir: 'repeat-charts',
+    png: false,
+  });
+  assert.deepEqual(
+    repeat.summary.candidates.map((c) => c.compositionFingerprint),
+    output.summary.candidates.map((c) => c.compositionFingerprint),
+  );
+  for (const c of output.summary.candidates) {
+    const original = spec.candidates.find((s) => s.id === c.id);
+    assert.deepEqual(c.metrics, original.metrics);
+    assert.deepEqual(c.selectionDecision, original.selectionDecision);
+  }
+  await assert.rejects(
+    generateFinalCompositionBoard({
+      spec,
+      artifactRoot: root,
+      outDir: 'charts',
+      png: false,
+    }),
+    /EEXIST/,
+  );
+  assert.equal(
+    hash(
+      await readFile(path.join(root, 'charts/final-composition-dashboard.svg')),
+    ),
+    output.summary.artifacts['final-composition-dashboard.svg'],
+  );
+});
+
+test('closed-loop board refuses raw/posthoc rows and missing actual report authority', () => {
+  const spec = makeSpec(sha('e'));
+  spec.executionBasis = 'closed-loop-execution';
+  spec.metricBasis = 'completed-trade';
+  assert.throws(() => validateBoardSpec(spec), /Raw\/posthoc/);
+});
 
 const makeCandidate = ({
   id,
@@ -141,6 +434,97 @@ test('allows the current production baseline to remain selected', () => {
   assert.deepEqual(board.terminalComparisonIds, ['candidate']);
 });
 
+test('null selection preserves diagnostic comparisons and rejects missing selection', () => {
+  const spec = makeSpec(sha('e'));
+  spec.selectedId = null;
+  assert.equal(validateBoardSpec(spec).selectedId, null);
+  assert.deepEqual(validateBoardSpec(spec).terminalComparisonIds, [
+    'candidate',
+  ]);
+  spec.terminalComparisonIds = ['unknown'];
+  assert.throws(() => validateBoardSpec(spec), /must identify candidates/u);
+  delete spec.terminalComparisonIds;
+  delete spec.selectedId;
+  assert.throws(() => validateBoardSpec(spec), /selectedId/u);
+});
+
+test('null selection displays exact zero baseline diagnostics without a winner and retains all curves', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-null-board-'));
+  const contents = 'immutable-evidence\n';
+  const spec = makeSpec(hash(contents));
+  spec.selectedId = null;
+  spec.candidates[0].metrics = {
+    trades: 0,
+    pnl: 0,
+    profitFactor: null,
+    maxDrawdown: 0,
+  };
+  spec.candidates[0].terminal = spec.candidates[0].terminal.map((row) => ({
+    ...row,
+    trades: 0,
+    pnl: 0,
+  }));
+  spec.candidates[0].equity = spec.candidates[0].equity.map(([timestamp]) => [
+    timestamp,
+    0,
+  ]);
+  for (let i = 2; i <= 4; i++) {
+    const candidate = structuredClone(spec.candidates[1]);
+    candidate.id = `candidate-${i}`;
+    candidate.label = `diagnostic candidate ${i}`;
+    candidate.status = 'research-only';
+    spec.candidates.push(candidate);
+  }
+  spec.terminalComparisonIds = ['candidate', 'candidate-2', 'candidate-3'];
+  for (const id of ['baseline', 'candidate']) {
+    for (const suffix of ['core.json', 'export.jsonl', 'gate.json']) {
+      await writeFile(path.join(root, `${id}-${suffix}`), contents, 'utf8');
+    }
+  }
+  await writeFile(path.join(root, 'baseline-authority.json'), contents, 'utf8');
+  const { summary } = await generateFinalCompositionBoard({
+    spec,
+    artifactRoot: root,
+    outDir: path.join(root, 'charts'),
+  });
+  const dashboard = await readFile(
+    path.join(root, 'charts', 'final-composition-dashboard.svg'),
+    'utf8',
+  );
+  const equity = await readFile(
+    path.join(root, 'charts', 'final-composition-equity.svg'),
+    'utf8',
+  );
+  assert.equal(summary.selectedId, null);
+  assert.equal(summary.candidates.length, 5);
+  assert.deepEqual(summary.candidates[0].metrics, spec.candidates[0].metrics);
+  assert.match(dashboard, /No eligible composition/u);
+  assert.match(dashboard, /Baseline diagnostics/u);
+  assert.match(dashboard, /Trades<\/text><text[^>]+>0<\/text>/u);
+  assert.match(dashboard, /PnL<\/text><text[^>]+>0\.00<\/text>/u);
+  assert.match(dashboard, /Max drawdown<\/text><text[^>]+>0\.00<\/text>/u);
+  assert.equal([...dashboard.matchAll(/Baseline diagnostics/gu)].length, 4);
+  assert.equal([...equity.matchAll(/<polyline /gu)].length, 5);
+  assert.match(equity, /No eligible composition/u);
+  assert.doesNotMatch(equity, /Selected:/u);
+  assert.doesNotMatch(dashboard, /opacity="0\.18"|stroke="#7a321b"/u);
+  assert.doesNotMatch(dashboard + equity, /NaN|Infinity|undefined/u);
+  for (const candidate of spec.candidates) {
+    assert.ok(dashboard.includes(`data-scatter-point="${candidate.id}"`));
+    assert.ok(equity.includes(`data-equity-legend="${candidate.id}"`));
+  }
+  for (const id of spec.terminalComparisonIds) {
+    assert.ok(dashboard.includes(`data-terminal-series="${id}"`));
+  }
+  const before = summary.candidates.map((c) => c.compositionFingerprint);
+  spec.selectedId = 'candidate';
+  const selected = validateBoardSpec(spec);
+  assert.deepEqual(
+    selected.candidates.map((c) => c.compositionFingerprint),
+    before,
+  );
+});
+
 test('checksum verifies compiled candidate authority and binds it into the composition fingerprint', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tradejs-compiled-board-'));
   const contents = 'compiled-evidence\n';
@@ -237,6 +621,14 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
   }
   assert.equal(summary.rendering.equityInterpolation, 'linear');
   assert.equal(summary.rendering.metricInputsChanged, false);
+  assert.equal(
+    summary.artifacts['final-composition-dashboard.svg'],
+    '8644e43bf33d1d77c28fffd7af35f69f1e3378a5d7363f1704cccfb848ae33a4',
+  );
+  assert.equal(
+    summary.artifacts['final-composition-equity.svg'],
+    '60b8f373994e272f46ece0fb2028033ffdce19f2ca55c55ac208642c17ada861',
+  );
   assert.match(equity, /Nov 2023/u);
   assert.match(equity, /Mar 2024/u);
 });

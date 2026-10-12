@@ -6,6 +6,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { sha256File, stableStringify } from './final-composition-board.mjs';
+import {
+  loadExecutedCompositionReport,
+  readExecutedDescriptor,
+  resolveExecutedSelection,
+} from './executed-composition-report.mjs';
 
 const REQUIRED_WINDOWS = [365, 180, 90, 30, 7];
 
@@ -26,6 +31,13 @@ export const buildFinalCompositionSpec = async ({
   if (selection?.schema !== 'tradejs-final-composition-selection/v1') {
     throw new Error('Invalid final-composition selection schema');
   }
+  if (selection.executionBasis === 'closed-loop-execution')
+    return buildExecutedSpec({ selection, artifactRoot });
+  if (
+    selection.executionBasis !== undefined &&
+    selection.executionBasis !== 'posthoc-subset'
+  )
+    throw new Error('Unknown executionBasis');
   const metricBasis = selection.metricBasis ?? 'decision-time';
   if (!['decision-time', 'completed-trade'].includes(metricBasis)) {
     throw new Error('metricBasis must be decision-time or completed-trade');
@@ -215,6 +227,127 @@ export const buildFinalCompositionSpec = async ({
   };
 };
 
+const buildExecutedSpec = async ({ selection, artifactRoot }) => {
+  if (selection.metricBasis !== 'completed-trade')
+    throw new Error(
+      'Closed-loop execution requires completed-trade metricBasis',
+    );
+  const preRun = await readExecutedDescriptor(
+    artifactRoot,
+    selection.selectionAuthority,
+  );
+  const candidates = [];
+  let commonCutoff;
+  for (const c of selection.candidates ?? []) {
+    const loaded = await loadExecutedCompositionReport({
+      projectRoot: artifactRoot,
+      authority: c.executedCompositionAuthority,
+      report: c.executedCompositionReport,
+      receipt: c.executedCompositionReceipt,
+    });
+    const r = loaded.report;
+    if (
+      stableStringify(loaded.authority.selectionAuthority) !==
+      stableStringify(selection.selectionAuthority)
+    )
+      throw new Error(
+        'Candidate selection authority differs from common frozen authority',
+      );
+    if (commonCutoff === undefined) commonCutoff = r.gateCutoff;
+    else if (commonCutoff !== r.gateCutoff)
+      throw new Error(
+        'Candidate gate cutoff differs from common frozen boundary',
+      );
+    if (
+      c.id !== r.candidateId ||
+      r.researchId !== selection.researchId ||
+      !sameWindow(r.comparisonWindow, selection.comparisonWindow) ||
+      r.riskUnit !== 10
+    )
+      throw new Error('Closed-loop report candidate/calendar/risk mismatch');
+    const baseline = c.id === selection.baselineId;
+    if (
+      baseline !== (c.role === 'baseline') ||
+      (c.gateSource ?? 'variant') !== (baseline ? 'current' : 'variant')
+    )
+      throw new Error(
+        'Research baseline must bind current gate; every candidate own variant',
+      );
+    const full = r.matrices.observed.exitWindow.find(
+      (cell) =>
+        cell.id === 'FULL_1461D' &&
+        cell.symbolGroupId === 'ALL_UNIVERSE' &&
+        cell.direction === 'ALL',
+    );
+    candidates.push({
+      id: c.id,
+      label:
+        baseline && selection.strategy === 'LiquidityZones'
+          ? 'Installed stable core + exact current AI-gate (inactive research baseline)'
+          : requiredText(c.label, 'candidate.label'),
+      role: c.role,
+      status: r.selectionDecision.status,
+      color: c.color,
+      riskUnit: 10,
+      metrics: full,
+      terminal: [1460, 1095, 365, 180, 90, 30, 7].map((days) => ({
+        days,
+        ...r.matrices.observed.exitWindow.find(
+          (cell) =>
+            cell.id === `LAST_${days}D` &&
+            cell.symbolGroupId === 'ALL_UNIVERSE' &&
+            cell.direction === 'ALL',
+        ),
+      })),
+      composition: {
+        kind: 'core+deterministic-gate',
+        executionBasis: 'closed-loop-execution',
+        metricBasis: 'completed-trade',
+        gateSource: c.gateSource,
+        executedCompositionAuthority: c.executedCompositionAuthority,
+        executedCompositionReport: c.executedCompositionReport,
+        executedCompositionReceipt: c.executedCompositionReceipt,
+      },
+      matrices: r.matrices,
+      selectionDecision: r.selectionDecision,
+      equity: r.equity,
+      funnel: r.funnel,
+      decisionFunnel: r.decisionFunnel,
+      crossing: r.crossing,
+      coverage: r.coverage,
+      blockers: r.blockers,
+    });
+  }
+  if (!candidates.some((c) => c.id === selection.baselineId))
+    throw new Error('Missing current-gate research baseline');
+  const resolved = resolveExecutedSelection(candidates, preRun.value);
+  if (
+    selection.selectedId !== undefined &&
+    selection.selectedId !== resolved.selectedId
+  )
+    throw new Error('Selection id contradicts frozen algorithm');
+  return {
+    schema: 'tradejs-final-composition-board/v1',
+    strategy: selection.strategy,
+    researchId: selection.researchId,
+    title: selection.title,
+    subtitle: selection.subtitle,
+    executionBasis: 'closed-loop-execution',
+    metricBasis: 'completed-trade',
+    baselineId: selection.baselineId,
+    ...resolved,
+    selectionAuthority: selection.selectionAuthority,
+    comparisonWindow: selection.comparisonWindow,
+    normalization: {
+      pnlUnit: selection.normalization.pnlUnit,
+      maxLossValue: 10,
+    },
+    limitations: selection.limitations,
+    candidates,
+  };
+};
+const sameWindow = (a, b) => a?.start === b?.start && a?.end === b?.end;
+
 export const main = async (argv = process.argv.slice(2)) => {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -256,7 +389,10 @@ export const main = async (argv = process.argv.slice(2)) => {
   });
   const outputPath = path.resolve(artifactRoot, options.output);
   await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-  await fsp.writeFile(outputPath, `${JSON.stringify(spec, null, 2)}\n`, 'utf8');
+  await fsp.writeFile(outputPath, `${JSON.stringify(spec, null, 2)}\n`, {
+    encoding: 'utf8',
+    ...(spec.executionBasis === 'closed-loop-execution' ? { flag: 'wx' } : {}),
+  });
   process.stdout.write(`${await sha256File(outputPath)}  ${options.output}\n`);
 };
 

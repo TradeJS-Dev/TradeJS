@@ -9,6 +9,20 @@ import { buildFinalCompositionSpec } from './build-final-composition-spec.mjs';
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
+test('closed-loop mode never substitutes posthoc decision-time economics', async () => {
+  await assert.rejects(
+    buildFinalCompositionSpec({
+      artifactRoot: '.',
+      selection: {
+        schema: 'tradejs-final-composition-selection/v1',
+        executionBasis: 'closed-loop-execution',
+        metricBasis: 'decision-time',
+      },
+    }),
+    /requires completed-trade/,
+  );
+});
+
 const periods = (totalProfit) =>
   Object.fromEntries(
     ['full', '365d', '180d', '90d', '30d', '7d'].map((key) => [
@@ -146,6 +160,24 @@ test('uses current gate as baseline and rebuilt gate as a separate candidate', a
     [2, 7],
   ]);
   assert.deepEqual(spec.terminalComparisonIds, ['rebuilt-own-gate']);
+  assert.equal(
+    sha256(JSON.stringify(spec, null, 2) + '\n'),
+    '864a1b727fe307353751a6b2116f6aeea1b7415a1eec7e3e703979b3ae33d3f3',
+  );
+});
+
+test('preserves null selection without promoting the diagnostic baseline', async (t) => {
+  const root = await createFixture(t);
+  const selection = makeSelection('a'.repeat(64));
+  selection.selectedId = null;
+  const spec = await buildFinalCompositionSpec({
+    artifactRoot: root,
+    selection,
+  });
+  assert.equal(spec.selectedId, null);
+  assert.equal(spec.baselineId, 'current-baseline');
+  assert.deepEqual(spec.terminalComparisonIds, ['rebuilt-own-gate']);
+  assert.equal(spec.candidates.length, 2);
 });
 
 test('rejects a rebuilt gate as the declared baseline', async (t) => {

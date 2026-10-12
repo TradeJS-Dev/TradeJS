@@ -1,5 +1,94 @@
 # Final composition board
 
+## Explicit actual-execution branch
+
+The opt-in `executionBasis: closed-loop-execution` branch is distinct from the
+legacy posthoc conditional subset. Its `metricBasis` must be `completed-trade`.
+Legacy inputs without the new discriminator keep their existing JSON bytes,
+fingerprints and chart layout. Never mix raw, posthoc and actual curves.
+
+Use `executed-composition-report.mjs --projectRoot <Project> --authority
+<Project-relative authority.json> --outputPrefix <new Project-relative prefix>`
+to produce exclusive `.report.json` and `.receipt.json` outputs. The authority
+schema is `tradejs-executed-composition-authority/v1`; it binds the frozen
+composition, calendar, gate boundary, selection rule, config, universe/cohorts,
+native manifest and all completed checkpoints through the public run-binding
+validator. It also binds compiled-source/runtime checkpoints, source-build and
+operational Node receipts, actual fee-notional authority, closed native streams
+and separate hook streams. Actual manifest flags are checksum-bound in full,
+including optional flags; required fields prove cache-only, AI export, research
+trace and the frozen one-bar entry delay. Actual costs are checked per native
+test, not invented as a manifest top-level field. The separately frozen context
+contract is linked to the actual operational receipt. Unavailable flags must
+not be invented from a filename.
+
+The parallel proposed `tradejs-entry-execution-observation/v1` stream contains
+`gate-invocation-link`, `before-place-order-attempt` and
+`after-place-order-executed`. An invocation link checksum-binds the unchanged
+legacy gate record. Increasing observation sequences and checksum-bound,
+secret-free `tradejs-research-worker-process-receipt/v1` records linked from
+unchanged-schema `tradejs-research-worker-observation/v1` bind later stages.
+Opt-in worker receipts cannot contain argv or environment values. Legacy gate
+and inventory direction is joined from the exact captured decision, never
+added to their original bytes. Native trace entry/exit timestamps reconcile
+actual fills; their funnel membership uses the original decision timestamp.
+False own-gate calls retain their exact link, but cannot have any later entry
+stage. Prior-manifest veto without an own call is counted separately and has
+no fabricated gate hash or own-call coverage. Mixed hook streams require a
+checksum-bound stage selector. No legacy gate record is
+extended or rewritten. Real use requires a separately accepted opt-in bridge
+and legacy/storage parity receipt. Missing acceptance remains `UNKNOWN` and
+retains diagnostics; synthetic fixtures do not establish real authority.
+
+Runtime/compiled-source checks run read-only while the exact candidate overlay
+is still installed, after owned worker groups are gone and native manifests
+are complete, **before overlay restoration**. A runtime mismatch fails closed;
+the report never installs, rebuilds or repairs packages. Source-build Node and
+operational Node are different receipt roles and may legitimately differ.
+Later builder/chart operations consume checksum-bound frozen reports and
+receipts, not a freshly restored baseline runtime checkpoint.
+
+Each report contains 99 observed and 99 same-identity 20-bps stress cells:
+eight exit windows (full covered 1461 days, then terminal 1460/1095/365/180/90/30/7)
+plus DEV, TEST and independent NEW_TAIL decision views, each crossed with
+ALL/LONG/SHORT and all576/120/456 symbol metadata groups. Requested coverage is
+1825 days; covered coverage is 1461, never labelled five complete years.
+NEW_TAIL can overlap DEV or TEST; intersections and decision funnels are
+diagnostics, not additive support. Unknown gate cutoff remains null and cannot
+fall back to the raw-core development boundary. DEV labels crossing the gate
+cutoff are excluded from fitting. TEST outcomes may mature until frozen END
+exclusively. Exact-END terminal closures reconcile natively but never enter
+half-open economic tables.
+
+Only TEST/all-universe/ALL cells apply the frozen criteria: finite PF >=1.10,
+positive PnL, >=50 independent decision events, cadence >=0.075/day,
+MaxDD <=100 and loss streak <=4. Same-fill extra20-bps stress requires PnL
+
+> =-100, finite PF >=0.8 and MaxDD <=150. Terminal/full/side/cohort diagnostics
+> cannot select a winner. Selection authority is frozen before execution and
+> contains no future selected ID or outcomes. `authority-blocked` and
+> `no-eligible-composition` both have `selectedId: null`; no failing candidate is
+> renamed the winner. Zero samples have null PF/WR/payoff/quantiles and truthful
+> zero PnL/DD, not a finite PF or a percentage advantage over zero baseline.
+
+The builder consumes `executedCompositionAuthority`,
+`executedCompositionReport` and `executedCompositionReceipt` descriptors for
+each candidate, plus a common `selectionAuthority`. No fake core export is
+required for verified zero completions. Verified empty equity is exactly
+`{status: verified-empty, stream: null, rows: 0}`; the dashed zero guide is an
+annotation outside the observed-data layer. An unavailable stream is UNKNOWN,
+not a zero guide. The LiquidityZones baseline is installed stable core plus
+exact current AI-gate under frozen research risk/costs, not active production.
+
+Compact disk indexes and bounded external merge sorting never retain whole
+payload/trade/equity arrays. Equity reduction retains actual endpoints and
+bucket extrema without smoothing. Logical memory, fan-in, input row/byte and
+disk limits are explicit; sampled/disk-accounted limits are not filesystem
+quotas. Reports include field availability distinctions (missing, explicit
+null, invalid, unsupported), unchanged-input proofs and resource receipts.
+Charts write a new exclusive directory and checksum their frozen sources;
+raw diagnostic artifacts must remain in a separate output directory.
+
 Use this contract after raw-core discovery is complete. Its purpose is to make
 the research unit an executable strategy composition, not an intermediate core
 or a gate tuned on another core's signal population.
@@ -113,6 +202,19 @@ composition fingerprint; do not paste an unverified fingerprint into the spec.
 board: it leaves `selectedId` unchanged and allows a versioned comparison chart
 without rewriting the frozen selection artifact.
 
+The legacy/posthoc board also accepts explicit `selectedId: null` when no
+composition qualifies. Both charts say `No eligible composition`; KPI cards
+show only the exact current-gate baseline, labelled `Baseline diagnostics`.
+No candidate or baseline receives a winner highlight or becomes selected in
+the summary. All equity curves and scatter points remain visible. Terminal
+comparisons remain diagnostic and retain the existing one-to-three candidate
+limit; use separate presentation versions to show a larger board. Missing
+`selectedId` remains invalid. Existing non-null selections render unchanged.
+The compact legacy summary is not a full metric appendix: checksum-bound native
+ablation JSON reports remain authoritative for complete realized, directional,
+partition, stability and round-trip cost-stress metrics. This does not claim
+closed-loop execution or its 99-cell matrix.
+
 Required outputs:
 
 - `final-composition-dashboard.svg` and `.png`: selected composition KPI cards
@@ -213,3 +315,40 @@ frozen reports, equity arrays, metrics, selections, and original chart files.
   ]
 }
 ```
+
+# Closed-loop pagination and complete metric appendix
+
+The closed-loop rendering branch produces one compact dashboard and one equity
+chart, plus `final-composition-matrix-NNN-<candidate-id>.svg` and `.png` for each
+candidate. Each page retains exactly 99 observed and 99 same-fill 20-bps stress
+cells. Cell identity includes candidate, basis, axis, window/partition, symbol
+group and direction. Only `OUTER_TEST_FROZEN/ALL_UNIVERSE/ALL` is marked as the
+frozen selection cell. All other cells and full-period/terminal/scatter views are
+diagnostic. No candidate is omitted, including blocked or verified-empty ones.
+
+`final-composition-metrics.json` copies every original cell field, including
+availability and denominator status. `final-composition-metrics.md` provides the
+same complete fields as readable per-cell tables. The compact dashboard keeps
+every candidate's KPI row, five terminal windows, scatter label and full observed
+and stress rule states. Short keys map to complete names and exact rule values.
+Its nonvisual `data-cell` metadata indexes the separate matrix pages; it is not a
+monolithic matrix image.
+
+`summary.rendering.pagination` is `per-candidate-matrix/v1`. Its `matrixPages`
+maps every candidate to ordinal, dimensions, exact cell identities, counts and
+SVG/PNG checksums. All charts and both appendices also appear in
+`summary.artifacts`. Output directories and files are exclusive. Every layout
+and per-page pixel budget (200,000,000 pixels maximum) is checked before writes
+and rasterization. A large page fails closed; the renderer never clips, truncates
+or silently drops its fields.
+
+Numeric PnL and MaxDD axes include zero. Equity has numeric Y ticks, a distinct
+zero guide and exact start/end plus bounded interior UTC calendar ticks. Empty
+zero guides are explicitly annotations, not observed equity. Unavailable curves
+never become zero observations. Scatter points retain their real positions;
+labels use deterministic side lanes and leader lines. Exposed label boxes allow
+tests to check boundaries and lane overlap, including long names/coincident points.
+
+This change only projects verified fields. Selection, metrics, candidate order,
+fingerprints, authority inputs, linear equity interpolation and retained extrema
+are unchanged. The legacy raw/posthoc branch and its SVG golden bytes are unchanged.
