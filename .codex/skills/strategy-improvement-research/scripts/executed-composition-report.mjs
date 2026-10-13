@@ -23,6 +23,7 @@ import {
 } from '../../ai-train-local-research/scripts/decision-capture-storage.mjs';
 import {
   deriveFeeEntryStressNotional,
+  getEntryStressNotional,
   ensureRuntimeBuild,
   normalizeSymbolCohorts,
   verifyEntryNotionalAuthority,
@@ -395,13 +396,33 @@ export const verifyExecutedCompositionAuthority = async ({
   );
   const expectedBySymbol = new Map();
   for (const entry of checkpoint.value) {
-    const stat = entry.result.stat;
+    const rawStat = entry.result.stat;
+    // Native TestConnector.getResult returns this exact short form when its
+    // closed position log is empty. Recognize that documented zero locally;
+    // never rewrite the checksum-bound checkpoint or infer absent records.
+    const nativeEmpty =
+      rawStat &&
+      same(Object.keys(rawStat).sort(), ['amount', 'orders', 'profit']) &&
+      rawStat.amount === 100 &&
+      rawStat.orders === 0 &&
+      rawStat.profit === 0;
+    const stat = nativeEmpty
+      ? { orders: 0, wins: 0, losses: 0, netProfit: 0 }
+      : rawStat;
     demand(
       stat &&
         ['orders', 'wins', 'losses'].every(
           (k) => integer(stat[k]) && stat[k] >= 0,
         ) &&
         finite(stat.netProfit),
+      'Native checkpoint economic stats unavailable',
+    );
+    demand(
+      stat.orders !== 0 ||
+        (stat.wins === 0 &&
+          stat.losses === 0 &&
+          stat.netProfit === 0 &&
+          (!Object.hasOwn(rawStat, 'profit') || rawStat.profit === 0)),
       'Native checkpoint economic stats unavailable',
     );
     demand(stat.wins + stat.losses <= stat.orders, 'Invalid native flat count');
@@ -472,12 +493,17 @@ export const verifyExecutedCompositionAuthority = async ({
   if (a.runtimeCheckpoint && a.strategyArtifactAuthority) {
     await load('runtimeCheckpoint');
     await load('strategyArtifactAuthority');
-    executionRuntime = await (
+    const resolvedRuntime = await (
       validators.ensureRuntimeBuild ?? ensureRuntimeBuild
     )(a.frameworkRepositoryRoot, {
       projectRoot,
       runtimeCheckpoint: a.runtimeCheckpoint.path,
     });
+    executionRuntime = resolvedRuntime?.executionRuntime;
+    demand(
+      executionRuntime && typeof executionRuntime === 'object',
+      'Missing verified checkpoint execution runtime',
+    );
     (
       validators.verifyStrategyArtifactAuthority ??
       verifyStrategyArtifactAuthority
@@ -1480,12 +1506,21 @@ export const deriveExecutedCompositionReport = async ({
         counters.newTailTestFinalEligibleCompletedCount++;
       if (label.newTail && label.newTailIntersection === null)
         counters.newTailUnknownPartitionCount++;
+      const actualEntryNotional = verified.entryNotional
+        ? null
+        : getEntryStressNotional(result);
       const notional = verified.entryNotional
         ? deriveFeeEntryStressNotional(result, verified.entryNotional)
-        : {
-            status: 'missing',
-            reason: 'missing-verified-entry-notional-authority',
-          };
+        : finite(actualEntryNotional) && actualEntryNotional > 0
+          ? {
+              status: 'complete',
+              notional: actualEntryNotional,
+              reason: null,
+            }
+          : {
+              status: 'missing',
+              reason: 'missing-or-invalid-actual-entry-notional',
+            };
       if (exit !== null)
         await sorter.append(
           [
@@ -1513,10 +1548,38 @@ export const deriveExecutedCompositionReport = async ({
           },
         );
     }
+  const unmatchedExecutedClosures = {
+    count: 0,
+    status: 'NONE',
+    classification: 'unknown-native-completed-closure',
+    identities: [],
+    identitiesComplete: true,
+    maxExampleIdentities: 100,
+    evidence: 'Unchanged checksum-bound execution streams and compact index',
+    meaning:
+      'Observed successful own entry without either native completed-closure trace. Not a closed trade, pending-position proof, nonfill, zero PnL or realized loss.',
+  };
+  for await (const entry of indexes.execution.entries()) {
+    const key = entry.row.key;
+    const hasEntry = indexes.entryTrace.get(key) !== null;
+    const hasExit = indexes.exitTrace.get(key) !== null;
+    demand(hasEntry === hasExit, 'One-sided native closure trace');
+    if (!hasEntry) {
+      unmatchedExecutedClosures.count++;
+      if (unmatchedExecutedClosures.identities.length < 100)
+        unmatchedExecutedClosures.identities.push(entry.row.value);
+      else unmatchedExecutedClosures.identitiesComplete = false;
+    }
+  }
+  if (unmatchedExecutedClosures.count) {
+    unmatchedExecutedClosures.status = 'UNKNOWN';
+    blockers.push('successful-entry-without-native-completed-closure');
+  }
   demand(
     native.trades === indexes.exitTrace.rows &&
       native.trades === indexes.entryTrace.rows &&
-      native.trades === indexes.execution.rows,
+      native.trades + unmatchedExecutedClosures.count ===
+        indexes.execution.rows,
     'Completed/execution/entry/exit-trace count mismatch',
   );
   const expected = a.nativeReconciliation;
@@ -1829,8 +1892,9 @@ export const deriveExecutedCompositionReport = async ({
         'exitTimestamp grouped; stable run/test/symbol/signal/invocation loss-streak ties',
       occupancy: 'actual closed-loop execution, not conditional posthoc subset',
       eventSupport: 'unique original decision timestamps',
-      stress:
-        'extra20bps fee-derived entry-notional; same identities/qty/occupancy',
+      stress: verified.entryNotional
+        ? 'extra20bps verified fee-derived entry-notional; same identities/qty/occupancy'
+        : 'extra20bps closedQty (or qty when absent) * actual entryPrice; same identities/qty/occupancy',
     },
     matrices: {
       observed: {
@@ -1856,6 +1920,7 @@ export const deriveExecutedCompositionReport = async ({
       economicBoundary: 'exact-END native only',
     },
     funnel,
+    unmatchedExecutedClosures,
     decisionFunnel,
     crossing: counters,
     fieldAvailability: availability,

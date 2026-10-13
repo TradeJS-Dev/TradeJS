@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import {
   canonicalJson,
   objectSha256,
@@ -48,6 +49,7 @@ export const executedFixture = (
     id = 'candidate',
     sharedRoot,
     selectionAuthority,
+    nativeEmptyStats = false,
   } = {},
 ) => {
   const root =
@@ -215,6 +217,20 @@ export const executedFixture = (
           ? { gateObservationSha256: objectSha256(gate) }
           : {}),
       });
+    if (tr.unmatchedClosure) {
+      if (tr.unmatchedClosure !== true) {
+        const entryOnly = tr.unmatchedClosure === 'entry-only';
+        stages[entryOnly ? 'entryTrace' : 'exitTrace'].push({
+          ...identity,
+          timestamp: identity.timestamp,
+          invocationId,
+          event: entryOnly ? 'entry_executed' : 'position_exited',
+          backtestRunId: 'native-run',
+          backtestTestKey: identity.symbol,
+        });
+      }
+      continue;
+    }
     for (const [name, event] of [
       ['entryTrace', 'entry_executed'],
       ['exitTrace', 'position_exited'],
@@ -264,12 +280,23 @@ export const executedFixture = (
             backtestTestKey: base.symbol,
             chunkId: `${base.symbol}-chunk`,
           },
-          stat: {
-            orders: rows.length,
-            wins: rows.filter((r) => r.tradeResult.netProfit > 0).length,
-            losses: rows.filter((r) => r.tradeResult.netProfit < 0).length,
-            netProfit: rows.reduce((n, r) => n + r.tradeResult.netProfit, 0),
-          },
+          stat:
+            nativeEmptyStats && rows.length === 0
+              ? {
+                  amount: 100,
+                  profit: 0,
+                  orders: 0,
+                }
+              : {
+                  orders: rows.length,
+                  wins: rows.filter((r) => r.tradeResult.netProfit > 0).length,
+                  losses: rows.filter((r) => r.tradeResult.netProfit < 0)
+                    .length,
+                  netProfit: rows.reduce(
+                    (n, r) => n + r.tradeResult.netProfit,
+                    0,
+                  ),
+                },
         },
       };
     }),
@@ -368,7 +395,9 @@ export const executedFixture = (
       rootReview: artifact,
     });
   const validators = {
-    ensureRuntimeBuild: async () => ({ checkpoint: artifact }),
+    ensureRuntimeBuild: async () => ({
+      executionRuntime: { checkpoint: artifact, packages: {} },
+    }),
     verifyStrategyArtifactAuthority: () => ({}),
     verifyEntryNotionalAuthority: async () => ({
       method: 'fee-derived-full-closed',
@@ -396,6 +425,200 @@ const derive = (fixture, outputPrefix = 'report') =>
     validators: fixture.validators,
     outputPrefix,
   });
+
+test('gzip-only transport preserves actual matrices, fills and native reconciliation', async (t) => {
+  const f = executedFixture(t, { trades: [{ pnl: 3 }, { pnl: -2 }] });
+  const plain = await derive(f, 'plain-report');
+  for (const stream of [
+    ...Object.values(f.authority.streams),
+    f.authority.completedStream,
+  ]) {
+    for (const file of stream.files) {
+      const compressed = gzipSync(
+        fs.readFileSync(path.join(f.root, file.path)),
+      );
+      file.path += '.gz';
+      fs.writeFileSync(path.join(f.root, file.path), compressed, {
+        flag: 'wx',
+      });
+      file.sha256 = sha256(compressed);
+      file.bytes = compressed.length;
+    }
+  }
+  f.descriptor = f.json('gzip-authority.json', f.authority);
+  const compressed = await derive(f, 'gzip-report');
+  assert.deepEqual(compressed.report.matrices, plain.report.matrices);
+  assert.deepEqual(compressed.report.funnel, plain.report.funnel);
+  assert.deepEqual(
+    compressed.report.nativeReconciliation,
+    plain.report.nativeReconciliation,
+  );
+  assert.deepEqual(
+    compressed.report.selectionDecision,
+    plain.report.selectionDecision,
+  );
+});
+
+test('successful own entry without either native closure trace remains explicit UNKNOWN', async (t) => {
+  const f = executedFixture(t, { trades: [{}, { unmatchedClosure: true }] });
+  const before = fs.readFileSync(
+    path.join(f.root, f.authority.streams.execution.files[0].path),
+  );
+  const { report } = await derive(f);
+  assert.equal(report.authorityStatus, 'UNKNOWN');
+  assert.equal(report.selectionDecision.status, 'UNKNOWN');
+  assert.equal(report.nativeReconciliation.trades, 1);
+  assert.equal(report.nativeReconciliation.status, 'MATCH');
+  assert.equal(report.funnel.execution, 2);
+  assert.equal(report.unmatchedExecutedClosures.count, 1);
+  assert.equal(report.unmatchedExecutedClosures.status, 'UNKNOWN');
+  assert.equal(
+    report.unmatchedExecutedClosures.identities[0].signalId,
+    'signal-1',
+  );
+  assert.equal(report.unmatchedExecutedClosures.identitiesComplete, true);
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(f.root, f.authority.streams.execution.files[0].path),
+    ),
+    before,
+  );
+});
+
+test('one-sided native closure trace is never downgraded to unmatched-entry diagnostics', async (t) => {
+  for (const unmatchedClosure of ['entry-only', 'exit-only']) {
+    const f = executedFixture(t, { trades: [{}, { unmatchedClosure }] });
+    await assert.rejects(
+      derive(f),
+      /Completed\/execution\/entry\/exit-trace count mismatch|One-sided native closure trace/,
+    );
+  }
+});
+
+test('unmatched successful entry still cannot bypass a false own gate', async (t) => {
+  const f = executedFixture(t, { trades: [{}, { unmatchedClosure: true }] });
+  const file = path.join(f.root, f.authority.streams.gate.files[0].path);
+  const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+  rows[1].allow = false;
+  f.authority.streams.gate = f.stream(
+    'false-gate-before-extra-execution',
+    rows,
+  );
+  f.descriptor = f.json('false-gate-extra-authority.json', f.authority);
+  await assert.rejects(derive(f), /Blocked identity appears downstream/);
+});
+
+test('real native empty checkpoint stats bind with mixed fills without input mutation', async (t) => {
+  const f = executedFixture(t, { trades: [{}], nativeEmptyStats: true });
+  const mapping = JSON.parse(
+    fs.readFileSync(path.join(f.root, f.authority.runBinding.path), 'utf8'),
+  );
+  const file = path.join(f.root, mapping.completedCheckpoint.path);
+  const before = fs.readFileSync(file);
+  const checkpoint = JSON.parse(before);
+  assert.equal(
+    checkpoint.filter((e) => Object.keys(e.result.stat).length === 3).length,
+    575,
+  );
+  assert.deepEqual(checkpoint[1].result.stat, {
+    amount: 100,
+    profit: 0,
+    orders: 0,
+  });
+  const { report } = await derive(f);
+  assert.equal(report.nativeReconciliation.trades, 1);
+  assert.deepEqual(fs.readFileSync(file), before);
+  assert.equal(
+    sha256(fs.readFileSync(file)),
+    mapping.completedCheckpoint.sha256,
+  );
+});
+
+test('all genuine native empty stats produce verified zero, not missing-record inference', async (t) => {
+  const f = executedFixture(t, {
+    zero: true,
+    allow: false,
+    nativeEmptyStats: true,
+  });
+  const { report } = await derive(f);
+  assert.equal(report.nativeReconciliation.trades, 0);
+  assert.equal(report.nativeReconciliation.pnl, 0);
+});
+
+test('unsupported or contradictory native zero checkpoint shapes fail closed', async (t) => {
+  const invalid = [
+    null,
+    {},
+    { amount: 100, profit: 0 },
+    { amount: 100, profit: 0, orders: -1 },
+    { amount: 100, profit: 0, orders: 1 },
+    { amount: 100, profit: 1, orders: 0 },
+    { amount: 101, profit: 0, orders: 0 },
+    { amount: 100, profit: 0, orders: 0, wins: 0 },
+    { orders: 0, wins: 1, losses: 0, netProfit: 0 },
+    { orders: 0, wins: 0, losses: 1, netProfit: 0 },
+    { orders: 0, wins: 0, losses: 0, netProfit: 1 },
+    { orders: 0, wins: 0, losses: 0, netProfit: 0, profit: 1 },
+  ];
+  for (const [i, stat] of invalid.entries()) {
+    const f = executedFixture(t, { zero: true, id: `bad-native-empty-${i}` });
+    const mapping = JSON.parse(
+      fs.readFileSync(path.join(f.root, f.authority.runBinding.path), 'utf8'),
+    );
+    const checkpoint = JSON.parse(
+      fs.readFileSync(
+        path.join(f.root, mapping.completedCheckpoint.path),
+        'utf8',
+      ),
+    );
+    checkpoint[0].result.stat = stat;
+    mapping.completedCheckpoint = f.json(
+      'invalid-empty-checkpoint.json',
+      checkpoint,
+    );
+    f.authority.runBinding = f.json('invalid-empty-mapping.json', mapping);
+    f.descriptor = f.json('invalid-empty-authority.json', f.authority);
+    await assert.rejects(
+      derive(f),
+      /Native checkpoint economic stats unavailable|Invalid native flat count/,
+    );
+  }
+});
+
+test('verified checkpoint runtime is unwrapped for source and notional authorities', async (t) => {
+  const f = executedFixture(t, { trades: [{}] });
+  const executionRuntime = {
+    mode: 'verified-project-runtime-checkpoint',
+    checkpoint: f.authority.runtimeCheckpoint,
+    packages: { '@tradejs/node': { packageRoot: f.root } },
+  };
+  f.validators.ensureRuntimeBuild = async () => ({ executionRuntime });
+  const seen = [];
+  f.validators.verifyStrategyArtifactAuthority = (options) => {
+    assert.strictEqual(options.executionRuntime, executionRuntime);
+    seen.push('source');
+  };
+  const verifyNotional = f.validators.verifyEntryNotionalAuthority;
+  f.validators.verifyEntryNotionalAuthority = async (options) => {
+    assert.strictEqual(options.executionRuntime, executionRuntime);
+    seen.push('notional');
+    return verifyNotional(options);
+  };
+  await derive(f);
+  assert.deepEqual(seen, ['source', 'notional']);
+});
+
+test('checkpoint resolution without nested runtime fails closed before authority checks', async (t) => {
+  const f = executedFixture(t, { trades: [{}] });
+  f.validators.ensureRuntimeBuild = async () => ({ packages: {} });
+  f.validators.verifyStrategyArtifactAuthority = () => {
+    assert.fail('Invalid runtime must not reach source verification');
+  };
+  await assert.rejects(
+    derive(f),
+    /Missing verified checkpoint execution runtime/,
+  );
+});
 const all = (r, id, basis = 'observed') =>
   [
     ...r.matrices[basis].exitWindow,
@@ -681,6 +904,55 @@ test('missing bridge authority preserves diagnostics and UNKNOWN, not economic F
   assert.equal(report.selectionDecision.status, 'UNKNOWN');
   assert.equal(receipt.acceptedForActualUse, false);
   assert.ok(report.blockers.includes('missing-accepted-opt-in-bridge-parity'));
+});
+
+test('default stress uses existing actual-entry notional without optional fee authority', async (t) => {
+  const f = executedFixture(t, {
+    accepted: false,
+    trades: [
+      {
+        pnl: 1,
+        result: { entryPrice: 100, qty: 2, closedQty: 1, openFee: null },
+      },
+    ],
+  });
+  delete f.authority.entryNotionalAuthority;
+  f.descriptor = f.json('authority-default-stress.json', f.authority);
+  const before = fs.readFileSync(
+    path.join(f.root, f.authority.completedStream.files[0].path),
+  );
+  const { report } = await derive(f);
+  assert.equal(all(report, 'FULL_1461D', 'stress20bps').pnl, 0.8);
+  assert.equal(
+    all(report, 'FULL_1461D', 'stress20bps').economicCompletenessStatus,
+    'COMPLETE',
+  );
+  assert.equal(report.authorityStatus, 'UNKNOWN');
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(f.root, f.authority.completedStream.files[0].path),
+    ),
+    before,
+  );
+});
+
+test('default stress retains UNKNOWN for missing or invalid actual notional fields', async (t) => {
+  for (const result of [
+    { entryPrice: null },
+    { closedQty: 2, qty: 1 },
+    { entryPrice: -100 },
+    { entryPrice: 1e308, qty: 1e308, closedQty: 1e308 },
+  ]) {
+    const f = executedFixture(t, { trades: [{ result }] });
+    delete f.authority.entryNotionalAuthority;
+    f.descriptor = f.json('authority-default-stress.json', f.authority);
+    const { report } = await derive(f);
+    assert.equal(all(report, 'FULL_1461D', 'stress20bps').pnl, null);
+    assert.equal(
+      all(report, 'FULL_1461D', 'stress20bps').economicCompletenessStatus,
+      'UNKNOWN',
+    );
+  }
 });
 
 test('missing actual fee only blocks affected stress cells, without displayed-price fallback', async (t) => {
