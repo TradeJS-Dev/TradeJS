@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import {
   createShardedCaptureSink,
   readStorageManifest,
@@ -19,6 +20,47 @@ import {
   scanJsonLines,
   readIndexedCapture,
 } from './decision-capture-join.mjs';
+
+test('bounded sequential gzip scan preserves exact decoded JSONL records', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-gzip-'));
+  t.after(() => fs.rmSync(dir, { recursive: true }));
+  const bytes = Buffer.from('{"a":1}\n{"a":2}\n');
+  const plain = path.join(dir, 'rows.jsonl');
+  const gzip = plain + '.gz';
+  fs.writeFileSync(plain, bytes);
+  fs.writeFileSync(gzip, gzipSync(bytes));
+  const collect = async (file, options) => {
+    const rows = [];
+    for await (const row of scanJsonLines(file, options)) rows.push(row);
+    return rows;
+  };
+  assert.deepEqual(await collect(gzip), await collect(plain));
+  await assert.rejects(
+    collect(gzip, { maxDecodedBytes: bytes.length - 1 }),
+    /Decoded JSONL byte bound/,
+  );
+  assert.throws(
+    () => readIndexedCapture(gzip, { offset: 0, length: 8 }),
+    /Compressed indexed capture/,
+  );
+});
+
+test('sequential gzip scan rejects truncated and noncanonical input', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-gzip-invalid-'));
+  t.after(() => fs.rmSync(dir, { recursive: true }));
+  const collect = async (file) => {
+    for await (const _row of scanJsonLines(file)) {
+      /* exhaust */
+    }
+  };
+  const broken = path.join(dir, 'broken.jsonl.gz');
+  const bytes = gzipSync(Buffer.from('{"a":1}\n'));
+  fs.writeFileSync(broken, bytes.subarray(0, bytes.length - 4));
+  await assert.rejects(collect(broken));
+  const invalid = path.join(dir, 'invalid.jsonl.gz');
+  fs.writeFileSync(invalid, gzipSync(Buffer.from('{"z":1,"a":2}\n')));
+  await assert.rejects(collect(invalid), /Noncanonical/);
+});
 
 const fixture = (t) => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-join-'));

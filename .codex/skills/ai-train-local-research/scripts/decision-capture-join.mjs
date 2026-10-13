@@ -3,6 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { createGunzip } from 'node:zlib';
 
 export const sha256 = (bytes) =>
   createHash('sha256').update(bytes).digest('hex');
@@ -77,48 +78,67 @@ export const readJsonLines = async function* (file) {
     reader.close();
   }
 };
-// Byte offsets refer to original canonical LF/UTF8 bytes, never decoded character positions.
+// Offsets refer to decoded canonical LF/UTF8 bytes. Gzip is sequential-only.
 export const scanJsonLines = async function* (
   file,
-  { maxLineBytes = 1048576, canonical = true } = {},
+  {
+    maxLineBytes = 1048576,
+    maxDecodedBytes = 16 * 1024 ** 3,
+    canonical = true,
+  } = {},
 ) {
   if (!Number.isSafeInteger(maxLineBytes) || maxLineBytes <= 0)
     throw new Error('Invalid JSON line byte bound');
+  if (!Number.isSafeInteger(maxDecodedBytes) || maxDecodedBytes <= 0)
+    throw new Error('Invalid decoded JSONL byte bound');
   let pending = Buffer.alloc(0);
   let offset = 0;
-  for await (const chunk of fs.createReadStream(file, {
-    highWaterMark: 65536,
-  })) {
-    let start = 0;
-    for (let end = 0; end < chunk.length; end++) {
-      if (chunk[end] !== 10) continue;
-      const length = pending.length + end - start;
-      if (length > maxLineBytes)
+  let decodedBytes = 0;
+  const source = fs.createReadStream(file, { highWaterMark: 65536 });
+  const decoder = file.endsWith('.gz') ? createGunzip() : null;
+  if (decoder) source.on('error', (error) => decoder.destroy(error));
+  const input = decoder ? source.pipe(decoder) : source;
+  try {
+    for await (const chunk of input) {
+      decodedBytes += chunk.length;
+      if (decodedBytes > maxDecodedBytes)
+        throw new Error('Decoded JSONL byte bound exceeded');
+      let start = 0;
+      for (let end = 0; end < chunk.length; end++) {
+        if (chunk[end] !== 10) continue;
+        const length = pending.length + end - start;
+        if (length > maxLineBytes)
+          throw new Error('JSON line byte bound exceeded');
+        const bytes = Buffer.concat([pending, chunk.subarray(start, end)]);
+        if (!length || bytes.includes(13))
+          throw new Error('Canonical LF JSONL required');
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        const row = JSON.parse(text);
+        if (canonical && canonicalJson(row) !== text)
+          throw new Error('Noncanonical capture JSON');
+        yield {
+          row,
+          offset,
+          length: length + 1,
+          sha256: sha256(Buffer.concat([bytes, Buffer.from('\n')])),
+        };
+        offset += length + 1;
+        pending = Buffer.alloc(0);
+        start = end + 1;
+      }
+      if (pending.length + chunk.length - start > maxLineBytes)
         throw new Error('JSON line byte bound exceeded');
-      const bytes = Buffer.concat([pending, chunk.subarray(start, end)]);
-      if (!length || bytes.includes(13))
-        throw new Error('Canonical LF JSONL required');
-      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      const row = JSON.parse(text);
-      if (canonical && canonicalJson(row) !== text)
-        throw new Error('Noncanonical capture JSON');
-      yield {
-        row,
-        offset,
-        length: length + 1,
-        sha256: sha256(Buffer.concat([bytes, Buffer.from('\n')])),
-      };
-      offset += length + 1;
-      pending = Buffer.alloc(0);
-      start = end + 1;
+      pending = Buffer.concat([pending, chunk.subarray(start)]);
     }
-    if (pending.length + chunk.length - start > maxLineBytes)
-      throw new Error('JSON line byte bound exceeded');
-    pending = Buffer.concat([pending, chunk.subarray(start)]);
+    if (pending.length) throw new Error('Unterminated JSONL record');
+  } finally {
+    source.destroy();
+    decoder?.destroy();
   }
-  if (pending.length) throw new Error('Unterminated JSONL record');
 };
 export const readIndexedCapture = (file, entry, maxLineBytes = 1048576) => {
+  if (file.endsWith('.gz'))
+    throw new Error('Compressed indexed capture is unsupported');
   if (
     !Number.isSafeInteger(entry.offset) ||
     entry.offset < 0 ||
