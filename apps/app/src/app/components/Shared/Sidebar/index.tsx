@@ -18,7 +18,6 @@ export const Sidebar = () => {
   const pathname = usePathname();
 
   const navItems = [
-    { icon: FiLink, label: 'MCP connections', path: '/routes/mcp' },
     {
       icon: FiBarChart2,
       label: 'Dashboard',
@@ -76,6 +75,15 @@ export const Sidebar = () => {
 
         <VStack gap={2}>
           <AccountSettingsDrawer />
+          <IconButton
+            aria-label="MCP connections"
+            size="md"
+            colorPalette="teal"
+            variant={pathname.includes('/routes/mcp') ? 'solid' : 'outline'}
+            onClick={() => router.push('/routes/mcp')}
+          >
+            <FiLink />
+          </IconButton>
           <IconButton
             aria-label="Sign out"
             size="md"
