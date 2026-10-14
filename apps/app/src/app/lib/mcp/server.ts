@@ -7,12 +7,14 @@ import {
   enqueueMcpJob,
   mcpId,
   publicMcpJob,
+  readAuthorizedMcpJob,
   readMcpBacktestPage,
   readMcpBacktestResult,
   readMcpChart,
   readMcpDeployments,
   readMcpEvaluationStats,
   readMcpJob,
+  readMcpJobLogs,
   readMcpMarket,
   readMcpRuntimePage,
   readMcpSignal,
@@ -358,22 +360,20 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     'Read the state of an owned background job. Disconnecting the client does not pause it. Failed jobs are never automatically rerun.',
     ['backtests:read', 'diagnostics:read', 'backtests:run', 'diagnostics:run'],
     { jobId: artifactId },
-    async (args) => {
-      const job = await readMcpJob(principal.userName, args.jobId);
-      if (
-        !principal.scopes.some(
-          (scope) =>
-            scope ===
-              (job.kind === 'backtest'
-                ? 'backtests:read'
-                : 'diagnostics:read') ||
-            scope ===
-              (job.kind === 'backtest' ? 'backtests:run' : 'diagnostics:run'),
-        )
-      )
-        throw new Error('Insufficient scope');
-      return publicMcpJob(job);
+    async (args) =>
+      publicMcpJob(await readAuthorizedMcpJob(principal, args.jobId)),
+  );
+  tool(
+    'job_get_logs',
+    'Read redacted stdout/stderr retained for an owned job, including failures. Paginate until nextOffset=null. This is the worker tail (at most 150 entries, 1000 characters each), not the full process history; offsets may shift while running. Does not start or retry jobs.',
+    ['backtests:read', 'diagnostics:read', 'backtests:run', 'diagnostics:run'],
+    {
+      jobId: artifactId,
+      offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
+      limit: z.number().int().min(1).max(100).default(50),
     },
+    async (args) =>
+      readMcpJobLogs(principal, args.jobId, args.offset, args.limit),
   );
   tool(
     'job_cancel',

@@ -4,6 +4,8 @@ import {
   cancelMcpJob,
   readMcpJob,
   publicMcpJob,
+  readMcpJobLogs,
+  mcpJobStorageId,
 } from '../mcpJobs';
 import type { McpJob, McpPrincipal } from '@tradejs/types';
 const mockStore = new Map<string, unknown>();
@@ -140,4 +142,131 @@ test('resource and isolation limits reject work before queueing', async () => {
       (value) => (value as McpJob).status === 'queued',
     ),
   ).toHaveLength(0);
+});
+
+const failedJob = async (logs: string[]) => {
+  const job = await enqueueMcpJob(
+    principal,
+    'backtest',
+    request,
+    'log-test-key',
+  );
+  const failed: McpJob = { ...job, status: 'failed', exitCode: 1, logs };
+  mockStore.set(mcpJobStorageId(job.userName, job.id), failed);
+  return failed;
+};
+
+test('failed job logs can be paged without exposing private job fields or retrying it', async () => {
+  const job = await failedJob([
+    'command failed',
+    'stack line 1',
+    'stack line 2',
+  ]);
+  const page = await readMcpJobLogs(principal, job.id, 0, 2);
+  expect(page).toEqual({
+    jobId: job.id,
+    status: 'failed',
+    updatedAt: job.updatedAt,
+    offset: 0,
+    nextOffset: 2,
+    retainedLines: 3,
+    retention: 'worker_tail',
+    lines: ['command failed', 'stack line 1'],
+  });
+  expect(await readMcpJobLogs(principal, job.id, 2, 2)).toMatchObject({
+    lines: ['stack line 2'],
+    nextOffset: null,
+  });
+  expect(await readMcpJobLogs(principal, job.id, 99)).toMatchObject({
+    lines: [],
+    nextOffset: null,
+  });
+  expect(await readMcpJob(principal.userName, job.id)).toEqual(job);
+  expect(publicMcpJob(job)).not.toHaveProperty('logs');
+});
+
+test('log access enforces ownership and scopes for the actual job kind', async () => {
+  const job = await failedJob(['diagnostic detail']);
+  await expect(
+    readMcpJobLogs({ ...principal, userName: 'bob' }, job.id),
+  ).rejects.toThrow('Job not found');
+  await expect(
+    readMcpJobLogs({ ...principal, scopes: ['diagnostics:read'] }, job.id),
+  ).rejects.toThrow('Insufficient scope');
+  await expect(
+    readMcpJobLogs(
+      { ...principal, scopes: ['backtests:read'], clientId: 'another-client' },
+      job.id,
+    ),
+  ).resolves.toMatchObject({ lines: ['diagnostic detail'] });
+  mockStore.set(mcpJobStorageId(job.userName, job.id), {
+    ...job,
+    kind: 'runtime-feedback-replay',
+  });
+  await expect(readMcpJobLogs(principal, job.id)).rejects.toThrow(
+    'Insufficient scope',
+  );
+  await expect(
+    readMcpJobLogs({ ...principal, scopes: ['diagnostics:read'] }, job.id),
+  ).resolves.toMatchObject({ lines: ['diagnostic detail'] });
+  await expect(
+    readMcpJobLogs({ ...principal, scopes: ['diagnostics:run'] }, job.id),
+  ).resolves.toMatchObject({ lines: ['diagnostic detail'] });
+});
+
+test('stored logs are redacted again before returning and pagination stays below the response budget', async () => {
+  const job = await failedJob([
+    '\u001b[31mError: failed\u001b[0m',
+    'Authorization: Bearer bearer-value',
+    'Cookie: session=cookie-value; other=second-cookie',
+    'REDIS_PASSWORD="password with spaces"',
+    '{"apiKey":"api-value","access_token":"token-value"}',
+    'redis://user:redis-password@cache:6379',
+    'redis://:password-only@cache:6379',
+    'https://host/path?token=query-token&ok=1',
+    ...Array.from({ length: 100 }, () => '\u0000'.repeat(1000)),
+  ]);
+  const page = await readMcpJobLogs(principal, job.id, 0, 100);
+  const text = JSON.stringify(page);
+  for (const secret of [
+    'bearer-value',
+    'cookie-value',
+    'second-cookie',
+    'password with spaces',
+    'api-value',
+    'token-value',
+    'redis-password',
+    'password-only',
+    'query-token',
+  ])
+    expect(text).not.toContain(secret);
+  expect(page.lines[0]).toBe('Error: failed');
+  expect(page.lines).toContain('redis://[redacted]@cache:6379');
+  expect(Buffer.byteLength(text)).toBeLessThan(49000);
+  expect(page.nextOffset).not.toBeNull();
+  const rest = await readMcpJobLogs(principal, job.id, page.nextOffset!, 100);
+  expect(rest.lines.length).toBeGreaterThan(0);
+});
+
+test('empty logs are available and invalid page boundaries or expired jobs fail clearly', async () => {
+  const job = await failedJob([]);
+  expect(await readMcpJobLogs(principal, job.id)).toMatchObject({
+    lines: [],
+    nextOffset: null,
+    retainedLines: 0,
+  });
+  for (const [offset, limit] of [
+    [-1, 1],
+    [0.5, 1],
+    [0, 0],
+    [0, 101],
+    [Number.MAX_SAFE_INTEGER + 1, 1],
+  ])
+    await expect(
+      readMcpJobLogs(principal, job.id, offset, limit),
+    ).rejects.toThrow('Select ');
+  mockStore.delete(mcpJobStorageId(job.userName, job.id));
+  await expect(readMcpJobLogs(principal, job.id)).rejects.toThrow(
+    'Job not found',
+  );
 });

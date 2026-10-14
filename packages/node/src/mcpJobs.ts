@@ -196,6 +196,71 @@ export const readMcpJob = async (userName: string, id: string) => {
   return job;
 };
 
+export const readAuthorizedMcpJob = async (
+  principal: McpPrincipal,
+  id: string,
+) => {
+  const job = await readMcpJob(principal.userName, id);
+  const prefix = job.kind === 'backtest' ? 'backtests' : 'diagnostics';
+  if (
+    !principal.scopes.some(
+      (scope) => scope === `${prefix}:read` || scope === `${prefix}:run`,
+    )
+  )
+    throw new Error('Insufficient scope');
+  return job;
+};
+
+const redactJobLog = (line: string) =>
+  line
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/\b(Bearer|Basic)\s+\S+/gi, '$1 [redacted]')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*:[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/((?:authorization|cookie)\s*:\s*)[^\r\n]+/gi, '$1[redacted]')
+    .replace(
+      /((?:[\w.-]*(?:secret|password|token|api[_-]?key|private[_-]?key|authorization|cookie|credential)[\w.-]*)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&}]+)/gi,
+      '$1[redacted]',
+    )
+    .slice(0, 1000);
+
+/** Offsets refer to the retained worker tail, which may shift while running. */
+export const readMcpJobLogs = async (
+  principal: McpPrincipal,
+  id: string,
+  offset = 0,
+  limit = 50,
+) => {
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 100
+  )
+    throw new Error('Select a non-negative log offset and a limit of 1–100');
+  const job = await readAuthorizedMcpJob(principal, id);
+  const lines: string[] = [];
+  let bytes = 0;
+  for (const line of job.logs.slice(offset, offset + limit)) {
+    const redacted = redactJobLog(line);
+    const size = Buffer.byteLength(JSON.stringify(redacted)) + 1;
+    if (bytes + size > 48000) break;
+    lines.push(redacted);
+    bytes += size;
+  }
+  const next = offset + lines.length;
+  return {
+    jobId: job.id,
+    status: job.status,
+    updatedAt: job.updatedAt,
+    offset,
+    nextOffset: next < job.logs.length ? next : null,
+    retainedLines: job.logs.length,
+    retention: 'worker_tail',
+    lines,
+  };
+};
+
 export const cancelMcpJob = async (principal: McpPrincipal, id: string) => {
   for (let attempt = 0; attempt < 4; attempt++) {
     const job = await readMcpJob(principal.userName, id);

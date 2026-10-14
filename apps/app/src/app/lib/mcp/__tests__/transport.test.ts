@@ -10,6 +10,7 @@ const mockPrincipal: McpPrincipal = {
   scopes: ['market:read'],
 };
 let mockAuthenticated = true;
+const mockReadLogs = jest.fn();
 jest.mock('../oauth', () => ({
   authenticateMcp: async () => (mockAuthenticated ? mockPrincipal : null),
   fingerprint: (value: string) => value,
@@ -31,9 +32,62 @@ jest.mock('@tradejs/node/mcp', () => ({
   mcpId: (value: string) => value,
   redactMcpData: (value: unknown) => value,
   readMcpMarket: async () => ({ items: [{ symbol: 'BTCUSDT' }] }),
+  readMcpJobLogs: (...args: unknown[]) => mockReadLogs(...args),
 }));
 beforeEach(() => {
   mockAuthenticated = true;
+  mockPrincipal.scopes = ['market:read'];
+  mockReadLogs.mockReset();
+});
+test('job_get_logs is a read-only scoped tool with validated pagination over HTTP', async () => {
+  mockPrincipal.scopes = ['diagnostics:read'];
+  const jobId = 'a'.repeat(64);
+  const page = {
+    jobId,
+    status: 'failed',
+    offset: 0,
+    nextOffset: null,
+    retainedLines: 1,
+    retention: 'worker_tail',
+    lines: ['Error: replay failed'],
+  };
+  mockReadLogs.mockResolvedValue(page);
+  const client = new Client({ name: 'job-log-test', version: '1.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+      fetch: async (url, init) =>
+        init?.method === 'POST' ? POST(new Request(String(url), init)) : GET(),
+    }),
+  );
+  try {
+    const tools = await client.listTools();
+    expect(
+      tools.tools.find((tool) => tool.name === 'job_get_logs')?.annotations
+        ?.readOnlyHint,
+    ).toBe(true);
+    const result = await client.callTool({
+      name: 'job_get_logs',
+      arguments: { jobId },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual({ data: page });
+    expect(mockReadLogs).toHaveBeenCalledWith(mockPrincipal, jobId, 0, 50);
+    for (const args of [
+      { jobId, offset: -1 },
+      { jobId, limit: 101 },
+      { jobId, userName: 'bob' },
+      { jobId: '/etc/passwd' },
+    ]) {
+      const invalid = await client.callTool({
+        name: 'job_get_logs',
+        arguments: args,
+      });
+      expect(invalid.isError).toBe(true);
+    }
+    expect(mockReadLogs).toHaveBeenCalledTimes(1);
+  } finally {
+    await client.close();
+  }
 });
 test('SDK client initializes, lists scope-filtered tools and calls through stateless HTTP', async () => {
   const client = new Client({ name: 'compatibility-test', version: '1.0.0' });
