@@ -15,6 +15,8 @@ import {
   Portal,
   Spinner,
   Stack,
+  Switch,
+  Tabs,
   Text,
 } from '@chakra-ui/react';
 import { FiEdit2, FiSettings } from 'react-icons/fi';
@@ -36,9 +38,22 @@ import {
 import { toaster } from '#ui';
 import { TradingAccountsPanel } from './TradingAccountsPanel';
 
+type NotificationSettings = {
+  signals: boolean;
+  aiAnalysis: boolean;
+  runtimeDebug: boolean;
+};
+
+const DEFAULT_NOTIFICATIONS: NotificationSettings = {
+  signals: true,
+  aiAnalysis: true,
+  runtimeDebug: true,
+};
+
 type SettingsResponse = {
   userName: string;
   settings: {
+    notifications: NotificationSettings;
     coinalyze: {
       apiKey: string;
     };
@@ -64,6 +79,7 @@ type SettingsErrorResponse = {
 };
 
 type SettingsViewState = {
+  notifications: NotificationSettings;
   userName: string;
   coinalyzeApiKey: string;
   coinmarketcapApiKey: string;
@@ -78,7 +94,7 @@ type SettingsViewState = {
   tgChatId: string;
 };
 
-type SettingsDraftState = Omit<SettingsViewState, 'userName'>;
+type SettingsDraftState = Omit<SettingsViewState, 'userName' | 'notifications'>;
 
 type PasswordState = {
   password: string;
@@ -87,6 +103,7 @@ type PasswordState = {
 
 type SectionName =
   | 'password'
+  | 'notifications'
   | 'coinalyze'
   | 'coinmarketcap'
   | 'jev'
@@ -106,6 +123,7 @@ type EditableField =
   | 'tgChatId';
 
 const EMPTY_SETTINGS: SettingsViewState = {
+  notifications: DEFAULT_NOTIFICATIONS,
   userName: '',
   coinalyzeApiKey: '',
   coinmarketcapApiKey: '',
@@ -163,6 +181,7 @@ const MASKED_FIELDS = new Set<EditableField>([
 
 const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   userName: payload.userName,
+  notifications: payload.settings.notifications,
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
   coinmarketcapApiKey: payload.settings.coinmarketcap.apiKey || '',
   jevApiKey: payload.settings.jev?.apiKey || '',
@@ -249,6 +268,9 @@ export const AccountSettingsDrawer = () => {
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<SettingsViewState>(EMPTY_SETTINGS);
   const [drafts, setDrafts] = useState<SettingsDraftState>(EMPTY_DRAFTS);
+  const [notificationDrafts, setNotificationDrafts] = useState(
+    DEFAULT_NOTIFICATIONS,
+  );
   const [passwords, setPasswords] = useState<PasswordState>(EMPTY_PASSWORDS);
   const [editing, setEditing] =
     useState<Record<EditableField, boolean>>(EMPTY_EDITING);
@@ -257,6 +279,7 @@ export const AccountSettingsDrawer = () => {
   const syncState = useCallback((payload: SettingsResponse) => {
     const next = toViewState(payload);
     setSettings(next);
+    setNotificationDrafts(next.notifications);
     setDrafts(toDraftState(next));
     setEditing(EMPTY_EDITING);
   }, []);
@@ -315,6 +338,14 @@ export const AccountSettingsDrawer = () => {
 
   const isSectionDirty = useCallback(
     (section: SectionName) => {
+      if (section === 'notifications') {
+        return Object.keys(DEFAULT_NOTIFICATIONS).some(
+          (key) =>
+            notificationDrafts[key as keyof NotificationSettings] !==
+            settings.notifications[key as keyof NotificationSettings],
+        );
+      }
+
       if (section === 'password') {
         return Boolean(passwords.password || passwords.confirmPassword);
       }
@@ -353,7 +384,13 @@ export const AccountSettingsDrawer = () => {
 
       return false;
     },
-    [drafts, passwords.confirmPassword, passwords.password, settings],
+    [
+      drafts,
+      notificationDrafts,
+      passwords.confirmPassword,
+      passwords.password,
+      settings,
+    ],
   );
 
   const updateDraft = (field: EditableField, value: string) => {
@@ -437,57 +474,59 @@ export const AccountSettingsDrawer = () => {
 
     try {
       const body =
-        section === 'jev'
-          ? {
-              section,
-              data: {
-                apiKey: getSecretUpdateValue('jevApiKey'),
-                apiEndpoint: drafts.jevApiEndpoint,
-                model: drafts.jevModel.trim(),
-              },
-            }
-          : section === 'coinalyze'
+        section === 'notifications'
+          ? { section, data: notificationDrafts }
+          : section === 'jev'
             ? {
                 section,
                 data: {
-                  apiKey: getSecretUpdateValue('coinalyzeApiKey'),
+                  apiKey: getSecretUpdateValue('jevApiKey'),
+                  apiEndpoint: drafts.jevApiEndpoint,
+                  model: drafts.jevModel.trim(),
                 },
               }
-            : section === 'ai'
+            : section === 'coinalyze'
               ? {
                   section,
                   data: {
-                    apiKey: getSecretUpdateValue('aiApiKey'),
-                    apiEndpoint: drafts.aiApiEndpoint,
-                    model: drafts.aiModel.trim(),
-                    responseLanguage: drafts.aiResponseLanguage,
+                    apiKey: getSecretUpdateValue('coinalyzeApiKey'),
                   },
                 }
-              : section === 'coinmarketcap'
+              : section === 'ai'
                 ? {
                     section,
                     data: {
-                      apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
+                      apiKey: getSecretUpdateValue('aiApiKey'),
+                      apiEndpoint: drafts.aiApiEndpoint,
+                      model: drafts.aiModel.trim(),
+                      responseLanguage: drafts.aiResponseLanguage,
                     },
                   }
-                : section === 'telegram'
+                : section === 'coinmarketcap'
                   ? {
                       section,
                       data: {
-                        botToken: getSecretUpdateValue('tgBotToken'),
-                        chatId:
-                          drafts.tgChatId !== settings.tgChatId
-                            ? drafts.tgChatId.trim()
-                            : undefined,
+                        apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
                       },
                     }
-                  : {
-                      section,
-                      data: {
-                        password: passwords.password,
-                        confirmPassword: passwords.confirmPassword,
-                      },
-                    };
+                  : section === 'telegram'
+                    ? {
+                        section,
+                        data: {
+                          botToken: getSecretUpdateValue('tgBotToken'),
+                          chatId:
+                            drafts.tgChatId !== settings.tgChatId
+                              ? drafts.tgChatId.trim()
+                              : undefined,
+                        },
+                      }
+                    : {
+                        section,
+                        data: {
+                          password: passwords.password,
+                          confirmPassword: passwords.confirmPassword,
+                        },
+                      };
 
       const response = await fetch('/api/user/settings', {
         method: 'PATCH',
@@ -639,21 +678,11 @@ export const AccountSettingsDrawer = () => {
       <Portal>
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content display="flex" flexDirection="column">
-            <Drawer.Header>
-              <Drawer.Title>Account settings</Drawer.Title>
-              <Drawer.CloseTrigger asChild>
-                <CloseButton position="absolute" right="3" top="3" />
-              </Drawer.CloseTrigger>
-            </Drawer.Header>
-
-            <Drawer.Body overflowY="auto">
-              {loading ? (
-                <Flex minH="320px" align="center" justify="center">
-                  <Spinner color="teal.300" size="lg" />
-                </Flex>
-              ) : (
-                <Stack gap={5}>
+          <Tabs.Root defaultValue="integrations" colorPalette="teal" asChild>
+            <Drawer.Content display="flex" flexDirection="column">
+              <Drawer.Header display="block">
+                <Flex align="center" gap={3} wrap="wrap" pr={8}>
+                  <Drawer.Title>Account settings</Drawer.Title>
                   <Text fontSize="sm" color="gray.400">
                     Signed in as{' '}
                     <Text
@@ -665,400 +694,528 @@ export const AccountSettingsDrawer = () => {
                       {settings.userName || 'Unknown user'}
                     </Text>
                   </Text>
+                </Flex>
+                <Drawer.CloseTrigger asChild>
+                  <CloseButton position="absolute" right="3" top="3" />
+                </Drawer.CloseTrigger>
+                <Tabs.List mt={4}>
+                  <Tabs.Trigger value="integrations">Integrations</Tabs.Trigger>
+                  <Tabs.Trigger value="notifications">
+                    Notifications
+                  </Tabs.Trigger>
+                  <Tabs.Trigger value="security">Security</Tabs.Trigger>
+                </Tabs.List>
+              </Drawer.Header>
 
-                  <TradingAccountsPanel />
+              <Drawer.Body overflowY="auto">
+                {loading ? (
+                  <Flex minH="320px" align="center" justify="center">
+                    <Spinner color="teal.300" size="lg" />
+                  </Flex>
+                ) : (
+                  <Box>
+                    <Tabs.Content value="integrations" pt={0}>
+                      <Stack gap={5}>
+                        <TradingAccountsPanel />
 
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">CoinMarketCap</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          API key stored in the user profile for historical
-                          global market context ingestion.
-                        </Text>
-                      </Box>
-                      {renderEditableField({
-                        label: 'COINMARKETCAP_API_KEY',
-                        field: 'coinmarketcapApiKey',
-                        placeholder: 'Enter a new CoinMarketCap API key',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'coinmarketcap'}
-                          disabled={!isSectionDirty('coinmarketcap')}
-                          onClick={() => saveSection('coinmarketcap')}
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
                         >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">CoinMarketCap</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                API key stored in the user profile for
+                                historical global market context ingestion.
+                              </Text>
+                            </Box>
+                            {renderEditableField({
+                              label: 'COINMARKETCAP_API_KEY',
+                              field: 'coinmarketcapApiKey',
+                              placeholder: 'Enter a new CoinMarketCap API key',
+                            })}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'coinmarketcap'}
+                                disabled={!isSectionDirty('coinmarketcap')}
+                                onClick={() => saveSection('coinmarketcap')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
 
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">Jev</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          Evaluate signal context and geometry in backtests and
-                          runtime.
-                        </Text>
-                      </Box>
-                      <Field.Root>
-                        <Field.Label>Jev provider</Field.Label>
-                        <select
-                          aria-label="Jev provider"
-                          style={DRAWER_SELECT_STYLE}
-                          value={
-                            JEV_PROVIDERS.find(
-                              (item) => item.endpoint === drafts.jevApiEndpoint,
-                            )?.endpoint ?? 'custom'
-                          }
-                          onChange={(event) => {
-                            const provider = JEV_PROVIDERS.find(
-                              (item) => item.endpoint === event.target.value,
-                            );
-                            setDrafts((current) => ({
-                              ...current,
-                              jevApiEndpoint: provider?.endpoint ?? '',
-                              jevModel: provider?.model ?? '',
-                            }));
-                          }}
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
                         >
-                          {JEV_PROVIDERS.map((provider) => (
-                            <option
-                              key={provider.endpoint}
-                              value={provider.endpoint}
-                            >
-                              {provider.label}
-                            </option>
-                          ))}
-                          <option value="custom">Custom Decisions API</option>
-                        </select>
-                      </Field.Root>
-                      <Field.Root>
-                        <Field.Label>JEV_API_ENDPOINT</Field.Label>
-                        <Input
-                          aria-label="JEV_API_ENDPOINT"
-                          value={drafts.jevApiEndpoint}
-                          onChange={(event) =>
-                            updateDraft('jevApiEndpoint', event.target.value)
-                          }
-                          placeholder="Full URL of the decision endpoint"
-                        />
-                        <Text fontSize="sm" color="gray.400">
-                          Use a TypeSafe-compatible decision endpoint accepting
-                          state and questions.
-                        </Text>
-                      </Field.Root>
-                      <Field.Root>
-                        <Field.Label>JEV_MODEL</Field.Label>
-                        <Input
-                          aria-label="JEV_MODEL"
-                          value={drafts.jevModel}
-                          onChange={(event) =>
-                            updateDraft('jevModel', event.target.value)
-                          }
-                        />
-                      </Field.Root>
-                      {renderEditableField({
-                        label: 'JEV_API_KEY',
-                        field: 'jevApiKey',
-                        placeholder: 'Enter a new Jev provider API key',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'jev'}
-                          disabled={!isSectionDirty('jev')}
-                          onClick={() => saveSection('jev')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">Jev</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                Evaluate signal context and geometry in
+                                backtests and runtime.
+                              </Text>
+                            </Box>
+                            <Field.Root>
+                              <Field.Label>Jev provider</Field.Label>
+                              <select
+                                aria-label="Jev provider"
+                                style={DRAWER_SELECT_STYLE}
+                                value={
+                                  JEV_PROVIDERS.find(
+                                    (item) =>
+                                      item.endpoint === drafts.jevApiEndpoint,
+                                  )?.endpoint ?? 'custom'
+                                }
+                                onChange={(event) => {
+                                  const provider = JEV_PROVIDERS.find(
+                                    (item) =>
+                                      item.endpoint === event.target.value,
+                                  );
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    jevApiEndpoint: provider?.endpoint ?? '',
+                                    jevModel: provider?.model ?? '',
+                                  }));
+                                }}
+                              >
+                                {JEV_PROVIDERS.map((provider) => (
+                                  <option
+                                    key={provider.endpoint}
+                                    value={provider.endpoint}
+                                  >
+                                    {provider.label}
+                                  </option>
+                                ))}
+                                <option value="custom">
+                                  Custom Decisions API
+                                </option>
+                              </select>
+                            </Field.Root>
+                            <Field.Root>
+                              <Field.Label>JEV_API_ENDPOINT</Field.Label>
+                              <Input
+                                aria-label="JEV_API_ENDPOINT"
+                                value={drafts.jevApiEndpoint}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    'jevApiEndpoint',
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Full URL of the decision endpoint"
+                              />
+                              <Text fontSize="sm" color="gray.400">
+                                Use a TypeSafe-compatible decision endpoint
+                                accepting state and questions.
+                              </Text>
+                            </Field.Root>
+                            <Field.Root>
+                              <Field.Label>JEV_MODEL</Field.Label>
+                              <Input
+                                aria-label="JEV_MODEL"
+                                value={drafts.jevModel}
+                                onChange={(event) =>
+                                  updateDraft('jevModel', event.target.value)
+                                }
+                              />
+                            </Field.Root>
+                            {renderEditableField({
+                              label: 'JEV_API_KEY',
+                              field: 'jevApiKey',
+                              placeholder: 'Enter a new Jev provider API key',
+                            })}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'jev'}
+                                disabled={!isSectionDirty('jev')}
+                                onClick={() => saveSection('jev')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
 
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">AI / LLM</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          Stored in the user profile and used for AI analysis
-                          and user-facing AI replies.
-                        </Text>
-                      </Box>
-                      <Field.Root>
-                        <Field.Label>AI_API_ENDPOINT</Field.Label>
-                        <select
-                          value={selectedAiEndpointOption}
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setDrafts((current) => ({
-                              ...current,
-                              aiApiEndpoint:
-                                nextValue === AI_CUSTOM_ENDPOINT_VALUE
-                                  ? ''
-                                  : nextValue,
-                              aiModel:
-                                nextValue === AI_CUSTOM_ENDPOINT_VALUE
-                                  ? ''
-                                  : normalizeAiModel('', nextValue),
-                            }));
-                          }}
-                          style={DRAWER_SELECT_STYLE}
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
                         >
-                          {AI_ENDPOINT_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        <Text mt="2" fontSize="sm" color="gray.400">
-                          {effectiveAiEndpoint || 'Endpoint is not set yet.'}
-                        </Text>
-                      </Field.Root>
-                      {selectedAiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE ? (
-                        <Field.Root>
-                          <Field.Label>Custom AI API endpoint URL</Field.Label>
-                          <Input
-                            value={drafts.aiApiEndpoint}
-                            placeholder="https://your-openai-compatible-endpoint/v1"
-                            onChange={(event) =>
-                              updateDraft('aiApiEndpoint', event.target.value)
-                            }
-                          />
-                        </Field.Root>
-                      ) : null}
-                      {renderEditableField({
-                        label: 'AI_API_KEY',
-                        field: 'aiApiKey',
-                        placeholder: 'Enter a new AI API key',
-                      })}
-                      {hasPresetAiModels ? (
-                        <Field.Root>
-                          <Field.Label>AI_MODEL</Field.Label>
-                          <select
-                            value={selectedAiModelOption}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
-                              if (nextValue === AI_CUSTOM_MODEL_VALUE) {
-                                updateDraft('aiModel', '');
-                                return;
-                              }
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">AI / LLM</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                Stored in the user profile and used for AI
+                                analysis and user-facing AI replies.
+                              </Text>
+                            </Box>
+                            <Field.Root>
+                              <Field.Label>AI_API_ENDPOINT</Field.Label>
+                              <select
+                                value={selectedAiEndpointOption}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    aiApiEndpoint:
+                                      nextValue === AI_CUSTOM_ENDPOINT_VALUE
+                                        ? ''
+                                        : nextValue,
+                                    aiModel:
+                                      nextValue === AI_CUSTOM_ENDPOINT_VALUE
+                                        ? ''
+                                        : normalizeAiModel('', nextValue),
+                                  }));
+                                }}
+                                style={DRAWER_SELECT_STYLE}
+                              >
+                                {AI_ENDPOINT_OPTIONS.map((option) => (
+                                  <option
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <Text mt="2" fontSize="sm" color="gray.400">
+                                {effectiveAiEndpoint ||
+                                  'Endpoint is not set yet.'}
+                              </Text>
+                            </Field.Root>
+                            {selectedAiEndpointOption ===
+                            AI_CUSTOM_ENDPOINT_VALUE ? (
+                              <Field.Root>
+                                <Field.Label>
+                                  Custom AI API endpoint URL
+                                </Field.Label>
+                                <Input
+                                  value={drafts.aiApiEndpoint}
+                                  placeholder="https://your-openai-compatible-endpoint/v1"
+                                  onChange={(event) =>
+                                    updateDraft(
+                                      'aiApiEndpoint',
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </Field.Root>
+                            ) : null}
+                            {renderEditableField({
+                              label: 'AI_API_KEY',
+                              field: 'aiApiKey',
+                              placeholder: 'Enter a new AI API key',
+                            })}
+                            {hasPresetAiModels ? (
+                              <Field.Root>
+                                <Field.Label>AI_MODEL</Field.Label>
+                                <select
+                                  value={selectedAiModelOption}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    if (nextValue === AI_CUSTOM_MODEL_VALUE) {
+                                      updateDraft('aiModel', '');
+                                      return;
+                                    }
 
-                              updateDraft('aiModel', nextValue);
-                            }}
-                            style={DRAWER_SELECT_STYLE}
-                          >
-                            {aiModelOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
+                                    updateDraft('aiModel', nextValue);
+                                  }}
+                                  style={DRAWER_SELECT_STYLE}
+                                >
+                                  {aiModelOptions.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                  <option value={AI_CUSTOM_MODEL_VALUE}>
+                                    Custom model
+                                  </option>
+                                </select>
+                              </Field.Root>
+                            ) : null}
+                            {!hasPresetAiModels ||
+                            selectedAiModelOption === AI_CUSTOM_MODEL_VALUE ? (
+                              <Field.Root>
+                                <Field.Label>Custom AI model name</Field.Label>
+                                <Input
+                                  value={drafts.aiModel}
+                                  placeholder="Enter an OpenAI-compatible model name"
+                                  onChange={(event) =>
+                                    updateDraft('aiModel', event.target.value)
+                                  }
+                                />
+                              </Field.Root>
+                            ) : null}
+                            <Field.Root>
+                              <Field.Label>AI_RESPONSE_LANGUAGE</Field.Label>
+                              <select
+                                value={drafts.aiResponseLanguage}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    'aiResponseLanguage',
+                                    event.target.value,
+                                  )
+                                }
+                                style={DRAWER_SELECT_STYLE}
+                              >
+                                {AI_RESPONSE_LANGUAGE_OPTIONS.map((option) => (
+                                  <option
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field.Root>
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'ai'}
+                                disabled={!isSectionDirty('ai')}
+                                onClick={() => saveSection('ai')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
+
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
+                        >
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">Coinalyze</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                API key stored in the user profile for
+                                derivatives data ingestion.
+                              </Text>
+                            </Box>
+                            {renderEditableField({
+                              label: 'COINALYZE_API_KEY',
+                              field: 'coinalyzeApiKey',
+                              placeholder: 'Enter a new Coinalyze API key',
+                            })}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'coinalyze'}
+                                disabled={!isSectionDirty('coinalyze')}
+                                onClick={() => saveSection('coinalyze')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
+                      </Stack>
+                    </Tabs.Content>
+                    <Tabs.Content value="notifications" pt={0}>
+                      <Stack gap={5}>
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
+                        >
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">Telegram</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                Bot credentials used for signal delivery.
+                              </Text>
+                            </Box>
+                            {renderEditableField({
+                              label: 'TG_BOT_TOKEN',
+                              field: 'tgBotToken',
+                              placeholder: 'Enter a new Telegram bot token',
+                            })}
+                            {renderEditableField({
+                              label: 'TG_CHAT_ID',
+                              field: 'tgChatId',
+                              placeholder: 'Enter Telegram chat ID',
+                            })}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'telegram'}
+                                disabled={!isSectionDirty('telegram')}
+                                onClick={() => saveSection('telegram')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
+
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
+                        >
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">Notification types</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                Choose which notifications Telegram delivers.
+                              </Text>
+                            </Box>
+                            {(
+                              [
+                                [
+                                  'signals',
+                                  'Signals',
+                                  'Trading signals and order status.',
+                                ],
+                                [
+                                  'aiAnalysis',
+                                  'AI signals analyze',
+                                  'AI analysis messages for signals.',
+                                ],
+                                [
+                                  'runtimeDebug',
+                                  'Runtime debug',
+                                  'TXT and JSON report attachments, including debug and parity.',
+                                ],
+                              ] as const
+                            ).map(([key, label, description]) => (
+                              <Switch.Root
+                                key={key}
+                                checked={notificationDrafts[key]}
+                                onCheckedChange={({ checked }) =>
+                                  setNotificationDrafts((current) => ({
+                                    ...current,
+                                    [key]: checked,
+                                  }))
+                                }
+                                display="flex"
+                                width="full"
+                                justifyContent="space-between"
+                                colorPalette="teal"
+                              >
+                                <Switch.HiddenInput />
+                                <Switch.Label>
+                                  <Text>{label}</Text>
+                                  <Text fontSize="sm" color="gray.400">
+                                    {description}
+                                  </Text>
+                                </Switch.Label>
+                                <Switch.Control flexShrink={0}>
+                                  <Switch.Thumb />
+                                </Switch.Control>
+                              </Switch.Root>
                             ))}
-                            <option value={AI_CUSTOM_MODEL_VALUE}>
-                              Custom model
-                            </option>
-                          </select>
-                        </Field.Root>
-                      ) : null}
-                      {!hasPresetAiModels ||
-                      selectedAiModelOption === AI_CUSTOM_MODEL_VALUE ? (
-                        <Field.Root>
-                          <Field.Label>Custom AI model name</Field.Label>
-                          <Input
-                            value={drafts.aiModel}
-                            placeholder="Enter an OpenAI-compatible model name"
-                            onChange={(event) =>
-                              updateDraft('aiModel', event.target.value)
-                            }
-                          />
-                        </Field.Root>
-                      ) : null}
-                      <Field.Root>
-                        <Field.Label>AI_RESPONSE_LANGUAGE</Field.Label>
-                        <select
-                          value={drafts.aiResponseLanguage}
-                          onChange={(event) =>
-                            updateDraft(
-                              'aiResponseLanguage',
-                              event.target.value,
-                            )
-                          }
-                          style={DRAWER_SELECT_STYLE}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'notifications'}
+                                disabled={
+                                  !isSectionDirty('notifications') ||
+                                  savingSection !== null
+                                }
+                                onClick={() => saveSection('notifications')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
+                      </Stack>
+                    </Tabs.Content>
+                    <Tabs.Content value="security" pt={0}>
+                      <Stack gap={5}>
+                        <Box
+                          borderWidth="1px"
+                          borderColor="gray.700"
+                          borderRadius="lg"
+                          p={4}
+                          bg="gray.900"
                         >
-                          {AI_RESPONSE_LANGUAGE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </Field.Root>
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'ai'}
-                          disabled={!isSectionDirty('ai')}
-                          onClick={() => saveSection('ai')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
+                          <Stack gap={4}>
+                            <Box>
+                              <Text fontWeight="600">Password</Text>
+                              <Text fontSize="sm" color="gray.400">
+                                Update the password used for sign in.
+                              </Text>
+                            </Box>
+                            <Field.Root>
+                              <Field.Label>Password</Field.Label>
+                              <Input
+                                type="password"
+                                value={passwords.password}
+                                onChange={(event) =>
+                                  setPasswords((current) => ({
+                                    ...current,
+                                    password: event.target.value,
+                                  }))
+                                }
+                              />
+                            </Field.Root>
+                            <Field.Root>
+                              <Field.Label>Confirm password</Field.Label>
+                              <Input
+                                type="password"
+                                value={passwords.confirmPassword}
+                                onChange={(event) =>
+                                  setPasswords((current) => ({
+                                    ...current,
+                                    confirmPassword: event.target.value,
+                                  }))
+                                }
+                              />
+                            </Field.Root>
+                            {passwordError ? (
+                              <Text fontSize="sm" color="red.300">
+                                {passwordError}
+                              </Text>
+                            ) : null}
+                            <Flex justify="flex-end">
+                              <Button
+                                colorPalette="teal"
+                                loading={savingSection === 'password'}
+                                disabled={
+                                  !isSectionDirty('password') ||
+                                  Boolean(passwordError)
+                                }
+                                onClick={() => saveSection('password')}
+                              >
+                                Save
+                              </Button>
+                            </Flex>
+                          </Stack>
+                        </Box>
+                      </Stack>
+                    </Tabs.Content>
                   </Box>
-
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">Coinalyze</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          API key stored in the user profile for derivatives
-                          data ingestion.
-                        </Text>
-                      </Box>
-                      {renderEditableField({
-                        label: 'COINALYZE_API_KEY',
-                        field: 'coinalyzeApiKey',
-                        placeholder: 'Enter a new Coinalyze API key',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'coinalyze'}
-                          disabled={!isSectionDirty('coinalyze')}
-                          onClick={() => saveSection('coinalyze')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">Telegram</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          Bot credentials used for signal delivery.
-                        </Text>
-                      </Box>
-                      {renderEditableField({
-                        label: 'TG_BOT_TOKEN',
-                        field: 'tgBotToken',
-                        placeholder: 'Enter a new Telegram bot token',
-                      })}
-                      {renderEditableField({
-                        label: 'TG_CHAT_ID',
-                        field: 'tgChatId',
-                        placeholder: 'Enter Telegram chat ID',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'telegram'}
-                          disabled={!isSectionDirty('telegram')}
-                          onClick={() => saveSection('telegram')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">Password</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          Update the password used for sign in.
-                        </Text>
-                      </Box>
-                      <Field.Root>
-                        <Field.Label>Password</Field.Label>
-                        <Input
-                          type="password"
-                          value={passwords.password}
-                          onChange={(event) =>
-                            setPasswords((current) => ({
-                              ...current,
-                              password: event.target.value,
-                            }))
-                          }
-                        />
-                      </Field.Root>
-                      <Field.Root>
-                        <Field.Label>Confirm password</Field.Label>
-                        <Input
-                          type="password"
-                          value={passwords.confirmPassword}
-                          onChange={(event) =>
-                            setPasswords((current) => ({
-                              ...current,
-                              confirmPassword: event.target.value,
-                            }))
-                          }
-                        />
-                      </Field.Root>
-                      {passwordError ? (
-                        <Text fontSize="sm" color="red.300">
-                          {passwordError}
-                        </Text>
-                      ) : null}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'password'}
-                          disabled={
-                            !isSectionDirty('password') ||
-                            Boolean(passwordError)
-                          }
-                          onClick={() => saveSection('password')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
-                </Stack>
-              )}
-            </Drawer.Body>
-          </Drawer.Content>
+                )}
+              </Drawer.Body>
+            </Drawer.Content>
+          </Tabs.Root>
         </Drawer.Positioner>
       </Portal>
     </Drawer.Root>

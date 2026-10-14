@@ -20,6 +20,14 @@ export const dynamic = 'force-dynamic';
 
 type UpdateBody =
   | {
+      section: 'notifications';
+      data?: {
+        signals?: boolean;
+        aiAnalysis?: boolean;
+        runtimeDebug?: boolean;
+      };
+    }
+  | {
       section: 'jev';
       data?: { apiKey?: string; apiEndpoint?: string; model?: string };
     }
@@ -65,6 +73,7 @@ const UPDATE_SECTIONS = new Set([
   'ai',
   'jev',
   'telegram',
+  'notifications',
   'password',
 ]);
 
@@ -122,6 +131,11 @@ const toResponse = (rawSettings: UserSettings) => {
         apiEndpoint: settings.AI_API_ENDPOINT,
         model: settings.AI_MODEL,
         responseLanguage: settings.AI_RESPONSE_LANGUAGE,
+      },
+      notifications: {
+        signals: settings.NOTIFY_SIGNALS !== false,
+        aiAnalysis: settings.NOTIFY_AI_ANALYSIS !== false,
+        runtimeDebug: settings.NOTIFY_RUNTIME_DEBUG !== false,
       },
       telegram: {
         botToken: maskSecret(settings.TG_BOT_TOKEN),
@@ -277,6 +291,37 @@ export const PATCH = async (request: Request) => {
     if (hasKeys(patch)) {
       await updateUserRecord(userName, patch);
     }
+  }
+
+  if (body.section === 'notifications') {
+    const patch: Partial<UserRecord> = {};
+    const fields = {
+      signals: 'NOTIFY_SIGNALS',
+      aiAnalysis: 'NOTIFY_AI_ANALYSIS',
+      runtimeDebug: 'NOTIFY_RUNTIME_DEBUG',
+    } as const;
+    if (
+      !body.data ||
+      typeof body.data !== 'object' ||
+      Array.isArray(body.data)
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid notification settings' },
+        { status: 400 },
+      );
+    }
+    for (const [field, key] of Object.entries(fields)) {
+      if (!(field in body.data)) continue;
+      const value = body.data[field as keyof typeof fields];
+      if (typeof value !== 'boolean') {
+        return NextResponse.json(
+          { error: 'Notification settings must be boolean' },
+          { status: 400 },
+        );
+      }
+      patch[key] = value;
+    }
+    if (hasKeys(patch)) await updateUserRecord(userName, patch);
   }
 
   if (body.section === 'telegram') {

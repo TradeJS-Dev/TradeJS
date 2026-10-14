@@ -109,6 +109,7 @@ describe('user settings route', () => {
           model: 'openai/gpt-5-mini',
           responseLanguage: 'en',
         },
+        notifications: { signals: true, aiAnalysis: true, runtimeDebug: true },
         telegram: {
           botToken: '',
           chatId: '12345',
@@ -116,6 +117,37 @@ describe('user settings route', () => {
       },
     });
   });
+
+  it('persists disabled notification types independently of Telegram credentials', async () => {
+    mockGetUserRecord.mockResolvedValue(null);
+    const response = await PATCH({
+      json: async () => ({
+        section: 'notifications',
+        data: { signals: true, aiAnalysis: false, runtimeDebug: false },
+      }),
+    } as Request);
+    expect(response.status).toBe(200);
+    expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
+      NOTIFY_SIGNALS: true,
+      NOTIFY_AI_ANALYSIS: false,
+      NOTIFY_RUNTIME_DEBUG: false,
+    });
+  });
+
+  it.each(['false', 0, null])(
+    'rejects non-boolean notification value %p without saving a partial patch',
+    async (value) => {
+      mockGetUserRecord.mockResolvedValue(null);
+      const response = await PATCH({
+        json: async () => ({
+          section: 'notifications',
+          data: { signals: false, aiAnalysis: value },
+        }),
+      } as Request);
+      expect(response.status).toBe(400);
+      expect(mockUpdateUserRecord).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects invalid ai endpoints and keeps route protected', async () => {
     mockGetUserRecord.mockResolvedValue(null);

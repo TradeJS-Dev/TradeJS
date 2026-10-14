@@ -47,6 +47,9 @@ describe('user settings utils', () => {
       AI_RESPONSE_LANGUAGE: 'es',
       TG_BOT_TOKEN: 'tg-token',
       TG_CHAT_ID: '777777',
+      NOTIFY_SIGNALS: true,
+      NOTIFY_AI_ANALYSIS: true,
+      NOTIFY_RUNTIME_DEBUG: true,
     });
     expect(getData).toHaveBeenCalledWith('users:index:alice', null);
   });
@@ -95,6 +98,9 @@ describe('user settings utils', () => {
   it('keeps AI settings raw so policy stays outside the storage adapter', async () => {
     const getData = jest.fn().mockResolvedValue({
       userName: 'alice',
+      NOTIFY_SIGNALS: false,
+      NOTIFY_AI_ANALYSIS: false,
+      NOTIFY_RUNTIME_DEBUG: false,
       AI_API_ENDPOINT: 'not-a-url',
     });
 
@@ -111,6 +117,9 @@ describe('user settings utils', () => {
 
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
+        NOTIFY_SIGNALS: false,
+        NOTIFY_AI_ANALYSIS: false,
+        NOTIFY_RUNTIME_DEBUG: false,
         AI_API_ENDPOINT: 'not-a-url',
         AI_MODEL: '',
         AI_RESPONSE_LANGUAGE: '',

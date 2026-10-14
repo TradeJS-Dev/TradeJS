@@ -258,8 +258,15 @@ const parseTelegramResponse = async (response: Response) => {
   }
 };
 
-const getTelegramSettings = async (userName = 'root') => {
+const getTelegramSettings = async (
+  userName = 'root',
+  notification?:
+    | 'NOTIFY_SIGNALS'
+    | 'NOTIFY_AI_ANALYSIS'
+    | 'NOTIFY_RUNTIME_DEBUG',
+) => {
   const settings = await getUserSettings(userName);
+  if (notification && settings[notification] === false) return null;
   const token = settings.TG_BOT_TOKEN;
   const chatId = settings.TG_CHAT_ID;
 
@@ -349,7 +356,9 @@ export const sendTextToTG = async (
     markup?: Record<string, unknown>;
   } = {},
 ) => {
-  const { token, chatId } = await getTelegramSettings(options.userName);
+  const telegram = await getTelegramSettings(options.userName);
+  if (!telegram) return;
+  const { token, chatId } = telegram;
   return sendTelegramMessage({
     message,
     markup: options.markup,
@@ -368,7 +377,12 @@ export const sendDocumentToTG = async (
     userName?: string;
   } = {},
 ) => {
-  const { token, chatId } = await getTelegramSettings(options.userName);
+  const telegram = await getTelegramSettings(
+    options.userName,
+    'NOTIFY_RUNTIME_DEBUG',
+  );
+  if (!telegram) return;
+  const { token, chatId } = telegram;
   const body = new FormData();
   const fileContent =
     typeof document.content === 'string'
@@ -565,7 +579,12 @@ export const sendSignal = async (
   } = {},
 ) => {
   const { symbol, signalId, interval } = signal;
-  const { token, chatId } = await getTelegramSettings(options.userName);
+  const telegram = await getTelegramSettings(
+    options.userName,
+    'NOTIFY_SIGNALS',
+  );
+  if (!telegram) return;
+  const { token, chatId } = telegram;
 
   const message = formatMessage(signal, analysis, {
     userName: options.userName,
@@ -780,7 +799,12 @@ export const sendSignalAnalysis = async (
     userName?: string;
   } = {},
 ) => {
-  const { token, chatId } = await getTelegramSettings(options.userName);
+  const telegram = await getTelegramSettings(
+    options.userName,
+    'NOTIFY_AI_ANALYSIS',
+  );
+  if (!telegram) return;
+  const { token, chatId } = telegram;
   const message = formatAnalysisMessage(signal, analysis);
 
   const data = await requestTelegram({

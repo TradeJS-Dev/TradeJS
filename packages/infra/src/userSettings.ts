@@ -14,6 +14,9 @@ export interface UserRecord extends Record<string, unknown> {
   AI_RESPONSE_LANGUAGE?: string;
   TG_BOT_TOKEN?: string;
   TG_CHAT_ID?: string;
+  NOTIFY_SIGNALS?: boolean;
+  NOTIFY_AI_ANALYSIS?: boolean;
+  NOTIFY_RUNTIME_DEBUG?: boolean;
   updatedAt?: string;
 }
 
@@ -30,6 +33,9 @@ export interface UserSettings {
   AI_RESPONSE_LANGUAGE: string;
   TG_BOT_TOKEN: string;
   TG_CHAT_ID: string;
+  NOTIFY_SIGNALS?: boolean;
+  NOTIFY_AI_ANALYSIS?: boolean;
+  NOTIFY_RUNTIME_DEBUG?: boolean;
 }
 
 const readString = (value: unknown): string =>
@@ -66,6 +72,9 @@ export const getUserSettings = async (
     AI_RESPONSE_LANGUAGE: readUserString(record, 'AI_RESPONSE_LANGUAGE'),
     TG_BOT_TOKEN: readUserString(record, 'TG_BOT_TOKEN'),
     TG_CHAT_ID: readUserString(record, 'TG_CHAT_ID'),
+    NOTIFY_SIGNALS: record?.NOTIFY_SIGNALS !== false,
+    NOTIFY_AI_ANALYSIS: record?.NOTIFY_AI_ANALYSIS !== false,
+    NOTIFY_RUNTIME_DEBUG: record?.NOTIFY_RUNTIME_DEBUG !== false,
   };
 };
 

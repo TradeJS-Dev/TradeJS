@@ -31,6 +31,44 @@ describe('signals', () => {
     process.env = originalEnv;
   });
 
+  it.each([
+    ['NOTIFY_SIGNALS', 'signal'],
+    ['NOTIFY_AI_ANALYSIS', 'analysis'],
+    ['NOTIFY_RUNTIME_DEBUG', 'document'],
+  ])(
+    'does not contact Telegram or create a screenshot when %s is disabled',
+    async (key, kind) => {
+      const settings = await getUserSettingsMock();
+      getUserSettingsMock.mockResolvedValueOnce({
+        ...settings,
+        [key]: false,
+        TG_BOT_TOKEN: '',
+        TG_CHAT_ID: '',
+      });
+      const fetchMock = jest.fn();
+      global.fetch = fetchMock;
+      const screenshot = jest.fn();
+      jest.doMock('../screenshot', () => ({ getScreenshotBuffer: screenshot }));
+      const {
+        sendSignal,
+        sendSignalAnalysis,
+        sendDocumentToTG,
+      } = require('../signals');
+      if (kind === 'signal')
+        await sendSignal({}, '15', null, { userName: 'alice' });
+      if (kind === 'analysis')
+        await sendSignalAnalysis({}, {}, { userName: 'alice' });
+      if (kind === 'document')
+        await sendDocumentToTG(
+          { filename: 'parity.json', content: '{}' },
+          { userName: 'alice' },
+        );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screenshot).not.toHaveBeenCalled();
+      expect(getUserSettingsMock).toHaveBeenLastCalledWith('alice');
+    },
+  );
+
   it('uploads local screenshot to Telegram with dashboard button', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce({
       json: async () => ({ ok: true }),
