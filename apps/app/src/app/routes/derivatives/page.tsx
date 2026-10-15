@@ -1,21 +1,13 @@
 'use client';
 
 import { Box, ClientOnly, Flex, Heading } from '@chakra-ui/react';
-import { Segment, Select } from '#ui';
-import { HOURS_OPTIONS, INTERVAL_OPTIONS } from './derivativesDashboardConfig';
+import { Select } from '#ui';
+import { HOURS_OPTIONS } from './derivativesDashboardConfig';
 import { DerivativesDashboardView } from './DerivativesDashboardView';
-import type { DerivativesInterval } from './derivativesViewModel';
 import { useDerivativesDashboard } from './useDerivativesDashboard';
 
 const DerivativesPage = () => {
-  const {
-    hours,
-    setHours,
-    selectedInterval,
-    setSelectedInterval,
-    chartWindow,
-    dashboard,
-  } = useDerivativesDashboard();
+  const { hours, setHours, chartWindow, dashboard } = useDerivativesDashboard();
 
   return (
     <ClientOnly>
@@ -37,19 +29,6 @@ const DerivativesPage = () => {
                 onChange={(value) => setHours(value[0] || '24')}
                 items={HOURS_OPTIONS}
                 width="180px"
-              />
-              <Segment
-                defaultValue={selectedInterval}
-                value={selectedInterval}
-                onChange={(value) =>
-                  setSelectedInterval(
-                    (value as DerivativesInterval | null) ?? '1h',
-                  )
-                }
-                items={INTERVAL_OPTIONS.map((value) => ({
-                  label: value,
-                  value,
-                }))}
               />
             </Flex>
           </Flex>

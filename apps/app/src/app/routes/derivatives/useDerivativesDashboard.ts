@@ -13,10 +13,10 @@ import {
   type SummaryResponse,
 } from './derivativesViewModel';
 
+const selectedInterval: DerivativesInterval = '15m';
+
 export const useDerivativesDashboard = () => {
   const [hours, setHours] = useState('24');
-  const [selectedInterval, setSelectedInterval] =
-    useState<DerivativesInterval>('1h');
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [detailsBySymbol, setDetailsBySymbol] = useState<
     Record<string, DetailRow[]>
@@ -69,7 +69,7 @@ export const useDerivativesDashboard = () => {
     return () => {
       if (requestRevision.current === revision) requestRevision.current += 1;
     };
-  }, [hours, selectedInterval]);
+  }, [hours]);
 
   const dashboard = useMemo(
     () =>
@@ -84,21 +84,12 @@ export const useDerivativesDashboard = () => {
         summaryError: error,
         detailError: error,
       }),
-    [
-      detailsBySymbol,
-      error,
-      loading,
-      pricesBySymbol,
-      selectedInterval,
-      summary,
-    ],
+    [detailsBySymbol, error, loading, pricesBySymbol, summary],
   );
 
   return {
     hours,
     setHours,
-    selectedInterval,
-    setSelectedInterval,
     chartWindow,
     dashboard,
   };

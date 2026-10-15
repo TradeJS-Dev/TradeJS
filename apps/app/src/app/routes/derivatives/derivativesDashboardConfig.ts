@@ -14,7 +14,6 @@ export const HOURS_OPTIONS = [
   { label: 'Last 90d', value: '2160' },
 ];
 
-export const INTERVAL_OPTIONS = ['15m', '1h'] as const;
 export const FIXED_SYMBOLS = ['BTCUSDT', 'ETHUSDT'] as const;
 
 const DERIVATIVES_TO_KLINE_INTERVAL = {
