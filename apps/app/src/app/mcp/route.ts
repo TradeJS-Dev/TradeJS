@@ -14,6 +14,34 @@ import { createTradejsMcpServer } from '#app/lib/mcp/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Stateless clients may initialize and list tools for each artifact chunk.
+// Account for that traffic separately so downloads cannot exhaust normal reads.
+const requestBudget = (body: string, scopes: readonly string[]) => {
+  try {
+    const message = JSON.parse(body);
+    if (message?.jsonrpc === '2.0') {
+      if (
+        message.method === 'tools/call' &&
+        message.params?.name === 'artifact_get' &&
+        scopes.includes('diagnostics:read')
+      )
+        return { bucket: 'artifact-requests', maximum: 600 };
+      if (
+        [
+          'initialize',
+          'notifications/initialized',
+          'tools/list',
+          'ping',
+        ].includes(message.method)
+      )
+        return { bucket: 'protocol-requests', maximum: 1200 };
+    }
+  } catch {
+    // Invalid JSON still consumes the ordinary request budget.
+  }
+  return { bucket: 'requests', maximum: 120 };
+};
+
 export const POST = async (request: Request) => {
   if (!mcpEnabled()) return oauthResponse({ error: 'MCP disabled' }, 503);
   const origin = request.headers.get('origin');
@@ -25,19 +53,18 @@ export const POST = async (request: Request) => {
       return oauthResponse({ error: 'Unauthorized' }, 401, {
         'WWW-Authenticate': `Bearer resource_metadata="${mcpOrigin()}/.well-known/oauth-protected-resource/mcp"`,
       });
+    const body = await readMcpBody(request, 65536);
+    const budget = requestBudget(body, principal.scopes);
     if (
       !(await mcpStorage.rateLimit(
-        `requests:${fingerprint(`${principal.userName}:${principal.clientId}`)}`,
-        120,
+        `${budget.bucket}:${fingerprint(`${principal.userName}:${principal.clientId}`)}`,
+        budget.maximum,
         60,
       ))
     )
       return oauthResponse({ error: 'Rate limit exceeded' }, 429, {
         'Retry-After': '60',
       });
-    const body = await readMcpBody(request, 65536);
-    if (Buffer.byteLength(body) > 65536)
-      return oauthResponse({ error: 'Request too large' }, 413);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
