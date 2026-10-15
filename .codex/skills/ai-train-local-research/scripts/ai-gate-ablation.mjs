@@ -8,6 +8,10 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import {
+  buildMarketRegimeDiagnostics,
+  validateRegimeStudy,
+} from './market-regime-diagnostics.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTH_DAYS = 30.4375;
@@ -69,6 +73,7 @@ Options:
   --realizedMetrics           Additional completed-trade metrics ordered by actual exit time
   --symbolCohorts <path>       Disjoint frozen symbol groups, diagnostic realized metrics only
   --monthlyCohorts            Calendar monthly export/gate funnel by direction and payload cohort
+  --regimeStudy <json>        Explanatory fixed market buckets after frozen approval/capacity selection
   --compareTo <variant>       Exact added/removed approval slices versus a named variant
   --includeGateContext         Include current gate output fields for audits only
   --movingAverageStudy        Causal SMA/EMA/WMA grid ablation from candle cache
@@ -304,6 +309,7 @@ export const parseCliArgs = (argv) => {
         'materializeDiscoveryExport',
         'timestampPartitionMetadata',
         'symbolCohorts',
+        'regimeStudy',
       ].includes(name)
     ) {
       options[name] = value;
@@ -349,6 +355,18 @@ export const parseCliArgs = (argv) => {
   }
   if (options.monthlyCohorts && !options.cohortPath) {
     throw new Error('--monthlyCohorts requires --cohortPath');
+  }
+  if (
+    options.regimeStudy &&
+    (!options.realizedMetrics ||
+      options.crossStrategy ||
+      options.movingAverageStudy ||
+      options.windowStart == null ||
+      options.windowEnd == null)
+  ) {
+    throw new Error(
+      '--regimeStudy requires explicit-window single-core realizedMetrics',
+    );
   }
   if (
     options.symbolCohorts &&
@@ -3027,6 +3045,7 @@ export const loadResearchRows = async ({
   runtimeCheckpoint = null,
   strategyArtifactAuthority = null,
   entryNotionalAuthority = null,
+  snapshotAuditPaths = [],
 }) => {
   validateResearchWindow(windowStart, windowEnd);
   const {
@@ -3128,6 +3147,12 @@ export const loadResearchRows = async ({
           quality >= minQuality,
         features,
         auditFeatures: collectDiagnosticFeatures(payload, featurePattern),
+        savedSnapshotFeatures: Object.fromEntries(
+          snapshotAuditPaths.map((p) => [
+            p,
+            readDiagnosticPath(source.payload, p),
+          ]),
+        ),
         auditCohort: cohortPath
           ? readDiagnosticPath(payload, cohortPath)
           : null,
@@ -3142,6 +3167,11 @@ export const loadResearchRows = async ({
             : {
                 exitTimestamp: source.tradeResult.exitTimestamp,
                 netProfit: source.tradeResult.netProfit,
+                entryTimestamp: source.tradeResult.entryTimestamp,
+                exitReason: source.tradeResult.exitReason,
+                grossProfit: source.tradeResult.grossProfit,
+                totalFee: source.tradeResult.totalFee,
+                totalSlippageCost: source.tradeResult.totalSlippageCost,
               },
         movingAverageSource: {
           provider: String(source.connectorName ?? '')
@@ -6141,6 +6171,7 @@ export const buildAblationReport = ({
   realizedMetrics = false,
   symbolCohorts = null,
   monthlyCohorts = false,
+  regimeStudy = null,
   compareTo = null,
   executionRuntime = null,
   strategyArtifact = null,
@@ -6524,6 +6555,17 @@ export const buildAblationReport = ({
     baseline,
     variants: variantReports,
     featureInventory,
+    ...(regimeStudy
+      ? {
+          marketRegimeDiagnostics: buildMarketRegimeDiagnostics({
+            rows,
+            selectors,
+            spec: regimeStudy,
+            summarizeRows,
+            summaryOptions,
+          }),
+        }
+      : {}),
     ...(monthlyCohorts
       ? {
           monthlyCohortFunnel: buildMonthlyCohortFunnel({
@@ -6585,7 +6627,10 @@ export const formatGateComparisonContract = ({
   acceptanceChecks = [],
   rejectReasons = [],
   conclusion,
+  economicBasis = 'decision',
 }) => {
+  if (!['decision', 'realized'].includes(economicBasis))
+    throw new Error('Invalid contract economicBasis');
   const policies = [
     [beforeReport, beforeVariant, 'before'],
     [afterReport, afterVariant, 'after'],
@@ -6625,12 +6670,17 @@ export const formatGateComparisonContract = ({
   for (const required of ['180d', '90d', '30d', '7d'])
     if (!windows.includes(required))
       throw new Error(`Missing contract window: ${required}`);
-  const periodRows = (render) =>
+  const periodRows = (render, economic = true) =>
     windows.flatMap((window) =>
       policies.map(({ policy, label }) => [
         window,
         label,
-        ...render(policy.periods[window]),
+        ...render(
+          economic && economicBasis === 'realized'
+            ? policy.realized.periods[window]
+            : policy.periods[window],
+          policy.periods[window],
+        ),
       ]),
     );
   const outcome = (m) => [
@@ -6686,17 +6736,20 @@ export const formatGateComparisonContract = ({
         'Top event count',
         'Top event PnL',
       ],
-      periodRows((m) => [
-        formatNumber(m.cadencePerDay, 3),
-        formatNumber(m.eventsPerDay, 3),
-        formatPct(m.activeDayRatio),
-        m.events,
-        formatNumber(m.tradesPerEvent),
-        formatNumber(m.p95Batch),
-        m.maxBatch,
-        formatPct(m.topEventCountShare),
-        formatPct(m.topEventPnlShare),
-      ]),
+      periodRows(
+        (m) => [
+          formatNumber(m.cadencePerDay, 3),
+          formatNumber(m.eventsPerDay, 3),
+          formatPct(m.activeDayRatio),
+          m.events,
+          formatNumber(m.tradesPerEvent),
+          formatNumber(m.p95Batch),
+          m.maxBatch,
+          formatPct(m.topEventCountShare),
+          formatPct(m.topEventPnlShare),
+        ],
+        false,
+      ),
     ),
     '',
     '### Risk-adjusted metrics',
@@ -6714,7 +6767,7 @@ export const formatGateComparisonContract = ({
         'Profit/month',
         'Trades/week',
       ],
-      periodRows((m) => [
+      periodRows((m, decision) => [
         formatNumber(m.sharpeRatio),
         formatNumber(m.sortinoRatio),
         formatNumber(m.calmarRatio),
@@ -6722,7 +6775,7 @@ export const formatGateComparisonContract = ({
         formatPct(m.maxDrawdownPctOfTotalProfit),
         formatNumber(m.averageProfitPerDay),
         formatNumber(m.averageProfitPerMonth),
-        formatNumber(m.cadencePerWeek, 3),
+        formatNumber(decision.cadencePerWeek, 3),
       ]),
     ),
     '',
@@ -6732,24 +6785,43 @@ export const formatGateComparisonContract = ({
       ['Slice', 'Gate', 'N', 'Events', 'WR', 'PF', 'PnL', 'MaxDD', 'Max batch'],
       slices.flatMap((slice, index) =>
         policies.map(({ policy, label }) => {
-          const m =
+          const decision =
             index === 0
               ? policy.periods.full
               : index === 1
                 ? policy.qualityThresholds[slice]
                 : policy.directions[slice];
+          if (
+            economicBasis === 'realized' &&
+            index === 1 &&
+            decision?.trades &&
+            decision.trades !== policy.periods.full.trades
+          )
+            throw new Error(
+              'Realized contract requires separately realized quality subsets',
+            );
+          const m =
+            economicBasis === 'realized'
+              ? index === 0
+                ? policy.realized.periods.full
+                : index > 1
+                  ? policy.realized.directions[slice]
+                  : decision?.trades
+                    ? policy.realized.periods.full
+                    : decision
+              : decision;
           return [
             index > 1 ? `${slice} q${beforeReport.run.minQuality}+` : slice,
             label,
             ...(m
               ? [
                   m.trades,
-                  m.events,
+                  decision.events,
                   formatPct(m.winRate),
                   formatNumber(m.profitFactor),
                   formatNumber(m.totalProfit),
                   formatNumber(m.maxDrawdown),
-                  m.maxBatch,
+                  decision.maxBatch,
                 ]
               : Array(7).fill('n/a')),
           ];
@@ -6800,21 +6872,26 @@ export const formatGateComparisonContract = ({
             'development 60%',
             report.run.trainRows,
             report.run.trainEvents,
+            economicBasis === 'realized' ? policy.realized.train : policy.train,
             policy.train,
           ],
           ...policy.developmentStability.map((block, index) => [
             `development block ${index + 1}`,
             block.rows,
             block.events,
+            economicBasis === 'realized'
+              ? policy.realized.developmentStability[index].metrics
+              : block.metrics,
             block.metrics,
           ]),
           [
             'outer test 40%, historical',
             report.run.testRows,
             report.run.testEvents,
+            economicBasis === 'realized' ? policy.realized.test : policy.test,
             policy.test,
           ],
-        ].map(([partition, rows, events, m]) => [
+        ].map(([partition, rows, events, m, decision]) => [
           partition,
           rows,
           events,
@@ -6823,7 +6900,7 @@ export const formatGateComparisonContract = ({
           formatNumber(m.profitFactor),
           formatNumber(m.totalProfit),
           formatNumber(m.maxDrawdown),
-          m.maxBatch,
+          decision.maxBatch,
         ]),
       ),
       '',
@@ -7980,6 +8057,16 @@ export const main = async () => {
     return;
   }
   let variants = await loadVariants(options.variants, options.spec);
+  const regimeStudy = options.regimeStudy
+    ? validateRegimeStudy(
+        JSON.parse(
+          await fsp.readFile(
+            path.resolve(projectRoot, options.regimeStudy),
+            'utf8',
+          ),
+        ),
+      )
+    : null;
   const symbolCohorts = options.symbolCohorts
     ? loadSymbolCohorts({ projectRoot, file: options.symbolCohorts })
     : null;
@@ -8015,6 +8102,7 @@ export const main = async () => {
     frameworkRepositoryRoot,
     filePaths,
     variants: options.movingAverageStudy ? [] : variants,
+    snapshotAuditPaths: (regimeStudy?.snapshotAudits ?? []).map((d) => d.path),
     minQuality: options.minQuality,
     includeGateContext: options.includeGateContext,
     featurePattern,
@@ -8043,6 +8131,7 @@ export const main = async () => {
   }
   const report = buildAblationReport({
     ...loaded,
+    regimeStudy,
     variants,
     minQuality: options.minQuality,
     qualityThresholds: options.qualityThresholds,

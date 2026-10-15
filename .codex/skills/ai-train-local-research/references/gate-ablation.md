@@ -113,6 +113,43 @@ merge id.
 
 ## Variants
 
+### Fixed market-regime diagnosis
+
+`--regimeStudy <json>` adds retrospective explanatory cohorts **after** the
+named streams have frozen their approvals and capacity. It never reranks a
+regime slice or searches thresholds. Use the existing `--spec` for raw-core
+pass-through and the exact frozen gate. The study JSON specifies `streams`,
+`periods` (`id`, epoch-ms `start`/`end`), and `dimensions` (`id`, causal feature
+`path`, `scope`, `units`, plus sorted numeric `edges` or explicit `categories`).
+Optional `comparePeriods` pairs decompose expectancy change into market-mix
+and within-regime changes. These are descriptive associations, not causal proof.
+Numeric bins are half-open; missing/null/invalid inputs get an explicit missing
+bucket. Period membership uses decision time; economic cohorts sort completed
+outcomes by actual exit. Monthly direction/mix and exit-reason/cost summaries
+are included. Gross PnL already contains modeled slippage: fees are subtracted
+once and slippage is reported separately. No live fill or prospective claim.
+Run `node --test scripts/market-regime-diagnostics.test.mjs` for this contour.
+
+Optional `snapshotAudits` (`id`, original payload `path`) diagnoses saved
+numeric setup values separately as missing/null/zero/positive/negative/invalid.
+These data-quality cells never enter regime predicates or gate approvals.
+
+Use `scripts/symbol-mix-diagnostics.mjs <frozen-report.json> <regime-spec.json>
+<output.json>` for a common-symbol panel from the already saved approval trace.
+It retains all common symbols and a separate count-only five-trades-per-period
+sensitivity panel, separates later symbols absent from the earlier trace, and
+decomposes mean-PnL change into symbol mix and within-symbol effects. Absence
+from a trace is not a listing date. Output binds the input/spec SHA256. It
+reports economic summaries only, without pretending decision traces establish
+exit-ordered risk. Run its adjacent `symbol-mix-diagnostics.test.mjs` tests.
+
+For a formatted completed-trade contract, pass `economicBasis: 'realized'` to
+`formatGateComparisonContract`. It uses realized outcome/risk/partitions and
+directional economics while preserving decision-time cadence/events/capacity.
+Partially overlapping positive q(N+1)+ subsets require their own realized
+evidence and fail closed instead of borrowing qN+ risk. Default decision basis
+is preserved for existing callers.
+
 Pass each hypothesis as:
 
 ```text

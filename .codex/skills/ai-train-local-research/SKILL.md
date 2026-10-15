@@ -57,6 +57,13 @@ For calendar-duration stability diagnostics from frozen realized equity, use
 time under water and recovery duration without rebuilding approvals. Keep
 full-history diagnostics separate from development-only candidate selection.
 
+For explanatory market-regime attribution, use `--regimeStudy` on the permanent
+ablation tool. It slices already frozen approvals, preserves capacity identities,
+keeps missing context explicit, and reports directional/monthly market mix,
+exit reasons, costs and mix-versus-within-regime expectancy changes. Read the
+fixed market-regime diagnosis contract in the ablation reference. This is
+retrospective explanation, not a new gate search or an untouched validation.
+
 For frozen historical-coverage symbol groups, use `--symbolCohorts` with
 `--realizedMetrics`. It reports complete group economics without moving the
 common partitions, repeating capacity selection, or exposing membership as a
