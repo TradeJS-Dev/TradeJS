@@ -119,6 +119,12 @@ export interface RuntimeDeploymentHeartbeat {
   pid: number;
   startedAt: number;
   lastCycleAt: number;
+  observedAt?: number;
+  deploymentCompositionId?: string;
+  lastSuccessfulCycleAt?: number;
+  lastFailedCycleAt?: number;
+  cycleStatus?: 'completed' | 'failed';
+  telemetryPersistence?: 'flushed' | 'failed';
   lastError?: string;
 }
 

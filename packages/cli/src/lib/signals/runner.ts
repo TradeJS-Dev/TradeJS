@@ -326,6 +326,7 @@ export const createSignalsRunner = (
       new Array<RuntimeStrategyCloseNotification>();
     let status: 'completed' | 'failed' = 'completed';
     let failureMessage: string | undefined;
+    let telemetryPersistence: 'flushed' | 'failed' = 'flushed';
     let activeSession: SignalsSession | undefined;
     let projectHooks: TradejsConfigHooks | undefined;
     let afterSignalsHookContext: Omit<
@@ -759,6 +760,7 @@ export const createSignalsRunner = (
       try {
         await runtimeSignalEvaluations.flush();
       } catch (error) {
+        telemetryPersistence = 'failed';
         logger.error(
           'runtime signal evaluation flush failed: %s',
           (error as Error)?.message || String(error),
@@ -776,6 +778,10 @@ export const createSignalsRunner = (
           pid: process.pid,
           startedAt: activeSession.startedAt,
           lastCycleAt: Date.now(),
+          deploymentCompositionId:
+            activeSession.deployment.deploymentCompositionId,
+          cycleStatus: status,
+          telemetryPersistence,
           ...(failureMessage ? { lastError: failureMessage } : {}),
         });
       }
@@ -1026,6 +1032,7 @@ export const createSignalsRunner = (
           await saveRuntimeDeploymentHeartbeat(config.userName, {
             deploymentId: session.deployment.id,
             status: 'stopped',
+            deploymentCompositionId: session.deployment.deploymentCompositionId,
             pid: process.pid,
             startedAt: session.startedAt,
             lastCycleAt: Date.now(),

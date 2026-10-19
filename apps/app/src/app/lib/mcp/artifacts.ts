@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -10,6 +11,7 @@ import {
   mcpId,
   mcpProjectRoot,
   readMcpDeployments,
+  redactMcpJobLog,
 } from '@tradejs/node/mcp';
 
 interface CatalogEntry {
@@ -107,6 +109,8 @@ export interface McpArtifactListOptions {
   kind?: CatalogEntry['kind'];
   offset?: number;
   limit?: number;
+  startTime?: number;
+  endTime?: number;
 }
 
 export const listMcpArtifacts = async (
@@ -123,6 +127,15 @@ export const listMcpArtifacts = async (
     limit > 100
   )
     throw new Error('Invalid artifact list pagination');
+  if (
+    (options.startTime !== undefined &&
+      !Number.isSafeInteger(options.startTime)) ||
+    (options.endTime !== undefined && !Number.isSafeInteger(options.endTime)) ||
+    (options.startTime !== undefined &&
+      options.endTime !== undefined &&
+      options.startTime >= options.endTime)
+  )
+    throw new Error('Invalid artifact window');
   const { deployments } = await readMcpDeployments(userName);
   const allowed = new Set(deployments.map((row) => row.id));
   const pending = [
@@ -151,6 +164,20 @@ export const listMcpArtifacts = async (
         )
           continue;
         if (options.kind && artifact.kind !== options.kind) continue;
+        const window = artifact.manifest.window as {
+          startTime: number;
+          endTime: number;
+        };
+        if (
+          options.startTime !== undefined &&
+          window.endTime <= options.startTime
+        )
+          continue;
+        if (
+          options.endTime !== undefined &&
+          window.startTime >= options.endTime
+        )
+          continue;
         await mcpStorage.put(storageKey(userName, artifact.id), artifact, 3600);
         items.push({
           id: artifact.id,
@@ -158,7 +185,10 @@ export const listMcpArtifacts = async (
           deploymentId: artifact.deploymentId,
           sha256: artifact.sha256,
           bytes: artifact.bytes,
-          window: artifact.manifest.window,
+          window,
+          artifactId: artifact.manifest.artifactId,
+          deploymentCompositionId: artifact.manifest.deploymentCompositionId,
+          runtimeEvidence: artifact.manifest.runtimeEvidence,
         });
       } catch {
         invalidBundles++;
@@ -173,7 +203,11 @@ export const listMcpArtifacts = async (
           });
       }
   }
-  items.sort((left, right) => left.id.localeCompare(right.id));
+  items.sort(
+    (left, right) =>
+      right.window.endTime - left.window.endTime ||
+      left.id.localeCompare(right.id),
+  );
   const page = items.slice(offset, offset + limit);
   const nextOffset =
     offset + page.length < items.length ? offset + page.length : null;
@@ -186,7 +220,12 @@ export const listMcpArtifacts = async (
     truncated: pending.length > 0 || nextOffset != null,
     scanTruncated: pending.length > 0,
     invalidOrInaccessibleBundles: invalidBundles,
-    note: 'Only verified, user-owned bundles available on this host are included.',
+    order: 'window.endTime_desc_id_asc',
+    coverage: {
+      retentionStartTime: null,
+      completeness: 'host_local_verified_bundles_only',
+    },
+    note: 'Only verified, user-owned bundles available on this host are included. Excluded bundle counts combine inaccessible and invalid data; reasons and paths are withheld to protect other users. Missing bundles do not prove no activity.',
   };
 };
 
@@ -205,28 +244,84 @@ export const resolveMcpArtifact = async (userName: string, id: string) => {
   return verified;
 };
 
+type ArtifactFile = 'payload' | 'manifest.json' | '.complete' | 'replay.log';
+
+const artifactFile = async (artifact: CatalogEntry, file: ArtifactFile) => {
+  const target =
+    file === 'payload'
+      ? artifact.payloadPath
+      : path.join(artifact.bundleDir, file);
+  if (
+    !['payload', 'manifest.json', '.complete', 'replay.log'].includes(file) ||
+    (file === 'replay.log' && artifact.kind !== 'runtime-feedback-replay')
+  )
+    throw new Error('Invalid artifact file');
+  const resolved = await checkPayload(target);
+  if (file === 'payload')
+    return {
+      path: resolved,
+      file,
+      bytes: artifact.bytes,
+      sha256: artifact.sha256,
+    };
+  const bytes = await readFile(resolved);
+  // Log files are original bundle bytes. Refuse export if credential redaction
+  // would be required; never silently change bytes advertised for verification.
+  if (
+    file === 'replay.log' &&
+    bytes
+      .toString('utf8')
+      .split('\n')
+      .some(
+        (line) =>
+          (line.length <= 1000 && redactMcpJobLog(line) !== line) ||
+          line.length > 1000,
+      )
+  )
+    throw new Error(
+      'Invalid artifact file: log requires redaction; use job_get_logs',
+    );
+  return {
+    path: resolved,
+    file,
+    bytes: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+};
+
 export const readMcpArtifactChunk = async (
   userName: string,
   id: string,
   offset: number,
   length: number,
+  file: ArtifactFile = 'payload',
 ) => {
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(length) ||
+    length < 1
+  )
+    throw new Error('Invalid artifact chunk range');
   const artifact = await resolveMcpArtifact(userName, id);
-  const handle = await open(await confinedPath(artifact.payloadPath), 'r');
+  const selected = await artifactFile(artifact, file);
+  if (offset > selected.bytes) throw new Error('Invalid artifact chunk offset');
+  const handle = await open(selected.path, 'r');
   try {
     const buffer = Buffer.alloc(
-      Math.min(length, Math.max(0, artifact.bytes - offset)),
+      Math.min(length, Math.max(0, selected.bytes - offset)),
     );
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
     return {
       id,
       offset,
-      bytes: artifact.bytes,
-      sha256: artifact.sha256,
+      file,
+      bytes: selected.bytes,
+      sha256: selected.sha256,
       encoding: 'base64',
       data: buffer.subarray(0, bytesRead).toString('base64'),
       nextOffset:
-        offset + bytesRead < artifact.bytes ? offset + bytesRead : null,
+        offset + bytesRead < selected.bytes ? offset + bytesRead : null,
     };
   } finally {
     await handle.close();
@@ -236,10 +331,29 @@ export const readMcpArtifactChunk = async (
 export const readMcpDiagnosticReport = async (userName: string, id: string) => {
   const artifact = await resolveMcpArtifact(userName, id);
   const payload = JSON.parse(await readFile(artifact.payloadPath, 'utf8'));
+  const files = [];
+  for (const file of [
+    'payload',
+    'manifest.json',
+    '.complete',
+    ...(artifact.kind === 'runtime-feedback-replay' ? ['replay.log'] : []),
+  ] as ArtifactFile[]) {
+    try {
+      const { path: _path, ...descriptor } = await artifactFile(artifact, file);
+      files.push({ ...descriptor, available: true });
+    } catch {
+      files.push({
+        file,
+        available: false,
+        reason: 'file_unavailable_or_requires_redaction',
+      });
+    }
+  }
   // Large reports stay available through artifact_get with original checksums.
   return {
     id,
     manifest: artifact.manifest,
+    files,
     bytes: artifact.bytes,
     sha256: artifact.sha256,
     ...(artifact.bytes <= 96000

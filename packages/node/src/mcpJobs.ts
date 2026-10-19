@@ -211,7 +211,7 @@ export const readAuthorizedMcpJob = async (
   return job;
 };
 
-const redactJobLog = (line: string) =>
+export const redactMcpJobLog = (line: string) =>
   line
     .replace(/\u001b\[[0-9;]*m/g, '')
     .replace(/\b(Bearer|Basic)\s+\S+/gi, '$1 [redacted]')
@@ -242,7 +242,7 @@ export const readMcpJobLogs = async (
   const lines: string[] = [];
   let bytes = 0;
   for (const line of job.logs.slice(offset, offset + limit)) {
-    const redacted = redactJobLog(line);
+    const redacted = redactMcpJobLog(line);
     const size = Buffer.byteLength(JSON.stringify(redacted)) + 1;
     if (bytes + size > 48000) break;
     lines.push(redacted);

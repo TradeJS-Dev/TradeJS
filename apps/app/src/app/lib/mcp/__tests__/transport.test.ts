@@ -2,6 +2,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { POST, GET } from '../../../mcp/route';
+import { McpCursorError } from '@tradejs/node/mcp';
 import type { McpPrincipal } from '@tradejs/types';
 const mockPrincipal: McpPrincipal = {
   userName: 'alice',
@@ -11,6 +12,7 @@ const mockPrincipal: McpPrincipal = {
 };
 let mockAuthenticated = true;
 const mockReadLogs = jest.fn();
+const mockReadRuntime = jest.fn();
 const mockReadArtifact = jest.fn();
 const mockRateLimit = jest.fn();
 jest.mock('../oauth', () => ({
@@ -34,6 +36,12 @@ jest.mock('../artifacts', () => ({
 }));
 jest.mock('@tradejs/node/mcp', () => ({
   mcpId: (value: string) => value,
+  McpCursorError: class extends Error {
+    constructor(readonly code: string) {
+      super('Invalid storage cursor');
+    }
+  },
+  readMcpRuntimePage: (...args: unknown[]) => mockReadRuntime(...args),
   redactMcpData: (value: unknown) => value,
   readMcpMarket: async () => ({ items: [{ symbol: 'BTCUSDT' }] }),
   readMcpJobLogs: (...args: unknown[]) => mockReadLogs(...args),
@@ -42,6 +50,7 @@ beforeEach(() => {
   mockAuthenticated = true;
   mockPrincipal.scopes = ['market:read'];
   mockReadLogs.mockReset();
+  mockReadRuntime.mockReset();
   mockReadArtifact.mockReset();
   mockRateLimit.mockReset().mockResolvedValue(true);
 });
@@ -273,4 +282,48 @@ test('invalid JSON consumes the ordinary budget and oversized bodies stay bounde
   mockRateLimit.mockClear();
   expect((await POST(request('x'.repeat(65537)))).status).toBe(413);
   expect(mockRateLimit).not.toHaveBeenCalled();
+});
+
+test('runtime cursor errors and continuation guidance survive the HTTP tool boundary', async () => {
+  mockPrincipal.scopes = ['runtime:read'];
+  mockReadRuntime.mockRejectedValue(new McpCursorError('CURSOR_EXPIRED'));
+  const client = new Client({ name: 'runtime-cursor-test', version: '1.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+      fetch: async (url, init) =>
+        init?.method === 'POST' ? POST(new Request(String(url), init)) : GET(),
+    }),
+  );
+  try {
+    const args = {
+      deploymentId: 'production',
+      cursor: 'a'.repeat(64),
+      startTime: 1000,
+      endTime: 2000,
+      limit: 2,
+    };
+    const result = await client.callTool({
+      name: 'runtime_list_evaluations',
+      arguments: args,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      data: {
+        code: 'CURSOR_EXPIRED',
+        recovery: expect.stringContaining('same window'),
+      },
+    });
+    expect(mockReadRuntime).toHaveBeenCalledWith('alice', 'evaluations', args);
+    expect(
+      (
+        await client.callTool({
+          name: 'runtime_list_evaluations',
+          arguments: { ...args, limit: 51 },
+        })
+      ).isError,
+    ).toBe(true);
+    expect(mockReadRuntime).toHaveBeenCalledTimes(1);
+  } finally {
+    await client.close();
+  }
 });

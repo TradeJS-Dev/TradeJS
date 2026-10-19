@@ -30,13 +30,37 @@ export const saveRuntimeDeploymentHeartbeat = async (
   userName: string,
   heartbeat: RuntimeDeploymentHeartbeat,
 ) => {
+  const previous = await getRuntimeDeploymentHeartbeat(
+    userName,
+    heartbeat.deploymentId,
+  );
+  const sameProcess =
+    previous?.pid === heartbeat.pid &&
+    previous.startedAt === heartbeat.startedAt &&
+    previous.deploymentCompositionId === heartbeat.deploymentCompositionId;
+  const value: RuntimeDeploymentHeartbeat = {
+    ...heartbeat,
+    observedAt: Date.now(),
+    lastSuccessfulCycleAt:
+      heartbeat.cycleStatus === 'completed'
+        ? heartbeat.lastCycleAt
+        : sameProcess
+          ? previous.lastSuccessfulCycleAt
+          : undefined,
+    lastFailedCycleAt:
+      heartbeat.cycleStatus === 'failed'
+        ? heartbeat.lastCycleAt
+        : sameProcess
+          ? previous.lastFailedCycleAt
+          : undefined,
+  };
   await setData(
     redisKeys.runtimeDeploymentHeartbeat(
       userName,
       normalizeDeploymentId(heartbeat.deploymentId),
     ),
-    heartbeat,
+    value,
     { expire: 0 },
   );
-  return heartbeat;
+  return value;
 };

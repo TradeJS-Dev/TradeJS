@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createIndicators } from '@tradejs/core/indicators';
 import { intervalToMs } from '@tradejs/core/data';
 import {
@@ -223,6 +223,17 @@ export const readMcpStrategies = async (
   };
 };
 
+export class McpCursorError extends Error {
+  constructor(readonly code: 'CURSOR_EXPIRED' | 'CURSOR_MISMATCH') {
+    super(
+      code === 'CURSOR_EXPIRED'
+        ? 'Invalid storage cursor: expired or unavailable; restart the same window and deduplicate record identities'
+        : 'Invalid storage cursor: user, account or filters changed',
+    );
+    this.name = 'McpCursorError';
+  }
+}
+const RUNTIME_CURSOR_TTL = 86400;
 type RuntimeCursor = {
   binding: string;
   scan: string;
@@ -241,6 +252,7 @@ export const readMcpRuntimePage = async (
     endTime: number;
     strategy?: string;
     symbol?: string;
+    limit?: number;
   },
 ) => {
   const deployment = await requireMcpDeployment(userName, request.deploymentId);
@@ -250,8 +262,22 @@ export const readMcpRuntimePage = async (
       : kind === 'evaluations'
         ? redisKeys.runtimeSignalEvaluationBuckets(userName)
         : redisKeys.runtimeTrades(userName);
-  const { cursor: _cursor, ...filters } = request;
-  const binding = mcpId(JSON.stringify({ userName, kind, ...filters }));
+  const limit = request.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Error('Select a page limit of 1–50');
+  // Explicit fields make identity independent of JSON argument insertion order.
+  const binding = mcpId(
+    JSON.stringify({
+      userName,
+      kind,
+      accountId: deployment.accountId,
+      deploymentId: request.deploymentId,
+      startTime: request.startTime,
+      endTime: request.endTime,
+      strategy: request.strategy ?? null,
+      symbol: request.symbol ?? null,
+    }),
+  );
   let state: RuntimeCursor = {
     binding,
     scan: '0',
@@ -264,33 +290,52 @@ export const readMcpRuntimePage = async (
     const saved = await mcpStorage.get<RuntimeCursor>(
       `cursor:${request.cursor}`,
     );
-    if (!saved || saved.binding !== binding)
-      throw new Error('Invalid storage cursor');
-    state = saved;
-  }
-  if (
-    !state.keys.length &&
-    !state.values.length &&
-    (!state.scanned || state.scan !== '0')
-  ) {
-    const page = await scanDataKeys(prefix, state.scan);
-    state = { ...state, scan: page.cursor, keys: page.keys, scanned: true };
-  }
-  if (!state.values.length && state.keys.length) {
-    const key = state.keys[0];
-    if (kind === 'orders') {
-      state.keys.shift();
-      if (!key.slice(prefix.length).startsWith('days:'))
-        state.values = [await getDataStrict(key)];
-    } else {
-      const page = await scanHashJson(key, state.hash);
-      state.values = page.values;
-      state.hash = page.cursor;
-      if (page.cursor === '0') state.keys.shift();
-    }
+    if (!saved) throw new McpCursorError('CURSOR_EXPIRED');
+    if (saved.binding !== binding) throw new McpCursorError('CURSOR_MISMATCH');
+    state = structuredClone(saved);
   }
   const items: Record<string, unknown>[] = [];
-  for (let row of state.values.splice(0, 50)) {
+  let storageReads = 0;
+  let inspected = 0;
+  let responseBytes = 0;
+  // Bound work as well as output. Sparse scans may still require continuation.
+  while (items.length < limit && storageReads < 40 && inspected < 1000) {
+    if (!state.values.length) {
+      if (!state.keys.length) {
+        if (state.scanned && state.scan === '0') break;
+        const page = await scanDataKeys(prefix, state.scan);
+        storageReads++;
+        state.scan = page.cursor;
+        state.scanned = true;
+        state.keys = page.keys.filter((key) => {
+          if (kind === 'orders')
+            return !key.slice(prefix.length).startsWith('days:');
+          const suffix = key.slice(prefix.length);
+          const day = suffix.slice(0, 10);
+          // Runtime buckets use the shared storage-day convention. Ignore unrelated day/strategy buckets.
+          return (
+            day >= getRuntimeStorageDayKey(request.startTime) &&
+            day <= getRuntimeStorageDayKey(request.endTime - 1) &&
+            (!request.strategy || suffix.slice(11) === request.strategy)
+          );
+        });
+        if (!state.keys.length) continue;
+      }
+      const key = state.keys[0];
+      storageReads++;
+      if (kind === 'orders') {
+        state.keys.shift();
+        state.values = [await getDataStrict(key)];
+      } else {
+        const page = await scanHashJson(key, state.hash);
+        state.values = page.values;
+        state.hash = page.cursor;
+        if (page.cursor === '0') state.keys.shift();
+      }
+      if (!state.values.length) continue;
+    }
+    let row = state.values.shift();
+    inspected++;
     if (
       kind === 'signals' &&
       isMcpRecord(row) &&
@@ -324,12 +369,24 @@ export const readMcpRuntimePage = async (
       additionalIndicators: _additional,
       ...summary
     } = row;
+    const bytes = Buffer.byteLength(JSON.stringify(summary));
+    if (bytes > 80000)
+      throw new Error(
+        'Response too large. Use runtime_get_signal for record details.',
+      );
+    if (responseBytes + bytes > 80000) {
+      state.values.unshift(row);
+      break;
+    }
+    responseBytes += bytes;
     items.push(summary);
   }
   let next = '0';
   if (state.values.length || state.keys.length || state.scan !== '0') {
-    next = mcpId(randomUUID());
-    await mcpStorage.put(`cursor:${next}`, state, 600);
+    // Content-addressed continuations make retries return the same next token.
+    next = mcpId(JSON.stringify(state));
+    if (!(await mcpStorage.put(`cursor:${next}`, state, RUNTIME_CURSOR_TTL)))
+      throw new Error('MCP cursor persistence failed');
   }
   return {
     items,
@@ -339,7 +396,17 @@ export const readMcpRuntimePage = async (
     source: 'runtime_storage',
     window: { startTime: request.startTime, endTime: request.endTime },
     coverage: 'stored_records_only',
-    note: 'Missing records do not prove no evaluation occurred. Continue until cursor is 0; cursors expire after 10 minutes.',
+    pagination: {
+      scanComplete: next === '0',
+      storageReads,
+      inspected,
+      cursorTtlSeconds: RUNTIME_CURSOR_TTL,
+      consistency: 'mutable_storage_scan',
+      order: 'storage_scan',
+      retentionStartTime: null,
+      persistenceCompleteness: 'unknown',
+    },
+    note: 'Continue until cursor=0, including empty pages. Cursors are shared across server processes and retained for 24 hours. Retry identical requests after transport failures. If CURSOR_EXPIRED, restart the same window and deduplicate record identities. Storage scans may repeat rows and are not immutable snapshots; missing records do not prove no activity.',
   };
 };
 

@@ -6,6 +6,7 @@ import {
   cancelMcpJob,
   enqueueMcpJob,
   mcpId,
+  McpCursorError,
   publicMcpJob,
   readAuthorizedMcpJob,
   readMcpBacktestPage,
@@ -82,6 +83,7 @@ const runtimePage = {
   endTime: timestamp,
   strategy: identifier.optional(),
   symbol: symbol.optional(),
+  limit: z.number().int().min(1).max(50).default(50),
 };
 
 export const createTradejsMcpServer = (principal: McpPrincipal) => {
@@ -165,6 +167,21 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
             structuredContent: { data: result },
           };
         } catch (error) {
+          if (error instanceof McpCursorError) {
+            const data = {
+              code: error.code,
+              message: error.message,
+              recovery:
+                error.code === 'CURSOR_EXPIRED'
+                  ? 'Restart cursor=0 with the same window and filters; deduplicate record identities. Do not move startTime to the last record: storage order is not chronological.'
+                  : 'Restore the original user, account and filters or start a new traversal.',
+            };
+            return {
+              isError: true,
+              content: [{ type: 'text' as const, text: JSON.stringify(data) }],
+              structuredContent: { data },
+            };
+          }
           const message = error instanceof Error ? error.message : '';
           // Filesystem, connector and database errors may contain secrets or paths.
           const safe =
@@ -268,7 +285,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
   for (const kind of ['signals', 'evaluations', 'orders'] as const) {
     tool(
       `runtime_list_${kind}`,
-      `Read a bounded storage page of ${kind}. Window is half-open [startTime,endTime), at most 7 days. Continue even after an empty page until cursor=0.`,
+      `Read a bounded storage page of ${kind}. Window is half-open [startTime,endTime), at most 7 days. Continue even after an empty page until cursor=0. Shared cursors last 24 hours; retry the identical request after transport errors. Storage order is not chronological; CURSOR_EXPIRED requires restarting the same window and deduplicating identities.`,
       ['runtime:read'],
       runtimePage,
       async (args) => {
@@ -401,6 +418,8 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
       kind: z.enum(['runtime-evidence', 'runtime-feedback-replay']).optional(),
       offset: z.number().int().min(0).default(0),
       limit: z.number().int().min(1).max(100).default(20),
+      startTime: timestamp.optional(),
+      endTime: timestamp.optional(),
     },
     async (args) => listMcpArtifacts(principal.userName, args),
   );
@@ -414,12 +433,15 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
   );
   tool(
     'artifact_get',
-    'Read an owned verified artifact in base64 chunks. Concatenate decoded bytes, verify total size and SHA-256 before local analysis. No filesystem path is accepted.',
+    'Read an owned verified artifact in base64 chunks. Concatenate decoded bytes, verify total size and SHA-256 before local analysis. Select a file listed by diagnostics_get_report (payload by default). Each file has its own size and SHA-256. No filesystem path is accepted.',
     ['diagnostics:read'],
     {
       artifactId,
       offset: z.number().int().min(0).default(0),
       length: z.number().int().min(1).max(48000).default(48000),
+      file: z
+        .enum(['payload', 'manifest.json', '.complete', 'replay.log'])
+        .default('payload'),
     },
     async (args) =>
       readMcpArtifactChunk(
@@ -427,6 +449,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
         args.artifactId,
         args.offset,
         args.length,
+        args.file,
       ),
   );
   tool(

@@ -3,11 +3,15 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { publishRuntimeEvidenceBundle } from '@tradejs/node/diagnostics';
+import {
+  publishRuntimeEvidenceBundle,
+  sealRuntimeFeedbackReplayBundle,
+} from '@tradejs/node/diagnostics';
 import {
   listMcpArtifacts,
   readMcpArtifactChunk,
   resolveMcpArtifact,
+  readMcpDiagnosticReport,
 } from '../artifacts';
 let mockRoot = '';
 let mockAllowed = true;
@@ -23,6 +27,8 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 jest.mock('@tradejs/node/mcp', () => ({
   mcpProjectRoot: () => mockRoot,
+  redactMcpJobLog: (line: string) =>
+    jest.requireActual('@tradejs/node/mcp').redactMcpJobLog(line),
   mcpId: (value: string) =>
     require('node:crypto').createHash('sha256').update(value).digest('hex'),
   isMcpRecord: (value: unknown) =>
@@ -35,6 +41,15 @@ jest.mock('@tradejs/node/mcp', () => ({
 }));
 const artifact = {
   reportType: 'runtime-evidence',
+  producer: {
+    schemaVersion: 1,
+    projectSha: 'a'.repeat(40),
+    imageDigest: 'sha256:' + 'b'.repeat(64),
+    runtimePackageManifest: {
+      file: 'runtime-package-manifest.json',
+      sha256: 'c'.repeat(64),
+    },
+  },
   generatedAt: 2000,
   userName: 'alice',
   window: { startTime: 1000, endTime: 2000 },
@@ -175,3 +190,90 @@ test('payload symlinks cannot escape the data root even with a valid hash', asyn
   await fs.symlink(outside, bundle.payloadPath);
   expect((await listMcpArtifacts('alice')).items).toHaveLength(0);
 });
+
+test('window filtering precedes pagination and newest windows sort first', async () => {
+  await publish(2000);
+  await publish(3000);
+  const page = await listMcpArtifacts('alice', {
+    startTime: 2000,
+    endTime: 3000,
+    limit: 1,
+  });
+  expect(page.items).toHaveLength(1);
+  expect(page.items[0].window.endTime).toBe(3000);
+  expect(page.nextOffset).toBeNull();
+  expect(
+    (await listMcpArtifacts('alice')).items.map((row) => row.window.endTime),
+  ).toEqual([3000, 2000]);
+});
+
+test('bundle metadata downloads reproduce original bytes and independent checksums', async () => {
+  const bundle = await publish();
+  const [item] = (await listMcpArtifacts('alice')).items;
+  const report = await readMcpDiagnosticReport('alice', item.id);
+  for (const file of ['manifest.json', '.complete'] as const) {
+    const descriptor = report.files.find((row) => row.file === file)!;
+    expect(descriptor.available).toBe(true);
+    const chunk = await readMcpArtifactChunk('alice', item.id, 0, 48000, file);
+    const bytes = Buffer.from(chunk.data, 'base64');
+    expect(bytes).toEqual(await fs.readFile(path.join(bundle.bundleDir, file)));
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(chunk.sha256);
+  }
+  await expect(readMcpArtifactChunk('alice', item.id, -1, 48)).rejects.toThrow(
+    'range',
+  );
+  await expect(
+    readMcpArtifactChunk('alice', item.id, item.bytes + 1, 48),
+  ).rejects.toThrow('offset');
+  await expect(
+    readMcpArtifactChunk('alice', item.id, 0, 48, '../../outside' as never),
+  ).rejects.toThrow('file');
+});
+
+test.each(['cache-only replay completed\n', 'API_KEY=secret-value\n'])(
+  'replay bundles export complete safe logs or explicitly withhold sensitive bytes',
+  async (log) => {
+    const evidence = await publish();
+    const bundleDir = path.join(mockRoot, 'data/runtime-feedback/run-1');
+    await fs.mkdir(bundleDir, { recursive: true });
+    await fs.writeFile(
+      path.join(bundleDir, 'replay-runtime-evidence.json'),
+      JSON.stringify({
+        reportType: 'replay-runtime-evidence',
+        userName: 'alice',
+        window: artifact.window,
+        deployment: artifact.deployment,
+        replay: { cycleCount: 1 },
+      }),
+    );
+    await fs.writeFile(path.join(bundleDir, 'replay.log'), log);
+    await sealRuntimeFeedbackReplayBundle({
+      bundleDir,
+      runId: 'run-1',
+      runtimeEvidenceBundle: evidence,
+    });
+    const [item] = (
+      await listMcpArtifacts('alice', { kind: 'runtime-feedback-replay' })
+    ).items;
+    const report = await readMcpDiagnosticReport('alice', item.id);
+    const safe = !log.includes('API_KEY');
+    expect(
+      report.files.find((row) => row.file === 'replay.log')?.available,
+    ).toBe(safe);
+    if (safe) {
+      const chunk = await readMcpArtifactChunk(
+        'alice',
+        item.id,
+        0,
+        48000,
+        'replay.log',
+      );
+      expect(Buffer.from(chunk.data, 'base64').toString()).toBe(log);
+      expect(chunk.sha256).toBe(createHash('sha256').update(log).digest('hex'));
+    } else {
+      await expect(
+        readMcpArtifactChunk('alice', item.id, 0, 48000, 'replay.log'),
+      ).rejects.toThrow('redaction');
+    }
+  },
+);

@@ -71,7 +71,10 @@ beforeEach(() => {
   mockAccount.mockImplementation(async (_user: string, account: string) =>
     account === 'account' ? {} : null,
   );
-  mockScan.mockResolvedValue({ cursor: '0', keys: ['bucket'] });
+  mockScan.mockResolvedValue({
+    cursor: '0',
+    keys: ['users:alice:evaluations:days:1970-01-01:Test'],
+  });
 });
 test('only account-bound deployments are visible', async () => {
   expect(
@@ -222,4 +225,84 @@ test('saved results paginate all result groups without returning filesystem path
   expect(mockRead).toHaveBeenCalledWith(
     'users:alice:backtests:results:TrendLine:mcp:timestamp',
   );
+});
+
+test('cursor accepts reordered equivalent filters and retries return the same page', async () => {
+  mockHash.mockResolvedValue({
+    cursor: '0',
+    values: Array.from({ length: 55 }, (_, i) => ({
+      evaluationId: i,
+      deploymentId: 'production',
+      accountId: 'account',
+      timestamp: 2000,
+    })),
+  });
+  const first = await readMcpRuntimePage('alice', 'evaluations', request);
+  const reordered = {
+    endTime: request.endTime,
+    startTime: request.startTime,
+    cursor: first.cursor,
+    deploymentId: request.deploymentId,
+  };
+  const second = await readMcpRuntimePage('alice', 'evaluations', reordered);
+  expect(second.items).toHaveLength(5);
+  expect(
+    (await readMcpRuntimePage('alice', 'evaluations', reordered)).items,
+  ).toEqual(second.items);
+});
+
+test('runtime pages fill across empty storage scans within a bounded budget', async () => {
+  mockScan
+    .mockReset()
+    .mockResolvedValueOnce({ cursor: '1', keys: [] })
+    .mockResolvedValueOnce({
+      cursor: '0',
+      keys: ['users:alice:evaluations:days:1970-01-01:Test'],
+    });
+  mockHash.mockResolvedValue({
+    cursor: '0',
+    values: [
+      {
+        evaluationId: 'found',
+        deploymentId: 'production',
+        accountId: 'account',
+        timestamp: 2000,
+      },
+    ],
+  });
+  const page = await readMcpRuntimePage('alice', 'evaluations', request);
+  expect(page.items).toHaveLength(1);
+  expect(page.cursor).toBe('0');
+});
+
+test('expired cursors have a recoverable code and sparse scans remain bounded', async () => {
+  await expect(
+    readMcpRuntimePage('alice', 'evaluations', {
+      ...request,
+      cursor: 'f'.repeat(64),
+    }),
+  ).rejects.toMatchObject({ code: 'CURSOR_EXPIRED' });
+  mockScan.mockResolvedValue({ cursor: '1', keys: [] });
+  const page = await readMcpRuntimePage('alice', 'evaluations', request);
+  expect(page.items).toHaveLength(0);
+  expect(page.cursor).not.toBe('0');
+  expect(page.pagination).toMatchObject({
+    storageReads: 40,
+    scanComplete: false,
+  });
+  expect(mockScan).toHaveBeenCalledTimes(40);
+});
+
+test('storage filters exclude day buckets outside the requested window', async () => {
+  mockScan.mockResolvedValue({
+    cursor: '0',
+    keys: [
+      'users:alice:evaluations:days:1969-12-31:Test',
+      'users:alice:evaluations:days:1970-01-02:Test',
+    ],
+  });
+  expect(
+    (await readMcpRuntimePage('alice', 'evaluations', request)).items,
+  ).toEqual([]);
+  expect(mockHash).not.toHaveBeenCalled();
 });
