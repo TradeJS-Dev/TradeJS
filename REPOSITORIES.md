@@ -54,10 +54,16 @@ README, and agent instructions.
 | `TradeJS-Strategy-Triangle`                      | `@tradejs/strategy-triangle`                        | Triangle                       |
 | `TradeJS-Strategy-VolatilityCompressionBreakout` | `@tradejs/strategy-volatility-compression-breakout` | VolatilityCompressionBreakout  |
 | `TradeJS-Strategy-VolumeDivergence`              | `@tradejs/strategy-volume-divergence`               | VolumeDivergence               |
+| `TradeJS-Strategy-VwapReversion`                 | `@tradejs/strategy-vwap-reversion`                  | VwapReversion                  |
 
 TrendLine and ReverseTrendLine are the only combined strategy-repository
 exception. They share family mechanics and must version those mechanics
 atomically. Do not introduce a separate trendline family kit.
+
+`RangeReclaim` is a local unpublished strategy in
+`~/dev/tradejs/tradejs-strategy-range-reclaim`. It owns its source, configuration,
+figures and tests; operational research stays in `TradeJS-Project`. It has no
+configured remote and is outside the public Base preset.
 
 ## Change routing
 
