@@ -1,3 +1,4 @@
+import { createProjectSkillBundle, PROJECT_SKILL_NAMES } from '../skillBundle';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -249,4 +250,27 @@ describe('create-tradejs', () => {
       rmSync(target, { recursive: true, force: true });
     }
   });
+});
+
+test('skill bundles exclude generated Python bytecode', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'skill-cache-'));
+  try {
+    for (const name of PROJECT_SKILL_NAMES) {
+      mkdirSync(path.join(root, name, '__pycache__'), { recursive: true });
+      writeFileSync(path.join(root, name, 'SKILL.md'), 'instructions');
+      writeFileSync(
+        path.join(root, name, '__pycache__/cached.pyc'),
+        Buffer.from([255, 0]),
+      );
+      writeFileSync(path.join(root, name, 'cached.pyo'), Buffer.from([255, 0]));
+    }
+    const bundle = createProjectSkillBundle(root);
+    expect(
+      Object.keys(bundle.files).some(
+        (file) => file.includes('__pycache__') || file.endsWith('.pyo'),
+      ),
+    ).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

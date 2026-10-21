@@ -52,6 +52,7 @@ const readDirectory = (
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
     (left, right) => left.name.localeCompare(right.name),
   )) {
+    if (entry.name === '__pycache__' || /\.py[co]$/.test(entry.name)) continue;
     const absolutePath = path.join(directory, entry.name);
     const projectPath = toProjectPath(projectDirectory, entry.name);
     if (entry.isDirectory()) {
