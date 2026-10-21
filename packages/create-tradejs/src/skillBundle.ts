@@ -26,6 +26,7 @@ export const PROJECT_SKILL_NAMES = [
   'strategy-forward-start',
   'strategy-forward-status',
   'tradejs-mcp',
+  'tradejs-docs',
   'strategy-risk-scale',
   'strategy-release',
 ] as const;

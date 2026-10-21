@@ -1,0 +1,4 @@
+interface:
+  display_name: "Документация TradeJS"
+  short_description: "Понятные инструкции TradeJS с проверкой по коду"
+  default_prompt: "Используй $tradejs-docs, чтобы написать или отредактировать статью TradeJS для её читателя и проверить технические детали."

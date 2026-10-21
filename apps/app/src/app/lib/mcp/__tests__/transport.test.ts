@@ -4,6 +4,12 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { POST, GET } from '../../../mcp/route';
 import { McpCursorError } from '@tradejs/node/mcp';
 import type { McpPrincipal } from '@tradejs/types';
+const mockVerification = jest
+  .fn()
+  .mockResolvedValue({ fresh: true, report: { ok: true } });
+jest.mock('../verification', () => ({
+  readDeploymentVerification: (...args: unknown[]) => mockVerification(...args),
+}));
 const mockPrincipal: McpPrincipal = {
   userName: 'alice',
   clientId: 'client',
@@ -35,6 +41,11 @@ jest.mock('../artifacts', () => ({
   readMcpArtifactChunk: (...args: unknown[]) => mockReadArtifact(...args),
 }));
 jest.mock('@tradejs/node/mcp', () => ({
+  requireMcpDeployment: async () => ({
+    id: 'production',
+    accountId: 'alice-account',
+    deploymentCompositionId: 'dc1:abc',
+  }),
   mcpId: (value: string) => value,
   McpCursorError: class extends Error {
     constructor(readonly code: string) {
@@ -323,6 +334,36 @@ test('runtime cursor errors and continuation guidance survive the HTTP tool boun
       ).isError,
     ).toBe(true);
     expect(mockReadRuntime).toHaveBeenCalledTimes(1);
+  } finally {
+    await client.close();
+  }
+});
+
+test('deployment verification is scoped, read-only and bound to the authenticated account', async () => {
+  mockPrincipal.scopes = ['runtime:read'];
+  const client = new Client({ name: 'verification-test', version: '1.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+      fetch: async (url, init) =>
+        init?.method === 'POST' ? POST(new Request(String(url), init)) : GET(),
+    }),
+  );
+  try {
+    const tools = await client.listTools();
+    expect(
+      tools.tools.find((t) => t.name === 'runtime_get_verification')
+        ?.annotations?.readOnlyHint,
+    ).toBe(true);
+    await client.callTool({
+      name: 'runtime_get_verification',
+      arguments: { deploymentId: 'production' },
+    });
+    expect(mockVerification).toHaveBeenCalledWith(expect.any(String), {
+      userName: 'alice',
+      deploymentId: 'production',
+      accountId: 'alice-account',
+      deploymentCompositionId: 'dc1:abc',
+    });
   } finally {
     await client.close();
   }

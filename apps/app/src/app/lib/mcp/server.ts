@@ -1,3 +1,4 @@
+import { readDeploymentVerification } from './verification';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -274,6 +275,27 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     ['runtime:read'],
     {},
     async () => readMcpDeployments(principal.userName),
+  );
+  tool(
+    'runtime_get_verification',
+    'Read the checksum-verified Deploy-owned package manifest, actual image digest, deployment verification and health observation. fresh=false means the collector is stale; heartbeat is not a replacement. No job or runtime mutation is performed.',
+    ['runtime:read'],
+    { deploymentId: identifier },
+    async (args) => {
+      const deployment = await requireMcpDeployment(
+        principal.userName,
+        args.deploymentId,
+      );
+      return readDeploymentVerification(
+        String(process.env.PROJECT_CWD || process.cwd()),
+        {
+          userName: principal.userName,
+          deploymentId: deployment.id,
+          accountId: deployment.accountId,
+          deploymentCompositionId: deployment.deploymentCompositionId,
+        },
+      );
+    },
   );
   tool(
     'runtime_list_strategies',
