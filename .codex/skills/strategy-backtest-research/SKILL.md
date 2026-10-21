@@ -360,6 +360,16 @@ it exactly.
   `node .codex/skills/strategy-backtest-research/scripts/research-notes-check.mjs`
   after creating or editing research records.
 
+## Completed research storage
+
+At the final handoff, follow
+[`references/research-retention.md`](references/research-retention.md).
+Keep compact results and every frozen candidate permanently; remove temporary
+trade data and run-specific caches after all consuming research stages finish.
+When executing one experiment for an ongoing improvement study, hand its
+temporary-file inventory to the orchestrator and preserve its inputs until
+that study's final cleanup.
+
 ## Validation
 
 - Run the affected strategy tests after strategy edits, for example `yarn jest packages/strategies/src/<StrategyName> --runInBand`.

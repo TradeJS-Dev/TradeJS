@@ -638,6 +638,17 @@ Every new AI-gate study must:
 - downgrade `reproduction` from `complete` when any displayed metric or lineage
   cannot be recovered from the note after export deletion.
 
+## Completed study storage
+
+Follow
+[`../strategy-backtest-research/references/research-retention.md`](../strategy-backtest-research/references/research-retention.md)
+at the final handoff. Preserve candidate gate code/config and structured
+raw/approved/partition/terminal metrics, rejected hypotheses, test exposure and
+final charts. Remove trade/feature exports and intermediate datasets after all
+consumers finish. If this gate board is part of an ongoing improvement study,
+return its temporary-file inventory to that study's orchestrator instead of
+deleting shared inputs during the gate stage.
+
 ## Current repo conventions
 
 - Prefer `GPT-5 Mini` by default for non-local AI replay unless the user names another model.

@@ -324,12 +324,35 @@ export type StrategyEvidenceRetentionEntry = {
   kind:
     | 'operational_redis'
     | 'verbose_payload'
+    | 'research_payload'
+    | 'research_cache'
     | 'verified_runtime_bundle'
     | 'compact_ledger';
   createdAt: number;
   verified: boolean;
   aggregated: boolean;
   bytes: number;
+  /** Required for disposable research files; never inferred from their age. */
+  researchId?: string;
+  sha256?: string;
+};
+
+export type StrategyResearchRetention = {
+  researchId: string;
+  status: 'running' | 'completed' | 'blocked' | 'retired';
+  completedAt?: number;
+  /** Owner-approved disposal of an old incomplete study without another run. */
+  retirement?: {
+    policy: 'discard-unrecoverable-without-rerun';
+    reason: string;
+    missingEvidence: string[];
+  };
+  /** Compact records must embed configs, candidate source/gate and metrics. */
+  permanentArtifacts: Array<{
+    path: string;
+    sha256: string;
+    role: 'note' | 'candidates' | 'metrics' | 'ledger' | 'chart' | 'source';
+  }>;
 };
 
 export type StrategyEvidenceRetentionPlan = {

@@ -117,6 +117,29 @@ If a feature is not publish-ready for external users, document that limitation e
 - Keep root markdown focused on stable repository guidance and runnable internal workflows.
 - Strategy-specific agent workflows may live under `.codex/skills/` when they capture repeatable internal research or tuning procedures.
 
+## Completed research storage
+
+Keep compact research results and all frozen candidates permanently, including
+rejected hypotheses, exact code/config/gate, comparison scope, structured
+ALL/LONG/SHORT metrics and selection reasons. Before choosing new hypotheses,
+read these records and the trial ledger. At the end of the entire study, after
+all core/gate/comparison stages and charts are finished, verify those permanent
+records and remove its temporary trade rows, feature exports, trace streams,
+intermediate datasets and run-specific caches. Follow
+`.codex/skills/strategy-backtest-research/references/research-retention.md`.
+Do not delete shared inputs still needed by another study or infer completion
+from age. Runtime evidence and shared market history have separate policies.
+Saved metrics support comparison on the recorded scope; new trade-level
+analyses require rerunning the frozen candidate.
+
+Recover old compact results and candidate definitions from existing files only.
+If filling the gaps would require another run, retire the study with its
+original partial/blocked status, record the missing evidence and delete its
+temporary payloads without rerunning it. After final handoff, archive exact
+source/dirty changes and remove the dedicated worktree, including selected
+candidates. Retain their commit/branch and compact source archive. Protect
+canonical checkouts and worktrees still used by active research.
+
 ## Research Roots
 
 - `PROJECT_CWD` is the personal project and artifact root. Resolve `.env`,

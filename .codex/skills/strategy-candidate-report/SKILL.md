@@ -27,6 +27,13 @@ Creating a report or chart under `output/` is allowed.
 
 ## Report
 
+Completed studies may intentionally retain only compact results and candidate
+source/config. Read their permanent notes, manifests, ledgers and cleanup
+receipts before looking for raw exports. Missing intentionally removed trade
+data does not erase a recorded result or rejected hypothesis. Verify retained
+records and label the scope as saved metrics; new trade-level analysis requires
+a rerun. Reuse the saved final chart when raw rows have been removed.
+
 Show:
 
 - candidate ID, selection time, research ID, source/package revision, dirty

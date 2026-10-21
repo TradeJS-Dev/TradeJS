@@ -139,6 +139,15 @@ approval and a separate release decision.
 
 Use the default tiering unless the user later changes it:
 
+Completed research follows
+[`../../strategy-backtest-research/references/research-retention.md`](../../strategy-backtest-research/references/research-retention.md).
+Keep compact outcomes, all candidate definitions, configs, source/gate patches,
+trial ledgers and final charts permanently. Remove research trade payloads and
+run-specific caches immediately after the full study finishes and its compact
+records pass verification. Use `research_payload` or `research_cache` entries
+with an exact completed research binding; never apply this rule to runtime
+evidence. The tiers below apply to runtime data.
+
 - operational Redis evidence: 3 days;
 - reproducible verbose payloads: 14 days;
 - verified, aggregated runtime bundles: 90 days;

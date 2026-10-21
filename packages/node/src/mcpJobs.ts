@@ -159,7 +159,9 @@ export const enqueueMcpJob = async (
     ];
   } else if (kind === 'runtime-feedback-replay') {
     if (!worker.replayAvailable)
-      throw new Error('MCP replay worker requires an isolated Redis host');
+      throw new Error(
+        'MCP replay worker requires a configured image-bound runner and isolated Redis',
+      );
     // Evidence paths are resolved by the verified catalog adapter, never by clients.
     if (typeof request.verifiedEvidencePath !== 'string')
       throw new Error('Select verified runtime evidence');

@@ -6,6 +6,10 @@ const mockJobs = new Map<string, unknown>();
 let mockController = new AbortController();
 const mockSpawn = jest.fn();
 const mockSetConfig = jest.fn();
+const mockReplayProcess = jest.fn();
+jest.mock('../../lib/mcpReplayProcess', () => ({
+  buildMcpReplayProcess: (...args: unknown[]) => mockReplayProcess(...args),
+}));
 jest.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
@@ -64,6 +68,10 @@ const job = (
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockReplayProcess.mockResolvedValue({
+    executable: 'docker',
+    args: ['run', 'frozen-image'],
+  });
   mockJobs.clear();
   mockController = new AbortController();
   mockSpawn.mockImplementation(() => {
@@ -72,7 +80,10 @@ beforeEach(() => {
       stderr: new EventEmitter(),
       pid: 999999,
     });
-    queueMicrotask(() => child.emit('exit', 0));
+    queueMicrotask(() => {
+      child.emit('exit', 0);
+      child.emit('close', 0);
+    });
     return child;
   });
 });
@@ -116,6 +127,13 @@ test('feedback subprocess receives isolated storage, read-only SQL and no inheri
   );
   try {
     await main({ signal: mockController.signal });
+    expect(mockReplayProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'id' }),
+    );
+    expect(mockSpawn.mock.calls[0].slice(0, 2)).toEqual([
+      'docker',
+      ['run', 'frozen-image'],
+    ]);
     const options = mockSpawn.mock.calls[0][2];
     expect(options.env).toMatchObject({
       REDIS_HOST: 'isolated-replay',
@@ -129,4 +147,16 @@ test('feedback subprocess receives isolated storage, read-only SQL and no inheri
     delete process.env.OPENAI_API_KEY;
     delete process.env.MCP_REPLAY_REDIS_HOST;
   }
+});
+
+test('image runner prerequisite errors persist without starting a current-image fallback', async () => {
+  mockReplayProcess.mockRejectedValue(
+    new Error('Image-bound replay requires explicit mounts'),
+  );
+  mockJobs.set('jobs:id', job('queued', { kind: 'runtime-feedback-replay' }));
+  await main({ signal: mockController.signal });
+  expect(mockSpawn).not.toHaveBeenCalled();
+  expect((mockJobs.get('jobs:id') as McpJob).error).toContain(
+    'explicit mounts',
+  );
 });

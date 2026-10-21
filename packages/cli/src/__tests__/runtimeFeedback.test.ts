@@ -1,3 +1,4 @@
+import { buildMcpReplayProcess } from '../lib/mcpReplayProcess';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -107,6 +108,42 @@ describe('production runtime feedback replay', () => {
       lineageKeys: [],
     });
   };
+
+  test('worker selects the evidence image instead of the current worker image', async () => {
+    const evidence = await createRuntimeEvidence();
+    const command = await buildMcpReplayProcess({
+      evidencePath: evidence.payloadPath,
+      outDir: path.join(rootDir, 'out'),
+      runId: 'frozen',
+      projectRoot: rootDir,
+      env: {
+        MCP_REPLAY_HOST_PROJECT_ROOT: '/host/project',
+        MCP_REPLAY_NETWORK: 'isolated',
+        MCP_REPLAY_IMAGE_REPOSITORY: 'ghcr.io/example/project',
+        MCP_REPLAY_REDIS_HOST: 'replay-redis',
+        TRADEJS_PROJECT_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
+        BYBIT_API_SECRET: 'never-pass',
+      },
+    });
+    expect(command.executable).toBe('docker');
+    expect(command.args).toContain(
+      `ghcr.io/example/project@${producer.imageDigest}`,
+    );
+    expect(command.args).toContain(
+      `TRADEJS_PROJECT_SHA=${producer.projectSha}`,
+    );
+    expect(command.args.join(' ')).not.toContain('never-pass');
+    expect(command.args.join(' ')).toContain('readonly');
+    await expect(
+      buildMcpReplayProcess({
+        evidencePath: evidence.payloadPath,
+        outDir: rootDir,
+        runId: 'x',
+        projectRoot: rootDir,
+        env: {},
+      }),
+    ).rejects.toThrow('Image-bound replay requires');
+  });
 
   const createFeedback = async () => {
     const evidence = await createRuntimeEvidence();

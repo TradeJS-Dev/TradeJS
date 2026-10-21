@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import chalk from 'chalk';
+import { applyResearchRetention } from '../lib/strategyRelease/researchRetention';
 import {
   buildStrategyLiveDiagnosis,
   buildStrategyMonitoringProfile,
@@ -125,7 +126,26 @@ export const runStrategyReleaseCommand = async (options: {
   }
   if (options.command === 'retention') {
     const plan = planStrategyEvidenceRetention(input);
-    if (options.apply) {
+    const researchEntries = plan.delete.filter(
+      (entry) =>
+        entry.kind === 'research_payload' || entry.kind === 'research_cache',
+    );
+    const receiptPath = options.outputPath ?? `${inputPath}.receipt.json`;
+    if (researchEntries.length) {
+      if (researchEntries.length !== plan.delete.length) {
+        throw new Error(
+          'Research cleanup requires a separate inventory from runtime retention',
+        );
+      }
+      await applyResearchRetention({
+        projectRoot: process.env.PROJECT_CWD ?? process.cwd(),
+        research: input.research,
+        entries: researchEntries,
+        receiptPath,
+        apply: Boolean(options.apply),
+        protectedPaths: [inputPath],
+      });
+    } else if (options.apply) {
       await Promise.all(plan.delete.map((entry) => fs.rm(entry.path)));
     }
     return {
@@ -135,6 +155,7 @@ export const runStrategyReleaseCommand = async (options: {
       deleteCount: plan.delete.length,
       bytesReclaimable: plan.bytesReclaimable,
       delete: plan.delete.map((entry) => entry.path),
+      ...(researchEntries.length && options.apply ? { receiptPath } : {}),
     };
   }
   if (options.command === 'diagnose') {

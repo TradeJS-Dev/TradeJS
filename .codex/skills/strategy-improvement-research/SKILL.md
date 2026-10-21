@@ -34,6 +34,10 @@ source edits does not need a worktree.
   on the worktree branch and hand off the exact commit SHA; do not retain
   rejected behavior as source commits.
 
+After the final evidence handoff, remove the dedicated worktree even when a
+candidate was selected. Keep its commit/branch, source snapshot and any
+uncommitted candidate patches under the shared research-retention contract.
+
 ## Authority boundary
 
 You may refresh research artifacts, run cache-backed research, edit strategy
@@ -122,6 +126,15 @@ diagnostics, not standalone optimization targets. Classify window support as
 underpowered below 20 events, diagnostic at 20–49, and selection-grade at 50+.
 
 ## Handoff
+
+Before the final answer, complete
+[`../strategy-backtest-research/references/research-retention.md`](../strategy-backtest-research/references/research-retention.md).
+Preserve compact results, all candidate definitions, source/gate patches,
+selection history and final charts. Then remove the finished study's trade
+exports, trace streams, intermediate datasets and run-specific caches. Do not
+clean up after an individual round or core run while gate/comparison work still
+needs its rows. Read permanent notes and ledgers before inventing new trials;
+the absence of deleted exports is not a reason to repeat an old hypothesis.
 
 Create or update the existing checksum-verified strategy-release/candidate
 manifest rather than inventing a second pointer format. Freeze candidate ID,

@@ -230,6 +230,14 @@ calendar days`. Include zero-activity side cohorts rather than omitting them.
 - State any metric that cannot be recovered from the structured snapshot under
   `Limitations and next step` and lower the reproduction status accordingly.
 
+## Completed study cleanup
+
+Follow [research-retention.md](research-retention.md) after the entire study
+finishes. Keep compact results and all frozen candidates permanently. Trade
+rows, matched-pair payloads, exports and run-specific caches are temporary.
+The permanent note must contain aggregate metrics and exact candidate source
+or retained source patches before those temporary files are removed.
+
 ## Historical migration
 
 Historical split records retain their original body under a common v1

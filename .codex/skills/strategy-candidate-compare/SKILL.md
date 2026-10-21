@@ -27,6 +27,12 @@ it must not change either composition.
 
 ## Make the comparison fair
 
+Use retained compact results and frozen candidate definitions even when a
+completed study's trade data was intentionally removed. Check the permanent
+record and cleanup receipt. Compare saved metrics on identical scopes; a new
+period or unavailable metric needs a frozen bridge evaluation, not an invented
+value or a repeat of the original optimization.
+
 Use the maximum common timestamp range, point-in-time universe, symbols,
 interval, fees, slippage, entry delay, risk unit, and execution assumptions.
 Normalize PnL and drawdown per unit of `MAX_LOSS_VALUE` when production and the

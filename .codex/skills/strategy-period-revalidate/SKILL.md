@@ -45,3 +45,8 @@ Update the immutable comparison evidence and candidate freshness without
 rewriting the original selection record. State whether the incumbent remains
 best under the frozen objective and choose exactly one next skill: report,
 research, forward-start, forward-status, or risk-scale.
+
+Before finishing, follow
+[`../strategy-backtest-research/references/research-retention.md`](../strategy-backtest-research/references/research-retention.md).
+Keep the frozen candidates and compact old/new metric comparison permanently,
+then remove this completed evaluation's trade exports and run-specific caches.

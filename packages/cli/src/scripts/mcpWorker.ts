@@ -10,6 +10,8 @@ import {
 } from '@tradejs/node/mcp';
 import type { McpJob } from '@tradejs/types';
 
+import { buildMcpReplayProcess } from '../lib/mcpReplayProcess';
+
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const leaseKey = 'worker:lease';
 const LEASE_SECONDS = 15;
@@ -38,7 +40,12 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
   const heartbeatValue = () => ({
     observedAt: Date.now(),
     packageManifestSha256: manifestHash,
-    replayAvailable: Boolean(process.env.MCP_REPLAY_REDIS_HOST),
+    replayAvailable: Boolean(
+      process.env.MCP_REPLAY_REDIS_HOST &&
+        process.env.MCP_REPLAY_HOST_PROJECT_ROOT &&
+        process.env.MCP_REPLAY_NETWORK &&
+        process.env.MCP_REPLAY_IMAGE_REPOSITORY,
+    ),
   });
   const stop = () => {
     stopping = true;
@@ -171,7 +178,40 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
           TRADEJS_TIMESCALE_READ_ONLY: 'true',
         });
       }
-      child = spawn(process.execPath, [process.argv[1], ...started.args], {
+      let command = {
+        executable: process.execPath,
+        args: [process.argv[1], ...started.args],
+      };
+      try {
+        if (started.kind === 'runtime-feedback-replay')
+          command = await buildMcpReplayProcess({
+            evidencePath: String(started.request.verifiedEvidencePath),
+            outDir: mcpJobDirectory(started),
+            runId: started.id,
+            projectRoot: process.env.PROJECT_CWD || process.cwd(),
+            env: process.env,
+          });
+      } catch (error) {
+        await mcpStorage.compare(
+          jobKey,
+          started,
+          {
+            ...started,
+            status: 'failed',
+            finishedAt: Date.now(),
+            updatedAt: Date.now(),
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Replay preparation failed',
+          },
+          MCP_JOB_TTL,
+        );
+        continue;
+      }
+      if (started.kind === 'runtime-feedback-replay' && process.env.PG_PASSWORD)
+        jobEnv.PG_PASSWORD = process.env.PG_PASSWORD;
+      child = spawn(command.executable, command.args, {
         cwd: process.env.PROJECT_CWD || process.cwd(),
         env: jobEnv,
         detached: process.platform !== 'win32',
@@ -233,6 +273,21 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         );
         currentChild.once('exit', (code) => resolve({ code }));
       });
+      if (started.kind === 'runtime-feedback-replay') {
+        // Killing the Docker client alone can leave its container running.
+        await new Promise<void>((resolve) => {
+          const cleanup = spawn(
+            'docker',
+            ['rm', '--force', `tradejs-replay-${started.id}`],
+            {
+              stdio: 'ignore',
+              timeout: 10000,
+            },
+          );
+          cleanup.once('error', () => resolve());
+          cleanup.once('close', () => resolve());
+        });
+      }
       clearTimeout(timeout);
       clearInterval(monitor);
       child = undefined;
