@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { mcpStorage, redisKeys, setDataStrict } from '@tradejs/infra/redis';
 import {
   mcpJobDirectory,
@@ -26,6 +26,23 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
   let renewing = false;
   let leaseLost = false;
   let manifestHash = '';
+  let replayReady = false;
+  const updateReplayReady = async () => {
+    try {
+      const root =
+        process.env.MCP_REPLAY_REQUEST_ROOT ||
+        `${process.env.PROJECT_CWD || process.cwd()}/data/mcp-replay-requests`;
+      const heartbeat = JSON.parse(
+        await readFile(`${root}/heartbeat.json`, 'utf8'),
+      );
+      replayReady =
+        Number.isFinite(heartbeat.observedAt) &&
+        Date.now() - heartbeat.observedAt >= 0 &&
+        Date.now() - heartbeat.observedAt < 120000;
+    } catch {
+      replayReady = false;
+    }
+  };
   const signalChild = (signal: NodeJS.Signals) => {
     if (!child?.pid) return;
     try {
@@ -40,12 +57,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
   const heartbeatValue = () => ({
     observedAt: Date.now(),
     packageManifestSha256: manifestHash,
-    replayAvailable: Boolean(
-      process.env.MCP_REPLAY_REDIS_HOST &&
-        process.env.MCP_REPLAY_HOST_PROJECT_ROOT &&
-        process.env.MCP_REPLAY_NETWORK &&
-        process.env.MCP_REPLAY_IMAGE_REPOSITORY,
-    ),
+    replayAvailable: replayReady,
   });
   const stop = () => {
     stopping = true;
@@ -61,6 +73,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
     try {
       if (!(await mcpStorage.compare(leaseKey, owner, owner, LEASE_SECONDS)))
         throw new Error('Worker lease lost');
+      await updateReplayReady();
       await mcpStorage.put('worker:heartbeat', heartbeatValue(), LEASE_SECONDS);
     } catch {
       leaseLost = true;
@@ -72,6 +85,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
 
   try {
     manifestHash = await mcpPackageManifestHash();
+    await updateReplayReady();
     await mcpStorage.put('worker:heartbeat', heartbeatValue(), LEASE_SECONDS);
     let cursor = '0';
     do {
@@ -164,7 +178,9 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       if (started.kind === 'runtime-feedback-replay') {
         for (const name of Object.keys(jobEnv)) {
           if (
-            /secret|token|api.?key|private.?key|cookie|credential/i.test(name)
+            /secret|password|token|api.?key|private.?key|cookie|credential/i.test(
+              name,
+            )
           )
             delete jobEnv[name as keyof typeof jobEnv];
         }
@@ -209,8 +225,6 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         );
         continue;
       }
-      if (started.kind === 'runtime-feedback-replay' && process.env.PG_PASSWORD)
-        jobEnv.PG_PASSWORD = process.env.PG_PASSWORD;
       child = spawn(command.executable, command.args, {
         cwd: process.env.PROJECT_CWD || process.cwd(),
         env: jobEnv,
@@ -273,21 +287,6 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         );
         currentChild.once('exit', (code) => resolve({ code }));
       });
-      if (started.kind === 'runtime-feedback-replay') {
-        // Killing the Docker client alone can leave its container running.
-        await new Promise<void>((resolve) => {
-          const cleanup = spawn(
-            'docker',
-            ['rm', '--force', `tradejs-replay-${started.id}`],
-            {
-              stdio: 'ignore',
-              timeout: 10000,
-            },
-          );
-          cleanup.once('error', () => resolve());
-          cleanup.once('close', () => resolve());
-        });
-      }
       clearTimeout(timeout);
       clearInterval(monitor);
       child = undefined;

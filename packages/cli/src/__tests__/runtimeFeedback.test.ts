@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { buildMcpReplayProcess } from '../lib/mcpReplayProcess';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -109,40 +110,74 @@ describe('production runtime feedback replay', () => {
     });
   };
 
-  test('worker selects the evidence image instead of the current worker image', async () => {
+  test('worker sends exact evidence to the host without Docker access', async () => {
     const evidence = await createRuntimeEvidence();
-    const command = await buildMcpReplayProcess({
-      evidencePath: evidence.payloadPath,
-      outDir: path.join(rootDir, 'out'),
-      runId: 'frozen',
-      projectRoot: rootDir,
-      env: {
-        MCP_REPLAY_HOST_PROJECT_ROOT: '/host/project',
-        MCP_REPLAY_NETWORK: 'isolated',
-        MCP_REPLAY_IMAGE_REPOSITORY: 'ghcr.io/example/project',
-        MCP_REPLAY_REDIS_HOST: 'replay-redis',
-        TRADEJS_PROJECT_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
-        BYBIT_API_SECRET: 'never-pass',
-      },
+    const root = path.join(rootDir, 'data/mcp-replay-requests');
+    await fs.mkdir(root, { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'heartbeat.json'),
+      JSON.stringify({ observedAt: Date.now() }),
+    );
+    const dataRoot = path.join(rootDir, 'data');
+    const copied = path.join(dataRoot, 'evidence');
+    await fs.cp(path.dirname(evidence.payloadPath), copied, {
+      recursive: true,
     });
-    expect(command.executable).toBe('docker');
-    expect(command.args).toContain(
-      `ghcr.io/example/project@${producer.imageDigest}`,
+    const command = await buildMcpReplayProcess({
+      evidencePath: path.join(copied, 'runtime-evidence.json'),
+      outDir: path.join(rootDir, 'out'),
+      runId: 'a'.repeat(64),
+      projectRoot: rootDir,
+      env: {},
+    });
+    expect(command.executable).toBe(process.execPath);
+    expect(command.args.join(' ')).not.toContain('docker');
+    const child = spawn(command.executable, command.args, { stdio: 'ignore' });
+    const completed = new Promise<number | null>((resolve, reject) => {
+      child.once('exit', resolve);
+      child.once('error', reject);
+    });
+    try {
+      const requestPath = path.join(root, `${'a'.repeat(64)}.request`);
+      for (let attempt = 0; attempt < 50; attempt++) {
+        if (
+          await fs.stat(requestPath).then(
+            () => true,
+            () => false,
+          )
+        )
+          break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(
+        JSON.parse(await fs.readFile(requestPath, 'utf8')).payloadSha256,
+      ).toBe(JSON.parse(command.args.at(-1)!).payloadSha256);
+      await fs.writeFile(
+        path.join(root, `${'a'.repeat(64)}.result`),
+        JSON.stringify({ exitCode: 0, message: 'verified host result' }),
+      );
+      expect(await completed).toBe(0);
+    } finally {
+      child.kill();
+    }
+    const request = JSON.parse(command.args.at(-1)!);
+    expect(request).toMatchObject({
+      artifactId: evidence.manifest.artifactId,
+      evidence: 'evidence/runtime-evidence.json',
+    });
+    await fs.writeFile(
+      path.join(root, 'heartbeat.json'),
+      JSON.stringify({ observedAt: 0 }),
     );
-    expect(command.args).toContain(
-      `TRADEJS_PROJECT_SHA=${producer.projectSha}`,
-    );
-    expect(command.args.join(' ')).not.toContain('never-pass');
-    expect(command.args.join(' ')).toContain('readonly');
     await expect(
       buildMcpReplayProcess({
-        evidencePath: evidence.payloadPath,
+        evidencePath: path.join(copied, 'runtime-evidence.json'),
         outDir: rootDir,
-        runId: 'x',
+        runId: 'a'.repeat(64),
         projectRoot: rootDir,
         env: {},
       }),
-    ).rejects.toThrow('Image-bound replay requires');
+    ).rejects.toThrow('heartbeat is stale');
   });
 
   const createFeedback = async () => {

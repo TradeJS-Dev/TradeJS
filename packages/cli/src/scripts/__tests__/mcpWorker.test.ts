@@ -69,8 +69,8 @@ const job = (
 beforeEach(() => {
   jest.clearAllMocks();
   mockReplayProcess.mockResolvedValue({
-    executable: 'docker',
-    args: ['run', 'frozen-image'],
+    executable: process.execPath,
+    args: ['host-request'],
   });
   mockJobs.clear();
   mockController = new AbortController();
@@ -131,8 +131,8 @@ test('feedback subprocess receives isolated storage, read-only SQL and no inheri
       expect.objectContaining({ runId: 'id' }),
     );
     expect(mockSpawn.mock.calls[0].slice(0, 2)).toEqual([
-      'docker',
-      ['run', 'frozen-image'],
+      process.execPath,
+      ['host-request'],
     ]);
     const options = mockSpawn.mock.calls[0][2];
     expect(options.env).toMatchObject({
