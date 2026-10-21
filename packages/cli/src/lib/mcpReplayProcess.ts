@@ -10,8 +10,11 @@ const path = require('node:path');
 const [root, id, request] = process.argv.slice(1);
 const file = path.join(root, id);
 fs.mkdirSync(root, {recursive:true});
-try { fs.writeFileSync(file + '.request', request, {flag:'wx'}); }
+const temporary = file + '.request.tmp-' + process.pid;
+fs.writeFileSync(temporary, request, {flag:'wx'});
+try { fs.linkSync(temporary, file + '.request'); }
 catch (error) { if (error.code !== 'EEXIST') throw error; if (fs.readFileSync(file + '.request', 'utf8') !== request) throw new Error('Replay request identity conflict'); }
+finally { fs.unlinkSync(temporary); }
 process.on('SIGTERM', () => { fs.writeFileSync(file + '.cancel', 'cancel'); process.exit(143); });
 const timer = setInterval(() => {
   try {
