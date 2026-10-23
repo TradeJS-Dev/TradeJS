@@ -6,7 +6,12 @@ import {
   discoverRuntimeEvidenceCompositionSnapshots,
   publishRuntimeEvidenceCompositionSnapshot,
 } from '../lib/runtimeEvidenceCompositionSnapshots';
-import { loadRuntimeEvidenceCompositionSnapshots } from '../lib/runtimeEvidenceCompositions';
+import {
+  loadRuntimeEvidenceCompositionSnapshots,
+  splitRuntimeEvidenceByComposition,
+} from '../lib/runtimeEvidenceCompositions';
+import { publishRuntimeEvidenceBundle } from '../lib/runtimeEvidenceArtifacts';
+import type { RuntimeDebugEvidence } from '../lib/runtimeDebugEvidence';
 import type { RuntimeEvidenceDeploymentSnapshot } from '../lib/runtimeEvidenceDeployment';
 
 const deployment: RuntimeEvidenceDeploymentSnapshot = {
@@ -184,6 +189,175 @@ describe('runtime evidence composition snapshots', () => {
           currentProducer: producer,
         }),
       ).rejects.toThrow('Current runtime deployment conflicts');
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('historical producer changes', () => {
+  it.each([false, true])(
+    'isolates historical producer ambiguity regardless of discovery order (reverse=%s)',
+    async (reverse) => {
+      const rootDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'runtime-evidence-producers-'),
+      );
+      const otherProducer = {
+        ...producer,
+        projectSha: '4'.repeat(40),
+        imageDigest: `sha256:${'5'.repeat(64)}`,
+      };
+      const currentDeployment = {
+        ...deployment,
+        deploymentCompositionId: 'dc1:2222222222222222',
+      };
+      const evidence: RuntimeDebugEvidence = {
+        dayKeys: [],
+        trades: [],
+        signals: [],
+        evaluations: [],
+        evaluationStatsBuckets: [],
+        lineageScopes: [],
+      };
+      try {
+        const sources = reverse
+          ? [otherProducer, producer, producer]
+          : [producer, producer, otherProducer];
+        for (const [index, source] of sources.entries()) {
+          await publishRuntimeEvidenceBundle({
+            publishRoot: rootDir,
+            deploymentId: deployment.id,
+            userName: 'root',
+            startTime: index * 1000,
+            endTime: (index + 1) * 1000,
+            artifact: {
+              reportType: 'runtime-evidence',
+              userName: 'root',
+              generatedAt: 3000,
+              deployment: { ...deployment, tickers: ['BTCUSDT'] },
+              producer: source,
+              window: { startTime: index * 1000, endTime: (index + 1) * 1000 },
+              runtime: {
+                counts: {},
+                trades: [],
+                signals: [],
+                evaluations: [],
+                lineageScopes: [],
+              },
+            },
+            counts: {},
+            lineageKeys: [],
+          });
+        }
+        const snapshots = await loadRuntimeEvidenceCompositionSnapshots({
+          publishRoot: rootDir,
+          currentDeployment,
+          currentProducer: producer,
+        });
+        expect(
+          snapshots.get(deployment.deploymentCompositionId)?.producer,
+        ).toBeNull();
+        expect(
+          snapshots.get(deployment.deploymentCompositionId)?.producerVariants,
+        ).toHaveLength(2);
+        const strategy = deployment.strategies[0]!;
+        const scope = (compositionId: string) => ({
+          strategy: strategy.strategyName,
+          symbol: 'BTCUSDT',
+          deploymentId: deployment.id,
+          accountId: deployment.accountId,
+          firstTimestamp: 4000,
+          lastTimestamp: 5000,
+          lineage: {
+            schemaVersion: 3 as const,
+            strategyRevision: strategy.strategyRevision,
+            deploymentCompositionId: compositionId,
+            strategyPackageVersion: strategy.strategyPackageVersion,
+            strategyDependencyVersions: strategy.strategyDependencyVersions,
+            runtimePackageVersion: strategy.runtimePackageVersion,
+          },
+        });
+        const freshEvidence = {
+          ...evidence,
+          lineageScopes: [scope(currentDeployment.deploymentCompositionId)],
+        };
+        const fresh = splitRuntimeEvidenceByComposition({
+          evidence: freshEvidence,
+          snapshots,
+        });
+        expect(fresh).toHaveLength(1);
+        expect(fresh[0]?.producer).toEqual(producer);
+        expect(fresh[0]?.lineageScopes).toEqual(freshEvidence.lineageScopes);
+        expect(() =>
+          splitRuntimeEvidenceByComposition({
+            evidence: {
+              ...freshEvidence,
+              lineageScopes: [
+                ...freshEvidence.lineageScopes,
+                scope(deployment.deploymentCompositionId),
+              ],
+            },
+            snapshots,
+          }),
+        ).toThrow('Ambiguous runtime evidence producer');
+        const sameComposition = await loadRuntimeEvidenceCompositionSnapshots({
+          publishRoot: rootDir,
+          currentDeployment: deployment,
+          currentProducer: producer,
+        });
+        expect(() =>
+          splitRuntimeEvidenceByComposition({
+            evidence,
+            snapshots: sameComposition,
+            includeEmptyCompositionIds: [deployment.deploymentCompositionId],
+          }),
+        ).toThrow('Ambiguous runtime evidence producer');
+      } finally {
+        await fs.rm(rootDir, { recursive: true, force: true });
+      }
+    },
+  );
+  it('does not overwrite an old standalone snapshot with the current image for the same composition', async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'runtime-evidence-current-image-'),
+    );
+    try {
+      await publishRuntimeEvidenceCompositionSnapshot({
+        evidenceRoot: rootDir,
+        userName: 'root',
+        deployment,
+        producer,
+      });
+      const currentProducer = {
+        ...producer,
+        imageDigest: `sha256:${'9'.repeat(64)}`,
+      };
+      const snapshots = await loadRuntimeEvidenceCompositionSnapshots({
+        publishRoot: rootDir,
+        currentDeployment: deployment,
+        currentProducer,
+      });
+      expect(
+        snapshots.get(deployment.deploymentCompositionId)?.producerVariants,
+      ).toEqual([producer, currentProducer]);
+      expect(
+        (await discoverRuntimeEvidenceCompositionSnapshots(rootDir))[0]
+          ?.producer,
+      ).toEqual(producer);
+      expect(() =>
+        splitRuntimeEvidenceByComposition({
+          evidence: {
+            dayKeys: [],
+            trades: [],
+            signals: [],
+            evaluations: [],
+            evaluationStatsBuckets: [],
+            lineageScopes: [],
+          },
+          snapshots,
+          includeEmptyCompositionIds: [deployment.deploymentCompositionId],
+        }),
+      ).toThrow('Ambiguous runtime evidence producer');
     } finally {
       await fs.rm(rootDir, { recursive: true, force: true });
     }

@@ -20,6 +20,7 @@ export type RuntimeEvidenceCompositionSnapshot = {
   deployment: RuntimeEvidenceDeploymentSnapshot;
   producer: RuntimeEvidenceProducer | null;
   fallbackTickers?: string[];
+  producerVariants?: RuntimeEvidenceProducer[];
 };
 
 const stableSnapshotIdentity = (
@@ -52,16 +53,30 @@ export const loadRuntimeEvidenceCompositionSnapshots = async ({
     const known = snapshots.get(compositionId);
     if (
       known &&
-      (stableSnapshotIdentity(known.deployment) !==
-        stableSnapshotIdentity(snapshot.deployment) ||
-        producerIdentity(known.producer) !==
-          producerIdentity(snapshot.producer))
+      stableSnapshotIdentity(known.deployment) !==
+        stableSnapshotIdentity(snapshot.deployment)
     ) {
       throw new Error(
         `Conflicting runtime evidence snapshot for composition ${compositionId}`,
       );
     }
-    snapshots.set(compositionId, snapshot);
+    // A composition can survive a Project image change. Retain every exact
+    // producer instead of selecting whichever historical bundle was read last.
+    const producers = new Map<string, RuntimeEvidenceProducer>();
+    for (const source of [
+      ...(known?.producerVariants ?? []),
+      known?.producer,
+      snapshot.producer,
+    ]) {
+      if (source) producers.set(producerIdentity(source), source);
+    }
+    const producerVariants = [...producers.values()];
+    snapshots.set(compositionId, {
+      ...known,
+      ...snapshot,
+      producer: producerVariants.length === 1 ? producerVariants[0]! : null,
+      ...(producerVariants.length > 1 ? { producerVariants } : {}),
+    });
   };
 
   const compositionSnapshots =
@@ -109,7 +124,7 @@ export const loadRuntimeEvidenceCompositionSnapshots = async ({
       `Current runtime deployment conflicts with stored composition ${currentDeployment.deploymentCompositionId}`,
     );
   }
-  snapshots.set(currentDeployment.deploymentCompositionId, {
+  register({
     deployment: { ...currentDeployment, tickers: undefined },
     producer: currentProducer,
   });
@@ -195,6 +210,21 @@ export const splitRuntimeEvidenceByComposition = ({
     throw new Error(
       `Runtime evidence has no verified deployment snapshot for composition(s): ${missing.sort().join(', ')}`,
     );
+  }
+
+  // Runtime lineage v3 has no producer image field. If this window actually
+  // uses an ambiguous composition, neither a latest-image guess nor the
+  // collector's current image can establish its execution provenance.
+  for (const compositionId of observed) {
+    const variants = snapshots.get(compositionId)?.producerVariants;
+    if (variants && variants.length > 1) {
+      throw new Error(
+        `Ambiguous runtime evidence producer for composition ${compositionId}: ${variants
+          .map((source) => `${source.projectSha}@${source.imageDigest}`)
+          .sort()
+          .join(', ')}; runtime lineage has no producer image identity`,
+      );
+    }
   }
 
   return [...observed]
