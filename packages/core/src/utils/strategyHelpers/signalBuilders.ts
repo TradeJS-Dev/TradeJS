@@ -35,6 +35,7 @@ import {
   resolveLastTradeControllerParams,
 } from './state';
 import { IdGenerator, uuid } from '../uuid';
+import { createClosedCandlesReader } from './closedCandles';
 
 type AiRuntimeConfigLike = {
   AI_ENABLED?: boolean;
@@ -1408,8 +1409,16 @@ export const createStrategyAPI = <
     };
   };
   const getDecisionPriceContext = async () => resolveDecisionPriceContext();
+  const getClosedCandles = createClosedCandlesReader({
+    connector,
+    symbol,
+    interval,
+    env,
+    getDecisionPriceContext: resolveDecisionPriceContext,
+  });
 
   return {
+    getClosedCandles,
     skip: (code) => ({ kind: 'skip', code }),
     entry: async ({
       code,

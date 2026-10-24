@@ -176,6 +176,26 @@ export interface StrategyStateController<
   hash: () => string;
 }
 
+/** A bounded half-open window of source candles, independent of execution interval. */
+export interface StrategyClosedCandlesRequest {
+  interval: '15';
+  start: number;
+  end: number;
+  /** Maximum requested rows, including missing slots; at most 1536. */
+  limit: number;
+}
+
+export interface StrategyClosedCandlesSnapshot {
+  interval: '15';
+  start: number;
+  end: number;
+  /** Close time of the current execution candle, never wall-clock time. */
+  asOf: number;
+  candles: KlineChartData;
+  complete: boolean;
+  missingRanges: Array<{ start: number; end: number }>;
+}
+
 export interface StrategyAPI<
   TIndicators = IndicatorsHistorySnapshot | Record<string, unknown>,
 > {
@@ -195,6 +215,9 @@ export interface StrategyAPI<
     BaseStrategyContextSnapshot | undefined
   >;
   getDecisionPriceContext: () => Promise<StrategyDecisionPriceContext>;
+  getClosedCandles: (
+    request: StrategyClosedCandlesRequest,
+  ) => Promise<StrategyClosedCandlesSnapshot>;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   getDirectionalTpSlPrices: (
     params: StrategyDirectionalTpSlParams,

@@ -250,6 +250,37 @@ Returns the current closed candle decision context:
 
 This method does not advance indicators or load market history.
 
+### `strategyApi.getClosedCandles({ interval: '15', start, end, limit })`
+
+Reads a bounded, half-open `[start, end)` source window from the runtime's
+connector for the current symbol and venue. It can read 15m candles while
+the strategy executes on 1h. Call this method from core code, outside pure
+detector transitions, and retain only the bounded derived state you need.
+
+`start` and `end` are aligned 15m opening timestamps in UTC milliseconds.
+`limit` is a positive integer no larger than 1536 and must cover every slot
+in the requested window. Oversized, empty, misaligned and future windows
+are rejected before connector IO.
+
+The returned `asOf` is the current execution candle's opening timestamp plus
+its duration, captured before asynchronous loading. It never uses wall-clock
+time. The execution interval must be a fixed minute interval; calendar
+intervals are rejected. `end` cannot exceed `asOf`, and every returned source
+candle satisfies `openTimestamp + 15m <= asOf`.
+
+The result contains `interval`, `start`, `end`, `asOf`, chronological detached
+`candles`, `complete` and contiguous half-open `missingRanges`. Missing slots
+are not filled or silently truncated. Invalid OHLCV and duplicate timestamps
+are errors. Rows outside the requested closed window are excluded even if
+the connector returns them. Connector errors propagate to the caller.
+
+BACKTEST and PARITY always pass `cacheOnly: true` to the connector. CRON uses
+the same causal bounds and may load source history through the normal cached
+connector. The strategy cannot override the symbol, connector, causal time
+or historical cache policy through this method. The API does not retain a
+growing history or cache all requests. Strategies should read a daily profile
+window once per UTC day and keep its derived snapshot in their state controller.
+
 ### `strategyApi.getCurrentIndicatorsContext()`
 
 Returns the current strategy indicator snapshot and optional `baseContext`.
@@ -288,7 +319,7 @@ without a restored lifecycle checkpoint starts with an empty cooldown.
 
 ### Runtime Notes
 
-- StrategyAPI does not expose full market history to strategy cores.
+- StrategyAPI exposes bounded closed 15m source windows, not unbounded market history.
 - Entry and exit decision fields always come from the current closed candle.
 - `indicatorsState` is already wired with current bar by runtime.
 - `indicatorsState.snapshot()` is lazy-init safe via shared wrappers.
