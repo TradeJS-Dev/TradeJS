@@ -44,6 +44,7 @@ README, and agent instructions.
 | `TradeJS-Strategy-LiquidityZones`                | `@tradejs/strategy-liquidity-zones`                 | LiquidityZones                 |
 | `TradeJS-Strategy-MaStrategy`                    | `@tradejs/strategy-ma-strategy`                     | MaStrategy                     |
 | `TradeJS-Strategy-MarketFlushReversal`           | `@tradejs/strategy-market-flush-reversal`           | MarketFlushReversal            |
+| `TradeJS-Strategy-Range-Reclaim`                 | `@tradejs/strategy-range-reclaim`                   | RangeReclaim                   |
 | `TradeJS-Strategy-RelativeRotation`              | `@tradejs/strategy-relative-rotation`               | RelativeRotation               |
 | `TradeJS-Strategy-Shark`                         | `@tradejs/strategy-shark`                           | Shark                          |
 | `TradeJS-Strategy-StructureZones`                | `@tradejs/strategy-structure-zones`                 | StructureZones                 |
@@ -60,10 +61,15 @@ TrendLine and ReverseTrendLine are the only combined strategy-repository
 exception. They share family mechanics and must version those mechanics
 atomically. Do not introduce a separate trendline family kit.
 
-`RangeReclaim` is a local unpublished strategy in
-`~/dev/tradejs/tradejs-strategy-range-reclaim`. It owns its source, configuration,
-figures and tests; operational research stays in `TradeJS-Project`. It has no
-configured remote and is outside the public Base preset.
+`RangeReclaim` is published separately from the Base preset. Its canonical
+source is `~/dev/tradejs/tradejs-strategy-range-reclaim`; operational research
+stays in `TradeJS-Project`.
+
+`TrendPullback` and `ValueAreaReclaim` are local unpublished strategies in
+`~/dev/tradejs/tradejs-strategy-trend-pullback` and
+`~/dev/tradejs/tradejs-strategy-value-area-reclaim`. Each owns its source,
+configuration, figures and tests; neither has a configured remote or belongs to
+the Base preset. Their operational research also stays in `TradeJS-Project`.
 
 ## Change routing
 
