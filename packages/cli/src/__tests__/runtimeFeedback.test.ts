@@ -110,75 +110,97 @@ describe('production runtime feedback replay', () => {
     });
   };
 
-  test('worker sends exact evidence to the host without Docker access', async () => {
-    const evidence = await createRuntimeEvidence();
-    const root = path.join(rootDir, 'data/mcp-replay-requests');
-    await fs.mkdir(root, { recursive: true });
-    await fs.writeFile(
-      path.join(root, 'heartbeat.json'),
-      JSON.stringify({ observedAt: Date.now() }),
-    );
-    const dataRoot = path.join(rootDir, 'data');
-    const copied = path.join(dataRoot, 'evidence');
-    await fs.cp(path.dirname(evidence.payloadPath), copied, {
-      recursive: true,
-    });
-    const command = await buildMcpReplayProcess({
-      evidencePath: path.join(copied, 'runtime-evidence.json'),
-      outDir: path.join(rootDir, 'out'),
-      runId: 'a'.repeat(64),
-      projectRoot: rootDir,
-      env: {},
-    });
-    expect(command.executable).toBe(process.execPath);
-    expect(command.args.join(' ')).not.toContain('docker');
-    const child = spawn(command.executable, command.args, { stdio: 'ignore' });
-    const completed = new Promise<number | null>((resolve, reject) => {
-      child.once('exit', resolve);
-      child.once('error', reject);
-    });
-    try {
-      const requestPath = path.join(root, `${'a'.repeat(64)}.request`);
-      for (let attempt = 0; attempt < 50; attempt++) {
-        if (
-          await fs.stat(requestPath).then(
-            () => true,
-            () => false,
-          )
-        )
-          break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      expect(
-        JSON.parse(await fs.readFile(requestPath, 'utf8')).payloadSha256,
-      ).toBe(JSON.parse(command.args.at(-1)!).payloadSha256);
+  test.each([0, 1])(
+    'worker sends exact evidence and retains host failure details (exit %s)',
+    async (exitCode) => {
+      const evidence = await createRuntimeEvidence();
+      const root = path.join(rootDir, 'data/mcp-replay-requests');
+      await fs.mkdir(root, { recursive: true });
       await fs.writeFile(
-        path.join(root, `${'a'.repeat(64)}.result`),
-        JSON.stringify({ exitCode: 0, message: 'verified host result' }),
+        path.join(root, 'heartbeat.json'),
+        JSON.stringify({ observedAt: Date.now() }),
       );
-      expect(await completed).toBe(0);
-    } finally {
-      child.kill();
-    }
-    const request = JSON.parse(command.args.at(-1)!);
-    expect(request).toMatchObject({
-      artifactId: evidence.manifest.artifactId,
-      evidence: 'evidence/runtime-evidence.json',
-    });
-    await fs.writeFile(
-      path.join(root, 'heartbeat.json'),
-      JSON.stringify({ observedAt: 0 }),
-    );
-    await expect(
-      buildMcpReplayProcess({
+      const dataRoot = path.join(rootDir, 'data');
+      const copied = path.join(dataRoot, 'evidence');
+      await fs.cp(path.dirname(evidence.payloadPath), copied, {
+        recursive: true,
+      });
+      const command = await buildMcpReplayProcess({
         evidencePath: path.join(copied, 'runtime-evidence.json'),
-        outDir: rootDir,
+        outDir: path.join(rootDir, 'out'),
         runId: 'a'.repeat(64),
         projectRoot: rootDir,
         env: {},
-      }),
-    ).rejects.toThrow('heartbeat is stale');
-  });
+      });
+      expect(command.executable).toBe(process.execPath);
+      expect(command.args.join(' ')).not.toContain('docker');
+      const child = spawn(command.executable, command.args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let output = '';
+      child.stdout.on('data', (chunk) => {
+        output += chunk;
+      });
+      child.stderr.on('data', (chunk) => {
+        output += chunk;
+      });
+      const completed = new Promise<number | null>((resolve, reject) => {
+        child.once('exit', resolve);
+        child.once('error', reject);
+      });
+      try {
+        const requestPath = path.join(root, `${'a'.repeat(64)}.request`);
+        for (let attempt = 0; attempt < 50; attempt++) {
+          if (
+            await fs.stat(requestPath).then(
+              () => true,
+              () => false,
+            )
+          )
+            break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(
+          JSON.parse(await fs.readFile(requestPath, 'utf8')).payloadSha256,
+        ).toBe(JSON.parse(command.args.at(-1)!).payloadSha256);
+        if (exitCode)
+          await fs.writeFile(
+            path.join(root, `${'a'.repeat(64)}.log`),
+            'Insufficient host memory for replay: available_kb=6044784\npassword=do-not-expose\n',
+          );
+        await fs.writeFile(
+          path.join(root, `${'a'.repeat(64)}.result`),
+          JSON.stringify({ exitCode, message: 'verified host result' }),
+        );
+        expect(await completed).toBe(exitCode);
+        if (exitCode) {
+          expect(output).toContain(
+            'Insufficient host memory for replay: available_kb=6044784',
+          );
+        }
+      } finally {
+        child.kill();
+      }
+      const request = JSON.parse(command.args.at(-1)!);
+      expect(request).toMatchObject({
+        artifactId: evidence.manifest.artifactId,
+        evidence: 'evidence/runtime-evidence.json',
+      });
+      await fs.writeFile(
+        path.join(root, 'heartbeat.json'),
+        JSON.stringify({ observedAt: 0 }),
+      );
+      await expect(
+        buildMcpReplayProcess({
+          evidencePath: path.join(copied, 'runtime-evidence.json'),
+          outDir: rootDir,
+          runId: 'a'.repeat(64),
+          projectRoot: rootDir,
+          env: {},
+        }),
+      ).rejects.toThrow('heartbeat is stale');
+    },
+  );
 
   const createFeedback = async () => {
     const evidence = await createRuntimeEvidence();

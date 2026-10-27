@@ -7,6 +7,7 @@ import {
   mcpJobStorageId,
   mcpPackageManifestHash,
   MCP_JOB_TTL,
+  redactMcpJobLog,
 } from '@tradejs/node/mcp';
 import type { McpJob } from '@tradejs/types';
 
@@ -218,7 +219,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
             updatedAt: Date.now(),
             error:
               error instanceof Error
-                ? error.message
+                ? redactMcpJobLog(error.message)
                 : 'Replay preparation failed',
           },
           MCP_JOB_TTL,
@@ -244,16 +245,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
           .replace(/\u001b\[[0-9;]*m/g, '')
           .split(/[\r\n]+/)
           .filter(Boolean);
-        logs.push(
-          ...lines.map((line) =>
-            line
-              .slice(0, 1000)
-              .replace(
-                /((?:secret|password|api.?key|token|authorization)\s*[:=]\s*)\S+/gi,
-                '$1[redacted]',
-              ),
-          ),
-        );
+        logs.push(...lines.map(redactMcpJobLog));
         if (logs.length > 150) logs.splice(0, logs.length - 150);
       };
       currentChild.stdout?.on('data', log);
@@ -285,7 +277,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         currentChild.once('error', () =>
           resolve({ code: null, error: 'Unable to start research process' }),
         );
-        currentChild.once('exit', (code) => resolve({ code }));
+        currentChild.once('close', (code) => resolve({ code }));
       });
       clearTimeout(timeout);
       clearInterval(monitor);
@@ -314,7 +306,16 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
                 : stopping
                   ? { error: 'Worker stopped; this job was not replayed' }
                   : outcome.code !== 0
-                    ? { error: outcome.error || 'Research process failed' }
+                    ? {
+                        error:
+                          outcome.error ||
+                          (started.kind === 'runtime-feedback-replay'
+                            ? logs.find((line) =>
+                                line.startsWith('Host replay: '),
+                              ) || logs.at(-1)
+                            : undefined) ||
+                          'Research process failed',
+                      }
                     : {}),
           };
           if (await mcpStorage.compare(jobKey, latest, next, MCP_JOB_TTL))

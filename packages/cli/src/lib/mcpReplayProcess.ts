@@ -20,8 +20,21 @@ const timer = setInterval(() => {
   try {
     const result = JSON.parse(fs.readFileSync(file + '.result', 'utf8'));
     console.log(result.message);
+    if (result.exitCode !== 0) {
+      let fd;
+      try {
+        fd = fs.openSync(file + '.log', fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        const size = fs.fstatSync(fd).size;
+        const tail = Buffer.alloc(Math.min(size, 65536));
+        fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
+        // The worker redacts each line before persisting or returning it through MCP.
+        for (const line of tail.toString('utf8').split(/[\\r\\n]+/).filter(Boolean).slice(-150)) console.error('Host replay: ' + line);
+      } catch (error) {
+        console.error('Host replay log unavailable: ' + error.code);
+      } finally { if (fd !== undefined) fs.closeSync(fd); }
+    }
     clearInterval(timer);
-    process.exit(result.exitCode === 0 ? 0 : 1);
+    process.exitCode = result.exitCode === 0 ? 0 : 1;
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }, 1000);
 `;

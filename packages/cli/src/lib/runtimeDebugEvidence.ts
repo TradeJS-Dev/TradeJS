@@ -4,7 +4,7 @@ import type {
   RuntimeTradeRecord,
   Signal,
 } from '@tradejs/types';
-import { loadRuntimeClosedTrades, loadRuntimeTrades } from './runtimeRedis';
+import { loadRuntimeEvidenceTrades } from './runtimeRedis';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
   loadRuntimeSignalEvaluations,
@@ -107,30 +107,14 @@ export const collectRuntimeDebugEvidence = async ({
 }): Promise<RuntimeDebugEvidence> => {
   const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
   const dayKeySet = new Set(dayKeys);
-  const [
-    entryTrades,
-    closedTrades,
-    signals,
-    evaluations,
-    evaluationStatsBuckets,
-    lineageScopes,
-  ] = await Promise.all([
-    loadRuntimeTrades(userName, { startTime, endTime }),
-    loadRuntimeClosedTrades(userName, { startTime, endTime }),
-    loadRuntimeSignals(userName, { startTime, endTime }),
-    loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
-    loadRuntimeSignalEvaluationStatsBuckets(userName),
-    loadRuntimeLineageScopes(userName, { startTime, endTime }),
-  ]);
-  const tradesByOrderId = new Map(
-    entryTrades.map((trade) => [trade.orderId, trade]),
-  );
-  for (const trade of closedTrades) {
-    tradesByOrderId.set(trade.orderId, trade);
-  }
-  const trades = [...tradesByOrderId.values()].sort(
-    (left, right) => left.entryTimestamp - right.entryTimestamp,
-  );
+  const [trades, signals, evaluations, evaluationStatsBuckets, lineageScopes] =
+    await Promise.all([
+      loadRuntimeEvidenceTrades(userName, { startTime, endTime }),
+      loadRuntimeSignals(userName, { startTime, endTime }),
+      loadRuntimeSignalEvaluations(userName, { startTime, endTime }),
+      loadRuntimeSignalEvaluationStatsBuckets(userName),
+      loadRuntimeLineageScopes(userName, { startTime, endTime }),
+    ]);
   const filteredStats = evaluationStatsBuckets.filter(
     (entry) =>
       dayKeySet.has(entry.dayKey) &&

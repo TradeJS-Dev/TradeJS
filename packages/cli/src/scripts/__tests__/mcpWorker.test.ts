@@ -15,6 +15,7 @@ jest.mock('node:child_process', () => ({
 }));
 jest.mock('node:fs/promises', () => ({ mkdir: async () => undefined }));
 jest.mock('@tradejs/node/mcp', () => ({
+  redactMcpJobLog: jest.requireActual('@tradejs/node/mcp').redactMcpJobLog,
   MCP_JOB_TTL: 100,
   mcpPackageManifestHash: async () => 'manifest',
   mcpJobStorageId: (_user: string, id: string) => `jobs:${id}`,
@@ -159,4 +160,41 @@ test('image runner prerequisite errors persist without starting a current-image 
   expect((mockJobs.get('jobs:id') as McpJob).error).toContain(
     'explicit mounts',
   );
+});
+
+test('failed replay exposes redacted host details after stderr is fully drained', async () => {
+  mockJobs.set('jobs:id', job('queued', { kind: 'runtime-feedback-replay' }));
+  mockSpawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      pid: 999999,
+    });
+    queueMicrotask(() => {
+      child.stdout.emit(
+        'data',
+        Buffer.from(
+          'Host image-bound replay failed; inspect retained host replay logs\n',
+        ),
+      );
+      child.emit('exit', 1);
+      queueMicrotask(() => {
+        child.stderr.emit(
+          'data',
+          Buffer.from(
+            'Host replay: Insufficient host memory for replay: available_kb=6044784 password=private-value\n',
+          ),
+        );
+        child.emit('close', 1);
+      });
+    });
+    return child;
+  });
+  await main({ signal: mockController.signal });
+  const saved = mockJobs.get('jobs:id') as McpJob;
+  expect(saved.status).toBe('failed');
+  expect(saved.error).toContain('available_kb=6044784');
+  expect(saved.error).toContain('[redacted]');
+  expect(JSON.stringify(saved)).not.toContain('private-value');
+  expect(mockSpawn).toHaveBeenCalledTimes(1);
 });

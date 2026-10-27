@@ -4,7 +4,10 @@ import {
   getKeys,
   redisKeys,
 } from '@tradejs/infra/redis';
-import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
+import {
+  getRuntimeStorageDayKey,
+  getRuntimeStorageDayKeys,
+} from '@tradejs/core/time';
 import {
   RuntimeTradeRecord,
   StrategyConfig,
@@ -139,6 +142,74 @@ export const loadRuntimeClosedTrades = async (
   return [...deduped.values()].sort(
     (left, right) => left.exitTimestamp! - right.exitTimestamp!,
   );
+};
+
+/** Evidence includes retained positions that overlap the window, not just entries. */
+export const loadRuntimeEvidenceTrades = async (
+  userName: string,
+  { startTime, endTime }: { startTime: number; endTime: number },
+): Promise<RuntimeTradeRecord[]> => {
+  const prefix = redisKeys.runtimeTradeBuckets(userName);
+  const lastDay = getRuntimeStorageDayKey(endTime - 1);
+  const keys = (await getKeys(prefix)).filter((key) => {
+    const day = key.slice(prefix.length);
+    return (
+      key.startsWith(prefix) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+      day <= lastDay
+    );
+  });
+  const retained = new Map<string, RuntimeTradeRecord>();
+  // Bound concurrent bucket reads; never fall back to unrelated unbucketed history.
+  for (let offset = 0; offset < keys.length; offset += 16) {
+    const buckets = await Promise.all(
+      keys
+        .slice(offset, offset + 16)
+        .map((key) => getHashJsonValues<RuntimeTradeRecord>(key)),
+    );
+    for (const row of buckets.flat())
+      if (isRuntimeTradeRecord(row)) retained.set(row.orderId, row);
+  }
+  // A closing-day bucket may outlive the entry-day bucket.
+  for (const row of await loadRuntimeClosedTrades(userName, {
+    startTime,
+    endTime,
+  }))
+    retained.set(row.orderId, row);
+  return [...retained.values()]
+    .filter(
+      (row) =>
+        row.entryTimestamp < endTime &&
+        (row.status === 'active' ||
+          (Number.isFinite(row.exitTimestamp) &&
+            row.exitTimestamp! >= startTime)),
+    )
+    .map((row) => {
+      const closesAfterCutoff =
+        row.status === 'closed' && row.exitTimestamp! >= endTime;
+      if (
+        !closesAfterCutoff &&
+        !(row.status === 'active' && row.lastSyncedAt! >= endTime)
+      )
+        return row;
+      // Later observations cannot supply historical marks, fees or a close at cutoff.
+      return {
+        ...row,
+        status: 'active' as const,
+        currentPrice: null,
+        currentPnl: null,
+        closedPnl: null,
+        exitPrice: null,
+        actualExitPrice: null,
+        exitTimestamp: null,
+        exitType: null,
+        closeFee: null,
+        fundingFee: null,
+        totalFee: null,
+        lastSyncedAt: undefined,
+      };
+    })
+    .sort((a, b) => a.entryTimestamp - b.entryTimestamp);
 };
 
 export const loadRuntimeActiveTradeOrderIds = async (
