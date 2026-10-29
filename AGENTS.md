@@ -24,6 +24,21 @@ Keep changes small, respect package boundaries, and align with the current Trade
 - User-facing docs and landing changes go directly to `tradejs-docs` and
   `tradejs-site` respectively.
 
+## Навыки качества кода
+
+Локальные инженерные навыки находятся в `.agents/skills/`. Перед применением
+читай соответствующий `SKILL.md` и только нужные справочники:
+
+- `task-planning` — нетривиальный план по требованиям, коду и рискам.
+- `ub-mode` — реализация и рефакторинг с ясными границами и строгими типами.
+- `task-unit-test-coverage` — выбор и добавление содержательного покрытия.
+- `vercel-composition-patterns` — границы и API общих React-компонентов.
+- `vercel-react-best-practices` — запросы, эффекты и производительность React/Next.js.
+- `web-design-guidelines` — проверка изменённого веб-интерфейса.
+
+Этот набор не входит в Project bundle из `.codex/skills`, не заменяет его
+исследовательские процессы и не меняет владение кодом по карте workspace.
+
 ## Repository Shape
 
 TradeJS is a monorepo for:
