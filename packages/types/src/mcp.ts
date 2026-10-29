@@ -21,7 +21,14 @@ export interface McpJob {
   userName: string;
   clientId: string;
   kind: 'backtest' | 'runtime-evidence' | 'runtime-feedback-replay';
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status:
+    | 'queued'
+    | 'waiting_resources'
+    | 'waiting_executor'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
   request: Record<string, unknown>;
   args: string[];
   createdAt: number;

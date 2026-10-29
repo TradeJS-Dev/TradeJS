@@ -1,3 +1,4 @@
+import { createReplayMemoryProfile } from './memoryProfile';
 import chalk from 'chalk';
 import ProgressBar from 'progress';
 import path from 'node:path';
@@ -33,6 +34,7 @@ import {
 import { buildRuntimeLineage } from '../runtimeLineage';
 import {
   prepareHistoricalReplay,
+  releaseHistoricalReplayPlan,
   type ReplayRuntimeStrategy,
 } from './historicalSignalsReplayPreparation';
 import { executeHistoricalReplay } from './historicalSignalsReplayExecution';
@@ -259,6 +261,8 @@ export const runHistoricalSignalsReplay = async ({
   collectSkipEvidence?: boolean;
   collectSignals?: boolean;
 }): Promise<HistoricalSignalsReplayResult> => {
+  const memory = createReplayMemoryProfile();
+  memory?.('prepare:start');
   const startedAt = Date.now();
   const projectConfig = await loadTradejsConfig(replayProjectRoot);
   const projectHooks = projectConfig.hooks;
@@ -278,6 +282,7 @@ export const runHistoricalSignalsReplay = async ({
       width: 30,
     },
   );
+  memory?.('references:loaded');
   const plan = await prepareHistoricalReplay(
     {
       userName: replayUserName,
@@ -303,8 +308,10 @@ export const runHistoricalSignalsReplay = async ({
         symbol: (value) => chalk.gray(value),
       },
       buildLineage: buildRuntimeLineage,
+      sampleMemory: memory,
     },
   );
+  memory?.('strategies:prepared', { symbols: plan.symbolRuntimes.length });
   const hookContext = buildAfterSignalsContext({
     connector: replayConnector,
     connectorName: preparedRun.connectorName,
@@ -358,13 +365,16 @@ export const runHistoricalSignalsReplay = async ({
         ),
     },
   );
+  memory?.('execution:complete', { signals: execution.signals.length });
+  releaseHistoricalReplayPlan(plan);
+  memory?.('execution:released');
   const artifacts = replayConnector.getReplayArtifacts();
   logger.info(
     chalk.gray(
       `signals replay historical cycles: ${plan.orderedTimestamps.length} (aborted=${execution.abortedCycles}) done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
     ),
   );
-  return collectHistoricalReplayResult({
+  const result = collectHistoricalReplayResult({
     strategies: loadedStrategies,
     artifacts,
     signals: execution.signals,
@@ -373,4 +383,6 @@ export const runHistoricalSignalsReplay = async ({
     runtimeLineages: plan.runtimeLineages,
     replayLineageScopes: execution.replayLineageScopes,
   });
+  memory?.('result:collected');
+  return result;
 };

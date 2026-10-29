@@ -7,13 +7,17 @@ let mockController = new AbortController();
 const mockSpawn = jest.fn();
 const mockSetConfig = jest.fn();
 const mockReplayProcess = jest.fn();
+const mockReadFile = jest.fn();
 jest.mock('../../lib/mcpReplayProcess', () => ({
   buildMcpReplayProcess: (...args: unknown[]) => mockReplayProcess(...args),
 }));
 jest.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
-jest.mock('node:fs/promises', () => ({ mkdir: async () => undefined }));
+jest.mock('node:fs/promises', () => ({
+  mkdir: async () => undefined,
+  readFile: (...args: unknown[]) => mockReadFile(...args),
+}));
 jest.mock('@tradejs/node/mcp', () => ({
   redactMcpJobLog: jest.requireActual('@tradejs/node/mcp').redactMcpJobLog,
   MCP_JOB_TTL: 100,
@@ -69,6 +73,7 @@ const job = (
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockReadFile.mockRejectedValue(new Error('not published'));
   mockReplayProcess.mockResolvedValue({
     executable: process.execPath,
     args: ['host-request'],
@@ -197,4 +202,96 @@ test('failed replay exposes redacted host details after stderr is fully drained'
   expect(saved.error).toContain('[redacted]');
   expect(JSON.stringify(saved)).not.toContain('private-value');
   expect(mockSpawn).toHaveBeenCalledTimes(1);
+});
+
+test('host resource waiting is observable without an execution start timestamp', async () => {
+  mockJobs.set('jobs:id', job('queued', { kind: 'runtime-feedback-replay' }));
+  mockReadFile.mockImplementation(async (file: string) =>
+    JSON.stringify(
+      file.endsWith('heartbeat.json')
+        ? {
+            protocolVersion: 2,
+            observedAt: Date.now(),
+            readiness: 'waiting_resources',
+          }
+        : { status: 'waiting_resources' },
+    ),
+  );
+  let waiting: McpJob | undefined;
+  mockSpawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      pid: 999999,
+    });
+    setTimeout(() => {
+      waiting = mockJobs.get('jobs:id') as McpJob;
+      child.emit('close', 0);
+    }, 1200);
+    return child;
+  });
+  await main({ signal: mockController.signal });
+  expect(waiting?.status).toBe('waiting_resources');
+  expect(waiting?.startedAt).toBeUndefined();
+  expect(mockSpawn).toHaveBeenCalledTimes(1);
+});
+
+test('worker restart reattaches a waiting host request without failing it', async () => {
+  mockJobs.set(
+    'jobs:id',
+    job('waiting_executor', { kind: 'runtime-feedback-replay' }),
+  );
+  await main({ signal: mockController.signal });
+  expect(mockReplayProcess).toHaveBeenCalledTimes(1);
+  expect((mockJobs.get('jobs:id') as McpJob).status).toBe('completed');
+});
+
+test('waiting for resources does not consume the one-hour replay execution budget', async () => {
+  jest.useFakeTimers();
+  const kill = jest.spyOn(process, 'kill').mockReturnValue(true);
+  const child = Object.assign(new EventEmitter(), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+    pid: 999999,
+  });
+  mockJobs.set('jobs:id', job('queued', { kind: 'runtime-feedback-replay' }));
+  mockReadFile.mockImplementation(async (file: string) =>
+    JSON.stringify(
+      file.endsWith('heartbeat.json')
+        ? {
+            protocolVersion: 2,
+            observedAt: Date.now(),
+            readiness: 'waiting_resources',
+          }
+        : { status: 'waiting_resources' },
+    ),
+  );
+  mockSpawn.mockReturnValue(child);
+  const running = main({ signal: mockController.signal });
+  try {
+    await jest.advanceTimersByTimeAsync(3601000);
+    expect((mockJobs.get('jobs:id') as McpJob).status).toBe(
+      'waiting_resources',
+    );
+    expect(kill).not.toHaveBeenCalled();
+    child.emit('close', 0);
+    await running;
+  } finally {
+    mockController.abort();
+    kill.mockRestore();
+    jest.useRealTimers();
+  }
+});
+
+test('a waiting exact-image replay can attach after the worker package changes', async () => {
+  mockJobs.set(
+    'jobs:id',
+    job('waiting_resources', {
+      kind: 'runtime-feedback-replay',
+      packageManifestSha256: 'previous-worker-manifest',
+    }),
+  );
+  await main({ signal: mockController.signal });
+  expect(mockReplayProcess).toHaveBeenCalledTimes(1);
+  expect((mockJobs.get('jobs:id') as McpJob).status).toBe('completed');
 });

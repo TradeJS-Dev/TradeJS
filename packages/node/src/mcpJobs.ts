@@ -268,7 +268,12 @@ export const cancelMcpJob = async (principal: McpPrincipal, id: string) => {
     const job = await readMcpJob(principal.userName, id);
     if (job.clientId !== principal.clientId)
       throw new Error('Only the submitting client can cancel this job');
-    if (!['queued', 'running'].includes(job.status)) return job;
+    if (
+      !['queued', 'waiting_resources', 'waiting_executor', 'running'].includes(
+        job.status,
+      )
+    )
+      return job;
     const next: McpJob = {
       ...job,
       cancelRequested: true,

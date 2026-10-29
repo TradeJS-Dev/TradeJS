@@ -368,3 +368,44 @@ test('deployment verification is scoped, read-only and bound to the authenticate
     await client.close();
   }
 });
+
+test('feedback capabilities match the tool schemas visible through HTTP', async () => {
+  mockPrincipal.scopes = ['diagnostics:read'];
+  const client = new Client({ name: 'feedback-contract', version: '1.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+      fetch: async (url, init) =>
+        init?.method === 'POST' ? POST(new Request(String(url), init)) : GET(),
+    }),
+  );
+  try {
+    const listed = await client.listTools();
+    const info = await client.callTool({ name: 'tradejs_info', arguments: {} });
+    const { assertMcpFeedbackContract } = await import(
+      '@tradejs/node/diagnostics'
+    );
+    const text = info.content;
+    if (!Array.isArray(text) || text[0]?.type !== 'text')
+      throw new Error('Missing info');
+    const data = JSON.parse(String(text[0].text));
+    assertMcpFeedbackContract(data.feedbackContract.version, listed.tools);
+    expect(() =>
+      assertMcpFeedbackContract(
+        data.feedbackContract.version,
+        listed.tools.filter((t) => t.name !== 'job_get_logs'),
+      ),
+    ).toThrow('job_get_logs');
+    expect(() =>
+      assertMcpFeedbackContract(
+        data.feedbackContract.version,
+        listed.tools.map((t) =>
+          t.name === 'artifact_get'
+            ? { ...t, inputSchema: { type: 'object', properties: {} } }
+            : t,
+        ),
+      ),
+    ).toThrow('artifact_get.file');
+  } finally {
+    await client.close();
+  }
+});

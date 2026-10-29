@@ -277,3 +277,109 @@ test.each(['cache-only replay completed\n', 'API_KEY=secret-value\n'])(
     }
   },
 );
+
+test('complete bundle download resumes exact bytes and uses the real catalog, storage and verifier', async () => {
+  const { downloadMcpBundle, MCP_FEEDBACK_CONTRACT, McpReadTransportError } =
+    await import('@tradejs/node/diagnostics');
+  await publishRuntimeEvidenceBundle({
+    publishRoot: path.join(mockRoot, 'data/runtime-evidence'),
+    deploymentId: 'production',
+    userName: 'alice',
+    startTime: 1000,
+    endTime: 2000,
+    artifact: { ...artifact, padding: 'x'.repeat(110000) },
+    counts: {},
+    lineageKeys: [],
+  });
+  const catalog = await listMcpArtifacts('alice');
+  const item = catalog.items[0];
+  const report = await readMcpDiagnosticReport('alice', item.id);
+  const files = report.files.map((f) => {
+    if (
+      f.file !== 'payload' &&
+      f.file !== 'manifest.json' &&
+      f.file !== '.complete' &&
+      f.file !== 'replay.log'
+    )
+      throw new Error('Unexpected file');
+    if (!('bytes' in f) || !('sha256' in f))
+      throw new Error('Unavailable bundle file');
+    return {
+      file: f.file,
+      available: f.available,
+      bytes: f.bytes,
+      sha256: f.sha256,
+    };
+  });
+  const tools = MCP_FEEDBACK_CONTRACT.requiredTools.map((name) => ({
+    name,
+    inputSchema: { properties: name === 'artifact_get' ? { file: {} } : {} },
+  }));
+  const options = {
+    descriptor: { id: item.id, kind: 'runtime-evidence' as const, files },
+    root: path.join(mockRoot, 'downloaded'),
+    contractVersion: 1,
+    tools,
+  };
+  let interrupted = false;
+  await expect(
+    downloadMcpBundle({
+      ...options,
+      readChunk: async (request) => {
+        if (request.offset > 0) {
+          interrupted = true;
+          throw new Error('Disconnected');
+        }
+        return readMcpArtifactChunk(
+          'alice',
+          request.artifactId,
+          request.offset,
+          request.length,
+          request.file,
+        );
+      },
+    }),
+  ).rejects.toThrow('Disconnected');
+  expect(interrupted).toBe(true);
+  const target = path.join(options.root, item.id);
+  await expect(fs.access(path.join(target, '.complete'))).rejects.toThrow();
+  const requests: number[] = [];
+  const waits: number[] = [];
+  let throttled = false;
+  const downloaded = await downloadMcpBundle({
+    ...options,
+    wait: async (ms) => {
+      waits.push(ms);
+    },
+    readChunk: async (request) => {
+      if (request.file === 'payload') requests.push(request.offset);
+      if (!throttled) {
+        throttled = true;
+        throw new McpReadTransportError('429', 60000);
+      }
+      return readMcpArtifactChunk(
+        'alice',
+        request.artifactId,
+        request.offset,
+        request.length,
+        request.file,
+      );
+    },
+  });
+  expect(requests.slice(0, 2)).toEqual([48000, 48000]);
+  expect(waits).toEqual([60000]);
+  expect(downloaded.manifest.artifactId).toBe(report.manifest.artifactId);
+  expect(downloaded.manifest.window).toEqual({
+    startTime: 1000,
+    endTime: 2000,
+  });
+  await fs.appendFile(path.join(target, 'runtime-evidence.json'), 'tampered');
+  await expect(
+    downloadMcpBundle({
+      ...options,
+      readChunk: async () => {
+        throw new Error('Must use verified existing bytes');
+      },
+    }),
+  ).rejects.toThrow('Local bundle checksum mismatch');
+});

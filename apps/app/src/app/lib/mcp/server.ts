@@ -1,3 +1,4 @@
+import { MCP_FEEDBACK_CONTRACT } from '@tradejs/node/diagnostics';
 import { readDeploymentVerification } from './verification';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -213,6 +214,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
       worker: await mcpStorage.get('worker:heartbeat'),
       liveTradingTools: false,
       artifactEncoding: 'base64',
+      feedbackContract: MCP_FEEDBACK_CONTRACT,
     }),
   );
   tool(

@@ -28,6 +28,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
   let leaseLost = false;
   let manifestHash = '';
   let replayReady = false;
+  let replayReadiness: 'ready' | 'waiting_resources' | 'unknown' = 'unknown';
   const updateReplayReady = async () => {
     try {
       const root =
@@ -36,11 +37,18 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       const heartbeat = JSON.parse(
         await readFile(`${root}/heartbeat.json`, 'utf8'),
       );
+      replayReadiness =
+        heartbeat.readiness === 'ready' ||
+        heartbeat.readiness === 'waiting_resources'
+          ? heartbeat.readiness
+          : 'unknown';
       replayReady =
+        heartbeat.protocolVersion === 2 &&
         Number.isFinite(heartbeat.observedAt) &&
         Date.now() - heartbeat.observedAt >= 0 &&
         Date.now() - heartbeat.observedAt < 120000;
     } catch {
+      replayReadiness = 'unknown';
       replayReady = false;
     }
   };
@@ -59,6 +67,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
     observedAt: Date.now(),
     packageManifestSha256: manifestHash,
     replayAvailable: replayReady,
+    replayReadiness,
   });
   const stop = () => {
     stopping = true;
@@ -122,7 +131,10 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         for (const key of page.ids) {
           const job = await mcpStorage.get<McpJob>(key);
           if (
-            job?.status === 'queued' &&
+            job &&
+            ['queued', 'waiting_resources', 'waiting_executor'].includes(
+              job.status,
+            ) &&
             (!queued || job.createdAt < queued.createdAt)
           )
             queued = job;
@@ -135,13 +147,22 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       const jobKey = mcpJobStorageId(queued.userName, queued.id);
       const started: McpJob = {
         ...queued,
-        status: 'running',
-        startedAt: Date.now(),
+        status:
+          queued.kind === 'runtime-feedback-replay'
+            ? 'waiting_executor'
+            : 'running',
+        ...(queued.kind === 'runtime-feedback-replay'
+          ? {}
+          : { startedAt: Date.now() }),
         updatedAt: Date.now(),
       };
       if (!(await mcpStorage.compare(jobKey, queued, started, MCP_JOB_TTL)))
         continue;
-      if (started.packageManifestSha256 !== manifestHash) {
+      // Replay uses the immutable producer image, not the current worker packages.
+      if (
+        started.kind !== 'runtime-feedback-replay' &&
+        started.packageManifestSha256 !== manifestHash
+      ) {
         await mcpStorage.compare(
           jobKey,
           started,
@@ -234,10 +255,14 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       });
       const currentChild = child;
       let timedOut = false;
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        signalChild('SIGTERM');
-      }, JOB_TIMEOUT_MS);
+      let replayStartedAt: number | undefined;
+      const timeout =
+        started.kind === 'runtime-feedback-replay'
+          ? undefined
+          : setTimeout(() => {
+              timedOut = true;
+              signalChild('SIGTERM');
+            }, JOB_TIMEOUT_MS);
       const logs: string[] = [];
       const log = (chunk: Buffer) => {
         const lines = chunk
@@ -258,11 +283,52 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
             killAt ??= Date.now();
             signalChild(Date.now() - killAt > 8000 ? 'SIGKILL' : 'SIGTERM');
           }
+          let replayStatus: McpJob['status'] | undefined;
+          if (latest?.kind === 'runtime-feedback-replay') {
+            try {
+              const root =
+                process.env.MCP_REPLAY_REQUEST_ROOT ||
+                `${process.env.PROJECT_CWD || process.cwd()}/data/mcp-replay-requests`;
+              const state: unknown = JSON.parse(
+                await readFile(`${root}/${latest.id}.state`, 'utf8'),
+              );
+              if (
+                state &&
+                typeof state === 'object' &&
+                'status' in state &&
+                (state.status === 'waiting_resources' ||
+                  state.status === 'waiting_executor' ||
+                  state.status === 'running')
+              )
+                replayStatus = state.status;
+            } catch {
+              /* The host has not published a state yet. */
+            }
+          }
+          if (replayStatus === 'running') {
+            replayStartedAt ??= latest?.startedAt ?? Date.now();
+            if (Date.now() - replayStartedAt > JOB_TIMEOUT_MS) {
+              timedOut = true;
+              signalChild('SIGTERM');
+            }
+          }
           if (latest && !leaseLost)
             await mcpStorage.compare(
               jobKey,
               latest,
-              { ...latest, logs: [...logs], updatedAt: Date.now() },
+              {
+                ...latest,
+                ...(replayStatus && !latest.cancelRequested
+                  ? {
+                      status: replayStatus,
+                      ...(replayStatus === 'running' && !latest.startedAt
+                        ? { startedAt: Date.now() }
+                        : {}),
+                    }
+                  : {}),
+                logs: [...logs],
+                updatedAt: Date.now(),
+              },
               MCP_JOB_TTL,
             );
         } catch {

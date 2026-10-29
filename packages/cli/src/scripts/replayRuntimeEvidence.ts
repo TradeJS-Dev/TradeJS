@@ -1,3 +1,5 @@
+import { writeReplayJsonFile } from '../lib/replay/jsonFile';
+import { createReplayMemoryProfile } from '../lib/replay/memoryProfile';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import args from 'args';
@@ -444,7 +446,10 @@ export const replayRuntimeEvidence = async () => {
   const outPath = path.resolve(projectRoot, String(flags.out));
 
   await fs.mkdir(path.dirname(outPath), { recursive: true });
-  await fs.writeFile(outPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
+  const memory = createReplayMemoryProfile();
+  memory?.('evidence:write:start');
+  await writeReplayJsonFile(outPath, artifact);
+  memory?.('evidence:write:complete');
 
   console.log(chalk.green(`Wrote ${outPath}`));
   console.log(

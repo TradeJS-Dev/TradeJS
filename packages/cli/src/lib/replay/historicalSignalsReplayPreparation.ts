@@ -94,6 +94,7 @@ export type HistoricalReplayPreparationContext = {
 };
 
 export type HistoricalReplayPreparationAdapters = {
+  sampleMemory?: (phase: string, counts: Record<string, number>) => void;
   progress: {
     tick(tokens: { skipped: string; symbol: string }): void;
   };
@@ -244,6 +245,11 @@ export const prepareHistoricalReplay = async (
       cacheOnly: true,
       interval,
     });
+    if (symbolRuntimes.length % 50 === 0)
+      adapters.sampleMemory?.('history:loaded', {
+        symbols: symbolRuntimes.length + 1,
+        candles: data.length,
+      });
     const preparedData = buildPreparedData({
       data,
       btcData: references.btcMarketData,
@@ -352,6 +358,14 @@ export const prepareHistoricalReplay = async (
       strategies: strategiesForSymbol,
     };
     symbolRuntimes.push(symbolRuntime);
+    if (
+      symbolRuntimes.length % 50 === 0 ||
+      symbol === preparedRun.tickers.at(-1)
+    )
+      adapters.sampleMemory?.('strategies:initializing', {
+        symbols: symbolRuntimes.length,
+        strategiesPerSymbol: strategiesForSymbol.length,
+      });
     adapters.progress.tick({
       skipped: adapters.display.skipped(skippedSymbols),
       symbol: adapters.display.symbol(symbol),
@@ -370,4 +384,10 @@ export const prepareHistoricalReplay = async (
     sharedReplayKeyPrefixes,
     runtimeLineages,
   };
+};
+
+/** Runtime closures retain warmup history; results only need timestamps and lineage. */
+export const releaseHistoricalReplayPlan = (plan: HistoricalReplayPlan) => {
+  plan.symbolRuntimes.length = 0;
+  plan.sharedReplayKeyPrefixes.length = 0;
 };

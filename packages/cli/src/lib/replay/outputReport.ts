@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { toJson } from '@tradejs/core/data';
+import { writeReplayJsonFile } from './jsonFile';
+import { createReplayMemoryProfile } from './memoryProfile';
 import {
   getReplayRuntimeUnmatchedCount,
   type ReplayParityEntryDetail,
@@ -539,11 +540,14 @@ export const writeReplayOutputReport = async ({
     '',
   ];
 
+  const memory = createReplayMemoryProfile();
+  memory?.('report:write:start');
   await Promise.all([
     fs.writeFile(markdownPath, lines.join('\n'), 'utf8'),
-    fs.writeFile(jsonPath, `${toJson(report, true)}\n`, 'utf8'),
+    writeReplayJsonFile(jsonPath, report),
   ]);
 
+  memory?.('report:write:complete');
   return {
     markdownPath,
     jsonPath,

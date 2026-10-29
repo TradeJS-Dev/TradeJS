@@ -113,3 +113,40 @@ describe('historical replay preparation', () => {
     );
   });
 });
+
+test('releases completed runtime closures without removing result lineage or timestamps', async () => {
+  const { releaseHistoricalReplayPlan } = await import(
+    '../historicalSignalsReplayPreparation'
+  );
+  const retained = {
+    strategy: 'Fixture',
+    symbol: 'BTCUSDT',
+    lineage: {
+      schemaVersion: 3 as const,
+      strategyRevision: 'sr1:1111111111111111',
+      deploymentCompositionId: 'dc1:2222222222222222',
+      strategyPackageVersion: '1',
+      strategyDependencyVersions: {},
+      runtimePackageVersion: '1',
+    },
+  };
+  const plan = {
+    symbolRuntimes: [
+      {
+        symbol: 'BTCUSDT',
+        replayData: [candle(1000)],
+        btcReplayData: [candle(1000)],
+        ethReplayData: [],
+        currentIndex: 1,
+        strategies: [],
+      },
+    ],
+    orderedTimestamps: [1000],
+    sharedReplayKeyPrefixes: ['fixture'],
+    runtimeLineages: [retained],
+  };
+  releaseHistoricalReplayPlan(plan);
+  expect(plan.symbolRuntimes).toEqual([]);
+  expect(plan.runtimeLineages).toEqual([retained]);
+  expect(plan.orderedTimestamps).toEqual([1000]);
+});

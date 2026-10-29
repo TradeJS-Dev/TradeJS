@@ -67,6 +67,7 @@ export const buildMcpReplayProcess = async ({
     await fs.readFile(path.join(root, 'heartbeat.json'), 'utf8'),
   );
   if (
+    heartbeat.protocolVersion !== 2 ||
     !Number.isFinite(heartbeat.observedAt) ||
     Date.now() - heartbeat.observedAt < 0 ||
     Date.now() - heartbeat.observedAt > 120000

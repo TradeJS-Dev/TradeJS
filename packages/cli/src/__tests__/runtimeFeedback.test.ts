@@ -118,7 +118,11 @@ describe('production runtime feedback replay', () => {
       await fs.mkdir(root, { recursive: true });
       await fs.writeFile(
         path.join(root, 'heartbeat.json'),
-        JSON.stringify({ observedAt: Date.now() }),
+        JSON.stringify({
+          protocolVersion: 2,
+          observedAt: Date.now(),
+          readiness: 'ready',
+        }),
       );
       const dataRoot = path.join(rootDir, 'data');
       const copied = path.join(dataRoot, 'evidence');
@@ -259,6 +263,120 @@ describe('production runtime feedback replay', () => {
     });
     return { evidence, feedback };
   };
+
+  it('downloads both sealed streams, calibrates, scores each strategy and writes one exact receipt', async () => {
+    const { downloadMcpBundle, MCP_FEEDBACK_CONTRACT } = await import(
+      '@tradejs/node/diagnostics'
+    );
+    const { processRuntimeFeedbackPair } = await import(
+      '../lib/runtimeFeedbackProcess'
+    );
+    const { evidence, feedback } = await createFeedback();
+    const tools = MCP_FEEDBACK_CONTRACT.requiredTools.map((name) => ({
+      name,
+      inputSchema: { properties: name === 'artifact_get' ? { file: {} } : {} },
+    }));
+    const downloads: string[] = [];
+    for (const [index, source] of [
+      evidence.bundleDir,
+      feedback.bundleDir,
+    ].entries()) {
+      const kind =
+        index === 0
+          ? ('runtime-evidence' as const)
+          : ('runtime-feedback-replay' as const);
+      const payload =
+        index === 0 ? 'runtime-evidence.json' : 'replay-runtime-evidence.json';
+      const names =
+        index === 0
+          ? (['payload', 'manifest.json', '.complete'] as const)
+          : (['payload', 'manifest.json', '.complete', 'replay.log'] as const);
+      const files = await Promise.all(
+        names.map(async (file) => {
+          const bytes = await fs.readFile(
+            path.join(source, file === 'payload' ? payload : file),
+          );
+          return {
+            file,
+            bytes: bytes.length,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+            available: true,
+          };
+        }),
+      );
+      const id = String(index).repeat(64);
+      const bundle = await downloadMcpBundle({
+        descriptor: { id, kind, files },
+        root: path.join(rootDir, 'download'),
+        contractVersion: 1,
+        tools,
+        readChunk: async (request) => {
+          const bytes = await fs.readFile(
+            path.join(
+              source,
+              request.file === 'payload' ? payload : request.file,
+            ),
+          );
+          const part = bytes.subarray(
+            request.offset,
+            request.offset + request.length,
+          );
+          return {
+            id,
+            file: request.file,
+            offset: request.offset,
+            bytes: bytes.length,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+            encoding: 'base64',
+            data: part.toString('base64'),
+            nextOffset:
+              request.offset + part.length === bytes.length
+                ? null
+                : request.offset + part.length,
+          };
+        },
+      });
+      downloads.push(bundle.bundleDir);
+    }
+    const options = {
+      runtimeDir: downloads[0],
+      replayDir: downloads[1],
+      evidenceRoot: path.join(rootDir, 'local-evidence'),
+      outputRoot: path.join(rootDir, 'output'),
+    };
+    const result = await processRuntimeFeedbackPair(options);
+    expect(result.processed).toBe(true);
+    const receipt = JSON.parse(await fs.readFile(result.receiptPath, 'utf8'));
+    expect(receipt).toMatchObject({
+      schemaVersion: 2,
+      payloadSha256: evidence.manifest.payload.sha256,
+      replayEvidenceSha256: feedback.manifest.payloads.replayEvidence.sha256,
+      scorecardPath: result.scorecardPath,
+    });
+    await fs.access(
+      path.join(
+        path.dirname(result.scorecardPath),
+        'execution-calibration.json',
+      ),
+    );
+    await fs.access(
+      path.join(
+        path.dirname(result.scorecardPath),
+        'runtime-scorecard-DoubleTap.json',
+      ),
+    );
+    expect((await processRuntimeFeedbackPair(options)).processed).toBe(false);
+    await fs.unlink(path.join(downloads[1], '.complete'));
+    await expect(
+      processRuntimeFeedbackPair({
+        ...options,
+        evidenceRoot: path.join(rootDir, 'blocked'),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      fs.access(path.join(rootDir, 'blocked', 'receipts')),
+    ).rejects.toThrow();
+  });
 
   it('resolves the producer identity from the image package manifest', async () => {
     const manifest = '{"schema":"tradejs-runtime-package-manifest/v1"}\n';
