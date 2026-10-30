@@ -80,6 +80,14 @@ export const calendarClusterBootstrap = (params: {
   const alpha = 1 - params.confidenceLevel;
   const positive = samples.filter((value) => value > 0).length;
   const probabilityPositive = positive / samples.length;
+  const observed =
+    deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+  // Recenter bootstrap replicates under H0: mean(candidate-control)=0.
+  // The +1 correction never reports a zero Monte Carlo p-value.
+  const oneSidedPValue =
+    (1 +
+      samples.filter((value) => value - observed >= observed - 1e-12).length) /
+    (samples.length + 1);
   return {
     method: 'calendar-cluster-bootstrap',
     clusterDays: params.clusterDays,
@@ -92,7 +100,7 @@ export const calendarClusterBootstrap = (params: {
       percentile(samples, 1 - alpha / 2),
     ],
     probabilityPositive,
-    oneSidedPValue: 1 - probabilityPositive,
+    oneSidedPValue,
     holmAdjustedPValue: null,
   };
 };
@@ -170,7 +178,11 @@ const erf = (value: number) => {
 
 const normalCdf = (value: number) => 0.5 * (1 + erf(value / Math.SQRT2));
 
-export const deflatedSharpeDiagnostic = (returns: number[], trials: number) => {
+export const deflatedSharpeDiagnostic = (
+  returns: number[],
+  trials: number,
+  trialSharpes?: number[],
+) => {
   const periods = returns.length;
   if (periods < 3) {
     return {
@@ -200,9 +212,31 @@ export const deflatedSharpeDiagnostic = (returns: number[], trials: number) => {
   const kurtosis =
     centered.reduce((sum, value) => sum + (value / standardDeviation) ** 4, 0) /
     periods;
-  const expectedMaximumSharpe = inverseNormalCdf(
-    (Math.max(1, trials) - 0.375) / (Math.max(1, trials) + 0.25),
-  );
+  const available = trialSharpes?.filter(Number.isFinite) ?? [];
+  if (trials > 1 && available.length < 2)
+    return {
+      periods,
+      observedSharpe,
+      expectedMaximumSharpe: null,
+      probabilityAboveSelectionBias: null,
+    };
+  const trialMean = available.length
+    ? available.reduce((sum, value) => sum + value, 0) / available.length
+    : 0;
+  const trialVariance =
+    available.length > 1
+      ? available.reduce((sum, value) => sum + (value - trialMean) ** 2, 0) /
+        (available.length - 1)
+      : 0;
+  // Bailey & López de Prado (2014), Eq. 2. All SRs use the same
+  // non-annualized calendar frequency. Missing trial dispersion is unavailable.
+  const gamma = 0.5772156649015329;
+  const expectedMaximumSharpe =
+    trials <= 1
+      ? 0
+      : Math.sqrt(trialVariance) *
+        ((1 - gamma) * inverseNormalCdf(1 - 1 / trials) +
+          gamma * inverseNormalCdf(1 - 1 / (trials * Math.E)));
   const standardError = Math.sqrt(
     Math.max(
       1e-12,
@@ -222,6 +256,27 @@ export const deflatedSharpeDiagnostic = (returns: number[], trials: number) => {
 
 const combinations = (items: number[], choose: number) => {
   const output: number[][] = [];
+  if (items.length > 10) {
+    const random = createSeededRandom(`cscv-balanced-${items.length}`);
+    const seen = new Set<string>();
+    for (let attempt = 0; output.length < 512 && attempt < 100_000; attempt++) {
+      const shuffled = [...items];
+      for (let index = shuffled.length - 1; index > 0; index--) {
+        const swap = Math.floor(random() * (index + 1));
+        [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+      }
+      const selected = shuffled.slice(0, choose).sort((a, b) => a - b);
+      const complement = items.filter((item) => !selected.includes(item));
+      for (const half of [selected, complement]) {
+        const key = half.join(',');
+        if (!seen.has(key)) {
+          seen.add(key);
+          output.push(half);
+        }
+      }
+    }
+    return output;
+  }
   const visit = (start: number, selected: number[]) => {
     if (output.length >= 512) return;
     if (selected.length === choose) {
@@ -267,14 +322,23 @@ export const probabilityOfBacktestOverfitting = (
     const inScores = performanceByVariant.map((performance) =>
       inSample.reduce((sum, index) => sum + performance[index], 0),
     );
-    const selected = inScores.indexOf(Math.max(...inScores));
+    const maximum = Math.max(...inScores);
+    const selected = inScores.flatMap((score, index) =>
+      score === maximum ? [index] : [],
+    );
     const outScores = performanceByVariant.map((performance) =>
       outSample.reduce((sum, index) => sum + performance[index], 0),
     );
-    const sorted = [...outScores].sort((left, right) => left - right);
-    const rankAscending = sorted.indexOf(outScores[selected]);
-    const omega = (rankAscending + 1) / (outScores.length + 1);
-    if (Math.log(omega / (1 - omega)) < 0) belowMedian += 1;
+    for (const winner of selected) {
+      const less = outScores.filter(
+        (score) => score < outScores[winner],
+      ).length;
+      const equal = outScores.filter(
+        (score) => score === outScores[winner],
+      ).length;
+      const omega = (less + (equal + 1) / 2) / (outScores.length + 1);
+      if (omega < 0.5) belowMedian += 1 / selected.length;
+    }
   }
   return {
     method: 'CSCV' as const,

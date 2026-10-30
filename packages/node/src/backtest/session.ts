@@ -272,7 +272,8 @@ export const createBacktestSession = async ({
       signal.signalId
     ) {
       const identity = resolveCoreResearchSetupIdentity(signal);
-      pendingResearchSetupBySignalId.set(signal.signalId, identity);
+      if (signal.orderStatus !== 'failed' && signal.orderStatus !== 'skipped')
+        pendingResearchSetupBySignalId.set(signal.signalId, identity);
       await appendCoreResearchTraceEvent({
         strategyName: test.strategyName,
         chunkId,
@@ -291,6 +292,13 @@ export const createBacktestSession = async ({
           backtestRunId: test.backtestRunId,
           backtestTestKey: test.backtestTestKey,
           ...identity,
+          ...(test.strategyConfig.RESEARCH_ENTRY_POLICY
+            ? {
+                reason: signal.orderSkipReason,
+                researchEntryDecision:
+                  signal.additionalIndicators?.researchEntryDecision,
+              }
+            : {}),
         },
       });
       const traceEvent =
@@ -326,6 +334,10 @@ export const createBacktestSession = async ({
       signal &&
       typeof signal !== 'string' &&
       signal.signalId &&
+      !(
+        test.strategyConfig.RESEARCH_ENTRY_POLICY &&
+        (signal.orderStatus === 'skipped' || signal.orderStatus === 'failed')
+      ) &&
       !(signal.assessment && signal.orderStatus === 'skipped')
     ) {
       pendingAiRowBySignalId.set(signal.signalId, {
@@ -380,6 +392,16 @@ export const createBacktestSession = async ({
             research: {
               schema: 'tradejs-core-research-row/v1',
               ...resolveCoreResearchSetupIdentity(aiSignal),
+              ...(test.researchTrace
+                ? {
+                    decisionContext: {
+                      schema: 'tradejs-research-decision-context/v1' as const,
+                      knownAt: aiSignal.timestamp,
+                      baseContext:
+                        aiSignal.additionalIndicators?.baseContext ?? null,
+                    },
+                  }
+                : {}),
             },
           },
         });

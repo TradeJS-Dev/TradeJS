@@ -63,6 +63,10 @@ import {
   shouldExecuteEntryDecision,
 } from './strategy/runtimeEntryPolicy';
 import {
+  parseResearchEntryPolicy,
+  evaluateResearchEntryPolicy,
+} from './researchEntryPolicy';
+import {
   assessRuntimeEntryRisk,
   buildRuntimeAdmissionDecision,
 } from './strategy/runtimeDecisionTelemetry';
@@ -178,6 +182,20 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    const researchPolicyValue =
+      baseConfig?.RESEARCH_ENTRY_POLICY ?? config.RESEARCH_ENTRY_POLICY;
+    const researchEntryPolicy =
+      researchPolicyValue == null
+        ? undefined
+        : parseResearchEntryPolicy(researchPolicyValue);
+    if (
+      researchEntryPolicy &&
+      (env !== 'BACKTEST' ||
+        Reflect.get(connector, '__tradejsTestConnector') !== true)
+    )
+      throw new Error(
+        'Research entry policies require a BACKTEST simulation connector',
+      );
     const jev = parseJevConfig(config.JEV);
     if (jev && env !== 'BACKTEST' && jev.source === 'provider' && !jev.provider)
       throw new Error(
@@ -1107,7 +1125,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           await enrichSignalWithMarketContextStages({
             signal,
             env,
-            includeHyperliquidWhales: false,
+            includeHyperliquidWhales: Boolean(researchEntryPolicy),
+            ...(researchEntryPolicy ? { coinMarketCapEnabled: true } : {}),
           });
           if (jev) {
             await assessSignalWithJev({
@@ -1212,6 +1231,28 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return signal ?? decision.code;
       }
 
+      // Evaluate the original signal before queueing a delayed fill. Rejected
+      // entries never occupy a position, so later setups are evaluated normally.
+      if (
+        researchEntryPolicy &&
+        (!signal ||
+          !(await evaluateResearchEntryPolicy(
+            researchEntryPolicy,
+            signal,
+            (decision) => {
+              signal.additionalIndicators = {
+                ...signal.additionalIndicators,
+                researchEntryDecision: decision,
+              };
+            },
+          )))
+      ) {
+        if (signal) {
+          signal.orderStatus = 'skipped';
+          signal.orderSkipReason = 'RESEARCH_ENTRY_POLICY_REJECTED';
+        }
+        return signal ?? 'RESEARCH_ENTRY_POLICY_REJECTED';
+      }
       const entryGate = await invokeGateHooks(
         'beforeEntryGate',
         decisionManifest?.hooks?.beforeEntryGate,

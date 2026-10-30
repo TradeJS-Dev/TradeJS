@@ -14,4 +14,5 @@ export * from './runtimeDeclarations';
 export * from './runtimeControls';
 
 export * from './jev';
+export * from './research';
 export * from './mcp';

@@ -30,5 +30,12 @@ export interface AiDatasetRow {
     schema: 'tradejs-core-research-row/v1';
     setupIdentity: string;
     setupIdentitySource: 'strategy-context' | 'signal-time-fallback';
+    decisionContext?: {
+      schema: 'tradejs-research-decision-context/v1';
+      knownAt: number;
+      baseContext:
+        | import('./strategyContext').BaseStrategyContextSnapshot
+        | null;
+    };
   };
 }

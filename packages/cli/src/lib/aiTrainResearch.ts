@@ -258,6 +258,15 @@ const getGitLineage = (projectRoot: string) => {
   }
 };
 
+export const fingerprintResearchContextEnvironment = (
+  env: NodeJS.ProcessEnv = process.env,
+) =>
+  fingerprintResearchValue(
+    Object.fromEntries(
+      RESEARCH_CONTEXT_ENV_KEYS.map((key) => [key, env[key] ?? null]),
+    ),
+  );
+
 export const buildAiTrainLineage = async ({
   projectRoot,
   strategyName,

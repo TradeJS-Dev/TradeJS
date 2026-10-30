@@ -109,6 +109,7 @@
     "ml-train:latest": "yarn run run:dist ml-train:latest",
     "research:auto": "yarn run run:dist research:auto",
     "research:core": "yarn run run:dist research:core",
+    "research:strategy": "yarn run run:dist research:strategy",
     "ml-train:trendline:catboost": "yarn run run:dist ml-train:trendline:catboost",
     "ml-train:trendline:extra-trees": "yarn run run:dist ml-train:trendline:extra-trees",
     "ml-train:trendline:lightgbm": "yarn run run:dist ml-train:trendline:lightgbm",

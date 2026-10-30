@@ -141,7 +141,8 @@
     "unit": "jest",
     "unit:coverage": "jest --coverage",
     "update-history": "yarn backtest --updateOnly",
-    "user-add": "yarn cli:node8g user-add"
+    "user-add": "yarn cli:node8g user-add",
+    "research:strategy": "PROJECT_CWD=\"${PROJECT_CWD:-$PWD}\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-${PROJECT_CWD:-$PWD}/.env}\" NODE_OPTIONS=\"--max-old-space-size=${RESEARCH_STRATEGY_PARENT_HEAP_MB:-4096}\" bash ./bin/run-cli-dist.sh research:strategy"
   },
   "dependencies": {
     "@tradejs/base": "3.1.7",

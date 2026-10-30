@@ -56,6 +56,7 @@ export type FeatureBucket = {
 };
 
 const OUTCOME_SEGMENTS = new Set([
+  'researchentrydecision',
   'actual',
   'aiapproved',
   'approvalallowednow',
@@ -466,6 +467,9 @@ export const classifyAiPocketFeaturePath = (
   ) {
     return 'metadata';
   }
+
+  if (normalized.some((segment) => OUTCOME_SEGMENTS.has(segment)))
+    return 'derived-policy';
 
   if (
     DERIVED_POLICY_FRAGMENTS.some(

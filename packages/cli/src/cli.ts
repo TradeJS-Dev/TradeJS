@@ -50,6 +50,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   'research:auto': () => import('./scripts/researchAuto'),
   'research:core': () => import('./scripts/coreResearch'),
+  'research:strategy': () => import('./scripts/strategyResearch'),
   results: () => import('./scripts/results'),
   'replay-runtime-evidence': () => import('./scripts/replayRuntimeEvidence'),
   'runtime-feedback-replay': () => import('./scripts/runtimeFeedbackReplay'),

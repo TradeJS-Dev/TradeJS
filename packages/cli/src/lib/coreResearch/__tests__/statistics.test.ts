@@ -114,11 +114,62 @@ describe('core research statistical guardrails', () => {
       periods: 4,
       observedSharpe: null,
     });
-    const diagnostic = deflatedSharpeDiagnostic([1, 2, -1, 4, 3, 2], 3);
+    expect(
+      deflatedSharpeDiagnostic([1, 2, -1, 4, 3, 2], 3).expectedMaximumSharpe,
+    ).toBeNull();
+    const diagnostic = deflatedSharpeDiagnostic(
+      [1, 2, -1, 4, 3, 2],
+      3,
+      [-0.1, 0.3, 0.7],
+    );
     expect(diagnostic.observedSharpe).toBeGreaterThan(0);
     expect(diagnostic.expectedMaximumSharpe).toBeGreaterThan(0);
     expect(diagnostic.probabilityAboveSelectionBias).toBeGreaterThanOrEqual(0);
     expect(diagnostic.probabilityAboveSelectionBias).toBeLessThanOrEqual(1);
+  });
+
+  it('uses the trial-Sharpe scale and gives a zero selection benchmark for a single trial', () => {
+    expect(
+      deflatedSharpeDiagnostic([1, 2, -1, 4, 3, 2], 1).expectedMaximumSharpe,
+    ).toBe(0);
+    const first = deflatedSharpeDiagnostic(
+      [1, 2, -1, 4, 3, 2],
+      3,
+      [-0.1, 0.3, 0.7],
+    );
+    const scaled = deflatedSharpeDiagnostic([1, 2, -1, 4, 3, 2], 3, [-1, 3, 7]);
+    expect(scaled.expectedMaximumSharpe).toBeCloseTo(
+      first.expectedMaximumSharpe! * 10,
+      10,
+    );
+    const bootstrap = calendarClusterBootstrap({
+      control: [],
+      candidate: [makeTrade({ netProfit: 7, exitTimestamp: START })],
+      clusterDays: 1,
+      iterations: 100,
+      confidenceLevel: 0.9,
+      seed: 'null-calibration',
+      start: START,
+      end: START + 7 * DAY_MS,
+    });
+    expect(bootstrap.oneSidedPValue).toBeGreaterThan(0);
+  });
+
+  it('does not change PBO when tied candidate order changes and balances large CSCV samples', () => {
+    const variants = [
+      [5, 5, -5, -5],
+      [-5, -5, 5, 5],
+      [1, 1, 1, 1],
+    ];
+    expect(probabilityOfBacktestOverfitting(variants).probability).toBeCloseTo(
+      probabilityOfBacktestOverfitting([...variants].reverse()).probability!,
+      12,
+    );
+    const large = probabilityOfBacktestOverfitting([
+      Array.from({ length: 12 }, (_, i) => (i % 3) - 1),
+      Array.from({ length: 12 }, (_, i) => 1 - (i % 3)),
+    ]);
+    expect(large.combinations).toBe(512);
   });
 
   it('returns explicit PBO availability and a bounded CSCV probability', () => {

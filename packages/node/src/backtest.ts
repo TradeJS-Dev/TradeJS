@@ -8,3 +8,9 @@ export {
 } from './testing';
 export { createTestConnector } from './testConnector';
 export { resolveExecutionCosts } from './executionCosts';
+export {
+  parseResearchEntryPolicy,
+  buildResearchEntryPayload,
+  matchesResearchEntryRules,
+  evaluateResearchEntryPolicy,
+} from './researchEntryPolicy';

@@ -111,6 +111,74 @@ Runtime signal delivery:
 - the main signal message tries to send a screenshot with caption first; if photo delivery fails, TradeJS falls back to a text message
 - if AI analysis exists for the signal, it is sent as a separate follow-up Telegram message
 
+### Automated strategy research
+
+`tradejs research:strategy` runs a frozen research plan through cached-history
+checks, raw backtests, development-only filter discovery, native gated entry
+execution, confirmation and an HTML report. It saves each completed stage and
+resumes the same plan after an interruption. It never publishes packages or
+changes the production declaration.
+
+Run it from `TradeJS-Project` with an exact source checkout in
+`TRADEJS_SOURCE_REPOSITORY_ROOT`. The selected CLI and its Node runtime must both include research entry policy
+support. The workflow fingerprints the actual executable, its modules and
+Project strategy packages. A mixed or outdated execution cohort fails preflight.
+In this workspace, the built framework CLI can be selected explicitly from the
+Project directory with `node "$TRADEJS_FRAMEWORK_REPOSITORY_ROOT/packages/cli/dist/cli.js" research:strategy <command>`.
+
+Create a plan from an existing `research:core` spec:
+
+```bash
+yarn exec tradejs research:strategy init --coreSpec data/research/specs/core.json --out data/research/specs/workflow.json
+yarn exec tradejs research:strategy run --spec data/research/specs/workflow.json
+yarn exec tradejs research:strategy status --spec data/research/specs/workflow.json
+yarn exec tradejs research:strategy verify --spec data/research/specs/workflow.json
+```
+
+Alternatively, `init` can read one-cell backtest configs through `--strategy`,
+`--config` and optional comma-separated `--candidates`. Also supply
+`--researchId`, `--claim`, `--mechanism`, `--symbolsFile`, `--start`, `--end`
+and `--out`. It freezes their resolved values instead of relying on mutable
+Redis names. A single control core is sufficient to research its own filter.
+Source-code alternatives must first be frozen in their owning research
+worktree. This command searches bounded filter rules; it does not invent or
+apply source edits.
+
+With `testSince: 0`, the workflow freezes the outer 60/40 boundary from the
+baseline timestamp groups before searching filters. An explicit `testSince`
+sets a common calendar boundary for cross-export comparisons.
+
+The plan records the common calendar test boundary, exposure of the historical
+data, independent-event requirements, execution costs, resource budget and
+portfolio limits. Defaults classify already studied history as retrospective.
+Changing a completed plan requires a new research ID. Reusing an ID with
+changed source, runtime or evidence fails verification.
+
+The output is `data/research/strategy/<researchId>/report.html`. It includes
+ALL/LONG/SHORT metrics, realized equity, indicator ranges, decision-time charts
+and separately revealed outcomes. Missing context, zero trades and failed
+native commands remain visible. Every core is executed with both its existing gate and its frozen discovered
+gate, so detector changes and filter changes can be compared separately.
+Only a DEV-selected candidate can pass TEST;
+the workflow never substitutes a different winner after opening TEST.
+If the portfolio limit changes the admitted trades, its projection remains
+diagnostic and confirmation is blocked pending joint execution.
+
+To evaluate the same frozen rule on a new period:
+
+```bash
+yarn exec tradejs research:strategy revalidate --spec data/research/specs/workflow.json --researchId new-period --start 2026-11-01T00:00:00Z --end 2026-12-01T00:00:00Z --out data/research/specs/new-period.json
+yarn exec tradejs research:strategy run --spec data/research/specs/new-period.json
+```
+
+The new period does not retrain filters. Recorded Jev features may participate
+in discovery; the workflow does not make paid inference requests. After the final records are verified, the existing TradeJS retention mechanism
+removes owned temporary trade datasets, exports and trace streams. It preserves
+checksummed conditions, gates, metrics, charts, source archives and deletion
+receipts. Open consumers protect their files and leave cleanup pending; running
+the same command retries cleanup without repeating research. New trade-level
+analyses require a frozen rerun.
+
 Summary reports:
 
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours

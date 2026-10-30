@@ -130,6 +130,7 @@ jest.mock('../strategyHelpers/coinMarketCapContext', () => ({
 }));
 
 jest.mock('../strategyHelpers/hyperliquidWhaleContext', () => ({
+  enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
   loadHyperliquidWhaleFlowContext: (...args: unknown[]) =>
     mockLoadHyperliquidWhaleFlowContext(...args),
 }));
@@ -721,6 +722,61 @@ describe('strategyRuntime', () => {
     expect((result as any).orderSkipReason).toBe(
       'AI_QUALITY_BELOW_MIN (1 < 5)',
     );
+  });
+
+  it('rejects a frozen research policy before delayed entry and keeps the next setup available', async () => {
+    const runtime = await makeRuntime(
+      () => makeDecisionEntry(),
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+        RESEARCH_ENTRY_POLICY: {
+          schema: 'tradejs-research-entry-policy/v1',
+          strategy: 'TrendLine',
+          mode: 'rules',
+          minQuality: 4,
+          rules: { LONG: null, SHORT: null },
+        },
+      },
+      { testConnector: true },
+    );
+    const candle = {
+      timestamp: 1000,
+      dt: 'fixture',
+      turnover: 1000,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 100,
+      volume: 10,
+    };
+    const first = await runtime.strategy(candle, candle);
+    const second = await runtime.strategy(
+      { ...candle, timestamp: 901000 },
+      { ...candle, timestamp: 901000 },
+    );
+    expect(first).toMatchObject({
+      orderSkipReason: 'RESEARCH_ENTRY_POLICY_REJECTED',
+    });
+    expect(second).toMatchObject({
+      orderSkipReason: 'RESEARCH_ENTRY_POLICY_REJECTED',
+    });
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+  });
+
+  it('refuses research policies outside a simulation connector', async () => {
+    await expect(
+      makeRuntime(() => makeDecisionEntry(), {
+        ENV: 'LIVE',
+        RESEARCH_ENTRY_POLICY: {
+          schema: 'tradejs-research-entry-policy/v1',
+          strategy: 'TrendLine',
+          mode: 'rules',
+          minQuality: 4,
+          rules: { LONG: [], SHORT: [] },
+        },
+      }),
+    ).rejects.toThrow('simulation connector');
   });
 
   it.each(['BACKTEST', 'LIVE'])(

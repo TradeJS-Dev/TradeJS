@@ -100,6 +100,7 @@ export type BacktestDetectorOptimizedStrategy = Strategy & {
 export type BacktestPriceMode = 'mid' | 'close' | 'open';
 
 export interface StrategyConfig {
+  RESEARCH_ENTRY_POLICY?: import('./research').ResearchEntryPolicy;
   JEV?: JevConfig;
   ENABLE?: boolean;
   INTERVAL?: Interval | string;
@@ -238,6 +239,8 @@ export type CoreResearchTraceEvent =
   | {
       schema: 'tradejs-core-research-trace/v1';
       event: 'signal_emitted' | 'entry_rejected' | 'entry_executed';
+      reason?: string;
+      researchEntryDecision?: import('./research').ResearchEntryDecision;
       timestamp: number;
       strategy: string;
       symbol: string;

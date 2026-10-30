@@ -329,6 +329,15 @@ const analyzeCoreResearchPrepared = async (
           deflatedSharpeDiagnostic(
             analysis.monthly.map((window) => window.cohorts.ALL.pnl),
             Math.max(comparisons.length, familyHypotheses),
+            analyses.flatMap((entry) => {
+              const diagnostic = deflatedSharpeDiagnostic(
+                entry.monthly.map((window) => window.cohorts.ALL.pnl),
+                1,
+              );
+              return diagnostic.observedSharpe == null
+                ? []
+                : [diagnostic.observedSharpe];
+            }),
           ),
         ]),
       ),
