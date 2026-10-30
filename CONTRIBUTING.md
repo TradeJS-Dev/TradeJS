@@ -50,7 +50,7 @@ website rather than this monorepo.
 
 Prerequisites:
 
-- Node.js `24.17.0` (see `.nvmrc`)
+- Node.js `24.19.0` (see `.nvmrc`)
 - Yarn `4.x` through Corepack
 - Docker and Docker Compose for infrastructure-dependent flows
 

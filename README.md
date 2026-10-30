@@ -10,7 +10,7 @@ published packages in your own project, follow the
 
 ## Set up your checkout
 
-You need Node.js `24.17.0` (see [.nvmrc](.nvmrc)) and Yarn `4.13.0`
+You need Node.js `24.19.0` (see [.nvmrc](.nvmrc)) and Yarn `4.13.0`
 (the version pinned in [package.json](package.json)). Docker with the Compose
 plugin is needed only for flows that use databases.
 

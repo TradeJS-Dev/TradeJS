@@ -210,12 +210,13 @@ export const buildProjectFiles = (
         },
         dependencies,
         engines: {
-          node: '>=20.19',
+          node: '24.x',
         },
       },
       null,
       2,
     )}\n`,
+    '.nvmrc': '24.19.0\n',
     'tradejs.config.ts': `import { basePreset } from '@tradejs/base';
 import { defineConfig } from '@tradejs/core/config';
 
@@ -268,7 +269,10 @@ and read-only Timescale.
 ## Codex TradeJS workflows
 
 The project includes the complete checksum-managed TradeJS skill set under
-\`.codex/skills\`. Use \`$strategy-improvement-research\` to orchestrate a full
+\`.codex/skills\`. Use \`$strategy-research\` in a strategy chat to run automatic
+research through a verified report, or \`$strategy-research TrendLine\` to name
+the strategy explicitly. It compares frozen configurations and searches filters.
+Use \`$strategy-improvement-research\` to orchestrate a full
 bounded lineage, \`$strategy-backtest-research\` for one preregistered core
 experiment, and \`$ai-train-local-research\` for the frozen gate stage.
 AI-gate research uses outer 60/40 by timestamp groups: discover on all first

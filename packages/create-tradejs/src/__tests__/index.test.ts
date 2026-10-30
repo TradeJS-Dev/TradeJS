@@ -91,6 +91,10 @@ describe('create-tradejs', () => {
       );
 
       expect(manifest.name).toBe('my-project');
+      expect(manifest.engines.node).toBe('24.x');
+      expect(readFileSync(path.join(target, '.nvmrc'), 'utf8')).toBe(
+        readFileSync(path.resolve(__dirname, '../../../../.nvmrc'), 'utf8'),
+      );
       expect(manifest.dependencies).toMatchObject({
         '@tradejs/app': 'latest',
         '@tradejs/base': 'latest',
@@ -120,6 +124,7 @@ describe('create-tradejs', () => {
         'strategy-candidate-compare',
         'strategy-improvement-plan',
         'strategy-improvement-research',
+        'strategy-research',
         'strategy-period-revalidate',
         'strategy-forward-start',
         'strategy-forward-status',

@@ -590,6 +590,10 @@ Keep them aligned with:
   that source during build; do not maintain parallel committed copies under
   `packages/create-tradejs/templates`. Existing Projects receive an explicit
   `create-tradejs --update-skills` snapshot and must verify its bundle manifest.
+- Use `.codex/skills/strategy-research/SKILL.md` for the automatic
+  `research:strategy` workflow on frozen configurations, including resume,
+  new-period revalidation, reports, and retention. It does not edit strategy
+  detectors or replace the multi-round source-improvement workflow.
 - `strategy-improvement-research` owns end-to-end improvement orchestration.
   It delegates preregistered core experiment execution to
   `strategy-backtest-research` and frozen deterministic-gate analysis to
@@ -953,6 +957,9 @@ MaxDD`; do not substitute one for the other. Assign and report baseline or
 - If build tools regenerate files like `next-env.d.ts`, treat that as expected generated output.
 
 ## Editing Policy
+
+Use Node.js 24 from `.nvmrc` for builds, checks, and research. Run `nvm use`
+before commands; do not inherit an unrelated project's Node 20 shell.
 
 - Keep diffs focused.
 - After any code changes, run `yarn prettify` before further verification or committing.

@@ -32,7 +32,7 @@ bundle. Общие инженерные навыки этого репозито
 
 | Область | Версия или настройка |
 | --- | --- |
-| Node.js | `engines: 24.x`, `.nvmrc: 24.17.0` |
+| Node.js | `engines: 24.x`, `.nvmrc: 24.19.0` |
 | Yarn | `4.13.0`, workspaces `apps/*`, `packages/*` |
 | TypeScript | приложение `5.9.3`, корень `^5.9`, `strict: true` |
 | React / React DOM | приложение `19.2.8` |

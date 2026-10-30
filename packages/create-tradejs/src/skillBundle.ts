@@ -22,6 +22,7 @@ export const PROJECT_SKILL_NAMES = [
   'strategy-candidate-compare',
   'strategy-improvement-plan',
   'strategy-improvement-research',
+  'strategy-research',
   'strategy-period-revalidate',
   'strategy-forward-start',
   'strategy-forward-status',

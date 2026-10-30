@@ -7,7 +7,7 @@ personal app, infrastructure, backtest, replay, AI, and research workflows from
 
 ## 1. Prerequisites
 
-- Node.js `24.17.0` (from `.nvmrc`)
+- Node.js `24.19.0` (from `.nvmrc`)
 - Yarn `4.x` (`corepack enable`)
 - Docker + Docker Compose
 
@@ -112,6 +112,10 @@ Runtime signal delivery:
 - if AI analysis exists for the signal, it is sent as a separate follow-up Telegram message
 
 ### Automated strategy research
+
+In a strategy chat, invoke `$strategy-research` to restore its context and run
+the process through a verified report. Use `$strategy-research TrendLine` when
+the strategy is not clear from the chat.
 
 `tradejs research:strategy` runs a frozen research plan through cached-history
 checks, raw backtests, development-only filter discovery, native gated entry

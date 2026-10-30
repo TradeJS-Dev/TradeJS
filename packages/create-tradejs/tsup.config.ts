@@ -7,7 +7,7 @@ export default defineConfig({
   clean: true,
   dts: false,
   outDir: 'dist',
-  target: 'node20',
+  target: 'node24',
   banner: {
     js: '#!/usr/bin/env node',
   },

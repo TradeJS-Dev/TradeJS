@@ -16,7 +16,8 @@ different directory:
 npx create-tradejs my-trading-project
 ```
 
-Docker with the Compose plugin and Node.js 20.19 or newer are required.
+Docker with the Compose plugin and Node.js 24 are required. Generated projects include a `.nvmrc` file; run
+`nvm use` in the project before local commands.
 
 ## Codex TradeJS skills
 
@@ -35,6 +36,8 @@ The focused lifecycle skills own user-level decisions:
 
 - `$strategy-candidate-report` — show the latest selected candidate;
 - `$strategy-candidate-compare` — compare it with production;
+- `$strategy-research` — run automatic research for the strategy in the chat,
+  including resumption, frozen rules, a verified report and retention;
 - `$strategy-improvement-plan` — produce a causal improvement plan;
 - `$strategy-improvement-research` — run a new bounded research lineage;
 - `$strategy-period-revalidate` — recheck frozen candidates on new data;
