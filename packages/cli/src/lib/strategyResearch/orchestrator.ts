@@ -14,6 +14,7 @@ import {
 } from './io';
 import { discoverResearchGate } from './gates';
 import { selectResearchDirections } from './directions';
+import { freezeJevResearchPair, compareJevResearch } from './jevComparison';
 import {
   buildResearchDiagnostics,
   type ResearchDiagnostics,
@@ -126,6 +127,7 @@ export const runStrategyResearch = async (parameters: {
             'source.patch',
             'source-baseline.tar',
             'source-untracked.json',
+            'source-jev-models.json',
           ]) {
             try {
               artifacts[file] = await sha256File(path.join(directory, file));
@@ -300,28 +302,48 @@ export const runStrategyResearch = async (parameters: {
         minQuality: spec.minQuality,
         rules: { LONG: null, SHORT: null },
       };
-      const compositionBoard = () => [
-        {
-          id: 'baseline',
-          coreId: control.id,
-          policy: currentPolicy,
-          role: 'baseline' as const,
-        },
-        ...spec.core.variants
-          .filter((variant) => variant.role !== 'control')
-          .map((variant) => ({
-            id: `current-${variant.id}`,
-            coreId: variant.id,
-            policy: currentPolicy,
+      const compositionBoard = (): ResearchComposition[] => {
+        const current = spec.core.variants.flatMap<ResearchComposition>(
+          (variant) => {
+            const id =
+              variant.role === 'control' ? 'baseline' : `current-${variant.id}`;
+            const base: ResearchComposition = {
+              id,
+              coreId: variant.id,
+              policy: currentPolicy,
+              role: variant.role === 'control' ? 'baseline' : 'candidate',
+              ...(variant.resolvedConfig.JEV
+                ? ({
+                    jev: 'enabled',
+                    jevPairId: `current-${variant.id}`,
+                  } as const)
+                : {}),
+            };
+            return variant.resolvedConfig.JEV
+              ? [
+                  base,
+                  {
+                    ...base,
+                    id: `nojev-${id}`,
+                    role: 'candidate',
+                    jev: 'disabled',
+                  },
+                ]
+              : [base];
+          },
+        );
+        return [
+          ...current,
+          ...gates.map((gate) => ({
+            id: `${gate.jev === 'disabled' ? 'nojev-' : ''}own-${gate.coreId}`,
+            coreId: gate.coreId,
+            policy: gate.policy,
             role: 'candidate' as const,
+            jev: gate.jev,
+            ...(gate.jev ? { jevPairId: `own-${gate.coreId}` } : {}),
           })),
-        ...gates.map((gate) => ({
-          id: `own-${gate.coreId}`,
-          coreId: gate.coreId,
-          policy: gate.policy,
-          role: 'candidate' as const,
-        })),
-      ];
+        ];
+      };
       if (spec.frozenFrom) {
         const parentDirectory = researchDirectory(projectRoot, {
           ...spec,
@@ -376,6 +398,13 @@ export const runStrategyResearch = async (parameters: {
           throw new Error(
             'Parent lacks a frozen direction selection; start a new DEV lineage instead of selecting on the new period',
           );
+        if (
+          spec.core.variants.some((variant) => variant.resolvedConfig.JEV) &&
+          frozenSelection.jevPair === undefined
+        )
+          throw new Error(
+            'Parent lacks a frozen Jev pair; create a new DEV lineage',
+          );
         primaryId = frozenSelection.primaryId;
         await stage('03-freeze-gates', async () => gates);
         await stage('05-freeze-primary', async () => frozenSelection);
@@ -400,9 +429,19 @@ export const runStrategyResearch = async (parameters: {
           });
           discovered.push(
             await stage(`02-discovery-${variant.id}`, async () =>
-              discoverResearchGate(spec, result.dataset),
+              discoverResearchGate(
+                spec,
+                result.dataset,
+                variant.resolvedConfig.JEV ? 'enabled' : undefined,
+              ),
             ),
           );
+          if (variant.resolvedConfig.JEV)
+            discovered.push(
+              await stage(`02-discovery-nojev-${variant.id}`, async () =>
+                discoverResearchGate(spec, result.dataset, 'disabled'),
+              ),
+            );
           const summary = buildResearchDiagnostics(spec, result.dataset);
           diagnostics.push({
             id: variant.id,
@@ -430,6 +469,7 @@ export const runStrategyResearch = async (parameters: {
               composition.coreId,
               composition.policy,
               composition.id,
+              composition.jev,
             ),
             `04-dev-${composition.id}`,
           );
@@ -465,6 +505,11 @@ export const runStrategyResearch = async (parameters: {
             compositions,
             directionSelections,
             development,
+            jevPair: freezeJevResearchPair(
+              compositions,
+              development,
+              chooseDevelopmentPrimary(development),
+            ),
           }),
         );
         primaryId = frozenSelection.primaryId;
@@ -515,10 +560,21 @@ export const runStrategyResearch = async (parameters: {
         );
       }
       const executedDatasets = new Map<string, ResearchDataset>();
-      for (const composition of frozenSelection.compositions.filter(
-        (composition) =>
-          composition.role === 'baseline' || composition.id === primaryId,
-      )) {
+      const testBoard = new Map(
+        frozenSelection.compositions
+          .filter(
+            (composition) =>
+              composition.role === 'baseline' || composition.id === primaryId,
+          )
+          .map((item) => [item.id, item]),
+      );
+      if (frozenSelection.jevPair)
+        for (const arm of [
+          frozenSelection.jevPair.withJev,
+          frozenSelection.jevPair.withoutJev,
+        ])
+          testBoard.set(arm.id, arm);
+      for (const composition of testBoard.values()) {
         const result = await run(
           spec,
           policyVariant(
@@ -526,6 +582,7 @@ export const runStrategyResearch = async (parameters: {
             composition.coreId,
             composition.policy,
             composition.id,
+            composition.jev,
           ),
           `06-test-${composition.id}`,
         );
@@ -559,6 +616,7 @@ export const runStrategyResearch = async (parameters: {
           chosen.coreId,
           chosen.policy,
           `${primaryId}-confirmation`,
+          chosen.jev,
         );
         const result = await run(spec, variant, '07-nonfast', true);
         const original = executedDatasets.get(primaryId)!;
@@ -598,6 +656,18 @@ export const runStrategyResearch = async (parameters: {
           delay: evaluated,
         };
       });
+      const jevComparison = await stage('07-jev-comparison', async () =>
+        compareJevResearch(
+          spec,
+          frozenSelection.jevPair,
+          evaluations,
+          executedDatasets,
+          frozenSelection.development,
+          frozenSelection.compositions,
+          spec.history === 'retrospective' ||
+            inventory.prior.some((item) => item.exposed),
+        ),
+      );
       const conclusion = await stage(
         '08-conclusion',
         async (): Promise<ResearchConclusion> => {
@@ -649,6 +719,7 @@ export const runStrategyResearch = async (parameters: {
                   : 'Завершить эту семью гипотез; новая причинная идея получает новый researchId.',
             evaluations,
             directionSelections: frozenSelection.directionSelections,
+            jevComparison,
             trials: {
               core: spec.core.variants.length,
               predicates: gates.reduce(

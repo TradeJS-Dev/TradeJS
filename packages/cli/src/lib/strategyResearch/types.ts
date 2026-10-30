@@ -84,6 +84,7 @@ export type ResearchDataset = {
 };
 export type FrozenResearchGate = {
   coreId: string;
+  jev?: 'enabled' | 'disabled';
   policy: ResearchEntryPolicy;
   discovery: Record<'LONG' | 'SHORT', AiPocketSearchResult>;
 };
@@ -92,6 +93,8 @@ export type ResearchComposition = {
   coreId: string;
   role: 'baseline' | 'candidate';
   policy: ResearchEntryPolicy;
+  jev?: 'enabled' | 'disabled';
+  jevPairId?: string;
 };
 export type ResearchDirectionSelection = {
   id: string;
@@ -116,8 +119,36 @@ export type FrozenResearchSelection = {
   compositions: ResearchComposition[];
   directionSelections: ResearchDirectionSelection[];
   development: ResearchEvaluation[];
+  jevPair?: FrozenJevResearchPair | null;
+};
+export type FrozenJevResearchPair = {
+  coreId: string;
+  pairId: string;
+  withJev: ResearchComposition;
+  withoutJev: ResearchComposition;
+  preferredOnDev: 'enabled' | 'disabled';
+  method: 'independently-fitted-filters' | 'current-gate-toggle';
+};
+export type ResearchJevComparison = {
+  status: 'not-configured' | 'inconclusive' | 'improved' | 'worse';
+  reason: string;
+  pair?: FrozenJevResearchPair;
+  evidence: 'retrospective' | 'unopened';
+  pnlDelta?: number;
+  drawdownDelta?: number;
+  jevCoverage?: { testRows: number; scoredRows: number; scoredEvents: number };
+  dailyPnlDeltaInterval95?: [number, number] | null;
+  withJev?: CoreResearchWindowMetrics;
+  withoutJev?: CoreResearchWindowMetrics;
+  dev: Array<{
+    pairId: string;
+    withJev: CoreResearchWindowMetrics | null;
+    withoutJev: CoreResearchWindowMetrics | null;
+  }>;
 };
 export type ResearchEvaluation = {
+  jev?: 'enabled' | 'disabled';
+  jevPairId?: string;
   id: string;
   coreId: string;
   role: 'baseline' | 'candidate';
@@ -151,6 +182,7 @@ export type ResearchConclusion = {
   nextAction: string;
   evaluations: ResearchEvaluation[];
   directionSelections: ResearchDirectionSelection[];
+  jevComparison?: ResearchJevComparison;
   trials: {
     core: number;
     predicates: number;

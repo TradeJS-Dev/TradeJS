@@ -184,8 +184,22 @@ yarn exec tradejs research:strategy revalidate --spec data/research/specs/workfl
 yarn exec tradejs research:strategy run --spec data/research/specs/new-period.json
 ```
 
-The new period does not retrain filters. Recorded Jev features may participate
-in discovery; the workflow does not make paid inference requests. After the final records are verified, the existing TradeJS retention mechanism
+The new period does not retrain filters. When a core has a recorded/local `JEV` configuration, DEV automatically fits
+paired filters with and without Jev features under the shared search budget.
+The no-Jev arm removes `JEV` from its runtime config and cannot reference Jev
+scores. Before TEST, one same-core pair and its common direction mask are frozen.
+Both arms receive native TEST backtests alongside the unchanged control and
+selected primary, with identical execution assumptions. TEST cannot swap the
+DEV winner. Revalidation keeps the exact pair, directions and rules.
+The HTML and `jevComparison` result show PnL/drawdown deltas, ALL/LONG/SHORT,
+Jev coverage and a calendar-block interval of daily PnL differences. Sparse or
+missing scores remain inconclusive; retrospective data remain retrospective.
+Historical teacher-request costs are not deducted from trading PnL. No paid
+inference requests or automatic model training are performed. With no `JEV`
+configuration the report explicitly marks the comparison as not configured.
+Frozen local Jev model bytes and checksums are retained with the source archive.
+Local model training and validation must end before TEST; missing or overlapping
+boundaries stop preflight. After the final records are verified, the existing TradeJS retention mechanism
 removes owned temporary trade datasets, exports and trace streams. It preserves
 checksummed conditions, gates, metrics, charts, source archives and deletion
 receipts. Open consumers protect their files and leave cleanup pending; running

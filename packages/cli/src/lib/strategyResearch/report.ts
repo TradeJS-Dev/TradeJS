@@ -11,6 +11,7 @@ import { escapeResearchHtml } from './reportFormat';
 export { escapeResearchHtml } from './reportFormat';
 import { researchLineChart } from './charts';
 import { researchReportStyles } from './reportStyles';
+import { buildJevComparisonReport } from './jevReport';
 
 const number = (value: number | null) =>
   value == null ? 'н/д' : Number.isFinite(value) ? value.toFixed(3) : '∞';
@@ -124,10 +125,11 @@ export const buildStrategyResearchReport = (parameters: {
     'candidate-confirmed': 'Кандидат подтверждён в заданных условиях',
   };
   return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Исследование ${escapeResearchHtml(spec.core.strategy)}</title><style>${researchReportStyles}</style><body>
-  <header class="hero"><div class="eyebrow">TradeJS / Исследовательский отчёт</div><h1>${escapeResearchHtml(spec.core.strategy)}: итог исследования</h1></header><nav aria-label="Разделы отчёта"><a href="#verdict">Вывод</a><a href="#directions">Направления DEV</a><a href="#comparison">Подтверждение TEST</a><a href="#diagnostics">Диагностика</a><a href="#reproduction">Воспроизведение</a></nav>${state.lineage.fixture ? '<p class="synthetic"><strong>Синтетические данные для проверки процесса. Это не результат исследования рынка.</strong></p>' : ''}<div class="card verdict" id="verdict"><strong>${conclusion ? labels[conclusion.status] : state.status === 'failed' ? 'Ошибка процесса' : 'Исследование выполняется'}</strong>${list(conclusion?.reasons ?? [state.error ?? 'Результат ещё не получен'])}<p>Следующий шаг: ${escapeResearchHtml(conclusion?.nextAction ?? 'Возобновить тот же запуск после устранения причины ошибки.')}</p><p>Выбранный кандидат: ${escapeResearchHtml(conclusion?.selectedId ?? 'нет')}.</p></div>
+  <header class="hero"><div class="eyebrow">TradeJS / Исследовательский отчёт</div><h1>${escapeResearchHtml(spec.core.strategy)}: итог исследования</h1></header><nav aria-label="Разделы отчёта"><a href="#verdict">Вывод</a><a href="#directions">Направления DEV</a><a href="#comparison">Подтверждение TEST</a><a href="#jev">С Jev / без Jev</a><a href="#diagnostics">Диагностика</a><a href="#reproduction">Воспроизведение</a></nav>${state.lineage.fixture ? '<p class="synthetic"><strong>Синтетические данные для проверки процесса. Это не результат исследования рынка.</strong></p>' : ''}<div class="card verdict" id="verdict"><strong>${conclusion ? labels[conclusion.status] : state.status === 'failed' ? 'Ошибка процесса' : 'Исследование выполняется'}</strong>${list(conclusion?.reasons ?? [state.error ?? 'Результат ещё не получен'])}<p>Следующий шаг: ${escapeResearchHtml(conclusion?.nextAction ?? 'Возобновить тот же запуск после устранения причины ошибки.')}</p><p>Выбранный кандидат: ${escapeResearchHtml(conclusion?.selectedId ?? 'нет')}.</p></div>
   <p>${escapeResearchHtml(spec.core.hypothesis.claim)} Механизм: ${escapeResearchHtml(spec.core.hypothesis.mechanism)}</p><p>Окно: ${new Date(spec.core.window.start).toISOString()} — ${new Date(spec.core.window.end).toISOString()}. Общая граница TEST: ${spec.testSince ? new Date(spec.testSince).toISOString() : 'будет определена по группам времени 60/40'}. USDT-инструментов: ${spec.core.universe.symbols.length}. Риск независимой сделки: ${spec.core.execution.maxLossValue} USDT.</p>
   ${testCharts(conclusion)}
-  <section id="directions"><h2>Направления зафиксированы до TEST</h2><p class="evidence-note">Выбор использует существующие сделки DEV. Это диагностика по подмножествам, без трёх отдельных бэктестов. Только выбранный кандидат получает нативное подтверждение вместе с исходным контролем.</p><div class="direction-grid">${(
+  ${buildJevComparisonReport(conclusion)}
+  <section id="directions"><h2>Направления зафиксированы до TEST</h2><p class="evidence-note">Выбор использует существующие сделки DEV. Это диагностика по подмножествам, без трёх отдельных бэктестов. Выбранный кандидат получает нативное подтверждение вместе с исходным контролем; при настроенном Jev добавляется второй вариант замороженной пары.</p><div class="direction-grid">${(
     conclusion?.directionSelections ?? []
   )
     .map((item) => {
@@ -231,7 +233,7 @@ const testCharts = (conclusion?: ResearchConclusion) => {
   const reference = selected ?? evaluations[0];
   const metrics = reference.windows.find((window) => window.label === 'TEST')!
     .cohorts.ALL;
-  const colors = ['#8196a7', '#265d97'];
+  const colors = ['#8196a7', '#265d97', '#b2464d', '#167b69'];
   return `<section><h2>Результат нативного подтверждения</h2><p class="muted">${escapeResearchHtml(reference.id)} · ${escapeResearchHtml(reference.policy.directions?.join(' + ') ?? 'LONG + SHORT')} · TEST. Выбор направлений после этих результатов не меняется.</p><div class="metrics">${[
     [number(metrics.pnl), 'PnL после расходов, USDT'],
     [number(metrics.realizedMaxDrawdown), 'Реализованная просадка, USDT'],

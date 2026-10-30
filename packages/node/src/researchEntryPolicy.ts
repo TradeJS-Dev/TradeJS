@@ -29,6 +29,10 @@ export const buildResearchEntryPayload = (
     ...payload,
     additionalIndicators: {
       ...additional,
+      ...(signal.additionalIndicators?.jev &&
+      typeof signal.additionalIndicators.jev === 'object'
+        ? { jev: signal.additionalIndicators.jev }
+        : {}),
       baseContext: {
         ...(raw && typeof raw === 'object' ? raw : {}),
         ...(adapted && typeof adapted === 'object' ? adapted : {}),

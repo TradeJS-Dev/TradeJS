@@ -35,9 +35,12 @@ export const createResearchRetentionInventory = async (
     ['candidates', path.join(directory, 'resolved-spec.json')],
     ['ledger', path.join(directory, '05-freeze-primary/result.json')],
     ['chart', path.join(directory, 'report.html')],
-    ...['source.patch', 'source-baseline.tar', 'source-untracked.json'].map(
-      (file) => ['source', path.join(directory, file)],
-    ),
+    ...[
+      'source.patch',
+      'source-baseline.tar',
+      'source-untracked.json',
+      'source-jev-models.json',
+    ].map((file) => ['source', path.join(directory, file)]),
   ] as Array<
     [StrategyResearchRetention['permanentArtifacts'][number]['role'], string]
   >) {

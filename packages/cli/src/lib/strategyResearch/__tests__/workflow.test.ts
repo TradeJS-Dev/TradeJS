@@ -14,6 +14,7 @@ import {
   verifyCompletedResearch,
   withResearchLock,
 } from '../io';
+import { sha256Json } from '../../coreResearch/io';
 import { discoverResearchGate } from '../gates';
 import { evaluateResearchComposition } from '../evaluation';
 import { buildResearchCaseSvg, escapeResearchHtml } from '../report';
@@ -396,6 +397,109 @@ describe('automatic strategy research workflow', () => {
     expect(primary.policy.directions).toEqual(['LONG']);
     expect(primary.windows[1].cohorts.SHORT.trades).toBe(0);
     expect(result.state.stages['07-nonfast']).toBeUndefined();
+  });
+  it('freezes a matched Jev pair on DEV and executes both arms with the model removed only from the no-Jev arm', async () => {
+    const spec = specFixture('jev-pair-workflow');
+    spec.core.variants = spec.core.variants.map((variant) => {
+      const resolvedConfig = {
+        ...variant.resolvedConfig,
+        JEV: {
+          source: 'local',
+          mode: 'observe',
+          modelFile: 'fixture.json',
+          modelSha256: 'f'.repeat(64),
+        },
+      };
+      return {
+        ...variant,
+        resolvedConfig,
+        configSha256: sha256Json(resolvedConfig),
+      };
+    });
+    const backend = backendFixture();
+    const load = backend.loadDataset;
+    backend.loadDataset = jest.fn(async (...args) => {
+      const data = await load(...args);
+      if (args[1].resolvedConfig.JEV)
+        data.rows = data.rows.map((row) => ({
+          ...row,
+          features: {
+            ...row.features,
+            'additionalIndicators.jev.scores.signalStrength': 8,
+          },
+        }));
+      return data;
+    });
+    const result = await runStrategyResearch({
+      spec,
+      projectRoot: root,
+      backend,
+    });
+    const frozen = await readJson<import('../types').FrozenResearchSelection>(
+      path.join(result.directory, '05-freeze-primary/result.json'),
+    );
+    expect(frozen.jevPair).toBeTruthy();
+    const pair = frozen.jevPair!;
+    expect(pair.withJev.coreId).toBe(pair.withoutJev.coreId);
+    expect(pair.withJev.policy.directions).toEqual(
+      pair.withoutJev.policy.directions,
+    );
+    expect(result.conclusion.jevComparison?.pair).toEqual(pair);
+    const calls = jest
+      .mocked(backend.runVariant)
+      .mock.calls.filter((call) =>
+        path.basename(call[2]).startsWith('06-test-'),
+      );
+    expect(
+      calls.find((call) => call[1].id === pair.withJev.id)![1].resolvedConfig
+        .JEV,
+    ).toBeTruthy();
+    expect(
+      calls.find((call) => call[1].id === pair.withoutJev.id)![1].resolvedConfig
+        .JEV,
+    ).toBeUndefined();
+    expect(
+      result.state.stages['05-freeze-primary'].finishedAt! <=
+        result.state.holdoutOpenedAt!,
+    ).toBe(true);
+    expect(
+      await fs.readFile(path.join(result.directory, 'report.html'), 'utf8'),
+    ).toContain('Что добавляет Jev');
+    const revalidation = {
+      ...spec,
+      frozenFrom: spec.core.researchId,
+      history: 'unopened' as const,
+      testSince: END,
+      core: {
+        ...spec.core,
+        researchId: 'jev-pair-new-period',
+        window: { ...spec.core.window, start: END, end: END + (END - START) },
+      },
+    };
+    const next = await runStrategyResearch({
+      spec: revalidation,
+      projectRoot: root,
+      backend,
+    });
+    expect(next.conclusion.jevComparison?.pair).toEqual(pair);
+    if (process.env.STRATEGY_RESEARCH_TEST_PREVIEW) {
+      const folder = path.join(
+        process.env.STRATEGY_RESEARCH_TEST_PREVIEW,
+        'jev',
+      );
+      await fs.mkdir(folder, { recursive: true });
+      for (const file of [
+        'report.html',
+        'spec.json',
+        'result.json',
+        'state.json',
+        'retention-status.json',
+      ])
+        await fs.copyFile(
+          path.join(result.directory, file),
+          path.join(folder, file),
+        );
+    }
   });
   it('resumes only the failed native stage with its exact saved run id', async () => {
     const spec = specFixture();

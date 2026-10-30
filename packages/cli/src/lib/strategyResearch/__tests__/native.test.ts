@@ -5,7 +5,24 @@ import os from 'node:os';
 import {
   createNativeStrategyResearchBackend,
   runResearchCommand,
+  validateResearchJevTraining,
 } from '../native';
+
+it('rejects Jev models fitted on the sealed TEST period or lacking training boundaries', () => {
+  expect(() => validateResearchJevTraining({}, START)).toThrow('before');
+  expect(() =>
+    validateResearchJevTraining(
+      { training: { trainEnd: START, validationEnd: START } },
+      START,
+    ),
+  ).toThrow('before');
+  expect(() =>
+    validateResearchJevTraining(
+      { training: { trainEnd: START - 1, validationEnd: START - 1 } },
+      START,
+    ),
+  ).not.toThrow();
+});
 import { createStrategyResearchSpec } from '../specification';
 import {
   makeSpec,

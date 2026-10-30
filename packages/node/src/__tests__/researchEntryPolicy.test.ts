@@ -1,6 +1,7 @@
 import type { AiPayload, ResearchEntryPolicy, Signal } from '@tradejs/types';
 import {
   parseResearchEntryPolicy,
+  buildResearchEntryPayload,
   matchesResearchEntryRules,
   evaluateResearchEntryPolicy,
 } from '../researchEntryPolicy';
@@ -77,6 +78,15 @@ describe('frozen research entry policy', () => {
     expect(decision).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'DIRECTION_BLOCKED' }),
     );
+  });
+  it('preserves canonical Jev scores even when the strategy adapter omits them', () => {
+    const signal = {
+      strategy: 'Example',
+      additionalIndicators: { jev: { scores: { signalStrength: 9 } } },
+    } as unknown as Signal;
+    expect(
+      buildResearchEntryPayload(signal, payload).additionalIndicators,
+    ).toMatchObject({ jev: { scores: { signalStrength: 9 } } });
   });
   it('blocks missing and nonnumeric data without treating it as zero', () => {
     expect(matchesResearchEntryRules(payload, policy.rules.LONG!)).toBe(true);

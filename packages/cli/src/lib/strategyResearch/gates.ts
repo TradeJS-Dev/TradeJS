@@ -54,25 +54,43 @@ const matches = (row: AiPocketSearchRow, rules: ResearchEntryPredicate[]) =>
 export const discoverResearchGate = (
   spec: StrategyResearchSpec,
   dataset: ResearchDataset,
+  jev?: 'enabled' | 'disabled',
 ): FrozenResearchGate => {
   const discovery = {} as Record<'LONG' | 'SHORT', AiPocketSearchResult>;
   const rules: ResearchEntryPolicy['rules'] = { LONG: null, SHORT: null };
   for (const side of ['LONG', 'SHORT'] as const) {
     // loadDataset has already removed immature labels. Never send a test row to search.
-    const rows = dataset.rows.filter(
-      (row) =>
-        row.direction === side &&
-        row.modelCandidate !== false &&
-        Number(row.timestamp) < spec.testSince &&
-        Number(row.exitTimestamp) < spec.testSince,
-    );
+    const rows = dataset.rows
+      .filter(
+        (row) =>
+          row.direction === side &&
+          row.modelCandidate !== false &&
+          Number(row.timestamp) < spec.testSince &&
+          Number(row.exitTimestamp) < spec.testSince,
+      )
+      .map((row) => ({ ...row, features: { ...row.features } }));
+    if (jev === 'disabled')
+      for (const row of rows) {
+        // Clone features: the with-Jev search must retain its original inputs.
+        row.features = Object.fromEntries(
+          Object.entries(row.features).filter(
+            ([key]) => !/jev|assessment/i.test(key),
+          ),
+        );
+      }
     const search = searchAiPockets(rows, {
       maxDepth: 2,
       maxAtomicPredicates: 180,
       maxCombinations: Math.max(
         1,
         Math.floor(
-          spec.budget.maxCombinations / (2 * spec.core.variants.length),
+          spec.budget.maxCombinations /
+            (2 *
+              spec.core.variants.reduce(
+                (count, variant) =>
+                  count + (variant.resolvedConfig.JEV ? 2 : 1),
+                0,
+              )),
         ),
       ),
       minSupport: spec.selection.minimumEvents,
@@ -135,6 +153,7 @@ export const discoverResearchGate = (
   }
   return {
     coreId: dataset.variant.id,
+    jev,
     policy: {
       schema: 'tradejs-research-entry-policy/v1',
       strategy: spec.core.strategy,

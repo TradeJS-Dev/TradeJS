@@ -149,6 +149,16 @@ export const validateStrategyResearchSpec = (
     throw new Error('minQuality must be 1 through 5');
   positive(spec.budget.maxRows, 'maxRows', 1_000_000);
   positive(spec.budget.maxCombinations, 'maxCombinations', 60_000);
+  const discoverySearches =
+    2 *
+    spec.core.variants.reduce(
+      (count, variant) => count + (variant.resolvedConfig.JEV ? 2 : 1),
+      0,
+    );
+  if (spec.budget.maxCombinations < discoverySearches)
+    throw new Error(
+      'maxCombinations must cover every direction and Jev search arm',
+    );
   positive(spec.budget.maxMinutes, 'maxMinutes', 1440);
   positive(spec.budget.parallel, 'parallel', 4);
   positive(spec.budget.minimumFreeMemoryMb, 'minimumFreeMemoryMb');
@@ -268,6 +278,7 @@ export const policyVariant = (
   coreId: string,
   policy: import('@tradejs/types').ResearchEntryPolicy,
   id: string,
+  jev?: 'enabled' | 'disabled',
 ) => {
   const core = spec.core.variants.find((variant) => variant.id === coreId);
   if (!core) throw new Error(`Unknown core ${coreId}`);
@@ -275,6 +286,15 @@ export const policyVariant = (
     ...core.resolvedConfig,
     RESEARCH_ENTRY_POLICY: policy,
   };
+  if (jev === 'disabled') {
+    delete (resolvedConfig as Record<string, unknown>).JEV;
+    if (
+      Object.values(policy.rules).some((rules) =>
+        rules?.some((rule) => /jev|assessment/i.test(rule.path)),
+      )
+    )
+      throw new Error('A no-Jev policy cannot depend on Jev assessments');
+  }
   return {
     ...core,
     id,

@@ -38,6 +38,8 @@ export const evaluateResearchComposition = (parameters: {
   coreId: string;
   role: 'baseline' | 'candidate';
   policy: ResearchEntryPolicy;
+  jev?: 'enabled' | 'disabled';
+  jevPairId?: string;
   development?: boolean;
 }): ResearchEvaluation => {
   const { spec, dataset } = parameters;
@@ -160,6 +162,8 @@ export const evaluateResearchComposition = (parameters: {
     coreId: parameters.coreId,
     role: parameters.role,
     policy: parameters.policy,
+    jev: parameters.jev,
+    jevPairId: parameters.jevPairId,
     windows,
     testEvents,
     eventShare,

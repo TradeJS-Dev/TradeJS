@@ -43,12 +43,28 @@ import {
 import { intervalToMs } from '@tradejs/core/data';
 import { listCoreResearchTraceFiles } from '@tradejs/infra/coreResearch';
 import { summarizeCoreResearchTrace } from '../coreResearch/trace';
-import { parseJevConfig } from '@tradejs/core/jev';
+import { jevAssessmentFeatures, parseJevConfig } from '@tradejs/core/jev';
 import { resolveBacktestJev } from '../backtest/jevOptions';
 import {
   loadBacktestRunManifest,
   loadBacktestCheckpointResults,
 } from '../backtest/checkpoint';
+
+export const validateResearchJevTraining = (
+  model: { training?: { trainEnd?: number; validationEnd?: number } },
+  testSince: number,
+) => {
+  const boundaries = [model.training?.trainEnd, model.training?.validationEnd];
+  if (
+    !boundaries.every(
+      (time) =>
+        typeof time === 'number' && Number.isFinite(time) && time < testSince,
+    )
+  )
+    throw new Error(
+      'Local Jev training/validation must end before the research TEST boundary',
+    );
+};
 
 const nativeConfig = (
   spec: StrategyResearchSpec,
@@ -444,6 +460,34 @@ export const createNativeStrategyResearchBackend = (parameters: {
         path.join(directory, 'source-untracked.json'),
         sourceFiles,
       );
+      const models = new Map<
+        string,
+        { path: string; sha256: string; base64: string }
+      >();
+      for (const variant of spec.core.variants) {
+        const jev = parseJevConfig(variant.resolvedConfig.JEV);
+        if (jev?.source !== 'local') continue;
+        const file = await boundResearchPath(projectRoot, jev.modelFile!);
+        const bytes = await fs.readFile(file);
+        if (
+          bytes.length > 32 * 1024 * 1024 ||
+          (await sha256File(file)) !== jev.modelSha256
+        )
+          throw new Error('Frozen local Jev model size/checksum mismatch');
+        validateResearchJevTraining(
+          JSON.parse(bytes.toString('utf8')),
+          spec.testSince,
+        );
+        models.set(jev.modelSha256!, {
+          path: jev.modelFile!,
+          sha256: jev.modelSha256!,
+          base64: bytes.toString('base64'),
+        });
+      }
+      if (models.size)
+        await writeJsonAtomic(path.join(directory, 'source-jev-models.json'), [
+          ...models.values(),
+        ]);
       const coverage: Array<{
         symbol: string;
         bars: number;
@@ -773,6 +817,17 @@ export const createNativeStrategyResearchBackend = (parameters: {
               continue;
             }
             const signal = extractSignalFromAiDatasetRow(row);
+            if (variant.resolvedConfig.JEV && row.assessment) {
+              signal.assessment = row.assessment;
+              signal.additionalIndicators = {
+                ...signal.additionalIndicators,
+                jev: jevAssessmentFeatures(row.assessment),
+              };
+            } else if (!variant.resolvedConfig.JEV) {
+              delete signal.assessment;
+              signal.additionalIndicators = { ...signal.additionalIndicators };
+              delete signal.additionalIndicators.jev;
+            }
             const snapshot = row.research?.decisionContext;
             if (snapshot) {
               if (
