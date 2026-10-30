@@ -161,8 +161,17 @@ changed source, runtime or evidence fails verification.
 The output is `data/research/strategy/<researchId>/report.html`. It includes
 ALL/LONG/SHORT metrics, realized equity, indicator ranges, decision-time charts
 and separately revealed outcomes. Missing context, zero trades and failed
-native commands remain visible. Every core is executed with both its existing gate and its frozen discovered
-gate, so detector changes and filter changes can be compared separately.
+native commands remain visible. Every core is executed on DEV with its existing gate and its frozen discovered
+gate. Direction selection uses those existing mature DEV trades without three
+additional backtests. It freezes supported sides and the primary candidate
+before TEST; the original control and that primary receive native confirmation.
+Disabling a losing side is a valid research result. A directional version of
+the original control remains available during DEV selection. Revalidation
+preserves the frozen directions, without selecting again on the new period.
+The standalone report includes income and drawdown comparison charts, per-side
+DEV decisions, full-history direction curves and separately revealed outcomes.
+Only rendered charts are downsampled, preserving local extrema; JSON authority
+retains exact values.
 Only a DEV-selected candidate can pass TEST;
 the workflow never substitutes a different winner after opening TEST.
 If the portfolio limit changes the admitted trades, its projection remains

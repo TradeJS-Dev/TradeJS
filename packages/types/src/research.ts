@@ -11,6 +11,8 @@ export type ResearchEntryPolicy = {
   strategy: string;
   mode: 'current-gate' | 'rules';
   minQuality: number;
+  /** Absent preserves both sides; an empty list disables every entry. */
+  directions?: Array<'LONG' | 'SHORT'>;
   /** null blocks a side; an empty conjunction explicitly passes that side. */
   rules: Record<'LONG' | 'SHORT', ResearchEntryPredicate[] | null>;
 };

@@ -5,6 +5,10 @@ import {
   getDeterministicAiGateContext,
 } from './ai';
 
+export const RESEARCH_ENTRY_POLICY_CAPABILITIES = {
+  directionSelection: true,
+} as const;
+
 const forbidden =
   /(?:^|\.)(?:__proto__|prototype|constructor|profit|pnl|outcome|tradeResult|backtestExecution|quality|deterministicQuality|approvalAllowedNow|timestamp|knownAt|source|coverage|points|rows|length)(?:\.|$)/i;
 
@@ -51,6 +55,14 @@ export const parseResearchEntryPolicy = (
     typeof policy.rules !== 'object'
   )
     throw new Error('Invalid research entry policy contract');
+  if (
+    policy.directions !== undefined &&
+    (!Array.isArray(policy.directions) ||
+      policy.directions.length > 2 ||
+      new Set(policy.directions).size !== policy.directions.length ||
+      policy.directions.some((side) => !['LONG', 'SHORT'].includes(side)))
+  )
+    throw new Error('Invalid research policy directions');
   for (const side of ['LONG', 'SHORT'] as const) {
     const predicates = policy.rules[side];
     if (predicates === null) continue;
@@ -111,7 +123,10 @@ export const evaluateResearchEntryPolicy = async (
 ) => {
   if (signal.strategy !== policy.strategy)
     throw new Error('Research policy strategy mismatch');
-  if (policy.mode === 'rules' && policy.rules[signal.direction] === null) {
+  if (
+    (policy.directions && !policy.directions.includes(signal.direction)) ||
+    (policy.mode === 'rules' && policy.rules[signal.direction] === null)
+  ) {
     onDecision?.({
       mode: policy.mode,
       allowed: false,

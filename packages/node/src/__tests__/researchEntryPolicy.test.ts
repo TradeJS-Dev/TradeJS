@@ -56,6 +56,28 @@ describe('frozen research entry policy', () => {
       parseResearchEntryPolicy({ ...policy, minQuality: 6 }),
     ).toThrow('contract');
   });
+  it('validates frozen direction masks and blocks the current gate before evaluation', async () => {
+    for (const directions of [['LONG', 'LONG'], ['OTHER'], null, 'LONG'])
+      expect(() => parseResearchEntryPolicy({ ...policy, directions })).toThrow(
+        'directions',
+      );
+    expect(
+      parseResearchEntryPolicy({ ...policy, directions: [] }).directions,
+    ).toEqual([]);
+    jest.mocked(runAiPromptLocal).mockClear();
+    const decision = jest.fn();
+    expect(
+      await evaluateResearchEntryPolicy(
+        { ...policy, mode: 'current-gate', directions: ['LONG'] },
+        { strategy: 'Example', direction: 'SHORT' } as Signal,
+        decision,
+      ),
+    ).toBe(false);
+    expect(runAiPromptLocal).not.toHaveBeenCalled();
+    expect(decision).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'DIRECTION_BLOCKED' }),
+    );
+  });
   it('blocks missing and nonnumeric data without treating it as zero', () => {
     expect(matchesResearchEntryRules(payload, policy.rules.LONG!)).toBe(true);
     expect(

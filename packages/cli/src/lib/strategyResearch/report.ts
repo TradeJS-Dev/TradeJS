@@ -7,14 +7,11 @@ import type {
 import type { ResearchDiagnostics } from './diagnostics';
 import type { CoreResearchWindowMetrics } from '../coreResearch/types';
 
-export const escapeResearchHtml = (value: unknown) =>
-  String(value ?? '').replace(
-    /[&<>"']/g,
-    (character) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[
-        character
-      ]!,
-  );
+import { escapeResearchHtml } from './reportFormat';
+export { escapeResearchHtml } from './reportFormat';
+import { researchLineChart } from './charts';
+import { researchReportStyles } from './reportStyles';
+
 const number = (value: number | null) =>
   value == null ? 'н/д' : Number.isFinite(value) ? value.toFixed(3) : '∞';
 const list = (values: string[]) =>
@@ -79,31 +76,11 @@ const eventFan = (summary: ResearchDiagnostics) => {
   return `<svg viewBox="0 0 940 260" role="img" aria-label="Историческое распределение движения после события"><polygon points="${polygon}" fill="#d9e9e5"/><polyline points="${points.map((row, index) => `${x(index)},${y(row.median!)}`).join(' ')}" fill="none" stroke="#167b69" stroke-width="3"/><path d="M50 ${y(0)}H880" stroke="#8b949e"/>${points.map((row, index) => `<text x="${x(index) - 25}" y="242">${row.bars} баров</text><text x="${x(index) - 25}" y="258">N=${row.samples}</text>`).join('')}<text x="3" y="30">${number(max)}R</text><text x="3" y="215">${number(min)}R</text></svg><p>Медиана и процентили 10/90 последующего движения доступных событий DEV. Это историческое распределение, не прогноз будущей цены. Комиссии в движении цены не вычтены; торговый результат после расходов показан отдельно.</p>`;
 };
 
-const polyline = (values: Array<[number, number]>, title: string) => {
-  if (!values.length)
-    return `<p>${escapeResearchHtml(title)}: нет наблюдений.</p>`;
-  const minimumX = values[0][0],
-    maximumX = values.at(-1)![0];
-  const minY = values.reduce(
-    (minimum, value) => Math.min(minimum, value[1]),
-    0,
+const polyline = (values: Array<[number, number]>, title: string) =>
+  researchLineChart(
+    [{ label: title, points: values, color: '#265d97' }],
+    title,
   );
-  const maxY = values.reduce(
-    (maximum, value) => Math.max(maximum, value[1]),
-    0,
-  );
-  const x = (value: number) =>
-    50 + (850 * (value - minimumX)) / Math.max(1, maximumX - minimumX);
-  const y = (value: number) =>
-    210 - (170 * (value - minY)) / Math.max(1e-9, maxY - minY);
-  const steps = values
-    .map(
-      (value, index) =>
-        `${index ? `H${x(value[0])} V${y(value[1])}` : `M${x(value[0])},${y(value[1])}`}`,
-    )
-    .join(' ');
-  return `<svg viewBox="0 0 940 250" role="img" aria-label="${escapeResearchHtml(title)}"><title>${escapeResearchHtml(title)}</title><path d="M50 ${y(0)}H900" stroke="#8b949e"/><path d="${steps}" fill="none" stroke="#167b69" stroke-width="2"/><text x="4" y="35">${number(maxY)}</text><text x="4" y="225">${number(minY)}</text><text x="50" y="245">${new Date(minimumX).toISOString().slice(0, 10)}</text><text x="800" y="245">${new Date(maximumX).toISOString().slice(0, 10)}</text></svg>`;
-};
 
 export const buildResearchCaseSvg = (
   sample: ResearchDataset['samples'][number],
@@ -146,12 +123,33 @@ export const buildStrategyResearchReport = (parameters: {
     'insufficient-data': 'Недостаточно независимых данных',
     'candidate-confirmed': 'Кандидат подтверждён в заданных условиях',
   };
-  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Исследование ${escapeResearchHtml(spec.core.strategy)}</title><style>body{font:16px/1.55 system-ui;max-width:1180px;margin:32px auto;padding:0 20px;color:#203038;background:#fafbf9}h1{font-size:30px}h2{font-size:23px;margin-top:36px}.card{background:white;border:1px solid #d7e0dd;border-radius:8px;padding:18px;margin:18px 0}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:right;padding:8px;border-bottom:1px solid #e0e6e2;white-space:nowrap}th:first-child,td:first-child{text-align:left}svg{width:100%;height:auto;background:#fff}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer}a{color:#176c60}</style><body>
-  <h1>${escapeResearchHtml(spec.core.strategy)}: итог исследования</h1>${state.lineage.fixture ? '<p><strong>Синтетические данные для проверки процесса. Это не результат исследования рынка.</strong></p>' : ''}<div class="card"><strong>${conclusion ? labels[conclusion.status] : state.status === 'failed' ? 'Ошибка процесса' : 'Исследование выполняется'}</strong>${list(conclusion?.reasons ?? [state.error ?? 'Результат ещё не получен'])}<p>Следующий шаг: ${escapeResearchHtml(conclusion?.nextAction ?? 'Возобновить тот же запуск после устранения причины ошибки.')}</p><p>Выбранный кандидат: ${escapeResearchHtml(conclusion?.selectedId ?? 'нет')}.</p></div>
+  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Исследование ${escapeResearchHtml(spec.core.strategy)}</title><style>${researchReportStyles}</style><body>
+  <header class="hero"><div class="eyebrow">TradeJS / Исследовательский отчёт</div><h1>${escapeResearchHtml(spec.core.strategy)}: итог исследования</h1></header><nav aria-label="Разделы отчёта"><a href="#verdict">Вывод</a><a href="#directions">Направления DEV</a><a href="#comparison">Подтверждение TEST</a><a href="#diagnostics">Диагностика</a><a href="#reproduction">Воспроизведение</a></nav>${state.lineage.fixture ? '<p class="synthetic"><strong>Синтетические данные для проверки процесса. Это не результат исследования рынка.</strong></p>' : ''}<div class="card verdict" id="verdict"><strong>${conclusion ? labels[conclusion.status] : state.status === 'failed' ? 'Ошибка процесса' : 'Исследование выполняется'}</strong>${list(conclusion?.reasons ?? [state.error ?? 'Результат ещё не получен'])}<p>Следующий шаг: ${escapeResearchHtml(conclusion?.nextAction ?? 'Возобновить тот же запуск после устранения причины ошибки.')}</p><p>Выбранный кандидат: ${escapeResearchHtml(conclusion?.selectedId ?? 'нет')}.</p></div>
   <p>${escapeResearchHtml(spec.core.hypothesis.claim)} Механизм: ${escapeResearchHtml(spec.core.hypothesis.mechanism)}</p><p>Окно: ${new Date(spec.core.window.start).toISOString()} — ${new Date(spec.core.window.end).toISOString()}. Общая граница TEST: ${spec.testSince ? new Date(spec.testSince).toISOString() : 'будет определена по группам времени 60/40'}. USDT-инструментов: ${spec.core.universe.symbols.length}. Риск независимой сделки: ${spec.core.execution.maxLossValue} USDT.</p>
+  ${testCharts(conclusion)}
+  <section id="directions"><h2>Направления зафиксированы до TEST</h2><p class="evidence-note">Выбор использует существующие сделки DEV. Это диагностика по подмножествам, без трёх отдельных бэктестов. Только выбранный кандидат получает нативное подтверждение вместе с исходным контролем.</p><div class="direction-grid">${(
+    conclusion?.directionSelections ?? []
+  )
+    .map((item) => {
+      const maximum = Math.max(
+        1,
+        ...Object.values(item.sides).map((side) => Math.abs(side.metrics.pnl)),
+      );
+      return `<article class="panel"><h3>${escapeResearchHtml(item.sourceId)} <span class="tag">${item.directions.length ? escapeResearchHtml(item.directions.join(' + ')) : 'Отключён'}</span></h3><p class="muted">DEV ${new Date(item.window.start).toISOString().slice(0, 10)} — ${new Date(item.window.end).toISOString().slice(0, 10)}</p>${(
+        ['LONG', 'SHORT'] as const
+      )
+        .map((side) => {
+          const evidence = item.sides[side];
+          return `<div class="direction ${item.directions.includes(side) ? '' : 'disabled'}"><strong>${side}</strong><span class="pnl ${evidence.metrics.pnl >= 0 ? 'profit' : 'loss'}">${number(evidence.metrics.pnl)} USDT</span><div class="meter"><b style="width:${(100 * Math.abs(evidence.metrics.pnl)) / maximum}%;background:${evidence.metrics.pnl >= 0 ? '#167b69' : '#b2464d'}"></b></div><small>${evidence.events} событий · PF ${evidence.metrics.profitFactorStatus === 'infinite_no_gross_loss' ? '∞' : number(evidence.metrics.profitFactor)} · ${item.directions.includes(side) ? 'выбрано' : 'отключено'}</small>${evidence.reasons.length ? list(evidence.reasons) : ''}</div>`;
+        })
+        .join(
+          '',
+        )}<p class="muted">${escapeResearchHtml(item.reason)}</p></article>`;
+    })
+    .join('')}</div></section>
   ${
     conclusion
-      ? `<h2>Сравнение на TEST</h2><div class="scroll"><table><thead><tr><th>Вариант</th><th>Сделок</th><th>PnL, USDT</th><th>PF</th><th>Просадка, USDT</th><th>Критерии TEST</th></tr></thead><tbody>${conclusion.evaluations
+      ? `<h2 id="comparison">Сравнение на TEST</h2><div class="scroll"><table><thead><tr><th>Вариант</th><th>Сделок</th><th>PnL, USDT</th><th>PF</th><th>Просадка, USDT</th><th>Критерии TEST</th></tr></thead><tbody>${conclusion.evaluations
           .map((item) => {
             const m = item.windows.find((window) => window.label === 'TEST')!
               .cohorts.ALL;
@@ -169,7 +167,7 @@ export const buildStrategyResearchReport = (parameters: {
     )
     .join('')}</ol></details>
   <details><summary>Условия и ограничения</summary>${list(['Проверка относится к фиксированному набору инструментов. Исторический состав биржи не восстанавливается по наличию свечей.', spec.history === 'retrospective' ? 'История уже изучалась; повторное разделение не создаёт независимый тест.' : 'Независимость зависит от заявленной истории использования данных и проверяется по доступному журналу.', 'Фильтры исполняются до постановки отложенного входа; позиции пересчитываются в родном тестере.', 'Ограничение общего риска проверяется проекцией по исполненным сделкам. Если оно меняет состав сделок, подтверждение блокируется.', 'Просадка ALL относится к общей кривой закрытых сделок; LONG/SHORT — к соответствующему направлению. Внутрисделочная переоценка капитала не вычисляется.', 'Распределения и изображения DEV объясняют прошлые события. Будущие свечи не входят в правила входа.', 'Интервалы распределений служат диагностикой. Итог означает прохождение зафиксированных критериев, а не гарантию будущей прибыли. Публикация и реальные сделки не выполняются.'])}</details>
-  ${conclusion ? `<p>Попытки: ${escapeResearchHtml(JSON.stringify(conclusion.trials))}. Итоговый вариант выбран на DEV до открытия TEST; смены победителя по TEST нет.</p>` : ''}
+  ${conclusion ? `<p>Попытки: ядер ${conclusion.trials.core}, комбинаций правил ${conclusion.trials.combinations}, зафиксированных фильтров ${conclusion.trials.frozenGates}, профилей направлений DEV ${conclusion.trials.directionScreens ?? 0}. Итоговый вариант выбран на DEV до открытия TEST; смены победителя по TEST нет.</p>` : ''}
   ${
     parameters.rawReports
       ? `<details><summary>Результаты ядра до исследовательских фильтров</summary>${Object.entries(
@@ -182,8 +180,27 @@ export const buildStrategyResearchReport = (parameters: {
           .join('')}</details>`
       : ''
   }
-  ${(conclusion?.evaluations ?? []).map((evaluation) => `<section class="card"><h2>${escapeResearchHtml(evaluation.id)} — ${evaluation.policy.mode === 'current-gate' ? 'исходный фильтр' : 'собственный фильтр'}</h2>${list(evaluation.reasons.length ? evaluation.reasons : ['Зафиксированные экономические критерии пройдены'])}${funnel(evaluation.funnel)}<details><summary>Метрики ALL / LONG / SHORT по всем окнам</summary>${table([...evaluation.windows, evaluation.stress])}</details><p>Независимых событий TEST: ${evaluation.testEvents}. Максимальная доля события: ${number(evaluation.eventShare * 100)}%; инструмента: ${number(evaluation.symbolShare * 100)}%. Проекция лимита риска отклонила ${evaluation.capacity.rejected} сделок.</p>${polyline(evaluation.equity, 'Накопленная реализованная прибыль')}<details><summary>Точное правило</summary><pre>${escapeResearchHtml(JSON.stringify(evaluation.policy, null, 2))}</pre></details></section>`).join('')}
-  ${(parameters.diagnostics ?? [])
+  ${(conclusion?.evaluations ?? [])
+    .map(
+      (evaluation) =>
+        `<section class="card"><h2>${escapeResearchHtml(evaluation.id)} — ${evaluation.policy.mode === 'current-gate' ? 'исходный фильтр' : 'собственный фильтр'}</h2>${list(evaluation.reasons.length ? evaluation.reasons : ['Зафиксированные экономические критерии пройдены'])}${funnel(evaluation.funnel)}<details><summary>Метрики ALL / LONG / SHORT по всем окнам</summary>${table([...evaluation.windows, evaluation.stress])}</details><p>Независимых событий TEST: ${evaluation.testEvents}. Максимальная доля события: ${number(evaluation.eventShare * 100)}%; инструмента: ${number(evaluation.symbolShare * 100)}%. Проекция лимита риска отклонила ${evaluation.capacity.rejected} сделок.</p>${polyline(evaluation.equity, 'Накопленная реализованная прибыль · вся история')}<details><summary>Доходность направлений на всей истории</summary>${researchLineChart(
+          [
+            {
+              label: 'LONG',
+              points: evaluation.directionEquity.LONG,
+              color: '#265d97',
+            },
+            {
+              label: 'SHORT',
+              points: evaluation.directionEquity.SHORT,
+              color: '#167b69',
+            },
+          ],
+          'LONG / SHORT · исполненные сделки',
+        )}</details><details><summary>Точное правило</summary><pre>${escapeResearchHtml(JSON.stringify(evaluation.policy, null, 2))}</pre></details></section>`,
+    )
+    .join('')}
+  <div id="diagnostics"></div>${(parameters.diagnostics ?? [])
     .map(
       ({ id, summary, samples }) =>
         `<section><h2>Диагностика DEV: ${escapeResearchHtml(id)}</h2><p>Исключено незрелых исходов: ${summary.purgedLabels}. Записанные признаки Jev: ${summary.jev.availableRows}/${summary.jev.totalRows}. Новые запросы к модели не выполнялись.</p>${eventFan(summary)}<details><summary>Распределения индикаторов и результаты по диапазонам</summary>${summary.features.map((feature) => `<h3>${escapeResearchHtml(feature.key)}</h3>${featurePlot(feature)}<p>Покрытие ${number(feature.coverage * 100)}%. P10/P90 ниже — разброс исходов, а не доверительный интервал среднего.</p>${feature.bins.map((bin, index) => `<p>Диапазон ${index + 1}: ${escapeResearchHtml(bin.lower)} — ${escapeResearchHtml(bin.upper)}; событий ${bin.events}; исходы P10/P90: ${number(bin.outcomeP10)}/${number(bin.outcomeP90)}</p>${table([{ label: 'DEV bin', start: spec.core.window.start, end: spec.testSince, periodDays: (spec.testSince - spec.core.window.start) / 86400000, cohorts: bin.metrics }])}`).join('')}`).join('')}</details><details><summary>Примеры графиков: сначала решение, затем раскрытие исхода</summary>${samples
@@ -204,5 +221,40 @@ export const buildStrategyResearchReport = (parameters: {
           )}<p>Примеры отобраны отдельно по направлениям и исходам. Их нельзя использовать как оценку частоты рынка.</p></details></section>`,
     )
     .join('')}
-  <details><summary>Зафиксированные условия, издержки и бюджет</summary><pre>${escapeResearchHtml(JSON.stringify(spec, null, 2))}</pre></details><h2>Воспроизведение</h2><p><a href="spec.json">Условия</a> · <a href="result.json">Полный результат</a> · <a href="state.json">Этапы и контрольные суммы</a> · <a href="retention-status.json">Состояние очистки</a></p><details><summary>Исходники и исполняемые модули</summary><pre>${escapeResearchHtml(JSON.stringify(state.lineage, null, 2))}</pre></details></body></html>`;
+  <details><summary>Зафиксированные условия, издержки и бюджет</summary><pre>${escapeResearchHtml(JSON.stringify(spec, null, 2))}</pre></details><h2 id="reproduction">Воспроизведение</h2><p><a href="spec.json">Условия</a> · <a href="result.json">Полный результат</a> · <a href="state.json">Этапы и контрольные суммы</a> · <a href="retention-status.json">Состояние очистки</a></p><details><summary>Исходники и исполняемые модули</summary><pre>${escapeResearchHtml(JSON.stringify(state.lineage, null, 2))}</pre></details></body></html>`;
+};
+
+const testCharts = (conclusion?: ResearchConclusion) => {
+  const evaluations = conclusion?.evaluations ?? [];
+  const selected = evaluations.find((item) => item.role === 'candidate');
+  if (!evaluations.length) return '';
+  const reference = selected ?? evaluations[0];
+  const metrics = reference.windows.find((window) => window.label === 'TEST')!
+    .cohorts.ALL;
+  const colors = ['#8196a7', '#265d97'];
+  return `<section><h2>Результат нативного подтверждения</h2><p class="muted">${escapeResearchHtml(reference.id)} · ${escapeResearchHtml(reference.policy.directions?.join(' + ') ?? 'LONG + SHORT')} · TEST. Выбор направлений после этих результатов не меняется.</p><div class="metrics">${[
+    [number(metrics.pnl), 'PnL после расходов, USDT'],
+    [number(metrics.realizedMaxDrawdown), 'Реализованная просадка, USDT'],
+    [String(metrics.trades), 'Завершённых сделок'],
+    [String(reference.testEvents), 'Групп времени сигналов'],
+  ]
+    .map(
+      ([value, label]) =>
+        `<div class="metric"><strong>${escapeResearchHtml(value)}</strong><span>${label}</span></div>`,
+    )
+    .join('')}</div><div class="chart-grid">${researchLineChart(
+    evaluations.map((item, index) => ({
+      label: item.id,
+      points: item.testEquity,
+      color: colors[index % colors.length],
+    })),
+    'Доходность · только сделки TEST',
+  )}${researchLineChart(
+    evaluations.map((item, index) => ({
+      label: item.id,
+      points: item.testDrawdown,
+      color: colors[index % colors.length],
+    })),
+    'Просадка · только сделки TEST',
+  )}</div></section>`;
 };

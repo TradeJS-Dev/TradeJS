@@ -87,6 +87,36 @@ export type FrozenResearchGate = {
   policy: ResearchEntryPolicy;
   discovery: Record<'LONG' | 'SHORT', AiPocketSearchResult>;
 };
+export type ResearchComposition = {
+  id: string;
+  coreId: string;
+  role: 'baseline' | 'candidate';
+  policy: ResearchEntryPolicy;
+};
+export type ResearchDirectionSelection = {
+  id: string;
+  sourceId: string;
+  method: 'existing-dev-trades';
+  window: { start: number; end: number };
+  directions: Array<'LONG' | 'SHORT'>;
+  sides: Record<
+    'LONG' | 'SHORT',
+    {
+      eligible: boolean;
+      events: number;
+      metrics: CoreResearchWindowMetrics['cohorts']['ALL'];
+      reasons: string[];
+    }
+  >;
+  reason: string;
+};
+export type FrozenResearchSelection = {
+  schema: 'tradejs-research-selection/v1';
+  primaryId: string | null;
+  compositions: ResearchComposition[];
+  directionSelections: ResearchDirectionSelection[];
+  development: ResearchEvaluation[];
+};
 export type ResearchEvaluation = {
   id: string;
   coreId: string;
@@ -100,6 +130,9 @@ export type ResearchEvaluation = {
   passed: boolean;
   reasons: string[];
   equity: Array<[number, number]>;
+  testEquity: Array<[number, number]>;
+  testDrawdown: Array<[number, number]>;
+  directionEquity: Record<'LONG' | 'SHORT', Array<[number, number]>>;
   capacity: {
     rejected: number;
     peakPositions: number;
@@ -117,11 +150,13 @@ export type ResearchConclusion = {
   reasons: string[];
   nextAction: string;
   evaluations: ResearchEvaluation[];
+  directionSelections: ResearchDirectionSelection[];
   trials: {
     core: number;
     predicates: number;
     combinations: number;
     frozenGates: number;
+    directionScreens?: number;
   };
 };
 

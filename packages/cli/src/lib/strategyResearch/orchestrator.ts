@@ -13,6 +13,7 @@ import {
   withResearchLock,
 } from './io';
 import { discoverResearchGate } from './gates';
+import { selectResearchDirections } from './directions';
 import {
   buildResearchDiagnostics,
   type ResearchDiagnostics,
@@ -30,6 +31,8 @@ import {
 } from './retention';
 import type {
   FrozenResearchGate,
+  FrozenResearchSelection,
+  ResearchComposition,
   ResearchConclusion,
   ResearchDataset,
   ResearchEvaluation,
@@ -281,6 +284,7 @@ export const runStrategyResearch = async (parameters: {
       await writeJsonAtomic(path.join(directory, 'resolved-spec.json'), spec);
       let gates: FrozenResearchGate[] = [];
       let primaryId: string | null = null;
+      let frozenSelection: FrozenResearchSelection;
       const raw: Record<
         string,
         ReturnType<typeof summarizeCoreResearchWindow>
@@ -362,16 +366,19 @@ export const runStrategyResearch = async (parameters: {
         gates = await readJson<FrozenResearchGate[]>(
           path.join(parentDirectory, '03-freeze-gates/result.json'),
         );
-        primaryId = (
-          await readJson<{ primaryId: string | null }>(
-            path.join(parentDirectory, '05-freeze-primary/result.json'),
-          )
-        ).primaryId;
+        frozenSelection = await readJson<FrozenResearchSelection>(
+          path.join(parentDirectory, '05-freeze-primary/result.json'),
+        );
+        if (
+          frozenSelection.schema !== 'tradejs-research-selection/v1' ||
+          !Array.isArray(frozenSelection.compositions)
+        )
+          throw new Error(
+            'Parent lacks a frozen direction selection; start a new DEV lineage instead of selecting on the new period',
+          );
+        primaryId = frozenSelection.primaryId;
         await stage('03-freeze-gates', async () => gates);
-        await stage('05-freeze-primary', async () => ({
-          primaryId,
-          source: spec.frozenFrom,
-        }));
+        await stage('05-freeze-primary', async () => frozenSelection);
       } else {
         // The complete core board is preregistered in spec.json. Raw execution
         // is followed only by mature-DEV analysis until every gate is frozen.
@@ -412,7 +419,9 @@ export const runStrategyResearch = async (parameters: {
             window: { ...spec.core.window, end: spec.testSince },
           },
         };
+        const screened: ReturnType<typeof selectResearchDirections>[] = [];
         const development: ResearchEvaluation[] = [];
+        const compositions: ResearchComposition[] = [compositionBoard()[0]];
         for (const composition of compositionBoard()) {
           const executed = await run(
             developmentSpec,
@@ -424,22 +433,41 @@ export const runStrategyResearch = async (parameters: {
             ),
             `04-dev-${composition.id}`,
           );
-          development.push(
-            evaluateResearchComposition({
-              spec,
-              dataset: executed.dataset,
-              ...composition,
-              development: true,
-            }),
+          if (composition.role === 'baseline')
+            development.push(
+              evaluateResearchComposition({
+                spec,
+                dataset: executed.dataset,
+                ...composition,
+                development: true,
+              }),
+            );
+          const selection = selectResearchDirections(
+            spec,
+            executed.dataset,
+            composition,
           );
+          screened.push(selection);
+          if (selection.composition.id !== 'baseline') {
+            compositions.push(selection.composition);
+            development.push(selection.development);
+          }
         }
-        const frozen = await stage('05-freeze-primary', async () => ({
-          primaryId: chooseDevelopmentPrimary(development),
-          development,
-          criterion:
-            'DEV eligibility, then expectancy per trade, drawdown, stable id; TEST cannot substitute a different primary',
-        }));
-        primaryId = frozen.primaryId;
+        const directionSelections = await stage(
+          '04-freeze-directions',
+          async () => screened.map((item) => item.selection),
+        );
+        frozenSelection = await stage(
+          '05-freeze-primary',
+          async (): Promise<FrozenResearchSelection> => ({
+            schema: 'tradejs-research-selection/v1',
+            primaryId: chooseDevelopmentPrimary(development),
+            compositions,
+            directionSelections,
+            development,
+          }),
+        );
+        primaryId = frozenSelection.primaryId;
       }
       // This write precedes every full gated evaluation and survives failures.
       if (!state.holdoutOpenedAt) {
@@ -487,7 +515,10 @@ export const runStrategyResearch = async (parameters: {
         );
       }
       const executedDatasets = new Map<string, ResearchDataset>();
-      for (const composition of compositionBoard()) {
+      for (const composition of frozenSelection.compositions.filter(
+        (composition) =>
+          composition.role === 'baseline' || composition.id === primaryId,
+      )) {
         const result = await run(
           spec,
           policyVariant(
@@ -617,6 +648,7 @@ export const runStrategyResearch = async (parameters: {
                   ? 'Проверить замороженное правило на новом периоде через research:strategy revalidate.'
                   : 'Завершить эту семью гипотез; новая причинная идея получает новый researchId.',
             evaluations,
+            directionSelections: frozenSelection.directionSelections,
             trials: {
               core: spec.core.variants.length,
               predicates: gates.reduce(
@@ -634,6 +666,7 @@ export const runStrategyResearch = async (parameters: {
                 0,
               ),
               frozenGates: gates.length,
+              directionScreens: frozenSelection.directionSelections.length,
             },
           };
         },
@@ -685,7 +718,13 @@ export const runStrategyResearch = async (parameters: {
         rawReports,
         diagnostics: diagnostics.map(({ id, summary }) => ({ id, summary })),
         evaluations: conclusion.evaluations.map(
-          ({ equity: _equity, ...evaluation }) => evaluation,
+          ({
+            equity: _equity,
+            testEquity: _testEquity,
+            testDrawdown: _testDrawdown,
+            directionEquity: _directionEquity,
+            ...evaluation
+          }) => evaluation,
         ),
       };
       const note = `---\nschema: tradejs-research/v1\nstrategy: '${spec.core.strategy}'\ndate: '${spec.core.createdAt.slice(0, 10)}'\nkind: 'backtest'\nstatus: research-only\nreproduction: complete\n---\n\n# ${spec.core.strategy} — ${spec.core.researchId}\n\n## Research question\n\n${spec.core.hypothesis.claim}\n\n## Decision\n\n${conclusion.status}: ${conclusion.reasons.join('; ')}\n\n## Reproduction manifest\n\n\`\`\`json\n${JSON.stringify(lineage, null, 2)}\n\`\`\`\n\n## Resolved configuration\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n## Metrics snapshot (machine-readable)\n\n\`\`\`json\n${JSON.stringify(compact, null, 2)}\n\`\`\`\n\n## Reported metrics\n\nALL/LONG/SHORT; PnL per completed trade; exit-ordered realized drawdown. See report.html.\n\n## Findings\n\n${conclusion.reasons.join('\n\n')}\n\n## Artifact inventory\n\n${directory}/report.html\n\n## Limitations and next step\n\n${conclusion.nextAction} Current-snapshot universe; no deployment authorization. Temporary payloads are deleted only after the permanent record is verified; new trade-level questions require a frozen rerun.\n`;
@@ -762,6 +801,7 @@ export const runStrategyResearch = async (parameters: {
       const conclusion: ResearchConclusion = {
         status: 'data-error',
         selectedId: null,
+        directionSelections: [],
         reasons: [state.error],
         nextAction:
           'Устранить причину и повторить run с тем же spec; завершённые этапы не запускаются заново.',

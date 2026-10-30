@@ -373,7 +373,12 @@ export const createNativeStrategyResearchBackend = (parameters: {
       ) as Record<string, unknown>;
       if (
         typeof installed.parseResearchEntryPolicy !== 'function' ||
-        typeof installed.buildResearchEntryPayload !== 'function'
+        typeof installed.buildResearchEntryPayload !== 'function' ||
+        (
+          installed.RESEARCH_ENTRY_POLICY_CAPABILITIES as
+            | { directionSelection?: boolean }
+            | undefined
+        )?.directionSelection !== true
       )
         throw new Error(
           'The CLI runtime @tradejs/node does not support research entry policies; build/use a matching framework cohort before running',

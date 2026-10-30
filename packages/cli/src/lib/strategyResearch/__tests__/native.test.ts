@@ -52,6 +52,7 @@ jest.mock('@tradejs/node/ai', () => ({
 jest.mock('@tradejs/node/backtest', () => ({
   buildResearchEntryPayload: jest.fn(),
   parseResearchEntryPolicy: jest.fn(),
+  RESEARCH_ENTRY_POLICY_CAPABILITIES: { directionSelection: true },
 }));
 jest.mock('@tradejs/node/connectors', () => ({
   getConnectorCreatorByName: jest.fn(),
@@ -350,7 +351,7 @@ describe('native strategy research process and event evidence', () => {
       for (const target of Object.values(exports))
         await fs.writeFile(
           path.join(directory, target),
-          'module.exports={parseResearchEntryPolicy(){},buildResearchEntryPayload(){}};',
+          'module.exports={parseResearchEntryPolicy(){},buildResearchEntryPayload(){},RESEARCH_ENTRY_POLICY_CAPABILITIES:{directionSelection:true}};',
         );
     }
     mockExecFileSync.mockImplementation((_command: string, args: string[]) =>

@@ -71,7 +71,7 @@ export const evaluateResearchComposition = (parameters: {
   }));
   const stress = summarizeCoreResearchWindow({
     trades: stressed,
-    label: 'TEST extra round-trip costs',
+    label: `${parameters.development ? 'DEV' : 'TEST'} extra round-trip costs`,
     start: testStart,
     end,
   });
@@ -145,6 +145,15 @@ export const evaluateResearchComposition = (parameters: {
     reasons.push(
       'Лимит общего риска меняет сделки; требуется совместное исполнение стратегии с ограничителем портфеля',
     );
+  const curve = (rows: CoreResearchTrade[]) => {
+    let value = 0;
+    return orderCoreResearchTrades(rows).map(
+      (trade) =>
+        [trade.exitTimestamp, (value += trade.netProfit)] as [number, number],
+    );
+  };
+  const testEquity = curve(test);
+  let peak = 0;
   let equity = 0;
   return {
     id: parameters.id,
@@ -162,6 +171,15 @@ export const evaluateResearchComposition = (parameters: {
       trade.exitTimestamp,
       (equity += trade.netProfit),
     ]),
+    testEquity,
+    testDrawdown: testEquity.map(([timestamp, value]) => [
+      timestamp,
+      value - (peak = Math.max(peak, value)),
+    ]),
+    directionEquity: {
+      LONG: curve(trades.filter((trade) => trade.direction === 'LONG')),
+      SHORT: curve(trades.filter((trade) => trade.direction === 'SHORT')),
+    },
     capacity: {
       rejected,
       peakPositions,

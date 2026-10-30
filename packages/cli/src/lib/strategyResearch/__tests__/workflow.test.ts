@@ -91,6 +91,7 @@ const makeDataset = (
         },
       } as AiPayload;
       if (policy) {
+        if (policy.directions && !policy.directions.includes(side)) continue;
         if (policy.mode === 'current-gate') {
           if (index % 3 !== 0) continue;
         } else {
@@ -238,10 +239,17 @@ describe('automatic strategy research workflow', () => {
       await fs.mkdir(process.env.STRATEGY_RESEARCH_TEST_PREVIEW, {
         recursive: true,
       });
-      await fs.copyFile(
-        path.join(result.directory, 'report.html'),
-        path.join(process.env.STRATEGY_RESEARCH_TEST_PREVIEW, 'report.html'),
-      );
+      for (const file of [
+        'report.html',
+        'spec.json',
+        'result.json',
+        'state.json',
+        'retention-status.json',
+      ])
+        await fs.copyFile(
+          path.join(result.directory, file),
+          path.join(process.env.STRATEGY_RESEARCH_TEST_PREVIEW, file),
+        );
     }
   });
   it('keeps payloads with active consumers and resumes only cleanup after the final handoff', async () => {
@@ -274,6 +282,120 @@ describe('automatic strategy research workflow', () => {
     await expect(
       verifyCompletedResearch(result.directory, result.state),
     ).rejects.toThrow('Changed permanent research record');
+  });
+  it('freezes LONG from existing DEV and executes only control plus primary on TEST without three direction runs', async () => {
+    const spec = specFixture('direction-selection');
+    const backend = backendFixture();
+    const load = backend.loadDataset;
+    backend.loadDataset = jest.fn(async (...args) => {
+      const data = await load(...args);
+      data.trades = data.trades.map((trade) => ({
+        ...trade,
+        netProfit: trade.direction === 'SHORT' ? -5 : trade.netProfit,
+      }));
+      data.rows = data.rows.map((row) => ({
+        ...row,
+        profit: row.direction === 'SHORT' ? -5 : row.profit,
+      }));
+      return data;
+    });
+    const result = await runStrategyResearch({
+      spec,
+      projectRoot: root,
+      backend,
+    });
+    expect(
+      result.conclusion.directionSelections.every(
+        (item) => item.directions.join(',') === 'LONG',
+      ),
+    ).toBe(true);
+    const calls = jest.mocked(backend.runVariant).mock.calls;
+    expect(
+      calls.filter((call) => path.basename(call[2]).startsWith('04-dev-')),
+    ).toHaveLength(4);
+    const testCalls = calls.filter((call) =>
+      path.basename(call[2]).startsWith('06-test-'),
+    );
+    expect(testCalls).toHaveLength(2);
+    const primary = testCalls.find((call) => call[1].id !== 'baseline')!;
+    expect(primary[1].resolvedConfig.RESEARCH_ENTRY_POLICY).toMatchObject({
+      directions: ['LONG'],
+    });
+    expect(
+      result.state.stages['04-freeze-directions'].finishedAt! <=
+        result.state.holdoutOpenedAt!,
+    ).toBe(true);
+    const frozen = await readJson<{ directionSelections: unknown }>(
+      path.join(result.directory, '05-freeze-primary/result.json'),
+    );
+    expect(frozen.directionSelections).toEqual(
+      result.conclusion.directionSelections,
+    );
+    const report = await fs.readFile(
+      path.join(result.directory, 'report.html'),
+      'utf8',
+    );
+    expect(report).toContain('Просадка · только сделки TEST');
+    expect(report).toContain('Направления зафиксированы до TEST');
+    if (process.env.STRATEGY_RESEARCH_TEST_PREVIEW) {
+      const folder = path.join(
+        process.env.STRATEGY_RESEARCH_TEST_PREVIEW,
+        'long-only',
+      );
+      await fs.mkdir(folder, { recursive: true });
+      for (const file of [
+        'report.html',
+        'spec.json',
+        'result.json',
+        'state.json',
+        'retention-status.json',
+      ])
+        await fs.copyFile(
+          path.join(result.directory, file),
+          path.join(folder, file),
+        );
+    }
+  });
+  it('rejects the frozen LONG candidate after a TEST reversal without rescuing it through SHORT', async () => {
+    const spec = specFixture('direction-test-reversal');
+    const backend = backendFixture();
+    const load = backend.loadDataset;
+    backend.loadDataset = jest.fn(async (...args) => {
+      const data = await load(...args);
+      data.trades = data.trades.map((trade) => ({
+        ...trade,
+        netProfit:
+          trade.signalTimestamp >= spec.testSince
+            ? trade.direction === 'SHORT'
+              ? 100
+              : -100
+            : trade.direction === 'SHORT'
+              ? -5
+              : trade.netProfit,
+      }));
+      data.rows = data.rows.map((row) => ({
+        ...row,
+        profit: row.direction === 'SHORT' ? -5 : row.profit,
+      }));
+      return data;
+    });
+    const result = await runStrategyResearch({
+      spec,
+      projectRoot: root,
+      backend,
+    });
+    expect(result.conclusion.status).toBe('rejected');
+    expect(
+      result.conclusion.directionSelections.every(
+        (item) => item.directions.join(',') === 'LONG',
+      ),
+    ).toBe(true);
+    const primary = result.conclusion.evaluations.find(
+      (item) => item.role === 'candidate',
+    )!;
+    expect(primary.policy.directions).toEqual(['LONG']);
+    expect(primary.windows[1].cohorts.SHORT.trades).toBe(0);
+    expect(result.state.stages['07-nonfast']).toBeUndefined();
   });
   it('resumes only the failed native stage with its exact saved run id', async () => {
     const spec = specFixture();
@@ -394,6 +516,15 @@ describe('automatic strategy research workflow', () => {
       backend,
     });
     expect(
+      await readJson(
+        path.join(second.directory, '05-freeze-primary/result.json'),
+      ),
+    ).toEqual(
+      await readJson(
+        path.join(parent.directory, '05-freeze-primary/result.json'),
+      ),
+    );
+    expect(
       Object.keys(second.state.stages).some((stage) => stage.startsWith('02-')),
     ).toBe(false);
     expect(
@@ -425,10 +556,13 @@ describe('automatic strategy research workflow', () => {
     expect(result.conclusion.selectedId).toBeNull();
     expect(result.conclusion.evaluations.map((item) => item.id)).toEqual([
       'baseline',
-      'current-candidate',
-      'own-control',
-      'own-candidate',
     ]);
+    expect(result.conclusion.directionSelections).toHaveLength(4);
+    expect(
+      result.conclusion.directionSelections.every(
+        (item) => item.directions.length === 0,
+      ),
+    ).toBe(true);
     expect(
       result.conclusion.evaluations[0].windows[0].cohorts.ALL,
     ).toMatchObject({ trades: 0, pnl: 0, profitFactor: null });

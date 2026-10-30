@@ -9,6 +9,7 @@ export {
 export { createTestConnector } from './testConnector';
 export { resolveExecutionCosts } from './executionCosts';
 export {
+  RESEARCH_ENTRY_POLICY_CAPABILITIES,
   parseResearchEntryPolicy,
   buildResearchEntryPayload,
   matchesResearchEntryRules,
