@@ -29,7 +29,16 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
   let manifestHash = '';
   let replayReady = false;
   let replayReadiness: 'ready' | 'waiting_resources' | 'unknown' = 'unknown';
+  let replayResources:
+    | {
+        observedAt: number;
+        memoryAvailableKb: number;
+        minimumAvailableKb: number;
+        memoryDeficitKb: number;
+      }
+    | undefined;
   const updateReplayReady = async () => {
+    replayResources = undefined;
     try {
       const root =
         process.env.MCP_REPLAY_REQUEST_ROOT ||
@@ -37,16 +46,34 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       const heartbeat = JSON.parse(
         await readFile(`${root}/heartbeat.json`, 'utf8'),
       );
-      replayReadiness =
-        heartbeat.readiness === 'ready' ||
-        heartbeat.readiness === 'waiting_resources'
-          ? heartbeat.readiness
-          : 'unknown';
       replayReady =
         heartbeat.protocolVersion === 2 &&
         Number.isFinite(heartbeat.observedAt) &&
         Date.now() - heartbeat.observedAt >= 0 &&
         Date.now() - heartbeat.observedAt < 120000;
+      replayReadiness =
+        replayReady &&
+        (heartbeat.readiness === 'ready' ||
+          heartbeat.readiness === 'waiting_resources')
+          ? heartbeat.readiness
+          : 'unknown';
+      if (
+        replayReady &&
+        Number.isSafeInteger(heartbeat.memoryAvailableKb) &&
+        heartbeat.memoryAvailableKb >= 0 &&
+        Number.isSafeInteger(heartbeat.minimumAvailableKb) &&
+        heartbeat.minimumAvailableKb > 0
+      ) {
+        replayResources = {
+          observedAt: heartbeat.observedAt,
+          memoryAvailableKb: heartbeat.memoryAvailableKb,
+          minimumAvailableKb: heartbeat.minimumAvailableKb,
+          memoryDeficitKb: Math.max(
+            0,
+            heartbeat.minimumAvailableKb - heartbeat.memoryAvailableKb,
+          ),
+        };
+      }
     } catch {
       replayReadiness = 'unknown';
       replayReady = false;
@@ -68,6 +95,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
     packageManifestSha256: manifestHash,
     replayAvailable: replayReady,
     replayReadiness,
+    replayResources,
   });
   const stop = () => {
     stopping = true;

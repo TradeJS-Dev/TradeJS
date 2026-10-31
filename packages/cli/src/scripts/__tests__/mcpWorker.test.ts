@@ -204,7 +204,7 @@ test('failed replay exposes redacted host details after stderr is fully drained'
   expect(mockSpawn).toHaveBeenCalledTimes(1);
 });
 
-test('host resource waiting is observable without an execution start timestamp', async () => {
+test('host resource waiting exposes memory telemetry', async () => {
   mockJobs.set('jobs:id', job('queued', { kind: 'runtime-feedback-replay' }));
   mockReadFile.mockImplementation(async (file: string) =>
     JSON.stringify(
@@ -213,11 +213,14 @@ test('host resource waiting is observable without an execution start timestamp',
             protocolVersion: 2,
             observedAt: Date.now(),
             readiness: 'waiting_resources',
+            memoryAvailableKb: 6082188,
+            minimumAvailableKb: 7340032,
           }
         : { status: 'waiting_resources' },
     ),
   );
   let waiting: McpJob | undefined;
+  let workerHeartbeat: unknown;
   mockSpawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), {
       stdout: new EventEmitter(),
@@ -226,11 +229,19 @@ test('host resource waiting is observable without an execution start timestamp',
     });
     setTimeout(() => {
       waiting = mockJobs.get('jobs:id') as McpJob;
+      workerHeartbeat = mockJobs.get('worker:heartbeat');
       child.emit('close', 0);
     }, 1200);
     return child;
   });
   await main({ signal: mockController.signal });
+  expect(workerHeartbeat).toMatchObject({
+    replayResources: {
+      memoryAvailableKb: 6082188,
+      minimumAvailableKb: 7340032,
+      memoryDeficitKb: 1257844,
+    },
+  });
   expect(waiting?.status).toBe('waiting_resources');
   expect(waiting?.startedAt).toBeUndefined();
   expect(mockSpawn).toHaveBeenCalledTimes(1);
