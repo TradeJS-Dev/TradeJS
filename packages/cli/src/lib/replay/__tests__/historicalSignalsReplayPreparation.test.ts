@@ -87,6 +87,8 @@ describe('historical replay preparation', () => {
         },
       } as unknown as Parameters<typeof prepareHistoricalReplay>[0],
       {
+        releaseIndicatorsCache: jest.fn(),
+        releaseReplayCache: jest.fn(),
         progress: { tick: jest.fn() },
         display: {
           skipped: (value) => String(value),

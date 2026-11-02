@@ -91,6 +91,7 @@ export const createPortfolioReplayConnector = (
 ): PortfolioReplayConnector => {
   let state = {};
   let amount = INITIAL_BACKTEST_AMOUNT;
+  let executionTimestamp: number | null = null;
   const positionsBySymbol = new Map<string, PositionState>();
   const currentPriceBySymbol = new Map<string, number>();
   const orderLog: OrderLogData = [];
@@ -429,6 +430,7 @@ export const createPortfolioReplayConnector = (
       });
       const nextPosition: ReplayPosition = {
         ...order,
+        timestamp: executionTimestamp ?? order.timestamp,
         price: entryPrice,
         signal: compactReplaySignal(order.signal),
         amount,
@@ -456,6 +458,7 @@ export const createPortfolioReplayConnector = (
         positionState,
         data: {
           ...order,
+          timestamp: executionTimestamp ?? order.timestamp,
           price: entryPrice,
           profit,
           fee,
@@ -538,6 +541,7 @@ export const createPortfolioReplayConnector = (
         positionState,
         data: {
           ...order,
+          timestamp: executionTimestamp ?? order.timestamp,
           price: executionPrice,
           qty: position.qty,
           profit,
@@ -547,13 +551,15 @@ export const createPortfolioReplayConnector = (
         },
       });
 
-      clearPosition(order.symbol, order.timestamp);
+      clearPosition(order.symbol, executionTimestamp ?? order.timestamp);
       return true;
     },
 
     getTickers: connector.getTickers,
 
     advanceMarket: async ({ symbol, candle }) => {
+      // Strategy signals retain their native candle time; fills follow this shared clock.
+      executionTimestamp = candle.timestamp;
       currentPriceBySymbol.set(symbol, candle.close);
       await checkSl({ symbol, candle });
       await checkTp({ symbol, candle });

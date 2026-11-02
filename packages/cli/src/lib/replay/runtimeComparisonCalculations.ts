@@ -7,6 +7,8 @@ import type {
 } from '@tradejs/types';
 import {
   getBacktestParityComparisonTimestamp,
+  resolveTradeParityTimestampOffset,
+  type TradeParityTimestampOffset,
   type TradeParityEntry,
 } from '../runtimeParity';
 import {
@@ -316,7 +318,7 @@ export const compareExchangeEntriesToBacktest = ({
   exchangeEntries: ExchangeEntryRecord[];
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
-  backtestTimestampOffsetMs?: number;
+  backtestTimestampOffsetMs?: TradeParityTimestampOffset;
 }) => {
   const groupedExchange = new Map<string, ExchangeEntryRecord[]>();
   const groupedBacktest = new Map<string, TradeParityEntry[]>();
@@ -416,7 +418,7 @@ const findExchangeRuntimeOutcome = ({
   runtimeSignals: Signal[];
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
   toleranceMs: number;
-  signalTimestampOffsetMs: number;
+  signalTimestampOffsetMs: TradeParityTimestampOffset;
 }) => {
   const candidates: Array<{
     timestamp: number;
@@ -463,7 +465,10 @@ const findExchangeRuntimeOutcome = ({
         ...candidate,
         timestampDiffMs: Math.abs(
           candidate.timestamp +
-            signalTimestampOffsetMs -
+            resolveTradeParityTimestampOffset(
+              strategyName,
+              signalTimestampOffsetMs,
+            ) -
             exchangeEntry.entryTimestamp,
         ),
       }))
@@ -507,7 +512,7 @@ export const splitExchangeMatchesByRuntimeOrderStatus = ({
   runtimeSignals: Signal[];
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
   toleranceMs: number;
-  signalTimestampOffsetMs: number;
+  signalTimestampOffsetMs: TradeParityTimestampOffset;
 }) => {
   const orderFailed: ExchangeOrderFailedBacktestEntry[] = [];
   const completed = matched.filter((item) => {

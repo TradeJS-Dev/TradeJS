@@ -33,7 +33,7 @@ import {
 } from '../signals/hooks';
 import { buildRuntimeLineage } from '../runtimeLineage';
 import {
-  prepareHistoricalReplay,
+  prepareMultiIntervalHistoricalReplay,
   releaseHistoricalReplayPlan,
   type ReplayRuntimeStrategy,
 } from './historicalSignalsReplayPreparation';
@@ -283,7 +283,21 @@ export const runHistoricalSignalsReplay = async ({
     },
   );
   memory?.('references:loaded');
-  const plan = await prepareHistoricalReplay(
+  const cacheAdapters = {
+    releaseIndicatorsCache: (keyPrefix: string) =>
+      releaseReplayCacheCopies(
+        keyPrefix,
+        releaseStrategyIndicatorsReplayCache,
+        getProjectReplayCacheReleasers()?.releaseStrategyIndicatorsReplayCache,
+      ),
+    releaseReplayCache: (keyPrefix: string) =>
+      releaseReplayCacheCopies(
+        keyPrefix,
+        releaseStrategyReplayCache,
+        getProjectReplayCacheReleasers()?.releaseStrategyReplayCache,
+      ),
+  };
+  const plan = await prepareMultiIntervalHistoricalReplay(
     {
       userName: replayUserName,
       projectRoot: replayProjectRoot,
@@ -300,6 +314,7 @@ export const runHistoricalSignalsReplay = async ({
       },
     },
     {
+      ...cacheAdapters,
       progress: {
         tick: (tokens) => prepareBar.tick(1, tokens),
       },
@@ -310,6 +325,11 @@ export const runHistoricalSignalsReplay = async ({
       buildLineage: buildRuntimeLineage,
       sampleMemory: memory,
     },
+    (nativeInterval, nativeRun) =>
+      loadHistoricalReplayReferences({
+        preparedRun: nativeRun,
+        interval: nativeInterval,
+      }),
   );
   memory?.('strategies:prepared', { symbols: plan.symbolRuntimes.length });
   const hookContext = buildAfterSignalsContext({
@@ -336,6 +356,7 @@ export const runHistoricalSignalsReplay = async ({
       hookContext,
     },
     {
+      ...cacheAdapters,
       clock: { now: Date.now },
       progress: {
         enabled: showProgress,
@@ -350,19 +371,6 @@ export const runHistoricalSignalsReplay = async ({
       invokeAfterSignals: invokeAfterSignalsHooks,
       enrichSignal: (signal) =>
         enrichSignalWithBinanceMarketContext({ signal, env: 'PARITY' }),
-      releaseIndicatorsCache: (keyPrefix) =>
-        releaseReplayCacheCopies(
-          keyPrefix,
-          releaseStrategyIndicatorsReplayCache,
-          getProjectReplayCacheReleasers()
-            ?.releaseStrategyIndicatorsReplayCache,
-        ),
-      releaseReplayCache: (keyPrefix) =>
-        releaseReplayCacheCopies(
-          keyPrefix,
-          releaseStrategyReplayCache,
-          getProjectReplayCacheReleasers()?.releaseStrategyReplayCache,
-        ),
     },
   );
   memory?.('execution:complete', { signals: execution.signals.length });

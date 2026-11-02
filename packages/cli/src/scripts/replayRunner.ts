@@ -1,3 +1,4 @@
+import { resolveHistoricalReplayIntervals } from '../lib/replay/historicalSignalsReplayPreparation';
 import chalk from 'chalk';
 import { TTL_1M } from '@tradejs/core/constants';
 import { intervalToMs } from '@tradejs/core/data';
@@ -366,16 +367,10 @@ export const replayBacktest = async () => {
   if (!replayStrategies.length) {
     throw new Error(`No enabled strategies in deployment ${deployment.id}`);
   }
-  const strategyIntervals = new Set(
-    replayStrategies.map(({ strategyConfig }) =>
-      String(strategyConfig.INTERVAL),
-    ),
+  resolveHistoricalReplayIntervals(
+    replayInterval,
+    replayStrategies.map(({ strategyConfig }) => strategyConfig.INTERVAL),
   );
-  if (strategyIntervals.size !== 1 || !strategyIntervals.has(replayInterval)) {
-    throw new Error(
-      `Replay interval does not match deployment ${deployment.id}: replay=${replayInterval}, strategies=${[...strategyIntervals].join(',')}`,
-    );
-  }
   const strategyUniverses = new Set(
     replayStrategies.map(({ strategyConfig }) =>
       String(strategyConfig.UNIVERSE),

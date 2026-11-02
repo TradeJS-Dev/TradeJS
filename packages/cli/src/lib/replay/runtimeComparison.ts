@@ -1,7 +1,9 @@
 import chalk from 'chalk';
+import { intervalToMs } from '@tradejs/core/data';
 import type {
   Connector,
   ExchangeEntryRecord,
+  Interval,
   RuntimeSignalEvaluationRecord,
   Signal,
 } from '@tradejs/types';
@@ -11,6 +13,7 @@ import {
   dedupeRuntimeParityEntries,
   extractRuntimeParityEntries,
   type TradeParityEntry,
+  type TradeParityTimestampOffset,
 } from '../runtimeParity';
 import {
   summarizeRuntimeTradesByStrategy,
@@ -66,12 +69,14 @@ export {
   splitExchangeMatchesByRuntimeOrderStatus,
 } from './runtimeComparisonCalculations';
 
-const getReplayEntryTimestampCompareOffsetMs = () => {
-  const intervalMinutes = Number(replayInterval);
-  return Number.isFinite(intervalMinutes) && intervalMinutes > 0
-    ? intervalMinutes * 60 * 1000
-    : 15 * 60 * 1000;
-};
+const replayStrategyIntervals = (summaries: ReplayStrategySummary[]) =>
+  summaries.map(({ strategyName, strategyConfig }) => {
+    const durationMs = intervalToMs(strategyConfig.INTERVAL as Interval);
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      throw new Error(`Invalid replay interval for ${strategyName}`);
+    }
+    return { strategyName, interval: String(durationMs / 60_000) };
+  });
 
 const buildReplaySignalEvaluations = (
   signals: Signal[],
@@ -357,6 +362,7 @@ const saveAndPrintReplayExchangeComparison = async ({
   runtimeSignalEvaluations,
   runtimeLineageScopes,
   lineage,
+  timestampOffsetMs,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
@@ -367,6 +373,7 @@ const saveAndPrintReplayExchangeComparison = async ({
   runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
   runtimeLineageScopes: import('../runtimeSignalsStorage').RuntimeLineageScopeRecord[];
   lineage: ReplayRuntimeComparisonSummary['lineage'];
+  timestampOffsetMs: TradeParityTimestampOffset;
 }): Promise<ReplayRuntimeComparisonSummary> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   const rawExchangeEntries = await loadExchangeEntriesForComparison({
@@ -391,7 +398,7 @@ const saveAndPrintReplayExchangeComparison = async ({
       runtimeSignals,
       runtimeSignalEvaluations,
       toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-      signalTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+      signalTimestampOffsetMs: timestampOffsetMs,
     });
   });
   const comparisonLineage = {
@@ -417,7 +424,7 @@ const saveAndPrintReplayExchangeComparison = async ({
       backtestEntries,
       strategyNameByOrderLinkKey,
       toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-      backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+      backtestTimestampOffsetMs: timestampOffsetMs,
       runtimeSignals,
       runtimeSignalEvaluations,
       replaySignals,
@@ -458,7 +465,7 @@ const saveAndPrintReplayExchangeComparison = async ({
     exchangeEntries,
     backtestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    backtestTimestampOffsetMs: timestampOffsetMs,
   });
   const { completed: matched, orderFailed } =
     splitExchangeMatchesByRuntimeOrderStatus({
@@ -467,7 +474,7 @@ const saveAndPrintReplayExchangeComparison = async ({
       runtimeSignals,
       runtimeSignalEvaluations,
       toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-      signalTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+      signalTimestampOffsetMs: timestampOffsetMs,
     });
   const details = buildReplayExchangeComparisonDetails({
     matched,
@@ -478,7 +485,7 @@ const saveAndPrintReplayExchangeComparison = async ({
     backtestEntries,
     strategyNameByOrderLinkKey,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    backtestTimestampOffsetMs: timestampOffsetMs,
     runtimeSignals,
     runtimeSignalEvaluations,
     replaySignals,
@@ -553,11 +560,26 @@ export const saveAndPrintReplayRuntimeComparison = async ({
         expectedWindow: window,
       })
     : null;
-  const replayTimestampOffset = runtimeEvidence
-    ? buildTradeParityTimestampOffset(
-        activeRuntimeEvidenceStrategies(runtimeEvidence.deployment),
-      )
-    : getReplayEntryTimestampCompareOffsetMs();
+  const declaredIntervals = runtimeEvidence
+    ? []
+    : replayStrategyIntervals(liveStrategySummaries);
+  const replayTimestampOffset = buildTradeParityTimestampOffset(
+    runtimeEvidence
+      ? activeRuntimeEvidenceStrategies(runtimeEvidence.deployment)
+      : declaredIntervals,
+  );
+  // Metadata is keyed by native signal time, whereas the requested trade window
+  // is shared across execution intervals. Include leading native decisions.
+  const metadataStart = runtimeEvidence
+    ? window.start
+    : window.start -
+      Math.max(
+        0,
+        ...declaredIntervals.map(
+          ({ interval }) =>
+            Number(interval) * 60_000 - intervalToMs(replayInterval),
+        ),
+      );
   const [
     rawRuntimeTrades,
     runtimeSignals,
@@ -576,15 +598,15 @@ export const saveAndPrintReplayRuntimeComparison = async ({
           endTime: window.end,
         }),
         loadRuntimeSignals(replayUserName, {
-          startTime: window.start,
+          startTime: metadataStart,
           endTime: window.end,
         }),
         loadRuntimeSignalEvaluations(replayUserName, {
-          startTime: window.start,
+          startTime: metadataStart,
           endTime: window.end,
         }),
         loadRuntimeLineageScopes(replayUserName, {
-          startTime: window.start,
+          startTime: metadataStart,
           endTime: window.end,
         }),
       ]);
@@ -658,6 +680,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     );
     return saveAndPrintReplayExchangeComparison({
       liveStrategySummaries,
+      timestampOffsetMs: replayTimestampOffset,
       backtestEntries: comparableBacktestEntries,
       replaySignals,
       replaySignalEvaluations,

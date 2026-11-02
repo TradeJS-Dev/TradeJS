@@ -1171,7 +1171,7 @@ export const buildReplayExchangeComparisonDetails = ({
   strategyNameByOrderLinkKey: Map<string, string>;
   toleranceMs: number;
   limit?: number;
-  backtestTimestampOffsetMs?: number;
+  backtestTimestampOffsetMs?: TradeParityTimestampOffset;
   runtimeSignals?: Signal[];
   runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replaySignals?: Signal[];

@@ -5,7 +5,10 @@ import type {
 import type { Signal } from '@tradejs/types';
 import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import type { PortfolioReplayConnector } from './portfolioReplayConnector';
-import type { HistoricalReplayPlan } from './historicalSignalsReplayPreparation';
+import {
+  releaseHistoricalReplayCaches,
+  type HistoricalReplayPlan,
+} from './historicalSignalsReplayPreparation';
 import { createHistoricalReplaySkipEvidence } from './historicalSignalsReplaySkipEvidence';
 
 export type HistoricalReplayExecutionContext = {
@@ -60,12 +63,17 @@ const advanceCycleMarket = async (
 ) => {
   const cycleSymbols = plan.symbolRuntimes.filter(
     (symbolRuntime) =>
-      symbolRuntime.replayData[symbolRuntime.currentIndex]?.timestamp ===
+      (symbolRuntime.replayData[symbolRuntime.currentIndex]?.timestamp ?? NaN) +
+        (symbolRuntime.timestampOffsetMs ?? 0) ===
       timestamp,
   );
   for (const symbolRuntime of cycleSymbols) {
     const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
-    if (candle?.timestamp === timestamp) {
+    if (
+      candle &&
+      candle.timestamp + (symbolRuntime.timestampOffsetMs ?? 0) === timestamp
+    ) {
+      if (symbolRuntime.advanceMarket === false) continue;
       await connector.advanceMarket({
         symbol: symbolRuntime.symbol,
         candle,
@@ -81,7 +89,10 @@ const advanceAbortedCycle = (
 ) => {
   for (const symbolRuntime of cycleSymbols ?? []) {
     const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
-    if (candle?.timestamp === timestamp) {
+    if (
+      candle &&
+      candle.timestamp + (symbolRuntime.timestampOffsetMs ?? 0) === timestamp
+    ) {
       symbolRuntime.currentIndex += 1;
     }
   }
@@ -142,8 +153,9 @@ export const executeHistoricalReplay = async (
         if (
           !candle ||
           !btcCandle ||
-          candle.timestamp !== timestamp ||
-          btcCandle.timestamp !== timestamp
+          candle.timestamp + (symbolRuntime.timestampOffsetMs ?? 0) !==
+            timestamp ||
+          btcCandle.timestamp !== candle.timestamp
         ) {
           continue;
         }
@@ -152,14 +164,14 @@ export const executeHistoricalReplay = async (
           const result = await strategyRuntime.run(
             candle,
             btcCandle,
-            ethCandle?.timestamp === timestamp ? ethCandle : undefined,
+            ethCandle?.timestamp === candle.timestamp ? ethCandle : undefined,
           );
           skipEvidence.record({
             strategyName: strategyRuntime.strategyName,
             symbol: symbolRuntime.symbol,
             strategyConfig: strategyRuntime.strategyConfig,
             runtimeLineage: strategyRuntime.runtimeLineage,
-            timestamp,
+            timestamp: candle.timestamp,
             result,
           });
           if (result && typeof result !== 'string') {
@@ -182,10 +194,7 @@ export const executeHistoricalReplay = async (
       reportProgress(timestamp);
     }
   } finally {
-    for (const keyPrefix of context.plan.sharedReplayKeyPrefixes) {
-      adapters.releaseIndicatorsCache(keyPrefix);
-      adapters.releaseReplayCache(keyPrefix);
-    }
+    releaseHistoricalReplayCaches(context.plan, adapters);
   }
 
   return {

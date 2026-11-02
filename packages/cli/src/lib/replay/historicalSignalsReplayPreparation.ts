@@ -1,3 +1,4 @@
+import { intervalToMs } from '@tradejs/core/data';
 import type {
   Interval,
   KlineChartData,
@@ -54,6 +55,8 @@ type SymbolPreparedData = {
 
 export type SymbolReplayRuntime = {
   symbol: string;
+  timestampOffsetMs?: number;
+  advanceMarket?: boolean;
   replayData: KlineChartData;
   btcReplayData: KlineChartData;
   ethReplayData: KlineChartData;
@@ -93,35 +96,41 @@ export type HistoricalReplayPreparationContext = {
   };
 };
 
-export type HistoricalReplayPreparationAdapters = {
-  sampleMemory?: (phase: string, counts: Record<string, number>) => void;
-  progress: {
-    tick(tokens: { skipped: string; symbol: string }): void;
-  };
-  display: {
-    skipped(value: number): string;
-    symbol(value: string): string;
-  };
-  buildLineage(params: {
-    projectRoot: string;
-    strategyName: string;
-    strategyRevision: string;
-    deploymentCompositionId: string;
-    strategyPackageVersion: string;
-    strategyDependencyVersions: Record<string, string>;
-    runtimePackageVersion: string;
-    config: {
-      configId: string;
-      strategyConfig: StrategyConfig;
-      symbolResultConfig: Record<string, unknown> | null;
-    };
-    runContext: {
-      connectorName: string;
-      interval: string;
-      universe: string | null;
-    };
-  }): Promise<RuntimeLineage>;
+export type HistoricalReplayCacheAdapters = {
+  releaseIndicatorsCache(keyPrefix: string): void;
+  releaseReplayCache(keyPrefix: string): void;
 };
+
+export type HistoricalReplayPreparationAdapters =
+  HistoricalReplayCacheAdapters & {
+    sampleMemory?: (phase: string, counts: Record<string, number>) => void;
+    progress: {
+      tick(tokens: { skipped: string; symbol: string }): void;
+    };
+    display: {
+      skipped(value: number): string;
+      symbol(value: string): string;
+    };
+    buildLineage(params: {
+      projectRoot: string;
+      strategyName: string;
+      strategyRevision: string;
+      deploymentCompositionId: string;
+      strategyPackageVersion: string;
+      strategyDependencyVersions: Record<string, string>;
+      runtimePackageVersion: string;
+      config: {
+        configId: string;
+        strategyConfig: StrategyConfig;
+        symbolResultConfig: Record<string, unknown> | null;
+      };
+      runContext: {
+        connectorName: string;
+        interval: string;
+        universe: string | null;
+      };
+    }): Promise<RuntimeLineage>;
+  };
 
 const buildPreparedData = ({
   data,
@@ -217,6 +226,154 @@ const buildSymbolSharedReplayKey = ({
 }) =>
   ['replay', userName, connectorName, symbol, interval, start, end].join(':');
 
+export const resolveHistoricalReplayIntervals = (
+  baseInterval: Interval,
+  strategyIntervals: Array<string | undefined>,
+): Interval[] => {
+  const intervals = [
+    ...new Set(
+      strategyIntervals.map((value) => {
+        if (
+          !value ||
+          !Number.isFinite(intervalToMs(value as Interval)) ||
+          intervalToMs(value as Interval) <= 0
+        )
+          throw new Error(`Invalid replay strategy interval: ${value}`);
+        return value as Interval;
+      }),
+    ),
+  ].sort((a, b) => intervalToMs(a) - intervalToMs(b));
+  if (intervals.length > 1 && intervals.includes('M')) {
+    throw new Error('Mixed replay does not support calendar intervals');
+  }
+  const baseMs = intervalToMs(baseInterval);
+  if (
+    intervals.some(
+      (value) =>
+        intervalToMs(value) < baseMs || intervalToMs(value) % baseMs !== 0,
+    )
+  ) {
+    throw new Error(
+      'Replay strategy intervals must be multiples of the base timeframe',
+    );
+  }
+  if (!intervals.length || !intervals.includes(baseInterval)) {
+    throw new Error(
+      'Replay base timeframe must match an active strategy interval',
+    );
+  }
+  return intervals;
+};
+
+/** Prepare native candle streams but execute them on one shared base clock. */
+export const prepareMultiIntervalHistoricalReplay = async (
+  context: HistoricalReplayPreparationContext,
+  adapters: HistoricalReplayPreparationAdapters,
+  loadReferences: (
+    interval: Interval,
+    preparedRun: PreparedRunEnvironment,
+  ) => Promise<HistoricalReplayPreparationContext['references']>,
+): Promise<HistoricalReplayPlan> => {
+  const intervals = resolveHistoricalReplayIntervals(
+    context.interval,
+    context.strategies.map((s) => s.strategyConfig.INTERVAL),
+  );
+  const baseMs = intervalToMs(context.interval);
+  const plan: HistoricalReplayPlan = {
+    symbolRuntimes: [],
+    orderedTimestamps: [],
+    sharedReplayKeyPrefixes: [],
+    runtimeLineages: [],
+  };
+  const timestamps = new Set<number>();
+  const baseRuntimes = new Map<string, SymbolReplayRuntime>();
+  const validatedSymbols = new Set<string>();
+  try {
+    for (const interval of intervals) {
+      const offset = intervalToMs(interval) - baseMs;
+      // Partition by the shared execution clock, retaining native candle timestamps.
+      const nativeRun: PreparedRunEnvironment = {
+        ...context.preparedRun,
+        preloadStart: context.preparedRun.preloadStart - offset,
+        window: {
+          ...context.preparedRun.window,
+          start: context.preparedRun.window.start - offset,
+          end: context.preparedRun.window.end - offset,
+        },
+      };
+      const part = await prepareHistoricalReplay(
+        {
+          ...context,
+          interval,
+          preparedRun: nativeRun,
+          strategies: context.strategies.filter(
+            (strategy) => strategy.strategyConfig.INTERVAL === interval,
+          ),
+          references:
+            interval === context.interval
+              ? context.references
+              : await loadReferences(interval, nativeRun),
+        },
+        adapters,
+      );
+      // Own these resources before any validation that may reject this part.
+      plan.sharedReplayKeyPrefixes.push(...part.sharedReplayKeyPrefixes);
+      plan.runtimeLineages.push(...part.runtimeLineages);
+      for (const runtime of part.symbolRuntimes) {
+        if (interval === context.interval) {
+          baseRuntimes.set(runtime.symbol, runtime);
+        } else if (
+          runtime.strategies.length &&
+          !validatedSymbols.has(runtime.symbol)
+        ) {
+          assertBaseReplayCoverage(
+            baseRuntimes.get(runtime.symbol),
+            runtime.symbol,
+            context.preparedRun.window,
+            baseMs,
+          );
+          validatedSymbols.add(runtime.symbol);
+        }
+        runtime.timestampOffsetMs = offset;
+        runtime.advanceMarket = interval === context.interval;
+        plan.symbolRuntimes.push(runtime);
+      }
+      for (const timestamp of part.orderedTimestamps) {
+        const scheduled = timestamp + offset;
+        if (
+          scheduled >= context.preparedRun.window.start &&
+          scheduled <= context.preparedRun.window.end
+        )
+          timestamps.add(scheduled);
+      }
+    }
+    plan.orderedTimestamps = [...timestamps].sort((a, b) => a - b);
+    return plan;
+  } catch (error) {
+    releaseHistoricalReplayCaches(plan, adapters);
+    throw error;
+  }
+};
+
+const assertBaseReplayCoverage = (
+  runtime: SymbolReplayRuntime | undefined,
+  symbol: string,
+  window: PreparedRunEnvironment['window'],
+  baseMs: number,
+) => {
+  let index = 0;
+  for (
+    let timestamp = Math.ceil(window.start / baseMs) * baseMs;
+    timestamp <= window.end;
+    timestamp += baseMs
+  ) {
+    if (runtime?.replayData[index]?.timestamp !== timestamp) {
+      throw new Error(`Missing base replay candle: ${symbol} at ${timestamp}`);
+    }
+    index += 1;
+  }
+};
+
 export const prepareHistoricalReplay = async (
   context: HistoricalReplayPreparationContext,
   adapters: HistoricalReplayPreparationAdapters,
@@ -237,157 +394,180 @@ export const prepareHistoricalReplay = async (
   const runtimeLineages: ReplayRuntimeLineageRecord[] = [];
   let skippedSymbols = 0;
 
-  for (const symbol of preparedRun.tickers) {
-    const data = await preparedRun.marketConnector.kline({
-      symbol,
-      start: preparedRun.preloadStart,
-      end: preparedRun.window.end,
-      cacheOnly: true,
-      interval,
-    });
-    if (symbolRuntimes.length % 50 === 0)
-      adapters.sampleMemory?.('history:loaded', {
-        symbols: symbolRuntimes.length + 1,
-        candles: data.length,
+  try {
+    for (const symbol of preparedRun.tickers) {
+      const data = await preparedRun.marketConnector.kline({
+        symbol,
+        start: preparedRun.preloadStart,
+        end: preparedRun.window.end,
+        cacheOnly: true,
+        interval,
       });
-    const preparedData = buildPreparedData({
-      data,
-      btcData: references.btcMarketData,
-      ethData: references.ethMarketData,
-      btcBinanceData: references.btcBinanceData,
-      btcCoinbaseData: references.btcCoinbaseData,
-      start: preparedRun.window.start,
-      preloadStart: preparedRun.preloadStart,
-    });
+      if (symbolRuntimes.length % 50 === 0)
+        adapters.sampleMemory?.('history:loaded', {
+          symbols: symbolRuntimes.length + 1,
+          candles: data.length,
+        });
+      const preparedData = buildPreparedData({
+        data,
+        btcData: references.btcMarketData,
+        ethData: references.ethMarketData,
+        btcBinanceData: references.btcBinanceData,
+        btcCoinbaseData: references.btcCoinbaseData,
+        start: preparedRun.window.start,
+        preloadStart: preparedRun.preloadStart,
+      });
 
-    if (!preparedData.replayData.length || !preparedData.btcReplayData.length) {
-      skippedSymbols += 1;
+      if (
+        !preparedData.replayData.length ||
+        !preparedData.btcReplayData.length
+      ) {
+        skippedSymbols += 1;
+        adapters.progress.tick({
+          skipped: adapters.display.skipped(skippedSymbols),
+          symbol: adapters.display.symbol(symbol),
+        });
+        continue;
+      }
+
+      const sharedIndicatorsReplayKey = buildSymbolSharedReplayKey({
+        userName,
+        connectorName,
+        interval,
+        symbol,
+        start: preparedRun.window.start,
+        end: preparedRun.window.end,
+      });
+      sharedReplayKeyPrefixes.push(sharedIndicatorsReplayKey);
+
+      const initializedStrategies = await Promise.allSettled(
+        strategies
+          .filter((strategy) => strategyIncludesSymbol(strategy, symbol))
+          .map(async (strategy) => {
+            const replayStrategyConfig = buildReplayStrategyConfig({
+              strategyConfig: strategy.strategyConfig,
+              interval,
+            });
+            const runtimeLineage = await adapters.buildLineage({
+              projectRoot,
+              strategyName: strategy.strategyName,
+              strategyRevision: strategy.strategyRevision,
+              deploymentCompositionId: strategy.deploymentCompositionId,
+              strategyPackageVersion: strategy.strategyPackageVersion,
+              strategyDependencyVersions: strategy.strategyDependencyVersions,
+              runtimePackageVersion: strategy.runtimePackageVersion,
+              config: {
+                configId: strategy.strategyRevision,
+                strategyConfig: strategy.strategyConfig,
+                symbolResultConfig:
+                  strategy.strategyResults?.[symbol]?.config ?? null,
+              },
+              runContext: {
+                connectorName: connectorName.toLowerCase(),
+                interval: String(interval),
+                universe: preparedRun.universe ?? null,
+              },
+            });
+            runtimeLineages.push({
+              strategy: strategy.strategyName,
+              symbol,
+              ...(preparedRun.deploymentId
+                ? { deploymentId: preparedRun.deploymentId }
+                : {}),
+              ...(preparedRun.accountId
+                ? { accountId: preparedRun.accountId }
+                : {}),
+              lineage: runtimeLineage,
+            });
+
+            return {
+              strategyName: strategy.strategyName,
+              strategyConfig: strategy.strategyConfig,
+              runtimeLineage,
+              run: await strategy.strategyCreator({
+                userName,
+                connectorName,
+                runtimeConfigId: strategy.strategyRevision,
+                strategyRevision: strategy.strategyRevision,
+                runtimeLineage,
+                universe: preparedRun.universe,
+                accountId: preparedRun.accountId,
+                deploymentId: preparedRun.deploymentId,
+                runtimeConfigSnapshot: {
+                  userConfig: replayStrategyConfig,
+                },
+                config: replayStrategyConfig,
+                symbol,
+                data: preparedData.prevData,
+                btcData: preparedData.btcPrevData,
+                ethData: preparedData.ethPrevData,
+                btcBinanceData: preparedData.btcBinancePrevData,
+                btcCoinbaseData: preparedData.btcCoinbasePrevData,
+                connector: replayConnector,
+                sharedIndicatorsReplayKey,
+              }),
+            };
+          }),
+      );
+
+      const strategiesForSymbol = initializedStrategies.map((result) => {
+        if (result.status === 'rejected') throw result.reason;
+        return result.value;
+      });
+
+      const symbolRuntime: SymbolReplayRuntime = {
+        symbol,
+        replayData: preparedData.replayData,
+        btcReplayData: preparedData.btcReplayData,
+        ethReplayData: preparedData.ethReplayData,
+        currentIndex: 0,
+        strategies: strategiesForSymbol,
+      };
+      symbolRuntimes.push(symbolRuntime);
+      if (
+        symbolRuntimes.length % 50 === 0 ||
+        symbol === preparedRun.tickers.at(-1)
+      )
+        adapters.sampleMemory?.('strategies:initializing', {
+          symbols: symbolRuntimes.length,
+          strategiesPerSymbol: strategiesForSymbol.length,
+        });
       adapters.progress.tick({
         skipped: adapters.display.skipped(skippedSymbols),
         symbol: adapters.display.symbol(symbol),
       });
-      continue;
+
+      for (const candle of preparedData.replayData) {
+        orderedTimestamps.add(candle.timestamp);
+      }
     }
 
-    const sharedIndicatorsReplayKey = buildSymbolSharedReplayKey({
-      userName,
-      connectorName,
-      interval,
-      symbol,
-      start: preparedRun.window.start,
-      end: preparedRun.window.end,
-    });
-    sharedReplayKeyPrefixes.push(sharedIndicatorsReplayKey);
-
-    const strategiesForSymbol = await Promise.all(
-      strategies
-        .filter((strategy) => strategyIncludesSymbol(strategy, symbol))
-        .map(async (strategy) => {
-          const replayStrategyConfig = buildReplayStrategyConfig({
-            strategyConfig: strategy.strategyConfig,
-            interval,
-          });
-          const runtimeLineage = await adapters.buildLineage({
-            projectRoot,
-            strategyName: strategy.strategyName,
-            strategyRevision: strategy.strategyRevision,
-            deploymentCompositionId: strategy.deploymentCompositionId,
-            strategyPackageVersion: strategy.strategyPackageVersion,
-            strategyDependencyVersions: strategy.strategyDependencyVersions,
-            runtimePackageVersion: strategy.runtimePackageVersion,
-            config: {
-              configId: strategy.strategyRevision,
-              strategyConfig: strategy.strategyConfig,
-              symbolResultConfig:
-                strategy.strategyResults?.[symbol]?.config ?? null,
-            },
-            runContext: {
-              connectorName: connectorName.toLowerCase(),
-              interval: String(interval),
-              universe: preparedRun.universe ?? null,
-            },
-          });
-          runtimeLineages.push({
-            strategy: strategy.strategyName,
-            symbol,
-            ...(preparedRun.deploymentId
-              ? { deploymentId: preparedRun.deploymentId }
-              : {}),
-            ...(preparedRun.accountId
-              ? { accountId: preparedRun.accountId }
-              : {}),
-            lineage: runtimeLineage,
-          });
-
-          return {
-            strategyName: strategy.strategyName,
-            strategyConfig: strategy.strategyConfig,
-            runtimeLineage,
-            run: await strategy.strategyCreator({
-              userName,
-              connectorName,
-              runtimeConfigId: strategy.strategyRevision,
-              strategyRevision: strategy.strategyRevision,
-              runtimeLineage,
-              universe: preparedRun.universe,
-              accountId: preparedRun.accountId,
-              deploymentId: preparedRun.deploymentId,
-              runtimeConfigSnapshot: {
-                userConfig: replayStrategyConfig,
-              },
-              config: replayStrategyConfig,
-              symbol,
-              data: preparedData.prevData,
-              btcData: preparedData.btcPrevData,
-              ethData: preparedData.ethPrevData,
-              btcBinanceData: preparedData.btcBinancePrevData,
-              btcCoinbaseData: preparedData.btcCoinbasePrevData,
-              connector: replayConnector,
-              sharedIndicatorsReplayKey,
-            }),
-          };
-        }),
-    );
-
-    const symbolRuntime: SymbolReplayRuntime = {
-      symbol,
-      replayData: preparedData.replayData,
-      btcReplayData: preparedData.btcReplayData,
-      ethReplayData: preparedData.ethReplayData,
-      currentIndex: 0,
-      strategies: strategiesForSymbol,
+    return {
+      symbolRuntimes,
+      orderedTimestamps: [...orderedTimestamps].sort(
+        (left, right) => left - right,
+      ),
+      sharedReplayKeyPrefixes,
+      runtimeLineages,
     };
-    symbolRuntimes.push(symbolRuntime);
-    if (
-      symbolRuntimes.length % 50 === 0 ||
-      symbol === preparedRun.tickers.at(-1)
-    )
-      adapters.sampleMemory?.('strategies:initializing', {
-        symbols: symbolRuntimes.length,
-        strategiesPerSymbol: strategiesForSymbol.length,
-      });
-    adapters.progress.tick({
-      skipped: adapters.display.skipped(skippedSymbols),
-      symbol: adapters.display.symbol(symbol),
-    });
-
-    for (const candle of preparedData.replayData) {
-      orderedTimestamps.add(candle.timestamp);
-    }
+  } catch (error) {
+    releaseHistoricalReplayCaches({ sharedReplayKeyPrefixes }, adapters);
+    throw error;
   }
-
-  return {
-    symbolRuntimes,
-    orderedTimestamps: [...orderedTimestamps].sort(
-      (left, right) => left - right,
-    ),
-    sharedReplayKeyPrefixes,
-    runtimeLineages,
-  };
 };
 
 /** Runtime closures retain warmup history; results only need timestamps and lineage. */
 export const releaseHistoricalReplayPlan = (plan: HistoricalReplayPlan) => {
   plan.symbolRuntimes.length = 0;
   plan.sharedReplayKeyPrefixes.length = 0;
+};
+
+export const releaseHistoricalReplayCaches = (
+  plan: Pick<HistoricalReplayPlan, 'sharedReplayKeyPrefixes'>,
+  adapters: HistoricalReplayCacheAdapters,
+) => {
+  for (const keyPrefix of plan.sharedReplayKeyPrefixes) {
+    adapters.releaseIndicatorsCache(keyPrefix);
+    adapters.releaseReplayCache(keyPrefix);
+  }
 };
