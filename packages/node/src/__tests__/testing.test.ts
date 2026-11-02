@@ -1,4 +1,5 @@
 import { BACKTEST_WARNING_CODES, Test } from '@tradejs/types';
+import { enrichSignalWithCoinMarketCapContext } from '../strategyHelpers/coinMarketCapContext';
 
 const mockByBitConnector = {
   kline: jest.fn(),
@@ -892,6 +893,9 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ai: true }));
 
+    expect(enrichSignalWithCoinMarketCapContext).toHaveBeenCalledWith(
+      expect.objectContaining({ env: 'BACKTEST', enabled: undefined }),
+    );
     expect(mockBuildAiPayload).toHaveBeenCalledWith(
       expect.objectContaining({
         figures: {

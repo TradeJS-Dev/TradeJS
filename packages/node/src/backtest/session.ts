@@ -261,7 +261,6 @@ export const createBacktestSession = async ({
       await enrichSignalWithMarketContextStages({
         signal,
         env: 'BACKTEST',
-        coinMarketCapEnabled: true,
         onStageStart: monitor.contextStage,
       });
     }
