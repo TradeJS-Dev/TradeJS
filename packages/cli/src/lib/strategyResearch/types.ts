@@ -19,6 +19,8 @@ export type StrategyResearchSpec = {
   frozenFrom?: string;
   testSince: number;
   minQuality: number;
+  /** Optional preregistered causal feature projection, shared by all search arms. */
+  featurePaths?: string[];
   budget: {
     maxVariants: number;
     maxRows: number;

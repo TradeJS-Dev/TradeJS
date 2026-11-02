@@ -367,6 +367,7 @@ export const runStrategyResearch = async (parameters: {
             parentSpec.selection,
             parentSpec.portfolio,
             parentSpec.minQuality,
+            parentSpec.featurePaths,
             parentSpec.diagnostics,
           ]) !==
             sha256Json([
@@ -376,6 +377,7 @@ export const runStrategyResearch = async (parameters: {
               spec.selection,
               spec.portfolio,
               spec.minQuality,
+              spec.featurePaths,
               spec.diagnostics,
             ]) ||
           parentState.lineage.runtimeSha256 !== state.lineage.runtimeSha256 ||

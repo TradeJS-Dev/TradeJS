@@ -242,9 +242,15 @@ export const createNativeStrategyResearchBackend = (parameters: {
       throw new Error(
         'Tester workers are already active; research will resume when the host is free',
       );
-    if (os.freemem() < spec.budget.minimumFreeMemoryMb * 1024 * 1024)
+    // macOS keeps reclaimable memory in inactive pages, outside os.freemem().
+    const availableBytes =
+      os.platform() === 'darwin' ? process.availableMemory() : os.freemem();
+    if (
+      !Number.isFinite(availableBytes) ||
+      availableBytes < spec.budget.minimumFreeMemoryMb * 1024 * 1024
+    )
       throw new Error(
-        'Insufficient free host memory for the frozen research budget',
+        'Insufficient available host memory for the frozen research budget',
       );
   };
   return {
@@ -776,12 +782,20 @@ export const createNativeStrategyResearchBackend = (parameters: {
         throw new Error(
           `Native/export reconciliation is ${reconciliation.status}: ${reconciliation.reasons.join('; ')}`,
         );
-      const trades = loaded.trades.filter(
-        (trade) =>
-          trade.signalTimestamp >= spec.core.window.start &&
-          trade.signalTimestamp < spec.core.window.end &&
-          trade.exitTimestamp < spec.core.window.end,
-      );
+      const researchSignalId = (symbol: string, signalId: string) =>
+        JSON.stringify([symbol, signalId]);
+      const trades = loaded.trades
+        .filter(
+          (trade) =>
+            trade.signalTimestamp >= spec.core.window.start &&
+            trade.signalTimestamp < spec.core.window.end &&
+            trade.exitTimestamp < spec.core.window.end,
+        )
+        .map((trade) => ({
+          ...trade,
+          // Strategy-generated signal IDs need not be unique across symbols.
+          signalId: researchSignalId(trade.symbol, trade.signalId),
+        }));
       const tradeBySignal = new Map(
         trades.map((trade) => [trade.signalId, trade]),
       );
@@ -805,9 +819,10 @@ export const createNativeStrategyResearchBackend = (parameters: {
           for await (const line of lines) {
             if (!line.trim()) continue;
             const row: AiDatasetRow = JSON.parse(line);
-            const trade = tradeBySignal.get(row.signalId);
-            if (!trade || seen.has(row.signalId)) continue;
-            seen.add(row.signalId);
+            const signalId = researchSignalId(row.symbol, row.signalId);
+            const trade = tradeBySignal.get(signalId);
+            if (!trade || seen.has(signalId)) continue;
+            seen.add(signalId);
             if (
               discoveryOnly &&
               (row.timestamp >= spec.testSince ||
@@ -856,7 +871,8 @@ export const createNativeStrategyResearchBackend = (parameters: {
             for (const key of Object.keys(features))
               if (
                 !key.startsWith('additionalIndicators.') ||
-                features[key] == null
+                features[key] == null ||
+                (spec.featurePaths && !spec.featurePaths.includes(key))
               )
                 delete features[key];
             featureValues += Object.keys(features).length;
@@ -889,7 +905,7 @@ export const createNativeStrategyResearchBackend = (parameters: {
                 pathCoverage[key]++;
             }
             rows.push({
-              signalId: row.signalId,
+              signalId,
               symbol: row.symbol,
               strategy: row.strategyName,
               timestamp: row.timestamp,
@@ -909,7 +925,7 @@ export const createNativeStrategyResearchBackend = (parameters: {
             });
             if (discoveryOnly) {
               eventInputs.push({
-                signalId: row.signalId,
+                signalId,
                 timestamp: row.timestamp,
                 symbol: row.symbol,
                 direction: row.direction,
@@ -921,8 +937,8 @@ export const createNativeStrategyResearchBackend = (parameters: {
               });
               const key = `${row.direction}:${trade.netProfit > 0}`;
               const bucket = sampleBuckets.get(key) ?? [];
-              bucket.push(row.signalId);
-              sampleInputs.set(row.signalId, row);
+              bucket.push(signalId);
+              sampleInputs.set(signalId, row);
               bucket.sort((a, b) => sha256Json(a).localeCompare(sha256Json(b)));
               while (bucket.length > spec.diagnostics.samplePerSideAndOutcome)
                 sampleInputs.delete(bucket.pop()!);

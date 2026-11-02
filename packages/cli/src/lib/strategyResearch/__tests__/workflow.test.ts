@@ -757,3 +757,22 @@ describe('automatic strategy research workflow', () => {
     expect(escapeResearchHtml('<script>"&')).toBe('&lt;script&gt;&quot;&amp;');
   });
 });
+
+it('accepts a bounded causal feature projection and rejects outcome paths and duplicate fields', () => {
+  const spec = specFixture();
+  expect(
+    validateStrategyResearchSpec({ ...spec, featurePaths: [feature] })
+      .featurePaths,
+  ).toEqual([feature]);
+  for (const featurePaths of [
+    [],
+    [feature, feature],
+    ['tradeResult.netProfit'],
+    ['additionalIndicators.baseContext.candle.timestamp'],
+    Array(65).fill(feature),
+  ]) {
+    expect(() =>
+      validateStrategyResearchSpec({ ...spec, featurePaths }),
+    ).toThrow('Feature paths');
+  }
+});

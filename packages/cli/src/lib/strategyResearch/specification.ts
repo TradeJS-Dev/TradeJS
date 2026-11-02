@@ -140,6 +140,20 @@ export const validateStrategyResearchSpec = (
   };
   if (!spec.budget || !spec.selection || !spec.diagnostics)
     throw new Error('Missing research budgets or criteria');
+  if (
+    spec.featurePaths !== undefined &&
+    (!Array.isArray(spec.featurePaths) ||
+      !spec.featurePaths.length ||
+      spec.featurePaths.length > 64 ||
+      new Set(spec.featurePaths).size !== spec.featurePaths.length ||
+      spec.featurePaths.some(
+        (path) =>
+          typeof path !== 'string' ||
+          !/^additionalIndicators\.[a-zA-Z0-9_.]+$/.test(path) ||
+          classifyAiPocketFeaturePath(path.split('.')) !== 'eligible',
+      ))
+  )
+    throw new Error('Feature paths must be unique causal market features');
   positive(spec.budget.maxVariants, 'maxVariants', 12);
   if (
     !Number.isInteger(spec.minQuality) ||

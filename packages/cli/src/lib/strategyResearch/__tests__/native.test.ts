@@ -89,6 +89,7 @@ describe('native strategy research process and event evidence', () => {
   let root: string;
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'tradejs-native-research-'));
+    jest.spyOn(os, 'platform').mockReturnValue('linux');
     jest.spyOn(os, 'freemem').mockReturnValue(16 * 1024 ** 3);
     mockExecFileSync.mockReset().mockReturnValue('');
     mockReconcile
@@ -138,6 +139,9 @@ describe('native strategy research process and event evidence', () => {
   });
 
   it('reuses a completed zero-trade native run and writes an explicit empty export', async () => {
+    jest.mocked(os.platform).mockReturnValue('darwin');
+    jest.mocked(os.freemem).mockReturnValue(100 * 1024 ** 2);
+    jest.spyOn(process, 'availableMemory').mockReturnValue(5 * 1024 ** 3);
     const spec = createStrategyResearchSpec(makeSpec());
     const backend = createNativeStrategyResearchBackend({
       projectRoot: root,
@@ -172,6 +176,38 @@ describe('native strategy research process and event evidence', () => {
     expect(data.trades).toEqual([]);
     expect(data.rows).toEqual([]);
   });
+
+  it.each([
+    ['darwin', 100 * 1024 ** 2, 100 * 1024 ** 2],
+    ['darwin', 16 * 1024 ** 3, 0],
+    ['darwin', 16 * 1024 ** 3, Number.NaN],
+    ['darwin', 16 * 1024 ** 3, Number.POSITIVE_INFINITY],
+    ['linux', 100 * 1024 ** 2, 16 * 1024 ** 3],
+  ] as const)(
+    'blocks insufficient or invalid memory before any run/config write (%s, free=%s, available=%s)',
+    async (platform, freeBytes, availableBytes) => {
+      jest.mocked(os.platform).mockReturnValue(platform);
+      jest.mocked(os.freemem).mockReturnValue(freeBytes);
+      jest.spyOn(process, 'availableMemory').mockReturnValue(availableBytes);
+      jest.mocked(setData).mockClear();
+      const backend = createNativeStrategyResearchBackend({
+        projectRoot: root,
+        sourceRepositoryRoot: root,
+        cliPath: process.execPath,
+      });
+      const spec = createStrategyResearchSpec(makeSpec());
+      await expect(
+        backend.runVariant(
+          spec,
+          { ...spec.core.variants[0], files: [] },
+          path.join(root, 'blocked'),
+          async () => undefined,
+        ),
+      ).rejects.toThrow('Insufficient available host memory');
+      expect(setData).not.toHaveBeenCalled();
+      expect(await fs.readdir(root)).toEqual([]);
+    },
+  );
 
   it('launches the exact native backtest and exports only its immutable run', async () => {
     const spec = createStrategyResearchSpec(makeSpec());
@@ -336,6 +372,44 @@ describe('native strategy research process and event evidence', () => {
       'regime.trend.bias': 1,
       'regime.volatility.state': 1,
     });
+    const featurePath = 'additionalIndicators.baseContext.regime.trend.bias';
+    const projected = await backend.loadDataset(
+      { ...spec, featurePaths: [featurePath] },
+      { ...spec.core.variants[0], files: [file] },
+      root,
+      true,
+    );
+    expect(projected.rows[0].features).toEqual({ [featurePath]: 'bull' });
+    expect(projected.contextCoverage).toEqual(data.contextCoverage);
+    expect(projected.trades).toEqual(data.trades);
+    const secondSymbol = structuredClone(row);
+    secondSymbol.symbol = 'ETHUSDT';
+    secondSymbol.payload.signal.symbol = 'ETHUSDT';
+    await fs.writeFile(
+      file,
+      [row, secondSymbol].map((value) => JSON.stringify(value)).join('\n'),
+    );
+    const paired = await backend.loadDataset(
+      {
+        ...spec,
+        core: {
+          ...spec.core,
+          universe: { ...spec.core.universe, symbols: [row.symbol, 'ETHUSDT'] },
+        },
+      },
+      { ...spec.core.variants[0], files: [file] },
+      root,
+      true,
+    );
+    expect(paired.rows).toHaveLength(2);
+    expect(new Set(paired.rows.map((item) => item.signalId)).size).toBe(2);
+    expect(paired.rows.map((item) => item.symbol).sort()).toEqual(
+      [row.symbol, 'ETHUSDT'].sort(),
+    );
+    await fs.writeFile(
+      file,
+      [row, crossing].map((value) => JSON.stringify(value)).join('\n'),
+    );
     mockReconcile.mockResolvedValue({
       status: 'mismatch',
       reasons: ['missing rows'],
