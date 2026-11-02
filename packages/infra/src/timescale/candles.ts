@@ -174,19 +174,20 @@ export async function upsertCandles(rows: CandleRow[]) {
   }
 }
 
-export async function getCandlesRange(
+async function queryCandlesRange<TRow extends Record<string, unknown>>(
   provider: string,
   symbol: string,
   interval: number,
   startMs: number,
   endMs: number,
+  timestampProjection: 'ts' | 'timestamp',
 ) {
   await ensureCandlesSchema();
   const pool = getPool();
   const normalizedProvider = normalizeCandleProvider(provider);
   const normalizedSymbol = normalizeCandleSymbol(symbol);
   const sql = `
-    SELECT symbol, interval, ts,
+    SELECT ${timestampProjection === 'timestamp' ? 'floor(extract(epoch from ts)*1000)::double precision AS timestamp, symbol, interval' : 'symbol, interval, ts'},
            open, high, low, close, volume, turnover,
            taker_buy_base_volume AS "takerBuyBaseVolume",
            taker_buy_quote_volume AS "takerBuyQuoteVolume",
@@ -198,7 +199,7 @@ export async function getCandlesRange(
       AND ts <= to_timestamp($5/1000.0)
     ORDER BY ts ASC
   `;
-  const res = await pool.query(sql, [
+  const res = await pool.query<TRow>(sql, [
     normalizedProvider,
     normalizedSymbol,
     interval,
@@ -207,6 +208,40 @@ export async function getCandlesRange(
   ]);
   return res.rows;
 }
+
+/** Database rows, including the Date-valued ts column. */
+export const getCandlesRange = (
+  provider: string,
+  symbol: string,
+  interval: number,
+  startMs: number,
+  endMs: number,
+) =>
+  queryCandlesRange<Omit<CandleRow, 'provider'>>(
+    provider,
+    symbol,
+    interval,
+    startMs,
+    endMs,
+    'ts',
+  );
+
+/** Return the final candle shape directly, avoiding a second object per row. */
+export const getKlineCandlesRange = (
+  provider: string,
+  symbol: string,
+  interval: number,
+  startMs: number,
+  endMs: number,
+): Promise<KlineChartData> =>
+  queryCandlesRange<KlineChartData[number]>(
+    provider,
+    symbol,
+    interval,
+    startMs,
+    endMs,
+    'timestamp',
+  );
 
 export async function getDataEdges(
   provider: string,

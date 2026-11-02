@@ -113,6 +113,54 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('reads native candle timestamps without copying rows and preserves the date-row API', async () => {
+    process.env.TRADEJS_TIMESCALE_READ_ONLY = 'true';
+    const rows = [
+      {
+        timestamp: 1234,
+        symbol: 'BTCUSDT',
+        interval: 15,
+        open: 1.25,
+        high: 2,
+        low: 1,
+        close: 1.5,
+        volume: 0,
+        turnover: null,
+        takerBuyBaseVolume: null,
+        takerBuyQuoteVolume: 0,
+        takerSellBaseVolume: 1.125,
+        takerSellQuoteVolume: null,
+      },
+    ];
+    const query = jest.fn(async (sql: string) => ({
+      rows: sql.includes('to_regclass') ? [{ tableName: 'candles' }] : rows,
+    }));
+    jest.doMock('pg', () => ({ Pool: jest.fn(() => ({ query })) }));
+    const { getKlineCandlesRange, getCandlesRange } = await import(
+      '@tradejs/infra/timescale/candles'
+    );
+    await expect(
+      getKlineCandlesRange(' ByBit ', 'btcusdt', 15, 1000, 2000),
+    ).resolves.toBe(rows);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'floor(extract(epoch from ts)*1000)::double precision AS timestamp, symbol, interval',
+      ),
+      ['bybit', 'BTCUSDT', 15, 1000, 2000],
+    );
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringMatching(
+        /ts >= to_timestamp[\s\S]*ts <= to_timestamp[\s\S]*ORDER BY ts ASC/,
+      ),
+      ['bybit', 'BTCUSDT', 15, 1000, 2000],
+    );
+    await getCandlesRange('bybit', 'BTCUSDT', 15, 1000, 2000);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining('SELECT symbol, interval, ts,'),
+      ['bybit', 'BTCUSDT', 15, 1000, 2000],
+    );
+  });
+
   it('uses provider in upsert conflict key and query params', async () => {
     const client = {
       query: jest

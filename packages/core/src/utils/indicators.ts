@@ -48,6 +48,7 @@ import {
   percentChange,
   resampleCandles,
   toMlCandle,
+  toSharedReferenceCandle,
   type IndicatorValue,
 } from './indicatorMath';
 import { getRegisteredIndicatorEntries } from './indicatorPlugins';
@@ -483,7 +484,7 @@ export const createIndicators = (
   const candlesHistory: Candle[] = [];
   const btcCandlesHistory: Candle[] = [];
   const ethCandlesHistory: Candle[] = [];
-  const ethData = (options.ethData ?? []).map(toMlCandle);
+  const ethData = (options.ethData ?? []).map(toSharedReferenceCandle);
   let ethCandlesByTimestamp: Map<number, Candle> | null = null;
   const resolveEthCandle = (candle: Candle, index: number) => {
     const alignedEthCandle = ethData[index];
@@ -496,8 +497,12 @@ export const createIndicators = (
     );
     return ethCandlesByTimestamp.get(candle.timestamp);
   };
-  let btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
-  let btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
+  let btcBinanceCandles = (options.btcBinanceData ?? []).map(
+    toSharedReferenceCandle,
+  );
+  let btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(
+    toSharedReferenceCandle,
+  );
   const restoredState = options.initialRuntimeState;
   const spreadSmoother = createSerializableSpreadSmoother(
     undefined,
@@ -516,8 +521,8 @@ export const createIndicators = (
       btcBinanceCandles[btcBinanceCursor]?.timestamp ?? null;
     const coinbaseCursorTimestamp =
       btcCoinbaseCandles[btcCoinbaseCursor]?.timestamp ?? null;
-    btcBinanceCandles = (btcBinanceData ?? []).map(toMlCandle);
-    btcCoinbaseCandles = (btcCoinbaseData ?? []).map(toMlCandle);
+    btcBinanceCandles = (btcBinanceData ?? []).map(toSharedReferenceCandle);
+    btcCoinbaseCandles = (btcCoinbaseData ?? []).map(toSharedReferenceCandle);
     const resolveCursor = (candles: Candle[], timestamp: number | null) => {
       if (candles.length === 0 || timestamp == null) {
         return 0;

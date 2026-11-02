@@ -4,7 +4,7 @@ import { getItemTimestamp, getTimestamp } from '@tradejs/core/time';
 import { delay } from '@tradejs/core/async';
 import { logger } from '@tradejs/infra/logger';
 import {
-  getCandlesRange,
+  getKlineCandlesRange,
   getDataEdges,
   toRows,
   upsertCandles,
@@ -67,12 +67,6 @@ const normalizeRangeToClosed = (
   const normEnd = clampToClosedCandle(cappedEnd, intervalMs);
   return { normStart, normEnd };
 };
-
-const rowsToKline = (rows: Array<{ ts: Date } & Record<string, unknown>>) =>
-  rows.map(({ ts, ...data }) => ({
-    timestamp: new Date(ts).getTime(),
-    ...data,
-  })) as KlineChartData;
 
 export const createTimescaleCachedKline = ({
   provider,
@@ -266,9 +260,9 @@ export const createTimescaleCachedKline = ({
         );
         const e = defaultEnd ?? base;
         const dbData = await runTimescaleOperation(() =>
-          getCandlesRange(provider, symbol, intMinutes, s, e),
+          getKlineCandlesRange(provider, symbol, intMinutes, s, e),
         );
-        return rowsToKline(dbData);
+        return dbData;
       }
 
       const needOlderData =
@@ -382,7 +376,13 @@ export const createTimescaleCachedKline = ({
         normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
 
       const dbData = await runTimescaleOperation(() =>
-        getCandlesRange(provider, symbol, intMinutes, finalStart, finalEnd),
+        getKlineCandlesRange(
+          provider,
+          symbol,
+          intMinutes,
+          finalStart,
+          finalEnd,
+        ),
       );
 
       if (isTimescaleFallbackMode) {
@@ -390,7 +390,7 @@ export const createTimescaleCachedKline = ({
         logger.log('info', 'TimescaleDB connection restored for kline cache');
       }
 
-      return rowsToKline(dbData);
+      return dbData;
     } catch (error) {
       if (!isTimescaleFallbackMode) {
         isTimescaleFallbackMode = true;

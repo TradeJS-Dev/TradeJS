@@ -1,7 +1,7 @@
 import { createTimescaleCachedKline } from '../timescaleCachedKline';
 import { delay } from '@tradejs/core/async';
 import {
-  getCandlesRange,
+  getKlineCandlesRange,
   getDataEdges,
   toRows,
   upsertCandles,
@@ -12,7 +12,7 @@ jest.mock('@tradejs/core/async', () => ({
 }));
 
 jest.mock('@tradejs/infra/timescale/candles', () => ({
-  getCandlesRange: jest.fn(),
+  getKlineCandlesRange: jest.fn(),
   getDataEdges: jest.fn(),
   upsertCandles: jest.fn(),
   toRows: jest.fn((provider, symbol, interval, data) => ({
@@ -29,8 +29,8 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-const mockedGetCandlesRange = getCandlesRange as jest.MockedFunction<
-  typeof getCandlesRange
+const mockedGetKlineCandlesRange = getKlineCandlesRange as jest.MockedFunction<
+  typeof getKlineCandlesRange
 >;
 const mockedGetDataEdges = getDataEdges as jest.MockedFunction<
   typeof getDataEdges
@@ -54,9 +54,9 @@ describe('createTimescaleCachedKline', () => {
 
   it('reads cache using provider-aware Timescale queries', async () => {
     mockedGetDataEdges.mockResolvedValue({ min: undefined, max: 2_000 });
-    mockedGetCandlesRange.mockResolvedValue([
+    mockedGetKlineCandlesRange.mockResolvedValue([
       {
-        ts: new Date(1_000),
+        timestamp: 1_000,
         open: 1,
         high: 2,
         low: 0.5,
@@ -80,6 +80,7 @@ describe('createTimescaleCachedKline', () => {
       cacheOnly: true,
     });
 
+    expect(result).toBe(await mockedGetKlineCandlesRange.mock.results[0].value);
     expect(result).toEqual([
       expect.objectContaining({
         timestamp: 1_000,
@@ -87,7 +88,7 @@ describe('createTimescaleCachedKline', () => {
       }),
     ]);
     expect(mockedGetDataEdges).toHaveBeenCalledWith('binance', 'BTCUSDT', 15);
-    expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+    expect(mockedGetKlineCandlesRange).toHaveBeenCalledWith(
       'binance',
       'BTCUSDT',
       15,
@@ -100,9 +101,9 @@ describe('createTimescaleCachedKline', () => {
   it('writes older/newer/tail candles with provider-aware rows', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(600_000);
     mockedGetDataEdges.mockResolvedValue({ min: 300_000, max: 300_000 });
-    mockedGetCandlesRange.mockResolvedValue([
+    mockedGetKlineCandlesRange.mockResolvedValue([
       {
-        ts: new Date(300_000),
+        timestamp: 300_000,
         open: 1,
         high: 2,
         low: 0.5,
@@ -158,7 +159,7 @@ describe('createTimescaleCachedKline', () => {
       intervalToMinutes: () => 1,
     });
 
-    await kline({
+    const result = await kline({
       symbol: 'BTCUSDT',
       interval: '1',
       start: 60_000,
@@ -188,7 +189,8 @@ describe('createTimescaleCachedKline', () => {
       expect.any(Array),
     );
     expect(mockedUpsertCandles).toHaveBeenCalledTimes(3);
-    expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+    expect(result).toBe(await mockedGetKlineCandlesRange.mock.results[0].value);
+    expect(mockedGetKlineCandlesRange).toHaveBeenCalledWith(
       'coinbase',
       'BTCUSDT',
       1,
@@ -275,7 +277,7 @@ describe('createTimescaleCachedKline', () => {
       secondPage,
     );
     expect(mockedUpsertCandles).toHaveBeenCalledTimes(2);
-    expect(mockedGetCandlesRange).not.toHaveBeenCalled();
+    expect(mockedGetKlineCandlesRange).not.toHaveBeenCalled();
   });
 
   it('retries a transient Timescale failure before using exchange fallback', async () => {
@@ -284,9 +286,9 @@ describe('createTimescaleCachedKline', () => {
         new Error('timeout exceeded when trying to connect'),
       )
       .mockResolvedValueOnce({ min: 60_000, max: 120_000 });
-    mockedGetCandlesRange.mockResolvedValue([
+    mockedGetKlineCandlesRange.mockResolvedValue([
       {
-        ts: new Date(60_000),
+        timestamp: 60_000,
         open: 1,
         high: 2,
         low: 0.5,
@@ -364,7 +366,7 @@ describe('createTimescaleCachedKline', () => {
 
     expect(mockedGetDataEdges).toHaveBeenCalledTimes(3);
     expect(request).toHaveBeenCalledTimes(1);
-    expect(mockedGetCandlesRange).not.toHaveBeenCalled();
+    expect(mockedGetKlineCandlesRange).not.toHaveBeenCalled();
     expect(mockedUpsertCandles).not.toHaveBeenCalled();
   });
 });
