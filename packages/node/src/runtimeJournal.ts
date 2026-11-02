@@ -17,6 +17,7 @@ import {
   RuntimeTradeFillSource,
   RuntimeTradeTelemetryQuality,
   RuntimeLineage,
+  OrderLeverage,
   SignalAnalysis,
   MarketUniverse,
   AssetClass,
@@ -64,6 +65,7 @@ export const recordRuntimeTradeOpen = async (params: {
   qty: number;
   entryPrice: number;
   entryTimestamp: number;
+  orderLeverage?: OrderLeverage;
   signalTimestamp?: number | null;
   signalClosePrice?: number | null;
   arrivalSnapshotTime?: number | null;
@@ -151,6 +153,7 @@ export const recordRuntimeTradeIncrease = async (params: {
   addedQty: number;
   addedEntryPrice: number;
   entryTimestamp: number;
+  orderLeverage?: OrderLeverage;
   fee?: number | null;
   accountId?: string;
   deploymentId?: string;
@@ -192,6 +195,7 @@ export const recordRuntimeTradeIncrease = async (params: {
   const totalFee = (existing.totalFee ?? existing.fee ?? 0) + addedFee;
   const next: RuntimeTradeRecord = {
     ...existing,
+    ...(params.orderLeverage ? { orderLeverage: params.orderLeverage } : {}),
     qty: resultingQty,
     entryPrice: resultingEntryPrice,
     entryCount: Math.max(1, existing.entryCount ?? 1) + 1,

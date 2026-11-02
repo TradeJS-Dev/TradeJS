@@ -430,6 +430,12 @@ describe('Git-owned runtime strategy resolver', () => {
       strategyConfig: { INTERVAL: '15', LONG: { enable: true } },
     };
 
+    expect(computeStrategyRevision(base)).not.toBe(
+      computeStrategyRevision({
+        ...base,
+        strategyConfig: { ...base.strategyConfig, LEVERAGE: 20 },
+      }),
+    );
     expect(computeStrategyRevision(base)).toBe(
       computeStrategyRevision({
         ...base,

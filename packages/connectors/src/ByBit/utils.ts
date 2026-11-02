@@ -23,12 +23,20 @@ type SymbolMeta = {
   tickSize: number;
   qtyStep: number;
   minOrderQty: number;
+  maxMarketOrderQty?: number | null;
+  maxLimitOrderQty?: number | null;
   pricePrecision: number;
   qtyPrecision: number;
   maxLeverage?: number | null;
+  minLeverage?: number | null;
+  leverageStep?: number | null;
 };
 
-const symbolMetaCache = new Map<string, SymbolMeta>();
+const SYMBOL_META_TTL_MS = 60_000;
+const symbolMetaCache = new WeakMap<
+  RestClientV5,
+  Map<string, { value: SymbolMeta; expiresAt: number }>
+>();
 
 /** Округление к шагу биржи */
 const roundByStep = (
@@ -55,9 +63,15 @@ const stepToPrecision = (raw: string): number => {
 export const getSymbolMeta = async (
   client: RestClientV5,
   symbol: string,
+  refresh = false,
 ): Promise<SymbolMeta> => {
-  const cached = symbolMetaCache.get(symbol);
-  if (cached) return cached;
+  let cache = symbolMetaCache.get(client);
+  if (!cache) {
+    cache = new Map();
+    symbolMetaCache.set(client, cache);
+  }
+  const cached = cache.get(symbol);
+  if (!refresh && cached && cached.expiresAt > Date.now()) return cached.value;
 
   const res = await client.getInstrumentsInfo({
     category: BYBIT_CATEGORY,
@@ -65,7 +79,7 @@ export const getSymbolMeta = async (
   });
 
   const item = res?.result?.list?.[0];
-  if (!item) {
+  if (res.retCode !== 0 || !item || item.symbol !== symbol) {
     throw new Error(`No instrument info for symbol ${symbol}`);
   }
 
@@ -77,16 +91,27 @@ export const getSymbolMeta = async (
     tickSize: Number(tickSizeStr),
     qtyStep: Number(qtyStepStr),
     minOrderQty: Number(minOrderQtyStr),
+    maxMarketOrderQty:
+      'maxMktOrderQty' in item.lotSizeFilter
+        ? Number(item.lotSizeFilter.maxMktOrderQty)
+        : null,
+    maxLimitOrderQty: Number(item.lotSizeFilter.maxOrderQty),
     pricePrecision: stepToPrecision(tickSizeStr),
     qtyPrecision: stepToPrecision(qtyStepStr),
-    maxLeverage: Number.isFinite(
-      Number((item as any).leverageFilter?.maxLeverage),
-    )
-      ? Number((item as any).leverageFilter.maxLeverage)
-      : null,
+    minLeverage:
+      'leverageFilter' in item ? Number(item.leverageFilter.minLeverage) : null,
+    maxLeverage:
+      'leverageFilter' in item ? Number(item.leverageFilter.maxLeverage) : null,
+    leverageStep:
+      'leverageFilter' in item
+        ? Number(item.leverageFilter.leverageStep)
+        : null,
   };
 
-  symbolMetaCache.set(symbol, meta);
+  cache.set(symbol, {
+    value: meta,
+    expiresAt: Date.now() + SYMBOL_META_TTL_MS,
+  });
   return meta;
 };
 
@@ -95,6 +120,29 @@ export const normalizeQty = (rawQty: number, meta: SymbolMeta) => {
   const qtyNum = roundByStep(rawQty, meta.qtyStep, 'floor');
   const qtyStr = qtyNum.toFixed(meta.qtyPrecision);
   return { qtyNum, qtyStr };
+};
+
+/** Entry-only ceiling: protective orders must continue to cover the full position. */
+export const normalizeEntryQty = (
+  rawQty: number,
+  meta: SymbolMeta,
+  isLimit: boolean,
+) => {
+  const maxQty = isLimit ? meta.maxLimitOrderQty : meta.maxMarketOrderQty;
+  if (typeof maxQty !== 'number' || !Number.isFinite(maxQty) || maxQty <= 0)
+    throw new Error('BYBIT_INVALID_ORDER_QTY_LIMIT');
+  if (!Number.isFinite(rawQty) || rawQty <= 0)
+    throw new Error('BYBIT_INVALID_ORDER_QTY');
+  if (!Number.isFinite(meta.qtyStep) || meta.qtyStep <= 0)
+    throw new Error('BYBIT_INVALID_QTY_STEP');
+  const normalized = normalizeQty(Math.min(rawQty, maxQty), meta);
+  if (
+    !Number.isFinite(normalized.qtyNum) ||
+    normalized.qtyNum > rawQty ||
+    normalized.qtyNum > maxQty
+  )
+    throw new Error('BYBIT_INVALID_NORMALIZED_ORDER_QTY');
+  return normalized;
 };
 
 /**

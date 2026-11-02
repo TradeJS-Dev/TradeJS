@@ -1,7 +1,12 @@
 import { ByBitConnectorCreator as createByBitConnector } from '..';
 import { getClient } from '../client';
 import { delay } from '@tradejs/core/async';
-import type { ConnectorCreator, ConnectorRuntime } from '@tradejs/types';
+import { RestClientV5 } from 'bybit-api';
+import type {
+  Signal,
+  ConnectorCreator,
+  ConnectorRuntime,
+} from '@tradejs/types';
 import {
   getSymbolMeta,
   mapPositionData,
@@ -25,6 +30,8 @@ jest.mock('../utils', () => ({
   })),
   normalizeQty: jest.fn((qty) => ({ qtyNum: qty, qtyStr: qty.toFixed(3) })),
   getSymbolMeta: jest.fn(),
+  normalizeEntryQty:
+    jest.requireActual<typeof import('../utils')>('../utils').normalizeEntryQty,
   mapPositionData: jest.fn(),
 }));
 
@@ -59,6 +66,43 @@ const runtime: ConnectorRuntime = {
 
 const ByBitConnectorCreator: ConnectorCreator = (config) =>
   createByBitConnector(config, runtime);
+
+const createLeverageApi = (symbol = 'BTCUSDT') => {
+  let leverage = '10';
+  return {
+    getPositionInfo: jest.fn(async () => ({
+      retCode: 0,
+      result: {
+        list: [
+          {
+            symbol,
+            positionIdx: 0,
+            size: '0',
+            positionValue: '0',
+            riskId: 1,
+            leverage,
+          },
+        ],
+      },
+    })),
+    getRiskLimit: jest.fn(async () => ({
+      retCode: 0,
+      result: {
+        list: [
+          { id: 1, symbol, riskLimitValue: '1000000000', maxLeverage: '100' },
+        ],
+      },
+    })),
+    getActiveOrders: jest.fn(async () => ({
+      retCode: 0,
+      result: { list: [] },
+    })),
+    setLeverage: jest.fn(async ({ buyLeverage }: { buyLeverage: string }) => {
+      leverage = buyLeverage;
+      return { retCode: 0 };
+    }),
+  };
+};
 
 describe('ByBitConnectorCreator', () => {
   beforeEach(() => {
@@ -659,11 +703,16 @@ describe('ByBitConnectorCreator', () => {
 
   it('rejects an order below minOrderQty without silently increasing risk', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.01,
@@ -699,19 +748,182 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it.each([false, true])(
+    'reduces oversized entries to the permitted quantity (limit=%s)',
+    async (isLimit) => {
+      const client = Object.assign(
+        new RestClientV5({ syncTimeBeforePrivateRequests: false }),
+        createLeverageApi(),
+        { submitOrder: jest.fn(async () => ({ retCode: 0 })) },
+      );
+      mockedGetClient.mockResolvedValue(client);
+      const meta = {
+        minLeverage: 1,
+        maxLeverage: 100,
+        leverageStep: 0.01,
+        tickSize: 0.1,
+        qtyStep: 1,
+        minOrderQty: 1,
+        pricePrecision: 1,
+        qtyPrecision: 0,
+        maxMarketOrderQty: 5000,
+        maxLimitOrderQty: 10000,
+      };
+      mockedGetSymbolMeta.mockResolvedValue(meta);
+      mockedNormalizeQty.mockImplementation((qty) => ({
+        qtyNum: Math.floor(qty),
+        qtyStr: String(Math.floor(qty)),
+      }));
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      const signal = {} as Signal;
+      const result = await connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 1,
+        qty: 48265,
+        isLimit,
+        direction: 'LONG',
+        timestamp: 1,
+        signal,
+      });
+      const expected = isLimit ? 10000 : 5000;
+      expect(result).toBe(true);
+      expect(client.submitOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ qty: String(expected) }),
+      );
+      expect(signal.orderQty).toBe(expected);
+      expect(signal.orderValue).toBe(expected);
+      expect(client.submitOrder).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [5000, 0, true, 2],
+    [10000, 0, false, 1],
+    [5000, 10001, false, 2],
+  ])(
+    'refreshes a rejected order limit once (new max=%s, next code=%s)',
+    async (maximum, nextCode, expectedSuccess, submissions) => {
+      const rejection = {
+        retCode: 10001,
+        retMsg:
+          'The number of contracts exceeds maximum limit allowed: too large, order_qty:4826500000000 > max_qty:500000000000',
+      };
+      const submitOrder = jest
+        .fn()
+        .mockResolvedValueOnce(rejection)
+        .mockResolvedValue({
+          retCode: nextCode,
+          retMsg: nextCode ? rejection.retMsg : 'OK',
+        });
+      const client = Object.assign(
+        new RestClientV5({ syncTimeBeforePrivateRequests: false }),
+        createLeverageApi(),
+        { submitOrder },
+      );
+      mockedGetClient.mockResolvedValue(client);
+      let current = {
+        minLeverage: 1,
+        maxLeverage: 100,
+        leverageStep: 0.01,
+        tickSize: 0.1,
+        qtyStep: 1,
+        minOrderQty: 1,
+        pricePrecision: 1,
+        qtyPrecision: 0,
+        maxMarketOrderQty: 10000,
+        maxLimitOrderQty: 20000,
+      };
+      mockedGetSymbolMeta.mockImplementation(
+        async (_client, _symbol, refresh) => {
+          if (refresh) current = { ...current, maxMarketOrderQty: maximum };
+          return current;
+        },
+      );
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      const signal = {} as Signal;
+      const success = await connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 1,
+        qty: 48265,
+        direction: 'LONG',
+        timestamp: 1,
+        signal,
+        orderId: 'quantity-retry',
+      });
+      expect(success).toBe(expectedSuccess);
+      expect(submitOrder).toHaveBeenCalledTimes(submissions);
+      expect(submitOrder).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          qty: '10000',
+          orderLinkId: 'quantity-retry',
+        }),
+      );
+      if (submissions === 2)
+        expect(submitOrder).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            qty: '5000',
+            orderLinkId: 'quantity-retry',
+          }),
+        );
+      expect(mockedGetSymbolMeta).toHaveBeenCalledWith(client, 'BTCUSDT', true);
+      if (expectedSuccess) expect(signal.orderQty).toBe(5000);
+      else expect(signal.orderFailureReason).toBe(rejection.retMsg);
+    },
+  );
+
+  it('does not retry an order submission with an unknown network outcome', async () => {
+    const timeout = new Error('timeout');
+    const submitOrder = jest.fn().mockRejectedValue(timeout);
+    const client = Object.assign(
+      new RestClientV5({ syncTimeBeforePrivateRequests: false }),
+      createLeverageApi(),
+      { submitOrder },
+    );
+    mockedGetClient.mockResolvedValue(client);
+    mockedGetSymbolMeta.mockResolvedValue({
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
+      tickSize: 0.1,
+      qtyStep: 1,
+      minOrderQty: 1,
+      pricePrecision: 1,
+      qtyPrecision: 0,
+      maxMarketOrderQty: 5000,
+      maxLimitOrderQty: 10000,
+    });
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    await expect(
+      connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 1,
+        qty: 48265,
+        direction: 'LONG',
+        timestamp: 1,
+      }),
+    ).rejects.toBe(timeout);
+    expect(submitOrder).toHaveBeenCalledTimes(1);
+  });
+
   it('clamps requested leverage to the instrument maximum', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi('AAPLUSDT'),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 5,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
       pricePrecision: 1,
       qtyPrecision: 3,
-      maxLeverage: 5,
     });
     mockedNormalizeQty.mockImplementation((qty) => ({
       qtyNum: qty,
@@ -736,13 +948,74 @@ describe('ByBitConnectorCreator', () => {
     });
   });
 
+  it.each([0, 110043, 110036, 110086])(
+    'only submits an entry with confirmed leverage (response %s)',
+    async (code) => {
+      const api = createLeverageApi();
+      if (code !== 0) api.setLeverage.mockResolvedValue({ retCode: code });
+      const client = Object.assign(
+        new RestClientV5({ syncTimeBeforePrivateRequests: false }),
+        api,
+        { submitOrder: jest.fn(async () => ({ retCode: 0 })) },
+      );
+      mockedGetClient.mockResolvedValue(client);
+      mockedGetSymbolMeta.mockResolvedValue({
+        maxMarketOrderQty: 1000000,
+        maxLimitOrderQty: 1000000,
+        minLeverage: 1,
+        maxLeverage: 100,
+        leverageStep: 0.01,
+        tickSize: 0.1,
+        qtyStep: 0.001,
+        minOrderQty: 0.001,
+        pricePrecision: 1,
+        qtyPrecision: 3,
+      });
+      const connector = await ByBitConnectorCreator({
+        userName: 'alice',
+        accountId: 'copy-account',
+      });
+      const signal = {} as Signal;
+      const success = await connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        leverage: 20,
+        timestamp: 1,
+        signal,
+      });
+      expect(success).toBe(code === 0);
+      if (code === 0) {
+        expect(client.submitOrder).toHaveBeenCalledWith(
+          expect.objectContaining({ qty: '1.000' }),
+        );
+        expect(signal.orderLeverage).toMatchObject({
+          requested: 20,
+          effective: 20,
+        });
+        expect(signal.orderQty).toBe(1);
+        expect(signal.orderValue).toBe(100);
+      } else {
+        expect(client.submitOrder).not.toHaveBeenCalled();
+        expect(signal.orderFailureReason).toMatch(/^BYBIT_/);
+        expect(signal.orderLeverage).toBeUndefined();
+      }
+    },
+  );
+
   it('submits market order without TP/SL in the entry request', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -799,6 +1072,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -845,6 +1123,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -885,6 +1168,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -928,6 +1216,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1138,13 +1431,18 @@ describe('ByBitConnectorCreator', () => {
 
   it('returns false from placeOrder when submitOrder retCode is non-zero', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest
         .fn()
         .mockResolvedValue({ retCode: 10001, retMsg: 'symbol is invalid' }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1179,11 +1477,16 @@ describe('ByBitConnectorCreator', () => {
 
   it('submits limit order without immediate TP/SL binding', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1220,11 +1523,7 @@ describe('ByBitConnectorCreator', () => {
 
   it('allows an explicit same-direction position increase', async () => {
     const client = {
-      getPositionInfo: jest.fn().mockResolvedValue({
-        retCode: 0,
-        result: { list: [{ symbol: 'BTCUSDT' }] },
-      }),
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
@@ -1237,6 +1536,11 @@ describe('ByBitConnectorCreator', () => {
       },
     ]);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1332,6 +1636,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1371,6 +1680,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1413,6 +1727,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1478,6 +1797,11 @@ describe('ByBitConnectorCreator', () => {
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.5,
@@ -1521,21 +1845,16 @@ describe('ByBitConnectorCreator', () => {
 
   it('invalidates cached position snapshot after a successful placeOrder', async () => {
     const client = {
-      getPositionInfo: jest
-        .fn()
-        .mockResolvedValueOnce({
-          retCode: 0,
-          result: { list: [{ raw: false }] },
-        })
-        .mockResolvedValueOnce({
-          retCode: 0,
-          result: { list: [{ raw: true }] },
-        }),
-      setLeverage: jest.fn().mockResolvedValue({}),
+      ...createLeverageApi(),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
+      maxMarketOrderQty: 1000000,
+      maxLimitOrderQty: 1000000,
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
       tickSize: 0.1,
       qtyStep: 0.001,
       minOrderQty: 0.001,
@@ -1564,7 +1883,7 @@ describe('ByBitConnectorCreator', () => {
     await expect(connector.getPosition('BTCUSDT')).resolves.toEqual(
       expect.objectContaining({ symbol: 'BTCUSDT', direction: 'LONG' }),
     );
-    expect(client.getPositionInfo).toHaveBeenCalledTimes(2);
+    expect(client.getPositionInfo).toHaveBeenCalledTimes(4);
   });
 
   it('returns true from closePosition and uses opposite side', async () => {

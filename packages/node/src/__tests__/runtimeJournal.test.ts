@@ -118,9 +118,17 @@ describe('runtimeJournal', () => {
   });
 
   it('stores live execution telemetry when a runtime trade is opened', async () => {
+    const orderLeverage = {
+      requested: 20,
+      effective: 10,
+      maxAllowed: 10,
+      reductionReason: 'instrument_limit' as const,
+      verifiedAt: 1,
+    };
     const opened = await recordRuntimeTradeOpen({
       userName: 'root',
       orderId: 'ord-1',
+      orderLeverage,
       signalId: 'sig-1',
       strategy: 'TrendLine',
       symbol: 'BTCUSDT',
@@ -150,6 +158,7 @@ describe('runtimeJournal', () => {
 
     expect(opened).toEqual(
       expect.objectContaining({
+        orderLeverage,
         signalTimestamp: Date.parse('2026-05-31T11:45:00.000Z'),
         signalClosePrice: 100,
         arrivalSnapshotTime: Date.parse('2026-05-31T12:00:00.900Z'),

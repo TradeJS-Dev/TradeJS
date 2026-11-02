@@ -538,7 +538,7 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     );
   });
 
-  it('uses connector-adjusted order qty for protection, signal value and journal', async () => {
+  it('uses reduced order qty for protection, signal value and journal', async () => {
     const connector = {
       placeOrder: jest.fn(async (order: any) => {
         order.signal.orderQty = 2;
@@ -562,7 +562,7 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       userName: 'root',
       symbol: 'ETHUSDT',
       direction: 'LONG',
-      qty: 1,
+      qty: 5,
       currentPrice: 100,
       timestamp: 1_700_000_000_000,
       takeProfits: [{ price: 110, rate: 1 }],

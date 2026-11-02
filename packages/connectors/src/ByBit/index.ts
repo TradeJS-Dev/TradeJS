@@ -7,6 +7,7 @@ import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { getClient } from './client';
+import { prepareBybitLeverage, withBybitOrderLock } from './leverage';
 import {
   decorateConnectorKline,
   getConnectorAccountResolver,
@@ -16,6 +17,7 @@ import {
   mapKlineToChartData,
   normalizePrice,
   normalizeQty,
+  normalizeEntryQty,
   getSymbolMeta,
   mapPositionData,
 } from './utils';
@@ -82,6 +84,14 @@ const isTradingStopNotModified = (res: any) =>
   res?.retCode === BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE;
 const isTradingStopAccepted = (res: any) =>
   res?.retCode === 0 || isTradingStopNotModified(res);
+const isMaxOrderQuantityRejected = (response: {
+  retCode: number;
+  retMsg?: string;
+}) =>
+  response.retCode === 10001 &&
+  typeof response.retMsg === 'string' &&
+  /number of contracts exceeds maximum limit allowed/i.test(response.retMsg);
+
 const isKlineRateLimited = (res: any) =>
   res?.retCode === BYBIT_RATE_LIMIT_RETCODE;
 
@@ -1393,147 +1403,229 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       signal,
       leverage,
     }) => {
-      invalidatePositionSnapshot(symbol);
-      const client = await getPrivateClient();
-      const marketDataClient = await getPublicClient();
+      return withBybitOrderLock(
+        JSON.stringify([
+          config.userName,
+          config.accountId ?? 'default',
+          symbol,
+        ]),
+        async () => {
+          if (signal) signal.orderLeverage = undefined;
+          invalidatePositionSnapshot(symbol);
+          const client = await getPrivateClient();
+          const marketDataClient = await getPublicClient();
 
-      if (!client || !marketDataClient) {
-        if (signal) {
-          signal.orderFailureReason = 'BYBIT_CLIENT_UNAVAILABLE';
-        }
-        return false;
-      }
-
-      const isLong = direction === 'LONG';
-
-      if (positionIntent === 'increase') {
-        const currentPosition = await getPositionSnapshot(symbol);
-        if (!currentPosition || currentPosition.direction !== direction) {
-          const failureReason = currentPosition
-            ? 'POSITION_DIRECTION_MISMATCH'
-            : 'POSITION_NOT_FOUND';
-          if (signal) {
-            signal.orderFailureReason = failureReason;
+          if (!client || !marketDataClient) {
+            if (signal) {
+              signal.orderFailureReason = 'BYBIT_CLIENT_UNAVAILABLE';
+            }
+            return false;
           }
-          logger.log(
-            'warn',
-            'placeOrder: rejected position increase: %s',
-            toJson(
-              {
-                symbol,
-                direction,
-                currentDirection: currentPosition?.direction ?? null,
-                failureReason,
-              },
-              true,
-            ),
-          );
-          return false;
-        }
-      }
 
-      const meta = await getSymbolMeta(marketDataClient, symbol);
+          const isLong = direction === 'LONG';
 
-      const normalizedQty = normalizeQty(qty, meta);
-      const isQtyBelowMin = normalizedQty.qtyNum < meta.minOrderQty;
+          if (positionIntent === 'increase') {
+            const currentPosition = await getPositionSnapshot(symbol);
+            if (!currentPosition || currentPosition.direction !== direction) {
+              const failureReason = currentPosition
+                ? 'POSITION_DIRECTION_MISMATCH'
+                : 'POSITION_NOT_FOUND';
+              if (signal) {
+                signal.orderFailureReason = failureReason;
+              }
+              logger.log(
+                'warn',
+                'placeOrder: rejected position increase: %s',
+                toJson(
+                  {
+                    symbol,
+                    direction,
+                    currentDirection: currentPosition?.direction ?? null,
+                    failureReason,
+                  },
+                  true,
+                ),
+              );
+              return false;
+            }
+          }
 
-      if (isQtyBelowMin) {
-        if (signal) {
-          signal.orderQty = normalizedQty.qtyNum;
-          signal.orderValue = normalizedQty.qtyNum * price;
-          signal.orderFailureReason = 'QTY_BELOW_MIN_ORDER';
-        }
-        logger.log(
-          'warn',
-          'placeOrder: rejected qty below minOrderQty: %s',
-          toJson(
-            {
+          let quantityCeiling = qty;
+          let quantityRejection = '';
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            if (signal) signal.orderLeverage = undefined;
+            const meta = await getSymbolMeta(
+              marketDataClient,
               symbol,
-              qty,
-              normalizedOrderQty: normalizedQty.qtyNum,
-              minOrderQty: meta.minOrderQty,
-            },
-            true,
-          ),
-        );
-        return false;
-      }
-      const orderQty = normalizedQty.qtyNum;
-      const orderQtyStr = normalizedQty.qtyStr;
-      if (signal) {
-        signal.orderQty = orderQty;
-        signal.orderValue = orderQty * price;
-      }
+              attempt > 0,
+            );
 
-      const entryNormalized = isLimit
-        ? normalizePrice(price, 'ENTRY', meta)
-        : undefined;
+            let normalizedQty: ReturnType<typeof normalizeEntryQty>;
+            try {
+              normalizedQty = normalizeEntryQty(
+                quantityCeiling,
+                meta,
+                isLimit === true,
+              );
+            } catch (error) {
+              const reason =
+                error instanceof Error
+                  ? error.message
+                  : 'BYBIT_ORDER_QTY_UNAVAILABLE';
+              if (signal) signal.orderFailureReason = reason;
+              logger.log(
+                'warn',
+                'placeOrder: quantity preparation failed: %s %s',
+                symbol,
+                reason,
+              );
+              return false;
+            }
+            if (attempt > 0 && normalizedQty.qtyNum >= quantityCeiling) {
+              if (signal) signal.orderFailureReason = quantityRejection;
+              return false;
+            }
+            const isQtyBelowMin = normalizedQty.qtyNum < meta.minOrderQty;
 
-      logger.log(
-        'info',
-        'placeOrder: %s',
-        toJson(
-          {
-            symbol,
-            price,
-            qty,
-            direction,
-            orderQty,
-            orderQtyStr,
-          },
-          true,
-        ),
+            if (isQtyBelowMin) {
+              if (signal) {
+                signal.orderQty = normalizedQty.qtyNum;
+                signal.orderValue = normalizedQty.qtyNum * price;
+                signal.orderFailureReason = 'QTY_BELOW_MIN_ORDER';
+              }
+              logger.log(
+                'warn',
+                'placeOrder: rejected qty below minOrderQty: %s',
+                toJson(
+                  {
+                    symbol,
+                    qty,
+                    normalizedOrderQty: normalizedQty.qtyNum,
+                    minOrderQty: meta.minOrderQty,
+                  },
+                  true,
+                ),
+              );
+              return false;
+            }
+            if (normalizedQty.qtyNum < qty) {
+              logger.log(
+                'info',
+                'placeOrder: quantity reduced: %s',
+                toJson({
+                  symbol,
+                  requestedQty: qty,
+                  orderQty: normalizedQty.qtyNum,
+                  maxOrderQty: isLimit
+                    ? meta.maxLimitOrderQty
+                    : meta.maxMarketOrderQty,
+                  orderType: isLimit ? 'Limit' : 'Market',
+                }),
+              );
+            }
+            const orderQty = normalizedQty.qtyNum;
+            const orderQtyStr = normalizedQty.qtyStr;
+            if (signal) {
+              signal.orderQty = orderQty;
+              signal.orderValue = orderQty * price;
+            }
+
+            const entryNormalized = isLimit
+              ? normalizePrice(price, 'ENTRY', meta)
+              : undefined;
+
+            logger.log(
+              'info',
+              'placeOrder: %s',
+              toJson(
+                {
+                  symbol,
+                  price,
+                  qty,
+                  direction,
+                  orderQty,
+                  orderQtyStr,
+                },
+                true,
+              ),
+            );
+
+            try {
+              const orderLeverage = await prepareBybitLeverage({
+                client,
+                marketClient: marketDataClient,
+                symbol,
+                requested: leverage ?? 10,
+                direction,
+                qty: orderQty,
+                price,
+              });
+              if (signal) signal.orderLeverage = orderLeverage;
+              logger.log(
+                'info',
+                'placeOrder:leverage %s %s',
+                symbol,
+                toJson(orderLeverage),
+              );
+            } catch (error) {
+              const reason =
+                error instanceof Error && error.message.startsWith('BYBIT_')
+                  ? error.message
+                  : 'BYBIT_LEVERAGE_UNAVAILABLE';
+              if (signal) signal.orderFailureReason = reason;
+              logger.log(
+                'warn',
+                'placeOrder: leverage preparation failed: %s %s',
+                symbol,
+                reason,
+              );
+              return false;
+            }
+
+            const orderRes = await client.submitOrder({
+              category: BYBIT_CATEGORY,
+              symbol,
+              price: entryNormalized?.priceStr || undefined,
+              side: isLong ? 'Buy' : 'Sell',
+              orderType: isLimit ? 'Limit' : 'Market',
+              qty: orderQtyStr,
+              orderFilter: 'Order',
+              orderLinkId:
+                typeof orderId === 'string' && orderId.trim()
+                  ? orderId
+                  : undefined,
+            });
+
+            logger.log(
+              getLogLevel(orderRes),
+              'placeOrder:response: %s',
+              toJson(orderRes, true),
+            );
+
+            if (orderRes.retCode !== 0) {
+              if (attempt === 0 && isMaxOrderQuantityRejected(orderRes)) {
+                quantityCeiling = orderQty;
+                quantityRejection = orderRes.retMsg;
+                continue;
+              }
+              if (signal) {
+                signal.orderFailureReason =
+                  typeof orderRes.retMsg === 'string' && orderRes.retMsg.trim()
+                    ? orderRes.retMsg.trim()
+                    : `BYBIT_RETCODE_${orderRes.retCode}`;
+              }
+              return false;
+            }
+
+            if (signal) {
+              signal.orderFailureReason = undefined;
+            }
+            invalidatePositionSnapshot(symbol);
+            return true;
+          }
+          return false;
+        },
       );
-
-      const requestedLeverage =
-        typeof leverage === 'number' && Number.isFinite(leverage)
-          ? Math.max(1, leverage)
-          : 10;
-      const effectiveLeverage =
-        meta.maxLeverage != null
-          ? Math.min(requestedLeverage, meta.maxLeverage)
-          : requestedLeverage;
-
-      await client.setLeverage({
-        category: BYBIT_CATEGORY,
-        symbol,
-        buyLeverage: String(effectiveLeverage),
-        sellLeverage: String(effectiveLeverage),
-      });
-
-      const orderRes = await client.submitOrder({
-        category: BYBIT_CATEGORY,
-        symbol,
-        price: entryNormalized?.priceStr || undefined,
-        side: isLong ? 'Buy' : 'Sell',
-        orderType: isLimit ? 'Limit' : 'Market',
-        qty: orderQtyStr,
-        orderFilter: 'Order',
-        orderLinkId:
-          typeof orderId === 'string' && orderId.trim() ? orderId : undefined,
-      });
-
-      logger.log(
-        getLogLevel(orderRes),
-        'placeOrder:response: %s',
-        toJson(orderRes, true),
-      );
-
-      if (orderRes.retCode !== 0) {
-        if (signal) {
-          signal.orderFailureReason =
-            typeof orderRes.retMsg === 'string' && orderRes.retMsg.trim()
-              ? orderRes.retMsg.trim()
-              : `BYBIT_RETCODE_${orderRes.retCode}`;
-        }
-        return false;
-      }
-
-      if (signal) {
-        signal.orderFailureReason = undefined;
-      }
-      invalidatePositionSnapshot(symbol);
-      return true;
     },
 
     setPositionProtection,

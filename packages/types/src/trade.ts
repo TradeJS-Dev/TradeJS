@@ -810,6 +810,15 @@ export interface TrendLineOptions {
   maxDistance?: number;
 }
 
+/** Exchange-confirmed leverage for the most recent entry, independent of sizing. */
+export interface OrderLeverage {
+  requested: number;
+  effective: number;
+  maxAllowed: number;
+  reductionReason: 'instrument_limit' | 'risk_limit' | 'leverage_step' | null;
+  verifiedAt: number;
+}
+
 export interface Signal {
   assessment?: SignalAssessment;
   jevEvidence?: import('./jev').JevEvidence;
@@ -831,6 +840,7 @@ export interface Signal {
   orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
   orderFailureReason?: string;
+  orderLeverage?: OrderLeverage;
   orderQty?: number;
   orderValue?: number;
   isConfigFromBacktest?: boolean;
@@ -962,6 +972,7 @@ export type RuntimeTradeTelemetryQuality =
   | 'none';
 
 export interface RuntimeTradeRecord {
+  orderLeverage?: OrderLeverage;
   assessment?: SignalAssessment;
   orderId: string;
   signalId?: string;
