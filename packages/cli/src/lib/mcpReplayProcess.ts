@@ -23,14 +23,16 @@ const timer = setInterval(() => {
     if (result.exitCode !== 0) {
       let fd;
       try {
-        fd = fs.openSync(file + '.log', fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        const logId = result.logRequestId === undefined ? id : result.logRequestId;
+        if (typeof logId !== 'string' || !/^[a-f0-9]{64}$/.test(logId)) throw new Error('Invalid replay log identity');
+        fd = fs.openSync(path.join(root, logId) + '.log', fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
         const size = fs.fstatSync(fd).size;
         const tail = Buffer.alloc(Math.min(size, 65536));
         fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
         // The worker redacts each line before persisting or returning it through MCP.
         for (const line of tail.toString('utf8').split(/[\\r\\n]+/).filter(Boolean).slice(-150)) console.error('Host replay: ' + line);
       } catch (error) {
-        console.error('Host replay log unavailable: ' + error.code);
+        console.error('Host replay: ' + result.message + '; log unavailable: ' + (error.code || error.message));
       } finally { if (fd !== undefined) fs.closeSync(fd); }
     }
     clearInterval(timer);
