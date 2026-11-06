@@ -643,8 +643,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       },
     });
 
+    // Replay execution controls belong to the runtime, not strategy schemas.
+    const coreConfig = { ...config };
+    delete coreConfig.RECORD_RUNTIME_TRADES;
+    delete coreConfig.SIMULATE_ORDERS;
     const core = await createCore({
-      config,
+      config: coreConfig,
       data,
       strategyApi,
       indicatorsState,

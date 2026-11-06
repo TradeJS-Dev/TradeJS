@@ -168,8 +168,15 @@ import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries as hyperliquidConsensusEntries } from '@tradejs/strategy-hyperliquid-consensus';
 import { strategyEntries as trendLineEntries } from '@tradejs/strategy-trend-line';
-import { BACKTEST_WARNING_CODES, type RuntimeLineage } from '@tradejs/types';
+import {
+  BACKTEST_WARNING_CODES,
+  type Connector,
+  type KlineChartItem,
+  type RuntimeLineage,
+  type StrategyConfig,
+} from '@tradejs/types';
 import { resetDerivativesContextRuntimeState } from '../strategyHelpers/derivativesContext';
+import { createStrategyConfigParser } from '@tradejs/strategy-kit/config';
 
 const strategyEntries = [...hyperliquidConsensusEntries, ...trendLineEntries];
 
@@ -371,6 +378,99 @@ describe('strategyRuntime', () => {
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
     mockLoadHyperliquidWhaleFlowContext.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
+  });
+
+  it('keeps replay execution controls out of strict strategy core config while simulating orders', async () => {
+    const defaults = {
+      ENV: 'PARITY',
+      INTERVAL: '15',
+      MAKE_ORDERS: false,
+      MAX_LOSS_VALUE: 1,
+    } satisfies StrategyConfig;
+    const parseConfig = createStrategyConfigParser({
+      strategyName: 'RangeReclaim',
+      defaults,
+    });
+    const replayConfig = Object.freeze({
+      ...defaults,
+      RECORD_RUNTIME_TRADES: false,
+      SIMULATE_ORDERS: true,
+    });
+    mockResolveStrategyConfig.mockImplementationOnce(
+      jest.requireActual('../strategyHelpers/config').resolveStrategyConfig,
+    );
+    const createCore = jest.fn(
+      async ({ config }: { config: StrategyConfig }) => {
+        parseConfig(config);
+        return async () => {
+          const decision = makeDecisionEntry(
+            { runtime: { ai: { enabled: false }, ml: { enabled: false } } },
+            'RangeReclaim',
+          );
+          return {
+            ...decision,
+            kind: 'entry' as const,
+            entryContext: {
+              ...decision.entryContext,
+              interval: '15' as const,
+              direction: 'SHORT' as const,
+            },
+          };
+        };
+      },
+    );
+    const creator = createStrategyRuntime({
+      strategyName: 'RangeReclaim',
+      defaults,
+      createCore,
+    });
+    const connector: Connector & { __tradejsTestConnector: true } = {
+      __tradejsTestConnector: true,
+      capabilities: {
+        supportedUniverses: ['crypto'],
+        defaultUniverse: 'crypto',
+      },
+      universe: 'crypto',
+      listInstruments: jest.fn(),
+      kline: jest.fn(),
+      getState: jest.fn(),
+      setState: jest.fn(),
+      getPosition: jest.fn(),
+      getPositions: jest.fn(),
+      placeOrder: jest.fn(),
+      setTakeProfits: jest.fn(),
+      setStopLoss: jest.fn(),
+      closePosition: jest.fn(),
+      getTickers: jest.fn(),
+    };
+    const strategy = await creator({
+      userName: 'root',
+      connectorName: 'ByBit',
+      symbol: 'ETHUSDT',
+      config: replayConfig,
+      runtimeConfigSnapshot: { userConfig: replayConfig },
+      data: [],
+      btcData: [],
+      connector,
+    });
+
+    const result = await strategy(
+      { timestamp: 1 } as KlineChartItem,
+      { timestamp: 1 } as KlineChartItem,
+    );
+
+    expect(createCore).toHaveBeenCalledWith(
+      expect.objectContaining({ config: defaults }),
+    );
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ recordRuntimeTrade: false }),
+    );
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(
+      expect.objectContaining({ strategy: 'RangeReclaim' }),
+    );
+    expect(replayConfig).toHaveProperty('SIMULATE_ORDERS', true);
+    expect(replayConfig).toHaveProperty('RECORD_RUNTIME_TRADES', false);
   });
 
   it('does not load core market context without a manifest requirement', async () => {
