@@ -670,7 +670,10 @@ export const createTestConnector: TestConnectorCreator = (
 
   return {
     __tradejsTestConnector: true,
-    capabilities: connector.capabilities,
+    capabilities: {
+      ...connector.capabilities,
+      orderSubmissionValidation: true,
+    },
     universe: connector.universe,
     accountId: connector.accountId,
     deploymentId: connector.deploymentId,
@@ -1016,6 +1019,7 @@ export const createTestConnector: TestConnectorCreator = (
     },
 
     placeOrder: async (order) => {
+      const { beforeSubmit, ...submittedOrder } = order;
       const isPositionIncrease = Boolean(
         currentPosition &&
           order.positionIntent === 'increase' &&
@@ -1061,6 +1065,7 @@ export const createTestConnector: TestConnectorCreator = (
         signal: order.signal,
       });
       const previousPosition = currentPosition;
+      await beforeSubmit?.({ qty: orderQty, executionPrice: entryPrice });
       const previousQty = previousPosition?.qty ?? 0;
       const resultingQty = previousQty + orderQty;
       const resultingEntryPrice = previousPosition
@@ -1077,7 +1082,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty: resultingQty,
             price: resultingEntryPrice,
           }
-        : { ...order, qty: orderQty, price: entryPrice, amount };
+        : { ...submittedOrder, qty: orderQty, price: entryPrice, amount };
       originalQty = resultingQty;
 
       if (isPositionIncrease) {
@@ -1186,7 +1191,7 @@ export const createTestConnector: TestConnectorCreator = (
         }
 
         logOrder({
-          ...order,
+          ...submittedOrder,
           qty: orderQty,
           price: entryPrice,
           profit,
@@ -1237,7 +1242,7 @@ export const createTestConnector: TestConnectorCreator = (
         : null;
 
       logOrder({
-        ...order,
+        ...submittedOrder,
         qty: orderQty,
         price: entryPrice,
         profit,

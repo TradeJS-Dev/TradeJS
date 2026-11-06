@@ -63,6 +63,29 @@ describe('portfolio replay connector', () => {
     getTickers: jest.fn(async () => []),
   } as any;
 
+  it('rejects final submission validation before mutating portfolio state', async () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+    const beforeSubmit = jest.fn(
+      async ({ executionPrice }: { executionPrice?: number }) => {
+        expect(executionPrice).toBeGreaterThan(100);
+        throw new Error('ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION');
+      },
+    );
+    await expect(
+      connector.placeOrder({
+        symbol: 'BTCUSDT',
+        qty: 1,
+        price: 100,
+        timestamp: 1,
+        direction: 'LONG',
+        beforeSubmit,
+      }),
+    ).rejects.toThrow('ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION');
+    expect(beforeSubmit).toHaveBeenCalledTimes(1);
+    expect(await connector.getPositions()).toEqual([]);
+    expect(connector.getReplayArtifacts().orderLog).toEqual([]);
+  });
+
   it('marks itself as a replay test connector for parity order execution', () => {
     const connector = createPortfolioReplayConnector(baseConnector);
 

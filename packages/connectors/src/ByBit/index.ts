@@ -44,6 +44,7 @@ import {
 const LIMIT = 1000;
 const BYBIT_CATEGORY = 'linear' as const;
 const BYBIT_CAPABILITIES = {
+  orderSubmissionValidation: true,
   supportedUniverses: ['crypto', 'tradfi'],
   defaultUniverse: 'crypto',
 } as const;
@@ -1402,6 +1403,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       orderId,
       signal,
       leverage,
+      beforeSubmit,
     }) => {
       return withBybitOrderLock(
         JSON.stringify([
@@ -1582,6 +1584,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
               return false;
             }
 
+            await beforeSubmit?.({ qty: orderQty });
             const orderRes = await client.submitOrder({
               category: BYBIT_CATEGORY,
               symbol,

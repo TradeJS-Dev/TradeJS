@@ -1,3 +1,4 @@
+import type { Connector, Order } from '@tradejs/types';
 const mockFetchMlThreshold = jest.fn();
 const mockBuildMlTrainingRow = jest.fn();
 const mockTrimMlTrainingRowWindows = jest.fn();
@@ -436,6 +437,75 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       entryTimestamp: 1_700_000_000_000,
     });
     expect(price).toBe(101);
+  });
+
+  it('records enforced risk from the final quote and normalized quantity', async () => {
+    const getQuote = jest.fn(async () => ({
+      symbol: 'ETHUSDT',
+      bidPrice: 99.9,
+      askPrice: 100,
+      bidQty: 1,
+      askQty: 1,
+      timestamp: Date.now(),
+    }));
+    const connector: Connector = {
+      capabilities: {
+        supportedUniverses: ['crypto'],
+        defaultUniverse: 'crypto',
+        orderSubmissionValidation: true,
+      },
+      universe: 'crypto',
+      listInstruments: async () => [],
+      kline: async () => [],
+      getState: async () => ({}),
+      setState: async () => {},
+      getPositions: async () => [],
+      getTickers: async () => [],
+      getPosition: async () => ({
+        symbol: 'ETHUSDT',
+        qty: 0.1,
+        price: 100,
+        direction: 'LONG',
+      }),
+      getTopOfBookTicker: getQuote,
+      placeOrder: jest.fn(async (order: Order) => {
+        await order.beforeSubmit?.({ qty: 0.1 });
+        return true;
+      }),
+      setTakeProfits: async () => true,
+      setStopLoss: async () => true,
+      closePosition: async () => true,
+    };
+    const placedSignal = { ...signal };
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 0.1,
+      currentPrice: 99,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ rate: 1, price: 110 }],
+      stopLossPrice: 95,
+      signal: placedSignal,
+      executionLimits: {
+        minimumNetRiskRatio: 1.55,
+        maxLossValue: 1,
+        feeRate: 0.001,
+        slippageBps: 0,
+      },
+    });
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(placedSignal).toEqual(
+      expect.objectContaining({
+        orderStatus: 'completed',
+        riskDecision: expect.objectContaining({
+          enforced: true,
+          maxLossValue: 1,
+          plannedLossValue: expect.closeTo(0.5195, 12),
+        }),
+      }),
+    );
   });
 
   it('keeps requested order value on signal when entry order fails', async () => {

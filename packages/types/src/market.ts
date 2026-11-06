@@ -21,6 +21,8 @@ export interface InstrumentDescriptor {
 }
 
 export interface ConnectorCapabilities {
+  /** placeOrder awaits Order.beforeSubmit before any order side effect. */
+  orderSubmissionValidation?: boolean;
   supportedUniverses: readonly MarketUniverse[];
   defaultUniverse: MarketUniverse;
 }

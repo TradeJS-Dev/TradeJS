@@ -17,6 +17,17 @@ import {
   RuntimeTradeTelemetryQuality,
   Tp,
 } from '@tradejs/types';
+import type { EntryExecutionLimits } from '../strategy/entryExecutionValidation';
+import {
+  createEntrySubmissionValidation,
+  getOrderArrivalSnapshot,
+  validateEntryProtectionAtArrival,
+} from '../strategy/entrySubmissionValidation';
+export {
+  createEntrySubmissionValidation,
+  getOrderArrivalSnapshot,
+  validateEntryProtectionAtArrival,
+} from '../strategy/entrySubmissionValidation';
 import { askAI, runAiPromptLocal } from '../ai';
 import { buildMlPayload } from '../mlPayload';
 import { getTradejsProjectCwd } from '../tradejsConfig';
@@ -235,122 +246,8 @@ interface ExecuteEntryOrderParams {
   signal: Signal;
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
+  executionLimits?: EntryExecutionLimits;
 }
-
-const toFiniteNumberOrNull = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : null;
-
-export const getOrderArrivalSnapshot = async ({
-  connector,
-  symbol,
-}: {
-  connector: Connector;
-  symbol: string;
-}) => {
-  if (typeof connector.getTopOfBookTicker !== 'function') {
-    return {
-      arrivalSnapshotTime: Date.now(),
-      arrivalSource: 'unavailable',
-      bid: null,
-      ask: null,
-      arrivalMid: null,
-      spreadBps: null,
-    };
-  }
-
-  try {
-    const ticker = await connector.getTopOfBookTicker(symbol);
-    const arrivalSnapshotTime = toFiniteNumberOrNull(ticker?.timestamp);
-    const bid = toFiniteNumberOrNull(ticker?.bidPrice);
-    const ask = toFiniteNumberOrNull(ticker?.askPrice);
-    const arrivalMid = bid != null && ask != null ? (bid + ask) / 2 : null;
-    const spreadBps =
-      bid != null && ask != null && arrivalMid != null && arrivalMid > 0
-        ? ((ask - bid) / arrivalMid) * 10_000
-        : null;
-
-    return {
-      arrivalSnapshotTime: arrivalSnapshotTime ?? Date.now(),
-      arrivalSource: 'top_of_book',
-      bid,
-      ask,
-      arrivalMid,
-      spreadBps,
-    };
-  } catch (error) {
-    logger.warn(
-      'runtime order arrival snapshot failed: %s %s',
-      symbol,
-      (error as Error)?.message || String(error),
-    );
-    return {
-      arrivalSnapshotTime: Date.now(),
-      arrivalSource: 'top_of_book_error',
-      bid: null,
-      ask: null,
-      arrivalMid: null,
-      spreadBps: null,
-    };
-  }
-};
-
-export const validateEntryProtectionAtArrival = ({
-  direction,
-  signalPrice,
-  bid,
-  ask,
-  arrivalMid,
-  takeProfits,
-  stopLossPrice,
-}: {
-  direction: Direction;
-  signalPrice: number;
-  bid: number | null;
-  ask: number | null;
-  arrivalMid: number | null;
-  takeProfits: Tp[];
-  stopLossPrice: number | null;
-}) => {
-  const entryReference =
-    direction === 'LONG'
-      ? ask ?? arrivalMid ?? signalPrice
-      : bid ?? arrivalMid ?? signalPrice;
-  const stopReference =
-    direction === 'LONG'
-      ? bid ?? arrivalMid ?? signalPrice
-      : ask ?? arrivalMid ?? signalPrice;
-  if (
-    !Number.isFinite(entryReference) ||
-    entryReference <= 0 ||
-    !Number.isFinite(stopReference) ||
-    stopReference <= 0
-  ) {
-    throw new Error('INVALID_ENTRY_REFERENCE_AT_ARRIVAL');
-  }
-
-  for (const takeProfit of takeProfits) {
-    if (
-      !Number.isFinite(takeProfit.price) ||
-      takeProfit.price <= 0 ||
-      (direction === 'LONG'
-        ? takeProfit.price <= entryReference
-        : takeProfit.price >= entryReference)
-    ) {
-      throw new Error('TAKE_PROFIT_CROSSED_BEFORE_ENTRY');
-    }
-  }
-
-  if (
-    stopLossPrice != null &&
-    (!Number.isFinite(stopLossPrice) ||
-      stopLossPrice <= 0 ||
-      (direction === 'LONG'
-        ? stopLossPrice >= stopReference
-        : stopLossPrice <= stopReference))
-  ) {
-    throw new Error('STOP_LOSS_CROSSED_BEFORE_ENTRY');
-  }
-};
 
 const resolveRuntimeTelemetryQuality = ({
   signalClosePrice,
@@ -461,6 +358,7 @@ export const executeEntryOrder = async ({
   beforePlaceOrder,
   recordRuntimeTrade = true,
   leverage,
+  executionLimits,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
   const previousPosition =
@@ -473,23 +371,58 @@ export const executeEntryOrder = async ({
   signal.orderValue = qty * currentPrice;
   signal.orderFailureReason = undefined;
 
-  const arrivalSnapshot = await getOrderArrivalSnapshot({ connector, symbol });
-  try {
-    validateEntryProtectionAtArrival({
-      direction,
-      signalPrice: currentPrice,
-      bid: arrivalSnapshot.bid,
-      ask: arrivalSnapshot.ask,
-      arrivalMid: arrivalSnapshot.arrivalMid,
-      takeProfits,
-      stopLossPrice,
-    });
-  } catch (error) {
-    signal.orderStatus = 'failed';
-    signal.orderFailureReason = (error as Error).message;
-    throw error;
+  let arrivalSnapshot = {
+    arrivalSnapshotTime: Date.now(),
+    arrivalSource: 'unavailable',
+    bid: null as number | null,
+    ask: null as number | null,
+    arrivalMid: null as number | null,
+    spreadBps: null as number | null,
+  };
+  let orderSubmitTime = Date.now();
+  const beforeSubmit = createEntrySubmissionValidation({
+    connector,
+    symbol,
+    direction,
+    takeProfits,
+    stopLossPrice,
+    limits: executionLimits,
+    onValidated: (snapshot, economics) => {
+      arrivalSnapshot = snapshot;
+      orderSubmitTime = Date.now();
+      if (executionLimits?.maxLossValue != null) {
+        signal.riskDecision = {
+          stage: 'order_plan',
+          status: 'approved',
+          reason: 'PLANNED_LOSS_WITHIN_MAX_LOSS_VALUE',
+          plannedLossValue: economics.plannedLossValue,
+          maxLossValue: executionLimits.maxLossValue,
+          limitUtilization:
+            economics.plannedLossValue / executionLimits.maxLossValue,
+          enforced: true,
+        };
+      }
+    },
+  });
+  if (!beforeSubmit) {
+    arrivalSnapshot = await getOrderArrivalSnapshot({ connector, symbol });
+    try {
+      validateEntryProtectionAtArrival({
+        direction,
+        signalPrice: currentPrice,
+        bid: arrivalSnapshot.bid,
+        ask: arrivalSnapshot.ask,
+        arrivalMid: arrivalSnapshot.arrivalMid,
+        takeProfits,
+        stopLossPrice,
+      });
+    } catch (error) {
+      signal.orderStatus = 'failed';
+      signal.orderFailureReason = (error as Error).message;
+      throw error;
+    }
+    orderSubmitTime = Date.now();
   }
-  const orderSubmitTime = Date.now();
   const orderPlaced = await connector.placeOrder({
     symbol,
     qty,
@@ -503,6 +436,7 @@ export const executeEntryOrder = async ({
       : {}),
     orderId,
     signal,
+    ...(beforeSubmit ? { beforeSubmit } : {}),
   });
   const orderAckTime = Date.now();
   const placedQty =

@@ -444,6 +444,12 @@ export type Order = {
   leverage?: number;
   orderId?: string;
   signal?: Signal;
+  /** Await after preparation/quantity normalization, immediately before submission. */
+  beforeSubmit?: (context: {
+    qty: number;
+    /** Simulation connectors may supply their actual modeled execution price. */
+    executionPrice?: number;
+  }) => Promise<void>;
 };
 
 export type Position = {
@@ -914,7 +920,8 @@ export interface RuntimeRiskDecision {
   plannedLossValue: number | null;
   maxLossValue: number | null;
   limitUtilization: number | null;
-  enforced: false;
+  /** True after the final submission check has enforced the configured budget. */
+  enforced: boolean;
 }
 
 export interface SignalAnalysis {

@@ -114,6 +114,56 @@ describe('ByBitConnectorCreator', () => {
     jest.restoreAllMocks();
   });
 
+  it('validates normalized quantity after leverage preparation and before HTTP submission', async () => {
+    jest.spyOn(Math, 'random').mockRestore();
+    const api = createLeverageApi();
+    const submitOrder = jest.fn(async () => ({ retCode: 0 }));
+    const client = Object.assign(
+      Object.create(RestClientV5.prototype) as RestClientV5,
+      api,
+      { submitOrder },
+    );
+    mockedGetClient.mockResolvedValue(client);
+    mockedGetSymbolMeta.mockResolvedValue({
+      minLeverage: 1,
+      maxLeverage: 100,
+      leverageStep: 0.01,
+      tickSize: 0.1,
+      qtyStep: 1,
+      minOrderQty: 1,
+      pricePrecision: 1,
+      qtyPrecision: 0,
+      maxMarketOrderQty: 5000,
+      maxLimitOrderQty: 10000,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: Math.floor(qty),
+      qtyStr: String(Math.floor(qty)),
+    }));
+    const connector = await ByBitConnectorCreator({
+      userName: 'final-validation',
+    });
+    const beforeSubmit = jest.fn(async ({ qty }: { qty: number }) => {
+      expect(qty).toBe(2);
+      expect(api.getPositionInfo).toHaveBeenCalled();
+      expect(submitOrder).not.toHaveBeenCalled();
+      await Promise.resolve();
+      throw new Error('ENTRY_RR_BELOW_MIN_AT_SUBMISSION');
+    });
+    await expect(
+      connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 2.9,
+        direction: 'LONG',
+        timestamp: 1,
+        beforeSubmit,
+      }),
+    ).rejects.toThrow('ENTRY_RR_BELOW_MIN_AT_SUBMISSION');
+    expect(beforeSubmit).toHaveBeenCalledTimes(1);
+    expect(submitOrder).not.toHaveBeenCalled();
+  });
+
   it('returns empty data for unsupported interval in kline', async () => {
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
 

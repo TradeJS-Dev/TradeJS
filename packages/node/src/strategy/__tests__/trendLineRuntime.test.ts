@@ -1,3 +1,4 @@
+import type { Order } from '@tradejs/types';
 import { strategyEntries } from '@tradejs/strategy-trend-line';
 import { askAI, createStrategyRuntime } from '@tradejs/node/strategies';
 import {
@@ -712,6 +713,19 @@ describe('TrendlineStrategyCreator', () => {
     const cachedData: any[] = [makeCandle(1, 100)];
     const btcCachedData: any[] = [makeCandle(1, 20000)];
     const connector: any = {
+      capabilities: {
+        supportedUniverses: ['crypto'],
+        defaultUniverse: 'crypto',
+        orderSubmissionValidation: true,
+      },
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        bidPrice: 101,
+        askPrice: 101,
+        bidQty: 1,
+        askQty: 1,
+        timestamp: Date.now(),
+      })),
       getPosition: jest.fn(async () => ({ qty: 0 })),
       getPositions: jest.fn(async () => [
         {
@@ -734,7 +748,10 @@ describe('TrendlineStrategyCreator', () => {
         },
       ]),
       closePosition: jest.fn(async () => true),
-      placeOrder: jest.fn(async () => true),
+      placeOrder: jest.fn(async (order: Order) => {
+        await order.beforeSubmit?.({ qty: order.qty });
+        return true;
+      }),
       setTakeProfits: jest.fn(async () => true),
       setStopLoss: jest.fn(async () => true),
       kline: jest.fn(async () => cachedData),
@@ -813,10 +830,26 @@ describe('TrendlineStrategyCreator', () => {
     const cachedData: any[] = [makeCandle(1, 100)];
     const btcCachedData: any[] = [makeCandle(1, 20000)];
     const connector: any = {
+      capabilities: {
+        supportedUniverses: ['crypto'],
+        defaultUniverse: 'crypto',
+        orderSubmissionValidation: true,
+      },
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        bidPrice: 101,
+        askPrice: 101,
+        bidQty: 1,
+        askQty: 1,
+        timestamp: Date.now(),
+      })),
       getPosition: jest.fn(async () => ({ qty: 0 })),
       getPositions: jest.fn(async () => []),
       closePosition: jest.fn(async () => true),
-      placeOrder: jest.fn(async () => true),
+      placeOrder: jest.fn(async (order: Order) => {
+        await order.beforeSubmit?.({ qty: order.qty });
+        return true;
+      }),
       setTakeProfits: jest.fn(async () => true),
       setStopLoss: jest.fn(async () => true),
       kline: jest.fn(async () => cachedData),

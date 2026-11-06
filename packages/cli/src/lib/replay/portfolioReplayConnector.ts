@@ -368,7 +368,10 @@ export const createPortfolioReplayConnector = (
   return {
     __tradejsReplayConnector: true,
     __tradejsTestConnector: true,
-    capabilities: connector.capabilities,
+    capabilities: {
+      ...connector.capabilities,
+      orderSubmissionValidation: true,
+    },
     universe: connector.universe,
     accountId: connector.accountId,
     deploymentId: connector.deploymentId,
@@ -411,6 +414,7 @@ export const createPortfolioReplayConnector = (
       ),
 
     placeOrder: async (order) => {
+      const { beforeSubmit, ...submittedOrder } = order;
       if (positionsBySymbol.has(order.symbol)) {
         return false;
       }
@@ -428,8 +432,12 @@ export const createPortfolioReplayConnector = (
         stage: 'entry',
         signal: order.signal,
       });
+      await beforeSubmit?.({
+        qty: order.qty,
+        executionPrice: entryPrice,
+      });
       const nextPosition: ReplayPosition = {
-        ...order,
+        ...submittedOrder,
         timestamp: executionTimestamp ?? order.timestamp,
         price: entryPrice,
         signal: compactReplaySignal(order.signal),
@@ -457,7 +465,7 @@ export const createPortfolioReplayConnector = (
       logOrder({
         positionState,
         data: {
-          ...order,
+          ...submittedOrder,
           timestamp: executionTimestamp ?? order.timestamp,
           price: entryPrice,
           profit,

@@ -4,7 +4,12 @@ import {
   getOrderArrivalSnapshot,
   updatePositionProtection,
   validateEntryProtectionAtArrival,
+  createEntrySubmissionValidation,
 } from '../strategyHelpers/runtime';
+import {
+  resolveEntryExecutionLimits,
+  EntrySubmissionValidationError,
+} from './entryExecutionValidation';
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
@@ -324,6 +329,10 @@ export const executeEntryDecision = async ({
         signal,
         beforePlaceOrder,
         recordRuntimeTrade: recordRuntimeJournal,
+        executionLimits: resolveEntryExecutionLimits(
+          hookCtx.strategyConfig,
+          decision.entryContext.direction,
+        ),
       });
       await invokeStageHooks(
         'afterPlaceOrder',
@@ -346,19 +355,32 @@ export const executeEntryDecision = async ({
     }
 
     await beforePlaceOrder();
-    const arrivalSnapshot = await getOrderArrivalSnapshot({
+    const beforeSubmit = createEntrySubmissionValidation({
       connector,
       symbol,
-    });
-    validateEntryProtectionAtArrival({
       direction: decision.entryContext.direction,
-      signalPrice: decision.entryContext.prices.currentPrice,
-      bid: arrivalSnapshot.bid,
-      ask: arrivalSnapshot.ask,
-      arrivalMid: arrivalSnapshot.arrivalMid,
       takeProfits: decision.orderPlan.takeProfits,
       stopLossPrice: decision.orderPlan.stopLossPrice,
+      limits: resolveEntryExecutionLimits(
+        hookCtx.strategyConfig,
+        decision.entryContext.direction,
+      ),
     });
+    if (!beforeSubmit) {
+      const arrivalSnapshot = await getOrderArrivalSnapshot({
+        connector,
+        symbol,
+      });
+      validateEntryProtectionAtArrival({
+        direction: decision.entryContext.direction,
+        signalPrice: decision.entryContext.prices.currentPrice,
+        bid: arrivalSnapshot.bid,
+        ask: arrivalSnapshot.ask,
+        arrivalMid: arrivalSnapshot.arrivalMid,
+        takeProfits: decision.orderPlan.takeProfits,
+        stopLossPrice: decision.orderPlan.stopLossPrice,
+      });
+    }
     const orderPlaced = await connector.placeOrder({
       symbol,
       qty: decision.orderPlan.qty,
@@ -366,6 +388,7 @@ export const executeEntryDecision = async ({
       timestamp: decision.entryContext.timestamp,
       direction: decision.entryContext.direction,
       positionIntent: decision.orderPlan.positionIntent,
+      ...(beforeSubmit ? { beforeSubmit } : {}),
       ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
         ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
         : {}),
@@ -412,6 +435,24 @@ export const executeEntryDecision = async ({
       { decision, entry, market },
     );
   } catch (err) {
+    if (err instanceof EntrySubmissionValidationError) {
+      if (signal) {
+        signal.orderStatus = 'skipped';
+        signal.orderSkipReason = err.message;
+        signal.allocatorDecision = {
+          stage: 'runtime_admission',
+          status: 'rejected',
+          reason: err.message,
+        };
+      }
+      logger.warn(
+        'entry rejected before submission: %s %s',
+        symbol,
+        err.message,
+      );
+      return signal ?? err.message;
+    }
+
     if (signal) {
       signal.orderStatus = 'failed';
       if (

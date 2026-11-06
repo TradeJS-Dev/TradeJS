@@ -108,6 +108,7 @@ jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
   enrichSignalWithAi: (...args: unknown[]) => mockEnrichSignalWithAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
+  createEntrySubmissionValidation: jest.fn(() => undefined),
   getOrderArrivalSnapshot: jest.fn(async () => ({
     arrivalSnapshotTime: Date.now(),
     arrivalSource: 'unavailable',
@@ -163,6 +164,7 @@ jest.mock('../strategy/manifests', () => {
 });
 
 import { createStrategyRuntime } from '../strategyRuntime';
+import { EntrySubmissionValidationError } from '../strategy/entryExecutionValidation';
 import { createStrategyAPI } from '@tradejs/core/strategies';
 import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
@@ -1166,6 +1168,9 @@ describe('strategyRuntime', () => {
     });
     const { strategy } = await makeRuntime(() => decision, {
       ML_ENABLED: false,
+      MAX_LOSS_VALUE: 1,
+      RISK_FEE_RATE: 0.001,
+      SHORT: { minRiskRatio: 1.55 },
     });
 
     await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
@@ -1176,6 +1181,12 @@ describe('strategyRuntime', () => {
         currentPrice: 222,
         timestamp: 1_700_000_123_000,
         stopLossPrice: 237,
+        executionLimits: {
+          minimumNetRiskRatio: 1.55,
+          maxLossValue: 1,
+          feeRate: 0.001,
+          slippageBps: 0,
+        },
       }),
     );
   });
@@ -3045,6 +3056,27 @@ describe('strategyRuntime', () => {
         error: expect.objectContaining({ stage: 'placeOrder' }),
       }),
     );
+  });
+
+  it('records a final economics rejection as a skipped entry without an operational failure', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', { onRuntimeError });
+    mockExecuteEntryOrder.mockRejectedValueOnce(
+      new EntrySubmissionValidationError('ENTRY_RR_BELOW_MIN_AT_SUBMISSION'),
+    );
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+    const result = await strategy(
+      { timestamp: 1 } as KlineChartItem,
+      { timestamp: 1 } as KlineChartItem,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        orderStatus: 'skipped',
+        orderSkipReason: 'ENTRY_RR_BELOW_MIN_AT_SUBMISSION',
+        allocatorDecision: expect.objectContaining({ status: 'rejected' }),
+      }),
+    );
+    expect(onRuntimeError).not.toHaveBeenCalled();
   });
 
   it('marks signal order as failed when executeEntryOrder throws', async () => {
