@@ -38,16 +38,14 @@ const BacktestRunPage = () => {
   return (
     <ClientOnly>
       <Box minH="100vh" bg="gray.900" color="gray.100">
-        <Box
-          as="main"
-          minH="100vh"
-          minW="1200px"
-          pl={2}
-          pr={4}
-          py={3}
-          bg="gray.900"
-        >
-          <Flex alignItems="center" justifyContent="space-between" mb={3}>
+        <Box as="main" minH="100vh" minW={0} pl={2} pr={4} py={3} bg="gray.900">
+          <Flex
+            alignItems="center"
+            justifyContent="space-between"
+            wrap="wrap"
+            gap={3}
+            mb={3}
+          >
             <Box pl={2}>
               <Text fontSize="lg" fontWeight="700" lineHeight="1.2">
                 Backtest runs
@@ -82,7 +80,13 @@ const BacktestRunPage = () => {
           <BacktestRunForm controller={controller} />
 
           <Box maxW="1200px" w="full" mt={5}>
-            <Flex alignItems="center" justifyContent="space-between" mb={3}>
+            <Flex
+              alignItems="center"
+              justifyContent="space-between"
+              wrap="wrap"
+              gap={3}
+              mb={3}
+            >
               <Flex alignItems="center" gap={3}>
                 <Text fontWeight="700">Active runs</Text>
                 <Badge colorPalette="gray">{jobs.length} jobs</Badge>
