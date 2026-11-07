@@ -253,6 +253,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
     const strategyPolicyProfile = getPolicyProfile();
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
+    // Execution controls belong to the runtime, not strategy schemas.
+    const strategyConfig = { ...config };
+    delete strategyConfig.RECORD_RUNTIME_TRADES;
+    delete strategyConfig.SIMULATE_ORDERS;
     const hookBase = {
       connector,
       strategyName,
@@ -263,7 +267,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       accountId,
       deploymentId,
       policyProfileId: strategyPolicyProfile?.id ?? requestedPolicyProfileId,
-      strategyConfig: config,
+      strategyConfig,
       env,
       isConfigFromBacktest,
     };
@@ -369,6 +373,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         entry?: StrategyHookEntryContext;
         market?: StrategyHookMarketContext;
       } = {},
+      failureResult?: TReturn,
     ): Promise<TReturn | undefined> => {
       if (!hook) {
         return undefined;
@@ -390,7 +395,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           entry: errorContext.entry,
           market: errorContext.market,
         });
-        return undefined;
+        return failureResult;
       }
     };
 
@@ -402,6 +407,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         entry?: StrategyHookEntryContext;
         market?: StrategyHookMarketContext;
       } = {},
+      failureResult?: TReturn,
     ): Promise<TReturn[]> => {
       const results: TReturn[] = [];
 
@@ -413,6 +419,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           hook,
           params,
           errorContext,
+          failureResult,
         );
         if (result !== undefined) {
           results.push(result);
@@ -455,11 +462,16 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         market?: StrategyHookMarketContext;
       } = {},
     ): Promise<StrategyHookGateResult | void> => {
+      const failureResult: StrategyHookGateResult | undefined =
+        stage === 'beforeEntryGate'
+          ? { allow: false, reason: 'ERROR' }
+          : undefined;
       const projectResults =
         await invokeProjectHooks<StrategyHookGateResult | void>(
           stage,
           params,
           errorContext,
+          failureResult,
         );
       const projectBlock = projectResults.find(
         (result) => result?.allow === false,
@@ -473,6 +485,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         hook,
         params,
         errorContext,
+        failureResult,
       );
     };
 
@@ -643,12 +656,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       },
     });
 
-    // Replay execution controls belong to the runtime, not strategy schemas.
-    const coreConfig = { ...config };
-    delete coreConfig.RECORD_RUNTIME_TRADES;
-    delete coreConfig.SIMULATE_ORDERS;
     const core = await createCore({
-      config: coreConfig,
+      config: strategyConfig,
       data,
       strategyApi,
       indicatorsState,
