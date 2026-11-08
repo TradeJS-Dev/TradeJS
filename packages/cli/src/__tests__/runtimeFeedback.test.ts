@@ -1,3 +1,7 @@
+import { getUserSettings } from '@tradejs/infra/userSettings';
+jest.mock('@tradejs/infra/userSettings', () => ({
+  getUserSettings: jest.fn(async () => ({ NOTIFY_RUNTIME_DEBUG: true })),
+}));
 import { spawn } from 'node:child_process';
 import { buildMcpReplayProcess } from '../lib/mcpReplayProcess';
 import { createHash } from 'node:crypto';
@@ -482,6 +486,26 @@ describe('production runtime feedback replay', () => {
     expect(messages[0]).toContain('Lineage scopes: <b>100 / 100</b>');
     expect(messages[0]).not.toContain('Targets:');
     expect(messages[0]).not.toContain('Replay errors');
+  });
+
+  it('keeps the verified bundle when debug notifications are disabled', async () => {
+    const { feedback } = await createFeedback();
+    jest.mocked(getUserSettings).mockResolvedValueOnce({
+      ...(await getUserSettings('root')),
+      NOTIFY_RUNTIME_DEBUG: false,
+    });
+    const send = jest.fn();
+    const result = await notifyRuntimeFeedbackBundle({
+      bundleDir: feedback.bundleDir,
+      send,
+    });
+    expect(result.sent).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    await expect(
+      verifyRuntimeFeedbackReplayBundle(feedback.bundleDir),
+    ).resolves.toMatchObject({
+      manifest: { artifactId: feedback.manifest.artifactId },
+    });
   });
 
   it('rejects an unsealed replay payload before notification', async () => {

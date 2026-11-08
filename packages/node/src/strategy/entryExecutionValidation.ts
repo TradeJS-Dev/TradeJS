@@ -111,12 +111,8 @@ export const validateEntryExecution = ({
     throw new EntrySubmissionValidationError(
       'ENTRY_RR_BELOW_MIN_AT_SUBMISSION',
     );
-  if (
+  const riskExceeded =
     limits.maxLossValue != null &&
-    plannedLossValue > limits.maxLossValue * (1 + 1e-9)
-  )
-    throw new EntrySubmissionValidationError(
-      'ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION',
-    );
-  return { netRiskRatio, plannedLossValue };
+    plannedLossValue > limits.maxLossValue * (1 + 1e-9);
+  return { netRiskRatio, plannedLossValue, riskExceeded };
 };

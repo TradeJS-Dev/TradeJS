@@ -519,8 +519,10 @@ export const formatMessage = (
 
       if (isConfigFromBacktest) {
         lines.push('🟢 Using config from backtest');
-      } else {
-        lines.push('🟡 Using base config');
+      }
+
+      if (signal.riskDecision?.status === 'warning') {
+        lines.push('🟡 Entry risk exceeds limit');
       }
 
       if (ml) {

@@ -915,7 +915,7 @@ export interface RuntimeAllocatorDecision {
 
 export interface RuntimeRiskDecision {
   stage: 'order_plan';
-  status: 'approved' | 'rejected' | 'unavailable';
+  status: 'approved' | 'rejected' | 'warning' | 'unavailable';
   reason: string;
   plannedLossValue: number | null;
   maxLossValue: number | null;

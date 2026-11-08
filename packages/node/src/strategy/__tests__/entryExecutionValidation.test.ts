@@ -31,8 +31,8 @@ describe('final entry economics', () => {
       ).toThrow('ENTRY_RR_BELOW_MIN_AT_SUBMISSION');
     },
   );
-  it('rejects risk above the budget even when RR passes', () => {
-    expect(() =>
+  it('reports risk above the budget without blocking an otherwise valid entry', () => {
+    expect(
       validateEntryExecution({
         direction: 'LONG',
         price: 100,
@@ -41,7 +41,10 @@ describe('final entry economics', () => {
         takeProfitPrice: 120,
         limits,
       }),
-    ).toThrow('ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION');
+    ).toMatchObject({
+      riskExceeded: true,
+      plannedLossValue: expect.closeTo(5.195, 12),
+    });
   });
   it.each(['LONG', 'SHORT'] as const)(
     'includes fees and reserved slippage for %s',

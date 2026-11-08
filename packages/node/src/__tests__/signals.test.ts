@@ -490,6 +490,38 @@ describe('signals', () => {
     expect(fetchMock.mock.calls[1][0]).toContain('/sendMessage');
   });
 
+  it.each([false, true])(
+    'only shows config provenance when backtest config is used: %s',
+    (isConfigFromBacktest) => {
+      const { formatMessage } = require('../signals');
+      const message = formatMessage({
+        symbol: 'SPXUSDT',
+        strategy: 'TradingPatterns',
+        direction: 'LONG',
+        orderStatus: 'completed',
+        isConfigFromBacktest,
+        prices: {
+          currentPrice: 0.3574,
+          takeProfitPrice: 0.36664,
+          stopLossPrice: 0.34609,
+          riskRatio: 0.83,
+        },
+        riskDecision: {
+          status: 'warning',
+          plannedLossValue: 20.1586,
+          maxLossValue: 20,
+          enforced: false,
+        },
+      });
+      expect(message).toContain('🟢 Order completed');
+      expect(message).toContain('🟡 Entry risk exceeds limit');
+      expect(message).not.toContain('Using base config');
+      expect(message.includes('Using config from backtest')).toBe(
+        isConfigFromBacktest,
+      );
+    },
+  );
+
   it('hides AI quality details inside Telegram skip reason', async () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {

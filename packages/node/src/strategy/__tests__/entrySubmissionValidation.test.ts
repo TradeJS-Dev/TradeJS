@@ -99,8 +99,10 @@ describe('final submission validation', () => {
     expect(onValidated.mock.calls[0][1].plannedLossValue).toBeLessThanOrEqual(
       1,
     );
-    await expect(validate?.({ qty: 2 })).rejects.toThrow(
-      'ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION',
+    await expect(validate?.({ qty: 2 })).resolves.toBeUndefined();
+    expect(onValidated).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ riskExceeded: true }),
     );
   });
   it('requires the connector to honor the final validation contract', () => {

@@ -29,7 +29,9 @@ export const runtimeFeedbackNotify = async () => {
 
   const result = await notifyRuntimeFeedbackBundle({ bundleDir });
   console.log(
-    chalk.green(`Runtime feedback notification sent: ${result.artifactId}`),
+    chalk.green(
+      `Runtime feedback notification ${result.sent ? 'sent' : 'disabled'}: ${result.artifactId}`,
+    ),
   );
 };
 

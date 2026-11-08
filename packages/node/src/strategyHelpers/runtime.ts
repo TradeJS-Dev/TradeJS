@@ -393,13 +393,15 @@ export const executeEntryOrder = async ({
       if (executionLimits?.maxLossValue != null) {
         signal.riskDecision = {
           stage: 'order_plan',
-          status: 'approved',
-          reason: 'PLANNED_LOSS_WITHIN_MAX_LOSS_VALUE',
+          status: economics.riskExceeded ? 'warning' : 'approved',
+          reason: economics.riskExceeded
+            ? 'ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION'
+            : 'PLANNED_LOSS_WITHIN_MAX_LOSS_VALUE',
           plannedLossValue: economics.plannedLossValue,
           maxLossValue: executionLimits.maxLossValue,
           limitUtilization:
             economics.plannedLossValue / executionLimits.maxLossValue,
-          enforced: true,
+          enforced: false,
         };
       }
     },

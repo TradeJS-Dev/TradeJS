@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import args from 'args';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -790,6 +791,9 @@ const buildSummaryMessages = ({
 };
 
 export const signalsSummary = async () => {
+  const includeDebug =
+    flags.printOnly ||
+    (await getUserSettings(flags.user)).NOTIFY_RUNTIME_DEBUG !== false;
   const hours = Math.max(
     1,
     Number.parseInt(String(flags.hours ?? 24), 10) || 24,
@@ -926,22 +930,23 @@ export const signalsSummary = async () => {
       content: signalsMessage,
       deploymentId: scope.deploymentId,
     });
-    const tradesMessageWithAttachmentSummary = appendReportAttachmentSummary({
-      message: tradesMessage,
-      signalsFilename: signalsAttachment.filename,
-      filename: debugAttachment?.filename,
-      tradesCount: debugAttachment ? scopeTrades.length : undefined,
-      signalsCount: debugAttachment
-        ? debugAttachment.summary?.signals ?? debugSignals.length
-        : undefined,
-      evaluationsCount: debugAttachment
-        ? debugAttachment.summary?.evaluations ?? 0
-        : undefined,
-    });
-    const attachments: TelegramReportAttachment[] = [
-      signalsAttachment,
-      ...(debugAttachment ? [debugAttachment] : []),
-    ];
+    const tradesMessageWithAttachmentSummary = includeDebug
+      ? appendReportAttachmentSummary({
+          message: tradesMessage,
+          signalsFilename: signalsAttachment.filename,
+          filename: debugAttachment?.filename,
+          tradesCount: debugAttachment ? scopeTrades.length : undefined,
+          signalsCount: debugAttachment
+            ? debugAttachment.summary?.signals ?? debugSignals.length
+            : undefined,
+          evaluationsCount: debugAttachment
+            ? debugAttachment.summary?.evaluations ?? 0
+            : undefined,
+        })
+      : tradesMessage;
+    const attachments: TelegramReportAttachment[] = includeDebug
+      ? [signalsAttachment, ...(debugAttachment ? [debugAttachment] : [])]
+      : [];
 
     if (flags.printOnly) {
       console.log(tradesMessageWithAttachmentSummary);

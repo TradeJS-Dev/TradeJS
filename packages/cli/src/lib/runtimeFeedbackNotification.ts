@@ -1,3 +1,4 @@
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import { verifyRuntimeFeedbackReplayBundle } from './runtimeFeedbackArtifacts';
 import { sendTelegramReport } from './telegramReports';
 
@@ -158,10 +159,13 @@ export const notifyRuntimeFeedbackBundle = async ({
 }) => {
   const verified = await verifyRuntimeFeedbackReplayBundle(bundleDir);
   const message = buildRuntimeFeedbackTelegramMessage(verified.replayEvidence);
-  await send(message, { userName: verified.manifest.userName });
+  const settings = await getUserSettings(verified.manifest.userName);
+  const sent = settings.NOTIFY_RUNTIME_DEBUG !== false;
+  if (sent) await send(message, { userName: verified.manifest.userName });
   return {
     artifactId: verified.manifest.artifactId,
     userName: verified.manifest.userName,
     message,
+    sent,
   };
 };
