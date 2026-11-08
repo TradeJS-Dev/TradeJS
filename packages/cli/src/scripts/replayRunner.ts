@@ -154,6 +154,7 @@ const finishReplay = async ({
         replaySignals: replayResult.signals,
         replayLineages: replayResult.runtimeLineages,
         replayLineageScopes: replayResult.replayLineageScopes,
+        replayDecisionTraces: replayResult.replayDecisionTraces,
         runtimeEvidencePath: replayRuntimeEvidencePath,
       });
 
@@ -561,6 +562,9 @@ export const replayBacktest = async () => {
       showProgress: !replayFlags.portfolioReport,
       collectSkipEvidence: !replayFlags.portfolioReport,
       collectSignals: !replayFlags.portfolioReport,
+      decisionTraceTargets: replayFlags.portfolioReport
+        ? undefined
+        : evidenceMetadata?.decisionTraceTargets,
     });
     return replayFlags.portfolioReport
       ? compactHistoricalReplayResultForPortfolio(result)

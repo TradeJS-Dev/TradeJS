@@ -27,14 +27,17 @@ describe('historical signals replay skip evidence', () => {
       volume: 1_635_202.97,
       turnover: 1_072_711.16,
     };
+    const abortedCandle = { ...candle, timestamp: timestamp + 900_000 };
+    const unalignedCandle = { ...candle, timestamp: timestamp + 1_800_000 };
+    const run = jest.fn().mockResolvedValue('POSITION_EXISTS');
     const execution = await executeHistoricalReplay(
       {
         plan: {
           symbolRuntimes: [
             {
               symbol: 'HNTUSDT',
-              replayData: [candle],
-              btcReplayData: [candle],
+              replayData: [candle, abortedCandle, unalignedCandle],
+              btcReplayData: [candle, abortedCandle],
               ethReplayData: [],
               currentIndex: 0,
               strategies: [
@@ -42,12 +45,16 @@ describe('historical signals replay skip evidence', () => {
                   strategyName: 'RelativeRotation',
                   strategyConfig: { INTERVAL: '15' },
                   runtimeLineage,
-                  run: jest.fn().mockResolvedValue('POSITION_EXISTS'),
+                  run,
                 },
               ],
             },
           ],
-          orderedTimestamps: [timestamp],
+          orderedTimestamps: [
+            timestamp,
+            abortedCandle.timestamp,
+            unalignedCandle.timestamp,
+          ],
           sharedReplayKeyPrefixes: [],
           runtimeLineages: [
             {
@@ -63,6 +70,16 @@ describe('historical signals replay skip evidence', () => {
           advanceMarket: jest.fn(),
         } as any,
         hookContext: {} as any,
+        decisionTraceTargets: [
+          timestamp,
+          abortedCandle.timestamp,
+          unalignedCandle.timestamp,
+          timestamp + 2_700_000,
+        ].map((signalTimestamp) => ({
+          strategy: 'RelativeRotation',
+          symbol: 'HNTUSDT',
+          signalTimestamp,
+        })),
       },
       {
         clock: { now: () => timestamp },
@@ -72,7 +89,10 @@ describe('historical signals replay skip evidence', () => {
           aborted: String,
           timestamp: String,
         },
-        invokeBeforeSignals: jest.fn(),
+        invokeBeforeSignals: jest
+          .fn()
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce({ abort: true }),
         invokeAfterSignals: jest.fn(),
         enrichSignal: jest.fn(),
         releaseIndicatorsCache: jest.fn(),
@@ -117,12 +137,24 @@ describe('historical signals replay skip evidence', () => {
       backtestEntries: [],
       toleranceMs: 15 * 60_000,
       replayLineageScopes,
+      replayDecisionTraces: execution.replayDecisionTraces,
       limit: 10,
     });
 
     expect(details.mismatchDrilldown?.runtimeOnly[0]).toMatchObject({
       classification: 'core_skipped',
       reason: 'POSITION_EXISTS',
+      replayDecisionTrace: {
+        candle: {
+          timestamp,
+          open: 0.7165,
+          high: 0.7178,
+          low: 0.6426,
+          close: 0.6561,
+          volume: 1_635_202.97,
+        },
+        decision: { stage: 'core', reason: 'POSITION_EXISTS' },
+      },
       replayEvaluationOutcome: {
         status: 'skip',
         reason: 'POSITION_EXISTS',
@@ -131,7 +163,111 @@ describe('historical signals replay skip evidence', () => {
         source: 'replay_scope_compact',
       },
     });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(execution.replayDecisionTraces.slice(1)).toMatchObject([
+      {
+        candle: { timestamp: abortedCandle.timestamp },
+        decision: { stage: 'not_evaluated', reason: 'REPLAY_CYCLE_ABORTED' },
+      },
+      {
+        candle: { timestamp: unalignedCandle.timestamp },
+        decision: {
+          stage: 'not_evaluated',
+          reason: 'REPLAY_CANDLE_OR_REFERENCE_NOT_ALIGNED',
+        },
+      },
+      {
+        signalTimestamp: timestamp + 2_700_000,
+        decision: {
+          stage: 'not_evaluated',
+          reason: 'REPLAY_CANDLE_NOT_EVALUATED',
+        },
+      },
+    ]);
+    expect(execution.replayDecisionTraces[3].candle).toBeUndefined();
   });
+
+  it.each(['15', '60'] as const)(
+    'attributes %s-minute skips only to the runtime signal candle',
+    (interval) => {
+      const timestamp = Date.UTC(2026, 10, 7, 12);
+      const stepMs = Number(interval) * 60_000;
+      const evidence = createHistoricalReplaySkipEvidence([
+        {
+          strategy: 'TradingPatterns',
+          symbol: 'XVSUSDT',
+          lineage: runtimeLineage,
+        },
+      ]);
+      const record = (time: number, result: string) =>
+        evidence.record({
+          strategyName: 'TradingPatterns',
+          symbol: 'XVSUSDT',
+          strategyConfig: { INTERVAL: interval },
+          runtimeLineage,
+          timestamp: time,
+          result,
+        });
+      const entry: TradeParityEntry = {
+        id: 'runtime-xvs-short',
+        source: 'runtime',
+        strategy: 'TradingPatterns',
+        symbol: 'XVSUSDT',
+        direction: 'SHORT',
+        timestamp,
+        signalTimestamp: timestamp,
+        price: 2.786,
+      };
+      const diagnose = (runtimeEntry = entry) =>
+        buildReplayRuntimeComparisonDetails({
+          matched: [],
+          runtimeOnly: [runtimeEntry],
+          backtestOnly: [],
+          runtimeEntries: [runtimeEntry],
+          backtestEntries: [],
+          toleranceMs: stepMs,
+          backtestTimestampOffsetMs: stepMs,
+          replayLineageScopes: evidence.values(),
+          replaySignals: [
+            {
+              signalId: 'neighbor-xvs-short',
+              strategy: 'TradingPatterns',
+              symbol: 'XVSUSDT',
+              interval,
+              direction: 'SHORT',
+              timestamp: timestamp - stepMs,
+              figures: {},
+              indicators: {},
+              prices: {
+                currentPrice: 2.786,
+                takeProfitPrice: 2.712,
+                stopLossPrice: 2.873,
+                riskRatio: 0.85,
+              },
+              orderStatus: 'skipped',
+              orderSkipReason: 'NEIGHBOR_SIGNAL_SKIP',
+            },
+          ],
+        }).mismatchDrilldown?.runtimeOnly[0];
+
+      record(timestamp - stepMs, 'TRADING_PATTERNS_NO_PATTERN');
+      expect(diagnose()).toMatchObject({
+        reason: 'replay_evaluation_unavailable',
+      });
+      expect(diagnose()?.replayEvaluationOutcome).toBeUndefined();
+
+      record(timestamp, 'SAME_CANDLE_SKIP');
+      expect(
+        diagnose({ ...entry, timestamp: timestamp + stepMs }),
+      ).toMatchObject({
+        reason: 'SAME_CANDLE_SKIP',
+        replayEvaluationOutcome: { timestamp, timestampDiffMs: 0 },
+      });
+      expect(diagnose({ ...entry, signalTimestamp: undefined })).toMatchObject({
+        reason: 'replay_signal_timestamp_unavailable',
+      });
+    },
+  );
 
   it('compacts adjacent skips and keeps coverage through a signal', () => {
     const timestamp = Date.UTC(2026, 7, 31, 14, 15);
@@ -208,10 +344,35 @@ describe('historical signals replay skip evidence', () => {
     expect(skipEvidence.values()).toEqual([]);
   });
 
-  it('processes a signal without retaining it when signal collection is disabled', async () => {
+  it('traces the outcome of a delayed entry on the original candle without retaining all signals', async () => {
     const timestamp = Date.UTC(2026, 7, 31, 14, 15);
     const candle = { timestamp } as KlineChartItem;
-    const signal = { timestamp } as Signal;
+    const nextTimestamp = timestamp + 900_000;
+    const nextCandle = { ...candle, timestamp: nextTimestamp };
+    const signal: Signal = {
+      signalId: 'replay-delayed-short',
+      symbol: 'BTCUSDT',
+      interval: '15',
+      strategy: 'RelativeRotation',
+      timestamp,
+      figures: {},
+      indicators: {},
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 90,
+        stopLossPrice: 110,
+        riskRatio: 1,
+      },
+      direction: 'SHORT',
+      orderStatus: 'skipped',
+      orderSkipReason: 'ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION',
+      additionalIndicators: {
+        tradingPatternsContext: {
+          selectedPattern: 'HeadAndShoulders',
+          sourceCode: 'CLOSE_ACCEPTED',
+        },
+      },
+    };
     const enrichSignal = jest.fn();
     const execution = await executeHistoricalReplay(
       {
@@ -219,8 +380,8 @@ describe('historical signals replay skip evidence', () => {
           symbolRuntimes: [
             {
               symbol: 'BTCUSDT',
-              replayData: [candle],
-              btcReplayData: [candle],
+              replayData: [candle, nextCandle],
+              btcReplayData: [candle, nextCandle],
               ethReplayData: [],
               currentIndex: 0,
               strategies: [
@@ -228,18 +389,33 @@ describe('historical signals replay skip evidence', () => {
                   strategyName: 'RelativeRotation',
                   strategyConfig: { INTERVAL: '15' },
                   runtimeLineage,
-                  run: jest.fn().mockResolvedValue(signal),
+                  run: jest
+                    .fn()
+                    .mockResolvedValueOnce('BACKTEST_ENTRY_DELAY_QUEUED:1')
+                    .mockResolvedValueOnce(signal),
                 },
               ],
             },
           ],
-          orderedTimestamps: [timestamp],
+          orderedTimestamps: [timestamp, nextTimestamp],
           sharedReplayKeyPrefixes: [],
           runtimeLineages: [],
         },
         connector: { advanceMarket: jest.fn() } as any,
         hookContext: {} as any,
         collectSignals: false,
+        decisionTraceTargets: [
+          {
+            strategy: 'RelativeRotation',
+            symbol: 'BTCUSDT',
+            signalTimestamp: timestamp,
+          },
+          {
+            strategy: 'RelativeRotation',
+            symbol: 'BTCUSDT',
+            signalTimestamp: nextTimestamp,
+          },
+        ],
       },
       {
         clock: { now: () => timestamp },
@@ -259,5 +435,28 @@ describe('historical signals replay skip evidence', () => {
 
     expect(enrichSignal).toHaveBeenCalledWith(signal);
     expect(execution.signals).toEqual([]);
+    expect(execution.replayDecisionTraces).toMatchObject([
+      {
+        candle: { timestamp },
+        decision: {
+          stage: 'entry_delay',
+          reason: 'BACKTEST_ENTRY_DELAY_QUEUED:1',
+        },
+        followUp: {
+          candleTimestamp: nextTimestamp,
+          stage: 'risk',
+          reason: 'ENTRY_RISK_EXCEEDS_MAX_LOSS_AT_SUBMISSION',
+          pattern: 'HeadAndShoulders',
+          patternCode: 'CLOSE_ACCEPTED',
+        },
+      },
+      {
+        candle: { timestamp: nextTimestamp },
+        decision: {
+          stage: 'not_evaluated',
+          reason: 'REPLAY_PROCESSED_DELAYED_ENTRY',
+        },
+      },
+    ]);
   });
 });

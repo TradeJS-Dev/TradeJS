@@ -7,6 +7,7 @@ import {
   publishRuntimeEvidenceBundle,
   sealRuntimeFeedbackReplayBundle,
 } from '@tradejs/node/diagnostics';
+import { formatMcpArtifactLogLine } from '@tradejs/node/mcp';
 import {
   listMcpArtifacts,
   readMcpArtifactChunk,
@@ -27,6 +28,8 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 jest.mock('@tradejs/node/mcp', () => ({
   mcpProjectRoot: () => mockRoot,
+  formatMcpArtifactLogLine: (line: string) =>
+    jest.requireActual('@tradejs/node/mcp').formatMcpArtifactLogLine(line),
   redactMcpJobLog: (line: string) =>
     jest.requireActual('@tradejs/node/mcp').redactMcpJobLog(line),
   mcpId: (value: string) =>
@@ -230,9 +233,29 @@ test('bundle metadata downloads reproduce original bytes and independent checksu
   ).rejects.toThrow('file');
 });
 
-test.each(['cache-only replay completed\n', 'API_KEY=secret-value\n'])(
-  'replay bundles export complete safe logs or explicitly withhold sensitive bytes',
-  async (log) => {
+test.each([
+  {
+    name: 'plain',
+    input: 'cache-only replay completed',
+    clean: false,
+    safe: true,
+  },
+  {
+    name: 'sealed raw',
+    input: 'API_KEY=secret-value',
+    clean: false,
+    safe: false,
+  },
+  {
+    name: 'cleaned before sealing',
+    input: '\x1b[32mготово\x1b[0m API_KEY=secret-value ' + 'x'.repeat(2400),
+    clean: true,
+    safe: true,
+  },
+])(
+  'exports or withholds the $name replay log',
+  async ({ input, clean, safe }) => {
+    const log = clean ? formatMcpArtifactLogLine(input) : input + '\n';
     const evidence = await publish();
     const bundleDir = path.join(mockRoot, 'data/runtime-feedback/run-1');
     await fs.mkdir(bundleDir, { recursive: true });
@@ -256,20 +279,41 @@ test.each(['cache-only replay completed\n', 'API_KEY=secret-value\n'])(
       await listMcpArtifacts('alice', { kind: 'runtime-feedback-replay' })
     ).items;
     const report = await readMcpDiagnosticReport('alice', item.id);
-    const safe = !log.includes('API_KEY');
-    expect(
-      report.files.find((row) => row.file === 'replay.log')?.available,
-    ).toBe(safe);
+    const descriptor = report.files.find((row) => row.file === 'replay.log');
+    expect(descriptor?.available).toBe(safe);
     if (safe) {
-      const chunk = await readMcpArtifactChunk(
-        'alice',
-        item.id,
-        0,
-        48000,
-        'replay.log',
-      );
-      expect(Buffer.from(chunk.data, 'base64').toString()).toBe(log);
-      expect(chunk.sha256).toBe(createHash('sha256').update(log).digest('hex'));
+      const chunks: Buffer[] = [];
+      let offset: number | null = 0;
+      const sha = createHash('sha256').update(log).digest('hex');
+      expect(descriptor).toMatchObject({
+        bytes: Buffer.byteLength(log),
+        sha256: sha,
+      });
+      expect(report.manifest).toMatchObject({
+        payloads: { log: { bytes: Buffer.byteLength(log), sha256: sha } },
+      });
+      while (offset !== null) {
+        const chunk = await readMcpArtifactChunk(
+          'alice',
+          item.id,
+          offset,
+          511,
+          'replay.log',
+        );
+        expect(chunk.sha256).toBe(sha);
+        if (chunk.nextOffset !== null)
+          expect(chunk.nextOffset).toBeGreaterThan(offset);
+        chunks.push(Buffer.from(chunk.data, 'base64'));
+        offset = chunk.nextOffset;
+      }
+      const downloaded = Buffer.concat(chunks);
+      expect(downloaded.toString()).toBe(log);
+      expect(createHash('sha256').update(downloaded).digest('hex')).toBe(sha);
+      if (clean) {
+        expect(downloaded.includes('secret-value')).toBe(false);
+        expect(downloaded.includes('готово API_KEY=[redacted]')).toBe(true);
+        expect(downloaded.includes('x'.repeat(400))).toBe(true);
+      }
     } else {
       await expect(
         readMcpArtifactChunk('alice', item.id, 0, 48000, 'replay.log'),

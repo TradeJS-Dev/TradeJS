@@ -1,3 +1,4 @@
+import type { ReplayDecisionTrace } from './historicalSignalsReplayDecisionTrace';
 import chalk from 'chalk';
 import {
   Interval,
@@ -188,6 +189,7 @@ export type ReplayMismatchDiagnostic = {
     timestampDiffMs: number;
     source: 'lineage_scope_compact';
   };
+  replayDecisionTrace?: ReplayDecisionTrace;
   replaySignal?: ReplayMismatchSignalDiagnostic;
   replaySignalArtifact?: Signal;
   replayEvaluation?: ReplayMismatchEvaluationDiagnostic;

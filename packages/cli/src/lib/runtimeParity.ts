@@ -272,6 +272,9 @@ export const extractRuntimeParityEntries = (
       direction: trade.direction,
       qty: toFiniteNumberOrNull(trade.qty),
       timestamp: trade.entryTimestamp,
+      ...(Number.isFinite(trade.signalTimestamp)
+        ? { signalTimestamp: trade.signalTimestamp }
+        : {}),
       price: toFiniteNumberOrNull(trade.entryPrice),
       orderId: trade.orderId,
       signalId: typeof trade.signalId === 'string' ? trade.signalId : undefined,

@@ -128,6 +128,19 @@ export const loadReplayRuntimeEvidenceMetadata = async (params: {
     startTime: artifact.startTime,
     endTime: artifact.endTime,
     deployment: artifact.deployment,
+    decisionTraceTargets: unwrapRows<RuntimeTradeRecord>(
+      artifact.runtime.trades,
+      'trade',
+    ).flatMap(({ strategy, symbol, signalTimestamp }) =>
+      typeof signalTimestamp === 'number' &&
+      Number.isFinite(signalTimestamp) &&
+      artifact.startTime != null &&
+      artifact.endTime != null &&
+      signalTimestamp >= artifact.startTime &&
+      signalTimestamp < artifact.endTime
+        ? [{ strategy, symbol, signalTimestamp }]
+        : [],
+    ),
   };
 };
 

@@ -22,6 +22,10 @@ import type {
   ReplayParityNearestCandidate,
   ReplayRuntimeComparisonDetails,
 } from './replay/support';
+import {
+  replayDecisionTraceKey,
+  type ReplayDecisionTrace,
+} from './replay/historicalSignalsReplayDecisionTrace';
 import type { RuntimeLineageScopeRecord } from './runtimeSignalsStorage';
 
 export type ExchangeMatchedBacktestEntry = {
@@ -137,6 +141,9 @@ const toRuntimeParityDetail = (
   direction: entry.direction,
   qty: entry.qty ?? null,
   timestamp: entry.timestamp,
+  ...(entry.signalTimestamp != null
+    ? { signalTimestamp: entry.signalTimestamp }
+    : {}),
   price: entry.price,
   exitType: entry.exitType ?? null,
   exitTimestamp: entry.exitTimestamp ?? null,
@@ -251,12 +258,14 @@ const findNearestEvaluation = ({
   toleranceMs,
   timestampOffsetMs,
   entryTimestampOffsetMs = 0,
+  matchDirection = false,
 }: {
   entry: ReplayParityEntryDetail;
   evaluations: RuntimeSignalEvaluationRecord[];
   toleranceMs: number;
   timestampOffsetMs: number;
   entryTimestampOffsetMs?: number;
+  matchDirection?: boolean;
 }) => {
   const entryStrategy = getEntryStrategy(entry);
   if (!entryStrategy) {
@@ -270,7 +279,10 @@ const findNearestEvaluation = ({
   for (const evaluation of evaluations) {
     if (
       evaluation.strategy !== entryStrategy ||
-      evaluation.symbol !== entry.symbol
+      evaluation.symbol !== entry.symbol ||
+      (matchDirection &&
+        evaluation.direction != null &&
+        evaluation.direction !== entry.direction)
     ) {
       continue;
     }
@@ -806,6 +818,7 @@ export const buildReplayMismatchDrilldown = ({
   replaySignals = [],
   replaySignalEvaluations = [],
   replayLineageScopes = [],
+  replayDecisionTraces = [],
   runtimeLineageScopes = [],
   toleranceMs,
   backtestTimestampOffsetMs,
@@ -819,6 +832,7 @@ export const buildReplayMismatchDrilldown = ({
   replaySignals?: Signal[];
   replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replayLineageScopes?: RuntimeLineageScopeRecord[];
+  replayDecisionTraces?: ReplayDecisionTrace[];
   runtimeLineageScopes?: RuntimeLineageScopeRecord[];
   toleranceMs: number;
   backtestTimestampOffsetMs: TradeParityTimestampOffset;
@@ -828,59 +842,102 @@ export const buildReplayMismatchDrilldown = ({
     nearestCandidates.map((candidate) => [candidate.entry, candidate]),
   );
 
+  const traceByCandle = new Map(
+    replayDecisionTraces.map((trace) => [replayDecisionTraceKey(trace), trace]),
+  );
   const artifactLimit = Math.min(limit, resolveReplayParityArtifactLimit());
   let runtimeOnlyArtifactsIncluded = 0;
   let backtestOnlyArtifactsIncluded = 0;
 
   const runtimeOnlyDiagnostics = runtimeOnly.map((entry, index) => {
-    const entryOffsetMs = resolveTradeParityTimestampOffset(
-      getEntryStrategy(entry) ?? '',
-      backtestTimestampOffsetMs,
-    );
+    // Runtime trades identify a strategy decision by its native signal candle.
+    // Exchange-only entries still need the execution-time comparison clock.
+    const isRuntimeTrade = entry.source === 'runtime';
+    const decisionEntry = isRuntimeTrade
+      ? entry.signalTimestamp == null
+        ? null
+        : { ...entry, timestamp: entry.signalTimestamp }
+      : entry;
+    const decisionClock = {
+      toleranceMs: isRuntimeTrade ? 0 : toleranceMs,
+      timestampOffsetMs: isRuntimeTrade
+        ? 0
+        : resolveTradeParityTimestampOffset(
+            getEntryStrategy(entry) ?? '',
+            backtestTimestampOffsetMs,
+          ),
+    };
     const includeArtifacts = index < artifactLimit;
     const nearestCandidate = nearestByEntry.get(entry);
-    const nearestReplaySignal = findNearestSignal({
-      entry,
-      signals: replaySignals,
-      toleranceMs,
-      timestampOffsetMs: entryOffsetMs,
-    });
-    const nearestReplayEvaluation = findNearestEvaluation({
-      entry,
-      evaluations: replaySignalEvaluations,
-      toleranceMs,
-      timestampOffsetMs: entryOffsetMs,
-    });
-    const nearestReplayEvaluationOutcome = findNearestReplayEvaluationOutcome({
-      entry,
-      lineageScopes: replayLineageScopes,
-      toleranceMs,
-      timestampOffsetMs: entryOffsetMs,
-    });
+    const nearestReplaySignal =
+      decisionEntry &&
+      findNearestSignal({
+        entry: decisionEntry,
+        signals: replaySignals,
+        ...decisionClock,
+      });
+    const nearestReplayEvaluation =
+      decisionEntry &&
+      findNearestEvaluation({
+        entry: decisionEntry,
+        evaluations: replaySignalEvaluations,
+        matchDirection: isRuntimeTrade,
+        ...decisionClock,
+      });
+    const nearestReplayEvaluationOutcome =
+      decisionEntry &&
+      findNearestReplayEvaluationOutcome({
+        entry: decisionEntry,
+        lineageScopes: replayLineageScopes,
+        ...decisionClock,
+      });
 
+    const strategy = getEntryStrategy(entry);
+    const replayDecisionTrace =
+      isRuntimeTrade && strategy && decisionEntry
+        ? traceByCandle.get(
+            replayDecisionTraceKey({
+              strategy,
+              symbol: entry.symbol,
+              signalTimestamp: decisionEntry.timestamp,
+            }),
+          )
+        : undefined;
+    const unavailableReason = !isRuntimeTrade
+      ? 'no_replay_signal_or_backtest_candidate'
+      : !decisionEntry
+        ? 'replay_signal_timestamp_unavailable'
+        : replayDecisionTrace?.decision.stage === 'not_evaluated'
+          ? replayDecisionTrace.decision.reason
+          : 'replay_evaluation_unavailable';
     const classification = nearestReplaySignal
       ? classifySignalDiagnostic(nearestReplaySignal.signal)
       : nearestReplayEvaluation
         ? classifyEvaluationDiagnostic(nearestReplayEvaluation.evaluation)
         : nearestReplayEvaluationOutcome
           ? {
-              classification: 'core_skipped',
+              classification: nearestReplayEvaluationOutcome.reason.startsWith(
+                'BACKTEST_ENTRY_DELAY_',
+              )
+                ? 'entry_delayed'
+                : 'core_skipped',
               reason: nearestReplayEvaluationOutcome.reason,
             }
-          : nearestCandidate?.nearest
+          : !isRuntimeTrade && nearestCandidate?.nearest
             ? {
                 classification: 'timing_or_price_drift',
                 reason: nearestCandidate.reason,
               }
             : {
                 classification: 'no_replay_candidate',
-                reason: 'no_replay_signal_or_backtest_candidate',
+                reason: unavailableReason,
               };
 
     return {
       entry,
       ...classification,
       ...(nearestCandidate ? { nearestCandidate } : {}),
+      ...(replayDecisionTrace ? { replayDecisionTrace } : {}),
       ...(nearestReplaySignal
         ? {
             replaySignal: toSignalDiagnostic({
@@ -1050,6 +1107,7 @@ export const buildReplayRuntimeComparisonDetails = ({
   replaySignals,
   replaySignalEvaluations,
   replayLineageScopes,
+  replayDecisionTraces,
   runtimeLineageScopes,
 }: {
   matched: Array<{
@@ -1070,6 +1128,7 @@ export const buildReplayRuntimeComparisonDetails = ({
   replaySignals?: Signal[];
   replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
   replayLineageScopes?: RuntimeLineageScopeRecord[];
+  replayDecisionTraces?: ReplayDecisionTrace[];
   runtimeLineageScopes?: RuntimeLineageScopeRecord[];
 }): ReplayRuntimeComparisonDetails => {
   const runtimeDetails = runtimeEntries.map(toRuntimeParityDetail);
@@ -1136,6 +1195,7 @@ export const buildReplayRuntimeComparisonDetails = ({
       replaySignals,
       replaySignalEvaluations,
       replayLineageScopes,
+      replayDecisionTraces,
       runtimeLineageScopes,
       toleranceMs,
       backtestTimestampOffsetMs,

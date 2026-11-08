@@ -9,6 +9,11 @@ import {
   releaseHistoricalReplayCaches,
   type HistoricalReplayPlan,
 } from './historicalSignalsReplayPreparation';
+import {
+  createReplayDecisionTrace,
+  type ReplayDecisionTrace,
+  type ReplayDecisionTraceTarget,
+} from './historicalSignalsReplayDecisionTrace';
 import { createHistoricalReplaySkipEvidence } from './historicalSignalsReplaySkipEvidence';
 
 export type HistoricalReplayExecutionContext = {
@@ -16,6 +21,7 @@ export type HistoricalReplayExecutionContext = {
   connector: PortfolioReplayConnector;
   collectSkipEvidence?: boolean;
   collectSignals?: boolean;
+  decisionTraceTargets?: ReplayDecisionTraceTarget[];
   hooks?: TradejsConfigHooks;
   hookContext: TradejsConfigSignalsHookContext;
 };
@@ -54,6 +60,7 @@ export type HistoricalReplayExecutionResult = {
   signals: Signal[];
   abortedCycles: number;
   replayLineageScopes: RuntimeLineageScopeRecord[];
+  replayDecisionTraces: ReplayDecisionTrace[];
 };
 
 const advanceCycleMarket = async (
@@ -108,6 +115,7 @@ export const executeHistoricalReplay = async (
     context.plan.runtimeLineages,
     context.collectSkipEvidence,
   );
+  const decisionTrace = createReplayDecisionTrace(context.decisionTraceTargets);
   const reportProgress = (timestamp: number) => {
     if (adapters.progress.enabled === false) return;
     adapters.progress.tick({
@@ -138,6 +146,20 @@ export const executeHistoricalReplay = async (
           status: 'completed',
           durationMs: adapters.clock.now() - cycleStartedAt,
         });
+        if (context.decisionTraceTargets?.length) {
+          for (const symbolRuntime of cycleSymbols) {
+            const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
+            for (const strategy of symbolRuntime.strategies) {
+              decisionTrace.record(
+                strategy.strategyName,
+                symbolRuntime.symbol,
+                candle,
+                undefined,
+                'REPLAY_CYCLE_ABORTED',
+              );
+            }
+          }
+        }
         advanceAbortedCycle(cycleSymbols, timestamp);
         reportProgress(timestamp);
         continue;
@@ -157,6 +179,17 @@ export const executeHistoricalReplay = async (
             timestamp ||
           btcCandle.timestamp !== candle.timestamp
         ) {
+          if (candle && context.decisionTraceTargets?.length) {
+            for (const strategy of symbolRuntime.strategies) {
+              decisionTrace.record(
+                strategy.strategyName,
+                symbolRuntime.symbol,
+                candle,
+                undefined,
+                'REPLAY_CANDLE_OR_REFERENCE_NOT_ALIGNED',
+              );
+            }
+          }
           continue;
         }
 
@@ -165,6 +198,12 @@ export const executeHistoricalReplay = async (
             candle,
             btcCandle,
             ethCandle?.timestamp === candle.timestamp ? ethCandle : undefined,
+          );
+          decisionTrace.record(
+            strategyRuntime.strategyName,
+            symbolRuntime.symbol,
+            candle,
+            result,
           );
           skipEvidence.record({
             strategyName: strategyRuntime.strategyName,
@@ -201,5 +240,6 @@ export const executeHistoricalReplay = async (
     signals,
     abortedCycles,
     replayLineageScopes: skipEvidence.values(),
+    replayDecisionTraces: decisionTrace.values(),
   };
 };

@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
+import { formatMcpArtifactLogLine } from '@tradejs/node/mcp';
 import {
   parseRuntimeEvidenceDeploymentSnapshot,
   activeRuntimeEvidenceStrategies,
@@ -178,42 +180,63 @@ const runLoggedCommand = async ({
   env: NodeJS.ProcessEnv;
   logHandle: fs.FileHandle;
 }) => {
-  await logHandle.write(`\n$ ${[executable, ...command].join(' ')}\n`);
-  await new Promise<void>((resolve, reject) => {
-    let pendingLogWrite = Promise.resolve();
-    const appendLog = (chunk: Buffer) => {
-      pendingLogWrite = pendingLogWrite.then(async () => {
-        await logHandle.write(chunk);
-      });
-    };
-    const child = spawn(executable, command, {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout.on('data', (chunk: Buffer) => {
-      process.stdout.write(chunk);
-      appendLog(chunk);
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      process.stderr.write(chunk);
-      appendLog(chunk);
-    });
+  await logHandle.writeFile(
+    '\n' + formatMcpArtifactLogLine(`$ ${[executable, ...command].join(' ')}`),
+  );
+  const child = spawn(executable, command, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const exit = new Promise<void>((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => {
-      void pendingLogWrite.then(() => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
+      if (code === 0) resolve();
+      else {
         reject(
           new Error(
             `Runtime feedback command failed: exit=${String(code)} signal=${String(signal)}`,
           ),
         );
-      }, reject);
+      }
     });
   });
+
+  let pendingLogWrite = Promise.resolve();
+  const copyLog = async (input: Readable, output: NodeJS.WritableStream) => {
+    const writeLine = async (line: string) => {
+      const formatted = formatMcpArtifactLogLine(line);
+      pendingLogWrite = pendingLogWrite.then(() =>
+        logHandle.writeFile(formatted),
+      );
+      await pendingLogWrite;
+      output.write(formatted);
+    };
+
+    // Decode and buffer each stream independently. stderr must not interrupt
+    // a partial stdout line (or split a credential before redaction).
+    let pendingLine = '';
+    try {
+      for await (const chunk of input.setEncoding('utf8')) {
+        const lines = (pendingLine + chunk).split('\n');
+        pendingLine = lines.pop() ?? '';
+        for (const line of lines) await writeLine(line);
+      }
+      if (pendingLine) await writeLine(pendingLine);
+    } catch (error) {
+      child.kill();
+      throw error;
+    }
+  };
+
+  const results = await Promise.allSettled([
+    copyLog(child.stdout, process.stdout),
+    copyLog(child.stderr, process.stderr),
+    exit,
+  ]);
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+  }
 };
 
 export const runRuntimeFeedbackReplay = async ({

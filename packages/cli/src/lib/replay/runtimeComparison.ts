@@ -39,6 +39,7 @@ import {
 } from '../runtimeParityDetails';
 import { getRuntimeCompareContext } from '../backtest/runState';
 import { replayInterval, replayProjectRoot, replayUserName } from './cliConfig';
+import type { ReplayDecisionTrace } from './historicalSignalsReplayDecisionTrace';
 import { loadReplayRuntimeEvidenceSource } from './runtimeEvidenceSource';
 import {
   REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
@@ -534,6 +535,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   replaySignals,
   replayLineages,
   replayLineageScopes,
+  replayDecisionTraces,
   runtimeEvidencePath,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
@@ -541,6 +543,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   replaySignals: Signal[];
   replayLineages: ReplayRuntimeLineageRecord[];
   replayLineageScopes: RuntimeLineageScopeRecord[];
+  replayDecisionTraces?: ReplayDecisionTrace[];
   runtimeEvidencePath?: string | null;
 }): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
@@ -716,6 +719,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     replaySignalEvaluations,
     runtimeLineageScopes: comparable.runtimeLineageScopes,
     replayLineageScopes,
+    replayDecisionTraces,
   });
   const parityRows = summarizeTradeParityByStrategy({
     runtimeEntries: runtimeDedupe.entries,

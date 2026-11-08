@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { getDataStrict, mcpStorage, redisKeys } from '@tradejs/infra/redis';
 import type { McpJob, McpPrincipal } from '@tradejs/types';
 
@@ -213,7 +214,7 @@ export const readAuthorizedMcpJob = async (
   return job;
 };
 
-export const redactMcpJobLog = (line: string) =>
+const redactMcpLogLine = (line: string) =>
   line
     .replace(/\u001b\[[0-9;]*m/g, '')
     .replace(/\b(Bearer|Basic)\s+\S+/gi, '$1 [redacted]')
@@ -222,8 +223,32 @@ export const redactMcpJobLog = (line: string) =>
     .replace(
       /((?:[\w.-]*(?:secret|password|token|api[_-]?key|private[_-]?key|authorization|cookie|credential)[\w.-]*)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&}]+)/gi,
       '$1[redacted]',
-    )
-    .slice(0, 1000);
+    );
+
+const MCP_LOG_LINE_LIMIT = 1000;
+
+export const redactMcpJobLog = (line: string) =>
+  redactMcpLogLine(line).slice(0, MCP_LOG_LINE_LIMIT);
+
+/** Redact the complete line before wrapping it for checksum-bound export. */
+export const formatMcpArtifactLogLine = (line: string) => {
+  const text = redactMcpLogLine(
+    stripVTControlCharacters(line).replace(/\r/g, ''),
+  );
+  const fragments: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + MCP_LOG_LINE_LIMIT, text.length);
+    const lastCodeUnit = text.charCodeAt(end - 1);
+    if (end < text.length && lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) {
+      end -= 1;
+    }
+    // A wrap may expose a new word boundary to the download filter.
+    fragments.push(redactMcpJobLog(text.slice(start, end)));
+    start = end;
+  }
+  return fragments.join('\n') + '\n';
+};
 
 /** Offsets refer to the retained worker tail, which may shift while running. */
 export const readMcpJobLogs = async (

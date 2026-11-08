@@ -631,6 +631,11 @@ describe('production runtime feedback replay', () => {
       cliPath,
       `import fs from 'node:fs';\n` +
         `const args = process.argv.slice(2);\n` +
+        `if (args[0] === 'replay') {\n` +
+        `  process.stdout.write('\\x1b[32mготово\\x1b[0m\\nAPI_KEY=split-');\n` +
+        `  process.stderr.write('warning from stderr\\n');\n` +
+        `  process.stdout.write('fixture-secret\\n' + 'x'.repeat(999) + '😀' + 'y'.repeat(1000) + ' tail');\n` +
+        `}\n` +
         `if (args[0] === 'replay-runtime-evidence') {\n` +
         `  const evidence = JSON.parse(fs.readFileSync(args[args.indexOf('--runtimeEvidence') + 1], 'utf8'));\n` +
         `  fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ reportType: 'replay-runtime-evidence', userName: evidence.userName, window: evidence.window, deployment: evidence.deployment, strategies: evidence.deployment.strategies.map((strategy) => strategy.strategyName), replay: { cycleCount: 1 } }));\n` +
@@ -661,6 +666,23 @@ describe('production runtime feedback replay', () => {
         'DoubleTap',
         'TradingPatterns',
       ]);
+      const log = await fs.readFile(result.logPath, 'utf8');
+      expect(log).not.toMatch(/\x1b|split-fixture-secret/);
+      expect(log).toContain('готово\n');
+      expect(log).toContain('API_KEY=[redacted]\n');
+      expect(log).toContain('warning from stderr\n');
+      expect(log.split('\n').every((line) => line.length <= 1000)).toBe(true);
+      const longLine = log
+        .split('\n')
+        .filter((line) => /^(x|y|😀| tail)/.test(line))
+        .join('');
+      expect(longLine).toBe(
+        'x'.repeat(999) + '😀' + 'y'.repeat(1000) + ' tail',
+      );
+      expect(result.manifest.payloads.log).toMatchObject({
+        bytes: Buffer.byteLength(log),
+        sha256: sha256(log),
+      });
     } finally {
       if (previousSha == null) delete process.env.TRADEJS_PROJECT_SHA;
       else process.env.TRADEJS_PROJECT_SHA = previousSha;

@@ -37,6 +37,7 @@ import {
   releaseHistoricalReplayPlan,
   type ReplayRuntimeStrategy,
 } from './historicalSignalsReplayPreparation';
+import type { ReplayDecisionTraceTarget } from './historicalSignalsReplayDecisionTrace';
 import { executeHistoricalReplay } from './historicalSignalsReplayExecution';
 import {
   collectHistoricalReplayResult,
@@ -252,6 +253,7 @@ export const runHistoricalSignalsReplay = async ({
   showProgress = true,
   collectSkipEvidence = true,
   collectSignals = true,
+  decisionTraceTargets,
 }: {
   preparedRun: PreparedRunEnvironment;
   interval: Interval;
@@ -260,6 +262,7 @@ export const runHistoricalSignalsReplay = async ({
   showProgress?: boolean;
   collectSkipEvidence?: boolean;
   collectSignals?: boolean;
+  decisionTraceTargets?: ReplayDecisionTraceTarget[];
 }): Promise<HistoricalSignalsReplayResult> => {
   const memory = createReplayMemoryProfile();
   memory?.('prepare:start');
@@ -352,6 +355,7 @@ export const runHistoricalSignalsReplay = async ({
       connector: replayConnector,
       collectSkipEvidence,
       collectSignals,
+      decisionTraceTargets,
       hooks: projectHooks,
       hookContext,
     },
@@ -390,6 +394,7 @@ export const runHistoricalSignalsReplay = async ({
     abortedCycles: execution.abortedCycles,
     runtimeLineages: plan.runtimeLineages,
     replayLineageScopes: execution.replayLineageScopes,
+    replayDecisionTraces: execution.replayDecisionTraces,
   });
   memory?.('result:collected');
   return result;

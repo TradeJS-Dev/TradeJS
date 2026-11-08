@@ -8,6 +8,7 @@ import type {
   TestStat,
 } from '@tradejs/types';
 import type { PortfolioReplayConnector } from './portfolioReplayConnector';
+import type { ReplayDecisionTrace } from './historicalSignalsReplayDecisionTrace';
 import type { RuntimeLineageScopeRecord } from '../runtimeSignalsStorage';
 import type {
   ReplayRuntimeLineageRecord,
@@ -31,6 +32,7 @@ export type HistoricalSignalsReplayResult = {
   abortedCycles: number;
   runtimeLineages: ReplayRuntimeLineageRecord[];
   replayLineageScopes: RuntimeLineageScopeRecord[];
+  replayDecisionTraces?: ReplayDecisionTrace[];
 };
 
 export type HistoricalReplayResultContext = {
@@ -41,6 +43,7 @@ export type HistoricalReplayResultContext = {
   abortedCycles: number;
   runtimeLineages: ReplayRuntimeLineageRecord[];
   replayLineageScopes: RuntimeLineageScopeRecord[];
+  replayDecisionTraces?: ReplayDecisionTrace[];
 };
 
 const emptyStat = (): TestStat =>
@@ -111,6 +114,9 @@ export const collectHistoricalReplayResult = (
   abortedCycles: context.abortedCycles,
   runtimeLineages: context.runtimeLineages,
   replayLineageScopes: context.replayLineageScopes,
+  ...(context.replayDecisionTraces?.length
+    ? { replayDecisionTraces: context.replayDecisionTraces }
+    : {}),
 });
 
 export const compactHistoricalReplayResultForPortfolio = (
@@ -168,5 +174,8 @@ export const mergeHistoricalReplayResults = (
     abortedCycles: parts.reduce((sum, part) => sum + part.abortedCycles, 0),
     runtimeLineages: parts.flatMap((part) => part.runtimeLineages),
     replayLineageScopes: parts.flatMap((part) => part.replayLineageScopes),
+    replayDecisionTraces: parts.flatMap(
+      (part) => part.replayDecisionTraces ?? [],
+    ),
   };
 };
