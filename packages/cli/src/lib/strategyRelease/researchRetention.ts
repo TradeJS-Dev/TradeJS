@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { decodeResearchMetricSnapshot } from '../researchMetricSnapshot';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { strategyEvidenceFileSha256 } from '@tradejs/infra/strategyReleaseEvidence';
@@ -114,7 +115,7 @@ export const applyResearchRetention = async (options: {
           .match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (
           !frontmatter ||
-          !/^schema:\s*tradejs-research\/v1\s*$/m.test(frontmatter[1]) ||
+          !/^schema:\s*tradejs-research\/v[12]\s*$/m.test(frontmatter[1]) ||
           !(retired
             ? /^reproduction:\s*(?:complete|partial|blocked|legacy-partial)\s*$/m.test(
                 frontmatter[1],
@@ -124,6 +125,26 @@ export const applyResearchRetention = async (options: {
           throw new Error(
             `Research note must have reproduction: complete: ${file}`,
           );
+        }
+        if (
+          !retired &&
+          /^schema:\s*tradejs-research\/v2\s*$/m.test(frontmatter[1])
+        ) {
+          if ((await fs.stat(file)).size > 8 * 1024 * 1024)
+            throw new Error('Compact permanent note exceeds 8 MiB');
+          const content = await fs.readFile(file, 'utf8');
+          const section =
+            content
+              .split('## Metrics snapshot (machine-readable)')[1]
+              ?.split('## Reported metrics')[0] ?? '';
+          const blocks = [
+            ...section.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g),
+          ];
+          if (blocks.length !== 1)
+            throw new Error(
+              'Complete v2 note needs one verified metric snapshot',
+            );
+          decodeResearchMetricSnapshot(JSON.parse(blocks[0][1]));
         }
       } finally {
         await handle.close();

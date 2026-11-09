@@ -638,6 +638,12 @@ Every new AI-gate study must:
 - downgrade `reproduction` from `complete` when any displayed metric or lineage
   cannot be recovered from the note after export deletion.
 
+When saving a report, use `--output` and read its receipt-bound file instead
+of retaining another JSON copy in a log. New permanent notes use the verified
+v2 snapshot contract in `research-notes.md`; all aggregate fields survive
+lossless encoding. Detailed trade/identity arrays remain temporary until their
+diagnostics and chart consumers finish.
+
 ## Completed study storage
 
 Follow

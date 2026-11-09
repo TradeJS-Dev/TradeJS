@@ -125,7 +125,7 @@ If a feature is not publish-ready for external users, document that limitation e
 - Strategy research path: `notes/<Strategy>/YYYY-MM-DD-<short-kebab-slug>.md`, using the exact strategy name exported by its package.
 - Repository-wide architecture/ML records live under `notes/Shared/`; one comparison spanning several strategies lives under `notes/CrossStrategy/`.
 - One research question plus one immutable run/export lineage equals one file. A new export, run, hypothesis family, or decision requires a new file; do not append dated entries to a rolling strategy log.
-- Every new record must follow `.codex/skills/strategy-backtest-research/references/research-notes.md` and begin with `schema: tradejs-research/v1` frontmatter.
+- Every new record must follow `.codex/skills/strategy-backtest-research/references/research-notes.md` and use `schema: tradejs-research/v2` frontmatter with a verified compact metric snapshot. Existing v1 records remain immutable.
 - The local note is the durable metric record relative to disposable exports and caches. For `reproduction: complete`, embed the full secret-free resolved config, exact commands/selection/partitions, git and gate/config/context lineage, and the complete machine-readable metrics JSON needed to rebuild every displayed table after exports, Redis data, cache, or `data/ai/output` artifacts are deleted.
 - Artifact paths and mutable config names are inventory only, not sufficient reproduction evidence. Never fill missing historical fields from current defaults; mark them `partial`, `blocked`, or `legacy-partial`.
 - Migrated historical examples now live under paths such as `notes/TrendLine/`, `notes/Shared/`, and `notes/CrossStrategy/`.

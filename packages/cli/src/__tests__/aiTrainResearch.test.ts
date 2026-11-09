@@ -180,7 +180,7 @@ describe('aiTrainResearch', () => {
     expect(lineage.sourceSha256s).toEqual(['a'.repeat(64), 'b'.repeat(64)]);
   });
 
-  it('writes a formatted structured research snapshot', async () => {
+  it('writes every result field once as compact JSON and returns a bounded receipt', async () => {
     const temporaryDirectory = await fs.mkdtemp(
       path.join(os.tmpdir(), 'tradejs-ai-train-research-'),
     );
@@ -192,9 +192,14 @@ describe('aiTrainResearch', () => {
           outputPath,
           result: { run: { strategy: 'TrendFollow' }, outcome: { total: 2 } },
         }),
-      ).resolves.toBe(path.resolve(outputPath));
+      ).resolves.toMatchObject({
+        schema: 'tradejs-research-report-receipt/v1',
+        path: path.resolve(outputPath),
+        bytes: expect.any(Number),
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
       await expect(fs.readFile(outputPath, 'utf8')).resolves.toBe(
-        '{\n  "run": {\n    "strategy": "TrendFollow"\n  },\n  "outcome": {\n    "total": 2\n  }\n}\n',
+        '{"run":{"strategy":"TrendFollow"},"outcome":{"total":2}}\n',
       );
     } finally {
       await fs.rm(temporaryDirectory, { recursive: true, force: true });

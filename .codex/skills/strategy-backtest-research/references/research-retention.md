@@ -36,6 +36,45 @@ should reuse or reject it. Future research reads these records before choosing
 new hypotheses. Compare saved results directly only on matching scopes and
 risk units. Changed periods or assumptions require a new frozen evaluation.
 
+## Compact output for new studies
+
+Use the v2 note contract in [research-notes.md](research-notes.md). Write
+machine-readable aggregate JSON without indentation. Keep every candidate,
+period, direction, test result and decision. Lossless snapshot encoding reduces
+repeated field names without dropping scientific evidence.
+
+Write a full tool report once. When `--output` is supplied, `ai-train` and the
+ablation tool print a small receipt with the output path, bytes and SHA-256.
+Read the file for metrics. Without `--output`, `--json` still returns the full
+report. Logs should retain the exact command/run identity, progress, exit status,
+warnings and errors. Do not tee the same full JSON into another permanent log.
+Keep repeated diagnostics as counts with bounded examples.
+
+`research:core` result schema v2 keeps comparison aggregates and exit-change
+counts. Detailed pairs live only in temporary `matches.csv`; normalized trades
+remain in temporary `trades.jsonl` until every consumer finishes. The permanent
+result and comparison files contain no `matchedPairs` arrays.
+
+Keep shared feature-availability summaries once per exact dataset/context
+fingerprint and refer to them from candidate reports. Do not store exhaustive
+`allProjectedLeaves` arrays in permanent notes. Preserve the authoritative
+aggregate JSON, the exact projection generator, input/output hashes and leaf
+counts so the mapping can be regenerated. Verify the regenerated mapping before
+removing an existing temporary mapping. Do not replace aggregate metric values
+with hashes or pointers to disposable files.
+
+Generate synthetic test outputs and external-sort runs under disposable output,
+not inside archived report-tool source. Preserve authored fixtures, their
+generators and the complete test verdict. Archive code before tests or exclude
+untracked generated `synthetic-fixtures`, dependencies, builds and caches.
+Tracked source is retained even if its directory has one of those names.
+
+Archive Git history in a permanent shared directory. The worktree retirement
+helper reuses one verified full bundle per HEAD and writes `history-reference.json`
+in each source archive. Keep the referenced bundle with every backup/export of
+that archive. Use a common `--history-root` across retirement batches. Different
+HEADs retain distinct bundles; do not infer identical history from file size.
+
 ## Cleanup
 
 The research owner performs cleanup as the final step of the study, without a
@@ -141,7 +180,7 @@ and untracked source before removal. Do not delete branches, canonical checkouts
 locked or managed checkouts belonging to active chats, or ongoing studies.
 
 Inspect the owning repository's `git worktree list` and checkout status.
-The helper preserves a Git history bundle, source snapshot and staged/unstaged
+The helper preserves a shared Git history reference, source snapshot and staged/unstaged
 patches, verifies their contents, and refuses worktrees with open files:
 
 ```bash

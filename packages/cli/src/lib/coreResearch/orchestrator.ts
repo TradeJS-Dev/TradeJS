@@ -3,7 +3,11 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { listCoreResearchTraceFiles } from '@tradejs/infra/coreResearch';
-import { writeCoreResearchMatches, writeCoreResearchTrades } from './artifacts';
+import {
+  summarizeCoreResearchComparison,
+  writeCoreResearchMatches,
+  writeCoreResearchTrades,
+} from './artifacts';
 import {
   appendCoreResearchLedger,
   canonicalJson,
@@ -315,7 +319,7 @@ const analyzeCoreResearchPrepared = async (
         'signal-time payload.additionalIndicators.baseContext only',
     },
     variants: analyses,
-    comparisons,
+    comparisons: comparisons.map(summarizeCoreResearchComparison),
     multipleTesting: {
       family: spec.hypothesis.family,
       hypotheses: Math.max(comparisons.length, familyHypotheses),
@@ -350,7 +354,7 @@ const analyzeCoreResearchPrepared = async (
     artifactHashes: sourceHashes,
   };
   await writeJsonAtomic(paths.resultPath, result);
-  await writeJsonAtomic(paths.comparisonPath, comparisons);
+  await writeJsonAtomic(paths.comparisonPath, result.comparisons);
   await writeCoreResearchMatches({ filePath: paths.matchesPath, comparisons });
   await writeCoreResearchTrades({
     filePath: paths.tradesPath,

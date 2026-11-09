@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import { writeResearchReport } from './report-output.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -96,7 +97,7 @@ Options:
                                Benchmark/reference row coverage (default: 0.1)
   --portfolioCapacity <n>     Maximum simultaneous approval fan-out (default: 5)
   --output <path>              Write Markdown, or JSON when extension is .json
-  --json                       Print JSON instead of Markdown
+  --json                       Print JSON without --output; otherwise print a receipt
   --list                       List merged export groups and exit
   --help                       Show this help
 `;
@@ -8039,22 +8040,14 @@ export const main = async () => {
       portfolioCapacity: options.portfolioCapacity,
     });
     const markdown = formatCrossStrategyMarkdown(report);
-    const output = options.json
-      ? `${JSON.stringify(report, null, 2)}\n`
-      : markdown;
-    if (options.output) {
-      const outputPath = path.resolve(projectRoot, options.output);
-      await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-      await fsp.writeFile(
-        outputPath,
-        outputPath.endsWith('.json')
-          ? `${JSON.stringify(report, null, 2)}\n`
-          : markdown,
-        'utf8',
-      );
-      console.error(`report: ${path.relative(projectRoot, outputPath)}`);
-    }
-    process.stdout.write(output);
+    await writeResearchReport({
+      report,
+      markdown,
+      json: options.json,
+      outputPath: options.output
+        ? path.resolve(projectRoot, options.output)
+        : undefined,
+    });
     return;
   }
   let variants = await loadVariants(options.variants, options.spec);
@@ -8182,22 +8175,14 @@ export const main = async () => {
     });
   }
   const markdown = formatMarkdownReport(report);
-  const output = options.json
-    ? `${JSON.stringify(report, null, 2)}\n`
-    : markdown;
-  if (options.output) {
-    const outputPath = path.resolve(projectRoot, options.output);
-    await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-    await fsp.writeFile(
-      outputPath,
-      outputPath.endsWith('.json')
-        ? `${JSON.stringify(report, null, 2)}\n`
-        : markdown,
-      'utf8',
-    );
-    console.error(`report: ${path.relative(projectRoot, outputPath)}`);
-  }
-  process.stdout.write(output);
+  await writeResearchReport({
+    report,
+    markdown,
+    json: options.json,
+    outputPath: options.output
+      ? path.resolve(projectRoot, options.output)
+      : undefined,
+  });
 };
 
 if (isDirectRun()) {

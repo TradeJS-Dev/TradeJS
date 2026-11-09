@@ -852,6 +852,20 @@ may not supply PF/MaxDD for every common window; report that limitation and use
 a separately reviewed generic reporting extension if needed. Never derive a
 new rule from the final cohort tables.
 
+## Report storage
+
+With `--output`, the tool writes the complete report once and prints a
+`tradejs-research-report-receipt/v1` JSON receipt with its path, byte count and
+SHA-256. Read that file for downstream metrics. Without `--output`, `--json`
+prints the complete JSON. JSON files use compact serialization without dropping
+metrics, feature audits or the equity needed by ongoing diagnostics.
+
+Treat detailed equity/identity arrays as temporary inputs until stability,
+comparisons and final charts finish. For the permanent v2 note, retain all
+aggregate reports and frozen chart points through the verified snapshot encoder
+in `strategy-backtest-research`. Keep shared feature audits once per exact
+export/context fingerprint. Follow the shared retention contract before cleanup.
+
 ## Registered features and monthly ticker profiles
 
 Read the framework `CONTEXT_FEATURES.md` contract before adding data. New feature

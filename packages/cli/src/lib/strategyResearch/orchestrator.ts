@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { encodeResearchMetricSnapshot } from '../researchMetricSnapshot';
 import path from 'node:path';
 import type { ResearchEntryPolicy } from '@tradejs/types';
 import { summarizeCoreResearchWindow } from '../coreResearch/metrics';
@@ -800,7 +801,11 @@ export const runStrategyResearch = async (parameters: {
           }) => evaluation,
         ),
       };
-      const note = `---\nschema: tradejs-research/v1\nstrategy: '${spec.core.strategy}'\ndate: '${spec.core.createdAt.slice(0, 10)}'\nkind: 'backtest'\nstatus: research-only\nreproduction: complete\n---\n\n# ${spec.core.strategy} — ${spec.core.researchId}\n\n## Research question\n\n${spec.core.hypothesis.claim}\n\n## Decision\n\n${conclusion.status}: ${conclusion.reasons.join('; ')}\n\n## Reproduction manifest\n\n\`\`\`json\n${JSON.stringify(lineage, null, 2)}\n\`\`\`\n\n## Resolved configuration\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n## Metrics snapshot (machine-readable)\n\n\`\`\`json\n${JSON.stringify(compact, null, 2)}\n\`\`\`\n\n## Reported metrics\n\nALL/LONG/SHORT; PnL per completed trade; exit-ordered realized drawdown. See report.html.\n\n## Findings\n\n${conclusion.reasons.join('\n\n')}\n\n## Artifact inventory\n\n${directory}/report.html\n\n## Limitations and next step\n\n${conclusion.nextAction} Current-snapshot universe; no deployment authorization. Temporary payloads are deleted only after the permanent record is verified; new trade-level questions require a frozen rerun.\n`;
+      const note = `---\nschema: tradejs-research/v2\nstrategy: '${spec.core.strategy}'\ndate: '${spec.core.createdAt.slice(0, 10)}'\nkind: 'backtest'\nstatus: research-only\nreproduction: complete\n---\n\n# ${spec.core.strategy} — ${spec.core.researchId}\n\n## Research question\n\n${spec.core.hypothesis.claim}\n\n## Decision\n\n${conclusion.status}: ${conclusion.reasons.join('; ')}\n\n## Reproduction manifest\n\n\`\`\`json\n${JSON.stringify(lineage, null, 2)}\n\`\`\`\n\n## Resolved configuration\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n## Metrics snapshot (machine-readable)\n\n\`\`\`json\n${JSON.stringify(encodeResearchMetricSnapshot(compact))}\n\`\`\`\n\n## Reported metrics\n\nALL/LONG/SHORT; PnL per completed trade; exit-ordered realized drawdown. See report.html.\n\n## Findings\n\n${conclusion.reasons.join('\n\n')}\n\n## Artifact inventory\n\n${directory}/report.html\n\n## Limitations and next step\n\n${conclusion.nextAction} Current-snapshot universe; no deployment authorization. Temporary payloads are deleted only after the permanent record is verified; new trade-level questions require a frozen rerun.\n`;
+      if (Buffer.byteLength(note) > 8 * 1024 * 1024)
+        throw new Error(
+          'Compact permanent note exceeds 8 MiB; archive source separately, never truncate metrics',
+        );
       await fs
         .writeFile(
           path.join(

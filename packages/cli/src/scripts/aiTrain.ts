@@ -112,7 +112,11 @@ args.option(
   'Save compact AI approval chart data for the strategies UI',
   false,
 );
-args.option(['j', 'json'], 'Print structured JSON summary', false);
+args.option(
+  ['j', 'json'],
+  'Print full JSON without --output; otherwise print its receipt',
+  false,
+);
 args.option(
   ['O', 'output'],
   'Write the structured JSON summary to a file and suppress table output',
@@ -1095,15 +1099,14 @@ export const main = async () => {
     });
   }
 
-  if (jsonOutputPath) {
-    await writeAiTrainResearchSnapshot({
-      outputPath: jsonOutputPath,
-      result,
-    });
-  }
+  const reportReceipt = jsonOutputPath
+    ? await writeAiTrainResearchSnapshot({ outputPath: jsonOutputPath, result })
+    : null;
 
   if (jsonOutput) {
-    if (printJsonOutput) {
+    if (reportReceipt) {
+      console.log(JSON.stringify(reportReceipt));
+    } else if (printJsonOutput) {
       console.log(JSON.stringify(result));
     }
     process.exit(failed === selectedRows ? 1 : 0);

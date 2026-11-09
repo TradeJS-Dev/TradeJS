@@ -105,8 +105,14 @@ if (
       sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     },
   };
-  fs.writeFileSync(arg('--output'), JSON.stringify(result, null, 2), {
-    flag: 'wx',
-  });
-  console.log(JSON.stringify(result));
+  const content = `${JSON.stringify(result)}\n`;
+  fs.writeFileSync(arg('--output'), content, { flag: 'wx' });
+  console.log(
+    JSON.stringify({
+      schema: 'tradejs-research-report-receipt/v1',
+      path: arg('--output'),
+      bytes: Buffer.byteLength(content),
+      sha256: crypto.createHash('sha256').update(content).digest('hex'),
+    }),
+  );
 }

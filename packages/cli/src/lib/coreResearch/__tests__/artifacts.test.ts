@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  summarizeCoreResearchComparison,
   writeCoreResearchMatches,
   writeCoreResearchTrades,
 } from '../artifacts';
@@ -33,6 +34,15 @@ describe('core research artifacts', () => {
         trades: [candidate],
       },
     });
+    const summary = summarizeCoreResearchComparison(comparison);
+    const { matchedPairs, ...aggregates } = comparison;
+    expect(summary).toEqual({
+      ...aggregates,
+      exitReasonChanges: 0,
+      exitCodeChanges: 1,
+    });
+    expect(summary).not.toHaveProperty('matchedPairs');
+    expect(comparison.matchedPairs).toBe(matchedPairs);
     const matchesPath = path.join(tempRoot, 'matches.csv');
     const tradesPath = path.join(tempRoot, 'trades.jsonl');
 

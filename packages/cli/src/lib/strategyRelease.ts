@@ -1403,7 +1403,10 @@ export async function collectReleaseEvidenceReferences(
       const array = (value: unknown) => (Array.isArray(value) ? value : []);
       const semanticallyValid =
         reference.kind === 'core_research'
-          ? artifact.schema === 'tradejs-core-research-result/v1' ||
+          ? [
+              'tradejs-core-research-result/v1',
+              'tradejs-core-research-result/v2',
+            ].includes(String(artifact.schema)) ||
             (artifact.schema === 'tradejs-core-research-manifest/v1' &&
               artifact.status === 'completed')
           : reference.kind === 'ai_gate'
@@ -1425,7 +1428,10 @@ export async function collectReleaseEvidenceReferences(
       );
       if (
         reference.kind === 'core_research' &&
-        artifact.schema === 'tradejs-core-research-result/v1'
+        [
+          'tradejs-core-research-result/v1',
+          'tradejs-core-research-result/v2',
+        ].includes(String(artifact.schema))
       ) {
         await verifyCompletedCoreResearchBundle({
           artifact,

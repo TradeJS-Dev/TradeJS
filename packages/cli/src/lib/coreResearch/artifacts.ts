@@ -3,7 +3,11 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalJson } from './io';
-import type { CoreResearchComparison, CoreResearchTrade } from './types';
+import type {
+  CoreResearchComparison,
+  CoreResearchComparisonSummary,
+  CoreResearchTrade,
+} from './types';
 
 const csv = (value: unknown) => {
   const text = String(value ?? '');
@@ -96,4 +100,18 @@ export const writeCoreResearchTrades = async (params: {
     }
   }
   await closeOutput(output);
+};
+
+// Row-level pairs belong only in the temporary matches artifact. Keep every
+// aggregate and selection verdict in the permanent result.
+export const summarizeCoreResearchComparison = (
+  comparison: CoreResearchComparison,
+): CoreResearchComparisonSummary => {
+  const { matchedPairs, ...summary } = comparison;
+  return {
+    ...summary,
+    exitReasonChanges: matchedPairs.filter((pair) => pair.exitReasonChanged)
+      .length,
+    exitCodeChanges: matchedPairs.filter((pair) => pair.exitCodeChanged).length,
+  };
 };

@@ -1,5 +1,5 @@
 import type {
-  CoreResearchComparison,
+  CoreResearchComparisonSummary,
   CoreResearchResult,
   CoreResearchSpec,
   CoreResearchTrade,
@@ -125,11 +125,11 @@ const buildCurveSvg = (
     )}</svg><div class="legend">${series.map((entry) => `<span><i style="background:${entry.color}"></i>${escapeHtml(entry.id)}</span>`).join('')}</div>`;
 };
 
-const comparisonCards = (comparisons: CoreResearchComparison[]) =>
+const comparisonCards = (comparisons: CoreResearchComparisonSummary[]) =>
   comparisons
     .map(
       (comparison) =>
-        `<article class="card"><h3>${escapeHtml(comparison.candidateId)} vs ${escapeHtml(comparison.controlId)}</h3><p class="verdict ${comparison.selection.passed ? 'positive' : 'negative'}">${comparison.selection.passed ? 'PASS selection' : 'REJECT selection'}</p><dl><dt>Matched</dt><dd>${comparison.matched}</dd><dt>Control only</dt><dd>${comparison.controlOnly}</dd><dt>Candidate only</dt><dd>${comparison.candidateOnly}</dd><dt>Identity retained</dt><dd>${format(comparison.matchedIdentityPctOfControl)}%</dd><dt>Exit reason changes</dt><dd>${comparison.matchedPairs.filter((pair) => pair.exitReasonChanged).length}</dd><dt>Exit code changes</dt><dd>${comparison.matchedPairs.filter((pair) => pair.exitCodeChanged).length}</dd><dt>Matched ΔPnL</dt><dd>${format(comparison.cohorts.ALL.matchedPnlDelta)}</dd><dt>Removed control PnL</dt><dd>${format(comparison.cohorts.ALL.controlOnlyPnl)}</dd><dt>Added candidate PnL</dt><dd>${format(comparison.cohorts.ALL.candidateOnlyPnl)}</dd><dt>Aggregate ΔPnL</dt><dd>${format(comparison.cohorts.ALL.delta.pnl)}</dd><dt>Aggregate ΔDD</dt><dd>${format(comparison.cohorts.ALL.delta.realizedMaxDrawdown)}</dd><dt>Bootstrap P(Δ&gt;0)</dt><dd>${format(comparison.bootstrap.probabilityPositive, 4)}</dd><dt>Holm p</dt><dd>${format(comparison.bootstrap.holmAdjustedPValue, 4)}</dd></dl><p>${comparison.selection.failedRules.length ? escapeHtml(comparison.selection.failedRules.map((rule) => `${rule.scope}.${rule.metric} ${rule.expected}`).join('; ')) : 'All preregistered rules passed.'}</p></article>`,
+        `<article class="card"><h3>${escapeHtml(comparison.candidateId)} vs ${escapeHtml(comparison.controlId)}</h3><p class="verdict ${comparison.selection.passed ? 'positive' : 'negative'}">${comparison.selection.passed ? 'PASS selection' : 'REJECT selection'}</p><dl><dt>Matched</dt><dd>${comparison.matched}</dd><dt>Control only</dt><dd>${comparison.controlOnly}</dd><dt>Candidate only</dt><dd>${comparison.candidateOnly}</dd><dt>Identity retained</dt><dd>${format(comparison.matchedIdentityPctOfControl)}%</dd><dt>Exit reason changes</dt><dd>${comparison.exitReasonChanges}</dd><dt>Exit code changes</dt><dd>${comparison.exitCodeChanges}</dd><dt>Matched ΔPnL</dt><dd>${format(comparison.cohorts.ALL.matchedPnlDelta)}</dd><dt>Removed control PnL</dt><dd>${format(comparison.cohorts.ALL.controlOnlyPnl)}</dd><dt>Added candidate PnL</dt><dd>${format(comparison.cohorts.ALL.candidateOnlyPnl)}</dd><dt>Aggregate ΔPnL</dt><dd>${format(comparison.cohorts.ALL.delta.pnl)}</dd><dt>Aggregate ΔDD</dt><dd>${format(comparison.cohorts.ALL.delta.realizedMaxDrawdown)}</dd><dt>Bootstrap P(Δ&gt;0)</dt><dd>${format(comparison.bootstrap.probabilityPositive, 4)}</dd><dt>Holm p</dt><dd>${format(comparison.bootstrap.holmAdjustedPValue, 4)}</dd></dl><p>${comparison.selection.failedRules.length ? escapeHtml(comparison.selection.failedRules.map((rule) => `${rule.scope}.${rule.metric} ${rule.expected}`).join('; ')) : 'All preregistered rules passed.'}</p></article>`,
     )
     .join('');
 

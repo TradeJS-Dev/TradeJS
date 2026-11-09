@@ -81,7 +81,7 @@ describe('core research HTML report', () => {
     });
     const analysis = makeAnalysis('control', trades);
     const result = {
-      schema: 'tradejs-core-research-result/v1',
+      schema: 'tradejs-core-research-result/v2',
       researchId: spec.researchId,
       stage: spec.stage,
       generatedAt: spec.createdAt,

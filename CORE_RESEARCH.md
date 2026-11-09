@@ -124,10 +124,19 @@ update installed Project packages or production.
 ## Artifact contract
 
 The research directory contains canonical `spec.json`, hashed `manifest.json`,
-complete `result.json`, causal `comparison.json`, row-level `matches.csv`, all
+complete aggregate `result.json` (result schema v2), aggregate `comparison.json`,
+row-level `matches.csv`, all
 window-selected normalized trades in `trades.jsonl`, a self-contained
 `report.html`, and exact `runs/*.log` for orchestrated runs. Thus metric and
-matching reconstruction does not depend on keeping mutable AI exports.
+matching reconstruction does not depend on keeping mutable AI exports during
+an active study. Result/comparison JSON omits the detailed `matchedPairs` array
+and retains every cohort metric, statistical result, selection verdict and
+exit-reason/code change count. Pair details exist only in `matches.csv`.
+
+After the entire consuming study finishes, follow the shared research retention
+contract. Preserve compact results, exact source/config, scope, frozen chart
+points and decisions; remove temporary trade/pair payloads only after verification.
+Historical v1 bundles retain their original bytes and pinned tooling.
 
 `data/research/core/trials.jsonl` is an append-only hash-chained family ledger.
 It retains rejected candidates and supplies the family denominator for Holm

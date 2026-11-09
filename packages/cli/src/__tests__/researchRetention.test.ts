@@ -7,6 +7,7 @@ import type {
   StrategyResearchRetention,
 } from '@tradejs/types';
 import { planStrategyEvidenceRetention } from '../lib/strategyRelease/evidenceRetention';
+import { encodeResearchMetricSnapshot } from '../lib/researchMetricSnapshot';
 import { applyResearchRetention } from '../lib/strategyRelease/researchRetention';
 
 describe('completed research retention', () => {
@@ -276,5 +277,31 @@ describe('completed research retention', () => {
         entries: [entry],
       }).delete,
     ).toEqual([]);
+  });
+  it('verifies a v2 snapshot before authorizing removal, even when the note hash is current', async () => {
+    const snapshot = encodeResearchMetricSnapshot({
+      ALL: { pnl: 10 },
+      LONG: { pnl: 10 },
+      SHORT: { pnl: 0 },
+    });
+    const makeNote = (value: unknown) =>
+      '---\nschema: tradejs-research/v2\nreproduction: complete\n---\n## Metrics snapshot (machine-readable)\n```json\n' +
+      JSON.stringify(value) +
+      '\n```\n## Reported metrics\n';
+    const artifact = research.permanentArtifacts.find(
+      (item) => item.role === 'note',
+    );
+    if (!artifact) throw new Error('Missing fixture note');
+    const invalid = makeNote({ ...snapshot, sha256: '0'.repeat(64) });
+    await fs.writeFile(path.join(root, artifact.path), invalid);
+    artifact.sha256 = hash(invalid);
+    await expect(apply(true)).rejects.toThrow('checksum');
+    await expect(
+      fs.readFile(path.join(root, entry.path), 'utf8'),
+    ).resolves.toBe('trade\n');
+    const valid = makeNote(snapshot);
+    await fs.writeFile(path.join(root, artifact.path), valid);
+    artifact.sha256 = hash(valid);
+    await expect(apply()).resolves.toBeDefined();
   });
 });

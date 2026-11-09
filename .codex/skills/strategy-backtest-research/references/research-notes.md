@@ -49,7 +49,7 @@ Every file starts with:
 
 ```yaml
 ---
-schema: tradejs-research/v1
+schema: tradejs-research/v2
 strategy: '<Strategy|Shared|CrossStrategy>'
 date: 'YYYY-MM-DD'
 kind: '<backtest|ai-gate|ml|architecture|runtime-parity>'
@@ -125,10 +125,29 @@ config cannot be recovered, use `reproduction: partial` or `blocked` and write
 
 ## Metrics snapshot
 
-Embed the complete structured JSON summary produced by the authoritative tool,
-without truncation, in a fenced `json` block. This is the machine-readable
-source for the tables and preserves the reported metrics after exports or
-caches are deleted.
+For new records use `tradejs-research/v2`. Put every authoritative aggregate
+report in one JSON object, keyed by report ID. Encode it with
+`scripts/metric-snapshot.mjs` and embed the resulting JSON envelope in the
+single fenced `json` block under Metrics snapshot. The envelope contains
+portable gzip/base64 data, its decoded byte count and SHA-256. Decoding recovers
+the complete JSON, including all candidates, periods, ALL/LONG/SHORT cohorts,
+zero/null values, decisions, provenance and frozen chart points. The note remains
+self-contained after exports and other output files are deleted.
+
+Run from Project with the installed skill paths:
+
+```bash
+node .codex/skills/strategy-backtest-research/scripts/metric-snapshot.mjs encode <aggregates.json> <new-snapshot.json>
+node .codex/skills/strategy-backtest-research/scripts/metric-snapshot.mjs decode <note.md> <new-decoded.json>
+```
+
+The decoder also accepts a standalone snapshot JSON file. Keep the readable tables outside the encoded block. The checker verifies the
+snapshot checksum and size and rejects temporary trade/matched-pair payloads.
+An 8 MiB note budget prevents accidental large dumps. Store exact source and
+patches in permanent source archives instead of repeating them in Markdown.
+Never truncate metrics to meet that budget. Existing v1 notes remain immutable
+and continue to validate; do not relabel them as v2 without a new verified
+record.
 
 - AI-gate baseline: use the full output of
   `yarn ai-train --localOnly --json -n 0` for the selected merge group.
@@ -140,7 +159,7 @@ caches are deleted.
   terminal windows. Add raw sweep/result summaries when the decision depends
   on them.
 
-The snapshot must contain the numbers needed to rebuild every human-readable
+The decoded snapshot must contain the numbers needed to rebuild every human-readable
 table in the note. Do not paste the deleted row-level export into Markdown. A
 complete note preserves reported aggregate metrics and their provenance; it
 does not claim to recreate arbitrary new row-level analyses after source data

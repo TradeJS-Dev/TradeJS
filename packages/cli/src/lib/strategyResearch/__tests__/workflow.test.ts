@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import fs from 'node:fs/promises';
+import { decodeResearchMetricSnapshot } from '../../researchMetricSnapshot';
 import os from 'node:os';
 import path from 'node:path';
 import type { AiPayload, ResearchEntryPolicy } from '@tradejs/types';
@@ -225,6 +226,37 @@ describe('automatic strategy research workflow', () => {
     expect(report).toContain('На момент решения');
     expect(report).toContain('LONG');
     expect(report).toContain('SHORT');
+    const noteFiles = await fs.readdir(
+      path.join(root, 'notes', spec.core.strategy),
+    );
+    const note = await fs.readFile(
+      path.join(root, 'notes', spec.core.strategy, noteFiles[0]),
+      'utf8',
+    );
+    expect(note).toContain('schema: tradejs-research/v2');
+    expect(note).toContain('tradejs-metric-snapshot/v1');
+    const snapshot = note.match(
+      /## Metrics snapshot \(machine-readable\)[\s\S]*?```json\n([\s\S]*?)\n```/,
+    );
+    if (!snapshot) throw new Error('Missing compact metrics');
+    expect(decodeResearchMetricSnapshot(JSON.parse(snapshot[1]))).toMatchObject(
+      {
+        evaluations: result.conclusion.evaluations.map(
+          ({
+            equity: _equity,
+            testEquity: _testEquity,
+            testDrawdown: _testDrawdown,
+            directionEquity: _directionEquity,
+            ...metrics
+          }) =>
+            Object.fromEntries(
+              Object.entries(metrics).filter(
+                ([, value]) => value !== undefined,
+              ),
+            ),
+        ),
+      },
+    );
     await verifyCompletedResearch(result.directory, result.state);
     await expect(
       fs.stat(path.join(result.directory, '02-raw-control/result.json')),

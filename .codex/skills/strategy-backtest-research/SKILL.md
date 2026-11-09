@@ -350,8 +350,9 @@ it exactly.
 - Put repository-wide work in `notes/Shared/` and genuine multi-strategy
   comparisons in `notes/CrossStrategy/`; never place files directly in
   `notes/`.
-- Embed the complete secret-free resolved config and the authoritative
-  structured metrics JSON. Paths to Redis, cached orders, exports, or output
+- Use v2 notes with the verified self-contained compact metric snapshot from
+  `references/research-notes.md`. Embed the complete secret-free resolved config
+  and preserve every authoritative aggregate metric. Paths to Redis, cached orders, exports, or output
   reports are not enough because those artifacts may be deleted.
 - Use `reproduction: complete` only when the note alone preserves every
   reported aggregate metric and its lineage. Mark missing historical evidence

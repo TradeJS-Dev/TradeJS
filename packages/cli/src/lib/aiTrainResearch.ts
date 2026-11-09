@@ -103,12 +103,14 @@ export const writeAiTrainResearchSnapshot = async ({
 }) => {
   const resolvedPath = path.resolve(outputPath);
   await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-  await fs.writeFile(
-    resolvedPath,
-    `${JSON.stringify(result, null, 2)}\n`,
-    'utf8',
-  );
-  return resolvedPath;
+  const bytes = `${JSON.stringify(result)}\n`;
+  await fs.writeFile(resolvedPath, bytes, 'utf8');
+  return {
+    schema: 'tradejs-research-report-receipt/v1' as const,
+    path: resolvedPath,
+    bytes: Buffer.byteLength(bytes),
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  };
 };
 
 const normalizeForStableJson = (value: unknown): unknown => {

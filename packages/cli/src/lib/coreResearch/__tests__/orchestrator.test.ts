@@ -373,6 +373,18 @@ describe('core research orchestrator', () => {
     const candidate = analyzed.result.variants.find(
       (variant) => variant.variant.id === 'candidate',
     );
+    expect(comparison).not.toHaveProperty('matchedPairs');
+    const savedResult = JSON.parse(
+      await fs.readFile(analyzed.paths.resultPath, 'utf8'),
+    );
+    const savedComparisons = JSON.parse(
+      await fs.readFile(analyzed.paths.comparisonPath, 'utf8'),
+    );
+    expect(savedResult.schema).toBe('tradejs-core-research-result/v2');
+    expect(savedComparisons).toEqual(savedResult.comparisons);
+    expect(savedComparisons[0]).not.toHaveProperty('matchedPairs');
+    expect(comparison.exitReasonChanges).toBeGreaterThanOrEqual(0);
+    expect(comparison.exitCodeChanges).toBeGreaterThanOrEqual(0);
     expect(comparison.matched).toBe(2);
     expect(comparison.controlOnly).toBe(0);
     expect(comparison.candidateOnly).toBe(1);

@@ -2,7 +2,7 @@ import type { Direction, TestTradeExitReason } from '@tradejs/types';
 
 export const CORE_RESEARCH_SCHEMA = 'tradejs-core-research/v1' as const;
 export const CORE_RESEARCH_RESULT_SCHEMA =
-  'tradejs-core-research-result/v1' as const;
+  'tradejs-core-research-result/v2' as const;
 export const CORE_RESEARCH_LEDGER_SCHEMA =
   'tradejs-core-research-ledger/v1' as const;
 
@@ -289,6 +289,14 @@ export type CoreResearchComparison = {
   selection: CoreResearchSelectionResult;
 };
 
+export type CoreResearchComparisonSummary = Omit<
+  CoreResearchComparison,
+  'matchedPairs'
+> & {
+  exitReasonChanges: number;
+  exitCodeChanges: number;
+};
+
 export type CoreResearchBootstrapResult = {
   method: 'calendar-cluster-bootstrap';
   clusterDays: number;
@@ -347,7 +355,7 @@ export type CoreResearchResult = {
     regimeCausality: 'signal-time payload.additionalIndicators.baseContext only';
   };
   variants: CoreResearchVariantAnalysis[];
-  comparisons: CoreResearchComparison[];
+  comparisons: CoreResearchComparisonSummary[];
   multipleTesting: {
     family: string;
     hypotheses: number;
