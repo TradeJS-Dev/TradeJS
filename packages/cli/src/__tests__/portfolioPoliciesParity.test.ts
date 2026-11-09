@@ -6,6 +6,8 @@ import type {
 } from '@tradejs/types';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 import { createStrategyRuntime } from '@tradejs/node/strategies';
+const mockBeforeClose = jest.fn();
+const mockProjectHooks: { beforeClosePosition?: typeof mockBeforeClose } = {};
 const mockTrades = new Map<string, Partial<RuntimeTradeRecord>>();
 const mockState = new Map<string, string>();
 jest.mock('../../../node/src/runtimeJournal', () => ({
@@ -32,7 +34,7 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 jest.mock('../../../node/src/tradejsConfig', () => ({
   ...jest.requireActual('../../../node/src/tradejsConfig'),
-  loadTradejsConfig: async () => ({}),
+  loadTradejsConfig: async () => ({ hooks: mockProjectHooks }),
 }));
 beforeEach(() =>
   jest.replaceProperty(process, 'env', {
@@ -81,8 +83,25 @@ async function trace(
     exitScope?: 'position' | 'basket';
     nativeTp?: boolean;
     disableBeforeExit?: boolean;
+    closeGate?: 'manifest' | 'project' | 'throw' | 'opposite';
   } = {},
 ) {
+  mockBeforeClose.mockReset();
+  delete mockProjectHooks.beforeClosePosition;
+  if (options.closeGate) {
+    mockBeforeClose.mockImplementation(async ({ decision }) => {
+      if (
+        decision.code === 'PORTFOLIO_OPPOSITE_FILL' &&
+        options.closeGate !== 'opposite'
+      )
+        return;
+      if (options.closeGate === 'throw')
+        throw new Error('close approval unavailable');
+      return { allow: false, reason: 'fixture veto' };
+    });
+    if (options.closeGate === 'project')
+      mockProjectHooks.beforeClosePosition = mockBeforeClose;
+  }
   mockTrades.clear();
   mockState.clear();
   let now = 1000;
@@ -139,7 +158,13 @@ async function trace(
   const creator = createStrategyRuntime({
     strategyName: 'Fixture',
     defaults: {},
-    manifest: { name: 'Fixture' },
+    manifest: {
+      name: 'Fixture',
+      hooks:
+        options.closeGate && options.closeGate !== 'project'
+          ? { beforeClosePosition: mockBeforeClose }
+          : {},
+    },
     createCore: async () => async () => currentDecision,
   });
   const config = {
@@ -210,6 +235,21 @@ async function trace(
   try {
     await enter('A', 'SHORT');
     await enter('B', 'LONG');
+    if (options.closeGate === 'opposite') {
+      expect((await simulator.getPositions()).map((p) => p.symbol)).toEqual([
+        'AUSDT',
+        'BUSDT',
+      ]);
+      expect(mockBeforeClose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ctx: expect.objectContaining({ symbol: 'AUSDT' }),
+          decision: expect.objectContaining({
+            code: 'PORTFOLIO_OPPOSITE_FILL',
+          }),
+        }),
+      );
+      return { contexts, orders: [] };
+    }
     expect((await simulator.getPositions()).map((p) => p.symbol)).toEqual([
       'BUSDT',
     ]);
@@ -244,12 +284,24 @@ async function trace(
     await observer(market(), market());
     const remaining = (await simulator.getPositions()).map((p) => p.symbol);
     expect(remaining).toEqual(
-      options.disableBeforeExit
+      options.disableBeforeExit || options.closeGate
         ? ['BUSDT', 'CUSDT']
         : options.nativeTp || options.exitScope === 'position'
           ? ['CUSDT']
           : [],
     );
+    if (options.closeGate) {
+      const profitCalls = mockBeforeClose.mock.calls.filter(([params]) =>
+        params.decision.code.startsWith('PORTFOLIO_PROFIT'),
+      );
+      expect(profitCalls.map(([params]) => params.ctx.symbol).sort()).toEqual([
+        'BUSDT',
+        'CUSDT',
+      ]);
+      expect(
+        profitCalls.every(([params]) => params.ctx.strategyName === 'Fixture'),
+      ).toBe(true);
+    }
     return {
       contexts,
       orders: simulator.getReplayArtifacts().orderLog.map((o) => ({
@@ -360,3 +412,12 @@ test('delayed entries share capacity at actual submission and preserve the signa
   expect(signals[1].orderFailureReason).toBe('PORTFOLIO_POSITION_LIMIT');
   expect(signals[1].additionalIndicators?.portfolioContext).toEqual(frozen);
 });
+
+it.each(['manifest', 'project', 'throw', 'opposite'] as const)(
+  'portfolio exits respect %s close gate for the position owner in runtime and replay',
+  async (closeGate) => {
+    expect(await trace(true, { closeGate })).toEqual(
+      await trace(false, { closeGate }),
+    );
+  },
+);

@@ -445,13 +445,13 @@ export type Order = {
   orderId?: string;
   signal?: Signal;
   /** Only an authoritative rejection; never call for a timeout or ambiguous response. */
-  onRejected?: () => Promise<void>;
+  onRejected?: (retrying?: boolean) => Promise<void>;
   /** Await after preparation/quantity normalization, immediately before submission. */
   beforeSubmit?: (context: {
     qty: number;
     /** Simulation connectors may supply their actual modeled execution price. */
     executionPrice?: number;
-  }) => Promise<void>;
+  }) => Promise<void | string>;
 };
 
 export type Position = {

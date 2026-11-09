@@ -12,6 +12,31 @@ spec.loader.exec_module(module)
 
 
 class ArchiveTest(unittest.TestCase):
+    def test_incremental_bundle_cannot_authorize_removal(self):
+        with tempfile.TemporaryDirectory(prefix='research-incremental-') as temporary:
+            root = Path(temporary).resolve()
+            repo = root / 'repo'
+            repo.mkdir()
+            module.git(repo, 'init', '-q')
+            (repo / 'source').write_text('first')
+            module.git(repo, 'add', '.')
+            module.git(repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'first')
+            (repo / 'source').write_text('second')
+            module.git(repo, 'add', '.')
+            module.git(repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'second')
+            head = module.git(repo, 'rev-parse', 'HEAD').decode().strip()
+            history = root / 'history'
+            history.mkdir()
+            module.git(repo, 'bundle', 'create', str(history / f'{head}.bundle'), 'HEAD^..HEAD')
+            # This succeeds in the source repo, which already has the prerequisite.
+            module.git(repo, 'bundle', 'verify', str(history / f'{head}.bundle'))
+            worktree = root / 'worktree'
+            module.git(repo, 'worktree', 'add', '--detach', str(worktree), 'HEAD')
+            with self.assertRaises(subprocess.CalledProcessError):
+                module.retire(repo, worktree, root / 'archive', apply=True, history_root=history)
+            self.assertTrue(worktree.exists())
+            self.assertFalse((root / 'archive/receipt.json').exists())
+
     def test_shared_history_and_source_recovery(self):
         with tempfile.TemporaryDirectory(prefix='research-archive-') as temporary:
             root = Path(temporary).resolve()

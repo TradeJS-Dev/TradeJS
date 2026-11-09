@@ -120,7 +120,7 @@ export function normalizeCandles(v: unknown): VisualCandle[] {
 export function normalizeTrade(
   raw: unknown,
   fallbackStrategy: string,
-  candlesBySymbol: Record<string, unknown> = {},
+  candlesBySymbol: Record<string, VisualCandle[]> = {},
 ): VisualTrade {
   const r = object(raw),
     payload = object(r.payload),
@@ -203,7 +203,10 @@ export function normalizeTrade(
     pockets,
     features,
     groups,
-    candles: normalizeCandles(r.candles ?? candlesBySymbol[symbol]),
+    candles:
+      r.candles === undefined
+        ? candlesBySymbol[symbol] ?? []
+        : normalizeCandles(r.candles),
     figures: normalizeFigures(r.figures ?? payload.figures),
   };
 }
@@ -251,11 +254,16 @@ export function normalizeDataset(
   );
   if (runs.size > 1)
     throw new Error('Mixed backtest runs; provide one immutable lineage');
+  const candlesBySymbol = Object.fromEntries(
+    Object.entries(options.candlesBySymbol ?? object(root.candlesBySymbol)).map(
+      ([symbol, candles]) => [symbol, normalizeCandles(candles)],
+    ),
+  );
   const trades = rows.map((r) =>
     normalizeTrade(
       r,
       options.strategy ?? String(root.strategy ?? ''),
-      options.candlesBySymbol ?? object(root.candlesBySymbol),
+      candlesBySymbol,
     ),
   );
   const ids = new Set<string>();
@@ -273,4 +281,25 @@ export function normalizeDataset(
     intervalMs,
     trades,
   };
+}
+
+/** Bound per-chart work without rescanning or copying shared market history. */
+export function tradeCandleWindow(
+  trade: VisualTrade,
+  intervalMs: number,
+): VisualCandle[] {
+  const lowerBound = (timestamp: number) => {
+    let lo = 0,
+      hi = trade.candles.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (trade.candles[mid].timestamp < timestamp) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  return trade.candles.slice(
+    lowerBound(trade.signalTime - 140 * intervalMs),
+    lowerBound(trade.exitTime + 20 * intervalMs + 1),
+  );
 }

@@ -1631,7 +1631,11 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
               return false;
             }
 
-            await beforeSubmit?.({ qty: orderQty });
+            const admittedOrderId = await beforeSubmit?.({ qty: orderQty });
+            if (typeof admittedOrderId === 'string') {
+              orderId = admittedOrderId;
+              if (signal) signal.orderId = orderId;
+            }
             const orderRes = await client.submitOrder({
               category: BYBIT_CATEGORY,
               symbol,
@@ -1654,6 +1658,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
 
             if (orderRes.retCode !== 0) {
               if (attempt === 0 && isMaxOrderQuantityRejected(orderRes)) {
+                await onRejected?.(true);
                 quantityCeiling = orderQty;
                 quantityRejection = orderRes.retMsg;
                 continue;

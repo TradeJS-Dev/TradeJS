@@ -180,8 +180,8 @@ export function createPortfolioCoordinator({
       now: number,
       entry: Omit<PortfolioReservation, 'submitted' | 'oppositeHandled'>,
       send: (
-        markSubmitted: (qty: number) => Promise<void>,
-        markRejected: () => Promise<void>,
+        markSubmitted: (qty: number) => Promise<string>,
+        markRejected: (retrying?: boolean) => Promise<void>,
       ) => Promise<T>,
     ): Promise<{ reason?: string; value?: T }> {
       await tick(now);
@@ -199,39 +199,72 @@ export function createPortfolioCoordinator({
       );
       if (admitted.result) return { reason: admitted.result };
       let submitted = false;
+      let retry = 0;
+      let attemptId = entry.id;
+      let needsReservation = false;
       try {
         const value = await send(
           async (qty) => {
             if (!Number.isFinite(qty) || qty <= 0)
               throw new Error('Invalid submitted portfolio quantity');
-            submitted = true;
-            const update = await updateReservation(now, entry.id, true, qty);
+            if (needsReservation) {
+              attemptId = `${entry.id.slice(0, 30)}r${++retry}`;
+              const admission = await transact(
+                now,
+                (s, o) => {
+                  const r = reservePortfolioEntry(policy, strategy, s, o, {
+                    ...entry,
+                    id: attemptId,
+                    qty,
+                    submitted: true,
+                    oppositeHandled: false,
+                  });
+                  return { state: r.state, result: r.reason };
+                },
+                true,
+              );
+              if (admission.result) throw new Error(admission.result);
+              needsReservation = false;
+              submitted = true;
+              return attemptId;
+            }
+            const update = await updateReservation(now, attemptId, true, qty);
             if (!update.result)
               throw new Error('PORTFOLIO_SUBMISSION_NO_LONGER_ADMITTED');
+            submitted = true;
+            return attemptId;
           },
-          async () => {
+          async (retrying = false) => {
             await transact(
               now,
               (s) => ({
                 state: {
                   ...s,
-                  reservations: s.reservations.filter((r) => r.id !== entry.id),
+                  reservations: s.reservations.filter(
+                    (r) => r.id !== attemptId,
+                  ),
                   completedSignals: {
-                    ...s.completedSignals,
-                    [entry.signalId]: now,
+                    ...Object.fromEntries(
+                      Object.entries(s.completedSignals).filter(
+                        ([id]) => !retrying || id !== entry.signalId,
+                      ),
+                    ),
+                    ...(retrying ? {} : { [entry.signalId]: now }),
                   },
                 },
                 result: undefined,
               }),
               true,
             );
+            submitted = false;
+            needsReservation = retrying;
           },
         );
-        if (!submitted) await updateReservation(now, entry.id, false);
+        if (!submitted) await updateReservation(now, attemptId, false);
         else await tick(now, true);
         return { value };
       } catch (error) {
-        if (!submitted) await updateReservation(now, entry.id, false);
+        if (!submitted) await updateReservation(now, attemptId, false);
         throw error;
       }
     },

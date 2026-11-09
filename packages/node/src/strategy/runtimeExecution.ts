@@ -255,8 +255,8 @@ const executeAdmittedEntryDecision = async ({
   markPortfolioSubmitted,
   rejectPortfolioSubmission,
 }: {
-  markPortfolioSubmitted?: (qty: number) => Promise<void>;
-  rejectPortfolioSubmission?: () => Promise<void>;
+  markPortfolioSubmitted?: (qty: number) => Promise<string>;
+  rejectPortfolioSubmission?: (retrying?: boolean) => Promise<void>;
   connector: Connector;
   symbol: string;
   decision: EntryDecision;

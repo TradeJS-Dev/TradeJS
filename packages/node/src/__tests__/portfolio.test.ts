@@ -53,7 +53,7 @@ function fixture(p = policy) {
 }
 test('two independent coordinators sharing CAS cannot exceed a cap', async () => {
   const f = fixture();
-  const send = jest.fn(async (mark: (qty: number) => Promise<void>) => {
+  const send = jest.fn(async (mark: (qty: number) => Promise<string>) => {
     await mark(1);
     return true;
   });
@@ -198,4 +198,50 @@ test('a close starting after reservation invalidates the still-unsent entry', as
   ).rejects.toThrow('NO_LONGER_ADMITTED');
   expect(sent).toBe(false);
   expect((await f.store.read())?.reservations).toEqual([]);
+});
+
+test('rejected retry releases capacity even if preparation aborts', async () => {
+  const f = fixture();
+  await expect(
+    f.create().submit(1000, entry('A'), async (mark, reject) => {
+      await mark(1);
+      await reject(true);
+      expect((await f.store.read())?.reservations).toEqual([]);
+      throw new Error('preparation failed');
+    }),
+  ).rejects.toThrow('preparation failed');
+  expect((await f.store.read())?.reservations).toEqual([]);
+});
+
+test('retry reacquires capacity and uses a different execution identity', async () => {
+  const f = fixture();
+  const ids: string[] = [];
+  await f.create().submit(1000, entry('A'), async (mark, reject) => {
+    ids.push(await mark(1));
+    await reject(true);
+    ids.push(await mark(0.5));
+    expect((await f.store.read())?.reservations).toMatchObject([
+      { id: ids[1], qty: 0.5, submitted: true },
+    ]);
+    await reject();
+  });
+  expect(ids[0]).not.toBe(ids[1]);
+  expect((await f.store.read())?.reservations).toEqual([]);
+});
+
+test('retry cannot take a slot admitted to another entry after rejection', async () => {
+  const f = fixture();
+  await expect(
+    f.create().submit(1000, entry('A'), async (mark, reject) => {
+      await mark(1);
+      await reject(true);
+      await f.create().submit(1000, entry('B'), async (markOther) => {
+        await markOther(1);
+      });
+      await mark(0.5);
+    }),
+  ).rejects.toThrow('PORTFOLIO_POSITION_LIMIT');
+  expect((await f.store.read())?.reservations.map((r) => r.symbol)).toEqual([
+    'BUSDT',
+  ]);
 });

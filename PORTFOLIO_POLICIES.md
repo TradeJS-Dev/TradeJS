@@ -120,3 +120,19 @@ stale/missing marks, losing basket members, no same-cycle reentry, SL/TP priorit
 no-order mode, AI export/reconstruction and exact runtime/replay event parity.
 Benchmark disabled policies against an immutable baseline; report enabled
 policy cost separately and do not generalize one fixture to the entire market.
+
+## Close permission and rejected submission retries
+
+Automatic closes use the same project and strategy `beforeClosePosition` gate
+as ordinary exit decisions, with the position owner's symbol/config and latest
+available market context. A veto, hook failure or missing owner runtime prevents
+submission. The durable close intent remains pending and admission stays blocked;
+a later cycle may retry permission. Native exchange SL/TP is not a runtime hook.
+
+Every authoritative Bybit rejection releases its capacity reservation, including
+the first rejected maximum-quantity attempt. Before an automatic retry, capacity
+is reserved again atomically; another entry may have taken the slot. Retried
+portfolio submissions use a distinct order link ID, carried through the signal
+and journal, so the previous rejection cannot reconcile the new reservation.
+Failure during retry preparation leaves no submitted reservation. An unknown
+network outcome still retains its reservation and is never retried blindly.

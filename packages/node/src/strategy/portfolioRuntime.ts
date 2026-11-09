@@ -8,6 +8,8 @@ import { portfolioStateStorage } from '@tradejs/infra/redis';
 import type {
   Connector,
   PortfolioObservation,
+  PortfolioPosition,
+  PortfolioCloseIntent,
   PortfolioReservation,
   PortfolioState,
   PortfolioStateStore,
@@ -22,9 +24,21 @@ import {
   markRuntimeTradeClosed,
 } from '../runtimeJournal';
 
+type ClosePermission = (
+  position: PortfolioPosition,
+  intent: PortfolioCloseIntent,
+  asOf: number,
+) => Promise<boolean>;
 const coordinators = new WeakMap<
   Connector,
-  Map<string, { fingerprint: string; coordinator: PortfolioCoordinator }>
+  Map<
+    string,
+    {
+      fingerprint: string;
+      coordinator: PortfolioCoordinator;
+      permissions: Map<string, ClosePermission>;
+    }
+  >
 >();
 
 /** Exchange facts are attributed through the journal or a reserved, confirmed execution. */
@@ -150,7 +164,11 @@ export function getPortfolioRuntime({
   userName,
   accountId,
   deploymentId,
+  symbol,
+  canClose,
 }: {
+  symbol?: string;
+  canClose?: ClosePermission;
   value: unknown;
   connectorName: string;
   strategy: string;
@@ -208,8 +226,13 @@ export function getPortfolioRuntime({
   if (existing) {
     if (existing.fingerprint !== fingerprint)
       throw new Error('Conflicting portfolio configuration for the same scope');
+    if (symbol && canClose)
+      existing.permissions.set(JSON.stringify([strategy, symbol]), canClose);
     return existing.coordinator;
   }
+  const permissions = new Map<string, ClosePermission>();
+  if (symbol && canClose)
+    permissions.set(JSON.stringify([strategy, symbol]), canClose);
   const coordinator = createPortfolioCoordinator({
     policy,
     strategy,
@@ -233,6 +256,10 @@ export function getPortfolioRuntime({
           ? connector.getPortfolioObservation!(asOf, reservations)
           : observeRuntimePortfolio(connector, binding, asOf, reservations),
       async close(position, intent, asOf) {
+        const permission = permissions.get(
+          JSON.stringify([position.strategy, position.symbol]),
+        );
+        if (!permission || !(await permission(position, intent, asOf))) return;
         // Recheck ownership immediately before submitting a close. Never close an unrelated replacement.
         if (!replay) {
           const trade = await getActiveRuntimeTrade({
@@ -268,6 +295,6 @@ export function getPortfolioRuntime({
       },
     },
   });
-  registry.set(cacheKey, { fingerprint, coordinator });
+  registry.set(cacheKey, { fingerprint, coordinator, permissions });
   return coordinator;
 }

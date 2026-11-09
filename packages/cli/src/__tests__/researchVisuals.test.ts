@@ -239,3 +239,23 @@ test('report writes verifiable SVG/PNG artifacts, preserves selected scope and r
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('shared market history is normalized once, without copying it into every trade', () => {
+  const candles = trade('a', 1).candles;
+  const rows = Array.from({ length: 500 }, (_, i) => ({
+    ...trade(String(i), 1),
+    candles: undefined,
+  }));
+  const data = normalizeDataset({
+    schema: 'tradejs-research-visuals/v1',
+    population: 'complete',
+    intervalMs: 60000,
+    candlesBySymbol: { BTCUSDT: candles },
+    trades: rows,
+  });
+  expect(data.trades[0].candles).toEqual(candles);
+  expect(data.trades[0].candles).not.toBe(candles);
+  expect(new Set(data.trades.map((t) => t.candles)).size).toBe(1);
+  const own = dataset([trade('own', 1)]);
+  expect(own.trades[0].candles).toEqual(candles);
+});

@@ -194,3 +194,9 @@ receipt permanently. Prune stale registrations only after checking that their
 directories are actually absent, and preserve their branch/commit identities
 in the cleanup inventory. For Codex-managed worktrees attached to this chat,
 prefer the app's archive tool, which preserves recoverable state.
+
+Shared history bundles must be self-contained: verify and fetch them into an
+empty isolated repository and run object integrity checks before retiring the
+worktree. Verification against the source repository alone accepts incremental
+bundles whose prerequisites happen to exist locally. Reject such a bundle,
+retain the worktree, and do not issue a completed retirement receipt.

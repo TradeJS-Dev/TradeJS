@@ -122,3 +122,9 @@ loading and report generation; `src/scripts/researchVisuals.ts` only parses CLI
 arguments. Strategy-specific pocket reconstruction and hypothesis logic stay
 with their owning strategy/research workflow. Reuse the existing final
 composition board for candidate comparisons rather than cloning it here.
+
+Shared candle histories are validated and normalized once per symbol. Trades
+reference that normalized array; rendering and retained inputs use bounded
+windows found by binary search, including indicator warmup. Supplying inline
+candles still means a separate per-trade series. Input file/decompression size
+limits remain enforced; this optimization does not make unbounded input safe.

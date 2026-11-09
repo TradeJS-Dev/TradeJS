@@ -1,4 +1,8 @@
-import type { VisualTrade, VisualCandle } from './model';
+import {
+  tradeCandleWindow,
+  type VisualTrade,
+  type VisualCandle,
+} from './model';
 import type { DrawdownEpisode } from './analysis';
 import { escapeResearchHtml as esc } from '../strategyResearch/reportFormat';
 import { researchLineChart } from '../strategyResearch/charts';
@@ -158,7 +162,10 @@ function pricePanel(
   );
 }
 export function renderTradeSvg(t: VisualTrade, intervalMs: number) {
-  const candles = chartCandles(t);
+  const candles = chartCandles({
+    ...t,
+    candles: tradeCandleWindow(t, intervalMs),
+  });
   const start = Math.min(
       t.signalTime - 90 * intervalMs,
       t.entryTime - 90 * intervalMs,

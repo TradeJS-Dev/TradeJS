@@ -188,7 +188,31 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    let portfolioMarket: HookCandleMarket | undefined;
     const portfolio = getPortfolioRuntime({
+      symbol,
+      canClose: async (position, intent, asOf) => {
+        if (
+          !portfolioMarket ||
+          portfolioMarket.candle.timestamp > asOf ||
+          !isRuntimeOrderExecutionEnabled({ config, env, connector })
+        )
+          return false;
+        const gate = await authorizeClose(
+          {
+            kind: 'exit',
+            code: intent.reason,
+            closePlan: {
+              direction: position.direction,
+              price: position.markPrice!,
+              timestamp: asOf,
+            },
+          },
+          portfolioMarket,
+          position.strategy!,
+        );
+        return gate?.allow !== false;
+      },
       connectorName,
       value: baseConfig?.PORTFOLIO_POLICY ?? config.PORTFOLIO_POLICY,
       strategy: strategyName,
@@ -484,10 +508,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         market?: StrategyHookMarketContext;
       } = {},
     ): Promise<StrategyHookGateResult | void> => {
-      const failureResult: StrategyHookGateResult | undefined =
-        stage === 'beforeEntryGate'
-          ? { allow: false, reason: 'ERROR' }
-          : undefined;
+      const failureResult: StrategyHookGateResult | undefined = {
+        allow: false,
+        reason: 'ERROR',
+      };
       const projectResults =
         await invokeProjectHooks<StrategyHookGateResult | void>(
           stage,
@@ -510,6 +534,18 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         failureResult,
       );
     };
+
+    const authorizeClose = (
+      decision: Extract<StrategyDecision, { kind: 'exit' }>,
+      market: HookCandleMarket,
+      owner = strategyName,
+    ) =>
+      invokeGateHooks(
+        'beforeClosePosition',
+        resolveManifest(owner)?.hooks?.beforeClosePosition,
+        { ctx: getHookCtx(owner), market, decision },
+        { decision, market },
+      );
 
     const applyProjectAfterCoreDecisionHooks = async ({
       hookCtx,
@@ -905,6 +941,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         coreDecisionOverride?: StrategyDecision;
       } = {},
     ) => {
+      portfolioMarket = { candle, btcCandle };
       if (portfolioContext)
         await portfolioContext(
           env === 'BACKTEST' || env === 'PARITY'
@@ -1035,15 +1072,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (!makeOrdersEnabled) {
           return decision.code;
         }
-        const closeGate = await invokeGateHooks(
-          'beforeClosePosition',
-          decisionManifest?.hooks?.beforeClosePosition,
-          {
-            ctx: decisionHookCtx,
-            market,
-            decision,
-          },
-          { decision, market },
+        const closeGate = await authorizeClose(
+          decision,
+          market,
+          decisionHookCtx.strategyName,
         );
 
         if (closeGate?.allow === false) {

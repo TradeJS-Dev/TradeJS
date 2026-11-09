@@ -980,6 +980,11 @@ describe('ByBitConnectorCreator', () => {
       );
       const connector = await ByBitConnectorCreator({ userName: 'alice' });
       const signal = {} as Signal;
+      const beforeSubmit = jest
+        .fn()
+        .mockResolvedValueOnce('quantity-retry')
+        .mockResolvedValue('quantity-retry-r1');
+      const onRejected = jest.fn(async () => {});
       const success = await connector.placeOrder({
         symbol: 'BTCUSDT',
         price: 1,
@@ -987,8 +992,11 @@ describe('ByBitConnectorCreator', () => {
         direction: 'LONG',
         timestamp: 1,
         signal,
+        beforeSubmit,
+        onRejected,
         orderId: 'quantity-retry',
       });
+      expect(onRejected).toHaveBeenNthCalledWith(1, true);
       expect(success).toBe(expectedSuccess);
       expect(submitOrder).toHaveBeenCalledTimes(submissions);
       expect(submitOrder).toHaveBeenNthCalledWith(
@@ -1003,7 +1011,7 @@ describe('ByBitConnectorCreator', () => {
           2,
           expect.objectContaining({
             qty: '5000',
-            orderLinkId: 'quantity-retry',
+            orderLinkId: 'quantity-retry-r1',
           }),
         );
       expect(mockedGetSymbolMeta).toHaveBeenCalledWith(client, 'BTCUSDT', true);

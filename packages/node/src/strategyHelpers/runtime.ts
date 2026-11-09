@@ -247,8 +247,8 @@ interface ExecuteEntryOrderParams {
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
   executionLimits?: EntryExecutionLimits;
-  markPortfolioSubmitted?: (qty: number) => Promise<void>;
-  rejectPortfolioSubmission?: () => Promise<void>;
+  markPortfolioSubmitted?: (qty: number) => Promise<string>;
+  rejectPortfolioSubmission?: (retrying?: boolean) => Promise<void>;
 }
 
 const resolveRuntimeTelemetryQuality = ({
@@ -367,7 +367,7 @@ export const executeEntryOrder = async ({
   await beforePlaceOrder?.();
   const previousPosition =
     positionIntent === 'increase' ? await connector.getPosition(symbol) : null;
-  const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
+  let orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
   const signalTimestamp = signal.timestamp;
   const signalClosePrice = currentPrice;
   signal.orderId = orderId;
@@ -452,12 +452,13 @@ export const executeEntryOrder = async ({
             executionPrice?: number;
           }) => {
             await beforeSubmit?.(context);
-            await markPortfolioSubmitted?.(context.qty);
+            return markPortfolioSubmitted?.(context.qty);
           },
         }
       : {}),
   });
   const orderAckTime = Date.now();
+  if (markPortfolioSubmitted && signal.orderId) orderId = signal.orderId;
   const placedQty =
     typeof signal.orderQty === 'number' &&
     Number.isFinite(signal.orderQty) &&

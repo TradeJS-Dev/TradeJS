@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import {
   normalizeDataset,
+  tradeCandleWindow,
   object,
   type VisualDataset,
 } from './researchVisuals/model';
@@ -203,11 +204,7 @@ export async function generateResearchVisuals(options: ResearchVisualOptions) {
       population: 'selected',
       trades: selected.map((trade) => ({
         ...trade,
-        candles: trade.candles.filter(
-          (bar) =>
-            bar.timestamp >= trade.signalTime - 140 * dataset.intervalMs &&
-            bar.timestamp <= trade.exitTime + 20 * dataset.intervalMs,
-        ),
+        candles: tradeCandleWindow(trade, dataset.intervalMs),
       })),
     };
     await write('chart-inputs.json.gz', gzipSync(JSON.stringify(retained)));

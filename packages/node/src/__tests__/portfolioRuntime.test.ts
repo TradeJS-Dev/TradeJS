@@ -142,3 +142,58 @@ test('authoritative cancellation takes precedence over absent execution rows', a
       .orders[0].status,
   ).toBe('cancelled');
 });
+
+test('account policy consults each owner gate and never uses the observing strategy permission', async () => {
+  const closePosition = jest.fn(async () => true);
+  const positions = ['A', 'B', 'Missing'].map((strategy) => ({
+    id: strategy,
+    strategy,
+    symbol: `${strategy}USDT`,
+    direction: 'LONG' as const,
+    qty: 1,
+    entryPrice: 100,
+    markPrice: 120,
+    markedAt: 1000,
+  }));
+  const replay = {
+    __tradejsReplayConnector: true,
+    getPortfolioObservation: async () => ({
+      asOf: 1000,
+      positions,
+      orders: [],
+    }),
+    closePosition,
+  } as unknown as Connector;
+  const a = jest.fn(async () => false),
+    b = jest.fn(async () => true);
+  const shared = {
+    ...policy,
+    scope: 'account',
+    profitExit: { scope: 'position', multiple: 1 },
+  };
+  const first = getPortfolioRuntime({
+    value: shared,
+    strategy: 'A',
+    symbol: 'AUSDT',
+    canClose: a,
+    connector: replay,
+    connectorName: 'bybit',
+    env: 'BACKTEST',
+  })!;
+  getPortfolioRuntime({
+    value: shared,
+    strategy: 'B',
+    symbol: 'BUSDT',
+    canClose: b,
+    connector: replay,
+    connectorName: 'bybit',
+    env: 'BACKTEST',
+  });
+  await first.tick(1000);
+  expect(a).toHaveBeenCalledTimes(1);
+  expect(b).toHaveBeenCalledTimes(1);
+  expect(closePosition).toHaveBeenCalledTimes(1);
+  expect(closePosition).toHaveBeenCalledWith(
+    expect.objectContaining({ symbol: 'BUSDT' }),
+  );
+});
