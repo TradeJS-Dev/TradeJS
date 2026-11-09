@@ -16,3 +16,5 @@ export * from './runtimeControls';
 export * from './jev';
 export * from './research';
 export * from './mcp';
+export * from './tickerProfile';
+export * from './aiFeatures';

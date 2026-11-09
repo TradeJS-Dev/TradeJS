@@ -867,6 +867,7 @@ export interface BaseContextGateFeatures {
 }
 
 export interface BaseStrategyContextSnapshot {
+  tickerProfile?: import('./tickerProfile').TickerProfileContext;
   candle: Candle;
   prevCandle: Candle | null;
   raw: BaseRawIndicatorSnapshot;

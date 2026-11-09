@@ -82,6 +82,19 @@ export type AiMarketContext = {
       correlationToBtc20: number | null;
       ratioTrend: 'up' | 'down' | 'flat' | 'unknown' | null;
     };
+    targetVsEth: {
+      source: string | null;
+      available: boolean;
+      ratioReturn1h: number | null;
+      ratioReturn4h: number | null;
+      ratioReturn24h: number | null;
+      alphaVsEth1h: number | null;
+      alphaVsEth4h: number | null;
+      alphaVsEth24h: number | null;
+      betaToEth20: number | null;
+      correlationToEth20: number | null;
+      ratioTrend: 'up' | 'down' | 'flat' | 'unknown' | null;
+    };
     btcAltRegime: {
       source: string | null;
       available: boolean;
@@ -450,42 +463,50 @@ const buildMarketBreadthsContextFromSignal = (signal: Signal) => {
   };
 };
 
-const buildTargetVsBtcContextFromSignal = (signal: Signal) => {
-  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
-  const relative = toRecord(baseContext?.relative);
-  const targetVsBtc = toRecord(relative?.targetVsBtc);
-
-  if (!targetVsBtc) {
-    return {
-      source: null,
-      available: false,
-      ratioReturn1h: null,
-      ratioReturn4h: null,
-      ratioReturn24h: null,
-      alphaVsBtc1h: null,
-      alphaVsBtc4h: null,
-      alphaVsBtc24h: null,
-      betaToBtc20: null,
-      correlationToBtc20: null,
-      ratioTrend: null,
-    };
-  }
-
+// One normalization path for both reference assets; public BTC fields stay unchanged.
+const buildTargetVsReference = (signal: Signal, asset: 'Btc' | 'Eth') => {
+  const base = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(base?.relative);
+  const target = toRecord(relative?.[`targetVs${asset}`]);
   return {
-    source: String(targetVsBtc.source ?? ''),
-    available: true,
-    ratioReturn1h: toFiniteNumber(targetVsBtc.ratioReturn1h),
-    ratioReturn4h: toFiniteNumber(targetVsBtc.ratioReturn4h),
-    ratioReturn24h: toFiniteNumber(targetVsBtc.ratioReturn24h),
-    alphaVsBtc1h: toFiniteNumber(targetVsBtc.alphaVsBtc1h),
-    alphaVsBtc4h: toFiniteNumber(targetVsBtc.alphaVsBtc4h),
-    alphaVsBtc24h: toFiniteNumber(targetVsBtc.alphaVsBtc24h),
-    betaToBtc20: toFiniteNumber(targetVsBtc.betaToBtc20),
-    correlationToBtc20: toFiniteNumber(targetVsBtc.correlationToBtc20),
+    source: target ? String(target.source ?? '') : null,
+    available: Boolean(target),
+    ratioReturn1h: toFiniteNumber(target?.ratioReturn1h),
+    ratioReturn4h: toFiniteNumber(target?.ratioReturn4h),
+    ratioReturn24h: toFiniteNumber(target?.ratioReturn24h),
+    alpha1h: toFiniteNumber(target?.[`alphaVs${asset}1h`]),
+    alpha4h: toFiniteNumber(target?.[`alphaVs${asset}4h`]),
+    alpha24h: toFiniteNumber(target?.[`alphaVs${asset}24h`]),
+    beta: toFiniteNumber(target?.[`betaTo${asset}20`]),
+    correlation: toFiniteNumber(target?.[`correlationTo${asset}20`]),
     ratioTrend:
-      typeof targetVsBtc.ratioTrend === 'string'
-        ? (targetVsBtc.ratioTrend as 'up' | 'down' | 'flat' | 'unknown')
+      typeof target?.ratioTrend === 'string'
+        ? (target.ratioTrend as 'up' | 'down' | 'flat' | 'unknown')
         : null,
+  };
+};
+const buildTargetVsBtcContextFromSignal = (signal: Signal) => {
+  const { alpha1h, alpha4h, alpha24h, beta, correlation, ...shared } =
+    buildTargetVsReference(signal, 'Btc');
+  return {
+    ...shared,
+    alphaVsBtc1h: alpha1h,
+    alphaVsBtc4h: alpha4h,
+    alphaVsBtc24h: alpha24h,
+    betaToBtc20: beta,
+    correlationToBtc20: correlation,
+  };
+};
+const buildTargetVsEthContextFromSignal = (signal: Signal) => {
+  const { alpha1h, alpha4h, alpha24h, beta, correlation, ...shared } =
+    buildTargetVsReference(signal, 'Eth');
+  return {
+    ...shared,
+    alphaVsEth1h: alpha1h,
+    alphaVsEth4h: alpha4h,
+    alphaVsEth24h: alpha24h,
+    betaToEth20: beta,
+    correlationToEth20: correlation,
   };
 };
 
@@ -898,6 +919,7 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
     marketBreadth: buildMarketBreadthContextFromSignal(signal),
     marketBreadths: buildMarketBreadthsContextFromSignal(signal),
     targetVsBtc: buildTargetVsBtcContextFromSignal(signal),
+    targetVsEth: buildTargetVsEthContextFromSignal(signal),
     btcAltRegime: buildBtcAltRegimeContextFromSignal(signal),
     cmcGlobal: buildCmcGlobalContextFromSignal(signal),
     cmcReferenceAssets: buildCmcReferenceAssetsContextFromSignal(signal),

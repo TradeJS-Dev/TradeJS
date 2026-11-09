@@ -28,6 +28,7 @@ export interface IndicatorPluginRenderer {
 }
 
 export interface IndicatorPluginEntry {
+  aiFeatures?: readonly import('./aiFeatures').AiFeatureDefinition[];
   indicator: Indicator;
   historyKey?: string;
   compute?: (params: IndicatorPluginComputeParams) => number | null | undefined;

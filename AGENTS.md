@@ -1007,3 +1007,17 @@ idempotency key for an identical request; a disconnect never cancels a job.
 MCP cannot place/cancel/close live orders, edit runtime config, deploy, or send
 notifications. Do not fall back to SSH or broader credentials without an
 explicit operational request. OAuth consent/login remains user-managed.
+
+## Context features and ticker profiles
+
+Before changing baseContext, AI marketContext or indicator feature exports, read
+`CONTEXT_FEATURES.md`. Keep canonical measurements separate from strategy setup
+state and gate policy. New strategy/indicator AI inputs must declare their unit,
+role, scope, version and source through `aiFeatures`, with an export/reconstruction
+and pocket-discovery test. Arrays require explicit causal projections. Never
+expose outcomes, current gate decisions or dataset coverage as approval evidence.
+Preserve existing public fields and gate semantics unless a versioned migration
+is explicitly part of the task. Monthly ticker profiles are immutable shared
+market snapshots; prepare them cache-only from an explicit USDT universe and do
+not delete them with research payloads. Benchmark hot-path changes against the
+same source/config/history fixture and report actual strategy compatibility.

@@ -136,6 +136,11 @@
       "types": "./dist/jev.d.ts",
       "import": "./dist/jev.mjs",
       "require": "./dist/jev.js"
+    },
+    "./tickerProfiles": {
+      "types": "./dist/tickerProfiles.d.ts",
+      "import": "./dist/tickerProfiles.mjs",
+      "require": "./dist/tickerProfiles.js"
     }
   },
   "dependencies": {

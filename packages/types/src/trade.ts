@@ -826,6 +826,10 @@ export interface OrderLeverage {
 }
 
 export interface Signal {
+  /** Dataset reconstruction must use frozen features; null identifies a legacy export. */
+  aiFeatureReplay?: {
+    snapshot: import('./aiFeatures').AiFeatureSnapshot | null;
+  };
   assessment?: SignalAssessment;
   jevEvidence?: import('./jev').JevEvidence;
   signalId: string;

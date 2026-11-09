@@ -1,3 +1,4 @@
+import type { AiFeatureSnapshot } from '@tradejs/types';
 import type { AiTrainDumpFeatureMode } from './aiTrainOptions';
 
 type JsonRecord = Record<string, unknown>;
@@ -5,9 +6,11 @@ type JsonRecord = Record<string, unknown>;
 export type AiTrainEvaluationFeatureSnapshot =
   | {
       baseContextAvailable: false;
+      featureSnapshot?: AiFeatureSnapshot;
     }
   | {
       baseContextAvailable: true;
+      featureSnapshot?: AiFeatureSnapshot;
       gateFeatures?: unknown;
       strategyGateFeatures?: JsonRecord;
       baseContext?: JsonRecord;
@@ -21,6 +24,7 @@ const BASE_CONTEXT_FEATURE_SECTIONS = [
   'derivatives',
   'mtf',
   'gateFeatures',
+  'tickerProfile',
 ] as const;
 
 const asRecord = (value: unknown): JsonRecord | null =>
@@ -51,9 +55,11 @@ const pickBaseContextFeatureSections = (baseContext: JsonRecord) =>
 
 export const buildAiTrainEvaluationFeatureSnapshot = ({
   additionalIndicators,
+  featureSnapshot,
   mode,
 }: {
   additionalIndicators: unknown;
+  featureSnapshot?: AiFeatureSnapshot;
   mode: AiTrainDumpFeatureMode;
 }): AiTrainEvaluationFeatureSnapshot | undefined => {
   if (mode === 'none') {
@@ -65,12 +71,14 @@ export const buildAiTrainEvaluationFeatureSnapshot = ({
   if (!baseContext) {
     return {
       baseContextAvailable: false,
+      ...(featureSnapshot ? { featureSnapshot } : {}),
     };
   }
 
   const strategyGateFeatures = collectStrategyGateFeatures(baseContext);
   const snapshot: AiTrainEvaluationFeatureSnapshot = {
     baseContextAvailable: true,
+    ...(featureSnapshot ? { featureSnapshot } : {}),
     gateFeatures: baseContext.gateFeatures ?? null,
     ...(strategyGateFeatures ? { strategyGateFeatures } : {}),
   };

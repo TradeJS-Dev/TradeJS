@@ -1,3 +1,10 @@
+const mockLoadTickerProfileContext = jest.fn();
+jest.mock('../strategyHelpers/tickerProfiles', () => ({
+  ...jest.requireActual('../strategyHelpers/tickerProfiles'),
+  loadTickerProfileContext: (...args: unknown[]) =>
+    mockLoadTickerProfileContext(...args),
+  enrichSignalWithTickerProfile: async () => undefined,
+}));
 const mockResolveStrategyConfig = jest.fn();
 const mockEnrichSignalWithMl = jest.fn();
 const mockEnrichSignalWithAi = jest.fn();
@@ -511,6 +518,41 @@ describe('strategyRuntime', () => {
       }),
     ).resolves.toBe(baseContext);
     expect(mockLoadHyperliquidWhaleFlowContext).not.toHaveBeenCalled();
+  });
+
+  it('loads required ticker profiles before core decisions and fails on missing months', async () => {
+    manifestOverrides.set('TrendLine', {
+      ...realGetStrategyManifest('TrendLine'),
+      name: 'TrendLine',
+      contextRequirements: {
+        tickerProfiles: { provider: 'bybit', universeId: 'fixture' },
+      },
+    });
+    const profile = { symbol: 'ETHUSDT', asOf: 1000, moneyGroup: 'low' };
+    mockLoadTickerProfileContext.mockResolvedValue(profile);
+    await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
+    const loader = (createStrategyAPI as jest.Mock).mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext;
+    const baseContext = { participation: { volume: {} } };
+    const params = {
+      baseContext,
+      candle: { timestamp: 1000 },
+      symbol: 'ETHUSDT',
+      interval: '15',
+    };
+    const context = await loader(params);
+    expect(context.tickerProfile).toBe(profile);
+    expect(baseContext).not.toHaveProperty('tickerProfile');
+    expect(mockLoadTickerProfileContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'bybit',
+        universeId: 'fixture',
+        symbol: 'ETHUSDT',
+        timestamp: 1000,
+      }),
+    );
+    mockLoadTickerProfileContext.mockResolvedValue(undefined);
+    await expect(loader(params)).rejects.toThrow('Required ticker profile');
   });
 
   it('loads and merges manifest-required Hyperliquid context before core evaluation', async () => {

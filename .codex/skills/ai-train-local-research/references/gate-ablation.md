@@ -851,3 +851,22 @@ not gate features or selection predicates. Existing monthly/cohort diagnostics
 may not supply PF/MaxDD for every common window; report that limitation and use
 a separately reviewed generic reporting extension if needed. Never derive a
 new rule from the final cohort tables.
+
+## Registered features and monthly ticker profiles
+
+Read the framework `CONTEXT_FEATURES.md` contract before adding data. New feature
+projections live in strategy/indicator `aiFeatures` definitions and are frozen in
+`AiPayload.featureSnapshot`; native pocket search exposes `registered.<id>`.
+Do not reconstruct untrimmed array reductions from the five-point prompt view.
+Changed definitions require a new decision-time export, not silent replay under
+old lineage. Coverage/provenance/outcome/policy roles are never approval inputs.
+For custom ablation, inspect `payload.featureSnapshot.values` from the frozen
+native payload and preserve its definitions; do not assume a registered discovery
+name is an old baseContext property path. Monthly profiles use explicit
+provider/universe identities, immutable as-of snapshots and unknown coverage.
+They are shared market data and remain outside research-payload cleanup.
+
+For backtest exports with profiles, use `--ai` with the profile source. A plain
+`--fast` run without export does not exercise optional profile enrichment. Verify
+`payload.featureSnapshot` in actual rows before claiming feature availability or
+measuring its overhead. Profiles do not manufacture a missing baseContext.

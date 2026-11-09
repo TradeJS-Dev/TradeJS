@@ -1,3 +1,11 @@
+import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators';
+import { getTradejsProjectCwd } from '../tradejsConfig';
+import {
+  projectAiFeatures,
+  TICKER_PROFILE_AI_FEATURES,
+  validateAiFeatureDefinitions,
+  validateAiFeatureSnapshot,
+} from '@tradejs/core/aiFeatures';
 import {
   AiPayload,
   Signal,
@@ -47,6 +55,9 @@ const buildBaseAiPayload = (signal: Signal): AiPayload => {
 };
 
 const defaultAiAdapter: StrategyAiAdapter = {};
+const tickerProfileFeatureIds = new Set(
+  TICKER_PROFILE_AI_FEATURES.map(({ id }) => id),
+);
 
 export const getStrategyAiAdapter = (
   strategy?: string,
@@ -61,7 +72,58 @@ const getSignalAiAdapter = (signal: Signal) =>
 export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
   const basePayload = buildBaseAiPayload(signal);
   const adapter = getSignalAiAdapter(signal);
-  return adapter.buildPayload?.({ signal, basePayload }) ?? basePayload;
+  const payload =
+    adapter.buildPayload?.({ signal, basePayload }) ?? basePayload;
+  const custom = getStrategyManifest(signal.strategy)?.aiFeatures ?? [];
+  const frozen = signal.aiFeatureReplay?.snapshot;
+  if (frozen) validateAiFeatureSnapshot(frozen);
+  const tickerProfile =
+    signal.additionalIndicators?.tickerProfile ??
+    signal.additionalIndicators?.baseContext?.tickerProfile;
+  const hasProfile = Boolean(
+    tickerProfile ||
+      frozen?.definitions.some(({ id }) => tickerProfileFeatureIds.has(id)),
+  );
+  const indicatorFeatures = getRegisteredIndicatorEntries(
+    getTradejsProjectCwd(),
+  ).flatMap((entry) => (entry.indicator.enabled ? entry.aiFeatures ?? [] : []));
+  const definitions = [
+    ...(hasProfile ? TICKER_PROFILE_AI_FEATURES : []),
+    ...indicatorFeatures,
+    ...custom,
+  ];
+  if (!definitions.length && !signal.aiFeatureReplay?.snapshot) return payload;
+  validateAiFeatureDefinitions(definitions);
+  if (signal.aiFeatureReplay && !frozen) {
+    throw new Error(
+      'Dataset has no frozen AI features; regenerate the decision-time export',
+    );
+  }
+  if (
+    frozen &&
+    JSON.stringify(frozen.definitions) !== JSON.stringify(definitions)
+  ) {
+    throw new Error(
+      'AI feature definition changed; regenerate the decision-time export',
+    );
+  }
+  return {
+    ...payload,
+    featureSnapshot:
+      frozen ??
+      projectAiFeatures(definitions, {
+        signal: tickerProfile
+          ? {
+              ...signal,
+              additionalIndicators: {
+                ...signal.additionalIndicators,
+                tickerProfile,
+              },
+            }
+          : signal,
+        payload,
+      }),
+  };
 };
 
 export const buildAiSystemPromptAddonByStrategy = (signal: Signal): string =>

@@ -5,6 +5,7 @@ export const extractSignalFromAiDatasetRow = (row: AiDatasetRow): Signal => {
 
   return {
     ...payload.signal,
+    aiFeatureReplay: { snapshot: payload.featureSnapshot ?? null },
     strategy: payload.signal.strategy,
     figures: payload.figures ?? {},
     indicators: payload.indicators ?? {},

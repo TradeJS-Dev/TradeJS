@@ -819,6 +819,7 @@ export const main = async () => {
       const isCorrect = aiApproved === profitableTrade;
       const features = buildAiTrainEvaluationFeatureSnapshot({
         additionalIndicators: payload.additionalIndicators,
+        featureSnapshot: payload.featureSnapshot,
         mode: dumpFeatureMode,
       });
 

@@ -1,3 +1,4 @@
+import { validateAiFeatureSnapshot } from '@tradejs/core/aiFeatures';
 import type { AiPayload } from '@tradejs/types';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -578,24 +579,32 @@ const addFlattenedFeatures = ({
   segments,
   maxDepth,
   shouldSkipPath = () => false,
+  onFeatureExcluded,
 }: {
   output: AiPocketFeatureMap;
   value: unknown;
   segments: string[];
   maxDepth: number;
   shouldSkipPath?: (segments: string[]) => boolean;
+  onFeatureExcluded?: FeatureCollectionOptions['onFeatureExcluded'];
 }) => {
   if (!segments.length && !isPlainRecord(value)) {
     return;
   }
-  if (
-    segments.length > maxDepth ||
-    isOutcomePath(segments) ||
-    shouldSkipPath(segments)
-  ) {
+  if (segments.length > maxDepth || isOutcomePath(segments)) {
+    onFeatureExcluded?.({
+      path: segments.join('.'),
+      classification:
+        segments.length > maxDepth ? 'depth-limit' : 'derived-policy',
+    });
     return;
   }
+  if (shouldSkipPath(segments)) return;
   if (Array.isArray(value)) {
+    onFeatureExcluded?.({
+      path: segments.join('.'),
+      classification: 'unprojected-array',
+    });
     return;
   }
   if (isFeaturePrimitive(value)) {
@@ -619,6 +628,7 @@ const addFlattenedFeatures = ({
       segments: [...segments, key],
       maxDepth,
       shouldSkipPath,
+      onFeatureExcluded,
     });
   }
 };
@@ -889,7 +899,15 @@ export const collectAiPocketFeatureSnapshot = ({
     value: source,
     segments: [],
     maxDepth: 8,
+    onFeatureExcluded,
     shouldSkipPath: (segments) => {
+      // Registered profiles have explicit roles; never flatten their provenance/counts as inputs.
+      if (
+        segments.join('.') ===
+          'additionalIndicators.baseContext.tickerProfile' ||
+        segments.join('.') === 'additionalIndicators.tickerProfile'
+      )
+        return true;
       if (isOperatorExcluded(segments.join('.'))) {
         return true;
       }
@@ -914,6 +932,10 @@ export const collectAiPocketFeatureSnapshot = ({
         featureProfile === 'compact' &&
         isCompactFeaturePathSkipped(segments)
       ) {
+        onFeatureExcluded?.({
+          path: segments.join('.'),
+          classification: 'compact-profile',
+        });
         return true;
       }
       if (featurePolicy !== 'causal-stationary') {
@@ -949,6 +971,30 @@ export const collectAiPocketFeatureSnapshot = ({
     }
   }
 
+  const registered = payload.featureSnapshot;
+  if (registered) {
+    validateAiFeatureSnapshot(registered);
+    for (const definition of registered.definitions) {
+      const path = `registered.${definition.id}`;
+      if (isOperatorExcluded(path)) continue;
+      const value = registered.values[definition.id];
+      const classification =
+        definition.role === 'outcome' || definition.role === 'policy'
+          ? 'derived-policy'
+          : definition.role !== 'input'
+            ? definition.role
+            : featurePolicy === 'causal-stationary' && !definition.stationary
+              ? 'raw-nonstationary'
+              : value === null || value === 'unknown'
+                ? 'data-quality'
+                : 'eligible';
+      if (classification !== 'eligible') {
+        onFeatureExcluded?.({ path, classification });
+        continue;
+      }
+      features[path] = value;
+    }
+  }
   return { features, featureCoverage };
 };
 

@@ -2,6 +2,8 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/tickerProfiles.ts',
+
     'src/jev.ts',
     'src/ai.ts',
     'src/backtestArtifacts.ts',

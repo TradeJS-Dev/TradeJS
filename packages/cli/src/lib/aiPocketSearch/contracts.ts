@@ -49,7 +49,10 @@ export type AiPocketFeaturePathClassification =
 
 export type AiPocketExcludedFeatureClassification =
   | Exclude<AiPocketFeaturePathClassification, 'eligible'>
-  | 'operator-excluded';
+  | 'operator-excluded'
+  | 'compact-profile'
+  | 'unprojected-array'
+  | 'depth-limit';
 
 export type AiPocketSearchRow = AiTrainEvaluation & {
   exitTimestamp?: number | null;

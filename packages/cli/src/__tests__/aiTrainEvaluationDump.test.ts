@@ -106,3 +106,25 @@ describe('aiTrainEvaluationDump', () => {
     });
   });
 });
+
+it('retains registered decision-time features even without baseContext', () => {
+  const featureSnapshot = {
+    schema: 'tradejs-ai-features/v1' as const,
+    definitions: [],
+    values: {},
+  };
+  expect(
+    buildAiTrainEvaluationFeatureSnapshot({
+      additionalIndicators: {},
+      mode: 'gateFeatures',
+      featureSnapshot,
+    }),
+  ).toEqual({ baseContextAvailable: false, featureSnapshot });
+  expect(
+    buildAiTrainEvaluationFeatureSnapshot({
+      additionalIndicators: {},
+      mode: 'none',
+      featureSnapshot,
+    }),
+  ).toBeUndefined();
+});

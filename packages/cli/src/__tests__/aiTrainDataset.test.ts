@@ -54,6 +54,7 @@ describe('aiTrainDataset', () => {
     } as unknown as AiDatasetRow;
 
     expect(extractSignalFromAiDatasetRow(row)).toEqual({
+      aiFeatureReplay: { snapshot: null },
       signalId: 'sig-1',
       strategy: 'TrendLine',
       symbol: 'ETHUSDT',

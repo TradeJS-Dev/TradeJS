@@ -68,6 +68,7 @@ jest.mock('../tradejsConfig', () => ({
 }));
 
 jest.mock('../strategy/manifests', () => ({
+  getStrategyManifest: jest.fn(() => undefined),
   setStrategyRuntimeFactory: jest.fn(),
   getStrategyCreator: async (strategyName: string) =>
     strategyName === 'TrendLine'

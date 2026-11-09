@@ -1,3 +1,7 @@
+import {
+  loadTickerProfileContext,
+  withTickerProfile,
+} from './strategyHelpers/tickerProfiles';
 import { parseJevConfig } from '@tradejs/core/jev';
 import { assessSignalWithJev } from './jev';
 import type {
@@ -624,6 +628,21 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         interval: decisionInterval,
       }) => {
         if (!baseContext) return undefined;
+        const profileSource =
+          strategyManifest?.contextRequirements?.tickerProfiles;
+        if (profileSource) {
+          const profile = await loadTickerProfileContext({
+            ...profileSource,
+            projectRoot,
+            symbol: decisionSymbol,
+            timestamp: candle.timestamp,
+          });
+          if (!profile)
+            throw new Error(
+              'Required ticker profile is unavailable at decision time',
+            );
+          baseContext = withTickerProfile(baseContext, profile);
+        }
         if (!coreContextRequirements.has('hyperliquidWhales')) {
           return baseContext;
         }

@@ -12,6 +12,7 @@ type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
   'agent-run': () => import('./scripts/agentRun'),
+  'ticker-profiles': () => import('./scripts/tickerProfiles'),
   'ai-export': () => import('./scripts/aiExport'),
   'ai-pocket-search': () => import('./scripts/aiPocketSearch'),
   'ai-train': () => import('./scripts/aiTrain'),

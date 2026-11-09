@@ -395,6 +395,7 @@ const runBacktestPath = async () => {
     getConnectorCreatorByName: jest.fn(async () => async () => connector),
   }));
   jest.doMock('../../../node/src/strategy/manifests', () => ({
+    getStrategyManifest: jest.fn(() => undefined),
     setStrategyRuntimeFactory: jest.fn(),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
@@ -778,6 +779,14 @@ const runReplayPath = async ({
     enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
     enrichSignalWithHyperliquidWhaleContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
+  }));
+  jest.doMock('@tradejs/node/runtimeStrategies', () => ({
+    getRuntimeStrategyPackageMetadata: jest.fn(async () => ({
+      strategyPackage: '@tradejs/strategy-parity',
+      strategyPackageVersion: '1.0.0',
+      strategyDependencyVersions: { '@tradejs/strategy-kit': '3.0.1' },
+      runtimePackageVersion: '3.2.0',
+    })),
   }));
   jest.doMock('@tradejs/core/backtest', () => ({
     calculateStatsFull: jest.fn(() => ({

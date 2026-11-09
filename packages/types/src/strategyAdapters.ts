@@ -16,6 +16,7 @@ import type {
 } from './market';
 
 export interface AiPayload {
+  featureSnapshot?: import('./aiFeatures').AiFeatureSnapshot;
   signal: {
     symbol: Signal['symbol'];
     signalId: Signal['signalId'];
@@ -273,8 +274,10 @@ export type StrategyMarketContextSource =
   | 'hyperliquidWhales';
 
 export interface StrategyManifest {
+  aiFeatures?: readonly import('./aiFeatures').AiFeatureDefinition[];
   name: string;
   contextRequirements?: {
+    tickerProfiles?: { provider: string; universeId: string };
     /** Market context that must be available before strategy core evaluation. */
     core?: readonly StrategyMarketContextSource[];
   };
