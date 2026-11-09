@@ -1090,6 +1090,43 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       return positions;
     },
 
+    getEntryOrderObservation: async ({ symbol, orderId }) => {
+      const client = await getPrivateClient();
+      if (!client) throw new Error('Bybit private client is unavailable');
+      const query = { category: BYBIT_CATEGORY, symbol, orderLinkId: orderId };
+      const active = await client.getActiveOrders(query);
+      if (active.retCode !== 0)
+        throw new Error(`Bybit order observation failed: ${active.retCode}`);
+      let order = active.result.list.find(
+        (o) => o.orderLinkId === orderId && o.symbol === symbol,
+      );
+      if (!order) {
+        const history = await client.getHistoricOrders(query);
+        if (history.retCode !== 0)
+          throw new Error(`Bybit order history failed: ${history.retCode}`);
+        order = history.result.list.find(
+          (o) => o.orderLinkId === orderId && o.symbol === symbol,
+        );
+      }
+      if (!order) return null;
+      const filledQty = Number(order.cumExecQty);
+      if (!Number.isFinite(filledQty) || filledQty < 0)
+        throw new Error('Invalid Bybit cumulative execution quantity');
+      const status =
+        order.orderStatus === 'Filled'
+          ? 'filled'
+          : order.orderStatus === 'Rejected'
+            ? 'rejected'
+            : ['Cancelled', 'PartiallyFilledCanceled', 'Deactivated'].includes(
+                  order.orderStatus,
+                )
+              ? 'cancelled'
+              : filledQty > 0
+                ? 'partial'
+                : 'pending';
+      return { id: orderId, status, filledQty, positionId: orderId };
+    },
+
     getOpenPositionPnl: async () => {
       const client = await getPrivateClient();
 
@@ -1097,27 +1134,34 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
         throw new Error('Bybit private client is unavailable');
       }
 
-      const positionRes = await client.getPositionInfo({
-        category: BYBIT_CATEGORY,
-        settleCoin: 'USDT',
-      });
-
-      if (positionRes.retCode !== 0) {
-        logger.log(
-          getLogLevel(positionRes),
-          'positions pnl retCode: %s, %s',
-          positionRes.retCode,
+      const observedAt = Date.now();
+      const rows: Array<Record<string, unknown>> = [];
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      do {
+        const response = await client.getPositionInfo({
+          category: BYBIT_CATEGORY,
+          settleCoin: 'USDT',
+          limit: 200,
+          ...(cursor ? { cursor } : {}),
+        });
+        if (response.retCode !== 0)
+          throw new Error(
+            `Bybit positions request failed: ${response.retCode} ${response.retMsg ?? ''}`.trim(),
+          );
+        rows.push(
+          ...(response.result.list as unknown as Array<
+            Record<string, unknown>
+          >),
         );
-        throw new Error(
-          `Bybit positions request failed: ${positionRes.retCode} ${positionRes.retMsg ?? ''}`.trim(),
-        );
-      }
-
-      return (
-        (positionRes.result?.list ?? []) as unknown as Array<
-          Record<string, unknown>
-        >
-      )
+        cursor = response.result.nextPageCursor || undefined;
+        if (cursor) {
+          if (seen.has(cursor))
+            throw new Error('Bybit position pagination repeated cursor');
+          seen.add(cursor);
+        }
+      } while (cursor);
+      return rows
         .map<PositionPnlSnapshot | null>((item) => {
           const qty = Number(item.size ?? Number.NaN);
           const entryPrice = Number(item.avgPrice ?? Number.NaN);
@@ -1127,6 +1171,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
           const stopLossPrice = toFiniteNumberOrNull(item.stopLoss);
           const side = String(item.side ?? '');
 
+          if (qty === 0) return null;
           if (
             !Number.isFinite(qty) ||
             qty <= 0 ||
@@ -1135,7 +1180,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
             !Number.isFinite(unrealizedPnl) ||
             (side !== 'Buy' && side !== 'Sell')
           ) {
-            return null;
+            throw new Error('Invalid active Bybit position snapshot');
           }
 
           return {
@@ -1143,6 +1188,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
             qty,
             price: entryPrice,
             currentPrice,
+            observedAt,
             unrealizedPnl,
             direction: (side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
             ...(takeProfitPrice != null && takeProfitPrice > 0
@@ -1404,6 +1450,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       signal,
       leverage,
       beforeSubmit,
+      onRejected,
     }) => {
       return withBybitOrderLock(
         JSON.stringify([
@@ -1617,6 +1664,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
                     ? orderRes.retMsg.trim()
                     : `BYBIT_RETCODE_${orderRes.retCode}`;
               }
+              await onRejected?.();
               return false;
             }
 

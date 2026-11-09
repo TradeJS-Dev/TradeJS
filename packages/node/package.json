@@ -100,6 +100,11 @@
       "types": "./dist/diagnostics.d.ts",
       "import": "./dist/diagnostics.mjs",
       "require": "./dist/diagnostics.js"
+    },
+    "./portfolio": {
+      "types": "./dist/portfolio.d.ts",
+      "import": "./dist/portfolio.mjs",
+      "require": "./dist/portfolio.js"
     }
   },
   "dependencies": {

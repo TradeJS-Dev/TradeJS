@@ -182,3 +182,46 @@ export const validateAiFeatureSnapshot = (
       throw new Error(`Invalid feature value: ${d.id}`);
   }
 };
+
+/** Frozen pre-admission state, never the result of the candidate's own decision. */
+export const PORTFOLIO_AI_FEATURES: readonly AiFeatureDefinition[] = [
+  ...[
+    'positionCount',
+    'pendingEntryCount',
+    'longCount',
+    'shortCount',
+    'grossUnrealizedPnlR',
+    'openStopRiskR',
+    'largestPositionShare',
+  ].map((field) => ({
+    id: `portfolio.${field}`,
+    version: 1,
+    source: 'signal' as const,
+    path: `additionalIndicators.portfolioContext.${field}`,
+    role: 'input' as const,
+    scope: 'global' as const,
+    stationary: true,
+    unit: field.endsWith('R')
+      ? 'R'
+      : field.endsWith('Share')
+        ? 'fraction'
+        : 'count',
+    description: `Pre-entry portfolio ${field}`,
+  })),
+  ...['asOf', 'policyId', 'pricesComplete', 'unknownOwnershipCount'].map(
+    (field) => ({
+      id: `portfolio.${field}`,
+      version: 1,
+      source: 'signal' as const,
+      path: `additionalIndicators.portfolioContext.${field}`,
+      role:
+        field === 'asOf' || field === 'policyId'
+          ? ('metadata' as const)
+          : ('data-quality' as const),
+      scope: 'global' as const,
+      stationary: false,
+      unit: field === 'asOf' ? 'ms' : 'category',
+      description: `Portfolio observation ${field}`,
+    }),
+  ),
+];

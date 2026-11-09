@@ -145,6 +145,11 @@
       "types": "./dist/aiFeatures.d.ts",
       "import": "./dist/aiFeatures.mjs",
       "require": "./dist/aiFeatures.js"
+    },
+    "./portfolio": {
+      "types": "./dist/portfolio.d.ts",
+      "import": "./dist/portfolio.mjs",
+      "require": "./dist/portfolio.js"
     }
   },
   "dependencies": {

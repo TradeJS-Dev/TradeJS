@@ -271,3 +271,48 @@ it('refuses to reconstruct new features from a legacy trimmed export', () => {
   mockManifest.mockReturnValue({ name: 'Fixture', aiFeatures: [] });
   expect(() => buildAiPayloadByStrategy(replay)).not.toThrow();
 });
+
+it('round-trips pre-entry portfolio inputs and excludes observation metadata from pockets', () => {
+  const s = signal();
+  s.additionalIndicators = {
+    portfolioContext: {
+      schema: 'tradejs-portfolio-context/v1',
+      asOf: 1000,
+      policyId: 'fixture',
+      positionCount: 2,
+      pendingEntryCount: 1,
+      longCount: 1,
+      shortCount: 1,
+      grossUnrealizedPnlR: -0.5,
+      openStopRiskR: 2,
+      largestPositionShare: 0.6,
+      pricesComplete: true,
+      unknownOwnershipCount: 0,
+    },
+  };
+  const payload = buildAiPayloadByStrategy(s);
+  expect(payload.featureSnapshot?.values['portfolio.positionCount']).toBe(2);
+  payload.additionalIndicators = {};
+  const reconstructed = extractSignalFromAiDatasetRow({
+    signalId: 's',
+    strategyName: 'Fixture',
+    symbol: s.symbol,
+    direction: 'LONG',
+    timestamp: 1000,
+    profit: 10,
+    payload,
+  });
+  const replay = buildAiPayloadByStrategy(reconstructed);
+  expect(replay.featureSnapshot).toEqual(payload.featureSnapshot);
+  const { features } = collectAiPocketFeatureSnapshot({
+    payload: replay,
+    featurePolicy: 'causal-stationary',
+  });
+  expect(features['registered.portfolio.grossUnrealizedPnlR']).toBe(-0.5);
+  expect(features['registered.portfolio.pendingEntryCount']).toBe(1);
+  expect(features['registered.portfolio.asOf']).toBeUndefined();
+  expect(features['registered.portfolio.policyId']).toBeUndefined();
+  expect(
+    features['registered.portfolio.unknownOwnershipCount'],
+  ).toBeUndefined();
+});

@@ -247,6 +247,8 @@ interface ExecuteEntryOrderParams {
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
   executionLimits?: EntryExecutionLimits;
+  markPortfolioSubmitted?: (qty: number) => Promise<void>;
+  rejectPortfolioSubmission?: () => Promise<void>;
 }
 
 const resolveRuntimeTelemetryQuality = ({
@@ -359,6 +361,8 @@ export const executeEntryOrder = async ({
   recordRuntimeTrade = true,
   leverage,
   executionLimits,
+  markPortfolioSubmitted,
+  rejectPortfolioSubmission,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
   const previousPosition =
@@ -438,7 +442,20 @@ export const executeEntryOrder = async ({
       : {}),
     orderId,
     signal,
-    ...(beforeSubmit ? { beforeSubmit } : {}),
+    ...(rejectPortfolioSubmission
+      ? { onRejected: rejectPortfolioSubmission }
+      : {}),
+    ...(beforeSubmit || markPortfolioSubmitted
+      ? {
+          beforeSubmit: async (context: {
+            qty: number;
+            executionPrice?: number;
+          }) => {
+            await beforeSubmit?.(context);
+            await markPortfolioSubmitted?.(context.qty);
+          },
+        }
+      : {}),
   });
   const orderAckTime = Date.now();
   const placedQty =

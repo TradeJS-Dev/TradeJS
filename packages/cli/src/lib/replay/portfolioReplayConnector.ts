@@ -16,6 +16,7 @@ import {
   PositionLog,
   PositionLogData,
   PositionPnlSnapshot,
+  PortfolioOrderObservation,
   Signal,
   Sl,
   Tp,
@@ -94,6 +95,9 @@ export const createPortfolioReplayConnector = (
   let executionTimestamp: number | null = null;
   const positionsBySymbol = new Map<string, PositionState>();
   const currentPriceBySymbol = new Map<string, number>();
+  const markedAtBySymbol = new Map<string, number>();
+  const entryFacts = new Map<string, PortfolioOrderObservation>();
+  let portfolioObserved = false;
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
   const orderLogByStrategy = new Map<string, OrderLogData>();
@@ -404,17 +408,61 @@ export const createPortfolioReplayConnector = (
         return nextPosition as Position;
       }),
 
+    getPortfolioObservation: async (asOf, reservations) => {
+      portfolioObserved = true;
+      const pendingIds = new Set(reservations.map((r) => r.id));
+      for (const id of entryFacts.keys())
+        if (!pendingIds.has(id)) entryFacts.delete(id);
+      return {
+        asOf,
+        positions: Array.from(positionsBySymbol.values()).map(
+          ({ position, stopLossPrice }) => ({
+            id:
+              position.orderId ??
+              `${position.strategyName}:${position.symbol}:${position.timestamp}`,
+            strategy:
+              position.strategyName === UNKNOWN_STRATEGY
+                ? null
+                : position.strategyName,
+            symbol: position.symbol,
+            direction: position.direction,
+            qty: position.qty,
+            entryPrice: position.price,
+            markPrice: currentPriceBySymbol.get(position.symbol) ?? null,
+            markedAt: markedAtBySymbol.get(position.symbol) ?? null,
+            stopLossPrice,
+          }),
+        ),
+        orders: reservations.map(
+          (r) =>
+            entryFacts.get(r.id) ?? {
+              id: r.id,
+              status: 'pending',
+              filledQty: 0,
+            },
+        ),
+      };
+    },
+
     getOpenPositionPnl: async () =>
-      Array.from(positionsBySymbol.values()).map(({ position }) =>
-        getPositionPnlSnapshot({
-          position,
-          currentPrice:
-            currentPriceBySymbol.get(position.symbol) ?? position.price,
+      Array.from(positionsBySymbol.values()).map(
+        ({ position, stopLossPrice }) => ({
+          ...getPositionPnlSnapshot({
+            position,
+            currentPrice:
+              currentPriceBySymbol.get(position.symbol) ?? position.price,
+          }),
+          observedAt: markedAtBySymbol.get(position.symbol),
+          stopLossPrice,
         }),
       ),
 
     placeOrder: async (order) => {
-      const { beforeSubmit, ...submittedOrder } = order;
+      const {
+        beforeSubmit,
+        onRejected: _onRejected,
+        ...submittedOrder
+      } = order;
       if (positionsBySymbol.has(order.symbol)) {
         return false;
       }
@@ -461,6 +509,14 @@ export const createPortfolioReplayConnector = (
         stopLossPrice: null,
       };
       positionsBySymbol.set(order.symbol, positionState);
+      markedAtBySymbol.set(order.symbol, executionTimestamp ?? order.timestamp);
+      if (portfolioObserved && order.orderId)
+        entryFacts.set(order.orderId, {
+          id: order.orderId,
+          status: 'filled',
+          filledQty: order.qty,
+          positionId: order.orderId,
+        });
 
       logOrder({
         positionState,
@@ -568,6 +624,7 @@ export const createPortfolioReplayConnector = (
     advanceMarket: async ({ symbol, candle }) => {
       // Strategy signals retain their native candle time; fills follow this shared clock.
       executionTimestamp = candle.timestamp;
+      markedAtBySymbol.set(symbol, candle.timestamp);
       currentPriceBySymbol.set(symbol, candle.close);
       await checkSl({ symbol, candle });
       await checkTp({ symbol, candle });

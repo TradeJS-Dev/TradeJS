@@ -1,3 +1,4 @@
+import { getPortfolioRuntime } from './strategy/portfolioRuntime';
 import {
   loadTickerProfileContext,
   withTickerProfile,
@@ -148,6 +149,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
   const creator: StrategyCreator = async ({
     userName,
+    connectorName,
     config: baseConfig,
     symbol,
     universe: requestedUniverse,
@@ -186,6 +188,22 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    const portfolio = getPortfolioRuntime({
+      connectorName,
+      value: baseConfig?.PORTFOLIO_POLICY ?? config.PORTFOLIO_POLICY,
+      strategy: strategyName,
+      connector,
+      env,
+      userName,
+      accountId,
+      deploymentId,
+    });
+    const portfolioContext = portfolio
+      ? (now: number) =>
+          isRuntimeOrderExecutionEnabled({ config, env, connector })
+            ? portfolio.tick(now)
+            : portfolio.context(now)
+      : undefined;
     const researchPolicyValue =
       baseConfig?.RESEARCH_ENTRY_POLICY ?? config.RESEARCH_ENTRY_POLICY;
     const researchEntryPolicy =
@@ -857,6 +875,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
 
       return executeEntryDecision({
+        portfolio,
+        portfolioTime:
+          env === 'BACKTEST' || env === 'PARITY'
+            ? candle.timestamp
+            : Date.now(),
         connector,
         symbol,
         decision: pending.decision,
@@ -882,6 +905,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         coreDecisionOverride?: StrategyDecision;
       } = {},
     ) => {
+      if (portfolioContext)
+        await portfolioContext(
+          env === 'BACKTEST' || env === 'PARITY'
+            ? candle.timestamp
+            : Date.now(),
+        );
       appendCurrentMarketData(candle, btcCandle, options.ethCandle);
       const ethCandle = resolveEthCandle(candle, options.ethCandle);
       indicatorsState.setCurrentBar(candle, btcCandle, ethCandle);
@@ -1081,6 +1110,15 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
       const signal = decision.signal;
       if (signal) {
+        if (portfolio)
+          signal.additionalIndicators = {
+            ...signal.additionalIndicators,
+            portfolioContext: await portfolioContext!(
+              env === 'BACKTEST' || env === 'PARITY'
+                ? decision.entryContext.timestamp
+                : Date.now(),
+            ),
+          };
         if (runtimeLineage) signal.runtimeLineage = runtimeLineage;
         if (universe) signal.universe = universe;
         if (assetClass) signal.assetClass = assetClass;
@@ -1343,6 +1381,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       }
 
       return executeEntryDecision({
+        portfolio,
+        portfolioTime:
+          env === 'BACKTEST' || env === 'PARITY'
+            ? candle.timestamp
+            : Date.now(),
         connector,
         symbol,
         decision,

@@ -18,3 +18,5 @@ export * from './research';
 export * from './mcp';
 export * from './tickerProfile';
 export * from './aiFeatures';
+
+export * from './portfolio';

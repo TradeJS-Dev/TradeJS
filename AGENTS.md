@@ -1022,6 +1022,16 @@ market snapshots; prepare them cache-only from an explicit USDT universe and do
 not delete them with research payloads. Benchmark hot-path changes against the
 same source/config/history fixture and report actual strategy compatibility.
 
+## Portfolio execution policies
+
+Before changing portfolio limits, profit exits, opposite-fill exits or portfolio
+AI inputs, read `PORTFOLIO_POLICIES.md`. Keep rules in the pure core and use the
+same coordinator in runtime and shared replay. Never equate order acknowledgement
+with fill or close acknowledgement with disappearance. Persist capacity before
+submission, include pending orders, and fail closed on uncertain ownership or
+state. Isolated symbol backtests cannot validate portfolio rules. Preserve the
+pre-admission feature snapshot and test no-order mode as well as enabled execution.
+
 ## Reuse tools created during a task
 
 Before completing a task, review every new helper, script and analysis tool for

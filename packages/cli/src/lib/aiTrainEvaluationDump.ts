@@ -25,6 +25,7 @@ const BASE_CONTEXT_FEATURE_SECTIONS = [
   'mtf',
   'gateFeatures',
   'tickerProfile',
+  'portfolioContext',
 ] as const;
 
 const asRecord = (value: unknown): JsonRecord | null =>

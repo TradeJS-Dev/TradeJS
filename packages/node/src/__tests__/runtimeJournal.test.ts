@@ -1,9 +1,19 @@
+const mockDeleteRuntimeTradeReference = jest.fn();
+const mockGetDataStrict = jest.fn();
+const mockSetDataStrict = jest.fn();
+const mockSetHashJsonFieldStrict = jest.fn();
 const mockDelKey = jest.fn();
 const mockGetData = jest.fn();
 const mockSetData = jest.fn();
 const mockSetHashJsonField = jest.fn();
 
 jest.mock('@tradejs/infra/redis', () => ({
+  deleteRuntimeTradeReference: (...args: unknown[]) =>
+    mockDeleteRuntimeTradeReference(...args),
+  getDataStrict: (...args: unknown[]) => mockGetDataStrict(...args),
+  setDataStrict: (...args: unknown[]) => mockSetDataStrict(...args),
+  setHashJsonFieldStrict: (...args: unknown[]) =>
+    mockSetHashJsonFieldStrict(...args),
   delKey: (...args: unknown[]) => mockDelKey(...args),
   getData: (...args: unknown[]) => mockGetData(...args),
   redisKeys: {
@@ -464,4 +474,68 @@ describe('runtimeJournal', () => {
       'users:root:runtime:active:BTCUSDT',
     );
   });
+});
+
+test('portfolio close updates the exact old trade and conditionally removes its active pointer', async () => {
+  mockGetDataStrict.mockResolvedValue({
+    orderId: 'old',
+    strategy: 'Fixture',
+    symbol: 'AUSDT',
+    direction: 'LONG',
+    qty: 1,
+    entryPrice: 100,
+    entryTimestamp: 1000,
+    status: 'active',
+  });
+  await markRuntimeTradeClosed({
+    userName: 'test',
+    symbol: 'AUSDT',
+    strategy: 'Fixture',
+    expectedOrderId: 'old',
+    exitPrice: 120,
+    exitTimestamp: 2000,
+  });
+  expect(mockSetDataStrict).toHaveBeenCalledWith(
+    'users:test:runtime:trade:old',
+    expect.objectContaining({ orderId: 'old', status: 'closed' }),
+    expect.anything(),
+  );
+  expect(mockDeleteRuntimeTradeReference).toHaveBeenCalledWith(
+    'users:test:runtime:active:AUSDT',
+    'old',
+  );
+  mockGetDataStrict.mockResolvedValue({
+    orderId: 'old',
+    strategy: 'Fixture',
+    symbol: 'AUSDT',
+    direction: 'LONG',
+    qty: 1,
+    entryPrice: 100,
+    entryTimestamp: 1000,
+    status: 'closed',
+    exitTimestamp: 2000,
+    exitPrice: 120,
+  });
+  await markRuntimeTradeClosed({
+    userName: 'test',
+    symbol: 'AUSDT',
+    strategy: 'Fixture',
+    expectedOrderId: 'old',
+    exitTimestamp: 3000,
+    exitPrice: 130,
+  });
+  expect(mockSetDataStrict).toHaveBeenLastCalledWith(
+    'users:test:runtime:trade:old',
+    expect.objectContaining({ exitTimestamp: 2000, exitPrice: 120 }),
+    expect.anything(),
+  );
+  mockSetDataStrict.mockRejectedValueOnce(new Error('storage unavailable'));
+  await expect(
+    markRuntimeTradeClosed({
+      userName: 'test',
+      symbol: 'AUSDT',
+      strategy: 'Fixture',
+      expectedOrderId: 'old',
+    }),
+  ).rejects.toThrow('storage unavailable');
 });

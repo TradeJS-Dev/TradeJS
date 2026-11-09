@@ -1,3 +1,4 @@
+import type { PortfolioCoordinator } from '../portfolio';
 import { logger } from '@tradejs/infra/logger';
 import {
   executeEntryOrder,
@@ -11,6 +12,7 @@ import {
   EntrySubmissionValidationError,
 } from './entryExecutionValidation';
 import {
+  createRuntimeOrderId,
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
 } from '../runtimeJournal';
@@ -235,7 +237,7 @@ export const handleProtectDecision = async ({
   return decision.code;
 };
 
-export const executeEntryDecision = async ({
+const executeAdmittedEntryDecision = async ({
   connector,
   symbol,
   decision,
@@ -250,7 +252,11 @@ export const executeEntryDecision = async ({
   recordRuntimeJournal,
   invokeStageHooks,
   notifyRuntimeError,
+  markPortfolioSubmitted,
+  rejectPortfolioSubmission,
 }: {
+  markPortfolioSubmitted?: (qty: number) => Promise<void>;
+  rejectPortfolioSubmission?: () => Promise<void>;
   connector: Connector;
   symbol: string;
   decision: EntryDecision;
@@ -328,6 +334,8 @@ export const executeEntryDecision = async ({
           : {}),
         signal,
         beforePlaceOrder,
+        markPortfolioSubmitted,
+        rejectPortfolioSubmission,
         recordRuntimeTrade: recordRuntimeJournal,
         executionLimits: resolveEntryExecutionLimits(
           hookCtx.strategyConfig,
@@ -486,3 +494,41 @@ export const executeEntryDecision = async ({
 
   return signal ?? decision.code;
 };
+
+export async function executeEntryDecision(
+  params: Parameters<typeof executeAdmittedEntryDecision>[0] & {
+    portfolio?: PortfolioCoordinator;
+    portfolioTime?: number;
+  },
+) {
+  if (!params.portfolio) return executeAdmittedEntryDecision(params);
+  const { decision, portfolio } = params;
+  const signal = decision.signal;
+  if (!signal || decision.orderPlan.positionIntent === 'increase')
+    return 'PORTFOLIO_REQUIRES_NEW_SIGNAL_POSITION';
+  signal.orderId ??= createRuntimeOrderId(signal.strategy);
+  const result = await portfolio.submit(
+    params.portfolioTime ?? decision.entryContext.timestamp,
+    {
+      id: signal.orderId,
+      signalId: signal.signalId,
+      strategy: signal.strategy,
+      symbol: params.symbol,
+      direction: decision.entryContext.direction,
+      qty: decision.orderPlan.qty,
+      timestamp: decision.entryContext.timestamp,
+    },
+    (markPortfolioSubmitted, rejectPortfolioSubmission) =>
+      executeAdmittedEntryDecision({
+        ...params,
+        markPortfolioSubmitted,
+        rejectPortfolioSubmission,
+      }),
+  );
+  if (result.reason) {
+    signal.orderStatus = 'failed';
+    signal.orderFailureReason = result.reason;
+    return signal;
+  }
+  return result.value;
+}

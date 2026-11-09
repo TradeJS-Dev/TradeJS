@@ -397,6 +397,94 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it.each(['Filled', 'PartiallyFilled', 'Cancelled', 'Rejected'])(
+    'observes authoritative order state %s by exact link id',
+    async (orderStatus) => {
+      const client = {
+        getActiveOrders: jest.fn(async () => ({
+          retCode: 0,
+          result: { list: [] },
+        })),
+        getHistoricOrders: jest.fn(async () => ({
+          retCode: 0,
+          result: {
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                orderLinkId: 'entry',
+                orderStatus,
+                cumExecQty:
+                  orderStatus === 'Filled'
+                    ? '1'
+                    : orderStatus === 'PartiallyFilled'
+                      ? '.5'
+                      : '0',
+              },
+            ],
+          },
+        })),
+      };
+      mockedGetClient.mockResolvedValue(client as any);
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      expect(
+        await connector.getEntryOrderObservation?.({
+          symbol: 'BTCUSDT',
+          orderId: 'entry',
+        }),
+      ).toMatchObject({
+        id: 'entry',
+        status: (
+          {
+            Filled: 'filled',
+            PartiallyFilled: 'partial',
+            Cancelled: 'cancelled',
+            Rejected: 'rejected',
+          } as Record<string, string>
+        )[orderStatus],
+      });
+      expect(client.getHistoricOrders).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLinkId: 'entry', symbol: 'BTCUSDT' }),
+      );
+    },
+  );
+  it('reads all position pages and rejects a failed continuation instead of returning a partial basket', async () => {
+    const row = (symbol: string) => ({
+      symbol,
+      size: '1',
+      avgPrice: '100',
+      markPrice: '120',
+      unrealisedPnl: '20',
+      side: 'Buy',
+    });
+    const client = {
+      getPositionInfo: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: { list: [row('BTCUSDT')], nextPageCursor: 'next' },
+        })
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: { list: [row('ETHUSDT')], nextPageCursor: '' },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    expect(
+      (await connector.getOpenPositionPnl?.())?.map((p) => p.symbol),
+    ).toEqual(['BTCUSDT', 'ETHUSDT']);
+    expect(client.getPositionInfo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: 'next', limit: 200 }),
+    );
+    client.getPositionInfo
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: { list: [row('BTCUSDT')], nextPageCursor: 'next' },
+      })
+      .mockResolvedValueOnce({ retCode: 10006, retMsg: 'rate limited' });
+    await expect(connector.getOpenPositionPnl?.()).rejects.toThrow('10006');
+  });
+
   it('maps open position pnl snapshots from exchange response', async () => {
     const client = {
       getPositionInfo: jest.fn().mockResolvedValue({
@@ -443,6 +531,7 @@ describe('ByBitConnectorCreator', () => {
         price: 100,
         currentPrice: 120,
         unrealizedPnl: 30,
+        observedAt: expect.any(Number),
         direction: 'LONG',
         takeProfitPrice: 130,
         stopLossPrice: 95,

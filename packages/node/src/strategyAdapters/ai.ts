@@ -3,6 +3,7 @@ import { getTradejsProjectCwd } from '../tradejsConfig';
 import {
   projectAiFeatures,
   TICKER_PROFILE_AI_FEATURES,
+  PORTFOLIO_AI_FEATURES,
   validateAiFeatureDefinitions,
   validateAiFeatureSnapshot,
 } from '@tradejs/core/aiFeatures';
@@ -87,7 +88,14 @@ export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
   const indicatorFeatures = getRegisteredIndicatorEntries(
     getTradejsProjectCwd(),
   ).flatMap((entry) => (entry.indicator.enabled ? entry.aiFeatures ?? [] : []));
+  const hasPortfolio = Boolean(
+    signal.additionalIndicators?.portfolioContext ||
+      frozen?.definitions.some(({ id }) =>
+        PORTFOLIO_AI_FEATURES.some((d) => d.id === id),
+      ),
+  );
   const definitions = [
+    ...(hasPortfolio ? PORTFOLIO_AI_FEATURES : []),
     ...(hasProfile ? TICKER_PROFILE_AI_FEATURES : []),
     ...indicatorFeatures,
     ...custom,

@@ -100,6 +100,7 @@ export type BacktestDetectorOptimizedStrategy = Strategy & {
 export type BacktestPriceMode = 'mid' | 'close' | 'open';
 
 export interface StrategyConfig {
+  PORTFOLIO_POLICY?: import('./portfolio').PortfolioPolicyConfig;
   RESEARCH_ENTRY_POLICY?: import('./research').ResearchEntryPolicy;
   JEV?: JevConfig;
   ENABLE?: boolean;

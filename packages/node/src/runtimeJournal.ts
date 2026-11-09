@@ -5,6 +5,10 @@ import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import { logger } from '@tradejs/infra/logger';
 import {
   delKey,
+  deleteRuntimeTradeReference,
+  getDataStrict,
+  setDataStrict,
+  setHashJsonFieldStrict,
   getData,
   redisKeys,
   setData,
@@ -269,6 +273,7 @@ export const getActiveRuntimeTrade = async (params: {
 };
 
 export const markRuntimeTradeClosed = async (params: {
+  expectedOrderId?: string;
   userName?: string;
   symbol: string;
   strategy?: string;
@@ -281,6 +286,7 @@ export const markRuntimeTradeClosed = async (params: {
 }) => {
   const {
     userName,
+    expectedOrderId,
     symbol,
     strategy,
     exitPrice,
@@ -294,13 +300,17 @@ export const markRuntimeTradeClosed = async (params: {
     return null;
   }
 
-  const existing = await getActiveRuntimeTrade({
-    userName,
-    symbol,
-    accountId,
-    deploymentId,
-  });
-  if (!existing) {
+  const existing = expectedOrderId
+    ? ((await getDataStrict(
+        redisKeys.runtimeTrade(userName, expectedOrderId),
+      )) as RuntimeTradeRecord | null)
+    : await getActiveRuntimeTrade({
+        userName,
+        symbol,
+        accountId,
+        deploymentId,
+      });
+  if (!existing || (expectedOrderId && existing.orderId !== expectedOrderId)) {
     return null;
   }
   const orderId = existing.orderId;
@@ -326,49 +336,66 @@ export const markRuntimeTradeClosed = async (params: {
           })
         : existing.closedPnl ?? existing.currentPnl ?? null;
 
-  const next: RuntimeTradeRecord = {
-    ...existing,
-    status: 'closed',
-    currentPrice: resolvedExitPrice,
-    currentPnl: resolvedClosedPnl,
-    closedPnl: resolvedClosedPnl,
-    exitPrice: resolvedExitPrice,
-    exitTimestamp:
-      typeof exitTimestamp === 'number' && Number.isFinite(exitTimestamp)
-        ? exitTimestamp
-        : now(),
-    exitType: exitType ?? existing.exitType ?? null,
-    lastSyncedAt: now(),
-  };
+  const next: RuntimeTradeRecord =
+    expectedOrderId && existing.status === 'closed'
+      ? existing
+      : {
+          ...existing,
+          status: 'closed',
+          currentPrice: resolvedExitPrice,
+          currentPnl: resolvedClosedPnl,
+          closedPnl: resolvedClosedPnl,
+          exitPrice: resolvedExitPrice,
+          exitTimestamp:
+            typeof exitTimestamp === 'number' && Number.isFinite(exitTimestamp)
+              ? exitTimestamp
+              : now(),
+          exitType: exitType ?? existing.exitType ?? null,
+          lastSyncedAt: now(),
+        };
   const dayKey = getRuntimeStorageDayKey(existing.entryTimestamp);
   const closeDayKey = getRuntimeStorageDayKey(next.exitTimestamp!);
 
   try {
     await Promise.all([
-      setData(redisKeys.runtimeTrade(userName, orderId), next, {
-        expire: TTL_1M,
-      }),
-      setHashJsonField(
+      (expectedOrderId ? setDataStrict : setData)(
+        redisKeys.runtimeTrade(userName, orderId),
+        next,
+        {
+          expire: TTL_1M,
+        },
+      ),
+      (expectedOrderId ? setHashJsonFieldStrict : setHashJsonField)(
         redisKeys.runtimeTradeBucket(userName, dayKey),
         orderId,
         next,
         { expire: TTL_1M },
       ),
-      setHashJsonField(
+      (expectedOrderId ? setHashJsonFieldStrict : setHashJsonField)(
         redisKeys.runtimeClosedTradeBucket(userName, closeDayKey),
         orderId,
         next,
         { expire: TTL_1M },
       ),
-      delKey(
-        redisKeys.runtimeActiveTrade(
-          userName,
-          symbol,
-          deploymentId ?? accountId,
-        ),
-      ),
+      expectedOrderId
+        ? deleteRuntimeTradeReference(
+            redisKeys.runtimeActiveTrade(
+              userName,
+              symbol,
+              deploymentId ?? accountId,
+            ),
+            expectedOrderId,
+          )
+        : delKey(
+            redisKeys.runtimeActiveTrade(
+              userName,
+              symbol,
+              deploymentId ?? accountId,
+            ),
+          ),
     ]);
   } catch (error) {
+    if (expectedOrderId) throw error;
     logger.error(
       'runtime trade close journal failed: %s %s',
       symbol,

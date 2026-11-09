@@ -905,7 +905,8 @@ export const collectAiPocketFeatureSnapshot = ({
       if (
         segments.join('.') ===
           'additionalIndicators.baseContext.tickerProfile' ||
-        segments.join('.') === 'additionalIndicators.tickerProfile'
+        segments.join('.') === 'additionalIndicators.tickerProfile' ||
+        segments.join('.') === 'additionalIndicators.portfolioContext'
       )
         return true;
       if (isOperatorExcluded(segments.join('.'))) {

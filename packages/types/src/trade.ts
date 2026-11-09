@@ -444,6 +444,8 @@ export type Order = {
   leverage?: number;
   orderId?: string;
   signal?: Signal;
+  /** Only an authoritative rejection; never call for a timeout or ambiguous response. */
+  onRejected?: () => Promise<void>;
   /** Await after preparation/quantity normalization, immediately before submission. */
   beforeSubmit?: (context: {
     qty: number;
@@ -462,6 +464,7 @@ export type Position = {
 };
 
 export interface PositionPnlSnapshot extends Position {
+  observedAt?: number;
   currentPrice: number;
   unrealizedPnl: number;
   takeProfitPrice?: number | null;
@@ -619,6 +622,11 @@ export type GetOrderBookDepth = (
 ) => Promise<OrderBookDepth | null>;
 
 export interface Connector {
+  /** Coherent simulation observation; live ownership is resolved by the runtime journal. */
+  getPortfolioObservation?: (
+    asOf: number,
+    reservations: readonly import('./portfolio').PortfolioReservation[],
+  ) => Promise<import('./portfolio').PortfolioObservation>;
   capabilities: ConnectorCapabilities;
   universe: MarketUniverse;
   accountId?: string;
@@ -632,6 +640,11 @@ export interface Connector {
   getOpenPositionPnl?: GetOpenPositionPnl;
   getClosedPnl?: GetClosedPnl;
   getEntryExecutions?: GetEntryExecutions;
+  /** Authoritative order status; null means unknown, never a rejection. */
+  getEntryOrderObservation?: (params: {
+    symbol: string;
+    orderId: string;
+  }) => Promise<import('./portfolio').PortfolioOrderObservation | null>;
   placeOrder: PlaceOrder;
   setPositionProtection?: SetPositionProtection;
   setTakeProfits: SetTakeProfits;

@@ -185,6 +185,55 @@ export const mcpStorage = {
   },
 };
 
+/** Runtime portfolio state only; configuration remains Git-owned. No expiry or fail-open fallback. */
+export const portfolioStateStorage = {
+  async read(key: string): Promise<string | null> {
+    return (await requireReadyRedis()).get(`tradejs:portfolio:v1:${key}`);
+  },
+  async compare(
+    key: string,
+    previous: string | null,
+    next: string,
+  ): Promise<boolean> {
+    const result = await (
+      await requireReadyRedis()
+    ).eval(
+      "local v=redis.call('GET',KEYS[1]); if (ARGV[1]=='absent' and v) or (ARGV[1]=='present' and v~=ARGV[2]) then return 0 end; redis.call('SET',KEYS[1],ARGV[3]); return 1",
+      1,
+      `tradejs:portfolio:v1:${key}`,
+      previous === null ? 'absent' : 'present',
+      previous ?? '',
+      next,
+    );
+    return result === 1;
+  },
+};
+
+/** Delete a journal's active pointer only if it still identifies the expected order. */
+export const deleteRuntimeTradeReference = async (
+  key: string,
+  orderId: string,
+): Promise<void> => {
+  await (
+    await requireReadyRedis()
+  ).eval(
+    "local t=redis.call('TYPE',KEYS[1]).ok; if t=='none' then return 0 end; local v; if t=='string' then v=redis.call('GET',KEYS[1]) else v=redis.call('JSON.GET',KEYS[1]) end; if cjson.decode(v).orderId~=ARGV[1] then return 0 end; return redis.call('DEL',KEYS[1])",
+    1,
+    key,
+    orderId,
+  );
+};
+export const setHashJsonFieldStrict = async <T>(
+  key: string,
+  field: string,
+  value: T,
+  options: Options = {},
+): Promise<void> => {
+  const redis = await requireReadyRedis();
+  await redis.hset(key, field, toJson(value));
+  if (options.expire) await redis.expire(key, options.expire);
+};
+
 /** One bounded SCAN page. Cursor is opaque; an empty page is not end-of-data. */
 export const scanDataKeys = async (prefix: string, cursor = '0') => {
   if (!/^\d+$/.test(cursor)) throw new Error('Invalid storage cursor');

@@ -153,6 +153,8 @@ const customJestConfig = {
     },
   },
   moduleNameMapper: {
+    '^@tradejs/core/portfolio$': '<rootDir>/packages/core/src/portfolio',
+    '^@tradejs/node/portfolio$': '<rootDir>/packages/node/src/portfolio',
     '^@tradejs/core/aiFeatures$': '<rootDir>/packages/core/src/aiFeatures',
     '^@tradejs/core/tickerProfiles$':
       '<rootDir>/packages/core/src/tickerProfiles',

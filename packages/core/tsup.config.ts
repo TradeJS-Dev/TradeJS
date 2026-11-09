@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/portfolio.ts',
     'src/tickerProfiles.ts',
     'src/aiFeatures.ts',
 

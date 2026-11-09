@@ -177,3 +177,13 @@ Generate the static field inventory with
 `node bin/audit-context-schema.mjs --out <report.json>`. It expands public types,
 including inherited fields, and marks arrays requiring explicit projections.
 This inventory does not establish runtime usage or causal eligibility by itself.
+
+## Portfolio state
+
+`additionalIndicators.portfolioContext` belongs to the shared execution runtime,
+not a strategy detector or `baseContext`. See `PORTFOLIO_POLICIES.md` for its
+clock, ownership and fixed-R semantics. Register only pre-admission measurements
+as input features. Preserve missing values, frozen snapshots and metadata roles
+through export/reconstruction; never derive context from completed outcomes.
+Portfolio-dependent gate changes require chronological shared replay because
+admission changes the later portfolio state.

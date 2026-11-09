@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/portfolio.ts',
     'src/jev.ts',
     'src/mcp.ts',
     'src/diagnostics.ts',
