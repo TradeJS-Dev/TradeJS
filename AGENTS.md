@@ -1021,3 +1021,27 @@ is explicitly part of the task. Monthly ticker profiles are immutable shared
 market snapshots; prepare them cache-only from an explicit USDT universe and do
 not delete them with research payloads. Benchmark hot-path changes against the
 same source/config/history fixture and report actual strategy compatibility.
+
+## Reuse tools created during a task
+
+Before completing a task, review every new helper, script and analysis tool for
+future reuse. If it has a concrete repeatable use, add it to its owning package
+or workflow in the same task instead of leaving the only copy in `output/`,
+`data/`, a temporary directory or a research note. Check existing tools first;
+extend their public seam rather than creating a competing implementation.
+
+- Framework-neutral calculations and CLI reports belong in the framework;
+  strategy logic belongs in its strategy repository. Workflow-only automation
+  may live in the owning skill. Follow the workspace routing map.
+- Replace study dates, absolute personal paths, strategy names and mutable
+  global assumptions with explicit validated inputs. Keep a small typed entry
+  point, reproducible outputs, usage instructions and meaningful tests.
+- Keep research payloads, secrets and generated reports outside Git. Preserve
+  source/config/input lineage and distinguish diagnostic samples from complete
+  populations. Do not copy historical study state into production code.
+- Do not build a speculative generic framework for a genuinely one-off step.
+  State briefly in the handoff why a new tool was retained or left study-local.
+  This rule does not authorize unrelated commits, publishing or deployment.
+
+For reusable trade snapshots, pocket comparisons and drawdown episode charts,
+use `research-visuals`; read `RESEARCH_VISUALS.md` for input and evidence rules.

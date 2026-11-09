@@ -11,6 +11,7 @@ type ScriptModule = {
 type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
+  'research-visuals': () => import('./scripts/researchVisuals'),
   'agent-run': () => import('./scripts/agentRun'),
   'ticker-profiles': () => import('./scripts/tickerProfiles'),
   'ai-export': () => import('./scripts/aiExport'),
