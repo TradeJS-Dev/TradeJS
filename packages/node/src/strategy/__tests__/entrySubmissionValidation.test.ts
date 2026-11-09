@@ -48,11 +48,17 @@ describe('final submission validation', () => {
     const connector = makeConnector();
     const getQuote = jest.fn(async () => quote(9.729));
     connector.getTopOfBookTicker = getQuote;
-    const validate = createEntrySubmissionValidation(params(connector));
+    const onValidated = jest.fn();
+    const validate = createEntrySubmissionValidation({
+      ...params(connector),
+      onValidated,
+    });
     expect(getQuote).not.toHaveBeenCalled();
     getQuote.mockResolvedValue(quote(9.763));
-    await expect(validate?.({ qty: 1.9 })).rejects.toThrow(
-      'ENTRY_RR_BELOW_MIN_AT_SUBMISSION',
+    await expect(validate?.({ qty: 1.9 })).resolves.toBeUndefined();
+    expect(onValidated).toHaveBeenCalledWith(
+      expect.objectContaining({ ask: 9.763 }),
+      expect.objectContaining({ belowMinimumNetRiskRatio: true }),
     );
     expect(getQuote).toHaveBeenCalledTimes(1);
   });
@@ -119,7 +125,7 @@ describe('final submission validation', () => {
     const validate = createEntrySubmissionValidation(params(connector));
     await expect(
       validate?.({ qty: 1.9, executionPrice: 9.763 }),
-    ).rejects.toThrow('ENTRY_RR_BELOW_MIN_AT_SUBMISSION');
+    ).resolves.toBeUndefined();
     expect(connector.getTopOfBookTicker).not.toHaveBeenCalled();
   });
   it('uses bid for SHORT and protects profitable direction geometry', async () => {

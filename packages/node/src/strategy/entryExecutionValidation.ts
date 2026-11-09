@@ -104,15 +104,16 @@ export const validateEntryExecution = ({
     throw new EntrySubmissionValidationError(
       'ENTRY_ECONOMICS_INPUTS_UNAVAILABLE',
     );
-  if (
+  const belowMinimumNetRiskRatio =
     limits.minimumNetRiskRatio != null &&
-    netRiskRatio <= limits.minimumNetRiskRatio
-  )
-    throw new EntrySubmissionValidationError(
-      'ENTRY_RR_BELOW_MIN_AT_SUBMISSION',
-    );
+    netRiskRatio <= limits.minimumNetRiskRatio;
   const riskExceeded =
     limits.maxLossValue != null &&
     plannedLossValue > limits.maxLossValue * (1 + 1e-9);
-  return { netRiskRatio, plannedLossValue, riskExceeded };
+  return {
+    netRiskRatio,
+    plannedLossValue,
+    riskExceeded,
+    belowMinimumNetRiskRatio,
+  };
 };

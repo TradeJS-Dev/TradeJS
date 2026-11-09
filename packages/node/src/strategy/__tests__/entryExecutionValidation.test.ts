@@ -17,9 +17,9 @@ describe('final entry economics', () => {
     ['ANKR', 0.003913, 0.003695, 0.0042542000000000005, 4616],
     ['TNSR', 0.0277, 0.02625, 0.029984000000000004, 692.5],
   ])(
-    'rejects the recorded November 4 %s ask before submission',
+    'flags low RR for the recorded November 4 %s ask',
     (_symbol, price, stop, target, qty) => {
-      expect(() =>
+      expect(
         validateEntryExecution({
           direction: 'LONG',
           price,
@@ -28,7 +28,7 @@ describe('final entry economics', () => {
           takeProfitPrice: target,
           limits,
         }),
-      ).toThrow('ENTRY_RR_BELOW_MIN_AT_SUBMISSION');
+      ).toMatchObject({ belowMinimumNetRiskRatio: true });
     },
   );
   it('reports risk above the budget without blocking an otherwise valid entry', () => {
@@ -43,6 +43,7 @@ describe('final entry economics', () => {
       }),
     ).toMatchObject({
       riskExceeded: true,
+      belowMinimumNetRiskRatio: false,
       plannedLossValue: expect.closeTo(5.195, 12),
     });
   });

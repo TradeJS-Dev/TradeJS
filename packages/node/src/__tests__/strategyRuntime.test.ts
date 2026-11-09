@@ -3170,11 +3170,13 @@ describe('strategyRuntime', () => {
     );
   });
 
-  it('records a final economics rejection as a skipped entry without an operational failure', async () => {
+  it('records invalid protection at submission as a skipped entry without an operational failure', async () => {
     const onRuntimeError = jest.fn(async () => {});
     setStrategyManifestHooks('TrendLine', { onRuntimeError });
     mockExecuteEntryOrder.mockRejectedValueOnce(
-      new EntrySubmissionValidationError('ENTRY_RR_BELOW_MIN_AT_SUBMISSION'),
+      new EntrySubmissionValidationError(
+        'INVALID_ENTRY_PROTECTION_AT_SUBMISSION',
+      ),
     );
     const { strategy } = await makeRuntime(() => makeDecisionEntry());
     const result = await strategy(
@@ -3184,7 +3186,7 @@ describe('strategyRuntime', () => {
     expect(result).toEqual(
       expect.objectContaining({
         orderStatus: 'skipped',
-        orderSkipReason: 'ENTRY_RR_BELOW_MIN_AT_SUBMISSION',
+        orderSkipReason: 'INVALID_ENTRY_PROTECTION_AT_SUBMISSION',
         allocatorDecision: expect.objectContaining({ status: 'rejected' }),
       }),
     );

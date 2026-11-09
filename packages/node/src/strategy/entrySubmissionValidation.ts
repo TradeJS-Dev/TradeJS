@@ -213,6 +213,15 @@ export const createEntrySubmissionValidation = ({
         direction === 'LONG' ? Math.max(...prices) : Math.min(...prices),
       limits,
     });
+    if (economics.belowMinimumNetRiskRatio) {
+      logger.warn(
+        'entry submission warning: %s %s ENTRY_RR_BELOW_MIN_AT_SUBMISSION (RR %s, threshold %s)',
+        symbol,
+        direction,
+        economics.netRiskRatio,
+        limits.minimumNetRiskRatio,
+      );
+    }
     onValidated?.(snapshot, economics);
   };
 };
