@@ -23,8 +23,12 @@ const percentile = (sorted: number[], probability: number) => {
 };
 
 export const calendarClusterBootstrap = (params: {
-  control: CoreResearchTrade[];
-  candidate: CoreResearchTrade[];
+  control: ReadonlyArray<
+    Pick<CoreResearchTrade, 'exitTimestamp' | 'netProfit'>
+  >;
+  candidate: ReadonlyArray<
+    Pick<CoreResearchTrade, 'exitTimestamp' | 'netProfit'>
+  >;
   clusterDays: number;
   iterations: number;
   confidenceLevel: number;
@@ -41,7 +45,10 @@ export const calendarClusterBootstrap = (params: {
       buckets.set(bucket, { control: 0, candidate: 0 });
     }
   }
-  const add = (trades: CoreResearchTrade[], field: 'control' | 'candidate') => {
+  const add = (
+    trades: typeof params.control,
+    field: 'control' | 'candidate',
+  ) => {
     for (const trade of trades) {
       const bucket = Math.floor(trade.exitTimestamp / clusterMs);
       const current = buckets.get(bucket) ?? { control: 0, candidate: 0 };

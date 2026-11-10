@@ -63,6 +63,17 @@ Before preregistration, read
 It defines candidate-specific gate isolation, common partitions, the final
 composition ledger, and the mandatory visual artifacts.
 
+## Support before outcomes
+
+Before evaluating PnL, record the mechanism, event identity, minimum useful
+effect and available support by calendar block, symbol and market episode.
+Compare two rules on the same setup when possible. For different events,
+declare causal comparability fields and inspect overlap before seeing outcomes.
+Exact ticker/week pairing is optional when it leaves too little support.
+For existing outcome-blind traces, use the optional `research:core prepare`
+support check in `CORE_RESEARCH.md`. Distinguish missing evidence, insufficient
+support, mechanism failure and economic rejection.
+
 ## Required contour
 
 1. Start a new immutable research lineage. Freeze data bounds, point-in-time

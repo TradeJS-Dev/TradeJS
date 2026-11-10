@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { comparePortfolioReports } from './portfolioComparison';
 import type { Direction, PositionLogData } from '@tradejs/types';
 import type { HistoricalSignalsReplayResult } from './historicalSignalsReplay';
 
@@ -278,6 +279,7 @@ export const writePortfolioReport = async ({
   window,
   lineage,
   command,
+  compareTo,
 }: {
   projectRoot: string;
   timestamp: string;
@@ -285,6 +287,7 @@ export const writePortfolioReport = async ({
   window: { start: number; end: number };
   lineage: Record<string, unknown>;
   command: string;
+  compareTo?: string;
 }) => {
   const outputDir = path.resolve(projectRoot, 'data/replay/output');
   await fs.mkdir(outputDir, { recursive: true });
@@ -367,7 +370,7 @@ export const writePortfolioReport = async ({
     drawdownSvg: path.join(outputDir, `${prefix}-drawdown.svg`),
     html: path.join(outputDir, `${prefix}.html`),
   };
-  const report = {
+  const baseReport = {
     schema: 'tradejs-portfolio-backtest/v1',
     generatedAt: new Date().toISOString(),
     command,
@@ -390,7 +393,19 @@ export const writePortfolioReport = async ({
       strategies: strategySeries.map(({ name, points }) => ({ name, points })),
     },
     trades,
+    ...(replayResult.portfolioDiagnostics
+      ? { portfolioDiagnostics: replayResult.portfolioDiagnostics }
+      : {}),
   };
+  const comparison = compareTo
+    ? comparePortfolioReports(
+        JSON.parse(
+          await fs.readFile(path.resolve(projectRoot, compareTo), 'utf8'),
+        ),
+        baseReport,
+      )
+    : undefined;
+  const report = { ...baseReport, ...(comparison ? { comparison } : {}) };
   const checksum = createHash('sha256')
     .update(JSON.stringify(report))
     .digest('hex');
@@ -398,8 +413,11 @@ export const writePortfolioReport = async ({
     'Production strategy order, at most one open position per symbol, and fixed-risk symbol batches merged by canonical realized PnL.';
   const markdown = `# Portfolio Backtest\n\n- Window: ${report.window.startIso} .. ${report.window.endIso}\n- Strategies: ${report.counts.strategies}\n- Signals: ${report.counts.signals}\n- Completed trades: ${report.counts.completedTrades}\n- Portfolio semantics: ${semantics}\n- Report checksum: \`${checksum}\`\n- Command: \`${command}\`\n\n![Strategy PnL overlay](./${path.basename(paths.equitySvg)})\n\n![Portfolio drawdown](./${path.basename(paths.drawdownSvg)})\n\n## Portfolio metrics\n\n${markdownTable(portfolioRows)}\n\n## Strategy metrics\n\n${markdownTable(strategyRows)}\n`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Portfolio Backtest</title><style>body{font-family:Inter,system-ui,sans-serif;margin:32px;color:#0f172a}h1,h2{margin-top:32px}.meta{color:#475569}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:8px;border:1px solid #e2e8f0;text-align:right}th:nth-child(-n+3),td:nth-child(-n+3){text-align:left}.chart{overflow:auto;border:1px solid #e2e8f0;margin:16px 0}</style></head><body><h1>Portfolio Backtest</h1><p class="meta">${escapeHtml(report.window.startIso)} .. ${escapeHtml(report.window.endIso)} · ${report.counts.strategies} strategies · ${trades.length} completed trades · MAX_LOSS_VALUE=${escapeHtml(String(lineage.maxLossValue))}</p><p class="meta">${escapeHtml(semantics)}</p><div class="chart">${equitySvg}</div><div class="chart">${drawdownSvg}</div><h2>Portfolio metrics</h2>${metricTable(portfolioRows)}<h2>Strategy metrics</h2>${metricTable(strategyRows)}<h2>Lineage</h2><pre>${escapeHtml(JSON.stringify(lineage, null, 2))}</pre></body></html>`;
+  const comparisonMarkdown = comparison
+    ? `\n## Paired portfolio comparison\n\n- Net PnL delta: ${display(comparison.delta.pnl)}\n- Closed trades delta: ${comparison.delta.trades}\n- Realized MaxDD delta: ${display(comparison.delta.realizedMaxDrawdown)}\n\n${comparison.limitations.join(' ')}\n`
+    : '';
   await Promise.all([
-    fs.writeFile(paths.markdown, markdown, 'utf8'),
+    fs.writeFile(paths.markdown, markdown + comparisonMarkdown, 'utf8'),
     fs.writeFile(
       paths.json,
       `${JSON.stringify({ ...report, checksum }, null, 2)}\n`,
@@ -407,7 +425,16 @@ export const writePortfolioReport = async ({
     ),
     fs.writeFile(paths.equitySvg, equitySvg, 'utf8'),
     fs.writeFile(paths.drawdownSvg, drawdownSvg, 'utf8'),
-    fs.writeFile(paths.html, html, 'utf8'),
+    fs.writeFile(
+      paths.html,
+      comparison
+        ? html.replace(
+            '</body>',
+            `<h2>Paired portfolio comparison</h2><pre>${escapeHtml(JSON.stringify(comparison, null, 2))}</pre></body>`,
+          )
+        : html,
+      'utf8',
+    ),
   ]);
   return { ...paths, checksum };
 };

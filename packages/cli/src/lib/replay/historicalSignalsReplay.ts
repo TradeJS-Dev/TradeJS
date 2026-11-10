@@ -253,6 +253,7 @@ export const runHistoricalSignalsReplay = async ({
   showProgress = true,
   collectSkipEvidence = true,
   collectSignals = true,
+  collectPortfolioDiagnostics = false,
   decisionTraceTargets,
 }: {
   preparedRun: PreparedRunEnvironment;
@@ -262,6 +263,7 @@ export const runHistoricalSignalsReplay = async ({
   showProgress?: boolean;
   collectSkipEvidence?: boolean;
   collectSignals?: boolean;
+  collectPortfolioDiagnostics?: boolean;
   decisionTraceTargets?: ReplayDecisionTraceTarget[];
 }): Promise<HistoricalSignalsReplayResult> => {
   const memory = createReplayMemoryProfile();
@@ -272,6 +274,7 @@ export const runHistoricalSignalsReplay = async ({
   const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
   const replayConnector = createPortfolioReplayConnector(
     preparedRun.marketConnector,
+    collectPortfolioDiagnostics,
   );
   const connectorName = getConnectorName(preparedRun.marketConnector);
   const referenceData =
@@ -355,6 +358,7 @@ export const runHistoricalSignalsReplay = async ({
       connector: replayConnector,
       collectSkipEvidence,
       collectSignals,
+      collectPortfolioDiagnostics,
       decisionTraceTargets,
       hooks: projectHooks,
       hookContext,
@@ -395,6 +399,7 @@ export const runHistoricalSignalsReplay = async ({
     runtimeLineages: plan.runtimeLineages,
     replayLineageScopes: execution.replayLineageScopes,
     replayDecisionTraces: execution.replayDecisionTraces,
+    portfolioDiagnostics: execution.portfolioDiagnostics,
   });
   memory?.('result:collected');
   return result;

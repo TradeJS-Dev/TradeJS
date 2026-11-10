@@ -136,6 +136,8 @@ export const main = async () => {
         `Prepared ${loaded.spec.researchId}: ${result.paths.researchDir}`,
       ),
     );
+    if (result.manifest.support)
+      console.log(`Support: ${result.manifest.support} (support.json)`);
     return;
   }
   if (command === 'analyze') {

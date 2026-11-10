@@ -68,7 +68,13 @@ describe('historical signals replay skip evidence', () => {
         },
         connector: {
           advanceMarket: jest.fn(),
+          getMarkedEquity: jest
+            .fn()
+            .mockReturnValueOnce(2)
+            .mockReturnValueOnce(null)
+            .mockReturnValue(-3),
         } as any,
+        collectPortfolioDiagnostics: true,
         hookContext: {} as any,
         decisionTraceTargets: [
           timestamp,
@@ -100,6 +106,11 @@ describe('historical signals replay skip evidence', () => {
       },
     );
 
+    expect(execution.portfolioDiagnostics).toEqual({
+      markedMaxDrawdown: null,
+      unpricedCycles: 1,
+      admissions: [],
+    });
     const replayLineageScopes = execution.replayLineageScopes;
     expect(replayLineageScopes).toEqual([
       expect.objectContaining({
@@ -394,6 +405,26 @@ describe('historical signals replay skip evidence', () => {
                     .mockResolvedValueOnce('BACKTEST_ENTRY_DELAY_QUEUED:1')
                     .mockResolvedValueOnce(signal),
                 },
+                {
+                  strategyName: 'Other',
+                  strategyConfig: { INTERVAL: '15' },
+                  runtimeLineage,
+                  run: jest
+                    .fn()
+                    .mockResolvedValueOnce({
+                      ...signal,
+                      strategy: 'Other',
+                      orderStatus: 'completed',
+                    })
+                    .mockResolvedValueOnce({
+                      ...signal,
+                      strategy: 'Other',
+                      signalId: 'rejected',
+                      timestamp: nextTimestamp,
+                      orderStatus: 'failed',
+                      orderFailureReason: 'PORTFOLIO_POSITION_LIMIT',
+                    }),
+                },
               ],
             },
           ],
@@ -401,7 +432,14 @@ describe('historical signals replay skip evidence', () => {
           sharedReplayKeyPrefixes: [],
           runtimeLineages: [],
         },
-        connector: { advanceMarket: jest.fn() } as any,
+        connector: {
+          advanceMarket: jest.fn(),
+          getMarkedEquity: jest
+            .fn()
+            .mockReturnValueOnce(5)
+            .mockReturnValueOnce(-3),
+        } as any,
+        collectPortfolioDiagnostics: true,
         hookContext: {} as any,
         collectSignals: false,
         decisionTraceTargets: [
@@ -433,6 +471,14 @@ describe('historical signals replay skip evidence', () => {
       },
     );
 
+    expect(execution.portfolioDiagnostics).toMatchObject({
+      markedMaxDrawdown: 8,
+      unpricedCycles: 0,
+      admissions: [
+        { strategy: 'Other', status: 'filled' },
+        { strategy: 'Other', status: 'capacity-rejected' },
+      ],
+    });
     expect(enrichSignal).toHaveBeenCalledWith(signal);
     expect(execution.signals).toEqual([]);
     expect(execution.replayDecisionTraces).toMatchObject([

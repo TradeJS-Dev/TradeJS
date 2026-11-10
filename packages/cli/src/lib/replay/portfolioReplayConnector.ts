@@ -52,6 +52,7 @@ export type PortfolioReplayConnector = Connector & {
   __tradejsTestConnector: true;
   advanceMarket: (params: { symbol: string; candle: Candle }) => Promise<void>;
   getReplayArtifacts: () => ReplayArtifacts;
+  getMarkedEquity: () => number | null;
 };
 
 const getStrategyName = ({
@@ -89,12 +90,14 @@ const getPositionPnlSnapshot = ({
 
 export const createPortfolioReplayConnector = (
   connector: Connector,
+  observeEquity = false,
 ): PortfolioReplayConnector => {
   let state = {};
   let amount = INITIAL_BACKTEST_AMOUNT;
   let executionTimestamp: number | null = null;
   const positionsBySymbol = new Map<string, PositionState>();
   const currentPriceBySymbol = new Map<string, number>();
+  const equityMarks = observeEquity ? new Map<string, number>() : undefined;
   const markedAtBySymbol = new Map<string, number>();
   const entryFacts = new Map<string, PortfolioOrderObservation>();
   let portfolioObserved = false;
@@ -625,10 +628,25 @@ export const createPortfolioReplayConnector = (
       // Strategy signals retain their native candle time; fills follow this shared clock.
       executionTimestamp = candle.timestamp;
       markedAtBySymbol.set(symbol, candle.timestamp);
+      equityMarks?.set(symbol, candle.close);
       currentPriceBySymbol.set(symbol, candle.close);
       await checkSl({ symbol, candle });
       await checkTp({ symbol, candle });
       currentPriceBySymbol.set(symbol, candle.close);
+    },
+
+    getMarkedEquity: () => {
+      if (!equityMarks) return null;
+      let equity = amount - INITIAL_BACKTEST_AMOUNT;
+      for (const { position } of positionsBySymbol.values()) {
+        const mark = equityMarks.get(position.symbol);
+        if (mark == null || !Number.isFinite(mark)) return null;
+        equity += getPositionPnlSnapshot({
+          position,
+          currentPrice: mark,
+        }).unrealizedPnl;
+      }
+      return round(equity);
     },
 
     getReplayArtifacts: () => ({

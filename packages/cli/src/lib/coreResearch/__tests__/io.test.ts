@@ -10,12 +10,13 @@ import {
   validateCoreResearchParentLineage,
   validateCoreResearchSpec,
   verifyCoreResearchArtifacts,
+  verifyPreparedSupport,
   verifyCoreResearchLedger,
   writeCoreResearchStageIndex,
   writeJsonAtomic,
 } from '../io';
 import type { CoreResearchResult, CoreResearchSpec } from '../types';
-import { makeSpec, makeVariant } from '../__fixtures__/fixtures';
+import { makeSpec, makeVariant, START } from '../__fixtures__/fixtures';
 
 describe('core research immutable storage and lineage', () => {
   let tempRoot = '';
@@ -75,6 +76,75 @@ describe('core research immutable storage and lineage', () => {
         parentResearchIds: [],
       }),
     ).toThrow('require parentResearchIds');
+  });
+
+  it('reports setup support without outcomes and stops before analysis on insufficient overlap', async () => {
+    const a = path.join(tempRoot, 'control-trace.jsonl');
+    const b = path.join(tempRoot, 'candidate-trace.jsonl');
+    const event = {
+      schema: 'tradejs-core-research-trace/v1',
+      event: 'signal_emitted',
+      timestamp: START,
+      strategy: 'FixtureStrategy',
+      symbol: 'AAAUSDT',
+      direction: 'LONG',
+      setupIdentity: 'setup',
+      setupIdentitySource: 'strategy-context',
+      signalId: 'signal',
+    };
+    await fs.writeFile(
+      a,
+      [event, { ...event, event: 'position_exited', netProfit: 12345 }]
+        .map((value) => JSON.stringify(value))
+        .join('\n'),
+    );
+    await fs.writeFile(
+      b,
+      [
+        event,
+        {
+          ...event,
+          setupIdentity: 'fallback',
+          setupIdentitySource: 'signal-time-fallback',
+        },
+      ]
+        .map((value) => JSON.stringify(value))
+        .join('\n'),
+    );
+    const spec = localSpec({
+      support: { minimumEvents: 1, minimumBlocks: 1, minimumCommonSetups: 2 },
+      variants: [
+        makeVariant({ id: 'control', role: 'control', traceFiles: [a] }),
+        makeVariant({ id: 'candidate', role: 'candidate', traceFiles: [b] }),
+      ],
+    });
+    const prepared = await prepareCoreResearch(spec);
+    expect(prepared.manifest.support).toBe('insufficient-support');
+    const report = await fs.readFile(
+      path.join(prepared.paths.researchDir, 'support.json'),
+      'utf8',
+    );
+    expect(report).not.toContain('12345');
+    expect(JSON.parse(report)).toMatchObject({
+      comparisons: [{ candidate: 'candidate', commonSetups: 1 }],
+      variants: [
+        { events: 1, fallbackRows: 0 },
+        { events: 1, fallbackRows: 1 },
+      ],
+    });
+    await expect(verifyPreparedSupport(prepared)).rejects.toThrow(
+      'insufficient-support',
+    );
+    const supported = await prepareCoreResearch({
+      ...spec,
+      researchId: 'supported-test',
+      support: { ...spec.support!, minimumCommonSetups: 1 },
+    });
+    await expect(verifyPreparedSupport(supported)).resolves.toBeUndefined();
+    await fs.appendFile(a, '\n');
+    await expect(verifyPreparedSupport(supported)).rejects.toThrow(
+      'trace changed',
+    );
   });
 
   it('prepares idempotently but rejects a changed spec under the same research id', async () => {

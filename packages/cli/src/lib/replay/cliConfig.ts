@@ -82,6 +82,10 @@ args.option(
   false,
 );
 args.option(
+  'portfolioCompareTo',
+  'Compare a full shared replay with a prior portfolio report JSON',
+);
+args.option(
   ['B', 'portfolioBatchSize'],
   'Maximum number of symbols held in memory by one portfolio replay batch',
   4,

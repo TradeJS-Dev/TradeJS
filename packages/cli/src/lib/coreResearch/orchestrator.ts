@@ -12,6 +12,7 @@ import {
   appendCoreResearchLedger,
   canonicalJson,
   prepareCoreResearch,
+  verifyPreparedSupport,
   readCoreResearchLedger,
   sha256File,
   sha256Json,
@@ -78,6 +79,7 @@ const analyzeCoreResearchPrepared = async (
 ) => {
   const prepared = options.prepared ?? (await prepareCoreResearch(spec));
   const { paths, specSha256 } = prepared;
+  await verifyPreparedSupport(prepared);
   if (prepared.manifest.status === 'completed') {
     throw new Error(
       `Research ${spec.researchId} is already completed and immutable; use verify or create a new researchId`,
@@ -372,6 +374,7 @@ const analyzeCoreResearchPrepared = async (
     'utf8',
   );
   const artifactHashes: Record<string, string> = {
+    ...prepared.manifest.artifactHashes,
     'spec.json': await sha256File(paths.specPath),
     'result.json': await sha256File(paths.resultPath),
     'comparison.json': await sha256File(paths.comparisonPath),
@@ -717,6 +720,7 @@ export const runCoreResearch = async (params: {
   const { spec } = params;
   const cwd = path.resolve(params.cwd ?? process.cwd());
   const prepared = await prepareCoreResearch(spec);
+  await verifyPreparedSupport(prepared);
   const resolvedVariants: CoreResearchSpec['variants'] = [];
   for (const variant of spec.variants) {
     if (!variant.command?.length) {

@@ -3,21 +3,7 @@ import readline from 'node:readline';
 import path from 'node:path';
 import type { CoreResearchTraceEvent } from '@tradejs/types';
 
-export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
-  const events: Record<string, number> = Object.create(null);
-  const skipCounts: Record<string, number> = Object.create(null);
-  const exitCodes: Record<string, number> = Object.create(null);
-  const policyRejections: Record<string, number> = {};
-  const policyExamples: Array<{
-    timestamp: number;
-    symbol: string;
-    decision: NonNullable<
-      Extract<
-        CoreResearchTraceEvent,
-        { event: 'signal_emitted' | 'entry_rejected' | 'entry_executed' }
-      >['researchEntryDecision']
-    >;
-  }> = [];
+export async function* readCoreResearchTrace(filePaths: string[]) {
   for (const inputPath of filePaths) {
     const filePath = path.resolve(inputPath);
     const input = createReadStream(filePath);
@@ -35,33 +21,53 @@ export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
             `${filePath}:${index + 1} contains invalid trace JSON: ${String(error)}`,
           );
         }
-        events[event.event] = (events[event.event] ?? 0) + 1;
-        if (event.event === 'skip_summary') {
-          for (const [reason, count] of Object.entries(event.skipCounts)) {
-            skipCounts[reason] = (skipCounts[reason] ?? 0) + count;
-          }
-        }
-        if (event.event === 'position_exited' && event.exitCode) {
-          exitCodes[event.exitCode] = (exitCodes[event.exitCode] ?? 0) + 1;
-        }
-        if (
-          'researchEntryDecision' in event &&
-          event.researchEntryDecision &&
-          !event.researchEntryDecision.allowed
-        ) {
-          const reason = event.researchEntryDecision.reason;
-          policyRejections[reason] = (policyRejections[reason] ?? 0) + 1;
-          if (policyExamples.length < 20)
-            policyExamples.push({
-              timestamp: event.timestamp,
-              symbol: event.symbol,
-              decision: event.researchEntryDecision,
-            });
-        }
+        yield event;
       }
     } finally {
       lines.close();
       input.destroy();
+    }
+  }
+}
+
+export const summarizeCoreResearchTrace = async (filePaths: string[] = []) => {
+  const events: Record<string, number> = Object.create(null);
+  const skipCounts: Record<string, number> = Object.create(null);
+  const exitCodes: Record<string, number> = Object.create(null);
+  const policyRejections: Record<string, number> = {};
+  const policyExamples: Array<{
+    timestamp: number;
+    symbol: string;
+    decision: NonNullable<
+      Extract<
+        CoreResearchTraceEvent,
+        { event: 'signal_emitted' | 'entry_rejected' | 'entry_executed' }
+      >['researchEntryDecision']
+    >;
+  }> = [];
+  for await (const event of readCoreResearchTrace(filePaths)) {
+    events[event.event] = (events[event.event] ?? 0) + 1;
+    if (event.event === 'skip_summary') {
+      for (const [reason, count] of Object.entries(event.skipCounts)) {
+        skipCounts[reason] = (skipCounts[reason] ?? 0) + count;
+      }
+    }
+    if (event.event === 'position_exited' && event.exitCode) {
+      exitCodes[event.exitCode] = (exitCodes[event.exitCode] ?? 0) + 1;
+    }
+    if (
+      'researchEntryDecision' in event &&
+      event.researchEntryDecision &&
+      !event.researchEntryDecision.allowed
+    ) {
+      const reason = event.researchEntryDecision.reason;
+      policyRejections[reason] = (policyRejections[reason] ?? 0) + 1;
+      if (policyExamples.length < 20)
+        policyExamples.push({
+          timestamp: event.timestamp,
+          symbol: event.symbol,
+          decision: event.researchEntryDecision,
+        });
     }
   }
   return {

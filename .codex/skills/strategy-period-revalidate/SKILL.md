@@ -26,7 +26,10 @@ cannot be reproduced.
 ## Run
 
 1. Freeze the new common end time, maximum common start, point-in-time universe,
-   costs, execution assumptions, and candidate identities before evaluation.
+   costs, execution assumptions, candidate identities and acceptance rules before
+   evaluation. Record previously inspected calendar windows and mark them
+   retrospective. For later observation, bind runtime scorecards and execution
+   calibration to the exact frozen composition and candidate lineage.
 2. Use existing cached history first. If the requested new tail is absent,
    fetch only that missing tail through the supported TradeJS data path, then
    fingerprint the resulting coverage; never silently rewrite old history.

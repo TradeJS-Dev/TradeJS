@@ -180,6 +180,22 @@ one immutable long export. Cold-start/reset, delay stress, non-fast confirmation
 and runtime parity are separate evidence. Attach their files through optional
 variant fields; missing stages remain `missing` in the evidence matrix.
 
+## Optional support preflight
+
+Add `support: { "minimumEvents": 25, "minimumBlocks": 3 }` to a new spec with
+control `traceFiles`. The numbers are examples. Choose them for the hypothesis
+before inspecting economics. Set `minimumCommonSetups` only when the spec has
+traces for every candidate and the same setup is the intended comparison unit.
+
+`research:core prepare` writes a checksum-bound `support.json` from signal and
+rejection events within the requested universe, side and window. It reports
+unique timestamps, symbols, active calendar blocks, explicit setup overlap and
+fallback identity rows. These are support counts, not independent observations.
+A control-only preflight says nothing about support of a future candidate.
+Run/analyze stop on missing evidence or insufficient support when the check is
+configured. Trace-dependent feature overlap and lost events before signal
+emission require hypothesis-specific evidence. Existing specs are unchanged.
+
 ## Trace semantics
 
 `yarn backtest ... --researchTrace` writes compact `signal_emitted` or

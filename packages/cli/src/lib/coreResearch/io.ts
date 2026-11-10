@@ -6,6 +6,7 @@ import {
   parseBacktestExecutionCosts,
 } from '@tradejs/core/backtest';
 import path from 'node:path';
+import { assessCoreResearchSupport } from './support';
 import {
   CORE_RESEARCH_LEDGER_SCHEMA,
   CORE_RESEARCH_SCHEMA,
@@ -27,6 +28,7 @@ type CoreResearchManifest = {
   completedAt?: string;
   artifactHashes: Record<string, string>;
   selection?: Record<string, unknown>;
+  support?: Awaited<ReturnType<typeof assessCoreResearchSupport>>['status'];
 };
 
 export const canonicalJson = (value: unknown): string => {
@@ -309,6 +311,24 @@ export const validateCoreResearchSpec = (value: unknown): CoreResearchSpec => {
     Boolean(spec.artifacts?.ledgerPath?.trim()),
     'artifacts.ledgerPath is required',
   );
+  if (spec.support !== undefined) {
+    assert(
+      spec.support && typeof spec.support === 'object',
+      'support must be an object',
+    );
+    for (const [key, value] of [
+      ['minimumEvents', spec.support.minimumEvents],
+      ['minimumBlocks', spec.support.minimumBlocks],
+      ...(spec.support.minimumCommonSetups === undefined
+        ? []
+        : [['minimumCommonSetups', spec.support.minimumCommonSetups]]),
+    ]) {
+      assert(
+        typeof value === 'number' && Number.isSafeInteger(value) && value > 0,
+        `support.${key} must be a positive integer`,
+      );
+    }
+  }
   return spec;
 };
 
@@ -539,15 +559,55 @@ export const prepareCoreResearch = async (spec: CoreResearchSpec) => {
       return { paths, specSha256, manifest: existingManifest };
     }
   }
+  const supportSources = spec.support
+    ? await Promise.all(
+        [
+          ...new Set(
+            spec.variants.flatMap((variant) => variant.traceFiles ?? []),
+          ),
+        ].map(async (file) => ({
+          file: path.resolve(file),
+          sha256: await sha256File(file).catch((error) => {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+            throw error;
+          }),
+        })),
+      )
+    : [];
+  const missingSources = supportSources.filter(
+    (source) => source.sha256 === null,
+  );
+  const support = spec.support
+    ? missingSources.length
+      ? {
+          schema: 'tradejs-core-research-support/v1',
+          status: 'missing-evidence' as const,
+          criteria: spec.support,
+        }
+      : await assessCoreResearchSupport(spec, spec.support)
+    : undefined;
+  const supportPath = path.join(paths.researchDir, 'support.json');
+  if (support) {
+    for (const source of supportSources) {
+      if (
+        source.sha256 !== null &&
+        source.sha256 !== (await sha256File(source.file))
+      )
+        throw new Error('Support trace changed during preparation');
+    }
+    await writeJsonAtomic(supportPath, { ...support, sources: supportSources });
+  }
   await writeJsonAtomic(paths.specPath, spec);
   const manifest: CoreResearchManifest = {
     schema: 'tradejs-core-research-manifest/v1',
     researchId: spec.researchId,
     specSha256,
     status: 'prepared',
+    ...(support ? { support: support.status } : {}),
     createdAt: spec.createdAt,
     artifactHashes: {
       'spec.json': await sha256File(paths.specPath),
+      ...(support ? { 'support.json': await sha256File(supportPath) } : {}),
     },
   };
   await writeJsonAtomic(paths.manifestPath, manifest);
@@ -565,6 +625,32 @@ export const prepareCoreResearch = async (spec: CoreResearchSpec) => {
     });
   }
   return { paths, specSha256, manifest };
+};
+
+export const verifyPreparedSupport = async (
+  prepared: Awaited<ReturnType<typeof prepareCoreResearch>>,
+) => {
+  if (!prepared.manifest.support) return;
+  if (prepared.manifest.support !== 'supported') {
+    throw new Error(
+      `Research preflight: ${prepared.manifest.support}; see support.json`,
+    );
+  }
+  const file = path.join(prepared.paths.researchDir, 'support.json');
+  const content = await fs.readFile(file);
+  if (
+    createHash('sha256').update(content).digest('hex') !==
+    prepared.manifest.artifactHashes['support.json']
+  ) {
+    throw new Error('Support report checksum mismatch');
+  }
+  const { sources } = JSON.parse(content.toString()) as {
+    sources: Array<{ file: string; sha256: string }>;
+  };
+  for (const source of sources) {
+    if (source.sha256 !== (await sha256File(source.file)))
+      throw new Error('Support trace changed after preparation');
+  }
 };
 
 export const verifyCoreResearchArtifacts = async (spec: CoreResearchSpec) => {

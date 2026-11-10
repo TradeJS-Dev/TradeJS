@@ -21,6 +21,7 @@ export type HistoricalReplayExecutionContext = {
   connector: PortfolioReplayConnector;
   collectSkipEvidence?: boolean;
   collectSignals?: boolean;
+  collectPortfolioDiagnostics?: boolean;
   decisionTraceTargets?: ReplayDecisionTraceTarget[];
   hooks?: TradejsConfigHooks;
   hookContext: TradejsConfigSignalsHookContext;
@@ -56,8 +57,19 @@ export type HistoricalReplayExecutionAdapters = {
   releaseReplayCache(keyPrefix: string): void;
 };
 
+export type PortfolioReplayDiagnostics = {
+  markedMaxDrawdown: number | null;
+  unpricedCycles: number;
+  admissions: Array<{
+    key: string;
+    strategy: string;
+    status: 'filled' | 'capacity-rejected';
+  }>;
+};
+
 export type HistoricalReplayExecutionResult = {
   signals: Signal[];
+  portfolioDiagnostics?: PortfolioReplayDiagnostics;
   abortedCycles: number;
   replayLineageScopes: RuntimeLineageScopeRecord[];
   replayDecisionTraces: ReplayDecisionTrace[];
@@ -116,6 +128,24 @@ export const executeHistoricalReplay = async (
     context.collectSkipEvidence,
   );
   const decisionTrace = createReplayDecisionTrace(context.decisionTraceTargets);
+  const portfolioDiagnostics: PortfolioReplayDiagnostics | undefined =
+    context.collectPortfolioDiagnostics
+      ? { markedMaxDrawdown: 0, unpricedCycles: 0, admissions: [] }
+      : undefined;
+  let equityPeak = 0;
+  const observeEquity = () => {
+    if (!portfolioDiagnostics) return;
+    const equity = context.connector.getMarkedEquity();
+    if (equity === null) {
+      portfolioDiagnostics.unpricedCycles++;
+      return;
+    }
+    equityPeak = Math.max(equityPeak, equity);
+    portfolioDiagnostics.markedMaxDrawdown = Math.max(
+      portfolioDiagnostics.markedMaxDrawdown ?? 0,
+      equityPeak - equity,
+    );
+  };
   const reportProgress = (timestamp: number) => {
     if (adapters.progress.enabled === false) return;
     adapters.progress.tick({
@@ -161,6 +191,7 @@ export const executeHistoricalReplay = async (
           }
         }
         advanceAbortedCycle(cycleSymbols, timestamp);
+        observeEquity();
         reportProgress(timestamp);
         continue;
       }
@@ -214,6 +245,26 @@ export const executeHistoricalReplay = async (
             result,
           });
           if (result && typeof result !== 'string') {
+            if (portfolioDiagnostics) {
+              const status =
+                result.orderFailureReason === 'PORTFOLIO_POSITION_LIMIT'
+                  ? 'capacity-rejected'
+                  : result.orderStatus === 'completed'
+                    ? 'filled'
+                    : undefined;
+              if (status)
+                portfolioDiagnostics.admissions.push({
+                  strategy: strategyRuntime.strategyName,
+                  status,
+                  key: JSON.stringify([
+                    strategyRuntime.strategyName,
+                    result.symbol,
+                    result.direction,
+                    result.timestamp,
+                    result.signalId,
+                  ]),
+                });
+            }
             result.runtimeLineage = strategyRuntime.runtimeLineage;
             await adapters.enrichSignal(result);
             cycleSignals.push(result);
@@ -230,13 +281,17 @@ export const executeHistoricalReplay = async (
         status: 'completed',
         durationMs: adapters.clock.now() - cycleStartedAt,
       });
+      observeEquity();
       reportProgress(timestamp);
     }
   } finally {
     releaseHistoricalReplayCaches(context.plan, adapters);
   }
 
+  if (portfolioDiagnostics?.unpricedCycles)
+    portfolioDiagnostics.markedMaxDrawdown = null;
   return {
+    ...(portfolioDiagnostics ? { portfolioDiagnostics } : {}),
     signals,
     abortedCycles,
     replayLineageScopes: skipEvidence.values(),

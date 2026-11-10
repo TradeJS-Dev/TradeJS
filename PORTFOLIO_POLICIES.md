@@ -136,3 +136,24 @@ portfolio submissions use a distinct order link ID, carried through the signal
 and journal, so the previous rejection cannot reconcile the new reservation.
 Failure during retry preparation leaves no submitted reservation. An unknown
 network outcome still retains its reservation and is never retried blindly.
+
+
+## Compare a candidate in the portfolio
+
+Run the incumbent and the candidate via the existing replay with
+`--cacheOnly --portfolioReport --portfolioBatchSize <universe-size>`.
+Use explicit common bounds, the same cached inputs and risk, and one strategy
+replacement in the research composition. Pass the incumbent JSON to the
+candidate run using `--portfolioCompareTo <incumbent-report.json>`.
+Both reports must record a single shared batch. A batched portfolio report
+is an aggregate of separate simulations and cannot evaluate shared limits.
+Replay rejects batching when portfolio policies are configured.
+
+The comparison validates the incumbent checksum, recorded scope, strategy
+order and risk/policies, then adds realized PnL/MaxDD deltas, recovery,
+strategy contributions and a paired calendar bootstrap. Shared reports also
+measure equity drawdown at cycle boundaries using last observed candle closes.
+The displacement count includes identical signals of unchanged strategies that
+filled in one run and were rejected by the position cap in the other. Missing
+diagnostics are reported as null. Coverage summaries do not prove byte-level
+identity of all market inputs. Freeze source data separately.

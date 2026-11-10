@@ -195,6 +195,11 @@ args.option(
 );
 args.option(['B', 'reportFile'], 'Explicit Markdown report file path', '');
 args.option(['j', 'json'], 'Print structured JSON summary', false);
+args.option(
+  ['b', 'walkForwardPlan'],
+  'Optional JSON plan for A/B/C inside a sealed development partition',
+  '',
+);
 args.option(['O', 'output'], 'Write structured JSON summary to file', '');
 
 const flags = args.parse(process.argv);

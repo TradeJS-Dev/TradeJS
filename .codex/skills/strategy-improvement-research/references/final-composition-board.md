@@ -176,6 +176,17 @@ ranking or charting. Use the same half-open comparison window and terminal
 zero-trade windows. A gate without sufficient untouched support remains visible
 as `research-only` or `blocked`; the chart is not evidence of readiness.
 
+## Portfolio contribution
+
+For a finalist intended for a shared portfolio, compare the incumbent portfolio
+with the same ordered composition replacing one strategy. Use identical
+cached inputs, risk and policies. Run both as one shared replay batch and pass
+the incumbent portfolio JSON to the candidate replay with
+`--portfolioCompareTo`. Compare realized PnL, drawdown, recovery and contributions
+from unchanged strategies. Read marked drawdown and confirmed displacement
+from the shared replay diagnostics. A change in trade count alone is not
+evidence of capacity displacement.
+
 ## Mandatory visual artifacts
 
 Create the board from authoritative structured reports with:

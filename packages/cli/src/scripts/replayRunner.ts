@@ -208,6 +208,7 @@ const finishReplay = async ({
         window,
         lineage: portfolioLineage ?? {},
         command: process.argv.join(' '),
+        compareTo: replayFlags.portfolioCompareTo,
       })
     : null;
   if (portfolioReport) {
@@ -531,6 +532,26 @@ export const replayBacktest = async () => {
       `Invalid --portfolioBatchSize: ${String(replayFlags.portfolioBatchSize)}`,
     );
   }
+  if (
+    replayFlags.portfolioCompareTo &&
+    (!replayFlags.portfolioReport || !replayFlags.cacheOnly)
+  ) {
+    throw new Error(
+      '--portfolioCompareTo requires --portfolioReport and --cacheOnly',
+    );
+  }
+  if (
+    replayFlags.portfolioReport &&
+    preparedRun.tickers.length > portfolioBatchSize &&
+    (replayFlags.portfolioCompareTo ||
+      replayStrategies.some(({ strategyConfig }) =>
+        Boolean(strategyConfig.PORTFOLIO_POLICY),
+      ))
+  ) {
+    throw new Error(
+      'Portfolio policies and comparisons require a single shared batch; set --portfolioBatchSize to at least the number of tickers',
+    );
+  }
   const runtimeStrategies =
     replayFlags.tickers && !replayFlags.portfolioReport
       ? replayStrategies.map(
@@ -562,6 +583,9 @@ export const replayBacktest = async () => {
       showProgress: !replayFlags.portfolioReport,
       collectSkipEvidence: !replayFlags.portfolioReport,
       collectSignals: !replayFlags.portfolioReport,
+      collectPortfolioDiagnostics: Boolean(
+        replayFlags.portfolioReport && tickerBatches.length === 1,
+      ),
       decisionTraceTargets: replayFlags.portfolioReport
         ? undefined
         : evidenceMetadata?.decisionTraceTargets,
@@ -614,6 +638,9 @@ export const replayBacktest = async () => {
           portfolioSemantics:
             'production strategy order and one concurrent position per symbol; fixed-risk symbol batches are merged by canonical realized PnL',
           portfolioBatchSize,
+          batchCount: tickerBatches.length,
+          connector: preparedRun.connectorName,
+          interval: replayInterval,
           tickers: preparedRun.tickers,
           candleCoverage: candleCoverage ?? null,
           binanceMarketContextRows: portfolioMarketContextRows ?? null,

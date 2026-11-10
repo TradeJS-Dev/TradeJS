@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import { sha256File, writeJsonAtomic } from '../coreResearch/io';
+import { runGateWalkForward, validateGateWalkForwardPlan } from './walkForward';
 import { resolveAiPocketSearchCommandOptions } from './commandOptions';
 import {
   createAiPocketSearchDatasetProgressPresenter,
@@ -65,6 +68,56 @@ export const runAiPocketSearchCommand = async ({
   const preparedDataset = await prepareAiPocketSearchDataset(options);
   const { filePaths, totalRows, selectedRows, sinceTimestamp } =
     preparedDataset;
+
+  if (typeof flags.walkForwardPlan === 'string' && flags.walkForwardPlan) {
+    if (
+      !options.explicitFile ||
+      filePaths.length !== 1 ||
+      !options.outputPath ||
+      !options.sealTest ||
+      options.testSince == null ||
+      options.scope !== 'all' ||
+      options.recent ||
+      options.skip
+    ) {
+      throw new Error(
+        '--walkForwardPlan requires one --file, --output, --testSince, --sealTest, --scope all and the full export (-n 0)',
+      );
+    }
+    const plan = validateGateWalkForwardPlan(
+      JSON.parse(await fs.readFile(flags.walkForwardPlan, 'utf8')),
+      options.testSince,
+    );
+    const sources = await Promise.all(
+      filePaths.map(async (path) => ({ path, sha256: await sha256File(path) })),
+    );
+    const dataset = await evaluateAiPocketSearchDataset({
+      prepared: preparedDataset,
+      options,
+    });
+    if (dataset.failed)
+      throw new Error(
+        'Gate walk-forward requires a reconciled dataset without failed evaluations',
+      );
+    for (const source of sources) {
+      if (source.sha256 !== (await sha256File(source.path)))
+        throw new Error('Gate walk-forward source changed during evaluation');
+    }
+    if (new Set(dataset.rows.map((row) => row.strategy)).size > 1) {
+      throw new Error('Gate walk-forward requires one strategy export');
+    }
+    const report = runGateWalkForward(dataset.rows, plan, options);
+    await writeJsonAtomic(options.outputPath, {
+      ...report,
+      sources,
+      searchOptions: {
+        ...options,
+        excludeFeaturePattern: options.excludeFeaturePattern?.source,
+      },
+    });
+    console.log(`Gate walk-forward: ${report.status} (${options.outputPath})`);
+    return;
+  }
 
   if (!selectedRows) {
     presentEmptyAiPocketSearchDataset({ filePaths, recent, skip });

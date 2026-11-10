@@ -70,6 +70,11 @@ export type CoreResearchSpec = {
     entryDelayBars?: number;
   };
   variants: CoreResearchVariant[];
+  support?: {
+    minimumEvents: number;
+    minimumBlocks: number;
+    minimumCommonSetups?: number;
+  };
   selection: {
     minimumTrades: number;
     minimumCadencePerDay: number;
