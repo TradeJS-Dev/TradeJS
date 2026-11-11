@@ -21,6 +21,9 @@ Keep changes small, respect package boundaries, and align with the current Trade
 - Run personal backtest, replay, Redis, evidence, and research operations from
   `~/dev/tradejs/tradejs-project`; keep this checkout as
   `TRADEJS_SOURCE_REPOSITORY_ROOT` when its code/lineage is under study.
+- For personal trade review and indicator research with external services, follow
+  the plugin guidance in `~/dev/tradejs/tradejs-project/AGENTS.md` under
+  `Плагины для разбора сделок и поиска индикаторов`.
 - User-facing docs and landing changes go directly to `tradejs-docs` and
   `tradejs-site` respectively.
 
