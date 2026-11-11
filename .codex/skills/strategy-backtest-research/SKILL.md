@@ -155,6 +155,14 @@ deterministic gate on each exact core export, including the baseline export, and
 compares only the resulting `core + own gate` compositions. Raw-core metrics
 remain diagnostic and must never be mixed into the final-composition chart.
 
+Before returning any baseline/control-versus-candidate result, read
+[`references/research-comparison-charts.md`](references/research-comparison-charts.md)
+and create its mandatory three-panel chart from the reconciled completed-trade
+stream. The chart must name exactly one `BASELINE`, label every other line as
+`CANDIDATE`, `REFERENCE`, or `DIAGNOSTIC`, and show cumulative net PnL,
+realized drawdown, and loss streak on one UTC scale. A PnL-only curve or a
+legend that leaves roles implicit is not a complete comparison handoff.
+
 ## Required Core Metric Cohorts
 
 For every reported config and full or terminal window, present one table with

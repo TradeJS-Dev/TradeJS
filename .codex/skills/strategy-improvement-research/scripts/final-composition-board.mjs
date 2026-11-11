@@ -16,6 +16,7 @@ import {
   boundPath,
   canonicalJson,
 } from '../../ai-train-local-research/scripts/decision-capture-join.mjs';
+import { renderResearchComparisonSvg } from '../../strategy-backtest-research/scripts/research-comparison-chart.mjs';
 
 const SCHEMA = 'tradejs-final-composition-board/v1';
 const REQUIRED_WINDOWS = [365, 180, 90, 30, 7];
@@ -645,110 +646,29 @@ const dashboardSvg = (board) => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition dashboard"><style>.bg{fill:#f5f4ef}.panel{fill:#fff;stroke:#ddd9d0;stroke-width:2}.title{font:500 42px Arial,sans-serif;fill:#17211d}.subtitle{font:22px Arial,sans-serif;fill:#38433e}.cardLabel{font:21px Arial,sans-serif;fill:#303a35}.cardValue{font:500 44px Arial,sans-serif}.cardDetail{font:18px Arial,sans-serif;fill:#303a35}.section{font:500 27px Arial,sans-serif;fill:#17211d}.muted{font:18px Arial,sans-serif;fill:#45514a}.axis{font:15px Arial,sans-serif;fill:#58645e}.grid{stroke:#d9ddd9;stroke-width:1.5}.faint{opacity:.5}.barValue{font:16px Arial,sans-serif;fill:#24302a}.windowLabel{font:20px Arial,sans-serif;fill:#24302a}.windowCount{font:15px Arial,sans-serif;fill:#45514a}.pointLabel{font:16px Arial,sans-serif}.footer{font:18px Arial,sans-serif;fill:#6b4b1f}</style><rect width="100%" height="100%" class="bg"/><text x="72" y="70" class="title">${escapeXml(board.strategy)} · ${escapeXml(noEligible ? 'No eligible composition' : selected.label)}</text><text x="72" y="108" class="subtitle">${escapeXml(board.subtitle)}</text>${cardsMarkup}<rect x="72" y="330" width="1040" height="650" rx="20" class="panel"/><text x="100" y="380" class="section">PnL in terminal windows</text>${terminalLegend}<rect x="1145" y="330" width="585" height="650" rx="20" class="panel"/><text x="1180" y="380" class="section">Final compositions: PnL ↔ drawdown</text><text x="1180" y="412" class="muted">Higher and farther left is preferable</text><g>${barGrid}<line x1="${bar.x}" x2="${bar.x + bar.width}" y1="${zeroY}" y2="${zeroY}" stroke="#8f9994" stroke-width="1.5"/>${bars}</g><g>${scatterGrid}${points}${pointLabels}<text x="${scatter.x + scatter.width / 2}" y="${scatter.y + scatter.height + 65}" text-anchor="middle" class="muted">MaxDD (trade stream)</text></g><g><rect x="72" y="1020" width="1658" height="112" rx="16" fill="#fff5dd" stroke="#efd79c" stroke-width="2"/>${svgTextLines({ lines: [truncate(limitations, 155), `Risk normalization: MAX_LOSS_VALUE=${board.normalization.maxLossValue} · ${board.normalization.pnlUnit} · ${board.researchId}`], x: 98, y: 1062, lineHeight: 30, className: 'footer' })}</g></svg>`;
 };
 
-const downsample = (points, maxPoints = 1200) => {
-  if (points.length <= maxPoints) return points;
-  const selected = [points[0]];
-  const buckets = Math.max(1, Math.floor((maxPoints - 2) / 2));
-  const bucketSize = (points.length - 2) / buckets;
-  for (let bucket = 0; bucket < buckets; bucket += 1) {
-    const start = 1 + Math.floor(bucket * bucketSize);
-    const end = Math.min(
-      points.length - 1,
-      1 + Math.floor((bucket + 1) * bucketSize),
-    );
-    const slice = points.slice(start, Math.max(start + 1, end));
-    const min = slice.reduce((best, point) =>
-      point[1] < best[1] ? point : best,
-    );
-    const max = slice.reduce((best, point) =>
-      point[1] > best[1] ? point : best,
-    );
-    for (const point of [min, max].sort((left, right) => left[0] - right[0])) {
-      if (selected.at(-1) !== point) selected.push(point);
-    }
-  }
-  selected.push(points.at(-1));
-  return selected;
-};
-
-const equitySvg = (board) => {
-  const width = 1800;
-  const left = 110;
-  const right = 70;
-  const top = 150;
-  const columns = 3;
-  const legendRows = Math.ceil(board.candidates.length / columns);
-  const legendTop = 110;
-  const legendRowHeight = 58;
-  const bottom = Math.max(300, legendTop + legendRows * legendRowHeight + 32);
-  const plotHeight = 750;
-  const height = top + plotHeight + bottom;
-  const plotWidth = width - left - right;
-  const minTime = board.comparisonWindow.start;
-  const maxTime = board.comparisonWindow.end - 1;
-  const values = board.candidates.flatMap(({ equity }) =>
-    equity.map(([, pnl]) => pnl),
-  );
-  const [minPnl, maxPnl] = niceBounds(values);
-  const x = (timestamp) =>
-    left + ((timestamp - minTime) / (maxTime - minTime)) * plotWidth;
-  const y = (pnl) => top + ((maxPnl - pnl) / (maxPnl - minPnl)) * plotHeight;
-  const yGrid = Array.from({ length: 7 }, (_, index) => {
-    const value = minPnl + ((maxPnl - minPnl) * index) / 6;
-    const position = y(value);
-    return `<line x1="${left}" x2="${width - right}" y1="${position}" y2="${position}" class="grid"/><text x="${left - 18}" y="${position + 5}" text-anchor="end" class="axis">${escapeXml(formatCompact(value))}</text>`;
-  }).join('');
-  const spanDays = (maxTime - minTime) / 86_400_000;
-  const xTicks = Array.from({ length: 6 }, (_, index) => {
-    const timestamp = Math.round(minTime + ((maxTime - minTime) * index) / 5);
-    const date = new Date(timestamp);
-    const label =
-      spanDays >= 730
-        ? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
-        : spanDays >= 90
-          ? date.toLocaleDateString('en-CA', {
-              timeZone: 'UTC',
-              year: 'numeric',
-              month: 'short',
-            })
-          : date.toLocaleDateString('en-CA', {
-              timeZone: 'UTC',
-              month: 'short',
-              day: '2-digit',
-            });
-    return { label, timestamp };
+const equitySvg = (board) =>
+  renderResearchComparisonSvg({
+    schema: 'tradejs-research-comparison-chart/v1',
+    title: board.title,
+    subtitle: `BASELINE = current gate behavior; CANDIDATE = core + own deterministic gate · ${board.selectedId === null ? 'No eligible composition' : 'финальные композиции'} · ${board.subtitle}`,
+    universeLabel: 'общий замороженный research scope',
+    pnlUnit: board.normalization.pnlUnit,
+    window: {
+      start: board.comparisonWindow.start,
+      end: board.comparisonWindow.end,
+    },
+    series: board.candidates.map((candidate) => ({
+      id: candidate.id,
+      label: candidate.label,
+      role: candidate.role,
+      color: candidate.color,
+      equity: candidate.equity,
+      metrics: {
+        trades: candidate.metrics.trades,
+        pnl: candidate.metrics.pnl,
+      },
+    })),
   });
-  const xGrid = xTicks
-    .map(({ label, timestamp }) => {
-      const position = x(timestamp);
-      return `<line x1="${position}" x2="${position}" y1="${top}" y2="${height - bottom}" class="grid faint"/><text x="${position}" y="${height - bottom + 34}" text-anchor="middle" class="axis">${escapeXml(label)}</text>`;
-    })
-    .join('');
-  const curves = board.candidates
-    .map((candidate) => {
-      const points = downsample(candidate.equity)
-        .map(
-          ([timestamp, pnl]) =>
-            `${x(timestamp).toFixed(1)},${y(pnl).toFixed(1)}`,
-        )
-        .join(' ');
-      const selected = candidate.id === board.selectedId;
-      return `<polyline points="${points}" fill="none" stroke="${candidate.color}" stroke-width="${selected ? 4.5 : 3}" opacity="${selected ? 1 : 0.82}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    })
-    .join('');
-  const legendWidth = (width - left - right) / columns;
-  const legend = board.candidates
-    .map((candidate, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const lx = left + column * legendWidth;
-      const ly = height - bottom + legendTop + row * legendRowHeight;
-      return `<g data-equity-legend="${escapeXml(candidate.id)}" transform="translate(${lx},${ly})"><rect width="18" height="18" rx="3" fill="${candidate.color}"/><text x="28" y="15" class="legendLabel">${index === 0 ? '0' : String.fromCharCode(64 + index)} · ${escapeXml(truncate(candidate.label, 35))}</text><text x="28" y="37" class="legendMetric">N=${candidate.metrics.trades} · PnL=${formatNumber(candidate.metrics.pnl, 1)} · DD=${formatNumber(candidate.metrics.maxDrawdown, 1)}</text></g>`;
-    })
-    .join('');
-  const selected = board.candidates.find(({ id }) => id === board.selectedId);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(board.strategy)} final composition equity"><style>.bg{fill:#fff}.title{font:700 36px Arial,sans-serif;fill:#172033}.subtitle{font:18px Arial,sans-serif;fill:#687184}.axis{font:15px Arial,sans-serif;fill:#687184}.grid{stroke:#e2e6eb;stroke-width:1.5}.faint{opacity:.55}.legendLabel{font:600 17px Arial,sans-serif;fill:#263044}.legendMetric{font:15px Arial,sans-serif;fill:#687184}.axisTitle{font:17px Arial,sans-serif;fill:#394459}</style><rect width="100%" height="100%" class="bg"/><text x="${left}" y="58" class="title">${escapeXml(board.title)}</text><text x="${left}" y="92" class="subtitle">Baseline = current gate behavior; candidates = core + own deterministic gate</text><text x="${left}" y="120" class="subtitle">${board.selectedId === null ? 'No eligible composition' : `Selected: ${escapeXml(selected.label)}`} · ${escapeXml(board.subtitle)}</text>${yGrid}${xGrid}<line x1="${left}" x2="${width - right}" y1="${y(0)}" y2="${y(0)}" stroke="#aab2bd" stroke-width="1.5"/>${curves}<line x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><line x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}" stroke="#7d8795" stroke-width="1.5"/><text x="${left + plotWidth / 2}" y="${height - bottom + 67}" text-anchor="middle" class="axisTitle">Date (UTC)</text><text x="30" y="${top + plotHeight / 2}" transform="rotate(-90 30 ${top + plotHeight / 2})" text-anchor="middle" class="axisTitle">Cumulative PnL (${escapeXml(board.normalization.pnlUnit)})</text>${legend}</svg>`;
-};
 
 const verifyCandidateArtifacts = async (board, artifactRoot) => {
   const verified = [];
@@ -855,6 +775,9 @@ export const generateFinalCompositionBoard = async ({
       equityInterpolation: 'linear',
       meaning:
         'Lines connect event samples; not an intratrade or mark-to-market path.',
+      comparisonChart: 'three-panel-research-comparison/v1',
+      panels: ['cumulative-net-pnl', 'realized-drawdown', 'loss-streak'],
+      rolesAreExplicit: true,
       metricInputsChanged: false,
     },
     limitations: board.limitations,
@@ -1047,26 +970,6 @@ const executedTicks = (min, max) =>
   ]
     .filter((v) => v === 0 || Math.abs(v / (max - min)) >= 0.06)
     .sort((a, b) => a - b);
-const executedUtcTicks = ({ start, end }) => {
-  const ticks = [start, end];
-  const date = new Date(start);
-  date.setUTCDate(1);
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCMonth(date.getUTCMonth() + 1);
-  const months = [];
-  while (date.getTime() < end) {
-    months.push(date.getTime());
-    date.setUTCMonth(date.getUTCMonth() + 1);
-  }
-  for (const [i, t] of months.entries())
-    if (
-      i % Math.max(1, Math.ceil(months.length / 5)) === 0 &&
-      t - start > (end - start) * 0.08 &&
-      end - t > (end - start) * 0.08
-    )
-      ticks.push(t);
-  return ticks.sort((a, b) => a - b);
-};
 const executedWrapped = (value, width) => {
   // 9px is a conservative advance for the fixed 14px monospace labels.
   const limit = Math.max(1, Math.floor(width / 9));
@@ -1125,6 +1028,43 @@ const executedCanvas = (name, width) => {
       return bottom;
     },
   };
+};
+
+const renderExecutedResearchComparison = ({ board, curves, pixelLimit }) => {
+  const svg = renderResearchComparisonSvg({
+    schema: 'tradejs-research-comparison-chart/v1',
+    title: board.title,
+    subtitle: `Closed-loop completed trades · ${executedTitle(board)} · no raw/posthoc curves`,
+    universeLabel: 'frozen closed-loop TEST scope',
+    pnlUnit: board.normalization.pnlUnit,
+    window: board.comparisonWindow,
+    series: board.candidates.map((candidate, index) => ({
+      id: candidate.id,
+      label: candidate.label,
+      role: candidate.role,
+      color: candidate.color,
+      equity: curves[index].points,
+      equityStatus:
+        curves[index].points.length > 0
+          ? 'observed'
+          : candidate.equity.status === 'verified-empty'
+            ? 'verified-empty'
+            : 'unavailable',
+      metrics: {
+        trades: candidate.metrics.trades,
+        pnl: candidate.metrics.pnl,
+      },
+    })),
+  });
+  const width = Number(/<svg[^>]* width="(\d+)"/u.exec(svg)?.[1]);
+  const height = Number(/<svg[^>]* height="(\d+)"/u.exec(svg)?.[1]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    fail('Executed research comparison dimensions are invalid');
+  }
+  if (width * height > pixelLimit) {
+    fail('Executed research comparison pixel budget exceeded');
+  }
+  return { width, height, boxes: [], svg };
 };
 
 // Pure presentation: only verified cells/criteria/curves are projected here.
@@ -1457,88 +1397,14 @@ export const renderExecutedPresentation = ({
       ) + 12;
   }
   const compact = dashboard.finish(dashboard.bottom + 30, pixelLimit);
-  const equity = executedCanvas('actual executed cumulative equity', 1800),
-    plot = { left: 150, right: 1670, top: 170, bottom: 810 };
-  equity.text(executedTitle(board), 38, 25, 1720, 'equity-heading');
-  equity.text(
-    'Actual closed-loop cumulative PnL · straight observation interpolation · no raw/posthoc curves',
-    38,
-    55,
-    1720,
-    'equity-heading',
-  );
-  const [emin, emax] = niceBounds(
-      curves.flatMap((c) => c.points.map((p) => p[1])),
-      true,
-    ),
-    ex = (t) =>
-      plot.left +
-      ((t - board.comparisonWindow.start) /
-        (board.comparisonWindow.end - board.comparisonWindow.start)) *
-        (plot.right - plot.left),
-    ey = (n) =>
-      plot.top + ((emax - n) / (emax - emin)) * (plot.bottom - plot.top);
-  equity.text(
-    `Cumulative PnL (${board.normalization.pnlUnit})`,
-    38,
-    125,
-    850,
-    'equity-axis',
-  );
-  for (const tick of executedTicks(emin, emax)) {
-    const py = ey(tick);
-    equity.raw(
-      `<line x1="${plot.left}" x2="${plot.right}" y1="${py}" y2="${py}" class="${tick === 0 ? 'zero' : 'grid'}" data-pnl-tick="${tick}"/>`,
-    );
-    equity.text(formatNumber(tick), 38, py - 10, 100, 'equity-y-tick');
-  }
-  for (const tick of executedUtcTicks(board.comparisonWindow)) {
-    const px = ex(tick),
-      label = `${new Date(tick).toISOString().slice(0, 10)} UTC`;
-    equity.raw(
-      `<line data-utc-tick="${tick}" x1="${px}" x2="${px}" y1="${plot.top}" y2="${plot.bottom}" class="grid"/>`,
-    );
-    equity.text(
-      label,
-      Math.min(1610, Math.max(100, px - 70)),
-      840,
-      150,
-      'equity-x-tick',
-    );
-  }
-  equity.text(
-    'Date (UTC); exact start/end ticks are annotations, not synthetic equity samples',
-    150,
-    880,
-    1520,
-    'equity-axis',
-  );
-  let legendTop = 925;
-  for (const [i, c] of board.candidates.entries()) {
-    const curve = curves[i];
-    if (curve.points.length) {
-      const points = curve.points
-        .map(([t, p]) => `${ex(t).toFixed(2)},${ey(p).toFixed(2)}`)
-        .join(' ');
-      equity.raw(
-        `<g data-observed-equity="${escapeXml(c.id)}">${curve.points.length === 1 ? `<circle cx="${ex(curve.points[0][0])}" cy="${ey(curve.points[0][1])}" r="4" fill="${c.color}"/>` : `<polyline points="${points}" fill="none" stroke="${c.color}" stroke-width="2"/>`}</g>`,
-      );
-    } else
-      equity.raw(
-        `<g data-non-observation="${escapeXml(c.id)}">${c.equity.status === 'verified-empty' ? `<line data-zero-guide="${escapeXml(c.id)}" x1="${plot.left}" x2="${plot.right}" y1="${ey(0)}" y2="${ey(0)}" stroke="${c.color}" stroke-dasharray="8 8"/>` : ''}</g>`,
-      );
-    legendTop +=
-      equity.text(
-        `${executedKey(i)} · ${c.id} · ${c.label} · ${c.status} · N=${c.metrics.trades} · PnL=${formatNumber(c.metrics.pnl)} · MaxDD=${formatNumber(c.metrics.maxDrawdown)} · samples=${curve.fullResolutionRows}${!curve.points.length ? (c.equity.status === 'verified-empty' ? ' · verified empty; zero guide is not observed equity' : ' · equity unavailable (UNKNOWN)') : ''}`,
-        38,
-        legendTop,
-        1720,
-        'equity-legend',
-      ) + 12;
-  }
+  const equity = renderExecutedResearchComparison({
+    board,
+    curves,
+    pixelLimit,
+  });
   return {
     dashboard: compact,
-    equity: equity.finish(equity.bottom + 30, pixelLimit),
+    equity,
     pages,
     appendix,
   };
@@ -1694,6 +1560,11 @@ const generateExecutedBoard = async ({ spec, artifactRoot, outDir, png }) => {
     inputs,
     rendering: {
       equityInterpolation: 'linear',
+      comparisonChart: 'three-panel-research-comparison/v1',
+      panels: ['cumulative-net-pnl', 'realized-drawdown', 'loss-streak'],
+      rolesAreExplicit: true,
+      lossStreakSemantics:
+        'consecutive negative retained realized-equity steps',
       metricInputsChanged: false,
       reduction: curves.map(({ points: _points, ...receipt }) => receipt),
       zeroGuidesAreObservedSamples: false,

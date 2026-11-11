@@ -47,8 +47,11 @@ Show:
   losing-month streak, recovery duration, and cadence;
 - walk-forward/fold and regime stability, concentration, cost stress, and all
   recorded limitations or failed checks;
-- a stored equity/drawdown chart, or rebuild the chart only from the frozen
-  candidate trades and label it as report rendering rather than new evidence.
+- the stored primary comparison chart in the mandatory three-panel format from
+  [`../strategy-backtest-research/references/research-comparison-charts.md`](../strategy-backtest-research/references/research-comparison-charts.md),
+  with explicit production `BASELINE` and selected `CANDIDATE` roles. Rebuild
+  it only from frozen completed trades/equity and label it as report rendering,
+  not new evidence.
 
 Classify every window by independent support: fewer than 20 events is
 underpowered, 20–49 is diagnostic, and 50+ is selection-grade. A zero-trade or

@@ -148,11 +148,18 @@ test('twenty real synthetic closed-loop reports paginate all 3960 cells, full fi
   for (const sign of [-1, 1]) {
     const signed = structuredClone(spec);
     signed.candidates.forEach((c, i) => {
-      c.metrics.pnl = sign * (i + 1);
+      c.metrics.pnl = c.equity.status === 'verified-empty' ? 0 : sign * (i + 1);
     });
+    const signedCurves = curves.map((curve, i) => ({
+      ...curve,
+      points: curve.points.map(([timestamp]) => [
+        timestamp,
+        signed.candidates[i].metrics.pnl,
+      ]),
+    }));
     const view = renderExecutedPresentation({
       board: signed,
-      curves,
+      curves: signedCurves,
       criteria: selectionValue.criteria,
     });
     assertLabelLayout(view.dashboard);
@@ -196,8 +203,14 @@ test('twenty real synthetic closed-loop reports paginate all 3960 cells, full fi
     ],
     [],
   ]) {
+    const axisBoard = structuredClone(spec);
+    if (points.length) {
+      axisBoard.candidates.forEach((candidate) => {
+        candidate.metrics.pnl = points.at(-1)[1];
+      });
+    }
     const r = renderExecutedPresentation({
-      board: spec,
+      board: axisBoard,
       curves: curves.map((c) => ({ ...c, points })),
       criteria: selectionValue.criteria,
     });
@@ -504,7 +517,7 @@ test('null selection displays exact zero baseline diagnostics without a winner a
   assert.match(dashboard, /PnL<\/text><text[^>]+>0\.00<\/text>/u);
   assert.match(dashboard, /Max drawdown<\/text><text[^>]+>0\.00<\/text>/u);
   assert.equal([...dashboard.matchAll(/Baseline diagnostics/gu)].length, 4);
-  assert.equal([...equity.matchAll(/<polyline /gu)].length, 5);
+  assert.equal([...equity.matchAll(/<polyline /gu)].length, 15);
   assert.match(equity, /No eligible composition/u);
   assert.doesNotMatch(equity, /Selected:/u);
   assert.doesNotMatch(dashboard, /opacity="0\.18"|stroke="#7a321b"/u);
@@ -606,10 +619,11 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
   );
   assert.match(dashboard, /PnL in terminal windows/u);
   assert.match(dashboard, /Final compositions: PnL ↔ drawdown/u);
-  assert.match(equity, /Baseline = current gate behavior/u);
+  assert.match(equity, /BASELINE = current gate behavior/u);
   assert.match(equity, /candidate \+ own gate/u);
   assert.match(equity, /Date \(UTC\)/u);
-  for (const [, coordinates] of equity.matchAll(
+  const cumulativePanel = equity.split('Просадка от максимума net PnL')[0];
+  for (const [, coordinates] of cumulativePanel.matchAll(
     /<polyline points="([^"]+)"/gu,
   )) {
     const points = coordinates
@@ -627,10 +641,10 @@ test('verifies candidate artifacts and renders the dashboard and equity board', 
   );
   assert.equal(
     summary.artifacts['final-composition-equity.svg'],
-    '60b8f373994e272f46ece0fb2028033ffdce19f2ca55c55ac208642c17ada861',
+    'f992299b1c71863714632f47224eff6532fd283ec0f7220f44045b2d3de774ab',
   );
-  assert.match(equity, /Nov 2023/u);
-  assert.match(equity, /Mar 2024/u);
+  assert.match(equity, /2023-11-03/u);
+  assert.match(equity, /2024-03-21/u);
 });
 
 test('linear presentation preserves flat samples, peaks, troughs and frozen metrics', async () => {

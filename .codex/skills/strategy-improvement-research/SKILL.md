@@ -119,9 +119,11 @@ AI-gate` baseline and `core + own deterministic gate` research candidates,
    rules and multiple-testing denominator to the complete core-by-gate trial
    ledger, not only to the winning core or gate.
 9. Generate and checksum the mandatory final-composition dashboard and
-   cumulative-equity chart with the permanent script from the referenced
-   contract. A metrics-only handoff or a chart mixing raw and gated candidates
-   is incomplete.
+   three-panel comparison chart with the permanent script from the referenced
+   contract. It must show cumulative net PnL, realized drawdown, and loss
+   streak on the same UTC axis with explicit `BASELINE`/`CANDIDATE` roles. A
+   metrics-only handoff, a PnL-only curve, or a chart mixing raw and gated
+   candidates is incomplete.
 10. Run package formatting, typecheck, tests, and build in the lineage worktree.
     Commit only the selected candidate and its tests on that worktree branch;
     preserve rejected experiments as immutable evidence, not source clutter.
@@ -159,6 +161,7 @@ The handoff must link both visual artifacts for the final compositions:
 - `final-composition-dashboard.{svg,png}` with KPI deltas against the exact
   production-core + current-AI-gate baseline, terminal
   `365d/180d/90d/30d/7d` PnL, and the all-candidate PnL-versus-MaxDD plane;
-- `final-composition-equity.{svg,png}` with cumulative PnL for the gated
-  production baseline, the rebuilt production-core gate, and every final
-  `core + own gate` composition over the common comparison window.
+- `final-composition-equity.{svg,png}` in the shared three-panel research
+  format: cumulative PnL, realized drawdown, and loss streak for the gated
+  production `BASELINE`, the rebuilt production-core gate, and every final
+  `core + own gate` `CANDIDATE` over the common comparison window.

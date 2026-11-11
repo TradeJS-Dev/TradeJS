@@ -5,7 +5,8 @@
 The opt-in `executionBasis: closed-loop-execution` branch is distinct from the
 legacy posthoc conditional subset. Its `metricBasis` must be `completed-trade`.
 Legacy inputs without the new discriminator keep their existing JSON bytes,
-fingerprints and chart layout. Never mix raw, posthoc and actual curves.
+fingerprints and economic inputs. Both branches use the shared three-panel
+research chart, while still keeping raw, posthoc and actual curves separate.
 
 Use `executed-composition-report.mjs --projectRoot <Project> --authority
 <Project-relative authority.json> --outputPrefix <new Project-relative prefix>`
@@ -234,9 +235,11 @@ Required outputs:
   of every final composition, and limitations. `terminalComparisonIds`
   defaults to `[selectedId]`; it may include up to three candidate IDs, must
   include `selectedId`, and does not change the research selection;
-- `final-composition-equity.svg` and `.png`: cumulative PnL curves for the
-  current production composition and every research composition on the common
-  time axis;
+- `final-composition-equity.svg` and `.png`: the shared three-panel research
+  comparison for the current production `BASELINE` and every research
+  `CANDIDATE` on one common time axis: cumulative net PnL, realized drawdown,
+  and consecutive losing trades or, for retained equity-only inputs,
+  consecutive negative realized-equity steps;
 - `final-composition-summary.json`: derived composition fingerprints, source
   hashes, normalized metrics, and hashes of all four rendered files.
 
@@ -245,6 +248,8 @@ of the same SVG. Link or display both charts in the final answer and immutable
 research note. Store the complete board spec and summary in Project-owned
 evidence; paths alone do not replace the note's machine-readable metrics.
 
+This artifact follows
+[`../../strategy-backtest-research/references/research-comparison-charts.md`](../../strategy-backtest-research/references/research-comparison-charts.md).
 For these research comparison charts, use continuous straight segments between
 the recorded equity samples by default, not staircase corners. This matches the
 preferred presentation without averaging returns or rounding away drawdowns.
@@ -362,4 +367,6 @@ tests to check boundaries and lane overlap, including long names/coincident poin
 
 This change only projects verified fields. Selection, metrics, candidate order,
 fingerprints, authority inputs, linear equity interpolation and retained extrema
-are unchanged. The legacy raw/posthoc branch and its SVG golden bytes are unchanged.
+are unchanged. The legacy raw/posthoc branch now uses the same mandatory
+three-panel chart, so its SVG bytes intentionally change without changing its
+economic inputs.

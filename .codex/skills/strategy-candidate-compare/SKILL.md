@@ -51,6 +51,12 @@ windows, plus 3y/4y/5y-or-max when covered. Include `N`, net PnL, expectancy,
 PF, win rate, Sharpe/PSR/DSR, MaxDD, worst trade, loss streak, losing-month
 streak, recovery, cadence, stability, concentration, and cost stress.
 
+Show the comparison with the mandatory three-panel chart from
+[`../strategy-backtest-research/references/research-comparison-charts.md`](../strategy-backtest-research/references/research-comparison-charts.md):
+production is the only `BASELINE`, the selected research composition is
+`CANDIDATE`, and both use the same UTC axis, costs, scope, and normalized risk.
+Do not substitute two separately scaled curves or a terminal-PnL bar chart.
+
 Conclude with:
 
 - identity/parity confidence;

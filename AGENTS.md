@@ -712,7 +712,9 @@ Keep them aligned with:
 - End every completed release research run with one complete
   `$ai-train-local-research` report and full-export gate replay for every final
   composition. Generate the checksum-bound final-composition dashboard and
-  cumulative-equity comparison from those reports. This remains mandatory for a
+  shared three-panel comparison (cumulative net PnL, realized drawdown, and
+  loss streak on one UTC axis with explicit baseline/candidate roles) from
+  those reports. This remains mandatory for a
   negative verdict: use the frozen current gate/control or side-qualified
   handoff and label it diagnostic-only when no candidate qualifies. Persist and
   hash every structured output plus the chart lineage. A missing per-core gate,

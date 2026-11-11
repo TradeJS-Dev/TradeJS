@@ -129,6 +129,14 @@ rounding, and `n/a` rules exactly. Use the full contract unless the user
 explicitly asks for one narrow metric. Do not improvise a shorter alternative
 or silently omit unavailable metrics.
 
+For every baseline-versus-gate comparison, also read
+[`../strategy-backtest-research/references/research-comparison-charts.md`](../strategy-backtest-research/references/research-comparison-charts.md)
+and render the mandatory three-panel SVG/PNG before retention cleanup. The
+current gate is the explicit `BASELINE`; each frozen alternative is a
+`CANDIDATE`. Ablation slices and volatility/direction groups are
+`DIAGNOSTIC`, never candidates. The chart uses the same completed-trade window,
+costs, risk unit, and partitions as the metrics report.
+
 For every approved-stream summary, calculate `PnL/trade` as total approved PnL
 divided by completed approved trades. Never substitute the backtest CLI progress
 `avg`, which is PnL per completed test/symbol. Use `n/a` when `N = 0`.

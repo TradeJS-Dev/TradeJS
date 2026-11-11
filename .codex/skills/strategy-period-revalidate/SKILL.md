@@ -49,6 +49,12 @@ rewriting the original selection record. State whether the incumbent remains
 best under the frozen objective and choose exactly one next skill: report,
 research, forward-start, forward-status, or risk-scale.
 
+Render the updated primary comparison through
+[`../strategy-backtest-research/references/research-comparison-charts.md`](../strategy-backtest-research/references/research-comparison-charts.md).
+Keep production as the one `BASELINE`, label frozen alternatives as
+`CANDIDATE`, and shade only the preregistered new period. Preserve the original
+chart beside the new version instead of overwriting it.
+
 Before finishing, follow
 [`../strategy-backtest-research/references/research-retention.md`](../strategy-backtest-research/references/research-retention.md).
 Keep the frozen candidates and compact old/new metric comparison permanently,
