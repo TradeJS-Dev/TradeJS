@@ -16,6 +16,10 @@ it must not change either composition.
 
 ## Resolve both identities
 
+Read
+[`../strategy-backtest-research/references/production-baseline.md`](../strategy-backtest-research/references/production-baseline.md)
+before resolving either identity.
+
 1. Resolve the latest explicitly selected, reproducible candidate using the
    same rules as `$strategy-candidate-report`.
 2. Resolve production from the deployed package manifest and Git-owned
@@ -24,6 +28,10 @@ it must not change either composition.
    Redis backtest configs and legacy strategy keys are not production truth.
 3. If live evidence is unavailable, use the newest immutable deployment
    manifest and label production identity as unconfirmed rather than guessing.
+4. If the selected candidate is the exact deployed composition, relabel it as
+   the production `BASELINE`. Do not manufacture a candidate-versus-itself
+   comparison; use earlier frozen alternatives only as `REFERENCE` or report
+   that no distinct candidate remains.
 
 ## Make the comparison fair
 

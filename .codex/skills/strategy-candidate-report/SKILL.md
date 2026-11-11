@@ -16,6 +16,12 @@ Creating a report or chart under `output/` is allowed.
 
 ## Select the candidate
 
+Before selecting or charting anything, read
+[`../strategy-backtest-research/references/production-baseline.md`](../strategy-backtest-research/references/production-baseline.md)
+and resolve the current production composition. Candidate selection remains a
+separate historical fact; a selected candidate that is now deployed is the
+production `BASELINE` in a new report, not still a `CANDIDATE`.
+
 1. Find the newest completed research lineage that explicitly selected a best
    candidate and has checksum-verifiable evidence. Do not equate newest file,
    largest PnL, an incomplete run, or an old production config with “best.”
@@ -49,7 +55,8 @@ Show:
   recorded limitations or failed checks;
 - the stored primary comparison chart in the mandatory three-panel format from
   [`../strategy-backtest-research/references/research-comparison-charts.md`](../strategy-backtest-research/references/research-comparison-charts.md),
-  with explicit production `BASELINE` and selected `CANDIDATE` roles. Rebuild
+  with the exact current production `BASELINE` and selected undeployed
+  `CANDIDATE` roles. Rebuild
   it only from frozen completed trades/equity and label it as report rendering,
   not new evidence.
 

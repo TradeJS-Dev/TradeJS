@@ -9,6 +9,12 @@ Require one exact strategy name. Read the strategy repository rules, source,
 tests, latest selected candidate, production composition, prior candidate
 ledger, rejection reasons, and available signal-to-exit traces.
 
+Before comparing evidence or proposing hypotheses, read
+[`../strategy-backtest-research/references/production-baseline.md`](../strategy-backtest-research/references/production-baseline.md).
+If the strategy is present in production, plan against that exact deployed
+composition as the only baseline. Historical controls remain competitors, not
+substitute baselines.
+
 ## Boundary
 
 This skill produces a causal research plan only. Do not run backtests or gate

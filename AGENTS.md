@@ -609,6 +609,15 @@ Keep them aligned with:
   `.codex/skills/strategy-release/SKILL.md` is only a compatibility router.
   These contours are strategy-local; portfolio allocation and daily-loss policy
   are out of scope. `MAX_LOSS_VALUE` remains user-selected.
+- For every strategy study, report, comparison, revalidation, and chart, resolve
+  the current Git-owned `production` deployment before freezing the control.
+  When the strategy is present, its exact verified package/config/gate/context
+  composition is the only `BASELINE`; an old stable package, historical
+  control, or previously selected candidate cannot replace it. Re-evaluate
+  that composition on the common research scope because deployment identity
+  does not carry a fixed trade count. If the strategy is absent, label the
+  chosen control `research baseline`, never production. Follow
+  `.codex/skills/strategy-backtest-research/references/production-baseline.md`.
 - Treat release work as causal trading research, not an audit checklist. Before
   round 1 write the market thesis, build an opportunity map across formation,
   timing, risk geometry, lifecycle, side/regime, concentration, and execution,
@@ -737,6 +746,13 @@ Keep them aligned with:
   Production Redis config writes are forbidden. This authorization does not
   permit promotion, risk increases, unrelated runtime edits, manual orders, or
   a production-daemon launch on an ambiguous target.
+- After a candidate is successfully deployed and its manifest, runtime
+  identity, account binding, enabled declaration, and single-process ownership
+  are verified, append an immutable production-baseline record to the existing
+  release/candidate ledger. Future research treats that deployed composition as
+  `BASELINE` and the prior production baseline as superseded. Do not promote
+  the candidate on publication/config change alone, and do not rewrite its
+  original historical selection record.
 - Build equal-length historical drawdown envelopes with
   `yarn strategy-release profile` from the finalist's normalized
   `trades.jsonl`. Freeze the prospective closed-trade floor, minimum parity

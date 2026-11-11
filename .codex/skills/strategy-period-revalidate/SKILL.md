@@ -17,6 +17,10 @@ not publish or deploy. A configuration change belongs to a new
 
 ## Cohort
 
+Read
+[`../strategy-backtest-research/references/production-baseline.md`](../strategy-backtest-research/references/production-baseline.md)
+and resolve production before freezing the cohort.
+
 Include the exact current production composition, latest selected best
 candidate, strongest prior aggregate candidate, strongest side-specific
 candidate when distinct, and any currently running forward candidate. Deduplicate

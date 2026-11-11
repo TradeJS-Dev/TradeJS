@@ -78,8 +78,11 @@ each candidate, plus a common `selectionAuthority`. No fake core export is
 required for verified zero completions. Verified empty equity is exactly
 `{status: verified-empty, stream: null, rows: 0}`; the dashed zero guide is an
 annotation outside the observed-data layer. An unavailable stream is UNKNOWN,
-not a zero guide. The LiquidityZones baseline is installed stable core plus
-exact current AI-gate under frozen research risk/costs, not active production.
+not a zero guide. When the strategy is declared in production, the baseline is
+its exact verified deployed core plus current AI-gate under frozen research
+risk/costs. An installed stable control may be a diagnostic/reference, or an
+explicitly labelled research baseline only when the strategy is absent from
+production.
 
 Compact disk indexes and bounded external merge sorting never retain whole
 payload/trade/equity arrays. Equity reduction retains actual endpoints and
@@ -160,6 +163,11 @@ node .codex/skills/strategy-improvement-research/scripts/freeze-gate-variants.mj
 ```
 
 ## Final comparison
+
+Resolve baseline identity through
+[`../../strategy-backtest-research/references/production-baseline.md`](../../strategy-backtest-research/references/production-baseline.md)
+before building either table. A historical board remains immutable, but a new
+board must not reuse its old baseline role after production has changed.
 
 Build two separate tables:
 

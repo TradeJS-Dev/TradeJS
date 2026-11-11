@@ -41,6 +41,11 @@ behavior.
 
 ## Preconditions
 
+Read
+[`../strategy-backtest-research/references/production-baseline.md`](../strategy-backtest-research/references/production-baseline.md).
+Resolve and preserve the existing production baseline before changing the
+deployment; it remains authoritative until the cutover is verified.
+
 Resolve the exact runtime user, deployment, account, connector, symbols, and
 release mechanism from Git-owned project/deployment configuration. Resolve the
 candidate’s source SHA, package version, lockfile boundary, full effective core
@@ -91,6 +96,14 @@ Confirm the deployed package/config manifest, `strategyRevision`,
 heartbeat, and that exactly one managed runtime process owns the deployment.
 Verify that the configured runtime actually permits bounded order placement;
 signal-only evaluation is not a started forward test.
+
+After those checks pass, append an immutable production-baseline record to the
+existing strategy release/candidate ledger. It must link the selected candidate
+and evidence hashes to the verified deployment identity, mark this exact
+composition `current-production-baseline`, and supersede the previous baseline
+for future research without rewriting historical selection records. If any
+cutover verification fails, do not create that marker and keep the previous
+verified production composition as baseline.
 
 Never place, cancel, or close an order manually and never launch an unmanaged
 background daemon. Do not wait for profitable 7d/30d/180d tails: forward
