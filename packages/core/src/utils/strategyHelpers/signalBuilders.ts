@@ -1210,10 +1210,11 @@ const resolveTakeProfitPrice = ({
 }: {
   direction: Direction;
   takeProfits: StrategyEntryOrderPlan['takeProfits'];
-}): number => {
-  if (!Array.isArray(takeProfits) || takeProfits.length === 0) {
-    throw new Error('strategyApi.entry requires at least one takeProfit');
+}): number | null => {
+  if (!Array.isArray(takeProfits)) {
+    throw new Error('strategyApi.entry requires a takeProfits array');
   }
+  if (takeProfits.length === 0) return null;
 
   const prices = takeProfits
     .map((tp) => tp?.price)
@@ -1445,14 +1446,28 @@ export const createStrategyAPI = <
         );
       }
 
+      if (
+        orderPlan.stopLossDistance != null &&
+        (!isFiniteNumber(orderPlan.stopLossDistance) ||
+          orderPlan.stopLossDistance <= 0 ||
+          orderPlan.positionIntent === 'increase')
+      ) {
+        throw new Error(
+          'strategyApi.entry requires a positive stopLossDistance for an opening order',
+        );
+      }
+
       const resolvedCode =
         code ?? toDefaultEntryCode(String(strategy), direction);
-      const riskRatio = calculateRiskRatio({
-        direction,
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-      });
+      const riskRatio =
+        takeProfitPrice == null
+          ? 0
+          : calculateRiskRatio({
+              direction,
+              currentPrice,
+              takeProfitPrice,
+              stopLossPrice,
+            });
 
       return buildEntrySignalDecision({
         code: resolvedCode,
@@ -1464,7 +1479,7 @@ export const createStrategyAPI = <
           timestamp,
           prices: {
             currentPrice,
-            takeProfitPrice,
+            takeProfitPrice: takeProfitPrice ?? currentPrice,
             stopLossPrice,
             riskRatio,
           },

@@ -9,6 +9,7 @@ import {
 } from '../strategyHelpers/runtime';
 import {
   resolveEntryExecutionLimits,
+  resolveEntryStopLossPrice,
   EntrySubmissionValidationError,
 } from './entryExecutionValidation';
 import {
@@ -328,6 +329,7 @@ const executeAdmittedEntryDecision = async ({
         timestamp: decision.entryContext.timestamp,
         takeProfits: decision.orderPlan.takeProfits,
         stopLossPrice: decision.orderPlan.stopLossPrice,
+        stopLossDistance: decision.orderPlan.stopLossDistance,
         positionIntent: decision.orderPlan.positionIntent,
         ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
           ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
@@ -363,12 +365,15 @@ const executeAdmittedEntryDecision = async ({
     }
 
     await beforePlaceOrder();
+    const { direction, prices } = decision.entryContext;
+    const { stopLossPrice, stopLossDistance, takeProfits } = decision.orderPlan;
     const beforeSubmit = createEntrySubmissionValidation({
       connector,
       symbol,
       direction: decision.entryContext.direction,
-      takeProfits: decision.orderPlan.takeProfits,
-      stopLossPrice: decision.orderPlan.stopLossPrice,
+      takeProfits,
+      stopLossPrice,
+      stopLossDistance,
       limits: resolveEntryExecutionLimits(
         hookCtx.strategyConfig,
         decision.entryContext.direction,
@@ -385,8 +390,15 @@ const executeAdmittedEntryDecision = async ({
         bid: arrivalSnapshot.bid,
         ask: arrivalSnapshot.ask,
         arrivalMid: arrivalSnapshot.arrivalMid,
-        takeProfits: decision.orderPlan.takeProfits,
-        stopLossPrice: decision.orderPlan.stopLossPrice,
+        takeProfits,
+        stopLossPrice: resolveEntryStopLossPrice(
+          direction,
+          (direction === 'LONG' ? arrivalSnapshot.ask : arrivalSnapshot.bid) ??
+            arrivalSnapshot.arrivalMid ??
+            prices.currentPrice,
+          stopLossPrice,
+          stopLossDistance,
+        ),
       });
     }
     const orderPlaced = await connector.placeOrder({
@@ -407,13 +419,31 @@ const executeAdmittedEntryDecision = async ({
     }
 
     try {
+      const fill =
+        stopLossDistance == null ? null : await connector.getPosition(symbol);
+      const filledStop = resolveEntryStopLossPrice(
+        direction,
+        fill?.price ?? prices.currentPrice,
+        stopLossPrice,
+        stopLossDistance,
+      );
+      if (
+        stopLossDistance != null &&
+        (fill?.direction !== direction ||
+          !fill.qty ||
+          !Number.isFinite(fill.price) ||
+          !Number.isFinite(filledStop) ||
+          filledStop <= 0)
+      ) {
+        throw new Error('FILL_RELATIVE_STOP_UNAVAILABLE');
+      }
       await updatePositionProtection({
         connector,
         symbol,
-        direction: decision.entryContext.direction,
-        qty: decision.orderPlan.qty,
-        takeProfits: decision.orderPlan.takeProfits,
-        stopLossPrice: decision.orderPlan.stopLossPrice,
+        direction,
+        qty: fill?.qty ?? decision.orderPlan.qty,
+        takeProfits,
+        stopLossPrice: filledStop,
       });
     } catch (error) {
       await connector.closePosition({

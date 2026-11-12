@@ -17,7 +17,10 @@ import {
   RuntimeTradeTelemetryQuality,
   Tp,
 } from '@tradejs/types';
-import type { EntryExecutionLimits } from '../strategy/entryExecutionValidation';
+import {
+  resolveEntryStopLossPrice,
+  type EntryExecutionLimits,
+} from '../strategy/entryExecutionValidation';
 import {
   createEntrySubmissionValidation,
   getOrderArrivalSnapshot,
@@ -241,6 +244,7 @@ interface ExecuteEntryOrderParams {
   timestamp: number;
   takeProfits: Tp[];
   stopLossPrice: number | null;
+  stopLossDistance?: number;
   positionIntent?: 'open' | 'increase';
   leverage?: number;
   signal: Signal;
@@ -355,6 +359,7 @@ export const executeEntryOrder = async ({
   timestamp,
   takeProfits,
   stopLossPrice,
+  stopLossDistance,
   positionIntent = 'open',
   signal,
   beforePlaceOrder,
@@ -390,6 +395,7 @@ export const executeEntryOrder = async ({
     direction,
     takeProfits,
     stopLossPrice,
+    stopLossDistance,
     limits: executionLimits,
     onValidated: (snapshot, economics) => {
       arrivalSnapshot = snapshot;
@@ -420,7 +426,14 @@ export const executeEntryOrder = async ({
         ask: arrivalSnapshot.ask,
         arrivalMid: arrivalSnapshot.arrivalMid,
         takeProfits,
-        stopLossPrice,
+        stopLossPrice: resolveEntryStopLossPrice(
+          direction,
+          (direction === 'LONG' ? arrivalSnapshot.ask : arrivalSnapshot.bid) ??
+            arrivalSnapshot.arrivalMid ??
+            currentPrice,
+          stopLossPrice,
+          stopLossDistance,
+        ),
       });
     } catch (error) {
       signal.orderStatus = 'failed';
@@ -523,18 +536,38 @@ export const executeEntryOrder = async ({
   const estimatedOpenFee = fillPrice * filledQty * FEE_PERCENT;
 
   signal.prices.currentPrice = fillPrice;
+  if (takeProfits.length === 0) signal.prices.takeProfitPrice = fillPrice;
   signal.orderQty = filledQty;
   signal.orderValue = filledQty * fillPrice;
 
   if (orderPlaced) {
     try {
+      const filledStop = resolveEntryStopLossPrice(
+        direction,
+        fillPrice,
+        stopLossPrice,
+        stopLossDistance,
+      );
+      if (stopLossDistance != null) {
+        if (
+          !hasUsableCurrentPosition ||
+          currentPosition?.direction !== direction ||
+          !currentPosition.qty ||
+          filledStop == null ||
+          !Number.isFinite(filledStop) ||
+          filledStop <= 0
+        ) {
+          throw new Error('FILL_RELATIVE_STOP_UNAVAILABLE');
+        }
+        signal.prices.stopLossPrice = filledStop;
+      }
       await applyProtectiveOrders({
         connector,
         symbol,
         direction,
         qty: resultingQty,
         takeProfits,
-        stopLossPrice,
+        stopLossPrice: filledStop,
       });
     } catch (error) {
       await connector.closePosition({

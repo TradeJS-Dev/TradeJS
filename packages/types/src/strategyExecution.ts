@@ -294,7 +294,10 @@ export interface StrategyEntryRuntimeOptions {
 
 export interface StrategyEntryOrderPlan {
   qty: number;
+  /** Stop at the decision price, also used by callers supplying an absolute stop. */
   stopLossPrice: number;
+  /** Optional price distance for an opening order, reanchored at the actual fill. */
+  stopLossDistance?: number;
   takeProfits: Tp[];
   positionIntent?: OrderPositionIntent;
 }

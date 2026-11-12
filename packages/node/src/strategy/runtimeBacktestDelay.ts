@@ -11,6 +11,8 @@ import type {
   StrategyDecision,
 } from '@tradejs/types';
 
+import { resolveEntryStopLossPrice } from './entryExecutionValidation';
+
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
 
 export type BacktestExecutionCandleResolution = {
@@ -95,13 +97,15 @@ const resolveInvalidDelayedEntryReason = ({
 }: {
   decision: EntryDecision;
   executionPrice: number;
-  takeProfitPrice: number;
+  takeProfitPrice: number | null;
   stopLossPrice: number;
   riskRatio: number;
 }) => {
   if (
     !Number.isFinite(executionPrice) ||
-    !Number.isFinite(takeProfitPrice) ||
+    executionPrice <= 0 ||
+    stopLossPrice <= 0 ||
+    (takeProfitPrice != null && !Number.isFinite(takeProfitPrice)) ||
     !Number.isFinite(stopLossPrice)
   ) {
     return 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE';
@@ -111,21 +115,20 @@ const resolveInvalidDelayedEntryReason = ({
     if (executionPrice <= stopLossPrice) {
       return 'BACKTEST_DELAYED_ENTRY_BEYOND_STOP';
     }
-    if (executionPrice >= takeProfitPrice) {
+    if (takeProfitPrice != null && executionPrice >= takeProfitPrice) {
       return 'BACKTEST_DELAYED_ENTRY_BEYOND_TAKE_PROFIT';
     }
-    return !Number.isFinite(riskRatio) || riskRatio <= 0
-      ? 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE'
-      : null;
+  } else {
+    if (executionPrice >= stopLossPrice) {
+      return 'BACKTEST_DELAYED_ENTRY_BEYOND_STOP';
+    }
+    if (takeProfitPrice != null && executionPrice <= takeProfitPrice) {
+      return 'BACKTEST_DELAYED_ENTRY_BEYOND_TAKE_PROFIT';
+    }
   }
 
-  if (executionPrice >= stopLossPrice) {
-    return 'BACKTEST_DELAYED_ENTRY_BEYOND_STOP';
-  }
-  if (executionPrice <= takeProfitPrice) {
-    return 'BACKTEST_DELAYED_ENTRY_BEYOND_TAKE_PROFIT';
-  }
-  return !Number.isFinite(riskRatio) || riskRatio <= 0
+  return takeProfitPrice != null &&
+    (!Number.isFinite(riskRatio) || riskRatio <= 0)
     ? 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE'
     : null;
 };
@@ -197,14 +200,24 @@ export const applyBacktestDelayedEntryExecution = ({
     backtestPriceMode ?? 'open',
   );
   const executionTimestamp = candle.timestamp;
-  const takeProfitPrice = decision.entryContext.prices.takeProfitPrice;
-  const stopLossPrice = decision.orderPlan.stopLossPrice;
-  const riskRatio = calculateRiskRatio({
-    direction: decision.entryContext.direction,
-    currentPrice: executionPrice,
-    takeProfitPrice,
-    stopLossPrice,
-  });
+  const takeProfitPrice = decision.orderPlan.takeProfits.length
+    ? decision.entryContext.prices.takeProfitPrice
+    : null;
+  const stopLossPrice = resolveEntryStopLossPrice(
+    decision.entryContext.direction,
+    executionPrice,
+    decision.orderPlan.stopLossPrice,
+    decision.orderPlan.stopLossDistance,
+  );
+  const riskRatio =
+    takeProfitPrice == null
+      ? 0
+      : calculateRiskRatio({
+          direction: decision.entryContext.direction,
+          currentPrice: executionPrice,
+          takeProfitPrice,
+          stopLossPrice,
+        });
   const invalidSkipReason = resolveInvalidDelayedEntryReason({
     decision,
     executionPrice,
@@ -219,6 +232,7 @@ export const applyBacktestDelayedEntryExecution = ({
     prices: {
       ...decision.entryContext.prices,
       currentPrice: executionPrice,
+      takeProfitPrice: takeProfitPrice ?? executionPrice,
       stopLossPrice,
       riskRatio,
     },
@@ -240,6 +254,7 @@ export const applyBacktestDelayedEntryExecution = ({
   decision.signal.prices = {
     ...decision.signal.prices,
     currentPrice: executionPrice,
+    takeProfitPrice: takeProfitPrice ?? executionPrice,
     stopLossPrice,
     riskRatio,
   };

@@ -2,6 +2,7 @@ import type { Connector, Direction, Tp, Order } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
 import {
   validateEntryExecution,
+  resolveEntryStopLossPrice,
   EntrySubmissionValidationError,
   type EntryExecutionLimits,
 } from './entryExecutionValidation';
@@ -137,6 +138,7 @@ export const createEntrySubmissionValidation = ({
   direction,
   takeProfits,
   stopLossPrice,
+  stopLossDistance,
   limits,
   onValidated,
 }: {
@@ -145,6 +147,7 @@ export const createEntrySubmissionValidation = ({
   direction: Direction;
   takeProfits: Tp[];
   stopLossPrice: number | null;
+  stopLossDistance?: number;
   limits?: EntryExecutionLimits;
   onValidated?: (
     snapshot: Awaited<ReturnType<typeof getOrderArrivalSnapshot>>,
@@ -194,6 +197,12 @@ export const createEntrySubmissionValidation = ({
         'ENTRY_QUOTE_STALE_AT_SUBMISSION',
       );
     const price = direction === 'LONG' ? snapshot.ask : snapshot.bid;
+    const stopAtArrival = resolveEntryStopLossPrice(
+      direction,
+      price,
+      stopLossPrice,
+      stopLossDistance,
+    );
     validateEntryProtectionAtArrival({
       direction,
       signalPrice: price,
@@ -201,16 +210,20 @@ export const createEntrySubmissionValidation = ({
       ask: snapshot.ask,
       arrivalMid: snapshot.arrivalMid,
       takeProfits,
-      stopLossPrice,
+      stopLossPrice: stopAtArrival,
     });
     const prices = takeProfits.map((tp) => tp.price);
     const economics = validateEntryExecution({
       direction,
       price,
       qty,
-      stopLossPrice,
+      stopLossPrice: stopAtArrival,
       takeProfitPrice:
-        direction === 'LONG' ? Math.max(...prices) : Math.min(...prices),
+        prices.length === 0
+          ? null
+          : direction === 'LONG'
+            ? Math.max(...prices)
+            : Math.min(...prices),
       limits,
     });
     if (economics.belowMinimumNetRiskRatio) {

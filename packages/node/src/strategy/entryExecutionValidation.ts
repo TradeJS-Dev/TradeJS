@@ -48,6 +48,16 @@ export const resolveEntryExecutionLimits = (
   return { minimumNetRiskRatio, maxLossValue, feeRate, slippageBps };
 };
 
+export const resolveEntryStopLossPrice = <TStop extends number | null>(
+  direction: Direction,
+  price: number,
+  absoluteStop: TStop,
+  distance?: number,
+) =>
+  distance == null
+    ? absoluteStop
+    : price + (direction === 'LONG' ? -distance : distance);
+
 export const validateEntryExecution = ({
   direction,
   price,
@@ -60,7 +70,7 @@ export const validateEntryExecution = ({
   price: number;
   qty: number;
   stopLossPrice: number | null;
-  takeProfitPrice: number;
+  takeProfitPrice: number | null;
   limits: EntryExecutionLimits;
 }) => {
   if (
@@ -71,8 +81,8 @@ export const validateEntryExecution = ({
     stopLossPrice == null ||
     !Number.isFinite(stopLossPrice) ||
     stopLossPrice <= 0 ||
-    !Number.isFinite(takeProfitPrice) ||
-    takeProfitPrice <= 0
+    (takeProfitPrice != null &&
+      (!Number.isFinite(takeProfitPrice) || takeProfitPrice <= 0))
   )
     throw new EntrySubmissionValidationError(
       'ENTRY_ECONOMICS_INPUTS_UNAVAILABLE',
@@ -80,7 +90,7 @@ export const validateEntryExecution = ({
   const side = direction === 'LONG' ? 1 : -1;
   if (
     side * (price - stopLossPrice) <= 0 ||
-    side * (takeProfitPrice - price) <= 0
+    (takeProfitPrice != null && side * (takeProfitPrice - price) <= 0)
   )
     throw new EntrySubmissionValidationError(
       'INVALID_ENTRY_PROTECTION_AT_SUBMISSION',
@@ -92,12 +102,15 @@ export const validateEntryExecution = ({
   const entryCost = cost(price, side);
   const lossPerUnit =
     Math.abs(price - stopLossPrice) + entryCost + cost(stopLossPrice, -side);
-  const rewardPerUnit = Math.max(
-    0,
-    Math.abs(takeProfitPrice - price) -
-      entryCost -
-      cost(takeProfitPrice, -side),
-  );
+  const rewardPerUnit =
+    takeProfitPrice == null
+      ? 0
+      : Math.max(
+          0,
+          Math.abs(takeProfitPrice - price) -
+            entryCost -
+            cost(takeProfitPrice, -side),
+        );
   const netRiskRatio = rewardPerUnit / lossPerUnit;
   const plannedLossValue = qty * lossPerUnit;
   if (!Number.isFinite(netRiskRatio) || !Number.isFinite(plannedLossValue))
