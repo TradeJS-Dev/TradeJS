@@ -67,6 +67,11 @@
       "import": "./dist/redis.mjs",
       "require": "./dist/redis.js"
     },
+    "./researchMetricSnapshot": {
+      "types": "./dist/researchMetricSnapshot.d.ts",
+      "import": "./dist/researchMetricSnapshot.mjs",
+      "require": "./dist/researchMetricSnapshot.js"
+    },
     "./runtimeStrategyConfigs": {
       "types": "./dist/runtimeStrategyConfigs.d.ts",
       "import": "./dist/runtimeStrategyConfigs.mjs",

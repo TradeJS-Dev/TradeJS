@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { encodeResearchMetricSnapshot } from '../researchMetricSnapshot';
+import { encodeResearchMetricSnapshot } from '@tradejs/infra/researchMetricSnapshot';
 import path from 'node:path';
 import type { ResearchEntryPolicy } from '@tradejs/types';
 import { summarizeCoreResearchWindow } from '../coreResearch/metrics';

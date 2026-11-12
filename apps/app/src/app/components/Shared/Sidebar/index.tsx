@@ -2,7 +2,7 @@
 
 import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import {
   FiActivity,
   FiLink,
@@ -10,12 +10,14 @@ import {
   FiLayers,
   FiLogOut,
   FiPlay,
+  FiBookOpen,
 } from 'react-icons/fi';
 import { AccountSettingsDrawer } from './AccountSettingsDrawer';
 
 export const Sidebar = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   const navItems = [
     {
@@ -34,6 +36,16 @@ export const Sidebar = () => {
       path: '/routes/strategies/runtime',
       activePath: '/routes/strategies',
     },
+    ...(session?.user?.id === 'root'
+      ? [
+          {
+            icon: FiBookOpen,
+            label: 'Research',
+            path: '/routes/research',
+            activePath: '/routes/research',
+          },
+        ]
+      : []),
     {
       icon: FiActivity,
       label: 'Derivatives',

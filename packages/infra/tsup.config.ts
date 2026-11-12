@@ -12,6 +12,7 @@ export default defineConfig({
     'src/logger.ts',
     'src/ml.ts',
     'src/redis.ts',
+    'src/researchMetricSnapshot.ts',
     'src/runtimeControls.ts',
     'src/runtimeDeploymentEvents.ts',
     'src/runtimeHeartbeats.ts',

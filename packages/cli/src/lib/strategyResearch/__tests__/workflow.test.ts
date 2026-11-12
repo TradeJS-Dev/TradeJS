@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import fs from 'node:fs/promises';
-import { decodeResearchMetricSnapshot } from '../../researchMetricSnapshot';
+import { decodeResearchMetricSnapshot } from '@tradejs/infra/researchMetricSnapshot';
 import os from 'node:os';
 import path from 'node:path';
 import type { AiPayload, ResearchEntryPolicy } from '@tradejs/types';

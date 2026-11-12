@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { decodeResearchMetricSnapshot } from '../researchMetricSnapshot';
+import { decodeResearchMetricSnapshot } from '@tradejs/infra/researchMetricSnapshot';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { strategyEvidenceFileSha256 } from '@tradejs/infra/strategyReleaseEvidence';

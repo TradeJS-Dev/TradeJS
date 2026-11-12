@@ -7,7 +7,7 @@ import type {
   StrategyResearchRetention,
 } from '@tradejs/types';
 import { planStrategyEvidenceRetention } from '../lib/strategyRelease/evidenceRetention';
-import { encodeResearchMetricSnapshot } from '../lib/researchMetricSnapshot';
+import { encodeResearchMetricSnapshot } from '@tradejs/infra/researchMetricSnapshot';
 import { applyResearchRetention } from '../lib/strategyRelease/researchRetention';
 
 describe('completed research retention', () => {

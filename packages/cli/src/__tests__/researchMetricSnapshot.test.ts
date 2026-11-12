@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import {
   encodeResearchMetricSnapshot,
   decodeResearchMetricSnapshot,
-} from '../lib/researchMetricSnapshot';
+} from '@tradejs/infra/researchMetricSnapshot';
 
 describe('portable permanent metric snapshots', () => {
   it('round trips the native report through the installed-skill decoder without losing fields', () => {

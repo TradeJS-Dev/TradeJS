@@ -15,6 +15,7 @@ interface SelectProps {
   value?: string[];
   items: Items;
   placeholder?: string;
+  'aria-label'?: string;
   emptyState?: string;
   width?: string | number;
   multiple?: boolean;
@@ -30,6 +31,7 @@ export const Select = ({
   items,
   multiple = false,
   placeholder = 'Select',
+  'aria-label': ariaLabel,
   emptyState = 'No items found',
   width = '320px',
   disabled = false,
@@ -58,7 +60,7 @@ export const Select = ({
     >
       <UISelect.HiddenSelect />
       <UISelect.Control>
-        <UISelect.Trigger>
+        <UISelect.Trigger aria-label={ariaLabel}>
           <UISelect.ValueText placeholder={placeholder} />
         </UISelect.Trigger>
         <UISelect.IndicatorGroup>
