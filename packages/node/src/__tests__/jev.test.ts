@@ -3,11 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { buildJevInput, evaluateJevInput, assessSignalWithJev } from '../jev';
-import {
-  questionsForJevInput,
-  JEV_QUESTIONS,
-  stateForJevInput,
-} from '../jevInput';
+import { questionsForJevInput, stateForJevInput } from '../jevInput';
 import { buildAiPayloadByStrategy } from '../strategyAdapters/ai';
 import {
   trainJevGate,

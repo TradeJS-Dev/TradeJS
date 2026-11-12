@@ -44,6 +44,9 @@ jest.mock('@tradejs/node/ai', () => ({
   getDeterministicAiGateContext: jest.fn(() => null),
 }));
 
+// The workflows write and verify reports while other suites collect coverage.
+jest.setTimeout(15_000);
+
 const feature =
   'additionalIndicators.baseContext.structure.localRange.rangePosition20';
 const specFixture = (id = 'automatic-fixture'): StrategyResearchSpec => {

@@ -1,18 +1,14 @@
 /** @jest-environment node */
 
 import { NextRequest } from 'next/server';
-import {
-  readDataCoverage,
-  readDataCoverageDay,
-} from '@tradejs/infra/timescale/dataCoverage';
+import { readDataCoverageSnapshot } from '@tradejs/infra/timescale/dataCoverage';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { GET } from '../route';
 
 jest.mock('@tradejs/infra/timescale/dataCoverage', () => ({
   getDataCoveragePeriodEnd: () => Date.UTC(2026, 10, 13),
   isDataCoverageDataset: () => true,
-  readDataCoverage: jest.fn(),
-  readDataCoverageDay: jest.fn(),
+  readDataCoverageSnapshot: jest.fn(),
 }));
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: jest.fn(),
@@ -27,8 +23,8 @@ jest.mock('@tradejs/infra/logger', () => ({
 const to = Date.UTC(2026, 10, 13);
 const day = Date.UTC(2026, 10, 12);
 const overview = { first: null, last: null, series: 0, days: [] };
-const readOverview = jest.mocked(readDataCoverage);
-const readDay = jest.mocked(readDataCoverageDay);
+const readSnapshot = jest.mocked(readDataCoverageSnapshot);
+const snapshot = { coverage: overview, readDay: () => [] };
 const currentUser = jest.mocked(getCurrentUserName);
 const request = (dataset: string, params: Record<string, string> = {}) =>
   new NextRequest(
@@ -38,8 +34,7 @@ const request = (dataset: string, params: Record<string, string> = {}) =>
 beforeEach(() => {
   jest.clearAllMocks();
   currentUser.mockResolvedValue('root');
-  readOverview.mockResolvedValue(overview);
-  readDay.mockResolvedValue([]);
+  readSnapshot.mockResolvedValue(snapshot);
 });
 
 afterEach(() => {
@@ -47,8 +42,8 @@ afterEach(() => {
 });
 
 it('shares an in-flight query and reuses its result only for the authorized user', async () => {
-  let finish!: (value: typeof overview) => void;
-  readOverview.mockImplementationOnce(
+  let finish!: (value: typeof snapshot) => void;
+  readSnapshot.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -58,8 +53,8 @@ it('shares an in-flight query and reuses its result only for the authorized user
   const first = GET(request('bybit-candles-15m'));
   const second = GET(request('bybit-candles-15m'));
   await Promise.resolve();
-  expect(readOverview).toHaveBeenCalledTimes(1);
-  finish(overview);
+  expect(readSnapshot).toHaveBeenCalledTimes(1);
+  finish(snapshot);
 
   const responses = await Promise.all([first, second]);
   expect(
@@ -76,35 +71,47 @@ it('shares an in-flight query and reuses its result only for the authorized user
   expect((await GET(request('bybit-candles-15m'))).status).toBe(401);
 });
 
-it('refreshes the selected period and invalidates its daily breakdowns', async () => {
+it('shares the annual snapshot with daily detail and replaces both on refresh', async () => {
   const dataset = 'bybit-candles-1h';
-  const details = { day: String(day) };
-  await GET(request(dataset));
+  const year = { year: '2026' };
+  const details = { ...year, day: String(day) };
+  await GET(request(dataset, year));
   await GET(request(dataset, details));
-  await GET(request(dataset, details));
-  expect(readDay).toHaveBeenCalledTimes(1);
+  expect(readSnapshot).toHaveBeenCalledTimes(1);
+  expect(readSnapshot).toHaveBeenCalledWith(
+    dataset,
+    { from: Date.UTC(2026, 0, 1), to },
+    expect.anything(),
+  );
 
   const fresh = { ...overview, series: 1 };
-  readOverview.mockResolvedValueOnce(fresh);
-  expect(await (await GET(request(dataset, { refresh: '1' }))).json()).toEqual(
-    fresh,
-  );
-  expect(await (await GET(request(dataset))).json()).toEqual(fresh);
-  expect(readOverview).toHaveBeenCalledTimes(2);
+  const rows = [{ key: 'BTCUSDT', loaded: 4, missing: 0 }];
+  readSnapshot.mockResolvedValueOnce({ coverage: fresh, readDay: () => rows });
+  expect(
+    await (await GET(request(dataset, { ...year, refresh: '1' }))).json(),
+  ).toEqual(fresh);
+  expect(await (await GET(request(dataset, details))).json()).toEqual(rows);
+  expect(readSnapshot).toHaveBeenCalledTimes(2);
+});
 
-  await GET(request(dataset, details));
-  expect(readDay).toHaveBeenCalledTimes(2);
+it('rejects future years and days outside the chosen calendar year', async () => {
+  const dataset = 'cmc-global-1d';
+  expect((await GET(request(dataset, { year: '2027' }))).status).toBe(400);
+  expect(
+    (await GET(request(dataset, { year: '2025', day: String(day) }))).status,
+  ).toBe(400);
+  expect(readSnapshot).not.toHaveBeenCalled();
 });
 
 it('retries failures and recomputes recent coverage after the TTL', async () => {
   const now = jest.spyOn(Date, 'now').mockReturnValue(day);
   const dataset = 'cmc-global-1d';
-  readOverview.mockRejectedValueOnce(new Error('Timed out'));
+  readSnapshot.mockRejectedValueOnce(new Error('Timed out'));
   expect((await GET(request(dataset))).status).toBe(500);
   expect((await GET(request(dataset))).status).toBe(200);
-  expect(readOverview).toHaveBeenCalledTimes(2);
+  expect(readSnapshot).toHaveBeenCalledTimes(2);
 
   now.mockReturnValue(day + 60_000);
   expect((await GET(request(dataset))).status).toBe(200);
-  expect(readOverview).toHaveBeenCalledTimes(3);
+  expect(readSnapshot).toHaveBeenCalledTimes(3);
 });

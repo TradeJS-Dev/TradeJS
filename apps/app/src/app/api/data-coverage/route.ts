@@ -28,9 +28,21 @@ export async function GET(request: NextRequest) {
 
   const query = request.nextUrl.searchParams;
   const id = query.get('dataset') ?? '';
-  const to = Number(query.get('to'));
-  const from = to - 30 * DAY_MS;
   const tomorrow = getDataCoveragePeriodEnd();
+  const yearParam = query.get('year');
+  const year = Number(yearParam);
+  const currentYear = new Date(tomorrow - DAY_MS).getUTCFullYear();
+  if (
+    yearParam !== null &&
+    (!/^\d{4}$/.test(yearParam) || year < 1970 || year > currentYear)
+  ) {
+    return reply({ error: 'Invalid coverage year.' }, 400);
+  }
+  const to =
+    yearParam === null
+      ? Number(query.get('to'))
+      : Math.min(Date.UTC(year + 1, 0, 1), tomorrow);
+  const from = yearParam === null ? to - 30 * DAY_MS : Date.UTC(year, 0, 1);
   const day = query.has('day') ? Number(query.get('day')) : undefined;
   if (
     !isDataCoverageDataset(id) ||
@@ -52,10 +64,15 @@ export async function GET(request: NextRequest) {
     const { result, status } = getCachedDataCoverage({
       dataset: id,
       period: { from, to },
-      day,
       refresh: day === undefined && query.get('refresh') === '1',
+      annual: yearParam !== null,
     });
-    return reply(await result, 200, status);
+    const snapshot = await result;
+    return reply(
+      day === undefined ? snapshot.coverage : snapshot.readDay(day),
+      200,
+      status,
+    );
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });
     logger.error('Could not read market data coverage: %o', error);

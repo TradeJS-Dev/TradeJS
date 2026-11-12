@@ -5,7 +5,6 @@ import {
   validateStrategyResearchSpec,
   createNativeStrategyResearchBackend,
   runStrategyResearch,
-  type StrategyResearchSpec,
   type ResearchState,
 } from '../lib/strategyResearch';
 import {

@@ -293,9 +293,6 @@ export const runStrategyResearch = async (parameters: {
         ReturnType<typeof summarizeCoreResearchWindow>
       > = {};
       const discovered: FrozenResearchGate[] = [];
-      const control = spec.core.variants.find(
-        (variant) => variant.role === 'control',
-      )!;
       const currentPolicy: ResearchEntryPolicy = {
         schema: 'tradejs-research-entry-policy/v1',
         strategy: spec.core.strategy,

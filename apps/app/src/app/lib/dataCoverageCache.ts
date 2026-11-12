@@ -1,16 +1,13 @@
-import {
-  readDataCoverage,
-  readDataCoverageDay,
-} from '@tradejs/infra/timescale/dataCoverage';
-import type { DataCoverage, DataCoverageSeriesDay } from '@tradejs/types';
+import { readDataCoverageSnapshot } from '@tradejs/infra/timescale/dataCoverage';
 
 const MINUTE_MS = 60_000;
-const RECENT_WINDOW_MS = 7 * 24 * 60 * MINUTE_MS;
+const DAY_MS = 24 * 60 * MINUTE_MS;
+const RECENT_WINDOW_MS = 7 * DAY_MS;
 const MAX_CACHED_RESULTS = 128;
 
-type CoverageResult = DataCoverage | DataCoverageSeriesDay[];
+type Snapshot = Awaited<ReturnType<typeof readDataCoverageSnapshot>>;
 type Entry = {
-  result: Promise<CoverageResult>;
+  result: Promise<Snapshot>;
   expiresAt: number;
 };
 
@@ -30,23 +27,16 @@ function evictCachedResults() {
 export function getCachedDataCoverage({
   dataset,
   period,
-  day,
   refresh,
+  annual,
 }: {
   dataset: string;
   period: { from: number; to: number };
-  day?: number;
   refresh: boolean;
+  annual: boolean;
 }) {
-  const prefix = `${dataset}:${period.to}:`;
-  const key = prefix + (day ?? 'overview');
+  const key = `${dataset}:${period.from}:${period.to}`;
   const existing = cache.get(key);
-  if (refresh && day === undefined) {
-    for (const cachedKey of cache.keys()) {
-      if (cachedKey !== key && cachedKey.startsWith(prefix))
-        cache.delete(cachedKey);
-    }
-  }
   const pending = existing?.expiresAt === Infinity;
   if (existing && (pending || (!refresh && existing.expiresAt > Date.now()))) {
     cache.delete(key);
@@ -56,10 +46,7 @@ export function getCachedDataCoverage({
 
   // The work is shared between requests, so a disconnected browser cannot cancel it.
   const { signal } = new AbortController();
-  const result =
-    day === undefined
-      ? readDataCoverage(dataset, period, signal)
-      : readDataCoverageDay(dataset, period, day, signal);
+  const result = readDataCoverageSnapshot(dataset, period, signal);
   const entry: Entry = { result, expiresAt: Infinity };
   cache.delete(key);
   cache.set(key, entry);
@@ -68,7 +55,13 @@ export function getCachedDataCoverage({
       if (cache.get(key) !== entry) return;
       const now = Date.now();
       const ttl =
-        period.to + RECENT_WINDOW_MS > now ? MINUTE_MS : 10 * MINUTE_MS;
+        (period.to + RECENT_WINDOW_MS > now
+          ? annual
+            ? 10
+            : 1
+          : annual
+            ? 60
+            : 10) * MINUTE_MS;
       entry.expiresAt = now + ttl;
       evictCachedResults();
     },

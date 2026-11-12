@@ -86,7 +86,7 @@ export const coverageDatasets = [
     {
       provider: 'Binance',
       id: 'binance-trade-flow',
-      label: 'Trade flow',
+      label: 'Taker buy/sell flow',
       table: 'market_trade_flow',
       dimension: 'symbol',
       filter: "source = 'binance_klines' AND symbol LIKE '%USDT'",
