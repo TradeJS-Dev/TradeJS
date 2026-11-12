@@ -87,6 +87,17 @@ describe('backtest jobs helpers', () => {
     });
   });
 
+  it('retains a valid research link in the job request and rejects malformed links', () => {
+    const configId = 'TrendLine:base';
+    const researchStudy = 'TrendLine/2026-07-16-control';
+    expect(
+      normalizeBacktestJobRequest({ configId, researchStudy }).researchStudy,
+    ).toBe(researchStudy);
+    expect(() =>
+      normalizeBacktestJobRequest({ configId, researchStudy: '../notes' }),
+    ).toThrow('Invalid research study');
+  });
+
   it('builds TradeJS CLI args with range flags and resume skip', () => {
     const request = normalizeBacktestJobRequest({
       strategyName: 'TrendLine',

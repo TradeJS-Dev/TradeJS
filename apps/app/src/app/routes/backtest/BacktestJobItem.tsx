@@ -2,6 +2,7 @@
 
 import { Badge, Box, Button, Flex, Grid, Stack, Text } from '@chakra-ui/react';
 import {
+  FiBookOpen,
   FiFolder,
   FiPause,
   FiPlay,
@@ -14,6 +15,8 @@ import type {
   BacktestJobStatus,
 } from '#app/lib/backtestJobContracts';
 import type { JobAction } from './useBacktestRunsController';
+import Link from 'next/link';
+import { parseStudyKey, studyUrl } from '#app/lib/researchStudyLinks';
 
 const formatNumber = (value: number | null | undefined, fractionDigits = 1) =>
   typeof value === 'number' && Number.isFinite(value)
@@ -62,6 +65,7 @@ const getJobTitle = (job: BacktestJobRecord) =>
 
 interface BacktestJobItemProps {
   job: BacktestJobRecord;
+  researchAvailable: boolean;
   busyAction: string;
   onAction: (jobId: string, action: JobAction) => void;
   onDelete: (jobId: string) => void;
@@ -70,12 +74,16 @@ interface BacktestJobItemProps {
 
 export const BacktestJobItem = ({
   job,
+  researchAvailable,
   busyAction,
   onAction,
   onDelete,
   onOpenResults,
 }: BacktestJobItemProps) => {
   const progress = job.progress;
+  const study = job.request.researchStudy
+    ? parseStudyKey(job.request.researchStudy)
+    : null;
   const totalLabel = progress.total == null ? '?' : progress.total;
   const logs = job.logs.slice(-10);
   const canPause = !job.cli && job.status === 'running';
@@ -124,6 +132,19 @@ export const BacktestJobItem = ({
         </Box>
 
         <Flex gap={2} flexShrink={0} wrap="wrap" justifyContent="flex-end">
+          {researchAvailable && (
+            <Button asChild size="xs" variant="outline">
+              <Link
+                href={
+                  study
+                    ? studyUrl(study.strategy, job.request.researchStudy)
+                    : studyUrl(job.request.strategyName)
+                }
+              >
+                <FiBookOpen /> {study ? 'Linked study' : 'Strategy research'}
+              </Link>
+            </Button>
+          )}
           {canPause ? (
             <>
               <Button

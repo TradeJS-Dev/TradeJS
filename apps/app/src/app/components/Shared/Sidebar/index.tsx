@@ -11,6 +11,7 @@ import {
   FiLogOut,
   FiPlay,
   FiBookOpen,
+  FiDatabase,
 } from 'react-icons/fi';
 import { AccountSettingsDrawer } from './AccountSettingsDrawer';
 
@@ -43,6 +44,11 @@ export const Sidebar = () => {
             label: 'Research',
             path: '/routes/research',
             activePath: '/routes/research',
+          },
+          {
+            icon: FiDatabase,
+            label: 'Data coverage',
+            path: '/routes/data-coverage',
           },
         ]
       : []),

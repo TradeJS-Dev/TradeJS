@@ -6,6 +6,9 @@ import type { BacktestRunManifest } from './checkpoint';
 
 const HEARTBEAT_MS = 2_000;
 const ACTIVE_TTL_SECONDS = 30;
+const LINKED_RUN_TTL_SECONDS = 30 * 24 * TTL_1H;
+const RESEARCH_STUDY =
+  /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\/\d{4}-\d{2}-\d{2}-[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const MAX_VALUES_PER_PARAMETER = 12;
 const MAX_VALUE_LENGTH = 500;
 
@@ -48,11 +51,22 @@ export const observeBacktestRun = async (
 ) => {
   if (process.env.TRADEJS_BACKTEST_WEB_JOB === '1') return;
 
+  const researchStudy = process.env.TRADEJS_RESEARCH_STUDY?.trim();
+  const linkedStudy =
+    researchStudy && RESEARCH_STUDY.test(researchStudy)
+      ? researchStudy
+      : undefined;
+  if (researchStudy && !linkedStudy) {
+    logger.warn(
+      'invalid TRADEJS_RESEARCH_STUDY; expected Strategy/YYYY-MM-DD-slug',
+    );
+  }
   const { testSuite } = manifest;
   const firstTest = testSuite[0];
   const startedAt = new Date().toISOString();
   const run: CliBacktestRun = {
     id: manifest.runId,
+    ...(linkedStudy && { researchStudy: linkedStudy }),
     userName: manifest.userName,
     strategyName: firstTest.strategyName,
     configId: manifest.config,
@@ -100,7 +114,7 @@ export const observeBacktestRun = async (
       clearInterval(timer);
       await pending;
       run.status = status;
-      await save(TTL_1H);
+      await save(linkedStudy ? LINKED_RUN_TTL_SECONDS : TTL_1H);
     },
   };
 };

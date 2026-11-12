@@ -12,6 +12,8 @@ import {
   Flex,
   Portal,
   SimpleGrid,
+  Skeleton,
+  Stack,
   Text,
 } from '@chakra-ui/react';
 
@@ -53,6 +55,7 @@ interface OrdersDrawerPanelProps {
   open: boolean;
   orders: OrdersDrawerOrder[];
   emptyText?: string;
+  loading?: boolean;
   rowHeight?: number;
   showStatusFilter?: boolean;
   statusFilterOptions?: readonly {
@@ -539,6 +542,7 @@ export const OrdersDrawerPanel = ({
   open,
   orders,
   emptyText = 'No orders for the selected period.',
+  loading = false,
   rowHeight = DEFAULT_ROW_HEIGHT,
   showStatusFilter = true,
   statusFilterOptions = orderStatusFilterOptions,
@@ -597,7 +601,34 @@ export const OrdersDrawerPanel = ({
                 onStatusFilterChange={setStatusFilter}
                 onDirectionFilterChange={setDirectionFilter}
               />
-              {orders.length === 0 ? (
+              {loading && orders.length === 0 ? (
+                <Stack
+                  role="status"
+                  aria-label="Loading orders"
+                  gap={3}
+                  overflow="hidden"
+                >
+                  {[0, 1].map((row) => (
+                    <Stack
+                      key={row}
+                      borderWidth="1px"
+                      borderColor="gray.800"
+                      borderRadius="md"
+                      p={4}
+                      minH={`${rowHeight - 12}px`}
+                      gap={4}
+                    >
+                      <Skeleton h="24px" w="135px" />
+                      <Skeleton h="18px" w="220px" maxW="full" />
+                      <SimpleGrid columns={3} gap={3}>
+                        {[0, 1, 2, 3, 4, 5].map((metric) => (
+                          <Skeleton key={metric} h="42px" />
+                        ))}
+                      </SimpleGrid>
+                    </Stack>
+                  ))}
+                </Stack>
+              ) : orders.length === 0 ? (
                 <Box
                   p={4}
                   borderWidth="1px"

@@ -933,7 +933,8 @@ export const cliBacktestRunStorage = {
       .set(`${index}:${run.id}`, toJson(run), 'EX', ttlSeconds)
       .zremrangebyscore(index, '-inf', now)
       .zadd(index, now + ttlSeconds * 1000, run.id)
-      .expire(index, TTL_1D)
+      .expire(index, Math.max(TTL_1D, ttlSeconds), 'NX')
+      .expire(index, Math.max(TTL_1D, ttlSeconds), 'GT')
       .exec();
     const error = results?.find(([failure]) => failure)?.[0];
     if (error) throw error;

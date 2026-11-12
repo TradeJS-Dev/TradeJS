@@ -10,8 +10,10 @@ import {
   Flex,
   Grid,
   Input,
+  Skeleton,
   Stack,
   Text,
+  chakra,
 } from '@chakra-ui/react';
 import { FiChevronRight, FiPlay, FiX } from 'react-icons/fi';
 import { Segment, Select, SelectWithSearch } from '#ui';
@@ -133,8 +135,10 @@ const FormSection = ({ title, columns, children }: FormSectionProps) => (
 
 export const BacktestRunForm = ({
   controller,
+  initiallyOpen = false,
 }: {
   controller: BacktestRunsController;
+  initiallyOpen?: boolean;
 }) => {
   const {
     state,
@@ -179,15 +183,14 @@ export const BacktestRunForm = ({
       !loadingConfigs &&
       !starting,
   );
-  const launchHint = loadingConfigs
-    ? 'Loading configurations…'
-    : !hasConfigs
-      ? 'Create a backtest configuration to get started.'
-      : !selectedConfig
-        ? 'Choose a strategy and configuration.'
-        : !periodValid
-          ? 'Enter a valid period to continue.'
-          : 'Review your settings, then launch the backtest.';
+  const showConfigSkeleton = loadingConfigs && !hasConfigs;
+  const launchHint = !hasConfigs
+    ? 'Create a backtest configuration to get started.'
+    : !selectedConfig
+      ? 'Choose a strategy and configuration.'
+      : !periodValid
+        ? 'Enter a valid period to continue.'
+        : 'Review your settings, then launch the backtest.';
   const periodLabel =
     periodMode === 'days'
       ? `Last ${days || '—'} days`
@@ -199,8 +202,8 @@ export const BacktestRunForm = ({
   };
 
   return (
-    <Box
-      as="details"
+    <chakra.details
+      open={initiallyOpen || undefined}
       maxW="1200px"
       w="full"
       borderWidth="1px"
@@ -254,38 +257,56 @@ export const BacktestRunForm = ({
             >
               <Field.Root>
                 <Field.Label>Strategy</Field.Label>
-                <SelectControl>
-                  <Select
-                    placeholder="Select a strategy"
-                    value={selectedStrategy ? [selectedStrategy] : []}
-                    defaultValue={selectedStrategy ? [selectedStrategy] : []}
-                    onChange={(value) =>
-                      updateForm({ selectedStrategy: value[0] || '' })
-                    }
-                    items={strategyItems}
-                    emptyState="No backtest configs"
-                    width="100%"
-                    disabled={!hasConfigs}
+                {showConfigSkeleton ? (
+                  <Skeleton
+                    h="40px"
+                    w="full"
+                    role="status"
+                    aria-label="Loading strategy options"
                   />
-                </SelectControl>
+                ) : (
+                  <SelectControl>
+                    <Select
+                      placeholder="Select a strategy"
+                      value={selectedStrategy ? [selectedStrategy] : []}
+                      defaultValue={selectedStrategy ? [selectedStrategy] : []}
+                      onChange={(value) =>
+                        updateForm({ selectedStrategy: value[0] || '' })
+                      }
+                      items={strategyItems}
+                      emptyState="No backtest configs"
+                      width="100%"
+                      disabled={!hasConfigs}
+                    />
+                  </SelectControl>
+                )}
               </Field.Root>
 
               <Field.Root>
                 <Field.Label>Configuration</Field.Label>
-                <SelectControl>
-                  <Select
-                    placeholder="Select a configuration"
-                    value={selectedConfigId ? [selectedConfigId] : []}
-                    defaultValue={selectedConfigId ? [selectedConfigId] : []}
-                    onChange={(value) =>
-                      updateForm({ selectedConfigId: value[0] || '' })
-                    }
-                    items={configItems}
-                    emptyState="No configs for strategy"
-                    width="100%"
-                    disabled={!selectedStrategy}
+                {showConfigSkeleton ? (
+                  <Skeleton
+                    h="40px"
+                    w="full"
+                    role="status"
+                    aria-label="Loading configuration options"
                   />
-                </SelectControl>
+                ) : (
+                  <SelectControl>
+                    <Select
+                      placeholder="Select a configuration"
+                      value={selectedConfigId ? [selectedConfigId] : []}
+                      defaultValue={selectedConfigId ? [selectedConfigId] : []}
+                      onChange={(value) =>
+                        updateForm({ selectedConfigId: value[0] || '' })
+                      }
+                      items={configItems}
+                      emptyState="No configs for strategy"
+                      width="100%"
+                      disabled={!selectedStrategy}
+                    />
+                  </SelectControl>
+                )}
               </Field.Root>
             </FormSection>
 
@@ -588,12 +609,21 @@ export const BacktestRunForm = ({
               <Text fontWeight="600" color="teal.300" fontSize="sm">
                 Run summary
               </Text>
-              <Text fontSize="lg" fontWeight="700" overflowWrap="anywhere">
-                {selectedStrategy || 'Choose a strategy'}
-              </Text>
-              <Text fontSize="sm" color="gray.400" overflowWrap="anywhere">
-                {selectedConfigId || 'No configuration selected'}
-              </Text>
+              {showConfigSkeleton ? (
+                <>
+                  <Skeleton h="24px" w="75%" />
+                  <Skeleton h="18px" w="90%" />
+                </>
+              ) : (
+                <>
+                  <Text fontSize="lg" fontWeight="700" overflowWrap="anywhere">
+                    {selectedStrategy || 'Choose a strategy'}
+                  </Text>
+                  <Text fontSize="sm" color="gray.400" overflowWrap="anywhere">
+                    {selectedConfigId || 'No configuration selected'}
+                  </Text>
+                </>
+              )}
             </Stack>
             <Stack as="dl" gap={3} fontSize="sm" m={0}>
               {[
@@ -691,14 +721,18 @@ export const BacktestRunForm = ({
               </Checkbox.Root>
             </Stack>
             <Stack gap={3} mt="auto" pt={3}>
-              <Text
-                fontSize="xs"
-                color="gray.400"
-                id="backtest-launch-hint"
-                role="status"
-              >
-                {launchHint}
-              </Text>
+              {showConfigSkeleton ? (
+                <Skeleton h="16px" w="90%" />
+              ) : (
+                <Text
+                  fontSize="xs"
+                  color="gray.400"
+                  id="backtest-launch-hint"
+                  role="status"
+                >
+                  {launchHint}
+                </Text>
+              )}
               <Button
                 type="submit"
                 colorPalette="teal"
@@ -707,7 +741,9 @@ export const BacktestRunForm = ({
                 loadingText="Starting…"
                 w="full"
                 size="lg"
-                aria-describedby="backtest-launch-hint"
+                aria-describedby={
+                  showConfigSkeleton ? undefined : 'backtest-launch-hint'
+                }
               >
                 <FiPlay />
                 Start backtest
@@ -716,6 +752,6 @@ export const BacktestRunForm = ({
           </Stack>
         </Grid>
       </form>
-    </Box>
+    </chakra.details>
   );
 };

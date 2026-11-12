@@ -1,3 +1,4 @@
+import { parseStudyKey } from './researchStudyLinks';
 import type {
   BacktestJobRequest,
   BacktestPeriodMode,
@@ -37,6 +38,11 @@ export const normalizeBacktestJobRequest = (
     interval: normalizeText(payload.interval) || DEFAULT_INTERVAL,
     connector: normalizeText(payload.connector) || DEFAULT_CONNECTOR,
   };
+  if (payload.researchStudy !== undefined) {
+    const study = normalizeText(payload.researchStudy);
+    if (!parseStudyKey(study)) throw new Error('Invalid research study');
+    request.researchStudy = study;
+  }
   if (periodMode === 'range') {
     const startTime = toPositiveInteger(payload.startTime);
     const endTime = toPositiveInteger(payload.endTime);

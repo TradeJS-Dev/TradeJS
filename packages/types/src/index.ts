@@ -20,3 +20,10 @@ export * from './tickerProfile';
 export * from './aiFeatures';
 
 export * from './portfolio';
+
+export type {
+  DataCoverageDataset,
+  DataCoverageDay,
+  DataCoverageSeriesDay,
+  DataCoverage,
+} from './dataCoverage';

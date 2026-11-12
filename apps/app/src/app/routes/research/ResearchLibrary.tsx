@@ -6,7 +6,8 @@ import {
   Flex,
   Heading,
   Input,
-  Spinner,
+  Skeleton,
+  SkeletonText,
   Stack,
   Text,
 } from '@chakra-ui/react';
@@ -17,18 +18,10 @@ import type {
   ResearchStudyDetail,
 } from '#app/lib/researchLibraryTypes';
 import { Select } from '#ui';
+import { studyKey, studyUrl } from '#app/lib/researchStudyLinks';
 import { ResearchStudyView } from './ResearchStudyView';
 
 const ALL_STRATEGIES = '__all__';
-
-const studyUrl = (strategy?: string, study?: string) => {
-  const query = new URLSearchParams();
-  if (strategy) query.set('strategy', strategy);
-  if (study) query.set('study', study);
-  return query.size ? `/routes/research?${query}` : '/routes/research';
-};
-
-const studyKey = (study: ResearchStudy) => `${study.strategy}/${study.id}`;
 
 const loadJson = async <T,>(url: string, signal: AbortSignal): Promise<T> => {
   const response = await fetch(url, { signal });
@@ -36,6 +29,48 @@ const loadJson = async <T,>(url: string, signal: AbortSignal): Promise<T> => {
     throw new Error(`Research request failed (${response.status})`);
   return response.json();
 };
+
+const researchColumns = { base: 'minmax(0, 1fr)', lg: '300px minmax(0, 1fr)' };
+const researchGap = { base: 5, lg: 8 };
+
+const StudySkeleton = () => (
+  <Stack role="status" aria-label="Loading study" gap={6}>
+    <Stack gap={2} borderBottomWidth="1px" borderColor="gray.700" pb={4}>
+      <Skeleton h="20px" w="110px" />
+      <Skeleton h="36px" w="72%" />
+      <Skeleton h="16px" w="185px" maxW="full" />
+    </Stack>
+    {[0, 1].map((section) => (
+      <Stack key={section} gap={3}>
+        <Skeleton h="20px" w="125px" />
+        <SkeletonText noOfLines={3} gap={2} />
+      </Stack>
+    ))}
+  </Stack>
+);
+
+const CatalogSkeleton = () => (
+  <Box
+    display="grid"
+    gridTemplateColumns={researchColumns}
+    gap={researchGap}
+    alignItems="start"
+  >
+    <Stack role="status" aria-label="Loading research catalog" gap={3}>
+      <Skeleton h="40px" />
+      <Skeleton h="32px" />
+      <Stack gap={0} borderWidth="1px" borderColor="gray.700" borderRadius="lg">
+        {[0, 1, 2, 3].map((row) => (
+          <Stack key={row} px={3} py={3} gap={2}>
+            <Skeleton h="16px" w="85%" />
+            <Skeleton h="12px" w="45%" />
+          </Stack>
+        ))}
+      </Stack>
+    </Stack>
+    <StudySkeleton />
+  </Box>
+);
 
 export const ResearchLibrary = () => {
   const router = useRouter();
@@ -80,9 +115,9 @@ export const ResearchLibrary = () => {
           `${item.title} ${item.strategy}`.toLocaleLowerCase().includes(query)),
     );
   }, [search, strategy, studies]);
-  const selected =
-    (studyId && filtered.find((item) => studyKey(item) === studyId)) ||
-    filtered[0];
+  const selected = studyId
+    ? (studies ?? []).find((item) => studyKey(item) === studyId)
+    : filtered[0];
   const detailKey = selected
     ? new URLSearchParams({
         strategy: selected.strategy,
@@ -132,15 +167,12 @@ export const ResearchLibrary = () => {
             Could not load the research catalog.
           </Text>
         ) : !studies ? (
-          <Spinner aria-label="Loading research catalog" color="teal.300" />
+          <CatalogSkeleton />
         ) : (
           <Box
             display="grid"
-            gridTemplateColumns={{
-              base: 'minmax(0, 1fr)',
-              lg: '300px minmax(0, 1fr)',
-            }}
-            gap={{ base: 5, lg: 8 }}
+            gridTemplateColumns={researchColumns}
+            gap={researchGap}
             alignItems="start"
           >
             <Stack
@@ -234,12 +266,14 @@ export const ResearchLibrary = () => {
             <Box minW={0}>
               {!selected ? (
                 <Text color="gray.400">
-                  {studies.length
-                    ? 'No studies match the current filters.'
-                    : 'No saved research yet.'}
+                  {studyId
+                    ? 'This research study is unavailable.'
+                    : studies.length
+                      ? 'No studies match the current filters.'
+                      : 'No saved research yet.'}
                 </Text>
               ) : !currentDetail ? (
-                <Spinner aria-label="Loading study" color="teal.300" />
+                <StudySkeleton />
               ) : currentDetail.study ? (
                 <ResearchStudyView
                   key={detailKey}

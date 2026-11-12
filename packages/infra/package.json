@@ -112,6 +112,11 @@
       "import": "./dist/timescale/candles.mjs",
       "require": "./dist/timescale/candles.js"
     },
+    "./timescale/dataCoverage": {
+      "types": "./dist/timescale/dataCoverage.d.ts",
+      "import": "./dist/timescale/dataCoverage.mjs",
+      "require": "./dist/timescale/dataCoverage.js"
+    },
     "./timescale/derivatives": {
       "types": "./dist/timescale/derivatives.d.ts",
       "import": "./dist/timescale/derivatives.mjs",

@@ -224,7 +224,7 @@ const getSections = async (file: string, includeSnapshot: boolean) => {
   return sections;
 };
 
-const loadResearchNote = async (strategy: string, id: string) => {
+const loadResearchNoteHeader = async (strategy: string, id: string) => {
   if (!SEGMENT.test(strategy) || !STUDY_ID.test(id)) return null;
   const root = await realpath(projectRoot());
   try {
@@ -238,13 +238,28 @@ const loadResearchNote = async (strategy: string, id: string) => {
           root,
           file,
           study,
-          sections: await getSections(file, header.size <= MAX_NOTE_BYTES),
+          includeSnapshot: header.size <= MAX_NOTE_BYTES,
         }
       : null;
   } catch (error) {
     if (missing(error)) return null;
     throw error;
   }
+};
+
+export const getResearchStudyHeader = async (strategy: string, id: string) =>
+  (await loadResearchNoteHeader(strategy, id))?.study ?? null;
+
+const loadResearchNote = async (strategy: string, id: string) => {
+  const note = await loadResearchNoteHeader(strategy, id);
+  if (!note) return null;
+  const { root, file, study, includeSnapshot } = note;
+  return {
+    root,
+    file,
+    study,
+    sections: await getSections(file, includeSnapshot),
+  };
 };
 
 const resolveArtifact = async (

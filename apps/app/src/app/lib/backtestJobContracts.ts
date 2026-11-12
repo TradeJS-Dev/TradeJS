@@ -9,6 +9,7 @@ export type BacktestJobStatus =
 export type BacktestPeriodMode = 'days' | 'range';
 
 export interface BacktestJobRequest {
+  researchStudy?: string;
   strategyName: string;
   configId: string;
   periodMode: BacktestPeriodMode;

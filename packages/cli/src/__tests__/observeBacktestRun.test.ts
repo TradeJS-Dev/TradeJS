@@ -86,6 +86,24 @@ it('publishes resolved parameters and progress until the terminal update', async
   ]);
 });
 
+it('keeps the explicit research link on active and completed runs', async () => {
+  const researchStudy = 'MaStrategy/2026-07-01-moving-average';
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    TRADEJS_RESEARCH_STUDY: researchStudy,
+  });
+  const observation = await observeBacktestRun(manifest, 0, 1);
+  expect(cliBacktestRunStorage.put).toHaveBeenCalledWith(
+    expect.objectContaining({ researchStudy, status: 'running' }),
+    30,
+  );
+  await observation?.finish('completed');
+  expect(cliBacktestRunStorage.put).toHaveBeenLastCalledWith(
+    expect.objectContaining({ researchStudy, status: 'completed' }),
+    30 * 24 * 3600,
+  );
+});
+
 it('skips observation for a CLI process already tracked by the web app', async () => {
   jest.replaceProperty(process, 'env', {
     ...process.env,

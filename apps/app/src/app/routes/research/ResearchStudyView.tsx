@@ -11,7 +11,9 @@ import {
   Text,
   chakra,
 } from '@chakra-ui/react';
-import { FiExternalLink } from 'react-icons/fi';
+import { FiExternalLink, FiPlay } from 'react-icons/fi';
+import NextLink from 'next/link';
+import { studyKey, studyBacktestsUrl } from '#app/lib/researchStudyLinks';
 import {
   CartesianGrid,
   Legend,
@@ -272,6 +274,18 @@ export const ResearchStudyView = ({
           {study.status && <Text>{study.status}</Text>}
         </Flex>
       </Box>
+      <Flex gap={2} wrap="wrap">
+        <Button asChild size="sm" variant="outline" colorPalette="teal">
+          <NextLink href={studyBacktestsUrl(studyKey(study), true)}>
+            <FiPlay /> Start linked backtest
+          </NextLink>
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <NextLink href={studyBacktestsUrl(studyKey(study))}>
+            View linked runs
+          </NextLink>
+        </Button>
+      </Flex>
       {summary.map(({ title, text }) => (
         <Box as="section" key={title}>
           <Heading as="h3" size="sm" mb={2}>

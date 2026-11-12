@@ -108,7 +108,8 @@ export const TestCardOrdersDrawerPanel = ({
       orders={orders}
       rowHeight={BACKTEST_ORDER_ROW_HEIGHT}
       statusFilterOptions={backtestStatusFilterOptions}
-      emptyText={loading ? 'Loading orders...' : 'No orders for this backtest.'}
+      emptyText="No orders for this backtest."
+      loading={loading}
       onOpenChange={onOpenChange}
     />
   );

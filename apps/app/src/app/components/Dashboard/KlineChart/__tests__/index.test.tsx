@@ -61,8 +61,8 @@ jest.mock('../styles', () => ({
   darkTheme: jest.fn(),
 }));
 
-jest.mock('#ui', () => ({
-  OverlaySpinner: () => <div data-testid="spinner" />,
+jest.mock('../ChartSkeleton', () => ({
+  ChartSkeleton: () => <div role="status" />,
 }));
 
 const makeCandle = (timestamp: number, close: number) => ({

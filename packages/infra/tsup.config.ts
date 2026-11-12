@@ -21,6 +21,7 @@ export default defineConfig({
     'src/userSettings.ts',
     'src/timescale/client.ts',
     'src/timescale/candles.ts',
+    'src/timescale/dataCoverage.ts',
     'src/timescale/derivatives.ts',
     'src/timescale/hyperliquidWhales.ts',
     'src/timescale/marketContext.ts',

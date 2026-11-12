@@ -9,7 +9,7 @@ import {
   dispose,
   DataLoaderSubscribeBarParams,
 } from 'klinecharts';
-import { OverlaySpinner } from '#ui';
+import { ChartSkeleton } from './ChartSkeleton';
 import { Indicator } from '@tradejs/types';
 import type { UIFilters } from '#app/types/ui';
 import {
@@ -224,7 +224,7 @@ export const KlineChart = ({
         data-signal-status={dashboardSignal.status}
         data-screenshot-ready={screenshotReady ? 'true' : 'false'}
       />
-      {!fulfilled && <OverlaySpinner />}
+      {!fulfilled && <ChartSkeleton />}
     </>
   );
 };

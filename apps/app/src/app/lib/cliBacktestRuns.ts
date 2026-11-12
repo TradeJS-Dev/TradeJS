@@ -1,10 +1,11 @@
+import type { CliBacktestRun } from '@tradejs/types';
 import { z } from 'zod';
 import { cliBacktestRunStorage } from '@tradejs/infra/redis';
-import type { CliBacktestRun } from '@tradejs/types';
 import type { BacktestJobRecord } from './backtestJobContracts';
 
 const cliRunSchema = z.object({
   id: z.string(),
+  researchStudy: z.string().optional(),
   userName: z.string(),
   strategyName: z.string(),
   configId: z.string(),
@@ -53,6 +54,7 @@ export const listCliBacktestRuns = async (
         userName,
         status: run.status,
         request: {
+          researchStudy: run.researchStudy,
           strategyName: run.strategyName,
           configId: run.configId,
           periodMode: 'range',

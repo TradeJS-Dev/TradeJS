@@ -210,6 +210,7 @@ export type TestSuite = Test[];
 
 export interface CliBacktestRun {
   id: string;
+  researchStudy?: string;
   userName: string;
   strategyName: string;
   configId: string;

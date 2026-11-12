@@ -13,7 +13,8 @@ import {
   IconButton,
   Input,
   Portal,
-  Spinner,
+  Skeleton,
+  SkeletonText,
   Stack,
   Switch,
   Tabs,
@@ -709,9 +710,27 @@ export const AccountSettingsDrawer = () => {
 
               <Drawer.Body overflowY="auto">
                 {loading ? (
-                  <Flex minH="320px" align="center" justify="center">
-                    <Spinner color="teal.300" size="lg" />
-                  </Flex>
+                  <Stack
+                    role="status"
+                    aria-label="Loading account settings"
+                    gap={5}
+                  >
+                    {[0, 1].map((section) => (
+                      <Stack
+                        key={section}
+                        borderWidth="1px"
+                        borderColor="gray.700"
+                        borderRadius="lg"
+                        p={4}
+                        gap={4}
+                      >
+                        <Skeleton h="22px" w="150px" />
+                        <SkeletonText noOfLines={2} gap={2} />
+                        <Skeleton h="40px" />
+                        <Skeleton h="40px" w="72px" alignSelf="end" />
+                      </Stack>
+                    ))}
+                  </Stack>
                 ) : (
                   <Box>
                     <Tabs.Content value="integrations" pt={0}>

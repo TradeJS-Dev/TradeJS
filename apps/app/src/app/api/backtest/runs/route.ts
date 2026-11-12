@@ -3,6 +3,11 @@ import { logger } from '@tradejs/infra/logger';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { listBacktestJobs, startBacktestJob } from '#app/lib/backtestJobs';
 import { listCliBacktestRuns } from '#app/lib/cliBacktestRuns';
+import {
+  getResearchStudyHeader,
+  isResearchLibraryOwner,
+} from '#app/lib/researchLibrary';
+import { parseStudyKey } from '#app/lib/researchStudyLinks';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +44,24 @@ export const POST = async (req: NextRequest) => {
     }
 
     const payload = await req.json();
+    if (payload?.researchStudy !== undefined) {
+      if (!isResearchLibraryOwner(userName)) {
+        return NextResponse.json(
+          { error: 'Research is available to the project owner.' },
+          { status: 403 },
+        );
+      }
+      const study =
+        typeof payload.researchStudy === 'string'
+          ? parseStudyKey(payload.researchStudy.trim())
+          : null;
+      if (!study || !(await getResearchStudyHeader(study.strategy, study.id))) {
+        return NextResponse.json(
+          { error: 'Research study not found.' },
+          { status: 400 },
+        );
+      }
+    }
     const job = await startBacktestJob(userName, payload);
     return NextResponse.json({ job }, { status: 201 });
   } catch (error) {

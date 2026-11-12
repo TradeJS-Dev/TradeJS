@@ -68,8 +68,8 @@ const initialState = (): BacktestRunsState => ({
   configs: [],
   jobs: [],
   cliRuns: [],
-  loadingConfigs: false,
-  loadingJobs: false,
+  loadingConfigs: true,
+  loadingJobs: true,
   starting: false,
   busyAction: '',
   onboardingMode: false,
@@ -172,7 +172,10 @@ const buildConfigItems = (
       description: `${config.combinationCount} combos / ${config.paramCount} params`,
     }));
 
-export const useBacktestRunsController = () => {
+export const useBacktestRunsController = (
+  researchStudy?: string,
+  researchStrategy?: string,
+) => {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const jobsRequestRef = useRef<Promise<void> | null>(null);
   const cliRunsRequestRef = useRef<Promise<void> | null>(null);
@@ -276,11 +279,14 @@ export const useBacktestRunsController = () => {
   }, []);
 
   useEffect(() => {
-    const next = strategyItems[0]?.value || '';
+    const next =
+      strategyItems.find(({ value }) => value === researchStrategy)?.value ??
+      strategyItems[0]?.value ??
+      '';
     if (!strategyItems.some((item) => item.value === selectedStrategy)) {
       updateForm({ selectedStrategy: next });
     }
-  }, [selectedStrategy, strategyItems, updateForm]);
+  }, [researchStrategy, selectedStrategy, strategyItems, updateForm]);
 
   useEffect(() => {
     const next = configItems[0]?.value || '';
@@ -344,6 +350,7 @@ export const useBacktestRunsController = () => {
     }
 
     const payload: Record<string, unknown> = {
+      ...(researchStudy && { researchStudy }),
       strategyName: form.selectedStrategy,
       configId: form.selectedConfigId,
       periodMode: form.periodMode,
@@ -406,7 +413,7 @@ export const useBacktestRunsController = () => {
     } finally {
       dispatch({ type: 'patch', patch: { starting: false } });
     }
-  }, [state.form]);
+  }, [researchStudy, state.form]);
 
   const control = useCallback(async (jobId: string, action: JobAction) => {
     dispatch({ type: 'patch', patch: { busyAction: `${jobId}:${action}` } });
