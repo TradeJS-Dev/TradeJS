@@ -1,7 +1,6 @@
 import type { DataCoverageDataset } from '@tradejs/types';
 
 const minutes = {
-  '1m': 1,
   '5m': 5,
   '15m': 15,
   '1h': 60,
@@ -23,7 +22,7 @@ const series = (definition: Series, intervals: Interval[]) =>
     stepMs: minutes[interval] * 60_000,
   }));
 
-const binanceIntervals: Interval[] = ['15m', '1h', '5m', '1m'];
+const binanceIntervals: Interval[] = ['15m', '1h', '5m'];
 
 const candles = (provider: 'Bybit' | 'Binance', intervals: Interval[]) =>
   series(

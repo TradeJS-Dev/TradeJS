@@ -23,7 +23,7 @@ import {
 } from '../lib/binanceMarketData';
 
 args.example(
-  'yarn cli:node8g binance:market-ingest --all --symbols BTCUSDT,ETHUSDT --days 0.05 --interval 1m --write',
+  'yarn cli:node8g binance:market-ingest --all --symbols BTCUSDT,ETHUSDT --days 0.05 --interval 15m --write',
   'Ingest Binance public market breadth and historical aggTrades buckets',
 );
 
@@ -32,7 +32,7 @@ args.option(
   'Comma-separated target symbols',
   'BTCUSDT,ETHUSDT',
 );
-args.option(['i', 'interval'], 'Aggregation interval: 1m,5m,15m,1h', '1m');
+args.option(['i', 'interval'], 'Aggregation interval: 5m,15m,1h', '15m');
 args.option(['d', 'days'], 'Lookback window in days', '1');
 args.option(['h', 'hours'], 'Lookback window in hours; overrides --days');
 args.option(['a', 'aggTrades'], 'Fetch and bucket Binance aggTrades');
@@ -73,8 +73,9 @@ const sleep = (ms: number) =>
     ? new Promise((resolve) => setTimeout(resolve, ms))
     : Promise.resolve();
 
-const intervalToConnectorInterval = (interval: MarketFeatureInterval) => {
-  if (interval === '1m') return '1';
+const intervalToConnectorInterval = (
+  interval: Exclude<MarketFeatureInterval, '1m'>,
+) => {
   if (interval === '5m') return '5';
   if (interval === '15m') return '15';
   return '60';
@@ -149,6 +150,7 @@ const printEstimate = (
 export const main = async () => {
   const symbols = normalizeBinanceSymbols(flags.symbols);
   const interval = normalizeMarketFeatureInterval(flags.interval);
+  if (interval === '1m') throw new Error('Use interval 5m, 15m, or 1h');
   const hours = flags.hours == null ? null : asFloat(flags.hours, 0);
   const days = hours != null && hours > 0 ? hours / 24 : asFloat(flags.days, 1);
   const breadthUniverses = getBinanceBreadthUniverses();

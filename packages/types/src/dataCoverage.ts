@@ -2,7 +2,7 @@ export type DataCoverageDataset = {
   id: string;
   provider: 'Bybit' | 'Coinalyze' | 'Binance' | 'CoinMarketCap';
   label: string;
-  interval: '1m' | '5m' | '15m' | '1h' | '1d';
+  interval: '5m' | '15m' | '1h' | '1d';
   dimension?: 'symbol' | 'universe' | 'index_slug';
   stepMs: number;
 };

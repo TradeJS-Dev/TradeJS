@@ -575,7 +575,8 @@ const fetchCoinMarketCapIndexRows = async (params: {
   stats?: CoinMarketCapFetchStats;
 }) => {
   const rows: MarketCmcIndexContextRow[] = [];
-  const maxChunkDays = 9;
+  // Longer requests can return only five daily index values.
+  const maxChunkDays = 4;
   const totalChunks = Math.max(
     1,
     Math.ceil(

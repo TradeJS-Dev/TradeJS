@@ -86,16 +86,15 @@ const getReferenceSymbols = () => {
 
 const intervalToMarketFeatureInterval = (
   interval: Interval,
-): MarketFeatureInterval => {
+): Exclude<MarketFeatureInterval, '1m'> | null => {
   const normalized = String(interval).trim().toLowerCase();
-  if (normalized === '1' || normalized === '1m') return '1m';
+  if (normalized === '1' || normalized === '1m') return null;
   if (normalized === '5' || normalized === '5m') return '5m';
   if (normalized === '60' || normalized === '1h') return '1h';
   return '15m';
 };
 
 const marketIntervalToConnectorInterval = (interval: MarketFeatureInterval) => {
-  if (interval === '1m') return '1';
   if (interval === '5m') return '5';
   if (interval === '1h') return '60';
   return '15';
@@ -341,6 +340,7 @@ const backfillBinanceMarketContext = async (
   }
 
   const interval = intervalToMarketFeatureInterval(params.interval);
+  if (interval === null) return skippedBackfillResult();
   const intervalMs = MARKET_FEATURE_INTERVAL_MS[interval];
   const { breadthStartMs, tradeFlowStartMs, endMs } =
     resolveBinanceMarketContextBackfillWindow(params);
