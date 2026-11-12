@@ -569,6 +569,8 @@ export const executeTestSuite = async ({
   initialCompletedTests = 0,
   totalTests,
   backtestRunId,
+  onProgress,
+  onIncomplete,
 }: {
   testSuite: TestSuite;
   window: ResolvedWindow;
@@ -580,6 +582,8 @@ export const executeTestSuite = async ({
   initialCompletedTests?: number;
   totalTests?: number;
   backtestRunId?: string;
+  onProgress?: (completed: number) => void;
+  onIncomplete?: () => Promise<void>;
 }) => {
   markTestsStarted();
   const { testerWorkerPath, testerNeedsTsRuntime } = resolveTesterWorker();
@@ -603,6 +607,8 @@ export const executeTestSuite = async ({
     chunkTestSuite: (suite) => chunkTestSuiteBySymbol(suite, effectiveParallel),
     initialCompletedTests,
     totalTests,
+    onProgress,
+    onIncomplete,
     onInterrupt,
     onMessage: async (msg) => {
       if (msg.error) {

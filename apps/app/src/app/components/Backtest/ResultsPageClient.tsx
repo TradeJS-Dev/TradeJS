@@ -286,7 +286,8 @@ export const BacktestResultsPageClient = ({
         <Box
           as="main"
           minH="100vh"
-          minW="1200px"
+          w="full"
+          minW={0}
           pl={2}
           bg="gray.900"
           display="flex"
@@ -296,7 +297,6 @@ export const BacktestResultsPageClient = ({
           <Box
             minH="100vh"
             w="full"
-            maxW={CARD_PAGE_CONTENT_MAX_WIDTH}
             display="flex"
             flex="1"
             flexDirection="column"
@@ -309,8 +309,10 @@ export const BacktestResultsPageClient = ({
               flexDirection="row"
               alignItems="center"
               w="full"
+              maxW={CARD_PAGE_CONTENT_MAX_WIDTH}
+              wrap="wrap"
             >
-              <Flex gap={3} alignItems="center">
+              <Flex gap={3} alignItems="center" wrap="wrap">
                 {toolbarPrefix}
                 <Select
                   placeholder="Strategy"

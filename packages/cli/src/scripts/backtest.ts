@@ -40,6 +40,7 @@ import {
   normalizedArgv,
   backtestEntryDelayBars,
   backtestPriceMode,
+  effectiveParallel,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   resolveEffectiveParallel,
@@ -73,6 +74,7 @@ import {
   resolveBacktestRunIdForContinue,
   saveBacktestCheckpointResult,
 } from '../lib/backtest/checkpoint';
+import { observeBacktestRun } from '../lib/backtest/observeRun';
 import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
 
 if (
@@ -511,8 +513,6 @@ const finishBacktest = async (
       },
     );
   }
-
-  process.exit();
 };
 
 const restoreCompletedBacktestResults = (
@@ -609,6 +609,61 @@ const prepareContinuedBacktestMarketContext = async ({
   });
 };
 
+const runBacktestSuite = async (
+  manifest: BacktestRunManifest,
+  testSuite: TestSuite,
+  initialCompletedTests = 0,
+) => {
+  const observation = await observeBacktestRun(
+    manifest,
+    initialCompletedTests,
+    effectiveParallel,
+  );
+  try {
+    await executeTestSuite({
+      testSuite,
+      window: manifest.window,
+      preloadStart: manifest.preloadStart,
+      backtestRunId: manifest.runId,
+      initialCompletedTests,
+      totalTests: manifest.testSuite.length,
+      onProgress: observation?.progress,
+      onIncomplete: async () => {
+        await observation?.finish('failed');
+        await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
+        process.exit(1);
+      },
+      onResult: async (result) => {
+        await saveBacktestCheckpointResult({
+          result,
+          runId: manifest.runId,
+          userName,
+        });
+        trackTopResult(result);
+        updateBestTickerResult(result);
+      },
+      onInterrupt: async () => {
+        await observation?.finish('cancelled');
+        await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
+      },
+      onFinish: async () => {
+        try {
+          await markBacktestRunStatus({ run: manifest, status: 'completed' });
+          await finishBacktest(manifest.testSuite);
+          await observation?.finish('completed');
+          process.exit();
+        } catch (error) {
+          await observation?.finish('failed');
+          throw error;
+        }
+      },
+    });
+  } catch (error) {
+    await observation?.finish('failed');
+    throw error;
+  }
+};
+
 export const backtest = async () => {
   resetRunState();
   const config = await loadBacktestConfig();
@@ -624,35 +679,11 @@ export const backtest = async () => {
     if (!remainingSuite.length) {
       await markBacktestRunStatus({ run: manifest, status: 'completed' });
       await finishBacktest(manifest.testSuite);
-      return;
+      process.exit();
     }
 
     await prepareContinuedBacktestMarketContext({ manifest, remainingSuite });
-
-    await executeTestSuite({
-      testSuite: remainingSuite,
-      window: manifest.window,
-      preloadStart: manifest.preloadStart,
-      backtestRunId: manifest.runId,
-      initialCompletedTests: completed.length,
-      totalTests: manifest.testSuite.length,
-      onResult: async (result) => {
-        await saveBacktestCheckpointResult({
-          result,
-          runId: manifest.runId,
-          userName,
-        });
-        trackTopResult(result);
-        updateBestTickerResult(result);
-      },
-      onInterrupt: async () => {
-        await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
-      },
-      onFinish: async () => {
-        await markBacktestRunStatus({ run: manifest, status: 'completed' });
-        await finishBacktest(manifest.testSuite);
-      },
-    });
+    await runBacktestSuite(manifest, remainingSuite, completed.length);
     return;
   }
 
@@ -720,28 +751,7 @@ export const backtest = async () => {
   });
   console.log(chalk.gray(`backtest run id: ${manifest.runId}`));
 
-  await executeTestSuite({
-    testSuite,
-    window: preparedRun.window,
-    preloadStart: preparedRun.preloadStart,
-    backtestRunId: manifest.runId,
-    onResult: async (result) => {
-      await saveBacktestCheckpointResult({
-        result,
-        runId: manifest.runId,
-        userName,
-      });
-      trackTopResult(result);
-      updateBestTickerResult(result);
-    },
-    onInterrupt: async () => {
-      await markBacktestRunStatus({ run: manifest, status: 'interrupted' });
-    },
-    onFinish: async () => {
-      await markBacktestRunStatus({ run: manifest, status: 'completed' });
-      await finishBacktest(testSuite);
-    },
-  });
+  await runBacktestSuite(manifest, testSuite);
 };
 
 export const main = backtest;

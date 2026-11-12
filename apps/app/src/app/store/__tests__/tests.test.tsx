@@ -113,7 +113,7 @@ describe('store/useTestList', () => {
       expect(getBacktestFilesMock).toHaveBeenCalledTimes(1);
       expect(getByTestId('probe').getAttribute('data-length')).toBe('1');
     });
-    expect(idbSetMock).toHaveBeenCalledWith('backtest-files', {
+    expect(idbSetMock).toHaveBeenCalledWith('backtest-files-v2', {
       savedAt: expect.any(Number),
       items: [
         {
@@ -205,12 +205,17 @@ describe('store/useTest', () => {
     idbSetMock.mockResolvedValue(undefined);
   });
 
-  it('stores a non-fatal unavailable state when a result returns 404', async () => {
+  it('removes a result from the list when its data returns 404', async () => {
     getBacktestFilesMock.mockResolvedValue([
       {
         value: 'BTCUSDT__1',
         label: 'BTCUSDT_1',
         data: { strategyName: 'TrendLine', netProfit: 10 },
+      },
+      {
+        value: 'ETHUSDT__2',
+        label: 'ETHUSDT_2',
+        data: { strategyName: 'TrendLine', netProfit: 5 },
       },
     ]);
     getBacktestMock.mockRejectedValue(
@@ -219,10 +224,12 @@ describe('store/useTest', () => {
 
     const TestProbe = () => {
       const test = useTest('BTCUSDT__1');
+      const { tests } = useTestList();
 
       return (
         <div
           data-testid="test-probe"
+          data-tests={tests.map((item) => item.value).join(',')}
           data-state={
             test === null ? 'unavailable' : test ? 'ready' : 'loading'
           }
@@ -236,6 +243,9 @@ describe('store/useTest', () => {
       expect(getBacktestMock).toHaveBeenCalledWith('BTCUSDT__1', 'TrendLine');
       expect(getByTestId('test-probe').getAttribute('data-state')).toBe(
         'unavailable',
+      );
+      expect(getByTestId('test-probe').getAttribute('data-tests')).toBe(
+        'ETHUSDT__2',
       );
     });
     expect(getBacktestMock).toHaveBeenCalledTimes(1);

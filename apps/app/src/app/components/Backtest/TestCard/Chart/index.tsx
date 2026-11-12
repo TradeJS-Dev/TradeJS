@@ -14,9 +14,8 @@ import {
 } from 'recharts';
 import { useBacktest, useTestsCompare } from '#store';
 import { useTestContext } from '../context';
-import { TestCompareList } from '@tradejs/types';
-import { mapOrderLogToChartData, getChartData } from './utils';
-import { getFormatted, getTimeline } from '@tradejs/core/backtest';
+import { getChartData } from './utils';
+import { getFormatted } from '@tradejs/core/backtest';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import { TimeSeriesXAxis } from '#shared/Charts/TimeSeriesXAxis';
 import {
@@ -34,31 +33,20 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
   const { compareList } = useTestsCompare();
   const { backtest } = useBacktest(test.name);
 
-  const chartData = useMemo(() => {
-    if (!compareList.length) {
-      return mapOrderLogToChartData(testResult);
-    }
-
-    const timeline = getTimeline(test.options.start, test.options.end);
-
-    const testList: TestCompareList = [
-      ...compareList.filter(
-        ({ testResult }) => testResult.test.testId !== test.testId,
-      ),
-      {
+  const startTimestamp = test.options.start ?? testResult.orderLog[0]?.[0] ?? 0;
+  const endTimestamp =
+    test.options.end ?? testResult.orderLog.at(-1)?.[0] ?? startTimestamp;
+  const chartData = useMemo(
+    () =>
+      getChartData({
         testResult,
-        color: 'teal',
-      },
-    ];
-
-    return getChartData(testList, timeline);
-  }, [
-    compareList,
-    test.options.end,
-    test.options.start,
-    test.testId,
-    testResult,
-  ]);
+        orders: backtest,
+        compareList,
+        startTimestamp,
+        endTimestamp,
+      }),
+    [backtest, compareList, endTimestamp, startTimestamp, testResult],
+  );
 
   const chart = useChart(chartData as any);
   const tradeOutcomePoints = useMemo(
@@ -68,9 +56,6 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
 
   const { formatted: maxAmount } = getFormatted(stat, 'maxAmount');
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
-  const startTimestamp = test.options.start ?? testResult.orderLog[0]?.[0] ?? 0;
-  const endTimestamp =
-    test.options.end ?? testResult.orderLog.at(-1)?.[0] ?? startTimestamp;
 
   return (
     <Box w="100%" minW="600px" h={height} pr={2}>
@@ -123,6 +108,7 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
             {chart.series.map((item) => (
               <Line
                 key={item.name as string}
+                type="stepAfter"
                 isAnimationActive={false}
                 dataKey={chart.key(item.name) as string}
                 stroke={chart.color(item.color)}

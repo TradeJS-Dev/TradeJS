@@ -36,6 +36,7 @@ export interface BacktestJobProgress {
 }
 
 export interface BacktestJobRecord {
+  cli?: Pick<CliBacktestRun, 'symbols' | 'settings' | 'parameters'>;
   id: string;
   userName: string;
   status: BacktestJobStatus;
@@ -65,3 +66,4 @@ export interface BacktestConfigSummary {
   paramCount: number;
   combinationCount: number;
 }
+import type { CliBacktestRun } from '@tradejs/types';

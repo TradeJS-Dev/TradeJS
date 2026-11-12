@@ -321,6 +321,7 @@ const launchBacktestProcess = async (
     cwd: projectRoot,
     env: {
       ...process.env,
+      TRADEJS_BACKTEST_WEB_JOB: '1',
       PROJECT_CWD: projectRoot,
       DOTENV_CONFIG_PATH:
         process.env.DOTENV_CONFIG_PATH || path.join(projectRoot, '.env'),

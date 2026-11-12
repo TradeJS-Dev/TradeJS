@@ -39,6 +39,7 @@ export interface BacktestRunForm {
 interface BacktestRunsState {
   configs: BacktestConfigSummary[];
   jobs: BacktestJobRecord[];
+  cliRuns: BacktestJobRecord[];
   loadingConfigs: boolean;
   loadingJobs: boolean;
   starting: boolean;
@@ -66,6 +67,7 @@ const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
 const initialState = (): BacktestRunsState => ({
   configs: [],
   jobs: [],
+  cliRuns: [],
   loadingConfigs: false,
   loadingJobs: false,
   starting: false,
@@ -173,6 +175,7 @@ const buildConfigItems = (
 export const useBacktestRunsController = () => {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const jobsRequestRef = useRef<Promise<void> | null>(null);
+  const cliRunsRequestRef = useRef<Promise<void> | null>(null);
   const jobsErrorNotifiedRef = useRef(false);
   const jobsRef = useRef<BacktestJobRecord[]>([]);
   const { connector, selectedStrategy, selectedConfigId } = state.form;
@@ -248,9 +251,19 @@ export const useBacktestRunsController = () => {
     return request;
   }, []);
 
+  const loadCliRuns = useCallback(() => {
+    cliRunsRequestRef.current ??= getBacktestRuns('cli')
+      .then((cliRuns) => dispatch({ type: 'patch', patch: { cliRuns } }))
+      .catch(() => undefined)
+      .finally(() => {
+        cliRunsRequestRef.current = null;
+      });
+    return cliRunsRequestRef.current;
+  }, []);
+
   const refresh = useCallback(async () => {
-    await Promise.all([loadConfigs(), loadJobs()]);
-  }, [loadConfigs, loadJobs]);
+    await Promise.all([loadConfigs(), loadJobs(), loadCliRuns()]);
+  }, [loadConfigs, loadJobs, loadCliRuns]);
 
   useEffect(() => {
     void refresh();
@@ -277,9 +290,12 @@ export const useBacktestRunsController = () => {
   }, [configItems, selectedConfigId, updateForm]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void loadJobs(true), 3_000);
+    const timer = window.setInterval(() => {
+      void loadJobs(true);
+      void loadCliRuns();
+    }, 3_000);
     return () => window.clearInterval(timer);
-  }, [loadJobs]);
+  }, [loadJobs, loadCliRuns]);
 
   useEffect(() => {
     jobsRef.current = state.jobs;
@@ -424,8 +440,17 @@ export const useBacktestRunsController = () => {
     }
   }, []);
 
+  const jobs = useMemo(
+    () =>
+      [...state.jobs, ...state.cliRuns].sort(
+        (left, right) =>
+          Date.parse(right.createdAt) - Date.parse(left.createdAt),
+      ),
+    [state.jobs, state.cliRuns],
+  );
+
   return {
-    state,
+    state: { ...state, jobs },
     strategyItems,
     configItems,
     selectedConfig,

@@ -22,6 +22,12 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
+jest.mock('@tradejs/infra/backtestArtifacts', () => ({
+  parseBacktestArtifactRef: (value: unknown) => value ?? null,
+  hasBacktestArtifact: (ref: { path: string }) =>
+    Promise.resolve(ref.path === 'available.json'),
+}));
+
 jest.mock('@tradejs/infra/redis', () => ({
   getData: (...args: unknown[]) => mockGetData(...args),
   getKeys: (...args: unknown[]) => mockGetKeys(...args),
@@ -29,6 +35,7 @@ jest.mock('@tradejs/infra/redis', () => ({
   redisKeys: {
     tests: (u: string) => `users:${u}:tests:`,
     testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
+    testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
     testSummaries: (u: string) => `summaries:${u}`,
   },
 }));
@@ -48,11 +55,16 @@ describe('backtest files route', () => {
     mockSetData.mockResolvedValue(undefined);
   });
 
-  it('returns indexed summaries without scanning old test keys', async () => {
+  it('returns only indexed summaries with an available artifact', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'alice' } });
     mockGetData.mockResolvedValueOnce([
       { value: 'BTCUSDT__1', label: 'BTCUSDT_1', data: { strategyName: 'TL' } },
+      { value: 'ETHUSDT__2', label: 'ETHUSDT_2', data: { strategyName: 'TL' } },
+      { value: 'SOLUSDT__3', label: 'SOLUSDT_3', data: { strategyName: 'TL' } },
     ]);
+    mockGetData.mockResolvedValueOnce({ path: 'available.json' });
+    mockGetData.mockResolvedValueOnce({ path: 'removed.json' });
+    mockGetData.mockResolvedValueOnce(null);
 
     const res = await GET();
 
@@ -78,6 +90,9 @@ describe('backtest files route', () => {
       }
       if (key === 'stat:alice:TrendLine:BTCUSDT__1') {
         return { netProfit: 42 };
+      }
+      if (key === 'orders:alice:TrendLine:BTCUSDT__1') {
+        return { path: 'available.json' };
       }
       return null;
     });

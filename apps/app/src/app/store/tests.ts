@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import _ from 'lodash';
 import { del, get, set } from 'idb-keyval';
 import { getBacktest, getBacktestFiles, getOrderLog } from '#actions/backtest';
@@ -16,7 +17,7 @@ import { parseTestName } from '@tradejs/core/backtest';
 
 const COMPARE_LOCAL_STORAGE_KEY = 'compare';
 const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
-const BACKTEST_FILES_CACHE_KEY = 'backtest-files';
+const BACKTEST_FILES_CACHE_KEY = 'backtest-files-v2';
 const BACKTEST_FILES_CACHE_TTL_MS = 5 * 60 * 1000;
 const testLoadRequests = new Map<string, Promise<void>>();
 
@@ -295,6 +296,15 @@ export const useTestList = (filters: TestListProps = {}) => {
   const [error, setError] = useState<unknown>(null);
   const tests = useTestListStore((s) => s.tests);
   const { favoriteItems } = useFavoriteTests();
+  const unavailableTests = useTestsStore(
+    useShallow((state) => {
+      const names = new Set<string>();
+      for (const [name, result] of state.tests) {
+        if (result === null) names.add(name);
+      }
+      return names;
+    }),
+  );
 
   const testStrategyMap = new Map(
     tests
@@ -322,6 +332,8 @@ export const useTestList = (filters: TestListProps = {}) => {
       };
     })
     .filter((t) => {
+      if (unavailableTests.has(t.value)) return false;
+
       const { symbol } = parseTestName(t.value);
 
       if (filters.symbol && filters.symbol !== symbol) {

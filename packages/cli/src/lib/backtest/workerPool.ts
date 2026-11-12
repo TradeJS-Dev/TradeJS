@@ -49,6 +49,8 @@ export const executeBacktestWorkerPool = async ({
   getProgressSnapshot,
   initialCompletedTests = 0,
   totalTests,
+  onProgress,
+  onIncomplete,
 }: {
   testSuite: TestSuite;
   userName: string;
@@ -69,6 +71,8 @@ export const executeBacktestWorkerPool = async ({
   };
   initialCompletedTests?: number;
   totalTests?: number;
+  onProgress?: (completed: number) => void;
+  onIncomplete?: () => Promise<void>;
 }) => {
   const chunks = chunkTestSuite(testSuite);
   const fastAiWorkerPgPoolMax = resolveFastAiWorkerPgPoolMax(
@@ -86,7 +90,9 @@ export const executeBacktestWorkerPool = async ({
   );
   let completedTests = initialCompletedTests;
   let renderedTests = 0;
+  let pendingResults = 0;
   let isFinishing = false;
+  let isInterrupted = false;
   let signalHandlersRemoved = false;
   const workers = new Set<ReturnType<typeof fork>>();
 
@@ -99,6 +105,7 @@ export const executeBacktestWorkerPool = async ({
   };
 
   const handleInterrupt = (signal: 'SIGINT' | 'SIGTERM', exitCode: number) => {
+    isInterrupted = true;
     stopWorkers();
     void Promise.resolve(onInterrupt?.(signal))
       .catch((error) => {
@@ -127,17 +134,22 @@ export const executeBacktestWorkerPool = async ({
   };
 
   const maybeFinish = async () => {
-    if (isFinishing) {
-      return;
-    }
-
-    if (completedTests !== totalExpectedTests || workers.size > 0) {
+    if (
+      isFinishing ||
+      isInterrupted ||
+      workers.size > 0 ||
+      pendingResults > 0
+    ) {
       return;
     }
 
     isFinishing = true;
     try {
-      await onFinish();
+      if (completedTests === totalExpectedTests) {
+        await onFinish();
+      } else {
+        await onIncomplete?.();
+      }
     } finally {
       cleanupSignalHandlers();
     }
@@ -210,19 +222,26 @@ export const executeBacktestWorkerPool = async ({
       }
 
       completedTests++;
-      await onMessage(msg);
-
-      if (
-        completedTests % progressStep === 0 ||
-        completedTests === totalExpectedTests
-      ) {
-        tickProgress();
+      onProgress?.(completedTests);
+      pendingResults++;
+      try {
+        await onMessage(msg);
+        if (
+          completedTests % progressStep === 0 ||
+          completedTests === totalExpectedTests
+        ) {
+          tickProgress();
+        }
+      } finally {
+        pendingResults--;
       }
+      await maybeFinish();
     });
 
     tester.on('error', (err) => {
       workers.delete(tester);
       onWorkerError(err?.message ?? String(err));
+      void maybeFinish();
     });
 
     tester.on('exit', (code) => {

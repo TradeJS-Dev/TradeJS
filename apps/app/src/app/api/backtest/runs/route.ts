@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@tradejs/infra/logger';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { listBacktestJobs, startBacktestJob } from '#app/lib/backtestJobs';
+import { listCliBacktestRuns } from '#app/lib/cliBacktestRuns';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,14 +10,17 @@ export const runtime = 'nodejs';
 const toErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-export const GET = async () => {
+export const GET = async (req: NextRequest) => {
   try {
     const userName = await getCurrentUserName();
     if (!userName) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const jobs = await listBacktestJobs(userName);
+    const jobs =
+      req.nextUrl.searchParams.get('source') === 'cli'
+        ? await listCliBacktestRuns(userName)
+        : await listBacktestJobs(userName);
     return NextResponse.json({ jobs });
   } catch (error) {
     logger.log('error', 'Backtest runs list error: %o', error);

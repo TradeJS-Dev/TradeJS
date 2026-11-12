@@ -70,9 +70,11 @@ export const getBacktestRunConfigs = async (): Promise<
   return data.configs ?? [];
 };
 
-export const getBacktestRuns = async (): Promise<BacktestJobRecord[]> => {
+export const getBacktestRuns = async (
+  source: 'web' | 'cli' = 'web',
+): Promise<BacktestJobRecord[]> => {
   const data = await API.get<{ jobs?: BacktestJobRecord[] }>(
-    `${API_BASE}/runs`,
+    `${API_BASE}/runs?source=${source}`,
   );
 
   return data.jobs ?? [];

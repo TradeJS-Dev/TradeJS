@@ -300,6 +300,15 @@ export const parseBacktestArtifactRef = (
   return null;
 };
 
+export const hasBacktestArtifact = async (ref: BacktestArtifactRef) => {
+  try {
+    return (await fs.stat(resolveArtifactPath(ref.path))).isFile();
+  } catch (error) {
+    if (isEnoentError(error)) return false;
+    throw error;
+  }
+};
+
 export const getBacktestArtifactsRootDir = (projectRoot?: string) =>
   path.join(resolveProjectRoot(projectRoot), BACKTEST_ARTIFACTS_DIR);
 

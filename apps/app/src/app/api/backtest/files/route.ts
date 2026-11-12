@@ -5,9 +5,36 @@ import { parseTestName } from '@tradejs/core/backtest';
 import { TTL_1M } from '@tradejs/core/constants';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
+import {
+  hasBacktestArtifact,
+  parseBacktestArtifactRef,
+} from '@tradejs/infra/backtestArtifacts';
 import { auth } from '#app/auth';
 
 export const dynamic = 'force-dynamic';
+
+const filterAvailableResults = async (userName: string, items: Item[]) => {
+  const available: Item[] = [];
+  const batchSize = 256;
+  for (let offset = 0; offset < items.length; offset += batchSize) {
+    const batch = items.slice(offset, offset + batchSize);
+    const exists = await Promise.all(
+      batch.map(async (item) => {
+        const strategy = item.data?.strategyName;
+        if (typeof strategy !== 'string') return false;
+        const ref = parseBacktestArtifactRef(
+          await getData(
+            redisKeys.testOrders(userName, strategy, item.value),
+            null,
+          ),
+        );
+        return ref ? hasBacktestArtifact(ref) : false;
+      }),
+    );
+    available.push(...batch.filter((_, index) => exists[index]));
+  }
+  return available;
+};
 
 export const GET = async () => {
   try {
@@ -25,7 +52,9 @@ export const GET = async () => {
     )) as Item[] | null;
 
     if (Array.isArray(indexedItems) && indexedItems.length) {
-      return NextResponse.json({ items: indexedItems });
+      return NextResponse.json({
+        items: await filterAvailableResults(userName, indexedItems),
+      });
     }
 
     const testsPrefix = redisKeys.tests(userName);
@@ -64,7 +93,9 @@ export const GET = async () => {
       expire: TTL_1M,
     });
 
-    return NextResponse.json({ items: result });
+    return NextResponse.json({
+      items: await filterAvailableResults(userName, result),
+    });
   } catch (error) {
     logger.log('error', `Backtest list error: %o`, error);
     return NextResponse.json(

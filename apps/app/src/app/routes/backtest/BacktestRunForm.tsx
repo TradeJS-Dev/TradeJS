@@ -13,7 +13,7 @@ import {
   Stack,
   Text,
 } from '@chakra-ui/react';
-import { FiPlay, FiX } from 'react-icons/fi';
+import { FiChevronRight, FiPlay, FiX } from 'react-icons/fi';
 import { Segment, Select, SelectWithSearch } from '#ui';
 import type { useBacktestRunsController } from './useBacktestRunsController';
 
@@ -200,6 +200,7 @@ export const BacktestRunForm = ({
 
   return (
     <Box
+      as="details"
       maxW="1200px"
       w="full"
       borderWidth="1px"
@@ -207,31 +208,40 @@ export const BacktestRunForm = ({
       bg="gray.800"
       borderRadius="xl"
       overflow="hidden"
+      css={{ '&[open] > summary > svg': { transform: 'rotate(90deg)' } }}
     >
+      <Flex
+        as="summary"
+        px={{ base: 4, md: 6 }}
+        py={4}
+        gap={3}
+        align="center"
+        cursor="pointer"
+        _hover={{ bg: 'whiteAlpha.50' }}
+        _focusVisible={{
+          outline: '2px solid',
+          outlineColor: 'teal.300',
+          outlineOffset: '-2px',
+        }}
+        css={{ '&::-webkit-details-marker': { display: 'none' } }}
+      >
+        <Stack as="span" gap={1} flex="1" minW={0}>
+          <Text as="span" fontSize="lg" fontWeight="700">
+            New backtest
+          </Text>
+          <Text as="span" color="gray.400" fontSize="sm">
+            Choose what to test and how far to look back.
+          </Text>
+        </Stack>
+        {onboardingMode ? (
+          <Badge colorPalette="teal">First backtest preset</Badge>
+        ) : null}
+        <FiChevronRight aria-hidden="true" size={20} />
+      </Flex>
       <form onSubmit={handleStart}>
-        <Flex
-          px={{ base: 4, md: 6 }}
-          py={5}
-          gap={3}
-          align="center"
-          justify="space-between"
-          wrap="wrap"
-          borderBottomWidth="1px"
-          borderColor="gray.700"
-        >
-          <Stack gap={1}>
-            <Text as="h2" fontSize="lg" fontWeight="700">
-              New backtest
-            </Text>
-            <Text color="gray.400" fontSize="sm">
-              Choose what to test and how far to look back.
-            </Text>
-          </Stack>
-          {onboardingMode ? (
-            <Badge colorPalette="teal">First backtest preset</Badge>
-          ) : null}
-        </Flex>
         <Grid
+          borderTopWidth="1px"
+          borderColor="gray.700"
           templateColumns={{
             base: 'minmax(0, 1fr)',
             lg: 'minmax(0, 1fr) 300px',

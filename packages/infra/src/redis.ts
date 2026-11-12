@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import Redis from 'ioredis';
+import type { CliBacktestRun } from '@tradejs/types';
 
 const TTL_1D = 86_400;
 const SCREENSHOT_TOKEN_TTL_SECONDS = 15 * 60;
@@ -922,6 +923,40 @@ export const consumeScreenshotSessionToken = async (
   return payload.userName;
 };
 
+export const cliBacktestRunStorage = {
+  async put(run: CliBacktestRun, ttlSeconds: number) {
+    const redis = await requireReadyRedis();
+    const index = redisKeys.cliBacktestRuns(run.userName);
+    const now = Date.now();
+    const results = await redis
+      .multi()
+      .set(`${index}:${run.id}`, toJson(run), 'EX', ttlSeconds)
+      .zremrangebyscore(index, '-inf', now)
+      .zadd(index, now + ttlSeconds * 1000, run.id)
+      .expire(index, TTL_1D)
+      .exec();
+    const error = results?.find(([failure]) => failure)?.[0];
+    if (error) throw error;
+  },
+
+  async list(userName: string): Promise<unknown[]> {
+    const redis = await requireReadyRedis();
+    const index = redisKeys.cliBacktestRuns(userName);
+    const ids = await redis.zrangebyscore(index, `(${Date.now()}`, '+inf');
+    if (!ids.length) return [];
+    const values = await redis.mget(ids.map((id) => `${index}:${id}`));
+    return values.flatMap((value) => {
+      if (value == null) return [];
+      try {
+        const parsed: unknown = JSON.parse(value);
+        return [parsed];
+      } catch {
+        return [];
+      }
+    });
+  },
+};
+
 export const redisKeys = {
   users: () => 'users:index:',
   user: (userName: string) => `users:index:${userName}`,
@@ -1056,6 +1091,7 @@ export const redisKeys = {
   backtestResults: (userName: string, config: string, timestamp: string) =>
     `users:${userName}:backtests:results:${config}:${timestamp}`,
   backtestJobs: (userName: string) => `users:${userName}:backtests:jobs:`,
+  cliBacktestRuns: (userName: string) => `users:${userName}:backtests:cli-runs`,
   backtestJob: (userName: string, jobId: string) =>
     `users:${userName}:backtests:jobs:${jobId}`,
   backtestRuns: (userName: string) => `users:${userName}:backtests:runs:`,

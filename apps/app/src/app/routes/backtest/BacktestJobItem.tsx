@@ -78,9 +78,10 @@ export const BacktestJobItem = ({
   const progress = job.progress;
   const totalLabel = progress.total == null ? '?' : progress.total;
   const logs = job.logs.slice(-10);
-  const canPause = job.status === 'running';
-  const canResume = job.status === 'paused';
-  const canCancel = !['completed', 'cancelled'].includes(job.status);
+  const canPause = !job.cli && job.status === 'running';
+  const canResume = !job.cli && job.status === 'paused';
+  const canCancel =
+    !job.cli && !['completed', 'cancelled'].includes(job.status);
   const canDelete = ['completed', 'cancelled', 'failed', 'paused'].includes(
     job.status,
   );
@@ -102,6 +103,7 @@ export const BacktestJobItem = ({
             <Badge colorPalette={statusTone(job.status)}>
               {statusLabel(job.status)}
             </Badge>
+            <Badge>{job.cli ? 'CLI' : 'Web'}</Badge>
             {job.request.ai ? <Badge colorPalette="purple">AI</Badge> : null}
             {job.request.fast ? <Badge colorPalette="blue">Fast</Badge> : null}
           </Flex>
@@ -187,17 +189,19 @@ export const BacktestJobItem = ({
             </Button>
           ) : null}
 
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            colorPalette="red"
-            disabled={!canDelete}
-            loading={busyAction === `${job.id}:delete`}
-            onClick={() => onDelete(job.id)}
-          >
-            <FiTrash2 />
-          </Button>
+          {!job.cli ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              colorPalette="red"
+              disabled={!canDelete}
+              loading={busyAction === `${job.id}:delete`}
+              onClick={() => onDelete(job.id)}
+            >
+              <FiTrash2 />
+            </Button>
+          ) : null}
         </Flex>
       </Flex>
 
@@ -220,19 +224,26 @@ export const BacktestJobItem = ({
         </Box>
       </Box>
 
-      <Grid templateColumns="repeat(5, minmax(0, 1fr))" gap={3} mt={4}>
-        <Metric
-          label="Avg P&L"
-          value={`${formatNumber(progress.averageProfit, 2)}$`}
-        />
-        <Metric
-          label="Winrate"
-          value={`${formatNumber(progress.winRate, 1)}%`}
-        />
-        <Metric label="Success" value={String(progress.successTests ?? '-')} />
-        <Metric label="Errors" value={String(progress.errorTests ?? '-')} />
-        <Metric label="PID" value={String(job.pid ?? '-')} />
-      </Grid>
+      {job.cli ? (
+        <CliRunParameters job={job} details={job.cli} />
+      ) : (
+        <Grid templateColumns="repeat(5, minmax(0, 1fr))" gap={3} mt={4}>
+          <Metric
+            label="Avg P&L"
+            value={`${formatNumber(progress.averageProfit, 2)}$`}
+          />
+          <Metric
+            label="Winrate"
+            value={`${formatNumber(progress.winRate, 1)}%`}
+          />
+          <Metric
+            label="Success"
+            value={String(progress.successTests ?? '-')}
+          />
+          <Metric label="Errors" value={String(progress.errorTests ?? '-')} />
+          <Metric label="PID" value={String(job.pid ?? '-')} />
+        </Grid>
+      )}
 
       {logs.length ? (
         <Box mt={4} bg="gray.950" borderRadius="md" p={3} overflow="hidden">
@@ -255,6 +266,52 @@ export const BacktestJobItem = ({
     </Box>
   );
 };
+
+const formatRunTime = (timestamp: number | undefined) =>
+  timestamp == null ? '-' : new Date(timestamp).toISOString();
+
+const CliRunParameters = ({
+  job,
+  details,
+}: {
+  job: BacktestJobRecord;
+  details: NonNullable<BacktestJobRecord['cli']>;
+}) => (
+  <Box mt={4} fontSize="sm" color="gray.300" overflowWrap="anywhere">
+    <Text>
+      {job.request.connector} · {job.request.interval}
+      {/^\d+$/.test(job.request.interval) ? 'm' : ''}
+      {' · '}
+      {details.symbols.length} instruments
+    </Text>
+    <Text>
+      {formatRunTime(job.request.startTime)} →{' '}
+      {formatRunTime(job.request.endTime)}
+    </Text>
+    <Box as="details" mt={2}>
+      <Box as="summary" cursor="pointer" fontWeight="semibold">
+        Run parameters
+      </Box>
+      <Text mt={2}>{details.symbols.join(', ')}</Text>
+      {Object.entries(details.settings).map(([name, value]) => (
+        <Text key={name} fontFamily="mono">
+          {name}: {String(value)}
+        </Text>
+      ))}
+      {details.parameters.length > 0 && (
+        <Text fontWeight="semibold" mt={2}>
+          Strategy parameter values
+        </Text>
+      )}
+      {details.parameters.map(({ name, values, truncated }) => (
+        <Text key={name} fontFamily="mono">
+          {name}: {values.join(' | ')}
+          {truncated ? ' (more values omitted)' : ''}
+        </Text>
+      ))}
+    </Box>
+  </Box>
+);
 
 const Metric = ({ label, value }: { label: string; value: string }) => (
   <Box minW={0}>

@@ -208,6 +208,25 @@ export interface Test extends BacktestRunConfig {
 
 export type TestSuite = Test[];
 
+export interface CliBacktestRun {
+  id: string;
+  userName: string;
+  strategyName: string;
+  configId: string;
+  connector: string;
+  interval: string;
+  startTime: number;
+  endTime: number;
+  symbols: string[];
+  settings: Record<string, boolean | number | string>;
+  parameters: { name: string; values: string[]; truncated: boolean }[];
+  status: 'running' | 'completed' | 'cancelled' | 'failed';
+  completed: number;
+  total: number;
+  startedAt: string;
+  updatedAt: string;
+}
+
 export interface TestStat extends Metrics {
   score?: number;
 }
