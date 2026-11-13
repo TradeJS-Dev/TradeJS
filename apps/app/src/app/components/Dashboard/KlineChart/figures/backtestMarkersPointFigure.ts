@@ -1,10 +1,11 @@
+import type { OverlayFigure } from 'klinecharts';
 import { MarkerMeta } from './backtestFigureTypes';
 
 type Coordinate = { x: number; y: number };
 
 type CreatePointFiguresParams = {
   coordinates: Coordinate[];
-  overlay: { extendData?: MarkerMeta[][] };
+  overlay: { extendData?: { groups: MarkerMeta[][]; label?: string } };
 };
 
 const green = '#84cc16';
@@ -14,8 +15,9 @@ export const createBacktestMarkersPointFigure = ({
   coordinates,
   overlay,
 }: CreatePointFiguresParams) => {
-  const markerGroups = overlay.extendData ?? [];
-  const figures: any[] = [];
+  const markerGroups = overlay.extendData?.groups ?? [];
+  const label = overlay.extendData?.label;
+  const figures: OverlayFigure[] = [];
 
   for (let coordIndex = 0; coordIndex < coordinates.length; coordIndex++) {
     const coord = coordinates[coordIndex];
@@ -26,7 +28,10 @@ export const createBacktestMarkersPointFigure = ({
       const { shape, color, type, profit } = meta;
 
       const baseX = coord.x;
-      const baseY = coord.y - localIdx * 14;
+      const baseY =
+        label === 'B' ? coord.y + (localIdx + 1) * 14 : coord.y - localIdx * 14;
+      const key = String(meta.tradeIndex);
+      const ignoreEvent = ['onPressedMoveStart', 'onRightClick'] as const;
 
       const width = 10;
       const height = 10;
@@ -56,12 +61,16 @@ export const createBacktestMarkersPointFigure = ({
 
       figures.push({
         type: figureType,
+        key,
+        ignoreEvent: [...ignoreEvent],
         attrs: { x: baseX, y: baseY, width, height, color },
       });
 
-      const labelText = `${type} ${profit.toFixed(2)}`;
+      const labelText = `${label ? `${label} · ` : ''}${type} ${profit.toFixed(2)}`;
       figures.push({
         type: 'btLabel',
+        key,
+        ignoreEvent: [...ignoreEvent],
         attrs: {
           x: baseX + 8,
           y: baseY,

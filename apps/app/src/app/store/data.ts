@@ -115,7 +115,9 @@ const clearCachedData = async (key: string) => {
 const getFetchStart = (start: number, data: KlineChartData) =>
   Math.max(
     start,
-    hasContinuityData(data) ? data[data.length - 2]?.timestamp || 0 : 0,
+    hasContinuityData(data) && data[0].timestamp <= start
+      ? data[data.length - 2].timestamp
+      : 0,
   );
 
 const requestKline = async (
@@ -254,6 +256,7 @@ export const useData = (filters: Filters, live = true) => {
   const [fulfilledRequestKey, setFulfilledRequestKey] = useState<string | null>(
     null,
   );
+  const [failedRequestKey, setFailedRequestKey] = useState<string | null>(null);
   const [liveWindow, setLiveWindow] = useState({ key: '', end: 0 });
   const storedData = useDataStore((s) => s.data.get(dataRequest.key));
   const effectiveEnd = Math.max(
@@ -278,10 +281,13 @@ export const useData = (filters: Filters, live = true) => {
         return;
       }
 
-      await fetchAndStoreData(dataRequest);
-
-      if (!cancelled) {
-        setFulfilledRequestKey(requestKey);
+      try {
+        await fetchAndStoreData(dataRequest);
+        if (!cancelled) setFailedRequestKey(null);
+      } catch {
+        if (!cancelled) setFailedRequestKey(requestKey);
+      } finally {
+        if (!cancelled) setFulfilledRequestKey(requestKey);
       }
     };
 
@@ -327,5 +333,6 @@ export const useData = (filters: Filters, live = true) => {
     key: dataRequest.key,
     data: windowedData,
     fulfilled,
+    failed: failedRequestKey === requestKey,
   };
 };

@@ -528,24 +528,25 @@ export const useBacktestMutations = () => {
   };
 };
 
+const emptyOrderLog: OrderLogData = [];
+
 export const useBacktest = (id: string | undefined) => {
   const backtest = useDataStore((s) => s.backtests.get(id || 'empty'));
   const setBacktest = useDataStore((s) => s.setBacktest);
-  const [loading, setLoading] = useState(false);
+  const [settledId, setSettledId] = useState<string>();
   const tests = useTestListStore((s) => s.tests);
   const setTestList = useTestListStore((s) => s.setTest);
   const testItem = tests.find((item) => item.value === id);
   const strategyName = testItem?.data?.strategyName as string | undefined;
 
   useEffect(() => {
+    let active = true;
     const updateBacktest = async () => {
       if (!id) {
         return;
       }
 
       const key = `backtest-${id}`;
-
-      setLoading(true);
 
       try {
         const cachedResult = (await get(key)) as OrderLogData | null;
@@ -572,16 +573,19 @@ export const useBacktest = (id: string | undefined) => {
       } catch {
         // A missing or expired order-log artifact must not crash the dashboard.
       } finally {
-        setLoading(false);
+        if (active) setSettledId(id);
       }
     };
 
     void updateBacktest();
+    return () => {
+      active = false;
+    };
   }, [id, setBacktest, setTestList, strategyName]);
 
   return {
-    backtest: backtest || [],
-    loading,
+    backtest: backtest ?? emptyOrderLog,
+    loading: Boolean(id && !backtest && settledId !== id),
   };
 };
 

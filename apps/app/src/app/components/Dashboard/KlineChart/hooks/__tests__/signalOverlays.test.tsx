@@ -49,12 +49,13 @@ const signal = {
 
 const chart = {
   createOverlay: jest.fn(),
+  getDataList: jest.fn(() => Array.from({ length: 100 })),
+  setBarSpace: jest.fn(),
   getSize: jest.fn(() => ({ width: 800 })),
   getSymbol: jest.fn(() => ({ ticker: 'BTCUSDT' })),
   removeOverlay: jest.fn(),
   scrollToTimestamp: jest.fn(),
   setOffsetRightDistance: jest.fn(),
-  zoomAtTimestamp: jest.fn(),
 } as any;
 
 describe('dashboard signal overlays', () => {
@@ -80,6 +81,7 @@ describe('dashboard signal overlays', () => {
       idPrefix: 'signal-signal-1',
       figures: signal.figures,
     });
+    expect(chart.setBarSpace).toHaveBeenCalledWith(7.2);
     expect(chart.scrollToTimestamp).toHaveBeenCalledWith(2_000);
 
     unmount();

@@ -23,6 +23,7 @@ export const SelectInterval = () => {
 
   return (
     <Segment
+      size="xs"
       defaultValue={filters.interval}
       onChange={onChange}
       items={intervals}

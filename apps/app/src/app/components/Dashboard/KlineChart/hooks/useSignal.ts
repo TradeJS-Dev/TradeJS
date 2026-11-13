@@ -12,24 +12,20 @@ import { toMs } from '@tradejs/core/time';
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   if (!Number.isFinite(lastDataTsMs)) return;
 
-  const size = chart.getSize?.();
+  const size = chart.getSize('candle_pane', 'main');
   const width = size?.width ?? 0;
 
   if (!width) return;
 
-  const MAX_STEPS = 15;
-  const SCALE = 0.85;
-  const RIGHT_MARGIN_RATIO = 0.1;
+  const rightOffset = width * 0.1;
+  const barCount = chart.getDataList().length;
+  if (barCount === 0) return;
 
+  chart.setBarSpace(
+    Math.min(50, Math.max(1, (width - rightOffset) / Math.min(barCount, 180))),
+  );
   chart.scrollToTimestamp(lastDataTsMs);
-
-  for (let i = 0; i < MAX_STEPS; i++) {
-    chart.zoomAtTimestamp(SCALE, lastDataTsMs);
-  }
-
-  const rightOffsetPx = width * RIGHT_MARGIN_RATIO;
-
-  chart.setOffsetRightDistance?.(rightOffsetPx);
+  chart.setOffsetRightDistance(rightOffset);
 };
 
 type RenderedSignalFigures = {

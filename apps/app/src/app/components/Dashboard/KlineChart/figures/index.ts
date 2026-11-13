@@ -31,11 +31,10 @@ registerFigure({
       color: attrs.color,
     });
   },
-  checkEventOn: (coordinate, attrs) => {
-    const { x, y } = coordinate;
-    const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
-  },
+  checkEventOn: ({ x, y }, attrs) =>
+    x >= attrs.x + 6 &&
+    x <= attrs.x + 6 + attrs.text.length * 6 &&
+    Math.abs(y - attrs.y) <= 6,
 });
 
 // прямоугольник
@@ -63,7 +62,9 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });
 
@@ -92,7 +93,9 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });
 
@@ -121,7 +124,9 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });
 
@@ -150,7 +155,9 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });
 
@@ -179,7 +186,9 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });
 
@@ -208,6 +217,8 @@ registerFigure({
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
     const { width, height } = attrs;
-    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+    return (
+      Math.abs(x - attrs.x) <= width / 2 && Math.abs(y - attrs.y) <= height / 2
+    );
   },
 });

@@ -124,7 +124,10 @@ const DashboardRoute = () => {
           <Box
             w="full"
             display="grid"
-            gridTemplateColumns={{ base: '1fr', lg: 'minmax(0, 1fr) auto' }}
+            gridTemplateColumns={{
+              base: 'minmax(0, 1fr)',
+              xl: 'minmax(0, 1fr) auto',
+            }}
             columnGap={4}
             alignItems="start"
           >
@@ -137,7 +140,13 @@ const DashboardRoute = () => {
                 ensureTickersLoaded={ensureTickersLoaded}
                 ensureBacktestsLoaded={ensureBacktestsLoaded}
               >
-                <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
+                <Flex
+                  mb={2}
+                  gap={2}
+                  alignItems="center"
+                  wrap="wrap"
+                  css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
+                >
                   <Filters.SelectProvider />
                   {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
                   <Filters.SelectSymbol />
@@ -145,7 +154,12 @@ const DashboardRoute = () => {
                   <Filters.SelectInterval />
                   <Filters.SelectIndicator />
                 </Flex>
-                <Flex mb={4} gap={4} flexDirection="row">
+                <Flex
+                  mb={4}
+                  gap={2}
+                  wrap="wrap"
+                  css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
+                >
                   <Filters.SelectBacktest />
                 </Flex>
               </Filters.Root>
@@ -191,8 +205,14 @@ const DashboardRoute = () => {
             </Flex>
           </Box>
         )}
-        <Box position="relative" flex="1" w="full">
-          <MainChart screenshotMode={isScreenshotMode} />
+        <Box
+          position="relative"
+          flex="1"
+          w="full"
+          minW={0}
+          h={isScreenshotMode ? '100vh' : undefined}
+        >
+          <MainChart screenshotMode={isScreenshotMode} backtestFiles={tests} />
         </Box>
       </Box>
     </ClientOnly>

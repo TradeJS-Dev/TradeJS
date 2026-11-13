@@ -52,11 +52,12 @@ const Probe = ({
   filters: ReturnType<typeof makeFilters>;
   testId?: string;
 }) => {
-  const { data, fulfilled } = useData(filters);
+  const { data, fulfilled, failed } = useData(filters);
 
   return (
     <div
       data-testid={testId}
+      data-failed={String(failed)}
       data-fulfilled={fulfilled ? '1' : '0'}
       data-length={String(data.length)}
       data-first-ts={data[0]?.timestamp ? String(data[0].timestamp) : ''}
@@ -148,6 +149,30 @@ describe('store/useData', () => {
     });
   });
 
+  it('requests older candles when a saved trade extends the dashboard window before the cache', async () => {
+    const cached = makeData();
+    const earlier = cached[0].timestamp - 900_000;
+    idbGetMock.mockResolvedValue(cached);
+    klineMock.mockResolvedValue([makeCandle(earlier, 99), ...cached]);
+    const { getByTestId } = render(
+      <Probe
+        filters={makeFilters({
+          symbol: 'BTCUSDT_EARLIER_WINDOW_TEST',
+          start: earlier,
+        })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(getByTestId('probe').getAttribute('data-first-ts')).toBe(
+        String(earlier),
+      ),
+    );
+    expect(klineMock).toHaveBeenCalledWith(
+      expect.objectContaining({ start: earlier }),
+    );
+  });
+
   it('resets fulfilled when the requested start window changes', async () => {
     klineMock
       .mockResolvedValueOnce(makeData())
@@ -181,6 +206,27 @@ describe('store/useData', () => {
       expect(getByTestId('probe').getAttribute('data-first-ts')).toBe(
         '1710001800000',
       );
+    });
+  });
+
+  it('settles a failed market request and clears the error for the next market', async () => {
+    klineMock
+      .mockRejectedValueOnce(new Error('Invalid symbol'))
+      .mockResolvedValueOnce(makeData());
+    const { getByTestId, rerender } = render(
+      <Probe filters={makeFilters({ symbol: 'INVALID_LINKED_MARKET' })} />,
+    );
+    await waitFor(() => {
+      expect(getByTestId('probe').getAttribute('data-fulfilled')).toBe('1');
+      expect(getByTestId('probe').getAttribute('data-failed')).toBe('true');
+    });
+
+    rerender(
+      <Probe filters={makeFilters({ symbol: 'VALID_LINKED_MARKET' })} />,
+    );
+    await waitFor(() => {
+      expect(getByTestId('probe').getAttribute('data-length')).toBe('3');
+      expect(getByTestId('probe').getAttribute('data-failed')).toBe('false');
     });
   });
 

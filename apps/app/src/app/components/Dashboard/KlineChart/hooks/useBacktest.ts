@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
 import { KlineChartItem, OrderLogData } from '@tradejs/types';
-import { useBacktest as useBacktestStore } from '#store';
+import type { BacktestRun } from '../trades';
 import {
   TradeZoneMode,
   createTradeZonePointFigure,
@@ -75,6 +74,7 @@ const resolveShapeAndColor = (
 const walkCandlesAndEvents = (
   candles: KlineChartItem[],
   rawEvents: OrderLogData,
+  run: BacktestRun,
 ): {
   markersFlat: MarkerMeta[];
   markersByTs: Record<number, MarkerMeta[]>;
@@ -111,7 +111,7 @@ const walkCandlesAndEvents = (
 
         const marker: MarkerMeta = {
           shape,
-          color,
+          color: run === 'B' ? '#67e8f9' : color,
           timestamp: currTs,
           value: evt.price,
           type: evt.type,
@@ -314,6 +314,8 @@ const buildBacktestTradeZones = (
 
 const createBacktestProfit = (
   chart: Chart,
+  run: BacktestRun,
+  comparing: boolean,
   latestByTs: Record<
     number,
     {
@@ -326,15 +328,18 @@ const createBacktestProfit = (
     }
   > = {},
 ) => {
+  const id = `BacktestProfit${run}`;
+  const label = comparing ? `Backtest ${run}` : 'Backtest';
   registerIndicator({
-    name: 'BacktestProfit',
-    shortName: 'Backtest',
+    name: id,
+    shortName: label,
     series: 'price',
     figures: [
       {
         key: 'profit',
         title: 'Profit',
         type: 'line',
+        styles: () => ({ color: run === 'B' ? '#67e8f9' : '#fbbf24' }),
       },
       {
         key: 'startAmount',
@@ -426,7 +431,7 @@ const createBacktestProfit = (
       }
 
       return {
-        name: 'Backtest',
+        name: label,
         calcParamsText: '',
         features: [],
         legends,
@@ -434,39 +439,50 @@ const createBacktestProfit = (
     },
   });
 
-  chart.createIndicator('BacktestProfit', false);
+  chart.createIndicator({ name: id, id }, true, { id: 'backtest-profit-pane' });
 };
 
-export const useBacktest = (chart: Chart | null, id: string | undefined) => {
-  const { backtest } = useBacktestStore(id);
-  const enabled = Boolean(id);
-  const candlesLength = chart?.getDataList()?.length || 0;
-
+export const useBacktest = (
+  chart: Chart | null,
+  candles: KlineChartItem[],
+  backtest: OrderLogData,
+  run: BacktestRun,
+  comparing: boolean,
+  onSelect?: (run: BacktestRun, orderIndex: number) => void,
+) => {
   useEffect(() => {
-    if (!chart || !enabled || _.isEmpty(backtest)) {
-      return;
-    }
-
-    const candles = chart.getDataList() as KlineChartItem[];
-    if (!candles || candles.length === 0) {
-      return;
-    }
+    if (!chart || !backtest.length || !candles.length) return;
+    const markerId = `backtest-markers-${run}`;
+    const groupId = `backtest-${run}`;
 
     const { markersFlat, markersByTs, profitByIndex, alignedEvents } =
-      walkCandlesAndEvents(candles, backtest);
+      walkCandlesAndEvents(candles, backtest, run);
 
     const { points, groupedExtendData } = groupMarkersForOverlay(markersFlat);
-    const tradeZones = buildBacktestTradeZones(alignedEvents);
-    const signalFigures = collectSignalFiguresFromOrderLog(backtest);
+    const tradeZones =
+      run === 'A' ? buildBacktestTradeZones(alignedEvents) : [];
+    const signalFigures =
+      run === 'A' ? collectSignalFiguresFromOrderLog(backtest) : [];
     const signalFigureOverlays: ReturnType<typeof drawSignalFigures> = [];
-    const tradeZoneOverlayIds: string[] = [];
 
     ensureBacktestMarkersRegistered();
     if (points.length > 0) {
       chart.createOverlay({
         name: 'backtestMarkers',
+        id: markerId,
+        groupId,
+        zLevel: 4,
+        needDefaultPointFigure: false,
+        needDefaultXAxisFigure: false,
+        needDefaultYAxisFigure: false,
         points,
-        extendData: groupedExtendData,
+        extendData: {
+          groups: groupedExtendData,
+          label: comparing ? run : undefined,
+        },
+        onClick: ({ figure }) => {
+          if (figure?.key) onSelect?.(run, Number(figure.key));
+        },
       });
     }
 
@@ -476,11 +492,11 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       for (const zone of tradeZones) {
         const tpId = `backtest-trade-zone-${zone.id}-tp`;
         const slId = `backtest-trade-zone-${zone.id}-sl`;
-        tradeZoneOverlayIds.push(tpId, slId);
 
         chart.createOverlay({
           name: 'BacktestTradeZone',
           id: tpId,
+          groupId,
           points: [zone.start, zone.tpEnd],
           zLevel: 2,
           extendData: { mode: 'TP' satisfies TradeZoneMode },
@@ -489,6 +505,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
         chart.createOverlay({
           name: 'BacktestTradeZone',
           id: slId,
+          groupId,
           points: [zone.start, zone.slEnd],
           zLevel: 2,
           extendData: { mode: 'SL' satisfies TradeZoneMode },
@@ -513,21 +530,12 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
 
     const latestByTs = buildIndicatorData(candles, markersByTs, profitByIndex);
 
-    createBacktestProfit(chart, latestByTs);
+    createBacktestProfit(chart, run, comparing, latestByTs);
 
     return () => {
-      chart.removeOverlay({ name: 'backtestMarkers' });
-      chart.removeIndicator({ name: 'BacktestProfit' });
-      if (signalFigureOverlays.length > 0) {
-        removeSignalFigures(chart, signalFigureOverlays);
-      }
-      if (tradeZoneOverlayIds.length > 0) {
-        for (const overlayId of tradeZoneOverlayIds) {
-          chart.removeOverlay({ name: 'BacktestTradeZone', id: overlayId });
-        }
-      }
+      chart.removeOverlay({ groupId });
+      chart.removeIndicator({ id: `BacktestProfit${run}` });
+      removeSignalFigures(chart, signalFigureOverlays);
     };
-  }, [chart, enabled, backtest, id, candlesLength]);
-
-  return null;
+  }, [chart, candles, backtest, run, comparing, onSelect]);
 };

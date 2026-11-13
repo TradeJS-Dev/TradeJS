@@ -1,6 +1,23 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
+import type { KlineChartItem, OrderLog, OrderLogData } from '@tradejs/types';
+import type { OverlayCreate } from 'klinecharts';
 import { KlineChart } from '..';
+
+const emptyOrders: OrderLogData = [];
+const useBacktestMock = jest.fn((_id?: string) => ({
+  backtest: emptyOrders,
+  loading: false,
+}));
+let displayed: KlineChartItem[];
+const canvasPane = document.createElement('div');
 
 const useDataMock = jest.fn();
 const useDashboardSignalMock = jest.fn();
@@ -17,7 +34,14 @@ const chartMock = {
   setSymbol: setSymbolMock,
   setPeriod: setPeriodMock,
   setDataLoader: setDataLoaderMock,
-  getDataList: jest.fn(() => []),
+  getDataList: jest.fn(() => displayed),
+  getDom: () => canvasPane,
+  convertFromPixel: jest.fn(),
+  getSize: jest.fn(() => ({ width: 800 })),
+  setBarSpace: jest.fn(),
+  scrollToRealTime: jest.fn(),
+  createOverlay: jest.fn((overlay: OverlayCreate) => overlay.id),
+  removeOverlay: jest.fn(),
   getVisibleRange: jest.fn(() => ({ realTo: 0 })),
   scrollToDataIndex: jest.fn(),
 };
@@ -25,6 +49,7 @@ const chartMock = {
 jest.mock('klinecharts', () => ({
   init: () => chartMock,
   dispose: jest.fn(),
+  registerOverlay: jest.fn(),
 }));
 
 jest.mock('next/navigation', () => ({
@@ -33,6 +58,7 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('#store', () => ({
   useData: (...args: unknown[]) => useDataMock(...args),
+  useBacktest: (id?: string) => useBacktestMock(id),
 }));
 
 jest.mock('../hooks', () => ({
@@ -65,13 +91,15 @@ jest.mock('../ChartSkeleton', () => ({
   ChartSkeleton: () => <div role="status" />,
 }));
 
-const makeCandle = (timestamp: number, close: number) => ({
+const makeCandle = (timestamp: number, close: number): KlineChartItem => ({
   timestamp,
   open: close,
   high: close + 1,
   low: close - 1,
   close,
   volume: 1,
+  turnover: 100,
+  dt: new Date(timestamp).toISOString(),
 });
 
 const filters = {
@@ -100,8 +128,22 @@ const indicators = {
 };
 
 describe('Dashboard/KlineChart', () => {
+  const originalResizeObserver = global.ResizeObserver;
+  beforeAll(() => {
+    global.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    };
+  });
+  afterAll(() => {
+    global.ResizeObserver = originalResizeObserver;
+  });
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
+    displayed = [];
+    useBacktestMock.mockReturnValue({ backtest: emptyOrders, loading: false });
     let currentSymbol: string | undefined;
     let currentInterval: number | undefined;
 
@@ -117,8 +159,17 @@ describe('Dashboard/KlineChart', () => {
     setPeriodMock.mockImplementation(({ span }) => {
       currentInterval = span;
     });
-    setDataLoaderMock.mockImplementation(({ getBars }) => {
-      getBars({ callback: jest.fn() });
+    setDataLoaderMock.mockImplementation(({ getBars, subscribeBar }) => {
+      getBars({
+        callback: (candles: KlineChartItem[]) => {
+          displayed = candles;
+        },
+      });
+      subscribeBar({
+        callback: (candle: KlineChartItem) => {
+          displayed.push(candle);
+        },
+      });
     });
     searchParamsGetMock.mockReturnValue(null);
     useDashboardSignalMock.mockReturnValue({
@@ -245,5 +296,154 @@ describe('Dashboard/KlineChart', () => {
         signal,
       }),
     );
+  });
+  it('navigates to trades, compares a second run and reveals orders only as replay advances', () => {
+    const start = 1_790_000_000_000;
+    const step = 900_000;
+    const history = Array.from({ length: 12 }, (_, index) =>
+      makeCandle(start + index * step, 100 + index),
+    );
+    const entry: OrderLog = {
+      index: 0,
+      timestamp: history[6].timestamp,
+      type: 'OPEN_LONG',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      price: 106,
+      qty: 1,
+      profit: -1,
+      fee: 1,
+      amount: 999,
+    };
+    const orders: OrderLogData = [
+      entry,
+      {
+        ...entry,
+        index: 1,
+        timestamp: history[7].timestamp,
+        price: 99,
+        profit: -8,
+        type: 'STOP_LOSS_LONG',
+      },
+    ];
+    const comparison: OrderLogData = [
+      entry,
+      {
+        ...entry,
+        index: 1,
+        timestamp: history[8].timestamp,
+        price: 109,
+        profit: 2,
+        type: 'TAKE_PROFIT_LONG',
+      },
+    ];
+    useBacktestMock.mockImplementation((id) => ({
+      backtest:
+        id === 'run-a' ? orders : id === 'run-b' ? comparison : emptyOrders,
+      loading: false,
+    }));
+    useDataMock.mockReturnValue({
+      data: history,
+      key: 'market',
+      fulfilled: true,
+    });
+    render(
+      <ChakraProvider value={defaultSystem}>
+        <KlineChart
+          id="test-chart"
+          filters={{ ...filters, backtestId: 'run-a' }}
+          indicators={indicators as never}
+          indicatorRenderers={{}}
+          interactive
+          backtestFiles={[{ label: 'Run B', value: 'run-b' }]}
+        />
+      </ChakraProvider>,
+    );
+
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Compare backtest' }),
+      { target: { value: 'run-b' } },
+    );
+    expect(
+      screen.getAllByRole('option', { name: /Exit changed/ }),
+    ).toHaveLength(2);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter trades' }), {
+      target: { value: 'losing' },
+    });
+    expect(
+      screen.getAllByRole('option', { name: /Exit changed/ }),
+    ).toHaveLength(1);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select trade' }), {
+      target: { value: '0' },
+    });
+    expect(screen.getByText(/Net P&L -9.00/)).toBeTruthy();
+    expect(screen.getByText(/Stop loss · 1 @ 99/)).toBeTruthy();
+    expect(chartMock.setBarSpace).toHaveBeenCalled();
+    expect(chartMock.scrollToDataIndex).toHaveBeenCalledWith(11);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start replay' }));
+    expect(displayed).toEqual(history.slice(0, 2));
+    expect(screen.queryByRole('option', { name: /Exit changed/ })).toBeNull();
+    expect(useDataMock).toHaveBeenLastCalledWith(expect.anything(), false);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter trades' }), {
+      target: { value: 'all' },
+    });
+    for (let i = 0; i < 5; i++)
+      fireEvent.click(screen.getByRole('button', { name: 'Next candle' }));
+    expect(displayed.at(-1)).toEqual(history[6]);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select trade' }), {
+      target: { value: '0' },
+    });
+    expect(screen.getByText(/Open position/)).toBeTruthy();
+    expect(screen.queryByText(/Stop loss/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next candle' }));
+    expect(screen.getByText(/Stop loss · 1 @ 99/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous candle' }));
+    expect(displayed).toHaveLength(7);
+    expect(screen.queryByText(/Stop loss/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'End replay' }));
+    expect(displayed).toEqual(history);
+    expect(history).toHaveLength(12);
+  });
+
+  it('restores saved drawings after remounting and removes only the selected market drawing', () => {
+    const history = [makeCandle(1, 101), makeCandle(2, 102)];
+    useDataMock.mockReturnValue({
+      data: history,
+      key: 'market',
+      fulfilled: true,
+    });
+    const view = (
+      <ChakraProvider value={defaultSystem}>
+        <KlineChart
+          id="test-chart"
+          filters={filters}
+          indicators={indicators as never}
+          indicatorRenderers={{}}
+          interactive
+        />
+      </ChakraProvider>
+    );
+    const { unmount } = render(view);
+    fireEvent.click(screen.getByRole('button', { name: 'Price level' }));
+    const points = [{ timestamp: 2, value: 102 }];
+    chartMock.convertFromPixel.mockReturnValue(points);
+    fireEvent.click(canvasPane);
+    const drawing = chartMock.createOverlay.mock.calls.at(-1)?.[0];
+    expect(localStorage.getItem('tradejs:chart-drawings:market')).toContain(
+      '"value":102',
+    );
+    unmount();
+
+    chartMock.createOverlay.mockClear();
+    render(view);
+    expect(chartMock.createOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({ points, lock: true }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove last drawing' }),
+    );
+    expect(localStorage.getItem('tradejs:chart-drawings:market')).toBe('[]');
+    expect(chartMock.removeOverlay).toHaveBeenCalledWith({ id: drawing?.id });
   });
 });

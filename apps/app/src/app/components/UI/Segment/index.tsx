@@ -6,6 +6,7 @@ import type { Items } from '#app/types/ui';
 interface SegmentProps {
   defaultValue: string;
   value?: string;
+  size?: 'xs' | 'md';
   items: Items;
   onChange?: (value: string | null) => void;
 }
@@ -13,12 +14,13 @@ interface SegmentProps {
 export const Segment = ({
   defaultValue,
   value,
+  size = 'md',
   items,
   onChange,
 }: SegmentProps) => {
   return (
     <SegmentGroup.Root
-      size="md"
+      size={size}
       value={value}
       defaultValue={defaultValue}
       onValueChange={(e) => onChange?.(e.value)}
