@@ -72,6 +72,11 @@ jest.mock('../RuntimeStrategyChart', () => ({
   RuntimeStrategyChart: () => null,
 }));
 
+jest.mock('../RuntimeStrategyDetailsDrawer', () => ({
+  RuntimeStrategyDetailsDrawer: ({ open }: { open: boolean }) =>
+    open ? <div>Details drawer open</div> : null,
+}));
+
 jest.mock('../RuntimeStrategyConfigDrawer', () => ({
   RuntimeStrategyConfigDrawer: () => null,
 }));
@@ -143,12 +148,16 @@ describe('RuntimeStrategyCard', () => {
 
     const menuItems = screen.getAllByRole('menuitem');
     expect(menuItems.map((item) => item.textContent)).toEqual([
+      'Details',
       'View config',
       'Pause new entries',
       'Orders',
       'Stat',
       'Revisions',
     ]);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Details' }));
+    expect(screen.getByText('Details drawer open')).toBeTruthy();
 
     fireEvent.click(menuItems.at(-1)!);
     expect(screen.getByText('Revisions drawer open')).toBeTruthy();

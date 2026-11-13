@@ -70,21 +70,35 @@ authentication flow.
 
 ## Release and configure
 
-1. Re-run source package checks at the selected commit. If the candidate uses
+1. Save the launch decision’s historical report under `launch-reports/<id>.json`
+   in the strategy repository. Keep the ID specific to the candidate and decision.
+   Use the `tradejs-launch-report/v1` schema from `@tradejs/types` with the SHA-256
+   of the retained research source, backtest period, recorded risk, win rate, and
+   available metrics. When the original equity series is available, record the
+   longest continuous time below its previous peak, measured in calendar days
+   from the first below-peak observation until recovery or the end of the window.
+   Keep an adjacent `<id>.png` of the research chart and record its SHA-256 in
+   `chart.sha256`. Use retained evidence and leave absent fields unset. Include
+   only report-ready aggregate results because the package can be public.
+   Export `"./launch-reports/*.json": "./launch-reports/*.json"` in the package
+   and include `launch-reports` in `files`. Verify that the JSON and chart ship
+   together in the packed tarball, and commit the report with the candidate.
+2. Re-run source package checks at the selected commit. If the candidate uses
    unpublished source, commit and push the complete accumulated release range,
    publish one immutable stable package through the repository’s existing
    release workflow, and verify the registry artifact. Do not cherry-pick only
    one fix out of an accumulated unshipped range.
-2. Install the exact package version in the Project and commit the lockfile.
-3. Write the candidate’s complete reviewed configuration to the selected
+3. Install the exact package version in the Project and commit the lockfile.
+4. Write the candidate’s complete reviewed configuration to the selected
    deployment in the Git-owned Project runtime configuration and force
-   `MAX_LOSS_VALUE=1`:
+   `MAX_LOSS_VALUE=1`. Set `launchReports[deploymentId][strategyName]` on the exported Project
+   configuration to the packaged report ID:
    - if the strategy is absent, add and enable it;
    - if it runs a different composition, replace that strategy declaration in
      one guarded cutover while preserving unrelated strategies;
-   - if the exact composition already runs at risk 1, make no config change and
+   - if the exact composition already runs at risk 1 with the same report ID,
      continue with idempotent verification.
-4. Run strict Project checks and runtime-control verification. Commit and push
+5. Run strict Project checks and runtime-control verification. Commit and push
    the complete Project release range, publish/deploy its exact immutable tip
    through the configured production workflow, and wait for the deployment
    handoff to finish.

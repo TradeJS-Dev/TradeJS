@@ -11,6 +11,7 @@ export * from './selection';
 export * from './strategyRelease';
 export * from './runtimeTrades';
 export * from './runtimeDeclarations';
+export * from './runtimeLaunchReport';
 export * from './runtimeControls';
 
 export * from './jev';

@@ -19,6 +19,7 @@ import {
   OrdersDrawerPanel,
 } from '#components/Shared/OrdersDrawer';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
+import { RuntimeStrategyDetailsDrawer } from './RuntimeStrategyDetailsDrawer';
 import { RuntimeStrategyConfigDrawer } from './RuntimeStrategyConfigDrawer';
 import { RuntimeStrategyRevisionsDrawer } from './RuntimeStrategyRevisionsDrawer';
 import { RuntimeStrategyStatsDrawer } from './RuntimeStrategyStatsDrawer';
@@ -78,6 +79,7 @@ export const RuntimeStrategyCard = ({
   endTimestamp: number;
   onUpdated: () => Promise<void> | void;
 }) => {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
@@ -221,6 +223,12 @@ export const RuntimeStrategyCard = ({
             <Portal>
               <Menu.Positioner>
                 <Menu.Content minW="160px">
+                  <Menu.Item
+                    value="details"
+                    onClick={() => setDetailsOpen(true)}
+                  >
+                    Details
+                  </Menu.Item>
                   <Menu.Item value="config" onClick={() => setConfigOpen(true)}>
                     View config
                   </Menu.Item>
@@ -264,6 +272,14 @@ export const RuntimeStrategyCard = ({
         orders={runtimeOrders}
         rowHeight={RUNTIME_ORDER_ROW_HEIGHT}
         onOpenChange={setOrdersOpen}
+      />
+
+      <RuntimeStrategyDetailsDrawer
+        open={detailsOpen}
+        strategyName={strategy.strategyName}
+        deploymentId={strategy.deploymentId}
+        deploymentLabel={strategy.deploymentLabel}
+        onOpenChange={setDetailsOpen}
       />
 
       <RuntimeStrategyConfigDrawer

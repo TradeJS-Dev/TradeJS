@@ -6,7 +6,10 @@ import {
   type TradejsConfigHooks,
 } from '@tradejs/core/config';
 import { logger } from '@tradejs/infra/logger';
-import type { TradejsRuntimeDeclaration } from '@tradejs/types';
+import type {
+  RuntimeLaunchReportBindings,
+  TradejsRuntimeDeclaration,
+} from '@tradejs/types';
 
 export interface TradejsProjectConfig {
   strategies?: string[];
@@ -14,6 +17,7 @@ export interface TradejsProjectConfig {
   connectors?: string[];
   hooks?: TradejsConfigHooks;
   runtime?: TradejsRuntimeDeclaration;
+  launchReports?: RuntimeLaunchReportBindings;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -79,12 +83,20 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
       ? (config.runtime as TradejsRuntimeDeclaration)
       : undefined;
 
+  const launchReports =
+    config.launchReports &&
+    typeof config.launchReports === 'object' &&
+    !Array.isArray(config.launchReports)
+      ? (config.launchReports as RuntimeLaunchReportBindings)
+      : undefined;
+
   return {
     strategies,
     indicators,
     connectors,
     ...(hooks ? { hooks } : {}),
     ...(runtime ? { runtime } : {}),
+    ...(launchReports ? { launchReports } : {}),
   };
 };
 
