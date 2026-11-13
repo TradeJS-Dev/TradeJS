@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Box, ClientOnly, Flex, Stack } from '@chakra-ui/react';
 import { deleteBacktest } from '#actions/backtest';
 import { useBacktestMutations, useTestList } from '#store';
@@ -13,6 +14,7 @@ import {
 } from '#components/Shared/BulkSelection';
 import { parseTestName } from '@tradejs/core/backtest';
 import { PageHeader, PageLayout } from '#shared/PageLayout';
+import { updateUrlSearchParams } from '#app/lib/updateUrlSearchParams';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';
@@ -30,6 +32,10 @@ interface PendingBacktestDelete {
 export const BacktestResultsPageClient = ({
   toolbarPrefix,
 }: BacktestResultsPageClientProps) => {
+  const searchParams = useSearchParams();
+  const selectedStrategy = searchParams.get('strategy') || ALL_STRATEGIES;
+  const selectedSuite = searchParams.get('suite') || ALL_SUITES;
+  const selectedConfigId = searchParams.get('config') || ALL_CONFIGS;
   const { tests, loadding, fulFilled } = useTestList();
   const { removeBacktestTest } = useBacktestMutations();
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
@@ -56,7 +62,6 @@ export const BacktestResultsPageClient = ({
         })),
     ];
   }, [tests]);
-  const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
   const suiteItems = useMemo(() => {
     const names = new Set<string>();
     for (const test of tests) {
@@ -83,7 +88,6 @@ export const BacktestResultsPageClient = ({
         })),
     ];
   }, [tests, selectedStrategy]);
-  const [selectedSuite, setSelectedSuite] = useState(ALL_SUITES);
   const configItems = useMemo(() => {
     const names = new Set<string>();
     for (const test of tests) {
@@ -118,25 +122,31 @@ export const BacktestResultsPageClient = ({
         })),
     ];
   }, [tests, selectedStrategy, selectedSuite]);
-  const [selectedConfigId, setSelectedConfigId] = useState(ALL_CONFIGS);
 
-  useEffect(() => {
-    if (!strategyItems.some((item) => item.value === selectedStrategy)) {
-      setSelectedStrategy(strategyItems[0]?.value || ALL_STRATEGIES);
-    }
-  }, [strategyItems, selectedStrategy]);
+  const updateBacktestFilters = (strategy: string, suite: string) => {
+    const strategyTests = tests.filter(
+      (test) =>
+        strategy === ALL_STRATEGIES || test.data?.strategyName === strategy,
+    );
+    const nextSuite = strategyTests.some(
+      (test) => parseTestName(test.value).testSuiteId === suite,
+    )
+      ? suite
+      : ALL_SUITES;
+    const hasConfig = strategyTests.some(
+      (test) =>
+        test.data?.configId === selectedConfigId &&
+        (nextSuite === ALL_SUITES ||
+          parseTestName(test.value).testSuiteId === nextSuite),
+    );
 
-  useEffect(() => {
-    if (!suiteItems.some((item) => item.value === selectedSuite)) {
-      setSelectedSuite(suiteItems[0]?.value || ALL_SUITES);
-    }
-  }, [suiteItems, selectedSuite]);
-
-  useEffect(() => {
-    if (!configItems.some((item) => item.value === selectedConfigId)) {
-      setSelectedConfigId(configItems[0]?.value || ALL_CONFIGS);
-    }
-  }, [configItems, selectedConfigId]);
+    updateUrlSearchParams({
+      strategy: strategy === ALL_STRATEGIES ? null : strategy,
+      suite: nextSuite === ALL_SUITES ? null : nextSuite,
+      config:
+        hasConfig && selectedConfigId !== ALL_CONFIGS ? selectedConfigId : null,
+    });
+  };
 
   const filteredTests = useMemo(() => {
     return tests.filter((test) => {
@@ -292,8 +302,8 @@ export const BacktestResultsPageClient = ({
                 placeholder="Strategy"
                 value={[selectedStrategy]}
                 defaultValue={[selectedStrategy]}
-                onChange={(value) =>
-                  setSelectedStrategy(value[0] || ALL_STRATEGIES)
+                onChange={([value]) =>
+                  updateBacktestFilters(value || ALL_STRATEGIES, selectedSuite)
                 }
                 items={strategyItems}
                 width="220px"
@@ -302,7 +312,9 @@ export const BacktestResultsPageClient = ({
                 placeholder="Test suite"
                 value={[selectedSuite]}
                 defaultValue={[selectedSuite]}
-                onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
+                onChange={([value]) =>
+                  updateBacktestFilters(selectedStrategy, value || ALL_SUITES)
+                }
                 items={suiteItems}
                 width="180px"
               />
@@ -310,8 +322,10 @@ export const BacktestResultsPageClient = ({
                 placeholder="Configuration"
                 value={[selectedConfigId]}
                 defaultValue={[selectedConfigId]}
-                onChange={(value) =>
-                  setSelectedConfigId(value[0] || ALL_CONFIGS)
+                onChange={([value]) =>
+                  updateUrlSearchParams({
+                    config: value === ALL_CONFIGS ? null : value,
+                  })
                 }
                 items={configItems}
                 width="180px"

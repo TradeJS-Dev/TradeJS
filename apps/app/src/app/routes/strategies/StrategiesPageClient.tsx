@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Stack, ClientOnly, Flex } from '@chakra-ui/react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type {
   RuntimeStrategiesResponse,
@@ -23,13 +23,14 @@ import {
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
 import { PageHeader, PageLayout } from '#shared/PageLayout';
+import { updateUrlSearchParams } from '#app/lib/updateUrlSearchParams';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_RUNTIME_SCOPES = '__all_runtime_scopes__';
 const ALL_RUNTIME_DEPLOYMENTS = '__all_runtime_deployments__';
 type StrategyMode = 'runtime' | 'replay' | 'ai' | 'backtest';
-type RuntimeStatusFilter = 'all' | 'enabled' | 'disabled';
+const DEFAULT_HOURS = '168';
 
 const MODE_ITEMS = [
   { label: 'Runtime', value: 'runtime' },
@@ -44,7 +45,7 @@ const RUNTIME_STATUS_ITEMS = [
 ];
 const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
-  { label: 'Last 7d', value: '168' },
+  { label: 'Last 7d', value: DEFAULT_HOURS },
   { label: 'Last 30d', value: '720' },
   { label: 'Last 60d', value: '1440' },
   { label: 'Last 90d', value: '2160' },
@@ -68,17 +69,19 @@ const modeFromPathname = (pathname: string | null) => {
 };
 
 const RuntimeStrategiesContent = () => {
-  const pathname = usePathname();
-  const routeMode = modeFromPathname(pathname);
-  const [mode, setMode] = useState<StrategyMode>(routeMode);
-  const [hours, setHours] = useState('168');
-  const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
-  const [runtimeStatusFilter, setRuntimeStatusFilter] =
-    useState<RuntimeStatusFilter>('all');
-  const [runtimeUniverse, setRuntimeUniverse] = useState(ALL_RUNTIME_SCOPES);
-  const [runtimeDeployment, setRuntimeDeployment] = useState(
-    ALL_RUNTIME_DEPLOYMENTS,
-  );
+  const mode = modeFromPathname(usePathname());
+  const searchParams = useSearchParams();
+  const selectedStrategy = searchParams.get('strategy') || ALL_STRATEGIES;
+  const windowHours = mode === 'runtime' ? searchParams.get('hours') : null;
+  const hours =
+    HOURS_OPTIONS.find(({ value }) => value === windowHours)?.value ??
+    DEFAULT_HOURS;
+  const status = searchParams.get('status');
+  const runtimeStatusFilter =
+    status === 'enabled' || status === 'disabled' ? status : 'all';
+  const runtimeUniverse = searchParams.get('universe') || ALL_RUNTIME_SCOPES;
+  const runtimeDeployment =
+    searchParams.get('deployment') || ALL_RUNTIME_DEPLOYMENTS;
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [pendingSnapshotDelete, setPendingSnapshotDelete] =
@@ -105,32 +108,12 @@ const RuntimeStrategiesContent = () => {
     };
   }, [runtimeData]);
 
-  useEffect(() => {
-    setMode(routeMode);
-  }, [routeMode]);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setMode(modeFromPathname(window.location.pathname));
-      setSelectedStrategy(ALL_STRATEGIES);
-      setRuntimeStatusFilter('all');
-      setRuntimeDeployment(ALL_RUNTIME_DEPLOYMENTS);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  const updateMode = useCallback((value: string | null) => {
+  const updateMode = (value: string | null) => {
     const nextMode = normalizeMode(value);
-
-    setMode(nextMode);
-    setSelectedStrategy(ALL_STRATEGIES);
-    setRuntimeStatusFilter('all');
-    setRuntimeDeployment(ALL_RUNTIME_DEPLOYMENTS);
-
-    window.history.pushState(null, '', `/routes/strategies/${nextMode}`);
-  }, []);
+    if (nextMode !== mode) {
+      window.history.pushState(null, '', `/routes/strategies/${nextMode}`);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -197,12 +180,6 @@ const RuntimeStrategiesContent = () => {
       ...names.map((name) => ({ label: name, value: name })),
     ];
   }, [mode, runtimeData?.strategies, snapshotData?.strategies]);
-
-  useEffect(() => {
-    if (!strategyItems.some((item) => item.value === selectedStrategy)) {
-      setSelectedStrategy(ALL_STRATEGIES);
-    }
-  }, [selectedStrategy, strategyItems]);
 
   const filteredRuntimeStrategies = useMemo(() => {
     const strategies = runtimeData?.strategies ?? [];
@@ -485,8 +462,10 @@ const RuntimeStrategiesContent = () => {
               placeholder="Strategy"
               value={[selectedStrategy]}
               defaultValue={[selectedStrategy]}
-              onChange={(value) =>
-                setSelectedStrategy(value[0] || ALL_STRATEGIES)
+              onChange={([value]) =>
+                updateUrlSearchParams({
+                  strategy: value === ALL_STRATEGIES ? null : value,
+                })
               }
               items={strategyItems}
               width="220px"
@@ -496,7 +475,11 @@ const RuntimeStrategiesContent = () => {
                 placeholder="Window"
                 value={[hours]}
                 defaultValue={[hours]}
-                onChange={(value) => setHours(value[0] || '168')}
+                onChange={([value]) =>
+                  updateUrlSearchParams({
+                    hours: value === DEFAULT_HOURS ? null : value,
+                  })
+                }
                 items={HOURS_OPTIONS}
                 width="180px"
               />
@@ -505,8 +488,11 @@ const RuntimeStrategiesContent = () => {
               <Select
                 value={[runtimeDeployment]}
                 defaultValue={[runtimeDeployment]}
-                onChange={(value) =>
-                  setRuntimeDeployment(value[0] || ALL_RUNTIME_DEPLOYMENTS)
+                onChange={([value]) =>
+                  updateUrlSearchParams({
+                    deployment:
+                      value === ALL_RUNTIME_DEPLOYMENTS ? null : value,
+                  })
                 }
                 items={runtimeDeploymentItems}
                 width="180px"
@@ -517,9 +503,9 @@ const RuntimeStrategiesContent = () => {
                 defaultValue="all"
                 value={runtimeStatusFilter}
                 onChange={(value) =>
-                  setRuntimeStatusFilter(
-                    value === 'enabled' || value === 'disabled' ? value : 'all',
-                  )
+                  updateUrlSearchParams({
+                    status: value === 'all' ? null : value,
+                  })
                 }
                 items={RUNTIME_STATUS_ITEMS}
               />
@@ -528,8 +514,10 @@ const RuntimeStrategiesContent = () => {
               <Select
                 value={[runtimeUniverse]}
                 defaultValue={[runtimeUniverse]}
-                onChange={(value) =>
-                  setRuntimeUniverse(value[0] || ALL_RUNTIME_SCOPES)
+                onChange={([value]) =>
+                  updateUrlSearchParams({
+                    universe: value === ALL_RUNTIME_SCOPES ? null : value,
+                  })
                 }
                 items={runtimeUniverseItems}
                 width="160px"
