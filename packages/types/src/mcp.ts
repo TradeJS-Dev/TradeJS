@@ -5,6 +5,7 @@ export const MCP_SCOPES = [
   'backtests:run',
   'diagnostics:read',
   'diagnostics:run',
+  'research:read',
 ] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
@@ -40,5 +41,7 @@ export interface McpJob {
   exitCode?: number | null;
   logs: string[];
   outputId: string;
+  resultId?: string;
+  artifactIds?: string[];
   packageManifestSha256: string;
 }

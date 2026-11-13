@@ -10,6 +10,8 @@ const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 export const mcpJobStorageId = (userName: string, id: string) =>
   `jobs:${hash(userName)}:${id}`;
+export const mcpArtifactLocationId = (userName: string, id: string) =>
+  `artifact-location:${hash(userName)}:${id}`;
 export const mcpJobDirectory = (job: Pick<McpJob, 'userName' | 'id'>) =>
   path.join(
     String(process.env.PROJECT_CWD || process.cwd()),
@@ -54,11 +56,15 @@ export const enqueueMcpJob = async (
     `${principal.userName}:${principal.clientId}:${idempotencyKey}`,
   );
   const storageId = mcpJobStorageId(principal.userName, id);
+  // The opaque artifact id already includes the payload checksum. Keep the
+  // request fingerprint stable for jobs queued before the worker stored it.
+  const { verifiedEvidenceSha256: _checksum, ...requestIdentity } = request;
+  const requestFingerprint = hash(JSON.stringify(requestIdentity));
   const existing = await mcpStorage.get<McpJob>(storageId);
   if (existing) {
     if (
       existing.kind !== kind ||
-      existing.request.requestFingerprint !== hash(JSON.stringify(request))
+      existing.request.requestFingerprint !== requestFingerprint
     )
       throw new Error('Idempotency key was used for another request');
     return existing;
@@ -77,7 +83,7 @@ export const enqueueMcpJob = async (
     clientId: principal.clientId,
     kind,
     status: 'queued',
-    request: { ...request, requestFingerprint: hash(JSON.stringify(request)) },
+    request: { ...request, requestFingerprint },
     args: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -157,6 +163,8 @@ export const enqueueMcpJob = async (
       String(request.endTime),
       '--publishDir',
       outputDir,
+      '--out',
+      path.join(outputDir, 'runtime-evidence.json'),
     ];
   } else if (kind === 'runtime-feedback-replay') {
     if (!worker.replayAvailable)

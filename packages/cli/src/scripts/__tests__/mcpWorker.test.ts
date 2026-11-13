@@ -7,9 +7,21 @@ let mockController = new AbortController();
 const mockSpawn = jest.fn();
 const mockSetConfig = jest.fn();
 const mockReplayProcess = jest.fn();
+const mockDiscoverEvidence = jest.fn();
+const mockVerifyEvidence = jest.fn();
+const mockVerifyReplaySource = jest.fn();
 const mockReadFile = jest.fn();
+const mockReadResult = jest.fn();
 jest.mock('../../lib/mcpReplayProcess', () => ({
   buildMcpReplayProcess: (...args: unknown[]) => mockReplayProcess(...args),
+}));
+jest.mock('@tradejs/node/diagnostics', () => ({
+  discoverRuntimeEvidenceBundles: (...args: unknown[]) =>
+    mockDiscoverEvidence(...args),
+  verifyRuntimeEvidenceBundle: (...args: unknown[]) =>
+    mockVerifyEvidence(...args),
+  verifyRuntimeFeedbackReplaySource: (...args: unknown[]) =>
+    mockVerifyReplaySource(...args),
 }));
 jest.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
@@ -24,9 +36,19 @@ jest.mock('@tradejs/node/mcp', () => ({
   mcpPackageManifestHash: async () => 'manifest',
   mcpJobStorageId: (_user: string, id: string) => `jobs:${id}`,
   mcpJobDirectory: (job: McpJob) => `/test/data/${job.id}`,
+  mcpProjectRoot: () => '/test',
+  isMcpRecord: jest.requireActual('@tradejs/node/mcp').isMcpRecord,
+  mcpId: jest.requireActual('@tradejs/node/mcp').mcpId,
+  mcpArtifactLocationId:
+    jest.requireActual('@tradejs/node/mcp').mcpArtifactLocationId,
 }));
 jest.mock('@tradejs/infra/redis', () => ({
-  redisKeys: { backtestConfig: (_user: string, id: string) => id },
+  redisKeys: {
+    backtestConfig: (_user: string, id: string) => id,
+    backtestResults: (_user: string, config: string, timestamp: string) =>
+      `${config}:${timestamp}`,
+  },
+  getDataStrict: (...args: unknown[]) => mockReadResult(...args),
   setDataStrict: (...args: unknown[]) => mockSetConfig(...args),
   mcpStorage: {
     put: async (key: string, value: unknown, _ttl: number, nx: boolean) => {
@@ -62,7 +84,14 @@ const job = (
   clientId: 'client',
   kind: 'backtest',
   status,
-  request: { frozenConfigId: 'frozen', resolvedConfig: { A: [1] } },
+  request:
+    overrides.kind === 'runtime-feedback-replay'
+      ? {
+          verifiedEvidencePath:
+            '/test/data/runtime-evidence/source/runtime-evidence.json',
+          deploymentId: 'production',
+        }
+      : { frozenConfigId: 'frozen', resolvedConfig: { A: [1] } },
   args: ['backtest', '--cacheOnly'],
   createdAt: 1,
   updatedAt: 1,
@@ -73,7 +102,33 @@ const job = (
 });
 beforeEach(() => {
   jest.clearAllMocks();
-  mockReadFile.mockRejectedValue(new Error('not published'));
+  mockReadResult.mockReset().mockResolvedValue({ results: [] });
+  mockReadFile.mockImplementation(async (file: string) => {
+    if (!file.endsWith('/completed/production/source.json'))
+      throw new Error('not published');
+    return JSON.stringify({
+      schemaVersion: 1,
+      runtimeEvidenceArtifactId: 'source',
+      runtimeFeedbackBundle:
+        '/host/data/runtime-feedback/ready/production/1970/01/01/source/run',
+    });
+  });
+  mockVerifyEvidence.mockResolvedValue({
+    manifest: {
+      artifactId: 'source',
+      userName: 'alice',
+      deploymentId: 'production',
+      window: { endTime: 10000 },
+    },
+  });
+  mockVerifyReplaySource.mockResolvedValue({
+    feedback: {
+      manifest: {
+        artifactId: 'source_run',
+        payloads: { replayEvidence: { sha256: 'a'.repeat(64) } },
+      },
+    },
+  });
   mockReplayProcess.mockResolvedValue({
     executable: process.execPath,
     args: ['host-request'],
@@ -108,8 +163,59 @@ test('worker executes a frozen cached job once and persists completion', async (
     expect.any(Object),
   );
   expect(mockSpawn).toHaveBeenCalledTimes(1);
-  expect((mockJobs.get('jobs:id') as McpJob).status).toBe('completed');
+  const timestamp =
+    mockSpawn.mock.calls[0][2].env.MCP_BACKTEST_RESULT_TIMESTAMP;
+  expect(timestamp).toMatch(/^\d{12}$/);
+  expect(mockReadResult).toHaveBeenCalledWith(`frozen:${timestamp}`);
+  expect(mockJobs.get('jobs:id')).toMatchObject({
+    status: 'completed',
+    resultId: `frozen:${timestamp}`,
+  });
 });
+test('worker reports a missing persisted result after a successful process exit', async () => {
+  mockReadResult.mockResolvedValue(null);
+  mockJobs.set('jobs:id', job('queued'));
+  await main({ signal: mockController.signal });
+  expect(mockJobs.get('jobs:id')).toMatchObject({
+    status: 'failed',
+    error: 'Job finished but its saved output could not be verified',
+  });
+  expect(mockJobs.get('jobs:id')).not.toHaveProperty('resultId');
+});
+test('worker indexes every verified evidence composition before publishing completion', async () => {
+  const request = {
+    deploymentId: 'production',
+    startTime: 1000,
+    endTime: 2000,
+  };
+  const directories = ['/test/data/id/a', '/test/data/id/b'];
+  mockDiscoverEvidence.mockResolvedValue(directories);
+  mockVerifyEvidence.mockImplementation(async (bundleDir: string) => ({
+    manifest: {
+      userName: 'alice',
+      deploymentId: 'production',
+      artifactId: bundleDir.at(-1),
+      window: { startTime: request.startTime, endTime: request.endTime },
+      payload: { sha256: 'a'.repeat(64) },
+    },
+  }));
+  mockJobs.set('jobs:id', job('queued', { kind: 'runtime-evidence', request }));
+  await main({ signal: mockController.signal });
+
+  const { mcpArtifactLocationId, mcpId } =
+    jest.requireActual('@tradejs/node/mcp');
+  const ids = directories.map((dir) =>
+    mcpId(`${dir.at(-1)}:${'a'.repeat(64)}`),
+  );
+  expect(mockJobs.get('jobs:id')).toMatchObject({
+    status: 'completed',
+    artifactIds: ids,
+  });
+  expect(
+    ids.map((id) => mockJobs.get(mcpArtifactLocationId('alice', id))),
+  ).toEqual(directories);
+});
+
 test('package drift fails before starting any process', async () => {
   mockJobs.set(
     'jobs:id',
@@ -254,7 +360,15 @@ test('worker restart reattaches a waiting host request without failing it', asyn
   );
   await main({ signal: mockController.signal });
   expect(mockReplayProcess).toHaveBeenCalledTimes(1);
-  expect((mockJobs.get('jobs:id') as McpJob).status).toBe('completed');
+  expect(mockJobs.get('jobs:id')).toMatchObject({
+    status: 'completed',
+    artifactIds: [expect.stringMatching(/^[a-f0-9]{64}$/)],
+  });
+  expect(mockVerifyReplaySource).toHaveBeenCalledWith({
+    bundleDir:
+      '/test/data/runtime-feedback/ready/production/1970/01/01/source/run',
+    runtimeEvidenceBundleDir: '/test/data/runtime-evidence/source',
+  });
 });
 
 test('waiting for resources does not consume the one-hour replay execution budget', async () => {

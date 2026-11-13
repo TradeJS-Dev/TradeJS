@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { verifyRuntimeEvidenceBundle } from './runtimeEvidenceArtifacts';
 
@@ -43,12 +42,14 @@ const timer = setInterval(() => {
 
 export const buildMcpReplayProcess = async ({
   evidencePath,
+  expectedEvidenceSha256,
   outDir,
   runId,
   projectRoot,
   env,
 }: {
   evidencePath: string;
+  expectedEvidenceSha256?: string;
   outDir: string;
   runId: string;
   projectRoot: string;
@@ -59,6 +60,9 @@ export const buildMcpReplayProcess = async ({
   const bundle = await verifyRuntimeEvidenceBundle(path.dirname(evidencePath));
   if (path.resolve(evidencePath) !== path.resolve(bundle.payloadPath))
     throw new Error('Replay requires the verified bundle payload');
+  const payloadSha256 = bundle.manifest.payload.sha256;
+  if (expectedEvidenceSha256 && expectedEvidenceSha256 !== payloadSha256)
+    throw new Error('Runtime evidence changed since job submission');
   const relative = path.relative(path.join(projectRoot, 'data'), evidencePath);
   if (relative.startsWith('..') || path.isAbsolute(relative))
     throw new Error('Evidence must be inside Project data');
@@ -75,14 +79,13 @@ export const buildMcpReplayProcess = async ({
     Date.now() - heartbeat.observedAt > 120000
   )
     throw new Error('Host replay runner heartbeat is stale');
-  const bytes = await fs.readFile(evidencePath);
   const request = JSON.stringify({
     schemaVersion: 1,
     id: runId,
     evidence: relative,
     artifactId: bundle.manifest.artifactId,
     deploymentId: bundle.manifest.deploymentId,
-    payloadSha256: createHash('sha256').update(bytes).digest('hex'),
+    payloadSha256,
   });
   void outDir;
   return {

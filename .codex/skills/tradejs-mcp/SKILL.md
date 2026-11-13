@@ -23,6 +23,10 @@ description: Use an authenticated TradeJS MCP server from Codex or Claude Code t
    request after a transport failure. On `CURSOR_EXPIRED`, restart that window
    at cursor `0` and deduplicate record identities; storage order is not
    chronological and scans are not immutable snapshots.
+   Pass a strategy name or `detail: summary` to `runtime_list_strategies` for
+   a smaller response. Orders are selected by entry time by default. Use
+   `timeField: exit` to include trades closed in the window even when they
+   were opened earlier.
    `runtime_get_signal` takes signalId, deploymentId, timestamp and strategy
    from the list. Explain the saved decision, gate, order status and evidence.
    Do not turn missing retained records into proof that nothing happened.
@@ -34,7 +38,8 @@ description: Use an authenticated TradeJS MCP server from Codex or Claude Code t
 5. Prefer existing verified `diagnostics_list_reports` / `diagnostics_get_report`
    before new jobs. Paginate the catalog with `offset`, `limit` and
    `nextOffset` until null. Preserve `scanTruncated` and excluded-bundle counts
-   as coverage limitations. For full artifacts call `artifact_get`, concatenate decoded
+   as coverage limitations. Filter by `accountId` and
+   `deploymentCompositionId` when matching an exact composition. For full artifacts call `artifact_get`, concatenate decoded
    base64 chunks in offset order, verify byte count and SHA-256, then use the
    relevant local analysis skill. `diagnostics_get_report.files` lists the
    available payload, manifest, completion marker and optional replay log;
@@ -46,8 +51,15 @@ description: Use an authenticated TradeJS MCP server from Codex or Claude Code t
    history, one worker. Evidence capture is limited to seven days. Feedback
    replay requires a verified evidence id for that deployment and an isolated
    replay worker. Disconnects do not cancel work; never automatically retry a
-   failed job. Use `job_cancel` only when requested.
-7. Include source host, time bounds, revisions, coverage, checksums and missing
+   failed job. A completed job can return `resultId` for
+   `backtest_get_result` or `artifactIds` for `diagnostics_get_report`.
+   Use `job_cancel` only when requested.
+7. For saved research on this host, use `research_list_studies` and
+   `research_get_study`. These tools are visible to the project owner with
+   `research:read`. Follow a section's `nextOffset` with its exact title.
+   The server reads the same Project `notes/` as the web library. An empty
+   list on a remote host does not describe research saved on another machine.
+8. Include source host, time bounds, revisions, coverage, checksums and missing
    evidence in the result. Use local CLI for offline analysis or work exceeding
    the bounded MCP job contract. SSH needs a separate explicit operational
    request; do not broaden access to compensate for a missing tool or scope.

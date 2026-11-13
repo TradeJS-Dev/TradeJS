@@ -33,6 +33,8 @@ import {
   resolveMcpArtifact,
 } from './artifacts';
 import { mcpResource } from './oauth';
+import { isResearchLibraryOwner } from '../researchLibrary';
+import { readMcpResearchStudies, readMcpResearchStudy } from './research';
 
 const identifier = z
   .string()
@@ -301,27 +303,50 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
   );
   tool(
     'runtime_list_strategies',
-    'Read effective strategies, configs and immutable revisions for a deployment bound to this user account.',
+    'Read effective strategies for a deployment bound to this user account. Filter by exact strategy name or use detail=summary for revisions and status without configs.',
     ['runtime:read'],
-    { deploymentId: identifier },
-    async (args) => readMcpStrategies(principal.userName, args.deploymentId),
+    {
+      deploymentId: identifier,
+      strategy: identifier.optional(),
+      detail: z.enum(['summary', 'full']).default('full'),
+    },
+    async ({ deploymentId, ...options }) =>
+      readMcpStrategies(principal.userName, deploymentId, options),
   );
-  for (const kind of ['signals', 'evaluations', 'orders'] as const) {
+  const runtimePageDescription =
+    'Window is half-open [startTime,endTime), at most 7 days. Continue even after an empty page until cursor=0. Shared cursors last 24 hours; retry the identical request after transport errors. Storage order is not chronological; CURSOR_EXPIRED requires restarting the same window and deduplicating identities.';
+  const requireRuntimeWindow = ({
+    startTime,
+    endTime,
+  }: {
+    startTime: number;
+    endTime: number;
+  }) => {
+    if (endTime <= startTime || endTime - startTime > 7 * 86400000)
+      throw new Error('Select a window of at most 7 days');
+  };
+  for (const kind of ['signals', 'evaluations'] as const) {
     tool(
       `runtime_list_${kind}`,
-      `Read a bounded storage page of ${kind}. Window is half-open [startTime,endTime), at most 7 days. Continue even after an empty page until cursor=0. Shared cursors last 24 hours; retry the identical request after transport errors. Storage order is not chronological; CURSOR_EXPIRED requires restarting the same window and deduplicating identities.`,
+      `Read a bounded storage page of ${kind}. ${runtimePageDescription}`,
       ['runtime:read'],
       runtimePage,
       async (args) => {
-        if (
-          args.endTime <= args.startTime ||
-          args.endTime - args.startTime > 7 * 86400000
-        )
-          throw new Error('Select a window of at most 7 days');
+        requireRuntimeWindow(args);
         return readMcpRuntimePage(principal.userName, kind, args);
       },
     );
   }
+  tool(
+    'runtime_list_orders',
+    `Read a bounded storage page of trades. timeField=entry filters by entry timestamp (default); timeField=exit filters by exit timestamp and excludes open trades. ${runtimePageDescription}`,
+    ['runtime:read'],
+    { ...runtimePage, timeField: z.enum(['entry', 'exit']).default('entry') },
+    async (args) => {
+      requireRuntimeWindow(args);
+      return readMcpRuntimePage(principal.userName, 'orders', args);
+    },
+  );
   tool(
     'runtime_get_signal',
     'Read one owned signal, including recorded indicators, figures, gate decisions and execution status.',
@@ -438,7 +463,9 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     'List checksum-verified runtime evidence and feedback/parity bundles present on this host and owned by this user. Inaccessible/unverified bundles are excluded.',
     ['diagnostics:read'],
     {
-      deploymentId: z.string().optional(),
+      deploymentId: identifier.optional(),
+      accountId: identifier.optional(),
+      deploymentCompositionId: identifier.optional(),
       kind: z.enum(['runtime-evidence', 'runtime-feedback-replay']).optional(),
       offset: z.number().int().min(0).default(0),
       limit: z.number().int().min(1).max(100).default(20),
@@ -506,12 +533,41 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
         await enqueueMcpJob(
           principal,
           kind,
-          { ...args, verifiedEvidencePath: artifact.payloadPath },
+          {
+            ...args,
+            verifiedEvidencePath: artifact.payloadPath,
+            verifiedEvidenceSha256: artifact.sha256,
+          },
           key,
         ),
       );
     },
     true,
   );
+  if (isResearchLibraryOwner(principal.userName)) {
+    tool(
+      'research_list_studies',
+      'List saved TradeJS research studies with optional strategy filter. Continue using nextOffset until null.',
+      ['research:read'],
+      {
+        strategy: identifier.optional(),
+        offset: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(50).default(20),
+      },
+      readMcpResearchStudies,
+    );
+    tool(
+      'research_get_study',
+      'Read a saved study decision, reported metrics, findings and limitations. A truncated section can be read in pages by exact section title and nextOffset.',
+      ['research:read'],
+      {
+        strategy: identifier,
+        studyId: identifier,
+        section: z.string().min(1).max(100).optional(),
+        offset: z.number().int().min(0).default(0),
+      },
+      readMcpResearchStudy,
+    );
+  }
   return server;
 };

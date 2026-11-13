@@ -93,6 +93,31 @@ test('a queued request freezes the grid and reuses idempotency without creating 
     ),
   ).rejects.toThrow('Idempotency');
 });
+test('replay retry can reuse a job queued before the explicit checksum was stored', async () => {
+  mockStore.set('worker:heartbeat', { replayAvailable: true });
+  const previous = {
+    deploymentId: 'production',
+    artifactId: 'a'.repeat(64),
+    verifiedEvidencePath: '/verified/runtime-evidence.json',
+  };
+  const original = await enqueueMcpJob(
+    principal,
+    'runtime-feedback-replay',
+    previous,
+    'old-replay-request',
+  );
+  const retry = await enqueueMcpJob(
+    principal,
+    'runtime-feedback-replay',
+    {
+      ...previous,
+      verifiedEvidenceSha256: 'b'.repeat(64),
+    },
+    'old-replay-request',
+  );
+  expect(retry).toEqual(original);
+});
+
 test('simultaneous conflicting submissions cannot share an idempotency key', async () => {
   const outcomes = await Promise.allSettled([
     enqueueMcpJob(principal, 'backtest', request, 'same-race-key'),

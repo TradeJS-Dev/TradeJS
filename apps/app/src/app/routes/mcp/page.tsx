@@ -33,7 +33,7 @@ export default async function ConnectionsPage() {
       <p>
         For background jobs, authorize the required run permissions yourself:
       </p>
-      <pre>{`codex mcp login tradejs --scopes market:read,runtime:read,backtests:read,backtests:run,diagnostics:read,diagnostics:run`}</pre>
+      <pre>{`codex mcp login tradejs --scopes market:read,runtime:read,backtests:read,backtests:run,diagnostics:read,diagnostics:run,research:read`}</pre>
       <h2>Claude Code</h2>
       <pre>{`claude mcp add --transport http --scope user tradejs ${url}`}</pre>
       <p>

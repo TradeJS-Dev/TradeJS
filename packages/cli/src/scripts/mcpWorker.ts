@@ -12,6 +12,10 @@ import {
 import type { McpJob } from '@tradejs/types';
 
 import { buildMcpReplayProcess } from '../lib/mcpReplayProcess';
+import {
+  collectMcpJobOutputs,
+  mcpBacktestResultTimestamp,
+} from '../lib/mcpJobOutputs';
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const leaseKey = 'worker:lease';
@@ -225,6 +229,9 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         MAKE_ORDERS: 'false',
         TRADEJS_EXTERNAL_ORDER_PLACEMENT: 'false',
       };
+      if (started.kind === 'backtest')
+        jobEnv.MCP_BACKTEST_RESULT_TIMESTAMP =
+          mcpBacktestResultTimestamp(started);
       if (started.kind === 'runtime-feedback-replay') {
         for (const name of Object.keys(jobEnv)) {
           if (
@@ -252,6 +259,10 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
         if (started.kind === 'runtime-feedback-replay')
           command = await buildMcpReplayProcess({
             evidencePath: String(started.request.verifiedEvidencePath),
+            expectedEvidenceSha256:
+              typeof started.request.verifiedEvidenceSha256 === 'string'
+                ? started.request.verifiedEvidenceSha256
+                : undefined,
             outDir: mcpJobDirectory(started),
             runId: started.id,
             projectRoot: process.env.PROJECT_CWD || process.cwd(),
@@ -376,6 +387,21 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
       clearTimeout(timeout);
       clearInterval(monitor);
       child = undefined;
+      let outputs: Pick<McpJob, 'resultId' | 'artifactIds'> = {};
+      if (
+        !leaseLost &&
+        outcome.code === 0 &&
+        !outcome.error &&
+        !timedOut &&
+        !stopping
+      ) {
+        try {
+          outputs = await collectMcpJobOutputs(started);
+        } catch {
+          outcome.error =
+            'Job finished but its saved output could not be verified';
+        }
+      }
       if (!leaseLost) {
         // Retry CAS if a concurrent cancellation arrived during finalization.
         for (let attempt = 0; attempt < 4; attempt++) {
@@ -387,9 +413,10 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
             logs,
             status: cancelled
               ? 'cancelled'
-              : outcome.code === 0 && !timedOut && !stopping
+              : outcome.code === 0 && !outcome.error && !timedOut && !stopping
                 ? 'completed'
                 : 'failed',
+            ...(cancelled || stopping ? {} : outputs),
             exitCode: outcome.code,
             updatedAt: Date.now(),
             finishedAt: Date.now(),
@@ -399,7 +426,7 @@ export const main = async (options: { signal?: AbortSignal } = {}) => {
                 ? { error: 'Job exceeded one hour' }
                 : stopping
                   ? { error: 'Worker stopped; this job was not replayed' }
-                  : outcome.code !== 0
+                  : outcome.code !== 0 || outcome.error
                     ? {
                         error:
                           outcome.error ||

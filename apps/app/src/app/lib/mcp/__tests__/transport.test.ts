@@ -409,3 +409,116 @@ test('feedback capabilities match the tool schemas visible through HTTP', async 
     await client.close();
   }
 });
+
+test('research tools require both project ownership and the research scope', async () => {
+  const { createTradejsMcpServer } = await import('../server');
+  const { InMemoryTransport } = await import(
+    '@modelcontextprotocol/sdk/inMemory.js'
+  );
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'tradejs-mcp-research-'),
+  );
+  const projectCwd = process.env.PROJECT_CWD;
+  process.env.PROJECT_CWD = root;
+  try {
+    const strategy = 'DoubleTap';
+    const studyId = '2026-11-12-control';
+    const findings = 'Данные '.repeat(1300);
+    await fs.mkdir(path.join(root, 'notes', strategy), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'notes', strategy, `${studyId}.md`),
+      [
+        '---',
+        'schema: tradejs-research/v2',
+        'status: complete',
+        '---',
+        '# Control',
+        '## Decision',
+        'Keep the control.',
+        '## Findings',
+        findings.trim(),
+        '## Resolved configuration',
+        'PRIVATE',
+      ].join('\n'),
+    );
+    const principals: Pick<McpPrincipal, 'userName' | 'scopes'>[] = [
+      { userName: 'alice', scopes: ['research:read'] },
+      { userName: 'root', scopes: ['runtime:read'] },
+      { userName: 'root', scopes: ['research:read'] },
+    ];
+    for (const principal of principals) {
+      const server = createTradejsMcpServer({ ...mockPrincipal, ...principal });
+      const client = new Client({ name: 'research-test', version: '1.0.0' });
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        const tools = (await client.listTools()).tools.filter(({ name }) =>
+          name.startsWith('research_'),
+        );
+        if (
+          principal.userName !== 'root' ||
+          !principal.scopes.includes('research:read')
+        ) {
+          expect(tools).toHaveLength(0);
+          continue;
+        }
+        expect(tools.map(({ name }) => name)).toEqual([
+          'research_list_studies',
+          'research_get_study',
+        ]);
+        const list = await client.callTool({
+          name: 'research_list_studies',
+          arguments: { strategy },
+        });
+        expect(list.structuredContent).toMatchObject({
+          data: {
+            items: [{ id: studyId, title: 'Control' }],
+            nextOffset: null,
+          },
+        });
+        const detail = await client.callTool({
+          name: 'research_get_study',
+          arguments: { strategy, studyId },
+        });
+        expect(detail.structuredContent).toMatchObject({
+          data: {
+            sections: [
+              {
+                title: 'Decision',
+                text: 'Keep the control.',
+                nextOffset: null,
+              },
+              {
+                title: 'Findings',
+                text: findings.slice(0, 2000),
+                nextOffset: 2000,
+              },
+            ],
+          },
+        });
+        expect(JSON.stringify(detail)).not.toContain('PRIVATE');
+        const continued = await client.callTool({
+          name: 'research_get_study',
+          arguments: { strategy, studyId, section: 'Findings', offset: 2000 },
+        });
+        expect(continued.structuredContent).toMatchObject({
+          data: {
+            sections: [{ text: findings.trim().slice(2000), nextOffset: null }],
+          },
+        });
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+  } finally {
+    if (projectCwd === undefined) delete process.env.PROJECT_CWD;
+    else process.env.PROJECT_CWD = projectCwd;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

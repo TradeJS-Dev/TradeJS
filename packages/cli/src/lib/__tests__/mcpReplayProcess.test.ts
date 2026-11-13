@@ -8,7 +8,11 @@ import { buildMcpReplayProcess } from '../mcpReplayProcess';
 jest.mock('../runtimeEvidenceArtifacts', () => ({
   verifyRuntimeEvidenceBundle: async (directory: string) => ({
     payloadPath: path.join(directory, 'runtime-evidence.json'),
-    manifest: { artifactId: 'artifact', deploymentId: 'production' },
+    manifest: {
+      artifactId: 'artifact',
+      deploymentId: 'production',
+      payload: { sha256: 'b'.repeat(64) },
+    },
   }),
 }));
 
@@ -47,6 +51,19 @@ test.each(['original', 'missing', 'invalid'])(
         projectRoot: root,
         env: {},
       });
+      expect(JSON.parse(command.args[4])).toMatchObject({
+        payloadSha256: 'b'.repeat(64),
+      });
+      await expect(
+        buildMcpReplayProcess({
+          evidencePath,
+          expectedEvidenceSha256: 'c'.repeat(64),
+          outDir: root,
+          runId: id,
+          projectRoot: root,
+          env: {},
+        }),
+      ).rejects.toThrow('changed since job submission');
       const result = spawnSync(command.executable, command.args, {
         encoding: 'utf8',
         timeout: 5000,

@@ -208,6 +208,7 @@ export const requireMcpDeployment = async (
 export const readMcpStrategies = async (
   userName: string,
   deploymentId: string,
+  options: { strategy?: string; detail?: 'summary' | 'full' } = {},
 ) => {
   const deployment = await requireMcpDeployment(userName, deploymentId);
   const rows = await loadResolvedRuntimeStrategies({
@@ -218,7 +219,27 @@ export const readMcpStrategies = async (
   return {
     deploymentId,
     accountId: deployment.accountId,
-    strategies: rows.map(({ strategyCreator: _creator, ...row }) => row),
+    deploymentCompositionId: deployment.deploymentCompositionId,
+    strategies: rows
+      .filter(
+        (row) => !options.strategy || row.strategyName === options.strategy,
+      )
+      .map(({ strategyCreator: _creator, ...row }) =>
+        options.detail === 'summary'
+          ? {
+              strategyName: row.strategyName,
+              strategyRevision: row.strategyRevision,
+              deploymentCompositionId: row.deploymentCompositionId,
+              accountId: row.accountId,
+              enabled: row.enabled,
+              controlState: row.controlState,
+              interval: row.interval,
+              universe: row.universe,
+              strategyPackage: row.strategyPackage,
+              strategyPackageVersion: row.strategyPackageVersion,
+            }
+          : row,
+      ),
     observedAt: Date.now(),
   };
 };
@@ -253,6 +274,7 @@ export const readMcpRuntimePage = async (
     strategy?: string;
     symbol?: string;
     limit?: number;
+    timeField?: 'entry' | 'exit';
   },
 ) => {
   const deployment = await requireMcpDeployment(userName, request.deploymentId);
@@ -262,6 +284,8 @@ export const readMcpRuntimePage = async (
       : kind === 'evaluations'
         ? redisKeys.runtimeSignalEvaluationBuckets(userName)
         : redisKeys.runtimeTrades(userName);
+  const timeField =
+    kind === 'orders' ? request.timeField ?? 'entry' : undefined;
   const limit = request.limit ?? 50;
   if (!Number.isInteger(limit) || limit < 1 || limit > 50)
     throw new Error('Select a page limit of 1–50');
@@ -276,6 +300,7 @@ export const readMcpRuntimePage = async (
       endTime: request.endTime,
       strategy: request.strategy ?? null,
       symbol: request.symbol ?? null,
+      ...(timeField === 'exit' ? { timeField } : {}),
     }),
   );
   let state: RuntimeCursor = {
@@ -355,7 +380,11 @@ export const readMcpRuntimePage = async (
     )
       continue;
     const timestamp = Number(
-      row.timestamp ?? row.entryTimestamp ?? row.createdAt,
+      timeField === 'exit'
+        ? row.exitTimestamp ?? NaN
+        : timeField === 'entry'
+          ? row.entryTimestamp ?? row.timestamp ?? row.createdAt
+          : row.timestamp ?? row.entryTimestamp ?? row.createdAt,
     );
     if (
       timestamp < request.startTime ||
@@ -394,6 +423,7 @@ export const readMcpRuntimePage = async (
     deploymentId: request.deploymentId,
     observedAt: Date.now(),
     source: 'runtime_storage',
+    ...(timeField ? { timeField } : {}),
     window: { startTime: request.startTime, endTime: request.endTime },
     coverage: 'stored_records_only',
     pagination: {

@@ -1,3 +1,4 @@
+import type { BigIntStats } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import {
 import { mcpStorage } from '@tradejs/infra/redis';
 import {
   isMcpRecord,
+  mcpArtifactLocationId,
   mcpId,
   mcpProjectRoot,
   readMcpDeployments,
@@ -18,12 +20,18 @@ interface CatalogEntry {
   id: string;
   userName: string;
   deploymentId: string;
+  accountId: string;
+  deploymentCompositionId: string;
   kind: 'runtime-evidence' | 'runtime-feedback-replay';
   bundleDir: string;
   payloadPath: string;
   sha256: string;
   bytes: number;
-  manifest: Record<string, unknown>;
+  manifest: Record<string, unknown> & {
+    artifactId: string;
+    window: { startTime: number; endTime: number };
+  };
+  fingerprints: FileFingerprint[];
 }
 const storageKey = (userName: string, id: string) =>
   `artifacts:${mcpId(userName)}:${id}`;
@@ -46,67 +54,129 @@ const confinedPath = async (file: string) => {
   return resolved;
 };
 
+const readHeader = async (bundleDir: string) => {
+  const file = await confinedPath(path.join(bundleDir, 'manifest.json'));
+  if ((await stat(file)).size > 256 * 1024)
+    throw new Error('Manifest too large');
+  const header: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (
+    !isMcpRecord(header) ||
+    typeof header.userName !== 'string' ||
+    typeof header.deploymentId !== 'string' ||
+    (header.reportType !== 'runtime-evidence' &&
+      header.reportType !== 'runtime-feedback-replay') ||
+    !isMcpRecord(header.window) ||
+    typeof header.window.startTime !== 'number' ||
+    typeof header.window.endTime !== 'number' ||
+    !Number.isFinite(header.window.startTime) ||
+    !Number.isFinite(header.window.endTime)
+  )
+    throw new Error('Invalid artifact manifest');
+  return {
+    userName: header.userName,
+    deploymentId: header.deploymentId,
+    kind: header.reportType,
+    startTime: header.window.startTime,
+    endTime: header.window.endTime,
+  } as const;
+};
+
+type FileFingerprint = { path: string; identity: string };
+const fileIdentity = ({ dev, ino, size, mtimeNs, ctimeNs }: BigIntStats) =>
+  [dev, ino, size, mtimeNs, ctimeNs].join(':');
+
+const bundleFingerprints = (bundleDir: string, kind: CatalogEntry['kind']) =>
+  Promise.all(
+    [
+      'manifest.json',
+      '.complete',
+      ...(kind === 'runtime-evidence'
+        ? ['runtime-evidence.json']
+        : ['replay-runtime-evidence.json', 'replay.log']),
+    ].map(async (name): Promise<FileFingerprint> => {
+      const file = await checkPayload(path.join(bundleDir, name));
+      const info = await stat(file, { bigint: true });
+      if (!info.isFile()) throw new Error('Invalid artifact file');
+      return { path: file, identity: fileIdentity(info) };
+    }),
+  );
+
+const sameFingerprints = (a: FileFingerprint[], b: FileFingerprint[]) =>
+  a.length === b.length &&
+  a.every(
+    (file, index) =>
+      file.path === b[index].path && file.identity === b[index].identity,
+  );
+
 const verifyEntry = async (
   bundleDir: string,
   userName: string,
   allowed: Set<string>,
+  header?: Awaited<ReturnType<typeof readHeader>>,
 ): Promise<CatalogEntry> => {
-  const manifestPath = await confinedPath(
-    path.join(bundleDir, 'manifest.json'),
-  );
-  const manifestStat = await stat(manifestPath);
-  if (manifestStat.size > 256 * 1024) throw new Error('Manifest too large');
-  const header: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const {
+    kind,
+    deploymentId,
+    userName: owner,
+    startTime,
+    endTime,
+  } = header ?? (await readHeader(bundleDir));
+  if (owner !== userName || !allowed.has(deploymentId))
+    throw new Error('Artifact unavailable for this user');
+
+  const fingerprints = await bundleFingerprints(bundleDir, kind);
+  const verified =
+    kind === 'runtime-evidence'
+      ? await verifyRuntimeEvidenceBundle(bundleDir).then((bundle) => ({
+          manifest: bundle.manifest,
+          descriptor: bundle.manifest.payload,
+          payloadPath: bundle.payloadPath,
+          payload: bundle.artifact,
+        }))
+      : await verifyRuntimeFeedbackReplayBundle(bundleDir).then((bundle) => ({
+          manifest: bundle.manifest,
+          descriptor: bundle.manifest.payloads.replayEvidence,
+          payloadPath: bundle.replayEvidencePath,
+          payload: bundle.replayEvidence,
+        }));
+  const { manifest, descriptor, payloadPath, payload } = verified;
+  const deployment = payload.deployment;
   if (
-    !isMcpRecord(header) ||
-    header.userName !== userName ||
-    typeof header.deploymentId !== 'string' ||
-    !allowed.has(header.deploymentId)
+    manifest.userName !== userName ||
+    manifest.deploymentId !== deploymentId ||
+    payload.userName !== userName ||
+    !isMcpRecord(deployment) ||
+    typeof deployment.accountId !== 'string' ||
+    typeof deployment.deploymentCompositionId !== 'string'
   )
     throw new Error('Artifact unavailable for this user');
-  if (header.reportType === 'runtime-evidence') {
-    await checkPayload(path.join(bundleDir, 'runtime-evidence.json'));
-    const verified = await verifyRuntimeEvidenceBundle(bundleDir);
-    if (verified.artifact.userName !== userName)
-      throw new Error('Artifact unavailable for this user');
-    return {
-      id: mcpId(
-        `${verified.manifest.artifactId}:${verified.manifest.payload.sha256}`,
-      ),
-      userName,
-      deploymentId: verified.manifest.deploymentId,
-      kind: 'runtime-evidence',
-      bundleDir,
-      payloadPath: verified.payloadPath,
-      sha256: verified.manifest.payload.sha256,
-      bytes: verified.manifest.payload.bytes,
-      manifest: verified.manifest,
-    };
-  }
-  if (header.reportType === 'runtime-feedback-replay') {
-    await checkPayload(path.join(bundleDir, 'replay-runtime-evidence.json'));
-    await checkPayload(path.join(bundleDir, 'replay.log'));
-    const verified = await verifyRuntimeFeedbackReplayBundle(bundleDir);
-    return {
-      id: mcpId(
-        `${verified.manifest.artifactId}:${verified.manifest.payloads.replayEvidence.sha256}`,
-      ),
-      userName,
-      deploymentId: verified.manifest.deploymentId,
-      kind: 'runtime-feedback-replay',
-      bundleDir,
-      payloadPath: verified.replayEvidencePath,
-      sha256: verified.manifest.payloads.replayEvidence.sha256,
-      bytes: verified.manifest.payloads.replayEvidence.bytes,
-      manifest: verified.manifest,
-    };
-  }
-  throw new Error('Unsupported artifact');
+  if (
+    manifest.window.startTime !== startTime ||
+    manifest.window.endTime !== endTime ||
+    !sameFingerprints(fingerprints, await bundleFingerprints(bundleDir, kind))
+  )
+    throw new Error('Artifact changed during verification');
+  return {
+    id: mcpId(`${manifest.artifactId}:${descriptor.sha256}`),
+    userName,
+    deploymentId,
+    accountId: deployment.accountId,
+    deploymentCompositionId: deployment.deploymentCompositionId,
+    kind,
+    bundleDir,
+    payloadPath,
+    sha256: descriptor.sha256,
+    bytes: descriptor.bytes,
+    manifest,
+    fingerprints,
+  };
 };
 
 export interface McpArtifactListOptions {
   deploymentId?: string;
   kind?: CatalogEntry['kind'];
+  deploymentCompositionId?: string;
+  accountId?: string;
   offset?: number;
   limit?: number;
   startTime?: number;
@@ -158,27 +228,30 @@ export const listMcpArtifacts = async (
     }
     if (entries.some((entry) => entry.name === '.complete' && entry.isFile())) {
       try {
-        const artifact = await verifyEntry(current.dir, userName, allowed);
+        const header = await readHeader(current.dir);
         if (
-          options.deploymentId &&
-          artifact.deploymentId !== options.deploymentId
+          (options.deploymentId &&
+            header.deploymentId !== options.deploymentId) ||
+          (options.kind && header.kind !== options.kind) ||
+          (options.startTime !== undefined &&
+            header.endTime <= options.startTime) ||
+          (options.endTime !== undefined && header.startTime >= options.endTime)
         )
           continue;
-        if (options.kind && artifact.kind !== options.kind) continue;
-        const window = artifact.manifest.window as {
-          startTime: number;
-          endTime: number;
-        };
+        const artifact = await verifyEntry(
+          current.dir,
+          userName,
+          allowed,
+          header,
+        );
         if (
-          options.startTime !== undefined &&
-          window.endTime <= options.startTime
+          (options.deploymentCompositionId &&
+            artifact.deploymentCompositionId !==
+              options.deploymentCompositionId) ||
+          (options.accountId && artifact.accountId !== options.accountId)
         )
           continue;
-        if (
-          options.endTime !== undefined &&
-          window.startTime >= options.endTime
-        )
-          continue;
+        const { window } = artifact.manifest;
         if (seen.has(artifact.id)) continue;
         await mcpStorage.put(storageKey(userName, artifact.id), artifact, 3600);
         seen.add(artifact.id);
@@ -190,12 +263,14 @@ export const listMcpArtifacts = async (
           bytes: artifact.bytes,
           window,
           artifactId: artifact.manifest.artifactId,
-          deploymentCompositionId: artifact.manifest.deploymentCompositionId,
+          accountId: artifact.accountId,
+          deploymentCompositionId: artifact.deploymentCompositionId,
           runtimeEvidence: artifact.manifest.runtimeEvidence,
         });
       } catch {
         invalidBundles++;
       }
+      continue;
     }
     if (current.depth < 12)
       for (const entry of entries) {
@@ -234,16 +309,31 @@ export const listMcpArtifacts = async (
 
 export const resolveMcpArtifact = async (userName: string, id: string) => {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid artifact id');
-  const stored = await mcpStorage.get<CatalogEntry>(storageKey(userName, id));
-  if (!stored || stored.userName !== userName)
+  const key = storageKey(userName, id);
+  const stored = await mcpStorage.get<CatalogEntry>(key);
+  const bundleDir =
+    stored?.userName === userName
+      ? stored.bundleDir
+      : await mcpStorage.get<string>(mcpArtifactLocationId(userName, id));
+  if (!bundleDir)
     throw new Error('Artifact not found; refresh diagnostics_list_reports');
+
   const { deployments } = await readMcpDeployments(userName);
-  const verified = await verifyEntry(
-    stored.bundleDir,
-    userName,
-    new Set(deployments.map((row) => row.id)),
-  );
+  const allowed = new Set(deployments.map((row) => row.id));
+  if (stored?.userName === userName && stored.fingerprints) {
+    if (!allowed.has(stored.deploymentId))
+      throw new Error('Artifact unavailable for this user');
+    if (
+      sameFingerprints(
+        stored.fingerprints,
+        await bundleFingerprints(bundleDir, stored.kind),
+      )
+    )
+      return stored;
+  }
+  const verified = await verifyEntry(bundleDir, userName, allowed);
   if (verified.id !== id) throw new Error('Artifact changed since listing');
+  await mcpStorage.put(key, verified, 3600);
   return verified;
 };
 
@@ -311,10 +401,23 @@ export const readMcpArtifactChunk = async (
   if (offset > selected.bytes) throw new Error('Invalid artifact chunk offset');
   const handle = await open(selected.path, 'r');
   try {
+    const fingerprint = artifact.fingerprints.find(
+      (row) => row.path === selected.path,
+    );
+    if (
+      !fingerprint ||
+      fingerprint.identity !== fileIdentity(await handle.stat({ bigint: true }))
+    )
+      throw new Error('Artifact changed during download');
     const buffer = Buffer.alloc(
       Math.min(length, Math.max(0, selected.bytes - offset)),
     );
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+    if (
+      bytesRead !== buffer.length ||
+      fingerprint.identity !== fileIdentity(await handle.stat({ bigint: true }))
+    )
+      throw new Error('Artifact changed during download');
     return {
       id,
       offset,

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   publishRuntimeEvidenceBundle,
+  verifyRuntimeEvidenceBundle,
   sealRuntimeFeedbackReplayBundle,
 } from '@tradejs/node/diagnostics';
 import { formatMcpArtifactLogLine } from '@tradejs/node/mcp';
@@ -17,6 +18,14 @@ import {
 let mockRoot = '';
 let mockAllowed = true;
 const mockStore = new Map<string, unknown>();
+jest.mock('@tradejs/node/diagnostics', () => {
+  const actual = jest.requireActual('@tradejs/node/diagnostics');
+  return {
+    ...actual,
+    verifyRuntimeEvidenceBundle: jest.fn(actual.verifyRuntimeEvidenceBundle),
+  };
+});
+
 jest.mock('@tradejs/infra/redis', () => ({
   mcpStorage: {
     get: async (key: string) => mockStore.get(key) ?? null,
@@ -28,6 +37,8 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 jest.mock('@tradejs/node/mcp', () => ({
   mcpProjectRoot: () => mockRoot,
+  mcpArtifactLocationId:
+    jest.requireActual('@tradejs/node/mcp').mcpArtifactLocationId,
   formatMcpArtifactLogLine: (line: string) =>
     jest.requireActual('@tradejs/node/mcp').formatMcpArtifactLogLine(line),
   redactMcpJobLog: (line: string) =>
@@ -93,6 +104,7 @@ beforeEach(async () => {
   mockRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tradejs-mcp-artifact-'));
   mockAllowed = true;
   mockStore.clear();
+  jest.mocked(verifyRuntimeEvidenceBundle).mockClear();
 });
 afterEach(async () => {
   await fs.rm(mockRoot, { recursive: true, force: true });
@@ -118,8 +130,15 @@ test('catalog exposes only sealed owned evidence and chunks reproduce the advert
   const catalog = await listMcpArtifacts('alice');
   expect(catalog.items).toHaveLength(1);
   const item = catalog.items[0];
+  expect(item).toMatchObject({
+    accountId: 'account',
+    deploymentCompositionId: 'dc1:1111111111111111',
+  });
+  const checksAfterListing = jest.mocked(verifyRuntimeEvidenceBundle).mock.calls
+    .length;
   const first = await readMcpArtifactChunk('alice', item.id, 0, 48);
   const rest = await readMcpArtifactChunk('alice', item.id, 48, item.bytes);
+  expect(verifyRuntimeEvidenceBundle).toHaveBeenCalledTimes(checksAfterListing);
   const bytes = Buffer.concat([
     Buffer.from(first.data, 'base64'),
     Buffer.from(rest.data, 'base64'),
@@ -200,16 +219,20 @@ test('payload symlinks cannot escape the data root even with a valid hash', asyn
 });
 
 test('window filtering precedes pagination and newest windows sort first', async () => {
-  await publish(2000);
-  await publish(3000);
+  const older = await publish(2000);
+  const selected = await publish(3000);
   const page = await listMcpArtifacts('alice', {
     startTime: 2000,
     endTime: 3000,
+    accountId: 'account',
+    deploymentCompositionId: 'dc1:1111111111111111',
     limit: 1,
   });
   expect(page.items).toHaveLength(1);
   expect(page.items[0].window.endTime).toBe(3000);
   expect(page.nextOffset).toBeNull();
+  expect(verifyRuntimeEvidenceBundle).not.toHaveBeenCalledWith(older.bundleDir);
+  expect(verifyRuntimeEvidenceBundle).toHaveBeenCalledWith(selected.bundleDir);
   expect(
     (await listMcpArtifacts('alice')).items.map((row) => row.window.endTime),
   ).toEqual([3000, 2000]);
@@ -431,4 +454,21 @@ test('complete bundle download resumes exact bytes and uses the real catalog, st
       },
     }),
   ).rejects.toThrow('Local bundle checksum mismatch');
+});
+
+test('a completed job can resolve its artifact without listing the catalog first', async () => {
+  const bundle = await publish();
+  const { artifactId, payload } = bundle.manifest;
+  const id = createHash('sha256')
+    .update(`${artifactId}:${payload.sha256}`)
+    .digest('hex');
+  const { mcpArtifactLocationId } = jest.requireActual('@tradejs/node/mcp');
+  mockStore.set(mcpArtifactLocationId('alice', id), bundle.bundleDir);
+  await expect(readMcpDiagnosticReport('alice', id)).resolves.toMatchObject({
+    id,
+    sha256: payload.sha256,
+  });
+  await expect(readMcpDiagnosticReport('bob', id)).rejects.toThrow(
+    'Artifact not found',
+  );
 });

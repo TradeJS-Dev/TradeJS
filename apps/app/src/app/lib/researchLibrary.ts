@@ -122,7 +122,7 @@ const readNoteHeader = async (file: string) => {
   }
 };
 
-export const listResearchStudies = async () => {
+export const listResearchStudies = async (strategy?: string) => {
   const root = await realpath(projectRoot());
   const notes = path.join(root, 'notes');
   const notesPath = await realpath(notes).catch((error) => {
@@ -133,7 +133,12 @@ export const listResearchStudies = async () => {
   const groups = await directory(notes);
   const studies: ResearchStudy[] = [];
   for (const group of groups) {
-    if (!group.isDirectory() || !SEGMENT.test(group.name)) continue;
+    if (
+      !group.isDirectory() ||
+      !SEGMENT.test(group.name) ||
+      (strategy && group.name !== strategy)
+    )
+      continue;
     const files = await directory(path.join(notes, group.name));
     const entries = files.filter(
       (file) =>
@@ -159,7 +164,9 @@ export const listResearchStudies = async () => {
   return studies.sort(
     (left, right) =>
       right.date.localeCompare(left.date) ||
-      left.title.localeCompare(right.title),
+      left.title.localeCompare(right.title) ||
+      left.strategy.localeCompare(right.strategy) ||
+      left.id.localeCompare(right.id),
   );
 };
 
@@ -439,6 +446,7 @@ const readChart = (section: string | undefined): ResearchChart | null => {
 export const getResearchStudy = async (
   strategy: string,
   id: string,
+  { includeChart = true }: { includeChart?: boolean } = {},
 ): Promise<ResearchStudyDetail | null> => {
   const note = await loadResearchNote(strategy, id);
   if (!note) return null;
@@ -453,11 +461,12 @@ export const getResearchStudy = async (
       label,
       kind,
     })),
-    chart: artifacts.some(({ kind }) => kind === 'chart')
-      ? null
-      : readChart(
-          note.sections.find(({ title }) => title === SNAPSHOT_SECTION)?.text,
-        ),
+    chart:
+      !includeChart || artifacts.some(({ kind }) => kind === 'chart')
+        ? null
+        : readChart(
+            note.sections.find(({ title }) => title === SNAPSHOT_SECTION)?.text,
+          ),
   };
 };
 

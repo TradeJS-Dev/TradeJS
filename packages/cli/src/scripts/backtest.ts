@@ -4,7 +4,12 @@ import chalk from 'chalk';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
-import { getData, setData, redisKeys } from '@tradejs/infra/redis';
+import {
+  getData,
+  setData,
+  setDataStrict,
+  redisKeys,
+} from '@tradejs/infra/redis';
 import {
   Interval,
   StrategyConfigGrid,
@@ -488,8 +493,17 @@ const finishBacktest = async (
   console.log('');
 
   if (!isFastMode || flags.persistResults) {
-    await setData(
-      redisKeys.backtestResults(userName, flags.config, timestamp),
+    const mcpTimestamp =
+      process.env.MCP_WORKER === 'true'
+        ? process.env.MCP_BACKTEST_RESULT_TIMESTAMP
+        : undefined;
+    const saveResult = mcpTimestamp ? setDataStrict : setData;
+    await saveResult(
+      redisKeys.backtestResults(
+        userName,
+        flags.config,
+        mcpTimestamp ?? timestamp,
+      ),
       {
         config: flags.config,
         mode: 'config',

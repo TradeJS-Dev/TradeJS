@@ -5,6 +5,7 @@ import {
   readMcpBacktestResult,
   readMcpSignal,
   readMcpDeployments,
+  readMcpStrategies,
   redactMcpData,
 } from '../mcp';
 const mockConnector = jest.fn();
@@ -15,6 +16,7 @@ const mockScan = jest.fn();
 const mockHash = jest.fn();
 const mockField = jest.fn();
 const mockAccount = jest.fn();
+const mockStrategies = jest.fn();
 jest.mock('@tradejs/core/indicators', () => ({
   createIndicators: (...args: unknown[]) => mockIndicators(...args),
 }));
@@ -29,7 +31,8 @@ jest.mock('../runtimeStrategies', () => ({
     { id: 'production', accountId: 'account' },
     { id: 'other', accountId: 'other-account' },
   ],
-  loadResolvedRuntimeStrategies: jest.fn(),
+  loadResolvedRuntimeStrategies: (...args: unknown[]) =>
+    mockStrategies(...args),
 }));
 jest.mock('@tradejs/infra/runtimeHeartbeats', () => ({
   getRuntimeDeploymentHeartbeat: async () => null,
@@ -305,4 +308,80 @@ test('storage filters exclude day buckets outside the requested window', async (
     (await readMcpRuntimePage('alice', 'evaluations', request)).items,
   ).toEqual([]);
   expect(mockHash).not.toHaveBeenCalled();
+});
+
+test('closed trades use exit time and keep it bound to the page cursor', async () => {
+  const prefix = 'users:alice:trades:';
+  mockScan.mockResolvedValue({
+    cursor: '0',
+    keys: ['carry', 'new', 'boundary', 'open'].map((id) => prefix + id),
+  });
+  const trades: Record<
+    string,
+    { entryTimestamp: number; exitTimestamp: number | null }
+  > = {
+    carry: { entryTimestamp: 500, exitTimestamp: 1000 },
+    new: { entryTimestamp: 2000, exitTimestamp: 3000 },
+    boundary: { entryTimestamp: 3000, exitTimestamp: 10000 },
+    open: { entryTimestamp: 4000, exitTimestamp: null },
+  };
+  mockRead.mockImplementation(async (key: string) => {
+    const orderId = key.slice(prefix.length);
+    return {
+      ...trades[orderId],
+      orderId,
+      deploymentId: 'production',
+      accountId: 'account',
+    };
+  });
+
+  const first = await readMcpRuntimePage('alice', 'orders', {
+    ...request,
+    timeField: 'exit',
+    limit: 1,
+  });
+  expect(first.items.map((row) => row.orderId)).toEqual(['carry']);
+  expect(first.cursor).not.toBe('0');
+  await expect(
+    readMcpRuntimePage('alice', 'orders', {
+      ...request,
+      cursor: first.cursor,
+    }),
+  ).rejects.toMatchObject({ code: 'CURSOR_MISMATCH' });
+  const next = await readMcpRuntimePage('alice', 'orders', {
+    ...request,
+    timeField: 'exit',
+    cursor: first.cursor,
+  });
+  expect(next.items.map((row) => row.orderId)).toEqual(['new']);
+  const byEntry = await readMcpRuntimePage('alice', 'orders', request);
+  expect(byEntry.items.map((row) => row.orderId)).toEqual([
+    'new',
+    'boundary',
+    'open',
+  ]);
+});
+
+test('strategy details can select a name and omit large configuration in summary mode', async () => {
+  mockStrategies.mockResolvedValue([
+    {
+      strategyName: 'DoubleTap',
+      strategyRevision: 'sr1:123',
+      strategyConfig: { TICKERS: ['BTCUSDT'] },
+    },
+    { strategyName: 'Dragon', strategyRevision: 'sr1:456' },
+  ]);
+  const summary = await readMcpStrategies('alice', 'production', {
+    strategy: 'DoubleTap',
+    detail: 'summary',
+  });
+  expect(summary.strategies).toHaveLength(1);
+  expect(summary.strategies[0]).toMatchObject({
+    strategyName: 'DoubleTap',
+    strategyRevision: 'sr1:123',
+  });
+  expect(summary.strategies[0]).not.toHaveProperty('strategyConfig');
+  expect(
+    (await readMcpStrategies('alice', 'production')).strategies[0],
+  ).toHaveProperty('strategyConfig');
 });
