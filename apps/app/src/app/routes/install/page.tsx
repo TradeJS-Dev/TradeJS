@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { Box, Button, Field, Flex, Input, Stack, Text } from '@chakra-ui/react';
-import { reachYandexMetrikaGoal } from '#app/lib/yandexMetrika';
 
 const FIRST_DASHBOARD_PATH = '/routes/dashboard/coinbase/crypto/BTCUSDT/15';
 
@@ -64,8 +63,6 @@ const Install = () => {
       setIsSubmitting(false);
       return;
     }
-
-    reachYandexMetrikaGoal('scaffold_success');
 
     const result = await signIn('credentials', {
       redirect: false,

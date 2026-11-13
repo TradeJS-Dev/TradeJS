@@ -12,7 +12,6 @@ import type {
   BacktestConfigSummary,
   BacktestJobRecord,
 } from '#app/lib/backtestJobContracts';
-import { reachYandexMetrikaGoal } from '#app/lib/yandexMetrika';
 import { useTickers } from '#store';
 import { toaster } from '#ui';
 
@@ -58,9 +57,6 @@ type BacktestRunsAction =
   | { type: 'onboarding' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const FIRST_BACKTEST_REPORTED_KEY = 'tradejs:analytics:first-backtest-reported';
-const FIRST_BACKTEST_PENDING_JOB_KEY =
-  'tradejs:analytics:first-backtest-pending-job';
 
 const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -308,23 +304,6 @@ export const useBacktestRunsController = (
   }, [state.jobs]);
 
   useEffect(() => {
-    if (window.localStorage.getItem(FIRST_BACKTEST_REPORTED_KEY) === '1')
-      return;
-    const pendingJobId = window.localStorage.getItem(
-      FIRST_BACKTEST_PENDING_JOB_KEY,
-    );
-    if (!pendingJobId) return;
-    const pendingJob = state.jobs.find((job) => job.id === pendingJobId);
-    if (
-      pendingJob?.status !== 'completed' ||
-      !reachYandexMetrikaGoal('first_backtest')
-    )
-      return;
-    window.localStorage.setItem(FIRST_BACKTEST_REPORTED_KEY, '1');
-    window.localStorage.removeItem(FIRST_BACKTEST_PENDING_JOB_KEY);
-  }, [state.jobs]);
-
-  useEffect(() => {
     const timer = window.setInterval(() => {
       const runningJobs = jobsRef.current.filter(
         (job) => job.status === 'running',
@@ -398,9 +377,6 @@ export const useBacktestRunsController = (
     try {
       const job = await startBacktestRun(payload);
       dispatch({ type: 'mergeJob', job });
-      if (window.localStorage.getItem(FIRST_BACKTEST_REPORTED_KEY) !== '1') {
-        window.localStorage.setItem(FIRST_BACKTEST_PENDING_JOB_KEY, job.id);
-      }
       toaster.success({
         title: 'Backtest started',
         description: getJobTitle(job),

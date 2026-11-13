@@ -283,7 +283,7 @@ async function main() {
 
   const child = spawn(process.execPath, args, {
     cwd: appDir,
-    env: process.env,
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' },
     stdio: 'inherit',
   });
 
