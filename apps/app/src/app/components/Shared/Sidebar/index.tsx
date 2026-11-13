@@ -12,6 +12,7 @@ import {
   FiPlay,
   FiBookOpen,
   FiDatabase,
+  FiSearch,
 } from 'react-icons/fi';
 import { AccountSettingsDrawer } from './AccountSettingsDrawer';
 
@@ -44,6 +45,11 @@ export const Sidebar = () => {
             label: 'Research',
             path: '/routes/research',
             activePath: '/routes/research',
+          },
+          {
+            icon: FiSearch,
+            label: 'Strategy diagnostics',
+            path: '/routes/strategy-diagnostics',
           },
           {
             icon: FiDatabase,

@@ -714,6 +714,25 @@ const buildMatches = (
   return { matches, unmatched };
 };
 
+export async function resolveCoinalyzeBackfillMarket(
+  userName: string,
+  symbol: string,
+) {
+  const apiKey = await getCoinalyzeApiKey(userName);
+  if (!apiKey) throw new Error('Missing Coinalyze API key.');
+  const markets = (await fetchCoinalyzeMarkets(apiKey)).filter(
+    (market) =>
+      market.quote_asset?.toUpperCase() === 'USDT' && market.is_perpetual,
+  );
+  const priority = parseList(
+    process.env.COINALYZE_EXCHANGE_PRIORITY ||
+      process.env.DERIVATIVES_CONTEXT_EXCHANGE_PRIORITY ||
+      'A,6,0',
+  );
+  const { matches } = buildMatches([symbol], markets, priority);
+  return { apiKey, marketSymbol: matches[0]?.marketSymbol };
+}
+
 const normalizeMetricPoint = (
   metric: CoinalyzeMetric,
   point: CoinalyzeSeriesPoint,

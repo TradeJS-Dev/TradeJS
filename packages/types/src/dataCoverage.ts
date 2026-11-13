@@ -26,3 +26,23 @@ export type DataCoverageSeriesDay = {
   loaded: number;
   missing: number;
 };
+
+export type DataBackfillRequest = {
+  dataset: string;
+  series: string;
+  day: number;
+};
+
+export type DataBackfillResult = {
+  loaded: number;
+  added: number;
+  missing: number;
+};
+
+export type DataBackfillJob = DataBackfillRequest & {
+  id: string;
+  createdAt: number;
+  status: 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+  result?: DataBackfillResult;
+  error?: string;
+};

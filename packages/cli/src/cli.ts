@@ -28,6 +28,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'clean-dir': () => import('./scripts/cleanDir'),
   'clean-redis': () => import('./scripts/cleanRedis'),
   'clean-tests': () => import('./scripts/cleanTests'),
+  'coverage:backfill': () => import('./scripts/coverageBackfill'),
   continuity: () => import('./scripts/continuity'),
   'derivatives:ingest': () => import('./scripts/derivativesIngest'),
   'derivatives:ingest:coinalyze:all': () =>

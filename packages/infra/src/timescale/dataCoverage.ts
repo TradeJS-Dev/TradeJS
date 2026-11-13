@@ -3,6 +3,7 @@ import type {
   DataCoverageDay,
   DataCoverageSeriesDay,
   DataCoverage,
+  DataBackfillRequest,
 } from '@tradejs/types';
 import { coverageDatasets, type CoverageDataset } from './dataCoverageCatalog';
 import { queryMarketContext } from './query';
@@ -32,6 +33,64 @@ const findDataset = (id: string) =>
 export const isDataCoverageDataset = (id: string) => Boolean(findDataset(id));
 
 const DAY_MS = 86_400_000;
+
+export function resolveDataBackfill(request: DataBackfillRequest) {
+  const dataset = findDataset(request.dataset);
+  if (
+    !dataset ||
+    !Number.isSafeInteger(request.day) ||
+    request.day < 0 ||
+    request.day % DAY_MS !== 0 ||
+    typeof request.series !== 'string'
+  )
+    return null;
+  const series = request.series;
+  const validSeries =
+    dataset.dimension === 'symbol'
+      ? /^[\p{L}\p{N}]{1,56}USDT$/u.test(series)
+      : dataset.dimension === 'universe'
+        ? /^binance_top\d+_usdt_[a-f0-9]{12}$/.test(series)
+        : dataset.dimension === 'index_slug'
+          ? series === 'cmc20' || series === 'cmc100'
+          : series === 'Total';
+  const end = Math.min(
+    request.day + DAY_MS,
+    Math.floor(Date.now() / dataset.stepMs) * dataset.stepMs,
+  );
+  return validSeries && end > request.day ? { dataset, end } : null;
+}
+
+export async function readDataBackfillSlots(
+  request: DataBackfillRequest,
+  cutoff?: number,
+) {
+  const target = resolveDataBackfill(request);
+  if (!target) throw new Error('Invalid data backfill target.');
+  const { dataset } = target;
+  const end = Math.min(target.end, cutoff ?? target.end);
+  const expected = (end - request.day) / dataset.stepMs;
+  const relation = await queryMarketContext<{ present: boolean }>(
+    'SELECT to_regclass($1) IS NOT NULL AS present',
+    [dataset.table],
+  );
+  if (!relation.rows[0]?.present)
+    return { loaded: new Set<number>(), expected };
+  const params = [
+    new Date(request.day),
+    new Date(end),
+    ...(dataset.dimension ? [request.series] : []),
+  ];
+  const { rows } = await queryMarketContext<{ slot: Date }>(
+    `SELECT DISTINCT time_bucket('${dataset.stepMs / 60_000} minutes', ts) AS slot
+       FROM ${dataset.table} WHERE ${datasetWhere(dataset)} AND ts >= $1 AND ts < $2
+       ${dataset.dimension ? `AND ${dataset.dimension} = $3` : ''}`,
+    params,
+  );
+  return {
+    loaded: new Set(rows.map(({ slot }) => slot.getTime())),
+    expected,
+  };
+}
 
 export const getDataCoveragePeriodEnd = () =>
   (Math.floor(Date.now() / DAY_MS) + 1) * DAY_MS;
@@ -93,21 +152,47 @@ async function readDailyBatch(
   }
 }
 
-let largeScanQueue = Promise.resolve();
+const MAX_ACTIVE_SCANS = 2;
+let activeScans = 0;
+const waitingScans: (() => void)[] = [];
 
-function queueLargeScan(read: () => Promise<DailyRow[]>) {
-  const batch = largeScanQueue.then(read);
-  largeScanQueue = batch.then(
-    () => undefined,
-    () => undefined,
-  );
-  return batch;
+async function withScanSlot<T>(
+  read: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  if (activeScans >= MAX_ACTIVE_SCANS) {
+    await new Promise<void>((resolve, reject) => {
+      const ready = () => {
+        signal.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
+        const index = waitingScans.indexOf(ready);
+        if (index >= 0) waitingScans.splice(index, 1);
+        reject(signal.reason);
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      waitingScans.push(ready);
+    });
+  } else {
+    activeScans++;
+  }
+  try {
+    signal.throwIfAborted();
+    return await read();
+  } finally {
+    const next = waitingScans.shift();
+    if (next) next();
+    else activeScans--;
+  }
 }
 
 export async function readDataCoverageSnapshot(
   id: string,
   { from, to }: CoveragePeriod,
   signal: AbortSignal,
+  onProgress?: (scannedDays: number, totalDays: number) => void,
 ) {
   const dataset = findDataset(id);
   const series = new Map<string, SeriesCoverage>();
@@ -130,32 +215,38 @@ export async function readDataCoverageSnapshot(
         dataset.table === 'candles' || dataset.table === 'derivatives_market';
       const batchMs = (highVolume ? 7 : 60) * DAY_MS;
       const sql = dailyCoverageQuery(dataset);
-      // Bounded scans avoid sorting a year's worth of candle timestamps in one query.
-      for (let start = from - padding; start < end; start += batchMs) {
-        const endOfBatch = Math.min(start + batchMs, end);
-        const read = () => readDailyBatch(sql, start, endOfBatch, signal);
-        const rows = await (highVolume ? queueLargeScan(read) : read());
-        for (const row of rows) {
-          const sampleFirst = row.first.getTime();
-          const sampleLast = row.last.getTime();
-          const firstSlot = Math.floor(sampleFirst / stepMs);
-          const lastSlot = Math.floor(sampleLast / stepMs);
-          const entry = series.get(row.key) ?? {
-            firstSlot,
-            lastSlot,
-            loaded: new Uint16Array((to - from) / DAY_MS),
-          };
-          entry.firstSlot = Math.min(entry.firstSlot, firstSlot);
-          entry.lastSlot = Math.max(entry.lastSlot, lastSlot);
-          series.set(row.key, entry);
+      const scanStart = from - padding;
+      const totalDays = Math.max(0, Math.ceil((end - scanStart) / DAY_MS));
+      onProgress?.(0, totalDays);
+      const scan = async () => {
+        for (let start = scanStart; start < end; start += batchMs) {
+          const endOfBatch = Math.min(start + batchMs, end);
+          const rows = await readDailyBatch(sql, start, endOfBatch, signal);
+          onProgress?.(Math.ceil((endOfBatch - scanStart) / DAY_MS), totalDays);
+          for (const row of rows) {
+            const sampleFirst = row.first.getTime();
+            const sampleLast = row.last.getTime();
+            const firstSlot = Math.floor(sampleFirst / stepMs);
+            const lastSlot = Math.floor(sampleLast / stepMs);
+            const entry = series.get(row.key) ?? {
+              firstSlot,
+              lastSlot,
+              loaded: new Uint16Array((to - from) / DAY_MS),
+            };
+            entry.firstSlot = Math.min(entry.firstSlot, firstSlot);
+            entry.lastSlot = Math.max(entry.lastSlot, lastSlot);
+            series.set(row.key, entry);
 
-          const day = row.day * DAY_MS;
-          if (day < from || day >= to) continue;
-          entry.loaded[(day - from) / DAY_MS] = row.loaded;
-          first = first === null ? sampleFirst : Math.min(first, sampleFirst);
-          last = last === null ? sampleLast : Math.max(last, sampleLast);
+            const day = row.day * DAY_MS;
+            if (day < from || day >= to) continue;
+            entry.loaded[(day - from) / DAY_MS] = row.loaded;
+            first = first === null ? sampleFirst : Math.min(first, sampleFirst);
+            last = last === null ? sampleLast : Math.max(last, sampleLast);
+          }
         }
-      }
+      };
+      if (highVolume) await withScanSlot(scan, signal);
+      else await scan();
     }
   }
 

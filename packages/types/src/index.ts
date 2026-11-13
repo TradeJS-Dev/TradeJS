@@ -26,4 +26,7 @@ export type {
   DataCoverageDay,
   DataCoverageSeriesDay,
   DataCoverage,
+  DataBackfillRequest,
+  DataBackfillResult,
+  DataBackfillJob,
 } from './dataCoverage';

@@ -61,12 +61,32 @@ export async function GET(request: NextRequest) {
 
   try {
     request.signal.throwIfAborted();
-    const { result, status } = getCachedDataCoverage({
+    const polling = day === undefined && query.get('progress') === '1';
+    const { entry, result, status } = getCachedDataCoverage({
       dataset: id,
       period: { from, to },
       refresh: day === undefined && query.get('refresh') === '1',
       annual: yearParam !== null,
+      polling,
     });
+    if (polling) {
+      if (entry.failed)
+        return reply(
+          { error: 'Could not read data from TimescaleDB.' },
+          503,
+          status,
+        );
+      if (!entry.snapshot)
+        return reply(
+          {
+            ...entry.progress,
+            coverage: entry.previous?.coverage,
+          },
+          202,
+          status,
+        );
+      return reply(entry.snapshot.coverage, 200, status);
+    }
     const snapshot = await result;
     return reply(
       day === undefined ? snapshot.coverage : snapshot.readDay(day),

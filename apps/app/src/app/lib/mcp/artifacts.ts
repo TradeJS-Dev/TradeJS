@@ -144,6 +144,7 @@ export const listMcpArtifacts = async (
     `mcp/${mcpId(userName)}`,
   ].map((dir) => ({ dir: path.join(dataRoot(), dir), depth: 0 }));
   const items = [];
+  const seen = new Set<string>();
   let visited = 0;
   let invalidBundles = 0;
   while (pending.length && visited < 2000) {
@@ -178,7 +179,9 @@ export const listMcpArtifacts = async (
           window.startTime >= options.endTime
         )
           continue;
+        if (seen.has(artifact.id)) continue;
         await mcpStorage.put(storageKey(userName, artifact.id), artifact, 3600);
+        seen.add(artifact.id);
         items.push({
           id: artifact.id,
           kind: artifact.kind,

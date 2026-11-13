@@ -131,6 +131,8 @@ const compactMatched = (item: JsonRecord) => {
     timestampDiffMs: item.timestampDiffMs ?? null,
     backtestPrice: backtest.price ?? null,
     runtimePrice: runtime.price ?? null,
+    backtestQty: backtest.qty ?? null,
+    runtimeQty: runtime.qty ?? null,
     backtestExitPrice: backtest.exitPrice ?? null,
     runtimeExitPrice: runtime.exitPrice ?? null,
     expectedPnl: pnl.expectedPnl ?? null,
@@ -142,6 +144,7 @@ const compactMatched = (item: JsonRecord) => {
     orderId: runtime.orderId ?? backtest.orderId ?? null,
     orderLinkId: runtime.orderLinkId ?? null,
     signalId: backtest.signalId ?? null,
+    runtimeSignalId: runtime.signalId ?? null,
   };
 };
 

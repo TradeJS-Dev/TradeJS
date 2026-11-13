@@ -82,6 +82,7 @@ it('shares the annual snapshot with daily detail and replaces both on refresh', 
     dataset,
     { from: Date.UTC(2026, 0, 1), to },
     expect.anything(),
+    expect.any(Function),
   );
 
   const fresh = { ...overview, series: 1 };
@@ -101,6 +102,37 @@ it('rejects future years and days outside the chosen calendar year', async () =>
     (await GET(request(dataset, { year: '2025', day: String(day) }))).status,
   ).toBe(400);
   expect(readSnapshot).not.toHaveBeenCalled();
+});
+
+it('returns scan progress immediately and keeps the previous overview visible on refresh', async () => {
+  const dataset = 'binance-candles-1h';
+  const year = { year: '2026', progress: '1' };
+  let finish!: (value: typeof snapshot) => void;
+  readSnapshot.mockImplementationOnce((_id, _period, _signal, onProgress) => {
+    onProgress?.(7, 317);
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+
+  const first = await GET(request(dataset, year));
+  expect(first.status).toBe(202);
+  expect(await first.json()).toEqual({ scannedDays: 7, totalDays: 317 });
+  expect((await GET(request(dataset, year))).status).toBe(202);
+  expect(readSnapshot).toHaveBeenCalledTimes(1);
+  finish(snapshot);
+  expect(await (await GET(request(dataset, year))).json()).toEqual(overview);
+
+  readSnapshot.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const refresh = await GET(request(dataset, { ...year, refresh: '1' }));
+  expect(refresh.status).toBe(202);
+  expect(await refresh.json()).toMatchObject({ coverage: overview });
+  finish(snapshot);
 });
 
 it('retries failures and recomputes recent coverage after the TTL', async () => {

@@ -155,7 +155,12 @@ test('catalog does not embed unbounded manifests in list responses', async () =>
   expect(Buffer.byteLength(JSON.stringify(catalog))).toBeLessThan(128 * 1024);
 });
 test('catalog pages compact verified entries and applies filters before pagination', async () => {
-  await publish(2000);
+  const bundle = await publish(2000);
+  await fs.cp(
+    path.dirname(bundle.payloadPath),
+    path.join(mockRoot, 'data/runtime-evidence/duplicate'),
+    { recursive: true },
+  );
   await publish(3000);
   const first = await listMcpArtifacts('alice', {
     deploymentId: 'production',

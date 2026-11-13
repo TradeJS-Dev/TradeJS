@@ -34,6 +34,7 @@ type BackfillParams = {
   endMs: number;
   preloadStartMs?: number;
   refreshStaleFearGreed?: boolean;
+  repairDataset?: string;
 };
 
 type BackfillResult = {
@@ -1165,16 +1166,30 @@ export const backfillCoinMarketCapContext = async (
       toMs,
     }),
   );
-  const globalDailyReady = globalDailyCached || globalDailyBackfillCovered;
-  const referencesDailyReady =
-    referencesDailyCached || referencesDailyBackfillCovered;
-  const exchangeLiquidityReady =
+  const ready = (dataset: string, existing: boolean) =>
+    params.repairDataset ? params.repairDataset !== dataset : existing;
+  const globalDailyReady = ready(
+    'cmc-global-1d',
+    globalDailyCached || globalDailyBackfillCovered,
+  );
+  const referencesDailyReady = ready(
+    'cmc-reference_asset-1d',
+    referencesDailyCached || referencesDailyBackfillCovered,
+  );
+  const exchangeLiquidityReady = ready(
+    'cmc-exchange_liquidity-1d',
     exchangeLiquidityCached ||
-    !exchangeLiquidityEnabled ||
-    exchangeLiquidityBackfillCovered;
-  const fearGreedReady =
-    fearGreedCached || !fearGreedEnabled || fearGreedBackfillCovered;
-  const indexesReady = indexesCached || indexesBackfillCovered;
+      !exchangeLiquidityEnabled ||
+      exchangeLiquidityBackfillCovered,
+  );
+  const fearGreedReady = ready(
+    'cmc-fear_greed-1d',
+    fearGreedCached || !fearGreedEnabled || fearGreedBackfillCovered,
+  );
+  const indexesReady = ready(
+    'cmc-index-1d',
+    indexesCached || indexesBackfillCovered,
+  );
 
   let globalStatus = resolveBackfillStatus({
     cached: globalDailyCached,
