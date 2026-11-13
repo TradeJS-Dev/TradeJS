@@ -1,3 +1,11 @@
+import {
+  coverageTarget,
+  getCoverageBackfill,
+  inspectCoverage,
+  listCoverageDatasets,
+  startCoverageBackfill,
+} from './coverage';
+import { INSTALL_USER_NAME } from '../installation';
 import { MCP_FEEDBACK_CONTRACT } from '@tradejs/node/diagnostics';
 import { readDeploymentVerification } from './verification';
 import { randomUUID } from 'node:crypto';
@@ -95,7 +103,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     { name: 'tradejs', version: '1.0.0' },
     {
       instructions:
-        'TradeJS tools read this host only. Check tradejs_info and runtime_get_status before interpreting production data. Missing records are not proof of no activity. Use explicit deployments and periods. Run jobs only on user request; poll job_get. Historical jobs use cached data. No tool places live orders, changes strategy config, deploys, or sends notifications. OAuth is performed by the human user. Never request secrets. Complete artifact downloads must match the advertised SHA-256.',
+        'TradeJS tools read this host only. Check tradejs_info and runtime_get_status before interpreting production data. Missing records are not proof of no activity. Use explicit deployments and periods. Run jobs only on user request; poll job_get. Backtests and runtime replay use cached data. Use coverage_inspect to check missing market data. Only coverage_backfill_start may download missing data on explicit request; poll coverage_backfill_get. No tool places live orders, changes strategy config, deploys, or sends notifications. OAuth is performed by the human user. Never request secrets. Complete artifact downloads must match the advertised SHA-256.',
     },
   );
 
@@ -122,7 +130,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
           readOnlyHint: !mutates,
           destructiveHint: name === 'job_cancel',
           idempotentHint: true,
-          openWorldHint: false,
+          openWorldHint: name === 'coverage_backfill_start',
         },
       },
       async (args) => {
@@ -219,6 +227,43 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
       feedbackContract: MCP_FEEDBACK_CONTRACT,
     }),
   );
+  if (principal.userName === INSTALL_USER_NAME) {
+    tool(
+      'coverage_list_datasets',
+      'List the local Data Coverage datasets and their series dimension. Use exact dataset IDs and series (USDT symbol, basket ID, index slug or Total).',
+      ['market:read', 'market:backfill'],
+      {},
+      async () => listCoverageDatasets(),
+    );
+    tool(
+      'coverage_inspect',
+      'Inspect exact missing closed slots for one series over up to seven UTC days and report evidence from prior jobs. Reads only the current host. Missing local data does not prove provider unavailability.',
+      ['market:read', 'market:backfill'],
+      { ...coverageTarget, days: z.number().int().min(1).max(7).default(1) },
+      async (args) => inspectCoverage(principal.userName, args),
+    );
+    tool(
+      'coverage_backfill_start',
+      'On explicit user request, download missing data for one dataset, series and UTC day. Uses the shared Data Coverage queue. Poll coverage_backfill_get. Set retry=true only for a requested retry of a failed or partial job.',
+      ['market:backfill'],
+      { ...coverageTarget, retry: z.boolean().default(false) },
+      async ({ retry, ...input }) =>
+        startCoverageBackfill(principal.userName, input, retry),
+      true,
+    );
+    tool(
+      'coverage_backfill_get',
+      'Read one owned backfill job, including status, added samples and remaining gaps.',
+      ['market:read', 'market:backfill'],
+      { jobId: artifactId },
+      async ({ jobId }) =>
+        getCoverageBackfill(
+          principal.userName,
+          jobId,
+          principal.scopes.includes('market:backfill'),
+        ),
+    );
+  }
   tool(
     'market_list_symbols',
     'List market tickers with pagination. Provider reads may contact the market data service.',

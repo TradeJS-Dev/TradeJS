@@ -1,14 +1,22 @@
 /** @jest-environment node */
 
 import { NextRequest } from 'next/server';
-import { readDataCoverageSnapshot } from '@tradejs/infra/timescale/dataCoverage';
+import {
+  getDataCoveragePeriodEnd,
+  readDataCoverageSnapshot,
+} from '@tradejs/infra/timescale/dataCoverage';
+import { getHashJsonField, setHashJsonField } from '@tradejs/infra/redis';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { GET } from '../route';
 
 jest.mock('@tradejs/infra/timescale/dataCoverage', () => ({
-  getDataCoveragePeriodEnd: () => Date.UTC(2026, 10, 13),
+  getDataCoveragePeriodEnd: jest.fn(),
   isDataCoverageDataset: () => true,
   readDataCoverageSnapshot: jest.fn(),
+}));
+jest.mock('@tradejs/infra/redis', () => ({
+  getHashJsonField: jest.fn(),
+  setHashJsonField: jest.fn(),
 }));
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: jest.fn(),
@@ -35,6 +43,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   currentUser.mockResolvedValue('root');
   readSnapshot.mockResolvedValue(snapshot);
+  jest.mocked(getDataCoveragePeriodEnd).mockReturnValue(to);
+  jest.mocked(getHashJsonField).mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -146,4 +156,32 @@ it('retries failures and recomputes recent coverage after the TTL', async () => 
   now.mockReturnValue(day + 60_000);
   expect((await GET(request(dataset))).status).toBe(200);
   expect(readSnapshot).toHaveBeenCalledTimes(3);
+});
+
+it('opens the last saved overview after the UTC day changes and only recomputes on refresh', async () => {
+  const dataset = 'bybit-candles-saved-15m';
+  const year = { year: '2026', progress: '1', overview: '1' };
+  const now = jest.spyOn(Date, 'now').mockReturnValue(to);
+  await GET(request(dataset, { year: year.year }));
+  const saved = { dataset, coverage: overview, calculatedAt: to };
+  expect(setHashJsonField).toHaveBeenCalledWith(
+    'tradejs:data-coverage:v1:2026',
+    dataset,
+    saved,
+    { expire: 0 },
+  );
+
+  now.mockReturnValue(to + 86_400_000);
+  jest.mocked(getDataCoveragePeriodEnd).mockReturnValue(Date.now());
+  jest.mocked(getHashJsonField).mockResolvedValue(saved);
+  expect(await (await GET(request(dataset, year))).json()).toEqual(saved);
+  expect(readSnapshot).toHaveBeenCalledTimes(1);
+
+  const refresh = await GET(request(dataset, { ...year, refresh: '1' }));
+  expect(refresh.status).toBe(202);
+  expect(await refresh.json()).toMatchObject({ previous: saved });
+  expect(
+    await (await GET(request(dataset, { ...year, waiting: '1' }))).json(),
+  ).toMatchObject({ calculatedAt: Date.now() });
+  expect(readSnapshot).toHaveBeenCalledTimes(2);
 });

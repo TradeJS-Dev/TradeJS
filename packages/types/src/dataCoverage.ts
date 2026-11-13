@@ -37,6 +37,12 @@ export type DataBackfillResult = {
   loaded: number;
   added: number;
   missing: number;
+  outcome?:
+    | 'no_matching_market'
+    | 'historical_basket_unavailable'
+    | 'outside_configured_history'
+    | 'no_missing_slots_filled'
+    | 'some_missing_slots_filled';
 };
 
 export type DataBackfillJob = DataBackfillRequest & {

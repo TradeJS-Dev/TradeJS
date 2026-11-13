@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '#shared/PageLayout';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -82,7 +84,7 @@ const Install = () => {
   return (
     <Flex minH="100vh" direction={{ base: 'column', lg: 'row' }} bg="gray.950">
       <Flex
-        w={{ base: 'full', lg: '40%' }}
+        w={{ base: 'full', lg: '33.333%' }}
         px={{ base: 6, md: 10, lg: 12 }}
         py={{ base: 10, lg: 12 }}
         align="center"
@@ -92,18 +94,10 @@ const Install = () => {
         <form onSubmit={handleSubmit} style={{ width: '100%' }}>
           <Box w="full" maxW="420px" mx="auto">
             <Stack gap="6">
-              <Stack gap="3">
-                <Text fontSize="sm" opacity={0.7} letterSpacing="0.2em">
-                  INSTALL TRADEJS
-                </Text>
-                <Text as="h1" fontSize="3xl" fontWeight="700" color="white">
-                  Create your local password
-                </Text>
-                <Text color="gray.400">
-                  This password protects the local root account. It is stored
-                  only in your TradeJS infrastructure.
-                </Text>
-              </Stack>
+              <PageHeader
+                title="Set up TradeJS"
+                description="Create a password for the local root account."
+              />
 
               <Stack gap="4">
                 <Field.Root>
@@ -140,9 +134,7 @@ const Install = () => {
                 type="submit"
                 loading={isSubmitting || isLoading}
                 disabled={isLoading || !password || !confirmPassword}
-                bg="#20c5bd"
-                color="gray.950"
-                _hover={{ bg: '#42d8d0' }}
+                colorPalette="teal"
               >
                 Install and open dashboard
               </Button>
@@ -153,7 +145,7 @@ const Install = () => {
 
       <Box
         display={{ base: 'none', lg: 'block' }}
-        w={{ lg: '60%' }}
+        w={{ lg: '66.666%' }}
         minH="100vh"
         bg="gray.900"
         position="relative"
@@ -164,7 +156,7 @@ const Install = () => {
           alt="Market chart background"
           fill
           priority
-          sizes="(min-width: 1024px) 60vw, 0vw"
+          sizes="(min-width: 1024px) 66vw, 0vw"
           style={{ objectFit: 'cover', objectPosition: 'center' }}
         />
       </Box>

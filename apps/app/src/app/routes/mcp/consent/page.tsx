@@ -1,4 +1,5 @@
-import styles from '#app/lib/mcp/Mcp.module.css';
+import { Box, Code, Flex, Stack, Text } from '@chakra-ui/react';
+import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { readConsent } from '#app/lib/mcp/oauth';
 import Link from 'next/link';
@@ -15,63 +16,86 @@ export default async function ConsentPage({
   const consent = await readConsent(ticket);
   if (!consent || consent.userName !== userName)
     return (
-      <main style={{ padding: 32 }}>
-        Authorization request expired. Start the connection again.
-      </main>
+      <PageLayout maxW="680px" mx="auto">
+        <PageHeader
+          title="Connection expired"
+          description="Start the connection again in your app."
+        />
+      </PageLayout>
     );
   return (
-    <main className={styles.main}>
-      <h1>Connect to TradeJS</h1>
-      <p>
-        <strong>{consent.client.name}</strong> requests access as{' '}
-        <strong>{userName}</strong>.
-      </p>
-      <p>The client name is supplied by the application requesting access.</p>
-      <p>
-        Return address: <code>{consent.query.redirect_uri}</code>
-      </p>
-      <p>
-        Market and runtime data you request will be shared with this client. Run
-        permissions allow background computations. They do not allow live
-        trading or deployment changes.
-      </p>
-      <form action="/oauth/authorize" method="post">
-        <input type="hidden" name="ticket" value={ticket} />
-        <fieldset>
-          <legend>Requested permissions</legend>
-          {consent.scopes.map((scope) => (
-            <label key={scope} style={{ display: 'block', margin: '8px 0' }}>
-              <input
-                type="checkbox"
-                name="scope"
-                value={scope}
-                defaultChecked={!scope.endsWith(':run')}
-              />{' '}
-              {scope}
-            </label>
-          ))}
-        </fieldset>
-        <button
-          className={styles.allowButton}
-          name="decision"
-          value="allow"
-          type="submit"
-        >
-          Allow access
-        </button>{' '}
-        <button
-          className={styles.denyButton}
-          name="decision"
-          value="deny"
-          type="submit"
-        >
-          Deny
-        </button>
-      </form>
-      <p>
-        You can revoke access in <Link href="/routes/mcp">MCP connections</Link>
-        .
-      </p>
-    </main>
+    <PageLayout maxW="680px" mx="auto">
+      <Stack gap={4}>
+        <PageHeader title="Connect to TradeJS" />
+        <Text textStyle="sm" color="fg.muted" overflowWrap="anywhere">
+          <strong>{consent.client.name}</strong> requests access as{' '}
+          <strong>{userName}</strong>.
+        </Text>
+        <Text textStyle="sm" color="fg.muted" overflowWrap="anywhere">
+          The client name is supplied by the application requesting access.
+        </Text>
+        <Text textStyle="sm" color="fg.muted" overflowWrap="anywhere">
+          Return address: <Code>{consent.query.redirect_uri}</Code>
+        </Text>
+        <Text textStyle="sm" color="fg.muted" overflowWrap="anywhere">
+          Market and runtime data you request will be shared with this client.
+          Run permissions allow background computations. They do not allow live
+          trading or deployment changes.
+        </Text>
+        <form action="/oauth/authorize" method="post">
+          <input type="hidden" name="ticket" value={ticket} />
+          <Box
+            as="fieldset"
+            p={3}
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="md"
+          >
+            <legend>Requested permissions</legend>
+            {consent.scopes.map((scope) => (
+              <Flex
+                as="label"
+                key={scope}
+                align="center"
+                gap={2}
+                py={1}
+                textStyle="sm"
+              >
+                <input
+                  type="checkbox"
+                  name="scope"
+                  value={scope}
+                  defaultChecked={
+                    !scope.endsWith(':run') && scope !== 'market:backfill'
+                  }
+                />{' '}
+                {scope}
+              </Flex>
+            ))}
+          </Box>
+          <Flex gap={2} mt={3}>
+            <PageAction
+              variant="solid"
+              colorPalette="teal"
+              name="decision"
+              value="allow"
+              type="submit"
+            >
+              Allow access
+            </PageAction>
+            <PageAction name="decision" value="deny" type="submit">
+              Deny
+            </PageAction>
+          </Flex>
+        </form>
+        <Text textStyle="sm" color="fg.muted" overflowWrap="anywhere">
+          You can revoke access in{' '}
+          <Box asChild textDecoration="underline">
+            <Link href="/routes/mcp">MCP connections</Link>
+          </Box>
+          .
+        </Text>
+      </Stack>
+    </PageLayout>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex } from '@chakra-ui/react';
+import { Box, Stack, ClientOnly, Flex } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type {
@@ -22,7 +22,7 @@ import {
   BulkDeleteToolbar,
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
-import { CARD_PAGE_CONTENT_MAX_WIDTH } from '#app/lib/cardPageLayout';
+import { PageHeader, PageLayout } from '#shared/PageLayout';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
@@ -476,155 +476,126 @@ const RuntimeStrategiesContent = () => {
 
   return (
     <ClientOnly>
-      <Box minH="100vh" bg="gray.900">
-        <Box
-          as="main"
-          minH="100vh"
-          minW="1200px"
-          pl={2}
-          bg="gray.900"
-          display="flex"
-          flexDirection="column"
-          alignItems="flex-start"
-        >
-          <Box
-            minH="100vh"
-            w="full"
-            maxW={CARD_PAGE_CONTENT_MAX_WIDTH}
-            display="flex"
-            flex="1"
-            flexDirection="column"
-            alignItems="flex-start"
-          >
-            <Flex
-              mb={2}
-              mt={2}
-              gap={8}
-              flexDirection="row"
-              alignItems="center"
-              width="full"
-            >
-              <Flex gap={3} alignItems="center">
-                {modeSegment}
-                <Select
-                  placeholder="Strategy"
-                  value={[selectedStrategy]}
-                  defaultValue={[selectedStrategy]}
-                  onChange={(value) =>
-                    setSelectedStrategy(value[0] || ALL_STRATEGIES)
-                  }
-                  items={strategyItems}
-                  width="220px"
-                />
-                {mode === 'runtime' ? (
-                  <Select
-                    placeholder="Window"
-                    value={[hours]}
-                    defaultValue={[hours]}
-                    onChange={(value) => setHours(value[0] || '168')}
-                    items={HOURS_OPTIONS}
-                    width="180px"
-                  />
-                ) : null}
-                {mode === 'runtime' ? (
-                  <Select
-                    value={[runtimeDeployment]}
-                    defaultValue={[runtimeDeployment]}
-                    onChange={(value) =>
-                      setRuntimeDeployment(value[0] || ALL_RUNTIME_DEPLOYMENTS)
-                    }
-                    items={runtimeDeploymentItems}
-                    width="180px"
-                  />
-                ) : null}
-                {mode === 'runtime' ? (
-                  <Segment
-                    defaultValue="all"
-                    value={runtimeStatusFilter}
-                    onChange={(value) =>
-                      setRuntimeStatusFilter(
-                        value === 'enabled' || value === 'disabled'
-                          ? value
-                          : 'all',
-                      )
-                    }
-                    items={RUNTIME_STATUS_ITEMS}
-                  />
-                ) : null}
-                {mode === 'runtime' ? (
-                  <Select
-                    value={[runtimeUniverse]}
-                    defaultValue={[runtimeUniverse]}
-                    onChange={(value) =>
-                      setRuntimeUniverse(value[0] || ALL_RUNTIME_SCOPES)
-                    }
-                    items={runtimeUniverseItems}
-                    width="160px"
-                  />
-                ) : null}
-              </Flex>
-            </Flex>
+      <PageLayout>
+        <Stack gap={4}>
+          <PageHeader title="Strategies" />
+          <Flex gap={2} alignItems="center" wrap="wrap">
+            {modeSegment}
+            <Select
+              placeholder="Strategy"
+              value={[selectedStrategy]}
+              defaultValue={[selectedStrategy]}
+              onChange={(value) =>
+                setSelectedStrategy(value[0] || ALL_STRATEGIES)
+              }
+              items={strategyItems}
+              width="220px"
+            />
+            {mode === 'runtime' ? (
+              <Select
+                placeholder="Window"
+                value={[hours]}
+                defaultValue={[hours]}
+                onChange={(value) => setHours(value[0] || '168')}
+                items={HOURS_OPTIONS}
+                width="180px"
+              />
+            ) : null}
+            {mode === 'runtime' ? (
+              <Select
+                value={[runtimeDeployment]}
+                defaultValue={[runtimeDeployment]}
+                onChange={(value) =>
+                  setRuntimeDeployment(value[0] || ALL_RUNTIME_DEPLOYMENTS)
+                }
+                items={runtimeDeploymentItems}
+                width="180px"
+              />
+            ) : null}
+            {mode === 'runtime' ? (
+              <Segment
+                defaultValue="all"
+                value={runtimeStatusFilter}
+                onChange={(value) =>
+                  setRuntimeStatusFilter(
+                    value === 'enabled' || value === 'disabled' ? value : 'all',
+                  )
+                }
+                items={RUNTIME_STATUS_ITEMS}
+              />
+            ) : null}
+            {mode === 'runtime' ? (
+              <Select
+                value={[runtimeUniverse]}
+                defaultValue={[runtimeUniverse]}
+                onChange={(value) =>
+                  setRuntimeUniverse(value[0] || ALL_RUNTIME_SCOPES)
+                }
+                items={runtimeUniverseItems}
+                width="160px"
+              />
+            ) : null}
+          </Flex>
 
-            {isSnapshotMode ? (
-              <BulkDeleteToolbar
-                selectedCount={selectedFilteredCount}
-                checkboxState={selectionCheckboxState}
-                hasSelection={hasSelectedInFilter}
-                isDeleting={isDeletingSelected}
-                dialogOpen={isDeleteSelectedOpen}
-                deleteTitle={`Delete selected ${deleteSnapshotLabel} cards`}
-                deleteDescription={`Delete selected ${deleteSnapshotLabel} cards (${deleteSelectedSnapshotCount})?`}
-                onDialogOpenChange={handleBulkDeleteDialogOpenChange}
-                onToggleAll={handleSelectAllFilteredSnapshots}
-                onRequestDelete={handleOpenDeleteSelectedSnapshots}
-                onConfirmDelete={handleDeleteSelectedSnapshots}
+          {isSnapshotMode ? (
+            <BulkDeleteToolbar
+              selectedCount={selectedFilteredCount}
+              checkboxState={selectionCheckboxState}
+              hasSelection={hasSelectedInFilter}
+              isDeleting={isDeletingSelected}
+              dialogOpen={isDeleteSelectedOpen}
+              deleteTitle={`Delete selected ${deleteSnapshotLabel} cards`}
+              deleteDescription={`Delete selected ${deleteSnapshotLabel} cards (${deleteSelectedSnapshotCount})?`}
+              onDialogOpenChange={handleBulkDeleteDialogOpenChange}
+              onToggleAll={handleSelectAllFilteredSnapshots}
+              onRequestDelete={handleOpenDeleteSelectedSnapshots}
+              onConfirmDelete={handleDeleteSelectedSnapshots}
+            />
+          ) : null}
+
+          <Box flex="1" h="full" w="full">
+            {loading ? (
+              <>
+                <RuntimeStrategyCardSkeleton />
+                <RuntimeStrategyCardSkeleton />
+              </>
+            ) : null}
+
+            {noData ? (
+              <EmptyState
+                icon={FiFolder}
+                title={emptyTitle}
+                description={emptyDescription}
               />
             ) : null}
 
-            <Box flex="1" h="full" w="full">
-              {loading ? (
-                <>
-                  <RuntimeStrategyCardSkeleton />
-                  <RuntimeStrategyCardSkeleton />
-                </>
-              ) : null}
-
-              {noData ? (
-                <EmptyState
-                  icon={FiFolder}
-                  title={emptyTitle}
-                  description={emptyDescription}
+            {!loading &&
+              mode === 'runtime' &&
+              runtimeChartWindow &&
+              filteredRuntimeStrategies.map((strategy) => (
+                <RuntimeStrategyCard
+                  key={strategy.runtimeKey}
+                  strategy={strategy}
+                  provider={runtimeData?.provider || 'bybit'}
+                  startTimestamp={runtimeChartWindow.startTimestamp}
+                  endTimestamp={runtimeChartWindow.endTimestamp}
+                  onUpdated={load}
                 />
-              ) : null}
+              ))}
 
-              {!loading &&
-                mode === 'runtime' &&
-                runtimeChartWindow &&
-                filteredRuntimeStrategies.map((strategy) => (
-                  <RuntimeStrategyCard
-                    key={strategy.runtimeKey}
-                    strategy={strategy}
-                    provider={runtimeData?.provider || 'bybit'}
-                    startTimestamp={runtimeChartWindow.startTimestamp}
-                    endTimestamp={runtimeChartWindow.endTimestamp}
-                    onUpdated={load}
-                  />
-                ))}
-
-              {!loading && mode !== 'runtime' ? (
-                <StrategySnapshotList
-                  strategies={filteredSnapshotStrategies}
-                  mode={mode}
-                  selectedCardIds={selectedSnapshotCardIdSet}
-                  onDeleted={handleSnapshotDeleted}
-                  onToggleSelection={handleToggleSnapshotSelection}
-                  emptyText={snapshotEmptyText}
-                />
-              ) : null}
-            </Box>
+            {!loading && mode !== 'runtime' ? (
+              <StrategySnapshotList
+                strategies={filteredSnapshotStrategies}
+                mode={mode}
+                selectedCardIds={selectedSnapshotCardIdSet}
+                onDeleted={handleSnapshotDeleted}
+                onToggleSelection={handleToggleSnapshotSelection}
+                emptyText={snapshotEmptyText}
+              />
+            ) : null}
           </Box>
-        </Box>
-      </Box>
+        </Stack>
+      </PageLayout>
     </ClientOnly>
   );
 };

@@ -59,7 +59,14 @@ description: Use an authenticated TradeJS MCP server from Codex or Claude Code t
    `research:read`. Follow a section's `nextOffset` with its exact title.
    The server reads the same Project `notes/` as the web library. An empty
    list on a remote host does not describe research saved on another machine.
-8. Include source host, time bounds, revisions, coverage, checksums and missing
+8. For missing market data, call `coverage_list_datasets` and
+   `coverage_inspect` with a dataset, series and UTC date. Use the exact
+   missing slots and latest backfill outcome as evidence. An empty local
+   range does not establish the provider-side cause. Only on explicit
+   request, use `coverage_backfill_start` with the owner's
+   `market:backfill` scope, then poll `coverage_backfill_get`. Queue one UTC
+   day at a time and set `retry: true` only for an explicitly requested retry.
+9. Include source host, time bounds, revisions, coverage, checksums and missing
    evidence in the result. Use local CLI for offline analysis or work exceeding
    the bounded MCP job contract. SSH needs a separate explicit operational
    request; do not broaden access to compensate for a missing tool or scope.

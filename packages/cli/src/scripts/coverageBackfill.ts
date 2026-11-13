@@ -26,7 +26,10 @@ import {
   buildKlineTradeFlowRows,
   buildMarketBreadthRows,
 } from '../lib/binanceMarketData';
-import { backfillCoinMarketCapContext } from '../lib/coinMarketCapContextBackfill';
+import {
+  backfillCoinMarketCapContext,
+  resolveCoinMarketCapBackfillWindow,
+} from '../lib/coinMarketCapContextBackfill';
 import { resolveCoinalyzeBackfillMarket } from '../lib/derivativesContextBackfill';
 
 type Target = NonNullable<ReturnType<typeof resolveDataBackfill>>;
@@ -37,7 +40,7 @@ async function fetchTarget(
   request: DataBackfillRequest,
   target: Target,
   loaded: Set<number>,
-) {
+): Promise<DataBackfillResult['outcome']> {
   const { dataset, end } = target;
   const { series, day } = request;
   const endMs = end - 1;
@@ -45,13 +48,16 @@ async function fetchTarget(
   const missing = (time: number) =>
     time >= day && time < end && !loaded.has(time);
   if (dataset.provider === 'CoinMarketCap') {
-    await backfillCoinMarketCapContext({
+    const params = {
       userName,
       startMs: day,
       preloadStartMs: day,
       endMs: end,
       repairDataset: dataset.id,
-    });
+    };
+    if (resolveCoinMarketCapBackfillWindow(params).fromMs > day)
+      return 'outside_configured_history';
+    await backfillCoinMarketCapContext(params);
     return;
   }
   if (dataset.provider === 'Coinalyze') {
@@ -60,7 +66,7 @@ async function fetchTarget(
       userName,
       series,
     );
-    if (!marketSymbol) return;
+    if (!marketSymbol) return 'no_matching_market';
     const { derivativesRows = [] } =
       await marketDataProviders.coinalyze.fetchWindow({
         symbol: series,
@@ -166,8 +172,7 @@ async function fetchTarget(
   const universe = getBinanceBreadthUniverses().find(
     (item) => item.universe === series,
   );
-  if (!universe)
-    throw new Error('The historical Binance basket is unavailable.');
+  if (!universe) return 'historical_basket_unavailable';
   const candlesBySymbol: Record<string, KlineChartData> = {};
   const warmup = day - 2 * DAY_MS;
   for (let offset = 0; offset < universe.symbols.length; offset += 4) {
@@ -201,13 +206,20 @@ export async function main() {
     );
   await waitForDbReady();
   const before = await readDataBackfillSlots(request, target.end);
-  if (before.loaded.size < before.expected)
-    await fetchTarget(userName, request, target, before.loaded);
+  const outcome =
+    before.loaded.size < before.expected
+      ? await fetchTarget(userName, request, target, before.loaded)
+      : undefined;
   const after = await readDataBackfillSlots(request, target.end);
   const result: DataBackfillResult = {
     loaded: after.loaded.size,
     added: Math.max(0, after.loaded.size - before.loaded.size),
     missing: Math.max(0, after.expected - after.loaded.size),
   };
+  if (result.missing) {
+    result.outcome =
+      outcome ??
+      (result.added ? 'some_missing_slots_filled' : 'no_missing_slots_filled');
+  }
   console.log(`TRADEJS_DATA_BACKFILL ${JSON.stringify(result)}`);
 }

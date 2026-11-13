@@ -4,7 +4,11 @@ import {
   getDataCoveragePeriodEnd,
   isDataCoverageDataset,
 } from '@tradejs/infra/timescale/dataCoverage';
-import { getCachedDataCoverage } from '#app/lib/dataCoverageCache';
+import {
+  getCachedDataCoverage,
+  getDataCoverageEntry,
+  readSavedCoverage,
+} from '#app/lib/dataCoverageCache';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { INSTALL_USER_NAME } from '#app/lib/installation';
 
@@ -62,12 +66,31 @@ export async function GET(request: NextRequest) {
   try {
     request.signal.throwIfAborted();
     const polling = day === undefined && query.get('progress') === '1';
+    const overview =
+      polling && yearParam !== null && query.get('overview') === '1';
+    const refresh = day === undefined && query.get('refresh') === '1';
+    const period = { from, to };
+    const existing = overview ? getDataCoverageEntry(id, period) : undefined;
+    const saved =
+      overview && (!existing?.overview || !existing.snapshot)
+        ? await readSavedCoverage(year, id)
+        : null;
+    if (
+      overview &&
+      !refresh &&
+      existing?.expiresAt !== Infinity &&
+      (!existing?.failed || query.get('waiting') !== '1')
+    ) {
+      const previous = existing?.overview ?? saved;
+      if (previous) return reply(previous, 200, 'hit');
+    }
     const { entry, result, status } = getCachedDataCoverage({
       dataset: id,
-      period: { from, to },
-      refresh: day === undefined && query.get('refresh') === '1',
+      period,
+      refresh,
       annual: yearParam !== null,
       polling,
+      saveYear: yearParam !== null ? year : undefined,
     });
     if (polling) {
       if (entry.failed)
@@ -80,12 +103,18 @@ export async function GET(request: NextRequest) {
         return reply(
           {
             ...entry.progress,
-            coverage: entry.previous?.coverage,
+            ...(overview
+              ? { previous: entry.overview ?? saved }
+              : { coverage: entry.overview?.coverage }),
           },
           202,
           status,
         );
-      return reply(entry.snapshot.coverage, 200, status);
+      return reply(
+        overview ? entry.overview : entry.snapshot.coverage,
+        200,
+        status,
+      );
     }
     const snapshot = await result;
     return reply(

@@ -4,6 +4,24 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { POST, GET } from '../../../mcp/route';
 import { McpCursorError } from '@tradejs/node/mcp';
 import type { McpPrincipal } from '@tradejs/types';
+const mockReadCoverageSlots = jest.fn();
+const mockEnqueueCoverage = jest.fn();
+const mockCoverageJobs = jest.fn();
+const mockAfter = jest.fn();
+jest.mock('next/server', () => ({
+  ...jest.requireActual('next/server'),
+  after: (callback: unknown) => mockAfter(callback),
+}));
+jest.mock('@tradejs/infra/timescale/dataCoverage', () => ({
+  ...jest.requireActual('@tradejs/infra/timescale/dataCoverage'),
+  readDataBackfillSlots: (...args: unknown[]) => mockReadCoverageSlots(...args),
+}));
+jest.mock('../../dataBackfillQueue', () => ({
+  drainDataBackfillQueue: jest.fn(),
+  enqueueDataBackfill: (...args: unknown[]) => mockEnqueueCoverage(...args),
+  listDataBackfillJobs: (...args: unknown[]) => mockCoverageJobs(...args),
+}));
+
 const mockVerification = jest
   .fn()
   .mockResolvedValue({ fresh: true, report: { ok: true } });
@@ -59,6 +77,7 @@ jest.mock('@tradejs/node/mcp', () => ({
 }));
 beforeEach(() => {
   mockAuthenticated = true;
+  mockPrincipal.userName = 'alice';
   mockPrincipal.scopes = ['market:read'];
   mockReadLogs.mockReset();
   mockReadRuntime.mockReset();
@@ -520,5 +539,78 @@ test('research tools require both project ownership and the research scope', asy
     if (projectCwd === undefined) delete process.env.PROJECT_CWD;
     else process.env.PROJECT_CWD = projectCwd;
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reports missing coverage and queues a backfill only for the owner with an explicit scope', async () => {
+  const day = Date.UTC(2026, 0, 1);
+  const step = 3600000;
+  const dataset = 'binance-candles-1h';
+  const args = { dataset, series: 'BTCUSDT', date: '2026-01-01' };
+  const job = {
+    id: 'b'.repeat(64),
+    dataset,
+    series: args.series,
+    day,
+    status: 'queued',
+  };
+  mockReadCoverageSlots.mockResolvedValue({
+    loaded: new Set(Array.from({ length: 23 }, (_, i) => day + i * step)),
+    expected: 24,
+  });
+  mockEnqueueCoverage.mockResolvedValue(job);
+  mockCoverageJobs.mockResolvedValue([]);
+  const client = new Client({ name: 'coverage-test', version: '1.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+      fetch: async (url, init) =>
+        init?.method === 'POST' ? POST(new Request(String(url), init)) : GET(),
+    }),
+  );
+  const names = async () =>
+    (await client.listTools()).tools.map(({ name }) => name);
+  try {
+    expect(await names()).not.toContain('coverage_inspect');
+    mockPrincipal.userName = 'root';
+    expect(await names()).toContain('coverage_inspect');
+    expect(await names()).not.toContain('coverage_backfill_start');
+    const result = await client.callTool({
+      name: 'coverage_inspect',
+      arguments: args,
+    });
+    expect(result.structuredContent).toMatchObject({
+      data: {
+        days: [
+          {
+            missingTimes: [day + 23 * step],
+            loaded: 23,
+            observation: 'missing_local_intervals',
+          },
+        ],
+      },
+    });
+    expect(mockAfter).not.toHaveBeenCalled();
+
+    mockPrincipal.scopes = ['market:read', 'market:backfill'];
+    expect(await names()).toContain('coverage_backfill_start');
+    const rejected = await client.callTool({
+      name: 'coverage_backfill_start',
+      arguments: { ...args, date: '2026-02-30' },
+    });
+    expect(rejected.isError).toBe(true);
+    expect(mockEnqueueCoverage).not.toHaveBeenCalled();
+    const accepted = await client.callTool({
+      name: 'coverage_backfill_start',
+      arguments: args,
+    });
+    expect(accepted.structuredContent).toEqual({ data: job });
+    expect(mockEnqueueCoverage).toHaveBeenCalledWith(
+      'root',
+      { dataset, series: 'BTCUSDT', day },
+      { retry: false },
+    );
+    expect(mockAfter).toHaveBeenCalledTimes(1);
+  } finally {
+    await client.close();
   }
 });

@@ -1,9 +1,11 @@
 'use client';
 
+import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
+
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Box, Button, Flex, ClientOnly } from '@chakra-ui/react';
+import { Box, Flex, ClientOnly, Stack } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '#store';
 import { Filters } from '#shared/Filters';
 import { MainChart } from '#app/components/Dashboard/MainChart';
@@ -110,100 +112,85 @@ const DashboardRoute = () => {
 
   return (
     <ClientOnly>
-      <Box
-        as="main"
+      <PageLayout
         minH="100vh"
-        p={isScreenshotMode ? 0 : 4}
-        bg="gray.900"
+        maxW="none"
+        {...(isScreenshotMode && { px: 0, pt: 0, pb: 0 })}
+        gap={4}
         display="flex"
         flexDirection="column"
         justifyContent="space-between"
         alignItems="flex-start"
       >
         {!isScreenshotMode && (
-          <Box
-            w="full"
-            display="grid"
-            gridTemplateColumns={{
-              base: 'minmax(0, 1fr)',
-              xl: 'minmax(0, 1fr) auto',
-            }}
-            columnGap={4}
-            alignItems="start"
-          >
-            <Box minW={0}>
-              <Filters.Root
-                filters={filters}
-                tickers={tickers}
-                backtestFiles={tests}
-                onChangeFilters={onChangeFilters}
-                ensureTickersLoaded={ensureTickersLoaded}
-                ensureBacktestsLoaded={ensureBacktestsLoaded}
+          <Stack w="full" gap={4}>
+            <PageHeader
+              title="Dashboard"
+              actions={
+                <>
+                  <PageAction
+                    onClick={async () => {
+                      const context = {
+                        provider: filters.provider,
+                        universe: filters.universe ?? 'crypto',
+                        symbol: filters.symbol,
+                        interval: filters.interval,
+                        ...(filters.backtestId
+                          ? {
+                              backtestId: filters.backtestId,
+                              backtestStrategy: filters.backtestStrategy,
+                            }
+                          : {}),
+                      };
+                      try {
+                        await navigator.clipboard.writeText(
+                          `TradeJS chart context: ${JSON.stringify(context)}. Use chart_get_context for market candles; for a saved backtest, inspect its recorded results. URL: ${window.location.href}`,
+                        );
+                        setContextCopied(true);
+                      } catch {
+                        setContextCopied(false);
+                      }
+                    }}
+                  >
+                    {contextCopied ? 'Context copied' : 'Copy context for AI'}
+                  </PageAction>
+                  <PageAction asChild colorPalette="teal" variant="solid">
+                    <Link href="/routes/backtest">Create backtest</Link>
+                  </PageAction>
+                </>
+              }
+            />
+            <Filters.Root
+              filters={filters}
+              tickers={tickers}
+              backtestFiles={tests}
+              onChangeFilters={onChangeFilters}
+              ensureTickersLoaded={ensureTickersLoaded}
+              ensureBacktestsLoaded={ensureBacktestsLoaded}
+            >
+              <Flex
+                mb={2}
+                gap={2}
+                alignItems="center"
+                wrap="wrap"
+                css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
               >
-                <Flex
-                  mb={2}
-                  gap={2}
-                  alignItems="center"
-                  wrap="wrap"
-                  css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
-                >
-                  <Filters.SelectProvider />
-                  {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
-                  <Filters.SelectSymbol />
-                  <Filters.FavoriteIndicator />
-                  <Filters.SelectInterval />
-                  <Filters.SelectIndicator />
-                </Flex>
-                <Flex
-                  mb={4}
-                  gap={2}
-                  wrap="wrap"
-                  css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
-                >
-                  <Filters.SelectBacktest />
-                </Flex>
-              </Filters.Root>
-            </Box>
-            <Flex gap={2} flexWrap="wrap">
-              <Button
-                onClick={async () => {
-                  const context = {
-                    provider: filters.provider,
-                    universe: filters.universe ?? 'crypto',
-                    symbol: filters.symbol,
-                    interval: filters.interval,
-                    ...(filters.backtestId
-                      ? {
-                          backtestId: filters.backtestId,
-                          backtestStrategy: filters.backtestStrategy,
-                        }
-                      : {}),
-                  };
-                  try {
-                    await navigator.clipboard.writeText(
-                      `TradeJS chart context: ${JSON.stringify(context)}. Use chart_get_context for market candles; for a saved backtest, inspect its recorded results. URL: ${window.location.href}`,
-                    );
-                    setContextCopied(true);
-                  } catch {
-                    setContextCopied(false);
-                  }
-                }}
-                variant="outline"
+                <Filters.SelectProvider />
+                {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
+                <Filters.SelectSymbol />
+                <Filters.FavoriteIndicator />
+                <Filters.SelectInterval />
+                <Filters.SelectIndicator />
+              </Flex>
+              <Flex
+                gap={2}
+                wrap="wrap"
+                css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
               >
-                {contextCopied ? 'Context copied' : 'Copy context for AI'}
-              </Button>
-              <Button
-                asChild
-                bg="#20c5bd"
-                color="gray.950"
-                _hover={{ bg: '#42d8d0' }}
-                justifySelf={{ base: 'start', lg: 'end' }}
-                mb={4}
-              >
-                <Link href="/routes/backtest">Create backtest</Link>
-              </Button>
-            </Flex>
-          </Box>
+                <Filters.SelectBacktest />
+              </Flex>
+            </Filters.Root>
+          </Stack>
         )}
         <Box
           position="relative"
@@ -214,7 +201,7 @@ const DashboardRoute = () => {
         >
           <MainChart screenshotMode={isScreenshotMode} backtestFiles={tests} />
         </Box>
-      </Box>
+      </PageLayout>
     </ClientOnly>
   );
 };

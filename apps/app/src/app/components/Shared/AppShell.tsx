@@ -24,7 +24,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   return (
     <>
       <Sidebar />
-      <Box ml="60px" minH="100vh">
+      <Box ml="60px" minH="100vh" minW={0} bg="gray.900" color="fg">
         {children}
       </Box>
     </>

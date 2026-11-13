@@ -37,13 +37,14 @@ export const listDataBackfillJobs = async (user: string) =>
 export async function enqueueDataBackfill(
   user: string,
   request: DataBackfillRequest,
+  { retry = true }: { retry?: boolean } = {},
 ) {
   const id = createHash('sha256').update(JSON.stringify(request)).digest('hex');
   return changeQueue(user, (jobs) => {
     const previous = jobs.find((job) => job.id === id);
     if (
       previous &&
-      ['queued', 'running', 'completed'].includes(previous.status)
+      (!retry || ['queued', 'running', 'completed'].includes(previous.status))
     )
       return { value: previous };
     const pending = jobs.filter(

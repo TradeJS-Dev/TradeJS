@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '#shared/PageLayout';
+
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -78,23 +80,7 @@ const SigninContent = () => {
             flexDirection="column"
             gap="6"
           >
-            <Stack gap="4">
-              <Text fontSize="sm" opacity={0.7} letterSpacing="0.2em">
-                SIGN IN
-              </Text>
-              <Text
-                fontSize="2xl"
-                fontWeight="700"
-                letterSpacing="-0.03em"
-                lineHeight="1"
-                color="white"
-              >
-                <Box as="span">Trade</Box>
-                <Box as="span" color="#20c5bd">
-                  JS
-                </Box>
-              </Text>
-            </Stack>
+            <PageHeader title="Sign in to TradeJS" />
 
             <Stack gap="4">
               <Field.Root>
@@ -129,9 +115,7 @@ const SigninContent = () => {
               type="submit"
               loading={isSubmitting}
               disabled={!username || !password}
-              bg="gray.900"
-              color="white"
-              _hover={{ bg: 'gray.800' }}
+              colorPalette="teal"
             >
               Sign in
             </Button>

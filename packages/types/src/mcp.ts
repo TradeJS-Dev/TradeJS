@@ -1,5 +1,6 @@
 export const MCP_SCOPES = [
   'market:read',
+  'market:backfill',
   'runtime:read',
   'backtests:read',
   'backtests:run',

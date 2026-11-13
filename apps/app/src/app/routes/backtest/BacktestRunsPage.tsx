@@ -3,7 +3,7 @@
 import {
   Badge,
   Box,
-  Button,
+  Heading,
   ClientOnly,
   Flex,
   Skeleton,
@@ -15,6 +15,7 @@ import Link from 'next/link';
 import type { ResearchStudy } from '#app/lib/researchLibraryTypes';
 import { studyKey, studyUrl } from '#app/lib/researchStudyLinks';
 import { useRouter } from 'next/navigation';
+import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
 import { EmptyState } from '#ui';
 import {
   type JobAction,
@@ -56,61 +57,49 @@ export function BacktestRunsPage({
 
   return (
     <ClientOnly>
-      <Box minH="100vh" bg="gray.900" color="gray.100">
-        <Box as="main" minH="100vh" minW={0} pl={2} pr={4} py={3} bg="gray.900">
-          <Flex
-            alignItems="center"
-            justifyContent="space-between"
-            wrap="wrap"
-            gap={3}
-            mb={3}
-          >
-            <Box pl={2}>
-              <Text fontSize="lg" fontWeight="700" lineHeight="1.2">
-                Backtest runs
-              </Text>
-            </Box>
-            <Flex gap={2} wrap="wrap">
-              {researchAvailable && (
-                <Button asChild size="sm" variant="outline">
-                  <Link
-                    href={
-                      study ? studyUrl(study.strategy, studyRef) : studyUrl()
-                    }
-                  >
-                    <FiBookOpen /> {study ? 'Open research' : 'Research'}
-                  </Link>
-                </Button>
-              )}
-              {study && (
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/routes/backtest">All runs</Link>
-                </Button>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                colorPalette="teal"
-                onClick={() => router.push('/routes/strategies/backtest')}
-              >
-                <FiFolder />
-                Results
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  void refresh();
-                }}
-                disabled={loadingConfigs || loadingJobs}
-              >
-                <FiRefreshCw />
-                Refresh
-              </Button>
-            </Flex>
-          </Flex>
+      <PageLayout>
+        <Stack gap={4}>
+          <PageHeader
+            title="Backtest runs"
+            actions={
+              <>
+                {researchAvailable && (
+                  <PageAction asChild>
+                    <Link
+                      href={
+                        study ? studyUrl(study.strategy, studyRef) : studyUrl()
+                      }
+                    >
+                      <FiBookOpen /> {study ? 'Open research' : 'Research'}
+                    </Link>
+                  </PageAction>
+                )}
+                {study && (
+                  <PageAction asChild>
+                    <Link href="/routes/backtest">All runs</Link>
+                  </PageAction>
+                )}
+                <PageAction
+                  type="button"
+                  colorPalette="teal"
+                  onClick={() => router.push('/routes/strategies/backtest')}
+                >
+                  <FiFolder />
+                  Results
+                </PageAction>
+                <PageAction
+                  type="button"
+                  onClick={() => {
+                    void refresh();
+                  }}
+                  disabled={loadingConfigs || loadingJobs}
+                >
+                  <FiRefreshCw />
+                  Refresh
+                </PageAction>
+              </>
+            }
+          />
 
           {study && (
             <Stack gap={1} mb={3} maxW="1200px">
@@ -140,9 +129,9 @@ export function BacktestRunsPage({
               mb={3}
             >
               <Flex alignItems="center" gap={3}>
-                <Text fontWeight="700">
+                <Heading as="h2" size="md">
                   {study ? 'Linked runs' : 'Active runs'}
-                </Text>
+                </Heading>
                 {showJobsSkeleton ? (
                   <Skeleton h="20px" w="54px" />
                 ) : (
@@ -198,8 +187,8 @@ export function BacktestRunsPage({
               ))}
             </Stack>
           </Box>
-        </Box>
-      </Box>
+        </Stack>
+      </PageLayout>
     </ClientOnly>
   );
 }

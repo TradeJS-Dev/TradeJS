@@ -16,6 +16,8 @@ jest.mock('@chakra-ui/react', () => ({
   Flex: ({ children, ...props }: any) => (
     <div data-testid={props['data-testid']}>{children}</div>
   ),
+  Stack: ({ children }: any) => <div>{children}</div>,
+  Heading: ({ children }: any) => <h1>{children}</h1>,
   Button: ({ children }: any) => <button>{children}</button>,
   ClientOnly: ({ children }: any) => <>{children}</>,
 }));

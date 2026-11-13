@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Flex,
-  Heading,
   Input,
   Skeleton,
   SkeletonText,
@@ -17,6 +15,7 @@ import type {
   ResearchStudy,
   ResearchStudyDetail,
 } from '#app/lib/researchLibraryTypes';
+import { PageHeader, PageLayout } from '#shared/PageLayout';
 import { Select } from '#ui';
 import { studyKey, studyUrl } from '#app/lib/researchStudyLinks';
 import { ResearchStudyView } from './ResearchStudyView';
@@ -143,25 +142,15 @@ export const ResearchLibrary = () => {
 
   const currentDetail = detail?.key === detailKey ? detail : null;
   return (
-    <Box
-      as="main"
-      minH="100vh"
-      bg="gray.900"
-      pl={2}
-      pr={{ base: 4, lg: 8 }}
-      py={6}
-    >
-      <Box maxW="1500px">
-        <Flex align="baseline" gap={4} wrap="wrap" mb={5}>
-          <Heading as="h1" size="2xl">
-            Strategy research
-          </Heading>
-          {studies && (
-            <Text color="gray.400" fontSize="sm">
-              {studies.length} studies · {strategyItems.length - 1} groups
-            </Text>
-          )}
-        </Flex>
+    <PageLayout>
+      <Stack gap={4}>
+        <PageHeader
+          title="Strategy research"
+          description={
+            studies &&
+            `${studies.length} studies · ${strategyItems.length - 1} strategies`
+          }
+        />
         {catalogError ? (
           <Text role="alert" color="red.300">
             Could not load the research catalog.
@@ -287,7 +276,7 @@ export const ResearchLibrary = () => {
             </Box>
           </Box>
         )}
-      </Box>
-    </Box>
+      </Stack>
+    </PageLayout>
   );
 };

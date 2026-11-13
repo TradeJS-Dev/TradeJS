@@ -1,12 +1,12 @@
 'use client';
 
+import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
+
 import { useEffect, useState } from 'react';
 import {
-  Box,
   Button,
   Flex,
   Grid,
-  Heading,
   Input,
   Link,
   Skeleton,
@@ -214,24 +214,22 @@ export function StrategyDiagnosticsView({
   }
 
   return (
-    <Box as="main" pl={2} pr={4} pb={8} maxW="1500px">
+    <PageLayout>
       <Stack gap={4}>
-        <Flex gap={3} wrap="wrap" align="center" justify="space-between">
-          <Heading as="h1" size="lg">
-            Strategy diagnostics
-          </Heading>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setError('');
-              setResult(undefined);
-              setRevision((value) => value + 1);
-            }}
-          >
-            Refresh reports
-          </Button>
-        </Flex>
+        <PageHeader
+          title="Strategy diagnostics"
+          actions={
+            <PageAction
+              onClick={() => {
+                setError('');
+                setResult(undefined);
+                setRevision((value) => value + 1);
+              }}
+            >
+              Refresh
+            </PageAction>
+          }
+        />
         {error && (
           <Text role="alert" color="red.300">
             {error}
@@ -439,6 +437,6 @@ export function StrategyDiagnosticsView({
           </Stack>
         )}
       </Stack>
-    </Box>
+    </PageLayout>
   );
 }

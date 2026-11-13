@@ -1,1 +1,0 @@
-export const CARD_PAGE_CONTENT_MAX_WIDTH = '1400px';

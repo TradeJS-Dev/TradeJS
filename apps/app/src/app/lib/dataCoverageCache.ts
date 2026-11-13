@@ -1,4 +1,10 @@
 import { readDataCoverageSnapshot } from '@tradejs/infra/timescale/dataCoverage';
+import {
+  getHashJsonField,
+  getHashJsonValues,
+  setHashJsonField,
+} from '@tradejs/infra/redis';
+import type { SavedCoverage } from './dataCoverageOverview';
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -12,12 +18,28 @@ type Entry = {
   controller: AbortController;
   expiresAt: number;
   snapshot?: Snapshot;
-  previous?: Snapshot;
+  overview?: SavedCoverage;
   failed?: boolean;
   progress: { scannedDays: number; totalDays: number };
 };
 
 const cache = new Map<string, Entry>();
+const periodKey = (
+  dataset: string,
+  { from, to }: { from: number; to: number },
+) => `${dataset}:${from}:${to}`;
+const savedKey = (year: number) => `tradejs:data-coverage:v1:${year}`;
+
+export const readSavedCoverageYear = (year: number) =>
+  getHashJsonValues<SavedCoverage>(savedKey(year));
+
+export const readSavedCoverage = (year: number, dataset: string) =>
+  getHashJsonField<SavedCoverage>(savedKey(year), dataset);
+
+export const getDataCoverageEntry = (
+  dataset: string,
+  period: { from: number; to: number },
+) => cache.get(periodKey(dataset, period));
 
 function evictCachedResults() {
   for (const [key, entry] of cache) {
@@ -32,14 +54,16 @@ export function getCachedDataCoverage({
   refresh,
   annual,
   polling = false,
+  saveYear,
 }: {
   dataset: string;
   period: { from: number; to: number };
   refresh: boolean;
   annual: boolean;
   polling?: boolean;
+  saveYear?: number;
 }) {
-  const key = `${dataset}:${period.from}:${period.to}`;
+  const key = periodKey(dataset, period);
   const existing = cache.get(key);
   const pending = existing?.expiresAt === Infinity;
   if (
@@ -79,12 +103,12 @@ export function getCachedDataCoverage({
     controller,
     expiresAt: Infinity,
     progress,
-    previous: existing?.snapshot ?? existing?.previous,
+    overview: existing?.overview,
   };
   cache.delete(key);
   cache.set(key, entry);
   void result.then(
-    (snapshot) => {
+    async (snapshot) => {
       if (cache.get(key) !== entry) return;
       const now = Date.now();
       const ttl =
@@ -96,9 +120,17 @@ export function getCachedDataCoverage({
             ? 60
             : 10) * MINUTE_MS;
       entry.snapshot = snapshot;
-      entry.previous = undefined;
+      entry.overview = {
+        dataset,
+        coverage: snapshot.coverage,
+        calculatedAt: now,
+      };
       entry.expiresAt = now + ttl;
       evictCachedResults();
+      if (saveYear !== undefined)
+        await setHashJsonField(savedKey(saveYear), dataset, entry.overview, {
+          expire: 0,
+        });
     },
     () => {
       if (cache.get(key) !== entry) return;

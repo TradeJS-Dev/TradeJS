@@ -166,7 +166,10 @@ export const prepareConsent = async (
     throw new Error(
       'Authorization code, S256 PKCE, state and the correct resource are required',
     );
-  const scopes = (query.scope || MCP_SCOPES.join(' '))
+  const defaultScopes = MCP_SCOPES.filter(
+    (scope) => scope !== 'market:backfill',
+  );
+  const scopes = (query.scope || defaultScopes.join(' '))
     .split(' ')
     .filter(Boolean);
   if (

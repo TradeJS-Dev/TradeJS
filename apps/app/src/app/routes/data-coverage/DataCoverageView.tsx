@@ -15,12 +15,21 @@ import {
 } from '@chakra-ui/react';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import type {
-  DataCoverage,
   DataCoverageDataset,
   DataCoverageSeriesDay,
 } from '@tradejs/types';
+import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
+import type { SavedCoverage } from '#app/lib/dataCoverageOverview';
 
 import { DataBackfillQueue, QueueGapButton } from './DataBackfillQueue';
+
+const coverageSkeleton = {
+  '--start-color': 'colors.gray.600',
+  '--end-color': 'colors.gray.500',
+  borderWidth: '1px',
+  borderColor: 'gray.500',
+  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+};
 
 const DAY_MS = 86_400_000;
 const shortMonth = new Intl.DateTimeFormat('en-GB', {
@@ -41,6 +50,11 @@ const fullDate = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
   timeZone: 'UTC',
 });
+const calculatedDate = new Intl.DateTimeFormat('en-GB', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'UTC',
+});
 const number = new Intl.NumberFormat('en-GB');
 
 const colors = {
@@ -59,31 +73,14 @@ const legend = [
   [colors.outside, 'Outside range'],
 ];
 
-type CoverageResult = { coverage: DataCoverage } | { error: true };
+type CoverageResult = SavedCoverage | { error: true };
 
 type ScanProgress = {
   scannedDays: number;
   totalDays: number;
-  coverage?: DataCoverage;
+  previous?: SavedCoverage | null;
 };
-const cacheKey = (dataset: string, year: number) =>
-  `tradejs:coverage:v1:${year}:${dataset}`;
-const cacheLifetime = DAY_MS;
-
-function readPreviousCoverage(
-  dataset: string,
-  year: number,
-): DataCoverage | undefined {
-  try {
-    const saved = JSON.parse(
-      sessionStorage.getItem(cacheKey(dataset, year)) ?? 'null',
-    );
-    if (saved && Date.now() - saved.savedAt < cacheLifetime)
-      return saved.coverage;
-  } catch {
-    // The page remains usable when browser storage is unavailable.
-  }
-}
+const emptyCoverage: SavedCoverage[] = [];
 
 async function loadCoverageOverview(
   dataset: string,
@@ -91,11 +88,12 @@ async function loadCoverageOverview(
   signal: AbortSignal,
   refresh: boolean,
   onProgress: (progress: ScanProgress) => void,
-): Promise<DataCoverage> {
+): Promise<SavedCoverage> {
   const params = new URLSearchParams({
     dataset,
     year: String(year),
     progress: '1',
+    overview: '1',
   });
   if (refresh) params.set('refresh', '1');
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(135_000)]);
@@ -106,6 +104,7 @@ async function loadCoverageOverview(
     if (response.status === 202) {
       onProgress(await response.json());
       params.delete('refresh');
+      params.set('waiting', '1');
       await new Promise((resolve) => setTimeout(resolve, 1200));
       requestSignal.throwIfAborted();
       continue;
@@ -173,74 +172,88 @@ function DayDetails({
           Close details
         </Button>
       </Flex>
-      {details === undefined && (
-        <Stack role="status" aria-label="Loading series" gap={2}>
-          <Skeleton h="20px" w="170px" />
-          <Grid
-            templateColumns="repeat(auto-fit, minmax(min(230px, 100%), 1fr))"
-            gap={2}
-          >
-            {[0, 1, 2].map((item) => (
-              <Skeleton key={item} h="48px" />
-            ))}
-          </Grid>
-        </Stack>
-      )}
-      {details === 'error' && (
-        <Text role="alert" color="red.300">
-          Could not load series.
-        </Text>
-      )}
-      {Array.isArray(details) && (
-        <>
-          <Text color="gray.400" fontSize="sm">
-            {number.format(details.length)} series ·{' '}
-            {number.format(gaps.length)} with gaps
-          </Text>
-          {gaps.length > 0 && gaps.length < details.length && (
-            <Button
-              size="xs"
-              alignSelf="start"
-              variant="outline"
-              onClick={() => setShowAll(!showAll)}
+      <Stack h="290px" overflowY="auto" gap={2}>
+        {details === undefined && (
+          <Stack role="status" aria-label="Loading series" gap={2}>
+            <Skeleton
+              h="20px"
+              w="170px"
+              variant="shine"
+              css={coverageSkeleton}
+            />
+            <Grid
+              templateColumns="repeat(auto-fit, minmax(min(230px, 100%), 1fr))"
+              gap={2}
             >
-              {showAll ? 'Show gaps only' : 'Show all series'}
-            </Button>
-          )}
-          <Grid
-            as="ul"
-            m={0}
-            listStyleType="none"
-            templateColumns="repeat(auto-fit, minmax(min(230px, 100%), 1fr))"
-            gap={2}
-            maxH="240px"
-            overflowY="auto"
-          >
-            {visible.map(({ key, loaded, missing }) => (
-              <Box
-                as="li"
-                key={key}
-                bg="gray.900"
-                borderRadius="sm"
-                px={2}
-                py={1}
-                fontSize="sm"
+              {[0, 1, 2].map((item) => (
+                <Skeleton
+                  key={item}
+                  h="48px"
+                  variant="shine"
+                  css={coverageSkeleton}
+                />
+              ))}
+            </Grid>
+          </Stack>
+        )}
+        {details === 'error' && (
+          <Text role="alert" color="red.300">
+            Could not load series.
+          </Text>
+        )}
+        {Array.isArray(details) && (
+          <>
+            <Text color="gray.400" fontSize="sm">
+              {number.format(details.length)} series ·{' '}
+              {number.format(gaps.length)} with gaps
+            </Text>
+            {gaps.length > 0 && gaps.length < details.length && (
+              <Button
+                size="xs"
+                alignSelf="start"
+                variant="outline"
+                onClick={() => setShowAll(!showAll)}
               >
-                <Text fontWeight="medium" overflowWrap="anywhere">
-                  {key}
-                </Text>
-                <Text color={missing ? 'orange.300' : 'gray.400'}>
-                  {number.format(loaded)} loaded · {number.format(missing)}{' '}
-                  missing
-                </Text>
-                {missing > 0 && (
-                  <QueueGapButton dataset={dataset.id} series={key} day={day} />
-                )}
-              </Box>
-            ))}
-          </Grid>
-        </>
-      )}
+                {showAll ? 'Show gaps only' : 'Show all series'}
+              </Button>
+            )}
+            <Grid
+              as="ul"
+              m={0}
+              listStyleType="none"
+              templateColumns="repeat(auto-fit, minmax(min(230px, 100%), 1fr))"
+              gap={2}
+            >
+              {visible.map(({ key, loaded, missing }) => (
+                <Box
+                  as="li"
+                  key={key}
+                  bg="gray.900"
+                  borderRadius="sm"
+                  px={2}
+                  py={1}
+                  fontSize="sm"
+                >
+                  <Text fontWeight="medium" overflowWrap="anywhere">
+                    {key}
+                  </Text>
+                  <Text color={missing ? 'orange.300' : 'gray.400'}>
+                    {number.format(loaded)} loaded · {number.format(missing)}{' '}
+                    missing
+                  </Text>
+                  {missing > 0 && (
+                    <QueueGapButton
+                      dataset={dataset.id}
+                      series={key}
+                      day={day}
+                    />
+                  )}
+                </Box>
+              ))}
+            </Grid>
+          </>
+        )}
+      </Stack>
     </Stack>
   );
 }
@@ -303,37 +316,72 @@ function CoverageRow({
         px={3}
         py={2}
       >
-        <Box>
-          <Text fontWeight="medium" fontSize="sm">
+        <Grid minW={0} templateRows="20px repeat(3, 16px)">
+          <Text
+            fontWeight="medium"
+            fontSize="sm"
+            truncate
+            title={dataset.label}
+          >
             {dataset.label} · {dataset.interval}
           </Text>
-          {result && (
-            <Text color={missing ? 'orange.300' : 'gray.400'} fontSize="xs">
+          {result ? (
+            <Text
+              color={missing ? 'orange.300' : 'gray.400'}
+              fontSize="xs"
+              truncate
+            >
               {'error' in result
                 ? 'Could not load coverage'
                 : `${number.format(result.coverage.series)} series · ${number.format(missing)} missing${monthView ? ' this year' : ''}`}
             </Text>
+          ) : (
+            <Skeleton
+              alignSelf="center"
+              h="8px"
+              w="110px"
+              maxW="100%"
+              variant="shine"
+              css={coverageSkeleton}
+            />
           )}
-          {progress && (
-            <Text color="gray.400" fontSize="xs">
-              {progress.scannedDays > 0
-                ? `${progress.scannedDays} of ${progress.totalDays} days scanned`
-                : result
-                  ? 'Waiting to refresh'
-                  : 'Waiting to scan'}
-            </Text>
-          )}
-          {updateFailed && (
-            <Text color="orange.300" fontSize="xs">
-              Update failed. Showing last result.
-            </Text>
-          )}
-          {coverage?.first != null && coverage.last != null && (
-            <Text color="gray.400" fontSize="xs">
-              {date.formatRange(coverage.first, coverage.last)}
-            </Text>
-          )}
-        </Box>
+          <Text
+            color={updateFailed ? 'orange.300' : 'gray.400'}
+            fontSize="xs"
+            truncate
+          >
+            {updateFailed
+              ? 'Update failed. Showing last result.'
+              : (progress &&
+                  (progress.scannedDays > 0
+                    ? `${progress.scannedDays} of ${progress.totalDays} days scanned`
+                    : result
+                      ? 'Waiting to refresh'
+                      : 'Waiting to scan')) ||
+                (result &&
+                  'calculatedAt' in result &&
+                  `Calculated ${calculatedDate.format(result.calculatedAt)} UTC`)}
+          </Text>
+          <Box alignSelf="center">
+            {coverage?.first != null && coverage.last != null ? (
+              <Text color="gray.400" fontSize="xs" truncate>
+                {date.format(coverage.first)}
+                {date.format(coverage.first) !== date.format(coverage.last) &&
+                  ` – ${date.format(coverage.last)}`}
+              </Text>
+            ) : (
+              !result && (
+                <Skeleton
+                  h="8px"
+                  w="72px"
+                  maxW="100%"
+                  variant="shine"
+                  css={coverageSkeleton}
+                />
+              )
+            )}
+          </Box>
+        </Grid>
         <Grid
           templateColumns={`repeat(${blocks.length}, minmax(0, 1fr))`}
           gap={{ base: '2px', md: '3px' }}
@@ -341,7 +389,15 @@ function CoverageRow({
         >
           {blocks.map(({ from, to, label }, index) => {
             if (!result)
-              return <Skeleton key={from} h="24px" borderRadius="sm" />;
+              return (
+                <Skeleton
+                  key={from}
+                  h="24px"
+                  borderRadius="sm"
+                  variant="shine"
+                  css={coverageSkeleton}
+                />
+              );
             let loaded = 0;
             let missingInBlock = 0;
             let activeSeriesDays = 0;
@@ -412,17 +468,23 @@ function CoverageOverview({
   to,
   refresh,
   revision,
+  initialCoverage,
 }: {
   datasets: DataCoverageDataset[];
   year: number;
   to: number;
   refresh: boolean;
   revision: number;
+  initialCoverage: SavedCoverage[];
 }) {
-  const [results, setResults] = useState<Record<string, CoverageResult>>({});
+  const [results, setResults] = useState<Record<string, CoverageResult>>(() =>
+    Object.fromEntries(initialCoverage.map((row) => [row.dataset, row])),
+  );
   const [scans, setScans] = useState<
     Record<string, ScanProgress | 'failed' | 'ready'>
-  >({});
+  >(() =>
+    Object.fromEntries(initialCoverage.map((row) => [row.dataset, 'ready'])),
+  );
   const [month, setMonth] = useState<number>();
   const [selection, setSelection] = useState<{ id: string; day: number }>();
   const months = Array.from({ length: 12 }, (_, index) => ({
@@ -448,23 +510,24 @@ function CoverageOverview({
 
   useEffect(() => {
     const controller = new AbortController();
+    const savedIds = new Set(initialCoverage.map((row) => row.dataset));
     setScans(
       Object.fromEntries(
-        datasets.map(({ id }) => [id, { scannedDays: 0, totalDays: 0 }]),
+        datasets.map(({ id }) => [
+          id,
+          refresh || !savedIds.has(id)
+            ? { scannedDays: 0, totalDays: 0 }
+            : 'ready',
+        ]),
       ),
     );
-    const saved = datasets.flatMap(({ id }) => {
-      const coverage = readPreviousCoverage(id, year);
-      return coverage ? [[id, { coverage }] as const] : [];
-    });
-    setResults((current) => ({ ...Object.fromEntries(saved), ...current }));
 
     const loadRows = async (rows: DataCoverageDataset[]) => {
       for (const dataset of rows) {
         if (controller.signal.aborted) return;
         const { id } = dataset;
         try {
-          const coverage = await loadCoverageOverview(
+          const overview = await loadCoverageOverview(
             id,
             year,
             controller.signal,
@@ -472,23 +535,15 @@ function CoverageOverview({
             (progress) => {
               if (controller.signal.aborted) return;
               setScans((current) => ({ ...current, [id]: progress }));
-              if (progress.coverage) {
-                const coverage = progress.coverage;
-                setResults((current) => ({ ...current, [id]: { coverage } }));
+              if (progress.previous) {
+                const previous = progress.previous;
+                setResults((current) => ({ ...current, [id]: previous }));
               }
             },
           );
           if (controller.signal.aborted) return;
-          setResults((current) => ({ ...current, [id]: { coverage } }));
+          setResults((current) => ({ ...current, [id]: overview }));
           setScans((current) => ({ ...current, [id]: 'ready' }));
-          try {
-            sessionStorage.setItem(
-              cacheKey(id, year),
-              JSON.stringify({ coverage, savedAt: Date.now() }),
-            );
-          } catch {
-            // A storage quota cannot prevent rendering a completed scan.
-          }
         } catch {
           if (controller.signal.aborted) return;
           setScans((current) => ({ ...current, [id]: 'failed' }));
@@ -510,7 +565,7 @@ function CoverageOverview({
       void loadRows(light);
     }
     return () => controller.abort();
-  }, [datasets, refresh, revision, year]);
+  }, [datasets, initialCoverage, refresh, revision, year]);
 
   const ready = Object.values(scans).filter(
     (state) => state === 'ready',
@@ -518,14 +573,31 @@ function CoverageOverview({
   const failed = Object.values(scans).filter(
     (state) => state === 'failed',
   ).length;
+  const lastCalculated = Math.max(
+    0,
+    ...Object.values(results).map((row) =>
+      'calculatedAt' in row ? row.calculatedAt : 0,
+    ),
+  );
 
   return (
     <Stack gap={3}>
-      {ready + failed < datasets.length && (
-        <Text role="status" color="gray.400" fontSize="sm">
-          Updating coverage · {ready} of {datasets.length} datasets ready
-        </Text>
-      )}
+      <Text role="status" color="gray.400" fontSize="sm" minH="5">
+        {lastCalculated > 0 && (
+          <>
+            Last calculated{' '}
+            <time dateTime={new Date(lastCalculated).toISOString()}>
+              {calculatedDate.format(lastCalculated)} UTC
+            </time>
+          </>
+        )}
+        {ready + failed < datasets.length && (
+          <>
+            {lastCalculated > 0 && ' · '}Updating coverage · {ready} of{' '}
+            {datasets.length} datasets ready
+          </>
+        )}
+      </Text>
 
       {monthBlock && (
         <Flex align="center" gap={3}>
@@ -624,9 +696,11 @@ function CoverageOverview({
 export function DataCoverageView({
   datasets,
   latest,
+  initialCoverage,
 }: {
   datasets: DataCoverageDataset[];
   latest: number;
+  initialCoverage: SavedCoverage[];
 }) {
   const [tab, setTab] = useState('coverage');
   const [latestEnd, setLatestEnd] = useState(latest);
@@ -637,67 +711,61 @@ export function DataCoverageView({
   const to = Math.min(Date.UTC(year + 1, 0, 1), latestEnd);
 
   return (
-    <Box as="main" pl={2} pr={4} pb={8} maxW="1500px">
-      <Stack gap={3}>
-        <Flex align="center" justify="space-between" gap={3} wrap="wrap">
-          <Heading as="h1" size="lg">
-            Data coverage
-          </Heading>
-          {tab === 'coverage' && (
-            <Flex align="center" gap={2} wrap="wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label="Previous year"
-                disabled={year <= 1970}
-                onClick={() => {
-                  setForceRefresh(false);
-                  setYear(year - 1);
-                }}
-              >
-                <FiChevronLeft />
-              </Button>
-              <Text
-                minW="52px"
-                textAlign="center"
-                fontSize="sm"
-                aria-live="polite"
-              >
-                {year}
-              </Text>
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label="Next year"
-                disabled={year === latestYear}
-                onClick={() => {
-                  setForceRefresh(false);
-                  setYear(year + 1);
-                }}
-              >
-                <FiChevronRight />
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  const nextEnd =
-                    (Math.floor(Date.now() / DAY_MS) + 1) * DAY_MS;
-                  setLatestEnd(nextEnd);
-                  setYear((current) =>
-                    current === latestYear
-                      ? new Date(nextEnd - DAY_MS).getUTCFullYear()
-                      : current,
-                  );
-                  setForceRefresh(true);
-                  setRefresh((current) => current + 1);
-                }}
-              >
-                Refresh
-              </Button>
-            </Flex>
-          )}
-        </Flex>
+    <PageLayout>
+      <Stack gap={4}>
+        <PageHeader
+          title="Data coverage"
+          actions={
+            tab === 'coverage' && (
+              <>
+                <PageAction
+                  aria-label="Previous year"
+                  disabled={year <= 1970}
+                  onClick={() => {
+                    setForceRefresh(false);
+                    setYear(year - 1);
+                  }}
+                >
+                  <FiChevronLeft />
+                </PageAction>
+                <Text
+                  minW="52px"
+                  textAlign="center"
+                  fontSize="sm"
+                  aria-live="polite"
+                >
+                  {year}
+                </Text>
+                <PageAction
+                  aria-label="Next year"
+                  disabled={year === latestYear}
+                  onClick={() => {
+                    setForceRefresh(false);
+                    setYear(year + 1);
+                  }}
+                >
+                  <FiChevronRight />
+                </PageAction>
+                <PageAction
+                  onClick={() => {
+                    const nextEnd =
+                      (Math.floor(Date.now() / DAY_MS) + 1) * DAY_MS;
+                    setLatestEnd(nextEnd);
+                    setYear((current) =>
+                      current === latestYear
+                        ? new Date(nextEnd - DAY_MS).getUTCFullYear()
+                        : current,
+                    );
+                    setForceRefresh(true);
+                    setRefresh((current) => current + 1);
+                  }}
+                >
+                  Refresh
+                </PageAction>
+              </>
+            )
+          }
+        />
         <Tabs.Root
           value={tab}
           onValueChange={({ value }) => setTab(value)}
@@ -730,6 +798,11 @@ export function DataCoverageView({
                 year={year}
                 to={to}
                 refresh={forceRefresh}
+                initialCoverage={
+                  year === new Date(latest - DAY_MS).getUTCFullYear()
+                    ? initialCoverage
+                    : emptyCoverage
+                }
               />
             </Stack>
           </Tabs.Content>
@@ -738,6 +811,6 @@ export function DataCoverageView({
           </Tabs.Content>
         </Tabs.Root>
       </Stack>
-    </Box>
+    </PageLayout>
   );
 }

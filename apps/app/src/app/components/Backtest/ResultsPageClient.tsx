@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex } from '@chakra-ui/react';
+import { Box, ClientOnly, Flex, Stack } from '@chakra-ui/react';
 import { deleteBacktest } from '#actions/backtest';
 import { useBacktestMutations, useTestList } from '#store';
 import { Select, toaster } from '#ui';
@@ -12,7 +12,7 @@ import {
   useBulkSelection,
 } from '#components/Shared/BulkSelection';
 import { parseTestName } from '@tradejs/core/backtest';
-import { CARD_PAGE_CONTENT_MAX_WIDTH } from '#app/lib/cardPageLayout';
+import { PageHeader, PageLayout } from '#shared/PageLayout';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';
@@ -282,95 +282,68 @@ export const BacktestResultsPageClient = ({
 
   return (
     <ClientOnly>
-      <Box minH="100vh" bg="gray.900">
-        <Box
-          as="main"
-          minH="100vh"
-          w="full"
-          minW={0}
-          pl={2}
-          bg="gray.900"
-          display="flex"
-          flexDirection="column"
-          alignItems="flex-start"
-        >
-          <Box
-            minH="100vh"
-            w="full"
-            display="flex"
-            flex="1"
-            flexDirection="column"
-            alignItems="flex-start"
-          >
-            <Flex
-              mb={2}
-              mt={2}
-              gap={8}
-              flexDirection="row"
-              alignItems="center"
-              w="full"
-              maxW={CARD_PAGE_CONTENT_MAX_WIDTH}
-              wrap="wrap"
-            >
-              <Flex gap={3} alignItems="center" wrap="wrap">
-                {toolbarPrefix}
-                <Select
-                  placeholder="Strategy"
-                  value={[selectedStrategy]}
-                  defaultValue={[selectedStrategy]}
-                  onChange={(value) =>
-                    setSelectedStrategy(value[0] || ALL_STRATEGIES)
-                  }
-                  items={strategyItems}
-                  width="220px"
-                />
-                <Select
-                  placeholder="TestSuite"
-                  value={[selectedSuite]}
-                  defaultValue={[selectedSuite]}
-                  onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
-                  items={suiteItems}
-                  width="180px"
-                />
-                <Select
-                  placeholder="ConfigId"
-                  value={[selectedConfigId]}
-                  defaultValue={[selectedConfigId]}
-                  onChange={(value) =>
-                    setSelectedConfigId(value[0] || ALL_CONFIGS)
-                  }
-                  items={configItems}
-                  width="180px"
-                />
-              </Flex>
-              <CompareList />
-            </Flex>
-            <BulkDeleteToolbar
-              selectedCount={selectedFilteredCount}
-              checkboxState={selectionCheckboxState}
-              hasSelection={hasSelectedInFilter}
-              isDeleting={isDeletingSelected}
-              dialogOpen={isDeleteSelectedOpen}
-              deleteTitle="Delete selected tests"
-              deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
-              onDialogOpenChange={handleBulkDeleteDialogOpenChange}
-              onToggleAll={handleSelectAllFiltered}
-              onRequestDelete={handleOpenDeleteSelected}
-              onConfirmDelete={handleDeleteSelected}
-            />
-            <Box flex="1" h="full" w="full">
-              <TestList
-                tests={filteredTests}
-                loadding={loadding}
-                fulFilled={fulFilled}
-                noData={noData}
-                selectedTestNames={selectedTestNames}
-                onToggleSelection={handleToggleSelection}
+      <PageLayout>
+        <Stack gap={4}>
+          <PageHeader title="Backtest results" />
+          <Flex gap={4} alignItems="center" wrap="wrap">
+            <Flex gap={3} alignItems="center" wrap="wrap">
+              {toolbarPrefix}
+              <Select
+                placeholder="Strategy"
+                value={[selectedStrategy]}
+                defaultValue={[selectedStrategy]}
+                onChange={(value) =>
+                  setSelectedStrategy(value[0] || ALL_STRATEGIES)
+                }
+                items={strategyItems}
+                width="220px"
               />
-            </Box>
+              <Select
+                placeholder="Test suite"
+                value={[selectedSuite]}
+                defaultValue={[selectedSuite]}
+                onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
+                items={suiteItems}
+                width="180px"
+              />
+              <Select
+                placeholder="Configuration"
+                value={[selectedConfigId]}
+                defaultValue={[selectedConfigId]}
+                onChange={(value) =>
+                  setSelectedConfigId(value[0] || ALL_CONFIGS)
+                }
+                items={configItems}
+                width="180px"
+              />
+            </Flex>
+            <CompareList />
+          </Flex>
+          <BulkDeleteToolbar
+            selectedCount={selectedFilteredCount}
+            checkboxState={selectionCheckboxState}
+            hasSelection={hasSelectedInFilter}
+            isDeleting={isDeletingSelected}
+            dialogOpen={isDeleteSelectedOpen}
+            deleteTitle="Delete selected tests"
+            deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
+            onDialogOpenChange={handleBulkDeleteDialogOpenChange}
+            onToggleAll={handleSelectAllFiltered}
+            onRequestDelete={handleOpenDeleteSelected}
+            onConfirmDelete={handleDeleteSelected}
+          />
+          <Box flex="1" h="full" w="full">
+            <TestList
+              tests={filteredTests}
+              loadding={loadding}
+              fulFilled={fulFilled}
+              noData={noData}
+              selectedTestNames={selectedTestNames}
+              onToggleSelection={handleToggleSelection}
+            />
           </Box>
-        </Box>
-      </Box>
+        </Stack>
+      </PageLayout>
     </ClientOnly>
   );
 };
