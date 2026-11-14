@@ -80,6 +80,26 @@ npx tradejs-app dev
 
 ## Notes
 
+### Copy Coinalyze history from a TradeJS server
+
+Run from the local project's root with its TimescaleDB running:
+
+```bash
+tradejs derivatives:sync:coinalyze --host inv --from 2026-01-01 --to 2027-01-01 --dry-run
+tradejs derivatives:sync:coinalyze --host inv --from 2026-01-01 --to 2027-01-01
+```
+
+Use your trusted SSH alias in place of `inv`. The remote user needs access
+to the `inv-timescale` Docker container and its `app` database. The command
+reads closed 15-minute and hourly USDT data from the server and uses the
+local project's `PG_*` settings for the destination. Dates are UTC and
+`--to` is exclusive.
+
+It inserts missing rows and fills empty fields in existing Coinalyze rows.
+It preserves filled values and skips keys already owned by another source.
+Each week is imported independently. Run the same command again after an
+interruption to process any remaining data.
+
 ### Jev signal assessment (next package release)
 
 This workflow requires the CLI, runtime and app versions containing the Jev

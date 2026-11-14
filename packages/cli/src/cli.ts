@@ -33,6 +33,8 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'derivatives:ingest': () => import('./scripts/derivativesIngest'),
   'derivatives:ingest:coinalyze:all': () =>
     import('./scripts/derivativesIngestCoinalyzeAll'),
+  'derivatives:sync:coinalyze': () =>
+    import('./scripts/derivativesSyncCoinalyze'),
   doctor: () => import('./scripts/doctor'),
   'execution-calibration': () => import('./scripts/executionCalibration'),
   'infra-down': () => import('./scripts/infraDown'),
