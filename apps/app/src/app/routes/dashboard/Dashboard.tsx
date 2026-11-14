@@ -1,11 +1,20 @@
 'use client';
 
-import { PageAction, PageHeader, PageLayout } from '#shared/PageLayout';
+import { PageLayout } from '#shared/PageLayout';
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Box, Flex, ClientOnly, Stack } from '@chakra-ui/react';
+import {
+  Box,
+  Button,
+  ClientOnly,
+  Flex,
+  Popover,
+  Portal,
+  Separator,
+} from '@chakra-ui/react';
+import { FiCopy, FiPlay, FiLayers } from 'react-icons/fi';
 import { useFilters, useTickers, useTestList } from '#store';
 import { Filters } from '#shared/Filters';
 import { MainChart } from '#app/components/Dashboard/MainChart';
@@ -115,83 +124,12 @@ const DashboardRoute = () => {
       <PageLayout
         minH="100vh"
         maxW="none"
-        {...(isScreenshotMode && { px: 0, pt: 0, pb: 0 })}
-        gap={4}
+        px={0}
+        pt={0}
+        pb={0}
         display="flex"
         flexDirection="column"
-        justifyContent="space-between"
-        alignItems="flex-start"
       >
-        {!isScreenshotMode && (
-          <Stack w="full" gap={4}>
-            <PageHeader
-              title="Dashboard"
-              actions={
-                <>
-                  <PageAction
-                    onClick={async () => {
-                      const context = {
-                        provider: filters.provider,
-                        universe: filters.universe ?? 'crypto',
-                        symbol: filters.symbol,
-                        interval: filters.interval,
-                        ...(filters.backtestId
-                          ? {
-                              backtestId: filters.backtestId,
-                              backtestStrategy: filters.backtestStrategy,
-                            }
-                          : {}),
-                      };
-                      try {
-                        await navigator.clipboard.writeText(
-                          `TradeJS chart context: ${JSON.stringify(context)}. Use chart_get_context for market candles; for a saved backtest, inspect its recorded results. URL: ${window.location.href}`,
-                        );
-                        setContextCopied(true);
-                      } catch {
-                        setContextCopied(false);
-                      }
-                    }}
-                  >
-                    {contextCopied ? 'Context copied' : 'Copy context for AI'}
-                  </PageAction>
-                  <PageAction asChild colorPalette="teal" variant="solid">
-                    <Link href="/routes/backtest">Create backtest</Link>
-                  </PageAction>
-                </>
-              }
-            />
-            <Filters.Root
-              filters={filters}
-              tickers={tickers}
-              backtestFiles={tests}
-              onChangeFilters={onChangeFilters}
-              ensureTickersLoaded={ensureTickersLoaded}
-              ensureBacktestsLoaded={ensureBacktestsLoaded}
-            >
-              <Flex
-                mb={2}
-                gap={2}
-                alignItems="center"
-                wrap="wrap"
-                css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
-              >
-                <Filters.SelectProvider />
-                {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
-                <Filters.SelectSymbol />
-                <Filters.FavoriteIndicator />
-                <Filters.SelectInterval />
-                <Filters.SelectIndicator />
-              </Flex>
-              <Flex
-                gap={2}
-                wrap="wrap"
-                css={{ '& > *': { maxWidth: '100%', minWidth: 0 } }}
-              >
-                <Filters.SelectBacktest />
-              </Flex>
-            </Filters.Root>
-          </Stack>
-        )}
         <Box
           position="relative"
           flex="1"
@@ -199,7 +137,118 @@ const DashboardRoute = () => {
           minW={0}
           h={isScreenshotMode ? '100vh' : undefined}
         >
-          <MainChart screenshotMode={isScreenshotMode} backtestFiles={tests} />
+          <MainChart
+            screenshotMode={isScreenshotMode}
+            backtestFiles={tests}
+            toolbar={
+              isScreenshotMode ? undefined : (
+                <Filters.Root
+                  filters={filters}
+                  tickers={tickers}
+                  backtestFiles={tests}
+                  onChangeFilters={onChangeFilters}
+                  ensureTickersLoaded={ensureTickersLoaded}
+                  ensureBacktestsLoaded={ensureBacktestsLoaded}
+                >
+                  <Flex
+                    role="group"
+                    aria-label="Chart filters"
+                    minW={0}
+                    gap={1}
+                    align="center"
+                    wrap="wrap"
+                  >
+                    <Filters.SelectSymbol />
+                    <Filters.FavoriteIndicator />
+                    <Filters.SelectProvider />
+                    {Filters.SelectUniverse ? <Filters.SelectUniverse /> : null}
+                    <Separator orientation="vertical" h={5} mx={1} />
+                    <Filters.SelectInterval />
+                    <Separator orientation="vertical" h={5} mx={1} />
+                    <Filters.SelectIndicator />
+                    <Popover.Root positioning={{ placement: 'bottom-start' }}>
+                      <Popover.Trigger asChild>
+                        <Button
+                          size="xs"
+                          variant={filters.backtestId ? 'subtle' : 'ghost'}
+                          colorPalette={filters.backtestId ? 'teal' : 'gray'}
+                          title={filters.backtestId ?? undefined}
+                        >
+                          <FiLayers />{' '}
+                          {filters.backtestId ? 'Backtest active' : 'Backtest'}
+                        </Button>
+                      </Popover.Trigger>
+                      <Portal>
+                        <Popover.Positioner>
+                          <Popover.Content w="min(18rem, calc(100vw - 1rem))">
+                            <Popover.Body
+                              display="flex"
+                              flexDirection="column"
+                              gap={2}
+                            >
+                              <Popover.Title>Backtest overlay</Popover.Title>
+                              <Filters.SelectBacktest portalled={false} />
+                            </Popover.Body>
+                          </Popover.Content>
+                        </Popover.Positioner>
+                      </Portal>
+                    </Popover.Root>
+                    <Flex gap={1}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={
+                          contextCopied
+                            ? 'Context copied'
+                            : 'Copy context for AI'
+                        }
+                        title={
+                          contextCopied
+                            ? 'Context copied'
+                            : 'Copy context for AI'
+                        }
+                        onClick={async () => {
+                          const context = {
+                            provider: filters.provider,
+                            universe: filters.universe ?? 'crypto',
+                            symbol: filters.symbol,
+                            interval: filters.interval,
+                            ...(filters.backtestId
+                              ? {
+                                  backtestId: filters.backtestId,
+                                  backtestStrategy: filters.backtestStrategy,
+                                }
+                              : {}),
+                          };
+                          try {
+                            await navigator.clipboard.writeText(
+                              `TradeJS chart context: ${JSON.stringify(context)}. Use chart_get_context for market candles; for a saved backtest, inspect its recorded results. URL: ${window.location.href}`,
+                            );
+                            setContextCopied(true);
+                          } catch {
+                            setContextCopied(false);
+                          }
+                        }}
+                      >
+                        <FiCopy />
+                      </Button>
+                      <Button
+                        asChild
+                        size="xs"
+                        variant="subtle"
+                        colorPalette="teal"
+                        title="Run backtest"
+                      >
+                        <Link href="/routes/backtest?new=1">
+                          <FiPlay /> Run backtest
+                        </Link>
+                      </Button>
+                    </Flex>
+                  </Flex>
+                </Filters.Root>
+              )
+            }
+          />
         </Box>
       </PageLayout>
     </ClientOnly>

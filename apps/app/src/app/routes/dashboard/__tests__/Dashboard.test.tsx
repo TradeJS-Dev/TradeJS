@@ -16,8 +16,16 @@ jest.mock('@chakra-ui/react', () => ({
   Flex: ({ children, ...props }: any) => (
     <div data-testid={props['data-testid']}>{children}</div>
   ),
-  Stack: ({ children }: any) => <div>{children}</div>,
-  Heading: ({ children }: any) => <h1>{children}</h1>,
+  Separator: () => <hr />,
+  Portal: ({ children }: any) => <>{children}</>,
+  Popover: {
+    Root: ({ children }: any) => <div>{children}</div>,
+    Trigger: ({ children }: any) => <>{children}</>,
+    Positioner: ({ children }: any) => <>{children}</>,
+    Content: ({ children }: any) => <div>{children}</div>,
+    Body: ({ children }: any) => <div>{children}</div>,
+    Title: ({ children }: any) => <div>{children}</div>,
+  },
   Button: ({ children }: any) => <button>{children}</button>,
   ClientOnly: ({ children }: any) => <>{children}</>,
 }));
@@ -58,9 +66,9 @@ jest.mock('#shared/Filters', () => ({
 }));
 
 jest.mock('#app/components/Dashboard/MainChart', () => ({
-  MainChart: (props: unknown) => {
+  MainChart: (props: { toolbar?: React.ReactNode }) => {
     mainChartMock(props);
-    return <div data-testid="main-chart" />;
+    return <div data-testid="main-chart">{props.toolbar}</div>;
   },
 }));
 
@@ -114,10 +122,8 @@ describe('Dashboard route screenshot mode', () => {
 
     expect(screen.getByTestId('filters-root')).toBeTruthy();
     expect(
-      screen
-        .getByRole('link', { name: 'Create backtest' })
-        .getAttribute('href'),
-    ).toBe('/routes/backtest');
+      screen.getByRole('link', { name: 'Run backtest' }).getAttribute('href'),
+    ).toBe('/routes/backtest?new=1');
     expect(mainChartMock).toHaveBeenCalledWith(
       expect.objectContaining({
         screenshotMode: false,

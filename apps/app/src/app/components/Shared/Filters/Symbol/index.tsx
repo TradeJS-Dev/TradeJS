@@ -39,7 +39,9 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
         }
       }}
       items={tickers}
-      width="240px"
+      width="8.5rem"
+      size="xs"
+      aria-label="Symbol"
     />
   );
 };

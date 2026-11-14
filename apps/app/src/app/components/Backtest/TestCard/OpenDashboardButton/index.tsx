@@ -25,6 +25,8 @@ export const TestCardOpenDashboardButton = () => {
   return (
     <IconButton
       size="xs"
+      aria-label="Review trades on chart"
+      title="Review trades on chart"
       colorPalette="teal"
       variant="outline"
       onClick={() =>

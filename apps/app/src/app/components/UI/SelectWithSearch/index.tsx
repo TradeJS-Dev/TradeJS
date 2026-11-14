@@ -19,6 +19,7 @@ interface SelectWithSearchProps {
   defaultInputValue?: string;
   items: Items;
   placeholder?: string;
+  'aria-label'?: string;
   emptyState?: string;
   width?: string | number;
   multiple?: boolean;
@@ -36,6 +37,7 @@ export const SelectWithSearch = ({
   multiple = false,
   disabled = false,
   placeholder = 'Select',
+  'aria-label': ariaLabel,
   emptyState = 'No items found',
   width = '320px',
   size = 'sm',
@@ -116,14 +118,14 @@ export const SelectWithSearch = ({
       openOnClick
     >
       <Combobox.Control>
-        <Combobox.Input placeholder={placeholder} />
+        <Combobox.Input aria-label={ariaLabel} placeholder={placeholder} />
         <Combobox.IndicatorGroup>
           <Combobox.Trigger />
         </Combobox.IndicatorGroup>
       </Combobox.Control>
       <Portal>
         <Combobox.Positioner>
-          <Combobox.Content>
+          <Combobox.Content minW="14rem">
             <Combobox.Empty>{emptyState}</Combobox.Empty>
             {collection.items.map((item) => (
               <Combobox.Item item={item} key={item.value}>

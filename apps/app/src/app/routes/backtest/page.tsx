@@ -22,12 +22,10 @@ export default async function BacktestPage({
 
   return (
     <BacktestRunsPage
-      key={
-        study ? `${study.strategy}/${study.id}:${params.new ?? ''}` : 'all-runs'
-      }
+      key={`${study ? `${study.strategy}/${study.id}` : 'all-runs'}:${params.new ?? ''}`}
       study={study}
       studyUnavailable={params.study !== undefined && !study}
-      openForm={params.new === '1' && Boolean(study)}
+      openForm={params.new === '1'}
       researchAvailable={researchAvailable}
     />
   );

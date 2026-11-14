@@ -161,7 +161,7 @@ describe('store/useBacktest', () => {
     idbSetMock.mockResolvedValue(undefined);
   });
 
-  it('treats a missing order log as a non-fatal empty result', async () => {
+  it('reports a missing order log separately from an empty log', async () => {
     getBacktestFilesMock.mockResolvedValue([
       {
         value: 'BTCUSDT__1',
@@ -174,13 +174,14 @@ describe('store/useBacktest', () => {
     );
 
     const BacktestProbe = () => {
-      const { backtest, loading } = useBacktest('BTCUSDT__1');
+      const { backtest, loading, unavailable } = useBacktest('BTCUSDT__1');
 
       return (
         <div
           data-testid="backtest-probe"
           data-length={String(backtest.length)}
           data-loading={String(loading)}
+          data-unavailable={String(unavailable)}
         />
       );
     };
@@ -194,6 +195,9 @@ describe('store/useBacktest', () => {
       );
     });
     expect(getByTestId('backtest-probe').getAttribute('data-length')).toBe('0');
+    expect(getByTestId('backtest-probe').getAttribute('data-unavailable')).toBe(
+      'true',
+    );
   });
 });
 

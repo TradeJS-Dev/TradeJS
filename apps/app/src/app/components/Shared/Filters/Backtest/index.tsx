@@ -5,7 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Select } from '#ui';
 import { useFiltersContext } from '../context';
 
-export const SelectBacktest = () => {
+export const SelectBacktest = ({
+  portalled = true,
+}: {
+  portalled?: boolean;
+}) => {
   const { filters, backtestFiles, onChangeFilters, ensureBacktestsLoaded } =
     useFiltersContext();
 
@@ -133,6 +137,7 @@ export const SelectBacktest = () => {
   return (
     <>
       <Select
+        portalled={portalled}
         placeholder="Strategy"
         emptyState="No strategies for this symbol"
         defaultValue={[selectedStrategy]}
@@ -144,9 +149,11 @@ export const SelectBacktest = () => {
           }
         }}
         items={strategyItems}
-        width="220px"
+        width="full"
+        aria-label="Backtest strategy"
       />
       <Select
+        portalled={portalled}
         placeholder="Backtest"
         defaultValue={[filters.backtestId || '']}
         value={[filters.backtestId || '']}
@@ -164,7 +171,8 @@ export const SelectBacktest = () => {
           ...backtestItems,
         ]}
         disabled={!selectedStrategy}
-        width="240px"
+        width="full"
+        aria-label="Backtest result"
       />
     </>
   );

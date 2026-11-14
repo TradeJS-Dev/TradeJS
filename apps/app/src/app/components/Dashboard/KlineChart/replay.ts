@@ -10,11 +10,17 @@ export const startChartReplay = (
   candles: KlineChartData,
   timestamp: number,
 ): ChartReplay | null => {
-  if (!candles.length) return null;
-  const index = Math.min(
-    candles.length - 1,
-    findCandleIndex(candles, timestamp),
-  );
+  const first = candles[0];
+  const last = candles.at(-1);
+  if (
+    !first ||
+    !last ||
+    !Number.isFinite(timestamp) ||
+    timestamp < first.timestamp ||
+    timestamp > last.timestamp
+  )
+    return null;
+  const index = findCandleIndex(candles, timestamp);
   return { candles: [...candles], index };
 };
 

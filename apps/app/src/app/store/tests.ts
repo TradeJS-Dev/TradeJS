@@ -530,14 +530,18 @@ export const useBacktestMutations = () => {
 
 const emptyOrderLog: OrderLogData = [];
 
-export const useBacktest = (id: string | undefined) => {
+export const useBacktest = (id: string | undefined, strategyHint?: string) => {
   const backtest = useDataStore((s) => s.backtests.get(id || 'empty'));
   const setBacktest = useDataStore((s) => s.setBacktest);
-  const [settledId, setSettledId] = useState<string>();
+  const [request, setRequest] = useState<{
+    id: string;
+    unavailable: boolean;
+  }>();
   const tests = useTestListStore((s) => s.tests);
   const setTestList = useTestListStore((s) => s.setTest);
   const testItem = tests.find((item) => item.value === id);
-  const strategyName = testItem?.data?.strategyName as string | undefined;
+  const strategyName =
+    strategyHint ?? (testItem?.data?.strategyName as string | undefined);
 
   useEffect(() => {
     let active = true;
@@ -548,10 +552,13 @@ export const useBacktest = (id: string | undefined) => {
 
       const key = `backtest-${id}`;
 
+      let unavailable = false;
       try {
-        const cachedResult = (await get(key)) as OrderLogData | null;
+        const cachedResult = (await get(key).catch(
+          () => null,
+        )) as OrderLogData | null;
 
-        if (cachedResult && !_.isEmpty(cachedResult)) {
+        if (cachedResult) {
           setBacktest(id, cachedResult);
           return;
         }
@@ -566,14 +573,15 @@ export const useBacktest = (id: string | undefined) => {
 
         const backtestData = await getOrderLog(id, resolvedStrategy);
 
-        if (backtestData && !_.isEmpty(backtestData)) {
+        unavailable = backtestData === null;
+        if (backtestData) {
           setBacktest(id, backtestData);
-          await set(key, backtestData);
+          await set(key, backtestData).catch(() => undefined);
         }
       } catch {
-        // A missing or expired order-log artifact must not crash the dashboard.
+        unavailable = true;
       } finally {
-        if (active) setSettledId(id);
+        if (active) setRequest({ id, unavailable });
       }
     };
 
@@ -585,7 +593,10 @@ export const useBacktest = (id: string | undefined) => {
 
   return {
     backtest: backtest ?? emptyOrderLog,
-    loading: Boolean(id && !backtest && settledId !== id),
+    loading: Boolean(id && !backtest && request?.id !== id),
+    unavailable: Boolean(
+      id && !backtest && request?.id === id && request.unavailable,
+    ),
   };
 };
 

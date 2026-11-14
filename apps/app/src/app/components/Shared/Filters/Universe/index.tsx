@@ -30,7 +30,9 @@ export const SelectUniverse = () => {
         });
       }}
       items={items}
-      width="120px"
+      width="5.5rem"
+      size="xs"
+      aria-label="Market"
     />
   );
 };

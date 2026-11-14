@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Flex, Input, NativeSelect, Text } from '@chakra-ui/react';
+import { FiCheck } from 'react-icons/fi';
 import { dispose, init, type Chart, type Crosshair } from 'klinecharts';
 import type { Interval, Provider } from '@tradejs/types';
 import { intervalToMs } from '@tradejs/core/data';
@@ -115,36 +116,35 @@ export const useLinkedCharts = (
   }, [primary, secondary]);
 };
 
+export type LinkedMarket = Pick<UIFilters, 'symbol' | 'interval'> & {
+  provider: Provider;
+  universe: NonNullable<UIFilters['universe']>;
+};
+
 export const LinkedChart = ({
   id,
   primary,
   filters,
+  market,
+  onMarketChange,
   live,
   replayEnd,
 }: {
   id: string;
   primary: Chart | null;
   filters: UIFilters;
+  market: LinkedMarket;
+  onMarketChange: (market: LinkedMarket) => void;
   live: boolean;
   replayEnd?: number;
 }) => {
   const [chart, setChart] = useState<Chart | null>(null);
-  const [interval, setInterval] = useState<Interval>(
-    filters.interval === '60' ? '240' : '60',
-  );
-  const [provider, setProvider] = useState<Provider>(
-    filters.provider ?? 'bybit',
-  );
-  const [symbol, setSymbol] = useState(filters.symbol);
-  const [symbolInput, setSymbolInput] = useState(filters.symbol);
-  const sameProvider = provider === (filters.provider ?? 'bybit');
+  const { interval, provider, symbol } = market;
+  const [symbolInput, setSymbolInput] = useState(symbol);
   const { data, key, fulfilled, failed } = useData(
     {
       ...filters,
-      provider,
-      universe: sameProvider ? filters.universe : 'crypto',
-      interval,
-      symbol,
+      ...market,
     },
     live,
   );
@@ -179,34 +179,60 @@ export const LinkedChart = ({
   useLinkedCharts(primary, ready ? chart : null);
 
   return (
-    <Box as="section" aria-label="Linked chart" minW={0}>
+    <Box
+      as="section"
+      aria-label="Linked chart"
+      minW={0}
+      borderLeftWidth={{ xl: '1px' }}
+      borderColor="border"
+    >
       <Flex
         as="form"
-        gap={2}
+        gap={1}
         wrap="wrap"
-        mb={2}
+        px={2}
+        py={1}
+        borderBottomWidth="1px"
+        borderColor="border"
         onSubmit={(event) => {
           event.preventDefault();
           const next = symbolInput.trim().toUpperCase();
-          if (next) setSymbol(next);
+          if (next) {
+            setSymbolInput(next);
+            onMarketChange({ ...market, symbol: next });
+          }
         }}
       >
         <Input
           aria-label="Linked symbol"
-          size="sm"
-          w="9rem"
+          size="xs"
+          w="7rem"
           required
           value={symbolInput}
           onChange={(event) => setSymbolInput(event.target.value)}
         />
-        <Button type="submit" size="sm" variant="outline">
-          Apply symbol
+        <Button
+          type="submit"
+          size="xs"
+          variant="ghost"
+          disabled={
+            !symbolInput.trim() || symbolInput.trim().toUpperCase() === symbol
+          }
+          aria-label="Apply symbol"
+          title="Apply symbol"
+        >
+          <FiCheck />
         </Button>
-        <NativeSelect.Root size="sm" w="auto">
+        <NativeSelect.Root size="xs" w="auto">
           <NativeSelect.Field
             aria-label="Linked timeframe"
             value={interval}
-            onChange={(event) => setInterval(event.target.value as Interval)}
+            onChange={(event) =>
+              onMarketChange({
+                ...market,
+                interval: event.target.value as Interval,
+              })
+            }
           >
             <option value="1">1m</option>
             {intervals.map(({ label, value }) => (
@@ -217,11 +243,18 @@ export const LinkedChart = ({
           </NativeSelect.Field>
           <NativeSelect.Indicator />
         </NativeSelect.Root>
-        <NativeSelect.Root size="sm" w="auto">
+        <NativeSelect.Root size="xs" w="auto">
           <NativeSelect.Field
             aria-label="Linked exchange"
             value={provider}
-            onChange={(event) => setProvider(event.target.value as Provider)}
+            onChange={(event) =>
+              onMarketChange({
+                ...market,
+                provider: event.target.value as Provider,
+                universe:
+                  event.target.value === 'bybit' ? market.universe : 'crypto',
+              })
+            }
           >
             <option value="bybit">Bybit</option>
             <option value="binance">Binance</option>
@@ -230,15 +263,23 @@ export const LinkedChart = ({
           <NativeSelect.Indicator />
         </NativeSelect.Root>
       </Flex>
-      <Text fontSize="sm" color="gray.300" mb={2}>
-        {symbol} · {provider}
-        {failed
-          ? ' · Could not load candles'
-          : fulfilled && !displayed.length
-            ? ' · No candles in this window'
-            : ''}
-      </Text>
-      <Box position="relative" h={{ base: '20rem', lg: 'min(68vh, 52rem)' }}>
+      <Box
+        position="relative"
+        h={{ base: '25rem', lg: 'max(28rem, calc(100dvh - 112px))' }}
+      >
+        {(failed || (fulfilled && !displayed.length)) && (
+          <Text
+            role="status"
+            position="absolute"
+            left={3}
+            bottom={3}
+            zIndex={1}
+            fontSize="xs"
+            color="fg.muted"
+          >
+            {failed ? 'Could not load candles' : 'No candles in this window'}
+          </Text>
+        )}
         <div id={id} role="img" aria-label={`Linked chart for ${symbol}`} />
         {!fulfilled && <ChartSkeleton />}
       </Box>

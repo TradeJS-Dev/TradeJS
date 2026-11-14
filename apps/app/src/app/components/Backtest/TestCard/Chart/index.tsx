@@ -31,7 +31,7 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
   const { testResult } = useTestContext();
   const { test, stat } = testResult;
   const { compareList } = useTestsCompare();
-  const { backtest } = useBacktest(test.name);
+  const { backtest } = useBacktest(test.name, test.strategyName);
 
   const startTimestamp = test.options.start ?? testResult.orderLog[0]?.[0] ?? 0;
   const endTimestamp =

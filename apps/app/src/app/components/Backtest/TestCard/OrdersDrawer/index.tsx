@@ -98,7 +98,10 @@ export const TestCardOrdersDrawerPanel = ({
   const {
     testResult: { test },
   } = useTestContext();
-  const { backtest, loading } = useBacktest(open ? test.name : undefined);
+  const { backtest, loading, unavailable } = useBacktest(
+    open ? test.name : undefined,
+    test.strategyName,
+  );
   const orders = useMemo(() => backtest.map(mapBacktestOrder), [backtest]);
 
   return (
@@ -108,7 +111,11 @@ export const TestCardOrdersDrawerPanel = ({
       orders={orders}
       rowHeight={BACKTEST_ORDER_ROW_HEIGHT}
       statusFilterOptions={backtestStatusFilterOptions}
-      emptyText="No orders for this backtest."
+      emptyText={
+        unavailable
+          ? 'The order log for this backtest is unavailable.'
+          : 'This backtest recorded no orders.'
+      }
       loading={loading}
       onOpenChange={onOpenChange}
     />

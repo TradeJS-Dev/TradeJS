@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Box,
@@ -8,16 +14,27 @@ import {
   Flex,
   Grid,
   Input,
+  Popover,
+  Portal,
+  Separator,
+  chakra,
   NativeSelect,
   Text,
 } from '@chakra-ui/react';
+import {
+  FiChevronLeft,
+  FiChevronRight,
+  FiColumns,
+  FiRewind,
+  FiSquare,
+} from 'react-icons/fi';
 import { init, dispose, type Chart } from 'klinecharts';
 import { intervalToMs } from '@tradejs/core/data';
 import { toMs } from '@tradejs/core/time';
 import { formatTimeSeriesTooltipTimestamp } from '#app/lib/timeSeriesChart';
 import type { Items, UIFilters } from '#app/types/ui';
 import { ChartDrawings } from './ChartDrawings';
-import { LinkedChart } from './LinkedChart';
+import { LinkedChart, type LinkedMarket } from './LinkedChart';
 import { TradeReview, type TradeSelection } from './TradeReview';
 import {
   compareTradeEntries,
@@ -62,6 +79,10 @@ interface KlineChartProps {
   live?: boolean;
   interactive?: boolean;
   backtestFiles?: Items;
+  toolbar?: ReactNode;
+  linkedMarket?: LinkedMarket;
+  onLinkedMarketChange?: (market: LinkedMarket) => void;
+  onToggleLinked?: () => void;
 }
 
 const emptyOrders: OrderLogData = [];
@@ -74,18 +95,24 @@ export const KlineChart = ({
   live = true,
   interactive = false,
   backtestFiles = [],
+  toolbar,
+  linkedMarket,
+  onLinkedMarketChange,
+  onToggleLinked,
 }: KlineChartProps) => {
   const [chart, setChart] = useState<Chart | null>(null);
   const [replay, setReplay] = useState<ChartReplay | null>(null);
-  const [replayDate, setReplayDate] = useState('');
   const [comparison, setComparison] = useState('');
-  const [linked, setLinked] = useState(false);
+  const [replayError, setReplayError] = useState(false);
   const [selected, setSelected] = useState<TradeSelection | null>(null);
   const [highlight, setHighlight] = useState<{
     from: number;
     to: number;
   } | null>(null);
-  const primary = useBacktestStore(filters.backtestId || undefined);
+  const primary = useBacktestStore(
+    filters.backtestId || undefined,
+    filters.backtestStrategy || undefined,
+  );
   const comparisonId =
     filters.backtestId && filters.backtestId !== comparison ? comparison : '';
   const secondary = useBacktestStore(comparisonId || undefined);
@@ -237,7 +264,7 @@ export const KlineChart = ({
     return () => observer.disconnect();
   }, [chart, historyReady, highlight]);
 
-  const startReplay = () => {
+  const startReplay = (date: string) => {
     const row = rows.find(
       ({ run, id }) => run === selected?.run && id === selected?.id,
     );
@@ -247,13 +274,19 @@ export const KlineChart = ({
       signalTime === undefined
         ? Math.max(0, data.length - 51)
         : Math.max(0, findCandleIndex(data, toMs(signalTime)) - 5);
-    const timestamp = replayDate
-      ? new Date(replayDate).getTime()
+    const timestamp = date
+      ? new Date(date).getTime()
       : data[beforeSignal]?.timestamp;
-    if (timestamp === undefined || !Number.isFinite(timestamp)) return;
+    const nextReplay =
+      timestamp === undefined ? null : startChartReplay(data, timestamp);
+    if (!nextReplay) {
+      setReplayError(true);
+      return;
+    }
+    setReplayError(false);
     setSelected(null);
     setHighlight(null);
-    setReplay(startChartReplay(data, timestamp));
+    setReplay(nextReplay);
   };
 
   useResize(chart, id);
@@ -336,81 +369,150 @@ export const KlineChart = ({
   if (!interactive) return chartContents;
 
   return (
-    <Flex direction="column" gap={3} w="full" minW={0}>
-      <Flex gap={2} wrap="wrap" align="center">
+    <Flex direction="column" w="full" minW={0}>
+      <Flex
+        as="header"
+        aria-label="Chart controls"
+        gap={1}
+        px={2}
+        py={1}
+        wrap="wrap"
+        align="center"
+        borderBottomWidth="1px"
+        borderColor="border"
+      >
+        {toolbar}
+        {toolbar && <Separator orientation="vertical" h={5} mx={1} />}
         {replay ? (
           <>
             <Button
-              size="sm"
-              variant="outline"
+              size="xs"
+              variant="ghost"
+              aria-label="Previous candle"
+              title="Previous candle"
               disabled={replay.index === 0}
               onClick={() => setReplay(stepChartReplay(replay, -1))}
             >
-              Previous candle
+              <FiChevronLeft />
             </Button>
             <Button
-              size="sm"
-              variant="outline"
+              size="xs"
+              variant="ghost"
+              aria-label="Next candle"
+              title="Next candle"
               disabled={replay.index + 1 === replay.candles.length}
               onClick={() => setReplay(stepChartReplay(replay, 1))}
             >
-              Next candle
+              <FiChevronRight />
             </Button>
             <Button
-              size="sm"
+              size="xs"
+              variant="subtle"
+              colorPalette="teal"
+              aria-label="End replay"
+              title="End replay"
               onClick={() => {
                 setReplay(null);
                 setSelected(null);
                 setHighlight(null);
               }}
             >
-              End replay
+              <FiSquare />
             </Button>
-            <Text fontSize="sm" role="status">
+            <Text
+              fontSize="xs"
+              color="fg.muted"
+              role="status"
+              fontVariantNumeric="tabular-nums"
+              px={1}
+            >
               {formatTimeSeriesTooltipTimestamp(cutoff)} · {replay.index + 1} /{' '}
               {replay.candles.length}
             </Text>
           </>
         ) : (
-          <Flex
-            as="form"
-            gap={2}
-            align="center"
-            wrap="wrap"
-            onSubmit={(event) => {
-              event.preventDefault();
-              startReplay();
-            }}
-          >
-            <Input
-              aria-label="Replay start date and time"
-              type="datetime-local"
-              size="sm"
-              w="auto"
-              value={replayDate}
-              onChange={(event) => setReplayDate(event.target.value)}
-            />
-            <Button
-              size="sm"
-              type="submit"
-              variant="outline"
-              disabled={!historyReady}
-            >
-              Start replay
-            </Button>
-          </Flex>
+          <Popover.Root positioning={{ placement: 'bottom-start' }}>
+            <Popover.Trigger asChild>
+              <Button size="xs" variant="ghost">
+                <FiRewind /> Replay
+              </Button>
+            </Popover.Trigger>
+            <Portal>
+              <Popover.Positioner>
+                <Popover.Content w="min(18rem, calc(100vw - 1rem))">
+                  <Popover.Body>
+                    <chakra.form
+                      display="flex"
+                      flexDirection="column"
+                      gap={2}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const date = new FormData(event.currentTarget).get(
+                          'date',
+                        );
+                        startReplay(typeof date === 'string' ? date : '');
+                      }}
+                    >
+                      <Popover.Title asChild>
+                        <label htmlFor={`${id}-replay-start`}>
+                          Replay start
+                        </label>
+                      </Popover.Title>
+                      <Input
+                        id={`${id}-replay-start`}
+                        name="date"
+                        aria-label="Replay start date and time"
+                        type="datetime-local"
+                        size="sm"
+                        aria-invalid={replayError || undefined}
+                        aria-describedby={`${id}-replay-help`}
+                        onChange={() => setReplayError(false)}
+                      />
+                      <Text
+                        id={`${id}-replay-help`}
+                        fontSize="xs"
+                        color="fg.muted"
+                      >
+                        {historyReady
+                          ? 'Leave blank for the suggested candle. Dates use your local time.'
+                          : 'Replay is available when candles are loaded.'}
+                      </Text>
+                      {replayError && (
+                        <Text role="alert" color="fg.error" fontSize="xs">
+                          Choose a date within the loaded history.
+                        </Text>
+                      )}
+                      <Button
+                        size="xs"
+                        type="submit"
+                        colorPalette="teal"
+                        disabled={!historyReady}
+                      >
+                        Start replay
+                      </Button>
+                    </chakra.form>
+                  </Popover.Body>
+                </Popover.Content>
+              </Popover.Positioner>
+            </Portal>
+          </Popover.Root>
         )}
-        <Button
-          size="sm"
-          variant="outline"
-          aria-pressed={linked}
-          onClick={() => setLinked(!linked)}
-        >
-          Linked chart
-        </Button>
+        {onToggleLinked && (
+          <Button
+            size="xs"
+            variant={linkedMarket ? 'subtle' : 'ghost'}
+            colorPalette={linkedMarket ? 'teal' : 'gray'}
+            aria-label="Linked chart"
+            title="Linked chart"
+            aria-pressed={Boolean(linkedMarket)}
+            onClick={onToggleLinked}
+          >
+            <FiColumns />
+          </Button>
+        )}
         {filters.backtestId && (
           <NativeSelect.Root
-            size="sm"
+            size="xs"
             w="auto"
             maxW="full"
             disabled={Boolean(replay)}
@@ -438,15 +540,6 @@ export const KlineChart = ({
           </NativeSelect.Root>
         )}
       </Flex>
-      {chart && (
-        <ChartDrawings
-          key={`${key}:${replay !== null}`}
-          chart={chart}
-          storageKey={`tradejs:chart-drawings:${key}`}
-          cutoff={cutoff}
-          ready={historyReady}
-        />
-      )}
       {filters.backtestId && (
         <TradeReview
           rows={rows}
@@ -454,37 +547,55 @@ export const KlineChart = ({
           selectTrade={selectTrade}
           comparing={comparing}
           loading={primary.loading || secondary.loading}
+          unavailable={primary.unavailable}
+          comparisonUnavailable={secondary.unavailable}
+          replaying={Boolean(replay)}
         />
       )}
-      <Grid
-        templateColumns={{
-          base: 'minmax(0, 1fr)',
-          xl: linked ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-        }}
-        gap={3}
-        alignItems="end"
-      >
-        <Box
-          position="relative"
-          minW={0}
-          h={{ base: '25rem', lg: 'min(68vh, 52rem)' }}
-        >
-          {chartContents}
-        </Box>
-        {linked && (
-          <LinkedChart
-            id={`${id}-linked`}
-            primary={historyReady ? chart : null}
-            filters={marketFilters}
-            live={live && !replay}
-            replayEnd={
-              cutoff === undefined
-                ? undefined
-                : cutoff + intervalToMs(filters.interval)
-            }
+      <Flex align="stretch" minW={0}>
+        {chart && (
+          <ChartDrawings
+            key={`${key}:${replay !== null}`}
+            chart={chart}
+            storageKey={`tradejs:chart-drawings:${key}`}
+            cutoff={cutoff}
+            ready={historyReady}
           />
         )}
-      </Grid>
+        <Grid
+          flex="1"
+          minW={0}
+          templateColumns={{
+            base: 'minmax(0, 1fr)',
+            xl: linkedMarket ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+          }}
+          gap={0}
+          alignItems="end"
+        >
+          <Box
+            position="relative"
+            minW={0}
+            h={{ base: '25rem', lg: 'max(28rem, calc(100dvh - 112px))' }}
+          >
+            {chartContents}
+          </Box>
+          {linkedMarket && onLinkedMarketChange && (
+            <LinkedChart
+              id={`${id}-linked`}
+              primary={historyReady ? chart : null}
+              filters={marketFilters}
+              market={linkedMarket}
+              onMarketChange={onLinkedMarketChange}
+              live={live && !replay}
+              replayEnd={
+                cutoff === undefined
+                  ? undefined
+                  : cutoff + intervalToMs(filters.interval)
+              }
+            />
+          )}
+        </Grid>
+      </Flex>
     </Flex>
   );
 };

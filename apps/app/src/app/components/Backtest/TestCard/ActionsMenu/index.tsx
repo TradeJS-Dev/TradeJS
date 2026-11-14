@@ -93,7 +93,7 @@ export const TestCardActionsMenu = () => {
                 Stat
               </Menu.Item>
               <Menu.Item value="dashboard" onClick={openDashboard}>
-                Dashboard
+                Review trades on chart
               </Menu.Item>
               <Menu.Separator />
               <Menu.Item

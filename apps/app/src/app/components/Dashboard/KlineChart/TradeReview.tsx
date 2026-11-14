@@ -27,12 +27,18 @@ export const TradeReview = ({
   selectTrade,
   comparing,
   loading,
+  unavailable,
+  comparisonUnavailable,
+  replaying,
 }: {
   rows: TradeRow[];
   selected: TradeSelection | null;
   selectTrade: (selection: TradeSelection) => void;
   comparing: boolean;
   loading: boolean;
+  unavailable?: boolean;
+  comparisonUnavailable?: boolean;
+  replaying: boolean;
 }) => {
   const [filter, setFilter] = useState('all');
   const visible = rows.filter(({ trade, difference }) => {
@@ -50,7 +56,33 @@ export const TradeReview = ({
   );
 
   return (
-    <Box as="section" aria-label="Backtest trades" minW={0}>
+    <Box
+      as="section"
+      aria-label="Backtest trades"
+      minW={0}
+      px={2}
+      py={2}
+      borderBottomWidth="1px"
+      borderColor="border"
+    >
+      <Flex align="center" gap={2} mb={2} wrap="wrap">
+        <Text fontSize="sm" fontWeight="semibold">
+          Backtest trades
+        </Text>
+        <Text fontSize="xs" color="fg.muted" role="status">
+          {loading
+            ? 'Loading trades…'
+            : unavailable
+              ? 'Order log unavailable'
+              : `${visible.length} of ${rows.length} trades`}
+          {replaying && ' · Up to the replay candle'}
+        </Text>
+        {comparisonUnavailable && (
+          <Text fontSize="xs" color="fg.error">
+            Comparison order log unavailable
+          </Text>
+        )}
+      </Flex>
       <Flex gap={2} wrap="wrap" align="end">
         <NativeSelect.Root size="sm" w="auto">
           <NativeSelect.Field
@@ -70,6 +102,7 @@ export const TradeReview = ({
           maxW="full"
           flex="1"
           minW="min(12rem, 100%)"
+          disabled={!visible.length}
         >
           <NativeSelect.Field
             aria-label="Select trade"
@@ -82,9 +115,13 @@ export const TradeReview = ({
             <option value="" disabled>
               {loading
                 ? 'Loading trades…'
-                : visible.length
-                  ? 'Select trade'
-                  : 'No matching trades'}
+                : unavailable
+                  ? 'Order log unavailable'
+                  : visible.length
+                    ? 'Select trade'
+                    : rows.length
+                      ? 'No matching trades'
+                      : 'No recorded trades'}
             </option>
             {visible.map(({ run, id, trade, difference }, rowIndex) => (
               <option key={`${run}:${id}`} value={rowIndex}>
@@ -111,7 +148,7 @@ export const TradeReview = ({
           disabled={index + 1 >= visible.length}
           onClick={() => selectTrade(visible[index + 1])}
         >
-          Next trade
+          {index < 0 ? 'First trade' : 'Next trade'}
         </Button>
       </Flex>
       {active && (

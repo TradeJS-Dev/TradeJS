@@ -5,7 +5,7 @@ import { getDefaultMarketSymbol } from '#app/lib/marketDefaults';
 import { useFiltersContext } from '../context';
 
 const items = [
-  { value: 'bybit', label: 'ByBit' },
+  { value: 'bybit', label: 'Bybit' },
   { value: 'binance', label: 'Binance' },
   { value: 'coinbase', label: 'Coinbase' },
 ];
@@ -32,7 +32,9 @@ export const SelectProvider = () => {
       defaultValue={[filters.provider || 'bybit']}
       onChange={onChange}
       items={items}
-      width="140px"
+      width="6.5rem"
+      size="xs"
+      aria-label="Exchange"
     />
   );
 };

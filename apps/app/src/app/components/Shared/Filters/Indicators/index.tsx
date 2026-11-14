@@ -15,7 +15,9 @@ export const SelectIndicator = () => {
       placeholder="Indicators"
       items={indicatorsItems}
       multiple={true}
-      width="240px"
+      width="8.5rem"
+      size="xs"
+      aria-label="Indicators"
     />
   );
 };

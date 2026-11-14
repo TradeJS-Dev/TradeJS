@@ -41,6 +41,7 @@ const chartMock = {
   setBarSpace: jest.fn(),
   scrollToRealTime: jest.fn(),
   createOverlay: jest.fn((overlay: OverlayCreate) => overlay.id),
+  overrideOverlay: jest.fn(() => false),
   removeOverlay: jest.fn(),
   getVisibleRange: jest.fn(() => ({ realTo: 0 })),
   scrollToDataIndex: jest.fn(),
@@ -297,7 +298,7 @@ describe('Dashboard/KlineChart', () => {
       }),
     );
   });
-  it('navigates to trades, compares a second run and reveals orders only as replay advances', () => {
+  it('navigates to trades, compares a second run and reveals orders only as replay advances', async () => {
     const start = 1_790_000_000_000;
     const step = 900_000;
     const history = Array.from({ length: 12 }, (_, index) =>
@@ -381,7 +382,18 @@ describe('Dashboard/KlineChart', () => {
     expect(chartMock.setBarSpace).toHaveBeenCalled();
     expect(chartMock.scrollToDataIndex).toHaveBeenCalledWith(11);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
+    const replayInput = await screen.findByLabelText(
+      'Replay start date and time',
+    );
+    fireEvent.change(replayInput, { target: { value: '2030-01-01T00:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Start replay' }));
+    expect(screen.queryByRole('button', { name: 'End replay' })).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('loaded history');
+    fireEvent.change(replayInput, { target: { value: '' } });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start replay' }),
+    );
     expect(displayed).toEqual(history.slice(0, 2));
     expect(screen.queryByRole('option', { name: /Exit changed/ })).toBeNull();
     expect(useDataMock).toHaveBeenLastCalledWith(expect.anything(), false);
@@ -425,6 +437,19 @@ describe('Dashboard/KlineChart', () => {
       </ChakraProvider>
     );
     const { unmount } = render(view);
+    const measure = screen.getByRole('button', { name: 'Measure' });
+    fireEvent.click(measure);
+    chartMock.convertFromPixel.mockReturnValue([{ timestamp: 1, value: 101 }]);
+    fireEvent.click(canvasPane);
+    expect(chartMock.createOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'manual-chart-drawing-preview' }),
+    );
+    fireEvent.keyDown(measure, { key: 'Escape' });
+    expect(measure.getAttribute('aria-pressed')).toBe('false');
+    expect(chartMock.removeOverlay).toHaveBeenCalledWith({
+      id: 'manual-chart-drawing-preview',
+    });
+    expect(localStorage.getItem('tradejs:chart-drawings:market')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Price level' }));
     const points = [{ timestamp: 2, value: 102 }];
     chartMock.convertFromPixel.mockReturnValue(points);

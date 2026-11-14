@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import {
   Portal,
   Stack,
@@ -19,6 +19,7 @@ interface SelectProps {
   emptyState?: string;
   width?: string | number;
   multiple?: boolean;
+  portalled?: boolean;
   disabled?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
@@ -30,6 +31,7 @@ export const Select = ({
   value,
   items,
   multiple = false,
+  portalled = true,
   placeholder = 'Select',
   'aria-label': ariaLabel,
   emptyState = 'No items found',
@@ -46,6 +48,8 @@ export const Select = ({
       }),
     [items],
   );
+
+  const PopupContainer = portalled ? Portal : Fragment;
 
   return (
     <UISelect.Root
@@ -67,7 +71,7 @@ export const Select = ({
           <UISelect.Indicator />
         </UISelect.IndicatorGroup>
       </UISelect.Control>
-      <Portal>
+      <PopupContainer>
         <UISelect.Positioner>
           <UISelect.Content>
             {collection.items.length === 0 ? (
@@ -91,7 +95,7 @@ export const Select = ({
             )}
           </UISelect.Content>
         </UISelect.Positioner>
-      </Portal>
+      </PopupContainer>
     </UISelect.Root>
   );
 };

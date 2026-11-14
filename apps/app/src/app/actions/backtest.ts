@@ -24,7 +24,7 @@ export const getOrderLog = async (
   }
 
   const data = await API.get<{ orderLog?: OrderLogData }>(
-    `${API_BASE}/order-log/${strategyName}/${name}`,
+    `${API_BASE}/order-log/${encodeURIComponent(strategyName)}/${encodeURIComponent(name)}`,
   );
 
   return data.orderLog ?? null;
