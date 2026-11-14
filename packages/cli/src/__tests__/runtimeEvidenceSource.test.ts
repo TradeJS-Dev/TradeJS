@@ -10,6 +10,7 @@ import type {
 import {
   buildRuntimeEvidenceLineageScopes,
   loadReplayRuntimeEvidenceSource,
+  loadReplayRuntimeEvidenceMetadata,
 } from '../lib/replay/runtimeEvidenceSource';
 
 const lineage: RuntimeLineage = {
@@ -111,6 +112,7 @@ describe('runtime evidence replay source', () => {
         userName: 'root',
         window: { startTime: 100, endTime: 400 },
         deployment,
+        delistings: { ETHUSDT: 200 },
         runtime: {
           trades: [{ trade }],
           signals: [{ signal: signal(100) }],
@@ -131,6 +133,10 @@ describe('runtime evidence replay source', () => {
     expect(result.signals).toHaveLength(1);
     expect(result.evaluations).toHaveLength(1);
     expect(result.deployment).toEqual(deployment);
+    await expect(
+      loadReplayRuntimeEvidenceMetadata({ filePath, projectRoot }),
+    ).resolves.toMatchObject({ delistings: new Map([['ETHUSDT', 200]]) });
+
     expect(result.lineageScopes).toEqual([
       expect.objectContaining({
         strategy: 'TrendShift',

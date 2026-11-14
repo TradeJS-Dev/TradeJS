@@ -346,6 +346,100 @@ test.each([{ times: [] }, { times: [-60, -45, -30, -15, 0, 15, 45, 60] }])(
   },
 );
 
+const delistedSymbolFixture = (baseTimes: number[]) => {
+  const f = fixture();
+  f.context.preparedRun.tickers.push('AGIUSDT');
+  f.context.preparedRun.window.end = 120 * minute;
+  f.context.delistings = new Map([['AGIUSDT', 60 * minute]]);
+  f.data['15'] = candles([
+    -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120,
+  ]);
+  f.data['60'] = candles([-60, 0, 60, 120]);
+  f.context.references = f.references('15');
+  jest
+    .mocked(f.market.kline)
+    .mockImplementation(async ({ symbol, interval }) =>
+      symbol === 'AGIUSDT' && interval === '15'
+        ? candles(baseTimes)
+        : f.data[interval === '60' ? '60' : '15'],
+    );
+  return f;
+};
+
+test('stops a delisted contract at the cutoff and continues both intervals for the other contract', async () => {
+  const f = delistedSymbolFixture([-60, -45, -30, -15, 0, 15, 30, 45]);
+  const evaluated: Array<[string, number]> = [];
+  for (const strategy of f.context.strategies) {
+    strategy.strategyCreator =
+      async ({ symbol }) =>
+      async (candle) => {
+        evaluated.push([symbol, candle.timestamp / minute]);
+        return 'NO_SIGNAL';
+      };
+  }
+  const plan = await prepareMultiIntervalHistoricalReplay(
+    f.context,
+    f.preparationAdapters,
+    async (interval) => f.references(interval),
+  );
+  const advance = jest.spyOn(f.connector, 'advanceMarket');
+  await runPlan(f, plan);
+
+  expect(
+    advance.mock.calls
+      .filter(([row]) => row.symbol === 'AGIUSDT')
+      .map(([row]) => row.candle.timestamp / minute),
+  ).toEqual([0, 15, 30, 45]);
+  expect(evaluated.filter(([symbol]) => symbol === 'AGIUSDT')).toEqual([
+    ['AGIUSDT', 0],
+    ['AGIUSDT', 15],
+    ['AGIUSDT', 30],
+  ]);
+  expect(
+    evaluated.filter(([symbol, time]) => symbol === 'BTCUSDT' && time === 60),
+  ).toHaveLength(2);
+  expect(evaluated).toContainEqual(['BTCUSDT', 120]);
+});
+
+test('rejects a missing base candle before a confirmed delisting', async () => {
+  const f = delistedSymbolFixture([-60, -45, -30, -15, 0, 15, 45]);
+  await expect(
+    prepareMultiIntervalHistoricalReplay(
+      f.context,
+      f.preparationAdapters,
+      async (interval) => f.references(interval),
+    ),
+  ).rejects.toThrow('Missing base replay candle: AGIUSDT at 1800000');
+});
+
+test('reports an open position requiring settlement at delisting', async () => {
+  const f = delistedSymbolFixture([-60, -45, -30, -15, 0, 15, 30, 45]);
+  const baseStrategy = f.context.strategies[0];
+  baseStrategy.strategyCreator =
+    async ({ symbol }) =>
+    async (candle) => {
+      if (symbol === 'AGIUSDT' && candle.timestamp === 0) {
+        await f.connector.placeOrder({
+          symbol,
+          timestamp: candle.timestamp,
+          direction: 'LONG',
+          price: 100,
+          qty: 1,
+        });
+      }
+      return 'NO_SIGNAL';
+    };
+  const plan = await prepareMultiIntervalHistoricalReplay(
+    f.context,
+    f.preparationAdapters,
+    async (interval) => f.references(interval),
+  );
+
+  await expect(runPlan(f, plan)).rejects.toThrow(
+    'Replay cannot settle an open position for AGIUSDT at delisting (3600000)',
+  );
+});
+
 test('releases prepared base caches when higher-timeframe references fail', async () => {
   const f = fixture();
   await expect(

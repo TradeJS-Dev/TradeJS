@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import args from 'args';
 import chalk from 'chalk';
+import { getConnectorCreatorByName } from '@tradejs/node/connectors';
 import {
   buildRuntimeEvidenceReportPayload,
   collectRuntimeDebugEvidence,
@@ -17,6 +18,7 @@ import {
   activeRuntimeEvidenceStrategies,
   resolveRuntimeEvidenceDeploymentSnapshot,
   resolveRuntimeEvidenceTickerUniverse,
+  type RuntimeEvidenceDeploymentSnapshot,
 } from '../lib/runtimeEvidenceDeployment';
 
 args.option(['u', 'user'], 'Use user config', 'root');
@@ -114,6 +116,27 @@ const parseStrategyFilter = (value: unknown): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const loadRuntimeEvidenceDelistings = async (
+  deployment: RuntimeEvidenceDeploymentSnapshot,
+  userName: string,
+) => {
+  try {
+    const create = await getConnectorCreatorByName(
+      deployment.connectorName,
+      projectRoot,
+    );
+    const connector = await create?.({
+      userName,
+      accountId: deployment.accountId,
+      deploymentId: deployment.id,
+    });
+    return await connector?.listDelistings?.();
+  } catch (error) {
+    console.warn(chalk.yellow(`Could not verify delistings: ${String(error)}`));
+    return undefined;
+  }
+};
+
 export const runtimeEvidence = async () => {
   const { startTime, endTime, source } = resolveWindow();
   const deploymentId = String(flags.deployment);
@@ -169,6 +192,13 @@ export const runtimeEvidence = async () => {
       : [deploymentSnapshot.deploymentCompositionId],
     ignoreUnknownCompositions: !publishDir,
   });
+  const delistings =
+    publishDir && compositionRows.length
+      ? await loadRuntimeEvidenceDelistings(
+          deploymentSnapshot,
+          String(flags.user),
+        )
+      : undefined;
   const artifacts = compositionRows.map((composition) => {
     const strategies = activeRuntimeEvidenceStrategies(composition.deployment)
       .map(({ strategyName }) => strategyName)
@@ -191,8 +221,23 @@ export const runtimeEvidence = async () => {
       lineageScopes: composition.lineageScopes,
       fallbackTickers: composition.fallbackTickers,
     });
+    const delistingsBySymbol = deployment.tickers?.flatMap((symbol) => {
+      if (
+        deployment.provider !== deploymentSnapshot.provider ||
+        deployment.accountId !== deploymentSnapshot.accountId ||
+        deployment.connectorName !== deploymentSnapshot.connectorName
+      )
+        return [];
+      const timestamp = delistings?.get(symbol);
+      return timestamp != null && timestamp <= endTime
+        ? [[symbol, timestamp] as const]
+        : [];
+    });
     return {
       artifact: {
+        ...(delistingsBySymbol?.length
+          ? { delistings: Object.fromEntries(delistingsBySymbol) }
+          : {}),
         reportType: 'runtime-evidence',
         generatedAt: Date.now(),
         ...(composition.producer ? { producer: composition.producer } : {}),

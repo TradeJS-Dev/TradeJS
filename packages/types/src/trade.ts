@@ -632,6 +632,8 @@ export interface Connector {
   accountId?: string;
   deploymentId?: string;
   listInstruments: ListInstruments;
+  /** Confirmed end of trading (epoch milliseconds), keyed by symbol. */
+  listDelistings?: () => Promise<ReadonlyMap<string, number>>;
   kline: Kline;
   getState: () => Promise<object>;
   setState: (state: object) => Promise<void>;

@@ -255,8 +255,10 @@ export const runHistoricalSignalsReplay = async ({
   collectSignals = true,
   collectPortfolioDiagnostics = false,
   decisionTraceTargets,
+  delistings,
 }: {
   preparedRun: PreparedRunEnvironment;
+  delistings?: ReadonlyMap<string, number>;
   interval: Interval;
   runtimeStrategies: ReplayStrategyConfig[];
   references?: HistoricalReplayReferenceData;
@@ -308,6 +310,7 @@ export const runHistoricalSignalsReplay = async ({
       userName: replayUserName,
       projectRoot: replayProjectRoot,
       preparedRun,
+      delistings,
       interval,
       connectorName,
       replayConnector,

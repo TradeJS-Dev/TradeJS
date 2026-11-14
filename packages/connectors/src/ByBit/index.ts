@@ -454,6 +454,54 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
     return instruments;
   };
 
+  const listDelistings = async () => {
+    const client = await getPublicClient();
+    const delistings = new Map<string, number>();
+    if (!client) return delistings;
+
+    let cursor: string | undefined;
+    do {
+      const response = await withTimeout(
+        client.getInstrumentsInfo({
+          category: BYBIT_CATEGORY,
+          status: 'Closed',
+          limit: LIMIT,
+          cursor,
+        }),
+        10_000,
+        'Bybit delistings',
+      );
+      if (response.retCode !== 0) {
+        throw new Error(
+          `Bybit delistings failed: ${response.retCode} ${response.retMsg}`,
+        );
+      }
+
+      for (const item of response.result.list) {
+        const symbol = item.symbol.trim().toUpperCase();
+        const timestamp = toFiniteNumberOrNull(item.deliveryTime);
+        if (
+          symbol &&
+          item.status === 'Closed' &&
+          item.contractType === 'LinearPerpetual' &&
+          timestamp !== null &&
+          Number.isSafeInteger(timestamp) &&
+          timestamp > 0
+        ) {
+          delistings.set(symbol, timestamp);
+        }
+      }
+
+      const nextCursor = response.result.nextPageCursor;
+      if (nextCursor && nextCursor === cursor) {
+        throw new Error('Bybit delistings pagination did not advance');
+      }
+      cursor = nextCursor;
+    } while (cursor);
+
+    return delistings;
+  };
+
   const loadInstrumentUniverse = (
     requestedUniverse: MarketUniverse,
   ): Promise<InstrumentDescriptor[]> => {
@@ -1044,6 +1092,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
     accountId: config.accountId,
     deploymentId: config.deploymentId,
     listInstruments,
+    listDelistings,
 
     getState: async () => state,
 

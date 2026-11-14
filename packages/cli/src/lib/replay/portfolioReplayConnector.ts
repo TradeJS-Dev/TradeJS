@@ -51,6 +51,7 @@ export type PortfolioReplayConnector = Connector & {
   __tradejsReplayConnector: true;
   __tradejsTestConnector: true;
   advanceMarket: (params: { symbol: string; candle: Candle }) => Promise<void>;
+  delistSymbol: (symbol: string, timestamp: number) => void;
   getReplayArtifacts: () => ReplayArtifacts;
   getMarkedEquity: () => number | null;
 };
@@ -95,6 +96,7 @@ export const createPortfolioReplayConnector = (
   let state = {};
   let amount = INITIAL_BACKTEST_AMOUNT;
   let executionTimestamp: number | null = null;
+  const delistedSymbols = new Set<string>();
   const positionsBySymbol = new Map<string, PositionState>();
   const currentPriceBySymbol = new Map<string, number>();
   const equityMarks = observeEquity ? new Map<string, number>() : undefined;
@@ -466,7 +468,10 @@ export const createPortfolioReplayConnector = (
         onRejected: _onRejected,
         ...submittedOrder
       } = order;
-      if (positionsBySymbol.has(order.symbol)) {
+      if (
+        delistedSymbols.has(order.symbol) ||
+        positionsBySymbol.has(order.symbol)
+      ) {
         return false;
       }
 
@@ -633,6 +638,15 @@ export const createPortfolioReplayConnector = (
       await checkSl({ symbol, candle });
       await checkTp({ symbol, candle });
       currentPriceBySymbol.set(symbol, candle.close);
+    },
+
+    delistSymbol: (symbol, timestamp) => {
+      if (positionsBySymbol.has(symbol)) {
+        throw new Error(
+          `Replay cannot settle an open position for ${symbol} at delisting (${timestamp}): settlement price is unavailable`,
+        );
+      }
+      delistedSymbols.add(symbol);
     },
 
     getMarkedEquity: () => {

@@ -2123,6 +2123,68 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('reads confirmed perpetual delisting times from every closed instruments page', async () => {
+    const getInstrumentsInfo = jest
+      .fn()
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'AGIUSDT',
+              status: 'Closed',
+              contractType: 'LinearPerpetual',
+              deliveryTime: '1794560400000',
+            },
+            {
+              symbol: 'FUTUREUSDT',
+              status: 'Closed',
+              contractType: 'LinearFutures',
+              deliveryTime: '1794560400000',
+            },
+          ],
+          nextPageCursor: 'page-2',
+        },
+      })
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'OTHERUSDT',
+              status: 'Closed',
+              contractType: 'LinearPerpetual',
+              deliveryTime: '1794560400000',
+            },
+            {
+              symbol: 'UNKNOWNUSDT',
+              status: 'Closed',
+              contractType: 'LinearPerpetual',
+              deliveryTime: '0',
+            },
+          ],
+          nextPageCursor: '',
+        },
+      });
+    mockedGetClient.mockResolvedValue({ getInstrumentsInfo } as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    await expect(connector.listDelistings?.()).resolves.toEqual(
+      new Map([
+        ['AGIUSDT', 1794560400000],
+        ['OTHERUSDT', 1794560400000],
+      ]),
+    );
+    expect(getInstrumentsInfo).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        category: 'linear',
+        status: 'Closed',
+        cursor: 'page-2',
+      }),
+    );
+  });
+
   it('discovers native Bybit TradFi instruments through linear symbol types', async () => {
     const getInstrumentsInfo = jest.fn(async ({ symbolType }) => ({
       retCode: 0,

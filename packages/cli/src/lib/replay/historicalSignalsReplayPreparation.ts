@@ -57,6 +57,7 @@ export type SymbolReplayRuntime = {
   symbol: string;
   timestampOffsetMs?: number;
   advanceMarket?: boolean;
+  signalCutoff?: number;
   replayData: KlineChartData;
   btcReplayData: KlineChartData;
   ethReplayData: KlineChartData;
@@ -78,12 +79,14 @@ export type HistoricalReplayPlan = {
   orderedTimestamps: number[];
   sharedReplayKeyPrefixes: string[];
   runtimeLineages: ReplayRuntimeLineageRecord[];
+  delistingsByTime?: ReadonlyMap<number, readonly string[]>;
 };
 
 export type HistoricalReplayPreparationContext = {
   userName: string;
   projectRoot: string;
   preparedRun: PreparedRunEnvironment;
+  delistings?: ReadonlyMap<string, number>;
   interval: Interval;
   connectorName: string;
   replayConnector: PortfolioReplayConnector;
@@ -279,15 +282,36 @@ export const prepareMultiIntervalHistoricalReplay = async (
     context.strategies.map((s) => s.strategyConfig.INTERVAL),
   );
   const baseMs = intervalToMs(context.interval);
+  const delistingsByTime = new Map<number, string[]>();
   const plan: HistoricalReplayPlan = {
     symbolRuntimes: [],
     orderedTimestamps: [],
     sharedReplayKeyPrefixes: [],
     runtimeLineages: [],
+    delistingsByTime,
   };
   const timestamps = new Set<number>();
+  const symbolsRequiringBaseCoverage = new Set<string>();
+  for (const symbol of context.preparedRun.tickers) {
+    const delistedAt = context.delistings?.get(symbol);
+    if (delistedAt == null || delistedAt > context.preparedRun.window.end + 1) {
+      continue;
+    }
+    // Expire the symbol even if a hook tries to trade it outside its strategy selection.
+    const timestamp = Math.max(context.preparedRun.window.start, delistedAt);
+    const symbols = delistingsByTime.get(timestamp) ?? [];
+    symbols.push(symbol);
+    delistingsByTime.set(timestamp, symbols);
+    timestamps.add(timestamp);
+    if (
+      context.strategies.some((strategy) =>
+        strategyIncludesSymbol(strategy, symbol),
+      )
+    ) {
+      symbolsRequiringBaseCoverage.add(symbol);
+    }
+  }
   const baseRuntimes = new Map<string, SymbolReplayRuntime>();
-  const validatedSymbols = new Set<string>();
   try {
     for (const interval of intervals) {
       const offset = intervalToMs(interval) - baseMs;
@@ -322,17 +346,8 @@ export const prepareMultiIntervalHistoricalReplay = async (
       for (const runtime of part.symbolRuntimes) {
         if (interval === context.interval) {
           baseRuntimes.set(runtime.symbol, runtime);
-        } else if (
-          runtime.strategies.length &&
-          !validatedSymbols.has(runtime.symbol)
-        ) {
-          assertBaseReplayCoverage(
-            baseRuntimes.get(runtime.symbol),
-            runtime.symbol,
-            context.preparedRun.window,
-            baseMs,
-          );
-          validatedSymbols.add(runtime.symbol);
+        } else if (runtime.strategies.length) {
+          symbolsRequiringBaseCoverage.add(runtime.symbol);
         }
         runtime.timestampOffsetMs = offset;
         runtime.advanceMarket = interval === context.interval;
@@ -347,6 +362,15 @@ export const prepareMultiIntervalHistoricalReplay = async (
           timestamps.add(scheduled);
       }
     }
+    for (const symbol of symbolsRequiringBaseCoverage) {
+      assertBaseReplayCoverage(
+        baseRuntimes.get(symbol),
+        symbol,
+        context.preparedRun.window,
+        baseMs,
+        context.delistings?.get(symbol),
+      );
+    }
     plan.orderedTimestamps = [...timestamps].sort((a, b) => a - b);
     return plan;
   } catch (error) {
@@ -360,11 +384,13 @@ const assertBaseReplayCoverage = (
   symbol: string,
   window: PreparedRunEnvironment['window'],
   baseMs: number,
+  delistedAt = Infinity,
 ) => {
+  const end = Math.min(window.end, delistedAt - baseMs);
   let index = 0;
   for (
     let timestamp = Math.ceil(window.start / baseMs) * baseMs;
-    timestamp <= window.end;
+    timestamp <= end;
     timestamp += baseMs
   ) {
     if (runtime?.replayData[index]?.timestamp !== timestamp) {
@@ -393,13 +419,21 @@ export const prepareHistoricalReplay = async (
   const sharedReplayKeyPrefixes: string[] = [];
   const runtimeLineages: ReplayRuntimeLineageRecord[] = [];
   let skippedSymbols = 0;
+  const intervalMs = intervalToMs(interval);
 
   try {
     for (const symbol of preparedRun.tickers) {
+      const delistedAt = context.delistings?.get(symbol);
+      const end = Math.min(
+        preparedRun.window.end,
+        (delistedAt ?? Infinity) - intervalMs,
+      );
+      if (end < preparedRun.window.start) continue;
+
       const data = await preparedRun.marketConnector.kline({
         symbol,
         start: preparedRun.preloadStart,
-        end: preparedRun.window.end,
+        end,
         cacheOnly: true,
         interval,
       });
@@ -409,7 +443,12 @@ export const prepareHistoricalReplay = async (
           candles: data.length,
         });
       const preparedData = buildPreparedData({
-        data,
+        data:
+          delistedAt == null
+            ? data
+            : data.filter(
+                (candle) => candle.timestamp + intervalMs <= delistedAt,
+              ),
         btcData: references.btcMarketData,
         ethData: references.ethMarketData,
         btcBinanceData: references.btcBinanceData,
@@ -436,7 +475,7 @@ export const prepareHistoricalReplay = async (
         interval,
         symbol,
         start: preparedRun.window.start,
-        end: preparedRun.window.end,
+        end,
       });
       sharedReplayKeyPrefixes.push(sharedIndicatorsReplayKey);
 
@@ -517,6 +556,7 @@ export const prepareHistoricalReplay = async (
 
       const symbolRuntime: SymbolReplayRuntime = {
         symbol,
+        signalCutoff: delistedAt == null ? undefined : delistedAt - intervalMs,
         replayData: preparedData.replayData,
         btcReplayData: preparedData.btcReplayData,
         ethReplayData: preparedData.ethReplayData,

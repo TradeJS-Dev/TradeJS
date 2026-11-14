@@ -163,6 +163,13 @@ export const executeHistoricalReplay = async (
         context.connector,
         timestamp,
       );
+      const delistedSymbols = context.plan.delistingsByTime?.get(timestamp);
+      if (delistedSymbols) {
+        for (const symbol of delistedSymbols) {
+          context.connector.delistSymbol(symbol, timestamp);
+        }
+        if (!cycleSymbols.length) continue;
+      }
       const beforeSignalsResult = await adapters.invokeBeforeSignals(
         context.hooks,
         context.hookContext,
@@ -179,6 +186,8 @@ export const executeHistoricalReplay = async (
         if (context.decisionTraceTargets?.length) {
           for (const symbolRuntime of cycleSymbols) {
             const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
+            if (candle.timestamp >= (symbolRuntime.signalCutoff ?? Infinity))
+              continue;
             for (const strategy of symbolRuntime.strategies) {
               decisionTrace.record(
                 strategy.strategyName,
@@ -203,6 +212,16 @@ export const executeHistoricalReplay = async (
           symbolRuntime.btcReplayData[symbolRuntime.currentIndex];
         const ethCandle =
           symbolRuntime.ethReplayData[symbolRuntime.currentIndex];
+        // The last closed candle can advance protection orders, but trading has
+        // already ended when the strategy could act on that candle.
+        if (
+          candle &&
+          candle.timestamp >= (symbolRuntime.signalCutoff ?? Infinity)
+        ) {
+          symbolRuntime.currentIndex += 1;
+          continue;
+        }
+
         if (
           !candle ||
           !btcCandle ||

@@ -122,6 +122,16 @@ describe('runtime evidence with production composition changes', () => {
         })),
       },
     }));
+    jest.doMock('@tradejs/node/connectors', () => ({
+      getConnectorCreatorByName: async () => async () => ({
+        listDelistings: async () =>
+          new Map([
+            ['BTCUSDT', 200_000],
+            ['ETHUSDT', 300_000],
+            ['OTHERUSDT', 350_000],
+          ]),
+      }),
+    }));
     jest.doMock('../lib/runtimeEvidenceProducer', () => ({
       ...jest.requireActual('../lib/runtimeEvidenceProducer'),
       resolveRuntimeEvidenceProducer: jest.fn(async () => currentProducer),
@@ -237,6 +247,11 @@ describe('runtime evidence with production composition changes', () => {
           ([call]) => call.artifact.deployment.tickers,
         ),
       ).toEqual([['BTCUSDT'], ['ETHUSDT']]);
+      expect(
+        publishRuntimeEvidenceBundle.mock.calls.map(
+          ([call]) => call.artifact.delistings,
+        ),
+      ).toEqual([{ BTCUSDT: 200_000 }, { ETHUSDT: 300_000 }]);
     } finally {
       await fs.rm(projectRoot, { recursive: true, force: true });
     }

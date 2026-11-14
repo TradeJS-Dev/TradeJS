@@ -117,6 +117,26 @@ const readRuntimeEvidenceArtifact = async ({
   };
 };
 
+const parseDelistings = (value: unknown): ReadonlyMap<string, number> => {
+  if (value === undefined) return new Map();
+  const record = asRecord(value);
+  if (!record) throw new Error('Invalid runtime evidence delistings');
+  const delistings = new Map<string, number>();
+  for (const [symbol, timestamp] of Object.entries(record)) {
+    if (
+      !symbol ||
+      symbol.trim().toUpperCase() !== symbol ||
+      typeof timestamp !== 'number' ||
+      !Number.isSafeInteger(timestamp) ||
+      timestamp <= 0
+    ) {
+      throw new Error(`Invalid runtime evidence delisting for ${symbol}`);
+    }
+    delistings.set(symbol, timestamp);
+  }
+  return delistings;
+};
+
 export const loadReplayRuntimeEvidenceMetadata = async (params: {
   filePath: string;
   projectRoot: string;
@@ -128,6 +148,7 @@ export const loadReplayRuntimeEvidenceMetadata = async (params: {
     startTime: artifact.startTime,
     endTime: artifact.endTime,
     deployment: artifact.deployment,
+    delistings: parseDelistings(artifact.root.delistings),
     decisionTraceTargets: unwrapRows<RuntimeTradeRecord>(
       artifact.runtime.trades,
       'trade',

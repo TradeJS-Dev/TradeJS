@@ -574,9 +574,22 @@ export const replayBacktest = async () => {
           ),
       )
     : [preparedRun.tickers];
+  const delistings =
+    evidenceMetadata?.delistings ??
+    (!replayFlags.cacheOnly
+      ? await preparedRun.marketConnector
+          .listDelistings?.()
+          .catch((error: unknown) => {
+            console.warn(
+              chalk.yellow(`Could not verify delistings: ${String(error)}`),
+            );
+            return undefined;
+          })
+      : undefined);
   const runReplayBatch = async (batchTickers: string[]) => {
     const result = await runHistoricalSignalsReplay({
       preparedRun: { ...preparedRun, tickers: batchTickers },
+      delistings,
       interval: replayInterval,
       runtimeStrategies,
       references: historicalReplayReferences,
