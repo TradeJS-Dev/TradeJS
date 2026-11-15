@@ -424,6 +424,7 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('@tradejs/node/strategies', () => ({
+    prepareReferenceMarketHistory: jest.fn(async () => undefined),
     enrichSignalWithBinanceMarketContext,
     enrichSignalWithCoinMarketCapContext,
     getStrategyCreator,

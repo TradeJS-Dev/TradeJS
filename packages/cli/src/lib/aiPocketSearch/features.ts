@@ -543,6 +543,23 @@ const isCompactFeaturePathSkipped = (segments: string[]) => {
     ['additionalIndicators', 'baseContext', 'relative', 'referenceTradeFlow'],
   ];
 
+  if (
+    segments.join('.') ===
+    'additionalIndicators.baseContext.structure.acceptance'
+  ) {
+    return false;
+  }
+  if (
+    isFeaturePathPrefix(segments, [
+      'additionalIndicators',
+      'baseContext',
+      'structure',
+      'acceptance',
+    ])
+  ) {
+    return segments.at(-1) !== 'failedAcceptanceBars';
+  }
+
   if (skippedPrefixes.some((prefix) => isFeaturePathPrefix(segments, prefix))) {
     return true;
   }
@@ -906,7 +923,8 @@ export const collectAiPocketFeatureSnapshot = ({
         segments.join('.') ===
           'additionalIndicators.baseContext.tickerProfile' ||
         segments.join('.') === 'additionalIndicators.tickerProfile' ||
-        segments.join('.') === 'additionalIndicators.portfolioContext'
+        segments.join('.') === 'additionalIndicators.portfolioContext' ||
+        segments.join('.') === 'additionalIndicators.referenceMarkets'
       )
         return true;
       if (isOperatorExcluded(segments.join('.'))) {
@@ -939,7 +957,12 @@ export const collectAiPocketFeatureSnapshot = ({
         });
         return true;
       }
-      if (featurePolicy !== 'causal-stationary') {
+      if (
+        featurePolicy !== 'causal-stationary' ||
+        segments.join('.') ===
+          'additionalIndicators.baseContext.participation.volume'
+      ) {
+        // This container holds normalized measures as well as raw volume.
         return false;
       }
       const classification = classifyAiPocketFeaturePath(segments);

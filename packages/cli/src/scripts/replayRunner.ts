@@ -67,6 +67,7 @@ export const prepareReplayBinanceMarketContext = async (preparedRun: {
   tickers: string[];
   window: { start: number; end: number };
   preloadStart: number;
+  universe?: 'crypto' | 'tradfi';
   aiEnabled?: boolean;
   mlEnabled?: boolean;
   strategyNames?: string[];
@@ -77,6 +78,7 @@ export const prepareReplayBinanceMarketContext = async (preparedRun: {
     projectRoot: replayProjectRoot,
     symbols: preparedRun.tickers,
     interval: replayInterval,
+    universe: preparedRun.universe,
     startMs: preparedRun.window.start,
     endMs: preparedRun.window.end,
     preloadStartMs: preparedRun.preloadStart,

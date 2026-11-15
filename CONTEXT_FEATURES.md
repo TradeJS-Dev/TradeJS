@@ -187,3 +187,39 @@ as input features. Preserve missing values, frozen snapshots and metadata roles
 through export/reconstruction; never derive context from completed outcomes.
 Portfolio-dependent gate changes require chronological shared replay because
 admission changes the later portfolio state.
+
+## Bybit reference markets
+
+`signal.additionalIndicators.referenceMarkets` contains closed 15m, 1h and 4h
+measurements from the Bybit mainnet USDT reference contracts. These are
+benchmarks independent of the strategy's traded symbols or execution venue.
+
+- The fixed v1 universe contains 15 stock contracts, WTI (`CLUSDT`), gold
+  (`XAUUSDT`), silver (`XAGUSDT`), and BTC, ETH and SOL USDT perps.
+- `frames.m15`, `frames.h1` and `frames.h4` use the expected UTC close at or
+  before the signal timestamp. `returnsPct` stores per-symbol log returns
+  multiplied by 100. A return requires two adjacent candles. Missing bars,
+  including periods before listing, yield no return. The baskets require every
+  member and are equally weighted. The growth minus defensive and gold minus
+  growth spreads require both legs.
+- `nyCashHoursGrowthPct` also requires each stock to have positive volume in
+  both candles and the newer candle to fit entirely inside 09:30–16:00 New
+  York weekday time. This applies DST and uses those clock hours as a proxy
+  for the cash session. It does not model holidays or early-close schedules.
+- Signals and replay warm the standard candle cache automatically when refresh
+  is allowed. Backtest dataset runs (`--ai`) warm the same reference history.
+  `--cacheOnly` only reads Timescale. When some reference data is available,
+  absent values are null in the feature snapshot. With no reference data, the
+  signal has no reference context. Set
+  `TRADEJS_REFERENCE_MARKETS=false` to disable new loading and enrichment.
+- Runtime gates and entry hooks can read the named signal fields; for example,
+  `signal.additionalIndicators?.referenceMarkets?.frames.h1?.growthPct`.
+  The native export freezes `registered.referenceMarkets.h1.growthPct` and
+  the corresponding per-contract, basket and spread features for all three
+  intervals. `closedAt` stays provenance. The default LLM prompt keeps its
+  existing inputs. A gate that wants the new features needs a fresh export.
+- `baseContext.regime.momentum.roc4h`,
+  `baseContext.participation.volume.turnoverRel20`, and
+  `baseContext.structure.acceptance.failedAcceptanceBars` retain their
+  formulas and are available in compact causal pocket searches. Strategy
+  thresholds and entry rules remain in the consuming gate or strategy.

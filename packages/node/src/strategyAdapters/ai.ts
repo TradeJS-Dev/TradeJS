@@ -2,6 +2,7 @@ import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators';
 import { getTradejsProjectCwd } from '../tradejsConfig';
 import {
   projectAiFeatures,
+  REFERENCE_MARKET_AI_FEATURES,
   TICKER_PROFILE_AI_FEATURES,
   PORTFOLIO_AI_FEATURES,
   validateAiFeatureDefinitions,
@@ -56,6 +57,9 @@ const buildBaseAiPayload = (signal: Signal): AiPayload => {
 };
 
 const defaultAiAdapter: StrategyAiAdapter = {};
+const referenceMarketFeatureIds = new Set(
+  REFERENCE_MARKET_AI_FEATURES.map(({ id }) => id),
+);
 const tickerProfileFeatureIds = new Set(
   TICKER_PROFILE_AI_FEATURES.map(({ id }) => id),
 );
@@ -94,7 +98,12 @@ export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
         PORTFOLIO_AI_FEATURES.some((d) => d.id === id),
       ),
   );
+  const hasReferenceMarkets = Boolean(
+    signal.additionalIndicators?.referenceMarkets ||
+      frozen?.definitions.some(({ id }) => referenceMarketFeatureIds.has(id)),
+  );
   const definitions = [
+    ...(hasReferenceMarkets ? REFERENCE_MARKET_AI_FEATURES : []),
     ...(hasPortfolio ? PORTFOLIO_AI_FEATURES : []),
     ...(hasProfile ? TICKER_PROFILE_AI_FEATURES : []),
     ...indicatorFeatures,

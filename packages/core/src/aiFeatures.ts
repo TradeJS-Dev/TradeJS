@@ -1,3 +1,7 @@
+import {
+  REFERENCE_MARKET_INTERVALS,
+  REFERENCE_MARKET_SYMBOLS,
+} from './referenceMarkets';
 import type {
   AiFeatureDefinition,
   AiFeaturePrimitive,
@@ -225,3 +229,41 @@ export const PORTFOLIO_AI_FEATURES: readonly AiFeatureDefinition[] = [
     }),
   ),
 ];
+
+/** The only discovery path for reference markets; raw timestamps are provenance. */
+export const REFERENCE_MARKET_AI_FEATURES: readonly AiFeatureDefinition[] =
+  Object.keys(REFERENCE_MARKET_INTERVALS).flatMap((frame) => {
+    const feature = (
+      name: string,
+      path: string,
+      description: string,
+    ): AiFeatureDefinition => ({
+      id: `referenceMarkets.${frame}.${name}`,
+      version: 1,
+      source: 'signal',
+      path: `additionalIndicators.referenceMarkets.frames.${frame}.${path}`,
+      role: 'input',
+      stationary: true,
+      scope: 'benchmark',
+      unit: 'log-return-pct',
+      description,
+    });
+    return [
+      ...REFERENCE_MARKET_SYMBOLS.map((symbol) =>
+        feature(
+          symbol,
+          `returnsPct.${symbol}`,
+          `Closed Bybit ${symbol} return`,
+        ),
+      ),
+      ...Object.entries({
+        growthPct: 'Equal-weight growth equity basket',
+        defensivePct: 'Equal-weight defensive equity basket',
+        cyclicalPct: 'Equal-weight cyclical equity basket',
+        growthMinusDefensivePct: 'Growth minus defensive equity basket',
+        goldMinusGrowthPct: 'Gold minus growth equity basket',
+        nyCashHoursGrowthPct:
+          'Growth equity basket within NY weekday cash hours with traded bars',
+      }).map(([field, description]) => feature(field, field, description)),
+    ];
+  });

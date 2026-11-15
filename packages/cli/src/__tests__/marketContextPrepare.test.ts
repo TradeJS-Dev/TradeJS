@@ -16,6 +16,12 @@ const mockShouldBackfillCoinMarketCapContextForReplay = jest.fn();
 const mockShouldBackfillCoinMarketCapContextForSignals = jest.fn();
 const mockBackfillHyperliquidWhaleContext = jest.fn();
 const mockEnsureMarketContextSchemas = jest.fn();
+const mockPrepareReferenceMarketHistory = jest.fn();
+
+jest.mock('@tradejs/node/strategies', () => ({
+  prepareReferenceMarketHistory: (...args: unknown[]) =>
+    mockPrepareReferenceMarketHistory(...args),
+}));
 const mockEnsureStrategyPluginsLoaded = jest.fn();
 const mockGetStrategyManifest = jest.fn();
 
@@ -83,6 +89,33 @@ import {
 } from '../lib/marketContextPrepare';
 
 describe('prepareMarketContextForRun', () => {
+  it.each(['signals', 'backtest', 'replay'] as const)(
+    'warms reference markets for %s except in cache-only mode',
+    async (mode) => {
+      const params = {
+        mode,
+        userName: 'fixture',
+        projectRoot: '/project',
+        symbols: ['SOLUSDT'],
+        interval: '15' as const,
+        startMs: 1,
+        endMs: 1234,
+        aiEnabled: true,
+        log: () => undefined,
+      };
+      await prepareMarketContextForRun({ ...params, cacheOnly: true });
+      expect(mockPrepareReferenceMarketHistory).not.toHaveBeenCalled();
+      await prepareMarketContextForRun({ ...params, cacheOnly: false });
+      expect(mockPrepareReferenceMarketHistory).toHaveBeenCalledWith({
+        userName: 'fixture',
+        projectRoot: '/project',
+        startMs: 1,
+        endMs: 1234,
+        cacheOnly: false,
+        live: mode === 'signals',
+      });
+    },
+  );
   beforeEach(() => {
     jest.clearAllMocks();
     mockBackfillDerivativesContextForBacktest.mockResolvedValue({});

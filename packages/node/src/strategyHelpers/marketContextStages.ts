@@ -1,3 +1,4 @@
+import { enrichSignalWithReferenceMarkets } from './referenceMarkets';
 import { enrichSignalWithTickerProfile } from './tickerProfiles';
 import { logger } from '@tradejs/infra/logger';
 import type { Signal } from '@tradejs/types';
@@ -159,7 +160,10 @@ export const enrichSignalWithMarketContextStages = async ({
     });
   }
 
-  await enrichSignalWithTickerProfile(signal);
+  await Promise.all([
+    enrichSignalWithTickerProfile(signal),
+    enrichSignalWithReferenceMarkets(signal),
+  ]);
   const results: MarketContextEnrichmentStageResult[] = [];
   for (const stage of stages) {
     if (abortSignal?.aborted) break;

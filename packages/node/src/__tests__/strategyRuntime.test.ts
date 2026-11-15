@@ -1,3 +1,7 @@
+jest.mock('@tradejs/infra/timescale/candles', () => ({
+  ...jest.requireActual('@tradejs/infra/timescale/candles'),
+  getReferenceCandlePrices: async () => [],
+}));
 const mockLoadTickerProfileContext = jest.fn();
 jest.mock('../strategyHelpers/tickerProfiles', () => ({
   ...jest.requireActual('../strategyHelpers/tickerProfiles'),

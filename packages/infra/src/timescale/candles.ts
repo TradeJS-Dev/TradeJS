@@ -6,6 +6,7 @@ import {
   normalizeCandleSymbol,
   ensureCandlesSchema,
 } from './internal';
+import { queryMarketContext } from './query';
 
 export type CandleRow = {
   provider: string;
@@ -417,4 +418,31 @@ export async function findContinuityGap(
     prevTs: new Date(row.prev_ts).getTime(),
     diffSeconds: row.diff_seconds as number,
   };
+}
+
+/** Shared narrow read for point-in-time reference-market calculations. */
+export async function getReferenceCandlePrices(
+  provider: string,
+  symbols: readonly string[],
+  intervals: readonly number[],
+  startMs: number,
+  endMs: number,
+) {
+  await ensureCandlesSchema();
+  const result = await queryMarketContext<{
+    symbol: string;
+    interval: number;
+    timestamp: number;
+    close: number;
+    volume: number | null;
+  }>(
+    `SELECT symbol, interval,
+            floor(extract(epoch FROM ts)*1000)::double precision AS timestamp,
+            close, volume
+       FROM candles
+      WHERE provider = $1 AND symbol = ANY($2::text[]) AND interval = ANY($3::int[])
+        AND ts >= to_timestamp($4/1000.0) AND ts < to_timestamp($5/1000.0)`,
+    [normalizeCandleProvider(provider), symbols, intervals, startMs, endMs],
+  );
+  return result.rows;
 }

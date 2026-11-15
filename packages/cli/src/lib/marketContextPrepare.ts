@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { prepareReferenceMarketHistory } from '@tradejs/node/strategies';
 import { ensureMarketContextSchemas } from '@tradejs/infra/timescale/marketContext';
 import {
   ensureStrategyPluginsLoaded,
@@ -379,6 +380,21 @@ export const prepareMarketContextForRun = async (
       resolveCoinMarketCapBackfillForMode(params.mode)(
         buildCoinMarketCapBackfillParams(params),
       ),
+    );
+  }
+  if (
+    !params.cacheOnly &&
+    (params.mode !== 'backtest' || params.aiEnabled || params.mlEnabled)
+  ) {
+    await timeOperation('Bybit reference market history', () =>
+      prepareReferenceMarketHistory({
+        userName: params.userName,
+        projectRoot: params.projectRoot,
+        startMs: params.startMs,
+        endMs: params.endMs,
+        cacheOnly: params.cacheOnly,
+        live: params.mode === 'signals',
+      }),
     );
   }
   return requirements;

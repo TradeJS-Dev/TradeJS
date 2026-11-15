@@ -5,3 +5,5 @@ export {
   mergeData,
 } from './utils/array';
 export * from './utils/toJson';
+
+export * from './referenceMarkets';

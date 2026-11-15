@@ -892,7 +892,9 @@ export interface Signal {
     riskRatio: number;
   };
   indicators: Record<string, any>;
-  additionalIndicators?: Record<string, any>;
+  additionalIndicators?: Record<string, any> & {
+    referenceMarkets?: import('./referenceMarkets').ReferenceMarketsContext;
+  };
 }
 
 export type RuntimeSignalEvaluationStatus = 'signal' | 'skip' | 'error';

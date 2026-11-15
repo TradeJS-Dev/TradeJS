@@ -31,3 +31,5 @@ export type {
   DataBackfillResult,
   DataBackfillJob,
 } from './dataCoverage';
+
+export * from './referenceMarkets';

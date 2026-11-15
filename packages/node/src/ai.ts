@@ -335,6 +335,38 @@ export const getDeterministicAiGateContext = (
   ) ?? null) as DeterministicAiGateContext | null;
 };
 
+// Keep new deterministic-gate inputs out of the default LLM prompt.
+const buildAiPromptPayload = (payload: AiPayload) => {
+  const source = asRecord(payload.additionalIndicators);
+  const snapshot = payload.featureSnapshot;
+  const definitions = snapshot?.definitions.filter(
+    ({ id }) => !id.startsWith('referenceMarkets.'),
+  );
+  if (
+    !source?.referenceMarkets &&
+    definitions?.length === snapshot?.definitions.length
+  )
+    return payload;
+  const { referenceMarkets: _referenceMarkets, ...additionalIndicators } =
+    source ?? {};
+  return {
+    ...payload,
+    additionalIndicators: source?.referenceMarkets
+      ? additionalIndicators
+      : payload.additionalIndicators,
+    featureSnapshot:
+      snapshot && definitions?.length
+        ? {
+            ...snapshot,
+            definitions,
+            values: Object.fromEntries(
+              definitions.map(({ id }) => [id, snapshot.values[id]]),
+            ),
+          }
+        : undefined,
+  };
+};
+
 export const buildAiHumanPrompt = (
   signal: Signal,
   payload = buildAiPayload(signal),
@@ -344,7 +376,7 @@ Analyze the already computed internal signal for ${signal.symbol}. The original 
 This is a structure-classification and audit task, not execution advice. Determine whether the current structure confirms the existing signal, how structurally coherent it is right now, whether an extra confirmation level is needed, and whether the already supplied levels in \`payload.signal.prices\` still look internally coherent. Do not replace the original thesis with a new one and do not invent new levels; return only the requested JSON.
 
 Trade payload:
-${JSON.stringify(payload)}
+${JSON.stringify(buildAiPromptPayload(payload))}
 ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
 

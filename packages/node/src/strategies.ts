@@ -61,3 +61,4 @@ export {
   createMoveStopToBreakEvenAfterCoreDecisionHook,
 } from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
 export { createCloseAllOnGlobalProfitBeforeSignalsHook } from './signalsHooks/closeAllPositionsOnGlobalProfitBeforeSignals';
+export { prepareReferenceMarketHistory } from './strategyHelpers/referenceMarkets';

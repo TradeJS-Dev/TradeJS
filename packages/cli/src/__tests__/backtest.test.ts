@@ -52,6 +52,7 @@ jest.mock('@tradejs/core/grid', () => ({
 }));
 
 jest.mock('@tradejs/core/data', () => ({
+  ...jest.requireActual('@tradejs/core/data'),
   toJson: jest.fn(),
 }));
 
