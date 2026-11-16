@@ -58,7 +58,9 @@ export const resolveEntryRuntimePolicy = ({
           ...adapterAi,
           ...decision.runtime?.ai,
         }
-      : undefined;
+      : config.AI_ENABLED === false
+        ? { enabled: false }
+        : undefined;
 
   return {
     ...manifestDefaults,

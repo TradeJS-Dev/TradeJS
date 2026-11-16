@@ -12,6 +12,7 @@ jest.mock('../strategyHelpers/tickerProfiles', () => ({
 const mockResolveStrategyConfig = jest.fn();
 const mockEnrichSignalWithMl = jest.fn();
 const mockEnrichSignalWithAi = jest.fn();
+const mockAskAI = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
@@ -114,6 +115,10 @@ jest.mock('../tradejsConfig', () => {
     loadTradejsConfig: (...args: unknown[]) => mockLoadTradejsConfig(...args),
   };
 });
+
+jest.mock('../ai', () => ({
+  askAI: (...args: unknown[]) => mockAskAI(...args),
+}));
 
 jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
@@ -394,13 +399,14 @@ describe('strategyRuntime', () => {
   });
 
   it.each([true, false])(
-    'uses strict strategy config for the core and entry gate in replay (allow=%s)',
+    'honors the RangeReclaim entry rule with AI disabled in replay (allow=%s)',
     async (allow) => {
       const defaults = {
         ENV: 'PARITY',
         INTERVAL: '15',
         MAKE_ORDERS: false,
         MAX_LOSS_VALUE: 1,
+        AI_ENABLED: false,
       } satisfies StrategyConfig;
       const parseConfig = createStrategyConfigParser({
         strategyName: 'RangeReclaim',
@@ -414,12 +420,16 @@ describe('strategyRuntime', () => {
       mockResolveStrategyConfig.mockImplementationOnce(
         jest.requireActual('../strategyHelpers/config').resolveStrategyConfig,
       );
+      mockEnrichSignalWithAi.mockImplementationOnce(
+        jest.requireActual('../strategyHelpers/runtime').enrichSignalWithAi,
+      );
+      mockAskAI.mockResolvedValue({ direction: 'LONG', quality: 5 });
       const createCore = jest.fn(
         async ({ config }: { config: StrategyConfig }) => {
           parseConfig(config);
           return async () => {
             const decision = makeDecisionEntry(
-              { runtime: { ai: { enabled: false }, ml: { enabled: false } } },
+              { runtime: undefined },
               'RangeReclaim',
             );
             return {
@@ -486,6 +496,7 @@ describe('strategyRuntime', () => {
       expect(createCore).toHaveBeenCalledWith(
         expect.objectContaining({ config: defaults }),
       );
+      expect(mockAskAI).not.toHaveBeenCalled();
       if (allow) {
         expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
           expect.objectContaining({ recordRuntimeTrade: false }),
