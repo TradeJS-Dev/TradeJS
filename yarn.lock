@@ -3817,7 +3817,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript-eslint/eslint-plugin@npm:8.73.0":
+"@typescript-eslint/eslint-plugin@npm:8.73.0, @typescript-eslint/eslint-plugin@npm:^8.65.0":
   version: 8.73.0
   resolution: "@typescript-eslint/eslint-plugin@npm:8.73.0"
   dependencies:
@@ -3837,7 +3837,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript-eslint/parser@npm:8.73.0":
+"@typescript-eslint/parser@npm:8.73.0, @typescript-eslint/parser@npm:^8.65.0":
   version: 8.73.0
   resolution: "@typescript-eslint/parser@npm:8.73.0"
   dependencies:
@@ -13546,8 +13546,8 @@ __metadata:
     "@types/react": "npm:19.2.17"
     "@types/react-dom": "npm:19.2.3"
     "@types/react-window": "npm:^1"
-    "@typescript-eslint/eslint-plugin": "npm:8.73.0"
-    "@typescript-eslint/parser": "npm:8.73.0"
+    "@typescript-eslint/eslint-plugin": "npm:^8.65.0"
+    "@typescript-eslint/parser": "npm:^8.65.0"
     autoprefixer: "npm:^10.5.4"
     babel-jest: "npm:30.0.0-beta.3"
     dotenv: "npm:^16.6.1"

@@ -57,7 +57,9 @@ When the strategy is `DoubleTap`, `engine.ts` ports the Bjorgum Double Tap patte
    - When a research config includes `MAX_LOSS_VALUE`, set it to `10`.
    - When updating a backtest `:ai` config, enable both `LONG` and `SHORT`; let the AI gate disable a side later if needed.
 2. Start with small cache-only runs: `yarn backtest -c <Strategy>:<name> -d 30 --cacheOnly --fast`.
-3. Tune strategy-specific grid fields first.
+3. For a diagnostic study, locate the failing stage before selecting a field
+   to tune. For a preregistered parameter study, change only the specified
+   fields.
 
 When a symmetric candidate loses in aggregate but its reconciled LONG/SHORT
 attribution shows a material improvement on only one side, do not discard or
@@ -342,9 +344,36 @@ Bootstrap the complete immutable calendar window, including zero-trade
 clusters; do not sample only active clusters. Report CSCV/PBO as unavailable
 when fold vectors are identical and there is no meaningful model ranking.
 
-Use `--researchTrace` only when the question needs the setup/entry/skip funnel.
-It writes compact events plus per-test skip summaries and adds deterministic
-setup identity to AI rows; keep it off when completed trades answer the question.
+### Diagnose where the edge is lost
+
+- Reuse the prior notes and trial ledger. Start with a short cache-only
+  baseline on known weak and strong windows. Use `--researchTrace` for
+  setup/entry/skip attribution and targeted replay for decision details. Join
+  by setup identity and count each setup once. Audit which stages can actually
+  be observed: setup before gate, gate decision, order, fill, and exit. Record
+  missing stages or unknown feature values separately. Skip summaries are
+  counts and cannot reconstruct individual setups.
+- Measure signed price movement and favorable/adverse excursion from an
+  explicitly defined eligible entry time on fixed horizons. Include signals
+  rejected by the gate or without fills when their identity and timing are
+  observable. Label those measurements as hypothetical and separate them
+  from realized fills and costs. Use `research-visuals` or TradingView to
+  inspect representative favorable and unfavorable examples from both the
+  accepted and rejected sets. Use the full eligible sample to quantify effects.
+- Before comparing economics, report support by unique setup, active time
+  blocks and market episodes, feature coverage at decision time and the overlap
+  between control and candidate. For a risk filter, add a baseline with risk
+  reduced by a rule fixed from development evidence, and use portfolio replay
+  when concurrent exposures can change the result. For execution questions,
+  use `execution-calibration` on verified runtime and replay evidence. Report
+  which submit/fill, fee and funding measurements are available.
+- Treat windows used to select a rule as development evidence. Evaluate a
+  new rule first on the weak and strong development windows and extend to an
+  isolated 180-day run when a material PnL/drawdown trade-off warrants it.
+  Extend competing candidates to the frozen long window only when support
+  and comparability justify the cost. Freeze the rule and success criteria
+  before opening a new confirmation period. Report insufficient support when
+  the data cannot distinguish the mechanism from noise.
 
 Before writing research results, read `references/research-notes.md` and follow
 it exactly.

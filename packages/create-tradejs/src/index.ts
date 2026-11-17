@@ -216,7 +216,7 @@ export const buildProjectFiles = (
       null,
       2,
     )}\n`,
-    '.nvmrc': '24.19.0\n',
+    '.nvmrc': '24.22.2\n',
     'tradejs.config.ts': `import { basePreset } from '@tradejs/base';
 import { defineConfig } from '@tradejs/core/config';
 
