@@ -2,7 +2,7 @@ name: Проверка изменений
 
 on:
   pull_request:
-    branches: [stable]
+    branches: [stable, fix/security-audit-20261117]
 
 permissions:
   contents: read

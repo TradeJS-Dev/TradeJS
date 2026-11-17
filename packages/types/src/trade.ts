@@ -647,10 +647,21 @@ export interface Connector {
     symbol: string;
     orderId: string;
   }) => Promise<import('./portfolio').PortfolioOrderObservation | null>;
+  /** Cancel by the same client identifier supplied to placeOrder. Acknowledgement is not terminality. */
+  cancelEntryOrder?: (params: {
+    symbol: string;
+    orderId: string;
+  }) => Promise<boolean>;
+  /** Fresh authoritative position; null means confirmed flat. Failures must throw. */
+  getEntryPositionObservation?: (params: {
+    symbol: string;
+  }) => Promise<(Position & { priceTickSize: number }) | null>;
   placeOrder: PlaceOrder;
   setPositionProtection?: SetPositionProtection;
   setTakeProfits: SetTakeProfits;
   setStopLoss: SetStopLoss;
+  /** Reconciliation-aware connectors return false only for proven pre-acceptance rejection.
+   * Transport, timeout and ambiguous outcomes must throw so callers retain their safety claim. */
   closePosition: ClosePosition;
   getTickers: GetTickers;
   getFundingRateHistory?: GetFundingRateHistory;

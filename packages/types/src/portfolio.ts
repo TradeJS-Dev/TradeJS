@@ -30,6 +30,8 @@ export interface PortfolioOrderObservation {
   id: string;
   status: 'pending' | 'partial' | 'filled' | 'cancelled' | 'rejected';
   filledQty: number;
+  /** Durable receipt: original order terminal and compensation confirmed flat. */
+  compensated?: boolean;
   positionId?: string;
 }
 export interface PortfolioObservation {

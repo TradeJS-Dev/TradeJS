@@ -1,3 +1,7 @@
+jest.mock('@tradejs/infra/timescale/candles', () => ({
+  ...jest.requireActual('@tradejs/infra/timescale/candles'),
+  getReferenceCandlePrices: async () => [],
+}));
 import type { Connector, Order } from '@tradejs/types';
 const mockFetchMlThreshold = jest.fn();
 const mockBuildMlTrainingRow = jest.fn();

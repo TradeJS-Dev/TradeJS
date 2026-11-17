@@ -1,3 +1,4 @@
+import { withEntryOrderSafety } from '../strategy/entryOrderSafety';
 import { logger } from '@tradejs/infra/logger';
 import { FEE_PERCENT } from '@tradejs/core/constants';
 import {
@@ -349,7 +350,31 @@ const applyProtectiveOrders = async ({
   }
 };
 
-export const executeEntryOrder = async ({
+export const executeEntryOrder = async (
+  params: ExecuteEntryOrderParams,
+): Promise<number> => {
+  const orderId =
+    params.signal.orderId || createRuntimeOrderId(params.signal.strategy);
+  params.signal.orderId = orderId;
+  try {
+    return await withEntryOrderSafety({
+      connector: params.connector,
+      userName: params.userName,
+      symbol: params.symbol,
+      direction: params.direction,
+      orderId,
+      execute: (connector) =>
+        executeEntryOrderInternal({ ...params, connector }),
+    });
+  } catch (error) {
+    params.signal.orderStatus = 'failed';
+    params.signal.orderFailureReason =
+      error instanceof Error ? error.message : 'ENTRY_ORDER_FAILED';
+    throw error;
+  }
+};
+
+const executeEntryOrderInternal = async ({
   connector,
   userName,
   symbol,
@@ -570,13 +595,14 @@ export const executeEntryOrder = async ({
         stopLossPrice: filledStop,
       });
     } catch (error) {
-      await connector.closePosition({
-        symbol,
-        price: resultingEntryPrice,
-        timestamp,
-        direction,
-        signal,
-      });
+      if (!connector.getEntryPositionObservation)
+        await connector.closePosition({
+          symbol,
+          price: resultingEntryPrice,
+          timestamp,
+          direction,
+          signal,
+        });
       throw error;
     }
   }

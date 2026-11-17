@@ -80,6 +80,14 @@ const INTERVAL_TO_MINUTES: Record<string, number> = {
   M: 43_200,
 };
 
+// These documented validation/authentication/risk failures prove that no order was accepted.
+// Timeouts, internal errors, duplicate IDs and future/unknown codes require reconciliation.
+const definiteOrderRejections = new Set([
+  10001, 10002, 10003, 10004, 10005, 10007, 10008, 10009, 10010, 10024, 10027,
+  10028, 10029, 100028, 110003, 110004, 110006, 110007, 110009, 110012, 110017,
+  110018, 110019, 110020, 110021, 110023, 30208, 30209, 30228,
+]);
+
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 const isTradingStopNotModified = (res: any) =>
   res?.retCode === BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE;
@@ -1145,18 +1153,103 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       return positions;
     },
 
+    cancelEntryOrder: async ({ symbol, orderId }) => {
+      const client = await getPrivateClient();
+      if (!client) throw new Error('Bybit private client is unavailable');
+      const result = await withTimeout(
+        client.cancelOrder({
+          category: BYBIT_CATEGORY,
+          symbol,
+          orderLinkId: orderId,
+        }),
+        POSITION_SNAPSHOT_TIMEOUT_MS,
+        `bybit cancel entry ${symbol}`,
+      );
+      return result.retCode === 0;
+    },
+
+    getEntryPositionObservation: async ({ symbol }) => {
+      const client = await getPrivateClient();
+      const marketClient = await getPublicClient();
+      if (!client || !marketClient)
+        throw new Error('Bybit client is unavailable');
+      const result = await withTimeout(
+        client.getPositionInfo({ category: BYBIT_CATEGORY, symbol }),
+        POSITION_SNAPSHOT_TIMEOUT_MS,
+        `bybit entry position ${symbol}`,
+      );
+      if (
+        result.retCode !== 0 ||
+        !Array.isArray(result.result?.list) ||
+        !result.result.list.length ||
+        result.result.nextPageCursor
+      )
+        throw new Error('Bybit entry position observation unavailable');
+      const rows = result.result.list;
+      if (
+        rows.length !== 1 ||
+        rows.some(
+          (p) =>
+            p.symbol !== symbol ||
+            p.positionIdx !== 0 ||
+            typeof p.size !== 'string' ||
+            !p.size.trim() ||
+            !Number.isFinite(Number(p.size)) ||
+            Number(p.size) < 0,
+        )
+      )
+        throw new Error('Invalid Bybit entry position observation');
+      const active = rows.filter((p) => Number(p.size) > 0);
+      if (active.length > 1) throw new Error('Ambiguous Bybit entry position');
+      if (!active.length) return null;
+      const p = active[0];
+      const price = Number(p.avgPrice);
+      if (
+        !Number.isFinite(price) ||
+        price <= 0 ||
+        !['Buy', 'Sell'].includes(p.side)
+      )
+        throw new Error('Invalid Bybit entry position');
+      const meta = await withTimeout(
+        getSymbolMeta(marketClient, symbol),
+        POSITION_SNAPSHOT_TIMEOUT_MS,
+        `bybit entry metadata ${symbol}`,
+      );
+      if (!Number.isFinite(meta.tickSize) || meta.tickSize <= 0)
+        throw new Error('Invalid Bybit entry price tick');
+      const slPrice = p.stopLoss ? Number(p.stopLoss) : undefined;
+      if (slPrice !== undefined && (!Number.isFinite(slPrice) || slPrice < 0))
+        throw new Error('Invalid Bybit entry stop');
+      return {
+        symbol,
+        qty: Number(p.size),
+        price,
+        direction: p.side === 'Buy' ? 'LONG' : 'SHORT',
+        slPrice,
+        priceTickSize: meta.tickSize,
+      };
+    },
+
     getEntryOrderObservation: async ({ symbol, orderId }) => {
       const client = await getPrivateClient();
       if (!client) throw new Error('Bybit private client is unavailable');
       const query = { category: BYBIT_CATEGORY, symbol, orderLinkId: orderId };
-      const active = await client.getActiveOrders(query);
+      const active = await withTimeout(
+        client.getActiveOrders(query),
+        POSITION_SNAPSHOT_TIMEOUT_MS,
+        `bybit entry orders ${symbol}`,
+      );
       if (active.retCode !== 0)
         throw new Error(`Bybit order observation failed: ${active.retCode}`);
       let order = active.result.list.find(
         (o) => o.orderLinkId === orderId && o.symbol === symbol,
       );
       if (!order) {
-        const history = await client.getHistoricOrders(query);
+        const history = await withTimeout(
+          client.getHistoricOrders(query),
+          POSITION_SNAPSHOT_TIMEOUT_MS,
+          `bybit entry history ${symbol}`,
+        );
         if (history.retCode !== 0)
           throw new Error(`Bybit order history failed: ${history.retCode}`);
         order = history.result.list.find(
@@ -1165,7 +1258,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       }
       if (!order) return null;
       const filledQty = Number(order.cumExecQty);
-      if (!Number.isFinite(filledQty) || filledQty < 0)
+      if (
+        typeof order.cumExecQty !== 'string' ||
+        !order.cumExecQty.trim() ||
+        !Number.isFinite(filledQty) ||
+        filledQty < 0 ||
+        (order.orderStatus === 'Filled' && filledQty === 0)
+      )
         throw new Error('Invalid Bybit cumulative execution quantity');
       const status =
         order.orderStatus === 'Filled'
@@ -1724,6 +1823,11 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
                     ? orderRes.retMsg.trim()
                     : `BYBIT_RETCODE_${orderRes.retCode}`;
               }
+              if (!definiteOrderRejections.has(orderRes.retCode)) {
+                throw new Error(
+                  `BYBIT_ORDER_SUBMISSION_UNCONFIRMED:${orderRes.retCode}`,
+                );
+              }
               await onRejected?.();
               return false;
             }
@@ -1745,7 +1849,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
 
     setStopLoss,
 
-    closePosition: async ({ symbol, direction }) => {
+    closePosition: async ({ symbol, direction, orderId }) => {
       invalidatePositionSnapshot(symbol);
       const client = await getPrivateClient();
 
@@ -1760,6 +1864,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
         orderType: 'Market',
         qty: '0',
         reduceOnly: true,
+        closeOnTrigger: true,
+        ...(orderId ? { orderLinkId: orderId } : {}),
       });
 
       logger.log(
@@ -1771,6 +1877,11 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       );
 
       if (closeRes.retCode !== 0) {
+        if (!definiteOrderRejections.has(closeRes.retCode)) {
+          throw new Error(
+            `BYBIT_CLOSE_SUBMISSION_UNCONFIRMED:${closeRes.retCode}`,
+          );
+        }
         return false;
       }
 

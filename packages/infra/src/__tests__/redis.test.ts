@@ -83,6 +83,75 @@ describe('redis utils', () => {
     };
   };
 
+  it('keeps entry safety claims durable and settles with an atomic compensation receipt', async () => {
+    const { redisModule, redisClient } = await setup();
+    redisClient.set.mockResolvedValue('OK');
+    expect(
+      await redisModule.entrySafetyStorage.claim('account-symbol', 'claim'),
+    ).toBe(true);
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'tradejs:entry-safety:v1:account-symbol',
+      'claim',
+      'NX',
+    );
+    redisClient.set.mockResolvedValue(null);
+    expect(
+      await redisModule.entrySafetyStorage.claim('account-symbol', 'other'),
+    ).toBe(false);
+    redisClient.eval.mockResolvedValue(1);
+    expect(
+      await redisModule.entrySafetyStorage.replace(
+        'account-symbol',
+        'claim',
+        'admitted-claim',
+      ),
+    ).toBe(true);
+    expect(redisClient.eval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('SET',KEYS[1],ARGV[2])"),
+      1,
+      'tradejs:entry-safety:v1:account-symbol',
+      'claim',
+      'admitted-claim',
+    );
+    redisClient.eval.mockResolvedValueOnce(0);
+    expect(
+      await redisModule.entrySafetyStorage.replace(
+        'account-symbol',
+        'stale-claim',
+        'other',
+      ),
+    ).toBe(false);
+    expect(
+      await redisModule.entrySafetyStorage.settle(
+        'account-symbol',
+        'claim',
+        'receipt-id',
+        'terminal-fact',
+      ),
+    ).toBe(true);
+    expect(redisClient.eval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('SET',KEYS[2],ARGV[3])"),
+      2,
+      'tradejs:entry-safety:v1:account-symbol',
+      'tradejs:entry-compensation:v1:receipt-id',
+      'claim',
+      'flat',
+      'terminal-fact',
+    );
+    redisClient.eval.mockResolvedValue(0);
+    expect(
+      await redisModule.entrySafetyStorage.settle('account-symbol', 'other'),
+    ).toBe(false);
+    redisClient.get.mockResolvedValue('flat');
+    expect(
+      await redisModule.entrySafetyStorage.readCompensation('receipt-id'),
+    ).toBe('flat');
+    redisClient.get.mockRejectedValue(new Error('disconnected'));
+    await expect(
+      redisModule.entrySafetyStorage.readCompensation('receipt-id'),
+    ).rejects.toThrow('disconnected');
+  });
+
   it('creates singleton redis client with env host/port and reuses it', async () => {
     process.env.REDIS_HOST = '127.0.0.1';
     process.env.REDIS_PORT = '6380';

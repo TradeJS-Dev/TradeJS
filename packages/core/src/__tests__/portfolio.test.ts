@@ -243,3 +243,19 @@ test('rejects corrupted persisted reservations and close intents', () => {
   ])
     expect(() => assertPortfolioState(state)).toThrow('persisted');
 });
+
+test('only a durable compensation receipt releases a terminal filled reservation without a position', () => {
+  const state = { ...empty(), reservations: [{ ...entry, submitted: true }] };
+  const fact = { id: entry.id, status: 'filled' as const, filledQty: 1 };
+  expect(
+    reconcilePortfolio(policy, 'Test', state, obs([], [fact])).reservations,
+  ).toHaveLength(1);
+  const reconciled = reconcilePortfolio(
+    policy,
+    'Test',
+    state,
+    obs([], [{ ...fact, compensated: true }]),
+  );
+  expect(reconciled.reservations).toHaveLength(0);
+  expect(reconciled.completedSignals[entry.signalId]).toBe(1000);
+});

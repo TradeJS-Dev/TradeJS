@@ -196,6 +196,8 @@ export function validatePortfolioObservation(
       !['pending', 'partial', 'filled', 'cancelled', 'rejected'].includes(
         String(order.status),
       ) ||
+      (order.compensated !== undefined &&
+        typeof order.compensated !== 'boolean') ||
       !Number.isFinite(order.filledQty) ||
       Number(order.filledQty) < 0
     )
@@ -330,7 +332,8 @@ export function reconcilePortfolio(
       }
     }
     if (['filled', 'cancelled', 'rejected'].includes(order.status)) {
-      if (order.filledQty > 0 && !r.oppositeHandled) return true;
+      if (order.filledQty > 0 && !r.oppositeHandled && !order.compensated)
+        return true;
       state.completedSignals[r.signalId] = o.asOf;
       return false;
     }

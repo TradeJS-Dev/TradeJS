@@ -1,3 +1,4 @@
+import { withEntryOrderSafety } from './entryOrderSafety';
 import type { PortfolioCoordinator } from '../portfolio';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -401,59 +402,73 @@ const executeAdmittedEntryDecision = async ({
         ),
       });
     }
-    const orderPlaced = await connector.placeOrder({
+    const orderId = createRuntimeOrderId(hookCtx.strategyName);
+    await withEntryOrderSafety({
+      connector,
+      userName: hookCtx.userName,
       symbol,
-      qty: decision.orderPlan.qty,
-      price: decision.entryContext.prices.currentPrice,
-      timestamp: decision.entryContext.timestamp,
-      direction: decision.entryContext.direction,
-      positionIntent: decision.orderPlan.positionIntent,
-      ...(beforeSubmit ? { beforeSubmit } : {}),
-      ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
-        ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
-        : {}),
+      direction,
+      orderId,
+      execute: async (safeConnector) => {
+        const orderPlaced = await safeConnector.placeOrder({
+          orderId,
+          symbol,
+          qty: decision.orderPlan.qty,
+          price: decision.entryContext.prices.currentPrice,
+          timestamp: decision.entryContext.timestamp,
+          direction: decision.entryContext.direction,
+          positionIntent: decision.orderPlan.positionIntent,
+          ...(beforeSubmit ? { beforeSubmit } : {}),
+          ...(Number.isFinite(Number(hookCtx.strategyConfig.LEVERAGE))
+            ? { leverage: Number(hookCtx.strategyConfig.LEVERAGE) }
+            : {}),
+        });
+
+        if (!orderPlaced) {
+          throw new Error('PLACE_ORDER_FAILED');
+        }
+
+        try {
+          const fill =
+            stopLossDistance == null
+              ? null
+              : await safeConnector.getPosition(symbol);
+          const filledStop = resolveEntryStopLossPrice(
+            direction,
+            fill?.price ?? prices.currentPrice,
+            stopLossPrice,
+            stopLossDistance,
+          );
+          if (
+            stopLossDistance != null &&
+            (fill?.direction !== direction ||
+              !fill.qty ||
+              !Number.isFinite(fill.price) ||
+              !Number.isFinite(filledStop) ||
+              filledStop <= 0)
+          ) {
+            throw new Error('FILL_RELATIVE_STOP_UNAVAILABLE');
+          }
+          await updatePositionProtection({
+            connector: safeConnector,
+            symbol,
+            direction,
+            qty: fill?.qty ?? decision.orderPlan.qty,
+            takeProfits,
+            stopLossPrice: filledStop,
+          });
+        } catch (error) {
+          if (!safeConnector.getEntryPositionObservation)
+            await safeConnector.closePosition({
+              symbol,
+              price: decision.entryContext.prices.currentPrice,
+              timestamp: decision.entryContext.timestamp,
+              direction: decision.entryContext.direction,
+            });
+          throw error;
+        }
+      },
     });
-
-    if (!orderPlaced) {
-      throw new Error('PLACE_ORDER_FAILED');
-    }
-
-    try {
-      const fill =
-        stopLossDistance == null ? null : await connector.getPosition(symbol);
-      const filledStop = resolveEntryStopLossPrice(
-        direction,
-        fill?.price ?? prices.currentPrice,
-        stopLossPrice,
-        stopLossDistance,
-      );
-      if (
-        stopLossDistance != null &&
-        (fill?.direction !== direction ||
-          !fill.qty ||
-          !Number.isFinite(fill.price) ||
-          !Number.isFinite(filledStop) ||
-          filledStop <= 0)
-      ) {
-        throw new Error('FILL_RELATIVE_STOP_UNAVAILABLE');
-      }
-      await updatePositionProtection({
-        connector,
-        symbol,
-        direction,
-        qty: fill?.qty ?? decision.orderPlan.qty,
-        takeProfits,
-        stopLossPrice: filledStop,
-      });
-    } catch (error) {
-      await connector.closePosition({
-        symbol,
-        price: decision.entryContext.prices.currentPrice,
-        timestamp: decision.entryContext.timestamp,
-        direction: decision.entryContext.direction,
-      });
-      throw error;
-    }
 
     await invokeStageHooks(
       'afterPlaceOrder',
