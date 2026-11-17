@@ -240,3 +240,39 @@ test('restores a terminal filled compensation receipt without requiring the vani
     receipt.mockRestore();
   }
 });
+
+test('unsent pre-admission reservation consumes its proof-based no-fill recovery receipt', async () => {
+  const c = connector();
+  c.accountId = binding.accountId;
+  c.getEntryPositionObservation = async () => null;
+  c.getOpenPositionPnl = async () => [];
+  const read = jest
+    .spyOn(entrySafetyStorage, 'readCompensation')
+    .mockResolvedValue(
+      JSON.stringify({
+        id: reservation.id,
+        status: 'rejected',
+        filledQty: 0,
+        compensated: true,
+      }),
+    );
+  try {
+    const observed = await observeRuntimePortfolio(
+      c,
+      binding,
+      1000,
+      [{ ...reservation, submitted: false }],
+      () => 1000,
+    );
+    expect(observed.orders).toEqual([
+      {
+        id: reservation.id,
+        status: 'rejected',
+        filledQty: 0,
+        compensated: true,
+      },
+    ]);
+  } finally {
+    read.mockRestore();
+  }
+});

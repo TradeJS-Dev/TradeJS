@@ -364,84 +364,91 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     expect(quality).toBeUndefined();
   });
 
-  it('assigns orderId and records runtime trade after successful entry order', async () => {
-    const connector = {
-      placeOrder: jest.fn(async () => true),
-      setTakeProfits: jest.fn(async () => true),
-      setStopLoss: jest.fn(async () => true),
-      closePosition: jest.fn(async () => true),
-      getTopOfBookTicker: jest.fn(async () => ({
+  it.each([false, true])(
+    'records the actual successful entry ID with non-portfolio retry=%s',
+    async (retried) => {
+      const actualOrderId = retried ? 'tjs-r-successful-retry' : 'tjs-order-1';
+      const connector = {
+        placeOrder: jest.fn(async (order: Order) => {
+          if (retried && order.signal) order.signal.orderId = actualOrderId;
+          return true;
+        }),
+        setTakeProfits: jest.fn(async () => true),
+        setStopLoss: jest.fn(async () => true),
+        closePosition: jest.fn(async () => true),
+        getTopOfBookTicker: jest.fn(async () => ({
+          symbol: 'ETHUSDT',
+          bidPrice: 99,
+          bidQty: 10,
+          askPrice: 101,
+          askQty: 12,
+        })),
+        getPosition: jest.fn(async () => ({
+          symbol: 'ETHUSDT',
+          qty: 1,
+          price: 101,
+          direction: 'LONG',
+        })),
+      } as any;
+      const placedSignal = { ...signal };
+
+      const price = await executeEntryOrder({
+        connector,
+        userName: 'root',
         symbol: 'ETHUSDT',
-        bidPrice: 99,
-        bidQty: 10,
-        askPrice: 101,
-        askQty: 12,
-      })),
-      getPosition: jest.fn(async () => ({
-        symbol: 'ETHUSDT',
-        qty: 1,
-        price: 101,
         direction: 'LONG',
-      })),
-    } as any;
-    const placedSignal = { ...signal };
+        qty: 1,
+        currentPrice: 100,
+        timestamp: 1_700_000_000_000,
+        takeProfits: [{ price: 110, rate: 1 }],
+        stopLossPrice: 95,
+        signal: placedSignal,
+      });
 
-    const price = await executeEntryOrder({
-      connector,
-      userName: 'root',
-      symbol: 'ETHUSDT',
-      direction: 'LONG',
-      qty: 1,
-      currentPrice: 100,
-      timestamp: 1_700_000_000_000,
-      takeProfits: [{ price: 110, rate: 1 }],
-      stopLossPrice: 95,
-      signal: placedSignal,
-    });
-
-    expect(connector.placeOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect(connector.placeOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          symbol: 'ETHUSDT',
+          orderId: 'tjs-order-1',
+        }),
+      );
+      expect(mockCreateRuntimeOrderId).toHaveBeenCalledWith('TrendLine');
+      expect(placedSignal.orderId).toBe(actualOrderId);
+      expect(placedSignal.orderQty).toBe(1);
+      expect(placedSignal.orderValue).toBe(101);
+      expect(placedSignal.orderStatus).toBe('completed');
+      expect(placedSignal.prices.currentPrice).toBe(101);
+      expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith({
+        userName: 'root',
+        orderId: actualOrderId,
+        signalId: 's1',
+        strategy: 'TrendLine',
         symbol: 'ETHUSDT',
-        orderId: 'tjs-order-1',
-      }),
-    );
-    expect(mockCreateRuntimeOrderId).toHaveBeenCalledWith('TrendLine');
-    expect(placedSignal.orderId).toBe('tjs-order-1');
-    expect(placedSignal.orderQty).toBe(1);
-    expect(placedSignal.orderValue).toBe(101);
-    expect(placedSignal.orderStatus).toBe('completed');
-    expect(placedSignal.prices.currentPrice).toBe(101);
-    expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith({
-      userName: 'root',
-      orderId: 'tjs-order-1',
-      signalId: 's1',
-      strategy: 'TrendLine',
-      symbol: 'ETHUSDT',
-      interval: '15',
-      direction: 'LONG',
-      qty: 1,
-      entryPrice: 101,
-      signalTimestamp: 1,
-      signalClosePrice: 100,
-      arrivalSnapshotTime: expect.any(Number),
-      arrivalSource: 'top_of_book',
-      arrivalMid: 100,
-      bid: 99,
-      ask: 101,
-      spreadBps: 200,
-      orderSubmitTime: expect.any(Number),
-      orderAckTime: expect.any(Number),
-      fillAvgPrice: 101,
-      fillSource: 'exchange_position',
-      fillTime: expect.any(Number),
-      telemetryQuality: 'full',
-      fee: 0.101,
-      openFee: 0.101,
-      totalFee: 0.101,
-      entryTimestamp: 1_700_000_000_000,
-    });
-    expect(price).toBe(101);
-  });
+        interval: '15',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 101,
+        signalTimestamp: 1,
+        signalClosePrice: 100,
+        arrivalSnapshotTime: expect.any(Number),
+        arrivalSource: 'top_of_book',
+        arrivalMid: 100,
+        bid: 99,
+        ask: 101,
+        spreadBps: 200,
+        orderSubmitTime: expect.any(Number),
+        orderAckTime: expect.any(Number),
+        fillAvgPrice: 101,
+        fillSource: 'exchange_position',
+        fillTime: expect.any(Number),
+        telemetryQuality: 'full',
+        fee: 0.101,
+        openFee: 0.101,
+        totalFee: 0.101,
+        entryTimestamp: 1_700_000_000_000,
+      });
+      expect(price).toBe(101);
+    },
+  );
 
   it.each([
     [1, 'approved'],

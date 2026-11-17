@@ -451,6 +451,8 @@ export type Order = {
     qty: number;
     /** Simulation connectors may supply their actual modeled execution price. */
     executionPrice?: number;
+    /** Await before persisting a portfolio reservation for the given client ID. */
+    beforeAdmission?: (orderId: string) => Promise<void>;
   }) => Promise<void | string>;
 };
 

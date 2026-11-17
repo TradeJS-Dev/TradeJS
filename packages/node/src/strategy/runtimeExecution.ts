@@ -257,7 +257,10 @@ const executeAdmittedEntryDecision = async ({
   markPortfolioSubmitted,
   rejectPortfolioSubmission,
 }: {
-  markPortfolioSubmitted?: (qty: number) => Promise<string>;
+  markPortfolioSubmitted?: (
+    qty: number,
+    beforeCommit?: (id: string) => Promise<void>,
+  ) => Promise<string>;
   rejectPortfolioSubmission?: (retrying?: boolean) => Promise<void>;
   connector: Connector;
   symbol: string;
@@ -551,25 +554,36 @@ export async function executeEntryDecision(
   const signal = decision.signal;
   if (!signal || decision.orderPlan.positionIntent === 'increase')
     return 'PORTFOLIO_REQUIRES_NEW_SIGNAL_POSITION';
-  signal.orderId ??= createRuntimeOrderId(signal.strategy);
-  const result = await portfolio.submit(
-    params.portfolioTime ?? decision.entryContext.timestamp,
-    {
-      id: signal.orderId,
-      signalId: signal.signalId,
-      strategy: signal.strategy,
-      symbol: params.symbol,
-      direction: decision.entryContext.direction,
-      qty: decision.orderPlan.qty,
-      timestamp: decision.entryContext.timestamp,
-    },
-    (markPortfolioSubmitted, rejectPortfolioSubmission) =>
-      executeAdmittedEntryDecision({
-        ...params,
-        markPortfolioSubmitted,
-        rejectPortfolioSubmission,
-      }),
-  );
+  const initialOrderId = (signal.orderId ??= createRuntimeOrderId(
+    signal.strategy,
+  ));
+  const result = await withEntryOrderSafety({
+    connector: params.connector,
+    userName: params.hookCtx.userName,
+    symbol: params.symbol,
+    direction: decision.entryContext.direction,
+    orderId: initialOrderId,
+    execute: (safeConnector) =>
+      portfolio.submit(
+        params.portfolioTime ?? decision.entryContext.timestamp,
+        {
+          id: initialOrderId,
+          signalId: signal.signalId,
+          strategy: signal.strategy,
+          symbol: params.symbol,
+          direction: decision.entryContext.direction,
+          qty: decision.orderPlan.qty,
+          timestamp: decision.entryContext.timestamp,
+        },
+        (markPortfolioSubmitted, rejectPortfolioSubmission) =>
+          executeAdmittedEntryDecision({
+            ...params,
+            connector: safeConnector,
+            markPortfolioSubmitted,
+            rejectPortfolioSubmission,
+          }),
+      ),
+  });
   if (result.reason) {
     signal.orderStatus = 'failed';
     signal.orderFailureReason = result.reason;

@@ -252,7 +252,10 @@ interface ExecuteEntryOrderParams {
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
   executionLimits?: EntryExecutionLimits;
-  markPortfolioSubmitted?: (qty: number) => Promise<string>;
+  markPortfolioSubmitted?: (
+    qty: number,
+    beforeCommit?: (id: string) => Promise<void>,
+  ) => Promise<string>;
   rejectPortfolioSubmission?: (retrying?: boolean) => Promise<void>;
 }
 
@@ -488,15 +491,19 @@ const executeEntryOrderInternal = async ({
           beforeSubmit: async (context: {
             qty: number;
             executionPrice?: number;
+            beforeAdmission?: (id: string) => Promise<void>;
           }) => {
             await beforeSubmit?.(context);
-            return markPortfolioSubmitted?.(context.qty);
+            return markPortfolioSubmitted?.(
+              context.qty,
+              context.beforeAdmission,
+            );
           },
         }
       : {}),
   });
   const orderAckTime = Date.now();
-  if (markPortfolioSubmitted && signal.orderId) orderId = signal.orderId;
+  if (signal.orderId) orderId = signal.orderId;
   const placedQty =
     typeof signal.orderQty === 'number' &&
     Number.isFinite(signal.orderQty) &&

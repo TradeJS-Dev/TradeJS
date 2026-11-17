@@ -5,15 +5,24 @@ import type {
 } from '@tradejs/types';
 import { entrySafetyStorage } from '@tradejs/infra/redis';
 import {
+  createPortfolioCoordinator,
+  createMemoryPortfolioStore,
+} from '../../portfolio';
+import {
   withEntryOrderSafety,
+  inspectEntryOrderSafety,
+  recoverEntryOrderSafety,
+  getEntryCompensation,
   entryCompensationId,
   entrySafetyKey,
 } from '../entryOrderSafety';
 
 const mockClaims = new Map<string, string>();
 const mockReceipts = new Set<string>();
+const mockReceiptValues = new Map<string, string>();
 jest.mock('@tradejs/infra/redis', () => ({
   entrySafetyStorage: {
+    read: jest.fn(async (key: string) => mockClaims.get(key) ?? null),
     claim: jest.fn(async (key: string, value: string) => {
       if (mockClaims.has(key)) return false;
       mockClaims.set(key, value);
@@ -35,12 +44,15 @@ jest.mock('@tradejs/infra/redis', () => ({
         if (receipt) {
           expect(JSON.parse(observation!)).toMatchObject({ compensated: true });
           mockReceipts.add(receipt);
+          mockReceiptValues.set(receipt, observation!);
         }
         mockClaims.delete(key);
         return true;
       },
     ),
-    readCompensation: jest.fn(async () => null),
+    readCompensation: jest.fn(
+      async (id: string) => mockReceiptValues.get(id) ?? null,
+    ),
   },
 }));
 
@@ -129,6 +141,7 @@ const fixture = (direction: Direction = 'LONG') => {
 beforeEach(() => {
   mockClaims.clear();
   mockReceipts.clear();
+  mockReceiptValues.clear();
   jest.clearAllMocks();
   jest.useFakeTimers();
 });
@@ -449,4 +462,431 @@ test('a pre-submit failure clears an unsent portfolio reservation without exchan
   expect(rejected).toHaveBeenCalledWith(true);
   expect(mockClaims.size).toBe(0);
   expect(f.c.cancelEntryOrder).not.toHaveBeenCalled();
+});
+
+const recovery = async (f: ReturnType<typeof fixture>) => {
+  const context = { connector: f.c, userName: 'alice', symbol: 'BTCUSDT' };
+  const expectedClaim = await inspectEntryOrderSafety(context);
+  expect(expectedClaim).not.toBeNull();
+  return {
+    ...context,
+    expectedClaim: expectedClaim!,
+    writersStopped: true as const,
+  };
+};
+
+async function crashDuringClose(f: ReturnType<typeof fixture>) {
+  jest
+    .mocked(f.c.getEntryOrderObservation!)
+    .mockImplementation(async ({ orderId }) =>
+      orderId.startsWith('tjs-x-')
+        ? null
+        : { id: orderId, status: 'filled', filledQty: 1 },
+    );
+  const result = await complete(
+    f.run(async (safe) => {
+      await f.place(safe);
+      throw new Error('stop-failed');
+    }),
+  );
+  expect(result).toBeInstanceOf(AggregateError);
+  expect(mockClaims.size).toBe(1);
+}
+
+test('journals the actual admitted and compensation IDs before each corresponding RPC', async () => {
+  const f = fixture();
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    const admitted = await request.beforeSubmit?.({ qty: 1 });
+    const journal = JSON.parse([...mockClaims.values()][0]);
+    expect(journal.originalOrderId).toBe('client-id');
+    expect(journal.sentOrderIds).toEqual([admitted]);
+    return true;
+  });
+  jest.mocked(f.c.closePosition).mockImplementation(async (request) => {
+    const journal = JSON.parse([...mockClaims.values()][0]);
+    expect(journal.closeOrderIds).toContain(request.orderId);
+    f.setPosition(null);
+    return true;
+  });
+  await complete(
+    f.run(async (safe) => {
+      await f.place(safe, async () => 'portfolio-admitted');
+      throw new Error('stop-failed');
+    }),
+  );
+  expect(mockClaims.size).toBe(0);
+});
+
+test('restart recovery verifies terminal late close and flatness then atomically writes portfolio receipt', async () => {
+  const f = fixture();
+  await crashDuringClose(f);
+  const request = await recovery(f);
+  const journal = JSON.parse(request.expectedClaim);
+  expect(journal.closeOrderIds).toHaveLength(1);
+  jest
+    .mocked(f.c.getEntryOrderObservation!)
+    .mockImplementation(async ({ orderId }) => ({
+      id: orderId,
+      status: 'filled',
+      filledQty: 1,
+    }));
+  jest.clearAllMocks();
+  await expect(recoverEntryOrderSafety(request)).resolves.toBeUndefined();
+  expect(f.c.getEntryOrderObservation).toHaveBeenCalledTimes(2);
+  expect(f.c.placeOrder).not.toHaveBeenCalled();
+  expect(f.c.cancelEntryOrder).not.toHaveBeenCalled();
+  expect(f.c.closePosition).not.toHaveBeenCalled();
+  expect(f.c.setStopLoss).not.toHaveBeenCalled();
+  expect(mockClaims.size).toBe(0);
+  expect(
+    mockReceipts.has(entryCompensationId(f.c, 'alice', 'BTCUSDT', 'client-id')),
+  ).toBe(true);
+});
+
+test('flatness without terminal late-close evidence leaves restart recovery blocked', async () => {
+  const f = fixture();
+  await crashDuringClose(f);
+  const result = await complete(recoverEntryOrderSafety(await recovery(f)));
+  expect(result).toBeInstanceOf(Error);
+  expect(mockClaims.size).toBe(1);
+  expect(mockReceipts.size).toBe(0);
+});
+
+test('restart recovery cannot release a changed claim after its exchange reads', async () => {
+  const f = fixture();
+  await crashDuringClose(f);
+  const request = await recovery(f);
+  jest
+    .mocked(f.c.getEntryOrderObservation!)
+    .mockImplementation(async ({ orderId }) => ({
+      id: orderId,
+      status: 'filled',
+      filledQty: 1,
+    }));
+  jest.mocked(f.c.getEntryPositionObservation!).mockImplementation(async () => {
+    mockClaims.set(entrySafetyKey(f.c, 'alice', 'BTCUSDT'), 'new-owner');
+    return null;
+  });
+  await expect(recoverEntryOrderSafety(request)).rejects.toThrow(
+    'ENTRY_SAFETY_CLAIM_LOST',
+  );
+  expect([...mockClaims.values()]).toEqual(['new-owner']);
+  expect(mockReceipts.size).toBe(0);
+});
+
+test.each(['legacy', 'prepared', 'missing-close-journal'])(
+  'recovery never clears an incomplete %s record',
+  async (variant) => {
+    const f = fixture();
+    await crashDuringClose(f);
+    const key = entrySafetyKey(f.c, 'alice', 'BTCUSDT');
+    const record = JSON.parse(mockClaims.get(key)!);
+    if (variant === 'legacy') record.schema = 'tradejs-entry-safety/v1';
+    if (variant === 'prepared') record.phase = 'prepared';
+    if (variant === 'missing-close-journal') delete record.closeOrderIds;
+    mockClaims.set(key, JSON.stringify(record));
+    await expect(recoverEntryOrderSafety(await recovery(f))).rejects.toThrow(
+      'ENTRY_RECOVERY_INCOMPLETE_JOURNAL',
+    );
+    expect(mockClaims.size).toBe(1);
+  },
+);
+
+test('failed durable compensation journal prevents the close RPC', async () => {
+  const f = fixture();
+  const original = jest
+    .mocked(entrySafetyStorage.replace)
+    .getMockImplementation()!;
+  jest
+    .mocked(entrySafetyStorage.replace)
+    .mockImplementation(async (key, previous, next) => {
+      if (JSON.parse(next).closeOrderIds.length) return false;
+      return original(key, previous, next);
+    });
+  try {
+    const result = await complete(
+      f.run(async (safe) => {
+        await f.place(safe);
+        throw new Error('stop-failed');
+      }),
+    );
+    expect(result).toBeInstanceOf(AggregateError);
+    expect(f.c.closePosition).not.toHaveBeenCalled();
+    expect(mockClaims.size).toBe(1);
+  } finally {
+    jest.mocked(entrySafetyStorage.replace).mockImplementation(original);
+  }
+});
+
+test('failed admitted-ID journal prevents actual submission', async () => {
+  const f = fixture();
+  const submission = jest.fn();
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    await request.beforeSubmit?.({ qty: 1 });
+    submission();
+    return true;
+  });
+  jest.mocked(entrySafetyStorage.replace).mockResolvedValueOnce(false);
+  const result = await complete(f.run((safe) => f.place(safe)));
+  expect(result).toBeInstanceOf(Error);
+  expect(submission).not.toHaveBeenCalled();
+  expect(f.c.cancelEntryOrder).not.toHaveBeenCalled();
+});
+
+test('recovery accepts persisted authoritative rejection evidence for the earlier quantity retry', async () => {
+  const f = fixture();
+  await crashDuringClose(f);
+  const key = entrySafetyKey(f.c, 'alice', 'BTCUSDT');
+  const record = JSON.parse(mockClaims.get(key)!);
+  record.sentOrderIds.unshift('previous-definitely-rejected');
+  record.rejectedOrderIds.push('previous-definitely-rejected');
+  mockClaims.set(key, JSON.stringify(record));
+  jest
+    .mocked(f.c.getEntryOrderObservation!)
+    .mockImplementation(async ({ orderId }) => {
+      if (orderId === 'previous-definitely-rejected')
+        throw new Error('history unavailable');
+      return { id: orderId, status: 'filled', filledQty: 1 };
+    });
+  await expect(
+    recoverEntryOrderSafety(await recovery(f)),
+  ).resolves.toBeUndefined();
+  expect(mockClaims.size).toBe(0);
+});
+
+test('recovery requires explicit writer-stop confirmation and never releases a protected open position', async () => {
+  const f = fixture();
+  await crashDuringClose(f);
+  const request = await recovery(f);
+  await expect(
+    recoverEntryOrderSafety({
+      ...request,
+      writersStopped: false as unknown as true,
+    }),
+  ).rejects.toThrow('ENTRY_RECOVERY_UNAVAILABLE');
+  jest
+    .mocked(f.c.getEntryOrderObservation!)
+    .mockImplementation(async ({ orderId }) => ({
+      id: orderId,
+      status: 'filled',
+      filledQty: 1,
+    }));
+  f.setPosition({
+    symbol: 'BTCUSDT',
+    direction: 'LONG',
+    qty: 1,
+    price: 101,
+    slPrice: 90,
+    priceTickSize: 0.1,
+  });
+  const result = await complete(recoverEntryOrderSafety(request));
+  expect(result).toBeInstanceOf(Error);
+  expect(mockClaims.size).toBe(1);
+  expect(mockReceipts.size).toBe(0);
+});
+
+test('a non-portfolio quantity retry gets a new ID and pending retry cannot reuse the first rejection evidence', async () => {
+  const f = fixture();
+  let firstId: string | undefined;
+  let secondId: string | undefined;
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    firstId = (await request.beforeSubmit?.({ qty: 1 })) as string;
+    await request.onRejected?.(true);
+    secondId = (await request.beforeSubmit?.({ qty: 0.5 })) as string;
+    f.setPosition(null);
+    throw new Error('second-submit-timeout');
+  });
+  jest.mocked(f.c.getEntryOrderObservation!).mockResolvedValue(null);
+  await complete(f.run((safe) => f.place(safe)));
+  expect(secondId).not.toBe(firstId);
+  const request = await recovery(f);
+  const record = JSON.parse(request.expectedClaim);
+  expect(record.sentOrderIds).toEqual([firstId, secondId]);
+  expect(record.rejectedOrderIds).toEqual([firstId]);
+  const result = await complete(recoverEntryOrderSafety(request));
+  expect(result).toBeInstanceOf(Error);
+  expect(mockClaims.size).toBe(1);
+  expect(mockReceipts.size).toBe(0);
+  expect(f.c.getEntryOrderObservation).toHaveBeenCalledWith({
+    symbol: 'BTCUSDT',
+    orderId: secondId,
+  });
+});
+
+test('portfolio callback cannot admit the same ID for another actual submission', async () => {
+  const f = fixture();
+  const sends = jest.fn();
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    await request.beforeSubmit?.({ qty: 1 });
+    sends();
+    await request.onRejected?.(true);
+    await request.beforeSubmit?.({ qty: 0.5 });
+    sends();
+    return true;
+  });
+  const result = await complete(
+    f.run((safe) => f.place(safe, async () => 'same-admitted')),
+  );
+  expect((result as Error).message).toBe('ENTRY_ORDER_ID_REUSED');
+  expect(sends).toHaveBeenCalledTimes(1);
+});
+
+test('complete v2 prepared journal recovers a pre-submit crash with a proof-based no-fill receipt', async () => {
+  const f = fixture();
+  f.setPosition(null);
+  mockClaims.set(
+    entrySafetyKey(f.c, 'alice', 'BTCUSDT'),
+    JSON.stringify({
+      schema: 'tradejs-entry-safety/v2',
+      token: 'prepared-nonce',
+      orderId: 'client-id',
+      originalOrderId: 'client-id',
+      plannedOrderId: 'client-id',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      timestamp: 1,
+      phase: 'prepared',
+      sentOrderIds: [],
+      rejectedOrderIds: [],
+      closeOrderIds: [],
+    }),
+  );
+  await expect(
+    recoverEntryOrderSafety(await recovery(f)),
+  ).resolves.toBeUndefined();
+  expect(f.c.getEntryOrderObservation).not.toHaveBeenCalled();
+  expect(f.c.getEntryPositionObservation).toHaveBeenCalledTimes(1);
+  expect(mockClaims.size).toBe(0);
+  expect(mockReceipts.size).toBe(1);
+});
+
+test('restart between portfolio retry admission and submit journal releases the exact unsent reservation', async () => {
+  const f = fixture();
+  f.setPosition(null);
+  const store = createMemoryPortfolioStore();
+  const policy = {
+    id: 'recovery',
+    scope: 'strategy' as const,
+    riskUnit: 10,
+    maxPositions: 1,
+    observationIntervalMs: 100,
+    maxPriceAgeMs: 100,
+  };
+  const create = () =>
+    createPortfolioCoordinator({
+      policy,
+      strategy: 'Test',
+      store,
+      execution: {
+        observe: async (asOf, reservations) => ({
+          asOf,
+          positions: [],
+          orders: await Promise.all(
+            reservations.map(
+              async (r) =>
+                (await getEntryCompensation(f.c, 'alice', r.symbol, r.id)) ?? {
+                  id: r.id,
+                  status: 'pending' as const,
+                  filledQty: 0,
+                },
+            ),
+          ),
+        }),
+        close: async () => {},
+      },
+    });
+  let stopped!: () => void;
+  const crashWindow = new Promise<void>((resolve) => {
+    stopped = resolve;
+  });
+  let attempt = 0;
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    await request.beforeSubmit?.({ qty: 1 });
+    await request.onRejected?.(true);
+    await request.beforeSubmit?.({ qty: 0.5 });
+    throw new Error('unreachable after simulated process loss');
+  });
+  void f.run((safe) =>
+    create().submit(
+      1000,
+      {
+        id: 'client-id',
+        signalId: 'signal',
+        strategy: 'Test',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 1,
+        timestamp: 1000,
+      },
+      async (mark, reject) =>
+        safe.placeOrder({
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          qty: 1,
+          price: 100,
+          timestamp: 1000,
+          onRejected: reject,
+          beforeSubmit: async (context) => {
+            const id = await mark(context.qty, context.beforeAdmission);
+            if (++attempt === 2) {
+              stopped();
+              // The lost process never resumes its continuation or sends the second RPC.
+              return await new Promise<string>(() => {});
+            }
+            return id;
+          },
+        }),
+    ),
+  );
+  await crashWindow;
+  const before = await store.read();
+  const reservationId = before!.reservations[0].id;
+  expect(reservationId).not.toBe('client-id');
+  expect(before!.reservations[0].submitted).toBe(true);
+  const request = await recovery(f);
+  const journal = JSON.parse(request.expectedClaim);
+  expect(journal.phase).toBe('admitting');
+  expect(journal.plannedOrderId).toBe(reservationId);
+  expect(journal.sentOrderIds).toEqual(['client-id']);
+  expect(journal.rejectedOrderIds).toEqual(['client-id']);
+  await recoverEntryOrderSafety(request);
+  const receipt = await getEntryCompensation(
+    f.c,
+    'alice',
+    'BTCUSDT',
+    reservationId,
+  );
+  expect(receipt).toEqual({
+    id: reservationId,
+    status: 'rejected',
+    filledQty: 0,
+    compensated: true,
+  });
+  await create().tick(1000);
+  expect((await store.read())!.reservations).toEqual([]);
+  expect(f.c.getEntryOrderObservation).not.toHaveBeenCalled();
+});
+
+test('a swallowed nested entry error cannot release the outer portfolio safety claim', async () => {
+  const f = fixture();
+  f.setFact(null);
+  const result = await complete(
+    f.run(async (safe) => {
+      try {
+        await withEntryOrderSafety({
+          connector: safe,
+          userName: 'alice',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          orderId: 'client-id',
+          execute: (nested) => f.place(nested),
+        });
+      } catch {
+        /* Runtime translates the failure into a failed signal. */
+      }
+      return 'failed-signal';
+    }),
+  );
+  expect(result).toBeInstanceOf(AggregateError);
+  expect(mockClaims.size).toBe(1);
 });

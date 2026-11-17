@@ -142,6 +142,13 @@ describe('redis utils', () => {
     expect(
       await redisModule.entrySafetyStorage.settle('account-symbol', 'other'),
     ).toBe(false);
+    redisClient.get.mockResolvedValue('durable-claim');
+    expect(await redisModule.entrySafetyStorage.read('account-symbol')).toBe(
+      'durable-claim',
+    );
+    expect(redisClient.get).toHaveBeenCalledWith(
+      'tradejs:entry-safety:v1:account-symbol',
+    );
     redisClient.get.mockResolvedValue('flat');
     expect(
       await redisModule.entrySafetyStorage.readCompensation('receipt-id'),

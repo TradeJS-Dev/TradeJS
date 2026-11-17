@@ -188,6 +188,9 @@ export const mcpStorage = {
 
 /** Durable entry safety claims have no expiry. Only their owner can settle them. */
 export const entrySafetyStorage = {
+  async read(key: string): Promise<string | null> {
+    return (await requireReadyRedis()).get(`tradejs:entry-safety:v1:${key}`);
+  },
   async claim(key: string, value: string): Promise<boolean> {
     return (
       (await (

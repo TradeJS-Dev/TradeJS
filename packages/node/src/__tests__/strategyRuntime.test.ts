@@ -3792,3 +3792,34 @@ it('rejects a portfolio entry without a signal before any reservation or submiss
   expect(result).toBe('PORTFOLIO_REQUIRES_NEW_SIGNAL_POSITION');
   expect(submit).not.toHaveBeenCalled();
 });
+
+it('checks the account safety gate before creating the initial portfolio reservation', async () => {
+  const submit = jest.fn();
+  const claim = jest
+    .spyOn(entrySafetyStorage, 'claim')
+    .mockResolvedValueOnce(false);
+  try {
+    await expect(
+      executeEntryDecision({
+        portfolio: { submit },
+        connector: {
+          accountId: 'account',
+          cancelEntryOrder: async () => true,
+          getEntryOrderObservation: async () => null,
+          getEntryPositionObservation: async () => null,
+        },
+        hookCtx: { userName: 'alice' },
+        symbol: 'BTCUSDT',
+        decision: {
+          kind: 'entry',
+          signal: { orderId: 'known-client-id' },
+          orderPlan: { positionIntent: 'open' },
+          entryContext: { direction: 'LONG' },
+        },
+      } as unknown as Parameters<typeof executeEntryDecision>[0]),
+    ).rejects.toThrow('ENTRY_RECOVERY_REQUIRED');
+    expect(submit).not.toHaveBeenCalled();
+  } finally {
+    claim.mockRestore();
+  }
+});

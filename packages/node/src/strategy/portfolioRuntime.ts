@@ -56,7 +56,7 @@ export async function observeRuntimePortfolio(
     );
   const orders = await Promise.all(
     reservations.map(async (r) => {
-      if (r.submitted && connector.getEntryPositionObservation) {
+      if (connector.getEntryPositionObservation) {
         const receipt = await getEntryCompensation(
           connector,
           binding.userName,
