@@ -691,3 +691,32 @@ describe('coinMarketCapContextBackfill', () => {
     ).toBe(false);
   });
 });
+
+it('limits a targeted repair to missing timestamps in the selected series and day', () => {
+  const {
+    selectCoinMarketCapRepairRows,
+  } = require('../lib/coinMarketCapContextBackfill');
+  const params = {
+    userName: 'root',
+    startMs: 100,
+    endMs: 300,
+    repairDataset: 'cmc-reference_asset-1d',
+    repair: { series: 'BTCUSDT', loaded: new Set([100]) },
+  };
+  const rows = [
+    { symbol: 'BTCUSDT', ts: new Date(100) },
+    { symbol: 'ETHUSDT', ts: new Date(200) },
+    { symbol: 'BTCUSDT', ts: new Date(200) },
+    { symbol: 'BTCUSDT', ts: new Date(400) },
+  ];
+  expect(selectCoinMarketCapRepairRows(rows, params)).toEqual([rows[2]]);
+  expect(
+    selectCoinMarketCapRepairRows(rows, {
+      ...params,
+      repairDataset: undefined,
+    }),
+  ).toBe(rows);
+  expect(() =>
+    selectCoinMarketCapRepairRows(rows, { ...params, repair: undefined }),
+  ).toThrow('requires a series');
+});

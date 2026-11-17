@@ -54,6 +54,7 @@ async function fetchTarget(
       preloadStartMs: day,
       endMs: end,
       repairDataset: dataset.id,
+      repair: { series, loaded },
     };
     if (resolveCoinMarketCapBackfillWindow(params).fromMs > day)
       return 'outside_configured_history';

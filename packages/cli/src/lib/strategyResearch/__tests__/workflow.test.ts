@@ -811,3 +811,26 @@ it('accepts a bounded causal feature projection and rejects outcome paths and du
     ).toThrow('Feature paths');
   }
 });
+
+it('renders a valid candle series beyond the V8 argument limit', () => {
+  const timestamp = 1700000000000;
+  const candles = Array.from({ length: 150000 }, (_, i) => ({
+    timestamp: timestamp + i,
+    open: 5,
+    high: 10,
+    low: 1,
+    close: 6,
+    volume: 1,
+  }));
+  expect(
+    buildResearchCaseSvg(
+      {
+        candles,
+        trade: { signalTimestamp: timestamp },
+        stop: 0,
+        target: 12,
+      } as ResearchDataset['samples'][number],
+      true,
+    ),
+  ).toContain('<svg');
+});

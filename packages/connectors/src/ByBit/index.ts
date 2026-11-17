@@ -460,7 +460,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
     if (!client) return delistings;
 
     let cursor: string | undefined;
+    const seenCursors = new Set<string>();
+    const deadline = Date.now() + 30_000;
+    let pages = 0;
     do {
+      if (++pages > 100 || Date.now() >= deadline)
+        throw new Error('Bybit delistings exceeded the page or time budget');
       const response = await withTimeout(
         client.getInstrumentsInfo({
           category: BYBIT_CATEGORY,
@@ -468,7 +473,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
           limit: LIMIT,
           cursor,
         }),
-        10_000,
+        Math.min(10_000, Math.max(1, deadline - Date.now())),
         'Bybit delistings',
       );
       if (response.retCode !== 0) {
@@ -493,9 +498,10 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       }
 
       const nextCursor = response.result.nextPageCursor;
-      if (nextCursor && nextCursor === cursor) {
+      if (nextCursor && seenCursors.has(nextCursor)) {
         throw new Error('Bybit delistings pagination did not advance');
       }
+      if (nextCursor) seenCursors.add(nextCursor);
       cursor = nextCursor;
     } while (cursor);
 

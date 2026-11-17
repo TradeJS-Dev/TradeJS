@@ -18,6 +18,21 @@ const bucketMs = 7 * 24 * 60 * 60_000;
 const maxCacheBuckets = 6;
 const retryMs = 60_000;
 const liveBucketMs = intervalMs(15);
+const liveWaitMs = 10_000;
+
+async function waitForReference<T>(pending: Promise<T>): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), liveWaitMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 const bucketCache = new Map<
   number,
@@ -75,7 +90,7 @@ export const enrichSignalWithReferenceMarkets = async (signal: Signal) => {
     signal.aiFeatureReplay
   )
     return;
-  const lookup = await loadBucket(signal.timestamp);
+  const lookup = await waitForReference(loadBucket(signal.timestamp));
   const referenceMarkets = lookup?.(signal.timestamp);
   if (referenceMarkets) {
     signal.additionalIndicators = {
@@ -96,7 +111,7 @@ type ReferenceHistoryRequest = {
 
 const liveRefreshes = new Map<
   string,
-  { bucket: number; promise: Promise<void> }
+  { bucket: number; promise: Promise<void>; inFlight: boolean }
 >();
 
 /** Warm the standard Bybit candle cache. Enrichment itself never uses the network. */
@@ -109,7 +124,16 @@ export const prepareReferenceMarketHistory = async (
     Math.min(request.endMs, Date.now()) / liveBucketMs,
   );
   const hit = liveRefreshes.get(liveKey);
-  if (request.live && hit?.bucket === latestClose) return hit.promise;
+  if (request.live && hit && (hit.inFlight || hit.bucket === latestClose)) {
+    await waitForReference(hit.promise);
+    return;
+  }
+  if (request.live && liveRefreshes.size >= 8) {
+    const settled = [...liveRefreshes].find(([, entry]) => !entry.inFlight);
+    if (!settled) return;
+    liveRefreshes.delete(settled[0]);
+  }
+  const deadline = request.live ? Date.now() + liveWaitMs : Infinity;
 
   const refresh = async () => {
     const requestedEnd = Math.min(request.endMs, Date.now());
@@ -170,6 +194,7 @@ export const prepareReferenceMarketHistory = async (
     await Promise.all(
       Array.from({ length: 3 }, async () => {
         for (;;) {
+          if (Date.now() >= deadline) return;
           const task = tasks[index++];
           if (!task) return;
           const { symbol, minutes, start, end } = task;
@@ -204,7 +229,14 @@ export const prepareReferenceMarketHistory = async (
       String(error),
     );
   });
-  if (request.live)
-    liveRefreshes.set(liveKey, { bucket: latestClose, promise });
+  if (request.live) {
+    const entry = { bucket: latestClose, promise, inFlight: true };
+    liveRefreshes.set(liveKey, entry);
+    void promise.finally(() => {
+      entry.inFlight = false;
+    });
+    await waitForReference(promise);
+    return;
+  }
   return promise;
 };

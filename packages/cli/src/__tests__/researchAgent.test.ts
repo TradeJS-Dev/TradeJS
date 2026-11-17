@@ -166,3 +166,27 @@ describe('research agent helpers', () => {
     ).toThrow('must not delete');
   });
 });
+
+describe('extended Git changes', () => {
+  it.each([
+    'diff --git a/src/TrendLine/config.ts b/package.json\nrename from src/TrendLine/config.ts\nrename to package.json',
+    'diff --git a/src/TrendLine/config.ts b/src/TrendLine/config.ts\nold mode 100644\nnew mode 120000',
+    'diff --git a/package.json b/src/TrendLine/config.ts\n--- a/package.json\n+++ b/src/TrendLine/config.ts',
+    '--- a/src/TrendLine/config.ts\n+++ b/src/TrendLine/../../package.json',
+    '--- a/src/TrendLine/config.ts\n+++ b/src/TrendLine/config.ts\nGIT binary patch',
+  ])('rejects unsupported or escaping patches', (diff) => {
+    expect(() => assertDiffAllowed(diff, ['src/TrendLine/'])).toThrow();
+  });
+});
+
+it('rejects a metadata-only forbidden empty file mixed with a legitimate edit', () => {
+  const patch =
+    'diff --git a/src/TrendLine/config.ts b/src/TrendLine/config.ts\n--- a/src/TrendLine/config.ts\n+++ b/src/TrendLine/config.ts\n@@ -1 +1 @@\n-a\n+b\ndiff --git a/forbidden b/forbidden\nnew file mode 100644\nindex 0000000..e69de29\n';
+  expect(() => assertDiffAllowed(patch, ['src/TrendLine/'])).toThrow();
+  expect(
+    assertDiffAllowed(
+      'diff --git a/src/TrendLine/empty.ts b/src/TrendLine/empty.ts\nnew file mode 100644\nindex 0000000..e69de29\n',
+      ['src/TrendLine/'],
+    ),
+  ).toEqual(['src/TrendLine/empty.ts']);
+});

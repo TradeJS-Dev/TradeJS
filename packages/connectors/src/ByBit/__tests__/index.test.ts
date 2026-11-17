@@ -2536,3 +2536,24 @@ describe('ByBitConnectorCreator', () => {
     expect(mockedDelay).toHaveBeenCalledWith(800);
   });
 });
+
+it('rejects a non-adjacent repeated delisting cursor instead of returning partial evidence', async () => {
+  const getInstrumentsInfo = jest
+    .fn()
+    .mockResolvedValueOnce({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'a' },
+    })
+    .mockResolvedValueOnce({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'b' },
+    })
+    .mockResolvedValue({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'a' },
+    });
+  mockedGetClient.mockResolvedValue({ getInstrumentsInfo } as any);
+  const connector = await ByBitConnectorCreator({ userName: 'alice' });
+  await expect(connector.listDelistings?.()).rejects.toThrow('did not advance');
+  expect(getInstrumentsInfo).toHaveBeenCalledTimes(3);
+});

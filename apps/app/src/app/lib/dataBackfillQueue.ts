@@ -42,8 +42,13 @@ export async function enqueueDataBackfill(
   const id = createHash('sha256').update(JSON.stringify(request)).digest('hex');
   return changeQueue(user, (jobs) => {
     const previous = jobs.find((job) => job.id === id);
+    const currentDayAdvanced =
+      previous?.status === 'completed' &&
+      request.day + 86_400_000 > previous.createdAt &&
+      Math.floor(Date.now() / 60_000) > Math.floor(previous.createdAt / 60_000);
     if (
       previous &&
+      !currentDayAdvanced &&
       (!retry || ['queued', 'running', 'completed'].includes(previous.status))
     )
       return { value: previous };

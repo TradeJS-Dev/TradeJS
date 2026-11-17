@@ -1,4 +1,6 @@
 import glob
+from collections import OrderedDict
+from threading import RLock
 import os
 import re
 import sys
@@ -18,7 +20,9 @@ GRPC_HOST = os.getenv("ML_GRPC_HOST", "0.0.0.0")
 GRPC_PORT = int(os.getenv("ML_GRPC_PORT", "50051"))
 PROTO_PATH = os.getenv("ML_GRPC_PROTO", "/app/proto/ml_infer.proto")
 
-_model_cache: Dict[str, Any] = {}
+_model_cache: Dict[str, Any] = OrderedDict()
+_model_lock = RLock()
+_MAX_CACHED_MODELS = 32
 
 
 def _ensure_proto() -> None:
@@ -48,9 +52,24 @@ def _ensure_proto() -> None:
 
 
 def _load_models(strategy: str) -> List[Any]:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", strategy):
+        raise FileNotFoundError("Invalid model name")
+    with _model_lock:
+        return _load_models_locked(strategy)
+
+
+def _cache_models(key: str, models: List[Any]) -> List[Any]:
+    _model_cache[key] = models
+    while len(_model_cache) > _MAX_CACHED_MODELS:
+        _model_cache.popitem(last=False)
+    return models
+
+
+def _load_models_locked(strategy: str) -> List[Any]:
     cache_key = strategy
     cached = _model_cache.get(cache_key)
     if cached is not None:
+        _model_cache.move_to_end(cache_key)
         return cached
 
     pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
@@ -67,15 +86,13 @@ def _load_models(strategy: str) -> List[Any]:
     model_paths = [path for _idx, path in model_entries]
     if model_paths:
         models = [joblib.load(path) for path in model_paths]
-        _model_cache[cache_key] = models
-        return models
+        return _cache_models(cache_key, models)
 
     if not os.path.exists(model_path):
         raise FileNotFoundError(model_path)
 
     model = joblib.load(model_path)
-    _model_cache[cache_key] = [model]
-    return [model]
+    return _cache_models(cache_key, [model])
 
 
 def _align_features(X: pd.DataFrame, expected: List[str]) -> pd.DataFrame:

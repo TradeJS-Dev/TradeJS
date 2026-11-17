@@ -94,8 +94,16 @@ export const buildResearchCaseSvg = (
   const levels = [sample.stop, sample.target].filter(
     (value): value is number => value != null,
   );
-  const min = Math.min(...candles.map((candle) => candle.low), ...levels),
-    max = Math.max(...candles.map((candle) => candle.high), ...levels);
+  let min = Infinity;
+  let max = -Infinity;
+  for (const candle of candles) {
+    min = Math.min(min, candle.low);
+    max = Math.max(max, candle.high);
+  }
+  for (const level of levels) {
+    min = Math.min(min, level);
+    max = Math.max(max, level);
+  }
   const y = (value: number) =>
     220 - (180 * (value - min)) / Math.max(1e-12, max - min);
   const x = (index: number) =>
