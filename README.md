@@ -7,6 +7,9 @@ This repository contains the framework, CLI, and web application. Use this
 README to set up a development checkout and contribute changes. To use the
 published packages in your own project, follow the
 [installation guide](https://docs.tradejs.dev/getting-started/installation).
+See the [strategy catalog](https://docs.tradejs.dev/strategies/reference) for
+examples or the [MCP guide](https://docs.tradejs.dev/guides/mcp) to connect an
+agent to a running TradeJS server.
 
 ## Set up your checkout
 

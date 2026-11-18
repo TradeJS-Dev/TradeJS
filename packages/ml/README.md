@@ -23,7 +23,7 @@ Use the documented ML flow through:
 
 - `@tradejs/cli`
 - `@tradejs/node`
-- docs at https://docs.tradejs.dev/ai-ml
+- [ML setup and training guide](https://docs.tradejs.dev/ai-ml/ml/configuration)
 
 Do not import `@tradejs/ml` directly in project code.
 
