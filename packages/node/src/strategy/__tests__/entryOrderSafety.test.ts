@@ -295,6 +295,39 @@ test('a stop acknowledgement with mismatched observed protection triggers verifi
   expect(mockReceipts.size).toBe(1);
 });
 
+test('a terminal zero-fill order leaves the existing position intact after an ambiguous submission', async () => {
+  const f = fixture();
+  const existingPosition = await f.c.getEntryPositionObservation!({
+    symbol: 'BTCUSDT',
+  });
+  const submissionError = new Error('submission timed out');
+  f.setFact({ id: 'client-id', status: 'cancelled', filledQty: 0 });
+  jest.mocked(f.c.placeOrder).mockImplementation(async (request) => {
+    await request.beforeSubmit?.({ qty: request.qty });
+    throw submissionError;
+  });
+
+  const result = await complete(
+    f.run((safe) =>
+      safe.placeOrder({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        positionIntent: 'increase',
+        qty: 1,
+        price: 100,
+        timestamp: 1000,
+      }),
+    ),
+  );
+
+  expect(result).toBe(submissionError);
+  expect(f.c.closePosition).not.toHaveBeenCalled();
+  expect(await f.c.getEntryPositionObservation!({ symbol: 'BTCUSDT' })).toEqual(
+    existingPosition,
+  );
+  expect(mockClaims.size).toBe(0);
+});
+
 test('keeps the gate when a timed-out compensation may still execute after an independent stop', async () => {
   const f = fixture();
   jest

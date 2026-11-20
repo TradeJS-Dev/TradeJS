@@ -363,7 +363,9 @@ export async function withEntryOrderSafety<T>({
         /* Reconcile authoritative state below. */
       }
       terminalEntry = (await poll(order, terminal)) ?? undefined;
-      let remaining = await bounded(position());
+      // A terminal no-fill entry did not change any existing position.
+      let remaining =
+        terminalEntry?.filledQty === 0 ? null : await bounded(position());
       for (let attempt = 0; remaining && attempt < ATTEMPTS; attempt++) {
         if (remaining.direction !== direction)
           throw new Error('ENTRY_POSITION_DIRECTION_CHANGED');
