@@ -1,3 +1,4 @@
+import { withEntryOrderSafety } from '../strategy/entryOrderSafety';
 import { logger } from '@tradejs/infra/logger';
 import { FEE_PERCENT } from '@tradejs/core/constants';
 import {
@@ -251,7 +252,10 @@ interface ExecuteEntryOrderParams {
   beforePlaceOrder?: () => Promise<void>;
   recordRuntimeTrade?: boolean;
   executionLimits?: EntryExecutionLimits;
-  markPortfolioSubmitted?: (qty: number) => Promise<string>;
+  markPortfolioSubmitted?: (
+    qty: number,
+    beforeCommit?: (id: string) => Promise<void>,
+  ) => Promise<string>;
   rejectPortfolioSubmission?: (retrying?: boolean) => Promise<void>;
 }
 
@@ -349,7 +353,31 @@ const applyProtectiveOrders = async ({
   }
 };
 
-export const executeEntryOrder = async ({
+export const executeEntryOrder = async (
+  params: ExecuteEntryOrderParams,
+): Promise<number> => {
+  const orderId =
+    params.signal.orderId || createRuntimeOrderId(params.signal.strategy);
+  params.signal.orderId = orderId;
+  try {
+    return await withEntryOrderSafety({
+      connector: params.connector,
+      userName: params.userName,
+      symbol: params.symbol,
+      direction: params.direction,
+      orderId,
+      execute: (connector) =>
+        executeEntryOrderInternal({ ...params, connector }),
+    });
+  } catch (error) {
+    params.signal.orderStatus = 'failed';
+    params.signal.orderFailureReason =
+      error instanceof Error ? error.message : 'ENTRY_ORDER_FAILED';
+    throw error;
+  }
+};
+
+const executeEntryOrderInternal = async ({
   connector,
   userName,
   symbol,
@@ -463,15 +491,19 @@ export const executeEntryOrder = async ({
           beforeSubmit: async (context: {
             qty: number;
             executionPrice?: number;
+            beforeAdmission?: (id: string) => Promise<void>;
           }) => {
             await beforeSubmit?.(context);
-            return markPortfolioSubmitted?.(context.qty);
+            return markPortfolioSubmitted?.(
+              context.qty,
+              context.beforeAdmission,
+            );
           },
         }
       : {}),
   });
   const orderAckTime = Date.now();
-  if (markPortfolioSubmitted && signal.orderId) orderId = signal.orderId;
+  if (signal.orderId) orderId = signal.orderId;
   const placedQty =
     typeof signal.orderQty === 'number' &&
     Number.isFinite(signal.orderQty) &&
@@ -570,13 +602,14 @@ export const executeEntryOrder = async ({
         stopLossPrice: filledStop,
       });
     } catch (error) {
-      await connector.closePosition({
-        symbol,
-        price: resultingEntryPrice,
-        timestamp,
-        direction,
-        signal,
-      });
+      if (!connector.getEntryPositionObservation)
+        await connector.closePosition({
+          symbol,
+          price: resultingEntryPrice,
+          timestamp,
+          direction,
+          signal,
+        });
       throw error;
     }
   }

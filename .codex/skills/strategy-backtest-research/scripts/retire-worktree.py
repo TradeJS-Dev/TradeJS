@@ -47,7 +47,7 @@ def retire(repository, worktree, out, apply=False, history_root=None):
     tracked = set(git(worktree, 'ls-files', '-z', '--cached').split(b'\0'))
     files = set(git(worktree, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split(b'\0'))
     files.update(git(worktree, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard').split(b'\0'))
-    generated = {'node_modules', 'dist', 'build', '.yarn', '.turbo', '.next', 'coverage', '__pycache__', 'synthetic-fixtures'}
+    generated = {'node_modules', 'dist', 'build', '.yarn', '.turbo', '.next', 'coverage', '__pycache__'}
     selected = []
     for raw in sorted(files):
         if not raw:

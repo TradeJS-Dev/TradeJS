@@ -137,6 +137,18 @@ describe('runtime evidence replay source', () => {
       loadReplayRuntimeEvidenceMetadata({ filePath, projectRoot }),
     ).resolves.toMatchObject({ delistings: new Map([['ETHUSDT', 200]]) });
 
+    const unknown = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    delete unknown.delistings;
+    await fs.writeFile(filePath, JSON.stringify(unknown));
+    await expect(
+      loadReplayRuntimeEvidenceMetadata({ filePath, projectRoot }),
+    ).rejects.toThrow('delistings are unknown');
+    unknown.delistings = {};
+    await fs.writeFile(filePath, JSON.stringify(unknown));
+    await expect(
+      loadReplayRuntimeEvidenceMetadata({ filePath, projectRoot }),
+    ).resolves.toMatchObject({ delistings: new Map() });
+
     expect(result.lineageScopes).toEqual([
       expect.objectContaining({
         strategy: 'TrendShift',

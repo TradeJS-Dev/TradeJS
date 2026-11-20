@@ -1,4 +1,5 @@
 import argparse
+from html import escape
 import glob
 import hashlib
 import json
@@ -1031,7 +1032,7 @@ def top_feature_threshold_html(
     else:
         for idx, row in enumerate(rows, start=1):
             lines.append(
-                f"<tr><td>{idx}</td><td>{row['feature']}</td><td>{row['direction']}</td>"
+                f"<tr><td>{idx}</td><td>{escape(str(row['feature']))}</td><td>{escape(str(row['direction']))}</td>"
                 f"<td>{float(row['threshold']):.6g}</td><td>{float(row['accuracy']):.3f}</td>"
                 f"<td>{float(row['coverage']):.3f}</td><td>{int(row['rows'])}</td></tr>"
             )

@@ -1,5 +1,6 @@
 'use client';
 
+import { safeCallbackUrl } from '#app/lib/safeCallbackUrl';
 import { PageHeader } from '#shared/PageLayout';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -18,7 +19,13 @@ const SigninContent = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const callbackUrl = useMemo(
-    () => searchParams.get('callbackUrl') ?? '/routes/dashboard',
+    () =>
+      safeCallbackUrl(
+        searchParams.get('callbackUrl'),
+        typeof window === 'undefined'
+          ? 'http://localhost'
+          : window.location.origin,
+      ),
     [searchParams],
   );
 

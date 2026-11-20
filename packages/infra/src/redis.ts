@@ -186,6 +186,59 @@ export const mcpStorage = {
   },
 };
 
+/** Durable entry safety claims have no expiry. Only their owner can settle them. */
+export const entrySafetyStorage = {
+  async read(key: string): Promise<string | null> {
+    return (await requireReadyRedis()).get(`tradejs:entry-safety:v1:${key}`);
+  },
+  async claim(key: string, value: string): Promise<boolean> {
+    return (
+      (await (
+        await requireReadyRedis()
+      ).set(`tradejs:entry-safety:v1:${key}`, value, 'NX')) === 'OK'
+    );
+  },
+  async replace(key: string, previous: string, next: string): Promise<boolean> {
+    return (
+      (await (
+        await requireReadyRedis()
+      ).eval(
+        "if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end; redis.call('SET',KEYS[1],ARGV[2]); return 1",
+        1,
+        `tradejs:entry-safety:v1:${key}`,
+        previous,
+        next,
+      )) === 1
+    );
+  },
+  async settle(
+    key: string,
+    value: string,
+    receiptId?: string,
+    observation?: string,
+  ): Promise<boolean> {
+    if (receiptId && !observation)
+      throw new Error('Missing compensation observation');
+    const result = await (
+      await requireReadyRedis()
+    ).eval(
+      "if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end; if ARGV[2]=='flat' then redis.call('SET',KEYS[2],ARGV[3]) end; redis.call('DEL',KEYS[1]); return 1",
+      2,
+      `tradejs:entry-safety:v1:${key}`,
+      `tradejs:entry-compensation:v1:${receiptId ?? key}`,
+      value,
+      receiptId ? 'flat' : 'released',
+      observation ?? '',
+    );
+    return result === 1;
+  },
+  async readCompensation(receiptId: string): Promise<string | null> {
+    return (await requireReadyRedis()).get(
+      `tradejs:entry-compensation:v1:${receiptId}`,
+    );
+  },
+};
+
 /** Runtime portfolio state only; configuration remains Git-owned. No expiry or fail-open fallback. */
 export const portfolioStateStorage = {
   async read(key: string): Promise<string | null> {

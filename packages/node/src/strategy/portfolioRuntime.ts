@@ -5,6 +5,7 @@ import {
   portfolioFingerprint,
 } from '@tradejs/core/portfolio';
 import { portfolioStateStorage } from '@tradejs/infra/redis';
+import { getEntryCompensation } from './entryOrderSafety';
 import type {
   Connector,
   PortfolioObservation,
@@ -55,6 +56,15 @@ export async function observeRuntimePortfolio(
     );
   const orders = await Promise.all(
     reservations.map(async (r) => {
+      if (connector.getEntryPositionObservation) {
+        const receipt = await getEntryCompensation(
+          connector,
+          binding.userName,
+          r.symbol,
+          r.id,
+        );
+        if (receipt) return receipt;
+      }
       if (r.submitted && connector.getEntryOrderObservation) {
         const fact = await connector.getEntryOrderObservation({
           symbol: r.symbol,

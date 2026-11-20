@@ -118,7 +118,10 @@ const readRuntimeEvidenceArtifact = async ({
 };
 
 const parseDelistings = (value: unknown): ReadonlyMap<string, number> => {
-  if (value === undefined) return new Map();
+  if (value === undefined)
+    throw new Error(
+      'Runtime evidence delistings are unknown; export current evidence before replay',
+    );
   const record = asRecord(value);
   if (!record) throw new Error('Invalid runtime evidence delistings');
   const delistings = new Map<string, number>();

@@ -180,7 +180,10 @@ export function createPortfolioCoordinator({
       now: number,
       entry: Omit<PortfolioReservation, 'submitted' | 'oppositeHandled'>,
       send: (
-        markSubmitted: (qty: number) => Promise<string>,
+        markSubmitted: (
+          qty: number,
+          beforeCommit?: (id: string) => Promise<void>,
+        ) => Promise<string>,
         markRejected: (retrying?: boolean) => Promise<void>,
       ) => Promise<T>,
     ): Promise<{ reason?: string; value?: T }> {
@@ -204,11 +207,12 @@ export function createPortfolioCoordinator({
       let needsReservation = false;
       try {
         const value = await send(
-          async (qty) => {
+          async (qty, beforeCommit) => {
             if (!Number.isFinite(qty) || qty <= 0)
               throw new Error('Invalid submitted portfolio quantity');
             if (needsReservation) {
               attemptId = `${entry.id.slice(0, 30)}r${++retry}`;
+              await beforeCommit?.(attemptId);
               const admission = await transact(
                 now,
                 (s, o) => {
@@ -228,6 +232,7 @@ export function createPortfolioCoordinator({
               submitted = true;
               return attemptId;
             }
+            await beforeCommit?.(attemptId);
             const update = await updateReservation(now, attemptId, true, qty);
             if (!update.result)
               throw new Error('PORTFOLIO_SUBMISSION_NO_LONGER_ADMITTED');

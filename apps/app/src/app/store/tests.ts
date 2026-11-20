@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
@@ -17,7 +17,20 @@ import { parseTestName } from '@tradejs/core/backtest';
 
 const COMPARE_LOCAL_STORAGE_KEY = 'compare';
 const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
-const BACKTEST_FILES_CACHE_KEY = 'backtest-files-v2';
+let cacheSession: string | null = null;
+let cacheGeneration = 0;
+const scopedCacheKey = (kind: string, id = '', strategy = '') =>
+  JSON.stringify(['backtest-cache-v3', cacheSession, kind, strategy, id]);
+const cacheIdentity = (id: string, strategy?: string) =>
+  JSON.stringify([strategy ?? '', id]);
+const cacheName = (key: string) => {
+  try {
+    return JSON.parse(key)[1] as string;
+  } catch {
+    return key;
+  }
+};
+const filesCacheKey = () => scopedCacheKey('files');
 const BACKTEST_FILES_CACHE_TTL_MS = 5 * 60 * 1000;
 const testLoadRequests = new Map<string, Promise<void>>();
 
@@ -60,7 +73,8 @@ const useDataStore = create<BacktestState>((set) => ({
   removeBacktest: (id) =>
     set(({ backtests }) => {
       const next = new Map(backtests);
-      next.delete(id);
+      for (const key of next.keys())
+        if (cacheName(key) === id) next.delete(key);
 
       return {
         backtests: next,
@@ -105,7 +119,8 @@ const useFavoriteTetstsStore = create<FavotiteTestsState>()(
         })),
     }),
     {
-      name: FAVORITE_LOCAL_STORAGE_KEY,
+      name: `${FAVORITE_LOCAL_STORAGE_KEY}:v3:anonymous`,
+      skipHydration: true,
     },
   ),
 );
@@ -174,24 +189,25 @@ const useTestsCompareStore = create<TestsCompareState>()(
         })),
     }),
     {
-      name: COMPARE_LOCAL_STORAGE_KEY,
+      name: `${COMPARE_LOCAL_STORAGE_KEY}:v3:anonymous`,
+      skipHydration: true,
     },
   ),
 );
 
 interface TestsState {
   tests: Map<string, TestResult | null>;
-  setTest: (test: TestResult) => void;
+  setTest: (test: TestResult, identity?: string) => void;
   setTestUnavailable: (testName: string) => void;
   removeTest: (testName: string) => void;
 }
 
 const useTestsStore = create<TestsState>((set) => ({
   tests: new Map<string, TestResult | null>(),
-  setTest: (testResult) =>
+  setTest: (testResult, identity = testResult.test.name) =>
     set(({ tests }) => {
       const next = new Map(tests);
-      next.set(testResult.test.name, testResult);
+      next.set(identity, testResult);
 
       return {
         tests: next,
@@ -209,7 +225,8 @@ const useTestsStore = create<TestsState>((set) => ({
   removeTest: (testName) =>
     set(({ tests }) => {
       const next = new Map(tests);
-      next.delete(testName);
+      for (const key of next.keys())
+        if (cacheName(key) === testName) next.delete(key);
 
       return {
         tests: next,
@@ -229,25 +246,29 @@ const loadBacktestFilesList = async () => {
     return inFlight;
   }
 
+  const generation = cacheGeneration;
   const pending = (async () => {
     const cached = (await get(
-      BACKTEST_FILES_CACHE_KEY,
+      filesCacheKey(),
     )) as BacktestFilesCacheRecord | null;
 
+    if (generation !== cacheGeneration) return [];
     if (cached?.savedAt && isFresh(cached.savedAt)) {
       setTest(cached.items, cached.savedAt);
       return cached.items;
     }
 
     const newTests = await getBacktestFiles();
+    if (generation !== cacheGeneration) return [];
     const savedAt = Date.now();
     setTest(newTests, savedAt);
-    await set(BACKTEST_FILES_CACHE_KEY, {
+    await set(filesCacheKey(), {
       savedAt,
       items: newTests,
     } satisfies BacktestFilesCacheRecord);
     return newTests;
   })().finally(() => {
+    if (generation !== cacheGeneration) return;
     useTestListStore.getState().setInFlight(undefined);
   });
 
@@ -300,7 +321,7 @@ export const useTestList = (filters: TestListProps = {}) => {
     useShallow((state) => {
       const names = new Set<string>();
       for (const [name, result] of state.tests) {
-        if (result === null) names.add(name);
+        if (result === null) names.add(cacheName(name));
       }
       return names;
     }),
@@ -379,28 +400,36 @@ export const useTestList = (filters: TestListProps = {}) => {
 };
 
 export const useTest = (testName: string) => {
-  const testResult = useTestsStore((s) => s.tests.get(testName));
-  const hasTestResult = useTestsStore((s) => s.tests.has(testName));
   const setTest = useTestsStore((s) => s.setTest);
   const setTestUnavailable = useTestsStore((s) => s.setTestUnavailable);
   const tests = useTestListStore((s) => s.tests);
+  const loadedAt = useTestListStore((s) => s.loadedAt);
   const setTestList = useTestListStore((s) => s.setTest);
   const testItem = tests.find((item) => item.value === testName);
   const strategyName = testItem?.data?.strategyName as string | undefined;
 
+  const identity = cacheIdentity(testName, strategyName);
+  const testResult = useTestsStore((s) => s.tests.get(identity));
+  const hasTestResult = useTestsStore((s) => s.tests.has(identity));
   useEffect(() => {
+    if (!strategyName && !loadedAt) {
+      void loadBacktestFilesList().catch(() => undefined);
+      return;
+    }
     if (hasTestResult) {
       return;
     }
 
+    const generation = cacheGeneration;
     const loadData = async () => {
-      const key = `test-${testName}`;
+      const key = scopedCacheKey('test', testName, strategyName);
 
       try {
         const cachedResult = (await get(key)) as TestResult | null;
 
+        if (generation !== cacheGeneration) return;
         if (!_.isEmpty(cachedResult)) {
-          setTest(cachedResult);
+          setTest(cachedResult, identity);
 
           return;
         }
@@ -408,6 +437,7 @@ export const useTest = (testName: string) => {
         let resolvedStrategy = strategyName;
         if (!resolvedStrategy) {
           const newTests = await loadBacktestFilesList();
+          if (generation !== cacheGeneration) return;
           setTestList(newTests);
           resolvedStrategy = newTests.find((item) => item.value === testName)
             ?.data?.strategyName as string | undefined;
@@ -415,31 +445,35 @@ export const useTest = (testName: string) => {
 
         const test = await getBacktest(testName, resolvedStrategy);
 
+        if (generation !== cacheGeneration) return;
         if (!test) {
-          setTestUnavailable(testName);
+          setTestUnavailable(identity);
           return;
         }
 
-        setTest(test);
+        setTest(test, identity);
 
         await set(key, test);
       } catch {
-        setTestUnavailable(testName);
+        if (generation !== cacheGeneration) return;
+        setTestUnavailable(identity);
       }
     };
 
-    let request = testLoadRequests.get(testName);
+    let request = testLoadRequests.get(identity);
 
     if (!request) {
       request = loadData();
-      testLoadRequests.set(testName, request);
+      testLoadRequests.set(identity, request);
       void request.finally(() => {
-        if (testLoadRequests.get(testName) === request) {
-          testLoadRequests.delete(testName);
+        if (testLoadRequests.get(identity) === request) {
+          testLoadRequests.delete(identity);
         }
       });
     }
   }, [
+    identity,
+    loadedAt,
     hasTestResult,
     setTest,
     setTestList,
@@ -453,29 +487,48 @@ export const useTest = (testName: string) => {
 
 export const useTestsCompare = () => {
   const tests = useTestsStore((s) => s.tests);
+  const files = useTestListStore((s) => s.tests);
+  const identityOf = useCallback(
+    (name: string) =>
+      cacheIdentity(
+        name,
+        files.find((item) => item.value === name)?.data?.strategyName as
+          | string
+          | undefined,
+      ),
+    [files],
+  );
   const setTest = useTestsStore((s) => s.setTest);
   const compareList = useTestsCompareStore((s) => s.compareList);
   const onChangeCompare = useTestsCompareStore((s) => s.onChangeCompare);
   const removeFromCompare = useTestsCompareStore((s) => s.removeFromCompare);
 
   useEffect(() => {
+    const generation = cacheGeneration;
     const loadData = async () => {
       for (const { testName } of compareList) {
-        if (tests.has(testName)) {
+        if (tests.has(identityOf(testName))) {
           continue;
         }
 
-        const key = `test-${testName}`;
+        const key = scopedCacheKey(
+          'test',
+          testName,
+          files.find((item) => item.value === testName)?.data?.strategyName as
+            | string
+            | undefined,
+        );
         const cachedResult = (await get(key)) as TestResult | null;
 
+        if (generation !== cacheGeneration) return;
         if (!_.isEmpty(cachedResult)) {
-          setTest(cachedResult);
+          setTest(cachedResult, identityOf(testName));
         }
       }
     };
 
     void loadData();
-  }, [compareList, setTest, tests]);
+  }, [compareList, setTest, tests, files, identityOf]);
 
   const checkIsCompared = (testName: string) =>
     compareList.some((s) => s.testName === testName);
@@ -483,7 +536,7 @@ export const useTestsCompare = () => {
   return {
     compareList: compareList
       .map(({ testName, color }) => {
-        const testResult = tests.get(testName);
+        const testResult = tests.get(identityOf(testName));
         return {
           testResult,
           color,
@@ -504,23 +557,40 @@ export const useBacktestMutations = () => {
   const removeFromCompare = useTestsCompareStore((s) => s.removeFromCompare);
 
   const removeBacktestTest = async (testName: string) => {
+    const generation = cacheGeneration;
+    const session = cacheSession;
+    const filesKey = filesCacheKey();
     removeTestFromList(testName);
     removeTestResult(testName);
     removeBacktest(testName);
     removeFavorite(testName);
     removeFromCompare(testName);
 
-    const cache = (await get(
-      BACKTEST_FILES_CACHE_KEY,
-    )) as BacktestFilesCacheRecord | null;
+    const cache = (await get(filesKey)) as BacktestFilesCacheRecord | null;
+    if (generation !== cacheGeneration) return;
     if (cache?.items) {
-      await set(BACKTEST_FILES_CACHE_KEY, {
+      await set(filesKey, {
         ...cache,
         items: cache.items.filter((item) => item.value !== testName),
       } satisfies BacktestFilesCacheRecord);
     }
 
-    await Promise.all([del(`test-${testName}`), del(`backtest-${testName}`)]);
+    const { keys } = await import('idb-keyval');
+    for (const key of await keys()) {
+      if (typeof key !== 'string') continue;
+      try {
+        const parts = JSON.parse(key);
+        if (generation !== cacheGeneration) return;
+        if (
+          parts[0] === 'backtest-cache-v3' &&
+          parts[1] === session &&
+          parts[4] === testName
+        )
+          await del(key);
+      } catch {
+        /* Legacy cache entries are never read. */
+      }
+    }
   };
 
   return {
@@ -531,7 +601,6 @@ export const useBacktestMutations = () => {
 const emptyOrderLog: OrderLogData = [];
 
 export const useBacktest = (id: string | undefined, strategyHint?: string) => {
-  const backtest = useDataStore((s) => s.backtests.get(id || 'empty'));
   const setBacktest = useDataStore((s) => s.setBacktest);
   const [request, setRequest] = useState<{
     id: string;
@@ -543,14 +612,17 @@ export const useBacktest = (id: string | undefined, strategyHint?: string) => {
   const strategyName =
     strategyHint ?? (testItem?.data?.strategyName as string | undefined);
 
+  const identity = cacheIdentity(id ?? 'empty', strategyName);
+  const backtest = useDataStore((s) => s.backtests.get(identity));
   useEffect(() => {
     let active = true;
+    const generation = cacheGeneration;
     const updateBacktest = async () => {
       if (!id) {
         return;
       }
 
-      const key = `backtest-${id}`;
+      const key = scopedCacheKey('log', id, strategyName);
 
       let unavailable = false;
       try {
@@ -558,14 +630,16 @@ export const useBacktest = (id: string | undefined, strategyHint?: string) => {
           () => null,
         )) as OrderLogData | null;
 
+        if (!active || generation !== cacheGeneration) return;
         if (cachedResult) {
-          setBacktest(id, cachedResult);
+          setBacktest(identity, cachedResult);
           return;
         }
 
         let resolvedStrategy = strategyName;
         if (!resolvedStrategy) {
           const newTests = await loadBacktestFilesList();
+          if (!active || generation !== cacheGeneration) return;
           setTestList(newTests);
           resolvedStrategy = newTests.find((item) => item.value === id)?.data
             ?.strategyName as string | undefined;
@@ -573,15 +647,17 @@ export const useBacktest = (id: string | undefined, strategyHint?: string) => {
 
         const backtestData = await getOrderLog(id, resolvedStrategy);
 
+        if (!active || generation !== cacheGeneration) return;
         unavailable = backtestData === null;
         if (backtestData) {
-          setBacktest(id, backtestData);
+          setBacktest(identity, backtestData);
           await set(key, backtestData).catch(() => undefined);
         }
       } catch {
         unavailable = true;
       } finally {
-        if (active) setRequest({ id, unavailable });
+        if (active && generation === cacheGeneration)
+          setRequest({ id, unavailable });
       }
     };
 
@@ -589,7 +665,7 @@ export const useBacktest = (id: string | undefined, strategyHint?: string) => {
     return () => {
       active = false;
     };
-  }, [id, setBacktest, setTestList, strategyName]);
+  }, [id, identity, setBacktest, setTestList, strategyName]);
 
   return {
     backtest: backtest ?? emptyOrderLog,
@@ -600,7 +676,7 @@ export const useBacktest = (id: string | undefined, strategyHint?: string) => {
   };
 };
 
-export const resetTestsStoreForTests = () => {
+const resetBacktestCacheMemory = () => {
   testLoadRequests.clear();
   useDataStore.setState({
     backtests: new Map<string, OrderLogData | null>(),
@@ -613,4 +689,65 @@ export const resetTestsStoreForTests = () => {
   useTestsStore.setState({
     tests: new Map<string, TestResult | null>(),
   });
+};
+
+export const resetTestsStoreForTests = resetBacktestCacheMemory;
+const readPreference = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const restorePreference = (key: string, value: string | null) => {
+  try {
+    if (value !== null) localStorage.setItem(key, value);
+  } catch {
+    /* Storage can be disabled by the browser. */
+  }
+};
+let scopeChange = Promise.resolve();
+export const setBacktestCacheSession = (session: string | null) => {
+  if (cacheSession === session) return scopeChange;
+  cacheSession = session;
+  cacheGeneration++;
+  resetBacktestCacheMemory();
+  const generation = cacheGeneration;
+  scopeChange = scopeChange
+    .catch(() => undefined)
+    .then(async () => {
+      if (generation !== cacheGeneration) return;
+      const clearPreferences = () => {
+        try {
+          useFavoriteTetstsStore.setState({ tests: [] });
+        } catch {
+          /* Memory is reset before persisting. */
+        }
+        try {
+          useTestsCompareStore.setState({ compareList: [] });
+        } catch {
+          /* Storage may be disabled. */
+        }
+      };
+      if (!useFavoriteTetstsStore.persist || !useTestsCompareStore.persist) {
+        clearPreferences();
+        return;
+      }
+      try {
+        const favoriteName = `${FAVORITE_LOCAL_STORAGE_KEY}:v3:${session ?? 'anonymous'}`;
+        const compareName = `${COMPARE_LOCAL_STORAGE_KEY}:v3:${session ?? 'anonymous'}`;
+        const savedFavorites = readPreference(favoriteName);
+        const savedCompare = readPreference(compareName);
+        useFavoriteTetstsStore.persist.setOptions({ name: favoriteName });
+        useTestsCompareStore.persist.setOptions({ name: compareName });
+        clearPreferences();
+        restorePreference(favoriteName, savedFavorites);
+        restorePreference(compareName, savedCompare);
+        await useFavoriteTetstsStore.persist.rehydrate();
+        await useTestsCompareStore.persist.rehydrate();
+      } catch {
+        clearPreferences();
+      }
+    });
+  return scopeChange;
 };

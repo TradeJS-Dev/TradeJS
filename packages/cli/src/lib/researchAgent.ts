@@ -185,6 +185,11 @@ export const parseChangedFilesFromDiff = (diffText: string): string[] => {
   const lines = diffText.split('\n');
 
   for (const line of lines) {
+    const header = /^diff --git a\/([^\s]+) b\/([^\s]+)$/.exec(line);
+    if (header) {
+      files.add(header[1]);
+      files.add(header[2]);
+    }
     if (!line.startsWith('+++ ')) {
       continue;
     }
@@ -215,6 +220,53 @@ export const assertDiffAllowed = (
     throw new Error('Research agent diff must not delete files');
   }
 
+  if (
+    /^(?:rename |copy |similarity index |dissimilarity index |old mode |new mode |new file mode (?!100644$)|deleted file mode |GIT binary patch|Binary files )/m.test(
+      diffText,
+    )
+  ) {
+    throw new Error('Research agent diff must contain regular text edits only');
+  }
+  for (const line of diffText.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = /^diff --git a\/([^\s]+) b\/([^\s]+)$/.exec(line);
+      const headerAllowed =
+        match &&
+        [match[1], match[2]].every(
+          (file) =>
+            !/[\s\\]/.test(file) &&
+            !file
+              .split('/')
+              .some((part) => !part || part === '.' || part === '..') &&
+            allowedPrefixes.some(
+              (prefix) =>
+                file === prefix.replace(/\/$/, '') ||
+                file.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`),
+            ),
+        );
+      if (!match || match[1] !== match[2])
+        throw new Error('Research agent diff has ambiguous paths');
+      if (!headerAllowed)
+        throw new Error(`Research agent changed disallowed path: ${match[1]}`);
+    }
+    if (!line.startsWith('--- ') && !line.startsWith('+++ ')) continue;
+    const raw = line.slice(4);
+    if (raw === '/dev/null' && line.startsWith('--- ')) continue;
+    const prefix = line.startsWith('--- ') ? 'a/' : 'b/';
+    const file = raw.slice(2);
+    if (
+      !raw.startsWith(prefix) ||
+      /[\s\\]/.test(file) ||
+      file.split('/').some((part) => !part || part === '.' || part === '..') ||
+      !allowedPrefixes.some(
+        (prefix) =>
+          file === prefix.replace(/\/$/, '') ||
+          file.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`),
+      )
+    ) {
+      throw new Error(`Research agent changed disallowed path: ${raw}`);
+    }
+  }
   const changedFiles = parseChangedFilesFromDiff(diffText);
   if (!changedFiles.length) {
     throw new Error('Research agent diff did not contain any changed files');

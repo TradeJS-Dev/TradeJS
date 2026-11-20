@@ -1,3 +1,4 @@
+import { entrySafetyStorage } from '@tradejs/infra/redis';
 jest.mock('@tradejs/infra/timescale/candles', () => ({
   ...jest.requireActual('@tradejs/infra/timescale/candles'),
   getReferenceCandlePrices: async () => [],
@@ -153,6 +154,7 @@ jest.mock('../strategyHelpers/hyperliquidWhaleContext', () => ({
 }));
 
 jest.mock('../runtimeJournal', () => ({
+  createRuntimeOrderId: () => 'runtime-client-id',
   getActiveRuntimeTrade: (...args: unknown[]) =>
     mockGetActiveRuntimeTrade(...args),
   markRuntimeTradeClosed: (...args: unknown[]) =>
@@ -180,6 +182,7 @@ jest.mock('../strategy/manifests', () => {
 });
 
 import { createStrategyRuntime } from '../strategyRuntime';
+import { executeEntryDecision } from '../strategy/runtimeExecution';
 import { EntrySubmissionValidationError } from '../strategy/entryExecutionValidation';
 import { createStrategyAPI } from '@tradejs/core/strategies';
 import { logger } from '@tradejs/infra/logger';
@@ -1988,6 +1991,80 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('reconciles and confirms compensation for a live entry without a signal', async () => {
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: { ml: { enabled: false }, ai: { enabled: false } },
+      }),
+    );
+    let flat = false;
+    connector.cancelEntryOrder = jest.fn(async () => true);
+    connector.getEntryOrderObservation = jest.fn(
+      async ({ orderId }: { orderId: string }) => ({
+        id: orderId,
+        status: 'filled',
+        filledQty: 3,
+      }),
+    );
+    connector.getEntryPositionObservation = jest.fn(async () =>
+      flat
+        ? null
+        : {
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            qty: 3,
+            price: 222,
+            priceTickSize: 0.1,
+          },
+    );
+    connector.placeOrder.mockImplementation(
+      async (order: Parameters<Connector['placeOrder']>[0]) => {
+        await order.beforeSubmit?.({ qty: 3 });
+        return true;
+      },
+    );
+    connector.closePosition.mockImplementation(async () => {
+      flat = true;
+      return true;
+    });
+    mockUpdatePositionProtection.mockRejectedValueOnce(
+      new Error('stop update failed'),
+    );
+    const claim = jest
+      .spyOn(entrySafetyStorage, 'claim')
+      .mockResolvedValue(true);
+    const replace = jest
+      .spyOn(entrySafetyStorage, 'replace')
+      .mockResolvedValue(true);
+    const settle = jest
+      .spyOn(entrySafetyStorage, 'settle')
+      .mockResolvedValue(true);
+    try {
+      expect(
+        await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any),
+      ).toBe('ORDER_ERROR');
+      expect(connector.placeOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 'runtime-client-id' }),
+      );
+      expect(connector.cancelEntryOrder).toHaveBeenCalledWith({
+        symbol: 'ETHUSDT',
+        orderId: 'runtime-client-id',
+      });
+      expect(connector.closePosition).toHaveBeenCalledTimes(1);
+      expect(settle).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.stringContaining('runtime-client-id'),
+        expect.any(String),
+      );
+    } finally {
+      claim.mockRestore();
+      replace.mockRestore();
+      settle.mockRestore();
+    }
+  });
+
   it('closes no-signal entry when protection update fails after placeOrder', async () => {
     const { strategy, connector } = await makeRuntime(() =>
       makeDecisionEntry({
@@ -3700,4 +3777,49 @@ describe('strategyRuntime', () => {
       expect(stripFunctions(params)).toMatchSnapshot();
     });
   });
+});
+
+it('rejects a portfolio entry without a signal before any reservation or submission', async () => {
+  const submit = jest.fn();
+  const result = await executeEntryDecision({
+    portfolio: { submit },
+    decision: {
+      kind: 'entry',
+      signal: undefined,
+      orderPlan: { positionIntent: 'open' },
+    },
+  } as unknown as Parameters<typeof executeEntryDecision>[0]);
+  expect(result).toBe('PORTFOLIO_REQUIRES_NEW_SIGNAL_POSITION');
+  expect(submit).not.toHaveBeenCalled();
+});
+
+it('checks the account safety gate before creating the initial portfolio reservation', async () => {
+  const submit = jest.fn();
+  const claim = jest
+    .spyOn(entrySafetyStorage, 'claim')
+    .mockResolvedValueOnce(false);
+  try {
+    await expect(
+      executeEntryDecision({
+        portfolio: { submit },
+        connector: {
+          accountId: 'account',
+          cancelEntryOrder: async () => true,
+          getEntryOrderObservation: async () => null,
+          getEntryPositionObservation: async () => null,
+        },
+        hookCtx: { userName: 'alice' },
+        symbol: 'BTCUSDT',
+        decision: {
+          kind: 'entry',
+          signal: { orderId: 'known-client-id' },
+          orderPlan: { positionIntent: 'open' },
+          entryContext: { direction: 'LONG' },
+        },
+      } as unknown as Parameters<typeof executeEntryDecision>[0]),
+    ).rejects.toThrow('ENTRY_RECOVERY_REQUIRED');
+    expect(submit).not.toHaveBeenCalled();
+  } finally {
+    claim.mockRestore();
+  }
 });

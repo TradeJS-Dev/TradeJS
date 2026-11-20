@@ -114,3 +114,34 @@ it('does not call the exchange when the requested reference history is already c
   await prepareReferenceMarketHistory({ ...request, cacheOnly: false });
   expect(getConnectorCreatorByProvider).not.toHaveBeenCalled();
 });
+
+it('bounds live waiting and shares a still-running preparation across later candle buckets', async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(getDataEdgesForSymbols).mockResolvedValue(new Map());
+    const kline = jest.fn(() => new Promise(() => {}));
+    const creator = jest.fn().mockResolvedValue({ kline });
+    jest.mocked(getConnectorCreatorByProvider).mockResolvedValue(creator);
+    const pending = prepareReferenceMarketHistory({
+      ...request,
+      projectRoot: '/hung-fixture',
+      live: true,
+      cacheOnly: false,
+    });
+    await jest.advanceTimersByTimeAsync(10_001);
+    await pending;
+    expect(kline).toHaveBeenCalledTimes(3);
+    const repeated = prepareReferenceMarketHistory({
+      ...request,
+      projectRoot: '/hung-fixture',
+      endMs: timestamp + hour,
+      live: true,
+      cacheOnly: false,
+    });
+    await jest.advanceTimersByTimeAsync(10_001);
+    await repeated;
+    expect(kline).toHaveBeenCalledTimes(3);
+  } finally {
+    jest.useRealTimers();
+  }
+});

@@ -35,7 +35,27 @@ type BackfillParams = {
   preloadStartMs?: number;
   refreshStaleFearGreed?: boolean;
   repairDataset?: string;
+  repair?: { series: string; loaded: ReadonlySet<number> };
 };
+
+export function selectCoinMarketCapRepairRows<
+  T extends { ts: Date; symbol?: string; indexSlug?: string },
+>(rows: T[], params: BackfillParams): T[] {
+  if (!params.repairDataset) return rows;
+  if (!params.repair)
+    throw new Error(
+      'A targeted repair requires a series and existing timestamps',
+    );
+  return rows.filter((row) => {
+    const ts = row.ts.getTime();
+    return (
+      ts >= params.startMs &&
+      ts < params.endMs &&
+      !params.repair!.loaded.has(ts) &&
+      (row.symbol ?? row.indexSlug ?? 'Total') === params.repair!.series
+    );
+  });
+}
 
 type BackfillResult = {
   skipped: boolean;
@@ -987,6 +1007,8 @@ export const backfillCoinMarketCapContext = async (
   const { fromMs, toMs } = resolveCoinMarketCapBackfillWindow(params);
   if (toMs <= fromMs) return skippedResult();
 
+  const saveCoverage: typeof markBackfillCoverage = (rows) =>
+    params.repairDataset ? Promise.resolve() : markBackfillCoverage(rows);
   const exchangeLiquidityEnabled = isExchangeLiquidityBackfillEnabled();
   const fearGreedEnabled = isFearGreedBackfillEnabled();
 
@@ -1307,8 +1329,10 @@ export const backfillCoinMarketCapContext = async (
       },
     });
     const rows = coinMarketCapGlobalPayloadToRows(payload, SOURCE_GLOBAL_DAILY);
-    await upsertMarketGlobalContextRows(rows);
-    await markBackfillCoverage([
+    await upsertMarketGlobalContextRows(
+      selectCoinMarketCapRepairRows(rows, params),
+    );
+    await saveCoverage([
       {
         source: SOURCE_GLOBAL_DAILY,
         scope: COVERAGE_SCOPE_ALL,
@@ -1342,8 +1366,10 @@ export const backfillCoinMarketCapContext = async (
       },
     });
     const rows = coinMarketCapHistoricalQuotesPayloadToRows(payload, '1d');
-    await upsertMarketReferenceAssetContextRows(rows);
-    await markBackfillCoverage(
+    await upsertMarketReferenceAssetContextRows(
+      selectCoinMarketCapRepairRows(rows, params),
+    );
+    await saveCoverage(
       REFERENCE_ASSETS.map((asset) => ({
         source: SOURCE_REFERENCE,
         scope: asset.symbol,
@@ -1383,8 +1409,10 @@ export const backfillCoinMarketCapContext = async (
       payload,
       '1d',
     );
-    await upsertMarketCmcExchangeLiquidityContextRows(rows);
-    await markBackfillCoverage([
+    await upsertMarketCmcExchangeLiquidityContextRows(
+      selectCoinMarketCapRepairRows(rows, params),
+    );
+    await saveCoverage([
       {
         source: SOURCE_EXCHANGE_LIQUIDITY,
         scope: COVERAGE_SCOPE_ALL,
@@ -1429,8 +1457,10 @@ export const backfillCoinMarketCapContext = async (
       const oldestPageTs = Math.min(...pageRows.map((row) => row.ts.getTime()));
       if (oldestPageTs < fromMs || pageRows.length < pageSize) break;
     }
-    await upsertMarketCmcFearGreedContextRows(rows);
-    await markBackfillCoverage([
+    await upsertMarketCmcFearGreedContextRows(
+      selectCoinMarketCapRepairRows(rows, params),
+    );
+    await saveCoverage([
       {
         source: SOURCE_FEAR_GREED,
         scope: COVERAGE_SCOPE_ALL,
@@ -1464,8 +1494,10 @@ export const backfillCoinMarketCapContext = async (
       })),
     );
     const rows = rowsByIndex.flatMap((item) => item.result.rows);
-    await upsertMarketCmcIndexContextRows(rows);
-    await markBackfillCoverage(
+    await upsertMarketCmcIndexContextRows(
+      selectCoinMarketCapRepairRows(rows, params),
+    );
+    await saveCoverage(
       rowsByIndex.map(({ index, result }) => ({
         source: SOURCE_INDEX,
         scope: index.slug,

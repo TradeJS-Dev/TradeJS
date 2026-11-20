@@ -61,7 +61,7 @@ class ArchiveTest(unittest.TestCase):
                 self.assertFalse(worktree.exists())
                 with tarfile.open(out / 'source.tar.gz') as archive:
                     self.assertIn('synthetic-fixtures/authored.json', archive.getnames())
-                    self.assertNotIn('synthetic-fixtures/generated.json', archive.getnames())
+                    self.assertIn('synthetic-fixtures/generated.json', archive.getnames())
                     self.assertEqual(archive.extractfile('candidate.py').read(), b'exact_untracked_source = True\n')
                 reference = json.loads((out / 'history-reference.json').read_text())
                 history = (out / reference['path']).resolve()

@@ -67,3 +67,30 @@ it('deduplicates a gap and lets only one worker run it, preserving a partial res
     { id: a.id, status: 'queued' },
   ]);
 });
+
+it('reopens a completed current-day repair after the closed-data horizon advances', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(day + 3_600_000);
+  try {
+    const first = await enqueueDataBackfill('root', request);
+    jest.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      (args.at(-1) as Function)(
+        null,
+        'TRADEJS_DATA_BACKFILL {"loaded":1,"added":1,"missing":0}\n',
+        '',
+      );
+      return {} as ReturnType<typeof execFile>;
+    });
+    await drainDataBackfillQueue('root');
+    expect(await enqueueDataBackfill('root', request)).toMatchObject({
+      id: first.id,
+      status: 'completed',
+    });
+    now.mockReturnValue(day + 3_660_000);
+    expect(await enqueueDataBackfill('root', request)).toMatchObject({
+      id: first.id,
+      status: 'queued',
+    });
+  } finally {
+    now.mockRestore();
+  }
+});

@@ -1,0 +1,39 @@
+name: Проверка изменений
+
+on:
+  pull_request:
+    branches: [stable, fix/security-audit-20261117]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+      - name: Подготовить Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+      - run: yarn install --immutable
+      - name: Проверить код и сборку
+        run: yarn checks
+      - name: Проверить границы ML и сохранность архивов
+        run: |
+          python3 packages/ml/python/test_security_boundaries.py
+          python3 .codex/skills/strategy-backtest-research/scripts/retire-worktree.test.py

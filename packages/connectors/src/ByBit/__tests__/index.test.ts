@@ -108,6 +108,9 @@ describe('ByBitConnectorCreator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Math, 'random').mockReturnValue(0);
+    jest.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(() => {
+      throw new Error('Network requests are forbidden in connector unit tests');
+    });
   });
 
   afterEach(() => {
@@ -395,6 +398,120 @@ describe('ByBitConnectorCreator', () => {
       'BTCUSDT',
       expect.any(Error),
     );
+  });
+
+  it('cancels only the exact client order identifier', async () => {
+    const cancelOrder = jest.fn(async () => ({ retCode: 0 }));
+    mockedGetClient.mockResolvedValue({
+      cancelOrder,
+    } as unknown as RestClientV5);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    expect(
+      await connector.cancelEntryOrder!({
+        symbol: 'BTCUSDT',
+        orderId: 'client-id',
+      }),
+    ).toBe(true);
+    expect(cancelOrder).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      orderLinkId: 'client-id',
+    });
+  });
+
+  it('reads entry positions without reusing a cached flat snapshot', async () => {
+    const getPositionInfo = jest.fn().mockResolvedValue({
+      retCode: 0,
+      result: { list: [{ symbol: 'BTCUSDT', positionIdx: 0, size: '0' }] },
+    });
+    mockedGetClient.mockResolvedValue({
+      getPositionInfo,
+    } as unknown as RestClientV5);
+    mockedMapPositionData.mockReturnValue([]);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.1,
+      minOrderQty: 0.1,
+      pricePrecision: 1,
+      qtyPrecision: 1,
+    });
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    expect(await connector.getPosition('BTCUSDT')).toBeNull();
+    getPositionInfo.mockResolvedValue({
+      retCode: 0,
+      result: {
+        list: [
+          {
+            symbol: 'BTCUSDT',
+            positionIdx: 0,
+            size: '1',
+            side: 'Buy',
+            avgPrice: '101',
+            stopLoss: '90',
+          },
+        ],
+      },
+    });
+    expect(
+      await connector.getEntryPositionObservation!({ symbol: 'BTCUSDT' }),
+    ).toEqual({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 101,
+      direction: 'LONG',
+      slPrice: 90,
+      priceTickSize: 0.1,
+    });
+    getPositionInfo.mockResolvedValue({ retCode: 10001, result: { list: [] } });
+    await expect(
+      connector.getEntryPositionObservation!({ symbol: 'BTCUSDT' }),
+    ).rejects.toThrow('unavailable');
+  });
+
+  it.each([
+    [],
+    [{ symbol: 'BTCUSDT', positionIdx: 0, size: 'NaN' }],
+    [{ symbol: 'BTCUSDT', positionIdx: 0, size: '' }],
+    [{ symbol: 'BTCUSDT', positionIdx: 1, size: '0' }],
+    [{ symbol: 'OTHER', positionIdx: 0, size: '0' }],
+  ])(
+    'rejects ambiguous or malformed entry position evidence %j',
+    async (...rows) => {
+      const getPositionInfo = jest.fn(async () => ({
+        retCode: 0,
+        result: { list: rows },
+      }));
+      mockedGetClient.mockResolvedValue({
+        getPositionInfo,
+      } as unknown as RestClientV5);
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      await expect(
+        connector.getEntryPositionObservation!({ symbol: 'BTCUSDT' }),
+      ).rejects.toThrow();
+    },
+  );
+
+  it('requests supported zero-quantity reduce-only whole-position compensation', async () => {
+    const submitOrder = jest.fn(async () => ({ retCode: 0 }));
+    mockedGetClient.mockResolvedValue({
+      submitOrder,
+    } as unknown as RestClientV5);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    await connector.closePosition({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      price: 101,
+      timestamp: 1000,
+    });
+    expect(submitOrder).toHaveBeenCalledWith({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      side: 'Sell',
+      orderType: 'Market',
+      qty: '0',
+      reduceOnly: true,
+      closeOnTrigger: true,
+    });
   });
 
   it.each(['Filled', 'PartiallyFilled', 'Cancelled', 'Rejected'])(
@@ -2535,4 +2652,99 @@ describe('ByBitConnectorCreator', () => {
     expect(client.getKline).toHaveBeenCalledTimes(2);
     expect(mockedDelay).toHaveBeenCalledWith(800);
   });
+  it.each([10000, 10016, 10014, 110072, 123456])(
+    'keeps an ambiguous entry outcome %s out of the rejection callback',
+    async (code) => {
+      const client = {
+        ...createLeverageApi(),
+        submitOrder: jest
+          .fn()
+          .mockResolvedValue({ retCode: code, retMsg: 'ambiguous' }),
+      };
+      mockedGetClient.mockResolvedValue(client as any);
+      mockedGetSymbolMeta.mockResolvedValue({
+        maxMarketOrderQty: 1000000,
+        maxLimitOrderQty: 1000000,
+        minLeverage: 1,
+        maxLeverage: 100,
+        leverageStep: 0.01,
+        tickSize: 0.1,
+        qtyStep: 0.001,
+        minOrderQty: 0.001,
+        pricePrecision: 1,
+        qtyPrecision: 3,
+      });
+      mockedNormalizeQty.mockImplementation((qty) => ({
+        qtyNum: qty,
+        qtyStr: qty.toFixed(3),
+      }));
+      mockedNormalizePrice.mockImplementation((price) => ({
+        priceNum: price,
+        priceStr: price.toFixed(1),
+      }));
+      const connector = await ByBitConnectorCreator({
+        userName: 'ambiguous-entry',
+      });
+      const beforeSubmit = jest.fn(async () => 'admitted-client-id');
+      const onRejected = jest.fn();
+      await expect(
+        connector.placeOrder({
+          symbol: 'BTCUSDT',
+          price: 100,
+          qty: 1,
+          direction: 'LONG',
+          timestamp: 1000,
+          orderId: 'client-id',
+          beforeSubmit,
+          onRejected,
+        }),
+      ).rejects.toThrow(`BYBIT_ORDER_SUBMISSION_UNCONFIRMED:${code}`);
+      expect(beforeSubmit).toHaveBeenCalledTimes(1);
+      expect(onRejected).not.toHaveBeenCalled();
+      expect(client.submitOrder).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([10000, 10016, 10014, 110072, 123456])(
+    'does not label an ambiguous close outcome %s as definite false',
+    async (code) => {
+      const client = {
+        submitOrder: jest.fn().mockResolvedValue({ retCode: code }),
+      };
+      mockedGetClient.mockResolvedValue(client as any);
+      const connector = await ByBitConnectorCreator({
+        userName: 'ambiguous-close',
+      });
+      await expect(
+        connector.closePosition({
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          price: 100,
+          timestamp: 1000,
+          orderId: 'close-id',
+        }),
+      ).rejects.toThrow(`BYBIT_CLOSE_SUBMISSION_UNCONFIRMED:${code}`);
+    },
+  );
+});
+
+it('rejects a non-adjacent repeated delisting cursor instead of returning partial evidence', async () => {
+  const getInstrumentsInfo = jest
+    .fn()
+    .mockResolvedValueOnce({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'a' },
+    })
+    .mockResolvedValueOnce({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'b' },
+    })
+    .mockResolvedValue({
+      retCode: 0,
+      result: { list: [], nextPageCursor: 'a' },
+    });
+  mockedGetClient.mockResolvedValue({ getInstrumentsInfo } as any);
+  const connector = await ByBitConnectorCreator({ userName: 'alice' });
+  await expect(connector.listDelistings?.()).rejects.toThrow('did not advance');
+  expect(getInstrumentsInfo).toHaveBeenCalledTimes(3);
 });

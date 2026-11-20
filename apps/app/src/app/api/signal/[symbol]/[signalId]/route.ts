@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import { getData, getHashJsonField, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
+import { getRuntimeStorageDayKey } from '@tradejs/core/time';
 import { Signal } from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
@@ -35,6 +36,25 @@ export const GET = async (
       null,
     );
 
+    if (signal) {
+      const reference = await getHashJsonField<{ symbol: string }>(
+        redisKeys.runtimeSignalBucket(
+          userName,
+          getRuntimeStorageDayKey(signal.timestamp),
+          signal.strategy,
+        ),
+        signalId,
+        null,
+      );
+      if (
+        !reference ||
+        reference.symbol !== symbol ||
+        signal.symbol !== symbol ||
+        signal.signalId !== signalId
+      ) {
+        return NextResponse.json({ signal: null });
+      }
+    }
     return NextResponse.json({ signal });
   } catch (error) {
     logger.log('error', `Signal load error: %o`, error);

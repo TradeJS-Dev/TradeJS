@@ -10,6 +10,7 @@ const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const RECENT_WINDOW_MS = 7 * DAY_MS;
 const MAX_CACHED_RESULTS = 128;
+const MAX_PENDING_SCANS = 8;
 const MAX_SCAN_MS = 2 * MINUTE_MS;
 
 type Snapshot = Awaited<ReturnType<typeof readDataCoverageSnapshot>>;
@@ -82,6 +83,14 @@ export function getCachedDataCoverage({
     };
   }
 
+  if (
+    [...cache.values()].filter((entry) => entry.expiresAt === Infinity)
+      .length >= MAX_PENDING_SCANS
+  ) {
+    throw new Error(
+      'Data coverage is busy. Wait for an active snapshot to finish.',
+    );
+  }
   const progress = { scannedDays: 0, totalDays: 0 };
   // The scan is shared between requests and has its own deadline.
   const controller = new AbortController();

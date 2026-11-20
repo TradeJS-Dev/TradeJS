@@ -1,3 +1,5 @@
+import { entrySafetyStorage } from '@tradejs/infra/redis';
+import { entryCompensationId } from '../strategy/entryOrderSafety';
 import type { Connector, PortfolioReservation } from '@tradejs/types';
 import {
   getPortfolioRuntime,
@@ -196,4 +198,81 @@ test('account policy consults each owner gate and never uses the observing strat
   expect(closePosition).toHaveBeenCalledWith(
     expect.objectContaining({ symbol: 'BUSDT' }),
   );
+});
+
+test('restores a terminal filled compensation receipt without requiring the vanished position', async () => {
+  const c = connector();
+  c.accountId = binding.accountId;
+  c.getEntryOrderObservation = async () => null;
+  c.getEntryPositionObservation = async () => null;
+  c.getOpenPositionPnl = async () => [];
+  const receipt = jest
+    .spyOn(entrySafetyStorage, 'readCompensation')
+    .mockResolvedValue(
+      JSON.stringify({
+        id: reservation.id,
+        status: 'filled',
+        filledQty: 1,
+        compensated: true,
+      }),
+    );
+  try {
+    const observed = await observeRuntimePortfolio(
+      c,
+      binding,
+      1000,
+      [reservation],
+      () => 1000,
+    );
+    expect(observed.orders).toEqual([
+      { id: reservation.id, status: 'filled', filledQty: 1, compensated: true },
+    ]);
+    expect(observed.positions).toEqual([]);
+    expect(receipt).toHaveBeenCalledWith(
+      entryCompensationId(
+        c,
+        binding.userName,
+        reservation.symbol,
+        reservation.id,
+      ),
+    );
+  } finally {
+    receipt.mockRestore();
+  }
+});
+
+test('unsent pre-admission reservation consumes its proof-based no-fill recovery receipt', async () => {
+  const c = connector();
+  c.accountId = binding.accountId;
+  c.getEntryPositionObservation = async () => null;
+  c.getOpenPositionPnl = async () => [];
+  const read = jest
+    .spyOn(entrySafetyStorage, 'readCompensation')
+    .mockResolvedValue(
+      JSON.stringify({
+        id: reservation.id,
+        status: 'rejected',
+        filledQty: 0,
+        compensated: true,
+      }),
+    );
+  try {
+    const observed = await observeRuntimePortfolio(
+      c,
+      binding,
+      1000,
+      [{ ...reservation, submitted: false }],
+      () => 1000,
+    );
+    expect(observed.orders).toEqual([
+      {
+        id: reservation.id,
+        status: 'rejected',
+        filledQty: 0,
+        compensated: true,
+      },
+    ]);
+  } finally {
+    read.mockRestore();
+  }
 });

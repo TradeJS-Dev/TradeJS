@@ -6,7 +6,9 @@ import {
   defaultConfig,
   defineConfig,
 } from '@chakra-ui/react';
-import { SessionProvider } from 'next-auth/react';
+import { useEffect, useState } from 'react';
+import { setBacktestCacheSession } from '#app/store/tests';
+import { SessionProvider, useSession } from 'next-auth/react';
 import { AppToaster, ColorModeProvider } from '#ui';
 
 const config = defineConfig({
@@ -55,6 +57,26 @@ const config = defineConfig({
 
 const system = createSystem(defaultConfig, config);
 
+function SessionCacheBoundary({ children }: { children: React.ReactNode }) {
+  const { data, status } = useSession();
+  const identity =
+    status === 'authenticated'
+      ? data?.user?.id ?? data?.user?.name ?? null
+      : null;
+  const [ready, setReady] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    void setBacktestCacheSession(identity).then(() => {
+      if (active) setReady(identity);
+    });
+    return () => {
+      active = false;
+    };
+  }, [identity]);
+  if (status === 'loading' || ready !== identity) return null;
+  return <>{children}</>;
+}
+
 export default function Provider({
   children,
 }: Readonly<{
@@ -64,7 +86,7 @@ export default function Provider({
     <ChakraProvider value={system}>
       <ColorModeProvider forcedTheme="dark">
         <SessionProvider>
-          {children}
+          <SessionCacheBoundary>{children}</SessionCacheBoundary>
           <AppToaster />
         </SessionProvider>
       </ColorModeProvider>
