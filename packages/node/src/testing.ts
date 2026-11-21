@@ -19,6 +19,7 @@ import {
 } from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { createDiskBacktestHistory } from '@tradejs/infra/backtestArtifacts';
 import { getStrategyCreator } from './strategy';
 import {
   BUILTIN_CONNECTOR_NAMES,
@@ -45,6 +46,11 @@ type TestingGroupResult = {
 };
 
 const CLOSED_RESULT_FLUSH_INTERVAL = 500;
+
+const openBacktestHistory = () =>
+  process.env.TRADEJS_BACKTEST_DISK_HISTORY === '1'
+    ? createDiskBacktestHistory()
+    : undefined;
 
 const buildCandleByTimestamp = (candles?: KlineChartData) =>
   new Map(
@@ -846,28 +852,34 @@ export const testing: TestingBox = async (test) => {
   }
 
   const { testData, btcTestData } = preparedData;
-  const session = await createBacktestSession({
-    test,
-    connector,
-    strategyCreator,
-    preparedData,
-    interval,
-    monitor: progress,
-  });
+  const backtestHistory = openBacktestHistory();
+  try {
+    const session = await createBacktestSession({
+      test,
+      connector,
+      strategyCreator,
+      preparedData,
+      interval,
+      backtestHistory,
+      monitor: progress,
+    });
 
-  for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
-    if (candleIndex % 25 === 0) {
-      progress.checkpoint('candle loop');
-    }
-    progress.setCandle(candleIndex + 1, testData.length);
-    await session.next(testData[candleIndex], btcTestData[candleIndex]);
+    for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
+      if (candleIndex % 25 === 0) {
+        progress.checkpoint('candle loop');
+      }
+      progress.setCandle(candleIndex + 1, testData.length);
+      await session.next(testData[candleIndex], btcTestData[candleIndex]);
 
-    if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
-      await session.flush();
+      if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
+        await session.flush();
+      }
     }
+
+    return await session.result();
+  } finally {
+    backtestHistory?.close();
   }
-
-  return session.result();
 };
 
 export const testingGroupInSharedCandleLoop = async (
@@ -967,6 +979,7 @@ export const testingGroupInSharedCandleLoop = async (
   ].join(':');
 
   const runners: { test: Test; session: BacktestSession }[] = [];
+  const backtestHistory = openBacktestHistory();
   try {
     for (const test of tests) {
       runners.push({
@@ -978,6 +991,7 @@ export const testingGroupInSharedCandleLoop = async (
           preparedData,
           interval,
           sharedIndicatorsReplayKey,
+          backtestHistory,
           monitor: progress,
         }),
       });
@@ -1027,5 +1041,6 @@ export const testingGroupInSharedCandleLoop = async (
   } finally {
     releaseStrategyIndicatorsReplayCache(sharedIndicatorsReplayKey);
     releaseStrategyReplayCache(sharedIndicatorsReplayKey);
+    backtestHistory?.close();
   }
 };

@@ -2,6 +2,7 @@ import {
   Candle,
   BaseStrategyContextSnapshot,
   IndicatorSnapshot,
+  type BacktestHistoryStorage,
   IndicatorsHistorySnapshot,
   MlCandleIndicatorsSnapshot,
 } from '@tradejs/types';
@@ -294,6 +295,7 @@ type TrendlineIndicators = {
 };
 
 type CreateIndicatorsOptions = {
+  backtestHistory?: BacktestHistoryStorage;
   includeMlPayload?: boolean;
   runtimeOnly?: boolean;
   ethData?: Candle[];
@@ -475,15 +477,15 @@ export const createIndicators = (
   const indicatorPeriods = resolveIndicatorPeriods(options.periods);
   const controllerStateCandleWindow =
     getRequiredControllerSeedWindow(indicatorPeriods);
-  const closes: number[] = [];
-  const highs: number[] = [];
-  const lows: number[] = [];
-  const volumes: number[] = [];
-  const timestamps: number[] = [];
-  const btcCloses: number[] = [];
-  const candlesHistory: Candle[] = [];
-  const btcCandlesHistory: Candle[] = [];
-  const ethCandlesHistory: Candle[] = [];
+  const closes = options.backtestHistory?.numbers() ?? [];
+  const highs = options.backtestHistory?.numbers() ?? [];
+  const lows = options.backtestHistory?.numbers() ?? [];
+  const volumes = options.backtestHistory?.numbers() ?? [];
+  const timestamps = options.backtestHistory?.numbers() ?? [];
+  const btcCloses = options.backtestHistory?.numbers() ?? [];
+  const candlesHistory = options.backtestHistory?.candles() ?? [];
+  const btcCandlesHistory = options.backtestHistory?.candles() ?? [];
+  const ethCandlesHistory = options.backtestHistory?.candles() ?? [];
   const ethData = (options.ethData ?? []).map(toSharedReferenceCandle);
   let ethCandlesByTimestamp: Map<number, Candle> | null = null;
   const resolveEthCandle = (candle: Candle, index: number) => {
@@ -580,15 +582,42 @@ export const createIndicators = (
   };
   const correlationCoinWindow = createRollingCandleWindow(CORRELATION_WINDOW);
   const correlationBtcWindow = createRollingCandleWindow(CORRELATION_WINDOW);
-  const coin1hCache = createIncrementalResampleCache(60);
-  const coin4hCache = createIncrementalResampleCache(240);
-  const coin1dCache = createIncrementalResampleCache(1440);
-  const btc1hCache = createIncrementalResampleCache(60);
-  const btc4hCache = createIncrementalResampleCache(240);
-  const btc1dCache = createIncrementalResampleCache(1440);
-  const eth1hCache = createIncrementalResampleCache(60);
-  const eth4hCache = createIncrementalResampleCache(240);
-  const eth1dCache = createIncrementalResampleCache(1440);
+  const coin1hCache = createIncrementalResampleCache(
+    60,
+    options.backtestHistory?.candles(),
+  );
+  const coin4hCache = createIncrementalResampleCache(
+    240,
+    options.backtestHistory?.candles(),
+  );
+  const coin1dCache = createIncrementalResampleCache(
+    1440,
+    options.backtestHistory?.candles(),
+  );
+  const btc1hCache = createIncrementalResampleCache(
+    60,
+    options.backtestHistory?.candles(),
+  );
+  const btc4hCache = createIncrementalResampleCache(
+    240,
+    options.backtestHistory?.candles(),
+  );
+  const btc1dCache = createIncrementalResampleCache(
+    1440,
+    options.backtestHistory?.candles(),
+  );
+  const eth1hCache = createIncrementalResampleCache(
+    60,
+    options.backtestHistory?.candles(),
+  );
+  const eth4hCache = createIncrementalResampleCache(
+    240,
+    options.backtestHistory?.candles(),
+  );
+  const eth1dCache = createIncrementalResampleCache(
+    1440,
+    options.backtestHistory?.candles(),
+  );
 
   const obv = createSerializableObv(restoredState?.indicatorState.obv);
   const smaObv = createSerializableSma(

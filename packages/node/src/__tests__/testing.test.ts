@@ -1,4 +1,8 @@
-import { BACKTEST_WARNING_CODES, Test } from '@tradejs/types';
+import {
+  BACKTEST_WARNING_CODES,
+  type StrategyCreatorParams,
+  Test,
+} from '@tradejs/types';
 import { enrichSignalWithCoinMarketCapContext } from '../strategyHelpers/coinMarketCapContext';
 
 const mockByBitConnector = {
@@ -241,6 +245,40 @@ describe('testing backtest flow', () => {
     jest.useRealTimers();
     process.send = undefined as any;
   });
+
+  it.each([false, true])(
+    'closes opted-in history when strategy setup failure is %s',
+    async (fail) => {
+      const env = jest.replaceProperty(process, 'env', {
+        ...process.env,
+        TRADEJS_BACKTEST_DISK_HISTORY: '1',
+      });
+      const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+      mockByBitConnector.kline.mockResolvedValue(data);
+      mockBinanceConnector.kline.mockResolvedValue(data);
+      mockCoinbaseConnector.kline.mockResolvedValue(data);
+      mockStrategy.mockResolvedValue('HOLD');
+      let persisted: number[] | undefined;
+      mockStrategyCreator.mockImplementation(async (input) => {
+        const { backtestHistory } = input as StrategyCreatorParams;
+        persisted = backtestHistory?.numbers();
+        persisted?.push(...Array.from({ length: 800 }, (_, index) => index));
+        if (fail) throw new Error('fixture failed');
+        return mockStrategy;
+      });
+      try {
+        const run = testing(createTest());
+        if (fail) await expect(run).rejects.toThrow('fixture failed');
+        else await expect(run).resolves.toBeTruthy();
+        expect(persisted).toHaveLength(800);
+        expect(() => persisted?.[0]).toThrow(
+          'Backtest history storage is closed',
+        );
+      } finally {
+        env.restore();
+      }
+    },
+  );
 
   it('throws when start is missing', async () => {
     await expect(

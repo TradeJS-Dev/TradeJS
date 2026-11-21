@@ -18,6 +18,12 @@ This file applies to `packages/node` and supplements the repository-level
 - Preserve fail-closed runtime declaration, package-manifest, revision, and
   deployment-composition validation.
 
+For memory-intensive offline backtests, set `TRADEJS_BACKTEST_DISK_HISTORY=1`.
+Cold indicator history pages spill to temporary disk storage. Programmatic
+portfolio replays can share one `createDiskBacktestHistory()` from
+`@tradejs/node/backtest` across strategies via `backtestHistory`. Close the
+storage after the last replay consumer has finished.
+
 ## Public Surface And Verification
 
 - `@tradejs/node` has no root export. Public changes require an explicit

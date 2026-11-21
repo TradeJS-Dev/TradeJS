@@ -3,6 +3,7 @@ import {
   type AiDatasetRow,
   type BacktestDetectorOptimizedStrategy,
   type BacktestWarningCounts,
+  type BacktestHistoryStorage,
   type Candle,
   type Connector,
   type Interval,
@@ -153,6 +154,7 @@ export const createBacktestSession = async ({
   preparedData,
   interval,
   sharedIndicatorsReplayKey,
+  backtestHistory,
   monitor,
 }: {
   test: Test;
@@ -161,6 +163,7 @@ export const createBacktestSession = async ({
   preparedData: PreparedBacktestData;
   interval: Interval;
   sharedIndicatorsReplayKey?: string;
+  backtestHistory?: BacktestHistoryStorage;
   monitor: BacktestSessionMonitor;
 }): Promise<BacktestSession> => {
   const instrument = test.instrument;
@@ -198,8 +201,12 @@ export const createBacktestSession = async ({
       policyProfileId: test.policyProfileId,
       config: { ...test.strategyConfig, INTERVAL: test.interval ?? interval },
       symbol: test.symbol,
-      data: preparedData.prevData.slice(),
-      btcData: preparedData.btcPrevData.slice(),
+      data:
+        backtestHistory?.candles(preparedData.prevData) ??
+        preparedData.prevData.slice(),
+      btcData:
+        backtestHistory?.candles(preparedData.btcPrevData) ??
+        preparedData.btcPrevData.slice(),
       ethData: [...preparedData.ethPrevData, ...preparedData.ethTestData],
       btcBinanceData: preparedData.btcBinanceData,
       btcCoinbaseData: preparedData.btcCoinbaseData,
@@ -212,6 +219,7 @@ export const createBacktestSession = async ({
       },
       connector: testConnector,
       sharedIndicatorsReplayKey,
+      ...(backtestHistory && { backtestHistory }),
     }),
   )) as BacktestDetectorOptimizedStrategy;
 

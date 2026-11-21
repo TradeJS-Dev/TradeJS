@@ -331,3 +331,5 @@ export const getPersistedBacktestArtifactsDirForUser = (
     'tests',
     encodeSegment(userName),
   );
+
+export { createDiskBacktestHistory } from './backtestHistory';

@@ -15,3 +15,5 @@ export {
   matchesResearchEntryRules,
   evaluateResearchEntryPolicy,
 } from './researchEntryPolicy';
+
+export { createDiskBacktestHistory } from '@tradejs/infra/backtestArtifacts';

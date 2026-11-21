@@ -5,7 +5,11 @@ import {
   IndicatorPeriods,
   IndicatorsControllerRuntimeState,
 } from '../../indicators';
-import { KlineChartData, StrategyIndicatorsState } from '@tradejs/types';
+import {
+  KlineChartData,
+  StrategyIndicatorsState,
+  type BacktestHistoryStorage,
+} from '@tradejs/types';
 
 type IndicatorPeriodsConfig = Partial<
   Record<
@@ -112,6 +116,7 @@ export const releaseStrategyIndicatorsReplayCache = (keyPrefix: string) => {
 };
 
 export interface StrategyIndicatorsStateParams {
+  backtestHistory?: BacktestHistoryStorage;
   env: string;
   data: KlineChartData;
   btcData: KlineChartData;
@@ -142,6 +147,7 @@ export const createStrategyIndicatorsState = ({
   replayStartIndex = 0,
   sharedReplayKey,
   useBtcReference = true,
+  backtestHistory,
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
   let ethDataByTimestamp: Map<number, KlineChartData[number]> | null = null;
   const controllerSeedWindow = getRequiredControllerSeedWindow(periods);
@@ -184,6 +190,7 @@ export const createStrategyIndicatorsState = ({
         btcCoinbaseData,
         pluginRegistryScope,
         initialRuntimeState: state ?? undefined,
+        backtestHistory,
       });
 
     if (startIndex <= replayStartIndex) {

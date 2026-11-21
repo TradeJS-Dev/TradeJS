@@ -106,9 +106,11 @@ export const resampleCandles = (
     .map(([, candle]) => candle);
 };
 
-export const createIncrementalResampleCache = (targetMinutes: number) => {
+export const createIncrementalResampleCache = (
+  targetMinutes: number,
+  candles: Candle[] = [],
+) => {
   const bucketMs = targetMinutes * 60_000;
-  const candles: Candle[] = [];
 
   return {
     restore: (seedCandles: Candle[]) => {

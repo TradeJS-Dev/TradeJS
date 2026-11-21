@@ -170,6 +170,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     backtestExecutionMarketData,
     connector,
     sharedIndicatorsReplayKey,
+    backtestHistory,
     sharedStrategyStateKey,
     onRuntimeClose,
   }) => {
@@ -659,6 +660,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
       sharedReplayKey: indicatorSharedReplayKey,
+      backtestHistory,
       useBtcReference: universe === 'crypto',
     });
     const coreContextRequirements = new Set(

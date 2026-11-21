@@ -129,6 +129,12 @@ export interface RuntimeStrategyConfigSnapshot {
   userConfig: StrategyConfig;
 }
 
+/** Append-only replay histories. Read with array methods or indices and clear with length = 0. */
+export interface BacktestHistoryStorage {
+  numbers(): number[];
+  candles<T extends Candle>(seed?: readonly T[]): T[];
+}
+
 export interface StrategyCreatorParams {
   userName: string;
   connectorName: string;
@@ -158,6 +164,7 @@ export interface StrategyCreatorParams {
     dataByTimestamp?: Map<number, KlineChartItem>;
     btcDataByTimestamp?: Map<number, KlineChartItem>;
   };
+  backtestHistory?: BacktestHistoryStorage;
   sharedIndicatorsReplayKey?: string;
   sharedStrategyStateKey?: string;
   onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
