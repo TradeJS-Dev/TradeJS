@@ -510,7 +510,11 @@ const executeEntryOrderInternal = async ({
     signal.orderQty > 0
       ? signal.orderQty
       : qty;
-  const currentPosition = await connector.getPosition(symbol);
+  // Guarded entries return false only once there is no entry left to reconcile.
+  const currentPosition =
+    orderPlaced || !connector.getEntryPositionObservation
+      ? await connector.getPosition(symbol)
+      : null;
   const fillTime = Date.now();
   const isPositionIncrease =
     positionIntent === 'increase' &&

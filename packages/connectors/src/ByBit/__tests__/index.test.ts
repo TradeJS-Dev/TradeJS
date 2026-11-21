@@ -1693,51 +1693,62 @@ describe('ByBitConnectorCreator', () => {
     expect(ok).toBe(false);
   });
 
-  it('returns false from placeOrder when submitOrder retCode is non-zero', async () => {
-    const client = {
-      ...createLeverageApi(),
-      submitOrder: jest
-        .fn()
-        .mockResolvedValue({ retCode: 10001, retMsg: 'symbol is invalid' }),
-    };
-    mockedGetClient.mockResolvedValue(client as any);
-    mockedGetSymbolMeta.mockResolvedValue({
-      maxMarketOrderQty: 1000000,
-      maxLimitOrderQty: 1000000,
-      minLeverage: 1,
-      maxLeverage: 100,
-      leverageStep: 0.01,
-      tickSize: 0.1,
-      qtyStep: 0.001,
-      minOrderQty: 0.001,
-      pricePrecision: 1,
-      qtyPrecision: 3,
-    });
-    mockedNormalizeQty.mockImplementation((qty) => ({
-      qtyNum: qty,
-      qtyStr: qty.toFixed(3),
-    }));
-    mockedNormalizePrice.mockImplementation((price) => ({
-      priceNum: price,
-      priceStr: price.toFixed(1),
-    }));
-    const signal = {} as any;
+  it.each([
+    [10001, 'symbol is invalid'],
+    [
+      110126,
+      'You must sign the required agreement before trading this contract.',
+    ],
+  ])(
+    'reports Bybit code %s as a definitive rejection',
+    async (retCode, retMsg) => {
+      const client = {
+        ...createLeverageApi(),
+        submitOrder: jest.fn().mockResolvedValue({ retCode, retMsg }),
+      };
+      mockedGetClient.mockResolvedValue(client as any);
+      mockedGetSymbolMeta.mockResolvedValue({
+        maxMarketOrderQty: 1000000,
+        maxLimitOrderQty: 1000000,
+        minLeverage: 1,
+        maxLeverage: 100,
+        leverageStep: 0.01,
+        tickSize: 0.1,
+        qtyStep: 0.001,
+        minOrderQty: 0.001,
+        pricePrecision: 1,
+        qtyPrecision: 3,
+      });
+      mockedNormalizeQty.mockImplementation((qty) => ({
+        qtyNum: qty,
+        qtyStr: qty.toFixed(3),
+      }));
+      mockedNormalizePrice.mockImplementation((price) => ({
+        priceNum: price,
+        priceStr: price.toFixed(1),
+      }));
+      const signal = {} as Signal;
+      const onRejected = jest.fn();
 
-    const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder({
-      symbol: 'BTCUSDT',
-      price: 100,
-      qty: 1,
-      direction: 'LONG',
-      timestamp: Date.now(),
-      signal,
-    } as any);
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      const ok = await connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        timestamp: Date.now(),
+        signal,
+        onRejected,
+      });
 
-    expect(ok).toBe(false);
-    expect(client.setLeverage).toHaveBeenCalledTimes(1);
-    expect(client.submitOrder).toHaveBeenCalledTimes(1);
-    expect(signal.orderFailureReason).toBe('symbol is invalid');
-  });
+      expect(ok).toBe(false);
+      expect(client.setLeverage).toHaveBeenCalledTimes(1);
+      expect(client.submitOrder).toHaveBeenCalledTimes(1);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(onRejected).toHaveBeenCalledWith();
+      expect(signal.orderFailureReason).toBe(retMsg);
+    },
+  );
 
   it('submits limit order without immediate TP/SL binding', async () => {
     const client = {

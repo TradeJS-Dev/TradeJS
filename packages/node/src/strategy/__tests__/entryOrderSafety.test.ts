@@ -2,8 +2,11 @@ import type {
   Connector,
   Direction,
   PortfolioOrderObservation,
+  Signal,
 } from '@tradejs/types';
 import { entrySafetyStorage } from '@tradejs/infra/redis';
+import { formatMessage } from '../../signals';
+import { executeEntryOrder } from '../../strategyHelpers/runtime';
 import {
   createPortfolioCoordinator,
   createMemoryPortfolioStore,
@@ -151,6 +154,63 @@ async function complete<T>(request: Promise<T>): Promise<T | unknown> {
   await jest.runAllTimersAsync();
   return outcome;
 }
+
+test('preserves a definitive rejection in the notification and releases entry safety', async () => {
+  const { c: connector } = fixture('SHORT');
+  const symbol = 'BTCUSDT';
+  const exchangeMessage =
+    'You must sign the required agreement before trading this contract.';
+  jest.mocked(connector.placeOrder).mockImplementationOnce(async (order) => {
+    await order.beforeSubmit?.({ qty: order.qty });
+    order.signal!.orderFailureReason = exchangeMessage;
+    await order.onRejected?.();
+    return false;
+  });
+  jest
+    .mocked(connector.getEntryPositionObservation!)
+    .mockRejectedValue(new Error('Position endpoint unavailable'));
+  const signal: Signal = {
+    signalId: 'agreement-rejected',
+    orderId: 'client-id',
+    strategy: 'RelativeRotation',
+    symbol,
+    interval: '15',
+    direction: 'SHORT',
+    timestamp: 1000,
+    figures: {},
+    indicators: {},
+    prices: {
+      currentPrice: 100,
+      stopLossPrice: 110,
+      takeProfitPrice: 82,
+      riskRatio: 1.8,
+    },
+  };
+  const context = { connector, userName: 'alice', symbol };
+  const result = await complete(
+    executeEntryOrder({
+      ...context,
+      direction: signal.direction,
+      qty: 1,
+      currentPrice: signal.prices.currentPrice,
+      timestamp: signal.timestamp,
+      stopLossPrice: signal.prices.stopLossPrice,
+      takeProfits: [{ price: signal.prices.takeProfitPrice, rate: 1 }],
+      recordRuntimeTrade: false,
+      signal,
+    }),
+  );
+
+  expect(result).toBe(100);
+  expect(signal.orderStatus).toBe('failed');
+  expect(formatMessage(signal)).toContain(
+    `Reason: <code>${exchangeMessage}</code>`,
+  );
+  expect(await inspectEntryOrderSafety(context)).toBeNull();
+  expect(connector.cancelEntryOrder).not.toHaveBeenCalled();
+  expect(connector.getEntryOrderObservation).not.toHaveBeenCalled();
+  expect(connector.getEntryPositionObservation).not.toHaveBeenCalled();
+});
 
 test.each(['LONG', 'SHORT'] as const)(
   'waits for terminal fill and verifies normalized %s protection before success',
