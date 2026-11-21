@@ -336,6 +336,77 @@ test('recognizes flatness after failed close acknowledgement without reporting e
   expect(mockReceipts.size).toBe(1);
 });
 
+test('uses the known terminal fill for recovery when entry order lookups stop working', async () => {
+  const f = fixture();
+  const observation = jest.mocked(f.c.getEntryOrderObservation!);
+  observation.mockImplementation(async ({ orderId }) =>
+    orderId === 'client-id'
+      ? null
+      : { id: orderId, status: 'filled', filledQty: 1 },
+  );
+  observation.mockResolvedValueOnce({
+    id: 'client-id',
+    status: 'filled',
+    filledQty: 1,
+  });
+  const protectionError = new Error('protection rejected');
+  const result = await complete(
+    f.run(async (safe) => {
+      await f.place(safe);
+      throw protectionError;
+    }),
+  );
+  expect(result).toBe(protectionError);
+  expect(f.c.cancelEntryOrder).not.toHaveBeenCalled();
+  expect(f.c.closePosition).toHaveBeenCalledTimes(1);
+  expect(mockClaims.size).toBe(0);
+});
+
+test.each([true, false])(
+  'requires confirmation of native full TP and SL (TP present: %s)',
+  async (takeProfitPresent) => {
+    const f = fixture('SHORT');
+    f.c.capabilities = {
+      ...f.c.capabilities!,
+      nativeFullPositionTakeProfit: true,
+    };
+    f.c.setPositionProtection = jest.fn(async () => {
+      f.setPosition({
+        symbol: 'BTCUSDT',
+        qty: 1,
+        price: 101,
+        direction: 'SHORT',
+        priceTickSize: 0.1,
+        slPrice: 110.1,
+        ...(takeProfitPresent ? { tpPrice: 89.9 } : {}),
+      });
+      return true;
+    });
+    const result = await complete(
+      f.run(async (safe) => {
+        expect(await f.place(safe)).toBe(true);
+        return safe.setPositionProtection!({
+          symbol: 'BTCUSDT',
+          direction: 'SHORT',
+          qty: 1,
+          stopLossPrice: 110.02,
+          takeProfits: [{ price: 89.98, rate: 1 }],
+        });
+      }),
+    );
+    if (takeProfitPresent) {
+      expect(result).toBe(true);
+      expect(f.c.closePosition).not.toHaveBeenCalled();
+    } else {
+      expect(result).toMatchObject({
+        message: 'ENTRY_RECONCILIATION_UNRESOLVED',
+      });
+      expect(f.c.closePosition).toHaveBeenCalledTimes(1);
+    }
+    expect(mockClaims.size).toBe(0);
+  },
+);
+
 test('a stop acknowledgement with mismatched observed protection triggers verified compensation', async () => {
   const f = fixture();
   jest.mocked(f.c.setStopLoss).mockResolvedValue(true);

@@ -23,6 +23,8 @@ export interface InstrumentDescriptor {
 export interface ConnectorCapabilities {
   /** placeOrder awaits Order.beforeSubmit before any order side effect. */
   orderSubmissionValidation?: boolean;
+  /** A single 100% TP submitted with an SL is visible as tpPrice on the position. */
+  nativeFullPositionTakeProfit?: boolean;
   supportedUniverses: readonly MarketUniverse[];
   defaultUniverse: MarketUniverse;
 }

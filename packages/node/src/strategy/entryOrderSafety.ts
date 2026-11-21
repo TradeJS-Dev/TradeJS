@@ -74,6 +74,18 @@ export function entryCompensationId(
 const terminal = (order: PortfolioOrderObservation | null): boolean =>
   order !== null && ['filled', 'cancelled', 'rejected'].includes(order.status);
 
+function matchesProtectivePrice(
+  observed: number | undefined,
+  requested: number,
+  tick: number,
+  roundUp: boolean,
+): boolean {
+  if (!observed || !Number.isFinite(observed) || observed <= 0) return false;
+  const ticks = requested / tick;
+  const expected = (roundUp ? Math.ceil(ticks) : Math.floor(ticks)) * tick;
+  return Math.abs(observed - expected) <= tick * 1e-6;
+}
+
 /** A receipt remains authoritative when exchange history no longer contains the order. */
 export async function getEntryCompensation(
   connector: Connector,
@@ -189,24 +201,31 @@ export async function withEntryOrderSafety<T>({
       throw new Error('ENTRY_SAFETY_CLAIM_LOST');
     claim = next;
   };
-  const verifyProtection = async (stopLossPrice: number | null) => {
+  const verifyProtection = async (
+    stopLossPrice: number | null,
+    takeProfitPrice?: number,
+  ) => {
     const observed = await poll(position, (p) => {
       if (!p) return true;
       if (p.direction !== direction) return false;
       if (stopLossPrice == null) return true;
       const tick = p.priceTickSize;
-      if (
-        !Number.isFinite(tick) ||
-        tick <= 0 ||
-        !Number.isFinite(p.slPrice) ||
-        !p.slPrice ||
-        p.slPrice <= 0
-      )
-        return false;
-      const ticks = stopLossPrice / tick;
-      const expected =
-        (direction === 'LONG' ? Math.floor(ticks) : Math.ceil(ticks)) * tick;
-      return Math.abs(p.slPrice - expected) <= tick * 1e-6;
+      if (!Number.isFinite(tick) || tick <= 0) return false;
+      return (
+        matchesProtectivePrice(
+          p.slPrice,
+          stopLossPrice,
+          tick,
+          direction === 'SHORT',
+        ) &&
+        (takeProfitPrice === undefined ||
+          matchesProtectivePrice(
+            p.tpPrice,
+            takeProfitPrice,
+            tick,
+            direction === 'LONG',
+          ))
+      );
     });
     await settle(!observed);
     if (!observed) throw new Error('ENTRY_ALREADY_FLAT');
@@ -303,7 +322,19 @@ export async function withEntryOrderSafety<T>({
       ? {
           setPositionProtection: async (params) => {
             const accepted = await connector.setPositionProtection!(params);
-            if (accepted) await verifyProtection(params.stopLossPrice);
+            if (accepted) {
+              const [takeProfit] = params.takeProfits;
+              const fullPositionTakeProfit =
+                connector.capabilities?.nativeFullPositionTakeProfit &&
+                params.takeProfits.length === 1 &&
+                takeProfit?.rate === 1
+                  ? takeProfit.price
+                  : undefined;
+              await verifyProtection(
+                params.stopLossPrice,
+                fullPositionTakeProfit,
+              );
+            }
             return accepted;
           },
         }
@@ -354,15 +385,17 @@ export async function withEntryOrderSafety<T>({
       throw originalError;
     }
     try {
-      // Cancel acknowledgements and transport errors are not terminal facts.
-      try {
-        await bounded(
-          connector.cancelEntryOrder({ symbol, orderId: admittedId }),
-        );
-      } catch {
-        /* Reconcile authoritative state below. */
+      if (terminalEntry?.id !== admittedId) {
+        // Cancel acknowledgements and transport errors are not terminal facts.
+        try {
+          await bounded(
+            connector.cancelEntryOrder({ symbol, orderId: admittedId }),
+          );
+        } catch {
+          /* Reconcile authoritative state below. */
+        }
+        terminalEntry = (await poll(order, terminal)) ?? undefined;
       }
-      terminalEntry = (await poll(order, terminal)) ?? undefined;
       // A terminal no-fill entry did not change any existing position.
       let remaining =
         terminalEntry?.filledQty === 0 ? null : await bounded(position());

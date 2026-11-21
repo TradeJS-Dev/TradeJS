@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import chalk from 'chalk';
+import type { PositionV5 } from 'bybit-api';
 import { delay } from '@tradejs/core/async';
 import { PRELOAD_FALLBACK_DAYS } from '@tradejs/core/constants';
 import { toJson } from '@tradejs/core/data';
@@ -45,6 +46,7 @@ const LIMIT = 1000;
 const BYBIT_CATEGORY = 'linear' as const;
 const BYBIT_CAPABILITIES = {
   orderSubmissionValidation: true,
+  nativeFullPositionTakeProfit: true,
   supportedUniverses: ['crypto', 'tradfi'],
   defaultUniverse: 'crypto',
 } as const;
@@ -1173,36 +1175,49 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       const marketClient = await getPublicClient();
       if (!client || !marketClient)
         throw new Error('Bybit client is unavailable');
-      const result = await withTimeout(
-        client.getPositionInfo({ category: BYBIT_CATEGORY, symbol }),
-        POSITION_SNAPSHOT_TIMEOUT_MS,
-        `bybit entry position ${symbol}`,
-      );
-      if (
-        result.retCode !== 0 ||
-        !Array.isArray(result.result?.list) ||
-        !result.result.list.length ||
-        result.result.nextPageCursor
-      )
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      let sawPositionRow = false;
+      let p: PositionV5 | undefined;
+      do {
+        const result = await withTimeout(
+          client.getPositionInfo({
+            category: BYBIT_CATEGORY,
+            symbol,
+            ...(cursor ? { cursor } : {}),
+          }),
+          POSITION_SNAPSHOT_TIMEOUT_MS,
+          `bybit entry position ${symbol}`,
+        );
+        if (result.retCode !== 0 || !Array.isArray(result.result?.list))
+          throw new Error('Bybit entry position observation unavailable');
+        for (const row of result.result.list) {
+          const qty = Number(row.size);
+          if (
+            row.symbol !== symbol ||
+            row.positionIdx !== 0 ||
+            typeof row.size !== 'string' ||
+            !row.size.trim() ||
+            !Number.isFinite(qty) ||
+            qty < 0
+          )
+            throw new Error('Invalid Bybit entry position observation');
+          sawPositionRow = true;
+          // Bybit can return a zero-size row on a separate page for the same symbol.
+          if (qty === 0) continue;
+          if (p) throw new Error('Ambiguous Bybit entry position');
+          p = row;
+        }
+        cursor = result.result.nextPageCursor || undefined;
+        if (cursor) {
+          if (seen.has(cursor) || seen.size >= 19)
+            throw new Error('Incomplete Bybit entry position pagination');
+          seen.add(cursor);
+        }
+      } while (cursor);
+      if (!sawPositionRow)
         throw new Error('Bybit entry position observation unavailable');
-      const rows = result.result.list;
-      if (
-        rows.length !== 1 ||
-        rows.some(
-          (p) =>
-            p.symbol !== symbol ||
-            p.positionIdx !== 0 ||
-            typeof p.size !== 'string' ||
-            !p.size.trim() ||
-            !Number.isFinite(Number(p.size)) ||
-            Number(p.size) < 0,
-        )
-      )
-        throw new Error('Invalid Bybit entry position observation');
-      const active = rows.filter((p) => Number(p.size) > 0);
-      if (active.length > 1) throw new Error('Ambiguous Bybit entry position');
-      if (!active.length) return null;
-      const p = active[0];
+      if (!p) return null;
       const price = Number(p.avgPrice);
       if (
         !Number.isFinite(price) ||
@@ -1218,14 +1233,18 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
       if (!Number.isFinite(meta.tickSize) || meta.tickSize <= 0)
         throw new Error('Invalid Bybit entry price tick');
       const slPrice = p.stopLoss ? Number(p.stopLoss) : undefined;
+      const tpPrice = p.takeProfit ? Number(p.takeProfit) : undefined;
       if (slPrice !== undefined && (!Number.isFinite(slPrice) || slPrice < 0))
         throw new Error('Invalid Bybit entry stop');
+      if (tpPrice !== undefined && (!Number.isFinite(tpPrice) || tpPrice < 0))
+        throw new Error('Invalid Bybit entry take profit');
       return {
         symbol,
         qty: Number(p.size),
         price,
         direction: p.side === 'Buy' ? 'LONG' : 'SHORT',
         slPrice,
+        tpPrice,
         priceTickSize: meta.tickSize,
       };
     },

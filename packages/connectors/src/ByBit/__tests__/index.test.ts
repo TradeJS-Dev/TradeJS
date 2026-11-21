@@ -468,6 +468,100 @@ describe('ByBitConnectorCreator', () => {
     ).rejects.toThrow('unavailable');
   });
 
+  it('reads a filled short and its protection when Bybit returns a zero-size row on the next page', async () => {
+    const symbol = 'ORDERUSDT';
+    const getPositionInfo = jest
+      .fn()
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          nextPageCursor: 'next',
+          list: [
+            {
+              symbol,
+              positionIdx: 0,
+              size: '1250',
+              avgPrice: '0.02724',
+              side: 'Sell',
+              stopLoss: '0.02807',
+              takeProfit: '0.02646',
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        retCode: 0,
+        result: {
+          list: [{ symbol, positionIdx: 0, size: '0' }],
+          nextPageCursor: '',
+        },
+      });
+    mockedGetClient.mockResolvedValue({
+      getPositionInfo,
+    } as unknown as RestClientV5);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.00001,
+      qtyStep: 1,
+      minOrderQty: 1,
+      pricePrecision: 5,
+      qtyPrecision: 0,
+    });
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    await expect(
+      connector.getEntryPositionObservation!({ symbol }),
+    ).resolves.toEqual({
+      symbol,
+      qty: 1250,
+      price: 0.02724,
+      direction: 'SHORT',
+      slPrice: 0.02807,
+      tpPrice: 0.02646,
+      priceTickSize: 0.00001,
+    });
+    expect(getPositionInfo).toHaveBeenCalledTimes(2);
+    expect(getPositionInfo).toHaveBeenLastCalledWith({
+      category: 'linear',
+      symbol,
+      cursor: 'next',
+    });
+  });
+
+  it.each(['second active row', 'repeated cursor', 'failed page'] as const)(
+    'rejects a paginated position observation with %s',
+    async (failure) => {
+      const symbol = 'ORDERUSDT';
+      const row = {
+        symbol,
+        positionIdx: 0,
+        size: '1',
+        avgPrice: '0.02724',
+        side: 'Sell',
+      };
+      const getPositionInfo = jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: { list: [row], nextPageCursor: 'next' },
+        })
+        .mockResolvedValueOnce({
+          retCode: failure === 'failed page' ? 10016 : 0,
+          result: {
+            list: failure === 'second active row' ? [row] : [],
+            nextPageCursor: failure === 'repeated cursor' ? 'next' : '',
+          },
+        });
+      mockedGetClient.mockResolvedValue({
+        getPositionInfo,
+      } as unknown as RestClientV5);
+      const connector = await ByBitConnectorCreator({ userName: 'alice' });
+      await expect(
+        connector.getEntryPositionObservation!({ symbol }),
+      ).rejects.toThrow();
+      expect(getPositionInfo).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each([
     [],
     [{ symbol: 'BTCUSDT', positionIdx: 0, size: 'NaN' }],

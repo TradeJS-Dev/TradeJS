@@ -2047,10 +2047,7 @@ describe('strategyRuntime', () => {
       expect(connector.placeOrder).toHaveBeenCalledWith(
         expect.objectContaining({ orderId: 'runtime-client-id' }),
       );
-      expect(connector.cancelEntryOrder).toHaveBeenCalledWith({
-        symbol: 'ETHUSDT',
-        orderId: 'runtime-client-id',
-      });
+      expect(connector.cancelEntryOrder).not.toHaveBeenCalled();
       expect(connector.closePosition).toHaveBeenCalledTimes(1);
       expect(settle).toHaveBeenCalledWith(
         expect.any(String),
