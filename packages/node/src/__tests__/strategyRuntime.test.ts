@@ -305,6 +305,7 @@ const makeRuntime = async (
     policyProfileId?: string;
     runtimeLineage?: RuntimeLineage;
     entriesPaused?: boolean;
+    selectReplayEntry?: jest.Mock;
   } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
@@ -352,6 +353,7 @@ const makeRuntime = async (
     backtestExecutionMarketData: options.backtestExecutionMarketData,
     connector,
     onRuntimeClose: options.onRuntimeClose,
+    selectReplayEntry: options.selectReplayEntry,
   } as any);
 
   return { strategy, connector };
@@ -2508,6 +2510,81 @@ describe('strategyRuntime', () => {
         }),
       }),
     );
+  });
+
+  it('does not allow a replay selector on a live strategy', async () => {
+    await expect(
+      makeRuntime(
+        () => makeDecisionEntry(),
+        {},
+        {
+          selectReplayEntry: jest.fn(async () => true),
+        },
+      ),
+    ).rejects.toThrow('Replay entry selection requires PARITY mode');
+  });
+
+  it('keeps the normal eligible entry path when no portfolio selector is provided', async () => {
+    const { strategy } = await makeRuntime(
+      () => makeDecisionEntry(),
+      {
+        ENV: 'PARITY',
+      },
+      { testConnector: true },
+    );
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('can leave an eligible replay entry unsubmitted after portfolio ranking', async () => {
+    const selectReplayEntry = jest.fn(async () => false);
+    const { strategy } = await makeRuntime(
+      () => makeDecisionEntry(),
+      {
+        ENV: 'PARITY',
+      },
+      { testConnector: true, selectReplayEntry },
+    );
+    const outcome = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+    expect(selectReplayEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ approved: true, reason: null }),
+    );
+    expect(outcome).toEqual(
+      expect.objectContaining({
+        orderStatus: 'skipped',
+        orderSkipReason: 'PORTFOLIO_SELECTION',
+      }),
+    );
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+  });
+
+  it('exposes a gate rejection to replay selection without permitting an immediate order', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(2);
+    const selectReplayEntry = jest.fn(async () => true);
+    const { strategy } = await makeRuntime(
+      () => makeDecisionEntry(),
+      {
+        ENV: 'PARITY',
+      },
+      { testConnector: true, selectReplayEntry },
+    );
+    const outcome = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+    expect(selectReplayEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approved: false,
+        reason: 'AI_QUALITY_BELOW_MIN (2 < 5)',
+      }),
+    );
+    expect(outcome).toEqual(
+      expect.objectContaining({ orderStatus: 'skipped' }),
+    );
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
   });
 
   it('runs project afterEnrichAi hooks before manifest afterEnrichAi hooks', async () => {

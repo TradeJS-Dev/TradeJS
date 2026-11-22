@@ -375,3 +375,27 @@ return async () => {
 - `packages/node/src/strategyRuntime.ts`
 - `packages/node/src/strategy/manifests.ts`
 - `packages/core/src/utils/strategyHelpers/signalBuilders.ts`
+
+## Portfolio strategies
+
+Use `definePortfolioStrategy` from `@tradejs/core/config` to export one
+composite entry in `strategyEntries`. Its `resolveChildren` method returns
+existing strategy entries with their configurations. TradeJS evaluates each
+child on its own interval, collects all proposals for the current candle
+boundary and passes them to `selectEntries`. The market view is relative to
+that boundary and exposes only closed candles.
+
+Return regular candidates in priority order and optional candidates for
+confirmation at the next 15-minute boundary. A structurally blocked candidate
+cannot be scheduled. `confirmEntry` receives the next closed candle, opening
+price and minimum risk ratio. Its result supplies the simulated order size and
+risk. The replay host enforces one position per symbol and the entry's
+portfolio limit. The originating child continues to manage the position.
+
+The snapshot form of `tradejs replay` supports one enabled portfolio entry.
+Declare it in the selected deployment and pass `--cacheOnly`,
+`--portfolioSnapshot` and `--portfolioOutput`. The snapshot defines the
+ordered instruments, active dates, warmup and replay interval in
+`window.json`. It includes 15-minute candles, native child interval candles
+and historical funding. The basis for the replay outcome is execution against
+this cached snapshot. Live signals require a portfolio-aware runtime cycle.

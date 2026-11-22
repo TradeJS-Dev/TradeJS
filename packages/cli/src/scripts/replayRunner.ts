@@ -8,8 +8,12 @@ import { getDataEdgesForSymbols } from '@tradejs/infra/timescale/candles';
 import {
   computeDeploymentCompositionId,
   computeStrategyRevision,
+  resolveRuntimeComposition,
 } from '@tradejs/node/runtimeStrategies';
-import { preloadBinanceMarketContextForWindow } from '@tradejs/node/strategies';
+import {
+  getStrategyEntry,
+  preloadBinanceMarketContextForWindow,
+} from '@tradejs/node/strategies';
 import type { MarketFeatureInterval } from '@tradejs/types';
 import { createTimestamp } from '../lib/runFormatting';
 import {
@@ -268,6 +272,67 @@ const finishReplay = async ({
 
 export const replayBacktest = async () => {
   resetRunState();
+  if (replayFlags.portfolioSnapshot || replayFlags.portfolioOutput) {
+    if (
+      !replayFlags.cacheOnly ||
+      !replayFlags.portfolioSnapshot ||
+      !replayFlags.portfolioOutput ||
+      replayRuntimeEvidencePath ||
+      replayFlags.updateOnly ||
+      replayFlags.showTickersList ||
+      replayFlags.startTime ||
+      replayFlags.endTime ||
+      replayFlags.days ||
+      replayFlags.tickers ||
+      replayFlags.exclude ||
+      replayFlags.tickersLimit ||
+      replayFlags.allData ||
+      replayFlags.portfolioReport ||
+      replayFlags.portfolioCompareTo ||
+      replayFlags.chart ||
+      replayFlags.maxLossValue
+    ) {
+      throw new Error(
+        'Snapshot replay requires --cacheOnly, --portfolioSnapshot and --portfolioOutput',
+      );
+    }
+    const composition = await resolveRuntimeComposition({
+      projectRoot: replayProjectRoot,
+    });
+    const deployment = composition.deployments.find(
+      ({ deploymentId }) => deploymentId === replayDeploymentId,
+    );
+    const enabled = deployment?.strategies.filter(({ enabled }) => enabled);
+    if (
+      !deployment ||
+      deployment.declaration.enabled === false ||
+      enabled?.length !== 1
+    ) {
+      throw new Error(
+        'Snapshot replay requires one enabled strategy in the selected deployment',
+      );
+    }
+    const strategy = enabled[0];
+    const entry = await getStrategyEntry(
+      strategy.strategyName,
+      replayProjectRoot,
+      strategy.strategyModule,
+    );
+    if (entry?.kind !== 'portfolio')
+      throw new Error('Selected strategy is not a portfolio plugin');
+    const { runPortfolioDeployment } = await import(
+      '../lib/replay/runPortfolioDeployment'
+    );
+    return runPortfolioDeployment({
+      entry,
+      config: strategy.sourceStrategyConfig,
+      userName: replayUserName,
+      connectorName: deployment.declaration.connectorName,
+      projectRoot: replayProjectRoot,
+      snapshotDirectory: replayFlags.portfolioSnapshot,
+      output: replayFlags.portfolioOutput,
+    });
+  }
   const evidenceMetadata = replayRuntimeEvidencePath
     ? await loadReplayRuntimeEvidenceMetadata({
         filePath: replayRuntimeEvidencePath,

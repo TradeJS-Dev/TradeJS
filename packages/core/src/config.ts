@@ -1,5 +1,6 @@
 import type {
   ConnectorPluginDefinition,
+  PortfolioStrategyEntry,
   Connector,
   Interval,
   IndicatorPluginDefinition,
@@ -185,6 +186,10 @@ export function defineConfig(...configs: TradejsConfig[]): TradejsConfig {
 export const defineStrategyPlugin = <T extends StrategyPluginDefinition>(
   plugin: T,
 ): T => plugin;
+
+export const definePortfolioStrategy = <TConfig extends StrategyConfig>(
+  entry: Omit<PortfolioStrategyEntry<TConfig>, 'kind'>,
+): PortfolioStrategyEntry<TConfig> => ({ ...entry, kind: 'portfolio' });
 
 export const defineIndicatorPlugin = <T extends IndicatorPluginDefinition>(
   plugin: T,

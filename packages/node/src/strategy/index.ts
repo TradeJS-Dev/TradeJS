@@ -17,5 +17,6 @@ export {
   resetStrategyRegistryCache,
   strategies,
   getStrategyManifest,
+  withReplayStrategyManifests,
   isKnownStrategy,
 } from './manifests';

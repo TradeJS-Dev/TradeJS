@@ -69,6 +69,28 @@ describe('strategy manifests registry', () => {
     );
   });
 
+  it('uses child manifests only within the current portfolio replay', async () => {
+    const manifests = await loadModule();
+    const entry = {
+      manifest: { name: 'Child', aiAdapter: {} },
+      defaults: {},
+      parseConfig: () => ({}),
+      createCore: jest.fn(),
+    };
+    manifests.registerStrategyEntries([entry]);
+    const child = { ...entry, manifest: { name: 'Child' } };
+    const [replay, ordinary] = await Promise.all([
+      manifests.withReplayStrategyManifests([child], async () => {
+        await Promise.resolve();
+        return manifests.getStrategyManifest('Child');
+      }),
+      Promise.resolve().then(() => manifests.getStrategyManifest('Child')),
+    ]);
+    expect(replay).toBe(child.manifest);
+    expect(ordinary).toBe(entry.manifest);
+    expect(manifests.getStrategyManifest('Child')).toBe(entry.manifest);
+  });
+
   it('starts empty and supports runtime registration + proxy access', async () => {
     const manifests = await loadModule();
     const names = await manifests.getAvailableStrategyNames();

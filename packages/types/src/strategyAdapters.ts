@@ -322,6 +322,7 @@ export interface StrategyManifest {
 }
 
 export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
+  kind?: 'candle';
   manifest: StrategyManifest;
   defaults: TConfig;
   /** Parse an untrusted project declaration into a complete strategy config. */
@@ -331,6 +332,10 @@ export interface StrategyRegistryEntry<TConfig extends StrategyConfig = any> {
   detectorNoSignalSkipReason?: string;
 }
 
+export type RegisteredStrategyEntry =
+  | StrategyRegistryEntry
+  | import('./portfolioStrategy').PortfolioStrategyEntry;
+
 export interface StrategyPluginDefinition {
-  strategyEntries: StrategyRegistryEntry[];
+  strategyEntries: RegisteredStrategyEntry[];
 }

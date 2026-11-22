@@ -539,7 +539,54 @@ const loadRuntimeDeclaration = async (projectRoot: string) => {
   if (!projectConfig.runtime) {
     throw new Error('Runtime declaration is required in tradejs.config.ts');
   }
-  return verifyRuntimeDeclaration(projectConfig.runtime);
+  const declaration = projectConfig.runtime;
+  // A portfolio entry owns its base interval and universe defaults. Resolve
+  // that entry before filling missing fields in the project declaration.
+  if (!isRecord(declaration) || !isRecord(declaration.deployments)) {
+    return verifyRuntimeDeclaration(declaration);
+  }
+  const deployments = Object.fromEntries(
+    await Promise.all(
+      Object.entries(declaration.deployments).map(async ([id, deployment]) => {
+        if (!isRecord(deployment) || !isRecord(deployment.strategies))
+          return [id, deployment];
+        const strategies = Object.fromEntries(
+          await Promise.all(
+            Object.entries(deployment.strategies).map(
+              async ([name, strategy]) => {
+                if (
+                  !isRecord(strategy) ||
+                  !isRecord(strategy.config) ||
+                  (strategy.config.INTERVAL !== undefined &&
+                    strategy.config.UNIVERSE !== undefined) ||
+                  (strategy.module !== undefined &&
+                    typeof strategy.module !== 'string')
+                ) {
+                  return [name, strategy];
+                }
+                const entry = await getStrategyEntry(
+                  name,
+                  projectRoot,
+                  strategy.module,
+                );
+                return [
+                  name,
+                  entry?.kind === 'portfolio'
+                    ? {
+                        ...strategy,
+                        config: entry.parseConfig(strategy.config),
+                      }
+                    : strategy,
+                ];
+              },
+            ),
+          ),
+        );
+        return [id, { ...deployment, strategies }];
+      }),
+    ),
+  );
+  return verifyRuntimeDeclaration({ ...declaration, deployments });
 };
 
 const resolveStrategyComposition = async ({

@@ -8,11 +8,13 @@ export {
   getRegisteredManifests,
   registerStrategyEntries,
   getStrategyDefaults,
+  getStrategyEntry,
   getStrategyPluginSource,
   getStrategyCreator,
   resetStrategyRegistryCache,
   strategies,
   getStrategyManifest,
+  withReplayStrategyManifests,
   isKnownStrategy,
 } from './strategy';
 export { createStrategyRuntime } from './strategyRuntime';

@@ -172,6 +172,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     sharedIndicatorsReplayKey,
     backtestHistory,
     sharedStrategyStateKey,
+    selectReplayEntry,
     onRuntimeClose,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
@@ -189,6 +190,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    if (selectReplayEntry && env !== 'PARITY') {
+      throw new Error('Replay entry selection requires PARITY mode');
+    }
     let portfolioMarket: HookCandleMarket | undefined;
     const portfolio = getPortfolioRuntime({
       symbol,
@@ -1325,6 +1329,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             quality,
             minAiQuality,
           });
+          await selectReplayEntry?.({
+            decision,
+            signal,
+            approved: false,
+            reason: skipReason,
+          });
           signal.orderStatus = 'skipped';
           signal.orderSkipReason = skipReason;
           signal.allocatorDecision = buildRuntimeAdmissionDecision({
@@ -1384,6 +1394,21 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           });
         }
         return signal ?? skipReason;
+      }
+
+      if (
+        signal &&
+        selectReplayEntry &&
+        !(await selectReplayEntry({
+          decision,
+          signal,
+          approved: true,
+          reason: null,
+        }))
+      ) {
+        signal.orderStatus = 'skipped';
+        signal.orderSkipReason = 'PORTFOLIO_SELECTION';
+        return signal;
       }
 
       if (backtestEntryDelayBars > 0) {
