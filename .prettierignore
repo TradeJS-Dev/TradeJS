@@ -10,3 +10,4 @@ backtest/*
 **/next-env.d.ts
 coverage
 x
+packages/node/native/backtest/target/

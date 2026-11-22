@@ -27,6 +27,15 @@ import {
 import { getTradejsProjectCwd } from './tradejsConfig';
 import type { PreparedBacktestData } from './backtest/contracts';
 import { createBacktestProgress } from './backtest/progress';
+import {
+  runBacktestCandleLoop,
+  CLOSED_RESULT_FLUSH_INTERVAL,
+} from './backtest/candleLoop';
+import {
+  alignNativeBacktestCandles,
+  loadNativeBacktestKernel,
+  type NativeBacktestKernel,
+} from './backtest/nativeKernel';
 import { BacktestSession, createBacktestSession } from './backtest/session';
 
 type TestingKlineCacheState = {
@@ -43,8 +52,6 @@ type TestingGroupResult = {
   test: Test;
   result: TestingBoxResult;
 };
-
-const CLOSED_RESULT_FLUSH_INTERVAL = 500;
 
 const buildCandleByTimestamp = (candles?: KlineChartData) =>
   new Map(
@@ -350,6 +357,7 @@ export const releaseTestingSymbolCache = (params: {
 
 const prepareTestingData = async (params: {
   state: TestingKlineCacheState;
+  nativeKernel?: NativeBacktestKernel;
   projectRoot: string;
   userName: string;
   connectorName: string;
@@ -364,6 +372,7 @@ const prepareTestingData = async (params: {
 }) => {
   const {
     state,
+    nativeKernel,
     projectRoot,
     userName,
     connectorName,
@@ -668,10 +677,14 @@ const prepareTestingData = async (params: {
     state.btcKlineCache.set(executionBtcCacheKey, executionBtcDataRaw);
   }
 
+  const align = nativeKernel
+    ? (left: KlineChartData, right: KlineChartData) =>
+        alignNativeBacktestCandles(nativeKernel, left, right)
+    : alignSortedCandlesByTimestamp;
   const aligned =
     universe === 'tradfi'
       ? { alignedCoinCandles: dataRaw, alignedBtcCandles: dataRaw }
-      : alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
+      : align(dataRaw, btcDataRaw);
   const { data, btcData } = filterClosedAlignedCandles(
     aligned.alignedCoinCandles,
     aligned.alignedBtcCandles,
@@ -680,24 +693,20 @@ const prepareTestingData = async (params: {
   const btcBinanceData =
     universe === 'tradfi'
       ? []
-      : alignSortedCandlesByTimestamp(data, btcBinanceDataRaw)
-          .alignedBtcCandles;
+      : align(data, btcBinanceDataRaw).alignedBtcCandles;
   const btcCoinbaseData =
     universe === 'tradfi'
       ? []
-      : alignSortedCandlesByTimestamp(data, btcCoinbaseDataRaw)
-          .alignedBtcCandles;
+      : align(data, btcCoinbaseDataRaw).alignedBtcCandles;
   const ethData =
-    universe === 'tradfi'
-      ? []
-      : alignSortedCandlesByTimestamp(data, ethDataRaw).alignedBtcCandles;
+    universe === 'tradfi' ? [] : align(data, ethDataRaw).alignedBtcCandles;
   const alignedExecution = shouldLoadExecutionCandles
     ? universe === 'tradfi'
       ? {
           alignedCoinCandles: executionDataRaw,
           alignedBtcCandles: executionDataRaw,
         }
-      : alignSortedCandlesByTimestamp(executionDataRaw, executionBtcDataRaw)
+      : align(executionDataRaw, executionBtcDataRaw)
     : { alignedCoinCandles: [], alignedBtcCandles: [] };
   const { data: backtestExecutionData, btcData: backtestExecutionBtcData } =
     filterClosedAlignedCandles(
@@ -803,6 +812,7 @@ export const testing: TestingBox = async (test) => {
   });
 
   const { projectRoot, state } = getTestingKlineCacheState();
+  const nativeKernel = loadNativeBacktestKernel(projectRoot);
 
   const connector = await progress.run('connector init', () =>
     getCachedConnector({
@@ -827,6 +837,7 @@ export const testing: TestingBox = async (test) => {
   const preparedData = await progress.run('kline preload', () =>
     prepareTestingData({
       state,
+      nativeKernel,
       projectRoot,
       userName,
       connectorName,
@@ -845,28 +856,17 @@ export const testing: TestingBox = async (test) => {
     throw new Error('Prepared backtest data not available');
   }
 
-  const { testData, btcTestData } = preparedData;
   const session = await createBacktestSession({
     test,
     connector,
     strategyCreator,
     preparedData,
     interval,
+    nativeKernel,
     monitor: progress,
   });
 
-  for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
-    if (candleIndex % 25 === 0) {
-      progress.checkpoint('candle loop');
-    }
-    progress.setCandle(candleIndex + 1, testData.length);
-    await session.next(testData[candleIndex], btcTestData[candleIndex]);
-
-    if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
-      await session.flush();
-    }
-  }
-
+  await runBacktestCandleLoop(preparedData, session, progress);
   return session.result();
 };
 
@@ -912,6 +912,7 @@ export const testingGroupInSharedCandleLoop = async (
   });
 
   const { projectRoot, state } = getTestingKlineCacheState();
+  const nativeKernel = loadNativeBacktestKernel(projectRoot);
   const connector = await progress.run('connector init', () =>
     getCachedConnector({
       state,
@@ -935,6 +936,7 @@ export const testingGroupInSharedCandleLoop = async (
   const preparedData = await progress.run('kline preload', () =>
     prepareTestingData({
       state,
+      nativeKernel,
       projectRoot,
       userName,
       connectorName,
@@ -977,6 +979,7 @@ export const testingGroupInSharedCandleLoop = async (
           strategyCreator,
           preparedData,
           interval,
+          nativeKernel,
           sharedIndicatorsReplayKey,
           monitor: progress,
         }),

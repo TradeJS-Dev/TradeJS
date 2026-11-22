@@ -12,6 +12,7 @@ import {
   type StrategyCreator,
   type Test,
   type TestingBoxResult,
+  type TestTradeResult,
 } from '@tradejs/types';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
 import { appendCoreResearchTraceEvent } from '@tradejs/infra/coreResearch';
@@ -26,6 +27,7 @@ import { buildMlPayload } from '../mlPayload';
 import { enrichSignalWithMarketContextStages } from '../strategyHelpers/marketContextStages';
 import { createTestConnector } from '../testConnector';
 import type { BacktestSessionMonitor, PreparedBacktestData } from './contracts';
+import type { NativeBacktestKernel } from './nativeKernel';
 import { resolveCoreResearchSetupIdentity } from './researchTrace';
 
 type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
@@ -154,6 +156,8 @@ export const createBacktestSession = async ({
   interval,
   sharedIndicatorsReplayKey,
   monitor,
+  nativeKernel,
+  onClosedTrade,
 }: {
   test: Test;
   connector: Connector;
@@ -162,6 +166,8 @@ export const createBacktestSession = async ({
   interval: Interval;
   sharedIndicatorsReplayKey?: string;
   monitor: BacktestSessionMonitor;
+  nativeKernel?: NativeBacktestKernel;
+  onClosedTrade?: (trade: TestTradeResult) => void;
 }): Promise<BacktestSession> => {
   const instrument = test.instrument;
   const start = test.options.start;
@@ -177,15 +183,19 @@ export const createBacktestSession = async ({
       endTime: test.options.end,
       instrument,
     });
-  const testConnector = createTestConnector(connector, {
-    userName: test.userName,
-    mlEnabled: test.ml,
-    aiEnabled: Boolean(test.ai || test.researchTrace),
-    fastMode: test.fast,
-    instrument,
-    executionCostModel,
-    fundingRates,
-  });
+  const testConnector = createTestConnector(
+    connector,
+    {
+      userName: test.userName,
+      mlEnabled: test.ml,
+      aiEnabled: Boolean(test.ai || test.researchTrace || onClosedTrade),
+      fastMode: test.fast,
+      instrument,
+      executionCostModel,
+      fundingRates,
+    },
+    nativeKernel,
+  );
   const strategy = (await monitor.run('strategy init', () =>
     strategyCreator({
       userName: test.userName,
@@ -358,9 +368,10 @@ export const createBacktestSession = async ({
   };
 
   const flush = async () => {
-    if (!test.ml && !test.ai && !test.researchTrace) return;
+    if (!test.ml && !test.ai && !test.researchTrace && !onClosedTrade) return;
     const batch = await testConnector.drainMlResultsBatch();
     for (const resultRecord of batch) {
+      if (resultRecord.tradeResult) onClosedTrade?.(resultRecord.tradeResult);
       const payload = pendingMlPayloadBySignalId.get(resultRecord.signalId);
       if (payload) {
         pendingMlPayloadBySignalId.delete(resultRecord.signalId);

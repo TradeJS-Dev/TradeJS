@@ -24,6 +24,7 @@ import {
   TestTradeResult,
 } from '@tradejs/types';
 import { round } from '@tradejs/core/math';
+import type { NativeBacktestKernel } from './backtest/nativeKernel';
 
 type OpenTradeResult = Omit<
   TestTradeResult,
@@ -77,10 +78,11 @@ const normalizeInstrumentOrderQty = ({
   };
 };
 
-export const createTestConnector: TestConnectorCreator = (
-  connector,
-  context,
-) => {
+export const createTestConnector = (
+  connector: Parameters<TestConnectorCreator>[0],
+  context?: Parameters<TestConnectorCreator>[1],
+  nativeKernel?: NativeBacktestKernel,
+): ReturnType<TestConnectorCreator> & { __tradejsTestConnector: true } => {
   let state = {};
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
@@ -536,6 +538,15 @@ export const createTestConnector: TestConnectorCreator = (
     qty: number;
     feeRate?: number;
   }) => {
+    if (nativeKernel) {
+      const [fee, profit] = nativeKernel.netProfit(
+        grossProfit,
+        price,
+        qty,
+        feeRate,
+      );
+      return { fee, profit };
+    }
     const fee = price * qty * feeRate;
     return {
       fee,
@@ -887,12 +898,21 @@ export const createTestConnector: TestConnectorCreator = (
         return;
       }
       applyFunding(candle);
+      const nativeHits = nativeKernel?.matchExits(
+        currentPosition.direction === 'LONG',
+        candle.high,
+        candle.low,
+        stopLossPrice ?? 0,
+        Float64Array.from(takeProfits, (target) => target.price),
+      );
 
       if (stopLossPrice) {
         const isLong = currentPosition.direction === 'LONG';
-        const hitStop = isLong
-          ? candle.low <= stopLossPrice
-          : candle.high >= stopLossPrice;
+        const hitStop = nativeHits
+          ? nativeHits[0] === -1
+          : isLong
+            ? candle.low <= stopLossPrice
+            : candle.high >= stopLossPrice;
 
         if (hitStop) {
           const exitTimestamp = getExitTimestamp(candle);
@@ -952,13 +972,19 @@ export const createTestConnector: TestConnectorCreator = (
       const high = candle.high;
       const low = candle.low;
 
-      for (const tp of takeProfits) {
+      let hitIndex = 0;
+      for (const [targetIndex, tp] of takeProfits.entries()) {
         if (!currentPosition || currentPosition.qty <= 0) break;
 
         const targetPrice = tp.price;
-        const reached = isLong ? high >= targetPrice : low <= targetPrice;
+        const reached = nativeHits
+          ? nativeHits[hitIndex] === targetIndex
+          : isLong
+            ? high >= targetPrice
+            : low <= targetPrice;
 
         if (reached) {
+          hitIndex += 1;
           const exitTimestamp = getExitTimestamp(candle);
           const qty = originalQty * tp.rate;
           const slippageBreakdown = getExecutionSlippageBreakdown({
