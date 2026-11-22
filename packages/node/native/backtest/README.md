@@ -43,3 +43,13 @@ and Rust detectors with the same batch scheduling and TypeScript simulator.
 Batch scheduling reuses the backtest no-signal path after a causal detector
 scan of the frozen input. All compared variants must produce identical
 normalized orders, positions, and completed trades.
+
+Set `EXPERIMENT_INDICATORS=1` to compare the original rolling BTC correlation
+calculation, its optimized TypeScript implementation, and the Rust batch
+implementation. All three variants use the same TypeScript detector in batch
+mode. The Rust addon computes the causal 50-candle series from paired closes
+once per symbol, then the backtester reads each value at its candle timestamp.
+The TypeScript indicator controller still computes the other indicators.
+The benchmark reports preparation time, native values consumed, and fallback
+reads. The optional reference summary in `summarize-benchmark.mjs` verifies
+the input and normalized trade hashes against an earlier experiment.

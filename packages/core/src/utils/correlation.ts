@@ -1,19 +1,22 @@
 import { round } from './math';
-import { KlineChartItem } from '@tradejs/types';
+import type { Candle } from '@tradejs/types';
 
 /**
  * Выравнивает два отсортированных массива свечей по timestamp.
  * Оставляет только те свечи, которые есть в обоих массивах.
  */
-export const alignSortedCandlesByTimestamp = (
-  coinCandles: KlineChartItem[],
-  btcCandles: KlineChartItem[],
+export const alignSortedCandlesByTimestamp = <
+  Coin extends Candle,
+  Btc extends Candle,
+>(
+  coinCandles: Coin[],
+  btcCandles: Btc[],
 ): {
-  alignedCoinCandles: KlineChartItem[];
-  alignedBtcCandles: KlineChartItem[];
+  alignedCoinCandles: Coin[];
+  alignedBtcCandles: Btc[];
 } => {
-  const alignedCoinCandles: KlineChartItem[] = [];
-  const alignedBtcCandles: KlineChartItem[] = [];
+  const alignedCoinCandles: Coin[] = [];
+  const alignedBtcCandles: Btc[] = [];
 
   let coinIndex = 0;
   let btcIndex = 0;
@@ -44,7 +47,7 @@ export const alignSortedCandlesByTimestamp = (
 
 /** Строим массив доходностей по close: (close[i] - close[i-1]) / close[i-1] */
 export const buildReturnsFromCandles = (
-  candles: KlineChartItem[],
+  candles: readonly Candle[],
 ): number[] => {
   const returns: number[] = [];
 
@@ -105,19 +108,73 @@ export const calculatePearsonCorrelation = (
   return correlation;
 };
 
+const MIN_CANDLES_FOR_CORRELATION = 10;
+
+export type IndicatorCorrelation = (
+  coinWindow: Candle[],
+  btcWindow: Candle[],
+) => number;
+
+export const calculateWindowCorrelation: IndicatorCorrelation = (coin, btc) =>
+  calculateCoinBtcCorrelation(coin, btc).correlation ?? 0;
+
+/** Computes the same rounded value for aligned windows without copying or joining candles. */
+export const createIndicatorCorrelation = (): IndicatorCorrelation => {
+  const coinReturns: number[] = [];
+  const btcReturns: number[] = [];
+  return (coin, btc) => {
+    const length = coin.length;
+    if (Math.min(length, btc.length) <= MIN_CANDLES_FOR_CORRELATION) return 0;
+    if (length !== btc.length) return calculateWindowCorrelation(coin, btc);
+
+    let previousCoin = coin[0].close;
+    let previousBtc = btc[0].close;
+    if (
+      coin[0].timestamp !== btc[0].timestamp ||
+      !Number.isFinite(previousCoin) ||
+      !Number.isFinite(previousBtc)
+    ) {
+      return calculateWindowCorrelation(coin, btc);
+    }
+
+    coinReturns.length = length - 1;
+    btcReturns.length = length - 1;
+    for (let index = 1; index < length; index += 1) {
+      const left = coin[index];
+      const right = btc[index];
+      if (
+        left.timestamp !== right.timestamp ||
+        !Number.isFinite(left.close) ||
+        !Number.isFinite(right.close)
+      ) {
+        return calculateWindowCorrelation(coin, btc);
+      }
+      coinReturns[index - 1] = (left.close - previousCoin) / previousCoin;
+      btcReturns[index - 1] = (right.close - previousBtc) / previousBtc;
+      previousCoin = left.close;
+      previousBtc = right.close;
+    }
+    const correlation = calculatePearsonCorrelation(coinReturns, btcReturns);
+    return correlation ? round(correlation) : correlation ?? 0;
+  };
+};
+
 /**
  * Полный пайплайн:
  * 1) выравниваем свечи монеты и BTC по timestamp
  * 2) считаем доходности
  * 3) считаем корреляцию доходностей
  */
-export const calculateCoinBtcCorrelation = (
-  coinCandles: KlineChartItem[],
-  btcCandles: KlineChartItem[],
+export const calculateCoinBtcCorrelation = <
+  Coin extends Candle,
+  Btc extends Candle,
+>(
+  coinCandles: Coin[],
+  btcCandles: Btc[],
 ): {
   correlation: number | null;
-  alignedCoinCandles: KlineChartItem[];
-  alignedBtcCandles: KlineChartItem[];
+  alignedCoinCandles: Coin[];
+  alignedBtcCandles: Btc[];
   coinReturns: number[];
   btcReturns: number[];
 } => {
@@ -125,8 +182,7 @@ export const calculateCoinBtcCorrelation = (
     alignSortedCandlesByTimestamp(coinCandles, btcCandles);
 
   // минимальная длина для более-менее осмысленной корреляции
-  const MIN_LENGTH_FOR_CORRELATION = 10;
-  if (alignedCoinCandles.length <= MIN_LENGTH_FOR_CORRELATION) {
+  if (alignedCoinCandles.length <= MIN_CANDLES_FOR_CORRELATION) {
     return {
       correlation: null,
       alignedCoinCandles,

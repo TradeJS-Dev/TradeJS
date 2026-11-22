@@ -23,17 +23,34 @@ const completed = rows.filter(({ status }) => status === 'completed');
 assert.equal(completed.length, receipt.completed);
 assert.ok(completed.length > 0, 'No fully reconciled symbol results');
 if (referenceFile) {
-  const compared = new Map(
-    readJson(referenceFile).symbols.map((row) => [row.symbol, row]),
-  );
+  const reference = readJson(referenceFile);
+  const compared = new Map(reference.symbols.map((row) => [row.symbol, row]));
+  assert.equal(start, reference.manifest.start);
+  assert.equal(end, reference.manifest.end);
+  assert.equal(preload, reference.manifest.preload);
+  assert.deepEqual(manifest.config, reference.manifest.config);
+  assert.deepEqual(manifest.references, reference.manifest.references);
+  for (const row of rows) {
+    assert.equal(row.status, compared.get(row.symbol)?.status, row.symbol);
+  }
   for (const row of completed) {
     const other = compared.get(row.symbol);
+    assert.equal(row.validFrom, other?.validFrom, row.symbol);
     assert.equal(row.inputSha256, other?.inputSha256, row.symbol);
     assert.equal(row.comparisonSha256, other.comparisonSha256, row.symbol);
   }
 }
 
-const elapsed = ['totalMs', 'prepMs', 'initMs', 'loopMs', 'cpuMs'];
+const elapsed = [
+  'totalMs',
+  'prepMs',
+  'initMs',
+  'loopMs',
+  'cpuMs',
+  'indicatorPrepMs',
+  'batchReads',
+  'fallbackReads',
+];
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const quantile = (values, fraction) => {
   const sorted = values.slice().sort((a, b) => a - b);
@@ -52,7 +69,10 @@ const perf = Object.fromEntries(
       times.find((entry) => entry.variant === variant),
     );
     const sums = Object.fromEntries(
-      elapsed.map((key) => [key, sum(measured.map((entry) => entry[key]))]),
+      elapsed.map((key) => [
+        key,
+        sum(measured.map((entry) => entry[key] ?? 0)),
+      ]),
     );
     const relative = measured.map(
       (entry, index) =>
@@ -149,7 +169,9 @@ const report = {
 writeFileSync(reportFile, JSON.stringify(report, null, 2));
 
 if (chartFile) {
-  const series = completed[0].times.map(({ variant }) => ({
+  const variants =
+    manifest.variants ?? completed[0].times.map(({ variant }) => variant);
+  const series = variants.map((variant) => ({
     id: variant,
     role: variant === 'ts' ? 'baseline' : 'candidate',
     label: `${variant} · без AI-gate`,

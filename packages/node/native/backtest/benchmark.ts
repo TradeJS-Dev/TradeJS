@@ -11,7 +11,15 @@ import type {
   Test,
   TestTradeResult,
 } from '@tradejs/types';
-import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
+import {
+  alignSortedCandlesByTimestamp,
+  calculateWindowCorrelation,
+  type IndicatorCorrelation,
+} from '@tradejs/core/indicators';
+import {
+  createBatchIndicatorCorrelation,
+  type NativeIndicatorAddon,
+} from './indicatorBenchmark';
 import { Pool } from 'pg';
 import { createStrategyRuntime } from '../../src/strategyRuntime';
 import { createBacktestSession } from '../../src/backtest/session';
@@ -43,7 +51,8 @@ const [
   selection,
 ] = process.argv.slice(2);
 const request = createRequire(__filename);
-const kernel: NativeBacktestKernel = request(frameworkAddonFile);
+const kernel: NativeBacktestKernel & NativeIndicatorAddon =
+  request(frameworkAddonFile);
 const native: HeadAndShouldersNativeAddon = request(strategyAddonFile);
 const { config: runtimeConfig } = headAndShouldersRuntime;
 const { createCore, defaults, manifest } = HeadAndShouldersStrategyDefinition;
@@ -188,12 +197,21 @@ const prepare = (
 };
 
 type MeasuredTrade = Omit<TestTradeResult, 'signalId' | 'positionCycleId'>;
-type Variant = 'ts' | 'rust-strategy' | 'rust-both' | 'ts-batch' | 'rust-batch';
+type Variant =
+  | 'ts'
+  | 'rust-strategy'
+  | 'rust-both'
+  | 'ts-batch'
+  | 'rust-batch'
+  | 'ts-indicators'
+  | 'rust-indicators';
+const compareIndicators = process.env.EXPERIMENT_INDICATORS === '1';
 
 const createBatchStrategy = (
   raw: KlineChartData,
   firstTestIndex: number,
   useRust: boolean,
+  backtestIndicatorCorrelation?: IndicatorCorrelation,
 ) => {
   const candleIndexes = new Map(
     raw.map(({ timestamp }, index) => [timestamp, index]),
@@ -247,6 +265,7 @@ const createBatchStrategy = (
       manifest,
       detectorKey: () => 'frozen-backtest-candles',
       detectorNoSignalSkipReason: 'NO_PATTERN',
+      backtestIndicatorCorrelation,
     }),
     predictNoSignal: (index: number) => !patterns.has(index + firstTestIndex),
   };
@@ -305,12 +324,23 @@ const run = async (
       );
     },
   };
+  const indicatorStart = performance.now();
+  const nativeIndicators =
+    variant === 'rust-indicators'
+      ? createBatchIndicatorCorrelation(kernel, data.data, data.btcData)
+      : undefined;
+  const indicatorPrepMs = performance.now() - indicatorStart;
+  const indicatorCorrelation =
+    compareIndicators && variant === 'ts'
+      ? calculateWindowCorrelation
+      : nativeIndicators?.read;
   const batch =
-    variant === 'ts-batch' || variant === 'rust-batch'
+    compareIndicators || variant === 'ts-batch' || variant === 'rust-batch'
       ? createBatchStrategy(
           data.data,
           data.prevData.length,
           variant === 'rust-batch',
+          indicatorCorrelation,
         )
       : undefined;
   const session = await createBacktestSession({
@@ -356,6 +386,8 @@ const run = async (
       totalMs: t3 - t0,
       prepMs: t1 - t0,
       initMs: t2 - t1,
+      indicatorPrepMs,
+      ...(nativeIndicators?.usage() ?? {}),
       loopMs: t3 - t2,
       cpuMs: (cpu.user + cpu.system) / 1000,
     },
@@ -391,8 +423,9 @@ const main = async () => {
   const lookup = new Map(instruments.map((item) => [item.symbol, item]));
   const warmup = lookup.get('BTCUSDT');
   assert.ok(warmup);
-  const measuredVariants: Variant[] =
-    process.env.EXPERIMENT_BATCH === '1'
+  const measuredVariants: Variant[] = compareIndicators
+    ? ['ts', 'ts-indicators', 'rust-indicators']
+    : process.env.EXPERIMENT_BATCH === '1'
       ? ['ts', 'ts-batch', 'rust-batch']
       : ['ts', 'rust-strategy', 'rust-both'];
   for (const variant of measuredVariants)

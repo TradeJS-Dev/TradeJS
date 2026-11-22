@@ -1,3 +1,4 @@
+import type { IndicatorCorrelation } from '@tradejs/core/indicators';
 import { getPortfolioRuntime } from './strategy/portfolioRuntime';
 import {
   loadTickerProfileContext,
@@ -97,6 +98,7 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   manifest?: StrategyManifest;
   detectorKey?: (config: TConfig) => string | undefined;
   detectorNoSignalSkipReason?: string;
+  backtestIndicatorCorrelation?: IndicatorCorrelation;
   resolveRegisteredManifest?: (name: string) => StrategyManifest | undefined;
 }
 
@@ -131,6 +133,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   manifest: staticManifest,
   detectorKey,
   detectorNoSignalSkipReason,
+  backtestIndicatorCorrelation,
   resolveRegisteredManifest,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
   const projectRoot = getTradejsProjectCwd();
@@ -658,6 +661,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
+      indicatorCorrelation:
+        env === 'BACKTEST' ? backtestIndicatorCorrelation : undefined,
       sharedReplayKey: indicatorSharedReplayKey,
       useBtcReference: universe === 'crypto',
     });

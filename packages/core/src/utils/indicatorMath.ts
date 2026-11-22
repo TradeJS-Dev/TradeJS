@@ -35,16 +35,15 @@ const referenceCandleFields = [
 
 /** Controllers only read reference candles; share an immutable value snapshot. */
 export const toSharedReferenceCandle = (candle: Candle): Candle => {
-  const normalized = toMlCandle(candle);
   const previous = referenceCandleSnapshots.get(candle);
   if (
     previous &&
     referenceCandleFields.every((key) =>
-      Object.is(previous[key], normalized[key]),
+      Object.is(previous[key], Number(candle[key]) || 0),
     )
   )
     return previous;
-  const snapshot = Object.freeze(normalized);
+  const snapshot = Object.freeze(toMlCandle(candle));
   referenceCandleSnapshots.set(candle, snapshot);
   return snapshot;
 };

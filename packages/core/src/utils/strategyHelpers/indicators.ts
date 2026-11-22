@@ -3,6 +3,7 @@ import {
   getRequiredControllerSeedWindow,
   IndicatorsControllerCheckpointState,
   IndicatorPeriods,
+  type IndicatorCorrelation,
   IndicatorsControllerRuntimeState,
 } from '../../indicators';
 import { KlineChartData, StrategyIndicatorsState } from '@tradejs/types';
@@ -120,6 +121,7 @@ export interface StrategyIndicatorsStateParams {
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
   pluginRegistryScope?: string;
+  indicatorCorrelation?: IndicatorCorrelation;
   initialRuntimeState?:
     | IndicatorsControllerRuntimeState
     | IndicatorsControllerCheckpointState
@@ -138,6 +140,7 @@ export const createStrategyIndicatorsState = ({
   btcCoinbaseData,
   periods,
   pluginRegistryScope,
+  indicatorCorrelation,
   initialRuntimeState,
   replayStartIndex = 0,
   sharedReplayKey,
@@ -183,6 +186,7 @@ export const createStrategyIndicatorsState = ({
         btcBinanceData,
         btcCoinbaseData,
         pluginRegistryScope,
+        indicatorCorrelation,
         initialRuntimeState: state ?? undefined,
       });
 

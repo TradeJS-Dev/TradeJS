@@ -7,7 +7,10 @@ import {
 } from '@tradejs/types';
 import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
 import { cloneArrayValues } from './array';
-import { calculateCoinBtcCorrelation } from './correlation';
+import {
+  createIndicatorCorrelation,
+  type IndicatorCorrelation,
+} from './correlation';
 import {
   BASE_CONTEXT_CANDLE_WINDOW,
   BASE_CONTEXT_MA_LAYER_PERIODS,
@@ -295,6 +298,7 @@ type TrendlineIndicators = {
 
 type CreateIndicatorsOptions = {
   includeMlPayload?: boolean;
+  indicatorCorrelation?: IndicatorCorrelation;
   runtimeOnly?: boolean;
   ethData?: Candle[];
   btcBinanceData?: Candle[];
@@ -578,6 +582,8 @@ export const createIndicators = (
       size: () => size,
     };
   };
+  const indicatorCorrelation =
+    options.indicatorCorrelation ?? createIndicatorCorrelation();
   const correlationCoinWindow = createRollingCandleWindow(CORRELATION_WINDOW);
   const correlationBtcWindow = createRollingCandleWindow(CORRELATION_WINDOW);
   const coin1hCache = createIncrementalResampleCache(60);
@@ -1333,10 +1339,10 @@ export const createIndicators = (
     recordProfile('structureMs');
     const correlation =
       !runtimeOnly && correlationBtcWindow.size() > 0
-        ? calculateCoinBtcCorrelation(
-            correlationCoinWindow.snapshot() as any,
-            correlationBtcWindow.snapshot() as any,
-          ).correlation ?? 0
+        ? indicatorCorrelation(
+            correlationCoinWindow.snapshot(),
+            correlationBtcWindow.snapshot(),
+          )
         : 0;
     recordProfile('correlationMs');
 

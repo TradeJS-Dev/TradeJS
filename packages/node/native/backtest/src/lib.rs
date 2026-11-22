@@ -47,3 +47,49 @@ pub fn align_timestamps(left: Float64Array, right: Float64Array) -> Int32Array {
     }
     Int32Array::new(pairs)
 }
+
+/// Pearson correlation of paired close returns on each trailing candle window.
+/// The caller supplies aligned, finite close series. Values use only the prefix
+/// ending at their own bar, and the caller applies TradeJS rounding.
+#[napi]
+pub fn rolling_correlation(
+    coin: Float64Array,
+    btc: Float64Array,
+    window: u32,
+) -> napi::Result<Float64Array> {
+    let window = window as usize;
+    if coin.len() != btc.len() || window <= 10 {
+        return Err(napi::Error::from_reason(
+            "Expected equal close series and a window greater than ten candles",
+        ));
+    }
+    let returns = |prices: &[f64]| {
+        prices
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]) / pair[0])
+            .collect::<Vec<_>>()
+    };
+    let coin_returns = returns(&coin);
+    let btc_returns = returns(&btc);
+    let mut values = vec![0.0; coin.len()];
+    for (end, result) in values.iter_mut().enumerate().skip(10) {
+        let start = (end + 1).saturating_sub(window);
+        let left = &coin_returns[start..end];
+        let right = &btc_returns[start..end];
+        let n = left.len() as f64;
+        let left_mean = left.iter().fold(0.0, |sum, &value| sum + value) / n;
+        let right_mean = right.iter().fold(0.0, |sum, &value| sum + value) / n;
+        let (mut covariance, mut left_variance, mut right_variance) = (0.0, 0.0, 0.0);
+        for (&x, &y) in left.iter().zip(right) {
+            let dx = x - left_mean;
+            let dy = y - right_mean;
+            covariance += dx * dy;
+            left_variance += dx * dx;
+            right_variance += dy * dy;
+        }
+        if left_variance != 0.0 && right_variance != 0.0 {
+            *result = covariance / (left_variance * right_variance).sqrt();
+        }
+    }
+    Ok(Float64Array::new(values))
+}
