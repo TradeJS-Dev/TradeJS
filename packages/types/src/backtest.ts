@@ -167,6 +167,17 @@ export interface StrategyCreatorParams {
   backtestHistory?: BacktestHistoryStorage;
   sharedIndicatorsReplayKey?: string;
   sharedStrategyStateKey?: string;
+  portfolioShadow?: true;
+  /** Historical composition may defer eligible submissions until the batch is complete. */
+  selectReplayEntry?: (input: {
+    decision: Extract<
+      import('./strategyExecution').StrategyDecision,
+      { kind: 'entry' }
+    >;
+    signal: Signal;
+    approved: boolean;
+    reason: string | null;
+  }) => Promise<boolean>;
   onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
 }
 

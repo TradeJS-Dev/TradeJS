@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { portfolioStateStorage } from '@tradejs/infra/redis';
 import ProgressBar from 'progress';
 import _ from 'lodash';
 import chalk from 'chalk';
@@ -50,7 +52,18 @@ import {
   updateMarketHistoryWithBtcReferences,
   updatePrimaryMarketHistory,
 } from '../marketData/historyPrepare';
-import { loadRuntimeStrategies } from './runtimeStrategies';
+import {
+  loadRuntimeStrategies,
+  type StrategyRuntimeConfig,
+} from './runtimeStrategies';
+import {
+  loadPortfolioShadowMarket,
+  withoutShadowOrders,
+} from './portfolioShadowMarket';
+import {
+  portfolioShadowStep,
+  runPortfolioShadowCycle,
+} from './portfolioShadowCycle';
 import { createStrategySkipStats, logStrategySkipStats } from './skipStats';
 import { createRuntimeSignalEvaluationBuffer } from './evaluations';
 import { getTelegramDeliverableSignals } from './telegram';
@@ -98,6 +111,8 @@ export interface SignalsRunnerConfig {
   parallel?: number | string;
   watch?: boolean;
   settleDelayMs?: number | string;
+  portfolioShadow?: boolean;
+  portfolioShadowAt?: number;
 }
 
 export interface SignalsSession {
@@ -313,7 +328,9 @@ export const createSignalsRunner = (
           }
         : {}),
       startedAt: Date.now(),
-      marketConnector,
+      marketConnector: config.portfolioShadow
+        ? withoutShadowOrders(marketConnector)
+        : marketConnector,
       btcReferences,
       lifecycle,
     };
@@ -574,11 +591,11 @@ export const createSignalsRunner = (
       const selectedStrategyNames = strategyNames?.length
         ? new Set(strategyNames)
         : null;
-      const runtimeStrategies = selectedStrategyNames
-        ? configuredRuntimeStrategies.filter(({ strategyName }) =>
-            selectedStrategyNames.has(strategyName),
-          )
-        : configuredRuntimeStrategies;
+      const runtimeStrategies = configuredRuntimeStrategies.filter(
+        ({ strategyName, portfolioEntry }) =>
+          !portfolioEntry &&
+          (!selectedStrategyNames || selectedStrategyNames.has(strategyName)),
+      );
       if (!runtimeStrategies.length) {
         lifecycle.clear();
         logger.warn(
@@ -846,7 +863,9 @@ export const createSignalsRunner = (
         buildConfiguredSignalsScopes({
           connectorName,
           deployment,
-          strategies: configuredStrategies,
+          strategies: configuredStrategies.filter(
+            ({ portfolioEntry }) => !portfolioEntry,
+          ),
         }).map(({ key, scope }) => [key, scope]),
       ),
     };
@@ -867,7 +886,16 @@ export const createSignalsRunner = (
     if (!configuredDeployment) {
       throw new Error(`Runtime deployment not found: ${config.deploymentId}`);
     }
-    const { scopes } = await loadConfiguredSignalsScopes(configuredDeployment);
+    const { scopes, strategies } =
+      await loadConfiguredSignalsScopes(configuredDeployment);
+    if (
+      !scopes.size &&
+      strategies.some(({ portfolioEntry }) => portfolioEntry)
+    ) {
+      throw new Error(
+        'Use signals-daemon --portfolioShadow for a portfolio strategy',
+      );
+    }
     if (!scopes.size) return signals();
     for (const scope of scopes.values()) {
       const session = await createSignalsSession(
@@ -883,6 +911,100 @@ export const createSignalsRunner = (
     }
   };
 
+  const runPortfolioScopes = async (
+    deployment: RuntimeDeployment,
+    strategies: StrategyRuntimeConfig[],
+    closedAt: number,
+  ) => {
+    for (const strategy of strategies) {
+      const entry = strategy.portfolioEntry;
+      if (!entry || !strategy.enabled || strategy.controlState !== 'active')
+        continue;
+      if (
+        strategy.universe !== 'crypto' ||
+        deployment.provider !== 'bybit' ||
+        strategy.interval !== '15'
+      ) {
+        throw new Error(
+          'Portfolio shadow currently requires Bybit crypto with an M15 boundary',
+        );
+      }
+      const symbols = [
+        ...new Set(
+          (
+            config.tickers?.split(',') ??
+            strategy.selection?.tickers ??
+            deployment.tickers ??
+            []
+          ).map((symbol) => symbol.trim().toUpperCase()),
+        ),
+      ].sort();
+      if (
+        !symbols.length ||
+        symbols.some((symbol) => !/^[A-Z0-9]+USDT$/.test(symbol))
+      ) {
+        throw new Error(
+          'Portfolio shadow requires an explicit list of USDT contracts',
+        );
+      }
+      const key = `shadow:${createHash('sha256')
+        .update(
+          JSON.stringify([
+            projectRoot,
+            config.userName,
+            deployment.id,
+            deployment.deploymentCompositionId,
+            strategy.accountId,
+            strategy.strategyRevision,
+            symbols,
+          ]),
+        )
+        .digest('hex')}`;
+      const connectorName = await resolveSignalsConnectorName(
+        deployment.connectorName,
+      );
+      const outcome = await runPortfolioShadowCycle({
+        closedAt,
+        entry,
+        store: {
+          read: () => portfolioStateStorage.read(key),
+          compare: (previous, next) =>
+            portfolioStateStorage.compare(key, previous, next),
+        },
+        load: async () => {
+          const factory = await getConnectorCreatorByName(
+            connectorName,
+            projectRoot,
+          );
+          if (!factory)
+            throw new Error(`Connector "${connectorName}" is not registered`);
+          const marketConnector = await factory({
+            userName: config.userName,
+            universe: strategy.universe,
+            accountId: strategy.accountId,
+            deploymentId: deployment.id,
+          });
+          return loadPortfolioShadowMarket({
+            entry,
+            config: strategy.strategyConfig,
+            symbols,
+            marketConnector,
+            connectorName,
+            userName: config.userName,
+            closedAt,
+            cacheOnly: config.cacheOnly,
+          });
+        },
+      });
+      if (outcome)
+        logger.info(
+          'portfolio shadow %s %s',
+          strategy.strategyName,
+          JSON.stringify(outcome),
+        );
+    }
+  };
+
   const signalsDaemon = async () => {
     if (config.updateOnly || config.showTickersList) {
       throw new Error(
@@ -890,6 +1012,24 @@ export const createSignalsRunner = (
       );
     }
 
+    if (config.portfolioShadow && (config.makeOrders || config.notify)) {
+      throw new Error(
+        'Portfolio shadow requires order placement and notifications to be disabled',
+      );
+    }
+    if (
+      config.portfolioShadowAt !== undefined &&
+      (!config.portfolioShadow ||
+        !config.cacheOnly ||
+        !Number.isSafeInteger(config.portfolioShadowAt) ||
+        config.portfolioShadowAt <= 0 ||
+        config.portfolioShadowAt > Date.now() ||
+        config.portfolioShadowAt % portfolioShadowStep !== 0)
+    ) {
+      throw new Error(
+        '--portfolioShadowAt requires --portfolioShadow, --cacheOnly and an M15 boundary in epoch milliseconds',
+      );
+    }
     const abortController = new AbortController();
     if (!config.deploymentId) {
       throw new Error('Runtime deployment id is required');
@@ -902,6 +1042,16 @@ export const createSignalsRunner = (
     });
     if (!initialDeployment) {
       throw new Error(`Runtime deployment not found: ${deploymentId}`);
+    }
+    if (config.portfolioShadowAt !== undefined) {
+      const { strategies } =
+        await loadConfiguredSignalsScopes(initialDeployment);
+      await runPortfolioScopes(
+        initialDeployment,
+        strategies,
+        config.portfolioShadowAt,
+      );
+      return;
     }
     const sessions = new Map<string, SignalsSession>();
     const lastBoundaryByScope = new Map<string, number>();
@@ -921,6 +1071,9 @@ export const createSignalsRunner = (
         settleDelayMs: resolveNonNegativeInteger(config.settleDelayMs, 5_000),
         signal: abortController.signal,
         runCycle: async () => {
+          const portfolioBoundary = config.portfolioShadow
+            ? Math.floor(Date.now() / portfolioShadowStep) * portfolioShadowStep
+            : undefined;
           const currentDeployment = await getRuntimeDeployment({
             userName: config.userName,
             projectRoot,
@@ -999,6 +1152,20 @@ export const createSignalsRunner = (
               session.lifecycle.clear();
               sessions.delete(key);
               throw error;
+            }
+          }
+          if (portfolioBoundary !== undefined) {
+            try {
+              await runPortfolioScopes(
+                currentDeployment,
+                strategies,
+                portfolioBoundary,
+              );
+            } catch (error) {
+              logger.error(
+                'portfolio shadow cycle failed: %s',
+                error instanceof Error ? error.message : String(error),
+              );
             }
           }
           const memory = process.memoryUsage();

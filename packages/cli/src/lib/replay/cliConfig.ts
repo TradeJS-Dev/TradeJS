@@ -77,12 +77,20 @@ args.option(
   'Override MAX_LOSS_VALUE for every selected runtime strategy without changing its declaration',
 );
 args.option(
-  'portfolioReport',
+  'portfolioSnapshot',
+  'Directory containing the cached portfolio market snapshot',
+);
+args.option(
+  'portfolioOutput',
+  'Output JSON path for a portfolio strategy replay',
+);
+args.option(
+  ['R', 'portfolioReport'],
   'Write aggregate portfolio metrics and SVG charts; skip runtime/exchange comparison',
   false,
 );
 args.option(
-  'portfolioCompareTo',
+  ['M', 'portfolioCompareTo'],
   'Compare a full shared replay with a prior portfolio report JSON',
 );
 args.option(

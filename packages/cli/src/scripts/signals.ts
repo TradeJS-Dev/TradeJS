@@ -42,6 +42,15 @@ args.option(
 args.option(['V', 'universe'], 'Market universe (crypto or tradfi)', 'crypto');
 args.option(['A', 'account'], 'Trading account id');
 args.option(['D', 'deployment'], 'Runtime deployment id');
+args.option(
+  'portfolioShadow',
+  'Evaluate portfolio strategies without sending orders',
+  false,
+);
+args.option(
+  ['T', 'portfolioShadowAt'],
+  'Evaluate one cached portfolio M15 boundary (epoch milliseconds)',
+);
 
 const flags = args.parse(process.argv);
 
@@ -68,6 +77,11 @@ const config: SignalsRunnerConfig = {
   parallel: flags.parallel,
   watch: Boolean(flags.watch),
   settleDelayMs: flags.settleDelayMs,
+  portfolioShadow: Boolean(flags.portfolioShadow),
+  portfolioShadowAt:
+    flags.portfolioShadowAt === undefined
+      ? undefined
+      : Number(flags.portfolioShadowAt),
 };
 
 const runner = createSignalsRunner(config);

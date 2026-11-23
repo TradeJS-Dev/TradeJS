@@ -154,6 +154,61 @@ describe('Git-owned runtime strategy resolver', () => {
     expect(resolved).not.toHaveProperty('releaseVersion');
   });
 
+  it.each(['portfolio', 'candle'] as const)(
+    'accepts empty deployment config only for a portfolio plugin (%s)',
+    async (kind) => {
+      mockLoadTradejsConfig.mockResolvedValueOnce({
+        runtime: {
+          deployments: {
+            production: {
+              ...runtimeConfig.deployments.production,
+              strategies: { DoubleTap: { enabled: true, config: {} } },
+            },
+          },
+        },
+      });
+      jest.doMock('../strategy', () => ({
+        getStrategyEntry: jest.fn(async () => ({
+          kind,
+          parseConfig: () => ({
+            INTERVAL: '15',
+            UNIVERSE: 'crypto',
+            MAX_LOSS_VALUE: 10,
+          }),
+        })),
+        getStrategyCreator: jest.fn(async () => jest.fn()),
+        getStrategyPluginSource: jest.fn(
+          async () => '@tradejs/strategy-double-tap',
+        ),
+      }));
+      const { resolveRuntimeComposition } = await import(
+        '../runtimeStrategies'
+      );
+      const composition = resolveRuntimeComposition({
+        projectRoot: '/project',
+      });
+      if (kind === 'portfolio') {
+        await expect(composition).resolves.toMatchObject({
+          deployments: [
+            {
+              strategies: [
+                {
+                  interval: '15',
+                  universe: 'crypto',
+                  strategyName: 'DoubleTap',
+                },
+              ],
+            },
+          ],
+        });
+      } else {
+        await expect(composition).rejects.toThrow(
+          'Invalid runtime strategy declaration',
+        );
+      }
+    },
+  );
+
   it('loads a strategy from an exact package alias', async () => {
     const moduleName = '@tradejs/strategy-double-tap-forward';
     mockLoadTradejsConfig.mockResolvedValueOnce({

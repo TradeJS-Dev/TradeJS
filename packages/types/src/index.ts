@@ -33,3 +33,5 @@ export type {
 } from './dataCoverage';
 
 export * from './referenceMarkets';
+
+export * from './portfolioStrategy';

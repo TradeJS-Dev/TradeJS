@@ -375,3 +375,49 @@ return async () => {
 - `packages/node/src/strategyRuntime.ts`
 - `packages/node/src/strategy/manifests.ts`
 - `packages/core/src/utils/strategyHelpers/signalBuilders.ts`
+
+## Portfolio strategies
+
+Use `definePortfolioStrategy` from `@tradejs/core/config` to export one
+composite entry in `strategyEntries`. Its `resolveChildren` method returns
+existing strategy entries with their configurations. TradeJS evaluates each
+child on its own interval, collects all proposals for the current candle
+boundary and passes them to `selectEntries`. The market view is relative to
+that boundary and exposes only closed candles.
+
+Return regular candidates in priority order and optional candidates for
+confirmation at the next 15-minute boundary. A structurally blocked candidate
+cannot be scheduled. `confirmEntry` receives the next closed candle, opening
+price and minimum risk ratio. Its result supplies the simulated order size and
+risk. The replay host enforces one position per symbol and the entry's
+portfolio limit. The originating child continues to manage the position.
+
+The snapshot form of `tradejs replay` supports one enabled portfolio entry.
+Declare it in the selected deployment and pass `--cacheOnly`,
+`--portfolioSnapshot` and `--portfolioOutput`. The snapshot defines the
+ordered instruments, active dates, warmup and replay interval in
+`window.json`. It includes 15-minute candles, native child interval candles
+and historical funding. The basis for the replay outcome is execution against
+this cached snapshot. Live signals require a portfolio-aware runtime cycle.
+
+### Portfolio shadow on the daemon
+
+Use an isolated deployment with an explicit Bybit USDT symbol list and enable
+the portfolio with one strategy entry. Run `signals-daemon --portfolioShadow`
+without order placement or notifications. The daemon evaluates child strategies
+on their own closed M15 or higher interval. At an hourly boundary the H1
+proposals share the same batch as M15. The market data and opening price must
+belong to the expected boundary.
+
+The daemon commits the boundary, pending confirmations and virtual occupancy
+to Redis with one compare-and-set operation. A restart can process the next
+confirmation from that checkpoint. A repeated boundary produces one result
+and a missed confirmation expires. The state is isolated by deployment,
+strategy revision, account and symbol list. Occupancy is estimated from the
+original stop and targets. This mode records admission decisions and does not
+simulate full position management.
+
+For a bounded test on cached history, add `--cacheOnly --portfolioShadowAt`
+with an M15 boundary in epoch milliseconds. This evaluates one portfolio
+boundary and exits, so two invocations can verify recovery across a process
+restart.

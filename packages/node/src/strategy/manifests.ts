@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   StrategyCreator,
   IndicatorPluginDefinition,
@@ -5,6 +6,7 @@ import type {
   StrategyManifest,
   StrategyPluginDefinition,
   StrategyRegistryEntry,
+  RegisteredStrategyEntry,
 } from '@tradejs/types';
 import {
   registerIndicatorEntries,
@@ -20,14 +22,14 @@ import * as tradejsConfig from '../tradejsConfig';
 type StrategyRegistryState = {
   strategyCreators: Map<string, StrategyCreator>;
   strategyManifestsMap: Map<string, StrategyManifest>;
-  strategyEntriesMap: Map<string, StrategyRegistryEntry>;
+  strategyEntriesMap: Map<string, RegisteredStrategyEntry>;
   strategySourcesMap: Map<string, string>;
   strategyModuleResolutions: Map<string, Promise<ResolvedStrategyModuleEntry>>;
   pluginsLoadPromise: Promise<void> | null;
 };
 
 interface ResolvedStrategyModuleEntry {
-  entry: StrategyRegistryEntry;
+  entry: RegisteredStrategyEntry;
   creator: StrategyCreator;
   source: string;
 }
@@ -63,7 +65,7 @@ const sharedStrategyRegistry: SharedStrategyRegistryState =
 const createStrategyRegistryState = (): StrategyRegistryState => ({
   strategyCreators: new Map<string, StrategyCreator>(),
   strategyManifestsMap: new Map<string, StrategyManifest>(),
-  strategyEntriesMap: new Map<string, StrategyRegistryEntry>(),
+  strategyEntriesMap: new Map<string, RegisteredStrategyEntry>(),
   strategySourcesMap: new Map<string, string>(),
   strategyModuleResolutions: new Map<
     string,
@@ -137,7 +139,7 @@ const extractModuleEntries = <TEntry>(
 const extractStrategyPluginDefinition = (
   moduleExport: unknown,
 ): StrategyPluginDefinition | null => {
-  const strategyEntries = extractModuleEntries<StrategyRegistryEntry>(
+  const strategyEntries = extractModuleEntries<RegisteredStrategyEntry>(
     moduleExport,
     'strategyEntries',
   );
@@ -156,7 +158,7 @@ const extractIndicatorPluginDefinition = (
 
 const validateStrategyEntries = (
   moduleName: string,
-  entries: readonly StrategyRegistryEntry[],
+  entries: readonly RegisteredStrategyEntry[],
   state?: StrategyRegistryState,
 ) => {
   const issues: string[] = [];
@@ -186,7 +188,27 @@ const validateStrategyEntries = (
     if (typeof entry?.parseConfig !== 'function') {
       issues.push(`${entryPath}: parseConfig is required`);
     }
-    if (typeof entry?.createCore !== 'function') {
+    if (entry?.kind === 'portfolio') {
+      for (const method of [
+        'resolveChildren',
+        'selectEntries',
+        'confirmEntry',
+      ] as const) {
+        if (typeof entry[method] !== 'function')
+          issues.push(`${entryPath}: ${method} is required`);
+      }
+      const execution = entry.execution;
+      if (
+        !Number.isSafeInteger(execution?.maxPositions) ||
+        execution.maxPositions < 1 ||
+        !Number.isFinite(execution.feeRate) ||
+        execution.feeRate < 0 ||
+        !Number.isFinite(execution.slippageBps) ||
+        execution.slippageBps < 0
+      ) {
+        issues.push(`${entryPath}: invalid portfolio execution settings`);
+      }
+    } else if (typeof entry?.createCore !== 'function') {
       issues.push(`${entryPath}: createCore is required`);
     }
   });
@@ -194,7 +216,7 @@ const validateStrategyEntries = (
 };
 
 const registerEntries = (
-  entries: readonly StrategyRegistryEntry[],
+  entries: readonly RegisteredStrategyEntry[],
   source: string,
   state: StrategyRegistryState,
 ) => {
@@ -206,6 +228,12 @@ const registerEntries = (
     materializeStrategyCreator(strategyName, state);
   }
 };
+
+const portfolioCreator =
+  (name: string): StrategyCreator =>
+  async () => {
+    throw new Error(`Strategy ${name} requires the portfolio replay runner`);
+  };
 
 const materializeStrategyCreator = (
   strategyName: string,
@@ -220,6 +248,10 @@ const materializeStrategyCreator = (
 
   const entry = state.strategyEntriesMap.get(strategyName);
   if (!entry) return;
+  if (entry.kind === 'portfolio') {
+    state.strategyCreators.set(strategyName, portfolioCreator(strategyName));
+    return;
+  }
 
   state.strategyCreators.set(
     strategyName,
@@ -305,16 +337,20 @@ const resolveStrategyModuleEntry = async ({
     );
     return {
       entry,
-      creator: factory({
-        strategyName,
-        defaults: entry.defaults,
-        createCore: entry.createCore,
-        manifest: entry.manifest,
-        detectorKey: entry.detectorKey,
-        detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
-        resolveRegisteredManifest: (name) =>
-          manifestsByName.get(name) ?? state.strategyManifestsMap.get(name),
-      }),
+      creator:
+        entry.kind === 'portfolio'
+          ? portfolioCreator(strategyName)
+          : factory({
+              strategyName,
+              defaults: entry.defaults,
+              createCore: entry.createCore,
+              manifest: entry.manifest,
+              detectorKey: entry.detectorKey,
+              detectorNoSignalSkipReason: entry.detectorNoSignalSkipReason,
+              resolveRegisteredManifest: (name) =>
+                manifestsByName.get(name) ??
+                state.strategyManifestsMap.get(name),
+            }),
       source,
     };
   })();
@@ -450,7 +486,7 @@ export const getStrategyEntry = async (
   name: string,
   cwd = getTradejsProjectCwd(),
   moduleName?: string,
-): Promise<StrategyRegistryEntry | undefined> => {
+): Promise<RegisteredStrategyEntry | undefined> => {
   if (moduleName?.trim()) {
     await ensureStrategyPluginsLoaded(cwd);
     return (
@@ -500,6 +536,20 @@ export const getRegisteredManifests = (
   return [...state.strategyManifestsMap.values()];
 };
 
+const replayStrategyManifests = new AsyncLocalStorage<
+  ReadonlyMap<string, StrategyManifest>
+>();
+
+export function withReplayStrategyManifests<T>(
+  entries: readonly StrategyRegistryEntry[],
+  run: () => T,
+): T {
+  return replayStrategyManifests.run(
+    new Map(entries.map(({ manifest }) => [manifest.name, manifest])),
+    run,
+  );
+}
+
 export const getStrategyManifest = (
   name?: string,
   cwd = getTradejsProjectCwd(),
@@ -509,7 +559,10 @@ export const getStrategyManifest = (
   }
 
   const { state } = getStrategyRegistryState(cwd);
-  return state.strategyManifestsMap.get(name);
+  return (
+    replayStrategyManifests.getStore()?.get(name) ??
+    state.strategyManifestsMap.get(name)
+  );
 };
 
 export const isKnownStrategy = (
@@ -521,7 +574,7 @@ export const isKnownStrategy = (
 };
 
 export const registerStrategyEntries = (
-  entries: readonly StrategyRegistryEntry[],
+  entries: readonly RegisteredStrategyEntry[],
   cwd = getTradejsProjectCwd(),
 ) => {
   const { state } = getStrategyRegistryState(cwd);
