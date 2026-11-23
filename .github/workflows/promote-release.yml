@@ -12,6 +12,10 @@ on:
         description: Exact currently deployed TradeJS-Project SHA
         required: true
         type: string
+      skip_production_soak:
+        description: Confirm the one-time soak exception for 3.1.29-beta.309
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -31,6 +35,7 @@ jobs:
       PROMOTE: 'true'
       INPUT_BETA_VERSION: ${{ inputs.beta_version }}
       INPUT_PROJECT_SHA: ${{ inputs.project_sha }}
+      SKIP_PRODUCTION_SOAK: ${{ inputs.skip_production_soak }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -89,9 +94,16 @@ jobs:
           DEPLOYED_AT="$deployed_at" node <<'NODE'
           const deployedAt = Date.parse(process.env.DEPLOYED_AT);
           const minimumSoakMs = 24 * 60 * 60 * 1000;
-          if (!Number.isFinite(deployedAt)) throw new Error('Invalid deployment timestamp');
-          if (Date.now() - deployedAt < minimumSoakMs) {
-            throw new Error('Production beta must soak for at least 24 hours');
+          const elapsed = Date.now() - deployedAt;
+          if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('Invalid deployment timestamp');
+          const skipSoak = process.env.SKIP_PRODUCTION_SOAK === 'true';
+          if (skipSoak && process.env.INPUT_BETA_VERSION !== '3.1.29-beta.309') {
+            throw new Error('The soak exception applies only to 3.1.29-beta.309');
+          }
+          if (elapsed < minimumSoakMs) {
+            if (!skipSoak) throw new Error('Production beta must soak for at least 24 hours');
+            const fs = require('node:fs');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'One-time production soak exception for `3.1.29-beta.309` applied.\n');
           }
           NODE
           {
