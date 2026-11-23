@@ -52,3 +52,23 @@ it('rejects a delayed candidate with a structural block', () => {
     ),
   ).toThrow('Invalid delayed portfolio entry');
 });
+
+it('releases all waiting strategies if selection throws', async () => {
+  const placed: string[] = [];
+  const cancelled: string[] = [];
+  await expect(
+    choosePortfolioEntries(
+      ['ETHUSDT', 'SOLUSDT'].map(
+        (symbol) => async (offer: (entry: string) => Promise<boolean>) => {
+          if (await offer(symbol)) placed.push(symbol);
+          else cancelled.push(symbol);
+        },
+      ),
+      async () => {
+        throw new Error('allocation unavailable');
+      },
+    ),
+  ).rejects.toThrow('allocation unavailable');
+  expect(placed).toEqual([]);
+  expect(cancelled).toEqual(['ETHUSDT', 'SOLUSDT']);
+});

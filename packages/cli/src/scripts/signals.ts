@@ -48,7 +48,7 @@ args.option(
   false,
 );
 args.option(
-  'portfolioShadowAt',
+  ['T', 'portfolioShadowAt'],
   'Evaluate one cached portfolio M15 boundary (epoch milliseconds)',
 );
 

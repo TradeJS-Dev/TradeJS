@@ -85,12 +85,12 @@ args.option(
   'Output JSON path for a portfolio strategy replay',
 );
 args.option(
-  'portfolioReport',
+  ['R', 'portfolioReport'],
   'Write aggregate portfolio metrics and SVG charts; skip runtime/exchange comparison',
   false,
 );
 args.option(
-  'portfolioCompareTo',
+  ['M', 'portfolioCompareTo'],
   'Compare a full shared replay with a prior portfolio report JSON',
 );
 args.option(

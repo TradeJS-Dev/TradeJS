@@ -111,3 +111,98 @@ it('leaves the checkpoint intact while the confirmation price is missing, and ex
     confirmed: [],
   });
 });
+
+it('commits only one concurrent evaluation of a boundary', async () => {
+  let value: string | null = null;
+  const store = {
+    read: async () => value,
+    compare: async (previous: string | null, next: string) => {
+      if (previous !== value) return false;
+      value = next;
+      return true;
+    },
+  };
+  const run = () =>
+    runPortfolioShadowCycle({
+      closedAt: step,
+      entry,
+      store,
+      load: async () => ({
+        candidates: [{ candidate, minNetRewardToRisk: 1 }],
+        market: { candle: () => undefined },
+        openingPrice: () => undefined,
+      }),
+    });
+  const [winner, duplicate] = await Promise.all([run(), run()]);
+  expect(winner).toMatchObject({ queued: [candidate.id] });
+  expect(duplicate).toBeNull();
+});
+
+it.each([
+  { direction: 'LONG', stop: 90, target: 120, exit: { low: 89, high: 106 } },
+  { direction: 'SHORT', stop: 120, target: 90, exit: { low: 89, high: 106 } },
+] as const)(
+  'releases a $direction slot after a closed candle touches its protection',
+  async ({ direction, stop, target, exit }) => {
+    const regular = {
+      ...candidate,
+      id: 'regular',
+      direction,
+      stop,
+      targets: [target],
+      gate: { ...candidate.gate, approved: true, reason: null },
+    };
+    const other = { ...regular, id: 'other', symbol: 'ETHUSDT' };
+    const sameSymbol = { ...regular, id: 'same-symbol' };
+    let value: string | null = null;
+    const store = {
+      read: async () => value,
+      compare: async (_: string | null, next: string) => {
+        value = next;
+        return true;
+      },
+    };
+    const run = (
+      closedAt: number,
+      proposals: readonly PortfolioEntryCandidate[],
+    ) =>
+      runPortfolioShadowCycle({
+        closedAt,
+        store,
+        entry: {
+          ...entry,
+          execution: { maxPositions: 2 },
+          selectEntries: ({ candidates }) => ({
+            ranked: candidates.map(({ id }) => id),
+            pending: [],
+          }),
+        },
+        load: async () => ({
+          candidates: proposals.map((candidate) => ({
+            candidate,
+            minNetRewardToRisk: 1,
+          })),
+          market: {
+            candle: (ticker, ago) => ({
+              ...bar(closedAt - (ago + 1) * step),
+              ...(closedAt === 3 * step && ticker === symbol ? exit : {}),
+            }),
+          },
+          openingPrice: () => undefined,
+        }),
+      });
+
+    await expect(run(step, [regular])).resolves.toMatchObject({
+      selected: ['regular'],
+    });
+    await expect(run(2 * step, [sameSymbol, other])).resolves.toMatchObject({
+      selected: ['other'],
+      rejected: ['same-symbol'],
+    });
+    await expect(run(3 * step, [other, sameSymbol])).resolves.toMatchObject({
+      selected: ['same-symbol'],
+      rejected: ['other'],
+      open: ['ETHUSDT', 'SOLUSDT'],
+    });
+  },
+);
