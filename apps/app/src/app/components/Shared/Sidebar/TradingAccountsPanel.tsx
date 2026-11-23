@@ -262,15 +262,15 @@ export const TradingAccountsPanel = () => {
   return (
     <Box
       borderWidth="1px"
-      borderColor="gray.700"
+      borderColor="border.emphasized"
       borderRadius="lg"
       p={4}
-      bg="gray.900"
+      bg="bg.panel"
     >
       <Stack gap={4}>
         <Box>
           <Text fontWeight="600">Bybit</Text>
-          <Text fontSize="sm" color="gray.400">
+          <Text fontSize="sm" color="fg.muted">
             Trading account credentials used by active strategies.
           </Text>
         </Box>
@@ -285,7 +285,7 @@ export const TradingAccountsPanel = () => {
             <Stack
               key={account.id}
               borderWidth={accounts.length > 1 ? '1px' : '0'}
-              borderColor="gray.700"
+              borderColor="border.emphasized"
               borderRadius="md"
               p={accounts.length > 1 ? 3 : 0}
               gap={3}
@@ -293,7 +293,7 @@ export const TradingAccountsPanel = () => {
               <Flex justify="space-between" align="center" gap={3}>
                 <Box>
                   <Text fontWeight="600">{account.label}</Text>
-                  <Text fontSize="xs" color="gray.400">
+                  <Text fontSize="xs" color="fg.muted">
                     Bybit · {account.universes.join(' · ')} ·{' '}
                     {account.environment}
                   </Text>

@@ -38,24 +38,6 @@ const CONNECTOR_ITEMS = [
   { label: 'Coinbase', value: 'coinbase' },
 ];
 
-const controlSurface = 'var(--chakra-colors-gray-700)';
-const controlSurfaceHover = 'var(--chakra-colors-gray-600)';
-
-const inputControlProps = {
-  bg: controlSurface,
-  borderColor: 'gray.500',
-  color: 'gray.100',
-  _placeholder: { color: 'gray.300' },
-  _hover: {
-    bg: controlSurfaceHover,
-    borderColor: 'gray.400',
-  },
-  _focusVisible: {
-    borderColor: 'teal.300',
-    boxShadow: '0 0 0 2px var(--chakra-colors-teal-300)',
-  },
-};
-
 const SelectControl = ({ children }: { children: React.ReactNode }) => (
   <Box
     w="full"
@@ -65,40 +47,12 @@ const SelectControl = ({ children }: { children: React.ReactNode }) => (
         width: '100%',
       },
       '& [data-part="trigger"], & [data-part="input"]': {
-        background: controlSurface,
-        borderColor: 'var(--chakra-colors-gray-500)',
-        color: 'var(--chakra-colors-gray-100)',
-        minWidth: '0',
-        width: '100%',
+        minW: 0,
+        w: 'full',
+        flex: 1,
+        minH: '40px',
       },
-      '& [data-part="trigger"]': {
-        flex: '1',
-        minHeight: '40px',
-      },
-      '& [data-part="input"]': {
-        flex: '1',
-        minHeight: '40px',
-      },
-      '& [data-part="input"]::placeholder': {
-        color: 'var(--chakra-colors-gray-300)',
-      },
-      '& [data-part="indicator-group"]': {
-        flexShrink: '0',
-      },
-      '& [data-part="trigger"]:is(:hover, [data-hover]), & [data-part="input"]:is(:hover, [data-hover])':
-        {
-          background: controlSurfaceHover,
-          borderColor: 'var(--chakra-colors-gray-400)',
-        },
-      '& [data-part="trigger"]:is(:focus-visible, [data-focus-visible]), & [data-part="input"]:is(:focus-visible, [data-focus-visible])':
-        {
-          borderColor: 'var(--chakra-colors-teal-300)',
-          boxShadow: '0 0 0 2px var(--chakra-colors-teal-300)',
-        },
-      '& [data-part="control"]:is(:hover, [data-hover]) [data-part="input"]': {
-        background: controlSurfaceHover,
-        borderColor: 'var(--chakra-colors-gray-400)',
-      },
+      '& [data-part="indicator-group"]': { flexShrink: 0 },
     }}
   >
     {children}
@@ -207,8 +161,8 @@ export const BacktestRunForm = ({
       maxW="1200px"
       w="full"
       borderWidth="1px"
-      borderColor="gray.700"
-      bg="gray.800"
+      borderColor="border.emphasized"
+      bg="bg.muted"
       borderRadius="xl"
       overflow="hidden"
       css={{ '&[open] > summary > svg': { transform: 'rotate(90deg)' } }}
@@ -232,7 +186,7 @@ export const BacktestRunForm = ({
           <Text as="span" fontSize="lg" fontWeight="700">
             New backtest
           </Text>
-          <Text as="span" color="gray.400" fontSize="sm">
+          <Text as="span" color="fg.muted" fontSize="sm">
             Choose what to test and how far to look back.
           </Text>
         </Stack>
@@ -244,7 +198,7 @@ export const BacktestRunForm = ({
       <form onSubmit={handleStart}>
         <Grid
           borderTopWidth="1px"
-          borderColor="gray.700"
+          borderColor="border.emphasized"
           templateColumns={{
             base: 'minmax(0, 1fr)',
             lg: 'minmax(0, 1fr) 300px',
@@ -311,29 +265,16 @@ export const BacktestRunForm = ({
             </FormSection>
 
             <FormSection title="Test period" columns="minmax(0, 1fr)">
-              <Box
-                css={{
-                  '& [data-scope="segment-group"][data-part="root"]': {
-                    background: 'var(--chakra-colors-gray-900)',
-                    border: '1px solid var(--chakra-colors-gray-500)',
-                  },
-                  '& [data-part="indicator"]': {
-                    background: 'var(--chakra-colors-gray-600)',
-                    border: '1px solid var(--chakra-colors-gray-400)',
-                  },
-                }}
-              >
-                <Segment
-                  defaultValue="days"
-                  value={periodMode}
-                  items={PERIOD_ITEMS}
-                  onChange={(value) =>
-                    updateForm({
-                      periodMode: value === 'range' ? 'range' : 'days',
-                    })
-                  }
-                />
-              </Box>
+              <Segment
+                defaultValue="days"
+                value={periodMode}
+                items={PERIOD_ITEMS}
+                onChange={(value) =>
+                  updateForm({
+                    periodMode: value === 'range' ? 'range' : 'days',
+                  })
+                }
+              />
               {periodMode === 'days' ? (
                 <Field.Root invalid={!periodValid}>
                   <Field.Label>Number of days</Field.Label>
@@ -345,7 +286,6 @@ export const BacktestRunForm = ({
                       min={1}
                       step={1}
                       required
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ days: event.target.value })
                       }
@@ -398,7 +338,6 @@ export const BacktestRunForm = ({
                       type="date"
                       max={endDate || undefined}
                       required
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ startDate: event.target.value })
                       }
@@ -411,7 +350,6 @@ export const BacktestRunForm = ({
                       type="date"
                       min={startDate || undefined}
                       required
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ endDate: event.target.value })
                       }
@@ -528,7 +466,7 @@ export const BacktestRunForm = ({
             <Box
               as="details"
               borderTopWidth="1px"
-              borderColor="gray.700"
+              borderColor="border.emphasized"
               pt={4}
               css={{
                 '& > summary': { cursor: 'pointer', borderRadius: '4px' },
@@ -551,7 +489,6 @@ export const BacktestRunForm = ({
                       value={tickersLimit}
                       type="number"
                       min={1}
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ tickersLimit: event.target.value })
                       }
@@ -565,7 +502,6 @@ export const BacktestRunForm = ({
                       value={testsLimit}
                       type="number"
                       min={1}
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ testsLimit: event.target.value })
                       }
@@ -579,7 +515,6 @@ export const BacktestRunForm = ({
                       value={parallel}
                       type="number"
                       min={1}
-                      {...inputControlProps}
                       onChange={(event) =>
                         updateForm({ parallel: event.target.value })
                       }
@@ -587,7 +522,7 @@ export const BacktestRunForm = ({
                   </Field.Root>
                 </FormSection>
 
-                <Text fontSize="xs" color="gray.400" mt={3}>
+                <Text fontSize="xs" color="fg.muted" mt={3}>
                   Leave limits empty to run all tests. Worker count is chosen
                   automatically.
                 </Text>
@@ -600,10 +535,10 @@ export const BacktestRunForm = ({
             minW={0}
             gap={5}
             p={{ base: 4, md: 6 }}
-            bg="rgba(0, 0, 0, 0.14)"
+            bg="bg.panel"
             borderLeftWidth={{ base: '0', lg: '1px' }}
             borderTopWidth={{ base: '1px', lg: '0' }}
-            borderColor="gray.700"
+            borderColor="border.emphasized"
           >
             <Stack gap={1}>
               <Text fontWeight="600" color="teal.300" fontSize="sm">
@@ -619,7 +554,7 @@ export const BacktestRunForm = ({
                   <Text fontSize="lg" fontWeight="700" overflowWrap="anywhere">
                     {selectedStrategy || 'Choose a strategy'}
                   </Text>
-                  <Text fontSize="sm" color="gray.400" overflowWrap="anywhere">
+                  <Text fontSize="sm" color="fg.muted" overflowWrap="anywhere">
                     {selectedConfigId || 'No configuration selected'}
                   </Text>
                 </>
@@ -655,7 +590,7 @@ export const BacktestRunForm = ({
                 ...(parallel ? [['Parallel workers', parallel]] : []),
               ].map(([label, value]) => (
                 <Flex key={label} justify="space-between" gap={3}>
-                  <Text as="dt" color="gray.400" flexShrink={0}>
+                  <Text as="dt" color="fg.muted" flexShrink={0}>
                     {label}
                   </Text>
                   <Text as="dd" m={0} textAlign="right" overflowWrap="anywhere">
@@ -664,7 +599,12 @@ export const BacktestRunForm = ({
                 </Flex>
               ))}
             </Stack>
-            <Stack gap={4} borderTopWidth="1px" borderColor="gray.700" pt={5}>
+            <Stack
+              gap={4}
+              borderTopWidth="1px"
+              borderColor="border.emphasized"
+              pt={5}
+            >
               <Checkbox.Root
                 colorPalette="teal"
                 alignItems="start"
@@ -674,20 +614,14 @@ export const BacktestRunForm = ({
                 }
               >
                 <Checkbox.HiddenInput />
-                <Checkbox.Control
-                  flexShrink={0}
-                  mt="2px"
-                  bg="gray.700"
-                  borderColor="gray.500"
-                  _checked={{ bg: 'teal.500', borderColor: 'teal.300' }}
-                >
+                <Checkbox.Control flexShrink={0} mt="2px">
                   <Checkbox.Indicator />
                 </Checkbox.Control>
                 <Checkbox.Label>
                   <Text fontSize="sm" fontWeight="500">
                     Export AI dataset
                   </Text>
-                  <Text fontSize="xs" color="gray.400" mt={1}>
+                  <Text fontSize="xs" color="fg.muted" mt={1}>
                     Save prompt rows for later AI research.
                   </Text>
                 </Checkbox.Label>
@@ -701,20 +635,14 @@ export const BacktestRunForm = ({
                 }
               >
                 <Checkbox.HiddenInput />
-                <Checkbox.Control
-                  flexShrink={0}
-                  mt="2px"
-                  bg="gray.700"
-                  borderColor="gray.500"
-                  _checked={{ bg: 'teal.500', borderColor: 'teal.300' }}
-                >
+                <Checkbox.Control flexShrink={0} mt="2px">
                   <Checkbox.Indicator />
                 </Checkbox.Control>
                 <Checkbox.Label>
                   <Text fontSize="sm" fontWeight="500">
                     Fast mode
                   </Text>
-                  <Text fontSize="xs" color="gray.400" mt={1}>
+                  <Text fontSize="xs" color="fg.muted" mt={1}>
                     Skip per-test artifacts to reduce disk writes.
                   </Text>
                 </Checkbox.Label>
@@ -726,7 +654,7 @@ export const BacktestRunForm = ({
               ) : (
                 <Text
                   fontSize="xs"
-                  color="gray.400"
+                  color="fg.muted"
                   id="backtest-launch-hint"
                   role="status"
                 >

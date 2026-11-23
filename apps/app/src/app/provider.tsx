@@ -1,61 +1,11 @@
 'use client';
 
-import {
-  ChakraProvider,
-  createSystem,
-  defaultConfig,
-  defineConfig,
-} from '@chakra-ui/react';
+import { ChakraProvider } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
 import { setBacktestCacheSession } from '#app/store/tests';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { AppToaster, ColorModeProvider } from '#ui';
-
-const config = defineConfig({
-  theme: {
-    recipes: {
-      button: {
-        variants: {
-          variant: {
-            outline: {
-              '--outline-color': 'colors.colorPalette.muted',
-            },
-          },
-        },
-      },
-      badge: {
-        variants: {
-          variant: {
-            outline: {
-              '--outline-shadow': 'colors.colorPalette.muted',
-            },
-          },
-        },
-      },
-    },
-    slotRecipes: {
-      tag: {
-        slots: defaultConfig.theme?.slotRecipes?.tag?.slots ?? [],
-        variants: {
-          variant: {
-            outline: {
-              root: {
-                '--outline-shadow': 'colors.colorPalette.muted',
-              },
-            },
-          },
-        },
-      },
-    },
-    tokens: {
-      cursor: {
-        button: { value: 'pointer' },
-      },
-    },
-  },
-});
-
-const system = createSystem(defaultConfig, config);
+import { appTheme } from './theme';
 
 function SessionCacheBoundary({ children }: { children: React.ReactNode }) {
   const { data, status } = useSession();
@@ -83,7 +33,7 @@ export default function Provider({
   children: React.ReactNode;
 }>) {
   return (
-    <ChakraProvider value={system}>
+    <ChakraProvider value={appTheme}>
       <ColorModeProvider forcedTheme="dark">
         <SessionProvider>
           <SessionCacheBoundary>{children}</SessionCacheBoundary>

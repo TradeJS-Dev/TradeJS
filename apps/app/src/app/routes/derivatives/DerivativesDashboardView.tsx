@@ -167,8 +167,8 @@ const DashboardSkeleton = () => (
       {FIXED_SYMBOLS.map((symbol) => (
         <Card.Root
           key={symbol}
-          bg="gray.900"
-          borderColor="gray.800"
+          bg="bg.panel"
+          borderColor="border"
           borderWidth="1px"
           size="sm"
         >
@@ -190,12 +190,7 @@ const DashboardSkeleton = () => (
     </SimpleGrid>
 
     <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -203,12 +198,7 @@ const DashboardSkeleton = () => (
           <Skeleton height="280px" />
         </Card.Body>
       </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -219,12 +209,7 @@ const DashboardSkeleton = () => (
     </SimpleGrid>
 
     <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -232,12 +217,7 @@ const DashboardSkeleton = () => (
           <Skeleton height="280px" />
         </Card.Body>
       </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -248,12 +228,7 @@ const DashboardSkeleton = () => (
     </SimpleGrid>
 
     <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -261,12 +236,7 @@ const DashboardSkeleton = () => (
           <Skeleton height="280px" />
         </Card.Body>
       </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -277,12 +247,7 @@ const DashboardSkeleton = () => (
     </SimpleGrid>
 
     <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="220px" />
         </Card.Header>
@@ -290,12 +255,7 @@ const DashboardSkeleton = () => (
           <Skeleton height="320px" />
         </Card.Body>
       </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Skeleton height="24px" width="260px" />
         </Card.Header>
@@ -305,7 +265,7 @@ const DashboardSkeleton = () => (
       </Card.Root>
     </SimpleGrid>
 
-    <Card.Root bg="gray.900" borderColor="gray.800" borderWidth="1px" size="sm">
+    <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
       <Card.Header>
         <Skeleton height="24px" width="180px" />
       </Card.Header>
@@ -323,45 +283,45 @@ const SymbolMetricsCard = ({
   title: string;
   metrics: SymbolMetrics;
 }) => (
-  <Card.Root bg="gray.900" borderColor="gray.800" borderWidth="1px" size="sm">
+  <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
     <Card.Header pb={0}>
       <Heading size="md">{title}</Heading>
-      <Text mt={1} color="gray.500" fontSize="sm">
+      <Text mt={1} color="fg.subtle" fontSize="sm">
         Updated {formatFullTime(metrics.lastTs)}
       </Text>
     </Card.Header>
     <Card.Body>
       <SimpleGrid columns={{ base: 2, xl: 4 }} gap={4}>
         <Stat.Root>
-          <Stat.Label color="gray.400">Open Interest</Stat.Label>
+          <Stat.Label color="fg.muted">Open Interest</Stat.Label>
           <Stat.ValueText color={getValueColor(metrics.oiChange)}>
             {formatCompact(metrics.currentOpenInterest)}
           </Stat.ValueText>
         </Stat.Root>
         <Stat.Root>
-          <Stat.Label color="gray.400">OI Change</Stat.Label>
+          <Stat.Label color="fg.muted">OI Change</Stat.Label>
           <Stat.ValueText color={getValueColor(metrics.oiChangePct)}>
             {formatPercent(metrics.oiChangePct)}
           </Stat.ValueText>
-          <Stat.HelpText color="gray.500">
+          <Stat.HelpText color="fg.subtle">
             {formatSignedCompact(metrics.oiChange)}
           </Stat.HelpText>
         </Stat.Root>
         <Stat.Root>
-          <Stat.Label color="gray.400">Funding</Stat.Label>
+          <Stat.Label color="fg.muted">Funding</Stat.Label>
           <Stat.ValueText color={getFundingColor(metrics.currentFundingRate)}>
             {formatFunding(metrics.currentFundingRate)}
           </Stat.ValueText>
-          <Stat.HelpText color="gray.500">
+          <Stat.HelpText color="fg.subtle">
             Delta {formatFunding(metrics.fundingChange)}
           </Stat.HelpText>
         </Stat.Root>
         <Stat.Root>
-          <Stat.Label color="gray.400">Liquidations</Stat.Label>
+          <Stat.Label color="fg.muted">Liquidations</Stat.Label>
           <Stat.ValueText color="gray.200">
             {formatCompact(metrics.sumLiqTotal)}
           </Stat.ValueText>
-          <Stat.HelpText color="gray.500">
+          <Stat.HelpText color="fg.subtle">
             Long {formatCompact(metrics.sumLiqLong)} / Short{' '}
             {formatCompact(metrics.sumLiqShort)}
           </Stat.HelpText>
@@ -380,10 +340,10 @@ const ChartCard = ({
   description: string;
   children: ReactNode;
 }) => (
-  <Card.Root bg="gray.900" borderColor="gray.800" borderWidth="1px" size="sm">
+  <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
     <Card.Header pb={0}>
       <Heading size="md">{title}</Heading>
-      <Text mt={1} color="gray.500" fontSize="sm">
+      <Text mt={1} color="fg.subtle" fontSize="sm">
         {description}
       </Text>
     </Card.Header>
@@ -822,15 +782,10 @@ export const DerivativesDashboardView = ({
         </>
       )}
 
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
+      <Card.Root bg="bg.panel" borderColor="border" borderWidth="1px" size="sm">
         <Card.Header>
           <Heading size="md">BTC / ETH Overview</Heading>
-          <Text mt={1} color="gray.500" fontSize="sm">
+          <Text mt={1} color="fg.subtle" fontSize="sm">
             One row per symbol for the selected interval and window.
           </Text>
         </Card.Header>

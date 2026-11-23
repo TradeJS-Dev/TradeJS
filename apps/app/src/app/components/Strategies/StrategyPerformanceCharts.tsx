@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Box, Flex, SimpleGrid, Text } from '@chakra-ui/react';
+import { marketColors, neutral } from '#app/theme/palette';
 import {
   formatInteger,
   formatPercent,
@@ -20,9 +21,9 @@ import type {
 const CHART_WIDTH = 640;
 const CHART_HEIGHT = 120;
 const CHART_PADDING = 10;
-const POSITIVE_CHART_COLOR = '#5eead4';
-const NEGATIVE_CHART_COLOR = '#f87171';
-const NEUTRAL_CHART_COLOR = '#6b7280';
+const POSITIVE_CHART_COLOR = marketColors.up;
+const NEGATIVE_CHART_COLOR = marketColors.down;
+const NEUTRAL_CHART_COLOR = neutral[500];
 
 const getChartPnlColor = (value: number) =>
   value > 0
@@ -68,9 +69,9 @@ export const ChartPanel = ({
   <Box
     p={4}
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     borderRadius="md"
-    bg="gray.900"
+    bg="bg.panel"
     minH="210px"
   >
     <Flex justify="space-between" align="baseline" gap={3} mb={3}>
@@ -78,7 +79,7 @@ export const ChartPanel = ({
         {title}
       </Text>
       {subtitle ? (
-        <Text fontSize="xs" color="gray.500" textAlign="right">
+        <Text fontSize="xs" color="fg.subtle" textAlign="right">
           {subtitle}
         </Text>
       ) : null}
@@ -89,7 +90,7 @@ export const ChartPanel = ({
 
 const EmptyChart = () => (
   <Flex h="140px" align="center" justify="center">
-    <Text fontSize="sm" color="gray.500">
+    <Text fontSize="sm" color="fg.subtle">
       No trade data
     </Text>
   </Flex>
@@ -121,7 +122,7 @@ export const DrawdownTimelineChart = ({
           x2={CHART_WIDTH - CHART_PADDING}
           y1={CHART_PADDING}
           y2={CHART_PADDING}
-          stroke="#374151"
+          stroke={neutral[700]}
           strokeDasharray="4 4"
         />
         <polyline
@@ -132,7 +133,7 @@ export const DrawdownTimelineChart = ({
         />
       </svg>
       <Flex justify="space-between" align="center" mt={2}>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.subtle">
           max drawdown
         </Text>
         <Text
@@ -174,7 +175,7 @@ export const WinLossStreakTimelineChart = ({
           x2={CHART_WIDTH}
           y1={centerY}
           y2={centerY}
-          stroke="#374151"
+          stroke={neutral[700]}
         />
         {trades.map((trade, index) => {
           const height = Math.max(2, (Math.abs(trade.pnl) / maxAbsPnl) * 48);
@@ -195,7 +196,7 @@ export const WinLossStreakTimelineChart = ({
         })}
       </svg>
       <Flex justify="space-between" align="center" mt={2}>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.subtle">
           wins above line, losses below
         </Text>
         <Text
@@ -246,7 +247,7 @@ export const PnlDistributionChart = ({ bins }: { bins: DistributionBin[] }) => {
         })}
       </svg>
       <Flex justify="space-between" align="center" mt={2}>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.subtle">
           trade P&L buckets
         </Text>
         <Text
@@ -288,7 +289,7 @@ export const RollingPerformanceChart = ({
           x2={CHART_WIDTH - CHART_PADDING}
           y1={CHART_HEIGHT / 2}
           y2={CHART_HEIGHT / 2}
-          stroke="#374151"
+          stroke={neutral[700]}
           strokeDasharray="4 4"
         />
         <polyline
@@ -306,7 +307,7 @@ export const RollingPerformanceChart = ({
         />
       </svg>
       <Flex justify="space-between" align="center" mt={2}>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.subtle">
           teal P&L, yellow win rate
         </Text>
         <Text
@@ -352,7 +353,7 @@ export const TimeOfDaySessionChart = ({
           return (
             <Box key={session.session}>
               <Flex justify="space-between" align="center" mb={1}>
-                <Text fontSize="xs" color="gray.400" fontWeight="semibold">
+                <Text fontSize="xs" color="fg.muted" fontWeight="semibold">
                   {session.session}
                 </Text>
                 <Text
@@ -364,14 +365,14 @@ export const TimeOfDaySessionChart = ({
                   {formatSignedNumber(session.pnl)}
                 </Text>
               </Flex>
-              <Box h="8px" bg="gray.800">
+              <Box h="8px" bg="bg.muted">
                 <Box
                   h="full"
                   w={`${width}%`}
                   bg={getChartPnlColor(session.pnl)}
                 />
               </Box>
-              <Text mt={1} fontSize="xs" color="gray.500" fontFamily="mono">
+              <Text mt={1} fontSize="xs" color="fg.subtle" fontFamily="mono">
                 {formatInteger(session.orders)} orders
               </Text>
             </Box>
@@ -390,7 +391,7 @@ export const TimeOfDaySessionChart = ({
           x2={CHART_WIDTH}
           y1={CHART_HEIGHT / 2}
           y2={CHART_HEIGHT / 2}
-          stroke="#374151"
+          stroke={neutral[700]}
         />
         {hours.map((hour) => {
           const barWidth = CHART_WIDTH / 24;
@@ -411,7 +412,7 @@ export const TimeOfDaySessionChart = ({
           );
         })}
       </svg>
-      <Text fontSize="xs" color="gray.500">
+      <Text fontSize="xs" color="fg.subtle">
         UTC hours, sessions: Asia 00-07, Europe 08-15, US 16-23
       </Text>
     </Flex>

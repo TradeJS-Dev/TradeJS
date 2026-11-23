@@ -16,7 +16,7 @@ export const AppToaster = () => {
           <Toast.Root
             width={{ base: 'calc(100vw - 2rem)', md: 'sm' }}
             maxW="calc(100vw - 2rem)"
-            bg="gray.700"
+            bg="bg.emphasized"
             color="gray.100"
             borderWidth="1px"
             borderColor="gray.600"

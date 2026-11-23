@@ -82,7 +82,7 @@ const Install = () => {
   };
 
   return (
-    <Flex minH="100vh" direction={{ base: 'column', lg: 'row' }} bg="gray.950">
+    <Flex minH="100vh" direction={{ base: 'column', lg: 'row' }} bg="bg.subtle">
       <Flex
         w={{ base: 'full', lg: '33.333%' }}
         px={{ base: 6, md: 10, lg: 12 }}
@@ -147,7 +147,7 @@ const Install = () => {
         display={{ base: 'none', lg: 'block' }}
         w={{ lg: '66.666%' }}
         minH="100vh"
-        bg="gray.900"
+        bg="bg.panel"
         position="relative"
         overflow="hidden"
       >

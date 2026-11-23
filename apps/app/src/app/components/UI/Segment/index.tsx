@@ -9,6 +9,7 @@ interface SegmentProps {
   size?: 'xs' | 'md';
   items: Items;
   onChange?: (value: string | null) => void;
+  'aria-label'?: string;
 }
 
 export const Segment = ({
@@ -17,12 +18,14 @@ export const Segment = ({
   size = 'md',
   items,
   onChange,
+  'aria-label': ariaLabel,
 }: SegmentProps) => {
   return (
     <SegmentGroup.Root
       size={size}
       value={value}
       defaultValue={defaultValue}
+      aria-label={ariaLabel}
       onValueChange={(e) => onChange?.(e.value)}
     >
       <SegmentGroup.Indicator />

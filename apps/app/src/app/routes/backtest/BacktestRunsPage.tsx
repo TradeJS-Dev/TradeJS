@@ -106,7 +106,7 @@ export function BacktestRunsPage({
               <Text color="teal.300" fontWeight="semibold">
                 {study.title}
               </Text>
-              <Text color="gray.400" fontSize="sm">
+              <Text color="fg.muted" fontSize="sm">
                 New runs started here are linked to this study.
               </Text>
             </Stack>
@@ -146,9 +146,9 @@ export function BacktestRunsPage({
                   <Stack
                     key={row}
                     gap={3}
-                    bg="gray.800"
+                    bg="bg.muted"
                     borderWidth="1px"
-                    borderColor="gray.700"
+                    borderColor="border.emphasized"
                     borderRadius="lg"
                     p={4}
                   >

@@ -64,12 +64,14 @@ import {
   useTradeSetup,
 } from './hooks';
 import { usePluginIndicators } from './hooks/usePluginIndicators';
+import { useLatestCandleGuide } from './hooks/useLatestCandleGuide';
 import {
   type IndicatorRendererConfig,
   useBacktest as useBacktestStore,
   useData,
 } from '#store';
 import { darkTheme } from './styles';
+import { SignalSummary } from './SignalSummary';
 
 interface KlineChartProps {
   id: string;
@@ -206,6 +208,10 @@ export const KlineChart = ({
     interval: filters.interval,
     replay: replay !== null,
   });
+  useLatestCandleGuide(
+    chart,
+    interactive && historyReady ? data.at(-1)?.timestamp : undefined,
+  );
 
   const selectTrade = useCallback(
     (selection: TradeSelection) => {
@@ -350,6 +356,7 @@ export const KlineChart = ({
     <>
       <div
         id={id}
+        style={interactive ? { position: 'absolute', inset: 0 } : undefined}
         role="img"
         aria-label={`${filters.symbol} price chart`}
         data-testid="market-chart"
@@ -369,17 +376,18 @@ export const KlineChart = ({
   if (!interactive) return chartContents;
 
   return (
-    <Flex direction="column" w="full" minW={0}>
+    <Flex direction="column" w="full" minW={0} minH="100dvh" bg="bg.panel">
       <Flex
         as="header"
         aria-label="Chart controls"
-        gap={1}
-        px={2}
-        py={1}
+        gap={1.5}
+        px={{ base: 2, md: 3 }}
+        py={2}
         wrap="wrap"
         align="center"
         borderBottomWidth="1px"
         borderColor="border"
+        bg="bg.muted"
       >
         {toolbar}
         {toolbar && <Separator orientation="vertical" h={5} mx={1} />}
@@ -540,62 +548,89 @@ export const KlineChart = ({
           </NativeSelect.Root>
         )}
       </Flex>
-      {filters.backtestId && (
-        <TradeReview
-          rows={rows}
-          selected={selected}
-          selectTrade={selectTrade}
-          comparing={comparing}
-          loading={primary.loading || secondary.loading}
-          unavailable={primary.unavailable}
-          comparisonUnavailable={secondary.unavailable}
-          replaying={Boolean(replay)}
-        />
-      )}
-      <Flex align="stretch" minW={0}>
-        {chart && (
-          <ChartDrawings
-            key={`${key}:${replay !== null}`}
-            chart={chart}
-            storageKey={`tradejs:chart-drawings:${key}`}
-            cutoff={cutoff}
-            ready={historyReady}
-          />
-        )}
-        <Grid
-          flex="1"
-          minW={0}
-          templateColumns={{
-            base: 'minmax(0, 1fr)',
-            xl: linkedMarket ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-          }}
-          gap={0}
-          alignItems="end"
-        >
-          <Box
-            position="relative"
-            minW={0}
-            h={{ base: '25rem', lg: 'max(28rem, calc(100dvh - 112px))' }}
-          >
-            {chartContents}
-          </Box>
-          {linkedMarket && onLinkedMarketChange && (
-            <LinkedChart
-              id={`${id}-linked`}
-              primary={historyReady ? chart : null}
-              filters={marketFilters}
-              market={linkedMarket}
-              onMarketChange={onLinkedMarketChange}
-              live={live && !replay}
-              replayEnd={
-                cutoff === undefined
-                  ? undefined
-                  : cutoff + intervalToMs(filters.interval)
-              }
+      <Grid
+        flex="1"
+        templateColumns={{
+          base: 'minmax(0, 1fr)',
+          lg:
+            (filters.backtestId || signalReady) && !linkedMarket
+              ? 'minmax(0, 1fr) 18rem'
+              : 'minmax(0, 1fr)',
+        }}
+      >
+        <Flex align="stretch" minW={0} bg="bg.panel">
+          {chart && (
+            <ChartDrawings
+              key={`${key}:${replay !== null}`}
+              chart={chart}
+              storageKey={`tradejs:chart-drawings:${key}`}
+              cutoff={cutoff}
+              ready={historyReady}
             />
           )}
-        </Grid>
-      </Flex>
+          <Grid
+            flex="1"
+            minW={0}
+            templateColumns={{
+              base: 'minmax(0, 1fr)',
+              xl: linkedMarket ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+            }}
+            gap={0}
+          >
+            <Box
+              position="relative"
+              minW={0}
+              minH={{ base: 'clamp(20rem, 60dvh, 32rem)', lg: '28rem' }}
+            >
+              {chartContents}
+            </Box>
+            {linkedMarket && onLinkedMarketChange && (
+              <LinkedChart
+                id={`${id}-linked`}
+                primary={historyReady ? chart : null}
+                filters={marketFilters}
+                market={linkedMarket}
+                onMarketChange={onLinkedMarketChange}
+                live={live && !replay}
+                replayEnd={
+                  cutoff === undefined
+                    ? undefined
+                    : cutoff + intervalToMs(filters.interval)
+                }
+              />
+            )}
+          </Grid>
+        </Flex>
+        {Boolean(filters.backtestId || signalReady) && (
+          <Flex
+            as="aside"
+            direction="column"
+            gap={4}
+            minW={0}
+            borderColor="border"
+            borderTopWidth={{ base: '1px', lg: linkedMarket ? '1px' : 0 }}
+            borderLeftWidth={{ lg: linkedMarket ? 0 : '1px' }}
+            bg="bg.muted"
+            p={3}
+          >
+            {signalReady && dashboardSignal.signal && (
+              <SignalSummary signal={dashboardSignal.signal} />
+            )}
+            {filters.backtestId && (
+              <TradeReview
+                rows={rows}
+                selected={selected}
+                selectTrade={selectTrade}
+                comparing={comparing}
+                loading={primary.loading || secondary.loading}
+                unavailable={primary.unavailable}
+                comparisonUnavailable={secondary.unavailable}
+                replaying={Boolean(replay)}
+              />
+            )}
+          </Flex>
+        )}
+      </Grid>
     </Flex>
   );
 };

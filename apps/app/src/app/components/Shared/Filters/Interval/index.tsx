@@ -24,7 +24,9 @@ export const SelectInterval = () => {
   return (
     <Segment
       size="xs"
+      aria-label="Chart interval"
       defaultValue={filters.interval}
+      value={filters.interval}
       onChange={onChange}
       items={intervals}
     />

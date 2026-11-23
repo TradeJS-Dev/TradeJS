@@ -57,7 +57,7 @@ export const TestList = ({
                   }
                 >
                   <Checkbox.HiddenInput />
-                  <Checkbox.Control bg="gray.800" borderColor="gray.500" />
+                  <Checkbox.Control bg="bg.muted" borderColor="gray.500" />
                 </Checkbox.Root>
               }
             >

@@ -154,7 +154,7 @@ export function DataBackfillQueue({
 
   return (
     <Stack gap={4}>
-      <Box as="details" borderWidth="1px" borderColor="gray.700" p={3}>
+      <Box as="details" borderWidth="1px" borderColor="border.emphasized" p={3}>
         <Box as="summary" cursor="pointer" fontWeight="medium">
           Queue a day manually
         </Box>
@@ -250,7 +250,7 @@ export function DataBackfillQueue({
         <Skeleton h="90px" aria-label="Loading backfill jobs" />
       )}
       {jobs?.length === 0 && (
-        <Text color="gray.400">
+        <Text color="fg.muted">
           No jobs yet. Open a day in Coverage to queue a gap.
         </Text>
       )}
@@ -263,7 +263,7 @@ export function DataBackfillQueue({
             gap={1}
             p={3}
             borderWidth="1px"
-            borderColor="gray.700"
+            borderColor="border.emphasized"
             borderRadius="md"
           >
             <Flex align="center" justify="space-between" gap={2} wrap="wrap">
@@ -285,7 +285,7 @@ export function DataBackfillQueue({
                 {statuses[job.status]}
               </Text>
             </Flex>
-            <Text fontSize="sm" color="gray.400">
+            <Text fontSize="sm" color="fg.muted">
               {job.series} · {utc.format(job.day)} UTC
             </Text>
             {job.result && (

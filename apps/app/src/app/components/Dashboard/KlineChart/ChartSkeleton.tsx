@@ -5,7 +5,7 @@ export const ChartSkeleton = () => (
     pos="absolute"
     inset={0}
     zIndex="overlay"
-    bg="gray.900"
+    bg="bg.panel"
     p={3}
     role="status"
     aria-label="Loading chart"

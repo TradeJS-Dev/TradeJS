@@ -33,7 +33,7 @@ export const TestCardStatDrawerPanel = ({
             w="50vw"
             minW="640px"
             maxW="50vw"
-            bg="gray.950"
+            bg="bg.subtle"
           >
             <Drawer.Header>
               <Drawer.Title>{test.symbol} stat</Drawer.Title>

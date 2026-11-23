@@ -84,7 +84,7 @@ export const RuntimeStrategyConfigDrawer = ({
       <Portal>
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content bg="gray.950">
+          <Drawer.Content bg="bg.subtle">
             <Drawer.Header>
               <Drawer.Title>
                 {strategy.strategyName}, {strategy.deploymentLabel}{' '}
@@ -100,7 +100,7 @@ export const RuntimeStrategyConfigDrawer = ({
               gap={4}
               overflowY="auto"
             >
-              <Text color="gray.400">
+              <Text color="fg.muted">
                 This configuration is read-only here. Change it in
                 tradejs.config.ts and deploy a new Project image.
               </Text>
@@ -108,15 +108,15 @@ export const RuntimeStrategyConfigDrawer = ({
               <Box
                 p={4}
                 borderWidth="1px"
-                borderColor="gray.800"
+                borderColor="border"
                 borderRadius="md"
-                bg="gray.900"
+                bg="bg.panel"
               >
                 <Text
                   mb={3}
                   fontSize="xs"
                   fontWeight="semibold"
-                  color="gray.400"
+                  color="fg.muted"
                   textTransform="uppercase"
                   letterSpacing="wide"
                 >
@@ -125,7 +125,7 @@ export const RuntimeStrategyConfigDrawer = ({
                 <SimpleGrid columns={{ base: 1, sm: 2 }} gapX={6} gapY={4}>
                   {serviceInfo.map((item) => (
                     <Box key={item.label} minW={0}>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="fg.subtle">
                         {item.label}
                       </Text>
                       <Text
@@ -140,8 +140,8 @@ export const RuntimeStrategyConfigDrawer = ({
                     </Box>
                   ))}
                 </SimpleGrid>
-                <Box mt={4} pt={4} borderTopWidth="1px" borderColor="gray.800">
-                  <Text fontSize="xs" color="gray.500">
+                <Box mt={4} pt={4} borderTopWidth="1px" borderColor="border">
+                  <Text fontSize="xs" color="fg.subtle">
                     Configured ticker selection
                   </Text>
                   <Text
@@ -156,7 +156,7 @@ export const RuntimeStrategyConfigDrawer = ({
                       ? strategy.selection.tickers.join(', ')
                       : 'All available tickers'}
                   </Text>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color="fg.subtle">
                     Symbols with trades
                   </Text>
                   <Text
@@ -178,7 +178,7 @@ export const RuntimeStrategyConfigDrawer = ({
                   <Text
                     fontSize="xs"
                     fontWeight="semibold"
-                    color="gray.400"
+                    color="fg.muted"
                     textTransform="uppercase"
                     letterSpacing="wide"
                   >

@@ -122,17 +122,14 @@ const DashboardRoute = () => {
   return (
     <ClientOnly>
       <PageLayout
-        minH="100vh"
+        aria-label="Market dashboard"
         maxW="none"
         px={0}
         pt={0}
         pb={0}
-        display="flex"
-        flexDirection="column"
       >
         <Box
           position="relative"
-          flex="1"
           w="full"
           minW={0}
           h={isScreenshotMode ? '100vh' : undefined}
@@ -154,7 +151,7 @@ const DashboardRoute = () => {
                     role="group"
                     aria-label="Chart filters"
                     minW={0}
-                    gap={1}
+                    gap={1.5}
                     align="center"
                     wrap="wrap"
                   >
@@ -235,7 +232,6 @@ const DashboardRoute = () => {
                       <Button
                         asChild
                         size="xs"
-                        variant="subtle"
                         colorPalette="teal"
                         title="Run backtest"
                       >

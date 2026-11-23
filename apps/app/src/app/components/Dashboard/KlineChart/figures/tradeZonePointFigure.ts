@@ -1,3 +1,5 @@
+import { marketColors } from '#app/theme/palette';
+
 type Coordinate = { x: number; y: number };
 
 type OverlayWithExtendData<T> = {
@@ -22,9 +24,10 @@ export const createTradeZonePointFigure = ({
   const { mode } = (overlay.extendData || {
     mode: 'TP',
   }) as TradeZoneExtendData;
-  const color = mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+  const color =
+    mode === 'TP' ? `${marketColors.up}30` : `${marketColors.down}25`;
   const borderColor =
-    mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
+    mode === 'TP' ? `${marketColors.up}a8` : `${marketColors.down}a8`;
 
   if (coordinates.length < 2) return [];
 
@@ -38,7 +41,7 @@ export const createTradeZonePointFigure = ({
     {
       type: 'rect',
       attrs: { x, y, width, height },
-      styles: { color, borderColor, size: 1 },
+      styles: { style: 'stroke_fill', color, borderColor, borderSize: 1 },
     },
   ];
 };

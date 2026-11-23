@@ -93,7 +93,7 @@ export const TestCardDeleteDialog = ({
               <Text fontSize="sm" color="gray.200">
                 Delete backtest <b>{testResult.test.name}</b>?
               </Text>
-              <Text fontSize="sm" color="gray.400" mt={2}>
+              <Text fontSize="sm" color="fg.muted" mt={2}>
                 This action cannot be undone.
               </Text>
               {error ? (

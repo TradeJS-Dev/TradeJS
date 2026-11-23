@@ -68,7 +68,7 @@ export const StrategySnapshotChart = ({
         alignItems="center"
         justifyContent="center"
       >
-        <Text color="gray.500">{emptyText}</Text>
+        <Text color="fg.subtle">{emptyText}</Text>
       </Box>
     );
   }

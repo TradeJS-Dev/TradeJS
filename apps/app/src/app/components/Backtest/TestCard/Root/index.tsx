@@ -26,8 +26,8 @@ export const TestCardRoot = ({
         mb={4}
         borderRadius="md"
         borderWidth="1px"
-        borderColor="gray.700"
-        color="gray.400"
+        borderColor="border.emphasized"
+        color="fg.muted"
       >
         <Text>Backtest data is no longer available.</Text>
       </Box>

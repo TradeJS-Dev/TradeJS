@@ -1,70 +1,65 @@
-import { Chart } from 'klinecharts';
+import type { Chart } from 'klinecharts';
+
+import { marketColors, neutral } from '#app/theme/palette';
 
 export const darkTheme = (chart: Chart) => {
+  chart.setDecimalFold({
+    format: (value) => String(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1'),
+  });
+  const axis = {
+    axisLine: { color: neutral[700] },
+    tickLine: { color: neutral[700] },
+    tickText: { color: neutral[400], size: 11 },
+  };
+  const crosshair = {
+    line: { color: neutral[600] },
+    text: {
+      color: neutral[100],
+      backgroundColor: marketColors.crosshairSurface,
+    },
+  };
   chart.setStyles({
     grid: {
-      horizontal: {
-        color: '#374151', // цвет горизонтальных линий сетки
-      },
-      vertical: {
-        color: '#374151', // цвет вертикальных линий сетки
-      },
+      horizontal: { color: marketColors.grid },
+      vertical: { color: marketColors.grid },
     },
+    separator: { color: neutral[700] },
     candle: {
-      // type: 'candle_solid',
       bar: {
-        upColor: '#26a69a', // цвет свечи вверх
-        downColor: '#ef5350', // цвет свечи вниз
-        noChangeColor: '#888888', // цвет свечи без изменения
-        upBorderColor: '#26a69a',
-        downBorderColor: '#ef5350',
-        noChangeBorderColor: '#888888',
-        upWickColor: '#26a69a',
-        downWickColor: '#ef5350',
-        noChangeWickColor: '#888888',
+        upColor: marketColors.up,
+        downColor: marketColors.down,
+        noChangeColor: neutral[500],
+        upBorderColor: marketColors.up,
+        downBorderColor: marketColors.down,
+        noChangeBorderColor: neutral[500],
+        upWickColor: marketColors.up,
+        downWickColor: marketColors.down,
+        noChangeWickColor: neutral[500],
       },
-    },
-    xAxis: {
-      axisLine: {
-        color: '#4b5563', // цвет оси X
-      },
-      tickLine: {
-        color: '#4b5563',
-      },
-      tickText: {
-        color: '#9ca3af', // цвет текста подписей по оси X
-      },
-    },
-    yAxis: {
-      axisLine: {
-        color: '#4b5563', // цвет оси Y
-      },
-      tickLine: {
-        color: '#4b5563',
-      },
-      tickText: {
-        color: '#9ca3af', // цвет текста подписей по оси Y
-      },
-    },
-    crosshair: {
-      horizontal: {
-        line: {
-          color: '#6b7280', // цвет горизонтальной линии перекрестия
-        },
-        text: {
-          color: '#f3f4f6', // цвет текста горизонтальной линии перекрестия
-          backgroundColor: '#1f2937', // фон текста горизонтальной линии перекрестия
+      priceMark: {
+        high: { color: neutral[300] },
+        low: { color: neutral[300] },
+        last: {
+          upColor: marketColors.upLabel,
+          downColor: marketColors.downLabel,
         },
       },
-      vertical: {
-        line: {
-          color: '#6b7280', // цвет вертикальной линии перекрестия
-        },
-        text: {
-          color: '#f3f4f6', // цвет текста вертикальной линии перекрестия
-          backgroundColor: '#1f2937', // фон текста вертикальной линии перекрестия
-        },
+      tooltip: {
+        title: { color: neutral[300] },
+        legend: { color: neutral[300] },
       },
     },
+    indicator: {
+      bars: [
+        {
+          upColor: `${marketColors.up}80`,
+          downColor: `${marketColors.down}80`,
+          noChangeColor: `${neutral[500]}80`,
+        },
+      ],
+    },
+    xAxis: axis,
+    yAxis: axis,
+    crosshair: { horizontal: crosshair, vertical: crosshair },
   });
 };

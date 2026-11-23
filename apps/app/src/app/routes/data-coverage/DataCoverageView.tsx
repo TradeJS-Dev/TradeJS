@@ -165,7 +165,13 @@ function DayDetails({
   const visible =
     Array.isArray(details) && (showAll || gaps.length === 0) ? details : gaps;
   return (
-    <Stack gap={2} borderTopWidth="1px" borderColor="gray.700" px={3} py={3}>
+    <Stack
+      gap={2}
+      borderTopWidth="1px"
+      borderColor="border.emphasized"
+      px={3}
+      py={3}
+    >
       <Flex align="center" justify="space-between" gap={2}>
         <Text fontWeight="semibold">{fullDate.format(day)} UTC</Text>
         <Button size="xs" variant="ghost" onClick={onClose}>
@@ -203,7 +209,7 @@ function DayDetails({
         )}
         {Array.isArray(details) && (
           <>
-            <Text color="gray.400" fontSize="sm">
+            <Text color="fg.muted" fontSize="sm">
               {number.format(details.length)} series ·{' '}
               {number.format(gaps.length)} with gaps
             </Text>
@@ -228,7 +234,7 @@ function DayDetails({
                 <Box
                   as="li"
                   key={key}
-                  bg="gray.900"
+                  bg="bg.panel"
                   borderRadius="sm"
                   px={2}
                   py={1}
@@ -307,7 +313,11 @@ function CoverageRow({
   };
 
   return (
-    <Box borderTopWidth="1px" borderColor="gray.700" aria-busy={!result}>
+    <Box
+      borderTopWidth="1px"
+      borderColor="border.emphasized"
+      aria-busy={!result}
+    >
       <Grid
         templateColumns={{ base: '1fr', md: '235px minmax(0, 1fr)' }}
         alignItems="center"
@@ -364,7 +374,7 @@ function CoverageRow({
           </Text>
           <Box alignSelf="center">
             {coverage?.first != null && coverage.last != null ? (
-              <Text color="gray.400" fontSize="xs" truncate>
+              <Text color="fg.muted" fontSize="xs" truncate>
                 {date.format(coverage.first)}
                 {date.format(coverage.first) !== date.format(coverage.last) &&
                   ` – ${date.format(coverage.last)}`}
@@ -582,7 +592,7 @@ function CoverageOverview({
 
   return (
     <Stack gap={3}>
-      <Text role="status" color="gray.400" fontSize="sm" minH="5">
+      <Text role="status" color="fg.muted" fontSize="sm" minH="5">
         {lastCalculated > 0 && (
           <>
             Last calculated{' '}
@@ -617,16 +627,16 @@ function CoverageOverview({
         </Flex>
       )}
       {providers.size === 0 && (
-        <Text color="gray.400">No market data stored for {year}.</Text>
+        <Text color="fg.muted">No market data stored for {year}.</Text>
       )}
       {[...providers].map(([provider, rows]) => (
         <Box
           as="section"
           key={provider}
           borderWidth="1px"
-          borderColor="gray.700"
+          borderColor="border.emphasized"
           borderRadius="lg"
-          bg="gray.800"
+          bg="bg.muted"
         >
           <Grid
             templateColumns={{ base: '1fr', md: '235px minmax(0, 1fr)' }}
@@ -641,7 +651,7 @@ function CoverageOverview({
             <Grid
               templateColumns={`repeat(${blocks.length}, minmax(0, 1fr))`}
               gap={{ base: '2px', md: '3px' }}
-              color="gray.400"
+              color="fg.muted"
               fontSize="xs"
             >
               {blocks.map(({ from }, index) => (
@@ -777,7 +787,7 @@ export function DataCoverageView({
           </Tabs.List>
           <Tabs.Content value="coverage">
             <Stack gap={3}>
-              <Text fontSize="sm" color="gray.400">
+              <Text fontSize="sm" color="fg.muted">
                 Open a month to see daily coverage, then open a day to see its
                 instruments or indices. Dates are in UTC.
               </Text>

@@ -65,7 +65,7 @@ export default async function ConnectionsPage() {
                 key={connection.id}
                 gap={2}
                 p={4}
-                bg="gray.800"
+                bg="bg.muted"
                 borderWidth="1px"
                 borderColor="border"
                 borderRadius="lg"
@@ -101,7 +101,7 @@ function Command({ children }: { children: string }) {
       minW={0}
       overflowX="auto"
       p={3}
-      bg="gray.800"
+      bg="bg.muted"
       borderWidth="1px"
       borderColor="border"
       borderRadius="md"

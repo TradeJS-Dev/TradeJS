@@ -70,10 +70,12 @@ export const Sidebar = () => {
       position="fixed"
       top={0}
       left={0}
-      h="100vh"
+      h="100dvh"
       w="60px"
-      bg="gray.800"
-      color="white"
+      bg="bg.muted"
+      borderInlineEndWidth="1px"
+      borderColor="border"
+      color="fg"
       py={4}
       px={3}
       zIndex={1000}

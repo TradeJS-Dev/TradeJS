@@ -415,7 +415,7 @@ export const ChartDrawings = ({
           maxW="min(65vw, 18rem)"
           px={2}
           py={1}
-          bg="gray.800"
+          bg="bg.muted"
           color="fg"
           borderRadius="sm"
         >
@@ -447,7 +447,7 @@ export const ChartDrawings = ({
           maxW="min(65vw, 18rem)"
           px={2}
           py={1}
-          bg="gray.800"
+          bg="bg.muted"
           color="fg"
           borderRadius="sm"
         >

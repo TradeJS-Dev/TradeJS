@@ -684,7 +684,7 @@ export const AccountSettingsDrawer = () => {
               <Drawer.Header display="block">
                 <Flex align="center" gap={3} wrap="wrap" pr={8}>
                   <Drawer.Title>Account settings</Drawer.Title>
-                  <Text fontSize="sm" color="gray.400">
+                  <Text fontSize="sm" color="fg.muted">
                     Signed in as{' '}
                     <Text
                       as="span"
@@ -719,7 +719,7 @@ export const AccountSettingsDrawer = () => {
                       <Stack
                         key={section}
                         borderWidth="1px"
-                        borderColor="gray.700"
+                        borderColor="border.emphasized"
                         borderRadius="lg"
                         p={4}
                         gap={4}
@@ -739,15 +739,15 @@ export const AccountSettingsDrawer = () => {
 
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">CoinMarketCap</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 API key stored in the user profile for
                                 historical global market context ingestion.
                               </Text>
@@ -772,15 +772,15 @@ export const AccountSettingsDrawer = () => {
 
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">Jev</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Evaluate signal context and geometry in
                                 backtests and runtime.
                               </Text>
@@ -834,7 +834,7 @@ export const AccountSettingsDrawer = () => {
                                 }
                                 placeholder="Full URL of the decision endpoint"
                               />
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Use a TypeSafe-compatible decision endpoint
                                 accepting state and questions.
                               </Text>
@@ -869,15 +869,15 @@ export const AccountSettingsDrawer = () => {
 
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">AI / LLM</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Stored in the user profile and used for AI
                                 analysis and user-facing AI replies.
                               </Text>
@@ -911,7 +911,7 @@ export const AccountSettingsDrawer = () => {
                                   </option>
                                 ))}
                               </select>
-                              <Text mt="2" fontSize="sm" color="gray.400">
+                              <Text mt="2" fontSize="sm" color="fg.muted">
                                 {effectiveAiEndpoint ||
                                   'Endpoint is not set yet.'}
                               </Text>
@@ -1019,15 +1019,15 @@ export const AccountSettingsDrawer = () => {
 
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">Coinalyze</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 API key stored in the user profile for
                                 derivatives data ingestion.
                               </Text>
@@ -1055,15 +1055,15 @@ export const AccountSettingsDrawer = () => {
                       <Stack gap={5}>
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">Telegram</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Bot credentials used for signal delivery.
                               </Text>
                             </Box>
@@ -1092,15 +1092,15 @@ export const AccountSettingsDrawer = () => {
 
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">Notification types</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Choose which notifications Telegram delivers.
                               </Text>
                             </Box>
@@ -1140,7 +1140,7 @@ export const AccountSettingsDrawer = () => {
                                 <Switch.HiddenInput />
                                 <Switch.Label>
                                   <Text>{label}</Text>
-                                  <Text fontSize="sm" color="gray.400">
+                                  <Text fontSize="sm" color="fg.muted">
                                     {description}
                                   </Text>
                                 </Switch.Label>
@@ -1170,15 +1170,15 @@ export const AccountSettingsDrawer = () => {
                       <Stack gap={5}>
                         <Box
                           borderWidth="1px"
-                          borderColor="gray.700"
+                          borderColor="border.emphasized"
                           borderRadius="lg"
                           p={4}
-                          bg="gray.900"
+                          bg="bg.panel"
                         >
                           <Stack gap={4}>
                             <Box>
                               <Text fontWeight="600">Password</Text>
-                              <Text fontSize="sm" color="gray.400">
+                              <Text fontSize="sm" color="fg.muted">
                                 Update the password used for sign in.
                               </Text>
                             </Box>

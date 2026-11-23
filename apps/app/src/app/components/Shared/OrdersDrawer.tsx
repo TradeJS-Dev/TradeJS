@@ -255,7 +255,7 @@ const OrdersFilterGroup = <TValue extends string>({
 }: OrdersFilterGroupProps<TValue>) => (
   <Flex alignItems="center" gap={2} minW="0">
     <Text
-      color="gray.500"
+      color="fg.subtle"
       fontSize="2xs"
       fontWeight="bold"
       textTransform="uppercase"
@@ -265,7 +265,7 @@ const OrdersFilterGroup = <TValue extends string>({
     </Text>
     <Flex
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="border"
       borderRadius="md"
       overflow="hidden"
       flex="0 0 auto"
@@ -349,7 +349,7 @@ const OrderMetric = ({
   <Box minW="0">
     <Text
       fontSize="2xs"
-      color="gray.500"
+      color="fg.subtle"
       textTransform="uppercase"
       fontWeight="bold"
     >
@@ -370,7 +370,7 @@ const OrderMetric = ({
     {detail || detailLines?.length ? (
       <Box
         mt={1}
-        color="gray.500"
+        color="fg.subtle"
         fontSize="xs"
         lineHeight="1.3"
         wordBreak="break-word"
@@ -391,11 +391,11 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
     <Box
       p={0}
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="border"
       borderLeftWidth="4px"
       borderLeftColor={accentColor}
       borderRadius="md"
-      bg="gray.950"
+      bg="bg.subtle"
       overflow="hidden"
     >
       <Flex
@@ -405,7 +405,7 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
         justifyContent="space-between"
         gap={4}
         borderBottomWidth="1px"
-        borderBottomColor="gray.800"
+        borderBottomColor="border"
       >
         <Box minW="0" flex="1">
           <Flex alignItems="center" gap={2} wrap="wrap">
@@ -438,13 +438,13 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
               </Badge>
             ) : null}
             {order.reference ? (
-              <Text color="gray.500" fontSize="xs" fontFamily="mono">
+              <Text color="fg.subtle" fontSize="xs" fontFamily="mono">
                 ref {order.reference}
               </Text>
             ) : null}
           </Flex>
           {subtitle ? (
-            <Box mt={1} color="gray.500" fontSize="xs" lineHeight="1.2">
+            <Box mt={1} color="fg.subtle" fontSize="xs" lineHeight="1.2">
               {subtitle}
             </Box>
           ) : null}
@@ -460,7 +460,7 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
         >
           <Text
             fontSize="xs"
-            color="gray.500"
+            color="fg.subtle"
             textTransform="uppercase"
             lineHeight="1"
           >
@@ -576,7 +576,7 @@ export const OrdersDrawerPanel = ({
             w="50vw"
             minW="640px"
             maxW="50vw"
-            bg="gray.950"
+            bg="bg.subtle"
           >
             <Drawer.Header>
               <Drawer.Title>{title}</Drawer.Title>
@@ -612,7 +612,7 @@ export const OrdersDrawerPanel = ({
                     <Stack
                       key={row}
                       borderWidth="1px"
-                      borderColor="gray.800"
+                      borderColor="border"
                       borderRadius="md"
                       p={4}
                       minH={`${rowHeight - 12}px`}
@@ -632,10 +632,10 @@ export const OrdersDrawerPanel = ({
                 <Box
                   p={4}
                   borderWidth="1px"
-                  borderColor="gray.800"
+                  borderColor="border"
                   borderRadius="md"
                 >
-                  <Text fontSize="sm" color="gray.400">
+                  <Text fontSize="sm" color="fg.muted">
                     {emptyText}
                   </Text>
                 </Box>
@@ -643,10 +643,10 @@ export const OrdersDrawerPanel = ({
                 <Box
                   p={4}
                   borderWidth="1px"
-                  borderColor="gray.800"
+                  borderColor="border"
                   borderRadius="md"
                 >
-                  <Text fontSize="sm" color="gray.400">
+                  <Text fontSize="sm" color="fg.muted">
                     No orders match the selected filters.
                   </Text>
                 </Box>
