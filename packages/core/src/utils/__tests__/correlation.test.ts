@@ -104,19 +104,37 @@ describe('indicator window correlation', () => {
     }
   });
 
-  it('preserves the legacy semantics for gaps and invalid closes', () => {
+  it('preserves the legacy result when rolling windows switch between aligned data and fallback cases', () => {
     const correlate = createIndicatorCorrelation();
-    const coin = Array.from({ length: 20 }, (_, i) =>
-      makeCandle(i, i === 5 ? Number.NaN : 50 + i ** 2),
+    const coin = Array.from({ length: 28 }, (_, i) =>
+      makeCandle(i, 50 + i ** 2),
     );
     const btc = coin.map(({ timestamp }) =>
-      makeCandle(timestamp === 5 ? 5.5 : timestamp, 100 + timestamp ** 3),
+      makeCandle(timestamp, 100 + timestamp ** 3),
     );
-    expect(correlate(coin, btc)).toBe(
-      calculateCoinBtcCorrelation(coin, btc).correlation ?? 0,
+    const invalid = coin.map((candle, index) =>
+      index === 5 ? { ...candle, close: Number.NaN } : candle,
     );
-    expect(correlate(coin, btc.slice(2))).toBe(
-      calculateCoinBtcCorrelation(coin, btc.slice(2)).correlation ?? 0,
-    );
+    const gapped = btc.filter((_, index) => index !== 4);
+    const flat = btc.map((candle) => ({ ...candle, close: 100 }));
+    const zeroClose = [{ ...coin[0], close: 0 }, ...coin.slice(1)];
+
+    const windows = [
+      [coin, btc],
+      [invalid, btc],
+      [coin, gapped],
+      [coin.slice(3), btc.slice(0, -3)],
+      [coin, flat],
+      [zeroClose, btc],
+      [coin.slice(-11), btc.slice(-11)],
+      [coin.slice(-10), btc.slice(-10)],
+      [coin, btc],
+    ];
+
+    for (const [left, right] of windows) {
+      expect(correlate(left, right)).toBe(
+        calculateCoinBtcCorrelation(left, right).correlation ?? 0,
+      );
+    }
   });
 });

@@ -29,3 +29,39 @@ test('preserves normalization of non-finite values and does not alter source rec
   expect(Number.isNaN(source.volume)).toBe(true);
   expect(Object.is(source.turnover, -0)).toBe(true);
 });
+
+test.each([
+  'open',
+  'high',
+  'low',
+  'close',
+  'volume',
+  'turnover',
+  'timestamp',
+] as const)('refreshes the cached snapshot when %s changes', (key) => {
+  const source = candle();
+  const original = source[key];
+  const previous = toSharedReferenceCandle(source);
+
+  source[key] += 1;
+
+  const next = toSharedReferenceCandle(source);
+  expect(next).not.toBe(previous);
+  expect(next).toEqual(toMlCandle(source));
+  expect(toSharedReferenceCandle(source)).toBe(next);
+  expect(previous[key]).toBe(original);
+});
+
+test('uses the same cached snapshot for equivalent normalized values', () => {
+  const source = { ...candle(), volume: -0, turnover: Number.NaN };
+  const previous = toSharedReferenceCandle(source);
+
+  source.volume = 0;
+  source.turnover = 0;
+  expect(toSharedReferenceCandle(source)).toBe(previous);
+
+  source.volume = Number.POSITIVE_INFINITY;
+  const next = toSharedReferenceCandle(source);
+  expect(next).not.toBe(previous);
+  expect(next).toEqual(toMlCandle(source));
+});
