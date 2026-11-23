@@ -8,7 +8,7 @@ import {
 } from '@tradejs/types';
 import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
 import { cloneArrayValues } from './array';
-import { calculateCoinBtcCorrelation } from './correlation';
+import { createIndicatorCorrelation } from './correlation';
 import {
   BASE_CONTEXT_CANDLE_WINDOW,
   BASE_CONTEXT_MA_LAYER_PERIODS,
@@ -580,6 +580,7 @@ export const createIndicators = (
       size: () => size,
     };
   };
+  const calculateCorrelation = createIndicatorCorrelation();
   const correlationCoinWindow = createRollingCandleWindow(CORRELATION_WINDOW);
   const correlationBtcWindow = createRollingCandleWindow(CORRELATION_WINDOW);
   const coin1hCache = createIncrementalResampleCache(
@@ -1362,10 +1363,10 @@ export const createIndicators = (
     recordProfile('structureMs');
     const correlation =
       !runtimeOnly && correlationBtcWindow.size() > 0
-        ? calculateCoinBtcCorrelation(
-            correlationCoinWindow.snapshot() as any,
-            correlationBtcWindow.snapshot() as any,
-          ).correlation ?? 0
+        ? calculateCorrelation(
+            correlationCoinWindow.snapshot(),
+            correlationBtcWindow.snapshot(),
+          )
         : 0;
     recordProfile('correlationMs');
 

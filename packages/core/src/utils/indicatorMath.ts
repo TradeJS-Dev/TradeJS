@@ -23,28 +23,38 @@ export const toMlCandle = (candle: Candle): Candle => ({
 });
 
 const referenceCandleSnapshots = new WeakMap<Candle, Candle>();
-const referenceCandleFields = [
-  'open',
-  'high',
-  'low',
-  'close',
-  'volume',
-  'turnover',
-  'timestamp',
-] as const;
-
 /** Controllers only read reference candles; share an immutable value snapshot. */
 export const toSharedReferenceCandle = (candle: Candle): Candle => {
-  const normalized = toMlCandle(candle);
+  const open = Number(candle.open) || 0;
+  const high = Number(candle.high) || 0;
+  const low = Number(candle.low) || 0;
+  const close = Number(candle.close) || 0;
+  const volume = Number(candle.volume) || 0;
+  const turnover = Number(candle.turnover) || 0;
+  const timestamp = Number(candle.timestamp) || 0;
   const previous = referenceCandleSnapshots.get(candle);
   if (
     previous &&
-    referenceCandleFields.every((key) =>
-      Object.is(previous[key], normalized[key]),
-    )
-  )
+    previous.open === open &&
+    previous.high === high &&
+    previous.low === low &&
+    previous.close === close &&
+    previous.volume === volume &&
+    previous.turnover === turnover &&
+    previous.timestamp === timestamp
+  ) {
     return previous;
-  const snapshot = Object.freeze(normalized);
+  }
+
+  const snapshot = Object.freeze({
+    open,
+    high,
+    low,
+    close,
+    volume,
+    turnover,
+    timestamp,
+  });
   referenceCandleSnapshots.set(candle, snapshot);
   return snapshot;
 };
