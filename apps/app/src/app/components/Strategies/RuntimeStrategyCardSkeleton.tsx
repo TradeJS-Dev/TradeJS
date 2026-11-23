@@ -14,7 +14,7 @@ export const RuntimeStrategyCardSkeleton = () => (
     borderRadius="md"
     shadow="sm"
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     overflowX="auto"
   >
     <Flex p={4} mb={3} alignItems="center" gap={4} wrap="wrap">

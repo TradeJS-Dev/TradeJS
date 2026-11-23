@@ -97,8 +97,8 @@ export const BacktestJobItem = ({
   return (
     <Box
       borderWidth="1px"
-      borderColor="gray.700"
-      bg="gray.800"
+      borderColor="border.emphasized"
+      bg="bg.muted"
       p={4}
       borderRadius="md"
     >
@@ -115,7 +115,7 @@ export const BacktestJobItem = ({
             {job.request.ai ? <Badge colorPalette="purple">AI</Badge> : null}
             {job.request.fast ? <Badge colorPalette="blue">Fast</Badge> : null}
           </Flex>
-          <Text fontSize="xs" color="gray.400" mt={1}>
+          <Text fontSize="xs" color="fg.muted" mt={1}>
             Started {formatDateTime(job.startedAt)} · Updated{' '}
             {formatDateTime(job.updatedAt)} · Run #{job.runCount}
           </Text>
@@ -235,7 +235,7 @@ export const BacktestJobItem = ({
             {formatNumber(progress.percent, 1)}%
           </Text>
         </Flex>
-        <Box h="8px" bg="gray.800" borderRadius="full" overflow="hidden">
+        <Box h="8px" bg="bg.muted" borderRadius="full" overflow="hidden">
           <Box
             h="full"
             bg={job.status === 'failed' ? 'red.500' : 'teal.400'}
@@ -267,7 +267,7 @@ export const BacktestJobItem = ({
       )}
 
       {logs.length ? (
-        <Box mt={4} bg="gray.950" borderRadius="md" p={3} overflow="hidden">
+        <Box mt={4} bg="bg.subtle" borderRadius="md" p={3} overflow="hidden">
           <Stack gap={1}>
             {logs.map((line, index) => (
               <Text
@@ -336,7 +336,7 @@ const CliRunParameters = ({
 
 const Metric = ({ label, value }: { label: string; value: string }) => (
   <Box minW={0}>
-    <Text fontSize="xs" color="gray.500">
+    <Text fontSize="xs" color="fg.subtle">
       {label}
     </Text>
     <Text

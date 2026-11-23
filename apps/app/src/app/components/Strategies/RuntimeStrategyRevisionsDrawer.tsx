@@ -83,7 +83,7 @@ export const RuntimeStrategyRevisionsDrawer = ({
       <Portal>
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content bg="gray.950">
+          <Drawer.Content bg="bg.subtle">
             <Drawer.Header>
               <Drawer.Title>
                 {strategy.strategyName}, {strategy.deploymentLabel} revisions
@@ -98,7 +98,7 @@ export const RuntimeStrategyRevisionsDrawer = ({
               gap={3}
               overflowY="auto"
             >
-              <Text color="gray.400">
+              <Text color="fg.muted">
                 Current revision and all revision activations observed by the
                 runtime in the selected window.
               </Text>
@@ -110,14 +110,14 @@ export const RuntimeStrategyRevisionsDrawer = ({
                   borderWidth="1px"
                   borderColor={revision.current ? 'teal.800' : 'gray.800'}
                   borderRadius="md"
-                  bg="gray.900"
+                  bg="bg.panel"
                 >
                   <Flex
                     alignItems="center"
                     justifyContent="space-between"
                     gap={3}
                   >
-                    <Text fontSize="xs" color="gray.500">
+                    <Text fontSize="xs" color="fg.subtle">
                       Strategy revision
                     </Text>
                     {revision.current ? (
@@ -135,7 +135,7 @@ export const RuntimeStrategyRevisionsDrawer = ({
                   >
                     {revision.strategyRevision}
                   </Text>
-                  <Text mt={2} fontSize="xs" color="gray.500">
+                  <Text mt={2} fontSize="xs" color="fg.subtle">
                     {revision.changedAt == null
                       ? 'No revision activation observed in this window'
                       : `Activated at ${formatDateTime(revision.changedAt)}`}

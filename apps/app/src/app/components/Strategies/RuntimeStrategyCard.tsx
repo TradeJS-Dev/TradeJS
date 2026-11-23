@@ -166,7 +166,7 @@ export const RuntimeStrategyCard = ({
           TF: {strategy.interval}m
         </Badge>
         <Flex gap="1" alignItems="baseline" flexShrink={0}>
-          <Text fontSize="sm" fontWeight="bold" color="gray.400">
+          <Text fontSize="sm" fontWeight="bold" color="fg.muted">
             connector:
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
@@ -175,7 +175,7 @@ export const RuntimeStrategyCard = ({
         </Flex>
 
         <Flex gap="1" alignItems="baseline" flexShrink={0}>
-          <Text fontSize="sm" fontWeight="bold" color="gray.400">
+          <Text fontSize="sm" fontWeight="bold" color="fg.muted">
             trades:
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
@@ -184,7 +184,7 @@ export const RuntimeStrategyCard = ({
         </Flex>
 
         <Flex gap="1" alignItems="baseline" flexShrink={0}>
-          <Text fontSize="sm" fontWeight="bold" color="gray.400">
+          <Text fontSize="sm" fontWeight="bold" color="fg.muted">
             active:
           </Text>
           <Text
@@ -206,7 +206,7 @@ export const RuntimeStrategyCard = ({
           minW={0}
           flex={1}
         >
-          <Text fontSize="sm" color="gray.500" truncate>
+          <Text fontSize="sm" color="fg.subtle" truncate>
             {lastTrade
               ? `last trade: ${lastTrade.symbol} ${formatDateTime(lastTrade.entryTimestamp)}`
               : strategy.connected

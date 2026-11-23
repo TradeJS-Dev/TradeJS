@@ -55,7 +55,7 @@ function TradeSide({
 }) {
   if (!value)
     return (
-      <Text fontSize="sm" color="gray.400">
+      <Text fontSize="sm" color="fg.muted">
         No trade recorded
       </Text>
     );
@@ -88,12 +88,12 @@ function TradeSide({
         </Text>
       )}
       {runtime && value.orderId && (
-        <Text color="gray.400" overflowWrap="anywhere">
+        <Text color="fg.muted" overflowWrap="anywhere">
           Order {value.orderId}
         </Text>
       )}
       {value.signalId && (
-        <Text color="gray.400" overflowWrap="anywhere">
+        <Text color="fg.muted" overflowWrap="anywhere">
           Signal {value.signalId}
         </Text>
       )}
@@ -239,7 +239,7 @@ export function StrategyDiagnosticsView({
           <Skeleton h="130px" aria-label="Loading diagnostic reports" />
         )}
         {reports?.length === 0 && (
-          <Text color="gray.400">
+          <Text color="fg.muted">
             No verified Runtime and Replay reports are available on this host.
           </Text>
         )}
@@ -322,7 +322,7 @@ export function StrategyDiagnosticsView({
           </Grid>
         )}
         {truncated && (
-          <Text fontSize="sm" color="gray.400">
+          <Text fontSize="sm" color="fg.muted">
             Showing the most recent verified reports found on this host.
           </Text>
         )}
@@ -331,7 +331,7 @@ export function StrategyDiagnosticsView({
         )}
         {data && (
           <Stack gap={3}>
-            <Flex gap={5} wrap="wrap" color="gray.400" fontSize="sm">
+            <Flex gap={5} wrap="wrap" color="fg.muted" fontSize="sm">
               {Object.entries(categories).map(([key, label]) => {
                 const metric = key as keyof typeof categories;
                 return (
@@ -359,14 +359,14 @@ export function StrategyDiagnosticsView({
               </Button>
             )}
             {cases.length === 0 && (
-              <Text color="gray.400">No cases match the selected filters.</Text>
+              <Text color="fg.muted">No cases match the selected filters.</Text>
             )}
             {cases.slice(0, limit).map((item) => (
               <Stack
                 key={item.id}
                 gap={2}
                 borderWidth="1px"
-                borderColor="gray.700"
+                borderColor="border.emphasized"
                 borderRadius="md"
                 p={3}
               >
@@ -374,7 +374,7 @@ export function StrategyDiagnosticsView({
                   <Text fontWeight="semibold">
                     {item.symbol} {item.direction}
                   </Text>
-                  <Text color="gray.400" fontSize="sm">
+                  <Text color="fg.muted" fontSize="sm">
                     {item.strategy}
                   </Text>
                   <Text
@@ -394,7 +394,7 @@ export function StrategyDiagnosticsView({
                   </Link>
                 </Flex>
                 <Grid gap={3} templateColumns="repeat(2, minmax(0, 1fr))">
-                  <Stack bg="gray.900" p={2} gap={1}>
+                  <Stack bg="bg.panel" p={2} gap={1}>
                     <Text fontWeight="medium">Runtime</Text>
                     <TradeSide
                       value={item.runtime}
@@ -403,7 +403,7 @@ export function StrategyDiagnosticsView({
                       runtime
                     />
                   </Stack>
-                  <Stack bg="gray.900" p={2} gap={1}>
+                  <Stack bg="bg.panel" p={2} gap={1}>
                     <Text fontWeight="medium">Replay</Text>
                     <TradeSide
                       value={item.replay}
@@ -414,12 +414,12 @@ export function StrategyDiagnosticsView({
                 </Grid>
                 {item.reason && <Text fontSize="sm">{item.reason}</Text>}
                 {item.decision && item.decision !== item.reason && (
-                  <Text fontSize="sm" color="gray.400">
+                  <Text fontSize="sm" color="fg.muted">
                     {item.decision}
                   </Text>
                 )}
                 {item.evaluationId && (
-                  <Text fontSize="xs" color="gray.400" overflowWrap="anywhere">
+                  <Text fontSize="xs" color="fg.muted" overflowWrap="anywhere">
                     Evaluation {item.evaluationId}
                   </Text>
                 )}

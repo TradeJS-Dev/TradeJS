@@ -43,14 +43,14 @@ const AiDiagnosticCard = ({ metric }: { metric: AiDiagnosticMetric }) => (
   <Box
     p={3}
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     borderRadius="md"
     bg="blackAlpha.200"
     minW="0"
   >
     <Text
       fontSize="2xs"
-      color="gray.500"
+      color="fg.subtle"
       fontWeight="bold"
       textTransform="uppercase"
       lineHeight="1.2"
@@ -74,7 +74,7 @@ const AiDiagnosticCard = ({ metric }: { metric: AiDiagnosticMetric }) => (
       <Text
         mt={2}
         fontSize="xs"
-        color="gray.500"
+        color="fg.subtle"
         lineHeight="1.25"
         whiteSpace="nowrap"
         overflow="hidden"
@@ -116,9 +116,9 @@ const AiDiagnosticsPanel = ({ groups }: { groups: AiDiagnosticGroup[] }) => {
     <Box
       p={4}
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="border"
       borderRadius="md"
-      bg="gray.900"
+      bg="bg.panel"
     >
       <Flex justify="space-between" align="baseline" gap={4}>
         <Text fontSize="md" fontWeight="semibold" color="gray.100">
@@ -181,15 +181,15 @@ export const StrategySnapshotCardDetailsDrawer = ({
     <Box
       p={4}
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="border"
       borderRadius="md"
-      bg="gray.900"
+      bg="bg.panel"
     >
       <Flex justify="space-between" align="center" mb={4}>
         <Text fontSize="sm" color="gray.300" fontWeight="semibold">
           {title}
         </Text>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.subtle">
           {subtitle}
         </Text>
       </Flex>
@@ -200,7 +200,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
             <Text
               flex="0 0 220px"
               fontSize="xs"
-              color="gray.500"
+              color="fg.subtle"
               fontWeight="semibold"
             >
               Contracts
@@ -209,7 +209,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
             <Text
               flex="0 0 96px"
               fontSize="xs"
-              color="gray.500"
+              color="fg.subtle"
               fontWeight="semibold"
               textAlign="right"
             >
@@ -241,7 +241,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                     <Text
                       mt={1}
                       fontSize="xs"
-                      color="gray.500"
+                      color="fg.subtle"
                       fontFamily="mono"
                     >
                       {formatInteger(rank.orders)} orders · win{' '}
@@ -252,7 +252,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                     </Text>
                   </Box>
 
-                  <Box flex="1" h="12px" bg="gray.800">
+                  <Box flex="1" h="12px" bg="bg.muted">
                     <Box
                       h="full"
                       w={`${barWidth}%`}
@@ -279,11 +279,11 @@ export const StrategySnapshotCardDetailsDrawer = ({
         <Box
           p={3}
           borderWidth="1px"
-          borderColor="gray.800"
+          borderColor="border"
           borderRadius="md"
           bg="blackAlpha.300"
         >
-          <Text fontSize="sm" color="gray.500">
+          <Text fontSize="sm" color="fg.subtle">
             No symbol P&L data
           </Text>
         </Box>
@@ -306,7 +306,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
             w="50vw"
             minW="640px"
             maxW="50vw"
-            bg="gray.950"
+            bg="bg.subtle"
           >
             <Drawer.Header>
               <Drawer.Title>{snapshot.title}</Drawer.Title>
@@ -327,11 +327,11 @@ export const StrategySnapshotCardDetailsDrawer = ({
               <Box
                 p={4}
                 borderWidth="1px"
-                borderColor="gray.800"
+                borderColor="border"
                 borderRadius="md"
-                bg="gray.900"
+                bg="bg.panel"
               >
-                <Text fontSize="sm" color="gray.500" mb={3}>
+                <Text fontSize="sm" color="fg.subtle" mb={3}>
                   {snapshot.subtitle || 'AI train details'}
                 </Text>
 
@@ -341,13 +341,13 @@ export const StrategySnapshotCardDetailsDrawer = ({
                       key={metric.id}
                       p={3}
                       borderWidth="1px"
-                      borderColor="gray.800"
+                      borderColor="border"
                       borderRadius="md"
                       bg="blackAlpha.300"
                     >
                       <Text
                         fontSize="xs"
-                        color="gray.400"
+                        color="fg.muted"
                         fontWeight="semibold"
                         textTransform="uppercase"
                       >
@@ -374,9 +374,9 @@ export const StrategySnapshotCardDetailsDrawer = ({
                 <Box
                   p={4}
                   borderWidth="1px"
-                  borderColor="gray.800"
+                  borderColor="border"
                   borderRadius="md"
-                  bg="gray.900"
+                  bg="bg.panel"
                 >
                   <Text
                     fontSize="sm"
@@ -399,7 +399,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                           >
                             {yearGroup.year}
                           </Text>
-                          <Box flex="1" h="1px" bg="gray.800" />
+                          <Box flex="1" h="1px" bg="bg.muted" />
                         </Flex>
 
                         <Flex direction="column" gap={3}>
@@ -418,7 +418,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                                 >
                                   <Text
                                     fontSize="xs"
-                                    color="gray.500"
+                                    color="fg.subtle"
                                     fontFamily="mono"
                                     fontWeight="bold"
                                   >
@@ -452,7 +452,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                                         p={3}
                                         minH="116px"
                                         borderWidth="1px"
-                                        borderColor="gray.800"
+                                        borderColor="border"
                                         borderLeftWidth="3px"
                                         borderLeftColor={getPnlColor(month.pnl)}
                                         borderRadius="md"
@@ -472,7 +472,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                                           </Text>
                                           <Text
                                             fontSize="xs"
-                                            color="gray.500"
+                                            color="fg.subtle"
                                             fontFamily="mono"
                                           >
                                             {String(month.monthIndex).padStart(
@@ -499,7 +499,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                                           <Box>
                                             <Text
                                               fontSize="xs"
-                                              color="gray.500"
+                                              color="fg.subtle"
                                             >
                                               Orders
                                             </Text>
@@ -515,7 +515,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                                           <Box textAlign="right">
                                             <Text
                                               fontSize="xs"
-                                              color="gray.500"
+                                              color="fg.subtle"
                                             >
                                               Win rate
                                             </Text>
@@ -605,9 +605,9 @@ export const StrategySnapshotCardDetailsDrawer = ({
               <Box
                 p={4}
                 borderWidth="1px"
-                borderColor="gray.800"
+                borderColor="border"
                 borderRadius="md"
-                bg="gray.900"
+                bg="bg.panel"
               >
                 <Text
                   fontSize="sm"
@@ -623,7 +623,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                       key={group.direction}
                       p={3}
                       borderWidth="1px"
-                      borderColor="gray.800"
+                      borderColor="border"
                       borderRadius="md"
                       bg="blackAlpha.300"
                     >
@@ -638,7 +638,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                           {group.direction}
                         </Text>
                         {!group.hasData ? (
-                          <Text fontSize="xs" color="gray.500">
+                          <Text fontSize="xs" color="fg.subtle">
                             no data
                           </Text>
                         ) : null}
@@ -652,7 +652,7 @@ export const StrategySnapshotCardDetailsDrawer = ({
                             align="baseline"
                             gap={3}
                           >
-                            <Text fontSize="xs" color="gray.500">
+                            <Text fontSize="xs" color="fg.subtle">
                               {metric.label}
                             </Text>
                             <Text

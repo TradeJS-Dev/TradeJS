@@ -64,9 +64,9 @@ const EquityChart = ({ chart }: { chart: ResearchChart }) => {
   return (
     <Box
       borderWidth="1px"
-      borderColor="gray.700"
+      borderColor="border.emphasized"
       borderRadius="lg"
-      bg="gray.900"
+      bg="bg.panel"
       p={4}
     >
       <Heading as="h3" size="sm" mb={3}>
@@ -158,7 +158,7 @@ const ReportText = ({ text }: { text: string }) => {
           key={index}
           overflowX="auto"
           borderWidth="1px"
-          borderColor="gray.700"
+          borderColor="border.emphasized"
           borderRadius="md"
           css={{
             '& table': {
@@ -172,7 +172,7 @@ const ReportText = ({ text }: { text: string }) => {
               padding: '8px 12px',
               textAlign: 'start',
             },
-            '& th': { bg: 'gray.800', color: 'gray.100', whiteSpace: 'nowrap' },
+            '& th': { bg: 'bg.muted', color: 'fg', whiteSpace: 'nowrap' },
             '& td': { fontVariantNumeric: 'tabular-nums' },
             '& tr:last-child td': { borderBottomWidth: 0 },
           }}
@@ -222,7 +222,7 @@ const ReportText = ({ text }: { text: string }) => {
           as="pre"
           key={index}
           p={3}
-          bg="gray.900"
+          bg="bg.panel"
           borderRadius="md"
           overflowX="auto"
           fontSize="xs"
@@ -261,14 +261,14 @@ export const ResearchStudyView = ({
 
   return (
     <Stack as="article" gap={6} minW={0}>
-      <Box borderBottomWidth="1px" borderColor="gray.700" pb={4}>
+      <Box borderBottomWidth="1px" borderColor="border.emphasized" pb={4}>
         <Text fontSize="sm" color="teal.300" fontWeight="semibold">
           {study.strategy}
         </Text>
         <Heading as="h2" size="xl" mt={1} overflowWrap="anywhere">
           {study.title}
         </Heading>
-        <Flex gap={3} mt={2} color="gray.400" fontSize="sm" wrap="wrap">
+        <Flex gap={3} mt={2} color="fg.muted" fontSize="sm" wrap="wrap">
           <Text>{study.date}</Text>
           {study.kind && <Text>{study.kind}</Text>}
           {study.status && <Text>{study.status}</Text>}
@@ -307,9 +307,9 @@ export const ResearchStudyView = ({
               m={0}
               p={3}
               borderWidth="1px"
-              borderColor="gray.700"
+              borderColor="border.emphasized"
               borderRadius="lg"
-              bg="gray.900"
+              bg="bg.panel"
             >
               <Link
                 href={artifactUrl(study, id)}
@@ -327,7 +327,7 @@ export const ResearchStudyView = ({
                   objectFit="contain"
                 />
               </Link>
-              <Text as="figcaption" color="gray.400" fontSize="sm" mt={2}>
+              <Text as="figcaption" color="fg.muted" fontSize="sm" mt={2}>
                 {label}
               </Text>
             </Box>

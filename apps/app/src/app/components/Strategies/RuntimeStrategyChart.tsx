@@ -150,7 +150,7 @@ export const RuntimeStrategyChart = ({
           </ResponsiveContainer>
         ) : (
           <Flex h="100%" align="center" justify="center">
-            <Text color="gray.500">
+            <Text color="fg.subtle">
               No runtime trades for the selected window.
             </Text>
           </Flex>

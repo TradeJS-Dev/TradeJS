@@ -8,7 +8,7 @@ export const CompareList = () => {
   if (_.isEmpty(compareList)) {
     return (
       <HStack p={2} gap={4}>
-        <Text color="gray.400">No compare tests</Text>
+        <Text color="fg.muted">No compare tests</Text>
       </HStack>
     );
   }

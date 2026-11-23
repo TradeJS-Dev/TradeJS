@@ -101,7 +101,7 @@ export const StrategySnapshotCard = ({
       borderRadius="md"
       shadow="sm"
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="border"
       overflowX="auto"
     >
       <Flex gap="4" p={4} mb={3} alignItems="center" wrap="wrap">
@@ -115,7 +115,7 @@ export const StrategySnapshotCard = ({
             }
           >
             <Checkbox.HiddenInput />
-            <Checkbox.Control bg="gray.800" borderColor="gray.500" />
+            <Checkbox.Control bg="bg.muted" borderColor="gray.500" />
           </Checkbox.Root>
         ) : null}
 
@@ -124,7 +124,7 @@ export const StrategySnapshotCard = ({
         </Text>
 
         <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+          <Text fontSize="sm" fontWeight="bold" color="fg.muted" mt={1}>
             {sourceLabel}
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
@@ -134,7 +134,7 @@ export const StrategySnapshotCard = ({
 
         {generatedAtLabel ? (
           <Flex gap="1">
-            <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
+            <Text fontSize="sm" fontWeight="bold" color="fg.muted" mt={1}>
               generated:
             </Text>
             <Text fontSize="sm" color="gray.300" mt={1}>
@@ -168,9 +168,9 @@ export const StrategySnapshotCard = ({
               px={2}
               py={1}
               borderWidth="1px"
-              borderColor="gray.700"
+              borderColor="border.emphasized"
               borderRadius="sm"
-              bg="gray.800"
+              bg="bg.muted"
               color="gray.200"
               fontFamily="mono"
               fontSize="sm"
@@ -262,7 +262,7 @@ export const StrategySnapshotCard = ({
                   <Text fontSize="sm" color="gray.200">
                     Delete strategy card <b>{snapshot.title}</b>?
                   </Text>
-                  <Text fontSize="sm" color="gray.400" mt={2}>
+                  <Text fontSize="sm" color="fg.muted" mt={2}>
                     This action cannot be undone.
                   </Text>
                 </Dialog.Body>

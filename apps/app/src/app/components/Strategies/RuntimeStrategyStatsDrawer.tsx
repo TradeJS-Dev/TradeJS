@@ -47,14 +47,14 @@ const RuntimeOrdersSummaryBlock = ({
   <Box
     p={4}
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     borderRadius="md"
-    bg="gray.900"
+    bg="bg.panel"
   >
     <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
       {items.map((item) => (
         <Box key={item.title}>
-          <Text fontSize="sm" color="gray.500">
+          <Text fontSize="sm" color="fg.subtle">
             {item.title}
           </Text>
           <Text
@@ -87,15 +87,15 @@ const renderPnlRanking = ({
   <Box
     p={4}
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     borderRadius="md"
-    bg="gray.900"
+    bg="bg.panel"
   >
     <Flex justify="space-between" align="baseline" gap={3} mb={4}>
       <Text fontSize="sm" color="gray.300" fontWeight="semibold">
         {title}
       </Text>
-      <Text fontSize="xs" color="gray.500">
+      <Text fontSize="xs" color="fg.subtle">
         {subtitle}
       </Text>
     </Flex>
@@ -123,7 +123,7 @@ const renderPnlRanking = ({
                 >
                   {rank.symbol}
                 </Text>
-                <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                <Text fontSize="xs" color="fg.subtle" fontFamily="mono">
                   {formatInteger(rank.orders)} orders ·{' '}
                   {formatPercent(rank.winRate)}
                 </Text>
@@ -131,7 +131,7 @@ const renderPnlRanking = ({
                   avg {formatSignedNumber(rank.avgPnl)}
                 </Text>
               </Box>
-              <Box h="10px" bg="gray.800">
+              <Box h="10px" bg="bg.muted">
                 <Box h="full" w={`${width}%`} bg={getPnlBarColor(rank.pnl)} />
               </Box>
               <Text
@@ -148,7 +148,7 @@ const renderPnlRanking = ({
         })}
       </Flex>
     ) : (
-      <Text fontSize="sm" color="gray.500">
+      <Text fontSize="sm" color="fg.subtle">
         No symbol P&L data
       </Text>
     )}
@@ -203,7 +203,7 @@ export const RuntimeStrategyStatsDrawer = ({
             w="50vw"
             minW="640px"
             maxW="50vw"
-            bg="gray.950"
+            bg="bg.subtle"
           >
             <Drawer.Header>
               <Drawer.Title>
@@ -228,11 +228,11 @@ export const RuntimeStrategyStatsDrawer = ({
               <Box
                 p={4}
                 borderWidth="1px"
-                borderColor="gray.800"
+                borderColor="border"
                 borderRadius="md"
-                bg="gray.900"
+                bg="bg.panel"
               >
-                <Text fontSize="sm" color="gray.500" mb={3}>
+                <Text fontSize="sm" color="fg.subtle" mb={3}>
                   connector: {provider}
                 </Text>
 
@@ -242,13 +242,13 @@ export const RuntimeStrategyStatsDrawer = ({
                       key={metric.id}
                       p={3}
                       borderWidth="1px"
-                      borderColor="gray.800"
+                      borderColor="border"
                       borderRadius="md"
                       bg="blackAlpha.300"
                     >
                       <Text
                         fontSize="xs"
-                        color="gray.400"
+                        color="fg.muted"
                         fontWeight="semibold"
                         textTransform="uppercase"
                       >
@@ -275,9 +275,9 @@ export const RuntimeStrategyStatsDrawer = ({
                 <Box
                   p={4}
                   borderWidth="1px"
-                  borderColor="gray.800"
+                  borderColor="border"
                   borderRadius="md"
-                  bg="gray.900"
+                  bg="bg.panel"
                 >
                   <Text
                     fontSize="sm"
@@ -300,7 +300,7 @@ export const RuntimeStrategyStatsDrawer = ({
                           >
                             {yearGroup.year}
                           </Text>
-                          <Box flex="1" h="1px" bg="gray.800" />
+                          <Box flex="1" h="1px" bg="bg.muted" />
                         </Flex>
 
                         <Flex direction="column" gap={3}>
@@ -319,7 +319,7 @@ export const RuntimeStrategyStatsDrawer = ({
                                 >
                                   <Text
                                     fontSize="xs"
-                                    color="gray.500"
+                                    color="fg.subtle"
                                     fontFamily="mono"
                                     fontWeight="bold"
                                   >
@@ -353,7 +353,7 @@ export const RuntimeStrategyStatsDrawer = ({
                                         p={3}
                                         minH="116px"
                                         borderWidth="1px"
-                                        borderColor="gray.800"
+                                        borderColor="border"
                                         borderLeftWidth="3px"
                                         borderLeftColor={getPnlColor(month.pnl)}
                                         borderRadius="md"
@@ -373,7 +373,7 @@ export const RuntimeStrategyStatsDrawer = ({
                                           </Text>
                                           <Text
                                             fontSize="xs"
-                                            color="gray.500"
+                                            color="fg.subtle"
                                             fontFamily="mono"
                                           >
                                             {String(month.monthIndex).padStart(
@@ -400,7 +400,7 @@ export const RuntimeStrategyStatsDrawer = ({
                                           <Box>
                                             <Text
                                               fontSize="xs"
-                                              color="gray.500"
+                                              color="fg.subtle"
                                             >
                                               Orders
                                             </Text>
@@ -416,7 +416,7 @@ export const RuntimeStrategyStatsDrawer = ({
                                           <Box textAlign="right">
                                             <Text
                                               fontSize="xs"
-                                              color="gray.500"
+                                              color="fg.subtle"
                                             >
                                               Win rate
                                             </Text>
@@ -500,9 +500,9 @@ export const RuntimeStrategyStatsDrawer = ({
                 <Box
                   p={4}
                   borderWidth="1px"
-                  borderColor="gray.800"
+                  borderColor="border"
                   borderRadius="md"
-                  bg="gray.900"
+                  bg="bg.panel"
                 >
                   <Flex justify="space-between" align="baseline" mb={3}>
                     <Text fontSize="sm" color="gray.300" fontWeight="semibold">
@@ -519,7 +519,7 @@ export const RuntimeStrategyStatsDrawer = ({
                         key={row.symbol}
                         p={3}
                         borderWidth="1px"
-                        borderColor="gray.800"
+                        borderColor="border"
                         borderRadius="md"
                         bg="blackAlpha.300"
                       >
@@ -534,7 +534,7 @@ export const RuntimeStrategyStatsDrawer = ({
                             </Text>
                             <Text
                               mt={1}
-                              color="gray.500"
+                              color="fg.subtle"
                               fontSize="xs"
                               fontFamily="mono"
                             >
@@ -553,7 +553,7 @@ export const RuntimeStrategyStatsDrawer = ({
                             </Text>
                             <Text
                               mt={1}
-                              color="gray.400"
+                              color="fg.muted"
                               fontSize="xs"
                               fontFamily="mono"
                             >
@@ -570,9 +570,9 @@ export const RuntimeStrategyStatsDrawer = ({
               <Box
                 p={4}
                 borderWidth="1px"
-                borderColor="gray.800"
+                borderColor="border"
                 borderRadius="md"
-                bg="gray.900"
+                bg="bg.panel"
               >
                 <Text
                   fontSize="sm"
@@ -595,7 +595,7 @@ export const RuntimeStrategyStatsDrawer = ({
                         key={group.direction}
                         p={3}
                         borderWidth="1px"
-                        borderColor="gray.800"
+                        borderColor="border"
                         borderRadius="md"
                         bg="blackAlpha.300"
                       >
@@ -612,7 +612,7 @@ export const RuntimeStrategyStatsDrawer = ({
                             {group.direction}
                           </Text>
                           {!group.orders ? (
-                            <Text fontSize="xs" color="gray.500">
+                            <Text fontSize="xs" color="fg.subtle">
                               no data
                             </Text>
                           ) : null}
@@ -649,7 +649,7 @@ export const RuntimeStrategyStatsDrawer = ({
                               align="baseline"
                               gap={3}
                             >
-                              <Text fontSize="xs" color="gray.500">
+                              <Text fontSize="xs" color="fg.subtle">
                                 {label}
                               </Text>
                               <Text

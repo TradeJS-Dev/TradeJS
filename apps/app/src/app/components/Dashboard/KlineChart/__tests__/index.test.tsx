@@ -44,6 +44,9 @@ const chartMock = {
   overrideOverlay: jest.fn(() => false),
   removeOverlay: jest.fn(),
   getVisibleRange: jest.fn(() => ({ realTo: 0 })),
+  convertToPixel: jest.fn(() => ({})),
+  subscribeAction: jest.fn(),
+  unsubscribeAction: jest.fn(),
   scrollToDataIndex: jest.fn(),
 };
 

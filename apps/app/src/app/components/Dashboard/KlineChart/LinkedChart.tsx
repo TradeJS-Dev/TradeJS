@@ -10,6 +10,7 @@ import { intervals } from '#shared/Filters/Interval/intervals';
 import { useChartHistory } from './chartHistory';
 import { findCandleIndex } from './trades';
 import { useResize } from './hooks/useResize';
+import { useLatestCandleGuide } from './hooks/useLatestCandleGuide';
 import { darkTheme } from './styles';
 import { ChartSkeleton } from './ChartSkeleton';
 
@@ -176,12 +177,15 @@ export const LinkedChart = ({
     replay: replayEnd !== undefined,
   });
   useResize(chart, id);
+  useLatestCandleGuide(chart, ready ? displayed.at(-1)?.timestamp : undefined);
   useLinkedCharts(primary, ready ? chart : null);
 
   return (
     <Box
       as="section"
       aria-label="Linked chart"
+      display="flex"
+      flexDirection="column"
       minW={0}
       borderLeftWidth={{ xl: '1px' }}
       borderColor="border"
@@ -263,10 +267,7 @@ export const LinkedChart = ({
           <NativeSelect.Indicator />
         </NativeSelect.Root>
       </Flex>
-      <Box
-        position="relative"
-        h={{ base: '25rem', lg: 'max(28rem, calc(100dvh - 112px))' }}
-      >
+      <Box position="relative" flex="1" minH={{ base: '25rem', xl: 0 }}>
         {(failed || (fulfilled && !displayed.length)) && (
           <Text
             role="status"
@@ -280,7 +281,13 @@ export const LinkedChart = ({
             {failed ? 'Could not load candles' : 'No candles in this window'}
           </Text>
         )}
-        <div id={id} role="img" aria-label={`Linked chart for ${symbol}`} />
+        <Box
+          id={id}
+          position="absolute"
+          inset={0}
+          role="img"
+          aria-label={`Linked chart for ${symbol}`}
+        />
         {!fulfilled && <ChartSkeleton />}
       </Box>
     </Box>

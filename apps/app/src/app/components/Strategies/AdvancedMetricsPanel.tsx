@@ -135,7 +135,7 @@ const MetricCard = ({ item }: { item: MetricItem }) => {
       py={3}
     >
       <Text
-        color="gray.500"
+        color="fg.subtle"
         fontSize="2xs"
         fontWeight="bold"
         textTransform="uppercase"
@@ -159,7 +159,7 @@ const MetricCard = ({ item }: { item: MetricItem }) => {
       {item.detail ? (
         <Text
           mt={2}
-          color="gray.500"
+          color="fg.subtle"
           fontSize="xs"
           lineHeight="1.25"
           whiteSpace="nowrap"
@@ -220,14 +220,14 @@ const QuarterlyPnlGrid = ({
             justify="space-between"
             gap={2}
             borderWidth="1px"
-            borderColor="gray.800"
+            borderColor="border"
             borderRadius="md"
             bg="blackAlpha.200"
             minW="0"
             px={3}
             py={2}
           >
-            <Text color="gray.400" fontSize="xs" fontWeight="semibold">
+            <Text color="fg.muted" fontSize="xs" fontWeight="semibold">
               {quarter.quarter}
             </Text>
             <Text
@@ -249,9 +249,9 @@ const QuarterlyPnlGrid = ({
 const MetricsSection = ({ section }: { section: MetricSection }) => (
   <Box
     borderWidth="1px"
-    borderColor="gray.800"
+    borderColor="border"
     borderRadius="md"
-    bg="gray.900"
+    bg="bg.panel"
     p={4}
   >
     <Flex justify="space-between" align="baseline" gap={4}>

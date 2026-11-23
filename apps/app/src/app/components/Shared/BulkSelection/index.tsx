@@ -54,7 +54,7 @@ export const BulkDeleteToolbar = ({
       onCheckedChange={(details) => onToggleAll(details.checked === true)}
     >
       <Checkbox.HiddenInput aria-label={selectAllLabel} />
-      <Checkbox.Control bg="gray.800" borderColor="gray.500" />
+      <Checkbox.Control bg="bg.muted" borderColor="gray.500" />
     </Checkbox.Root>
     <Text color="gray.200" fontWeight="semibold">
       {selectedLabel ?? `Selected: ${selectedCount}`}
@@ -102,7 +102,7 @@ export const BulkDeleteToolbar = ({
                 {deleteDescription}
               </Text>
               {deleteHint ? (
-                <Text fontSize="sm" color="gray.400" mt={2}>
+                <Text fontSize="sm" color="fg.muted" mt={2}>
                   {deleteHint}
                 </Text>
               ) : null}

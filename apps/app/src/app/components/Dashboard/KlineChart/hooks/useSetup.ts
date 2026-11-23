@@ -3,6 +3,7 @@ import { Chart, registerOverlay } from 'klinecharts';
 import { toMs } from '@tradejs/core/time';
 import type { Signal } from '@tradejs/types';
 import { createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
+import { marketColors } from '#app/theme/palette';
 
 const SETUP = 'Setup';
 const SETUP_START = 'Setup-start';
@@ -52,7 +53,7 @@ export const useTradeSetup = ({
             attrs: { x, y, r: 5 },
             styles: {
               style: 'fill',
-              color: '#9333ea',
+              color: marketColors.up,
             },
             ignoreEvent: true,
           },

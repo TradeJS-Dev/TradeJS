@@ -43,18 +43,18 @@ const ReportContent = ({ data }: { data: RuntimeLaunchReportResponse }) => {
           {report.candidate}
         </Text>
         {period && (
-          <Text color="gray.400" fontSize="sm">
+          <Text color="fg.muted" fontSize="sm">
             {date.formatRange(period.start, period.end)} (UTC)
           </Text>
         )}
         {report.researchRiskUsdt !== undefined && (
-          <Text color="gray.400" fontSize="sm">
+          <Text color="fg.muted" fontSize="sm">
             Backtest risk per trade {decimal.format(report.researchRiskUsdt)}{' '}
             USDT
           </Text>
         )}
         {report.note && (
-          <Text color="gray.400" fontSize="sm" mt={2}>
+          <Text color="fg.muted" fontSize="sm" mt={2}>
             {report.note}
           </Text>
         )}
@@ -83,12 +83,12 @@ const ReportContent = ({ data }: { data: RuntimeLaunchReportResponse }) => {
             w="full"
             borderRadius="md"
           />
-          <Box as="figcaption" mt={2} color="gray.400" fontSize="sm">
+          <Box as="figcaption" mt={2} color="fg.muted" fontSize="sm">
             {chart.caption}
           </Box>
         </Box>
       ) : (
-        <Text color="gray.400">
+        <Text color="fg.muted">
           No chart was retained for this launch report.
         </Text>
       )}
@@ -157,7 +157,7 @@ export const RuntimeStrategyDetailsDrawer = ({
     <Portal>
       <Drawer.Backdrop />
       <Drawer.Positioner>
-        <Drawer.Content bg="gray.950">
+        <Drawer.Content bg="bg.subtle">
           <Drawer.Header>
             <Drawer.Title>
               {strategyName}, {deploymentLabel} launch report

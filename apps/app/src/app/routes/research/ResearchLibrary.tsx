@@ -34,7 +34,12 @@ const researchGap = { base: 5, lg: 8 };
 
 const StudySkeleton = () => (
   <Stack role="status" aria-label="Loading study" gap={6}>
-    <Stack gap={2} borderBottomWidth="1px" borderColor="gray.700" pb={4}>
+    <Stack
+      gap={2}
+      borderBottomWidth="1px"
+      borderColor="border.emphasized"
+      pb={4}
+    >
       <Skeleton h="20px" w="110px" />
       <Skeleton h="36px" w="72%" />
       <Skeleton h="16px" w="185px" maxW="full" />
@@ -58,7 +63,12 @@ const CatalogSkeleton = () => (
     <Stack role="status" aria-label="Loading research catalog" gap={3}>
       <Skeleton h="40px" />
       <Skeleton h="32px" />
-      <Stack gap={0} borderWidth="1px" borderColor="gray.700" borderRadius="lg">
+      <Stack
+        gap={0}
+        borderWidth="1px"
+        borderColor="border.emphasized"
+        borderRadius="lg"
+      >
         {[0, 1, 2, 3].map((row) => (
           <Stack key={row} px={3} py={3} gap={2}>
             <Skeleton h="16px" w="85%" />
@@ -199,9 +209,9 @@ export const ResearchLibrary = () => {
                 maxH={{ base: '240px', lg: 'calc(100dvh - 190px)' }}
                 overflowY="auto"
                 borderWidth="1px"
-                borderColor="gray.700"
+                borderColor="border.emphasized"
                 borderRadius="lg"
-                bg="gray.800"
+                bg="bg.muted"
               >
                 {filtered.map((item) => {
                   const active =
@@ -219,7 +229,7 @@ export const ResearchLibrary = () => {
                       borderLeftWidth="3px"
                       borderLeftColor={active ? 'teal.300' : 'transparent'}
                       bg={active ? 'teal.950' : undefined}
-                      _hover={{ bg: 'gray.700' }}
+                      _hover={{ bg: 'bg.emphasized' }}
                       _focusVisible={{
                         outline: '2px solid',
                         outlineColor: 'teal.300',
@@ -238,7 +248,7 @@ export const ResearchLibrary = () => {
                         >
                           {item.title}
                         </Text>
-                        <Text fontSize="xs" color="gray.400" mt={1}>
+                        <Text fontSize="xs" color="fg.muted" mt={1}>
                           {item.date} · {item.strategy}
                         </Text>
                       </Link>
@@ -246,7 +256,7 @@ export const ResearchLibrary = () => {
                   );
                 })}
                 {!filtered.length && (
-                  <Text px={3} py={4} color="gray.400" fontSize="sm">
+                  <Text px={3} py={4} color="fg.muted" fontSize="sm">
                     No matching studies.
                   </Text>
                 )}
@@ -254,7 +264,7 @@ export const ResearchLibrary = () => {
             </Stack>
             <Box minW={0}>
               {!selected ? (
-                <Text color="gray.400">
+                <Text color="fg.muted">
                   {studyId
                     ? 'This research study is unavailable.'
                     : studies.length

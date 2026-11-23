@@ -6,7 +6,7 @@ export const TestCardSkeleton = () => (
     mb={4}
     width="1400px"
     height="628px"
-    bg="gray.900"
+    bg="bg.panel"
     borderRadius="md"
     shadow="sm"
     borderWidth="1px"

@@ -60,7 +60,7 @@ export const TestCardStatLine = () => {
 export const TestCardStatTable = () => {
   return (
     <>
-      <Card.Root bg="gray.900" mb={4} size="sm">
+      <Card.Root bg="bg.panel" mb={4} size="sm">
         <Card.Header>
           <Heading size="md">Period & Activity</Heading>
         </Card.Header>
@@ -75,7 +75,7 @@ export const TestCardStatTable = () => {
         </Card.Body>
       </Card.Root>
 
-      <Card.Root bg="gray.900" mb={4} size="sm">
+      <Card.Root bg="bg.panel" mb={4} size="sm">
         <Card.Header>
           <Heading size="md">Performance</Heading>
         </Card.Header>
@@ -89,7 +89,7 @@ export const TestCardStatTable = () => {
         </Card.Body>
       </Card.Root>
 
-      <Card.Root bg="gray.900" mb={4} size="sm">
+      <Card.Root bg="bg.panel" mb={4} size="sm">
         <Card.Header>
           <Heading size="md">Risk & Risk-Adjusted</Heading>
         </Card.Header>
@@ -102,7 +102,7 @@ export const TestCardStatTable = () => {
         </Card.Body>
       </Card.Root>
 
-      <Card.Root bg="gray.900" mb={4} size="sm">
+      <Card.Root bg="bg.panel" mb={4} size="sm">
         <Card.Header>
           <Heading size="md">Trade Quality & Consistency</Heading>
         </Card.Header>
