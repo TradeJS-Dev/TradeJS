@@ -3,6 +3,7 @@ import {
   buildReturnsFromCandles,
   calculateCoinBtcCorrelation,
   calculatePearsonCorrelation,
+  createIndicatorCorrelation,
 } from '../correlation';
 import { KlineChartItem } from '@tradejs/types';
 
@@ -81,5 +82,41 @@ describe('correlation utils', () => {
     expect(result.coinReturns).toHaveLength(11);
     expect(result.btcReturns).toHaveLength(11);
     expect(result.correlation).toBe(1);
+  });
+});
+
+describe('indicator window correlation', () => {
+  it('preserves the legacy result across overlapping aligned windows', () => {
+    const correlate = createIndicatorCorrelation();
+    const coin = Array.from({ length: 140 }, (_, i) =>
+      makeCandle(i, 50 + i / 3 + 3 * Math.sin(i)),
+    );
+    const btc = Array.from({ length: coin.length }, (_, i) =>
+      makeCandle(i, 100 + i / 7 - Math.sin(i)),
+    );
+    for (let end = 0; end <= coin.length; end += 1) {
+      const start = Math.max(0, end - 50);
+      const left = coin.slice(start, end);
+      const right = btc.slice(start, end);
+      expect(correlate(left, right)).toBe(
+        calculateCoinBtcCorrelation(left, right).correlation ?? 0,
+      );
+    }
+  });
+
+  it('preserves the legacy semantics for gaps and invalid closes', () => {
+    const correlate = createIndicatorCorrelation();
+    const coin = Array.from({ length: 20 }, (_, i) =>
+      makeCandle(i, i === 5 ? Number.NaN : 50 + i ** 2),
+    );
+    const btc = coin.map(({ timestamp }) =>
+      makeCandle(timestamp === 5 ? 5.5 : timestamp, 100 + timestamp ** 3),
+    );
+    expect(correlate(coin, btc)).toBe(
+      calculateCoinBtcCorrelation(coin, btc).correlation ?? 0,
+    );
+    expect(correlate(coin, btc.slice(2))).toBe(
+      calculateCoinBtcCorrelation(coin, btc.slice(2)).correlation ?? 0,
+    );
   });
 });
