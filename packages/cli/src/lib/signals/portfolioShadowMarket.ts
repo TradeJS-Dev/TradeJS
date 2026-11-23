@@ -11,7 +11,7 @@ import type {
   StrategyConfig,
 } from '@tradejs/types';
 import { alignSymbolWithBtcReference } from '../marketData/windows';
-import { toPortfolioCandidate } from '../replay/portfolioCandidate';
+import { toPortfolioCandidate } from '../portfolio/candidate';
 import {
   portfolioShadowStep,
   type PortfolioShadowMarket,
@@ -114,11 +114,6 @@ export async function loadPortfolioShadowMarket({
           manifest: definition.manifest,
         });
         for (const symbol of symbols) {
-          if (
-            !lookups.get(symbol)?.has(closedAt - 97 * portfolioShadowStep) ||
-            !lookups.get('BTCUSDT')?.has(closedAt - 97 * portfolioShadowStep)
-          )
-            continue;
           const { alignedCoinCandles, alignedBtcCandles } =
             alignSymbolWithBtcReference(
               table.get(symbol)!.filter((candle) => candle.timestamp <= lastAt),

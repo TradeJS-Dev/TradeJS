@@ -4,7 +4,7 @@ import type {
   PortfolioEntryCandidate,
   PortfolioStrategyEntry,
 } from '@tradejs/types';
-import { validatePortfolioSelection } from '../replay/portfolioSelection';
+import { validatePortfolioSelection } from '../portfolio/selection';
 
 export const portfolioShadowStep = 900_000;
 

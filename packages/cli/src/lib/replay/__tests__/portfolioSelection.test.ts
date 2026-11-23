@@ -1,7 +1,5 @@
-import {
-  choosePortfolioEntries,
-  validatePortfolioSelection,
-} from '../portfolioSelection';
+import { validatePortfolioSelection } from '../../portfolio/selection';
+import { choosePortfolioEntries } from '../portfolioSelection';
 
 it('collects all tickers before allowing the selected entry to submit', async () => {
   const filled: string[] = [];

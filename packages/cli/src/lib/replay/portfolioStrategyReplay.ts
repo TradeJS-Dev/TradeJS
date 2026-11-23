@@ -19,10 +19,8 @@ import type {
   Strategy,
   StrategyConfig,
 } from '@tradejs/types';
-import {
-  choosePortfolioEntries,
-  validatePortfolioSelection,
-} from './portfolioSelection';
+import { validatePortfolioSelection } from '../portfolio/selection';
+import { choosePortfolioEntries } from './portfolioSelection';
 import {
   openPortfolioSnapshot,
   visiblePortfolioHistory,
@@ -31,7 +29,7 @@ import {
 import {
   toPortfolioCandidate,
   type PortfolioCapture,
-} from './portfolioCandidate';
+} from '../portfolio/candidate';
 
 type TestConnector = ReturnType<typeof createTestConnector>;
 type Offer = {

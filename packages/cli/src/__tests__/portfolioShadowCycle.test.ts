@@ -8,7 +8,7 @@ const step = 900_000;
 const symbol = 'SOLUSDT';
 const candidate: PortfolioEntryCandidate = {
   id: 'delayed',
-  strategy: 'TradingPatterns',
+  strategy: 'TestChild',
   symbol,
   direction: 'LONG',
   stop: 90,
