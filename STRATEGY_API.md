@@ -399,3 +399,25 @@ ordered instruments, active dates, warmup and replay interval in
 `window.json`. It includes 15-minute candles, native child interval candles
 and historical funding. The basis for the replay outcome is execution against
 this cached snapshot. Live signals require a portfolio-aware runtime cycle.
+
+### Portfolio shadow on the daemon
+
+Use an isolated deployment with an explicit Bybit USDT symbol list and enable
+the portfolio with one strategy entry. Run `signals-daemon --portfolioShadow`
+without order placement or notifications. The daemon evaluates child strategies
+on their own closed M15 or higher interval. At an hourly boundary the H1
+proposals share the same batch as M15. The market data and opening price must
+belong to the expected boundary.
+
+The daemon commits the boundary, pending confirmations and virtual occupancy
+to Redis with one compare-and-set operation. A restart can process the next
+confirmation from that checkpoint. A repeated boundary produces one result
+and a missed confirmation expires. The state is isolated by deployment,
+strategy revision, account and symbol list. Occupancy is estimated from the
+original stop and targets. This mode records admission decisions and does not
+simulate full position management.
+
+For a bounded test on cached history, add `--cacheOnly --portfolioShadowAt`
+with an M15 boundary in epoch milliseconds. This evaluates one portfolio
+boundary and exits, so two invocations can verify recovery across a process
+restart.

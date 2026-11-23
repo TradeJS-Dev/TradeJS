@@ -18,7 +18,6 @@ import type {
   Signal,
   Strategy,
   StrategyConfig,
-  StrategyCreatorParams,
 } from '@tradejs/types';
 import {
   choosePortfolioEntries,
@@ -29,13 +28,15 @@ import {
   visiblePortfolioHistory,
 } from './portfolioSnapshot';
 
-type Capture = Parameters<
-  NonNullable<StrategyCreatorParams['selectReplayEntry']>
->[0];
+import {
+  toPortfolioCandidate,
+  type PortfolioCapture,
+} from './portfolioCandidate';
+
 type TestConnector = ReturnType<typeof createTestConnector>;
 type Offer = {
   runtime: ChildRuntime;
-  captured: Capture;
+  captured: PortfolioCapture;
   candidate: PortfolioEntryCandidate;
 };
 type ChildRuntime = {
@@ -79,37 +80,6 @@ const offlineConnector: Connector = {
   setStopLoss: unavailable,
   closePosition: unavailable,
 };
-
-function toCandidate(
-  { signal, decision, reason, approved }: Capture,
-  strategy: string,
-  symbol: string,
-): PortfolioEntryCandidate {
-  const analysis = signal.aiAnalysis;
-  return {
-    id: signal.signalId,
-    strategy,
-    symbol,
-    direction: decision.entryContext.direction,
-    stop: decision.orderPlan.stopLossPrice,
-    targets: decision.orderPlan.takeProfits.map(({ price }) => price),
-    gate: {
-      approved,
-      reason,
-      rawQuality: analysis?.quality ?? null,
-      explicitHardBlock:
-        Boolean(
-          analysis &&
-            'structuralHardBlockReasons' in analysis &&
-            Array.isArray(analysis.structuralHardBlockReasons) &&
-            analysis.structuralHardBlockReasons.length,
-        ) ||
-        /\bhard[- _]?block\b/i.test(
-          JSON.stringify(analysis?.qualityReason ?? ''),
-        ),
-    },
-  };
-}
 
 export async function replayPortfolioStrategy({
   entry,
@@ -270,7 +240,11 @@ export async function replayPortfolioStrategy({
                 ethData: warm('ETHUSDT'),
                 connector: test,
                 async selectReplayEntry(captured) {
-                  const candidate = toCandidate(captured, name, symbol);
+                  const candidate = toPortfolioCandidate(
+                    captured,
+                    name,
+                    symbol,
+                  );
                   return runtime.capture!({ candidate, captured, runtime });
                 },
               }),

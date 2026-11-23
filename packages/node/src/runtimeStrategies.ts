@@ -7,6 +7,7 @@ import { resolveTradingAccount } from '@tradejs/infra/tradingAccounts';
 import type {
   Interval,
   MarketUniverse,
+  PortfolioStrategyEntry,
   RuntimeControls,
   RuntimeDeployment,
   RuntimeDeploymentDeclaration,
@@ -48,6 +49,7 @@ export interface ResolvedRuntimeStrategy {
   strategyDependencyVersions: Record<string, string>;
   runtimePackageVersion: string;
   strategyCreator: StrategyCreator;
+  portfolioEntry?: PortfolioStrategyEntry;
   sourceStrategyConfig: StrategyConfig;
   strategyConfig: StrategyConfig;
   selection?: RuntimeStrategySelection;
@@ -66,6 +68,7 @@ interface ResolvedStrategyComposition {
   strategyDependencyVersions: Record<string, string>;
   runtimePackageVersion: string;
   strategyCreator: StrategyCreator;
+  portfolioEntry?: PortfolioStrategyEntry;
   sourceStrategyConfig: StrategyConfig;
   strategyConfig: StrategyConfig;
   selection?: RuntimeStrategySelection;
@@ -681,6 +684,9 @@ const resolveStrategyComposition = async ({
     strategyDependencyVersions,
     runtimePackageVersion,
     strategyCreator,
+    ...(strategyEntry.kind === 'portfolio'
+      ? { portfolioEntry: strategyEntry }
+      : {}),
     sourceStrategyConfig: declaration.config,
     strategyConfig,
     ...(selection ? { selection } : {}),

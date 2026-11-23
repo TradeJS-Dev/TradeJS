@@ -80,6 +80,7 @@ import {
   canUseSharedReplayState,
   isConfigHookStage,
   isRuntimeOrderExecutionEnabled,
+  isTestConnector,
   isStrategyDecision,
   normalizeConfigHookList,
   shouldRecordRuntimeJournal,
@@ -173,6 +174,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     backtestHistory,
     sharedStrategyStateKey,
     selectReplayEntry,
+    portfolioShadow,
     onRuntimeClose,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
@@ -188,8 +190,16 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const accountId = requestedAccountId ?? connector.accountId;
     const deploymentId = requestedDeploymentId ?? connector.deploymentId;
     const projectConfig = await loadTradejsConfig(projectRoot);
-    const projectHooks = projectConfig.hooks;
+    const projectHooks = portfolioShadow ? undefined : projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    if (
+      portfolioShadow &&
+      (!selectReplayEntry || env !== 'PARITY' || !isTestConnector(connector))
+    ) {
+      throw new Error(
+        'Portfolio shadow requires an isolated simulation connector',
+      );
+    }
     if (selectReplayEntry && env !== 'PARITY') {
       throw new Error('Replay entry selection requires PARITY mode');
     }
