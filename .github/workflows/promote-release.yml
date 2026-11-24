@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       skip_production_soak:
-        description: Confirm the one-time soak exception for 3.1.30-beta.317
+        description: Confirm the one-time soak exception for 3.1.30-beta.318
         default: false
         type: boolean
 
@@ -97,13 +97,13 @@ jobs:
           const elapsed = Date.now() - deployedAt;
           if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('Invalid deployment timestamp');
           const skipSoak = process.env.SKIP_PRODUCTION_SOAK === 'true';
-          if (skipSoak && process.env.INPUT_BETA_VERSION !== '3.1.30-beta.317') {
-            throw new Error('The soak exception applies only to 3.1.30-beta.317');
+          if (skipSoak && process.env.INPUT_BETA_VERSION !== '3.1.30-beta.318') {
+            throw new Error('The soak exception applies only to 3.1.30-beta.318');
           }
           if (elapsed < minimumSoakMs) {
             if (!skipSoak) throw new Error('Production beta must soak for at least 24 hours');
             const fs = require('node:fs');
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'One-time production soak exception for `3.1.30-beta.317` applied.\n');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'One-time production soak exception for `3.1.30-beta.318` applied.\n');
           }
           NODE
           {
