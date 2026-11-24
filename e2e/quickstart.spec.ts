@@ -12,7 +12,7 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
   await page.goto('/routes/install');
 
   await expect(
-    page.getByRole('heading', { name: 'Create your local password' }),
+    page.getByRole('heading', { name: 'Set up TradeJS', exact: true }),
   ).toBeVisible();
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByLabel('Confirm password').fill(password);
@@ -24,7 +24,7 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
     timeout: 60_000,
   });
   await expect(
-    page.getByRole('link', { name: 'Create backtest' }),
+    page.getByRole('button', { name: 'Backtest', exact: true }),
   ).toBeVisible();
 
   const chart = page.locator('[data-testid="market-chart"]');
@@ -33,18 +33,24 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
   });
   await expect(chart.locator('canvas').first()).toBeVisible();
 
-  await page.getByRole('link', { name: 'Create backtest' }).click();
+  await page.getByRole('button', { name: 'Backtest', exact: true }).click();
   await expect(page).toHaveURL(/\/routes\/backtest(?:\?.*)?$/, {
     timeout: 60_000,
   });
   await expect(page.getByText('Backtest runs', { exact: true })).toBeVisible();
 
-  await page.getByRole('spinbutton', { name: 'Days' }).fill('7');
+  await page.locator('summary').filter({ hasText: 'New backtest' }).click();
+  await page
+    .getByRole('spinbutton', { name: 'Number of days', exact: true })
+    .fill('7');
 
-  await page.getByRole('combobox', { name: 'Connector' }).click();
+  await page.getByRole('combobox', { name: 'Exchange', exact: true }).click();
   await page.getByRole('option', { name: 'Coinbase', exact: true }).click();
 
-  const tickersInput = page.getByRole('combobox', { name: 'Tickers' });
+  const tickersInput = page.getByRole('combobox', {
+    name: 'Instruments',
+    exact: true,
+  });
   await tickersInput.click();
   await tickersInput.fill('BTC');
   await page
@@ -53,15 +59,25 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
     .click({ timeout: 30_000 });
   await tickersInput.press('Escape');
 
-  await page.getByRole('spinbutton', { name: 'Tests limit' }).fill('1');
-  await page.getByRole('spinbutton', { name: 'Parallel' }).fill('1');
+  await page
+    .locator('summary')
+    .filter({ hasText: 'Advanced settings' })
+    .click();
+  await page
+    .getByRole('spinbutton', { name: 'Max tests', exact: true })
+    .fill('1');
+  await page
+    .getByRole('spinbutton', { name: 'Parallel workers', exact: true })
+    .fill('1');
 
   const startResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/backtest/runs',
   );
-  await page.getByRole('button', { name: 'Start' }).click();
+  await page
+    .getByRole('button', { name: 'Start backtest', exact: true })
+    .click();
   await expect((await startResponse).ok()).toBeTruthy();
 
   await expect(page.getByText('Completed', { exact: true })).toBeVisible({
