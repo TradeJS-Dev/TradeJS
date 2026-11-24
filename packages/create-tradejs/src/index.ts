@@ -186,12 +186,28 @@ export const buildProjectFiles = (
   const infraPackage = String(
     process.env.CREATE_TRADEJS_INFRA_PACKAGE || '',
   ).trim();
+  const frameworkVersion = process.env.CREATE_TRADEJS_FRAMEWORK_VERSION?.trim();
+  const frameworkDependencies = frameworkVersion
+    ? Object.fromEntries(
+        [
+          'app',
+          'cli',
+          'connectors',
+          'core',
+          'indicators',
+          'infra',
+          'node',
+          'types',
+        ].map((name) => [`@tradejs/${name}`, frameworkVersion]),
+      )
+    : {};
   const dependencies = {
     '@tradejs/app': packageSpec('APP'),
     '@tradejs/base': packageSpec('BASE'),
     '@tradejs/cli': packageSpec('CLI'),
     '@tradejs/core': packageSpec('CORE'),
     ...(infraPackage ? { '@tradejs/infra': infraPackage } : {}),
+    ...frameworkDependencies,
   };
 
   return {
@@ -209,6 +225,10 @@ export const buildProjectFiles = (
           'infra-down': 'tradejs infra-down',
         },
         dependencies,
+        // Stable peer ranges may otherwise pull another copy beside a beta.
+        ...(frameworkVersion?.includes('-beta.')
+          ? { overrides: frameworkDependencies }
+          : {}),
         engines: {
           node: '24.x',
         },

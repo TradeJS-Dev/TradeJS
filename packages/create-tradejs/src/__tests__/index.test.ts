@@ -12,6 +12,7 @@ import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  buildProjectFiles,
   findAvailablePort,
   parseArgs,
   scaffoldProject,
@@ -57,6 +58,40 @@ describe('create-tradejs', () => {
       updateSkills: true,
     });
   });
+
+  it.each(['3.1.30', '3.1.30-beta.319'])(
+    'pins the framework cohort at %s while leaving Base on its own release',
+    (version) => {
+      const env = jest.replaceProperty(process, 'env', {
+        ...process.env,
+        CREATE_TRADEJS_FRAMEWORK_VERSION: version,
+      });
+      try {
+        const manifest = JSON.parse(
+          buildProjectFiles('/test-project', 3100)['package.json'],
+        );
+        const framework = {
+          '@tradejs/app': version,
+          '@tradejs/cli': version,
+          '@tradejs/connectors': version,
+          '@tradejs/core': version,
+          '@tradejs/indicators': version,
+          '@tradejs/infra': version,
+          '@tradejs/node': version,
+          '@tradejs/types': version,
+        };
+        expect(manifest.dependencies).toEqual({
+          ...framework,
+          '@tradejs/base': 'latest',
+        });
+        expect(manifest.overrides).toEqual(
+          version.includes('-beta.') ? framework : undefined,
+        );
+      } finally {
+        env.restore();
+      }
+    },
+  );
 
   it('skips ports already occupied on IPv4', async () => {
     const server = net.createServer();
