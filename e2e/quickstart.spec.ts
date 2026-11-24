@@ -23,9 +23,7 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
   await expect(page).toHaveURL(/\/routes\/dashboard\//, {
     timeout: 60_000,
   });
-  await expect(
-    page.getByRole('button', { name: 'Backtest', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel('Backtest', { exact: true })).toBeVisible();
 
   const chart = page.locator('[data-testid="market-chart"]');
   await expect(chart).toHaveAttribute('data-chart-ready', 'true', {
@@ -33,7 +31,7 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
   });
   await expect(chart.locator('canvas').first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'Backtest', exact: true }).click();
+  await page.getByLabel('Backtest', { exact: true }).click();
   await expect(page).toHaveURL(/\/routes\/backtest(?:\?.*)?$/, {
     timeout: 60_000,
   });
