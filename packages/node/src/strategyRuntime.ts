@@ -1,3 +1,8 @@
+import { intervalToMs } from '@tradejs/core/data';
+import {
+  loadNewsContext,
+  withNewsContext,
+} from './strategyHelpers/newsContext';
 import { getPortfolioRuntime } from './strategy/portfolioRuntime';
 import {
   loadTickerProfileContext,
@@ -698,6 +703,15 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         interval: decisionInterval,
       }) => {
         if (!baseContext) return undefined;
+        if (coreContextRequirements.has('news')) {
+          baseContext = withNewsContext(
+            baseContext,
+            await loadNewsContext(
+              candle.timestamp + intervalToMs(decisionInterval),
+              decisionSymbol,
+            ),
+          );
+        }
         const profileSource =
           strategyManifest?.contextRequirements?.tickerProfiles;
         if (profileSource) {
@@ -1158,6 +1172,16 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
       const signal = decision.signal;
       if (signal) {
+        if (coreContextRequirements.has('news')) {
+          const { news } = (await strategyApi.getDecisionBaseContext()) ?? {};
+          const base = signal.additionalIndicators?.baseContext;
+          if (base && news) {
+            signal.additionalIndicators = {
+              ...signal.additionalIndicators,
+              baseContext: withNewsContext(base, news),
+            };
+          }
+        }
         if (portfolio)
           signal.additionalIndicators = {
             ...signal.additionalIndicators,

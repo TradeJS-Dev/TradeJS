@@ -2345,6 +2345,15 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('rejects unknown delistings when the public client is unavailable', async () => {
+    mockedGetClient.mockResolvedValue(null);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    await expect(connector.listDelistings?.()).rejects.toThrow(
+      'Bybit delistings client is unavailable',
+    );
+  });
+
   it('reads confirmed perpetual delisting times from every closed instruments page', async () => {
     const getInstrumentsInfo = jest
       .fn()

@@ -5,6 +5,7 @@ import {
   REFERENCE_MARKET_AI_FEATURES,
   TICKER_PROFILE_AI_FEATURES,
   PORTFOLIO_AI_FEATURES,
+  NEWS_AI_FEATURES,
   validateAiFeatureDefinitions,
   validateAiFeatureSnapshot,
 } from '@tradejs/core/aiFeatures';
@@ -102,7 +103,14 @@ export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
     signal.additionalIndicators?.referenceMarkets ||
       frozen?.definitions.some(({ id }) => referenceMarketFeatureIds.has(id)),
   );
+  const hasNews = Boolean(
+    signal.additionalIndicators?.baseContext?.news ||
+      frozen?.definitions.some(({ id }) =>
+        NEWS_AI_FEATURES.some((d) => d.id === id),
+      ),
+  );
   const definitions = [
+    ...(hasNews ? NEWS_AI_FEATURES : []),
     ...(hasReferenceMarkets ? REFERENCE_MARKET_AI_FEATURES : []),
     ...(hasPortfolio ? PORTFOLIO_AI_FEATURES : []),
     ...(hasProfile ? TICKER_PROFILE_AI_FEATURES : []),

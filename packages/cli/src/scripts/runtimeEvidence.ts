@@ -130,10 +130,14 @@ const loadRuntimeEvidenceDelistings = async (
       accountId: deployment.accountId,
       deploymentId: deployment.id,
     });
-    return await connector?.listDelistings?.();
+    const delistings = await connector?.listDelistings?.();
+    if (!delistings) throw new Error('Connector did not return delistings');
+    return delistings;
   } catch (error) {
-    console.warn(chalk.yellow(`Could not verify delistings: ${String(error)}`));
-    return undefined;
+    throw new Error(
+      `Cannot publish runtime evidence: delistings are unknown for ${deployment.connectorName}/${deployment.accountId}: ${String(error)}`,
+      { cause: error },
+    );
   }
 };
 
@@ -192,13 +196,18 @@ export const runtimeEvidence = async () => {
       : [deploymentSnapshot.deploymentCompositionId],
     ignoreUnknownCompositions: !publishDir,
   });
-  const delistings =
-    publishDir && compositionRows.length
-      ? await loadRuntimeEvidenceDelistings(
-          deploymentSnapshot,
-          String(flags.user),
-        )
-      : undefined;
+  const delistingsByComposition = new Map<
+    string,
+    ReadonlyMap<string, number>
+  >();
+  if (publishDir) {
+    for (const { deployment } of compositionRows) {
+      delistingsByComposition.set(
+        deployment.deploymentCompositionId,
+        await loadRuntimeEvidenceDelistings(deployment, String(flags.user)),
+      );
+    }
+  }
   const artifacts = compositionRows.map((composition) => {
     const strategies = activeRuntimeEvidenceStrategies(composition.deployment)
       .map(({ strategyName }) => strategyName)
@@ -221,13 +230,10 @@ export const runtimeEvidence = async () => {
       lineageScopes: composition.lineageScopes,
       fallbackTickers: composition.fallbackTickers,
     });
-    const delistingsBySymbol = deployment.tickers?.flatMap((symbol) => {
-      if (
-        deployment.provider !== deploymentSnapshot.provider ||
-        deployment.accountId !== deploymentSnapshot.accountId ||
-        deployment.connectorName !== deploymentSnapshot.connectorName
-      )
-        return [];
+    const delistings = delistingsByComposition.get(
+      deployment.deploymentCompositionId,
+    );
+    const delistingsBySymbol = (deployment.tickers ?? []).flatMap((symbol) => {
       const timestamp = delistings?.get(symbol);
       return timestamp != null && timestamp <= endTime
         ? [[symbol, timestamp] as const]
@@ -235,7 +241,7 @@ export const runtimeEvidence = async () => {
     });
     return {
       artifact: {
-        ...(delistingsBySymbol?.length
+        ...(delistings
           ? { delistings: Object.fromEntries(delistingsBySymbol) }
           : {}),
         reportType: 'runtime-evidence',

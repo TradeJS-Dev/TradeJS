@@ -811,6 +811,7 @@ export type BaseGateFeaturePrimaryIssue =
   | 'crowded_derivatives';
 
 export interface BaseContextGateFeatures {
+  news?: import('./news').NewsGateFeatures;
   setup?: {
     rewardToVolatility: number | null;
     stopDistanceAtr: number | null;
@@ -867,6 +868,7 @@ export interface BaseContextGateFeatures {
 }
 
 export interface BaseStrategyContextSnapshot {
+  news?: import('./news').NewsContext;
   tickerProfile?: import('./tickerProfile').TickerProfileContext;
   candle: Candle;
   prevCandle: Candle | null;

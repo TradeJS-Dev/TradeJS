@@ -35,3 +35,4 @@ export type {
 export * from './referenceMarkets';
 
 export * from './portfolioStrategy';
+export * from './news';

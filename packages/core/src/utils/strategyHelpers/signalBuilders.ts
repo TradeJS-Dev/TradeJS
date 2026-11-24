@@ -852,6 +852,7 @@ export const buildBaseContextGateFeatures = ({
         ? 'support'
         : 'neutral';
   return {
+    ...(baseContext.news ? { news: baseContext.news.features } : {}),
     setup: {
       rewardToVolatility: tpDistanceAtr,
       stopDistanceAtr,

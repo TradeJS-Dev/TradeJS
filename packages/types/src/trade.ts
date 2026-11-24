@@ -25,7 +25,7 @@ export type Interval =
   | 'D'
   | 'W'
   | 'M';
-export type Provider = 'bybit' | 'binance' | 'coinbase';
+export type Provider = 'bybit' | 'binance' | 'coinbase' | 'hyperliquid';
 
 export interface Candle {
   open: number;

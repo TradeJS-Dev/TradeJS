@@ -3,6 +3,11 @@ jest.mock('@tradejs/infra/timescale/candles', () => ({
   ...jest.requireActual('@tradejs/infra/timescale/candles'),
   getReferenceCandlePrices: async () => [],
 }));
+const mockLoadNewsContext = jest.fn();
+jest.mock('../strategyHelpers/newsContext', () => ({
+  ...jest.requireActual('../strategyHelpers/newsContext'),
+  loadNewsContext: (...args: unknown[]) => mockLoadNewsContext(...args),
+}));
 const mockLoadTickerProfileContext = jest.fn();
 jest.mock('../strategyHelpers/tickerProfiles', () => ({
   ...jest.requireActual('../strategyHelpers/tickerProfiles'),
@@ -538,6 +543,34 @@ describe('strategyRuntime', () => {
       }),
     ).resolves.toBe(baseContext);
     expect(mockLoadHyperliquidWhaleFlowContext).not.toHaveBeenCalled();
+  });
+
+  it('makes opt-in news available at the closed candle boundary', async () => {
+    manifestOverrides.set('TrendLine', {
+      ...realGetStrategyManifest('TrendLine'),
+      name: 'TrendLine',
+      contextRequirements: { core: ['news'] },
+    });
+    const news = {
+      status: 'partial',
+      asOf: 901000,
+      features: { minutesToRelease: 5 },
+    };
+    mockLoadNewsContext.mockResolvedValueOnce(news);
+    await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
+    const loader = (createStrategyAPI as jest.Mock).mock.calls.at(-1)?.[0]
+      .loadDecisionBaseContext;
+    const base = { gateFeatures: {} };
+    const context = await loader({
+      baseContext: base,
+      candle: { timestamp: 1000 },
+      symbol: 'ETHUSDT',
+      interval: '15',
+    });
+    expect(mockLoadNewsContext).toHaveBeenCalledWith(901000, 'ETHUSDT');
+    expect(context.news).toBe(news);
+    expect(context.gateFeatures.news.minutesToRelease).toBe(5);
+    expect(base).not.toHaveProperty('news');
   });
 
   it('loads required ticker profiles before core decisions and fails on missing months', async () => {

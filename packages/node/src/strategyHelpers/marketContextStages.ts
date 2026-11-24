@@ -1,3 +1,4 @@
+import { enrichSignalWithNews } from './newsContext';
 import { enrichSignalWithReferenceMarkets } from './referenceMarkets';
 import { enrichSignalWithTickerProfile } from './tickerProfiles';
 import { logger } from '@tradejs/infra/logger';
@@ -12,7 +13,8 @@ export type MarketContextEnrichmentStage =
   | 'binance'
   | 'coinmarketcap'
   | 'derivatives'
-  | 'hyperliquidWhales';
+  | 'hyperliquidWhales'
+  | 'news';
 
 export type MarketContextEnrichmentStageResult = {
   stage: MarketContextEnrichmentStage;
@@ -21,6 +23,7 @@ export type MarketContextEnrichmentStageResult = {
 };
 
 const STAGE_ENV_KEYS: Record<MarketContextEnrichmentStage, string> = {
+  news: 'NEWS_CONTEXT_STAGE_TIMEOUT_MS',
   binance: 'BINANCE_MARKET_CONTEXT_STAGE_TIMEOUT_MS',
   coinmarketcap: 'COINMARKETCAP_CONTEXT_STAGE_TIMEOUT_MS',
   derivatives: 'DERIVATIVES_CONTEXT_STAGE_TIMEOUT_MS',
@@ -147,6 +150,13 @@ export const enrichSignalWithMarketContextStages = async ({
         }),
     },
   ];
+
+  if (process.env.NEWS_CONTEXT_ENABLED === 'true') {
+    stages.push({
+      stage: 'news',
+      operation: (stageSignal) => enrichSignalWithNews(signal, stageSignal),
+    });
+  }
 
   if (includeHyperliquidWhales) {
     stages.push({

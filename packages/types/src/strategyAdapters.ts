@@ -271,7 +271,8 @@ export type StrategyMarketContextSource =
   | 'binance'
   | 'coinmarketcap'
   | 'derivatives'
-  | 'hyperliquidWhales';
+  | 'hyperliquidWhales'
+  | 'news';
 
 export interface StrategyManifest {
   aiFeatures?: readonly import('./aiFeatures').AiFeatureDefinition[];

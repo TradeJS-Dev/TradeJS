@@ -30,7 +30,16 @@ describe('replay runtime evidence strategy scoping', () => {
         ],
         details: {
           matched: [
-            { backtest: { strategy: 'DoubleTap' }, pnl: { delta: 1 } },
+            {
+              runtime: { timestamp: 1_000, comparisonTimestamp: 3_601_000 },
+              backtest: {
+                strategy: 'DoubleTap',
+                timestamp: 2_701_000,
+                comparisonTimestamp: 3_601_000,
+              },
+              timestampDiffMs: 0,
+              pnl: { delta: 1 },
+            },
             { backtest: { strategy: 'TrendLine' }, pnl: { delta: 2 } },
           ],
           backtestOnly: [],
@@ -52,5 +61,14 @@ describe('replay runtime evidence strategy scoping', () => {
       backtestOnly: 0,
       runtimeOnly: 0,
     });
+    expect(summary.matched).toEqual([
+      expect.objectContaining({
+        timestamp: 2_701_000,
+        runtimeTimestamp: 1_000,
+        comparisonTimestamp: 3_601_000,
+        runtimeComparisonTimestamp: 3_601_000,
+        timestampDiffMs: 0,
+      }),
+    ]);
   });
 });

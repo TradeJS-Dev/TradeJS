@@ -1,3 +1,4 @@
+import { ensureNewsSchema } from './news';
 import { closePool } from './pool';
 import { queryMarketContext } from './query';
 export { getPool } from './pool';
@@ -39,7 +40,8 @@ export type TimescaleMarketContextSource =
   | 'binance'
   | 'coinmarketcap'
   | 'derivatives'
-  | 'hyperliquidWhales';
+  | 'hyperliquidWhales'
+  | 'news';
 
 let marketContextSchemaMode: 'ensure' | 'verify' =
   process.env.TRADEJS_TIMESCALE_READ_ONLY === 'true' ? 'verify' : 'ensure';
@@ -69,6 +71,8 @@ const ensureMarketContextSchema = async (
   source: TimescaleMarketContextSource,
 ) => {
   switch (source) {
+    case 'news':
+      return ensureNewsSchema();
     case 'binance':
       return ensureBinanceMarketSchema();
     case 'coinmarketcap':
@@ -84,6 +88,7 @@ const MARKET_CONTEXT_SCHEMA_TABLES: Record<
   TimescaleMarketContextSource,
   readonly string[]
 > = {
+  news: ['market_news_events', 'market_news_coverage'],
   binance: ['market_trade_flow', 'market_breadth'],
   coinmarketcap: [
     'market_global_context',

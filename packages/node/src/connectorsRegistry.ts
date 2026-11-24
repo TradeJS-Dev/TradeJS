@@ -49,6 +49,7 @@ export const BUILTIN_CONNECTOR_NAMES = {
   ByBit: 'ByBit',
   Binance: 'Binance',
   Coinbase: 'Coinbase',
+  Hyperliquid: 'Hyperliquid',
   Test: 'Test',
 } as const;
 

@@ -128,6 +128,7 @@ const compactMatched = (item: JsonRecord) => {
     timestamp: backtest.timestamp ?? null,
     comparisonTimestamp: backtest.comparisonTimestamp ?? null,
     runtimeTimestamp: runtime.timestamp ?? null,
+    runtimeComparisonTimestamp: runtime.comparisonTimestamp ?? null,
     timestampDiffMs: item.timestampDiffMs ?? null,
     backtestPrice: backtest.price ?? null,
     runtimePrice: runtime.price ?? null,

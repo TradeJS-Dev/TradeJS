@@ -223,3 +223,78 @@ benchmarks independent of the strategy's traded symbols or execution venue.
   `baseContext.structure.acceptance.failedAcceptanceBars` retain their
   formulas and are available in compact causal pocket searches. Strategy
   thresholds and entry rules remain in the consuming gate or strategy.
+
+## Macro news
+
+Import a versioned JSON archive using `tradejs news:import <archive.json>`.
+`NewsArchive` in `@tradejs/types` defines the format. Each event records the
+source URL, provider, local event date, precision, revision, and UTC epoch
+milliseconds of publication, scheduling and availability. Calendar notices
+and final releases are different revisions of the same event. Corrections and
+cancellations require new revisions. Importing identical records is idempotent.
+Importing conflicting revisions rolls back the batch. Coverage intervals
+describe when a provider feed was covered, including days with no events.
+
+For strategy decisions, declare `contextRequirements.core: ['news']` and
+read `(await strategyApi.getDecisionBaseContext())?.news`. For signal and
+`--ai` dataset enrichment, enable `NEWS_CONTEXT_ENABLED=true`. Both paths
+resolve the same archive at the closing time of the evaluated strategy candle.
+Archives are imported separately from replay. `news.status` reports full,
+partial or unavailable coverage. Context status and document provenance stay
+outside pocket discovery. Existing strategies can opt in independently.
+
+Timing fields and reaction use the closest eligible events. Clock-unknown
+events remain useful as a local calendar-day marker. The measured reaction
+uses the last M15 close at or before release and the first fully post-release
+M15 close, after that candle is closed. The benchmark is Bybit BTCUSDT.
+Breadth is the positive-return share of Bybit BTC, ETH, SOL, BNB and XRP USDT
+contracts, with all five required. Asset-relative reaction is the asset return
+minus BTC in percentage points. Typed surprises require the original reported
+figure and a consensus known before release. Unknown features are null.
+
+Research exports freeze the versioned `registered.news.*` features for
+reconstruction. A historical schedule marked `reconstructed` is approximate.
+Keep that distinction when comparing to observed collection. This import
+workflow can be fed by a separate collector. Schema preparation never fetches
+or fabricates event history.
+
+### Recent publications and trader opinions
+
+`tradejs news:sync` reads official press releases from the Federal Reserve, ECB, Bank of England and BEA, plus Bybit exchange announcements. Pass `--social` to include X timelines and selected Reddit listings. `--official-only`
+runs the public feeds. `--preview` prints a short excerpt for human review.
+`--dry-run` still calls the feeds and skips writing to Timescale. The command
+reports availability for each account or feed. A successful recent-page poll
+does not assert historical coverage.
+
+Supply `NEWS_X_BEARER_TOKEN` for an X developer project with user lookup and
+timeline reads enabled. For Reddit, supply an existing approved OAuth access
+token in `NEWS_REDDIT_ACCESS_TOKEN` and a descriptive
+`NEWS_REDDIT_USER_AGENT`. The sync command does not request consent or renew
+tokens. Each connector reads recent public posts with its official API.
+
+Use `--watchlist <file.json>` to override the starter list. Example:
+
+```json
+{
+  "x": ["LynAldenContact", "CryptoHayes", "VitalikButerin"],
+  "redditUsers": ["vbuterin"],
+  "redditCommunities": ["BitcoinMarkets"]
+}
+```
+
+The first two entries on X provide macro and crypto trading perspectives.
+The third and the matching Reddit username provide Ethereum protocol context.
+The community feed is a source of discussion. It does not confer authority on
+individual members. Reddit user feeds include authored submissions and comments.
+An account on the watchlist is identified by its handle and the platform author
+ID when available. Popularity and engagement are not input features.
+
+`BaseContext.news.publications` contains up to 30 of the latest publications
+within 24 hours. Timescale preserves platform publication time and the first
+time TradeJS collected the item. A later poll does not backdate or duplicate
+an item. Social records retain the permalink, author, source, mentioned symbols
+and explicitly stated stance when recognized. Social excerpts are transient.
+The parser recognizes unambiguous first-person bullish or bearish statements
+about BTC, ETH or SOL. Other opinions remain available as attributed links with
+an unknown stance. Publication metadata is kept outside macro reaction
+features and pocket discovery.

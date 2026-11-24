@@ -124,6 +124,24 @@ export const getBacktestParityComparisonTimestamp = (
   return (entry.signalTimestamp ?? entry.timestamp) + offsetMs;
 };
 
+export const getRuntimeParityComparisonTimestamp = (
+  entry: TradeParityEntry,
+  timestampOffsetMs: TradeParityTimestampOffset = 0,
+) => {
+  const offsetMs = resolveTradeParityTimestampOffset(
+    entry.strategy,
+    timestampOffsetMs,
+  );
+  if (!Number.isFinite(offsetMs) || offsetMs < 0) {
+    throw new Error(`Invalid runtime timestamp offset for ${entry.strategy}`);
+  }
+  // Runtime entryTimestamp may be the native candle open or an execution time.
+  // Use the recorded signal candle's close on the same clock as replay.
+  return entry.signalTimestamp == null
+    ? entry.timestamp
+    : entry.signalTimestamp + offsetMs;
+};
+
 const sortTradeParityEntries = (
   left: TradeParityEntry,
   right: TradeParityEntry,
@@ -418,7 +436,11 @@ export const compareTradeParityEntries = ({
           getBacktestParityComparisonTimestamp(
             candidate.entry,
             backtestTimestampOffsetMs,
-          ) - runtimeEntry.timestamp,
+          ) -
+            getRuntimeParityComparisonTimestamp(
+              runtimeEntry,
+              backtestTimestampOffsetMs,
+            ),
         );
         if (diff > toleranceMs || diff >= bestDiff) {
           continue;

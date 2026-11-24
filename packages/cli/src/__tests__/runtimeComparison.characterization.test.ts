@@ -3,7 +3,10 @@ import type {
   RuntimeSignalEvaluationRecord,
 } from '@tradejs/types';
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
-import type { TradeParityEntry } from '../lib/runtimeParity';
+import {
+  compareTradeParityEntries,
+  type TradeParityEntry,
+} from '../lib/runtimeParity';
 import {
   buildReplayRuntimeComparisonDetails,
   buildStrategyNameByOrderLinkKey,
@@ -47,6 +50,56 @@ const backtestEntry = (
 });
 
 describe('runtime comparison characterization', () => {
+  it('keeps neighboring hourly signals unmatched and diagnoses them using the same comparison clock', () => {
+    const hour = 3_600_000;
+    const replayEntry = backtestEntry('previous-candle', 45 * 60_000, {
+      signalTimestamp: 0,
+    });
+    const runtimeEntry: TradeParityEntry = {
+      ...replayEntry,
+      id: 'current-candle',
+      source: 'runtime',
+      timestamp: hour,
+      signalTimestamp: hour,
+    };
+    const input = {
+      runtimeEntries: [runtimeEntry],
+      backtestEntries: [replayEntry],
+      toleranceMs: 15 * 60_000,
+      backtestTimestampOffsetMs: hour,
+    };
+    const comparison = compareTradeParityEntries(input);
+    expect(comparison).toEqual({
+      matched: [],
+      runtimeOnly: [runtimeEntry],
+      backtestOnly: [replayEntry],
+    });
+    const details = buildReplayRuntimeComparisonDetails({
+      ...input,
+      ...comparison,
+    });
+    expect(details.nearestCandidates).toEqual([
+      expect.objectContaining({
+        timestampDiffMs: hour,
+        reason: 'outside_tolerance',
+      }),
+      expect.objectContaining({
+        timestampDiffMs: hour,
+        reason: 'outside_tolerance',
+      }),
+    ]);
+    expect(details.runtimeOnly[0]).toMatchObject({
+      timestamp: hour,
+      signalTimestamp: hour,
+      comparisonTimestamp: 2 * hour,
+    });
+    expect(details.backtestOnly[0]).toMatchObject({
+      timestamp: 45 * 60_000,
+      signalTimestamp: 0,
+      comparisonTimestamp: hour,
+    });
+  });
+
   it('records each strategy own comparison timestamp in mixed-interval details', () => {
     const backtestEntries = [
       backtestEntry('fifteen', 1_000, { strategy: 'Flag' }),

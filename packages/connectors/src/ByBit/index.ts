@@ -467,7 +467,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (
   const listDelistings = async () => {
     const client = await getPublicClient();
     const delistings = new Map<string, number>();
-    if (!client) return delistings;
+    if (!client) throw new Error('Bybit delistings client is unavailable');
 
     let cursor: string | undefined;
     const seenCursors = new Set<string>();

@@ -365,6 +365,7 @@ describe('prepareMarketContextForRun', () => {
     });
 
     expect(requirements).toEqual({
+      news: { read: false, backfill: false, requiredBy: ['ai'] },
       binance: { read: true, backfill: false, requiredBy: ['ai'] },
       coinmarketcap: { read: true, backfill: false, requiredBy: ['ai'] },
       derivatives: { read: true, backfill: false, requiredBy: ['ai'] },

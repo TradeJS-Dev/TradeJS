@@ -226,6 +226,14 @@ export const resolveMarketContextRunRequirements = async (
     (readsStandardContext || coreContextSources.includes('hyperliquidWhales'));
 
   return {
+    news: {
+      read:
+        coreContextSources.includes('news') ||
+        (process.env.NEWS_CONTEXT_ENABLED === 'true' &&
+          (capturesPayload || runtimeReadsContext)),
+      backfill: false,
+      requiredBy: reasonsFor('news'),
+    },
     binance: {
       read: readsStandardContext || coreContextSources.includes('binance'),
       backfill: shouldPrepareBinanceMarketContextForRun(

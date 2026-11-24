@@ -1,6 +1,7 @@
 import { ByBitConnectorCreator } from './ByBit';
 import { BinanceConnectorCreator } from './Binance';
 import { CoinbaseConnectorCreator } from './Coinbase';
+import { HyperliquidConnectorCreator } from './Hyperliquid';
 
 import { ConnectorCreator, ConnectorRegistryEntry } from '@tradejs/types';
 
@@ -8,12 +9,14 @@ export enum ConnectorNames {
   ByBit = 'ByBit',
   Binance = 'Binance',
   Coinbase = 'Coinbase',
+  Hyperliquid = 'Hyperliquid',
 }
 
 export enum ConnectorProviders {
   bybit = 'bybit',
   binance = 'binance',
   coinbase = 'coinbase',
+  hyperliquid = 'hyperliquid',
 }
 
 export const providerToConnectorName: Record<
@@ -23,6 +26,7 @@ export const providerToConnectorName: Record<
   [ConnectorProviders.bybit]: ConnectorNames.ByBit,
   [ConnectorProviders.binance]: ConnectorNames.Binance,
   [ConnectorProviders.coinbase]: ConnectorNames.Coinbase,
+  [ConnectorProviders.hyperliquid]: ConnectorNames.Hyperliquid,
 };
 
 export const getConnectorProviders = (): ConnectorProviders[] =>
@@ -41,6 +45,7 @@ export const connectors = {
   [ConnectorNames.ByBit]: ByBitConnectorCreator,
   [ConnectorNames.Binance]: BinanceConnectorCreator,
   [ConnectorNames.Coinbase]: CoinbaseConnectorCreator,
+  [ConnectorNames.Hyperliquid]: HyperliquidConnectorCreator,
 } as const;
 
 export const connectorEntries: ConnectorRegistryEntry[] = [
@@ -58,6 +63,11 @@ export const connectorEntries: ConnectorRegistryEntry[] = [
     name: ConnectorNames.Coinbase,
     creator: CoinbaseConnectorCreator,
     providers: [ConnectorProviders.coinbase],
+  },
+  {
+    name: ConnectorNames.Hyperliquid,
+    creator: HyperliquidConnectorCreator,
+    providers: [ConnectorProviders.hyperliquid],
   },
 ];
 

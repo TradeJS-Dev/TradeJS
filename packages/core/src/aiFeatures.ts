@@ -267,3 +267,29 @@ export const REFERENCE_MARKET_AI_FEATURES: readonly AiFeatureDefinition[] =
       }).map(([field, description]) => feature(field, field, description)),
     ];
   });
+
+export const NEWS_AI_FEATURES: readonly AiFeatureDefinition[] = (
+  [
+    ['recentType', 'category', 'global'],
+    ['upcomingType', 'category', 'global'],
+    ['minutesSinceRelease', 'minutes', 'global'],
+    ['minutesToRelease', 'minutes', 'global'],
+    ['coreCpiSurprisePp', 'percentage points', 'global'],
+    ['corePceSurprisePp', 'percentage points', 'global'],
+    ['payrollsSurpriseJobs', 'jobs', 'global'],
+    ['policyRateSurprisePp', 'percentage points', 'global'],
+    ['reactionBtcPct', 'percent', 'benchmark'],
+    ['reactionRelativePct', 'percentage points', 'target'],
+    ['reactionBreadth', 'fraction', 'global'],
+  ] as const
+).map(([field, unit, scope]) => ({
+  id: `news.${field}`,
+  version: 1,
+  role: 'input',
+  source: 'signal',
+  stationary: true,
+  path: `additionalIndicators.baseContext.gateFeatures.news.${field}`,
+  unit,
+  scope,
+  description: `Macro event measurement at decision time: ${field}`,
+}));

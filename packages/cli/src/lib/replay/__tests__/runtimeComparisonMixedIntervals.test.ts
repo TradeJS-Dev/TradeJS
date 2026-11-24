@@ -63,9 +63,10 @@ const fixture = (
   nativeInterval: Interval = '60',
   nativeMinutes = 60,
   failed = false,
+  runtimeClock: 'execution' | 'signal' = 'execution',
 ) => {
   const window = {
-    start: start + 15 * minute,
+    start: start + (runtimeClock === 'signal' ? 0 : 15 * minute),
     end: start + (nativeMinutes + 60) * minute,
   };
   const descriptors = [
@@ -172,7 +173,8 @@ const fixture = (
     direction: 'LONG',
     qty: 1,
     entryPrice: 100,
-    entryTimestamp: item.entryTime,
+    entryTimestamp:
+      runtimeClock === 'signal' ? item.nativeTime : item.entryTime,
     signalTimestamp: item.nativeTime,
     exitTimestamp: item.entryTime + minute,
     exitPrice: 101,
@@ -325,6 +327,29 @@ it('retains a native hourly failed-order classification and its comparison times
       }),
     }),
   ]);
+});
+
+it('matches native runtime signal timestamps against 15m and scheduled hourly replay entries', async () => {
+  const f = fixture('runtime', '60', 60, false, 'signal');
+  const result = await f.run();
+  expect(result).toMatchObject({
+    mode: 'runtime',
+    matchedCount: 2,
+    runtimeOnlyCount: 0,
+    backtestOnlyCount: 0,
+  });
+  expect(result?.details?.matched.map((item) => item.timestampDiffMs)).toEqual([
+    0, 0,
+  ]);
+  expect(
+    result?.details?.matched.map((item) => item.runtime.timestamp),
+  ).toEqual([start, start + 15 * minute]);
+  for (const item of result?.details?.matched ?? []) {
+    expect(item.runtime.comparisonTimestamp).toBe(
+      item.backtest.comparisonTimestamp,
+    );
+    expect(item.runtime.signalTimestamp).toBe(item.runtime.timestamp);
+  }
 });
 
 it.each([

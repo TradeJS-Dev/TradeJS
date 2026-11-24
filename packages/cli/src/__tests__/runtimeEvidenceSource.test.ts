@@ -85,6 +85,35 @@ const deployment = {
 } as const;
 
 describe('runtime evidence replay source', () => {
+  it('rejects unknown delistings instead of treating them as confirmed empty', async () => {
+    const projectRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'tradejs-runtime-evidence-unknown-delistings-'),
+    );
+    const filePath = path.join(projectRoot, 'runtime-evidence.json');
+    try {
+      await fs.writeFile(
+        filePath,
+        JSON.stringify({
+          reportType: 'runtime-evidence',
+          userName: 'root',
+          window: { startTime: 100, endTime: 400 },
+          deployment,
+          runtime: {
+            trades: [],
+            signals: [],
+            evaluations: [],
+            lineageScopes: [],
+          },
+        }),
+      );
+      await expect(
+        loadReplayRuntimeEvidenceMetadata({ filePath, projectRoot }),
+      ).rejects.toThrow('Runtime evidence delistings are unknown');
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('unwraps the immutable artifact and derives lineage scopes', async () => {
     const projectRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), 'tradejs-runtime-evidence-'),

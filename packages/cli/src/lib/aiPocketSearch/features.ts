@@ -923,6 +923,9 @@ export const collectAiPocketFeatureSnapshot = ({
         segments.join('.') ===
           'additionalIndicators.baseContext.tickerProfile' ||
         segments.join('.') === 'additionalIndicators.tickerProfile' ||
+        segments.join('.') === 'additionalIndicators.baseContext.news' ||
+        segments.join('.') ===
+          'additionalIndicators.baseContext.gateFeatures.news' ||
         segments.join('.') === 'additionalIndicators.portfolioContext' ||
         segments.join('.') === 'additionalIndicators.referenceMarkets'
       )

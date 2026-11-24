@@ -9,6 +9,7 @@ import type {
 } from '@tradejs/types';
 import {
   getBacktestParityComparisonTimestamp,
+  getRuntimeParityComparisonTimestamp,
   resolveTradeParityTimestampOffset,
   type TradeParityEntry,
   type TradeParityTimestampOffset,
@@ -134,6 +135,7 @@ const toBacktestParityDetail = (
 
 const toRuntimeParityDetail = (
   entry: TradeParityEntry,
+  timestampOffsetMs: TradeParityTimestampOffset = 0,
 ): ReplayParityEntryDetail => ({
   source: 'runtime',
   strategy: entry.strategy,
@@ -142,7 +144,13 @@ const toRuntimeParityDetail = (
   qty: entry.qty ?? null,
   timestamp: entry.timestamp,
   ...(entry.signalTimestamp != null
-    ? { signalTimestamp: entry.signalTimestamp }
+    ? {
+        signalTimestamp: entry.signalTimestamp,
+        comparisonTimestamp: getRuntimeParityComparisonTimestamp(
+          entry,
+          timestampOffsetMs,
+        ),
+      }
     : {}),
   price: entry.price,
   exitType: entry.exitType ?? null,
@@ -1131,11 +1139,15 @@ export const buildReplayRuntimeComparisonDetails = ({
   replayDecisionTraces?: ReplayDecisionTrace[];
   runtimeLineageScopes?: RuntimeLineageScopeRecord[];
 }): ReplayRuntimeComparisonDetails => {
-  const runtimeDetails = runtimeEntries.map(toRuntimeParityDetail);
+  const runtimeDetails = runtimeEntries.map((entry) =>
+    toRuntimeParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const backtestDetails = backtestEntries.map((entry) =>
     toBacktestParityDetail(entry, backtestTimestampOffsetMs),
   );
-  const runtimeOnlyDetails = runtimeOnly.map(toRuntimeParityDetail);
+  const runtimeOnlyDetails = runtimeOnly.map((entry) =>
+    toRuntimeParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const backtestOnlyDetails = backtestOnly.map((entry) =>
     toBacktestParityDetail(entry, backtestTimestampOffsetMs),
   );
@@ -1171,7 +1183,10 @@ export const buildReplayRuntimeComparisonDetails = ({
     matched: capReplayDetails(
       matched.map((item) =>
         buildMatchedReplayDetail({
-          runtime: toRuntimeParityDetail(item.runtime),
+          runtime: toRuntimeParityDetail(
+            item.runtime,
+            backtestTimestampOffsetMs,
+          ),
           backtest: toBacktestParityDetail(
             item.backtest,
             backtestTimestampOffsetMs,

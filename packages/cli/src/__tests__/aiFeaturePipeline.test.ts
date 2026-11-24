@@ -316,3 +316,53 @@ it('round-trips pre-entry portfolio inputs and excludes observation metadata fro
     features['registered.portfolio.unknownOwnershipCount'],
   ).toBeUndefined();
 });
+
+it('freezes news features for replay and keeps coverage and evidence out of discovery', () => {
+  const s = signal();
+  const features = {
+    recentType: 'us.cpi' as const,
+    upcomingType: null,
+    minutesSinceRelease: 30,
+    minutesToRelease: null,
+    surprise: null,
+    reactionBtcPct: 0.8,
+    reactionRelativePct: -0.2,
+    reactionBreadth: 0.6,
+  };
+  const base = {
+    news: {
+      asOf: 123,
+      status: 'partial',
+      events: [],
+      coverage: ['bls'],
+      features,
+    },
+    gateFeatures: { news: features },
+  } as NonNullable<NonNullable<Signal['additionalIndicators']>['baseContext']>;
+  s.additionalIndicators = { ...s.additionalIndicators, baseContext: base };
+  const payload = buildAiPayloadByStrategy(s);
+  const reconstructed = extractSignalFromAiDatasetRow({
+    signalId: s.signalId,
+    strategyName: 'Fixture',
+    symbol: s.symbol,
+    direction: 'LONG',
+    timestamp: s.timestamp,
+    profit: 10,
+    payload: { ...payload, additionalIndicators: {} },
+  });
+  const replay = buildAiPayloadByStrategy(reconstructed);
+  expect(replay.featureSnapshot).toEqual(payload.featureSnapshot);
+  expect(replay.featureSnapshot?.values['news.minutesSinceRelease']).toBe(30);
+  const discovered = collectAiPocketFeatureSnapshot({
+    payload,
+    featureProfile: 'compact',
+    featurePolicy: 'causal-stationary',
+  }).features;
+  expect(discovered['registered.news.reactionRelativePct']).toBe(-0.2);
+  expect(discovered['registered.news.recentType']).toBe('us.cpi');
+  expect(
+    Object.keys(discovered)
+      .filter((key) => key.includes('news'))
+      .every((key) => key.startsWith('registered.news.')),
+  ).toBe(true);
+});
