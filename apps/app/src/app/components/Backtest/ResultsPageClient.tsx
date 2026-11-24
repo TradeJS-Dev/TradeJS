@@ -292,8 +292,8 @@ export const BacktestResultsPageClient = ({
 
   return (
     <ClientOnly>
-      <PageLayout>
-        <Stack gap={4}>
+      <PageLayout display="flex" h="100dvh" flexDirection="column">
+        <Stack flex={1} minH={0} gap={4}>
           <PageHeader title="Backtest results" />
           <Flex gap={4} alignItems="center" wrap="wrap">
             <Flex gap={3} alignItems="center" wrap="wrap">
@@ -346,7 +346,7 @@ export const BacktestResultsPageClient = ({
             onRequestDelete={handleOpenDeleteSelected}
             onConfirmDelete={handleDeleteSelected}
           />
-          <Box flex="1" h="full" w="full">
+          <Box flex={1} minH={0} w="full">
             <TestList
               tests={filteredTests}
               loadding={loadding}

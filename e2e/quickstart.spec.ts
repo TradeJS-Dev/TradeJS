@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const password = 'QuickstartE2e123!';
+const candleInterval = 15 * 60_000;
 
 test.describe.configure({ retries: 0 });
 
@@ -53,6 +54,41 @@ test('installs TradeJS and completes the first backtest from the UI', async ({
         .catch(() => undefined);
     }
   });
+
+  // The chart should render independently of the default exchange's regional
+  // availability on a hosted runner. The Coinbase backtest below still uses
+  // the generated app, worker, and market connector.
+  const latestOpen = Math.floor(Date.now() / candleInterval) * candleInterval;
+  const chartCandles = Array.from({ length: 192 }, (_, index) => {
+    const timestamp = latestOpen - (192 - index) * candleInterval;
+    const open = 60_000 + index * 5;
+    return {
+      timestamp,
+      dt: new Date(timestamp).toISOString(),
+      open,
+      high: open + 25,
+      low: open - 10,
+      close: open + 10,
+      volume: 2,
+      turnover: open * 2,
+    };
+  });
+  await page.route(
+    (url) =>
+      /^\/api\/kline\/(?:bybit|coinbase)\/crypto\/BTC(?:USDT)?\/15$/.test(
+        url.pathname,
+      ),
+    async (route) => {
+      const { start = 0, end } = route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          data: chartCandles.filter(
+            ({ timestamp }) => timestamp >= start && timestamp < end,
+          ),
+        },
+      });
+    },
+  );
 
   await page.goto('/routes/install');
 
