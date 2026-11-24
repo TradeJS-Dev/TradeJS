@@ -125,5 +125,9 @@ if [ "$ready" != "true" ]; then
   exit 1
 fi
 
-QUICKSTART_E2E_URL="$APP_URL" yarn playwright test e2e/quickstart.spec.ts
+if ! QUICKSTART_E2E_URL="$APP_URL" yarn playwright test e2e/quickstart.spec.ts; then
+  echo "Quickstart browser failed; retained application log tail:" >&2
+  tail -n 120 "$APP_LOG" >&2
+  exit 1
+fi
 echo "Quickstart e2e passed: install -> dashboard -> backtest -> results"

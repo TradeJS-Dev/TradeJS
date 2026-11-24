@@ -4,10 +4,55 @@ const password = 'QuickstartE2e123!';
 
 test.describe.configure({ retries: 0 });
 
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  console.log(
+    '[quickstart failure]',
+    JSON.stringify({
+      path: new URL(page.url()).pathname,
+      text: (
+        await page
+          .locator('body')
+          .innerText({ timeout: 5_000 })
+          .catch(() => '<body unavailable>')
+      ).slice(0, 12_000),
+    }),
+  );
+});
+
 test('installs TradeJS and completes the first backtest from the UI', async ({
   page,
 }) => {
   test.setTimeout(300_000);
+  page.on('pageerror', (error) =>
+    console.log('[quickstart page error]', error.message),
+  );
+  page.on('response', (response) => {
+    if (response.status() >= 400)
+      console.log(
+        '[quickstart HTTP error]',
+        response.status(),
+        new URL(response.url()).pathname,
+      );
+    if (new URL(response.url()).pathname.startsWith('/api/kline/')) {
+      void response
+        .json()
+        .then((payload) => {
+          const candles = Array.isArray(payload?.data) ? payload.data : [];
+          console.log(
+            '[quickstart candles]',
+            JSON.stringify({
+              path: new URL(response.url()).pathname,
+              status: response.status(),
+              rows: candles.length,
+              firstTimestamp: candles[0]?.timestamp,
+              lastTimestamp: candles.at(-1)?.timestamp,
+            }),
+          );
+        })
+        .catch(() => undefined);
+    }
+  });
 
   await page.goto('/routes/install');
 
