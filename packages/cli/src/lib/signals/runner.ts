@@ -57,6 +57,7 @@ import {
   type StrategyRuntimeConfig,
 } from './runtimeStrategies';
 import {
+  loadPortfolioLiveMarket,
   loadPortfolioShadowMarket,
   withoutShadowOrders,
 } from './portfolioShadowMarket';
@@ -64,6 +65,8 @@ import {
   portfolioShadowStep,
   runPortfolioShadowCycle,
 } from './portfolioShadowCycle';
+import { runPortfolioLiveCycle } from './portfolioLiveCycle';
+import { buildRuntimeLineage } from '../runtimeLineage';
 import { createStrategySkipStats, logStrategySkipStats } from './skipStats';
 import { createRuntimeSignalEvaluationBuffer } from './evaluations';
 import { getTelegramDeliverableSignals } from './telegram';
@@ -892,9 +895,7 @@ export const createSignalsRunner = (
       !scopes.size &&
       strategies.some(({ portfolioEntry }) => portfolioEntry)
     ) {
-      throw new Error(
-        'Use signals-daemon --portfolioShadow for a portfolio strategy',
-      );
+      throw new Error('Use signals-daemon for a portfolio strategy');
     }
     if (!scopes.size) return signals();
     for (const scope of scopes.values()) {
@@ -916,9 +917,25 @@ export const createSignalsRunner = (
     strategies: StrategyRuntimeConfig[],
     closedAt: number,
   ) => {
+    const live = !config.portfolioShadow;
+    let evaluated = false;
+    const enabled = strategies.filter(({ enabled }) => enabled);
+    if (
+      live &&
+      enabled.some(({ portfolioEntry }) => portfolioEntry) &&
+      enabled.length !== 1
+    ) {
+      throw new Error(
+        'Live portfolio execution requires one enabled strategy in the deployment',
+      );
+    }
     for (const strategy of strategies) {
       const entry = strategy.portfolioEntry;
-      if (!entry || !strategy.enabled || strategy.controlState !== 'active')
+      if (
+        !entry ||
+        !strategy.enabled ||
+        (!live && strategy.controlState !== 'active')
+      )
         continue;
       if (
         strategy.universe !== 'crypto' ||
@@ -926,13 +943,13 @@ export const createSignalsRunner = (
         strategy.interval !== '15'
       ) {
         throw new Error(
-          'Portfolio shadow currently requires Bybit crypto with an M15 boundary',
+          'Portfolio execution requires Bybit crypto with an M15 boundary',
         );
       }
       const symbols = [
         ...new Set(
           (
-            config.tickers?.split(',') ??
+            (live ? undefined : config.tickers?.split(',')) ??
             strategy.selection?.tickers ??
             deployment.tickers ??
             []
@@ -944,65 +961,110 @@ export const createSignalsRunner = (
         symbols.some((symbol) => !/^[A-Z0-9]+USDT$/.test(symbol))
       ) {
         throw new Error(
-          'Portfolio shadow requires an explicit list of USDT contracts',
+          'Portfolio execution requires an explicit list of USDT contracts',
         );
       }
-      const key = `shadow:${createHash('sha256')
+      const key = `${live ? 'live-cycle' : 'shadow'}:${createHash('sha256')
         .update(
           JSON.stringify([
             projectRoot,
             config.userName,
             deployment.id,
-            deployment.deploymentCompositionId,
             strategy.accountId,
-            strategy.strategyRevision,
-            symbols,
+            ...(live
+              ? []
+              : [
+                  deployment.deploymentCompositionId,
+                  strategy.strategyRevision,
+                  symbols,
+                ]),
           ]),
         )
         .digest('hex')}`;
       const connectorName = await resolveSignalsConnectorName(
         deployment.connectorName,
       );
-      const outcome = await runPortfolioShadowCycle({
+      const cycle = {
         closedAt,
         entry,
+        config: strategy.strategyConfig,
         store: {
           read: () => portfolioStateStorage.read(key),
-          compare: (previous, next) =>
+          compare: (previous: string | null, next: string) =>
             portfolioStateStorage.compare(key, previous, next),
         },
-        load: async () => {
-          const factory = await getConnectorCreatorByName(
-            connectorName,
-            projectRoot,
-          );
-          if (!factory)
-            throw new Error(`Connector "${connectorName}" is not registered`);
-          const marketConnector = await factory({
-            userName: config.userName,
-            universe: strategy.universe,
-            accountId: strategy.accountId,
-            deploymentId: deployment.id,
+      };
+      const marketInput = async () => {
+        const factory = await getConnectorCreatorByName(
+          connectorName,
+          projectRoot,
+        );
+        if (!factory)
+          throw new Error(`Connector "${connectorName}" is not registered`);
+        const marketConnector = await factory({
+          userName: config.userName,
+          universe: strategy.universe,
+          accountId: strategy.accountId,
+          deploymentId: deployment.id,
+        });
+        return {
+          entry,
+          config: strategy.strategyConfig,
+          symbols,
+          marketConnector,
+          connectorName,
+          userName: config.userName,
+          closedAt,
+          cacheOnly: config.cacheOnly,
+        };
+      };
+      const outcome = live
+        ? await runPortfolioLiveCycle({
+            ...cycle,
+            revision: `${deployment.deploymentCompositionId}:${strategy.strategyRevision}`,
+            async load(pending) {
+              const market = await marketInput();
+              const { accountId } = strategy;
+              if (
+                !accountId ||
+                market.marketConnector.accountId !== accountId ||
+                market.marketConnector.deploymentId !== deployment.id ||
+                !market.marketConnector.getEntryOrderObservation ||
+                !market.marketConnector.cancelEntryOrder ||
+                !market.marketConnector.getTopOfBookTicker ||
+                !market.marketConnector.getEntryPositionObservation
+              ) {
+                throw new Error(
+                  'Live portfolio requires a bound account with order and position reconciliation',
+                );
+              }
+              return loadPortfolioLiveMarket(market, {
+                accountId,
+                deploymentId: deployment.id,
+                pending,
+                entriesPaused: strategy.controlState === 'entries_paused',
+                concurrency: resolvePositiveInteger(config.parallel, 4),
+                lineage: await buildRuntimeLineage({
+                  ...strategy,
+                  config: { strategyConfig: strategy.strategyConfig },
+                }),
+              });
+            },
+          })
+        : await runPortfolioShadowCycle({
+            ...cycle,
+            load: async () => loadPortfolioShadowMarket(await marketInput()),
           });
-          return loadPortfolioShadowMarket({
-            entry,
-            config: strategy.strategyConfig,
-            symbols,
-            marketConnector,
-            connectorName,
-            userName: config.userName,
-            closedAt,
-            cacheOnly: config.cacheOnly,
-          });
-        },
-      });
-      if (outcome)
+      if (outcome) {
+        evaluated = true;
         logger.info(
-          'portfolio shadow %s %s',
+          `portfolio ${live ? 'live' : 'shadow'} %s %s`,
           strategy.strategyName,
           JSON.stringify(outcome),
         );
+      }
     }
+    return evaluated;
   };
 
   const signalsDaemon = async () => {
@@ -1054,6 +1116,7 @@ export const createSignalsRunner = (
       return;
     }
     const sessions = new Map<string, SignalsSession>();
+    const daemonStartedAt = Date.now();
     const lastBoundaryByScope = new Map<string, number>();
     const stop = (signalName: string) => {
       logger.info('signals daemon stopping by %s', signalName);
@@ -1071,9 +1134,11 @@ export const createSignalsRunner = (
         settleDelayMs: resolveNonNegativeInteger(config.settleDelayMs, 5_000),
         signal: abortController.signal,
         runCycle: async () => {
-          const portfolioBoundary = config.portfolioShadow
-            ? Math.floor(Date.now() / portfolioShadowStep) * portfolioShadowStep
-            : undefined;
+          const portfolioBoundary =
+            config.portfolioShadow || (config.makeOrders && !config.cacheOnly)
+              ? Math.floor(Date.now() / portfolioShadowStep) *
+                portfolioShadowStep
+              : undefined;
           const currentDeployment = await getRuntimeDeployment({
             userName: config.userName,
             projectRoot,
@@ -1154,18 +1219,40 @@ export const createSignalsRunner = (
               throw error;
             }
           }
-          if (portfolioBoundary !== undefined) {
+          if (
+            portfolioBoundary !== undefined &&
+            strategies.some(
+              ({ enabled, portfolioEntry }) => enabled && portfolioEntry,
+            )
+          ) {
+            let evaluated = false;
+            let failure: string | undefined;
             try {
-              await runPortfolioScopes(
+              evaluated = await runPortfolioScopes(
                 currentDeployment,
                 strategies,
                 portfolioBoundary,
               );
             } catch (error) {
-              logger.error(
-                'portfolio shadow cycle failed: %s',
-                error instanceof Error ? error.message : String(error),
-              );
+              failure = error instanceof Error ? error.message : String(error);
+              logger.error('portfolio cycle failed: %s', failure);
+            }
+            if (!config.portfolioShadow && (evaluated || failure)) {
+              const cycleStatus = failure ? 'failed' : 'completed';
+              await saveRuntimeDeploymentHeartbeat(config.userName, {
+                deploymentId: currentDeployment.id,
+                deploymentCompositionId:
+                  currentDeployment.deploymentCompositionId,
+                status: getSignalsHeartbeatStatus({
+                  cycleStatus,
+                  continuous: true,
+                }),
+                pid: process.pid,
+                startedAt: daemonStartedAt,
+                lastCycleAt: Date.now(),
+                cycleStatus,
+                ...(failure ? { lastError: failure } : {}),
+              });
             }
           }
           const memory = process.memoryUsage();

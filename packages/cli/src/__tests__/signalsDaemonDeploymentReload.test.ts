@@ -1,4 +1,4 @@
-import type { RuntimeDeployment } from '@tradejs/types';
+import type { PortfolioStrategyEntry, RuntimeDeployment } from '@tradejs/types';
 
 jest.mock('@tradejs/infra/runtimeHeartbeats', () => ({
   saveRuntimeDeploymentHeartbeat: jest.fn(),
@@ -16,6 +16,9 @@ jest.mock('@tradejs/node/connectors', () => ({
 }));
 jest.mock('../lib/signals/runtimeStrategies', () => ({
   loadRuntimeStrategies: jest.fn(async () => []),
+}));
+jest.mock('../lib/signals/portfolioLiveCycle', () => ({
+  runPortfolioLiveCycle: jest.fn(),
 }));
 jest.mock('../lib/runtimeEvidenceCompositionSnapshots', () => {
   const actual = jest.requireActual(
@@ -41,6 +44,8 @@ import { observeRuntimeDeploymentComposition } from '@tradejs/infra/runtimeDeplo
 import { captureRuntimeEvidenceCompositionSnapshot } from '../lib/runtimeEvidenceCompositionSnapshots';
 import { createSignalsRunner } from '../lib/signals/runner';
 import { loadRuntimeStrategies } from '../lib/signals/runtimeStrategies';
+import { runPortfolioLiveCycle } from '../lib/signals/portfolioLiveCycle';
+import { saveRuntimeDeploymentHeartbeat } from '@tradejs/infra/runtimeHeartbeats';
 
 const deployment = (revisionDigit: number): RuntimeDeployment => ({
   id: 'doubletap-forward',
@@ -185,5 +190,73 @@ describe('signals daemon deployment reload', () => {
         process.env.TRADEJS_PROJECT_IMAGE_DIGEST = previousImageDigest;
       }
     }
+  });
+
+  it('routes a configured portfolio running with makeOrders to the live cycle', async () => {
+    const current = deployment(6);
+    jest.mocked(getRuntimeDeployment).mockResolvedValue(current);
+    const strategyConfig = { MAX_LOSS_VALUE: 2 };
+    const portfolioEntry: PortfolioStrategyEntry = {
+      kind: 'portfolio',
+      manifest: { name: 'Probe' },
+      defaults: strategyConfig,
+      parseConfig: () => strategyConfig,
+      resolveChildren: () => [],
+      selectEntries: () => ({ ranked: [], pending: [] }),
+      confirmEntry: () => null,
+      execution: { maxPositions: 1, feeRate: 0, slippageBps: 0 },
+    };
+    jest.mocked(loadRuntimeStrategies).mockResolvedValue([
+      {
+        ...current.strategies[0],
+        interval: '15',
+        universe: 'crypto',
+        accountId: current.accountId,
+        controlState: 'active',
+        portfolioEntry,
+        strategyConfig,
+        selection: { tickers: ['BTCUSDT'] },
+        deploymentCompositionId: current.deploymentCompositionId,
+        strategyModule: '@tradejs/strategy-probe',
+        strategyPackage: '@tradejs/strategy-probe',
+        strategyPackageVersion: '1.0.0',
+        strategyDependencyVersions: { '@tradejs/core': '3.1.29' },
+        runtimePackageVersion: '3.1.29',
+        strategyCreator: async () => async () => 'SKIP',
+        sourceStrategyConfig: strategyConfig,
+      },
+    ]);
+    jest
+      .mocked(runPortfolioLiveCycle)
+      .mockResolvedValueOnce({ closedAt: 900_000, candidates: 1, pending: 0 });
+
+    await createSignalsRunner({
+      userName: 'root',
+      projectRoot: '/project',
+      interval: '15',
+      connectorName: 'bybit',
+      deploymentId: current.id,
+      makeOrders: true,
+      notify: false,
+      skipScreenshots: true,
+      updateOnly: false,
+      cacheOnly: false,
+      showTickersList: false,
+      showSkipStats: false,
+    }).runDaemon();
+
+    expect(runPortfolioLiveCycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entry: portfolioEntry,
+        config: strategyConfig,
+      }),
+    );
+    expect(saveRuntimeDeploymentHeartbeat).toHaveBeenCalledWith(
+      'root',
+      expect.objectContaining({
+        deploymentId: current.id,
+        cycleStatus: 'completed',
+      }),
+    );
   });
 });

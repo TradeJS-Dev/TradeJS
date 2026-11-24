@@ -44,6 +44,8 @@ export interface PortfolioConfirmation {
   candle: Candle;
   openingPrice: number;
   minNetRewardToRisk: number;
+  /** Effective config of the portfolio entry. Older hosts may omit it. */
+  config?: StrategyConfig;
 }
 
 export interface PortfolioChildStrategy {

@@ -398,7 +398,22 @@ Declare it in the selected deployment and pass `--cacheOnly`,
 ordered instruments, active dates, warmup and replay interval in
 `window.json`. It includes 15-minute candles, native child interval candles
 and historical funding. The basis for the replay outcome is execution against
-this cached snapshot. Live signals require a portfolio-aware runtime cycle.
+this cached snapshot.
+
+### Live portfolio execution
+
+Use a Bybit deployment with one enabled portfolio strategy, a bound account,
+and an explicit list of USDT contracts. Run `signals-daemon --deployment <id>
+--makeOrders`. Each cycle collects proposals for one closed M15 boundary and
+passes them to the portfolio strategy before submitting any entry. Child
+strategies run on their configured intervals and manage their own positions.
+
+For a deferred entry, `confirmEntry` receives the effective portfolio config,
+the closed confirmation candle, and the current bid or ask. Accepted orders
+use the regular execution path with its protection, journal, and account
+reservations. Pending and partial orders count towards capacity. The daemon
+reconciles reservations with exchange observations. An ambiguous submission
+retains its claim. A claimed candle boundary is never replayed for orders.
 
 ### Portfolio shadow on the daemon
 

@@ -2,10 +2,14 @@ import {
   createStrategyRuntime,
   withReplayStrategyManifests,
 } from '@tradejs/node/strategies';
+import { runWithConcurrency } from '@tradejs/core/async';
 import type {
   Connector,
   Interval,
   KlineChartData,
+  PortfolioChildRuntime,
+  PortfolioPolicyConfig,
+  RuntimeLineage,
   PortfolioChildStrategy,
   PortfolioStrategyEntry,
   StrategyConfig,
@@ -16,6 +20,10 @@ import {
   portfolioShadowStep,
   type PortfolioShadowMarket,
 } from './portfolioShadowCycle';
+import type {
+  LivePortfolioMarket,
+  LivePortfolioOffer,
+} from './portfolioLiveCycle';
 
 const historyMs = 30 * 86_400_000;
 const unavailable = async () => {
@@ -34,16 +42,7 @@ export const withoutShadowOrders = (connector: Connector): Connector => ({
   setStopLoss: unavailable,
 });
 
-export async function loadPortfolioShadowMarket({
-  entry,
-  config,
-  symbols,
-  marketConnector,
-  connectorName,
-  userName,
-  closedAt,
-  cacheOnly,
-}: {
+interface PortfolioMarketInput {
   entry: PortfolioStrategyEntry;
   config: StrategyConfig;
   symbols: readonly string[];
@@ -52,11 +51,63 @@ export async function loadPortfolioShadowMarket({
   userName: string;
   closedAt: number;
   cacheOnly: boolean;
-}): Promise<PortfolioShadowMarket> {
+}
+
+interface LiveOptions {
+  accountId: string;
+  deploymentId: string;
+  lineage: RuntimeLineage;
+  entriesPaused: boolean;
+  concurrency: number;
+  pending: readonly LivePortfolioOffer[];
+}
+
+export async function loadPortfolioShadowMarket(
+  input: PortfolioMarketInput,
+): Promise<PortfolioShadowMarket> {
+  return (await loadPortfolioMarket(input)).shadow;
+}
+
+export async function loadPortfolioLiveMarket(
+  input: PortfolioMarketInput,
+  live: LiveOptions,
+): Promise<LivePortfolioMarket> {
+  return (await loadPortfolioMarket(input, live)).live;
+}
+
+async function loadPortfolioMarket(
+  {
+    entry,
+    config,
+    symbols,
+    marketConnector,
+    connectorName,
+    userName,
+    closedAt,
+    cacheOnly,
+  }: PortfolioMarketInput,
+  live?: LiveOptions,
+): Promise<{ shadow: PortfolioShadowMarket; live: LivePortfolioMarket }> {
   const children = entry.resolveChildren(config);
+  const manifests = children.map(({ entry }) => entry);
+  const names = manifests.map(({ manifest }) => manifest.name);
+  if (!names.length || new Set(names).size !== names.length)
+    throw new Error('Expected unique portfolio children');
   const due = children.filter(
-    ({ config }) => closedAt % intervalMs(config) === 0,
+    ({ config, entry: child }) =>
+      closedAt % intervalMs(config) === 0 ||
+      live?.pending.some(
+        ({ candidate }) => candidate.strategy === child.manifest.name,
+      ),
   );
+  const policy: PortfolioPolicyConfig = {
+    id: `portfolio-${entry.manifest.name.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+    scope: 'account',
+    riskUnit: 1,
+    maxPositions: entry.execution.maxPositions,
+    observationIntervalMs: portfolioShadowStep,
+    maxPriceAgeMs: portfolioShadowStep,
+  };
   const intervals = new Set<Interval>([
     '15',
     ...due.map(({ config }) => String(config.INTERVAL) as Interval),
@@ -66,54 +117,101 @@ export async function loadPortfolioShadowMarket({
   for (const interval of intervals) {
     const table = new Map<string, KlineChartData>();
     tables.set(interval, table);
-    for (const symbol of new Set([...symbols, 'BTCUSDT', 'ETHUSDT'])) {
-      const candles = await marketConnector.kline({
-        symbol,
-        interval,
-        start: closedAt - historyMs,
-        end: closedAt + 1,
-        cacheOnly,
-        silent: true,
-      });
-      table.set(symbol, candles);
-      if (interval === '15')
-        lookups.set(
+    await runWithConcurrency(
+      [...new Set([...symbols, 'BTCUSDT', 'ETHUSDT'])],
+      live?.concurrency ?? 1,
+      async (symbol) => {
+        const candles = await marketConnector.kline({
           symbol,
-          new Map(candles.map((candle) => [candle.timestamp, candle])),
-        );
-      const required = closedAt - Number(interval) * 60_000;
-      if (!candles.some((candle) => candle.timestamp === required)) {
-        throw new Error(
-          `Missing closed ${interval}m candle for ${symbol} at ${closedAt}`,
-        );
-      }
-    }
+          interval,
+          start: closedAt - historyMs,
+          end: closedAt + 1,
+          cacheOnly,
+          silent: true,
+        });
+        table.set(symbol, candles);
+        if (interval === '15')
+          lookups.set(
+            symbol,
+            new Map(candles.map((candle) => [candle.timestamp, candle])),
+          );
+        const duration = Number(interval) * 60_000;
+        const required = Math.floor(closedAt / duration) * duration - duration;
+        if (!candles.some((candle) => candle.timestamp === required)) {
+          throw new Error(
+            `Missing closed ${interval}m candle for ${symbol} at ${closedAt}`,
+          );
+        }
+      },
+    );
   }
   const candidates: Array<PortfolioShadowMarket['candidates'][number]> = [];
-  await withReplayStrategyManifests(
-    children.map(({ entry }) => entry),
-    async () => {
-      for (const child of due) {
-        const { entry: definition, config: childConfig } = child;
-        const interval = String(childConfig.INTERVAL) as Interval;
-        const table = tables.get(interval)!;
-        const lastAt = closedAt - intervalMs(childConfig);
-        const alignedEth = new Map(
-          table
-            .get('ETHUSDT')!
-            .filter((candle) => candle.timestamp <= lastAt)
-            .map((candle) => [candle.timestamp, candle]),
-        );
-        const btc = table
-          .get('BTCUSDT')!
-          .filter((candle) => candle.timestamp <= lastAt);
-        const create = createStrategyRuntime({
-          strategyName: definition.manifest.name,
-          defaults: definition.defaults,
-          createCore: definition.createCore,
-          manifest: definition.manifest,
-        });
-        for (const symbol of symbols) {
+  const offers: LivePortfolioOffer[] = [];
+  const childrenBySymbol = new Map<
+    string,
+    {
+      runtime: PortfolioChildRuntime;
+      candle: KlineChartData[number];
+      btcCandle: KlineChartData[number];
+    }
+  >();
+  const runtimeKey = (strategy: string, symbol: string) =>
+    JSON.stringify([strategy, symbol]);
+  await withReplayStrategyManifests(manifests, async () => {
+    for (const child of due) {
+      const { entry: definition, config: childConfig } = child;
+      const interval = String(childConfig.INTERVAL) as Interval;
+      const runtimeConfig = {
+        ...childConfig,
+        ENV: live ? 'CRON' : 'PARITY',
+        MAKE_ORDERS: true,
+        PORTFOLIO_POLICY: undefined,
+        ...(live
+          ? {
+              RECORD_RUNTIME_TRADES: true,
+              RISK_FEE_RATE: Math.max(
+                Number(childConfig.RISK_FEE_RATE ?? 0),
+                entry.execution.feeRate,
+              ),
+              RISK_SLIPPAGE_BPS: Math.max(
+                Number(childConfig.RISK_SLIPPAGE_BPS ?? 0),
+                entry.execution.slippageBps,
+              ),
+            }
+          : {}),
+      };
+      const table = tables.get(interval)!;
+      const duration = intervalMs(childConfig);
+      const lastAt = Math.floor(closedAt / duration) * duration - duration;
+      const alignedEth = new Map(
+        table
+          .get('ETHUSDT')!
+          .filter((candle) => candle.timestamp <= lastAt)
+          .map((candle) => [candle.timestamp, candle]),
+      );
+      const btc = table
+        .get('BTCUSDT')!
+        .filter((candle) => candle.timestamp <= lastAt);
+      const create = createStrategyRuntime({
+        strategyName: definition.manifest.name,
+        defaults: definition.defaults,
+        createCore: definition.createCore,
+        manifest: definition.manifest,
+      });
+      await runWithConcurrency(
+        [...symbols],
+        live?.concurrency ?? 1,
+        async (symbol) => {
+          const strategy = definition.manifest.name;
+          const shouldEvaluate = closedAt % duration === 0;
+          if (
+            !shouldEvaluate &&
+            !live?.pending.some(
+              ({ candidate }) =>
+                candidate.strategy === strategy && candidate.symbol === symbol,
+            )
+          )
+            return;
           const { alignedCoinCandles, alignedBtcCandles } =
             alignSymbolWithBtcReference(
               table.get(symbol)!.filter((candle) => candle.timestamp <= lastAt),
@@ -127,12 +225,10 @@ export async function loadPortfolioShadowMarket({
             btcCandle?.timestamp !== lastAt ||
             !ethCandle
           )
-            continue;
-          const connector = createReadOnlySimulation(
-            marketConnector,
-            closedAt,
-            cacheOnly,
-          );
+            return;
+          const connector = live
+            ? marketConnector
+            : createReadOnlySimulation(marketConnector, closedAt, cacheOnly);
           const run = await create({
             symbol,
             userName,
@@ -140,58 +236,153 @@ export async function loadPortfolioShadowMarket({
             connector,
             universe: 'crypto',
             assetClass: 'crypto',
-            config: {
-              ...childConfig,
-              ENV: 'PARITY',
-              MAKE_ORDERS: true,
-              PORTFOLIO_POLICY: undefined,
-            },
-            portfolioShadow: true,
-            runtimeConfigSnapshot: { userConfig: {} },
+            config: runtimeConfig,
+            ...(live
+              ? {
+                  accountId: live.accountId,
+                  deploymentId: live.deploymentId,
+                  entriesPaused: live.entriesPaused,
+                  strategyRevision: live.lineage.strategyRevision,
+                  runtimeConfigId: `portfolio:${entry.manifest.name}`,
+                  runtimeLineage: live.lineage,
+                  sharedStrategyStateKey: JSON.stringify([
+                    live.deploymentId,
+                    live.accountId,
+                    live.lineage.strategyRevision,
+                    symbol,
+                    interval,
+                  ]),
+                  portfolioLive: {
+                    policy,
+                    offer(prepared) {
+                      const candidate = toPortfolioCandidate(
+                        { ...prepared, signal: prepared.decision.signal },
+                        strategy,
+                        symbol,
+                      );
+                      if (
+                        Number.isFinite(candidate.stop) &&
+                        candidate.stop > 0 &&
+                        candidate.targets.every(
+                          (price) => Number.isFinite(price) && price > 0,
+                        )
+                      ) {
+                        offers.push({
+                          candidate,
+                          prepared,
+                          minNetRewardToRisk:
+                            Number(
+                              childConfig[candidate.direction]?.minRiskRatio,
+                            ) || 0,
+                        });
+                      }
+                    },
+                  },
+                }
+              : { portfolioShadow: true as const }),
+            runtimeConfigSnapshot: { userConfig: live ? runtimeConfig : {} },
             data: alignedCoinCandles.slice(0, -1),
             btcData: alignedBtcCandles.slice(0, -1),
             ethData: alignedCoinCandles
               .slice(0, -1)
               .flatMap((item) => alignedEth.get(item.timestamp) ?? []),
-            selectReplayEntry: async (captured) => {
-              const strategy = definition.manifest.name;
-              const proposal = toPortfolioCandidate(captured, strategy, symbol);
-              if (
-                Number.isFinite(proposal.stop) &&
-                proposal.stop > 0 &&
-                proposal.targets.every(
-                  (price) => Number.isFinite(price) && price > 0,
-                )
-              ) {
-                candidates.push({
-                  candidate: {
-                    ...proposal,
-                    id: JSON.stringify([
-                      strategy,
-                      symbol,
-                      proposal.direction,
-                      closedAt,
-                    ]),
-                  },
-                  minNetRewardToRisk:
-                    Number(childConfig[proposal.direction]?.minRiskRatio) || 0,
-                });
-              }
-              return false;
-            },
+            selectReplayEntry: live
+              ? undefined
+              : async (captured) => {
+                  const strategy = definition.manifest.name;
+                  const proposal = toPortfolioCandidate(
+                    captured,
+                    strategy,
+                    symbol,
+                  );
+                  if (
+                    Number.isFinite(proposal.stop) &&
+                    proposal.stop > 0 &&
+                    proposal.targets.every(
+                      (price) => Number.isFinite(price) && price > 0,
+                    )
+                  ) {
+                    candidates.push({
+                      candidate: {
+                        ...proposal,
+                        id: JSON.stringify([
+                          strategy,
+                          symbol,
+                          proposal.direction,
+                          closedAt,
+                        ]),
+                      },
+                      minNetRewardToRisk:
+                        Number(childConfig[proposal.direction]?.minRiskRatio) ||
+                        0,
+                    });
+                  }
+                  return false;
+                },
           });
-          await run(candle, btcCandle, ethCandle);
-        }
-      }
-    },
-  );
+          if (live)
+            childrenBySymbol.set(runtimeKey(strategy, symbol), {
+              runtime: run as PortfolioChildRuntime,
+              candle,
+              btcCandle,
+            });
+          if (shouldEvaluate) await run(candle, btcCandle, ethCandle);
+        },
+      );
+    }
+  });
+  if (live) {
+    await childrenBySymbol.values().next().value?.runtime.reconcilePortfolio();
+  }
+  const market = {
+    candle: (symbol: string, ago: number) =>
+      lookups.get(symbol)?.get(closedAt - (ago + 1) * portfolioShadowStep),
+  };
   return {
-    candidates,
-    market: {
-      candle: (symbol, ago) =>
-        lookups.get(symbol)?.get(closedAt - (ago + 1) * portfolioShadowStep),
+    shadow: {
+      candidates,
+      market,
+      openingPrice: (symbol) => lookups.get(symbol)?.get(closedAt)?.open,
     },
-    openingPrice: (symbol) => lookups.get(symbol)?.get(closedAt)?.open,
+    live: {
+      offers,
+      market,
+      async openingPrice({ symbol, direction }) {
+        const quote = await marketConnector.getTopOfBookTicker?.(symbol);
+        const time = Date.now();
+        if (
+          !quote?.timestamp ||
+          quote.timestamp < closedAt ||
+          Math.abs(time - quote.timestamp) > 30_000 ||
+          quote.askPrice < quote.bidPrice
+        )
+          return undefined;
+        return direction === 'LONG' ? quote.askPrice : quote.bidPrice;
+      },
+      async submit({ candidate, prepared }, confirmation) {
+        if (Date.now() >= closedAt + portfolioShadowStep)
+          return 'PORTFOLIO_BOUNDARY_EXPIRED';
+        const child = childrenBySymbol.get(
+          runtimeKey(candidate.strategy, candidate.symbol),
+        );
+        if (!child) return 'PORTFOLIO_CHILD_UNAVAILABLE';
+        const candle = confirmation
+          ? market.candle(candidate.symbol, 0)
+          : child.candle;
+        const btcCandle = confirmation
+          ? market.candle('BTCUSDT', 0)
+          : child.btcCandle;
+        if (!candle || !btcCandle) return 'PORTFOLIO_MARKET_UNAVAILABLE';
+        return withReplayStrategyManifests(manifests, () =>
+          child.runtime.submitPortfolioEntry({
+            offer: prepared,
+            candle,
+            btcCandle,
+            confirmation,
+          }),
+        );
+      },
+    },
   };
 }
 

@@ -87,6 +87,48 @@ test('definite pre-submission failure releases reservation, ambiguous submitted 
   );
   expect(send).not.toHaveBeenCalled();
 });
+
+test('a partially filled entry occupies one slot and blocks another entry on its symbol after restart', async () => {
+  const f = fixture({ ...policy, maxPositions: 2 });
+  await f.create().submit(1000, entry('A'), async (mark) => {
+    await mark(1);
+    return true;
+  });
+  f.orders.push({
+    id: 'A',
+    status: 'partial',
+    filledQty: 0.5,
+    positionId: 'A',
+  });
+  f.positions.push({
+    id: 'A',
+    strategy: 'Test',
+    symbol: 'AUSDT',
+    direction: 'LONG',
+    qty: 0.5,
+    entryPrice: 100,
+    markPrice: 100,
+    markedAt: 1000,
+  });
+  const restarted = f.create();
+  const send = jest.fn(async (mark: (qty: number) => Promise<string>) => {
+    await mark(1);
+  });
+  const duplicateSymbol = await restarted.submit(
+    1000,
+    { ...entry('retry'), symbol: 'AUSDT' },
+    send,
+  );
+  expect(duplicateSymbol.reason).toBe('PORTFOLIO_SYMBOL_OCCUPIED');
+  expect(send).not.toHaveBeenCalled();
+  expect(
+    (await restarted.submit(1000, entry('B'), send)).reason,
+  ).toBeUndefined();
+  expect((await restarted.submit(1000, entry('C'), send)).reason).toBe(
+    'PORTFOLIO_POSITION_LIMIT',
+  );
+  expect(send).toHaveBeenCalledTimes(1);
+});
 test('atomic close claim prevents duplicate close across coordinators and reserves the exit cycle', async () => {
   const f = fixture({
     ...policy,

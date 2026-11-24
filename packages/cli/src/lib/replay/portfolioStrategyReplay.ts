@@ -352,6 +352,7 @@ export async function replayPortfolioStrategy({
               candle,
               openingPrice,
               minNetRewardToRisk: runtime.minimumRR[candidate.direction],
+              config,
             });
             if (!sized || !checkCapacity(runtime.symbol)) continue;
             assert.ok(

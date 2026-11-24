@@ -3,8 +3,11 @@ import type {
   PortfolioPolicyConfig,
   Signal,
   RuntimeTradeRecord,
+  PortfolioStrategyEntry,
+  RuntimeLineage,
 } from '@tradejs/types';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
+import { loadPortfolioLiveMarket } from '../lib/signals/portfolioShadowMarket';
 import { createStrategyRuntime } from '@tradejs/node/strategies';
 const mockBeforeClose = jest.fn();
 const mockProjectHooks: { beforeClosePosition?: typeof mockBeforeClose } = {};
@@ -36,6 +39,9 @@ jest.mock('../../../node/src/tradejsConfig', () => ({
   ...jest.requireActual('../../../node/src/tradejsConfig'),
   loadTradejsConfig: async () => ({ hooks: mockProjectHooks }),
 }));
+jest.mock('../../../node/src/strategyHelpers/marketContextStages', () => ({
+  enrichSignalWithMarketContextStages: async () => [],
+}));
 beforeEach(() =>
   jest.replaceProperty(process, 'env', {
     ...process.env,
@@ -46,6 +52,108 @@ beforeEach(() =>
   }),
 );
 afterEach(() => jest.restoreAllMocks());
+
+it('prepares live portfolio proposals and sends only the selected order through the shared account limit', async () => {
+  mockState.clear();
+  mockTrades.clear();
+  const closedAt = Date.UTC(2026, 0, 1);
+  jest.spyOn(Date, 'now').mockReturnValue(closedAt + 5000);
+  const candle = {
+    timestamp: closedAt - 900_000,
+    dt: '',
+    open: 100,
+    close: 100,
+    high: 100,
+    low: 100,
+    volume: 1,
+    turnover: 1,
+  };
+  const simulated = createPortfolioReplayConnector({
+    kline: async () => [candle],
+    getTickers: async () => [],
+  } as unknown as Connector);
+  const place = jest.fn(simulated.placeOrder);
+  const connector: Connector = {
+    ...simulated,
+    universe: 'crypto',
+    placeOrder: place,
+    getOpenPositionPnl: async () =>
+      (await simulated.getOpenPositionPnl!()).map((position) => ({
+        ...position,
+        observedAt: Date.now(),
+      })),
+    getEntryExecutions: async () => [],
+  };
+  const defaults = { ENV: 'PARITY', INTERVAL: '15', MAX_LOSS_VALUE: 10 };
+  const entry: PortfolioStrategyEntry = {
+    kind: 'portfolio',
+    manifest: { name: 'PortfolioFixture' },
+    defaults,
+    parseConfig: () => defaults,
+    resolveChildren: () =>
+      ['Alpha', 'Beta'].map((name) => ({
+        config: defaults,
+        entry: {
+          manifest: { name },
+          defaults,
+          parseConfig: () => defaults,
+          createCore:
+            ({ strategyApi }) =>
+            () =>
+              strategyApi.entry({
+                direction: 'LONG',
+                orderPlan: {
+                  qty: 0.1,
+                  stopLossPrice: 50,
+                  takeProfits: [{ price: 200, rate: 1 }],
+                },
+                runtime: { ai: { enabled: false }, ml: { enabled: false } },
+              }),
+        },
+      })),
+    selectEntries: () => ({ ranked: [], pending: [] }),
+    confirmEntry: () => null,
+    execution: { feeRate: 0, slippageBps: 0, maxPositions: 1 },
+  };
+  const market = await loadPortfolioLiveMarket(
+    {
+      entry,
+      config: defaults,
+      symbols: ['BTCUSDT', 'ETHUSDT'],
+      marketConnector: connector,
+      connectorName: 'Bybit',
+      userName: 'fixture',
+      closedAt,
+      cacheOnly: false,
+    },
+    {
+      accountId: 'portfolio',
+      deploymentId: 'portfolio-live-test',
+      entriesPaused: false,
+      concurrency: 1,
+      pending: [],
+      lineage: { strategyRevision: 'sr1:fixture' } as RuntimeLineage,
+    },
+  );
+  expect(market.offers).toHaveLength(4);
+  expect(place).not.toHaveBeenCalled();
+  const take = (name: string, symbol: string) =>
+    market.offers.find(
+      ({ candidate }) =>
+        candidate.strategy === name && candidate.symbol === symbol,
+    )!;
+  await market.submit(take('Beta', 'BTCUSDT'));
+  await market.submit(take('Alpha', 'BTCUSDT'));
+  await market.submit(take('Alpha', 'ETHUSDT'));
+  expect(place).toHaveBeenCalledTimes(1);
+  expect(place).toHaveBeenCalledWith(
+    expect.objectContaining({
+      symbol: 'BTCUSDT',
+      signal: expect.objectContaining({ strategy: 'Beta' }),
+    }),
+  );
+});
+
 const policy: PortfolioPolicyConfig = {
   id: 'parity',
   scope: 'strategy',

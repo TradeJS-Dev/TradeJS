@@ -4,6 +4,7 @@ import {
   withNewsContext,
 } from './strategyHelpers/newsContext';
 import { getPortfolioRuntime } from './strategy/portfolioRuntime';
+import { getActiveRuntimeTrade } from './runtimeJournal';
 import {
   loadTickerProfileContext,
   withTickerProfile,
@@ -40,6 +41,7 @@ import type {
   CreateStrategyCore,
   KlineChartData,
   KlineChartItem,
+  PortfolioChildRuntime,
   StrategyHookAiContext,
   StrategyHookCtx,
   StrategyHookEntryContext,
@@ -180,6 +182,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     sharedStrategyStateKey,
     selectReplayEntry,
     portfolioShadow,
+    portfolioLive,
     onRuntimeClose,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
@@ -208,6 +211,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     if (selectReplayEntry && env !== 'PARITY') {
       throw new Error('Replay entry selection requires PARITY mode');
     }
+    if (portfolioLive && (env !== 'CRON' || !accountId || !deploymentId)) {
+      throw new Error('Live portfolio entries require a bound CRON strategy');
+    }
     let portfolioMarket: HookCandleMarket | undefined;
     const portfolio = getPortfolioRuntime({
       symbol,
@@ -234,7 +240,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return gate?.allow !== false;
       },
       connectorName,
-      value: baseConfig?.PORTFOLIO_POLICY ?? config.PORTFOLIO_POLICY,
+      value:
+        portfolioLive?.policy ??
+        baseConfig?.PORTFOLIO_POLICY ??
+        config.PORTFOLIO_POLICY,
       strategy: strategyName,
       connector,
       env,
@@ -242,12 +251,13 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       accountId,
       deploymentId,
     });
-    const portfolioContext = portfolio
-      ? (now: number) =>
-          isRuntimeOrderExecutionEnabled({ config, env, connector })
-            ? portfolio.tick(now)
-            : portfolio.context(now)
-      : undefined;
+    const portfolioContext =
+      portfolio && !portfolioLive
+        ? (now: number) =>
+            isRuntimeOrderExecutionEnabled({ config, env, connector })
+              ? portfolio.tick(now)
+              : portfolio.context(now)
+        : undefined;
     const researchPolicyValue =
       baseConfig?.RESEARCH_ENTRY_POLICY ?? config.RESEARCH_ENTRY_POLICY;
     const researchEntryPolicy =
@@ -1098,6 +1108,29 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         connector,
       });
 
+      if (
+        portfolioLive &&
+        (decision.kind === 'exit' || decision.kind === 'protect')
+      ) {
+        const trade = await getActiveRuntimeTrade({
+          userName,
+          symbol,
+          accountId,
+          deploymentId,
+        });
+        const direction =
+          decision.kind === 'exit'
+            ? decision.closePlan.direction
+            : decision.protectPlan.direction;
+        if (
+          trade?.strategy !== strategyName ||
+          trade.direction !== direction ||
+          trade.runtimeConfigId !== runtimeConfigId
+        ) {
+          return 'PORTFOLIO_POSITION_NOT_OWNED';
+        }
+      }
+
       if (decision.kind === 'exit') {
         if (!makeOrdersEnabled) {
           return decision.code;
@@ -1182,10 +1215,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             };
           }
         }
-        if (portfolio)
+        if (portfolioContext)
           signal.additionalIndicators = {
             ...signal.additionalIndicators,
-            portfolioContext: await portfolioContext!(
+            portfolioContext: await portfolioContext(
               env === 'BACKTEST' || env === 'PARITY'
                 ? decision.entryContext.timestamp
                 : Date.now(),
@@ -1369,6 +1402,19 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             approved: false,
             reason: skipReason,
           });
+          if (
+            skipReason.startsWith('AI_QUALITY_BELOW_MIN (') &&
+            !runtime.beforePlaceOrder &&
+            decision.orderPlan.positionIntent !== 'increase'
+          ) {
+            portfolioLive?.offer({
+              decision: { ...decision, signal },
+              approved: false,
+              reason: skipReason,
+              ai,
+              ml,
+            });
+          }
           signal.orderStatus = 'skipped';
           signal.orderSkipReason = skipReason;
           signal.allocatorDecision = buildRuntimeAdmissionDecision({
@@ -1428,6 +1474,19 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           });
         }
         return signal ?? skipReason;
+      }
+
+      if (portfolioLive) {
+        if (signal && decision.orderPlan.positionIntent !== 'increase') {
+          portfolioLive.offer({
+            decision: { ...decision, signal },
+            approved: true,
+            reason: null,
+            ai,
+            ml,
+          });
+        }
+        return 'PORTFOLIO_ENTRY_DEFERRED';
       }
 
       if (
@@ -1506,6 +1565,129 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData?: KlineChartData;
     }) => indicatorsState.updateReferenceData?.(params);
     strategy.__tradejsFlushBacktestDelayedEntry = flushPendingBacktestEntry;
+
+    if (portfolioLive) {
+      strategy.reconcilePortfolio = async () => {
+        await portfolio?.tick(Date.now());
+      };
+      const submitPortfolioEntry: PortfolioChildRuntime['submitPortfolioEntry'] =
+        async ({ offer, candle, btcCandle, confirmation }) => {
+          const { decision, ai, ml } = offer;
+          const { signal, entryContext, orderPlan } = decision;
+          if (
+            entriesPaused ||
+            !isRuntimeOrderExecutionEnabled({ config, env, connector }) ||
+            entryContext.symbol !== symbol ||
+            signal.symbol !== symbol ||
+            entryContext.strategy !== strategyName ||
+            signal.strategy !== strategyName ||
+            signal.direction !== entryContext.direction ||
+            orderPlan.positionIntent === 'increase' ||
+            (confirmation
+              ? offer.approved ||
+                !offer.reason?.startsWith('AI_QUALITY_BELOW_MIN (')
+              : !offer.approved)
+          )
+            return 'PORTFOLIO_ENTRY_NOT_ALLOWED';
+
+          const market = { candle, btcCandle };
+          const manifest = resolveManifest(strategyName);
+          const runtime = resolveEntryRuntimePolicy({
+            decision,
+            config,
+            manifest,
+            policyProfile: getPolicyProfile(),
+          });
+          const basePrices = entryContext.prices;
+          const prepared = confirmation
+            ? {
+                ...decision,
+                entryContext: {
+                  ...entryContext,
+                  timestamp: confirmation.timestamp,
+                  prices: { ...basePrices, currentPrice: confirmation.price },
+                },
+                orderPlan: {
+                  ...orderPlan,
+                  qty: confirmation.qty,
+                  stopLossDistance: undefined,
+                },
+                signal: {
+                  ...signal,
+                  orderId: undefined,
+                  timestamp: confirmation.timestamp,
+                  prices: {
+                    ...signal.prices,
+                    currentPrice: confirmation.price,
+                  },
+                },
+              }
+            : decision;
+          const hookCtx = confirmation
+            ? {
+                ...getHookCtx(),
+                strategyConfig: {
+                  ...config,
+                  MAX_LOSS_VALUE: confirmation.risk,
+                },
+              }
+            : getHookCtx();
+          const entry = buildHookEntry({ decision: prepared, runtime });
+          const policy = buildHookPolicy({
+            quality: ai?.quality,
+            makeOrdersEnabled: true,
+            minAiQuality: runtime.ai?.minQuality ?? 4,
+          });
+          if (confirmation) {
+            const gate = await invokeGateHooks(
+              'beforeEntryGate',
+              manifest?.hooks?.beforeEntryGate,
+              {
+                ctx: hookCtx,
+                market,
+                decision: prepared,
+                entry,
+                policy,
+                ml,
+                ai,
+              },
+              { decision: prepared, entry, market },
+            );
+            if (gate?.allow === false)
+              return 'PORTFOLIO_CONFIRMATION_BLOCKED_BY_HOOK';
+            prepared.signal.riskDecision = assessRuntimeEntryRisk({
+              qty: confirmation.qty,
+              entryPrice: confirmation.price,
+              stopLossPrice: orderPlan.stopLossPrice,
+              maxLossValue: confirmation.risk,
+            });
+          }
+          prepared.signal.allocatorDecision = buildRuntimeAdmissionDecision({
+            status: 'approved',
+            reason: 'ENTRY_ADMITTED',
+          });
+          const outcome = await executeEntryDecision({
+            portfolio,
+            portfolioTime: Date.now(),
+            connector,
+            symbol,
+            decision: prepared,
+            runtime,
+            manifest,
+            hookCtx,
+            market,
+            entry,
+            policy,
+            ml,
+            ai,
+            recordRuntimeJournal,
+            invokeStageHooks,
+            notifyRuntimeError,
+          });
+          return outcome ?? 'PORTFOLIO_ORDER_UNAVAILABLE';
+        };
+      strategy.submitPortfolioEntry = submitPortfolioEntry;
+    }
 
     const resolvedDetectorKey = detectorKey?.(config);
     if (resolvedDetectorKey && detectorNoSignalSkipReason) {

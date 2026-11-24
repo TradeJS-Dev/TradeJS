@@ -3,6 +3,7 @@ import type {
   PortfolioEntryBatch,
   PortfolioEntryCandidate,
   PortfolioStrategyEntry,
+  StrategyConfig,
 } from '@tradejs/types';
 import { validatePortfolioSelection } from '../portfolio/selection';
 
@@ -53,6 +54,7 @@ function reachedTerminalExit(
 export async function runPortfolioShadowCycle({
   closedAt,
   entry,
+  config,
   store,
   load,
 }: {
@@ -60,6 +62,7 @@ export async function runPortfolioShadowCycle({
   entry: Pick<PortfolioStrategyEntry, 'selectEntries' | 'confirmEntry'> & {
     execution: { maxPositions: number };
   };
+  config?: StrategyConfig;
   store: {
     read(): Promise<string | null>;
     compare(previous: string | null, next: string): Promise<boolean>;
@@ -145,6 +148,7 @@ export async function runPortfolioShadowCycle({
       candle,
       openingPrice,
       minNetRewardToRisk,
+      config,
     });
     if (
       !fill ||

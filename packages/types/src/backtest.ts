@@ -81,6 +81,32 @@ export type Strategy = (
   ethCandle?: KlineChartItem,
 ) => Promise<string | Signal>;
 
+export interface PreparedPortfolioEntry {
+  decision: Extract<
+    import('./strategyExecution').StrategyDecision,
+    { kind: 'entry' }
+  > & { signal: Signal };
+  approved: boolean;
+  reason: string | null;
+  ai?: import('./strategyAdapters').StrategyHookAiContext;
+  ml?: import('./strategyAdapters').StrategyHookMlContext;
+}
+
+export type PortfolioChildRuntime = Strategy & {
+  reconcilePortfolio(): Promise<void>;
+  submitPortfolioEntry(input: {
+    offer: PreparedPortfolioEntry;
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+    confirmation?: {
+      price: number;
+      qty: number;
+      risk: number;
+      timestamp: number;
+    };
+  }): Promise<string | Signal>;
+};
+
 export type BacktestDetectorOptimizedStrategy = Strategy & {
   detectorFanoutKey?: string;
   detectorNoSignalSkipReason?: string;
@@ -168,6 +194,10 @@ export interface StrategyCreatorParams {
   sharedIndicatorsReplayKey?: string;
   sharedStrategyStateKey?: string;
   portfolioShadow?: true;
+  portfolioLive?: {
+    policy: import('./portfolio').PortfolioPolicyConfig;
+    offer(entry: PreparedPortfolioEntry): void;
+  };
   /** Historical composition may defer eligible submissions until the batch is complete. */
   selectReplayEntry?: (input: {
     decision: Extract<
