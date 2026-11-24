@@ -7,6 +7,10 @@ PROJECT_DIR="${QUICKSTART_E2E_PROJECT_DIR:-$(cd "$REPO_ROOT/.." && pwd)/tradejs-
 PORT="${QUICKSTART_E2E_PORT:-3100}"
 CREATE_SPEC="${QUICKSTART_CREATE_SPEC:-create-tradejs}"
 CREATE_BIN="${QUICKSTART_CREATE_BIN:-}"
+FRAMEWORK_VERSION=""
+if [[ "$CREATE_SPEC" =~ ^create-tradejs@([0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?)$ ]]; then
+  FRAMEWORK_VERSION="${BASH_REMATCH[1]}"
+fi
 APP_URL="http://localhost:${PORT}"
 APP_LOG="${QUICKSTART_E2E_LOG:-$REPO_ROOT/output/quickstart-e2e.log}"
 CREATE_PID=""
@@ -90,15 +94,25 @@ PROJECT_CREATED="true"
 mkdir -p "$(dirname "$APP_LOG")"
 
 echo "Starting one-command quickstart with $CREATE_SPEC"
-if [ -n "$CREATE_BIN" ]; then
-  "$CREATE_BIN" "$PROJECT_DIR" --port "$PORT" --no-open >"$APP_LOG" 2>&1 &
-else
+if [ -z "$CREATE_BIN" ]; then
   NPM_EXEC_DIR="$(mktemp -d)"
-  (
-    cd "$NPM_EXEC_DIR"
-    npm exec --yes --package="$CREATE_SPEC" -- create-tradejs "$PROJECT_DIR" --port "$PORT" --no-open
-  ) >"$APP_LOG" 2>&1 &
 fi
+(
+  if [ -n "$FRAMEWORK_VERSION" ]; then
+    export CREATE_TRADEJS_FRAMEWORK_VERSION="$FRAMEWORK_VERSION"
+    if [[ "$FRAMEWORK_VERSION" == *-beta.* ]]; then
+      # Published strategies declare stable peer ranges, which exclude prereleases.
+      export npm_config_force=true
+    fi
+  fi
+
+  if [ -n "$CREATE_BIN" ]; then
+    exec "$CREATE_BIN" "$PROJECT_DIR" --port "$PORT" --no-open
+  else
+    cd "$NPM_EXEC_DIR"
+    exec npm exec --yes --package="$CREATE_SPEC" -- create-tradejs "$PROJECT_DIR" --port "$PORT" --no-open
+  fi
+) >"$APP_LOG" 2>&1 &
 CREATE_PID=$!
 
 ready=false
@@ -123,6 +137,35 @@ if [ "$ready" != "true" ]; then
   echo "Install page did not become ready: $APP_URL/routes/install" >&2
   tail -n 200 "$APP_LOG" >&2
   exit 1
+fi
+
+if [ -n "$FRAMEWORK_VERSION" ]; then
+  node - "$PROJECT_DIR" "$FRAMEWORK_VERSION" <<'NODE'
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
+const [project, version] = process.argv.slice(2);
+const framework = new Set([
+  'app', 'cli', 'connectors', 'core', 'indicators', 'infra', 'node', 'types',
+].map((name) => `@tradejs/${name}`));
+const lock = JSON.parse(readFileSync(join(project, 'package-lock.json'), 'utf8'));
+const installed = new Set();
+
+for (const [location, entry] of Object.entries(lock.packages)) {
+  const name = location.split('node_modules/').at(-1);
+  if (!framework.has(name)) continue;
+
+  if (entry.version !== version) {
+    throw new Error(`Expected ${location}@${version}, installed ${entry.version}`);
+  }
+  installed.add(name);
+}
+
+for (const name of framework) {
+  if (!installed.has(name)) throw new Error(`Missing ${name}@${version}`);
+}
+console.log(`Quickstart installed TradeJS ${version}`);
+NODE
 fi
 
 if ! QUICKSTART_E2E_URL="$APP_URL" yarn playwright test e2e/quickstart.spec.ts; then
