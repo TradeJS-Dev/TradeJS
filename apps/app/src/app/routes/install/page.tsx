@@ -26,7 +26,9 @@ const Install = () => {
       })
       .then(({ required }) => {
         if (!required) {
-          router.replace('/routes/signin');
+          // Sign-in can remount the installer before its navigation finishes.
+          // Keep the first dashboard target; the proxy handles missing sessions.
+          router.replace(FIRST_DASHBOARD_PATH);
           return;
         }
         setIsLoading(false);
