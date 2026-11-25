@@ -332,8 +332,12 @@ const formatAxis = (value) => {
 };
 
 const niceScale = (values, divisions = 5) => {
-  const low = Math.min(0, ...values);
-  const high = Math.max(0, ...values);
+  let low = 0;
+  let high = 0;
+  for (const value of values) {
+    low = Math.min(low, value);
+    high = Math.max(high, value);
+  }
   const rawStep = Math.max(1e-9, (high - low || 1) / divisions);
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const scaled = rawStep / magnitude;

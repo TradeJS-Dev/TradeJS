@@ -142,3 +142,27 @@ test('writes immutable SVG, PNG, and checksum summary', async () => {
     /EEXIST/,
   );
 });
+
+test('renders the supported maximum input without losing extrema before downsampling', () => {
+  const count = 200_000;
+  const input = spec();
+  input.window = { start: 1, end: count + 3 };
+  input.series = [
+    {
+      id: 'baseline',
+      label: 'maximum retained equity',
+      role: 'baseline',
+      equity: Array.from({ length: count }, (_, index) => [
+        index + 2,
+        index % 2 === 0 ? index : -index,
+      ]),
+      metrics: { trades: count, pnl: -(count - 1) },
+    },
+  ];
+  const svg = renderResearchComparisonSvg(input);
+  assert.match(svg, /<svg/);
+  assert.match(svg, /N=200000/);
+  assert.doesNotMatch(svg, /NaN|Infinity/);
+  assert.match(svg, /200\.0k/);
+  assert.match(svg, /-200\.0k/);
+});
