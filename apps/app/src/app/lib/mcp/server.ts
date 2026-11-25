@@ -8,6 +8,7 @@ import {
 import { INSTALL_USER_NAME } from '../installation';
 import { MCP_FEEDBACK_CONTRACT } from '@tradejs/node/diagnostics';
 import { readDeploymentVerification } from './verification';
+import { readRuntimeComponents } from './components';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -325,6 +326,21 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
     {},
     async () => readMcpDeployments(principal.userName),
   );
+  if (principal.userName === INSTALL_USER_NAME) {
+    tool(
+      'runtime_get_components',
+      'Read the checksum-verified Deploy component image snapshot. Collected after rollouts and daily at 10:30 Europe/Moscow; fresh=false after 25h or a failed collection. No Docker access or collection job is performed.',
+      ['runtime:read'],
+      { deploymentId: identifier },
+      async (args) => {
+        await requireMcpDeployment(principal.userName, args.deploymentId);
+        return readRuntimeComponents(
+          String(process.env.PROJECT_CWD || process.cwd()),
+          principal.userName,
+        );
+      },
+    );
+  }
   tool(
     'runtime_get_verification',
     'Read the checksum-verified Deploy-owned package manifest, actual image digest, deployment verification and health observation. fresh=false means the collector is stale; heartbeat is not a replacement. No job or runtime mutation is performed.',

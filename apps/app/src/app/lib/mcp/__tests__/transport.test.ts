@@ -28,6 +28,12 @@ const mockVerification = jest
 jest.mock('../verification', () => ({
   readDeploymentVerification: (...args: unknown[]) => mockVerification(...args),
 }));
+const mockComponents = jest
+  .fn()
+  .mockResolvedValue({ fresh: true, report: { ok: true } });
+jest.mock('../components', () => ({
+  readRuntimeComponents: (...args: unknown[]) => mockComponents(...args),
+}));
 const mockPrincipal: McpPrincipal = {
   userName: 'alice',
   clientId: 'client',
@@ -612,5 +618,42 @@ test('reports missing coverage and queues a backfill only for the owner with an 
     expect(mockAfter).toHaveBeenCalledTimes(1);
   } finally {
     await client.close();
+  }
+});
+
+test('component snapshots are read-only, require runtime scope and are visible only to the owner', async () => {
+  for (const [userName, scopes, expected] of [
+    ['root', ['runtime:read'], true],
+    ['alice', ['runtime:read'], false],
+    ['root', ['market:read'], false],
+  ] as const) {
+    mockPrincipal.userName = userName;
+    mockPrincipal.scopes = [...scopes];
+    const client = new Client({ name: 'component-test', version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL('https://tradejs.test/mcp'), {
+        fetch: async (url, init) =>
+          init?.method === 'POST'
+            ? POST(new Request(String(url), init))
+            : GET(),
+      }),
+    );
+    try {
+      const listed = await client.listTools();
+      const tool = listed.tools.find(
+        (t) => t.name === 'runtime_get_components',
+      );
+      expect(Boolean(tool)).toBe(expected);
+      if (expected) {
+        expect(tool?.annotations?.readOnlyHint).toBe(true);
+        await client.callTool({
+          name: 'runtime_get_components',
+          arguments: { deploymentId: 'production' },
+        });
+        expect(mockComponents).toHaveBeenCalledWith(expect.any(String), 'root');
+      }
+    } finally {
+      await client.close();
+    }
   }
 });
