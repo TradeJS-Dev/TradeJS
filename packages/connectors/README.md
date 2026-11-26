@@ -1,6 +1,9 @@
 # @tradejs/connectors
 
-MIT-licensed connector package for the TradeJS framework.
+Get market data for TradeJS charts and backtests. Connect a Bybit account
+to read positions and send orders from your TradeJS runtime.
+
+[Browse the exchange adapters in the TradeJS Marketplace](https://tradejs.dev/marketplace#adapters).
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
@@ -14,11 +17,12 @@ Business Source License 1.1; see the
 
 ## What It Provides
 
-This package contains the built-in connector plugin catalog used by TradeJS runtime:
-
-- exchange connectors
-- market data providers
-- built-in test connector support used by backtests/runtime flows
+| Adapter                                                    | What it provides                                                                             |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [Bybit](https://tradejs.dev/marketplace/bybit)             | Market data for USDT perpetuals. Can read positions and send orders for a connected account. |
+| [Binance](https://tradejs.dev/marketplace/binance)         | Market data for historical tests and reference prices.                                       |
+| [Coinbase](https://tradejs.dev/marketplace/coinbase)       | Spot market data for historical tests and reference prices.                                  |
+| [Hyperliquid](https://tradejs.dev/marketplace/hyperliquid) | Public market data for perpetual contracts.                                                  |
 
 ## Install
 
