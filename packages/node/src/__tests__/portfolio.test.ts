@@ -42,9 +42,9 @@ function fixture(p = policy) {
       1,
     );
   });
-  const create = () =>
+  const create = (configuredPolicy = p) =>
     createPortfolioCoordinator({
-      policy: p,
+      policy: configuredPolicy,
       strategy: 'Test',
       store,
       execution: { observe, close },
@@ -155,12 +155,43 @@ test('persisted fingerprint blocks changing policy on occupied scope', async () 
   const f = fixture();
   await f.create().tick(1000);
   const changed = createPortfolioCoordinator({
-    policy: { ...policy, maxPositions: 9 },
+    policy: { ...policy, riskUnit: 9 },
     strategy: 'Test',
     store: f.store,
     execution: { observe: f.observe, close: f.close },
   });
   await expect(changed.tick(1000)).rejects.toThrow('policy changed');
+});
+test('a new capacity keeps existing reservations and allows rollback', async () => {
+  const f = fixture();
+  const send = jest.fn(async (mark: (qty: number) => Promise<string>) => {
+    await mark(1);
+  });
+  await f.create().submit(1000, entry('A'), send);
+  const previous = await f.store.read();
+  const expanded = f.create({ ...policy, maxPositions: 2 });
+
+  await expect(expanded.context(1000)).resolves.toMatchObject({
+    pendingEntryCount: 1,
+  });
+  expect(
+    (await expanded.submit(1000, { ...entry('retry'), symbol: 'AUSDT' }, send))
+      .reason,
+  ).toBe('PORTFOLIO_SYMBOL_OCCUPIED');
+  expect(
+    (await expanded.submit(1000, entry('B'), send)).reason,
+  ).toBeUndefined();
+  expect((await expanded.submit(1000, entry('C'), send)).reason).toBe(
+    'PORTFOLIO_POSITION_LIMIT',
+  );
+  expect((await f.create().submit(1000, entry('C'), send)).reason).toBe(
+    'PORTFOLIO_POSITION_LIMIT',
+  );
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(await f.store.read()).toMatchObject({
+    fingerprint: previous?.fingerprint,
+    reservations: [{ id: 'A' }, { id: 'B' }],
+  });
 });
 test('storage failure cannot submit an order', async () => {
   const send = jest.fn();

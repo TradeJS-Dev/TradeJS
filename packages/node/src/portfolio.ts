@@ -43,6 +43,26 @@ export function createPortfolioCoordinator({
   execution: PortfolioExecutionAdapter;
 }) {
   const fingerprint = portfolioFingerprint(policy, strategy);
+  function acceptsFingerprint(stored: string): boolean {
+    if (stored === fingerprint) return true;
+    if (policy.maxPositions === undefined) return false;
+    try {
+      const previous: unknown = JSON.parse(stored);
+      // Keep the stored fingerprint usable by the previous release after rollback.
+      return (
+        previous !== null &&
+        typeof previous === 'object' &&
+        'maxPositions' in previous &&
+        typeof previous.maxPositions === 'number' &&
+        Number.isSafeInteger(previous.maxPositions) &&
+        previous.maxPositions > 0 &&
+        JSON.stringify({ ...previous, maxPositions: policy.maxPositions }) ===
+          fingerprint
+      );
+    } catch {
+      return false;
+    }
+  }
   let cache:
     | { revision: number; bucket: number; observation: PortfolioObservation }
     | undefined;
@@ -56,7 +76,7 @@ export function createPortfolioCoordinator({
   ) {
     for (let attempt = 0; attempt < 16; attempt++) {
       const previous = await store.read();
-      if (previous && previous.fingerprint !== fingerprint)
+      if (previous && !acceptsFingerprint(previous.fingerprint))
         throw new Error(
           'Portfolio policy changed under existing state; reconcile the persisted scope before changing configuration',
         );
@@ -169,7 +189,7 @@ export function createPortfolioCoordinator({
   return {
     async context(now: number) {
       const state = (await store.read()) ?? createPortfolioState(fingerprint);
-      if (state.fingerprint !== fingerprint)
+      if (!acceptsFingerprint(state.fingerprint))
         throw new Error('Portfolio policy changed under existing state');
       const observation = await execution.observe(now, state.reservations);
       validatePortfolioObservation(observation);
