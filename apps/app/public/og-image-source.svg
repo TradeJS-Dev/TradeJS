@@ -25,10 +25,6 @@
       <stop offset="0" stop-color="#27445F" stop-opacity="0.9" />
       <stop offset="1" stop-color="#1CCAC0" stop-opacity="0.62" />
     </linearGradient>
-    <linearGradient id="glyph" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#28EAD3" />
-      <stop offset="1" stop-color="#1CCAC0" />
-    </linearGradient>
     <linearGradient id="chart" x1="706" y1="430" x2="1110" y2="236" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#20C5BD" stop-opacity="0.22" />
       <stop offset="0.38" stop-color="#20C5BD" stop-opacity="0.95" />
@@ -50,10 +46,9 @@
   </text>
 
   <g transform="translate(96 170)">
-    <rect x="0" y="0" width="84" height="84" rx="22" fill="#0A1624" stroke="#235768" stroke-opacity="0.8" stroke-width="2" />
-    <rect x="0" y="0" width="84" height="84" rx="22" fill="url(#glow-left)" opacity="0.22" />
-    <path d="M24 54L40 38L49 47L67 29" stroke="url(#glyph)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M59 29H67V37" stroke="url(#glyph)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <svg width="84" height="84" viewBox="187 187 880 880">
+      <defs><linearGradient id="mint" gradientUnits="userSpaceOnUse" x1="220" y1="1550" x2="1080" y2="120"><stop offset="0%" stop-color="#C3FFE5"/><stop offset="22%" stop-color="#72F7C9"/><stop offset="32%" stop-color="#58E9C0"/><stop offset="32%" stop-color="#29D2AE"/><stop offset="50%" stop-color="#26CDBF"/><stop offset="69%" stop-color="#1CAFC3"/><stop offset="69%" stop-color="#228CBE"/><stop offset="100%" stop-color="#3578B3"/></linearGradient><linearGradient id="iris" gradientUnits="userSpaceOnUse" x1="280" y1="1500" x2="1120" y2="40"><stop offset="0%" stop-color="#A1F3FF"/><stop offset="26%" stop-color="#72D4FF"/><stop offset="37%" stop-color="#5EBBFF"/><stop offset="37%" stop-color="#619AFB"/><stop offset="60%" stop-color="#747FEF"/><stop offset="73%" stop-color="#9180F8"/><stop offset="73%" stop-color="#AB8CFF"/><stop offset="92%" stop-color="#B48AF2"/><stop offset="100%" stop-color="#C998EF"/></linearGradient></defs><rect width="1254" height="1254" fill="#070D14"/><g transform="translate(-77.07213763747791 -13.571431181260778)"><g transform="translate(358.0271376374779 907.1564311812608) scale(0.37 -0.37)"><path fill="url(#mint)" d="M479 0V1218H44V1466H1209V1218H775V0Z"/><path fill="none" stroke="#070D14" stroke-width="155" d="M407 235.2L665 564L854 400.2"/></g><g transform="translate(673.8271376374779 907.1564311812608) scale(0.37 -0.37)"><path fill="url(#iris)" d="M678 1466H973V538Q973 356 941 258Q898 130 785.0 52.5Q672 -25 487 -25Q270 -25 153.0 96.5Q36 218 35 453L314 485Q319 359 351 307Q399 228 497 228Q596 228 637.0 284.5Q678 341 678 519Z"/><path fill="none" stroke="#070D14" stroke-width="155" d="M607 1115L822 890L1032 1080"/></g></g>
+    </svg>
   </g>
 
   <text x="96" y="320" fill="#EEF6FF" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="700" letter-spacing="-4">
