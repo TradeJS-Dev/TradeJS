@@ -1,8 +1,19 @@
 import type { Connector, PortfolioStrategyEntry } from '@tradejs/types';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
+import { runPortfolioLiveCycle } from '../lib/signals/portfolioLiveCycle';
 import {
+  loadPortfolioLiveMarket,
   loadPortfolioShadowMarket,
   withoutShadowOrders,
 } from '../lib/signals/portfolioShadowMarket';
+
+jest.mock('@tradejs/node/strategies', () => {
+  const actual = jest.requireActual('@tradejs/node/strategies');
+  return {
+    ...actual,
+    createStrategyRuntime: jest.fn(actual.createStrategyRuntime),
+  };
+});
 
 const step = 900_000;
 const boundary = Date.UTC(2025, 0, 1);
@@ -39,8 +50,7 @@ const connector = (): Connector => ({
   setStopLoss: jest.fn(async () => true),
 });
 
-it('only evaluates the child intervals that closed at the boundary', async () => {
-  const observed: [string, number][] = [];
+function portfolioEntry(observed: [string, number][]): PortfolioStrategyEntry {
   const makeChild = (interval: string) => {
     const config = { INTERVAL: interval, UNIVERSE: 'crypto' as const };
     return {
@@ -64,7 +74,7 @@ it('only evaluates the child intervals that closed at the boundary', async () =>
       config,
     };
   };
-  const entry: PortfolioStrategyEntry = {
+  return {
     kind: 'portfolio',
     manifest: { name: 'Probe' },
     defaults: {},
@@ -74,9 +84,13 @@ it('only evaluates the child intervals that closed at the boundary', async () =>
     selectEntries: () => ({ ranked: [], pending: [] }),
     confirmEntry: () => null,
   };
+}
+
+it('only evaluates the child intervals that closed at the boundary', async () => {
+  const observed: [string, number][] = [];
   const marketConnector = connector();
   const snapshot = await loadPortfolioShadowMarket({
-    entry,
+    entry: portfolioEntry(observed),
     config: {},
     symbols: ['SOLUSDT'],
     closedAt: boundary,
@@ -92,6 +106,70 @@ it('only evaluates the child intervals that closed at the boundary', async () =>
   expect(snapshot.market.candle('SOLUSDT', 0)?.timestamp).toBe(boundary - step);
   expect(snapshot.openingPrice('SOLUSDT')).toBe(100);
 });
+
+it.each(['stale', 'empty'])(
+  'completes the live cycle when one ticker has %s candles',
+  async (availability) => {
+    const evaluated = jest.fn();
+    const reconcilePortfolio = jest.fn(async () => {});
+    const create = jest.fn(async ({ symbol }: { symbol: string }) =>
+      Object.assign(async () => evaluated(symbol), { reconcilePortfolio }),
+    );
+    jest
+      .mocked(createStrategyRuntime)
+      .mockImplementationOnce(() => create as never);
+    jest
+      .mocked(createStrategyRuntime)
+      .mockImplementationOnce(() => create as never);
+    const entry = portfolioEntry([]);
+    const marketConnector = connector();
+    const getCandles = marketConnector.kline;
+    marketConnector.kline = async (request) => {
+      const candles = await getCandles(request);
+      if (request.symbol !== 'STORJUSDT') return candles;
+      return availability === 'empty' ? [] : candles.slice(0, 1);
+    };
+
+    const outcome = await runPortfolioLiveCycle({
+      closedAt: boundary,
+      config: {},
+      entry,
+      store: { read: async () => null, compare: async () => true },
+      load: (pending) =>
+        loadPortfolioLiveMarket(
+          {
+            entry,
+            config: {},
+            closedAt: boundary,
+            symbols: ['STORJUSDT', 'SOLUSDT'],
+            marketConnector,
+            connectorName: 'ByBit',
+            userName: 'live-test',
+            cacheOnly: false,
+          },
+          {
+            accountId: 'test',
+            deploymentId: 'test',
+            entriesPaused: false,
+            concurrency: 2,
+            pending,
+            lineage: {
+              schemaVersion: 3,
+              strategyRevision: 'sr1:1111111111111111',
+              deploymentCompositionId: 'dc1:1111111111111111',
+              strategyPackageVersion: '3.0.0',
+              strategyDependencyVersions: {},
+              runtimePackageVersion: '3.0.0',
+            },
+          },
+        ),
+    });
+
+    expect(outcome).toEqual({ closedAt: boundary, candidates: 0, pending: 0 });
+    expect(evaluated.mock.calls).toEqual([['SOLUSDT'], ['SOLUSDT']]);
+    expect(reconcilePortfolio).toHaveBeenCalledTimes(1);
+  },
+);
 
 it('blocks connector writes in shadow while keeping market reads available', async () => {
   const source = connector();

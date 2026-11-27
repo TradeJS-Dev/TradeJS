@@ -3,6 +3,7 @@ import {
   withReplayStrategyManifests,
 } from '@tradejs/node/strategies';
 import { runWithConcurrency } from '@tradejs/core/async';
+import { logger } from '@tradejs/infra/logger';
 import type {
   Connector,
   Interval,
@@ -114,11 +115,14 @@ async function loadPortfolioMarket(
   ]);
   const tables = new Map<Interval, Map<string, KlineChartData>>();
   const lookups = new Map<string, Map<number, KlineChartData[number]>>();
+  const marketSymbols = [...new Set([...symbols, 'BTCUSDT', 'ETHUSDT'])];
   for (const interval of intervals) {
     const table = new Map<string, KlineChartData>();
     tables.set(interval, table);
+    const duration = Number(interval) * 60_000;
+    const required = Math.floor(closedAt / duration) * duration - duration;
     await runWithConcurrency(
-      [...new Set([...symbols, 'BTCUSDT', 'ETHUSDT'])],
+      marketSymbols,
       live?.concurrency ?? 1,
       async (symbol) => {
         const candles = await marketConnector.kline({
@@ -129,21 +133,33 @@ async function loadPortfolioMarket(
           cacheOnly,
           silent: true,
         });
-        table.set(symbol, candles);
         if (interval === '15')
           lookups.set(
             symbol,
             new Map(candles.map((candle) => [candle.timestamp, candle])),
           );
-        const duration = Number(interval) * 60_000;
-        const required = Math.floor(closedAt / duration) * duration - duration;
         if (!candles.some((candle) => candle.timestamp === required)) {
-          throw new Error(
-            `Missing closed ${interval}m candle for ${symbol} at ${closedAt}`,
-          );
+          if (!live || symbol === 'BTCUSDT' || symbol === 'ETHUSDT') {
+            throw new Error(
+              `Missing closed ${interval}m candle for ${symbol} at ${closedAt}`,
+            );
+          }
+          return;
         }
+        table.set(symbol, candles);
       },
     );
+    const missing = marketSymbols.filter((symbol) => !table.has(symbol));
+    if (missing.length) {
+      logger.warn(
+        'Portfolio %s skipped %d symbols without a closed %sm candle at %s: %s',
+        live?.deploymentId,
+        missing.length,
+        interval,
+        closedAt,
+        missing.join(', '),
+      );
+    }
   }
   const candidates: Array<PortfolioShadowMarket['candidates'][number]> = [];
   const offers: LivePortfolioOffer[] = [];
@@ -202,6 +218,8 @@ async function loadPortfolioMarket(
         [...symbols],
         live?.concurrency ?? 1,
         async (symbol) => {
+          const candles = table.get(symbol);
+          if (!candles || !tables.get('15')!.has(symbol)) return;
           const strategy = definition.manifest.name;
           const shouldEvaluate = closedAt % duration === 0;
           if (
@@ -214,7 +232,7 @@ async function loadPortfolioMarket(
             return;
           const { alignedCoinCandles, alignedBtcCandles } =
             alignSymbolWithBtcReference(
-              table.get(symbol)!.filter((candle) => candle.timestamp <= lastAt),
+              candles.filter((candle) => candle.timestamp <= lastAt),
               btc,
             );
           const candle = alignedCoinCandles.at(-1);
@@ -347,7 +365,8 @@ async function loadPortfolioMarket(
     live: {
       offers,
       market,
-      async openingPrice({ symbol, direction }) {
+      async openingPrice({ strategy, symbol, direction }) {
+        if (!childrenBySymbol.has(runtimeKey(strategy, symbol))) return;
         const quote = await marketConnector.getTopOfBookTicker?.(symbol);
         const time = Date.now();
         if (
