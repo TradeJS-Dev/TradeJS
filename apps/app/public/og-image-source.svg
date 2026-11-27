@@ -6,81 +6,109 @@
   fill="none"
 >
   <defs>
-    <linearGradient id="bg" x1="104" y1="44" x2="1090" y2="648" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0C1728" />
-      <stop offset="0.46" stop-color="#0A1320" />
+    <linearGradient id="bg" x1="64" y1="38" x2="1134" y2="610" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0D1929" />
+      <stop offset="0.52" stop-color="#091321" />
       <stop offset="1" stop-color="#07101A" />
     </linearGradient>
-    <radialGradient id="glow-left" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(168 58) rotate(56.115) scale(498.404 523.217)">
-      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.23" />
-      <stop offset="0.48" stop-color="#20C5BD" stop-opacity="0.08" />
+    <radialGradient id="glow-left" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(84 72) rotate(49) scale(480 520)">
+      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.22" />
+      <stop offset="0.52" stop-color="#20C5BD" stop-opacity="0.06" />
       <stop offset="1" stop-color="#20C5BD" stop-opacity="0" />
     </radialGradient>
-    <radialGradient id="glow-right" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1086 30) rotate(112.105) scale(468.802 625.774)">
-      <stop offset="0" stop-color="#4CA9FF" stop-opacity="0.17" />
-      <stop offset="0.44" stop-color="#4CA9FF" stop-opacity="0.06" />
+    <radialGradient id="glow-right" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1100 92) rotate(126) scale(430 560)">
+      <stop offset="0" stop-color="#4CA9FF" stop-opacity="0.16" />
+      <stop offset="0.48" stop-color="#4CA9FF" stop-opacity="0.05" />
       <stop offset="1" stop-color="#4CA9FF" stop-opacity="0" />
     </radialGradient>
-    <linearGradient id="frame" x1="160" y1="86" x2="1084" y2="544" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#27445F" stop-opacity="0.9" />
-      <stop offset="1" stop-color="#1CCAC0" stop-opacity="0.62" />
+    <linearGradient id="frame" x1="74" y1="74" x2="1122" y2="554" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2B4A66" stop-opacity="0.82" />
+      <stop offset="1" stop-color="#20C5BD" stop-opacity="0.58" />
     </linearGradient>
-    <linearGradient id="chart" x1="706" y1="430" x2="1110" y2="236" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.22" />
-      <stop offset="0.38" stop-color="#20C5BD" stop-opacity="0.95" />
-      <stop offset="1" stop-color="#7CE8E2" stop-opacity="0.95" />
+    <linearGradient id="chart-line" x1="716" y1="348" x2="1051" y2="199" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#168F91" />
+      <stop offset="0.46" stop-color="#20C5BD" />
+      <stop offset="1" stop-color="#7CE8E2" />
+    </linearGradient>
+    <linearGradient id="chart-area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.19" />
+      <stop offset="1" stop-color="#20C5BD" stop-opacity="0" />
     </linearGradient>
     <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
-      <path d="M36 0H0V36" stroke="#203347" stroke-opacity="0.32" />
+      <path d="M36 0H0V36" stroke="#203347" stroke-opacity="0.28" />
     </pattern>
   </defs>
 
   <rect width="1200" height="630" fill="url(#bg)" />
   <rect width="1200" height="630" fill="url(#glow-left)" />
   <rect width="1200" height="630" fill="url(#glow-right)" />
-  <rect width="1200" height="630" fill="url(#grid)" opacity="0.62" />
-  <rect x="64" y="64" width="1072" height="502" rx="34" fill="#0E1726" fill-opacity="0.55" stroke="url(#frame)" />
-  <rect x="96" y="96" width="148" height="38" rx="19" fill="#112233" stroke="#27445F" />
-  <text x="129" y="121" fill="#9EEDE8" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="2.3">
-    APP UI
+  <rect width="1200" height="630" fill="url(#grid)" opacity="0.58" />
+
+  <rect x="64" y="64" width="1072" height="502" rx="34" fill="#0B1523" fill-opacity="0.68" stroke="url(#frame)" />
+
+  <rect x="96" y="96" width="240" height="38" rx="19" fill="#102132" stroke="#294A63" />
+  <circle cx="119" cy="115" r="5" fill="#20C5BD" />
+  <text x="135" y="121" fill="#A7EDEA" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="2.1">
+    TRADING WORKSPACE
   </text>
 
-  <g transform="translate(96 170)">
-    <svg width="84" height="84" viewBox="187 187 880 880">
+  <g transform="translate(96 183)">
+    <svg width="76" height="76" viewBox="187 187 880 880">
       <defs><linearGradient id="mint" gradientUnits="userSpaceOnUse" x1="220" y1="1550" x2="1080" y2="120"><stop offset="0%" stop-color="#C3FFE5"/><stop offset="22%" stop-color="#72F7C9"/><stop offset="32%" stop-color="#58E9C0"/><stop offset="32%" stop-color="#29D2AE"/><stop offset="50%" stop-color="#26CDBF"/><stop offset="69%" stop-color="#1CAFC3"/><stop offset="69%" stop-color="#228CBE"/><stop offset="100%" stop-color="#3578B3"/></linearGradient><linearGradient id="iris" gradientUnits="userSpaceOnUse" x1="280" y1="1500" x2="1120" y2="40"><stop offset="0%" stop-color="#A1F3FF"/><stop offset="26%" stop-color="#72D4FF"/><stop offset="37%" stop-color="#5EBBFF"/><stop offset="37%" stop-color="#619AFB"/><stop offset="60%" stop-color="#747FEF"/><stop offset="73%" stop-color="#9180F8"/><stop offset="73%" stop-color="#AB8CFF"/><stop offset="92%" stop-color="#B48AF2"/><stop offset="100%" stop-color="#C998EF"/></linearGradient><mask id="tj-cut-0" maskUnits="userSpaceOnUse" x="0" y="-100" width="1300" height="1700"><rect x="0" y="-100" width="1300" height="1700" fill="white"/><path fill="none" stroke="black" stroke-width="155" d="M407 235.2L665 564L854 400.2"/></mask><mask id="tj-cut-1" maskUnits="userSpaceOnUse" x="0" y="-100" width="1300" height="1700"><rect x="0" y="-100" width="1300" height="1700" fill="white"/><path fill="none" stroke="black" stroke-width="155" d="M607 1115L822 890L1032 1080"/></mask></defs><g transform="translate(-77.07213763747791 -13.571431181260778)"><g transform="translate(358.0271376374779 907.1564311812608) scale(0.37 -0.37)"><path fill="url(#mint)" d="M479 0V1218H44V1466H1209V1218H775V0Z" mask="url(#tj-cut-0)"/></g><g transform="translate(673.8271376374779 907.1564311812608) scale(0.37 -0.37)"><path fill="url(#iris)" d="M678 1466H973V538Q973 356 941 258Q898 130 785.0 52.5Q672 -25 487 -25Q270 -25 153.0 96.5Q36 218 35 453L314 485Q319 359 351 307Q399 228 497 228Q596 228 637.0 284.5Q678 341 678 519Z" mask="url(#tj-cut-1)"/></g></g>
     </svg>
   </g>
 
-  <text x="96" y="320" fill="#EEF6FF" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="700" letter-spacing="-4">
-    Trade
-  </text>
-  <text x="442" y="320" fill="#20C5BD" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="700" letter-spacing="-4">
-    JS
+  <text x="196" y="257" font-family="Arial, Helvetica, sans-serif" font-size="98" font-weight="700" letter-spacing="-4">
+    <tspan fill="#EEF6FF">Trade</tspan><tspan fill="#20C5BD">JS</tspan>
   </text>
 
-  <text x="96" y="382" fill="#EEF6FF" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="700" letter-spacing="-1.2">
-    App
+  <text x="96" y="346" fill="#B7C9DB" font-family="Arial, Helvetica, sans-serif" font-size="29" font-weight="400">
+    Charts, backtests, and market data.
   </text>
-  <text x="96" y="436" fill="#A8BED5" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="400">
-    Dashboards, backtests, charts, derivatives, and runtime data in one UI.
+  <text x="96" y="388" fill="#B7C9DB" font-family="Arial, Helvetica, sans-serif" font-size="29" font-weight="400">
+    Monitor strategies and live signals.
   </text>
 
-  <rect x="96" y="474" width="188" height="46" rx="23" fill="#102133" stroke="#28516B" />
-  <text x="128" y="504" fill="#DAF6F4" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="0.4">
+  <rect x="96" y="448" width="336" height="60" rx="16" fill="#09131F" stroke="#2A5068" />
+  <circle cx="123" cy="478" r="6" fill="#20C5BD" />
+  <text x="143" y="486" fill="#DDF6F4" font-family="Courier New, monospace" font-size="22" font-weight="700">
     @tradejs/app
   </text>
 
-  <rect x="686" y="162" width="392" height="250" rx="28" fill="#101B2A" fill-opacity="0.72" stroke="#1F364C" />
-  <path d="M728 346L806 288L880 318L970 246L1048 198" stroke="url(#chart)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M1048 198H1090V240" stroke="url(#chart)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="806" cy="288" r="10" fill="#20C5BD" />
-  <circle cx="970" cy="246" r="10" fill="#20C5BD" />
-  <circle cx="1048" cy="198" r="11" fill="#7CE8E2" />
-  <rect x="730" y="370" width="120" height="14" rx="7" fill="#173046" />
-  <rect x="730" y="404" width="208" height="14" rx="7" fill="#12283C" />
-  <rect x="730" y="438" width="178" height="14" rx="7" fill="#12283C" />
+  <rect x="676" y="126" width="420" height="378" rx="28" fill="#0D1827" fill-opacity="0.92" stroke="#244057" />
+  <text x="706" y="163" fill="#93A7BD" font-family="Courier New, monospace" font-size="13" font-weight="700" letter-spacing="1.8">
+    BACKTEST / EQUITY
+  </text>
+  <rect x="1006" y="143" width="60" height="27" rx="13.5" fill="#12302F" stroke="#24655F" />
+  <circle cx="1023" cy="156.5" r="4" fill="#20C5BD" />
+  <text x="1034" y="161" fill="#8FE9E3" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700">
+    LIVE
+  </text>
 
-  <text x="96" y="560" fill="#7F93AC" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" letter-spacing="1.2">
-    NEXT.JS UI PACKAGE FOR TRADEJS WORKFLOWS
+  <path d="M706 205H1066M706 252H1066M706 299H1066M706 346H1066" stroke="#263B4F" stroke-opacity="0.55" />
+  <path d="M754 190V357M832 190V357M910 190V357M988 190V357" stroke="#203447" stroke-opacity="0.4" />
+  <path d="M706 346L770 318L830 330L892 282L948 297L1010 240L1052 204V356H706Z" fill="url(#chart-area)" />
+  <path d="M706 346L770 318L830 330L892 282L948 297L1010 240L1052 204" stroke="url(#chart-line)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="770" cy="318" r="8" fill="#20C5BD" />
+  <circle cx="892" cy="282" r="8" fill="#20C5BD" />
+  <circle cx="1010" cy="240" r="8" fill="#20C5BD" />
+  <circle cx="1052" cy="204" r="11" fill="#7CE8E2" />
+
+  <rect x="706" y="383" width="360" height="1" fill="#263C50" />
+  <circle cx="716" cy="416" r="5" fill="#20C5BD" />
+  <text x="730" y="421" fill="#9FB2C6" font-family="Courier New, monospace" font-size="13" font-weight="700" letter-spacing="1">
+    DATA
+  </text>
+  <circle cx="831" cy="416" r="5" fill="#20C5BD" />
+  <text x="845" y="421" fill="#9FB2C6" font-family="Courier New, monospace" font-size="13" font-weight="700" letter-spacing="1">
+    STRATEGY
+  </text>
+  <circle cx="991" cy="416" r="5" fill="#20C5BD" />
+  <text x="1005" y="421" fill="#9FB2C6" font-family="Courier New, monospace" font-size="13" font-weight="700" letter-spacing="1">
+    RUNTIME
+  </text>
+
+  <text x="706" y="466" fill="#5F7890" font-family="Courier New, monospace" font-size="12" font-weight="700" letter-spacing="1.4">
+    DETERMINISTIC / REPLAYABLE / SELF-HOSTED
   </text>
 </svg>
