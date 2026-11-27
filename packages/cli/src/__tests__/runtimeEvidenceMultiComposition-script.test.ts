@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { RuntimeEvidenceDeploymentSnapshot } from '../lib/runtimeEvidenceDeployment';
 
 const currentLineage = {
   schemaVersion: 3 as const,
@@ -32,7 +33,7 @@ const deployment = ({
   revision: string;
   strategyVersion: string;
   runtimeVersion: string;
-}) => ({
+}): RuntimeEvidenceDeploymentSnapshot => ({
   schemaVersion: 2 as const,
   id: 'production',
   deploymentCompositionId: composition,
@@ -62,6 +63,12 @@ const deployment = ({
 
 describe('runtime evidence with production composition changes', () => {
   it.each([
+    {
+      name: 'reads verified snapshots from shared history while publishing isolated output',
+      separateEvidenceDir: true,
+      delistings: new Map<string, number>(),
+      expected: [{}, {}],
+    },
     {
       name: 'keeps confirmed delistings in each composition universe',
       delistings: new Map([
@@ -110,6 +117,9 @@ describe('runtime evidence with production composition changes', () => {
         path.join(os.tmpdir(), 'runtime-evidence-multi-composition-'),
       );
       const publishRoot = path.join(projectRoot, 'published');
+      const evidenceRoot = scenario.separateEvidenceDir
+        ? path.join(projectRoot, 'shared-history')
+        : publishRoot;
       const outPath = path.join(projectRoot, 'runtime-evidence.json');
       const currentDeployment = deployment({
         composition: currentLineage.deploymentCompositionId,
@@ -128,20 +138,20 @@ describe('runtime evidence with production composition changes', () => {
         tickers: ['BTCUSDT'],
       };
       const currentProducer = {
-        schemaVersion: 1,
+        schemaVersion: 1 as const,
         projectSha: '2'.repeat(40),
         imageDigest: `sha256:${'2'.repeat(64)}`,
         runtimePackageManifest: {
-          file: 'runtime-package-manifest.json',
+          file: 'runtime-package-manifest.json' as const,
           sha256: '2'.repeat(64),
         },
       };
       const previousProducer = {
-        schemaVersion: 1,
+        schemaVersion: 1 as const,
         projectSha: '1'.repeat(40),
         imageDigest: `sha256:${'1'.repeat(64)}`,
         runtimePackageManifest: {
-          file: 'runtime-package-manifest.json',
+          file: 'runtime-package-manifest.json' as const,
           sha256: '1'.repeat(64),
         },
       };
@@ -162,6 +172,9 @@ describe('runtime evidence with production composition changes', () => {
             endTime: 400,
             deployment: 'production',
             publishDir: publishRoot,
+            ...(scenario.separateEvidenceDir
+              ? { evidenceDir: evidenceRoot }
+              : {}),
             out: outPath,
           })),
         },
@@ -246,10 +259,11 @@ describe('runtime evidence with production composition changes', () => {
       });
       jest.doMock('../lib/runtimeEvidenceArtifacts', () => ({
         publishRuntimeEvidenceBundle,
-        discoverRuntimeEvidenceBundles: jest.fn(async () => [
-          '/verified/legacy',
-          '/verified/previous',
-        ]),
+        discoverRuntimeEvidenceBundles: jest.fn(async () =>
+          scenario.separateEvidenceDir
+            ? []
+            : ['/verified/legacy', '/verified/previous'],
+        ),
         verifyRuntimeEvidenceBundle: jest.fn(async (bundleDir: string) => ({
           artifact: {
             reportType: 'runtime-evidence',
@@ -268,6 +282,17 @@ describe('runtime evidence with production composition changes', () => {
       }));
 
       try {
+        if (scenario.separateEvidenceDir) {
+          const { publishRuntimeEvidenceCompositionSnapshot } = await import(
+            '../lib/runtimeEvidenceCompositionSnapshots'
+          );
+          await publishRuntimeEvidenceCompositionSnapshot({
+            evidenceRoot,
+            userName: 'root',
+            deployment: previousDeployment,
+            producer: previousProducer,
+          });
+        }
         const { runtimeEvidence } = await import('../scripts/runtimeEvidence');
         if (expected === null) {
           await expect(runtimeEvidence()).rejects.toThrow(
@@ -280,6 +305,11 @@ describe('runtime evidence with production composition changes', () => {
         await runtimeEvidence();
 
         expect(publishRuntimeEvidenceBundle).toHaveBeenCalledTimes(2);
+        expect(
+          publishRuntimeEvidenceBundle.mock.calls.every(
+            ([call]) => call.publishRoot === publishRoot,
+          ),
+        ).toBe(true);
         expect(
           publishRuntimeEvidenceBundle.mock.calls.map(
             ([call]) => call.artifact.deployment.deploymentCompositionId,

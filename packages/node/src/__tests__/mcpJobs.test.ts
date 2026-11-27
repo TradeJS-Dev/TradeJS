@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import path from 'node:path';
 import {
   enqueueMcpJob,
   cancelMcpJob,
@@ -6,6 +7,7 @@ import {
   publicMcpJob,
   readMcpJobLogs,
   mcpJobStorageId,
+  mcpJobDirectory,
 } from '../mcpJobs';
 import type { McpJob, McpPrincipal } from '@tradejs/types';
 const mockStore = new Map<string, unknown>();
@@ -93,6 +95,42 @@ test('a queued request freezes the grid and reuses idempotency without creating 
     ),
   ).rejects.toThrow('Idempotency');
 });
+test('evidence capture reads shared history and keeps its output isolated', async () => {
+  const job = await enqueueMcpJob(
+    principal,
+    'runtime-evidence',
+    {
+      deploymentId: 'production',
+      startTime: 1000,
+      endTime: 86401000,
+      evidenceDir: '/untrusted/client/path',
+    },
+    'capture-with-history',
+  );
+  expect(job.args).toEqual([
+    'runtime-evidence',
+    '--user',
+    'alice',
+    '--deployment',
+    'production',
+    '--startTime',
+    '1000',
+    '--endTime',
+    '86401000',
+    '--evidenceDir',
+    path.join(
+      process.env.PROJECT_CWD || process.cwd(),
+      'data',
+      'runtime-evidence',
+    ),
+    '--publishDir',
+    mcpJobDirectory(job),
+    '--out',
+    path.join(mcpJobDirectory(job), 'runtime-evidence.json'),
+  ]);
+  expect(job.args).not.toContain('/untrusted/client/path');
+});
+
 test('replay retry can reuse a job queued before the explicit checksum was stored', async () => {
   mockStore.set('worker:heartbeat', { replayAvailable: true });
   const previous = {

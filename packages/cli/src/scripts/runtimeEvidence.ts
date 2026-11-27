@@ -44,6 +44,10 @@ args.option(
   'Publish an immutable bundle under <dir>/ready/<deployment>',
 );
 args.option(
+  'evidenceDir',
+  'Read verified composition snapshots and bundles from <dir> (defaults to publishDir)',
+);
+args.option(
   'deployment',
   'Deployment id used by immutable evidence bundles',
   process.env.RUNTIME_EVIDENCE_DEPLOYMENT_ID || 'production',
@@ -145,6 +149,7 @@ export const runtimeEvidence = async () => {
   const { startTime, endTime, source } = resolveWindow();
   const deploymentId = String(flags.deployment);
   const publishDir = String(flags.publishDir ?? '').trim();
+  const evidenceDir = String(flags.evidenceDir ?? '').trim() || publishDir;
   const producer = await resolveRuntimeEvidenceProducer({
     projectRoot,
     required: Boolean(publishDir),
@@ -165,7 +170,7 @@ export const runtimeEvidence = async () => {
   const snapshots =
     publishDir && producer
       ? await loadRuntimeEvidenceCompositionSnapshots({
-          publishRoot: path.resolve(projectRoot, publishDir),
+          publishRoot: path.resolve(projectRoot, evidenceDir),
           currentDeployment: deploymentSnapshot,
           currentProducer: producer,
         })

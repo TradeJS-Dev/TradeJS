@@ -161,6 +161,12 @@ export const enqueueMcpJob = async (
       String(request.startTime),
       '--endTime',
       String(request.endTime),
+      '--evidenceDir',
+      path.join(
+        String(process.env.PROJECT_CWD || process.cwd()),
+        'data',
+        'runtime-evidence',
+      ),
       '--publishDir',
       outputDir,
       '--out',
