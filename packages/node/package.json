@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/node",
   "version": "3.1.0+development",
-  "description": "Node-only runtime for the TradeJS TypeScript framework: strategies, backtests, Pine strategy loading, and plugin registries.",
+  "description": "Run TradeJS strategies and backtests in Node.js and connect exchange adapters, indicators, and trade management plugins.",
   "keywords": [
     "tradejs",
     "trading",

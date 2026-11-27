@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/connectors",
   "version": "3.1.0+development",
-  "description": "MIT-licensed exchange connectors and market data providers for the TradeJS framework.",
+  "description": "Market data from Bybit, Binance, Coinbase, and Hyperliquid, plus Bybit order execution for TradeJS.",
   "keywords": [
     "tradejs",
     "trading",

@@ -1,6 +1,10 @@
 # @tradejs/indicators
 
-MIT-licensed indicator plugin package for the TradeJS framework.
+Use built-in indicators on TradeJS charts or in your strategies.
+For example, a moving average smooths recent candles to make the price
+trend easier to see.
+
+[See indicators and setup examples in the TradeJS Marketplace](https://tradejs.dev/marketplace/indicators).
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
@@ -14,9 +18,9 @@ Business Source License 1.1; see the
 
 ## What It Provides
 
-This package contains the built-in indicator catalog used by strategies and charts.
-
-It is intended to be connected as an indicator plugin package through `tradejs.config.ts`.
+Open **Indicators** on a TradeJS chart to see the registered indicators.
+Adding an indicator to the chart leaves the strategy’s trading rules as
+configured. Register indicator packages in `tradejs.config.ts`.
 
 It also exposes strategy-neutral, replay-safe indicator engines through explicit
 subpaths. These modules are libraries and do not register plugin entries by

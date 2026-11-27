@@ -1,6 +1,7 @@
 # @tradejs/node
 
-Node-only runtime package for the TradeJS TypeScript framework.
+Run TradeJS strategies in Node.js, test them on historical data, and
+connect the plugins that supply data and manage trades.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
@@ -51,6 +52,21 @@ export default defineConfig(basePreset);
 - backtest orchestration helpers
 - Pine-backed strategy loading/runtime helpers
 - runtime-side operational helpers used by CLI/app
+
+## Trade management plugins
+
+These plugins add rules that TradeJS can run during execution. Their
+Marketplace pages show how to configure them.
+
+- [Move stop to break-even](https://tradejs.dev/marketplace/break-even)
+  moves the stop toward entry after a position has moved far enough in its
+  favor.
+- [Close on global profit](https://tradejs.dev/marketplace/global-profit)
+  requests closure of open positions when their combined unrealized profit
+  reaches the configured threshold.
+- [Close opposite positions](https://tradejs.dev/marketplace/opposite-positions)
+  can request closure of positions in the opposite direction on other symbols
+  before a new order goes out on the same account.
 
 ## Public Surface
 
