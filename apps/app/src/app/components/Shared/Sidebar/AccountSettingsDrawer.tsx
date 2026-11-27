@@ -38,6 +38,8 @@ import {
 } from '@tradejs/core/aiModels';
 import { toaster } from '#ui';
 import { TradingAccountsPanel } from './TradingAccountsPanel';
+import { useActionConfirmation } from '#shared/ActionConfirmation';
+import { TwoFactorSettings } from './TwoFactorSettings';
 
 type NotificationSettings = {
   signals: boolean;
@@ -265,6 +267,7 @@ const DRAWER_SELECT_STYLE = {
 } as const;
 
 export const AccountSettingsDrawer = () => {
+  const confirmAction = useActionConfirmation();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<SettingsViewState>(EMPTY_SETTINGS);
@@ -529,13 +532,22 @@ export const AccountSettingsDrawer = () => {
                         },
                       };
 
-      const response = await fetch('/api/user/settings', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
+      const response =
+        section === 'notifications'
+          ? await fetch('/api/user/settings', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+          : await confirmAction('/api/user/settings', {
+              title:
+                section === 'password'
+                  ? 'Change password'
+                  : 'Update integration',
+              method: 'PATCH',
+              body,
+            });
+      if (!response) return;
       const payload = (await response.json()) as
         | SettingsResponse
         | SettingsErrorResponse;
@@ -1228,6 +1240,7 @@ export const AccountSettingsDrawer = () => {
                             </Flex>
                           </Stack>
                         </Box>
+                        {open && <TwoFactorSettings />}
                       </Stack>
                     </Tabs.Content>
                   </Box>

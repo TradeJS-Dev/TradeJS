@@ -1,3 +1,4 @@
+const mockRequireActionConfirmation = jest.fn().mockResolvedValue(null);
 const mockGetCurrentUserName = jest.fn();
 const mockGetUserRecord = jest.fn();
 const mockGetUserSettings = jest.fn();
@@ -25,6 +26,11 @@ jest.mock('@tradejs/infra/userSettings', () => ({
 
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
+}));
+
+jest.mock('#app/lib/actionConfirmation', () => ({
+  requireActionConfirmation: (...args: unknown[]) =>
+    mockRequireActionConfirmation(...args),
 }));
 
 import { GET, PATCH } from '../route';
@@ -257,6 +263,23 @@ describe('user settings route', () => {
     expect(privateNetworkResponse.body).toEqual({
       error: 'Invalid AI API endpoint URL',
     });
+    expect(mockUpdateUserRecord).not.toHaveBeenCalled();
+  });
+
+  it('blocks password changes before hashing or writing when confirmation is missing', async () => {
+    mockRequireActionConfirmation.mockResolvedValueOnce({ status: 403 });
+    const response = await PATCH({
+      json: async () => ({
+        section: 'password',
+        data: { password: 'new-password', confirmPassword: 'new-password' },
+      }),
+    } as Request);
+    expect(response.status).toBe(403);
+    expect(mockRequireActionConfirmation).toHaveBeenCalledWith(
+      'alice',
+      undefined,
+    );
+    expect(mockHash).not.toHaveBeenCalled();
     expect(mockUpdateUserRecord).not.toHaveBeenCalled();
   });
 });

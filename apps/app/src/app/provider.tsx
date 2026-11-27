@@ -6,6 +6,7 @@ import { setBacktestCacheSession } from '#app/store/tests';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { AppToaster, ColorModeProvider } from '#ui';
 import { appTheme } from './theme';
+import { ActionConfirmationProvider } from '#shared/ActionConfirmation';
 
 function SessionCacheBoundary({ children }: { children: React.ReactNode }) {
   const { data, status } = useSession();
@@ -24,7 +25,11 @@ function SessionCacheBoundary({ children }: { children: React.ReactNode }) {
     };
   }, [identity]);
   if (status === 'loading' || ready !== identity) return null;
-  return <>{children}</>;
+  return (
+    <ActionConfirmationProvider key={identity ?? 'anonymous'}>
+      {children}
+    </ActionConfirmationProvider>
+  );
 }
 
 export default function Provider({

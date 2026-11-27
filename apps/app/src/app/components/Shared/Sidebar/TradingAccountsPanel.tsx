@@ -1,5 +1,6 @@
 'use client';
 
+import { useActionConfirmation } from '#shared/ActionConfirmation';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
@@ -123,6 +124,7 @@ const AccountCredentialField = ({
 );
 
 export const TradingAccountsPanel = () => {
+  const confirmAction = useActionConfirmation();
   const [accounts, setAccounts] = useState<PublicTradingAccount[]>([]);
   const [saving, setSaving] = useState<'account' | 'default' | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState('');
@@ -167,10 +169,10 @@ export const TradingAccountsPanel = () => {
         (accounts.some((account) => account.id === generatedId)
           ? `${generatedId}-${Date.now().toString(36)}`
           : generatedId);
-      const response = await fetch('/api/user/trading-accounts', {
+      const response = await confirmAction('/api/user/trading-accounts', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        title: 'Save trading account',
+        body: {
           ...accountDraft,
           id,
           provider: 'bybit',
@@ -180,8 +182,9 @@ export const TradingAccountsPanel = () => {
           isDefault:
             accounts.length === 0 ||
             accounts.find((account) => account.id === id)?.isDefault === true,
-        }),
+        },
       });
+      if (!response) return;
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Save failed');
       setAccountDraft({
@@ -228,10 +231,10 @@ export const TradingAccountsPanel = () => {
     setSaving('default');
     setSettingDefaultId(account.id);
     try {
-      const response = await fetch('/api/user/trading-accounts', {
+      const response = await confirmAction('/api/user/trading-accounts', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        title: 'Change default trading account',
+        body: {
           id: account.id,
           label: account.label,
           provider: account.provider,
@@ -239,8 +242,9 @@ export const TradingAccountsPanel = () => {
           universes: account.universes,
           environment: account.environment,
           isDefault: true,
-        }),
+        },
       });
+      if (!response) return;
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Save failed');
       await load();

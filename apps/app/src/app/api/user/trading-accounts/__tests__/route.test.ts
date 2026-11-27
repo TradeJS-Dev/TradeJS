@@ -1,3 +1,4 @@
+const mockRequireActionConfirmation = jest.fn().mockResolvedValue(null);
 const mockGetCurrentUserName = jest.fn();
 const mockGetTradingAccount = jest.fn();
 const mockListTradingAccounts = jest.fn();
@@ -28,6 +29,11 @@ jest.mock('@tradejs/infra/tradingAccounts', () => ({
 
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
+}));
+
+jest.mock('#app/lib/actionConfirmation', () => ({
+  requireActionConfirmation: (...args: unknown[]) =>
+    mockRequireActionConfirmation(...args),
 }));
 
 import { GET, POST } from '../route';
@@ -174,5 +180,21 @@ describe('trading accounts route', () => {
     );
     expect(response.body.account).not.toHaveProperty('apiKey');
     expect(response.body.account).not.toHaveProperty('apiSecret');
+  });
+
+  it('blocks saving an account without confirmation', async () => {
+    mockRequireActionConfirmation.mockResolvedValueOnce({ status: 403 });
+    const response = await POST(
+      request({
+        id: 'account',
+        label: 'Account',
+        provider: 'bybit',
+        universes: ['crypto'],
+        apiKey: 'fixture-key',
+        apiSecret: 'fixture-secret',
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(mockSaveTradingAccount).not.toHaveBeenCalled();
   });
 });

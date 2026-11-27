@@ -1,6 +1,12 @@
 'use client';
 
 import { safeCallbackUrl } from '#app/lib/safeCallbackUrl';
+import {
+  TWO_FACTOR_REQUIRED,
+  TWO_FACTOR_INVALID,
+  TWO_FACTOR_RATE_LIMITED,
+} from '#app/lib/twoFactorCodes';
+import { AuthenticatorCodeField } from '#shared/AuthenticatorCodeField';
 import { PageHeader } from '#shared/PageLayout';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -15,6 +21,12 @@ const SigninContent = () => {
   const { status } = useSession();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [digits, setDigits] = useState<string[]>([]);
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const code = recoveryCode ?? digits.join('');
+  const codeComplete =
+    recoveryCode === null ? code.length === 6 : Boolean(recoveryCode.trim());
+  const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,28 +56,51 @@ const SigninContent = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmitting) return;
     setError('');
     if (!username.trim() || !password) {
       setError('Please enter username and password');
       return;
     }
+    if (needsCode && !codeComplete) return;
     setIsSubmitting(true);
 
-    const result = await signIn('credentials', {
-      redirect: false,
-      username,
-      password,
-      callbackUrl,
-    });
+    try {
+      const result = await signIn('credentials', {
+        redirect: false,
+        username,
+        password,
+        code: needsCode ? code : '',
+        callbackUrl,
+      });
 
-    setIsSubmitting(false);
+      if (result?.code === TWO_FACTOR_REQUIRED) {
+        setNeedsCode(true);
+        return;
+      }
+      if (result?.code === TWO_FACTOR_INVALID) {
+        setError('Invalid or already used code');
+        return;
+      }
+      if (result?.code === TWO_FACTOR_RATE_LIMITED) {
+        setError('Too many attempts. Try again in five minutes.');
+        return;
+      }
+      if (result?.error === 'CredentialsSignin') {
+        setError('Invalid username or password');
+        return;
+      }
+      if (!result?.ok || result.error) {
+        setError('Sign-in is temporarily unavailable. Try again.');
+        return;
+      }
 
-    if (!result || result.error) {
-      setError('Invalid username or password');
-      return;
+      router.replace(callbackUrl);
+    } catch {
+      setError('Sign-in is temporarily unavailable. Try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    router.replace(callbackUrl);
   };
 
   return (
@@ -97,7 +132,13 @@ const SigninContent = () => {
                 <Field.Label>Username</Field.Label>
                 <Input
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
+                  disabled={isSubmitting}
+                  onChange={(event) => {
+                    setUsername(event.target.value);
+                    setNeedsCode(false);
+                    setDigits([]);
+                    setRecoveryCode(null);
+                  }}
                   autoComplete="username"
                   placeholder="Username"
                 />
@@ -107,12 +148,27 @@ const SigninContent = () => {
                 <Field.Label>Password</Field.Label>
                 <Input
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={isSubmitting}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setNeedsCode(false);
+                    setDigits([]);
+                    setRecoveryCode(null);
+                  }}
                   type="password"
                   autoComplete="current-password"
                   placeholder="Password"
                 />
               </Field.Root>
+              {needsCode && (
+                <AuthenticatorCodeField
+                  value={digits}
+                  onChange={setDigits}
+                  recovery={{ value: recoveryCode, onChange: setRecoveryCode }}
+                  autoFocus
+                  disabled={isSubmitting}
+                />
+              )}
             </Stack>
 
             {error ? (
@@ -124,7 +180,7 @@ const SigninContent = () => {
             <Button
               type="submit"
               loading={isSubmitting}
-              disabled={!username || !password}
+              disabled={!username || !password || (needsCode && !codeComplete)}
               colorPalette="teal"
             >
               Sign in

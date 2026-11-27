@@ -6,6 +6,7 @@ import {
 } from '@tradejs/infra/tradingAccounts';
 import { isMarketUniverse, type TradingAccountRef } from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { requireActionConfirmation } from '#app/lib/actionConfirmation';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,9 @@ export const POST = async (request: NextRequest) => {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const body = (await request.json()) as Partial<TradingAccountRef>;
+    const body = (await request.json()) as Partial<TradingAccountRef> & {
+      confirmation?: unknown;
+    };
     const id = String(body.id ?? '').trim();
     const label = String(body.label ?? '').trim();
     const provider = String(body.provider ?? '')
@@ -70,6 +73,11 @@ export const POST = async (request: NextRequest) => {
         { status: 400 },
       );
     }
+    const failure = await requireActionConfirmation(
+      userName,
+      body.confirmation,
+    );
+    if (failure) return failure;
     const account = await saveTradingAccount(userName, {
       ...existing,
       id,

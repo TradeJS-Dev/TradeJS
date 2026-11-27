@@ -186,6 +186,45 @@ export const mcpStorage = {
   },
 };
 
+/** Persistent second factors are independent of editable account settings. */
+export const twoFactorStorage = {
+  async read(user: string): Promise<string | null> {
+    return (await requireReadyRedis()).get(`tradejs:auth:2fa:v1:${user}`);
+  },
+  async replace(user: string, previous: string | null, next: string | null) {
+    const redis = await requireReadyRedis();
+    const key = `tradejs:auth:2fa:v1:${user}`;
+    if (previous === null) {
+      if (next === null) return false;
+      return (await redis.set(key, next, 'NX')) === 'OK';
+    }
+    const result = await redis.eval(
+      "if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end; if ARGV[2]=='delete' then return redis.call('DEL',KEYS[1]) end; redis.call('SET',KEYS[1],ARGV[3]); return 1",
+      1,
+      key,
+      previous,
+      next === null ? 'delete' : 'replace',
+      next ?? '',
+    );
+    return result === 1;
+  },
+  async allowAttempt(user: string, method: 'code' | 'password' = 'code') {
+    const prefix =
+      method === 'password'
+        ? 'tradejs:auth:password:rate:v1:'
+        : 'tradejs:auth:2fa:rate:v1:';
+    const result = await (
+      await requireReadyRedis()
+    ).eval(
+      "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n",
+      1,
+      prefix + user,
+      300,
+    );
+    return Number(result) <= 10;
+  },
+};
+
 /** Durable entry safety claims have no expiry. Only their owner can settle them. */
 export const entrySafetyStorage = {
   async read(key: string): Promise<string | null> {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useActionConfirmation } from '#shared/ActionConfirmation';
 import { useMemo, useState } from 'react';
 import {
   Badge,
@@ -79,6 +80,7 @@ export const RuntimeStrategyCard = ({
   endTimestamp: number;
   onUpdated: () => Promise<void> | void;
 }) => {
+  const confirmAction = useActionConfirmation();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
@@ -97,14 +99,18 @@ export const RuntimeStrategyCard = ({
   const setControlState = async (controlState: 'active' | 'entries_paused') => {
     setControlSaving(true);
     try {
-      const response = await fetch(
+      const response = await confirmAction(
         `/api/user/runtime-deployments/${encodeURIComponent(strategy.deploymentId)}/strategies/${encodeURIComponent(strategy.strategyName)}/control`,
         {
           method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ controlState }),
+          title:
+            controlState === 'entries_paused'
+              ? 'Pause new entries'
+              : 'Resume strategy',
+          body: { controlState },
         },
       );
+      if (!response) return;
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Update failed');
       toaster.success({

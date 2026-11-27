@@ -3,6 +3,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { RuntimeStrategyView } from '@tradejs/types';
 import { RuntimeStrategyCard } from '../RuntimeStrategyCard';
 
+jest.mock('#shared/ActionConfirmation', () => ({
+  useActionConfirmation: () => jest.fn(),
+}));
+
 jest.mock('@chakra-ui/react', () => {
   const React = require('react');
   const passthrough = ({ children }: { children?: React.ReactNode }) => (

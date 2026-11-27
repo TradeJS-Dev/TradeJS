@@ -7,6 +7,7 @@ import {
 import { getRuntimeDeployment } from '@tradejs/node/runtimeStrategies';
 import type { RuntimeStrategyControlState } from '@tradejs/types';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { requireActionConfirmation } from '#app/lib/actionConfirmation';
 
 export const PATCH = async (
   request: NextRequest,
@@ -35,7 +36,10 @@ export const PATCH = async (
       { status: 404 },
     );
   }
-  const body = (await request.json()) as { controlState?: unknown };
+  const body = (await request.json()) as {
+    controlState?: unknown;
+    confirmation?: unknown;
+  };
   if (
     body.controlState !== 'active' &&
     body.controlState !== 'entries_paused'
@@ -68,6 +72,8 @@ export const PATCH = async (
       { status: 409 },
     );
   }
+  const failure = await requireActionConfirmation(userName, body.confirmation);
+  if (failure) return failure;
   if (controlState === 'entries_paused') {
     await pauseRuntimeStrategy({
       userName,

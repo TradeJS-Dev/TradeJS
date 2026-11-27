@@ -1,3 +1,4 @@
+const mockRequireActionConfirmation = jest.fn().mockResolvedValue(null);
 const mockDeleteTradingAccount = jest.fn();
 const mockGetCurrentUserName = jest.fn();
 const mockGetTradingAccount = jest.fn();
@@ -25,6 +26,11 @@ jest.mock('@tradejs/node/runtimeStrategies', () => ({
 
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
+}));
+
+jest.mock('#app/lib/actionConfirmation', () => ({
+  requireActionConfirmation: (...args: unknown[]) =>
+    mockRequireActionConfirmation(...args),
 }));
 
 import { DELETE } from '../route';
@@ -74,12 +80,26 @@ describe('trading account delete route', () => {
   it('deletes an unreferenced account', async () => {
     mockGetTradingAccount.mockResolvedValue({ id: 'tradfi-main' });
 
-    const response = await DELETE({} as Request, context('tradfi-main'));
+    const response = await DELETE(
+      { json: async () => null } as Request,
+      context('tradfi-main'),
+    );
 
     expect(mockDeleteTradingAccount).toHaveBeenCalledWith(
       'root',
       'tradfi-main',
     );
     expect(response).toEqual({ status: 200, body: { deleted: true } });
+  });
+
+  it('blocks deleting an unreferenced account without confirmation', async () => {
+    mockGetTradingAccount.mockResolvedValue({ id: 'tradfi-main' });
+    mockRequireActionConfirmation.mockResolvedValueOnce({ status: 403 });
+    const response = await DELETE(
+      { json: async () => null } as Request,
+      context('tradfi-main'),
+    );
+    expect(response.status).toBe(403);
+    expect(mockDeleteTradingAccount).not.toHaveBeenCalled();
   });
 });

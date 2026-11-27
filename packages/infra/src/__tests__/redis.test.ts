@@ -83,6 +83,75 @@ describe('redis utils', () => {
     };
   };
 
+  it('keeps second factors durable and updates only the version read by the verifier', async () => {
+    const { redisModule, redisClient } = await setup();
+    const { twoFactorStorage } = redisModule;
+    const key = 'tradejs:auth:2fa:v1:alice';
+
+    redisClient.get.mockResolvedValueOnce(null).mockResolvedValueOnce('sealed');
+    await expect(twoFactorStorage.read('alice')).resolves.toBeNull();
+    await expect(twoFactorStorage.read('alice')).resolves.toBe('sealed');
+    expect(redisClient.get).toHaveBeenLastCalledWith(key);
+
+    redisClient.set.mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
+    await expect(
+      twoFactorStorage.replace('alice', null, 'sealed'),
+    ).resolves.toBe(true);
+    await expect(
+      twoFactorStorage.replace('alice', null, 'other'),
+    ).resolves.toBe(false);
+    expect(redisClient.set).toHaveBeenLastCalledWith(key, 'other', 'NX');
+
+    redisClient.eval
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+    await expect(
+      twoFactorStorage.replace('alice', 'sealed', 'used'),
+    ).resolves.toBe(true);
+    expect(redisClient.eval).toHaveBeenLastCalledWith(
+      expect.stringContaining("redis.call('GET',KEYS[1])~=ARGV[1]"),
+      1,
+      key,
+      'sealed',
+      'replace',
+      'used',
+    );
+    await expect(
+      twoFactorStorage.replace('alice', 'sealed', null),
+    ).resolves.toBe(false);
+    await expect(twoFactorStorage.replace('alice', 'used', null)).resolves.toBe(
+      true,
+    );
+    expect(redisClient.eval).toHaveBeenLastCalledWith(
+      expect.stringContaining("redis.call('DEL',KEYS[1])"),
+      1,
+      key,
+      'used',
+      'delete',
+      '',
+    );
+  });
+
+  it('limits second-factor attempts per account and surfaces Redis failures', async () => {
+    const { redisModule, redisClient } = await setup();
+    const { twoFactorStorage } = redisModule;
+    redisClient.eval.mockResolvedValueOnce(10).mockResolvedValueOnce(11);
+    await expect(twoFactorStorage.allowAttempt('alice')).resolves.toBe(true);
+    await expect(twoFactorStorage.allowAttempt('alice')).resolves.toBe(false);
+    expect(redisClient.eval).toHaveBeenLastCalledWith(
+      expect.stringContaining("redis.call('EXPIRE',KEYS[1],ARGV[1])"),
+      1,
+      'tradejs:auth:2fa:rate:v1:alice',
+      300,
+    );
+
+    redisClient.get.mockRejectedValueOnce(new Error('Redis disconnected'));
+    await expect(twoFactorStorage.read('alice')).rejects.toThrow(
+      'Redis disconnected',
+    );
+  });
+
   it('keeps entry safety claims durable and settles with an atomic compensation receipt', async () => {
     const { redisModule, redisClient } = await setup();
     redisClient.set.mockResolvedValue('OK');

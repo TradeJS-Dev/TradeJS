@@ -1,3 +1,4 @@
+const mockRequireActionConfirmation = jest.fn().mockResolvedValue(null);
 const mockGetCurrentUserName = jest.fn();
 const mockGetRuntimeDeployment = jest.fn();
 const mockPauseRuntimeStrategy = jest.fn();
@@ -29,6 +30,11 @@ jest.mock('@tradejs/infra/runtimeControls', () => ({
 
 jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
+}));
+
+jest.mock('#app/lib/actionConfirmation', () => ({
+  requireActionConfirmation: (...args: unknown[]) =>
+    mockRequireActionConfirmation(...args),
 }));
 
 import { PATCH } from '../route';
@@ -119,5 +125,13 @@ describe('runtime strategy manual controls', () => {
       body: { error: 'controlState must be active or entries_paused' },
     });
     expect(mockPauseRuntimeStrategy).not.toHaveBeenCalled();
+  });
+
+  it('blocks pausing a strategy without confirmation', async () => {
+    mockRequireActionConfirmation.mockResolvedValueOnce({ status: 403 });
+    const response = await PATCH(request('entries_paused'), context);
+    expect(response.status).toBe(403);
+    expect(mockPauseRuntimeStrategy).not.toHaveBeenCalled();
+    expect(mockRecordRuntimeStrategyControlEvent).not.toHaveBeenCalled();
   });
 });

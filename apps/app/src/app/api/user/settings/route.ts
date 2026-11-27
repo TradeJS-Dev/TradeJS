@@ -15,6 +15,7 @@ import {
   type UserSettings,
 } from '@tradejs/infra/userSettings';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { requireActionConfirmation } from '#app/lib/actionConfirmation';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,8 +174,9 @@ export const PATCH = async (request: Request) => {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await removeLegacyPasswordlessToken(userName);
-  const body = (await request.json()) as UpdateBody | null;
+  const body = (await request.json()) as
+    | (UpdateBody & { confirmation?: unknown })
+    | null;
   if (
     !body ||
     typeof body !== 'object' ||
@@ -183,6 +185,15 @@ export const PATCH = async (request: Request) => {
   ) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
+
+  if (body.section !== 'notifications') {
+    const failure = await requireActionConfirmation(
+      userName,
+      body.confirmation,
+    );
+    if (failure) return failure;
+  }
+  await removeLegacyPasswordlessToken(userName);
 
   if (body.section === 'password') {
     const password = String(body.data?.password || '');

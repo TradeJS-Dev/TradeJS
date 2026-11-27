@@ -5,9 +5,10 @@ import {
 } from '@tradejs/infra/tradingAccounts';
 import { listRuntimeDeployments } from '@tradejs/node/runtimeStrategies';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { requireActionConfirmation } from '#app/lib/actionConfirmation';
 
 export const DELETE = async (
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ accountId: string }> },
 ) => {
   const userName = await getCurrentUserName();
@@ -32,6 +33,13 @@ export const DELETE = async (
       { status: 409 },
     );
   }
+  const body: unknown = await request.json().catch(() => null);
+  const proof =
+    body && typeof body === 'object' && 'confirmation' in body
+      ? body.confirmation
+      : undefined;
+  const failure = await requireActionConfirmation(userName, proof);
+  if (failure) return failure;
   await deleteTradingAccount(userName, accountId);
   return NextResponse.json({ deleted: true });
 };

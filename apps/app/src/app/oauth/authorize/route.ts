@@ -1,5 +1,6 @@
 import { readMcpBody } from '#app/lib/mcp/http';
 import { getCurrentUserName } from '#app/lib/currentUser';
+import { verifyActionConfirmation } from '#app/lib/actionConfirmation';
 import {
   authorizeConsent,
   consumeConsent,
@@ -7,6 +8,7 @@ import {
   mcpOrigin,
   oauthResponse,
   prepareConsent,
+  readConsent,
   requireSameOrigin,
 } from '#app/lib/mcp/oauth';
 
@@ -59,26 +61,43 @@ export const POST = async (request: Request) => {
     return oauthResponse({ error: 'invalid_request' }, 400);
   }
   const ticket = String(form.get('ticket') || '');
+  const pending = await readConsent(ticket);
+  if (!pending || pending.userName !== userName)
+    return oauthResponse({ error: 'invalid_request' }, 400);
+
+  const allowed = form.get('decision') === 'allow';
+  const requestedScopes = new Set(form.getAll('scope'));
+  const selected = pending.scopes.filter((scope) => requestedScopes.has(scope));
+  if (allowed) {
+    if (!selected.length || selected.length !== requestedScopes.size)
+      return oauthResponse({ error: 'invalid_scope' }, 400);
+    const failure = await verifyActionConfirmation(userName, {
+      method: form.get('confirmationMethod'),
+      value: form.get('confirmation'),
+    });
+    if (failure) {
+      const retry = new URL('/routes/mcp/consent', mcpOrigin());
+      retry.searchParams.set('ticket', ticket);
+      retry.searchParams.set(
+        'confirmation',
+        failure.status === 429 ? 'limited' : 'retry',
+      );
+      for (const scope of selected) retry.searchParams.append('scope', scope);
+      return Response.redirect(retry, 303);
+    }
+  }
+
   const consent = await consumeConsent(ticket);
   if (!consent || consent.userName !== userName)
     return oauthResponse({ error: 'invalid_request' }, 400);
-  if (form.get('decision') !== 'allow') {
+  if (!allowed) {
     const location = new URL(consent.query.redirect_uri);
     location.searchParams.set('error', 'access_denied');
     location.searchParams.set('state', consent.query.state);
     location.searchParams.set('iss', mcpOrigin());
     return Response.redirect(location, 303);
   }
-  const selected = form.getAll('scope');
-  if (
-    !selected.length ||
-    selected.some(
-      (scope) =>
-        !consent.scopes.includes(scope as (typeof consent.scopes)[number]),
-    )
-  )
-    return oauthResponse({ error: 'invalid_scope' }, 400);
-  consent.scopes = consent.scopes.filter((scope) => selected.includes(scope));
-  consent.query.scope = consent.scopes.join(' ');
+  consent.scopes = selected;
+  consent.query.scope = selected.join(' ');
   return Response.redirect(await authorizeConsent(consent), 303);
 };
