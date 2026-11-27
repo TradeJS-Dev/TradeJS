@@ -87,7 +87,10 @@ const SigninContent = () => {
             flexDirection="column"
             gap="6"
           >
-            <PageHeader title="Sign in to TradeJS" />
+            <Flex align="center" gap="3">
+              <Image src="/tradejs-icon.svg" alt="" width={56} height={56} />
+              <PageHeader title="Sign in to TradeJS" />
+            </Flex>
 
             <Stack gap="4">
               <Field.Root>

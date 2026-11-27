@@ -1,6 +1,7 @@
 'use client';
 
 import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
@@ -82,6 +83,7 @@ export const Sidebar = () => {
     >
       <Flex direction="column" h="100%" justify="space-between">
         <VStack>
+          <Image src="/tradejs-icon.svg" alt="TradeJS" width={36} height={36} />
           {navItems.map(({ icon: Icon, label, path, activePath }) => (
             <IconButton
               key={path}
