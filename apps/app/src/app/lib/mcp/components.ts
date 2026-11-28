@@ -7,18 +7,15 @@ import { INSTALL_USER_NAME } from '../installation';
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const timestamp = z.number().int().nonnegative();
-const names = [
-  'app',
-  'agent',
-  'ml-infer',
-  'site',
-  'docs',
+const applicationNames = ['app', 'agent', 'ml-infer', 'site', 'docs'] as const;
+const standaloneNames = [
+  ...applicationNames,
   'certbot',
   'certbot-cron',
 ] as const;
 const componentSchema = z
   .object({
-    name: z.enum(names),
+    name: z.enum(standaloneNames),
     declaredImage: z
       .string()
       .regex(
@@ -52,14 +49,14 @@ const componentSchema = z
   .strict();
 const reportSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     reportType: z.literal('runtime-components'),
     userName: z.literal(INSTALL_USER_NAME),
     projectSha: sha,
     deploySourceSha: sha,
     observedAt: timestamp,
     ok: z.boolean(),
-    components: z.array(componentSchema).length(names.length),
+    components: z.array(componentSchema).max(standaloneNames.length),
   })
   .strict();
 const envelopeSchema = z
@@ -121,8 +118,12 @@ export const readRuntimeComponents = async (
       ),
     );
   const app = report.components.find((c) => c.name === 'app');
+  const expectedNames =
+    report.schemaVersion === 1 ? standaloneNames : applicationNames;
+  const observedNames = new Set(report.components.map((c) => c.name));
   if (
-    new Set(report.components.map((c) => c.name)).size !== names.length ||
+    report.components.length !== expectedNames.length ||
+    !expectedNames.every((name) => observedNames.has(name)) ||
     report.projectSha !== manifest.projectSha ||
     app?.sourceSha !== manifest.projectSha ||
     app.imageDigest !== process.env.TRADEJS_PROJECT_IMAGE_DIGEST

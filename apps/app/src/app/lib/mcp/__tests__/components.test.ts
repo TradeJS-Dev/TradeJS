@@ -93,6 +93,28 @@ describe('Deploy component snapshot reader', () => {
       (await readRuntimeComponents(root, 'root', now + 26 * 3600000)).fresh,
     ).toBe(false);
   });
+  it('accepts the ingress snapshot and requires the full set for each version', async () => {
+    const value = report();
+    value.schemaVersion = 2;
+    value.components = value.components.filter(
+      (component) => !component.name.startsWith('certbot'),
+    );
+    await publish(value);
+    const result = await readRuntimeComponents(root, 'root', now);
+    expect(result.report.components.map((component) => component.name)).toEqual(
+      ['app', 'agent', 'ml-infer', 'site', 'docs'],
+    );
+
+    await publish({ ...value, schemaVersion: 1 });
+    await expect(readRuntimeComponents(root, 'root', now)).rejects.toThrow(
+      /binding/,
+    );
+
+    await publish({ ...report(), schemaVersion: 2 });
+    await expect(readRuntimeComponents(root, 'root', now)).rejects.toThrow(
+      /binding/,
+    );
+  });
   it.each(['failed', 'running'])(
     'does not call an older success fresh after a %s capture',
     async (status) => {
