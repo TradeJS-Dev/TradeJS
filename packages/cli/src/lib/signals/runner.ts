@@ -179,6 +179,19 @@ export const createSignalsRunner = (
     config.projectRoot?.trim() ||
     String(process.env.PROJECT_CWD || process.cwd()).trim() ||
     process.cwd();
+  const sendSignalNotifications = async (
+    signals: Signal[],
+    signalInterval: Interval,
+    aiOptions: Parameters<typeof sendToTG>[3],
+    flushSignals?: () => Promise<void>,
+  ) => {
+    const telegramSignals = getTelegramDeliverableSignals(signals);
+    if (!config.skipScreenshots && telegramSignals.length > 0) {
+      await flushSignals?.();
+      await makeScreenshots(telegramSignals, signalInterval, config.userName);
+    }
+    await sendToTG(telegramSignals, signalInterval, config.userName, aiOptions);
+  };
   const compositionSnapshotRecorder =
     process.env.TRADEJS_PROJECT_SHA &&
     process.env.TRADEJS_PROJECT_IMAGE_DIGEST &&
@@ -729,17 +742,9 @@ export const createSignalsRunner = (
       });
 
       if (config.notify) {
-        const telegramSignals = getTelegramDeliverableSignals(signals);
-
-        if (!config.skipScreenshots && telegramSignals.length > 0) {
-          await runtimeSignalEvaluations.flushSignals();
-          await makeScreenshots(telegramSignals, interval, config.userName);
-        }
-
-        await sendToTG(
-          telegramSignals,
+        await sendSignalNotifications(
+          signals,
           interval,
-          config.userName,
           new Map(
             runtimeStrategies.map(({ strategyName, strategyConfig }) => [
               strategyName,
@@ -750,6 +755,7 @@ export const createSignalsRunner = (
               }),
             ]),
           ),
+          runtimeSignalEvaluations.flushSignals,
         );
         await sendRuntimeCloseNotificationsToTG(
           runtimeCloseNotifications,
@@ -1018,10 +1024,49 @@ export const createSignalsRunner = (
           cacheOnly: config.cacheOnly,
         };
       };
+      const executedSignals: Signal[] = [];
+      const publishExecutedSignals = async () => {
+        if (!executedSignals.length) return;
+        try {
+          const buffer = createRuntimeSignalEvaluationBuffer();
+          for (const signal of executedSignals) {
+            buffer.saveSignal(config.userName, signal);
+          }
+          await buffer.flushSignals();
+          if (!config.notify) return;
+
+          const aiOptions = new Map(
+            entry.resolveChildren(strategy.strategyConfig).map((child) => [
+              child.entry.manifest.name,
+              mapAiRuntimeFromConfig({
+                AI_ENABLED: child.config.AI_ENABLED,
+                AI_MODE: child.config.AI_MODE,
+                MIN_AI_QUALITY: child.config.MIN_AI_QUALITY,
+              }),
+            ]),
+          );
+          const byInterval = new Map<Interval, Signal[]>();
+          for (const signal of executedSignals) {
+            const batch = byInterval.get(signal.interval);
+            if (batch) batch.push(signal);
+            else byInterval.set(signal.interval, [signal]);
+          }
+          for (const [signalInterval, batch] of byInterval) {
+            await sendSignalNotifications(batch, signalInterval, aiOptions);
+          }
+        } catch (error) {
+          logger.error(
+            'portfolio signal publication failed (deployment=%s): %s',
+            deployment.id,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      };
       const outcome = live
         ? await runPortfolioLiveCycle({
             ...cycle,
             revision: `${deployment.deploymentCompositionId}:${strategy.strategyRevision}`,
+            onExecutedSignal: (signal) => executedSignals.push(signal),
             async load(pending) {
               const market = await marketInput();
               const { accountId } = strategy;
@@ -1050,7 +1095,7 @@ export const createSignalsRunner = (
                 }),
               });
             },
-          })
+          }).finally(publishExecutedSignals)
         : await runPortfolioShadowCycle({
             ...cycle,
             load: async () => loadPortfolioShadowMarket(await marketInput()),

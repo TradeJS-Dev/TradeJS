@@ -4,6 +4,7 @@ import type {
   PortfolioEntryCandidate,
   PortfolioStrategyEntry,
   PreparedPortfolioEntry,
+  Signal,
   StrategyConfig,
 } from '@tradejs/types';
 import { validatePortfolioSelection } from '../portfolio/selection';
@@ -25,7 +26,7 @@ export interface LivePortfolioMarket {
   submit(
     offer: LivePortfolioOffer,
     confirmation?: Confirmation,
-  ): Promise<unknown>;
+  ): Promise<string | Signal>;
 }
 
 interface LiveCheckpoint {
@@ -42,6 +43,7 @@ export async function runPortfolioLiveCycle({
   revision,
   store,
   load,
+  onExecutedSignal,
 }: {
   closedAt: number;
   config: StrategyConfig;
@@ -52,6 +54,7 @@ export async function runPortfolioLiveCycle({
     compare(previous: string | null, next: string): Promise<boolean>;
   };
   load(pending: readonly LivePortfolioOffer[]): Promise<LivePortfolioMarket>;
+  onExecutedSignal?: (signal: Signal) => void;
 }) {
   if (!Number.isSafeInteger(closedAt) || closedAt <= 0 || closedAt % step) {
     throw new Error('Expected a closed M15 portfolio boundary');
@@ -80,6 +83,15 @@ export async function runPortfolioLiveCycle({
   if (!(await store.compare(raw, claimed))) return null;
 
   const snapshot = await load(due);
+  const submit = async (
+    offer: LivePortfolioOffer,
+    confirmation?: Confirmation,
+  ) => {
+    const result = await snapshot.submit(offer, confirmation);
+    if (typeof result !== 'string' && result.orderStatus === 'completed') {
+      onExecutedSignal?.(result);
+    }
+  };
   const batch: PortfolioEntryBatch = {
     closedAt,
     candidates: snapshot.offers.map(({ candidate }) => candidate),
@@ -134,12 +146,12 @@ export async function runPortfolioLiveCycle({
       fill.risk <= 0
     )
       continue;
-    await snapshot.submit(offer, {
+    await submit(offer, {
       ...fill,
       price: openingPrice,
       timestamp: closedAt,
     });
   }
-  for (const id of selection.ranked) await snapshot.submit(offers.get(id)!);
+  for (const id of selection.ranked) await submit(offers.get(id)!);
   return { closedAt, candidates: offers.size, pending: pending.length };
 }

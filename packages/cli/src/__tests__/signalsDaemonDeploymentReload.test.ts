@@ -1,4 +1,19 @@
-import type { PortfolioStrategyEntry, RuntimeDeployment } from '@tradejs/types';
+import type {
+  PortfolioStrategyEntry,
+  RuntimeDeployment,
+  Signal,
+} from '@tradejs/types';
+
+jest.mock('@tradejs/infra/redis', () => ({
+  ...jest.requireActual('@tradejs/infra/redis'),
+  setData: jest.fn(),
+  setHashJsonFields: jest.fn(),
+}));
+jest.mock('@tradejs/node/cli', () => ({
+  ...jest.requireActual('@tradejs/node/cli'),
+  makeScreenshots: jest.fn(),
+  sendToTG: jest.fn(),
+}));
 
 jest.mock('@tradejs/infra/runtimeHeartbeats', () => ({
   saveRuntimeDeploymentHeartbeat: jest.fn(),
@@ -46,6 +61,8 @@ import { createSignalsRunner } from '../lib/signals/runner';
 import { loadRuntimeStrategies } from '../lib/signals/runtimeStrategies';
 import { runPortfolioLiveCycle } from '../lib/signals/portfolioLiveCycle';
 import { saveRuntimeDeploymentHeartbeat } from '@tradejs/infra/runtimeHeartbeats';
+import { redisKeys, setData, setHashJsonFields } from '@tradejs/infra/redis';
+import { makeScreenshots, sendToTG } from '@tradejs/node/cli';
 
 const deployment = (revisionDigit: number): RuntimeDeployment => ({
   id: 'doubletap-forward',
@@ -192,71 +209,137 @@ describe('signals daemon deployment reload', () => {
     }
   });
 
-  it('routes a configured portfolio running with makeOrders to the live cycle', async () => {
-    const current = deployment(6);
-    jest.mocked(getRuntimeDeployment).mockResolvedValue(current);
-    const strategyConfig = { MAX_LOSS_VALUE: 2 };
-    const portfolioEntry: PortfolioStrategyEntry = {
-      kind: 'portfolio',
-      manifest: { name: 'Probe' },
-      defaults: strategyConfig,
-      parseConfig: () => strategyConfig,
-      resolveChildren: () => [],
-      selectEntries: () => ({ ranked: [], pending: [] }),
-      confirmEntry: () => null,
-      execution: { maxPositions: 1, feeRate: 0, slippageBps: 0 },
-    };
-    jest.mocked(loadRuntimeStrategies).mockResolvedValue([
-      {
-        ...current.strategies[0],
-        interval: '15',
-        universe: 'crypto',
-        accountId: current.accountId,
-        controlState: 'active',
-        portfolioEntry,
-        strategyConfig,
-        selection: { tickers: ['BTCUSDT'] },
-        deploymentCompositionId: current.deploymentCompositionId,
-        strategyModule: '@tradejs/strategy-probe',
-        strategyPackage: '@tradejs/strategy-probe',
-        strategyPackageVersion: '1.0.0',
-        strategyDependencyVersions: { '@tradejs/core': '3.1.29' },
-        runtimePackageVersion: '3.1.29',
-        strategyCreator: async () => async () => 'SKIP',
-        sourceStrategyConfig: strategyConfig,
-      },
-    ]);
-    jest
-      .mocked(runPortfolioLiveCycle)
-      .mockResolvedValueOnce({ closedAt: 900_000, candidates: 1, pending: 0 });
-
-    await createSignalsRunner({
-      userName: 'root',
-      projectRoot: '/project',
-      interval: '15',
-      connectorName: 'bybit',
-      deploymentId: current.id,
-      makeOrders: true,
-      notify: false,
-      skipScreenshots: true,
-      updateOnly: false,
-      cacheOnly: false,
-      showTickersList: false,
-      showSkipStats: false,
-    }).runDaemon();
-
-    expect(runPortfolioLiveCycle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entry: portfolioEntry,
-        config: strategyConfig,
-      }),
-    );
-    expect(saveRuntimeDeploymentHeartbeat).toHaveBeenCalledWith(
-      'root',
-      expect.objectContaining({
+  it.each([
+    { notify: true, cycleFails: false },
+    { notify: false, cycleFails: false },
+    { notify: true, cycleFails: true },
+  ])(
+    'publishes executed portfolio signals with $notify notifications and cycle failure $cycleFails',
+    async ({ notify, cycleFails }) => {
+      const current = deployment(6);
+      jest.mocked(getRuntimeDeployment).mockResolvedValue(current);
+      const strategyConfig = { MAX_LOSS_VALUE: 2 };
+      const portfolioEntry: PortfolioStrategyEntry = {
+        kind: 'portfolio',
+        manifest: { name: 'Probe' },
+        defaults: strategyConfig,
+        parseConfig: () => strategyConfig,
+        resolveChildren: () => [],
+        selectEntries: () => ({ ranked: [], pending: [] }),
+        confirmEntry: () => null,
+        execution: { maxPositions: 1, feeRate: 0, slippageBps: 0 },
+      };
+      jest.mocked(loadRuntimeStrategies).mockResolvedValue([
+        {
+          ...current.strategies[0],
+          interval: '15',
+          universe: 'crypto',
+          accountId: current.accountId,
+          controlState: 'active',
+          portfolioEntry,
+          strategyConfig,
+          selection: { tickers: ['BTCUSDT'] },
+          deploymentCompositionId: current.deploymentCompositionId,
+          strategyModule: '@tradejs/strategy-probe',
+          strategyPackage: '@tradejs/strategy-probe',
+          strategyPackageVersion: '1.0.0',
+          strategyDependencyVersions: { '@tradejs/core': '3.1.29' },
+          runtimePackageVersion: '3.1.29',
+          strategyCreator: async () => async () => 'SKIP',
+          sourceStrategyConfig: strategyConfig,
+        },
+      ]);
+      const signals: Signal[] = (['15', '60'] as const).map((interval) => ({
+        signalId: `portfolio-${interval}`,
+        orderId: `order-${interval}`,
+        orderStatus: 'completed',
+        interval,
+        strategy: interval === '15' ? 'TrendFollow' : 'TradingPatterns',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        timestamp: 900_000,
         deploymentId: current.id,
-        cycleStatus: 'completed',
-      }),
-    );
-  });
+        accountId: current.accountId,
+        strategyRevision: current.strategies[0].strategyRevision,
+        figures: {},
+        indicators: {},
+        prices: {
+          currentPrice: 100,
+          stopLossPrice: 90,
+          takeProfitPrice: 120,
+          riskRatio: 2,
+        },
+      }));
+      jest
+        .mocked(runPortfolioLiveCycle)
+        .mockImplementationOnce(async ({ onExecutedSignal }) => {
+          for (const signal of signals) onExecutedSignal?.(signal);
+          if (cycleFails) throw new Error('later order failed');
+          return { closedAt: 900_000, candidates: 2, pending: 0 };
+        });
+
+      await createSignalsRunner({
+        userName: 'root',
+        projectRoot: '/project',
+        interval: '15',
+        connectorName: 'bybit',
+        deploymentId: current.id,
+        makeOrders: true,
+        notify,
+        skipScreenshots: false,
+        updateOnly: false,
+        cacheOnly: false,
+        showTickersList: false,
+        showSkipStats: false,
+      }).runDaemon();
+
+      expect(runPortfolioLiveCycle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entry: portfolioEntry,
+          config: strategyConfig,
+        }),
+      );
+      expect(saveRuntimeDeploymentHeartbeat).toHaveBeenCalledWith(
+        'root',
+        expect.objectContaining({
+          deploymentId: current.id,
+          cycleStatus: cycleFails ? 'failed' : 'completed',
+        }),
+      );
+      expect(setData).toHaveBeenCalledTimes(2);
+      for (const [index, signal] of signals.entries()) {
+        expect(setData).toHaveBeenCalledWith(
+          redisKeys.storeSignal(signal.symbol, signal.signalId),
+          signal,
+          expect.objectContaining({ expire: expect.any(Number) }),
+        );
+        if (notify) {
+          expect(makeScreenshots).toHaveBeenNthCalledWith(
+            index + 1,
+            [signal],
+            signal.interval,
+            'root',
+          );
+          expect(sendToTG).toHaveBeenNthCalledWith(
+            index + 1,
+            [signal],
+            signal.interval,
+            'root',
+            expect.any(Map),
+          );
+        }
+      }
+      if (notify) {
+        expect(sendToTG).toHaveBeenCalledTimes(2);
+        expect(
+          Math.max(...jest.mocked(setHashJsonFields).mock.invocationCallOrder),
+        ).toBeLessThan(
+          jest.mocked(makeScreenshots).mock.invocationCallOrder[0],
+        );
+      } else {
+        expect(makeScreenshots).not.toHaveBeenCalled();
+        expect(sendToTG).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

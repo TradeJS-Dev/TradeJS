@@ -1,10 +1,28 @@
-import type { PortfolioEntryCandidate } from '@tradejs/types';
+import type { PortfolioEntryCandidate, Signal } from '@tradejs/types';
 import {
   runPortfolioLiveCycle,
   type LivePortfolioMarket,
 } from '../portfolioLiveCycle';
 
 const step = 900_000;
+const completed: Signal = {
+  signalId: 'signal',
+  orderId: 'order',
+  orderStatus: 'completed',
+  strategy: 'Probe',
+  symbol: 'BTCUSDT',
+  direction: 'LONG',
+  interval: '15',
+  timestamp: step,
+  figures: {},
+  indicators: {},
+  prices: {
+    currentPrice: 100,
+    stopLossPrice: 90,
+    takeProfitPrice: 120,
+    riskRatio: 2,
+  },
+};
 
 function fixture() {
   let checkpoint: string | null = null;
@@ -30,7 +48,8 @@ function fixture() {
       explicitHardBlock: false,
     },
   };
-  const submit = jest.fn(async () => 'OK');
+  const submit = jest.fn<Promise<string | Signal>, []>(async () => completed);
+  const onExecutedSignal = jest.fn();
   const offer = { candidate, prepared: {} as never, minNetRewardToRisk: 1 };
   const load = jest.fn(async () => ({
     offers: [offer],
@@ -43,6 +62,7 @@ function fixture() {
     config: { MAX_LOSS_VALUE: 2 },
     store,
     load,
+    onExecutedSignal,
     entry: {
       selectEntries: () => ({ ranked: [candidate.id], pending: [] }),
       confirmEntry: () => null,
@@ -59,10 +79,31 @@ it('claims a boundary before a child can evaluate or submit', async () => {
   ]);
   expect(load).toHaveBeenCalledTimes(1);
   expect(submit).toHaveBeenCalledTimes(1);
+  expect(options.onExecutedSignal).toHaveBeenCalledTimes(1);
+  expect(options.onExecutedSignal).toHaveBeenCalledWith(completed);
+});
+
+it.each(['failed', 'skipped', 'canceled'] as const)(
+  'does not publish an entry with status %s',
+  async (orderStatus) => {
+    const { options, submit } = fixture();
+    submit.mockResolvedValue({ ...completed, orderStatus });
+    await runPortfolioLiveCycle(options);
+    expect(options.onExecutedSignal).not.toHaveBeenCalled();
+  },
+);
+
+it('does not publish a portfolio admission failure', async () => {
+  const { options, submit } = fixture();
+  submit.mockResolvedValue('PORTFOLIO_POSITION_LIMIT');
+  await runPortfolioLiveCycle(options);
+  expect(options.onExecutedSignal).not.toHaveBeenCalled();
 });
 
 it('restores a deferred offer on the next closed candle and uses the current quote and configured risk', async () => {
   const { options, offer, submit } = fixture();
+  const confirmed = { ...completed, timestamp: 2 * step };
+  submit.mockResolvedValue(confirmed);
   offer.candidate.gate = {
     approved: false,
     reason: 'AI_QUALITY_BELOW_MIN (3 < 4)',
@@ -95,6 +136,7 @@ it('restores a deferred offer on the next closed candle and uses the current quo
   };
   await runPortfolioLiveCycle({ ...options, entry });
   expect(submit).not.toHaveBeenCalled();
+  expect(options.onExecutedSignal).not.toHaveBeenCalled();
   const load = jest.fn(
     async (): Promise<LivePortfolioMarket> => ({
       offers: [],
@@ -119,4 +161,6 @@ it('restores a deferred offer on the next closed candle and uses the current quo
   });
   await runPortfolioLiveCycle({ ...options, closedAt: 2 * step, entry, load });
   expect(submit).toHaveBeenCalledTimes(1);
+  expect(options.onExecutedSignal).toHaveBeenCalledTimes(1);
+  expect(options.onExecutedSignal).toHaveBeenCalledWith(confirmed);
 });
