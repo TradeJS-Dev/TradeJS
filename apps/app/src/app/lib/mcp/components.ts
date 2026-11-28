@@ -7,19 +7,14 @@ import { INSTALL_USER_NAME } from '../installation';
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const timestamp = z.number().int().nonnegative();
-const applicationNames = ['app', 'agent', 'ml-infer', 'site', 'docs'] as const;
-const standaloneNames = [
-  ...applicationNames,
-  'certbot',
-  'certbot-cron',
-] as const;
 const componentSchema = z
   .object({
-    name: z.enum(standaloneNames),
+    name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/),
     declaredImage: z
       .string()
+      .max(512)
       .regex(
-        /^ghcr\.io\/tradejs-dev\/tradejs-[a-z-]+(?::[a-f0-9]{40}|@sha256:[a-f0-9]{64})$/,
+        /^[a-z0-9][a-z0-9._:/-]*(?::[a-f0-9]{40}|(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127})?@sha256:[a-f0-9]{64})$/,
       ),
     sourceSha: sha.nullable(),
     containerId: z
@@ -56,7 +51,7 @@ const reportSchema = z
     deploySourceSha: sha,
     observedAt: timestamp,
     ok: z.boolean(),
-    components: z.array(componentSchema).max(standaloneNames.length),
+    components: z.array(componentSchema).min(1),
   })
   .strict();
 const envelopeSchema = z
@@ -80,7 +75,7 @@ const attemptSchema = z
   })
   .strict();
 
-/** Reads only a Deploy-owned snapshot. No Docker, credentials or collection jobs. */
+/** Verifies the installation component snapshot against the running app image. */
 export const readRuntimeComponents = async (
   projectRoot: string,
   userName: string,
@@ -118,12 +113,9 @@ export const readRuntimeComponents = async (
       ),
     );
   const app = report.components.find((c) => c.name === 'app');
-  const expectedNames =
-    report.schemaVersion === 1 ? standaloneNames : applicationNames;
   const observedNames = new Set(report.components.map((c) => c.name));
   if (
-    report.components.length !== expectedNames.length ||
-    !expectedNames.every((name) => observedNames.has(name)) ||
+    observedNames.size !== report.components.length ||
     report.projectSha !== manifest.projectSha ||
     app?.sourceSha !== manifest.projectSha ||
     app.imageDigest !== process.env.TRADEJS_PROJECT_IMAGE_DIGEST
@@ -141,7 +133,8 @@ export const readRuntimeComponents = async (
           !c.containerId ||
           (!(c.running && c.state === 'running') &&
             !(
-              c.name === 'certbot' &&
+              report.schemaVersion === 1 &&
+              c.name !== 'app' &&
               c.state === 'exited' &&
               c.exitCode === 0
             )) ||

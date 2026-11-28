@@ -93,24 +93,60 @@ describe('Deploy component snapshot reader', () => {
       (await readRuntimeComponents(root, 'root', now + 26 * 3600000)).fresh,
     ).toBe(false);
   });
-  it('accepts the ingress snapshot and requires the full set for each version', async () => {
+  it('still reads a legacy report with a successful one-shot component', async () => {
     const value = report();
-    value.schemaVersion = 2;
-    value.components = value.components.filter(
-      (component) => !component.name.startsWith('certbot'),
+    const certificateJob = value.components.find(
+      (component) => component.name === 'certbot',
     );
+    if (!certificateJob)
+      throw new Error('Legacy report fixture must contain Certbot');
+    certificateJob.state = 'exited';
+    certificateJob.running = false;
     await publish(value);
+    expect((await readRuntimeComponents(root, 'root', now)).report.ok).toBe(
+      true,
+    );
+  });
+
+  it('accepts an installation with only the application container', async () => {
+    const value = report();
+    await publish({
+      ...value,
+      schemaVersion: 2,
+      components: [value.components[0]],
+    });
     const result = await readRuntimeComponents(root, 'root', now);
     expect(result.report.components.map((component) => component.name)).toEqual(
-      ['app', 'agent', 'ml-infer', 'site', 'docs'],
+      ['app'],
     );
+  });
 
-    await publish({ ...value, schemaVersion: 1 });
+  it('accepts explicitly declared components and image registries of other installations', async () => {
+    const value = report();
+    const app = {
+      ...value.components[0],
+      declaredImage: `registry.example.org:5000/my-team/project:${projectSha}`,
+    };
+    const worker = {
+      ...value.components[1],
+      name: 'jobs-worker',
+      declaredImage: `registry.example.org:5000/my-team/worker:2.1@${imageDigest}`,
+    };
+    await publish({ ...value, schemaVersion: 2, components: [app, worker] });
+    const result = await readRuntimeComponents(root, 'root', now);
+    expect(result.report.components).toEqual([app, worker]);
+  });
+
+  it('rejects missing app identity and duplicated components in portable snapshots', async () => {
+    const value = { ...report(), schemaVersion: 2 };
+    await publish({ ...value, components: [value.components[1]] });
     await expect(readRuntimeComponents(root, 'root', now)).rejects.toThrow(
       /binding/,
     );
-
-    await publish({ ...report(), schemaVersion: 2 });
+    await publish({
+      ...value,
+      components: [value.components[0], value.components[0]],
+    });
     await expect(readRuntimeComponents(root, 'root', now)).rejects.toThrow(
       /binding/,
     );

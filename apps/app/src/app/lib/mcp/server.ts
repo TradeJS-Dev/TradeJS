@@ -329,7 +329,7 @@ export const createTradejsMcpServer = (principal: McpPrincipal) => {
   if (principal.userName === INSTALL_USER_NAME) {
     tool(
       'runtime_get_components',
-      'Read the checksum-verified Deploy component image snapshot. Collected after rollouts and daily at 10:30 Europe/Moscow; fresh=false after 25h or a failed collection. No Docker access or collection job is performed.',
+      'Read the checksum-verified component snapshot published by this installation. The app image is required and each installation declares its other application components. fresh=false after 25 hours or an unfinished or failed collection.',
       ['runtime:read'],
       { deploymentId: identifier },
       async (args) => {
